@@ -37,10 +37,15 @@ import {
     Replace,
     CaseSensitive,
     Regex,
+    Columns,
+    GitCompareArrows,
+    Map,
+    TerminalSquare,
     type LucideIcon
 } from 'lucide-react';
 import { API_URL as API } from '../config';
 import CodeEditor from './CodeEditor';
+import DiffViewer from './DiffViewer';
 import { motion, AnimatePresence } from 'framer-motion';
 import { githubService, GitHubRepo, GitHubUser } from '../services/githubService';
 
@@ -387,6 +392,8 @@ const ContextMenu = ({
         ]
         : [
             { icon: Pin, label: 'Pin / Unpin', action: 'pin' },
+            { icon: Columns, label: 'Open in Split View', action: 'splitView' },
+            { icon: GitCompareArrows, label: 'Show Diff', action: 'showDiff' },
             { icon: Edit3, label: 'Rename', action: 'rename' },
             { icon: Trash2, label: 'Delete', action: 'delete', danger: true },
         ];
@@ -520,6 +527,13 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
     const [findCaseSensitive, setFindCaseSensitive] = useState(false);
     const [findMatchCount, setFindMatchCount] = useState<number | null>(null);
     const [findReplacing, setFindReplacing] = useState(false);
+
+    // Phase 3: Split View, Diff, Minimap, Terminal
+    const [splitPath, setSplitPath] = useState<string | null>(null);
+    const [splitContent, setSplitContent] = useState<string>('');
+    const [diffState, setDiffState] = useState<{ visible: boolean; filePath: string; original: string; modified: string } | null>(null);
+    const [showMinimap, setShowMinimap] = useState(true);
+    const [showTerminal, setShowTerminal] = useState(false);
 
     // Modal States
     const [modalConfig, setModalConfig] = useState<{
@@ -970,6 +984,49 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
             case 'pin':
                 togglePin(node);
                 break;
+
+            case 'splitView':
+                // Open file in split view
+                try {
+                    const res = await fetch(`${API}/project/content?path=${encodeURIComponent(node.path)}`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setSplitPath(node.path);
+                        setSplitContent(data.content || '');
+                    }
+                } catch { }
+                break;
+
+            case 'showDiff':
+                // Show git diff for the file
+                try {
+                    const diffRes = await fetch(`${API}/git/diff?file=${encodeURIComponent(node.path)}`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    const diffData = await diffRes.json();
+                    // Fetch current content
+                    const contentRes = await fetch(`${API}/project/content?path=${encodeURIComponent(node.path)}`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    const contentData = await contentRes.json();
+                    const currentContent = contentData.content || '';
+                    // Reconstruct original from diff (approximate: show current vs last committed)
+                    // For a proper approach, use git show HEAD:file
+                    const origRes = await fetch(`${API}/git/search-replace`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ file: node.path, search: '', caseSensitive: false })
+                    });
+                    setDiffState({
+                        visible: true,
+                        filePath: node.path,
+                        original: diffData.diff ? `// Git Diff for ${node.name}\n${diffData.diff}` : currentContent,
+                        modified: currentContent
+                    });
+                } catch { }
+                break;
         }
     };
 
@@ -1112,6 +1169,30 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                             </div>
 
                             <div className="elite-header-actions">
+                                <button
+                                    onClick={() => setShowMinimap(p => !p)}
+                                    className="elite-icon-btn"
+                                    title={showMinimap ? 'Hide Minimap' : 'Show Minimap'}
+                                    style={{ color: showMinimap ? 'var(--accent-primary)' : undefined }}
+                                >
+                                    <Map size={14} />
+                                </button>
+                                <button
+                                    onClick={() => setShowTerminal(p => !p)}
+                                    className="elite-icon-btn"
+                                    title={showTerminal ? 'Hide Terminal' : 'Show Terminal'}
+                                    style={{ color: showTerminal ? 'var(--accent-primary)' : undefined }}
+                                >
+                                    <TerminalSquare size={14} />
+                                </button>
+                                <button
+                                    onClick={() => setShowFindReplace(p => !p)}
+                                    className="elite-icon-btn"
+                                    title="Find & Replace (Ctrl+H)"
+                                    style={{ color: showFindReplace ? 'var(--accent-primary)' : undefined }}
+                                >
+                                    <Replace size={14} />
+                                </button>
                                 <button onClick={loadRoot} className="elite-icon-btn" title="Refresh">
                                     <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                                 </button>

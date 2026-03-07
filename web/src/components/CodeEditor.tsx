@@ -10,9 +10,10 @@ interface CodeEditorProps {
   onChange?: (value: string | undefined) => void;
   readOnly?: boolean;
   theme?: 'vs-dark' | 'light';
+  showMinimap?: boolean;
 }
 
-export default function CodeEditor({ code, language = 'javascript', onChange, readOnly = false, theme: initialTheme = 'vs-dark' }: CodeEditorProps) {
+export default function CodeEditor({ code, language = 'javascript', onChange, readOnly = false, theme: initialTheme = 'vs-dark', showMinimap = true }: CodeEditorProps) {
   const [theme, setTheme] = useState(initialTheme);
 
   useEffect(() => {
@@ -37,14 +38,22 @@ export default function CodeEditor({ code, language = 'javascript', onChange, re
   }, []);
 
   const handleEditorDidMount = (editor: any, monaco: any) => {
-    // Optional: Configure editor settings here
+    // Configure editor settings
     editor.updateOptions({
-      minimap: { enabled: false },
+      minimap: { enabled: showMinimap, scale: 1, showSlider: 'mouseover' },
       scrollBeyondLastLine: false,
       fontSize: 13,
       fontFamily: 'JetBrains Mono, Menlo, Monaco, "Courier New", monospace',
       wordWrap: 'on',
-      padding: { top: 16, bottom: 16 }
+      padding: { top: 16, bottom: 16 },
+      // Enhanced features
+      bracketPairColorization: { enabled: true },
+      guides: { bracketPairs: true, indentation: true },
+      smoothScrolling: true,
+      cursorBlinking: 'smooth',
+      cursorSmoothCaretAnimation: 'on',
+      renderLineHighlight: 'all',
+      roundedSelection: true,
     });
   };
 
@@ -61,6 +70,7 @@ export default function CodeEditor({ code, language = 'javascript', onChange, re
         options={{
           readOnly,
           automaticLayout: true,
+          minimap: { enabled: showMinimap, scale: 1, showSlider: 'mouseover' },
         }}
         loading={<div style={{ color: 'var(--text-muted)', padding: 20 }}>Loading Editor...</div>}
       />
