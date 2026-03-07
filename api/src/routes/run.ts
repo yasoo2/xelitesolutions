@@ -3077,7 +3077,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
             if (isRepeat) {
               const discoveryTools = ['project_detect', 'ls', 'grep_search', 'read_file', 'analyze_codebase', 'fs_glob', 'read_file_tree', 'codebase_outline', 'browser_run', 'browser_open', 'web_search', 'website_full_pipeline'];
-              const maxRepeats = planName === 'project_detect' ? 30 : (['web_search', 'browser_run', 'browser_open'].includes(planName) ? 8 : (discoveryTools.includes(planName) ? 6 : 2));
+              const maxRepeats = planName === 'project_detect' ? 3 : (['web_search', 'browser_run', 'browser_open'].includes(planName) ? 8 : (discoveryTools.includes(planName) ? 6 : 2));
               const totalSeen = sigCount + (lastExecutedToolSig === sig ? 1 : 0);
 
               if (totalSeen >= maxRepeats) {
@@ -3218,7 +3218,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           }
 
           const wantsShop = isEcommerceRequest(userTextForOverrides);
-          if (wantsShop) {
+          // [FIX] Skip e-commerce override if session already has an active project
+          // This prevents follow-up requests ("add a button") from creating a new project
+          const sessionHasActiveProject = sessionProjectMap.has(String(sessionId));
+          if (wantsShop && !sessionHasActiveProject) {
             // Extract project name if provided, else use smart extractor
             const projName = extractBuildName(userTextForOverrides);
             const isIsolated = /(معزول|معزولة|isolated|new workspace|مساحة عمل|جديدة|isolated project)/i.test(userTextForOverrides);
