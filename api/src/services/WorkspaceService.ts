@@ -4,6 +4,8 @@ import { User } from '../models/user';
 import mongoose, { Types } from 'mongoose';
 import crypto from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import path from 'path';
+import fs from 'fs';
 
 const workspaceAsyncContext = new AsyncLocalStorage<{ workspaceId?: string }>();
 

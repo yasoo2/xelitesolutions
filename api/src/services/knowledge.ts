@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import pdf from 'pdf-parse';
+const pdf = require('pdf-parse');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const KNOWLEDGE_FILE = path.join(DATA_DIR, 'knowledge.json');

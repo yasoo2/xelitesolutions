@@ -315,6 +315,7 @@ export class DevServerTool extends BaseTool {
     auditFields = ['cwd'];
 
     async execute(input: any, context?: any) {
+        const logs: string[] = [];
         const baseCwd = resolveToolPath(String(input?.cwd || '').trim(), { sandbox: true });
         let port = Number(input?.port);
         if (!port) port = await findAvailablePort(5180);
