@@ -169,4 +169,103 @@ router.post('/pull', authenticate as any, async (req: Request, res: Response) =>
     return res.status(400).json({ error: "DEPRECATED: Please ask Joe to pull changes." });
 });
 
+// GET /git/blame
+router.get('/blame', authenticate as any, async (req: Request, res: Response) => {
+    const file = String(req.query.file || '').trim();
+    if (!file) return res.status(400).json({ error: 'File required' });
+    if (!isSafeRepoPath(file)) return res.status(400).json({ error: 'Invalid file path' });
+
+    const result = await gitExec(['blame', '--porcelain', '--', file]);
+    if (!result.ok) {
+        return res.json({ ok: false, error: result.error, lines: [] });
+    }
+
+    // Parse porcelain blame output
+    const lines: Array<{ lineNum: number; author: string; date: string; hash: string; content: string }> = [];
+    const rawLines = (result.stdout || '').split('\n');
+    let currentHash = '';
+    let currentAuthor = '';
+    let currentDate = '';
+    let lineNum = 0;
+
+    for (const raw of rawLines) {
+        if (/^[0-9a-f]{40}/.test(raw)) {
+            const parts = raw.split(' ');
+            currentHash = parts[0].substring(0, 8);
+            lineNum = parseInt(parts[2]) || 0;
+        } else if (raw.startsWith('author ')) {
+            currentAuthor = raw.substring(7);
+        } else if (raw.startsWith('author-time ')) {
+            const ts = parseInt(raw.substring(12)) || 0;
+            currentDate = ts ? new Date(ts * 1000).toISOString().split('T')[0] : '';
+        } else if (raw.startsWith('\t')) {
+            lines.push({
+                lineNum,
+                author: currentAuthor,
+                date: currentDate,
+                hash: currentHash,
+                content: raw.substring(1)
+            });
+        }
+    }
+
+    res.json({ ok: true, lines });
+});
+
+// POST /git/search-replace - Find and replace within a file
+router.post('/search-replace', authenticate as any, async (req: Request, res: Response) => {
+    const { file, search, replace, isRegex, caseSensitive } = req.body;
+    if (!file || search === undefined) return res.status(400).json({ error: 'File and search required' });
+
+    const cwd = findWorkspaceRoot();
+    const filePath = path.join(cwd, file);
+    const normalizedPath = path.normalize(filePath);
+    if (!normalizedPath.startsWith(cwd)) return res.status(400).json({ error: 'Invalid path' });
+
+    try {
+        const fs = await import('fs');
+        const content = fs.readFileSync(normalizedPath, 'utf-8');
+
+        let flags = 'g';
+        if (!caseSensitive) flags += 'i';
+
+        const pattern = isRegex ? new RegExp(search, flags) : new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
+        const matches = (content.match(pattern) || []).length;
+
+        if (replace !== undefined) {
+            const newContent = content.replace(pattern, replace);
+            fs.writeFileSync(normalizedPath, newContent, 'utf-8');
+            return res.json({ ok: true, replacements: matches, content: newContent });
+        }
+
+        // Count-only mode
+        res.json({ ok: true, matches });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || 'Search-replace failed' });
+    }
+});
+
+// GET /git/log - Recent commits
+router.get('/log', authenticate as any, async (req: Request, res: Response) => {
+    const limit = Math.min(parseInt(String(req.query.limit || '20')) || 20, 100);
+    const result = await gitExec(['log', `--max-count=${limit}`, '--pretty=format:%H|%an|%ae|%at|%s']);
+    if (!result.ok) {
+        return res.json({ ok: false, commits: [] });
+    }
+
+    const commits = (result.stdout || '').split('\n').filter(Boolean).map(line => {
+        const [hash, author, email, timestamp, ...msgParts] = line.split('|');
+        return {
+            hash: (hash || '').substring(0, 8),
+            fullHash: hash,
+            author,
+            email,
+            date: new Date(parseInt(timestamp) * 1000).toISOString(),
+            message: msgParts.join('|')
+        };
+    });
+
+    res.json({ ok: true, commits });
+});
+
 export default router;

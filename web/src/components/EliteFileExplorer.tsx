@@ -34,6 +34,9 @@ import {
     Braces,
     Hash,
     Palette,
+    Replace,
+    CaseSensitive,
+    Regex,
     type LucideIcon
 } from 'lucide-react';
 import { API_URL as API } from '../config';
@@ -509,6 +512,15 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
     });
     const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // Find & Replace state
+    const [showFindReplace, setShowFindReplace] = useState(false);
+    const [findText, setFindText] = useState('');
+    const [replaceText, setReplaceText] = useState('');
+    const [findRegex, setFindRegex] = useState(false);
+    const [findCaseSensitive, setFindCaseSensitive] = useState(false);
+    const [findMatchCount, setFindMatchCount] = useState<number | null>(null);
+    const [findReplacing, setFindReplacing] = useState(false);
+
     // Modal States
     const [modalConfig, setModalConfig] = useState<{
         open: boolean;
@@ -645,6 +657,12 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                 e.preventDefault();
                 document.querySelector<HTMLInputElement>('.elite-input')?.focus();
             }
+
+            // Cmd/Ctrl + H: Toggle Find & Replace
+            if ((e.metaKey || e.ctrlKey) && e.key === 'h') {
+                e.preventDefault();
+                setShowFindReplace(p => !p);
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
@@ -681,6 +699,51 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
             return next;
         });
     }, []);
+
+    // Find & Replace functions
+    const handleFindCount = useCallback(async () => {
+        if (!findText || !activePath) { setFindMatchCount(null); return; }
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        try {
+            const res = await fetch(`${API}/git/search-replace`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ file: activePath, search: findText, isRegex: findRegex, caseSensitive: findCaseSensitive })
+            });
+            const data = await res.json();
+            setFindMatchCount(data.matches ?? 0);
+        } catch { setFindMatchCount(0); }
+    }, [findText, activePath, findRegex, findCaseSensitive]);
+
+    const handleReplaceAll = useCallback(async () => {
+        if (!findText || !activePath) return;
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        setFindReplacing(true);
+        try {
+            const res = await fetch(`${API}/git/search-replace`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ file: activePath, search: findText, replace: replaceText, isRegex: findRegex, caseSensitive: findCaseSensitive })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                // Update the open tab content
+                setTabs(p => p.map(t => t.node.path === activePath ? { ...t, content: data.content, isDirty: false } : t));
+                setFindMatchCount(0);
+                fetchGitStatus();
+            }
+        } catch { }
+        setFindReplacing(false);
+    }, [findText, replaceText, activePath, findRegex, findCaseSensitive]);
+
+    // Auto-count matches when find text changes
+    useEffect(() => {
+        if (!showFindReplace || !findText) { setFindMatchCount(null); return; }
+        const t = setTimeout(handleFindCount, 300);
+        return () => clearTimeout(t);
+    }, [findText, findRegex, findCaseSensitive, activePath, showFindReplace]);
 
 
     useEffect(() => {
@@ -1072,6 +1135,127 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                 {isSearching && <Loader2 size={12} className="animate-spin" />}
                             </div>
                         </div>
+
+                        {/* Find & Replace Panel */}
+                        <AnimatePresence>
+                            {showFindReplace && (
+                                <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.2 }}
+                                    style={{
+                                        borderBottom: '1px solid var(--border-color)',
+                                        padding: '8px 10px',
+                                        background: 'rgba(255,255,255,0.02)',
+                                        overflow: 'hidden'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+                                        <Search size={12} style={{ opacity: 0.5 }} />
+                                        <input
+                                            autoFocus
+                                            value={findText}
+                                            onChange={e => setFindText(e.target.value)}
+                                            placeholder="Find..."
+                                            className="elite-input"
+                                            style={{ flex: 1, fontSize: 11, padding: '3px 6px' }}
+                                            onKeyDown={e => { if (e.key === 'Escape') setShowFindReplace(false); }}
+                                        />
+                                        <button
+                                            onClick={() => setFindRegex(p => !p)}
+                                            className="elite-icon-btn"
+                                            title="Regex"
+                                            style={{ opacity: findRegex ? 1 : 0.4, color: findRegex ? 'var(--accent-primary)' : undefined }}
+                                        >
+                                            <Regex size={12} />
+                                        </button>
+                                        <button
+                                            onClick={() => setFindCaseSensitive(p => !p)}
+                                            className="elite-icon-btn"
+                                            title="Case Sensitive"
+                                            style={{ opacity: findCaseSensitive ? 1 : 0.4, color: findCaseSensitive ? 'var(--accent-primary)' : undefined }}
+                                        >
+                                            <CaseSensitive size={12} />
+                                        </button>
+                                        {findMatchCount !== null && (
+                                            <span style={{ fontSize: 10, opacity: 0.6, whiteSpace: 'nowrap' }}>
+                                                {findMatchCount} match{findMatchCount !== 1 ? 'es' : ''}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <Replace size={12} style={{ opacity: 0.5 }} />
+                                        <input
+                                            value={replaceText}
+                                            onChange={e => setReplaceText(e.target.value)}
+                                            placeholder="Replace..."
+                                            className="elite-input"
+                                            style={{ flex: 1, fontSize: 11, padding: '3px 6px' }}
+                                            onKeyDown={e => { if (e.key === 'Enter') handleReplaceAll(); }}
+                                        />
+                                        <button
+                                            onClick={handleReplaceAll}
+                                            className="elite-icon-btn"
+                                            title="Replace All"
+                                            disabled={findReplacing || !findText || !activePath}
+                                            style={{ fontSize: 10, padding: '2px 6px', opacity: findReplacing ? 0.5 : 1 }}
+                                        >
+                                            {findReplacing ? <Loader2 size={12} className="animate-spin" /> : 'All'}
+                                        </button>
+                                        <button
+                                            onClick={() => setShowFindReplace(false)}
+                                            className="elite-icon-btn"
+                                            title="Close"
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    </div>
+                                    {!activePath && (
+                                        <div style={{ fontSize: 10, opacity: 0.4, marginTop: 4 }}>
+                                            Open a file to use Find & Replace
+                                        </div>
+                                    )}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        {/* Breadcrumb Path Bar */}
+                        {activePath && (
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: 2,
+                                padding: '4px 10px', fontSize: 10, opacity: 0.6,
+                                borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                overflow: 'hidden', flexWrap: 'nowrap'
+                            }}>
+                                <Home size={10} style={{ flexShrink: 0, opacity: 0.5 }} />
+                                {pathParts.map((part, i) => (
+                                    <React.Fragment key={i}>
+                                        <ChevronRight size={8} style={{ flexShrink: 0, opacity: 0.3 }} />
+                                        <span
+                                            style={{
+                                                cursor: i < pathParts.length - 1 ? 'pointer' : 'default',
+                                                opacity: i === pathParts.length - 1 ? 1 : 0.7,
+                                                fontWeight: i === pathParts.length - 1 ? 600 : 400,
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                maxWidth: 80
+                                            }}
+                                            title={part}
+                                            onClick={() => {
+                                                if (i < pathParts.length - 1) {
+                                                    const dirPath = pathParts.slice(0, i + 1).join('/');
+                                                    setExpandedByPath(p => ({ ...p, [dirPath]: true }));
+                                                }
+                                            }}
+                                        >
+                                            {part}
+                                        </span>
+                                    </React.Fragment>
+                                ))}
+                            </div>
+                        )}
 
                         <div className="elite-tree-container">
                             {query ? (
