@@ -21,12 +21,100 @@ import {
     Trash2,
     Edit3,
     Home,
-    Settings
+    Settings,
+    Star,
+    Pin,
+    Image,
+    Database,
+    Terminal,
+    Globe,
+    Lock,
+    Package,
+    FileJson,
+    Braces,
+    Hash,
+    Palette,
+    type LucideIcon
 } from 'lucide-react';
 import { API_URL as API } from '../config';
 import CodeEditor from './CodeEditor';
 import { motion, AnimatePresence } from 'framer-motion';
 import { githubService, GitHubRepo, GitHubUser } from '../services/githubService';
+
+// ═══════════════════════════════════════════════════════
+// Professional File Icon Map (VS Code-style)
+// ═══════════════════════════════════════════════════════
+const FILE_ICON_MAP: Record<string, { icon: LucideIcon; color: string }> = {
+    // TypeScript / JavaScript
+    ts: { icon: Code, color: '#3178c6' },
+    tsx: { icon: Code, color: '#3178c6' },
+    js: { icon: Braces, color: '#f7df1e' },
+    jsx: { icon: Braces, color: '#61dafb' },
+    mjs: { icon: Braces, color: '#f7df1e' },
+    cjs: { icon: Braces, color: '#f7df1e' },
+    // Styles
+    css: { icon: Palette, color: '#1572b6' },
+    scss: { icon: Palette, color: '#cc6699' },
+    less: { icon: Palette, color: '#1d365d' },
+    // Markup
+    html: { icon: Globe, color: '#e44d26' },
+    htm: { icon: Globe, color: '#e44d26' },
+    xml: { icon: FileText, color: '#e37933' },
+    svg: { icon: Image, color: '#ffb13b' },
+    // Data
+    json: { icon: FileJson, color: '#cbcb41' },
+    yaml: { icon: FileText, color: '#cb171e' },
+    yml: { icon: FileText, color: '#cb171e' },
+    toml: { icon: FileText, color: '#9c4121' },
+    csv: { icon: FileText, color: '#237346' },
+    // Config
+    env: { icon: Lock, color: '#ecd53f' },
+    gitignore: { icon: Hash, color: '#f05032' },
+    dockerignore: { icon: Hash, color: '#2496ed' },
+    // DevOps
+    dockerfile: { icon: Package, color: '#2496ed' },
+    // Database
+    sql: { icon: Database, color: '#336791' },
+    prisma: { icon: Database, color: '#2d3748' },
+    // Documentation
+    md: { icon: FileText, color: '#519aba' },
+    mdx: { icon: FileText, color: '#519aba' },
+    txt: { icon: FileText, color: '#89898a' },
+    // Images
+    png: { icon: Image, color: '#a074c4' },
+    jpg: { icon: Image, color: '#a074c4' },
+    jpeg: { icon: Image, color: '#a074c4' },
+    gif: { icon: Image, color: '#a074c4' },
+    webp: { icon: Image, color: '#a074c4' },
+    ico: { icon: Image, color: '#a074c4' },
+    // Terminal/Scripts
+    sh: { icon: Terminal, color: '#89e051' },
+    bash: { icon: Terminal, color: '#89e051' },
+    zsh: { icon: Terminal, color: '#89e051' },
+    bat: { icon: Terminal, color: '#c1f12e' },
+    // Python
+    py: { icon: Code, color: '#3572a5' },
+    // Go
+    go: { icon: Code, color: '#00add8' },
+    // Rust
+    rs: { icon: Code, color: '#dea584' },
+    // Lock files
+    lock: { icon: Lock, color: '#89898a' },
+};
+
+// Special full-name matches
+const FILE_NAME_MAP: Record<string, { icon: LucideIcon; color: string }> = {
+    'package.json': { icon: Package, color: '#cb3837' },
+    'tsconfig.json': { icon: Settings, color: '#3178c6' },
+    'vite.config.ts': { icon: Settings, color: '#646cff' },
+    'vite.config.js': { icon: Settings, color: '#646cff' },
+    '.gitignore': { icon: Hash, color: '#f05032' },
+    '.env': { icon: Lock, color: '#ecd53f' },
+    '.env.local': { icon: Lock, color: '#ecd53f' },
+    'Dockerfile': { icon: Package, color: '#2496ed' },
+    'docker-compose.yml': { icon: Package, color: '#2496ed' },
+    'README.md': { icon: FileText, color: '#519aba' },
+};
 
 interface FileNode {
     name: string;
@@ -61,6 +149,7 @@ type OpenTab = {
     error: string | null;
     isDirty: boolean;
     lastSavedAt: number | null;
+    isPinned?: boolean;
 };
 
 interface ContextMenuState {
@@ -71,14 +160,34 @@ interface ContextMenuState {
 }
 
 const FileIcon = ({ name }: { name: string }) => {
-    const ext = name.split('.').pop()?.toLowerCase();
-    if (['ts', 'tsx', 'js', 'jsx', 'json'].includes(ext || ''))
-        return <Code size={14} className="text-[var(--accent-primary)]" />;
-    if (['css', 'scss', 'less'].includes(ext || ''))
-        return <FileText size={14} className="text-[#3b82f6]" />;
-    if (['md', 'txt'].includes(ext || ''))
-        return <FileText size={14} className="text-[var(--text-muted)]" />;
-    return <File size={14} className="text-[var(--text-muted)]" />;
+    // Check full filename first (e.g. package.json, Dockerfile)
+    const lowerName = name.toLowerCase();
+    const nameMatch = FILE_NAME_MAP[name] || FILE_NAME_MAP[lowerName];
+    if (nameMatch) {
+        const IconComp = nameMatch.icon;
+        return <IconComp size={14} style={{ color: nameMatch.color, flexShrink: 0 }} />;
+    }
+    // Then check extension
+    const ext = name.split('.').pop()?.toLowerCase() || '';
+    const extMatch = FILE_ICON_MAP[ext];
+    if (extMatch) {
+        const IconComp = extMatch.icon;
+        return <IconComp size={14} style={{ color: extMatch.color, flexShrink: 0 }} />;
+    }
+    return <File size={14} style={{ color: '#89898a', flexShrink: 0 }} />;
+};
+
+// Folder icon with special colors for common directories
+const FolderIcon = ({ name, expanded }: { name: string; expanded: boolean }) => {
+    const folderColors: Record<string, string> = {
+        src: '#42a5f5', components: '#66bb6a', pages: '#ab47bc', styles: '#ec407a',
+        utils: '#ffa726', hooks: '#29b6f6', services: '#26a69a', api: '#ef5350',
+        public: '#8d6e63', assets: '#78909c', tests: '#9ccc65', __tests__: '#9ccc65',
+        node_modules: '#90a4ae', '.git': '#f05032', dist: '#78909c', build: '#78909c',
+        config: '#ffa000', types: '#3178c6', lib: '#7e57c2', store: '#ff7043',
+    };
+    const color = folderColors[name.toLowerCase()] || (expanded ? '#fdd835' : '#90a4ae');
+    return <Folder size={14} style={{ color, flexShrink: 0 }} fill={expanded ? color : 'none'} />;
 };
 
 const FileTreeItem = ({
@@ -148,7 +257,7 @@ const FileTreeItem = ({
                     </span>
                 )}
                 {node.type === 'directory' ? (
-                    <Folder size={14} className="elite-folder-icon" fill="currentColor" />
+                    <FolderIcon name={node.name} expanded={expanded} />
                 ) : (
                     <FileIcon name={node.name} />
                 )}
@@ -244,6 +353,7 @@ const ContextMenu = ({
             { icon: Trash2, label: 'Delete', action: 'delete', danger: true },
         ]
         : [
+            { icon: Pin, label: 'Pin / Unpin', action: 'pin' },
             { icon: Edit3, label: 'Rename', action: 'rename' },
             { icon: Trash2, label: 'Delete', action: 'delete', danger: true },
         ];
@@ -356,6 +466,13 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
     const [activeWorkspace, setActiveWorkspace] = useState<{ path: string; name: string } | null>(null);
     const [gitStatusMap, setGitStatusMap] = useState<Map<string, string>>(new Map());
     const [gitChangeCount, setGitChangeCount] = useState(0);
+    const [pinnedFiles, setPinnedFiles] = useState<FileNode[]>(() => {
+        try {
+            const saved = localStorage.getItem('joe_pinned_files');
+            return saved ? JSON.parse(saved) : [];
+        } catch { return []; }
+    });
+    const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Modal States
     const [modalConfig, setModalConfig] = useState<{
@@ -499,6 +616,37 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activePath, tabs]);
 
+    // Auto-save: save dirty files after 2s of inactivity  
+    useEffect(() => {
+        const dirtyTab = tabs.find(t => t.isDirty && t.node.path === activePath);
+        if (!dirtyTab) return;
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = setTimeout(() => {
+            saveActiveFile();
+        }, 2000);
+        return () => {
+            if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        };
+    }, [tabs, activePath]);
+
+    // Periodic git status refresh (every 10 seconds)
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchGitStatus();
+        }, 10000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Pin/Unpin toggle
+    const togglePin = useCallback((node: FileNode) => {
+        setPinnedFiles(prev => {
+            const exists = prev.some(p => p.path === node.path);
+            const next = exists ? prev.filter(p => p.path !== node.path) : [...prev, node];
+            localStorage.setItem('joe_pinned_files', JSON.stringify(next));
+            return next;
+        });
+    }, []);
+
 
     useEffect(() => {
         if (!query.trim()) {
@@ -595,9 +743,11 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path: tab.node.path, content: tab.content })
             });
-            setTabs(p => p.map(t => t.node.path === tab.node.path ? { ...t, isDirty: false } : t));
+            setTabs(p => p.map(t => t.node.path === tab.node.path ? { ...t, isDirty: false, lastSavedAt: Date.now() } : t));
             setSavedPath(tab.node.path);
             setTimeout(() => setSavedPath(null), 1000);
+            // Refresh git status after save
+            fetchGitStatus();
         } catch { }
         setSavingPath(null);
     }, [activePath, tabs]);
@@ -717,6 +867,10 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                 } catch (err) {
                     alert('Error creating folder');
                 }
+                break;
+
+            case 'pin':
+                togglePin(node);
                 break;
         }
     };
@@ -878,6 +1032,39 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                 </div>
                             ) : (
                                 <>
+                                    {/* Pinned Files Section */}
+                                    {pinnedFiles.length > 0 && (
+                                        <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: 4, marginBottom: 4 }}>
+                                            <div style={{
+                                                padding: '4px 12px', fontSize: '10px', textTransform: 'uppercase',
+                                                letterSpacing: '0.5px', opacity: 0.5, display: 'flex', alignItems: 'center', gap: 4
+                                            }}>
+                                                <Star size={10} fill="currentColor" /> Pinned
+                                            </div>
+                                            {pinnedFiles.map((pf, i) => (
+                                                <motion.div
+                                                    key={`pin-${pf.path}`}
+                                                    initial={{ opacity: 0, x: -10 }}
+                                                    animate={{ opacity: 1, x: 0 }}
+                                                    className={`elite-file-item ${activePath === pf.path ? 'selected' : ''}`}
+                                                    style={{ paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+                                                    onClick={() => openFile(pf)}
+                                                >
+                                                    <Star size={10} style={{ color: '#fdd835', flexShrink: 0 }} fill="#fdd835" />
+                                                    <FileIcon name={pf.name} />
+                                                    <span className="elite-file-name" style={{ fontSize: 12 }}>{pf.name}</span>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); togglePin(pf); }}
+                                                        style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 2, opacity: 0.4 }}
+                                                        title="Unpin"
+                                                    >
+                                                        <X size={10} style={{ color: 'var(--text-muted)' }} />
+                                                    </button>
+                                                </motion.div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {/* Main File Tree */}
                                     {tree.map((node, i) => (
                                         <FileTreeItem
                                             key={node.path || i}
