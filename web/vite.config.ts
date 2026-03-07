@@ -87,8 +87,6 @@ const createApiShim = () => {
   };
 };
 
-import externalGlobals from 'rollup-plugin-external-globals';
-
 export default defineConfig({
   plugins: [
     react()
@@ -128,16 +126,6 @@ export default defineConfig({
     rollupOptions: {
       maxParallelFileOps: 1, // Single-threaded to minimize RAM usage during AST-heavy transformation
       cache: false,
-      external: [
-        '@monaco-editor/react',
-        'monaco-editor',
-      ],
-      plugins: [
-        externalGlobals({
-          '@monaco-editor/react': 'monaco',
-          'monaco-editor': 'monaco',
-        })
-      ],
       output: {
         // Removed manualChunks vendor strategy to allow Rollup to manage smaller, less memory-intensive chunks
       }

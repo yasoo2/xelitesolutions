@@ -4,6 +4,13 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { GOOGLE_CLIENT_ID } from './config';
 import App from './App';
+
+// Configure Monaco Editor to use local package instead of CDN
+// This prevents "monaco is not defined" errors when CDN is unavailable
+import { loader } from '@monaco-editor/react';
+import * as monaco from 'monaco-editor';
+loader.config({ monaco });
+
 const Login = lazy(() => import('./pages/Login'));
 
 
