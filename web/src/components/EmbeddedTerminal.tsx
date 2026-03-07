@@ -192,11 +192,14 @@ export default function EmbeddedTerminal({
                         return;
                     }
                     try {
-                        const term = termRef.current;
+                        const term = termRef.current as any;
                         if (!term || !term.element) return;
 
                         // Ensure terminal is still attached
                         if (!term.element.parentElement) return;
+
+                        // Prevent writing to disposed terminal
+                        if (term._core && term._core.isDisposed) return;
 
                         try {
                             // Defensive fit
@@ -251,16 +254,22 @@ export default function EmbeddedTerminal({
 
         return () => {
             isMounted = false;
+            isOpenRef.current = false;
             if (resizeTimeout) clearTimeout(resizeTimeout);
             resizeObserver.disconnect();
             themeObserver.disconnect();
+
+            const termToDispose = term; // Keep local ref
+            termRef.current = null;
+            fitAddonRef.current = null;
+
             try {
-                term.dispose();
+                if (termToDispose) {
+                    termToDispose.dispose();
+                }
             } catch (e) {
                 console.debug('[Terminal] Dispose error:', e);
             }
-            termRef.current = null;
-            fitAddonRef.current = null;
         };
     }, [terminalId, getTerminalTheme, onReady]);
 
@@ -268,7 +277,10 @@ export default function EmbeddedTerminal({
     useEffect(() => {
         const unsub = SocketService.subscribe((msg: any) => {
             if (msg.type === 'terminal_output' && msg.id === terminalId) {
-                termRef.current?.write(msg.data);
+                const t = termRef.current as any;
+                if (t && t._core && !t._core.isDisposed) {
+                    t.write(msg.data);
+                }
             }
 
             // [SHELL-FEEDBACK] Write tool results to the terminal window if they are shell commands
@@ -279,9 +291,12 @@ export default function EmbeddedTerminal({
                 const color = ok ? '\x1b[32m' : '\x1b[31m';
 
                 if (output) {
-                    termRef.current?.write(`\r\n${color}--- [Executed: ${msg.data.name}] ---\x1b[0m\r\n`);
-                    termRef.current?.write(output.replace(/\n/g, '\r\n'));
-                    termRef.current?.write(`\r\n${color}--- [End of Output] ---\x1b[0m\r\n`);
+                    const t = termRef.current as any;
+                    if (t && t._core && !t._core.isDisposed) {
+                        t.write(`\r\n${color}--- [Executed: ${msg.data.name}] ---\x1b[0m\r\n`);
+                        t.write(output.replace(/\n/g, '\r\n'));
+                        t.write(`\r\n${color}--- [End of Output] ---\x1b[0m\r\n`);
+                    }
                 }
             }
         });
