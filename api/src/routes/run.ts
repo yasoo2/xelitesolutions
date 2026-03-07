@@ -397,7 +397,11 @@ function isArabicText(raw: string): boolean {
 function extractBuildName(text: string): string {
   const s = String(text || '').trim();
 
-  // 1. Explicit naming: "باسم NovaTime", "called MyStore", "اسمه فلان"
+  // 1. Explicit quotes: "name it 'premium-showcase'"
+  const quoteMatch = s.match(/['"]([\w\u0600-\u06FF-]{2,100})['"]/);
+  if (quoteMatch?.[1]) return quoteMatch[1].replace(/\s+/g, '-');
+
+  // 2. Explicit naming: "باسم NovaTime", "called MyStore", "اسمه فلان"
   const explicit = s.match(/(?:اسم|اسمه|called|named|باسم)\s+([\w\u0600-\u06FF-]+)/i);
   if (explicit?.[1]) return explicit[1].replace(/\s+/g, '-');
 
@@ -432,10 +436,6 @@ function extractBuildName(text: string): string {
   if (enMatch?.[1]) {
     return enMatch[1].trim().replace(/\s+/g, '-').toLowerCase() + '-store';
   }
-
-  // 5. Explicit quotes: "name it 'premium-showcase'"
-  const quoteMatch = s.match(/['"]([\w\u0600-\u06FF-]{2,100})['"]/);
-  if (quoteMatch?.[1]) return quoteMatch[1].replace(/\s+/g, '-');
 
   // 5. Fallback: unique timestamped name
   const ts = Date.now().toString(36).slice(-4);
@@ -3228,9 +3228,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const shopPipelineProtected = ['website_full_pipeline', 'genesis_build'].includes(planName);
 
             if (steps === 0 && !shopPipelineProtected) {
-              // Force the smart tool for ecommerce requests without deceptive markers
+              // Force the smart pipeline for ecommerce requests without deceptive markers
               plan = {
-                name: 'scaffold_full_stack',
+                name: 'website_full_pipeline',
                 input: {
                   name: projName,
                   type: 'ecommerce',
@@ -3238,7 +3238,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                   baseDir
                 }
               } as any;
-              planName = 'scaffold_full_stack';
+              planName = 'website_full_pipeline';
               pendingPlan = plan; // ensure immediate execution on first loop
             }
 
