@@ -199,6 +199,7 @@ const FileTreeItem = ({
     onContextMenu,
     selectedPath,
     gitStatusMap,
+    onMoveFile,
 }: {
     node: FileNode;
     level: number;
@@ -208,6 +209,7 @@ const FileTreeItem = ({
     onContextMenu: (e: React.MouseEvent, node: FileNode) => void;
     selectedPath?: string;
     gitStatusMap?: Map<string, string>;
+    onMoveFile?: (sourcePath: string, targetDir: string) => void;
 }) => {
     const expanded = !!expandedByPath[node.path];
     const isSelected = selectedPath === node.path;
@@ -229,14 +231,41 @@ const FileTreeItem = ({
         return undefined;
     };
     const gitColor = getGitColor();
+    const [isDragOver, setIsDragOver] = useState(false);
 
     return (
-        <div style={{ paddingLeft: level * 12 }}>
+        <div
+            style={{ paddingLeft: level * 12 }}
+            draggable
+            onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', node.path);
+                e.dataTransfer.effectAllowed = 'move';
+            }}
+            onDragOver={(e) => {
+                if (node.type === 'directory') {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    setIsDragOver(true);
+                }
+            }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={(e) => {
+                e.preventDefault();
+                setIsDragOver(false);
+                if (node.type === 'directory') {
+                    const sourcePath = e.dataTransfer.getData('text/plain');
+                    if (sourcePath && sourcePath !== node.path && onMoveFile) {
+                        onMoveFile(sourcePath, node.path);
+                    }
+                }
+            }}
+        >
             <motion.div
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.2 }}
-                className={`elite-file-item ${isSelected ? 'selected' : ''}`}
+                className={`elite-file-item ${isSelected ? 'selected' : ''} ${isDragOver ? 'drag-over' : ''}`}
+                style={isDragOver ? { background: 'rgba(100, 108, 255, 0.15)', borderRadius: 4 } : undefined}
                 onClick={(e) => {
                     e.stopPropagation();
                     if (node.type === 'directory') {
@@ -303,6 +332,7 @@ const FileTreeItem = ({
                                     onContextMenu={onContextMenu}
                                     selectedPath={selectedPath}
                                     gitStatusMap={gitStatusMap}
+                                    onMoveFile={onMoveFile}
                                 />
                             ))
                         )}
@@ -875,6 +905,35 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
         }
     };
 
+    // Drag & Drop: move file/folder to a new directory
+    const handleMoveFile = useCallback(async (sourcePath: string, targetDir: string) => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const fileName = sourcePath.split('/').pop();
+        const newPath = `${targetDir}/${fileName}`;
+        if (newPath === sourcePath) return;
+        try {
+            const res = await fetch(`${API}/project/file/rename`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ oldPath: sourcePath, newPath })
+            });
+            if (res.ok) {
+                await loadRoot();
+                setTabs(prev => prev.map(t =>
+                    t.node.path === sourcePath
+                        ? { ...t, node: { ...t.node, path: newPath } }
+                        : t
+                ));
+                if (activePath === sourcePath) setActivePath(newPath);
+            } else {
+                alert('Failed to move file');
+            }
+        } catch {
+            alert('Error moving file');
+        }
+    }, [activePath]);
+
     const handleModalSubmit = async (val: string) => {
         if (!val) return;
         const type = modalConfig.type;
@@ -1076,6 +1135,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                             onContextMenu={handleContextMenu}
                                             selectedPath={activePath || undefined}
                                             gitStatusMap={gitStatusMap}
+                                            onMoveFile={handleMoveFile}
                                         />
                                     ))}
                                     {tree.length === 0 && !loading && (
