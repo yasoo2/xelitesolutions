@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, Suspense, lazy } from 'react';
 import {
     ChevronRight,
     ChevronDown,
@@ -45,7 +45,7 @@ import {
 } from 'lucide-react';
 import { API_URL as API } from '../config';
 import CodeEditor from './CodeEditor';
-import DiffViewer from './DiffViewer';
+const DiffViewer = lazy(() => import('./DiffViewer'));
 import { motion, AnimatePresence } from 'framer-motion';
 import { githubService, GitHubRepo, GitHubUser } from '../services/githubService';
 
