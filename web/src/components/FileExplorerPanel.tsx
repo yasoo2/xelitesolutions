@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { FilePlus, FolderPlus, GitBranch, RefreshCw, HardDrive } from 'lucide-react';
 import EliteFileExplorer from './EliteFileExplorer';
 
@@ -25,6 +25,17 @@ export default function FileExplorerPanel({
     activeRepo = null,
     githubUser = null
 }: FileExplorerPanelProps) {
+    const [gitChangeCount, setGitChangeCount] = useState(0);
+
+    // Listen for git change count from EliteFileExplorer
+    useEffect(() => {
+        const handler = (e: Event) => {
+            setGitChangeCount((e as CustomEvent).detail || 0);
+        };
+        window.addEventListener('git-change-count', handler);
+        return () => window.removeEventListener('git-change-count', handler);
+    }, []);
+
     return (
         <aside className={`joe-files-panel ${isCollapsed ? 'collapsed' : ''}`}>
             {/* Header */}
@@ -90,7 +101,7 @@ export default function FileExplorerPanel({
                 >
                     <GitBranch size={14} />
                     <span>Git Changes</span>
-                    {showGitChanges && (
+                    {gitChangeCount > 0 && (
                         <span style={{
                             marginLeft: 'auto',
                             background: 'var(--joe-gold-primary)',
@@ -98,9 +109,11 @@ export default function FileExplorerPanel({
                             padding: '2px 8px',
                             borderRadius: 999,
                             fontSize: 11,
-                            fontWeight: 600
+                            fontWeight: 600,
+                            minWidth: 18,
+                            textAlign: 'center' as const
                         }}>
-                            3
+                            {gitChangeCount}
                         </span>
                     )}
                 </button>

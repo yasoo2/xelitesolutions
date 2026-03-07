@@ -496,6 +496,11 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
     const [activeWorkspace, setActiveWorkspace] = useState<{ path: string; name: string } | null>(null);
     const [gitStatusMap, setGitStatusMap] = useState<Map<string, string>>(new Map());
     const [gitChangeCount, setGitChangeCount] = useState(0);
+
+    // Broadcast git change count to external components (e.g. FileExplorerPanel)
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent('git-change-count', { detail: gitChangeCount }));
+    }, [gitChangeCount]);
     const [pinnedFiles, setPinnedFiles] = useState<FileNode[]>(() => {
         try {
             const saved = localStorage.getItem('joe_pinned_files');
