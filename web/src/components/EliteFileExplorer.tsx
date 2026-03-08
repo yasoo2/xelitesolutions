@@ -849,10 +849,13 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
         }
         // Switch workspace panel to 'preview' tab
         window.dispatchEvent(new CustomEvent('joe:workspace-tab-switch', { detail: { tab: 'preview' } }));
-        // Send file content to PreviewPanel for display
-        window.dispatchEvent(new CustomEvent('preview:code_diff', {
-            detail: { path: node.path, content }
-        }));
+        // Delay code_diff event to ensure PreviewPanel has mounted and registered its listener
+        // (The tab-switch triggers a React re-render; we need to wait for it to complete)
+        setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('preview:code_diff', {
+                detail: { path: node.path, content }
+            }));
+        }, 150);
     }, [tabs, loadFileContent]);
 
     const updateActiveContent = useCallback((val: string | undefined) => {
