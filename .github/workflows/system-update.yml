@@ -48,20 +48,25 @@ jobs:
           # Clear OS cache
           sync && echo 3 > /proc/sys/vm/drop_caches || true
           
-          echo "=== 3. Building API (Sequential) ==="
-          # Use custom memory limits for build
+          echo "=== 3. Building Web Frontend ==="
           export NODE_OPTIONS="--max-old-space-size=2048"
+          cd web
+          npm ci --omit=dev 2>/dev/null || npm install --omit=dev
+          npx vite build
+          cd ..
+          
+          echo "=== 4. Building API (Sequential) ==="
           docker compose -f docker-compose.production.yml build api
           
-          echo "=== 4. Building Web (Sequential) ==="
+          echo "=== 5. Building Web Container ==="
           docker compose -f docker-compose.production.yml build web
           
-          echo "=== 5. Building Worker (Sequential) ==="
+          echo "=== 6. Building Worker (Sequential) ==="
           docker compose -f docker-compose.production.yml build browser-worker
           
-          echo "=== 6. Restarting all services ==="
+          echo "=== 7. Restarting all services ==="
           docker compose -p joe -f docker-compose.production.yml up -d --remove-orphans
           
-          echo "=== 7. Final check ==="
+          echo "=== 8. Final check ==="
           docker compose -p joe -f docker-compose.production.yml ps
           REMOTE
