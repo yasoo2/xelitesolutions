@@ -486,6 +486,10 @@ export class DeployManager {
             this.logQueue.push(existing);
         }
         existing.logs.push(log);
+        // Memory optimization: cap at 500 lines per deployment
+        if (existing.logs.length > 500) {
+            existing.logs = existing.logs.slice(-500);
+        }
         this.broadcastLog(id, log);
     }
 

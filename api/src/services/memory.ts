@@ -3,8 +3,22 @@ import { ConversationSummary } from '../models/conversationSummary';
 import { routeToModel } from '../llm/intelligent-router';
 
 // In-memory message buffer per user (for summarization)
-const userMessageBuffers: Map<string, { messages: string[], sessionId?: string }> = new Map();
+const userMessageBuffers: Map<string, { messages: string[], sessionId?: string, lastActive: number }> = new Map();
 const SUMMARY_THRESHOLD = 20; // Summarize every 20 messages (increased from 10)
+
+// Memory optimization: Clean up inactive user buffers every 30 minutes
+setInterval(() => {
+  const now = Date.now();
+  const INACTIVE_THRESHOLD = 30 * 60 * 1000; // 30 minutes
+  let cleaned = 0;
+  for (const [userId, buffer] of userMessageBuffers) {
+    if (now - buffer.lastActive > INACTIVE_THRESHOLD) {
+      userMessageBuffers.delete(userId);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) console.log(`[Memory] 🧹 Cleaned ${cleaned} inactive user buffers`);
+}, 30 * 60 * 1000);
 
 export class MemoryService {
   /**
@@ -16,12 +30,13 @@ export class MemoryService {
 
     // Initialize buffer for this user if not exists
     if (!userMessageBuffers.has(userId)) {
-      userMessageBuffers.set(userId, { messages: [], sessionId });
+      userMessageBuffers.set(userId, { messages: [], sessionId, lastActive: Date.now() });
     }
 
     const buffer = userMessageBuffers.get(userId)!;
     buffer.messages.push(`${role === 'user' ? '👤' : '🤖'}: ${message.substring(0, 500)}`);
     buffer.sessionId = sessionId;
+    buffer.lastActive = Date.now();
 
     // Check if we should summarize
     if (buffer.messages.length >= SUMMARY_THRESHOLD) {
