@@ -67,8 +67,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    volumes:
-      - ./web/dist:/usr/share/nginx/html
     networks:
       - joe-network
     depends_on:

@@ -148,19 +148,14 @@ export class DeployManager {
                 await this.runCommand('git', ['pull', 'origin', 'main'], id, 60000);
             }
 
-            // Clean any untracked files in web/dist
-            await this.runCommand('git', ['clean', '-fd', 'web/dist'], id, 10000);
 
             // 2. Race Condition Check
             if (expectedCommit) {
                 await this.verifyCommitMatch(id, expectedCommit);
             }
 
-            // 3. Build Web Frontend (dist/)
-            await this.buildWebFrontend(id);
-
-            // 4. Docker Build/Up
-            this.appendLog(id, `\n[SYSTEM] Local build verified. Initiating container recreation...`);
+            // 3. Docker Build/Up (web Dockerfile now has multi-stage build)
+            this.appendLog(id, `\n[SYSTEM] Code synced. Initiating container rebuild...`);
 
             deployment.status = isRollback ? 'ROLLBACK' : 'SUCCESS';
             deployment.endTime = new Date();
