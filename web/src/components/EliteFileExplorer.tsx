@@ -806,7 +806,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
         }
     }, [expandedByPath]);
 
-    const loadFileContent = useCallback(async (node: FileNode) => {
+    const loadFileContent = useCallback(async (node: FileNode): Promise<string> => {
         setTabs(prev => [...prev, { node, content: '', isLoading: true, error: null, isDirty: false, lastSavedAt: null }]);
 
         try {
@@ -817,29 +817,38 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                 const fileData = Array.isArray(results) ? results[0] : results;
                 const content = (fileData as any)?.content || '';
                 setTabs(prev => prev.map(t => t.node.path === node.path ? { ...t, content, isLoading: false } : t));
-                return;
+                return content;
             }
 
             const res = await fetch(`${API}/project/content?path=${encodeURIComponent(node.path)}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const json = await res.json();
-            setTabs(prev => prev.map(t => t.node.path === node.path ? { ...t, content: json.content, isLoading: false } : t));
+            const content = json.content || '';
+            setTabs(prev => prev.map(t => t.node.path === node.path ? { ...t, content, isLoading: false } : t));
+            return content;
         } catch (e) {
             setTabs(prev => prev.map(t => t.node.path === node.path ? { ...t, error: 'Failed', isLoading: false } : t));
+            return '';
         }
     }, [viewMode, activeRepo]);
 
     const openFile = useCallback(async (node: FileNode) => {
+        let content = '';
         const existing = tabs.find(t => t.node.path === node.path);
         if (existing) {
             setActivePath(node.path);
+            content = existing.content;
         } else {
-            await loadFileContent(node);
+            content = await loadFileContent(node);
             setActivePath(node.path);
         }
-        // Switch workspace panel to 'preview' tab so the code editor is visible
+        // Switch workspace panel to 'preview' tab
         window.dispatchEvent(new CustomEvent('joe:workspace-tab-switch', { detail: { tab: 'preview' } }));
+        // Send file content to PreviewPanel for display
+        window.dispatchEvent(new CustomEvent('preview:code_diff', {
+            detail: { path: node.path, content }
+        }));
     }, [tabs, loadFileContent]);
 
     const updateActiveContent = useCallback((val: string | undefined) => {
