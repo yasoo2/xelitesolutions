@@ -4,10 +4,7 @@ services:
     container_name: joe_mongo
     restart: always
     command: [ "mongod", "--wiredTigerCacheSizeGB", "0.25" ]
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    mem_limit: 512m
     volumes:
       - ./data/mongo:/data/db
     networks:
@@ -23,10 +20,7 @@ services:
     build: ./api
     container_name: joe_api
     restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    mem_limit: 512m
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -69,10 +63,7 @@ services:
         - VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
     container_name: joe_web
     restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 128M
+    mem_limit: 128m
     env_file:
       - .env
     environment: {}
@@ -91,10 +82,7 @@ services:
     build: ./services/joe-browser-worker
     container_name: joe_browser_worker
     restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    mem_limit: 512m
     environment:
       - PORT=7070
     env_file:
@@ -117,10 +105,7 @@ services:
     image: nginx:alpine
     container_name: joe_nginx
     restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 64M
+    mem_limit: 64m
     ports:
       - "80:80"
       - "443:443"
@@ -142,6 +127,7 @@ services:
 
   certbot:
     image: certbot/certbot
+    mem_limit: 64m
     volumes:
       - /opt/joe/certbot/conf:/etc/letsencrypt
       - /opt/joe/certbot/www:/var/www/certbot
