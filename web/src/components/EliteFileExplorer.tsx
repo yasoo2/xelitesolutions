@@ -811,7 +811,10 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
 
         try {
             const token = localStorage.getItem('token');
-            if (viewMode === 'github' && activeRepo) {
+            const isLocalPath = node.path.startsWith('/');
+
+            // Use GitHub API only for actual GitHub repo paths (not local filesystem paths)
+            if (viewMode === 'github' && activeRepo && !isLocalPath) {
                 const [owner, repoName] = activeRepo.fullName.split('/');
                 const results = await githubService.getContents(owner, repoName, node.path);
                 const fileData = Array.isArray(results) ? results[0] : results;
@@ -820,6 +823,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                 return content;
             }
 
+            // Use local project API for local filesystem files
             const res = await fetch(`${API}/project/content?path=${encodeURIComponent(node.path)}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
