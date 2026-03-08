@@ -166,8 +166,8 @@ export default function JoeIDELayout({
     const [sidebarView, setSidebarView] = useState<'explorer' | 'github'>('explorer');
     const [isChatCollapsed, setIsChatCollapsed] = useState(false);
     const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(() => {
-        // Autocollapse explorer on mobile
-        return typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
+        // Autocollapse explorer on mobile (must match isMobile threshold of 900)
+        return typeof window !== 'undefined' ? window.innerWidth <= 900 : false;
     });
 
     // Handle initial mobile state for chat
@@ -176,7 +176,7 @@ export default function JoeIDELayout({
 
     useEffect(() => {
         if (!wasMobileInitChecked && typeof window !== 'undefined') {
-            const isMob = window.innerWidth <= 768;
+            const isMob = window.innerWidth <= 900;
             if (isMob) {
                 setIsExplorerCollapsed(true);
                 setIsChatCollapsed(false);
