@@ -834,10 +834,12 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
         const existing = tabs.find(t => t.node.path === node.path);
         if (existing) {
             setActivePath(node.path);
-            return;
+        } else {
+            await loadFileContent(node);
+            setActivePath(node.path);
         }
-        await loadFileContent(node);
-        setActivePath(node.path);
+        // Switch workspace panel to 'preview' tab so the code editor is visible
+        window.dispatchEvent(new CustomEvent('joe:workspace-tab-switch', { detail: { tab: 'preview' } }));
     }, [tabs, loadFileContent]);
 
     const updateActiveContent = useCallback((val: string | undefined) => {
