@@ -136,7 +136,10 @@ export class DeployManager {
             // 0. Ensure git safety (dubious ownership fix)
             await this.runCommand('git', ['config', '--global', '--add', 'safe.directory', '/root/xelitesolutions'], id, 30000);
 
-            // 1. Git Prep
+            // 1. Clean old dist/ (prevents stale files from being served)
+            await this.runCommand('rm', ['-rf', 'web/dist'], id, 10000);
+
+            // 2. Git Prep
             if (isRollback) {
                 await this.runCommand('git', ['reset', '--hard', deployment.commit, '--'], id, 60000);
             } else {
@@ -144,6 +147,9 @@ export class DeployManager {
                 await this.runCommand('git', ['checkout', '.'], id, 30000);
                 await this.runCommand('git', ['pull', 'origin', 'main'], id, 60000);
             }
+
+            // Clean any untracked files in web/dist
+            await this.runCommand('git', ['clean', '-fd', 'web/dist'], id, 10000);
 
             // 2. Race Condition Check
             if (expectedCommit) {
