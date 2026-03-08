@@ -1495,7 +1495,36 @@
 /* ========== Responsive - Small Tablet ========== */
 @media (max-width: 900px) {
     .joe-files-panel {
-        display: none;
+        position: fixed;
+        top: var(--joe-header-height);
+        right: 0;
+        bottom: 0;
+        width: 300px;
+        max-width: 85vw;
+        z-index: 1000;
+        box-shadow: -4px 0 30px rgba(0, 0, 0, 0.5);
+        transform: translateX(0);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+            opacity 0.3s ease;
+        background: var(--joe-bg-panel) !important;
+        backdrop-filter: blur(20px);
+        border-left: 1px solid var(--joe-border);
+    }
+
+    .joe-files-panel.collapsed {
+        transform: translateX(100%);
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    /* Mobile toggle button - visible on small screens */
+    .joe-mobile-explorer-toggle {
+        display: flex !important;
+    }
+
+    /* Mobile backdrop overlay */
+    .joe-mobile-backdrop {
+        display: block !important;
     }
 
     :root {
@@ -1539,7 +1568,26 @@
     }
 
     .joe-files-panel {
-        display: none;
+        position: fixed;
+        top: var(--joe-header-height);
+        right: 0;
+        bottom: 0;
+        width: 300px;
+        max-width: 85vw;
+        z-index: 1000;
+        box-shadow: -4px 0 30px rgba(0, 0, 0, 0.5);
+        transform: translateX(0);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+            opacity 0.3s ease;
+        background: var(--joe-bg-panel) !important;
+        backdrop-filter: blur(20px);
+        border-left: 1px solid var(--joe-border);
+    }
+
+    .joe-files-panel.collapsed {
+        transform: translateX(100%);
+        opacity: 0;
+        pointer-events: none;
     }
 
     .joe-brand {
@@ -1656,6 +1704,62 @@
 }
 
 /* ========== End of Layout Styles ========== */
+
+/* ========== Mobile File Explorer Toggle & Backdrop ========== */
+.joe-mobile-explorer-toggle {
+    display: none;
+    /* Hidden on desktop, shown via media query */
+    position: fixed;
+    bottom: 60px;
+    right: 16px;
+    z-index: 999;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 2px solid var(--joe-gold-primary);
+    background: linear-gradient(135deg, var(--joe-gold-primary) 0%, var(--joe-gold-dark) 100%);
+    color: var(--joe-bg-primary);
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(240, 193, 75, 0.4), 0 0 30px rgba(240, 193, 75, 0.2);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    font-size: 20px;
+}
+
+.joe-mobile-explorer-toggle:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 28px rgba(240, 193, 75, 0.5);
+}
+
+.joe-mobile-explorer-toggle:active {
+    transform: scale(0.95);
+}
+
+.joe-mobile-backdrop {
+    display: none;
+    /* Hidden on desktop, shown via media query */
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 999;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
 /* ========== Premium Settings Panel (v2) ========== */
 
 /* Fade-in animation */

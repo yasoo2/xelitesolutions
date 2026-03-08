@@ -7,6 +7,7 @@ import FileExplorerPanel from './FileExplorerPanel';
 import GitHubPanel from './GitHubPanel';
 import SessionsBar from './SessionsBar';
 import { GitHubRepo, GitHubCommit, GitHubUser } from '../services/githubService';
+import { FolderOpen } from 'lucide-react';
 import '../styles/joe-premium.css';
 import { useAutoOpen, PanelType } from '../services/AutoOpenManager';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -393,6 +394,23 @@ export default function JoeIDELayout({
                 onNew={onNewSession || (() => { })}
                 showInAgentMode={true}
             />
+
+            {/* Mobile File Explorer Toggle Button (visible only on ≤900px via CSS) */}
+            <button
+                className="joe-mobile-explorer-toggle"
+                onClick={toggleExplorer}
+                title={isExplorerCollapsed ? "فتح مستكشف الملفات" : "إغلاق مستكشف الملفات"}
+            >
+                <FolderOpen size={22} />
+            </button>
+
+            {/* Mobile Backdrop (visible only when explorer is open on ≤900px) */}
+            {!isExplorerCollapsed && (
+                <div
+                    className="joe-mobile-backdrop"
+                    onClick={toggleExplorer}
+                />
+            )}
 
             {children}
         </div>
