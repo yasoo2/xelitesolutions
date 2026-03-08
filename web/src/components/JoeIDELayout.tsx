@@ -172,17 +172,25 @@ export default function JoeIDELayout({
 
     // Handle initial mobile state for chat
     const [wasMobileInitChecked, setWasMobileInitChecked] = useState(false);
+    const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 900 : false);
 
     useEffect(() => {
         if (!wasMobileInitChecked && typeof window !== 'undefined') {
-            const isMobile = window.innerWidth <= 768;
-            if (isMobile) {
+            const isMob = window.innerWidth <= 768;
+            if (isMob) {
                 setIsExplorerCollapsed(true);
                 setIsChatCollapsed(false);
             }
             setWasMobileInitChecked(true);
         }
     }, [wasMobileInitChecked]);
+
+    // Track viewport for mobile toggle button
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth <= 900);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Force uncollapse when an explicit action requires it (e.g. from Joe.tsx tools or CommandComposer icons)
     useEffect(() => {
@@ -395,20 +403,49 @@ export default function JoeIDELayout({
                 showInAgentMode={true}
             />
 
-            {/* Mobile File Explorer Toggle Button (visible only on ≤900px via CSS) */}
-            <button
-                className="joe-mobile-explorer-toggle"
-                onClick={toggleExplorer}
-                title={isExplorerCollapsed ? "فتح مستكشف الملفات" : "إغلاق مستكشف الملفات"}
-            >
-                <FolderOpen size={22} />
-            </button>
-
-            {/* Mobile Backdrop (visible only when explorer is open on ≤900px) */}
-            {!isExplorerCollapsed && (
-                <div
-                    className="joe-mobile-backdrop"
+            {/* Mobile File Explorer Toggle Button */}
+            {isMobile && (
+                <button
+                    className="joe-mobile-explorer-toggle"
                     onClick={toggleExplorer}
+                    title={isExplorerCollapsed ? "فتح مستكشف الملفات" : "إغلاق مستكشف الملفات"}
+                    style={{
+                        display: 'flex',
+                        position: 'fixed',
+                        bottom: 60,
+                        right: 16,
+                        zIndex: 1001,
+                        width: 48,
+                        height: 48,
+                        borderRadius: '50%',
+                        border: '2px solid var(--joe-gold-primary, #f0c14b)',
+                        background: 'linear-gradient(135deg, #f0c14b 0%, #b8860b 100%)',
+                        color: '#0a0c10',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 20px rgba(240, 193, 75, 0.4), 0 0 30px rgba(240, 193, 75, 0.2)',
+                        fontSize: 20,
+                    }}
+                >
+                    <FolderOpen size={22} />
+                </button>
+            )}
+
+            {/* Mobile Backdrop (when explorer is open on small screens) */}
+            {isMobile && !isExplorerCollapsed && (
+                <div
+                    onClick={toggleExplorer}
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        zIndex: 999,
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        backdropFilter: 'blur(2px)',
+                    }}
                 />
             )}
 
