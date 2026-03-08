@@ -34,6 +34,9 @@
     "react-syntax-highlighter": "^16.1.0",
     "reactflow": "^11.11.4",
     "three": "^0.182.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "@vitejs/plugin-react-swc": "^3.8.0",
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0",
     "zustand": "^5.0.9"
@@ -43,10 +46,6 @@
     "@types/react-dom": "^18.3.1",
     "@typescript-eslint/eslint-plugin": "^8.55.0",
     "@typescript-eslint/parser": "^8.55.0",
-    "@vitejs/plugin-react-swc": "^3.8.0",
-    "eslint": "^9.0.0",
-    "rollup-plugin-external-globals": "^0.13.0",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "eslint": "^9.0.0"
   }
 }
