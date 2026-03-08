@@ -304,6 +304,15 @@ export class DeployManager {
     private startAutoDeployPoller() {
         // Initial delay of 15 seconds to let the system stabilize
         setTimeout(async () => {
+            // CRITICAL: Fix git dubious ownership before ANY git command
+            // The mounted volume /root/xelitesolutions has different ownership than container process
+            try {
+                execSync('git config --global --add safe.directory /root/xelitesolutions', { timeout: 5000 });
+                logger.info(`[AutoDeploy] Git safe.directory configured for /root/xelitesolutions`);
+            } catch (e: any) {
+                logger.warn(`[AutoDeploy] Failed to set safe.directory (may already be set): ${e.message}`);
+            }
+
             // Get initial commit hash
             try {
                 const localCommit = execSync('git rev-parse HEAD', { cwd: '/root/xelitesolutions' }).toString().trim();
