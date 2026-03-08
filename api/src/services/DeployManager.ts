@@ -15,11 +15,15 @@ export class DeployManager {
     private currentDeploymentId: string | null = null;
     private logQueue: { id: string, logs: string[] }[] = [];
     private flushInterval: NodeJS.Timeout | null = null;
+    private pollerInterval: NodeJS.Timeout | null = null;
+    private lastKnownCommit: string | null = null;
 
     private constructor() {
         // Start flush interval
         this.flushInterval = setInterval(() => this.flushLogs(), 2000);
         this.repairZombieDeployments().catch(e => logger.error(`[DeployManager] Failed to repair zombie deployments: ${e.message}`));
+        // Start auto-deploy poller (checks every 30s for new commits)
+        this.startAutoDeployPoller();
     }
 
     private async repairZombieDeployments() {
@@ -146,7 +150,10 @@ export class DeployManager {
                 await this.verifyCommitMatch(id, expectedCommit);
             }
 
-            // 3. Docker Build/Up
+            // 3. Build Web Frontend (dist/)
+            await this.buildWebFrontend(id);
+
+            // 4. Docker Build/Up
             this.appendLog(id, `\n[SYSTEM] Local build verified. Initiating container recreation...`);
 
             deployment.status = isRollback ? 'ROLLBACK' : 'SUCCESS';
@@ -223,6 +230,108 @@ export class DeployManager {
         this.runDeployProcess(deployment._id.toString(), true).catch(e => {
             logger.error(`[DeployManager] Recursive rollback failure: ${e.message}`);
         });
+    }
+
+    /**
+     * Build the web frontend (dist/) on the server
+     * This runs npm install + vite build inside the web directory
+     */
+    private async buildWebFrontend(deploymentId: string): Promise<void> {
+        this.appendLog(deploymentId, `\n[BUILD] Building web frontend...`);
+        try {
+            // Install dependencies
+            await this.runCommandInDir('npm install --omit=dev', '/root/xelitesolutions/web', deploymentId, 120000);
+            // Build dist/
+            await this.runCommandInDir('npx vite build', '/root/xelitesolutions/web', deploymentId, 180000);
+            this.appendLog(deploymentId, `[BUILD] Web frontend built successfully.`);
+        } catch (err: any) {
+            this.appendLog(deploymentId, `[BUILD] Web frontend build failed: ${err.message}`);
+            throw new Error(`Web frontend build failed: ${err.message}`);
+        }
+    }
+
+    private runCommandInDir(cmd: string, cwd: string, deploymentId: string, timeoutMs = 300000): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const child = spawn(cmd, {
+                cwd,
+                shell: true,
+                detached: true,
+                env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=2048' }
+            });
+
+            const timeout = setTimeout(() => {
+                try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); } catch (e) { }
+                reject(new Error(`Command ${cmd} timed out after ${timeoutMs}ms`));
+            }, timeoutMs);
+
+            child.stdout.on('data', (data) => {
+                const lines = data.toString().split('\n').filter((l: string) => l.trim());
+                lines.forEach((line: string) => this.appendLog(deploymentId, `[BUILD] ${line}`));
+            });
+
+            child.stderr.on('data', (data) => {
+                const lines = data.toString().split('\n').filter((l: string) => l.trim());
+                lines.forEach((line: string) => this.appendLog(deploymentId, `[BUILD] ${line}`));
+            });
+
+            child.on('close', (code) => {
+                clearTimeout(timeout);
+                if (code === 0) resolve();
+                else reject(new Error(`Command '${cmd}' failed with code ${code}`));
+            });
+
+            child.on('error', (err) => {
+                clearTimeout(timeout);
+                reject(err);
+            });
+        });
+    }
+
+    /**
+     * Auto-deploy poller: checks for new commits every 30 seconds
+     * Replaces the need for GitHub Actions or webhooks
+     */
+    private startAutoDeployPoller() {
+        // Initial delay of 15 seconds to let the system stabilize
+        setTimeout(async () => {
+            // Get initial commit hash
+            try {
+                const localCommit = execSync('git rev-parse HEAD', { cwd: '/root/xelitesolutions' }).toString().trim();
+                this.lastKnownCommit = localCommit;
+                logger.info(`[AutoDeploy] Poller started. Current commit: ${localCommit.slice(0, 7)}`);
+            } catch (e) {
+                logger.error(`[AutoDeploy] Failed to get initial commit`);
+            }
+
+            // Poll every 30 seconds
+            this.pollerInterval = setInterval(() => this.checkForNewCommits(), 30000);
+        }, 15000);
+    }
+
+    private async checkForNewCommits() {
+        // Don't check if a deployment is already in progress
+        if (this.currentDeploymentId) return;
+
+        try {
+            // Fetch latest from remote
+            execSync('git fetch origin main --quiet', { cwd: '/root/xelitesolutions', timeout: 15000 });
+
+            const localCommit = execSync('git rev-parse HEAD', { cwd: '/root/xelitesolutions' }).toString().trim();
+            const remoteCommit = execSync('git rev-parse origin/main', { cwd: '/root/xelitesolutions' }).toString().trim();
+
+            if (localCommit !== remoteCommit) {
+                logger.info(`[AutoDeploy] New commit detected! Local: ${localCommit.slice(0, 7)}, Remote: ${remoteCommit.slice(0, 7)}. Triggering deployment...`);
+                this.lastKnownCommit = remoteCommit;
+
+                // Trigger deployment automatically
+                this.startDeploy('webhook', remoteCommit).catch(err => {
+                    logger.error(`[AutoDeploy] Auto-deployment failed to start: ${err.message}`);
+                });
+            }
+        } catch (e: any) {
+            // Silently ignore fetch errors (network issues, etc.)
+            logger.debug(`[AutoDeploy] Poll check failed: ${e.message}`);
+        }
     }
 
     private runCommand(cmd: string, args: string[], deploymentId: string, timeoutMs = 300000): Promise<void> {
