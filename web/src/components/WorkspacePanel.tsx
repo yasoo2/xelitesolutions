@@ -459,14 +459,14 @@ export default function WorkspacePanel({
                     </ErrorBoundary>
                 )}
 
-                {/* Preview Tab */}
-                {activeTab === 'preview' && (
+                {/* Preview Tab - Always mounted so event listeners stay active */}
+                <div style={{ display: activeTab === 'preview' ? 'contents' : 'none' }}>
                     <ErrorBoundary fallbackTitle="تعذّر تحميل المعاينة">
                         <Suspense fallback={<LoadingFallback />}>
                             <PreviewPanel url={previewUrl} />
                         </Suspense>
                     </ErrorBoundary>
-                )}
+                </div>
 
                 {/* Logs Tab */}
                 {activeTab === 'logs' && (
