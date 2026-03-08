@@ -65,6 +65,20 @@ router.get('/autodeploy/status', async (req, res) => {
     }
 });
 
+// Toggle auto-deploy on/off
+router.post('/autodeploy/toggle', async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ error: 'enabled (boolean) is required' });
+        }
+        const status = deployManager.toggleAutoDeploy(enabled);
+        res.json(status);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 router.get('/system/containers', async (req, res) => {
     try {
         const output = execSync('docker ps --format "{{json .}}"').toString();

@@ -93,6 +93,7 @@ export default function SystemManagement() {
     // Auto-deploy poller status
     const [autoDeployStatus, setAutoDeployStatus] = useState<{
         pollerActive: boolean;
+        pollerEnabled: boolean;
         pollCount: number;
         lastPollTime: string | null;
         lastPollError: string | null;
@@ -480,6 +481,40 @@ export default function SystemManagement() {
                         </div>
                     )}
                 </div>
+                <button
+                    onClick={async () => {
+                        const newState = !(autoDeployStatus?.pollerEnabled ?? true);
+                        try {
+                            const res = await fetch(`${API_URL}/admin/autodeploy/toggle`, {
+                                method: 'POST',
+                                headers: {
+                                    Authorization: `Bearer ${token}`,
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ enabled: newState })
+                            });
+                            if (res.ok) setAutoDeployStatus(await res.json());
+                        } catch (e) { console.error(e); }
+                    }}
+                    style={{
+                        padding: '8px 16px',
+                        borderRadius: '10px',
+                        border: '1px solid',
+                        borderColor: (autoDeployStatus?.pollerEnabled ?? true) ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)',
+                        background: (autoDeployStatus?.pollerEnabled ?? true) ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+                        color: (autoDeployStatus?.pollerEnabled ?? true) ? '#ef4444' : '#10b981',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.2s',
+                        flexShrink: 0
+                    }}
+                >
+                    {(autoDeployStatus?.pollerEnabled ?? true) ? '⏸ Disable' : '▶ Enable'}
+                </button>
             </div>
 
             <div className="section-card">

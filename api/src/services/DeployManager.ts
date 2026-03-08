@@ -20,6 +20,7 @@ export class DeployManager {
 
     // Auto-deploy poller health tracking
     private pollerActive = false;
+    private pollerEnabled = true;  // Can be toggled via API
     private pollCount = 0;
     private lastPollTime: Date | null = null;
     private lastPollError: string | null = null;
@@ -346,6 +347,9 @@ export class DeployManager {
     }
 
     private async checkForNewCommits() {
+        // Don't check if auto-deploy is disabled
+        if (!this.pollerEnabled) return;
+
         // Don't check if a deployment is already in progress
         if (this.currentDeploymentId) {
             logger.info(`[AutoDeploy] Poll #${this.pollCount + 1}: Skipped (deployment in progress)`);
@@ -615,7 +619,8 @@ export class DeployManager {
 
     getAutoDeployStatus() {
         return {
-            pollerActive: this.pollerActive,
+            pollerActive: this.pollerActive && this.pollerEnabled,
+            pollerEnabled: this.pollerEnabled,
             pollCount: this.pollCount,
             lastPollTime: this.lastPollTime?.toISOString() || null,
             lastPollError: this.lastPollError,
@@ -624,6 +629,19 @@ export class DeployManager {
             isDeploying: !!this.currentDeploymentId,
             intervalMs: 30000,
         };
+    }
+
+    toggleAutoDeploy(enabled: boolean) {
+        this.pollerEnabled = enabled;
+        logger.info(`[AutoDeploy] ${enabled ? '✅ ENABLED' : '⛔ DISABLED'} by admin`);
+
+        broadcast({
+            type: 'admin:autodeploy_status',
+            data: this.getAutoDeployStatus(),
+            ts: Date.now()
+        });
+
+        return this.getAutoDeployStatus();
     }
 }
 
