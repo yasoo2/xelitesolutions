@@ -90,6 +90,17 @@ export default function SystemManagement() {
     const [userSearch, setUserSearch] = useState('');
     const [updatingUser, setUpdatingUser] = useState<string | null>(null);
 
+    // Auto-deploy poller status
+    const [autoDeployStatus, setAutoDeployStatus] = useState<{
+        pollerActive: boolean;
+        pollCount: number;
+        lastPollTime: string | null;
+        lastPollError: string | null;
+        lastLocalCommit: string | null;
+        lastRemoteCommit: string | null;
+        isDeploying: boolean;
+    } | null>(null);
+
     // ═══════════════════════════════════════════════
     // DATA FETCHING
     // ═══════════════════════════════════════════════
@@ -152,12 +163,21 @@ export default function SystemManagement() {
         if (activeTab === 'dashboard') {
             await Promise.all([fetchHealth(), fetchBackups()]);
         } else if (activeTab === 'deployments') {
-            await fetchDeployments();
+            await Promise.all([fetchDeployments(), fetchAutoDeployStatus()]);
         } else if (activeTab === 'admins') {
             await fetchUsers();
         }
         setLastRefresh(new Date());
         setLoading(false);
+    };
+
+    const fetchAutoDeployStatus = async () => {
+        try {
+            const res = await fetch(`${API_URL}/admin/autodeploy/status`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) setAutoDeployStatus(await res.json());
+        } catch (e) { console.error(e); }
     };
 
     // Initial fetch when tab changes
@@ -171,7 +191,10 @@ export default function SystemManagement() {
         const pollRate = selectedDep ? 3000 : 15000;
         const interval = setInterval(() => {
             if (activeTab === 'dashboard') fetchHealth();
-            if (activeTab === 'deployments' || selectedDep) fetchDeployments();
+            if (activeTab === 'deployments' || selectedDep) {
+                fetchDeployments();
+                fetchAutoDeployStatus();
+            }
         }, pollRate);
         return () => clearInterval(interval);
     }, [activeTab, fetchHealth, fetchDeployments, selectedDep]);
@@ -383,6 +406,80 @@ export default function SystemManagement() {
                     <Trash2 size={20} />
                     Clear History
                 </button>
+            </div>
+
+            {/* Auto-Deploy Status Card */}
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '16px',
+                padding: '16px 24px',
+                marginBottom: '24px',
+                gap: '16px',
+                flexWrap: 'wrap' as const
+            }}>
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '8px' }}>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        fontWeight: 600,
+                        fontSize: '15px',
+                        color: autoDeployStatus?.pollerActive ? '#10b981' : '#ef4444'
+                    }}>
+                        <div style={{
+                            width: '10px',
+                            height: '10px',
+                            borderRadius: '50%',
+                            background: autoDeployStatus?.pollerActive ? '#10b981' : '#ef4444',
+                            boxShadow: autoDeployStatus?.pollerActive
+                                ? '0 0 8px #10b981'
+                                : '0 0 8px #ef4444',
+                            animation: autoDeployStatus?.pollerActive ? 'pulse-glow 2s infinite' : 'none'
+                        }} />
+                        <span>{autoDeployStatus?.pollerActive ? '🟢 Auto-Deploy Active' : '🔴 Auto-Deploy Inactive'}</span>
+                    </div>
+                    {autoDeployStatus && (
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>
+                            <span style={{
+                                fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
+                                background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)',
+                                fontFamily: 'monospace'
+                            }}>Poll #{autoDeployStatus.pollCount || 0}</span>
+                            {autoDeployStatus.lastPollTime && (
+                                <span style={{
+                                    fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
+                                    background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)',
+                                    fontFamily: 'monospace'
+                                }}>Last: {new Date(autoDeployStatus.lastPollTime).toLocaleTimeString()}</span>
+                            )}
+                            {autoDeployStatus.lastLocalCommit && (
+                                <span style={{
+                                    fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
+                                    background: 'rgba(59,130,246,0.1)', color: '#3b82f6',
+                                    fontFamily: 'monospace'
+                                }}>Local: {autoDeployStatus.lastLocalCommit}</span>
+                            )}
+                            {autoDeployStatus.lastRemoteCommit && (
+                                <span style={{
+                                    fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
+                                    background: 'rgba(59,130,246,0.1)', color: '#3b82f6',
+                                    fontFamily: 'monospace'
+                                }}>Remote: {autoDeployStatus.lastRemoteCommit}</span>
+                            )}
+                            {autoDeployStatus.lastPollError && (
+                                <span style={{
+                                    fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
+                                    background: 'rgba(239,68,68,0.1)', color: '#ef4444',
+                                    fontFamily: 'monospace'
+                                }}>⚠️ {autoDeployStatus.lastPollError.slice(0, 60)}</span>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className="section-card">
@@ -839,6 +936,10 @@ export default function SystemManagement() {
                 .role-toggle-btn:hover { background: rgba(255,255,255,0.05); transform: translateY(-2px); }
 
                 @keyframes spin { to { transform: rotate(360deg); } }
+                @keyframes pulse-glow {
+                    0%, 100% { box-shadow: 0 0 4px #10b981; }
+                    50% { box-shadow: 0 0 16px #10b981; }
+                }
                 .spinning { animation: spin 1s linear infinite; }
 
                 .btn-back {
