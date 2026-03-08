@@ -139,12 +139,20 @@ export async function deleteSession(req: Request, res: Response) {
 }
 
 export async function deleteAllSessions(req: Request, res: Response) {
-    const userId = (req as any).auth?.sub;
     try {
+        // NOTE: listSessions uses find({}) without userId filter (single-tenant, inconsistent userId formats).
+        // deleteMany must match the same scope, otherwise it deletes 0 documents.
+        const result = await Session.deleteMany({});
 
-        const result = await Session.deleteMany({ userId });
+        // Also clean up orphaned messages and tool executions
+        await Promise.all([
+            Message.deleteMany({}),
+            ToolExecution.deleteMany({})
+        ]);
+
         return res.json({ ok: true, count: result.deletedCount });
     } catch (e) {
+        console.error('Delete All Sessions Error:', e);
         return res.status(500).json({ error: 'Failed to delete all sessions' });
     }
 }
