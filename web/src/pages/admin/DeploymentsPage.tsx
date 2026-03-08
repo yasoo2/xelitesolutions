@@ -51,6 +51,17 @@ export default function DeploymentsPage() {
     const firstErrorRef = useRef<HTMLDivElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
+    // Auto-deploy poller status
+    const [autoDeployStatus, setAutoDeployStatus] = useState<{
+        pollerActive: boolean;
+        pollCount: number;
+        lastPollTime: string | null;
+        lastPollError: string | null;
+        lastLocalCommit: string | null;
+        lastRemoteCommit: string | null;
+        isDeploying: boolean;
+    } | null>(null);
+
     const token = localStorage.getItem('token') || '';
     const isAdmin = (() => {
         try {
@@ -84,9 +95,25 @@ export default function DeploymentsPage() {
 
     useEffect(() => {
         fetchAll();
+        fetchAutoDeployStatus();
         const inv = setInterval(fetchAll, 30000);
-        return () => clearInterval(inv);
+        const inv2 = setInterval(fetchAutoDeployStatus, 30000);
+        return () => {
+            clearInterval(inv);
+            clearInterval(inv2);
+        };
     }, []);
+
+    const fetchAutoDeployStatus = async () => {
+        try {
+            const res = await fetch(`${API_URL}/admin/autodeploy/status`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) setAutoDeployStatus(await res.json());
+        } catch (e) {
+            console.error('Failed to fetch auto-deploy status', e);
+        }
+    };
 
     // WebSocket for Live Logs
     useEffect(() => {
@@ -124,6 +151,25 @@ export default function DeploymentsPage() {
         wsRef.current = ws;
         return () => ws.close();
     }, [token, selectedLogId]);
+
+    // Listen for auto-deploy heartbeat via WebSocket
+    useEffect(() => {
+        if (!wsRef.current) return;
+        const handler = (ev: MessageEvent) => {
+            try {
+                const msg = JSON.parse(ev.data);
+                if (msg.type === 'admin:autodeploy_heartbeat' || msg.type === 'admin:autodeploy_status') {
+                    setAutoDeployStatus(prev => ({ ...prev, ...msg.data }));
+                }
+                if (msg.type === 'admin:autodeploy_trigger') {
+                    // Auto-deploy is triggering — refresh deployments list
+                    fetchAll();
+                }
+            } catch { }
+        };
+        wsRef.current.addEventListener('message', handler);
+        return () => wsRef.current?.removeEventListener('message', handler);
+    }, [wsRef.current]);
 
     // Force load logs when a historical deployment is clicked
     useEffect(() => {
@@ -298,6 +344,43 @@ export default function DeploymentsPage() {
                 <div className="title">
                     <Rocket className="icon-gold" />
                     <h1>Deployment Control Center</h1>
+                </div>
+            </div>
+
+            {/* Auto-Deploy Status Card */}
+            <div className="autodeploy-status-card">
+                <div className="autodeploy-left">
+                    <div className={`autodeploy-indicator ${autoDeployStatus?.pollerActive ? 'active' : 'inactive'}`}>
+                        <div className={`pulse-dot ${autoDeployStatus?.pollerActive ? 'green' : 'red'}`} />
+                        <span>{autoDeployStatus?.pollerActive ? 'Auto-Deploy Active' : 'Auto-Deploy Inactive'}</span>
+                    </div>
+                    {autoDeployStatus && (
+                        <div className="autodeploy-details">
+                            <span className="autodeploy-tag">Poll #{autoDeployStatus.pollCount || 0}</span>
+                            {autoDeployStatus.lastPollTime && (
+                                <span className="autodeploy-tag">Last: {new Date(autoDeployStatus.lastPollTime).toLocaleTimeString()}</span>
+                            )}
+                            {autoDeployStatus.lastLocalCommit && (
+                                <span className="autodeploy-tag commit">Local: {autoDeployStatus.lastLocalCommit}</span>
+                            )}
+                            {autoDeployStatus.lastRemoteCommit && (
+                                <span className="autodeploy-tag commit">Remote: {autoDeployStatus.lastRemoteCommit}</span>
+                            )}
+                            {autoDeployStatus.lastPollError && (
+                                <span className="autodeploy-tag error">⚠️ {autoDeployStatus.lastPollError.slice(0, 60)}</span>
+                            )}
+                        </div>
+                    )}
+                </div>
+                <div className="autodeploy-right">
+                    <button
+                        className="btn-primary deploy-btn-main"
+                        onClick={handleDeploy}
+                        disabled={actionLoading}
+                    >
+                        {actionLoading ? <Loader2 size={18} className="spin" /> : <Rocket size={18} />}
+                        Deploy Production
+                    </button>
                 </div>
             </div>
 
@@ -890,6 +973,82 @@ export default function DeploymentsPage() {
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
+
+        /* Auto-Deploy Status Card */
+        .autodeploy-status-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #18181b;
+            border: 1px solid #27272a;
+            border-radius: 12px;
+            padding: 16px 24px;
+            margin-bottom: 24px;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .autodeploy-left {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .autodeploy-right {
+            display: flex;
+            gap: 12px;
+        }
+        .autodeploy-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            font-size: 15px;
+        }
+        .autodeploy-indicator.active { color: #10b981; }
+        .autodeploy-indicator.inactive { color: #ef4444; }
+        .pulse-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            position: relative;
+        }
+        .pulse-dot.green {
+            background: #10b981;
+            box-shadow: 0 0 8px #10b981;
+            animation: pulse-green 2s infinite;
+        }
+        .pulse-dot.red {
+            background: #ef4444;
+            box-shadow: 0 0 8px #ef4444;
+        }
+        @keyframes pulse-green {
+            0%, 100% { box-shadow: 0 0 4px #10b981; }
+            50% { box-shadow: 0 0 16px #10b981; }
+        }
+        .autodeploy-details {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .autodeploy-tag {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: #27272a;
+            color: #a1a1aa;
+            font-family: monospace;
+        }
+        .autodeploy-tag.commit {
+            color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
+        .autodeploy-tag.error {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+        .deploy-btn-main {
+            padding: 12px 24px !important;
+            font-size: 15px !important;
+        }
       `}</style>
         </div>
     );

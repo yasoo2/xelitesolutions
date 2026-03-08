@@ -18,12 +18,21 @@ export class DeployManager {
     private pollerInterval: NodeJS.Timeout | null = null;
     private lastKnownCommit: string | null = null;
 
+    // Auto-deploy poller health tracking
+    private pollerActive = false;
+    private pollCount = 0;
+    private lastPollTime: Date | null = null;
+    private lastPollError: string | null = null;
+    private lastLocalCommit: string | null = null;
+    private lastRemoteCommit: string | null = null;
+
     private constructor() {
         // Start flush interval
         this.flushInterval = setInterval(() => this.flushLogs(), 2000);
         this.repairZombieDeployments().catch(e => logger.error(`[DeployManager] Failed to repair zombie deployments: ${e.message}`));
         // Start auto-deploy poller (checks every 30s for new commits)
         this.startAutoDeployPoller();
+        logger.info(`[DeployManager] Instance created. Auto-deploy poller initializing...`);
     }
 
     private async repairZombieDeployments() {
@@ -299,9 +308,27 @@ export class DeployManager {
             try {
                 const localCommit = execSync('git rev-parse HEAD', { cwd: '/root/xelitesolutions' }).toString().trim();
                 this.lastKnownCommit = localCommit;
-                logger.info(`[AutoDeploy] Poller started. Current commit: ${localCommit.slice(0, 7)}`);
-            } catch (e) {
-                logger.error(`[AutoDeploy] Failed to get initial commit`);
+                this.lastLocalCommit = localCommit;
+                this.pollerActive = true;
+                logger.info(`[AutoDeploy] ✅ Poller STARTED. Current commit: ${localCommit.slice(0, 7)}`);
+
+                // Broadcast initial status
+                broadcast({
+                    type: 'admin:autodeploy_status',
+                    data: this.getAutoDeployStatus(),
+                    ts: Date.now()
+                });
+            } catch (e: any) {
+                this.pollerActive = false;
+                this.lastPollError = `Failed to start: ${e.message}`;
+                logger.error(`[AutoDeploy] ❌ Failed to start poller: ${e.message}`);
+
+                // Broadcast error status
+                broadcast({
+                    type: 'admin:autodeploy_status',
+                    data: this.getAutoDeployStatus(),
+                    ts: Date.now()
+                });
             }
 
             // Poll every 30 seconds
@@ -311,7 +338,13 @@ export class DeployManager {
 
     private async checkForNewCommits() {
         // Don't check if a deployment is already in progress
-        if (this.currentDeploymentId) return;
+        if (this.currentDeploymentId) {
+            logger.info(`[AutoDeploy] Poll #${this.pollCount + 1}: Skipped (deployment in progress)`);
+            return;
+        }
+
+        this.pollCount++;
+        this.lastPollTime = new Date();
 
         try {
             // Fetch latest from remote
@@ -320,18 +353,64 @@ export class DeployManager {
             const localCommit = execSync('git rev-parse HEAD', { cwd: '/root/xelitesolutions' }).toString().trim();
             const remoteCommit = execSync('git rev-parse origin/main', { cwd: '/root/xelitesolutions' }).toString().trim();
 
+            this.lastLocalCommit = localCommit;
+            this.lastRemoteCommit = remoteCommit;
+            this.lastPollError = null;
+            this.pollerActive = true;
+
             if (localCommit !== remoteCommit) {
-                logger.info(`[AutoDeploy] New commit detected! Local: ${localCommit.slice(0, 7)}, Remote: ${remoteCommit.slice(0, 7)}. Triggering deployment...`);
+                logger.info(`[AutoDeploy] 🚀 Poll #${this.pollCount}: NEW COMMIT DETECTED! Local: ${localCommit.slice(0, 7)}, Remote: ${remoteCommit.slice(0, 7)}. Auto-deploying...`);
                 this.lastKnownCommit = remoteCommit;
+
+                // Broadcast that auto-deploy is triggering
+                broadcast({
+                    type: 'admin:autodeploy_trigger',
+                    data: { localCommit: localCommit.slice(0, 7), remoteCommit: remoteCommit.slice(0, 7), pollCount: this.pollCount },
+                    ts: Date.now()
+                });
 
                 // Trigger deployment automatically
                 this.startDeploy('webhook', remoteCommit).catch(err => {
-                    logger.error(`[AutoDeploy] Auto-deployment failed to start: ${err.message}`);
+                    logger.error(`[AutoDeploy] ❌ Auto-deployment failed to start: ${err.message}`);
+                    this.lastPollError = `Deploy failed: ${err.message}`;
                 });
+            } else {
+                // Log every 10th poll at info level, others at debug (reduce noise)
+                if (this.pollCount % 10 === 0) {
+                    logger.info(`[AutoDeploy] Poll #${this.pollCount}: No change. Commit: ${localCommit.slice(0, 7)}`);
+                }
             }
+
+            // Broadcast heartbeat every poll
+            broadcast({
+                type: 'admin:autodeploy_heartbeat',
+                data: {
+                    active: true,
+                    pollCount: this.pollCount,
+                    lastPoll: this.lastPollTime?.toISOString(),
+                    localCommit: localCommit.slice(0, 7),
+                    remoteCommit: remoteCommit.slice(0, 7),
+                    match: localCommit === remoteCommit
+                },
+                ts: Date.now()
+            });
+
         } catch (e: any) {
-            // Silently ignore fetch errors (network issues, etc.)
-            logger.debug(`[AutoDeploy] Poll check failed: ${e.message}`);
+            this.lastPollError = e.message;
+            // CRITICAL: Log as warn, not debug — so it's visible in production
+            logger.warn(`[AutoDeploy] ⚠️ Poll #${this.pollCount} failed: ${e.message}`);
+
+            // Broadcast error heartbeat
+            broadcast({
+                type: 'admin:autodeploy_heartbeat',
+                data: {
+                    active: true,
+                    pollCount: this.pollCount,
+                    lastPoll: this.lastPollTime?.toISOString(),
+                    error: e.message
+                },
+                ts: Date.now()
+            });
         }
     }
 
@@ -522,6 +601,19 @@ export class DeployManager {
         return {
             currentDeploymentId: this.currentDeploymentId,
             isBuilding: !!this.currentDeploymentId
+        };
+    }
+
+    getAutoDeployStatus() {
+        return {
+            pollerActive: this.pollerActive,
+            pollCount: this.pollCount,
+            lastPollTime: this.lastPollTime?.toISOString() || null,
+            lastPollError: this.lastPollError,
+            lastLocalCommit: this.lastLocalCommit?.slice(0, 7) || null,
+            lastRemoteCommit: this.lastRemoteCommit?.slice(0, 7) || null,
+            isDeploying: !!this.currentDeploymentId,
+            intervalMs: 30000,
         };
     }
 }

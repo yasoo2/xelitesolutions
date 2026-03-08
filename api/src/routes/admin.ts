@@ -56,6 +56,15 @@ router.post('/rollback/:id', async (req, res) => {
     }
 });
 
+// Auto-deploy poller status
+router.get('/autodeploy/status', async (req, res) => {
+    try {
+        res.json(deployManager.getAutoDeployStatus());
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 router.get('/system/containers', async (req, res) => {
     try {
         const output = execSync('docker ps --format "{{json .}}"').toString();
