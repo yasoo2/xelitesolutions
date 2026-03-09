@@ -1,6 +1,8 @@
 import { ProjectManagerAgent } from './ProjectManagerAgent';
 import { AutonomousLoopEngine, LoopTask, LoopResult } from './AutonomousLoopEngine';
 import { ArchitectAgent } from './ArchitectAgent';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * JoeAgent - The Advanced Autonomous Construction Engine
@@ -49,8 +51,52 @@ export class JoeAgent {
                 phase: 'plan',
                 required: true,
                 customExecute: async () => {
-                    console.log(`[Joe] Scanning project for total mastery...`);
-                    return { ok: true, output: "Universal codebase discovery complete. All modules, tools, and millions of codes are mapped and ready for control." };
+                    console.log(`[Joe] Scanning project for real discovery...`);
+                    const extCounts: Record<string, number> = {};
+                    let totalFiles = 0;
+                    let totalDirs = 0;
+                    const topLevel: string[] = [];
+
+                    const scan = (dir: string, depth: number) => {
+                        if (depth > 3) return;
+                        try {
+                            const entries = fs.readdirSync(dir, { withFileTypes: true });
+                            for (const e of entries) {
+                                if (e.name.startsWith('.') || e.name === 'node_modules' || e.name === 'dist' || e.name === '.git') continue;
+                                const full = path.join(dir, e.name);
+                                if (e.isDirectory()) {
+                                    totalDirs++;
+                                    if (depth === 0) topLevel.push(`📁 ${e.name}/`);
+                                    scan(full, depth + 1);
+                                } else {
+                                    totalFiles++;
+                                    const ext = path.extname(e.name).toLowerCase() || '(no ext)';
+                                    extCounts[ext] = (extCounts[ext] || 0) + 1;
+                                    if (depth === 0) topLevel.push(`📄 ${e.name}`);
+                                }
+                            }
+                        } catch { /* permission denied, skip */ }
+                    };
+
+                    scan(this.rootDir, 0);
+
+                    const langs = Object.entries(extCounts)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 10)
+                        .map(([ext, count]) => `${ext}: ${count} files`)
+                        .join(', ');
+
+                    const summary = {
+                        rootDir: this.rootDir,
+                        totalFiles,
+                        totalDirs,
+                        topLevelEntries: topLevel.slice(0, 20),
+                        languageBreakdown: langs,
+                        scannedAt: new Date().toISOString()
+                    };
+
+                    console.log(`[Joe] Discovery complete: ${totalFiles} files, ${totalDirs} dirs`);
+                    return { ok: true, output: JSON.stringify(summary, null, 2) };
                 }
             },
             {

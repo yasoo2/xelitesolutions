@@ -63,12 +63,21 @@ export class ProjectManagerAgent {
         const MAX_ITERATIONS = 500; // God-Mode: Increased for massive project construction
         const executor = new TaskExecutor(this.rootDir);
 
-        // Get available tool signatures
-        const availableTools = tools.map(t => ({
-            name: t.name,
-            description: t.description,
-            schema: t.inputSchema
-        }));
+        // Get available tool signatures — FILTERED to core tools only (not all 109!)
+        const coreToolNames = new Set([
+            'shell_execute', 'ai_write_file', 'file_edit', 'scaffold_project',
+            'npm_manager', 'inspect_directory', 'read_file', 'grep_search',
+            'analyze_codebase', 'browser_subagent', 'terminal_manager',
+            'dev_server', 'auto_tester', 'phase_executor', 'project_planner',
+            'write_file', 'deploy_project'
+        ]);
+        const availableTools = tools
+            .filter(t => coreToolNames.has(t.name))
+            .map(t => ({
+                name: t.name,
+                description: t.description,
+                schema: t.inputSchema
+            }));
 
         const systemPrompt = `You are a God-Tier Autonomous AI Architect named "${this.name}".
 Current Working Directory: ${this.rootDir}
@@ -108,6 +117,8 @@ YOUR OPERATIONAL PROTOCOL (GOD-MODE):
     - This is the ONLY way the user can see your console work in real-time. 'shell_execute' is for silent background tasks.
 12. PREVIEW SYNC: After building a UI, always confirm the dev server is running (use 'dev_server' or 'web_pipeline') so the 'Preview' screen remains active.
 13. ANTI-LOOP PROTOCOL: If you have used a tool multiple times without progress, you MUST pivot. NEVER repeat 'web_search' more than twice for the same goal. Transition to 'analyze_project' or 'shell_execute' immediately if stuck.
+
+AVAILABLE TOOLS (${availableTools.length} core tools):
 ${JSON.stringify(availableTools.map(t => ({ name: t.name, usage: t.description })), null, 2)}
 
 RULES:
@@ -139,8 +150,12 @@ OR
             }
 
             try {
-                // 1. Decide
-                const prompt = `History (Last 5):\n${JSON.stringify(state.history.slice(-5), null, 2)}\n\nWhat is your next move?`;
+                // 1. Decide — Send last 20 steps (not 5!) with summary of older work
+                const recentHistory = state.history.slice(-20);
+                const olderCount = Math.max(0, state.history.length - 20);
+                const summaryPrefix = olderCount > 0
+                    ? `[${olderCount} earlier steps already completed — focus on recent context]\n` : '';
+                const prompt = `${summaryPrefix}History (Last ${recentHistory.length}):\n${JSON.stringify(recentHistory, null, 2)}\n\nWhat is your next move?`;
 
                 const responseText = await routeToModel(
                     [

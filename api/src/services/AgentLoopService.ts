@@ -297,7 +297,7 @@ export class AgentLoopService {
                     lastErrorHash = errorHash;
                 }
 
-                if (consecutiveFailures >= (isPerpetual ? 5 : 1)) { // God-Mode: Be more patient in perpetual mode
+                if (consecutiveFailures >= (isPerpetual ? 5 : 3)) { // Allow 3 retries before tripping (was 1)
                     blacklist.add(currentSignature); // Wakil 4.4: Add failing signature to blacklist
                     console.error(`[AgentLoop] Blacklisted failing action: ${currentSignature}`);
                     console.error(`[AgentLoop] Circuit Breaker Tripped: Consecutive failure for ${plan.name}`);

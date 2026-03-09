@@ -121,10 +121,28 @@ export class PhaseExecutorTool implements ToolDefinition {
                         logs.push(failMsg);
                         results.push({ task: taskDesc, tool: toolName, ok: false, error: errMsg });
 
-                        // If this is a required task (high priority), stop the phase
+                        // If this is a required task (high priority), retry once before stopping
                         if (task.priority === 'high' || task.required === true) {
-                            logs.push(`[PhaseExecutor] ⛔ High-priority task failed. Stopping phase.`);
-                            break;
+                            logs.push(`[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...`);
+                            try {
+                                const retryResult = await executeTool(toolName, toolArgs, {
+                                    sessionId: projectContext?.sessionId,
+                                    workspaceId: projectContext?.workspaceId,
+                                    onThought: (m: string) => context?.onThought?.(m),
+                                    onProgress: (m: string) => context?.onProgress?.(`[${toolName} RETRY] ${m}`),
+                                });
+                                if (retryResult.ok) {
+                                    logs.push(`[PhaseExecutor] ✅ Retry succeeded for task ${i + 1}: ${toolName}`);
+                                    results[results.length - 1] = { task: taskDesc, tool: toolName, ok: true };
+                                    completedCount++;
+                                } else {
+                                    logs.push(`[PhaseExecutor] ⛔ Retry also failed. Stopping phase.`);
+                                    break;
+                                }
+                            } catch (retryErr: any) {
+                                logs.push(`[PhaseExecutor] ⛔ Retry threw error: ${retryErr?.message}. Stopping phase.`);
+                                break;
+                            }
                         }
                     }
                 } catch (toolError: any) {

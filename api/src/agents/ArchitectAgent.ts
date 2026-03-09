@@ -1,4 +1,6 @@
 import intelligentRouter from '../llm/intelligent-router';
+import fs from 'fs';
+import path from 'path';
 
 export class ArchitectAgent {
 
@@ -6,9 +8,57 @@ export class ArchitectAgent {
         // No setup needed
     }
 
+    /**
+     * Read actual blueprints from knowledge directory
+     */
+    private readBlueprints(): string {
+        let blueprintContext = '';
+        const knowledgeDir = path.join(process.cwd(), 'knowledge');
+        const blueprintDir = path.join(knowledgeDir, 'blueprints');
+
+        try {
+            // Read top-level knowledge files
+            if (fs.existsSync(knowledgeDir)) {
+                const knowledgeFiles = fs.readdirSync(knowledgeDir)
+                    .filter(f => f.endsWith('.md') || f.endsWith('.txt'))
+                    .slice(0, 3);
+                for (const f of knowledgeFiles) {
+                    try {
+                        const content = fs.readFileSync(path.join(knowledgeDir, f), 'utf-8');
+                        blueprintContext += `\n### Knowledge: ${f}\n${content.slice(0, 800)}\n`;
+                    } catch { /* skip unreadable */ }
+                }
+            }
+
+            // Read blueprint files
+            if (fs.existsSync(blueprintDir)) {
+                const bpFiles = fs.readdirSync(blueprintDir)
+                    .filter(f => f.endsWith('.md') || f.endsWith('.txt') || f.endsWith('.json'))
+                    .slice(0, 5);
+                for (const f of bpFiles) {
+                    try {
+                        const content = fs.readFileSync(path.join(blueprintDir, f), 'utf-8');
+                        blueprintContext += `\n### Blueprint: ${f}\n${content.slice(0, 500)}\n`;
+                    } catch { /* skip unreadable */ }
+                }
+            }
+        } catch (e) {
+            console.warn('[Architect] Could not read blueprints:', e);
+        }
+
+        return blueprintContext || '\n(No blueprints found in knowledge/ directory)\n';
+    }
+
     async planProject(goal: string, context: string = ''): Promise<string> {
+        // Read REAL blueprints from disk
+        const blueprints = this.readBlueprints();
+        console.log(`[Architect] Loaded ${blueprints.length} chars of blueprint context`);
+
         const systemPrompt = `You are the Chief Architect AI, a world-class systems designer known for creating "Premium", "Scalable", and "Modern" web applications.
 Your goal is to design a robust architecture for a user request that WOWS the user.
+
+REFERENCE BLUEPRINTS (from knowledge/ directory):
+${blueprints}
 
 Output a Markdown document containing:
 

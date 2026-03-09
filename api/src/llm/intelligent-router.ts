@@ -386,6 +386,7 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
     // Task-specific selection (free tier)
     switch (analysis.type) {
         case 'code_generation':
+            if (analysis.complexity === 'extreme') return MODELS['llama-3.1-70b'];
             if (analysis.complexity === 'high') return MODELS['mixtral-8x7b'];
             return MODELS['gemma-2-9b'];
 
