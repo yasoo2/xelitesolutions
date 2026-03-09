@@ -8,7 +8,7 @@ RUN npm ci --omit=dev
 
 # Copy source code and build
 COPY . .
-ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV NODE_OPTIONS="--max-old-space-size=768"
 RUN npx vite build
 
 # Stage 2: Serve with nginx

@@ -18,16 +18,16 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Optimize npm for CI environment
-ENV NODE_OPTIONS="--max-old-space-size=2048"
+# Optimize npm for CI environment (512MB is enough for npm install on low-RAM VPS)
+ENV NODE_OPTIONS="--max-old-space-size=512"
 
 RUN npm install --include=dev --no-audit --no-fund
 
 # Copy source code
 COPY . .
 
-# Build the application
-ENV NODE_OPTIONS="--max-old-space-size=2048"
+# Build the application (768MB for TypeScript compilation)
+ENV NODE_OPTIONS="--max-old-space-size=768"
 RUN npm run build
 
 # Prune dev dependencies to save space/memory for the next stage
