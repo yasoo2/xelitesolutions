@@ -71,7 +71,7 @@ router.post('/connect', authenticate as any, async (req: Request, res: Response)
             name: user.name || user.login
         });
     } catch (e: any) {
-        return res.status(401).json({ error: 'Invalid GitHub token', details: e.message });
+        return res.status(422).json({ error: 'Invalid GitHub token', details: e.message });
     }
 });
 
