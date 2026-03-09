@@ -553,10 +553,10 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
     useEffect(() => {
         if (activeRepo) {
             setViewMode('github');
-            loadRoot();
+            loadRoot('github');
         } else {
             setViewMode('local');
-            loadRoot();
+            loadRoot('local');
         }
     }, [activeRepo]);
 
@@ -577,11 +577,13 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
         } catch { }
     };
 
-    const fetchTree = async (path?: string) => {
+    const fetchTree = async (path?: string, modeOverride?: 'local' | 'github') => {
         const token = localStorage.getItem('token');
         if (!token) return { tree: [] };
 
-        if (viewMode === 'github' && activeRepo) {
+        const effectiveMode = modeOverride || viewMode;
+
+        if (effectiveMode === 'github' && activeRepo) {
             try {
                 const [owner, repoName] = activeRepo.fullName.split('/');
                 const contents = await githubService.getContents(owner, repoName, path || '');
@@ -615,10 +617,10 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
         }
     };
 
-    const loadRoot = async () => {
+    const loadRoot = async (modeOverride?: 'local' | 'github') => {
         setLoading(true);
         setExpandedByPath({});
-        const { tree: roots } = await fetchTree();
+        const { tree: roots } = await fetchTree(undefined, modeOverride);
         setTree(roots || []);
         setLoading(false);
         fetchGitStatus();
