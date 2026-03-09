@@ -1,21 +1,11 @@
-# Stage 1: Build the frontend
-FROM node:20-alpine AS builder
-WORKDIR /app
+# Simplified Dockerfile for low-RAM VPS
+# REQUIREMENT: Run "npm ci && npx vite build" on the HOST before building this image
+# Docker build on 3.7GB VPS cannot run npm install/ci (OOM)
 
-# Install dependencies first (for better Docker layer caching)
-COPY package*.json ./
-RUN npm ci --omit=dev
-
-# Copy source code and build
-COPY . .
-ENV NODE_OPTIONS="--max-old-space-size=768"
-RUN npx vite build
-
-# Stage 2: Serve with nginx
 FROM nginx:alpine
 
-# Copy built assets from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Copy pre-built frontend assets from host
+COPY dist /usr/share/nginx/html
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
