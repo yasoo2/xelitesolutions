@@ -40,7 +40,7 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
+      test: [ "CMD", "node", "-e", "const http = require('http'); const req = http.get('http://localhost:3000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }); req.on('error', () => process.exit(1));" ]
       interval: 20s
       timeout: 10s
       retries: 5
@@ -50,6 +50,8 @@ services:
       - lance_data:/app/data
       - deep_memory:/app/.gemini
       - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
+      - /usr/local/bin/docker-compose:/usr/local/bin/docker-compose:ro
     networks:
       - joe-network
     depends_on:
