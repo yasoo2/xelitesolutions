@@ -673,6 +673,58 @@ To ensure the user's repository is always up-to-date with your work:
 ### 📦 FILE OPERATIONS PROTOCOL:
 - Use \`archive_files\` to compress (zip/tar.gz) or extract archives — do NOT write manual shell commands for archiving.
 - Use \`archive_files\` with action "list" to inspect archive contents before extracting.
+
+### 🏗️ PROJECT BUILDING PATTERNS:
+When building a NEW project, follow this EXACT pattern:
+1. **Detect Environment**: Run \`project_detect\` or \`ls\` to understand existing project structure. NEVER assume.
+2. **Create Plan**: Write a \`todo.md\` with clear phases and checkboxes BEFORE writing any code.
+3. **Choose Stack Wisely**:
+   - **React SPA**: Use Vite (\`npm create vite@latest . -- --template react-ts\`)
+   - **Full-Stack**: Use Next.js (\`npx create-next-app@latest . --ts --app --tailwind\`)
+   - **API Only**: Use Express with TypeScript
+   - **Static Site**: Use vanilla HTML/CSS/JS
+4. **Build Incrementally**: Write ONE file at a time. Verify it compiles before moving to the next.
+5. **Structure Files Correctly**:
+   - \`src/components/\` — Reusable UI components
+   - \`src/pages/\` — Page-level components
+   - \`src/hooks/\` — Custom React hooks
+   - \`src/utils/\` — Utility functions
+   - \`src/styles/\` — CSS/styling files
+   - \`src/types/\` — TypeScript type definitions
+6. **Install Dependencies First**: Always run \`npm install\` for required packages BEFORE using them.
+7. **Verify Continuously**: After every 3-4 files, run \`npm run build\` to catch errors early.
+
+### 🧪 MANDATORY SELF-TESTING PROTOCOL:
+After building ANY project or making ANY code changes, you MUST verify before reporting success:
+1. **Build Check**: Run \`npm run build\` (or \`tsc --noEmit\` for TypeScript). Fix ALL errors.
+2. **Start Dev Server**: Run \`npm run dev\` to start the application.
+3. **Visual Verification**: Use \`browser_action\` to navigate to the local URL and verify the UI loads correctly.
+4. **Run Tests**: If \`npm test\` exists in package.json, run it and fix any failures.
+5. **Final Report**: In your \`echo\`, list: (a) what was built, (b) what was tested, (c) result (pass/fail).
+CRITICAL: NEVER use \`echo\` to report success if you haven't verified the build passes.
+
+### 🔧 ERROR RECOVERY STRATEGY:
+When a tool fails or code has errors, DO NOT give up:
+1. **Read the Error**: Parse the full error message — identify the file, line number, and error type.
+2. **Diagnose**: Common errors and fixes:
+   - "Module not found" → Run \`npm install <package>\`
+   - "Type error" → Check TypeScript types, add missing imports
+   - "Syntax error" → Read the problematic file and fix the syntax
+   - "Port in use" → Use \`shell_execute\` to find and kill the process
+   - "Permission denied" → Try with different path or check file permissions
+3. **Fix and Retry**: Make the fix, then re-run the failing command.
+4. **Pivot if Stuck**: If the same approach fails 3 times, try a fundamentally different strategy.
+5. **NEVER report an error to the user without attempting at least 2 fixes first.**
+
+### 📐 CODE QUALITY STANDARDS:
+When writing code, follow these standards:
+- **TypeScript**: Use strict types. Avoid \`any\` unless truly necessary.
+- **Components**: Each component in its own file. Max 200 lines per file.
+- **Naming**: Use PascalCase for components, camelCase for functions, UPPER_CASE for constants.
+- **Imports**: Group imports: 1) React/framework, 2) Third-party, 3) Local modules, 4) Types.
+- **Error Handling**: Always wrap async operations in try/catch.
+- **Accessibility**: Add \`aria-label\` to interactive elements. Use semantic HTML.
+- **Responsive**: Test on mobile viewports (375px). Use flexbox/grid, not fixed widths.
 `;
 
 export const getSystemPrompt = (user?: {
@@ -989,9 +1041,9 @@ export async function planNextStep(
           tools,
           256,
           messages,
-        ).slice(0, 25);
+        ).slice(0, 40);
         console.info(
-          `[LLM] Gemini: Selected ${selectedTools.length} tools (capped at 25) for this request`,
+          `[LLM] Gemini: Selected ${selectedTools.length} tools (capped at 40) for this request`,
         );
 
         // Convert tools to OpenAI format

@@ -144,6 +144,58 @@ export class PhaseExecutorTool implements ToolDefinition {
 
             logs.push(`[PhaseExecutor] Phase ${phase.phaseNumber} ${status}: ${completedCount}/${totalTasks} tasks completed`);
 
+            // --- SELF-TEST: Run verification task if defined ---
+            if (phase.verificationTask && allOk) {
+                const vTask = phase.verificationTask;
+                const vToolName = String(vTask.tool || 'shell_execute').trim();
+                const vTaskDesc = String(vTask.task || 'Verify phase output');
+                logs.push(`[PhaseExecutor] 🧪 Running verification: "${vTaskDesc}" with ${vToolName}`);
+
+                try {
+                    const vResult = await executeTool(vToolName, vTask.args || {}, {
+                        sessionId: projectContext?.sessionId,
+                        workspaceId: projectContext?.workspaceId,
+                    });
+
+                    if (vResult.ok) {
+                        logs.push(`[PhaseExecutor] ✅ Verification passed for Phase ${phase.phaseNumber}`);
+                        results.push({ task: vTaskDesc, tool: vToolName, ok: true });
+                    } else {
+                        const vErr = String(vResult.error || 'Verification failed');
+                        logs.push(`[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
+                        results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: vErr });
+                        // Don't fail the whole phase for verification failure — log it and continue
+                    }
+                } catch (vError: any) {
+                    logs.push(`[PhaseExecutor] ⚠️ Verification error: ${vError.message}`);
+                    results.push({ task: vTaskDesc, tool: 'shell_execute', ok: false, error: vError.message });
+                }
+            }
+
+            // --- AUTO-BUILD CHECK: If phase has code tasks and no explicit verification ---
+            const hasCodeTasks = tasks.some((t: any) =>
+                ['ai_write_file', 'write_file', 'file_edit', 'scaffold_project'].includes(String(t.tool || ''))
+            );
+            if (hasCodeTasks && !phase.verificationTask && allOk && projectContext?.workspaceId) {
+                logs.push(`[PhaseExecutor] 🔍 Auto-running build check after code generation phase...`);
+                try {
+                    const buildResult = await executeTool('shell_execute', {
+                        command: 'npm run build 2>&1 || echo "BUILD_CHECK_FAILED"',
+                    }, {
+                        sessionId: projectContext?.sessionId,
+                        workspaceId: projectContext?.workspaceId,
+                    });
+                    const buildOutput = String(buildResult?.output?.stdout || buildResult?.output || '');
+                    if (buildOutput.includes('BUILD_CHECK_FAILED') || !buildResult.ok) {
+                        logs.push(`[PhaseExecutor] ⚠️ Auto-build check found issues — LLM should fix in next phase`);
+                    } else {
+                        logs.push(`[PhaseExecutor] ✅ Auto-build check passed`);
+                    }
+                } catch {
+                    logs.push(`[PhaseExecutor] ℹ️ Auto-build check skipped (no build script or error)`);
+                }
+            }
+
             return {
                 ok: allOk || completedCount > 0,
                 output: {

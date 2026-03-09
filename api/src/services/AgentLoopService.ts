@@ -346,10 +346,14 @@ export class AgentLoopService {
             }
             try { if (!offlineMode) await Run.findByIdAndUpdate(newRunId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch { }
 
-            // If tool failed, maybe break?
+            // If tool failed, let the LLM see the error and attempt recovery
+            // DO NOT break immediately — the error is now in the message history
+            // The LLM will analyze it and decide whether to fix or abort
             if (!result.ok) {
-                console.log(`[AgentLoop] Tool failed. Stopping loop.`);
-                break;
+                console.log(`[AgentLoop] Tool '${plan.name}' failed. Letting LLM attempt self-recovery...`);
+                // Continue the loop — the next iteration will call planNextStep
+                // with the error in the conversation, allowing the LLM to diagnose and fix
+                continue;
             }
 
             // If echo or final answer, done.

@@ -84,6 +84,14 @@ QUALITY & ARCHITECTURE INSTRUCTIONS:
 5. **RTL Support**: If the project description is in Arabic, all task descriptions and implemented UI MUST support RTL (dir="rtl").
 6. **Final Phase**: Must be "Launch & Production Readiness" including "dev_server_start".
 
+MANDATORY TESTING REQUIREMENTS:
+7. **Build Verification**: Each phase that creates or modifies code MUST end with a verification task using "shell_execute" to run the build command (e.g., "npm run build", "tsc --noEmit").
+8. **Final Verification Phase**: The last phase MUST include:
+   - A "shell_execute" task to run "npm run build" and verify zero errors
+   - A "shell_execute" task to run "npm run dev" to start the dev server
+   - A "browser_run" or "browser_action" task to visually verify the running application
+9. **Self-Healing**: If a build fails, include a task to read the error, fix the problematic files, and rebuild.
+
 Return ONLY valid JSON in this format:
 {
   "projectName": "Professional Project Name",
@@ -107,6 +115,11 @@ Return ONLY valid JSON in this format:
           "realisticMinutes": 30
         }
       ],
+      "verificationTask": {
+        "task": "Verify phase output compiles",
+        "tool": "shell_execute",
+        "args": { "command": "npm run build" }
+      },
       "deliverables": ["List of key files or outcomes"],
       "estimatedTime": "Time string"
     }
