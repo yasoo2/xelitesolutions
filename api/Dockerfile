@@ -18,10 +18,10 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Optimize npm for CI environment (512MB is enough for npm install on low-RAM VPS)
-ENV NODE_OPTIONS="--max-old-space-size=512"
-
-RUN npm install --include=dev --no-audit --no-fund
+# npm install does NOT need NODE_OPTIONS (it's for Node.js runtime, not the package manager)
+# Reduce npm concurrency to prevent OOM on low-RAM VPS
+ENV NODE_OPTIONS=""
+RUN npm install --include=dev --no-audit --no-fund --maxsockets=3
 
 # Copy source code
 COPY . .
