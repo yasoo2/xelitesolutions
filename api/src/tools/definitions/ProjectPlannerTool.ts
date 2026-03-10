@@ -173,9 +173,107 @@ IMPORTANT: Return ONLY valid JSON. No conversational filler. Use "ai_write_file"
 
             logs.push(`Plan created: ${plan.totalPhases} phases, ${plan.estimatedDuration}`);
 
+            // === AUTO-EXECUTE ALL PHASES ===
+            // Instead of returning and hoping the LLM calls phase_executor,
+            // we execute ALL phases here automatically.
+            const executionResults: any[] = [];
+            let totalCompleted = 0;
+            let totalFailed = 0;
+
+            for (const phase of plan.phases) {
+                const phaseNum = phase.phaseNumber || (plan.phases.indexOf(phase) + 1);
+                const phaseName = phase.name || `Phase ${phaseNum}`;
+                const tasks = phase.tasks || [];
+
+                logs.push(`\n🔨 Executing ${phaseName} (${tasks.length} tasks)...`);
+
+                const phaseResults: any[] = [];
+                for (let i = 0; i < tasks.length; i++) {
+                    const task = tasks[i];
+                    const toolName = task.tool;
+                    const toolArgs = task.args || {};
+                    const taskDesc = task.task || `Task ${i + 1}`;
+
+                    if (!toolName) {
+                        logs.push(`  ⏭️ Skipping task ${i + 1}: no tool specified`);
+                        continue;
+                    }
+
+                    logs.push(`  🔧 [${i + 1}/${tasks.length}] ${toolName}: ${taskDesc.slice(0, 60)}...`);
+
+                    try {
+                        const result = await executeTool(toolName, toolArgs, {
+                            sessionId: (input as any).sessionId,
+                            workspaceId: (input as any).workspaceId,
+                        });
+
+                        if (result.ok) {
+                            totalCompleted++;
+                            phaseResults.push({ task: taskDesc, tool: toolName, ok: true });
+                            logs.push(`  ✅ ${toolName} succeeded`);
+                        } else {
+                            totalFailed++;
+                            phaseResults.push({ task: taskDesc, tool: toolName, ok: false, error: result.error });
+                            logs.push(`  ❌ ${toolName} failed: ${result.error || 'unknown error'}`);
+
+                            // Retry once for high-priority tasks
+                            if (task.priority === 'high') {
+                                logs.push(`  🔄 Retrying high-priority task...`);
+                                try {
+                                    const retry = await executeTool(toolName, toolArgs, {
+                                        sessionId: (input as any).sessionId,
+                                        workspaceId: (input as any).workspaceId,
+                                    });
+                                    if (retry.ok) {
+                                        totalFailed--;
+                                        totalCompleted++;
+                                        phaseResults[phaseResults.length - 1] = { task: taskDesc, tool: toolName, ok: true };
+                                        logs.push(`  ✅ Retry succeeded`);
+                                    }
+                                } catch { /* retry failed, continue */ }
+                            }
+                        }
+                    } catch (toolError: any) {
+                        totalFailed++;
+                        phaseResults.push({ task: taskDesc, tool: toolName, ok: false, error: toolError.message });
+                        logs.push(`  ❌ ${toolName} threw: ${toolError.message}`);
+                    }
+                }
+
+                // Execute verification task if present
+                if (phase.verificationTask?.tool) {
+                    logs.push(`  🧪 Running verification: ${phase.verificationTask.tool}...`);
+                    try {
+                        await executeTool(phase.verificationTask.tool, phase.verificationTask.args || {}, {
+                            sessionId: (input as any).sessionId,
+                            workspaceId: (input as any).workspaceId,
+                        });
+                        logs.push(`  ✅ Verification passed`);
+                    } catch (e: any) {
+                        logs.push(`  ⚠️ Verification failed: ${e.message}`);
+                    }
+                }
+
+                executionResults.push({
+                    phase: phaseNum,
+                    name: phaseName,
+                    tasks: phaseResults,
+                    completedTasks: phaseResults.filter(r => r.ok).length,
+                    totalTasks: phaseResults.length
+                });
+            }
+
+            logs.push(`\n📊 Final: ${totalCompleted} completed, ${totalFailed} failed`);
+
             return {
-                ok: true,
-                output: plan,
+                ok: totalCompleted > 0,
+                output: {
+                    ...plan,
+                    executionResults,
+                    totalCompleted,
+                    totalFailed,
+                    autoExecuted: true
+                },
                 logs
             };
 
