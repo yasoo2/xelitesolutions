@@ -117,6 +117,23 @@ export class WorkspaceService {
         if (wsId) {
             const root = this.rootsByWorkspaceId.get(wsId);
             if (root) return root;
+
+            // AUTO-RESOLVE: If workspaceId exists but no root is cached,
+            // initialize the workspace directory at externalRoot/{workspaceId}
+            // This handles: API restarts, first-time repo connections, and
+            // any case where createWorkspace() was not called on this process
+            const autoPath = path.join(this.externalRoot, wsId);
+            try {
+                if (!fs.existsSync(autoPath)) {
+                    fs.mkdirSync(autoPath, { recursive: true });
+                    console.log(`[WorkspaceService] Auto-created workspace dir: ${autoPath}`);
+                }
+            } catch (e) {
+                console.warn(`[WorkspaceService] Could not create workspace dir: ${autoPath}`, e);
+            }
+            this.rootsByWorkspaceId.set(wsId, autoPath);
+            console.log(`[WorkspaceService] Auto-resolved workspace root: ${wsId} → ${autoPath}`);
+            return autoPath;
         }
         return this.currentRoot;
     }
