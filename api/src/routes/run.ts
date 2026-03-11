@@ -3515,10 +3515,93 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                       }
                     }
 
-                    const finalSuccessMsg = isArabicText(userTextForOverrides)
-                      ? `✨ اكتمل العمل على كافة المراحل بنجاح! يمكنك الآن مشاهدة المشروع في تبويبة المعاينة (Preview).`
-                      : `✨ All project phases completed successfully! You can now view the project in the Preview tab.`;
-                    ev({ type: 'text', data: finalSuccessMsg });
+                    // ═══════════════════════════════════════════════════════════
+                    // AUTO-PREVIEW: Start dev server after phases complete
+                    // ═══════════════════════════════════════════════════════════
+                    try {
+                      // Find the project path from phase results or workspace
+                      const { workspaceService } = require('../services/WorkspaceService');
+                      let projectPath = '';
+
+                      // Try to get from workspace active root
+                      if (workspaceId) {
+                        try {
+                          const ws = await workspaceService.getWorkspace(workspaceId);
+                          projectPath = ws?.activeRoot || ws?.root || '';
+                        } catch {}
+                      }
+
+                      // Fallback: check data/builds for the most recent directory
+                      if (!projectPath) {
+                        const buildsDir = require('path').resolve(process.cwd(), 'data/builds', 'workspace-default');
+                        const fss = require('fs');
+                        if (fss.existsSync(buildsDir)) {
+                          const entries = fss.readdirSync(buildsDir, { withFileTypes: true })
+                            .filter((e: any) => e.isDirectory())
+                            .map((e: any) => ({
+                              name: e.name,
+                              mtime: fss.statSync(require('path').join(buildsDir, e.name)).mtimeMs
+                            }))
+                            .sort((a: any, b: any) => b.mtime - a.mtime);
+                          if (entries.length > 0) {
+                            projectPath = require('path').join(buildsDir, entries[0].name);
+                          }
+                        }
+                      }
+
+                      if (projectPath) {
+                        console.log(`[AutoPreview] Starting dev server at: ${projectPath}`);
+
+                        // Update workspace so File Explorer shows the project files
+                        if (workspaceId) {
+                          try {
+                            await workspaceService.setActiveRoot(projectPath, workspaceId);
+                            const { broadcast: wsBroadcast } = require('../ws');
+                            wsBroadcast({
+                              type: 'workspace_updated',
+                              data: { path: projectPath, name: require('path').basename(projectPath), timestamp: new Date().toISOString() },
+                              sessionId
+                            });
+                          } catch {}
+                        }
+
+                        // Start dev server for preview
+                        const devResult = await executeTool('dev_server_start', {
+                          cwd: projectPath,
+                          sessionId: String(sessionId)
+                        }, { sessionId, workspaceId });
+
+                        if (devResult.ok) {
+                          const previewUrl = String((devResult.output as any)?.userPreviewUrl || (devResult.output as any)?.previewUrl || '');
+                          const isAr = isArabicText(userTextForOverrides);
+                          const successMsg = isAr
+                            ? `✅ تم بناء المشروع بنجاح! 📂 المسار: ${projectPath}\n🌐 المعاينة: ${previewUrl}`
+                            : `✅ Project built successfully! 📂 Path: ${projectPath}\n🌐 Preview: ${previewUrl}`;
+                          ev({ type: 'text', data: successMsg });
+                          assistantTextEmitted = true;
+                        } else {
+                          console.warn(`[AutoPreview] dev_server_start failed:`, devResult.error);
+                          const isAr = isArabicText(userTextForOverrides);
+                          const fallbackMsg = isAr
+                            ? `✅ تم بناء المشروع بنجاح! 📂 المسار: ${projectPath}\n⚠️ لم يتمكن من تشغيل خادم المعاينة تلقائياً.`
+                            : `✅ Project built! 📂 Path: ${projectPath}\n⚠️ Could not auto-start preview server.`;
+                          ev({ type: 'text', data: fallbackMsg });
+                          assistantTextEmitted = true;
+                        }
+                      } else {
+                        // No project path found — show generic success
+                        const finalSuccessMsg = isArabicText(userTextForOverrides)
+                          ? `✨ اكتمل العمل على كافة المراحل بنجاح!`
+                          : `✨ All project phases completed successfully!`;
+                        ev({ type: 'text', data: finalSuccessMsg });
+                      }
+                    } catch (previewError: any) {
+                      console.warn('[AutoPreview] Failed to auto-start preview:', previewError);
+                      const finalSuccessMsg = isArabicText(userTextForOverrides)
+                        ? `✨ اكتمل العمل على كافة المراحل بنجاح! يمكنك الآن مشاهدة المشروع في تبويبة المعاينة (Preview).`
+                        : `✨ All project phases completed successfully! You can now view the project in the Preview tab.`;
+                      ev({ type: 'text', data: finalSuccessMsg });
+                    }
                   }
                 } catch (planError) {
                   // Fallback to normal execution if planning fails
