@@ -164,28 +164,55 @@ export class DeployManager {
                 await this.verifyCommitMatch(id, expectedCommit);
             }
 
-            // 3. Docker Build/Up (web Dockerfile now has multi-stage build)
-            this.appendLog(id, `\n[SYSTEM] Code synced. Initiating container rebuild...`);
+            // 3. Host-Aware Deploy (API runs on host, not in Docker)
+            this.appendLog(id, `\n[SYSTEM] Code synced. Building web frontend...`);
 
+            // 3a. Build web frontend (dist/ for Nginx to serve)
+            try {
+                await this.buildWebFrontend(id);
+            } catch (webErr: any) {
+                this.appendLog(id, `[WARN] Web frontend build failed: ${webErr.message} — continuing with API rebuild...`);
+            }
+
+            // 3b. Rebuild API on host (npm run build)
+            this.appendLog(id, `\n[SYSTEM] Rebuilding API on host...`);
+            try {
+                await this.runCommandInDir('npm install --no-audit --no-fund --maxsockets=3', '/root/xelitesolutions/api', id, 120000);
+                await this.runCommandInDir('npm run build', '/root/xelitesolutions/api', id, 120000);
+                this.appendLog(id, `[BUILD] API rebuilt successfully.`);
+            } catch (apiErr: any) {
+                this.appendLog(id, `[ERROR] API build failed: ${apiErr.message}`);
+                throw new Error(`API build failed: ${apiErr.message}`);
+            }
+
+            // 3c. Restart API process
+            this.appendLog(id, `\n[SYSTEM] Restarting API process...`);
+            try {
+                execSync('pkill -f "node dist/index.js" || true', { timeout: 5000 });
+                // Small delay to let the process die
+                await new Promise(r => setTimeout(r, 2000));
+                execSync('nohup bash /root/start_api.sh > /tmp/api_deploy.log 2>&1 &', {
+                    cwd: '/root/xelitesolutions',
+                    timeout: 5000
+                });
+                this.appendLog(id, `[SYSTEM] API process restarted.`);
+            } catch (restartErr: any) {
+                this.appendLog(id, `[WARN] API restart issue: ${restartErr.message} — process may self-recover.`);
+            }
+
+            // 3d. Rebuild Docker containers (web, nginx, mongo — NOT api)
+            this.appendLog(id, `\n[SYSTEM] Rebuilding Docker containers (web, nginx)...`);
+            this.runCommand('docker-compose -p joe -f docker-compose.production.yml up -d --build --force-recreate web nginx 2>&1 || true', [], id, 600000).catch(e => {
+                logger.error(`[DeployManager] Docker rebuild error (non-fatal): ${e.message}`);
+                this.appendLog(id, `\n[WARN] Docker rebuild: ${e.message}`);
+            });
+
+            // Mark deployment as successful
             deployment.status = isRollback ? 'ROLLBACK' : 'SUCCESS';
             deployment.endTime = new Date();
             deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
             await deployment.save();
-
-            this.broadcastStatus(deployment); // Broadcast full status change
-            await this.flushLogs(); // Ensure everything is in DB
-
-            // Critical: Wait 5 seconds to ensure DB persistence across the network before restart
-            await new Promise(r => setTimeout(r, 5000));
-
-            // Fire and forget: This command typically kills the current process
-            // Using a detached runner container so the current API container dropping doesn't kill the docker-compose process!
-            // Critical: We MUST map -v /root/xelitesolutions:/root/xelitesolutions so docker-compose resolves volume paths identically to the host daemon
-            this.runCommand('docker run -d --rm --name joe_restarter -v /var/run/docker.sock:/var/run/docker.sock -v /root/xelitesolutions:/root/xelitesolutions -w /root/xelitesolutions joe-api:latest /bin/sh -c "sleep 5 && docker rm -f joe_api joe_web joe_mongo joe_browser_worker joe_nginx joe-certbot-1 xelitesolutions-certbot-1 joe_restarter_old || true && cd /root/xelitesolutions/api && npm install --no-audit --no-fund --maxsockets=3 && npm run build && cd /root/xelitesolutions && docker-compose -p joe -f docker-compose.production.yml up -d --build --force-recreate"', [], id, 1200000).catch(e => {
-                logger.error(`[DeployManager] Post-success restart error: ${e.message}`);
-                // If it fails immediately, we might still be able to catch it before process kill
-                this.appendLog(id, `\n[ERROR] Restart command failed: ${e.message}`);
-            });
+            this.broadcastStatus(deployment);
 
             this.broadcastLog(id, `\n[SUCCESS] [${new Date().toISOString()}] Build complete. Deployment finishing in background.`);
 

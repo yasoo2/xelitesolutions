@@ -2422,11 +2422,11 @@ export async function planNextStep(
 
     // Strategy 2: If still too large, remove middle messages (sliding window)
     if (currentChars > CHAR_LIMIT) {
-      const keepCount = 6; // Keep first system + last 5 messages
+      const keepCount = 20; // Keep first system + last 19 messages (enough for full project builds)
       if (msgs.length > keepCount) {
         const removedCount = msgs.length - keepCount;
         const system = msgs[0];
-        const recent = msgs.slice(-5);
+        const recent = msgs.slice(-19);
         msgs = [
           system,
           {
