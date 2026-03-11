@@ -538,7 +538,13 @@ export class ScaffoldTool extends BaseTool {
         const preferredBase = String(input?.baseDir || '').trim();
 
         // Resolve base directory
-        const baseDir = resolveToolPath(preferredBase || '.', { sandbox: true });
+        const { workspaceService } = require('../../services/WorkspaceService');
+        const activeRoot = workspaceService.getActiveRoot();
+        
+        // If the user is in a specific workspace (like a GitHub repo in /root/joe-projects/), 
+        // DO NOT force sandbox, so generated files appear in their File Explorer.
+        // We only sandbox if there is no active workspace (i.e. they are just using the default environment).
+        const baseDir = resolveToolPath(preferredBase || '.', { sandbox: !activeRoot });
 
         try {
             // Call the shared Builder
