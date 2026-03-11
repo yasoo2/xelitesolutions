@@ -290,11 +290,18 @@ export class DeployManager {
 
     private runCommandInDir(cmd: string, cwd: string, deploymentId: string, timeoutMs = 300000): Promise<void> {
         return new Promise((resolve, reject) => {
+            // Add node_modules/.bin to PATH so local binaries (esbuild, vite, etc.) are found
+            const localBin = `${cwd}/node_modules/.bin`;
+            const currentPath = process.env.PATH || '';
             const child = spawn(cmd, {
                 cwd,
                 shell: true,
                 detached: true,
-                env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=2048' }
+                env: {
+                    ...process.env,
+                    NODE_OPTIONS: '--max-old-space-size=2048',
+                    PATH: `${localBin}:${currentPath}`
+                }
             });
 
             const timeout = setTimeout(() => {
