@@ -132,6 +132,26 @@ export class WebPipelineTool extends BaseTool {
         steps.push({ step: 'scaffold_full_stack', ok: true, output: scRes.output });
         if (sessionId) broadcastThinkingDetail(sessionId, `✅ Scaffold complete at ${projectPath}`);
 
+        // CRITICAL FIX: Update workspace root to the new project path
+        // This ensures File Explorer shows the project files, not the old workspace
+        if (projectPath && workspaceId) {
+            try {
+                const { workspaceService } = require('../../services/WorkspaceService');
+                await workspaceService.setActiveRoot(projectPath, workspaceId);
+                console.log(`[Pipeline] Workspace root updated to: ${projectPath}`);
+            } catch (wsErr: any) {
+                console.warn(`[Pipeline] Could not update workspace root: ${wsErr?.message}`);
+            }
+        }
+        // Broadcast workspace_updated so frontend File Explorer refreshes
+        if (sessionId && projectPath) {
+            broadcast({
+                type: 'workspace_updated',
+                data: { path: projectPath, name: path.basename(projectPath), timestamp: new Date().toISOString() },
+                sessionId
+            });
+        }
+
         // 2. Detect & Install
         broadcastBuildProgress(sessionId, 'dependencies', '📦 Installing dependencies...', 30);
         if (sessionId) broadcastThinkingDetail(sessionId, `🔍 Detecting project types and dependencies...`);
@@ -321,35 +341,61 @@ export class DevServerTool extends BaseTool {
         if (!port) port = await findAvailablePort(5180);
 
         // 1. IMPROVED: Robustly detect the actual web project root
-        // If the current directory doesn't have an index.html, look for it in subdirectories
+        // Strategy: check for monorepo (workspaces in package.json), then index.html, then subdirs
         let actualCwd = baseCwd;
-        if (!fs.existsSync(path.join(baseCwd, 'index.html'))) {
-            // Check for common monorepo/project patterns
-            const monorepoWeb = path.join(baseCwd, 'apps', 'web');
-            if (fs.existsSync(path.join(monorepoWeb, 'index.html'))) {
-                actualCwd = monorepoWeb;
-                logs.push(`monorepo_detected_in_root: switching to ${monorepoWeb}`);
-            } else {
-                // Search reachable subdirectories for an index.html (useful if Joe scaffolded into a subfolder)
-                try {
-                    const entries = fs.readdirSync(baseCwd).filter(d => !d.startsWith('.') && fs.statSync(path.join(baseCwd, d)).isDirectory());
-                    for (const entry of entries) {
-                        const projectPath = path.join(baseCwd, entry);
-                        const webPath = path.join(projectPath, 'apps', 'web');
-                        if (fs.existsSync(path.join(webPath, 'index.html'))) {
-                            actualCwd = webPath;
-                            logs.push(`nested_monorepo_detected: switching to ${webPath}`);
-                            break;
-                        }
-                        if (fs.existsSync(path.join(projectPath, 'index.html'))) {
-                            actualCwd = projectPath;
-                            logs.push(`nested_project_detected: switching to ${projectPath}`);
-                            break;
-                        }
-                    }
-                } catch (e: any) {
-                    logs.push(`web_root_lookup_error: ${e.message}`);
+
+        // First: check if root package.json has "workspaces" (monorepo pattern)
+        const rootPkgPath = path.join(baseCwd, 'package.json');
+        let isMonorepo = false;
+        if (fs.existsSync(rootPkgPath)) {
+            try {
+                const pkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
+                if (pkg?.workspaces) isMonorepo = true;
+            } catch { }
+        }
+
+        if (isMonorepo) {
+            // Monorepo: look for apps/web, packages/web, web/
+            const webCandidates = ['apps/web', 'packages/web', 'web', 'apps/frontend', 'frontend'];
+            for (const candidate of webCandidates) {
+                const candidatePath = path.join(baseCwd, candidate);
+                if (fs.existsSync(path.join(candidatePath, 'index.html')) || fs.existsSync(path.join(candidatePath, 'package.json'))) {
+                    actualCwd = candidatePath;
+                    logs.push(`monorepo_web_detected: switching to ${candidatePath}`);
+                    break;
                 }
+            }
+            // If monorepo but no web dir found, check for dist/index.html to serve built assets
+            if (actualCwd === baseCwd) {
+                for (const candidate of webCandidates) {
+                    const distPath = path.join(baseCwd, candidate, 'dist', 'index.html');
+                    if (fs.existsSync(distPath)) {
+                        actualCwd = path.join(baseCwd, candidate, 'dist');
+                        logs.push(`monorepo_dist_detected: serving built assets from ${actualCwd}`);
+                        break;
+                    }
+                }
+            }
+        } else if (!fs.existsSync(path.join(baseCwd, 'index.html'))) {
+            // Not monorepo, no index.html at root — search subdirectories
+            try {
+                const entries = fs.readdirSync(baseCwd).filter(d => !d.startsWith('.') && d !== 'node_modules' && fs.statSync(path.join(baseCwd, d)).isDirectory());
+                for (const entry of entries) {
+                    const projectPath = path.join(baseCwd, entry);
+                    const webPath = path.join(projectPath, 'apps', 'web');
+                    if (fs.existsSync(path.join(webPath, 'index.html'))) {
+                        actualCwd = webPath;
+                        logs.push(`nested_monorepo_detected: switching to ${webPath}`);
+                        break;
+                    }
+                    if (fs.existsSync(path.join(projectPath, 'index.html'))) {
+                        actualCwd = projectPath;
+                        logs.push(`nested_project_detected: switching to ${projectPath}`);
+                        break;
+                    }
+                }
+            } catch (e: any) {
+                logs.push(`web_root_lookup_error: ${e.message}`);
             }
         }
 
@@ -388,8 +434,8 @@ export class DevServerTool extends BaseTool {
             child.stderr?.on('data', (d: Buffer) => { startupOutput += d.toString(); });
             child.unref();
 
-            // Wait for server to actually start (up to 15 seconds)
-            const maxWait = 15000;
+            // Wait for server to actually start (up to 30 seconds — monorepo projects need more time)
+            const maxWait = 30000;
             const interval = 500;
             let elapsed = 0;
             let serverReady = false;

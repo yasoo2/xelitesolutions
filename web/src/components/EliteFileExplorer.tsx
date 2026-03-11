@@ -649,6 +649,16 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
 
     useEffect(() => { loadRoot(); }, []);
 
+    // Auto-refresh File Explorer when workspace changes (e.g., Joe built a new project)
+    useEffect(() => {
+        const handler = () => {
+            console.log('[FileExplorer] Workspace updated — refreshing tree');
+            loadRoot('local');
+        };
+        window.addEventListener('workspace:updated', handler);
+        return () => window.removeEventListener('workspace:updated', handler);
+    }, []);
+
     // Keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {

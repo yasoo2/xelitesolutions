@@ -316,6 +316,11 @@ async function connect() {
         taskTrackerListeners.forEach(cb => { try { cb(mappedTasks); } catch { } });
 
         // Also dispatch to TodosPanel-specific handlers if needed (already handled by general listeners)
+      } else if (msgType === 'workspace_updated') {
+        // [Pipeline Fix] When a new project is built, refresh File Explorer
+        const wsData = data?.data || {};
+        console.log(`[Socket] Workspace updated to: ${wsData.path || wsData.name}`);
+        window.dispatchEvent(new CustomEvent('workspace:updated', { detail: wsData }));
       } else if (msgType === 'build_progress') {
         // [Flow Agent] Live build progress events for PreviewPanel overlay
         const progressData = data?.data || {};
