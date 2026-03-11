@@ -2150,6 +2150,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 model: model,
                 userId: String(userId),
                 sessionId: String(sessionId),
+                workspaceId,
                 userText: rawUserText, // Pass the clean user text here
                 fullPromptText: fullPromptText, // Pass the bloated prompt for LLM context
                 onProgress: (m: string) => {
@@ -2714,6 +2715,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                       model,
                       userId,
                       sessionId,
+                      workspaceId,
                       onProgress: (p) => {
                         broadcastThinkingDetail(String(sessionId), p);
                       },
@@ -2770,6 +2772,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                         provider: 'auto',
                         userId,
                         sessionId,
+                        workspaceId,
                         onProgress: (p) => {
                           broadcastThinkingDetail(String(sessionId), p);
                         },
@@ -2866,6 +2869,19 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           const userTextForOverrides = String(text || '');
           const userTextNorm = normalizeArabicQuery(userTextForOverrides);
 
+          // [FIX] SIMPLE FILE CREATE INTERCEPT — Must run BEFORE GOD MODE to prevent project_detect loops
+          const isFileOp_early = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(userTextForOverrides);
+          const isSimpleFileCreate_early = isFileOp_early && /(create|make|write|أنشئ|انشئ|اكتب|اعمل|سوي)/i.test(userTextForOverrides) && !/(website|app|system|page|landing|site|api|store|shop|موقع|تطبيق|نظام|صفحة|صفحه|خدمة|مشروع|متجر|واجهة|هبوط)/i.test(userTextForOverrides);
+          if (isSimpleFileCreate_early && (planName === 'echo' || planName === 'project_detect' || !planName)) {
+            const fileNameMatch = userTextForOverrides.match(/(?:called|named|اسمه|بإسم|باسم|إسم)\s+([^\s,،.]+)/i);
+            const fileName = fileNameMatch?.[1] || 'output.txt';
+            const contentMatch = userTextForOverrides.match(/(?:with content|بمحتوى|containing|content)\s+['"]?(.+?)['"]?$/i);
+            const fileContent = contentMatch?.[1] || '';
+            console.info(`[FileRoute] ⚡ Early intercept: simple file create → write_file for: ${fileName}`);
+            plan = { name: 'write_file', input: { path: fileName, content: fileContent } } as any;
+            planName = 'write_file';
+          }
+
           // [GOD MODE] FORCE BUILD OVERRIDE
           // If the user clearly wants to build/create, and we haven't started, don't let it stall in "echo"
           // [FIX] Broadened regex: catches "ابني لي صفحة هبوط", "ابني متجر ساعات", "create landing page", etc.
@@ -2877,7 +2893,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           // [FIX] DO NOT OVERRIDE IF THE PLAN IS ALREADY A BUILDER PIPELINE
           // Note: Removed 'project_planner' from this list because project_planner only generates text
           // and relies on follow-up tasks (which fail on free LLMs). We WANT God Mode to hijack it into website_full_pipeline.
-          const isAlreadyValidPipeline = ['website_full_pipeline', 'genesis_build', 'scaffold_full_stack'].includes(planName);
+          const isAlreadyValidPipeline = ['website_full_pipeline', 'genesis_build', 'scaffold_full_stack', 'write_file'].includes(planName);
 
           if (isExplicitBuild && !isAlreadyValidPipeline) {
             const alreadyDetected = historyHasToolCall(history as any, 'project_detect');
