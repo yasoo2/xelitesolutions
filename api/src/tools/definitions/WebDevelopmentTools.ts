@@ -287,16 +287,26 @@ export class WebPipelineTool extends BaseTool {
                     if (sessionId) broadcastThinkingDetail(sessionId, `🐙 Securing and pushing code to GitHub (${activeRepo})...`);
                     broadcastBuildProgress(sessionId, 'github', '🐙 Syncing to GitHub...', 85);
                     
-                    // Init and commit
-                    await executeTool('shell_execute', {
-                        command: `git init && git add . && git commit -m "Initial commit by Joe AI" && git branch -M main && git remote add origin https://github.com/${activeRepo}.git`,
-                        cwd: projectPath
-                    }, { sessionId, workspaceId });
+                    // 1. Init
+                    await executeTool('git_ops', { operation: 'init', cwd: projectPath, sessionId, userId: ws.ownerId?.toString() }, { sessionId, workspaceId });
                     
-                    // Securely push using GitOpsTool
+                    // 2. Add
+                    await executeTool('git_ops', { operation: 'add', args: ['.'], cwd: projectPath, sessionId, userId: ws.ownerId?.toString() }, { sessionId, workspaceId });
+                    
+                    // 3. Commit
+                    await executeTool('git_ops', { operation: 'commit', args: ['-m', 'Initial commit by Joe AI'], cwd: projectPath, sessionId, userId: ws.ownerId?.toString() }, { sessionId, workspaceId });
+                    
+                    // 4. Branch
+                    await executeTool('git_ops', { operation: 'branch', args: ['-M', 'main'], cwd: projectPath, sessionId, userId: ws.ownerId?.toString() }, { sessionId, workspaceId });
+                    
+                    // 5. Remote
+                    await executeTool('git_ops', { operation: 'remote', args: ['add', 'origin', `https://github.com/${activeRepo}.git`], cwd: projectPath, sessionId, userId: ws.ownerId?.toString() }, { sessionId, workspaceId });
+                    
+                    // 6. Securely push using GitOpsTool
                     const pushRes = await executeTool('git_ops', {
                         operation: 'push',
                         args: ['-u', 'origin', 'main'],
+                        cwd: projectPath,
                         sessionId,
                         userId: ws.ownerId?.toString()
                     }, { sessionId, workspaceId });
