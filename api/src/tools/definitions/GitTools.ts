@@ -40,6 +40,7 @@ export class GitOpsTool extends BaseTool {
         properties: {
             operation: { type: 'string' }, // add, commit, push, pull, clone, fetch, status
             args: { type: 'array', items: { type: 'string' } },
+            cwd: { type: 'string' },
             sessionId: { type: 'string' },
             userId: { type: 'string' }
         },
@@ -59,23 +60,9 @@ export class GitOpsTool extends BaseTool {
         const userId = String(input?.userId || '').trim();
 
         let askpassDir = '';
+        const env: any = { ...process.env };
 
         try {
-            if (op === 'commit') {
-                try {
-                    const checkUser = await handleGitCommand('config', ['user.name'], process.cwd());
-                    if (!checkUser.ok) {
-                        const nameResult = await handleGitCommand('config', ['user.name', 'Joe AI'], process.cwd());
-                        if (!nameResult.ok) throw new Error(nameResult.error || 'git_config_failed');
-                        const emailResult = await handleGitCommand('config', ['user.email', 'joe@xelitesolutions.com'], process.cwd());
-                        if (!emailResult.ok) throw new Error(emailResult.error || 'git_config_failed');
-                    }
-                } catch (e: any) {
-                    logs.push(`git.config_failed=${e.message}`);
-                }
-            }
-
-            const env: any = { ...process.env };
 
             // Handle Authentication via ASKPASS
             const wantsAuth = ['push', 'fetch', 'pull', 'clone'].includes(op);
@@ -102,7 +89,7 @@ export class GitOpsTool extends BaseTool {
             }
 
             const safeArgs = Array.isArray(args) ? args.map(a => String(a || '')).filter(a => a.length > 0) : [];
-            const cwd = workspaceService.getActiveRoot();
+            const cwd = (typeof input?.cwd === 'string' && input.cwd.trim()) ? input.cwd.trim() : workspaceService.getActiveRoot();
             const envResult = await runGitWithEnv(op, safeArgs, env, cwd);
             logs.push(`git.success=${op}`);
             return { ok: true, output: { output: envResult.stdout || envResult.stderr }, logs };
@@ -110,14 +97,17 @@ export class GitOpsTool extends BaseTool {
         } catch (e: any) {
             const errorMsg = e.message || e.stderr || '';
 
+            const fallbackCwd = (typeof input?.cwd === 'string' && input.cwd.trim()) ? input.cwd.trim() : workspaceService.getActiveRoot();
+
             // Smart Recovery 1: Missing Upstream
             if (op === 'push' && errorMsg.includes('no upstream branch')) {
                 logs.push('Smart Recovery: Setting upstream branch automatically...');
                 try {
-                    const currentBranch = (await handleGitCommand('rev-parse', ['--abbrev-ref', 'HEAD'], process.cwd())).stdout.trim();
+                    const revParse = await handleGitCommand('rev-parse', ['--abbrev-ref', 'HEAD'], fallbackCwd);
+                    const currentBranch = String(revParse?.output || '').trim();
                     if (currentBranch) {
                         const upstreamArgs = ['push', '--set-upstream', 'origin', currentBranch];
-                        const retryResult = await runGitWithEnv('push', ['--set-upstream', 'origin', currentBranch], { ...process.env, ...env }, workspaceService.getActiveRoot());
+                        const retryResult = await runGitWithEnv('push', ['--set-upstream', 'origin', currentBranch], { ...process.env, ...env }, fallbackCwd);
                         logs.push('Smart Recovery: Success');
                         return { ok: true, output: { output: retryResult.stdout || retryResult.stderr }, logs };
                     }
@@ -132,7 +122,7 @@ export class GitOpsTool extends BaseTool {
                 try {
                     // Try set-url instead
                     const setUrlArgs = ['remote', 'set-url', ...args.slice(1)];
-                    const retryResult = await runGitWithEnv('remote', setUrlArgs.slice(1), { ...process.env, ...env }, workspaceService.getActiveRoot());
+                    const retryResult = await runGitWithEnv('remote', setUrlArgs.slice(1), { ...process.env, ...env }, fallbackCwd);
                     logs.push('Smart Recovery: Success');
                     return { ok: true, output: { output: retryResult.stdout || retryResult.stderr }, logs };
                 } catch (retryError: any) {
