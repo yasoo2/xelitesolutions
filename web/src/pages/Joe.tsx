@@ -192,7 +192,8 @@ export default function Joe() {
                     // Only auto-switch to preview for local/internal proxy URLs
                     const isInternal = url.includes('localhost') ||
                         url.includes('127.0.0.1') ||
-                        url.includes('xelitesolutions.com/preview/');
+                        url.includes('xelitesolutions.com/preview/') ||
+                        url.includes('http://api:');
 
                     if (isInternal) {
                         setPreviewUrl(url);
@@ -221,7 +222,8 @@ export default function Joe() {
                     const isSafeTool = safeTools.includes(toolName || '');
                     const isInternal = url.includes('localhost') ||
                         url.includes('127.0.0.1') ||
-                        url.includes('xelitesolutions.com/preview/');
+                        url.includes('xelitesolutions.com/preview/') ||
+                        url.includes('http://api:');
 
                     if (isSafeTool || isInternal) {
                         setPreviewUrl(url);
@@ -235,6 +237,11 @@ export default function Joe() {
             // Handle message finishing
             if (msg.type === 'run_finished' || msg.type === 'step_failed') {
                 setIsLoading(false);
+            }
+
+            // Reset GitHub repo focus if the agent builds a new local workspace
+            if (msg.type === 'workspace_updated') {
+                setActiveRepo(null);
             }
 
             // Handle messages (Legacy & New Events)
