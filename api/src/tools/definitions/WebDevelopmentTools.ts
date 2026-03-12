@@ -276,6 +276,45 @@ export class WebPipelineTool extends BaseTool {
             steps.push({ step: 'analyze_project', ok: projectAnalyzeRes.ok, output: projectAnalyzeRes.output });
         } catch { }
 
+        // 5.5 Auto-Git Sync
+        if (workspaceId) {
+            try {
+                const { workspaceService } = require('../../services/WorkspaceService');
+                const ws = await workspaceService.getWorkspaceById(workspaceId);
+                const activeRepo = ws?.integrations?.github?.activeRepo;
+                
+                if (activeRepo) {
+                    if (sessionId) broadcastThinkingDetail(sessionId, `🐙 Securing and pushing code to GitHub (${activeRepo})...`);
+                    broadcastBuildProgress(sessionId, 'github', '🐙 Syncing to GitHub...', 85);
+                    
+                    // Init and commit
+                    await executeTool('shell_execute', {
+                        command: `git init && git add . && git commit -m "Initial commit by Joe AI" && git branch -M main && git remote add origin https://github.com/${activeRepo}.git`,
+                        cwd: projectPath
+                    }, { sessionId, workspaceId });
+                    
+                    // Securely push using GitOpsTool
+                    const pushRes = await executeTool('git_ops', {
+                        operation: 'push',
+                        args: ['-u', 'origin', 'main'],
+                        sessionId,
+                        userId: ws.ownerId?.toString()
+                    }, { sessionId, workspaceId });
+                    
+                    if (pushRes.ok) {
+                        if (sessionId) broadcastThinkingDetail(sessionId, `✅ Successfully pushed to GitHub`);
+                        steps.push({ step: 'github_sync', ok: true, output: { repo: activeRepo } });
+                    } else {
+                        if (sessionId) broadcastThinkingDetail(sessionId, `⚠️ GitHub push failed: ${pushRes.error}`);
+                        steps.push({ step: 'github_sync', ok: false, error: pushRes.error });
+                    }
+                }
+            } catch (err: any) {
+                if (sessionId) broadcastThinkingDetail(sessionId, `⚠️ GitHub sync error: ${err.message}`);
+                steps.push({ step: 'github_sync', ok: false, error: err.message });
+            }
+        }
+
         // 6. Preview
         if (!skipDev) {
             broadcastBuildProgress(sessionId, 'preview', '🌐 Starting dev server...', 90);
