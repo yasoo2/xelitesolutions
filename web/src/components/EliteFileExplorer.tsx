@@ -1220,7 +1220,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                 >
                                     <Replace size={14} />
                                 </button>
-                                <button onClick={loadRoot} className="elite-icon-btn" title="Refresh">
+                                <button onClick={() => loadRoot()} className="elite-icon-btn" title="Refresh">
                                     <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                                 </button>
                                 <button onClick={() => setTreeCollapsed(true)} className="elite-icon-btn" title="Collapse">
