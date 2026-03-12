@@ -306,7 +306,7 @@ export class WebPipelineTool extends BaseTool {
                     // 4. Branch
                     await runGitOp('branch', ['-M', 'main']);
                     
-                    // 5. Remote
+                    // 5. Remote (Use generic HTTPS URL, git_ops handles auth via ASKPASS)
                     await runGitOp('remote', ['add', 'origin', `https://github.com/${activeRepo}.git`]);
                     
                     // 6. Securely push using GitOpsTool

@@ -242,6 +242,8 @@ export default function Joe() {
             // Reset GitHub repo focus if the agent builds a new local workspace
             if (msg.type === 'workspace_updated') {
                 setActiveRepo(null);
+                // Also trigger an uncollapse to ensure the file explorer is visible
+                triggerUncollapse();
             }
 
             // Handle messages (Legacy & New Events)
@@ -694,7 +696,9 @@ export default function Joe() {
                 onNewProject={() => setIsOnboardingOpen(true)}
                 isConnected={isConnected}
                 branch="main"
-                onGitChanges={() => setIsGitHubOpen(true)}
+                onGitChanges={() => {
+                    if (!ghConnected) setIsGitHubOpen(true);
+                }}
                 githubUser={ghUser}
                 githubRepos={ghRepos}
                 activeRepo={activeRepo}

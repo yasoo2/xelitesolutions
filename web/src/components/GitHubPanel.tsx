@@ -16,6 +16,7 @@ import {
     ChevronLeft
 } from 'lucide-react';
 import { GitHubRepo, GitHubCommit, GitHubUser } from '../services/githubService';
+import { api } from '../services/apiClient';
 
 interface GitHubPanelProps {
     user: GitHubUser | null;
@@ -46,6 +47,39 @@ export default function GitHubPanel({
 }: GitHubPanelProps) {
     const { t } = useTranslation();
 
+    const [localChanges, setLocalChanges] = React.useState<{file: string, status: string}[]>([]);
+
+    const fetchLocalChanges = React.useCallback(async () => {
+        try {
+            const data: any = await api.get('/git/status');
+            if (data && data.initialized && Array.isArray(data.files)) {
+                setLocalChanges(data.files);
+            } else {
+                setLocalChanges([]);
+            }
+        } catch (e) {
+            console.error('Failed to fetch local git status', e);
+            setLocalChanges([]);
+        }
+    }, []);
+
+    React.useEffect(() => {
+        fetchLocalChanges();
+    }, [fetchLocalChanges]);
+
+    const handleRefresh = React.useCallback(() => {
+        fetchLocalChanges();
+        onRefresh();
+    }, [fetchLocalChanges, onRefresh]);
+
+    const getGitColor = (status: string) => {
+        if (status.includes('D')) return '#f14c4c';
+        if (status.includes('M') || status.includes('UU')) return '#e2b340';
+        if (status === '??' || status.includes('A') || status === '!!') return '#73c991';
+        if (status.includes('R')) return '#4ec9b0';
+        return '#89898a';
+    };
+
     return (
         <aside className="joe-files-panel">
             {/* Header */}
@@ -68,7 +102,7 @@ export default function GitHubPanel({
                     </button>
                     <button
                         className={`joe-files-action-btn ${isLoading ? 'animate-spin' : ''}`}
-                        onClick={onRefresh}
+                        onClick={handleRefresh}
                         title="Refresh"
                     >
                         <RefreshCw size={16} />
@@ -99,6 +133,25 @@ export default function GitHubPanel({
                         </button>
                     )}
                 </div>
+
+                {/* Local Changes */}
+                {localChanges.length > 0 && (
+                    <>
+                        <div style={sectionHeaderStyle}>
+                            <GitCommit size={14} />
+                            <span>{t('localChanges', 'Local Changes')}</span>
+                            <span style={countBadgeStyle}>{localChanges.length}</span>
+                        </div>
+                        <div style={{ ...scrollAreaStyle, maxHeight: '200px', flex: 'none', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                            {localChanges.map(change => (
+                                <div key={change.file} style={{ padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '10px', fontWeight: 'bold', minWidth: '16px', color: getGitColor(change.status) }}>{change.status}</span>
+                                    <span className="elite-file-name" style={{ fontSize: '12px', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', opacity: 0.9 }}>{change.file}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                )}
 
                 {/* Repositories */}
                 <div style={sectionHeaderStyle}>

@@ -6,6 +6,8 @@ import crypto from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
 import fs from 'fs';
+import { execSync } from 'child_process';
+import { getUserSecret } from './secrets';
 
 const workspaceAsyncContext = new AsyncLocalStorage<{ workspaceId?: string }>();
 
@@ -384,6 +386,36 @@ export class WorkspaceService {
             if (!workspace.integrations.github) workspace.integrations.github = { installationId: '', repositories: [] };
             if (workspace.integrations.github) {
                 workspace.integrations.github.activeRepo = updates.activeRepo;
+                
+                // [NEW] Sync the GitHub repo to the local workspace directory
+                try {
+                    const projectPath = path.join(this.externalRoot, String(workspace._id));
+                    
+                    // Retrieve user token
+                    const token = await getUserSecret(adminUserId, 'github', 'GITHUB_TOKEN');
+                    if (token) {
+                        const cleanToken = token.replace(/[\s\n\r]/g, '');
+                        const repoUrl = `https://${cleanToken}@github.com/${updates.activeRepo}.git`;
+                        
+                        console.log(`[WorkspaceService] Cloning ${updates.activeRepo} to ${projectPath}...`);
+                        
+                        // Clear existing directory if it exists to ensure a fresh clone
+                        if (fs.existsSync(projectPath)) {
+                            fs.rmSync(projectPath, { recursive: true, force: true });
+                        }
+                        
+                        // Execute clone
+                        execSync(`git clone ${repoUrl} ${projectPath}`, { stdio: 'ignore' });
+                        console.log(`[WorkspaceService] Successfully cloned ${updates.activeRepo}`);
+                        
+                        // Update kind to github automatically
+                        workspace.kind = 'github';
+                    } else {
+                        console.warn(`[WorkspaceService] Could not find GITHUB_TOKEN for user ${adminUserId}. Skip cloning.`);
+                    }
+                } catch (err: any) {
+                    console.error(`[WorkspaceService] Failed to clone ${updates.activeRepo}:`, err.message);
+                }
             }
         }
         if (updates.providerConfig) {

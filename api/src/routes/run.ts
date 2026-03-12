@@ -1748,11 +1748,30 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       const actualName = (userObj.name && !/^[0-9a-fA-F]{24}$/.test(userObj.name)) ? userObj.name : 'يونس';
 
       const currentActiveProject = sessionProjectMap.get(String(sessionId));
+      
+      // [NEW] Workspace Context Injection for GitHub Awareness
+      let workspaceKind = 'local';
+      let activeRepoName = undefined;
+      if (workspaceId) {
+          try {
+              const { workspaceService } = await import('../services/WorkspaceService');
+              const ws = await workspaceService.getWorkspace(workspaceId, String(userId));
+              if (ws) {
+                  workspaceKind = ws.kind || 'local';
+                  activeRepoName = ws.integrations?.github?.activeRepo;
+              }
+          } catch (e) {
+              console.warn('[Run] Failed to load workspace context for LLM prompt', safeErrorMessage(e));
+          }
+      }
+
       const currentSystemPrompt = getSystemPrompt({
         name: actualName,
         systemInstructions: userSystemInstructions || undefined,
         activeProjectPath: currentActiveProject?.path,
         activeProjectName: currentActiveProject?.name,
+        workspaceKind,
+        activeRepoName,
       });
 
       // ENSURE ENHANCED SYSTEM PROMPT IS ALWAYS FIRST

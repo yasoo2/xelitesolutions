@@ -69,7 +69,7 @@ export class GitOpsTool extends BaseTool {
             if (wantsAuth && (sessionId || userId)) {
                 try {
                     const rawToken = (userId ? (await getUserSecret(userId, 'github', 'GITHUB_TOKEN')) : null) ||
-                        getSessionSecret(sessionId, 'GITHUB_TOKEN') || '';
+                        getSessionSecret(sessionId, 'GITHUB_TOKEN') || process.env.GITHUB_TOKEN || '';
                     const token = rawToken.replace(/[\s\n\r]/g, '');
 
                     if (token) {
