@@ -10,6 +10,8 @@ import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
+import TaskTracker from './TaskTracker';
+import TodosPanel from './TodosPanel';
 
 
 // Web Speech API types
@@ -3391,13 +3393,18 @@ export default function CommandComposer({
               </div>
             )}
 
-            {status === 'thinking' && !isQuietMode && (
-              <NeuralThinkingIndicator
-                visible={true}
-                phase={thinkingPhase}
-                variant="inline"
-              />
+            {status === 'thinking' && (
+              <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px' }}>
+                <NeuralThinkingIndicator
+                  visible={true}
+                  phase={thinkingPhase}
+                  variant="inline"
+                />
+                <TaskTracker />
+              </div>
             )}
+
+            <TodosPanel sessionId={sessionId} />
 
 
             <textarea

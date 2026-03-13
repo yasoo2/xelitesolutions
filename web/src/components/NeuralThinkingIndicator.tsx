@@ -49,8 +49,8 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
     }
   }, [details, visible]);
 
-  if (!visible && details.length === 0 && currentPhase === 'idle') return null;
-  if (currentPhase === 'idle' && details.length === 0) return null; // [Wakil 6.1] Absolute clean when idle
+  // Only hide when not visible AND idle with no details
+  if (!visible && currentPhase === 'idle' && details.length === 0) return null;
 
   const current = phaseLabels[currentPhase] || phaseLabels.analyzing;
   const isMatrixMode = details.length > 0;

@@ -51,9 +51,11 @@ export const TodoWriteTool: ToolDefinition = {
             // Emitting it directly to the connected clients via the backend WS broadcaster.
             broadcast({
                 type: 'todo_update',
+                id: `todo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, // Unique ID to avoid dedup
                 data: {
                     merge: input.merge,
                     todos: input.todos,
+                    sessionId: input.workspaceId, // Include for session routing
                     timestamp: new Date().toISOString()
                 }
             });

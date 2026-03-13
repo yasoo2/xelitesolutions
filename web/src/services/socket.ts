@@ -304,11 +304,14 @@ async function connect() {
           thinkingDetailsListeners.forEach(cb => { try { cb([...thinkingDetails]); } catch { } });
         }
       } else if (msgType === 'run_started') {
+        // Reset state and immediately activate 'analyzing' phase for neural indicator
         thinkingDetails = [];
         thinkingStatus = '';
+        thinkingPhase = 'analyzing';
         taskTrackerData = []; // Reset tasks on new run
         thinkingDetailsListeners.forEach(cb => { try { cb([]); } catch { } });
         thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
+        thinkingPhaseListeners.forEach(cb => { try { cb('analyzing'); } catch { } });
         taskTrackerListeners.forEach(cb => { try { cb([]); } catch { } });
       } else if (msgType === 'task_tracker' || msgType === 'todo_update') {
         // [New] Receive task lists from the API (Unifying task_tracker and todo_update)
