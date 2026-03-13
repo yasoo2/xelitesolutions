@@ -8,8 +8,29 @@ import { ToolDefinition } from '../tools/types';
 import { redactSecretsFromString } from '../utils/redaction';
 import { normalizeUrlForGoto } from '../utils/url';
 
-// Rate Limiting Logic (Ported)
+// Rate Limiting Logic (Ported) with periodic cleanup to prevent memory leaks
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
+const TOOL_RATE_BUCKET_MAX = 1000;
+
+// Clean up stale rate limit buckets every 5 minutes
+setInterval(() => {
+    const currentMinute = Math.floor(Date.now() / 60000);
+    for (const [key, bucket] of toolRateBuckets) {
+        if (currentMinute - bucket.minute > 5) {
+            toolRateBuckets.delete(key);
+        }
+    }
+    // Hard cap if still too large
+    if (toolRateBuckets.size > TOOL_RATE_BUCKET_MAX) {
+        const toDelete = toolRateBuckets.size - Math.floor(TOOL_RATE_BUCKET_MAX * 0.75);
+        let deleted = 0;
+        for (const key of toolRateBuckets.keys()) {
+            if (deleted >= toDelete) break;
+            toolRateBuckets.delete(key);
+            deleted++;
+        }
+    }
+}, 5 * 60 * 1000);
 
 export function formatToolError(err: any): string {
     if (!err) return 'Unknown error (no message provided)';

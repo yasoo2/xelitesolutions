@@ -25,6 +25,19 @@ import { setSessionSecretEncrypted } from '../services/secrets';
 
 const router = Router();
 
+// Memory-safe Maps with automatic size limits to prevent leaks
+const MAP_MAX_SIZE = 2000;
+function pruneMap<V>(map: Map<string, V>, maxSize = MAP_MAX_SIZE) {
+  if (map.size <= maxSize) return;
+  const toDelete = map.size - Math.floor(maxSize * 0.75);
+  let deleted = 0;
+  for (const key of map.keys()) {
+    if (deleted >= toDelete) break;
+    map.delete(key);
+    deleted++;
+  }
+}
+
 const loopPauseThrottle = new Map<string, number>();
 const rateLimitCooldown = new Map<string, number>();
 const projectDetectThrottle = new Map<string, number>();
@@ -41,6 +54,15 @@ const browserRunGuard = new Map<
     sigCount: number;
   }
 >();
+
+// Periodic cleanup of all throttle maps (every 5 minutes)
+setInterval(() => {
+  pruneMap(loopPauseThrottle);
+  pruneMap(rateLimitCooldown);
+  pruneMap(projectDetectThrottle);
+  pruneMap(sessionProjectMap);
+  pruneMap(browserRunGuard);
+}, 5 * 60 * 1000);
 
 const BROWSER_RUN_MAX_PER_SESSION = 25;
 const BROWSER_RUN_MIN_INTERVAL_MS = 7000;

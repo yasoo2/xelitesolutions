@@ -171,7 +171,7 @@ export class AgentLoopService {
         let steps = 0;
         const runCfg = getSessionRunConfig(sessionId);
         const isPerpetual = runCfg?.kind === 'agent' || runCfg?.perpetual === true;
-        const MAX_STEPS = isPerpetual ? 500 : 10; // God-Mode: Increase budget for serious engineering
+        const MAX_STEPS = isPerpetual ? 50 : 10; // Reduced from 500 to prevent runaway loops
 
         // Circuit Breaker State (Wakil 4.1)
         let lastErrorHash: string | null = null;

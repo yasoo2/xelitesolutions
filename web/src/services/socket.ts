@@ -17,6 +17,7 @@ let _lastPreviewUrl = '';
 let quietMode = false;
 let lastSentPayload: string | null = null;
 let connectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 20; // Stop reconnecting after 20 attempts
 let lastUrl = '';
 let triedFallback = false;
 let cachedIsShim: boolean | null = null;
@@ -157,7 +158,15 @@ async function connect() {
   let urlToUse = (triedFallback || !fallbackUrl) ? primaryUrl : (connectAttempts > 0 ? fallbackUrl : primaryUrl);
   console.log('[Socket Debug] Initial URL:', urlToUse);
 
-  // Append Token
+  // Check max reconnection attempts
+  if (connectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.error(`[Socket] Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Giving up.`);
+    setStatus('error', 'max_reconnect_attempts_exceeded');
+    isConnecting = false;
+    return;
+  }
+
+  // Append Token via subprotocol header instead of URL query parameter for security
   const u = new URL(urlToUse);
   if (token) {
     u.searchParams.set('token', token);

@@ -4,17 +4,15 @@ dotenv.config();
 
 const isProd = process.env.NODE_ENV === 'production';
 
+// Allowed origins loaded from ALLOWED_ORIGINS env var in production.
+// Hardcoded IPs removed for security. Add server IPs via ALLOWED_ORIGINS env var.
 const allowedOriginsDefault = [
   'https://xelitesolutions.com',
   'https://www.xelitesolutions.com',
   'https://api.xelitesolutions.com',
   'https://ws.xelitesolutions.com',
   'https://browser.xelitesolutions.com',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://46.224.187.142',
-  'http://46.224.187.142:5173',
-  'http://46.224.187.142:3000',
+  ...(isProd ? [] : ['http://localhost:5173', 'http://localhost:5000', 'http://localhost:3000']),
 ];
 
 const defaultMongoUri = isProd ? 'mongodb://mongo:27017/joe' : 'mongodb://localhost:27017/joe';
@@ -34,11 +32,11 @@ const jwtSecret = (() => {
   if (envSecret && envSecret.trim()) return envSecret;
   if (isProd) {
     console.error(
-      'JWT_SECRET is not set. Generating ephemeral secret. Tokens will reset on restart. Set JWT_SECRET in .env for stable production.',
+      'CRITICAL: JWT_SECRET is not set in production! Refusing to use ephemeral secret. Set JWT_SECRET in .env.',
     );
-  } else {
-    console.warn('WARN: Using insecure generated JWT secret. Set JWT_SECRET in .env for production.');
+    throw new Error('JWT_SECRET must be set in production environment');
   }
+  console.warn('WARN: Using insecure generated JWT secret. Set JWT_SECRET in .env for production.');
   return require('crypto').randomBytes(32).toString('hex');
 })();
 
