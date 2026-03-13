@@ -239,9 +239,8 @@ export default function Joe() {
                 setIsLoading(false);
             }
 
-            // Reset GitHub repo focus if the agent builds a new local workspace
+            // Handle workspace root updates from the agent
             if (msg.type === 'workspace_updated') {
-                setActiveRepo(null);
                 // Also trigger an uncollapse to ensure the file explorer is visible
                 triggerUncollapse();
             }

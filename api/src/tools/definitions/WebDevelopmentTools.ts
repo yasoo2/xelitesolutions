@@ -132,9 +132,26 @@ export class WebPipelineTool extends BaseTool {
         steps.push({ step: 'scaffold_full_stack', ok: true, output: scRes.output });
         if (sessionId) broadcastThinkingDetail(sessionId, `✅ Scaffold complete at ${projectPath}`);
 
-        // CRITICAL FIX: Update workspace root to the new project path
-        // This ensures File Explorer shows the project files, not the old workspace
-        if (projectPath && workspaceId) {
+        let isGitHubWorkspace = false;
+        let activeRepo = undefined;
+        let wsOwnerId = undefined;
+        let repoRoot = undefined;
+        if (workspaceId) {
+            try {
+                const { workspaceService } = require('../../services/WorkspaceService');
+                const ws = await workspaceService.getWorkspace(workspaceId);
+                repoRoot = workspaceService.getActiveRoot();
+                if (ws?.kind === 'github' && ws?.integrations?.github?.activeRepo) {
+                    isGitHubWorkspace = true;
+                    activeRepo = ws.integrations.github.activeRepo;
+                    wsOwnerId = ws.ownerId?.toString();
+                }
+            } catch {}
+        }
+
+        // CRITICAL FIX: Update workspace root to the new project path ONLY if it's not a GitHub workspace.
+        // If it's a GitHub workspace, we want to maintain the repo container as the root.
+        if (projectPath && workspaceId && !isGitHubWorkspace) {
             try {
                 const { workspaceService } = require('../../services/WorkspaceService');
                 await workspaceService.setActiveRoot(projectPath, workspaceId);
@@ -143,11 +160,12 @@ export class WebPipelineTool extends BaseTool {
                 console.warn(`[Pipeline] Could not update workspace root: ${wsErr?.message}`);
             }
         }
+
         // Broadcast workspace_updated so frontend File Explorer refreshes
-        if (sessionId && projectPath) {
+        if (sessionId && (projectPath || repoRoot)) {
             broadcast({
                 type: 'workspace_updated',
-                data: { path: projectPath, name: path.basename(projectPath), timestamp: new Date().toISOString() },
+                data: { path: isGitHubWorkspace ? repoRoot : projectPath, name: path.basename(isGitHubWorkspace ? repoRoot || projectPath : projectPath), timestamp: new Date().toISOString() },
                 sessionId
             });
         }
@@ -277,58 +295,57 @@ export class WebPipelineTool extends BaseTool {
         } catch { }
 
         // 5.5 Auto-Git Sync
-        if (workspaceId) {
+        if (isGitHubWorkspace && activeRepo && repoRoot) {
             try {
-                const { workspaceService } = require('../../services/WorkspaceService');
-                const ws = await workspaceService.getWorkspaceById(workspaceId);
-                const activeRepo = ws?.integrations?.github?.activeRepo;
+                if (sessionId) broadcastThinkingDetail(sessionId, `🐙 Securing and pushing code to GitHub (${activeRepo})...`);
+                broadcastBuildProgress(sessionId, 'github', '🐙 Syncing to GitHub...', 85);
                 
-                if (activeRepo) {
-                    if (sessionId) broadcastThinkingDetail(sessionId, `🐙 Securing and pushing code to GitHub (${activeRepo})...`);
-                    broadcastBuildProgress(sessionId, 'github', '🐙 Syncing to GitHub...', 85);
-                    
-                    // Helper to execute and throw on error
-                    const runGitOp = async (op: string, args: string[] = []) => {
-                        const res = await executeTool('git_ops', { operation: op, args, cwd: projectPath, sessionId, userId: ws.ownerId?.toString() }, { sessionId, workspaceId });
-                        if (!res.ok) throw new Error(`Git ${op} failed: ${res.error}`);
-                        return res;
-                    };
+                // Helper to execute
+                const runGitOp = async (op: string, args: string[] = []) => {
+                    const res = await executeTool('git_ops', { operation: op, args, cwd: repoRoot, sessionId, userId: wsOwnerId }, { sessionId, workspaceId });
+                    return res;
+                };
 
-                    // 1. Init
-                    await runGitOp('init');
-                    
-                    // 2. Add
-                    await runGitOp('add', ['.']);
-                    
-                    // 3. Commit
-                    await runGitOp('commit', ['-m', 'Initial commit by Joe AI']);
-                    
-                    // 4. Branch
-                    await runGitOp('branch', ['-M', 'main']);
-                    
-                    // 5. Remote (Use generic HTTPS URL, git_ops handles auth via ASKPASS)
-                    await runGitOp('remote', ['add', 'origin', `https://github.com/${activeRepo}.git`]);
-                    
-                    // 6. Securely push using GitOpsTool
-                    const pushRes = await executeTool('git_ops', {
-                        operation: 'push',
-                        args: ['-u', 'origin', 'main'],
-                        cwd: projectPath,
-                        sessionId,
-                        userId: ws.ownerId?.toString()
-                    }, { sessionId, workspaceId });
-                    
-                    if (pushRes.ok) {
-                        if (sessionId) broadcastThinkingDetail(sessionId, `✅ Successfully pushed to GitHub`);
-                        steps.push({ step: 'github_sync', ok: true, output: { repo: activeRepo } });
-                    } else {
-                        if (sessionId) broadcastThinkingDetail(sessionId, `⚠️ GitHub push failed: ${pushRes.error}`);
-                        steps.push({ step: 'github_sync', ok: false, error: pushRes.error });
-                    }
+                // Because it's already a cloned github repo, we just add, commit, and push from repo root.
+                await runGitOp('add', ['.']);
+                await runGitOp('commit', ['-m', `Scaffolded project ${name} by Joe AI`]);
+                
+                // Securely push using GitOpsTool
+                const pushRes = await executeTool('git_ops', {
+                    operation: 'push',
+                    args: ['origin', 'main'], 
+                    cwd: repoRoot,
+                    sessionId,
+                    userId: wsOwnerId
+                }, { sessionId, workspaceId });
+                
+                if (pushRes.ok) {
+                    if (sessionId) broadcastThinkingDetail(sessionId, `✅ Successfully pushed to GitHub`);
+                    steps.push({ step: 'github_sync', ok: true, output: { repo: activeRepo } });
+                } else {
+                    if (sessionId) broadcastThinkingDetail(sessionId, `⚠️ GitHub push failed: ${pushRes.error}`);
+                    steps.push({ step: 'github_sync', ok: false, error: pushRes.error });
                 }
             } catch (err: any) {
                 if (sessionId) broadcastThinkingDetail(sessionId, `⚠️ GitHub sync error: ${err.message}`);
                 steps.push({ step: 'github_sync', ok: false, error: err.message });
+            }
+        } else if (workspaceId) {
+            try {
+                if (sessionId) broadcastThinkingDetail(sessionId, `🐙 Initializing local git repository...`);
+                // Original local-only git init
+                const runGitOp = async (op: string, args: string[] = []) => {
+                    const res = await executeTool('git_ops', { operation: op, args, cwd: projectPath, sessionId }, { sessionId, workspaceId });
+                    if (!res.ok) throw new Error(`Git ${op} failed: ${res.error}`);
+                    return res;
+                };
+                
+                await runGitOp('init');
+                await runGitOp('add', ['.']);
+                await runGitOp('commit', ['-m', `Initial commit by Joe AI for ${name}`]);
+            } catch (err: any) {
+                console.warn(`Local git init failed: ${err.message}`);
+                if (sessionId) broadcastThinkingDetail(sessionId, `⚠️ Local Git Init error: ${err.message}`);
             }
         }
 
