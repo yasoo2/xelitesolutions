@@ -10,6 +10,11 @@ export interface AuthPayload {
   email?: string;
 }
 
+/** Typed request with auth payload — use instead of (req as any).auth */
+export interface AuthenticatedRequest extends Request {
+  auth?: AuthPayload;
+}
+
 export function authenticate(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
 
@@ -18,7 +23,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     const token = header.slice('Bearer '.length);
     try {
       const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
-      (req as any).auth = payload;
+      (req as AuthenticatedRequest).auth = payload;
       return next();
     } catch {
       // Token invalid — fall through to bypass check
@@ -28,7 +33,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
   // FALLBACK: Only allow bypass in non-production environments
   if (isDev && process.env.ENABLE_AUTH_BYPASS === 'true') {
     console.warn('[AUTH] ⚠️ Auth bypass active (dev mode only). Do NOT use in production.');
-    (req as any).auth = { sub: '000000000000000000000001', role: 'OWNER' };
+    (req as AuthenticatedRequest).auth = { sub: '000000000000000000000001', role: 'OWNER' };
     return next();
   }
 
@@ -37,7 +42,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 
 export function authenticateOptional(req: Request, res: Response, next: NextFunction) {
   if (isDev && process.env.ENABLE_AUTH_BYPASS === 'true') {
-    (req as any).auth = { sub: '000000000000000000000001', role: 'OWNER' };
+    (req as AuthenticatedRequest).auth = { sub: '000000000000000000000001', role: 'OWNER' };
     return next();
   }
 
@@ -48,7 +53,7 @@ export function authenticateOptional(req: Request, res: Response, next: NextFunc
   const token = header.slice('Bearer '.length);
   try {
     const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
-    (req as any).auth = payload;
+    (req as AuthenticatedRequest).auth = payload;
     return next();
   } catch {
     return res.status(401).json({ error: 'Invalid token' });
@@ -61,7 +66,7 @@ const SUPER_ADMIN_EMAILS: string[] = (() => {
 })();
 
 export function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
-  const auth = (req as any).auth as AuthPayload;
+  const auth = (req as AuthenticatedRequest).auth;
   const email = auth?.email?.toLowerCase().trim() || '';
   const role = auth?.role;
 
