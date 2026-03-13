@@ -178,10 +178,12 @@ export async function createSession(sessionId: string) {
   /* MODIFIED: Logging and Fallback */
   let wsEndpoint = process.env.BROWSER_WS_ENDPOINT || '';
 
-  try {
-    const logPath = path.join(__dirname, '../stream_debug.log');
-    fs.appendFileSync(logPath, `[createSession] Env WS: '${wsEndpoint}'\n`);
-  } catch (e) { }
+  if (process.env.BROWSER_DEBUG_LOG === 'true') {
+    try {
+      const logPath = path.join(__dirname, '../stream_debug.log');
+      fs.appendFileSync(logPath, `[createSession] Env WS: '${wsEndpoint}'\n`);
+    } catch { }
+  }
 
   if (!wsEndpoint) {
     // No WS endpoint provided, will attempt local launch
@@ -207,15 +209,15 @@ export async function createSession(sessionId: string) {
           headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : undefined
         });
         /* MODIFIED: Log success */
-        try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Connected to ${wsEndpoint}\n`); } catch { }
+        if (process.env.BROWSER_DEBUG_LOG === 'true') { try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Connected to ${wsEndpoint}\n`); } catch { } }
       } catch (e) {
         attempt++;
         if (attempt >= maxRetries) {
-          try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Failed to connect after ${maxRetries} attempts\n`); } catch { }
+          if (process.env.BROWSER_DEBUG_LOG === 'true') { try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Failed to connect after ${maxRetries} attempts\n`); } catch { } }
           throw e; // Final failure
         }
         const delay = Math.min(1000 * Math.pow(2, attempt), 10000); // Exponential backoff max 10s
-        try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Connection failed, retrying in ${delay}ms (Attempt ${attempt}/${maxRetries})\n`); } catch { }
+        if (process.env.BROWSER_DEBUG_LOG === 'true') { try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Connection failed, retrying in ${delay}ms (Attempt ${attempt}/${maxRetries})\n`); } catch { } }
         await new Promise(r => setTimeout(r, delay));
       }
     }
@@ -253,7 +255,7 @@ export async function createSession(sessionId: string) {
     const { stealth } = require('playwright-stealth');
     await stealth(context);
   } catch (e) {
-    try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Stealth plugin failed: ${String(e)}\n`); } catch { }
+    if (process.env.BROWSER_DEBUG_LOG === 'true') { try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Stealth plugin failed: ${String(e)}\n`); } catch { } }
   }
 
   context.setDefaultNavigationTimeout(cfg.navTimeoutMs);
@@ -364,12 +366,15 @@ export function startStreaming(sessionId: string) {
           mask: s.maskLocators.length ? s.maskLocators : undefined,
         });
 
-        // DEBUG LOGGING
-        try {
-          const logPath = path.join(__dirname, '../stream_debug.log');
-          const msg = `[${new Date().toISOString()}] SID=${sid} Streaming Loop. Buf? ${!!buf} Len=${buf?.length}\n`;
-          fs.appendFileSync(logPath, msg);
-        } catch (e) { }
+        // Debug logging disabled in production to avoid excessive disk I/O
+        // Enable via BROWSER_DEBUG_LOG=true for troubleshooting
+        if (process.env.BROWSER_DEBUG_LOG === 'true') {
+          try {
+            const logPath = path.join(__dirname, '../stream_debug.log');
+            const msg = `[${new Date().toISOString()}] SID=${sid} Streaming Loop. Buf? ${!!buf} Len=${buf?.length}\n`;
+            fs.appendFileSync(logPath, msg);
+          } catch { }
+        }
 
         if (!buf) return;
         broadcastBrowserEvent(sid, {

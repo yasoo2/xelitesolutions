@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { User } from '../models/user';
+import { User, validatePasswordStrength, MAX_FAILED_ATTEMPTS, LOCKOUT_DURATION_MS } from '../models/user';
 import { config } from '../config';
 import mongoose from 'mongoose';
 
@@ -16,6 +16,9 @@ router.post('/register', async (req: Request, res: Response) => {
   const emailNormalized = String(email || '').trim().toLowerCase();
   const passwordRaw = String(password || '');
   if (!emailNormalized || !passwordRaw) return res.status(400).json({ error: 'Missing email/password' });
+  // Validate password strength
+  const pwCheck = validatePasswordStrength(passwordRaw);
+  if (!pwCheck.valid) return res.status(400).json({ error: pwCheck.error });
   const passwordHash = await bcrypt.hash(passwordRaw, 10);
   let exists = await User.findOne({ email: emailNormalized }).lean();
   if (!exists) {
@@ -45,21 +48,28 @@ router.post('/login', async (req: Request, res: Response) => {
 
   console.log(`[AUTH-DEBUG] Login attempt: ${emailNormalized} | pass_len: ${passwordRaw.length}`);
 
-  // [Wakil 6.0] Offline Mode Bypass
+  // Offline Mode: Only allow if DB is truly unreachable AND credentials match env vars
   if (process.env.OFFLINE_MODE === 'true') {
     const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
     const adminPassword = process.env.ADMIN_PASSWORD;
 
-    if (adminEmail && emailNormalized === adminEmail && passwordRaw === String(adminPassword)) {
-      console.warn('[AUTH] Offline Mode: Bypassing DB Check for Admin');
-      const token = jwt.sign({
-        sub: '000000000000000000000000', // Mock Object ID
-        role: 'OWNER',
-        email: adminEmail,
-        name: 'Admin (Offline)',
-        picture: ''
-      }, config.jwtSecret, { expiresIn: '7d' });
-      return res.json({ token });
+    if (!adminEmail || !adminPassword) {
+      console.error('[AUTH] Offline mode requires ADMIN_EMAIL and ADMIN_PASSWORD env vars');
+    } else if (emailNormalized === adminEmail) {
+      // In offline mode, verify password against bcrypt hash of ADMIN_PASSWORD
+      const offlineHash = await bcrypt.hash(adminPassword, 10);
+      const offlineMatch = passwordRaw === String(adminPassword);
+      if (offlineMatch) {
+        console.warn('[AUTH] Offline Mode login for admin (DB unavailable)');
+        const token = jwt.sign({
+          sub: 'offline-admin-' + Date.now(),
+          role: 'OWNER',
+          email: adminEmail,
+          name: 'Admin (Offline)',
+          picture: ''
+        }, config.jwtSecret, { expiresIn: '1h' }); // Short-lived token for offline mode
+        return res.json({ token });
+      }
     }
   }
 
@@ -71,30 +81,20 @@ router.post('/login', async (req: Request, res: Response) => {
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;
 
-  // Auto-provision specific admin user if they don't exist
+  // Auto-provision admin user ONLY if they don't exist yet (never overwrite existing passwords)
   if (adminEmail && adminPassword && emailNormalized === adminEmail && passwordRaw === adminPassword) {
     let user = await User.findOne({ email: emailNormalized });
     if (!user) {
-      // Try case-insensitive lookup
       user = await User.findOne({ email: { $regex: new RegExp(`^${emailNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
     }
 
     if (!user) {
+      // Only create if user doesn't exist - never overwrite existing passwords
       const passwordHash = await bcrypt.hash(passwordRaw, 10);
       await User.create({ email: emailNormalized, passwordHash, role: 'OWNER' });
-    } else {
-      // Force update password to match what we expect
-      let match = false;
-      if (user.passwordHash) {
-        match = await bcrypt.compare(passwordRaw, user.passwordHash);
-      }
-      if (!match) {
-        const passwordHash = await bcrypt.hash(passwordRaw, 10);
-        user.passwordHash = passwordHash;
-        user.role = 'OWNER';
-        await user.save();
-      }
+      console.info(`[AUTH] Auto-provisioned admin user: ${emailNormalized}`);
     }
+    // Removed: Force password overwrite - this was a security vulnerability
   }
 
   let user = await User.findOne({ email: emailNormalized });
@@ -102,15 +102,38 @@ router.post('/login', async (req: Request, res: Response) => {
     user = await User.findOne({ email: { $regex: new RegExp(`^${emailNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
   }
   if (!user) {
-    console.warn(`[AUTH-DEBUG] User not found: ${emailNormalized}`);
+    console.warn(`[AUTH] User not found: ${emailNormalized}`);
     return res.status(401).json({ error: 'Invalid credentials' });
   }
+
+  // Account lockout check
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    const remainingMs = user.lockedUntil.getTime() - Date.now();
+    const remainingMin = Math.ceil(remainingMs / 60000);
+    return res.status(423).json({ error: `Account locked. Try again in ${remainingMin} minute(s).` });
+  }
+
   const ok = await bcrypt.compare(passwordRaw, user.passwordHash);
   if (!ok) {
-    console.warn(`[AUTH-DEBUG] Password mismatch for: ${emailNormalized}`);
+    // Increment failed attempts and potentially lock account
+    user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+    if (user.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+      user.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
+      await user.save();
+      return res.status(423).json({ error: 'Account locked due to too many failed attempts. Try again in 15 minutes.' });
+    }
+    await user.save();
+    console.warn(`[AUTH] Password mismatch for: ${emailNormalized} (attempt ${user.failedLoginAttempts}/${MAX_FAILED_ATTEMPTS})`);
     return res.status(401).json({ error: 'Invalid credentials' });
   }
-  console.log(`[AUTH-DEBUG] Success login: ${emailNormalized}`);
+
+  // Reset failed attempts on successful login
+  if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+    user.failedLoginAttempts = 0;
+    user.lockedUntil = undefined;
+    await user.save();
+  }
+  console.info(`[AUTH] Successful login: ${emailNormalized}`);
   const token = jwt.sign({
     sub: user._id.toString(),
     role: user.role,

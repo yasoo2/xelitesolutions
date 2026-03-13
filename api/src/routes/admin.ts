@@ -79,9 +79,15 @@ router.post('/autodeploy/toggle', async (req, res) => {
     }
 });
 
+// Safe container listing - uses fixed command, no user input in shell
 router.get('/system/containers', async (req, res) => {
     try {
-        const output = execSync('docker ps --format "{{json .}}"').toString();
+        // Fixed command string - never interpolate user input into shell commands
+        const output = execSync('docker ps --format "{{json .}}"', {
+            timeout: 10000,
+            encoding: 'utf8',
+            env: { ...process.env, PATH: process.env.PATH },
+        });
         const containers = output.trim().split('\n').map(l => {
             if (!l) return null;
             try { return JSON.parse(l); } catch { return null; }
@@ -89,7 +95,7 @@ router.get('/system/containers', async (req, res) => {
         res.json(containers);
     } catch (e: any) {
         logger.error(`[AdminAPI] Failed to fetch containers: ${e.message}`);
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: 'Failed to list containers' });
     }
 });
 
@@ -196,7 +202,7 @@ import path from 'path';
 
 router.get('/system/backups', async (req, res) => {
     try {
-        const backupDir = '/root/xelitesolutions/backups';
+        const backupDir = process.env.BACKUP_DIR || path.join(process.cwd(), 'backups');
         if (!fs.existsSync(backupDir)) {
             return res.json({ backups: [], message: 'No backups found' });
         }
@@ -220,7 +226,8 @@ router.get('/system/backups', async (req, res) => {
 router.post('/system/backup', async (req, res) => {
     try {
         const { spawn } = require('child_process');
-        const child = spawn('bash', ['/app/scripts/backup.sh'], { cwd: '/root/xelitesolutions' });
+        const backupScript = path.join(process.cwd(), 'scripts', 'backup.sh');
+        const child = spawn('bash', [backupScript], { cwd: process.cwd() });
         let output = '';
         child.stdout.on('data', (d: Buffer) => output += d.toString());
         child.stderr.on('data', (d: Buffer) => output += d.toString());

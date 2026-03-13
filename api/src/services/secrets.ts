@@ -39,8 +39,15 @@ function nowMs() {
 }
 
 function getMasterKeyBytes(): Buffer | null {
-  const raw = String(process.env.SECRETS_MASTER_KEY || process.env.JWT_SECRET || '').trim();
-  if (!raw) return null;
+  // Use a dedicated SECRETS_MASTER_KEY, separate from JWT_SECRET
+  const raw = String(process.env.SECRETS_MASTER_KEY || '').trim();
+  if (!raw) {
+    // Fallback: derive from JWT_SECRET with a domain separator so they're not identical
+    const jwt = String(process.env.JWT_SECRET || '').trim();
+    if (!jwt) return null;
+    const crypto = require('crypto') as typeof import('crypto');
+    return crypto.createHash('sha256').update(`secrets-encryption:${jwt}`, 'utf8').digest();
+  }
   const crypto = require('crypto') as typeof import('crypto');
   return crypto.createHash('sha256').update(raw, 'utf8').digest();
 }

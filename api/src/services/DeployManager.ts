@@ -10,6 +10,12 @@ import shadow from 'fs';
 const fs = shadow.promises;
 const STABLE_COMMIT_FILE = './last_stable_commit';
 
+// Configurable project root - no more hardcoded /root/xelitesolutions
+const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
+const API_DIR = process.env.API_DIR || `${PROJECT_ROOT}/api`;
+const WEB_DIR = process.env.WEB_DIR || `${PROJECT_ROOT}/web`;
+const POLL_INTERVAL_MS = Math.max(10000, Number(process.env.DEPLOY_POLL_INTERVAL_MS) || 60000); // Default 60s, min 10s
+
 export class DeployManager {
     private static instance: DeployManager;
     private currentDeploymentId: string | null = null;
@@ -31,7 +37,7 @@ export class DeployManager {
         // Start flush interval
         this.flushInterval = setInterval(() => this.flushLogs(), 2000);
         this.repairZombieDeployments().catch(e => logger.error(`[DeployManager] Failed to repair zombie deployments: ${e.message}`));
-        // Start auto-deploy poller (checks every 30s for new commits)
+        // Start auto-deploy poller (configurable interval, default 60s)
         this.startAutoDeployPoller();
         logger.info(`[DeployManager] Instance created. Auto-deploy poller initializing...`);
     }
@@ -144,7 +150,7 @@ export class DeployManager {
 
         try {
             // 0. Ensure git safety (dubious ownership fix)
-            await this.runCommand('git', ['config', '--global', '--add', 'safe.directory', '/root/xelitesolutions'], id, 30000);
+            await this.runCommand('git', ['config', '--global', '--add', 'safe.directory', PROJECT_ROOT], id, 30000);
 
             // 1. Clean old dist/ (prevents stale files from being served)
             await this.runCommand('rm', ['-rf', 'web/dist'], id, 10000);
@@ -177,8 +183,8 @@ export class DeployManager {
             // 3b. Rebuild API on host (npm run build)
             this.appendLog(id, `\n[SYSTEM] Rebuilding API on host...`);
             try {
-                await this.runCommandInDir('npm install --no-audit --no-fund --maxsockets=3', '/root/xelitesolutions/api', id, 120000);
-                await this.runCommandInDir('npm run build', '/root/xelitesolutions/api', id, 120000);
+                await this.runCommandInDir('npm install --no-audit --no-fund --maxsockets=3', API_DIR, id, 120000);
+                await this.runCommandInDir('npm run build', API_DIR, id, 120000);
                 this.appendLog(id, `[BUILD] API rebuilt successfully.`);
             } catch (apiErr: any) {
                 this.appendLog(id, `[ERROR] API build failed: ${apiErr.message}`);
@@ -191,8 +197,9 @@ export class DeployManager {
                 execSync('pkill -f "node dist/index.js" || true', { timeout: 5000 });
                 // Small delay to let the process die
                 await new Promise(r => setTimeout(r, 2000));
-                execSync('nohup bash /root/start_api.sh > /tmp/api_deploy.log 2>&1 &', {
-                    cwd: '/root/xelitesolutions',
+                const startScript = process.env.API_START_SCRIPT || `${PROJECT_ROOT}/start_api.sh`;
+                execSync(`nohup bash ${startScript} > /tmp/api_deploy.log 2>&1 &`, {
+                    cwd: PROJECT_ROOT,
                     timeout: 5000
                 });
                 this.appendLog(id, `[SYSTEM] API process restarted.`);
@@ -278,9 +285,9 @@ export class DeployManager {
         this.appendLog(deploymentId, `\n[BUILD] Building web frontend...`);
         try {
             // Install dependencies
-            await this.runCommandInDir('npm install --omit=dev', '/root/xelitesolutions/web', deploymentId, 120000);
+            await this.runCommandInDir('npm install --omit=dev', WEB_DIR, deploymentId, 120000);
             // Build dist/
-            await this.runCommandInDir('npx vite build', '/root/xelitesolutions/web', deploymentId, 180000);
+            await this.runCommandInDir('npx vite build', WEB_DIR, deploymentId, 180000);
             this.appendLog(deploymentId, `[BUILD] Web frontend built successfully.`);
         } catch (err: any) {
             this.appendLog(deploymentId, `[BUILD] Web frontend build failed: ${err.message}`);
@@ -342,15 +349,15 @@ export class DeployManager {
             // CRITICAL: Fix git dubious ownership before ANY git command
             // The mounted volume /root/xelitesolutions has different ownership than container process
             try {
-                execSync('git config --global --add safe.directory /root/xelitesolutions', { timeout: 5000 });
-                logger.info(`[AutoDeploy] Git safe.directory configured for /root/xelitesolutions`);
+                execSync(`git config --global --add safe.directory ${PROJECT_ROOT}`, { timeout: 5000 });
+                logger.info(`[AutoDeploy] Git safe.directory configured for ${PROJECT_ROOT}`);
             } catch (e: any) {
                 logger.warn(`[AutoDeploy] Failed to set safe.directory (may already be set): ${e.message}`);
             }
 
             // Get initial commit hash
             try {
-                const localCommit = execSync('git rev-parse HEAD', { cwd: '/root/xelitesolutions' }).toString().trim();
+                const localCommit = execSync('git rev-parse HEAD', { cwd: PROJECT_ROOT }).toString().trim();
                 this.lastKnownCommit = localCommit;
                 this.lastLocalCommit = localCommit;
                 this.pollerActive = true;
@@ -376,7 +383,7 @@ export class DeployManager {
             }
 
             // Poll every 30 seconds
-            this.pollerInterval = setInterval(() => this.checkForNewCommits(), 30000);
+            this.pollerInterval = setInterval(() => this.checkForNewCommits(), POLL_INTERVAL_MS);
         }, 15000);
     }
 
@@ -395,10 +402,10 @@ export class DeployManager {
 
         try {
             // Fetch latest from remote
-            execSync('git fetch origin main --quiet', { cwd: '/root/xelitesolutions', timeout: 15000 });
+            execSync('git fetch origin main --quiet', { cwd: PROJECT_ROOT, timeout: 15000 });
 
-            const localCommit = execSync('git rev-parse HEAD', { cwd: '/root/xelitesolutions' }).toString().trim();
-            const remoteCommit = execSync('git rev-parse origin/main', { cwd: '/root/xelitesolutions' }).toString().trim();
+            const localCommit = execSync('git rev-parse HEAD', { cwd: PROJECT_ROOT }).toString().trim();
+            const remoteCommit = execSync('git rev-parse origin/main', { cwd: PROJECT_ROOT }).toString().trim();
 
             this.lastLocalCommit = localCommit;
             this.lastRemoteCommit = remoteCommit;
@@ -466,7 +473,7 @@ export class DeployManager {
             const fullCmd = args.length > 0 ? `${cmd} ${args.join(' ')}` : cmd;
 
             const child = spawn(fullCmd, {
-                cwd: '/root/xelitesolutions',
+                cwd: PROJECT_ROOT,
                 shell: true,
                 detached: true
             });
@@ -665,7 +672,7 @@ export class DeployManager {
             lastLocalCommit: this.lastLocalCommit?.slice(0, 7) || null,
             lastRemoteCommit: this.lastRemoteCommit?.slice(0, 7) || null,
             isDeploying: !!this.currentDeploymentId,
-            intervalMs: 30000,
+            intervalMs: POLL_INTERVAL_MS,
         };
     }
 
