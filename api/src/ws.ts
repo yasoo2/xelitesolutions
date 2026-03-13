@@ -10,6 +10,7 @@ import { ServerConfigModel } from './models/ServerConfigModel';
 let liveWssRef: WebSocketServer | null = null;
 let browserWssRef: WebSocketServer | null = null;
 let liveSeq = 0;
+let thinkingEventSeq = 0; // Unique counter for thinking events to avoid dedup collisions
 
 type OwnerEntry = { userId: string; at: number };
 const runOwnerByRunId = new Map<string, OwnerEntry>();
@@ -330,20 +331,22 @@ export function broadcast(
 
 // [Wakil 6.0] Helper to broadcast thinking phase updates
 export function broadcastThinkingPhase(sessionId: string, phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle', detail?: string) {
+  thinkingEventSeq += 1;
   broadcast({
     type: 'thinking_phase',
     data: { phase, detail, sessionId }, // Include sessionId in data for resolveEventUserId
-    id: sessionId,
+    id: `tp_${sessionId}_${thinkingEventSeq}`, // Unique ID per event to avoid dedup
     sessionId: sessionId, // Also include at top level for LiveEvent interface
     ts: Date.now()
   });
 }
 
 export function broadcastThinkingDetail(sessionId: string, detail: string) {
+  thinkingEventSeq += 1;
   broadcast({
     type: 'thinking_detail',
     data: { detail, sessionId }, // Include sessionId in data for resolveEventUserId
-    id: sessionId,
+    id: `td_${sessionId}_${thinkingEventSeq}`, // Unique ID per event to avoid dedup
     sessionId: sessionId, // Also include at top level for LiveEvent interface
     ts: Date.now()
   });
