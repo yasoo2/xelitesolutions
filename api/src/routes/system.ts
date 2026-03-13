@@ -7,7 +7,7 @@ const monitor = new MonitoringTool(); // Use instance to access static metrics
 router.get('/metrics', async (req, res) => {
     try {
         const result = await monitor.execute({ action: 'get_metrics' });
-        res.json(result.output?.metrics || {});
+        res.json((result as any).output?.metrics || {});
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

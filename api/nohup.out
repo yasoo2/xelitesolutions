@@ -1,0 +1,1681 @@
+[dotenv@17.3.1] injecting env (17) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+[Config] NODE_ENV: development
+[Config] MONGO_URI (Source): ENV
+[Config] Resolved MONGO_URI: mongodb://127.0.0.1:27018/joe
+[Gemini] Provider initialized with API key
+[DeepSeek] No API key found. Operating in FREE MODE via Pollinations Proxy.
+[OpenAI] Provider initialized with API key
+[Optimizer] Loading cache from: /Users/younissowadi/.smart_reflex_cache.json
+[Optimizer] Cache loaded: 733 entries.
+[Optimizer V2] 🚀 Turbo Mode Active: 0 chunks loaded.
+LLM: OpenAI API Key configured from environment.
+[VectorDB] Loaded 231 documents from memory.
+[32minfo[39m: [DeployManager] Instance created. Auto-deploy poller initializing... {"timestamp":"2026-03-13T00:46:59.057Z"}
+DEBUG: Modules imported. Calling main...
+🚀 API GLOBAL STARTUP INITIATED...
+DEBUG: Node Version: v22.20.0
+DEBUG: Current Directory: /Users/younissowadi/xelitesolutions-1/api
+DEBUG: NODE_ENV: development
+DEBUG: PORT: 5001
+DEBUG: express app instantiating...
+[2026-03-13 03:46:59.560 +0300] [32mINFO[39m (82741): [36mServing static frontend files from web/dist[39m
+    [35mpath[39m: "/Users/younissowadi/xelitesolutions-1/web/dist"
+[2026-03-13 03:46:59.575 +0300] [32mINFO[39m (82741): [36mAttempting MongoDB connection...[39m
+    [35muri[39m: "mongodb://127.0.0.1:27018/joe"
+[2026-03-13 03:47:01.156 +0300] [31mERROR[39m (82741): [36mUncaught Exception[39m
+    err: {
+      "type": "Error",
+      "message": "listen EADDRINUSE: address already in use 0.0.0.0:5001",
+      "stack":
+          Error: listen EADDRINUSE: address already in use 0.0.0.0:5001
+              at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+              at listenInCluster (node:net:1997:12)
+              at node:net:2206:7
+              at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+      "code": "EADDRINUSE",
+      "errno": -48,
+      "syscall": "listen",
+      "address": "0.0.0.0",
+      "port": 5001
+    }
+[2026-03-13 03:47:05.572 +0300] [33mWARN[39m (82741): [36mMongoDB connection failed (Attempt 1), retrying in 2s...[39m
+    err: {
+      "type": "MongooseServerSelectionError",
+      "message": "connect ECONNREFUSED 127.0.0.1:27018",
+      "stack":
+          MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27018
+              at _handleConnectionErrors (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1169:11)
+              at NativeConnection.openUri (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1100:11)
+              at async connectWithRetry (/Users/younissowadi/xelitesolutions-1/api/dist/index.js:33732:9)
+      "errorLabelSet": {},
+      "reason": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 108343662,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      },
+      "cause": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 108343662,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      }
+    }
+[2026-03-13 03:47:07.611 +0300] [32mINFO[39m (82741): [36mAttempting MongoDB connection...[39m
+    [35muri[39m: "mongodb://127.0.0.1:27018/joe"
+[2026-03-13 03:47:12.825 +0300] [33mWARN[39m (82741): [36mMongoDB connection failed (Attempt 2), retrying in 2s...[39m
+    err: {
+      "type": "MongooseServerSelectionError",
+      "message": "connect ECONNREFUSED 127.0.0.1:27018",
+      "stack":
+          MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27018
+              at _handleConnectionErrors (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1169:11)
+              at NativeConnection.openUri (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1100:11)
+              at async connectWithRetry (/Users/younissowadi/xelitesolutions-1/api/dist/index.js:33732:9)
+      "errorLabelSet": {},
+      "reason": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 108350839,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      },
+      "cause": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 108350839,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      }
+    }
+[32minfo[39m: [AutoDeploy] Git safe.directory configured for /root/xelitesolutions {"timestamp":"2026-03-13T00:47:15.073Z"}
+[31merror[39m: [AutoDeploy] ❌ Failed to start poller: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:47:15.077Z"}
+[WS] Broadcast type=admin:autodeploy_status target=ALL clients=0
+[2026-03-13 03:47:15.080 +0300] [32mINFO[39m (82741): [36mAttempting MongoDB connection...[39m
+    [35muri[39m: "mongodb://127.0.0.1:27018/joe"
+[2026-03-13 03:47:20.140 +0300] [33mWARN[39m (82741): [36mMongoDB connection failed (Attempt 3), retrying in 2s...[39m
+    err: {
+      "type": "MongooseServerSelectionError",
+      "message": "connect ECONNREFUSED 127.0.0.1:27018",
+      "stack":
+          MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27018
+              at _handleConnectionErrors (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1169:11)
+              at NativeConnection.openUri (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1100:11)
+              at async connectWithRetry (/Users/younissowadi/xelitesolutions-1/api/dist/index.js:33732:9)
+      "errorLabelSet": {},
+      "reason": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 108357996,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      },
+      "cause": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 108357996,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      }
+    }
+[2026-03-13 03:47:22.264 +0300] [32mINFO[39m (82741): [36mAttempting MongoDB connection...[39m
+    [35muri[39m: "mongodb://127.0.0.1:27018/joe"
+[2026-03-13 03:47:27.296 +0300] [33mWARN[39m (82741): [36mMongoDB connection failed (Attempt 4), retrying in 2s...[39m
+    err: {
+      "type": "MongooseServerSelectionError",
+      "message": "connect ECONNREFUSED 127.0.0.1:27018",
+      "stack":
+          MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27018
+              at _handleConnectionErrors (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1169:11)
+              at NativeConnection.openUri (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1100:11)
+              at async connectWithRetry (/Users/younissowadi/xelitesolutions-1/api/dist/index.js:33732:9)
+      "errorLabelSet": {},
+      "reason": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 108365011,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      },
+      "cause": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 108365011,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      }
+    }
+[2026-03-13 03:47:29.297 +0300] [32mINFO[39m (82741): [36mAttempting MongoDB connection...[39m
+    [35muri[39m: "mongodb://127.0.0.1:27018/joe"
+[31merror[39m: [DeployManager] DB not ready after 30s. Skipping repair. {"timestamp":"2026-03-13T00:47:31.345Z"}
+[2026-03-13 03:47:34.307 +0300] [33mWARN[39m (82741): [36mMongoDB connection failed (Attempt 5), retrying in 2s...[39m
+    err: {
+      "type": "MongooseServerSelectionError",
+      "message": "connect ECONNREFUSED 127.0.0.1:27018",
+      "stack":
+          MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27018
+              at _handleConnectionErrors (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1169:11)
+              at NativeConnection.openUri (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1100:11)
+              at async connectWithRetry (/Users/younissowadi/xelitesolutions-1/api/dist/index.js:33732:9)
+      "errorLabelSet": {},
+      "reason": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 108371994,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      },
+      "cause": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 108371994,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      }
+    }
+[2026-03-13 03:47:34.308 +0300] [33mWARN[39m (82741): [36m⚠️ MongoDB unavailable - API running in OFFLINE mode (LLM-only features available)[39m
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #1 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:47:45.108Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #2 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:48:15.086Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #3 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:48:45.094Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #4 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:49:15.112Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #5 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:49:45.104Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #6 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:50:15.146Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #7 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:50:45.271Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #8 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:51:15.150Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #9 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:51:45.225Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #10 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:52:15.155Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #11 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:52:45.158Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #12 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:53:15.172Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #13 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:53:45.195Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #14 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:54:15.188Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #15 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:54:45.184Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #16 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:55:15.187Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #17 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:55:45.199Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #18 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:56:15.196Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #19 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:56:45.192Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #20 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:57:15.198Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #21 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:57:45.194Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #22 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:58:15.202Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #23 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:58:45.203Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #24 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:59:15.209Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #25 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T00:59:45.214Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #26 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:00:15.230Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #27 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:00:45.236Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #28 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:01:15.264Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #29 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:01:45.256Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #30 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:02:15.281Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #31 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:02:45.265Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #32 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:03:15.318Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #33 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:03:45.276Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #34 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:04:15.273Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #35 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:04:45.277Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #36 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:05:15.299Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #37 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:05:45.284Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #38 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:06:15.289Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #39 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:06:45.290Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #40 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:07:15.294Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #41 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:07:45.301Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #42 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:08:15.310Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #43 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:08:45.304Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #44 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:09:15.307Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #45 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:09:45.321Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #46 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:10:15.336Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #47 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:10:45.367Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #48 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:11:15.366Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #49 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:11:45.428Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #50 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:12:15.363Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #51 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:12:45.409Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #52 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:13:15.391Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #53 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:13:45.374Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #54 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:14:15.374Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #55 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:14:45.424Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #56 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:15:15.467Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #57 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:15:45.439Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #58 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:16:15.438Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #59 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:16:45.439Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #60 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:17:15.449Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #61 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:17:45.507Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #62 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:18:15.475Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #63 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:18:45.479Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #64 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:19:15.487Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #65 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:19:45.496Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #66 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:20:15.515Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #67 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:20:45.522Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #68 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:21:15.523Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #69 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:21:45.545Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #70 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:22:15.570Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #71 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:22:45.555Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #72 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:23:15.547Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #73 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:23:45.559Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #74 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:24:15.557Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #75 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:24:45.594Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #76 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:25:15.555Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #77 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:25:45.558Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #78 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:26:15.575Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #79 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:26:45.570Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #80 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:27:15.582Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #81 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:27:45.565Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #82 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:28:15.563Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #83 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:28:45.688Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #84 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:29:15.718Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #85 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:29:45.680Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #86 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:30:15.687Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #87 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:30:45.682Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #88 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:31:15.693Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #89 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:31:45.710Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #90 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:32:15.710Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #91 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:32:45.698Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #92 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:33:15.716Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #93 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:33:45.719Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #94 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:34:15.748Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #95 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:34:45.729Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #96 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:35:15.728Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #97 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:35:45.729Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #98 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:36:15.733Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #99 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:36:45.742Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #100 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:37:15.749Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #101 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:37:45.750Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #102 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:38:15.750Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #103 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:38:45.768Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #104 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:39:15.770Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #105 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:39:45.775Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #106 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:40:15.776Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #107 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:40:45.771Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #108 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:41:15.771Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #109 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:41:45.787Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #110 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:42:15.783Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #111 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:42:45.800Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #112 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:43:15.783Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #113 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:43:45.784Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #114 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:44:15.798Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #115 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:44:45.789Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #116 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:45:15.788Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #117 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:45:45.789Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #118 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:46:15.800Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #119 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:46:45.810Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #120 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:47:15.815Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #121 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:47:45.839Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #122 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:48:15.882Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #123 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:48:45.871Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #124 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:49:15.881Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #125 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:49:45.876Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #126 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:50:15.892Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #127 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:50:45.878Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #128 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:51:15.881Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #129 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:51:45.892Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #130 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:52:15.887Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #131 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:52:45.903Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #132 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:53:15.902Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #133 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:53:45.906Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #134 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:54:15.907Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #135 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:54:45.919Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #136 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:55:15.910Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #137 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:55:45.910Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #138 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:56:15.910Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #139 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:56:45.914Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #140 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:57:15.918Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #141 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:57:45.936Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #142 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:58:16.251Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #143 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:58:45.991Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #144 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:59:16.063Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #145 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T01:59:45.998Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #146 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:00:15.996Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #147 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:00:45.998Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #148 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:01:16.000Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #149 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:01:46.028Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #150 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:02:16.223Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #151 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:02:46.040Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #152 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:03:16.034Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #153 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:03:46.035Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #154 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:04:16.049Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #155 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:04:46.051Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #156 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:05:16.080Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #157 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:05:46.084Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #158 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:06:16.127Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #159 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:06:46.060Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #160 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:07:16.078Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #161 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:07:46.068Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #162 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:08:16.076Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #163 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:08:46.070Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #164 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:09:16.102Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #165 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:09:46.073Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #166 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:10:16.076Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #167 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:10:46.115Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #168 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:11:16.084Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #169 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:11:46.084Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #170 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:12:16.087Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #171 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:12:46.092Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #172 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:13:16.092Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #173 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:13:46.091Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #174 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:14:16.117Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #175 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:14:46.179Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #176 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:15:16.137Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #177 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:15:46.142Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #178 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:16:16.143Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #179 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:16:46.344Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #180 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:17:16.315Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #181 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:17:46.313Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #182 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:18:16.321Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #183 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:18:46.333Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #184 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:19:16.339Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #185 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:19:46.349Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #186 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:20:16.360Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #187 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:20:46.362Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #188 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:21:16.343Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #189 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:21:46.345Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #190 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:22:16.350Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #191 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:22:46.354Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #192 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:23:16.357Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #193 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:23:46.389Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #194 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:24:16.393Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #195 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:24:46.393Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #196 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:25:16.372Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #197 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:25:46.377Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #198 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:26:16.375Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #199 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:26:46.394Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #200 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T02:27:16.388Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+
+> api@1.0.0 dev
+> ts-node --transpile-only src/index.ts
+
+[dotenv@17.3.1] injecting env (17) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+[Config] NODE_ENV: development
+[Config] MONGO_URI (Source): ENV
+[Config] Resolved MONGO_URI: mongodb://127.0.0.1:27018/joe
+[Gemini] Provider initialized with API key
+[DeepSeek] No API key found. Operating in FREE MODE via Pollinations Proxy.
+[OpenAI] Provider initialized with API key
+[Optimizer] Loading cache from: /Users/younissowadi/xelitesolutions-1/.smart_reflex_cache.json
+[Optimizer] Cache loaded: 2 entries.
+[Optimizer] Universal Index Ready: 23 Engineering Atlases mapped.
+[Optimizer V2] 🚀 Turbo Mode Active: 80 chunks loaded.
+LLM: OpenAI API Key configured from environment.
+[VectorDB] Loaded 231 documents from memory.
+[32minfo[39m: [DeployManager] Instance created. Auto-deploy poller initializing... {"timestamp":"2026-03-13T18:09:07.027Z"}
+DEBUG: Modules imported. Calling main...
+🚀 API GLOBAL STARTUP INITIATED...
+DEBUG: Node Version: v22.20.0
+DEBUG: Current Directory: /Users/younissowadi/xelitesolutions-1/api
+DEBUG: NODE_ENV: development
+DEBUG: PORT: 5001
+DEBUG: express app instantiating...
+[2026-03-13 21:09:07.116 +0300] [32mINFO[39m (96036): [36mServing static frontend files from web/dist[39m
+    [35mpath[39m: "/Users/younissowadi/xelitesolutions-1/web/dist"
+[2026-03-13 21:09:07.125 +0300] [32mINFO[39m (96036): [36mAttempting MongoDB connection...[39m
+    [35muri[39m: "mongodb://127.0.0.1:27018/joe"
+[2026-03-13 21:09:07.350 +0300] [31mERROR[39m (96036): [36mUncaught Exception[39m
+    err: {
+      "type": "Error",
+      "message": "listen EADDRINUSE: address already in use 0.0.0.0:5001",
+      "stack":
+          Error: listen EADDRINUSE: address already in use 0.0.0.0:5001
+              at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+              at listenInCluster (node:net:1997:12)
+              at node:net:2206:7
+              at processTicksAndRejections (node:internal/process/task_queues:90:21)
+      "code": "EADDRINUSE",
+      "errno": -48,
+      "syscall": "listen",
+      "address": "0.0.0.0",
+      "port": 5001
+    }
+[2026-03-13 21:09:12.320 +0300] [33mWARN[39m (96036): [36mMongoDB connection failed (Attempt 1), retrying in 2s...[39m
+    err: {
+      "type": "MongooseServerSelectionError",
+      "message": "connect ECONNREFUSED 127.0.0.1:27018",
+      "stack":
+          MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27018
+              at _handleConnectionErrors (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1169:11)
+              at NativeConnection.openUri (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1100:11)
+              at async connectWithRetry (/Users/younissowadi/xelitesolutions-1/api/src/index.ts:269:9)
+      "errorLabelSet": {},
+      "reason": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 170868755,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      },
+      "cause": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 170868755,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      }
+    }
+[2026-03-13 21:09:14.338 +0300] [32mINFO[39m (96036): [36mAttempting MongoDB connection...[39m
+    [35muri[39m: "mongodb://127.0.0.1:27018/joe"
+[2026-03-13 21:09:19.343 +0300] [33mWARN[39m (96036): [36mMongoDB connection failed (Attempt 2), retrying in 2s...[39m
+    err: {
+      "type": "MongooseServerSelectionError",
+      "message": "connect ECONNREFUSED 127.0.0.1:27018",
+      "stack":
+          MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27018
+              at _handleConnectionErrors (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1169:11)
+              at NativeConnection.openUri (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1100:11)
+              at async connectWithRetry (/Users/younissowadi/xelitesolutions-1/api/src/index.ts:269:9)
+      "errorLabelSet": {},
+      "reason": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 170875732,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      },
+      "cause": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 170875732,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      }
+    }
+[2026-03-13 21:09:21.351 +0300] [32mINFO[39m (96036): [36mAttempting MongoDB connection...[39m
+    [35muri[39m: "mongodb://127.0.0.1:27018/joe"
+[32minfo[39m: [AutoDeploy] Git safe.directory configured for /root/xelitesolutions {"timestamp":"2026-03-13T18:09:22.182Z"}
+[31merror[39m: [AutoDeploy] ❌ Failed to start poller: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:09:22.184Z"}
+[WS] Broadcast type=admin:autodeploy_status target=ALL clients=0
+[2026-03-13 21:09:26.368 +0300] [33mWARN[39m (96036): [36mMongoDB connection failed (Attempt 3), retrying in 2s...[39m
+    err: {
+      "type": "MongooseServerSelectionError",
+      "message": "connect ECONNREFUSED 127.0.0.1:27018",
+      "stack":
+          MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27018
+              at _handleConnectionErrors (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1169:11)
+              at NativeConnection.openUri (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1100:11)
+              at async connectWithRetry (/Users/younissowadi/xelitesolutions-1/api/src/index.ts:269:9)
+      "errorLabelSet": {},
+      "reason": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 170882698,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      },
+      "cause": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 170882698,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      }
+    }
+[2026-03-13 21:09:28.371 +0300] [32mINFO[39m (96036): [36mAttempting MongoDB connection...[39m
+    [35muri[39m: "mongodb://127.0.0.1:27018/joe"
+[2026-03-13 21:09:33.387 +0300] [33mWARN[39m (96036): [36mMongoDB connection failed (Attempt 4), retrying in 2s...[39m
+    err: {
+      "type": "MongooseServerSelectionError",
+      "message": "connect ECONNREFUSED 127.0.0.1:27018",
+      "stack":
+          MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27018
+              at _handleConnectionErrors (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1169:11)
+              at NativeConnection.openUri (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1100:11)
+              at async connectWithRetry (/Users/younissowadi/xelitesolutions-1/api/src/index.ts:269:9)
+      "errorLabelSet": {},
+      "reason": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 170889723,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      },
+      "cause": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 170889723,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      }
+    }
+[2026-03-13 21:09:35.390 +0300] [32mINFO[39m (96036): [36mAttempting MongoDB connection...[39m
+    [35muri[39m: "mongodb://127.0.0.1:27018/joe"
+[31merror[39m: [DeployManager] DB not ready after 30s. Skipping repair. {"timestamp":"2026-03-13T18:09:37.225Z"}
+[2026-03-13 21:09:40.396 +0300] [33mWARN[39m (96036): [36mMongoDB connection failed (Attempt 5), retrying in 2s...[39m
+    err: {
+      "type": "MongooseServerSelectionError",
+      "message": "connect ECONNREFUSED 127.0.0.1:27018",
+      "stack":
+          MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27018
+              at _handleConnectionErrors (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1169:11)
+              at NativeConnection.openUri (/Users/younissowadi/xelitesolutions-1/api/node_modules/mongoose/lib/connection.js:1100:11)
+              at async connectWithRetry (/Users/younissowadi/xelitesolutions-1/api/src/index.ts:269:9)
+      "errorLabelSet": {},
+      "reason": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 170896836,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      },
+      "cause": {
+        "type": "Unknown",
+        "servers": {
+          "127.0.0.1:27018": {
+            "address": "127.0.0.1:27018",
+            "type": "Unknown",
+            "hosts": [],
+            "passives": [],
+            "arbiters": [],
+            "tags": {},
+            "minWireVersion": 0,
+            "maxWireVersion": 0,
+            "roundTripTime": -1,
+            "minRoundTripTime": 0,
+            "lastUpdateTime": 170896836,
+            "lastWriteDate": 0,
+            "error": {
+              "errorLabelSet": {},
+              "beforeHandshake": false
+            },
+            "topologyVersion": null,
+            "setName": null,
+            "setVersion": null,
+            "electionId": null,
+            "logicalSessionTimeoutMinutes": null,
+            "maxMessageSizeBytes": null,
+            "maxWriteBatchSize": null,
+            "maxBsonObjectSize": null,
+            "primary": null,
+            "me": null,
+            "$clusterTime": null,
+            "iscryptd": false
+          }
+        },
+        "stale": false,
+        "compatible": true,
+        "heartbeatFrequencyMS": 10000,
+        "localThresholdMS": 15,
+        "setName": null,
+        "maxElectionId": null,
+        "maxSetVersion": null,
+        "commonWireVersion": 0,
+        "logicalSessionTimeoutMinutes": null
+      }
+    }
+[2026-03-13 21:09:40.409 +0300] [33mWARN[39m (96036): [36m⚠️ MongoDB unavailable - API running in OFFLINE mode (LLM-only features available)[39m
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #1 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:09:52.194Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #2 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:10:22.192Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #3 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:10:52.192Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #4 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:11:22.192Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #5 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:11:52.205Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #6 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:12:22.205Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #7 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:12:52.200Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #8 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:13:22.237Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #9 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:13:52.213Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #10 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:14:22.211Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #11 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:14:52.217Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #12 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:15:22.353Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #13 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:15:52.248Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #14 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:16:22.251Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #15 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:16:52.250Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #16 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:17:22.267Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #17 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:17:52.266Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #18 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:18:22.285Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #19 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:18:52.279Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #20 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:19:22.276Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #21 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:19:52.283Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #22 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:20:22.280Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #23 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:20:52.283Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #24 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:21:22.281Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #25 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:21:52.287Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #26 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:22:22.294Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #27 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:22:52.295Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #28 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:23:22.293Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #29 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:23:52.302Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #30 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:24:22.318Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #31 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:24:52.308Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #32 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:25:22.311Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #33 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:25:52.313Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #34 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:26:22.309Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #35 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:26:52.316Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #36 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:27:22.316Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #37 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:27:52.317Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #38 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:28:22.330Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #39 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:28:52.355Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #40 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:29:22.339Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #41 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:29:52.339Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #42 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:30:22.346Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #43 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:30:52.356Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #44 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:31:22.355Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #45 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:31:52.355Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #46 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:32:22.358Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #47 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:32:52.357Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #48 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:33:22.359Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #49 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:33:52.368Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #50 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:34:22.363Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #51 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:34:52.365Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #52 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:35:22.371Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #53 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:35:52.373Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #54 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:36:22.385Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #55 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:36:52.375Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #56 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:37:22.377Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #57 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:37:52.418Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #58 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:38:22.395Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #59 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:38:52.396Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #60 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:39:22.398Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #61 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:39:52.403Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #62 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:40:22.400Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #63 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:40:52.403Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #64 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:41:22.404Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #65 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:41:52.408Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #66 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:42:22.411Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #67 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:42:52.412Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #68 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:43:22.413Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #69 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:43:52.426Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #70 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:44:22.419Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #71 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:44:52.463Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #72 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:45:22.437Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #73 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:45:52.440Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #74 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:46:22.443Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #75 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:46:52.445Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #76 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:47:22.446Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #77 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:47:52.471Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #78 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:48:22.452Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #79 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:48:52.461Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #80 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:49:22.461Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #81 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:49:52.566Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #82 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:50:22.540Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #83 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:50:52.563Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #84 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:51:22.598Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #85 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:51:52.612Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #86 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:52:22.592Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #87 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:52:52.593Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #88 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:53:22.596Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #89 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:53:52.617Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0
+[33mwarn[39m: [AutoDeploy] ⚠️ Poll #90 failed: spawnSync /bin/sh ENOENT {"timestamp":"2026-03-13T18:54:22.628Z"}
+[WS] Broadcast type=admin:autodeploy_heartbeat target=ALL clients=0

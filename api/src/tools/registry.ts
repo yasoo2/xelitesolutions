@@ -78,6 +78,12 @@ import { DatasourceTool } from './definitions/DatasourceTool';
 import { ArchiveFilesTool } from './definitions/ArchiveFilesTool';
 import { DeployProjectTool } from './definitions/DeployProjectTool';
 
+// --- Joe Pro Health Check & Enhancements Tools ---
+import { DockerManagerTool } from './definitions/DockerManagerTool';
+import { ApiTesterTool } from './definitions/ApiTesterTool';
+import { I18nTranslatorTool } from './definitions/I18nTranslatorTool';
+import { VideoActionTool } from './definitions/VideoActionTool';
+
 // import { executeTool } from '../services/ToolService'; // Lazy execution for Genesis (Removed to fix cycle)
 
 // Instantiate all tools
@@ -193,6 +199,12 @@ export const tools: ToolDefinition[] = [
   // --- Screenshot & Visual QA ---
   new ScreenshotTool(),
   new VisualComparisonTool(),
+
+  // --- Joe Pro Exclusive Tools ---
+  new DockerManagerTool(),
+  new ApiTesterTool(),
+  new I18nTranslatorTool(),
+  new VideoActionTool(),
 
   // --- Elite Tools Suite (God Mode Upgrade) ---
   new DependencyGraphTool(),

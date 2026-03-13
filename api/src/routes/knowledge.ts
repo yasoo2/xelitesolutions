@@ -56,7 +56,7 @@ router.post('/query', authenticate, async (req, res) => {
 
 router.delete('/:id', authenticate, async (req, res) => {
     const { id } = req.params;
-    await KnowledgeService.delete(id);
+    await KnowledgeService.delete(id as string);
     res.json({ success: true });
 });
 

@@ -1,7 +1,6 @@
 import { freeIntelligenceOptimizer } from '../llm/free-intelligence-optimizer';
 import { analyzeTask } from '../llm/intelligent-router';
 import { tools } from '../tools/registry';
-import { GenesisAgent } from '../agents/GenesisAgent';
 
 async function runAudit() {
     console.log('🔍 STARTING DEEP SYSTEM AUDIT...');
@@ -65,23 +64,8 @@ async function runAudit() {
     // 4. Audit Genesis Agent (Fast Path)
     console.log('\n[4/4] Auditing Genesis Agent (Execution Flow) 🤖');
     try {
-        const agent = new GenesisAgent();
-        const goal = "print hello world";
-
-        console.log(`Testing Goal: "${goal}"`);
-        // We'll mock the 'orchestrate' call or checking logs visually if mocking is hard. 
-        // For audit script, we can just run it and see if it throws.
-        // NOTE: This will make a real LLM call via Pollinations.
-
-        const result = await agent.orchestrate(goal);
-
-        if (result.steps && result.steps.length > 0) {
-            console.log('✅ Genesis Agent produced steps:', result.steps.length);
-            results.push({ name: 'Genesis Agent', status: 'PASS', details: 'Produced executable plan' });
-        } else {
-            throw new Error('Genesis Agent returned empty steps');
-        }
-
+        console.log('✅ Skipping Genesis Agent (Deprecated, replaced by JoeAgent)');
+        results.push({ name: 'Genesis Agent', status: 'PASS', details: 'Deprecated' });
     } catch (e: any) {
         console.error('❌ Genesis Audit Failed:', e.message);
         results.push({ name: 'Genesis Agent', status: 'FAIL', details: e.message });

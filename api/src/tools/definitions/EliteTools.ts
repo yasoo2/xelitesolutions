@@ -285,6 +285,7 @@ export class AIWriteFileTool implements ToolDefinition {
     sideEffects: ToolPermission[] = ['write'];
     rateLimitPerMinute = 10;
     auditFields = ['path'];
+    mockSupported = false;
 
     async execute(input: { path: string; description: string; context?: string }) {
         const filePath = input.path;

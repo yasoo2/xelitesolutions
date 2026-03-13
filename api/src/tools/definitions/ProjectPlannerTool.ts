@@ -1,5 +1,6 @@
 import { ToolDefinition } from '../types';
 import { callLLM } from '../../llm';
+import { executeTool } from '../../services/ToolService';
 
 /**
  * ProjectPlannerTool - Breaks down complex projects into manageable phases

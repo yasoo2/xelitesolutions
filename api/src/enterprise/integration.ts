@@ -110,8 +110,8 @@ export async function processEnterpriseRequest(request: EnhancedRequest): Promis
         return {
             text: `I'll build your ${result.plan.projectType} application with ${result.plan.tasks.length} tasks.\n\nFiles created: ${result.totalFiles}`,
             tool: 'build_application',
-            artifacts: result.results.flatMap(r => r.artifacts || []),
-            nextSteps: result.plan.tasks.slice(0, 3).map(t => t.description),
+            artifacts: result.results.flatMap((r: any) => r.artifacts || []),
+            nextSteps: result.plan.tasks.slice(0, 3).map((t: any) => t.description),
             confidence: 0.9
         };
     }

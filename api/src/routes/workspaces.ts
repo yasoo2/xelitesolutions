@@ -38,7 +38,7 @@ router.post('/', authenticate as any, async (req: Request, res: Response) => {
 router.get('/:id', authenticate as any, async (req: Request, res: Response) => {
     try {
         const userId = (req as any).auth?.sub;
-        const workspace = await workspaceService.getWorkspace(req.params.id, userId);
+        const workspace = await workspaceService.getWorkspace(req.params.id as string, userId);
         if (!workspace) return res.status(404).json({ error: 'Not found or access denied' });
         res.json(workspace);
     } catch (e: any) {
@@ -50,7 +50,7 @@ router.get('/:id', authenticate as any, async (req: Request, res: Response) => {
 router.put('/:id', authenticate as any, async (req: Request, res: Response) => {
     try {
         const userId = (req as any).auth?.sub;
-        const workspace = await workspaceService.updateWorkspace(userId, req.params.id, req.body);
+        const workspace = await workspaceService.updateWorkspace(userId, req.params.id as string, req.body);
         res.json(workspace);
     } catch (e: any) {
         res.status(403).json({ error: e.message });
@@ -61,7 +61,7 @@ router.put('/:id', authenticate as any, async (req: Request, res: Response) => {
 router.get('/:id/members', authenticate as any, async (req: Request, res: Response) => {
     try {
         const userId = (req as any).auth?.sub;
-        const members = await workspaceService.getWorkspaceMembers(userId, req.params.id);
+        const members = await workspaceService.getWorkspaceMembers(userId, req.params.id as string);
         res.json(members);
     } catch (e: any) {
         res.status(403).json({ error: e.message });
@@ -73,7 +73,7 @@ router.post('/:id/members', authenticate as any, async (req: Request, res: Respo
     try {
         const userId = (req as any).auth?.sub;
         const { email, role } = req.body;
-        await workspaceService.addMember(userId, req.params.id, email, role || 'VIEWER');
+        await workspaceService.addMember(userId, req.params.id as string, email as string, role || 'VIEWER');
         res.json({ success: true });
     } catch (e: any) {
         res.status(400).json({ error: e.message });
@@ -84,7 +84,7 @@ router.post('/:id/members', authenticate as any, async (req: Request, res: Respo
 router.delete('/:id/members/:memberId', authenticate as any, async (req: Request, res: Response) => {
     try {
         const userId = (req as any).auth?.sub;
-        await workspaceService.removeMember(userId, req.params.id, req.params.memberId);
+        await workspaceService.removeMember(userId, req.params.id as string, req.params.memberId as string);
         res.json({ success: true });
     } catch (e: any) {
         res.status(400).json({ error: e.message });
