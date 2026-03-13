@@ -18,10 +18,7 @@ export interface Folder {
 }
 
 // Helper to ensure token exists (for dev environment auto-creation)
-// We keep this specific logic here or move to auth service? 
-// For now, keep it local or use apiClient helper if extended.
-// But apiClient uses localStorage. 
-// This ensureToken logic actually *fetches* a dev token if none exists.
+// SECURITY: Only auto-creates dev tokens on localhost AND when not in production build
 async function ensureToken() {
   const existing = localStorage.getItem('token');
   if (existing) {
@@ -30,18 +27,20 @@ async function ensureToken() {
     localStorage.removeItem('user');
   }
 
+  // Only allow dev token auto-creation on localhost - never in production
   const isLocal = /localhost|127\.0\.0\.1/.test(window.location.hostname);
-  if (!isLocal) return null;
+  const isProduction = import.meta.env.PROD === true;
+  if (!isLocal || isProduction) return null;
 
   try {
-    // We use raw fetch here because api.post would fail with 401/no token logic loop?
-    // Actually api.post handles headers. If we call a public endpoint it's fine.
-    // But /auth/dev might need special handling. Let's stick to simple fetch for this bootstrap.
     const res = await fetch(`${API_URL}/auth/dev`, { method: 'POST' });
     if (!res.ok) return null;
     const data = await res.json().catch(() => ({}));
     const token = typeof data?.token === 'string' ? data.token : '';
-    if (token) localStorage.setItem('token', token);
+    if (token) {
+      console.warn('[Auth] Using auto-generated dev token. This should NEVER happen in production.');
+      localStorage.setItem('token', token);
+    }
     return token;
   } catch {
     return null;
