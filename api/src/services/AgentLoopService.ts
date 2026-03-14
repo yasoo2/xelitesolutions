@@ -285,7 +285,8 @@ export class AgentLoopService {
                 try {
                     if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: abortMsg, runId: currentRunId });
                 } catch { }
-                // Don't break — let the LLM see the blacklist message and pivot to a different approach
+                // Mark run as skipped to avoid orphaned 'running' records
+                try { if (!offlineMode) await Run.findByIdAndUpdate(newRunId, { $set: { status: 'skipped' } }); } catch { }
                 continue;
             }
 
@@ -300,6 +301,8 @@ export class AgentLoopService {
                     } catch { }
                     blacklist.add(currentSignature);
                     consecutiveIdenticalTools = 0;
+                    // Mark run as skipped to avoid orphaned 'running' records
+                    try { if (!offlineMode) await Run.findByIdAndUpdate(newRunId, { $set: { status: 'skipped' } }); } catch { }
                     continue;
                 }
             } else {
@@ -343,11 +346,24 @@ export class AgentLoopService {
                     console.error(`[AgentLoop] Blacklisted failing action: ${currentSignature}`);
                     console.error(`[AgentLoop] Circuit Breaker Tripped: Consecutive failure for ${plan.name}`);
                     const recoveryMsg = `⚠️ Tool \`${plan.name}\` failed ${consecutiveFailures} times. Blacklisting and attempting alternative approach...`;
+                    // Broadcast step_failed since step_started was already sent
+                    const eventResult = sanitizeToolResultForBroadcast(plan.name, result);
+                    broadcast({ type: 'step_failed', runId: newRunId, data: { name: `execute:${plan.name}`, result: eventResult } });
                     broadcast({ type: 'text', runId: newRunId, data: recoveryMsg });
                     try {
                         if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: recoveryMsg, runId: newRunId });
                     } catch { }
-                    // Don't break — let the LLM attempt recovery with the error context
+                    // Save ToolExecution record for audit trail
+                    try {
+                        if (!offlineMode) {
+                            await ToolExecution.create({
+                                runId: newRunId, sessionId, name: plan.name || 'unknown',
+                                input: persistedInput, output: result.output, ok: result.ok, logs: result.logs,
+                            });
+                        }
+                    } catch { }
+                    // Update Run status to avoid orphaned 'running' records
+                    try { if (!offlineMode) await Run.findByIdAndUpdate(newRunId, { $set: { status: 'failed' } }); } catch { }
                     continue;
                 }
             } else {

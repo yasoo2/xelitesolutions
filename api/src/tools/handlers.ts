@@ -66,8 +66,9 @@ export async function handleShellCommand(
         }
 
         if (!allowedCommands.includes(command)) {
-            // Log warning but still allow - the blocked list above catches truly dangerous commands
-            console.warn(`[Security] Command not in whitelist but not blocked: ${command}. Allowing with caution.`);
+            console.warn(`[Security] Blocked command not in whitelist: ${command}`);
+            resolve({ ok: false, error: 'command_not_allowed', logs });
+            return;
         }
 
         const child = spawn(command, args, { cwd: validCwd, shell: false });
