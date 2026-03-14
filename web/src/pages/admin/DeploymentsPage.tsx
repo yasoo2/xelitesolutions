@@ -54,12 +54,14 @@ export default function DeploymentsPage() {
     // Auto-deploy poller status
     const [autoDeployStatus, setAutoDeployStatus] = useState<{
         pollerActive: boolean;
+        pollerEnabled: boolean;
         pollCount: number;
         lastPollTime: string | null;
         lastPollError: string | null;
         lastLocalCommit: string | null;
         lastRemoteCommit: string | null;
         isDeploying: boolean;
+        intervalMs: number;
     } | null>(null);
 
     const token = localStorage.getItem('token') || '';
@@ -79,9 +81,9 @@ export default function DeploymentsPage() {
     const fetchAll = async () => {
         try {
             const [depRes, conRes, notifRes] = await Promise.all([
-                fetch(`${API_URL} /admin/deployments`, { headers: { Authorization: `Bearer ${token} ` } }),
-                fetch(`${API_URL} /admin/system / containers`, { headers: { Authorization: `Bearer ${token} ` } }),
-                fetch(`${API_URL} /admin/settings / notifications`, { headers: { Authorization: `Bearer ${token} ` } })
+                fetch(`${API_URL}/admin/deployments`, { headers: { Authorization: `Bearer ${token}` } }),
+                fetch(`${API_URL}/admin/system/containers`, { headers: { Authorization: `Bearer ${token}` } }),
+                fetch(`${API_URL}/admin/settings/notifications`, { headers: { Authorization: `Bearer ${token}` } })
             ]);
             if (depRes.ok) setDeployments(await depRes.json());
             if (conRes.ok) setContainers(await conRes.json());
