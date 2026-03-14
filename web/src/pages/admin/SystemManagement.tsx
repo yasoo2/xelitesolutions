@@ -100,6 +100,7 @@ export default function SystemManagement() {
         lastLocalCommit: string | null;
         lastRemoteCommit: string | null;
         isDeploying: boolean;
+        intervalMs: number;
     } | null>(null);
 
     // ═══════════════════════════════════════════════
@@ -238,8 +239,7 @@ export default function SystemManagement() {
                 }
             }
         } catch (e) { console.error(e); }
-        setIsDeploying(true); // Keep it true for better feedback during log streaming
-        setTimeout(() => setIsDeploying(false), 2000); // Temporary guard
+        setTimeout(() => setIsDeploying(false), 2000);
     };
 
     const handleClearHistory = async () => {
