@@ -333,8 +333,8 @@ export default function Joe() {
                 });
 
                 setMessages(validMessages as Message[]);
-            } catch (e) {
-                console.error('Failed to load messages:', e);
+            } catch {
+                // Silently handle message load failures
             }
         };
 
@@ -363,7 +363,6 @@ export default function Joe() {
             }
 
             // 2. If none, create one
-            console.log('No workspace found, creating default...');
             const newWs: any = await api.post('/workspaces', { name: 'My Workspace' });
             if (newWs && (newWs._id || newWs.id)) {
                 const wsId = newWs._id || newWs.id;
@@ -372,8 +371,8 @@ export default function Joe() {
                 setIsOnboardingOpen(true);
                 return wsId;
             }
-        } catch (e) {
-            console.error('Failed to ensure workspace:', e);
+        } catch {
+            // Silently handle workspace errors
         }
         return null;
     }, []);
@@ -397,8 +396,8 @@ export default function Joe() {
                 role: 'assistant',
                 content: '✨ **مشروع محلي جديد جاهز!**\n\nلقد قمت بإعداد بيئة العمل المحلية بنجاح. يمكنك الآن البدء في بناء تطبيقك، إنشاء ملفات، أو طلب مساعدتي في أي مهمة برمجية.'
             }]);
-        } catch (e) {
-            console.error('Failed to initialize local project:', e);
+        } catch {
+            // Silently handle local project init errors
         }
     }, [workspaceId]);
 
@@ -474,8 +473,8 @@ export default function Joe() {
                         }
                     }
                 }
-            } catch (e) {
-                console.error('Failed to init GitHub:', e);
+            } catch {
+                // GitHub init not available
             }
         };
 
@@ -493,8 +492,8 @@ export default function Joe() {
                 const commits = await githubService.getCommits(activeRepo.fullName.split('/')[0], activeRepo.name);
                 setGhCommits(commits);
             }
-        } catch (e) {
-            console.error('Failed to refresh GitHub:', e);
+        } catch {
+            // GitHub refresh failed silently
         } finally {
             setGhLoading(false);
         }
@@ -506,16 +505,14 @@ export default function Joe() {
 
         // Persist selection
         if (workspaceId) {
-            githubService.setActiveRepo(workspaceId, repo.fullName).catch(e => {
-                console.warn('Failed to persist active repo:', e);
-            });
+            githubService.setActiveRepo(workspaceId, repo.fullName).catch(() => {});
         }
 
         try {
             const commits = await githubService.getCommits(repo.fullName.split('/')[0], repo.name);
             setGhCommits(commits);
-        } catch (e) {
-            console.error('Failed to fetch commits:', e);
+        } catch {
+            // Commits fetch failed silently
         } finally {
             setGhLoading(false);
         }
@@ -536,8 +533,7 @@ export default function Joe() {
                     setAgentSelected(targetSessionId);
                     await loadAllSessions();
                 }
-            } catch (e) {
-                console.error('Failed to create session on the fly', e);
+            } catch {
                 return;
             }
         }
@@ -571,8 +567,7 @@ export default function Joe() {
             } else {
                 await SocketService.sendMessage(targetSessionId, messageText);
             }
-        } catch (e) {
-            console.error('Failed to send message:', e);
+        } catch {
             setInputValue(messageText);
         } finally {
             setIsLoading(false);

@@ -19,7 +19,10 @@ import './i18n';
 
 const shouldIgnoreNoiseError = (val: any) => {
   const s = String(val?.stack || val?.message || val?.filename || val || '');
-  return s.includes('solanaActionsContentScript.js');
+  return s.includes('solanaActionsContentScript.js') ||
+    s.includes('React Router Future Flag Warning') ||
+    s.includes('[Socket Debug]') ||
+    s.includes('Download the React DevTools');
 };
 
 // Global console.error proxy to filter out extension noise
@@ -148,7 +151,7 @@ createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     {(() => {
       const appTree = (
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             <Route path="/" element={<App />}>
               <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />

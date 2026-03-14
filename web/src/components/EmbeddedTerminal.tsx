@@ -163,7 +163,6 @@ export default function EmbeddedTerminal({
             if (!isReady) return;
             // [Wakil 5.2] HARD FREEZE: No input during agent run
             if (SocketService.isQuietMode()) {
-                console.log('[Terminal] Input BLOCKED (Hard Quiet Mode)');
                 return;
             }
             SocketService.send({
@@ -188,7 +187,6 @@ export default function EmbeddedTerminal({
                 if (fitAddonRef.current && containerRef.current && termRef.current) {
                     // [Wakil 5.1] Block resize during Quiet Mode
                     if (SocketService.isQuietMode()) {
-                        console.log('[Terminal] Resize blocked (Quiet Mode)');
                         return;
                     }
                     try {
@@ -204,8 +202,7 @@ export default function EmbeddedTerminal({
                         try {
                             // Defensive fit
                             fitAddonRef.current.fit();
-                        } catch (e) {
-                            console.debug('[Terminal] Proactive fit error:', e);
+                        } catch {
                             // Fall through to proposeDimensions if fit fails
                         }
 
@@ -224,7 +221,6 @@ export default function EmbeddedTerminal({
                             lastCols = cols;
                             lastRows = rows;
 
-                            console.log(`[Terminal] Resizing: ${cols}x${rows}`);
                             SocketService.send({
                                 type: 'terminal_resize',
                                 id: terminalId,
@@ -232,8 +228,7 @@ export default function EmbeddedTerminal({
                                 rows
                             });
                         }
-                    } catch (e) {
-                        console.debug('[Terminal] Fit/Resize error:', e);
+                    } catch {
                     }
                 }
             }, 300); // Increased debounce to 300ms for stability
@@ -267,8 +262,7 @@ export default function EmbeddedTerminal({
                 if (termToDispose) {
                     termToDispose.dispose();
                 }
-            } catch (e) {
-                console.debug('[Terminal] Dispose error:', e);
+            } catch {
             }
         };
     }, [terminalId, getTerminalTheme, onReady]);

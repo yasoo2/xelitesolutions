@@ -96,7 +96,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       }));
     } catch (e: any) {
       if (e.message === 'Unauthorized' || e.message?.includes('Invalid token')) return;
-      console.error('Failed to load sessions', e);
+      // Session load failed silently
     }
   },
 
@@ -106,7 +106,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       set({ folders });
     } catch (e: any) {
       if (e.message === 'Unauthorized' || e.message?.includes('Invalid token')) return;
-      console.error('Failed to load folders', e);
+      // Folder load failed silently
       set({ folders: [] });
     }
   },
@@ -116,8 +116,8 @@ export const useSessionStore = create<SessionState>((set) => ({
     try {
       await api.post('/folders', { name });
       await useSessionStore.getState().loadFolders();
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // Folder creation failed silently
     } finally {
       set(state => ({ loadingStates: { ...state.loadingStates, creatingFolder: false } }));
     }
@@ -129,8 +129,8 @@ export const useSessionStore = create<SessionState>((set) => ({
       await api.delete(`/folders/${id}`);
       await useSessionStore.getState().loadFolders();
       await useSessionStore.getState().loadAllSessions();
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // Folder deletion failed silently
     } finally {
       set(state => ({ loadingStates: { ...state.loadingStates, [`deleting-folder-${id}`]: false } }));
     }
@@ -141,8 +141,8 @@ export const useSessionStore = create<SessionState>((set) => ({
     try {
       await api.delete(`/sessions/${id}`);
       await useSessionStore.getState().loadAllSessions();
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // Session deletion failed silently
     } finally {
       set(state => ({ loadingStates: { ...state.loadingStates, [`deleting-session-${id}`]: false } }));
     }
@@ -153,8 +153,8 @@ export const useSessionStore = create<SessionState>((set) => ({
     try {
       await api.delete('/sessions');
       set({ sessions: [], agentSessions: [], selected: null, agentSelected: null });
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // Session deletion failed silently
     } finally {
       set(state => ({ loadingStates: { ...state.loadingStates, deletingAll: false } }));
     }

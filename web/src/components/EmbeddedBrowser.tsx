@@ -98,8 +98,8 @@ export default function EmbeddedBrowser({
             });
             setCurrentUrl(targetUrl);
             setInputUrl(targetUrl);
-        } catch (e) {
-            console.error('Navigation failed:', e);
+        } catch {
+            // Navigation failed silently
         } finally {
             setIsLoading(false);
         }
@@ -121,8 +121,8 @@ export default function EmbeddedBrowser({
                     actions: [action]
                 })
             });
-        } catch (e) {
-            console.error('Action failed:', e);
+        } catch {
+            // Action failed silently
         } finally {
             setIsLoading(false);
         }
