@@ -22,7 +22,6 @@ const shouldIgnoreNoiseError = (val: any) => {
   return s.includes('solanaActionsContentScript.js') ||
     s.includes('React Router Future Flag Warning') ||
     s.includes('[Socket Debug]') ||
-    s.includes('[Socket]') ||
     s.includes('Download the React DevTools');
 };
 
