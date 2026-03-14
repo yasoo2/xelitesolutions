@@ -211,8 +211,10 @@ export class AgentLoopService {
                 const summaryText = `## Previous Actions Summary (${olderMessages.length} messages summarized):\n` +
                     (toolActions.length > 0 ? toolActions.join('\n') : 'No significant tool actions in older messages.');
 
+                // Only prepend userGoal if it's not already in recentMessages
+                const userGoalInRecent = userGoal && recentMessages.includes(userGoal);
                 msgsForLLM = [
-                    ...(userGoal ? [userGoal] : []),
+                    ...(userGoal && !userGoalInRecent ? [userGoal] : []),
                     { role: 'assistant' as const, content: summaryText },
                     ...recentMessages
                 ];

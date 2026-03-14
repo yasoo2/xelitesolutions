@@ -38,7 +38,7 @@ export async function handleShellCommand(
             'python', 'python3', 'pip', 'pip3', 'poetry', 'pipenv', 'uvicorn', 'flask', 'django-admin',
             // File system & text processing
             'ls', 'cat', 'grep', 'find', 'head', 'tail', 'wc', 'sort', 'uniq', 'diff', 'sed', 'awk',
-            'cp', 'mv', 'mkdir', 'rm', 'touch', 'chmod', 'tree', 'du', 'df',
+            'cp', 'mv', 'mkdir', 'touch', 'tree', 'du', 'df',
             // Networking & HTTP
             'curl', 'wget',
             // Build tools
