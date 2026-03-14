@@ -1,6 +1,8 @@
 import { API_URL, WS_URL } from '../config';
 import { AutoOpenManager } from './AutoOpenManager';
 
+const __DEV__ = import.meta.env.DEV;
+
 let socket: WebSocket | null = null;
 const listeners: Set<(data: any) => void> = new Set();
 const statusListeners: Set<(status: { state: string; detail?: string }) => void> = new Set();
@@ -110,20 +112,17 @@ async function probeAuth(token: string): Promise<'ok' | 'unauthorized' | 'error'
 }
 
 async function connect() {
-  console.log('[Socket Debug] connect() called');
   if (!WS_URL) {
-    console.error('[Socket Debug] WS_URL is missing or empty');
+    if (__DEV__) console.warn('[Socket] WS_URL is missing or empty');
     return;
   }
 
   // [Wakil 4.7] Strict Singleton Guard
   if (isConnecting) {
-    console.log('[Socket Debug] Already connecting... skipping.');
     return;
   }
 
   if (socket && socket.readyState === WebSocket.OPEN) {
-    console.log('[Socket Debug] Socket already open');
     return;
   }
 
@@ -131,14 +130,13 @@ async function connect() {
   if (connectingTimeoutTimer) clearTimeout(connectingTimeoutTimer);
   connectingTimeoutTimer = setTimeout(() => {
     if (isConnecting) {
-      console.warn('[Socket Debug] Connection attempt timed out, resetting isConnecting');
+      if (__DEV__) console.warn('[Socket] Connection attempt timed out, resetting');
       isConnecting = false;
       connect();
     }
   }, CONNECTING_TIMEOUT);
 
   const token = localStorage.getItem('token');
-  console.log('[Socket Debug] Token found:', token ? token.slice(0, 10) + '...' : 'null');
 
   if (connectTimer != null) {
     window.clearTimeout(connectTimer);
@@ -146,7 +144,6 @@ async function connect() {
   }
 
   if (await isApiShimActive()) {
-    console.log('[Socket Debug] API Shim Active, backing off');
     setStatus('error', 'api_shim');
     isConnecting = false; // UNLOCK on bail
     connectTimer = window.setTimeout(() => void connect(), 15000);
@@ -156,11 +153,10 @@ async function connect() {
   const primaryUrl = WS_URL;
   const fallbackUrl = computeFallbackWsUrl(primaryUrl);
   let urlToUse = (triedFallback || !fallbackUrl) ? primaryUrl : (connectAttempts > 0 ? fallbackUrl : primaryUrl);
-  console.log('[Socket Debug] Initial URL:', urlToUse);
 
   // Check max reconnection attempts
   if (connectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    console.error(`[Socket] Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Giving up.`);
+    if (__DEV__) console.warn(`[Socket] Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached.`);
     setStatus('error', 'max_reconnect_attempts_exceeded');
     isConnecting = false;
     return;
@@ -172,7 +168,6 @@ async function connect() {
     u.searchParams.set('token', token);
   }
   urlToUse = u.toString();
-  console.log('[Socket Debug] Connecting to:', urlToUse);
 
   lastUrl = urlToUse;
 
@@ -187,13 +182,12 @@ async function connect() {
     }
     socket = new WebSocket(urlToUse);
   } catch (err) {
-    console.error('[Socket Debug] new WebSocket() threw:', err);
+    if (__DEV__) console.warn('[Socket] new WebSocket() threw:', err);
     isConnecting = false; // UNLOCK
     return;
   }
 
   socket.onopen = (event) => {
-    console.log('[Socket Debug] onopen fired');
     const ws = event.target as WebSocket;
     opened = true;
     isConnecting = false;
@@ -206,8 +200,6 @@ async function connect() {
     SocketService.send({ type: 'heartbeat', ts: Date.now() });
 
     // Flush pending safely using the socket instance that just opened
-    // Flush pending safely using the socket instance that just opened
-    console.log(`[Socket Debug] Flushing ${pendingQueue.length} items from queue.`);
     const toFlush = [...pendingQueue];
     pendingQueue = [];
 
@@ -216,7 +208,7 @@ async function connect() {
       try {
         ws.send(payload);
       } catch (err) {
-        console.error('[Socket Debug] Flush error:', err);
+        if (__DEV__) console.warn('[Socket] Flush error:', err);
       }
     }
   };
@@ -272,7 +264,6 @@ async function connect() {
       // Auto phase management based on events
       if (msgType === 'step_started') {
         if (!quietMode) {
-          console.log('[Socket] Auto-activating Quiet Mode (step_started)');
           quietMode = true;
           thinkingPhase = 'analyzing';
           thinkingPhaseListeners.forEach(cb => { try { cb('analyzing'); } catch { } });
@@ -289,7 +280,6 @@ async function connect() {
         }
       } else if (msgType === 'run_finished' || msgType === 'text') {
         if (quietMode) {
-          console.log('[Socket] Auto-deactivating Quiet Mode (run_finished/text)');
           quietMode = false;
           thinkingPhase = 'idle';
           thinkingStatus = '';
@@ -331,25 +321,21 @@ async function connect() {
       } else if (msgType === 'workspace_updated') {
         // [Pipeline Fix] When a new project is built, refresh File Explorer
         const wsData = data?.data || {};
-        console.log(`[Socket] Workspace updated to: ${wsData.path || wsData.name}`);
         window.dispatchEvent(new CustomEvent('workspace:updated', { detail: wsData }));
       } else if (msgType === 'build_progress') {
         // [Flow Agent] Live build progress events for PreviewPanel overlay
         const progressData = data?.data || {};
-        console.log(`[Socket] Build progress: ${progressData.phase} (${progressData.progress}%)`);
         window.dispatchEvent(new CustomEvent('preview:build_progress', { detail: progressData }));
       } else if (msgType === 'preview_ready' || msgType === 'preview_url') {
         // [Preview Pipeline] When the API sends a preview URL, dispatch it to PreviewPanel
         const url = data?.data?.url || data?.url;
         if (url) {
-          console.log(`[Socket] Preview URL received (${msgType}):`, url);
           _lastPreviewUrl = url;
           window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url } }));
         } else if (msgType === 'preview_url' && data?.data?.type === 'refresh') {
           // If a refresh is requested but no new URL is provided, simply re-dispatch the last known URL
           // so the Preview Panel triggers an auto-switch at the end of long builds
           if (_lastPreviewUrl) {
-            console.log(`[Socket] Preview refresh requested, re-triggering auto-switch`);
             window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url: _lastPreviewUrl } }));
           }
         }
@@ -358,7 +344,6 @@ async function connect() {
         const path = data?.data?.path;
         const content = data?.data?.content;
         if (path && content !== undefined) {
-          console.log(`[Socket] Code diff received for: ${path}`);
           window.dispatchEvent(new CustomEvent('preview:code_diff', { detail: { path, content } }));
         }
       }
@@ -373,7 +358,6 @@ async function connect() {
   };
 
   socket.onclose = (ev) => {
-    console.log('[Socket Debug] onclose:', ev.code, ev.reason);
     if (socket === ev.target) {
       socket = null;
     }
@@ -445,7 +429,6 @@ async function connect() {
   };
 
   socket.onerror = (e) => {
-    console.error('[Socket Debug] onerror:', e);
     isConnecting = false; // UNLOCK
     setStatus('error', lastUrl);
   };
@@ -470,7 +453,6 @@ export const SocketService = {
   },
   // [Wakil 5.1] Quiet Mode controls
   setQuietMode(enabled: boolean) {
-    console.log('[Socket] Quiet Mode:', enabled ? 'ON' : 'OFF');
     quietMode = enabled;
   },
   isQuietMode() {
@@ -482,7 +464,6 @@ export const SocketService = {
     const isCritical = data && criticalSignals.includes(data.type);
 
     if (quietMode && !isCritical) {
-      console.log('[Socket] HARD Quiet Mode: Blocked non-critical traffic:', data.type);
       return; // NO SEND. NO QUEUE. ZERO TRAFFIC.
     }
 
@@ -490,26 +471,22 @@ export const SocketService = {
 
     // [Wakil 5.1] Source-level deduplication
     if (msg === lastSentPayload) {
-      console.log('[Socket] Blocked duplicate payload');
       return;
     }
     lastSentPayload = msg;
 
     if (socket && socket.readyState === WebSocket.OPEN) {
-      console.log('[Socket] Sending:', msg);
       socket.send(msg);
     } else {
       // SMART QUEUEING & DEDUPLICATION
       if (data && data.type === 'terminal_resize') {
         const existingIdx = pendingQueue.findIndex(q => q && typeof q !== 'string' && q.type === 'terminal_resize' && q.id === data.id);
         if (existingIdx !== -1) {
-          console.log('[Socket] Internal Queue: Updating existing terminal_resize for', data.id);
-          pendingQueue[existingIdx] = data;
+            pendingQueue[existingIdx] = data;
           return;
         }
       }
 
-      console.warn('[Socket] Not connected. Queuing message type:', data.type);
       pendingQueue.push(data); // Store as object for better deduplication in future if needed
       if (!socket && !isConnecting) connect();
       else if (socket && socket.readyState === WebSocket.CLOSED && !isConnecting) connect();
@@ -535,7 +512,6 @@ export const SocketService = {
   },
   // [Wakil 5.3] Thinking Phase State
   setThinkingPhase(phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle') {
-    console.log('[Socket] Thinking Phase:', phase);
     thinkingPhase = phase;
     thinkingPhaseListeners.forEach(cb => {
       try { cb(phase); } catch { }

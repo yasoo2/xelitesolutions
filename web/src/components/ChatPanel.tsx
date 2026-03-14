@@ -137,8 +137,7 @@ export default function ChatPanel({
                                                         }}
                                                             onClick={() => {
                                                                 // TODO: Trigger AutoOpenManager or Workspace Service to open the file.
-                                                                // For now, it's just a visual UI improvement. 
-                                                                console.log(`Open file: ${filepath} at lines ${startLine}-${endLine}`);
+                                                                void 0;
                                                             }}
                                                             onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--joe-gold-primary)'; e.currentTarget.style.boxShadow = '0 0 15px rgba(240,193,75,0.15)'; }}
                                                             onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(240, 193, 75, 0.3)'; e.currentTarget.style.boxShadow = 'none'; }}

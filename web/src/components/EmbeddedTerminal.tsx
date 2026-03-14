@@ -163,7 +163,6 @@ export default function EmbeddedTerminal({
             if (!isReady) return;
             // [Wakil 5.2] HARD FREEZE: No input during agent run
             if (SocketService.isQuietMode()) {
-                console.log('[Terminal] Input BLOCKED (Hard Quiet Mode)');
                 return;
             }
             SocketService.send({
@@ -188,8 +187,7 @@ export default function EmbeddedTerminal({
                 if (fitAddonRef.current && containerRef.current && termRef.current) {
                     // [Wakil 5.1] Block resize during Quiet Mode
                     if (SocketService.isQuietMode()) {
-                        console.log('[Terminal] Resize blocked (Quiet Mode)');
-                        return;
+                            return;
                     }
                     try {
                         const term = termRef.current as any;
@@ -224,8 +222,7 @@ export default function EmbeddedTerminal({
                             lastCols = cols;
                             lastRows = rows;
 
-                            console.log(`[Terminal] Resizing: ${cols}x${rows}`);
-                            SocketService.send({
+                                SocketService.send({
                                 type: 'terminal_resize',
                                 id: terminalId,
                                 cols,
