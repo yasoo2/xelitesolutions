@@ -104,8 +104,31 @@ function ensureMockPersonalWorkspace(userId: string) {
 
 export class WorkspaceService {
     private currentRoot: string = process.cwd();
-    // Default to an external directory for all user projects to avoid cluttering sys files
-    public readonly externalRoot: string = process.env.EXTERNAL_PROJECTS_DIR || '/root/joe-projects';
+    // [FIX] استخدام مسار داخل مجلد المشروع بدلاً من /root/joe-projects
+    public readonly externalRoot: string = (() => {
+        const envPath = process.env.EXTERNAL_PROJECTS_DIR;
+        if (envPath) return envPath;
+        
+        // تحديد المسار بناءً على البيئة
+        const isApiDir = path.basename(process.cwd()) === 'api';
+        const baseDir = isApiDir ? path.join(process.cwd(), '..') : process.cwd();
+        const projectsDir = path.join(baseDir, 'data', 'projects');
+        
+        // إنشاء المجلد إذا لم يكن موجوداً
+        try {
+            if (!fs.existsSync(projectsDir)) {
+                fs.mkdirSync(projectsDir, { recursive: true });
+                console.log(`[WorkspaceService] Created projects directory: ${projectsDir}`);
+            }
+        } catch (e) {
+            console.warn(`[WorkspaceService] Could not create projects dir: ${projectsDir}`, e);
+            // Fallback إلى مجلد مؤقت
+            return path.join(require('os').tmpdir(), 'joe-projects');
+        }
+        
+        return projectsDir;
+    })();
+    
     private rootsByWorkspaceId = new Map<string, string>();
 
     private resolveWorkspaceId(workspaceId?: string) {
@@ -120,10 +143,7 @@ export class WorkspaceService {
             const root = this.rootsByWorkspaceId.get(wsId);
             if (root) return root;
 
-            // AUTO-RESOLVE: If workspaceId exists but no root is cached,
-            // initialize the workspace directory at externalRoot/{workspaceId}
-            // This handles: API restarts, first-time repo connections, and
-            // any case where createWorkspace() was not called on this process
+            // [FIX] تأكد من وجود المجلد قبل استخدامه
             const autoPath = path.join(this.externalRoot, wsId);
             try {
                 if (!fs.existsSync(autoPath)) {
@@ -132,6 +152,8 @@ export class WorkspaceService {
                 }
             } catch (e) {
                 console.warn(`[WorkspaceService] Could not create workspace dir: ${autoPath}`, e);
+                // Fallback إلى المجلد الخارجي نفسه
+                return this.externalRoot;
             }
             this.rootsByWorkspaceId.set(wsId, autoPath);
             console.log(`[WorkspaceService] Auto-resolved workspace root: ${wsId} → ${autoPath}`);
@@ -142,6 +164,11 @@ export class WorkspaceService {
 
     async setActiveRoot(newPath: string, workspaceId?: string): Promise<boolean> {
         try {
+            // [FIX] إنشاء المجلد إذا لم يكن موجوداً
+            if (!fs.existsSync(newPath)) {
+                fs.mkdirSync(newPath, { recursive: true });
+            }
+            
             // Validate path exists
             await import('fs').then(fs => fs.promises.access(newPath));
             const wsId = this.resolveWorkspaceId(workspaceId);
@@ -246,6 +273,16 @@ export class WorkspaceService {
 
         // Set the active root for this workspace to an isolated external path
         const projectPath = path.join(this.externalRoot, String(workspace._id));
+        
+        // [FIX] إنشاء المجلد إذا لم يكن موجوداً
+        try {
+            if (!fs.existsSync(projectPath)) {
+                fs.mkdirSync(projectPath, { recursive: true });
+            }
+        } catch (e) {
+            console.warn(`[WorkspaceService] Could not create project path: ${projectPath}`, e);
+        }
+        
         this.rootsByWorkspaceId.set(String(workspace._id), projectPath);
 
         return workspace;
@@ -391,6 +428,11 @@ export class WorkspaceService {
                 try {
                     const projectPath = path.join(this.externalRoot, String(workspace._id));
                     
+                    // [FIX] تأكد من وجود المجلد
+                    if (!fs.existsSync(projectPath)) {
+                        fs.mkdirSync(projectPath, { recursive: true });
+                    }
+                    
                     // Retrieve user token
                     const token = await getUserSecret(adminUserId, 'github', 'GITHUB_TOKEN');
                     if (token) {
@@ -423,10 +465,6 @@ export class WorkspaceService {
             if (!workspace.integrations) workspace.integrations = { llmProviders: {} } as any;
             if (!workspace.integrations.llmProviders) workspace.integrations.llmProviders = {};
 
-            // Map flat structure to nested structure if needed, or just copy keys
-            // The frontend is sending { openai: {apiKey}, anthropic: {apiKey} }
-            // integrations.llmProviders expects { openai: {apiKey}, openrouter: {apiKey} }
-            // I will support generic keys here to be flexible
             workspace.integrations.llmProviders = {
                 ...workspace.integrations.llmProviders,
                 ...updates.providerConfig
