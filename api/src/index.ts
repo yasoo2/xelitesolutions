@@ -110,6 +110,12 @@ async function main() {
     'http://127.0.0.1:5173',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
+    'http://localhost:5000',
+    'http://127.0.0.1:5000',
+    'http://localhost:5001',
+    'http://127.0.0.1:5001',
+    'http://localhost:8080',
+    'http://127.0.0.1:8080',
   ]);
 
   app.use(cors({
@@ -117,7 +123,12 @@ async function main() {
       if (!origin || allowedOrigins.has(origin)) {
         callback(null, true);
       } else {
-        callback(null, true); // Permissive for recovery
+        // [FIX] السماح بالاتصالات من أي مصدر في بيئة التطوير
+        if (process.env.NODE_ENV !== 'production') {
+          callback(null, true);
+        } else {
+          callback(null, true); // Permissive for recovery
+        }
       }
     },
     credentials: true,
@@ -221,6 +232,19 @@ async function main() {
     try { fs.mkdirSync(ARTIFACT_DIR, { recursive: true }); } catch { }
   }
   app.use('/artifacts', express.static(ARTIFACT_DIR));
+
+  // [FIX] إنشاء مجلد data/projects إذا لم يكن موجوداً
+  const isApiDir = path.basename(process.cwd()) === 'api';
+  const projectRoot = isApiDir ? path.join(process.cwd(), '..') : process.cwd();
+  const projectsDir = path.join(projectRoot, 'data', 'projects');
+  if (!fs.existsSync(projectsDir)) {
+    try {
+      fs.mkdirSync(projectsDir, { recursive: true });
+      console.log(`[Main] Created projects directory: ${projectsDir}`);
+    } catch (e) {
+      console.warn(`[Main] Could not create projects directory: ${projectsDir}`, e);
+    }
+  }
 
   // Serve Frontend Static Files (Production)
   const webDistPath = path.join(__dirname, '../../web/dist');
