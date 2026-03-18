@@ -29,6 +29,7 @@ import workspacesRoutes from './routes/workspaces';
 import adminRoutes from './routes/admin';
 import webhooksRoutes from './routes/webhooks';
 import pingDeployRoutes from './routes/ping-deploy';
+import buildRoutes from './routes/build';
 import { healthcheckBrowser } from './browser/manager';
 
 // Create Central API Router
@@ -211,6 +212,7 @@ async function main() {
   apiRouter.use('/admin', adminRoutes);
   apiRouter.use('/webhooks', webhooksRoutes);
   apiRouter.use('/ping-deploy', pingDeployRoutes);
+apiRouter.use('/build', buildRoutes);
 
   // Public deploy endpoint (no auth required - for frontend deploy button)
   apiRouter.post('/deploy-now', async (req, res) => {
