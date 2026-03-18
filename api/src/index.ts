@@ -28,6 +28,7 @@ import serverRoutes from './routes/servers';
 import workspacesRoutes from './routes/workspaces';
 import adminRoutes from './routes/admin';
 import webhooksRoutes from './routes/webhooks';
+import pingDeployRoutes from './routes/ping-deploy';
 import { healthcheckBrowser } from './browser/manager';
 
 // Create Central API Router
@@ -178,7 +179,7 @@ async function main() {
     res.status(200).json({
       status: 'OK',
       database: dbStatus,
-      version: '1.0.2-terminal-fix',
+      version: '2.0.0-neural-deploy-fix',
       uptime: process.uptime(),
       timestamp: new Date().toISOString()
     });
@@ -209,6 +210,7 @@ async function main() {
   apiRouter.use('/workspaces', workspacesRoutes);
   apiRouter.use('/admin', adminRoutes);
   apiRouter.use('/webhooks', webhooksRoutes);
+  apiRouter.use('/ping-deploy', pingDeployRoutes);
 
   // Catch-all 404 for API
   apiRouter.use((req, res) => {
