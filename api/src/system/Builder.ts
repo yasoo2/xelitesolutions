@@ -9,7 +9,23 @@ export class Builder {
     baseDir?: string,
     options: { aestheticMode?: string; language?: string; port?: number; overwrite?: boolean } = {}
   ) {
-    const root = path.resolve(baseDir || process.cwd(), name);
+    // [FIX] تحديد المسار الصحيح للمشروع
+    const isApiDir = path.basename(process.cwd()) === 'api';
+    const projectRoot = isApiDir ? path.join(process.cwd(), '..') : process.cwd();
+    
+    // إذا لم يتم تحديد baseDir، استخدم مجلد data/projects
+    let effectiveBaseDir = baseDir;
+    if (!effectiveBaseDir) {
+      effectiveBaseDir = path.join(projectRoot, 'data', 'projects');
+    }
+    
+    // تأكد من وجود المجلد الأساسي
+    if (!fs.existsSync(effectiveBaseDir)) {
+      fs.mkdirSync(effectiveBaseDir, { recursive: true });
+    }
+    
+    const root = path.resolve(effectiveBaseDir, name);
+    
     if (fs.existsSync(root)) {
       if (options.overwrite !== false) {
         console.log(`[Builder] Overwriting existing project at ${root}`);
