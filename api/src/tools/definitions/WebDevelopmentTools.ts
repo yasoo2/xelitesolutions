@@ -1,4 +1,3 @@
-
 import { BaseTool } from '../base';
 import { executeTool } from '../../services/ToolService';
 import { ToolPermission } from '../types';
@@ -116,13 +115,23 @@ export class WebPipelineTool extends BaseTool {
         broadcastBuildProgress(sessionId, 'scaffolding', '🏗️ Scaffolding project structure...', 10);
         if (sessionId) broadcastThinkingDetail(sessionId, `🏗️ Scaffolding project structure...`);
         const port = await findAvailablePort(5180);
+        
+        // [FIX] تحديد المسار الصحيح للمشروع
+        const { workspaceService } = require('../../services/WorkspaceService');
+        let effectiveBaseDir = baseDir;
+        if (!effectiveBaseDir && workspaceId) {
+            effectiveBaseDir = workspaceService.getActiveRoot(workspaceId);
+        }
+        
         const scRes = await executeTool('scaffold_full_stack', {
-            name, type, features, baseDir,
+            name, type, features, 
+            baseDir: effectiveBaseDir,
             aestheticMode: input?.aestheticMode,
             language: input?.language,
             port,
             overwrite: input?.overwrite !== false
         }, { sessionId, workspaceId });
+        
         if (!scRes?.ok) {
             const err = scRes?.error || 'No error message from scaffold tool';
             steps.push({ step: 'scaffold_full_stack', ok: false, error: err });
@@ -138,9 +147,8 @@ export class WebPipelineTool extends BaseTool {
         let repoRoot = undefined;
         if (workspaceId) {
             try {
-                const { workspaceService } = require('../../services/WorkspaceService');
-                const ws = await workspaceService.getWorkspace(workspaceId);
-                repoRoot = workspaceService.getActiveRoot();
+                const ws = await workspaceService.getWorkspace(workspaceId, input?.__userId);
+                repoRoot = workspaceService.getActiveRoot(workspaceId);
                 if (ws?.kind === 'github' && ws?.integrations?.github?.activeRepo) {
                     isGitHubWorkspace = true;
                     activeRepo = ws.integrations.github.activeRepo;
@@ -153,7 +161,6 @@ export class WebPipelineTool extends BaseTool {
         // If it's a GitHub workspace, we want to maintain the repo container as the root.
         if (projectPath && workspaceId && !isGitHubWorkspace) {
             try {
-                const { workspaceService } = require('../../services/WorkspaceService');
                 await workspaceService.setActiveRoot(projectPath, workspaceId);
                 console.log(`[Pipeline] Workspace root updated to: ${projectPath}`);
             } catch (wsErr: any) {
@@ -543,17 +550,24 @@ export class DevServerTool extends BaseTool {
 
             logs.push(`dev_server_wait elapsed=${elapsed}ms ready=${serverReady} output=${startupOutput.slice(0, 200)}`);
 
-            const previewUrl = `http://api:${port}/`;
-            let userPreviewUrl = `http://localhost:${port}/`;
-
+            // [FIX] استخدام localhost بدلاً من api في بيئة التطوير
             const isProd = process.env.NODE_ENV === 'production' ||
                 process.env.JWT_SECRET?.includes('persistent') ||
                 fs.existsSync('/etc/letsencrypt') ||
                 fs.existsSync('/.dockerenv');
 
+            let previewUrl: string;
+            let userPreviewUrl: string;
+            
             if (isProd) {
+                previewUrl = `http://api:${port}/`;
                 userPreviewUrl = `https://www.xelitesolutions.com/preview/${port}/`;
+            } else {
+                // في بيئة التطوير، استخدم localhost
+                previewUrl = `http://localhost:${port}/`;
+                userPreviewUrl = `http://localhost:${port}/`;
             }
+            
             logs.push(`dev_started cwd=${actualCwd} cmd=${command} port=${port} isProd=${isProd} ready=${serverReady}`);
 
             // Broadcast preview_ready event for JoeStudio LivePreview
@@ -614,11 +628,24 @@ export class ScaffoldTool extends BaseTool {
         const { workspaceService } = require('../../services/WorkspaceService');
         const activeRoot = workspaceService.getActiveRoot();
         
-        // If the user is in a specific workspace (like a GitHub repo in /root/joe-projects/), 
-        // DO NOT force sandbox, so generated files appear in their File Explorer.
-        // We only sandbox if there is no active workspace (i.e. they are just using the default environment).
-        const baseDir = resolveToolPath(preferredBase || '.', { sandbox: !activeRoot });
-
+        // [FIX] تحديد المسار الصحيح للمشروع
+        let baseDir: string;
+        if (preferredBase) {
+            baseDir = preferredBase;
+        } else if (activeRoot) {
+            baseDir = activeRoot;
+        } else {
+            // Fallback إلى مجلد data/projects
+            const isApiDir = path.basename(process.cwd()) === 'api';
+            const projectRoot = isApiDir ? path.join(process.cwd(), '..') : process.cwd();
+            baseDir = path.join(projectRoot, 'data', 'projects');
+        }
+        
+        // تأكد من وجود المجلد
+        if (!fs.existsSync(baseDir)) {
+            fs.mkdirSync(baseDir, { recursive: true });
+        }
+        
         try {
             // Call the shared Builder
             const res = Builder.scaffold(
