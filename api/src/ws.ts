@@ -316,7 +316,7 @@ export function broadcast(
       if (!authBypass) {
         if (targetUserId === 'SUPER_ADMIN_ROLE') {
           const clientRole = (client as any).role;
-          if (clientRole !== 'SUPER_ADMIN') return;
+          if (clientRole !== 'SUPER_ADMIN' && clientRole !== 'OWNER') return;
         } else if (targetUserId) {
           const clientUserId = trimId((client as any).userId);
           if (!clientUserId || clientUserId !== targetUserId) {

@@ -161,6 +161,8 @@ export class DeployManager {
             } else {
                 // Ensure no local modifications block the pull
                 await this.runCommand('git', ['checkout', '.'], id, 30000);
+                // Clean untracked log files that block merge (rotated .log.gz files)
+                await this.runCommand('git', ['clean', '-fd', 'api/logs/'], id, 10000);
                 await this.runCommand('git', ['pull', 'origin', 'main'], id, 60000);
             }
 
