@@ -37,7 +37,7 @@ export class DeployManager {
         this.flushInterval = setInterval(() => this.flushLogs(), 2000);
         this.repairZombieDeployments().catch(e => logger.error(`[DeployManager] Failed to repair zombie deployments: ${e.message}`));
         // Start auto-deploy poller (configurable interval, default 60s)
-        this.startAutoDeployPoller();
+        this.startAutoDeployPollerInternal();
         logger.info(`[DeployManager] Instance created. Auto-deploy poller initializing...`);
     }
 
@@ -424,7 +424,7 @@ export class DeployManager {
     }
 
     // Auto-deploy poller methods
-    private startAutoDeployPoller() {
+    private startAutoDeployPollerInternal() {
         if (this.pollerInterval) {
             clearInterval(this.pollerInterval);
         }
@@ -475,9 +475,11 @@ export class DeployManager {
         logger.info('[DeployManager] Auto-deploy poller stopped');
     }
 
-    startAutoDeployPoller() {
+    enableAutoDeployPoller() {
         this.pollerEnabled = true;
-        this.startAutoDeployPoller();
+        if (!this.pollerInterval) {
+            this.startAutoDeployPollerInternal();
+        }
     }
 
     getPollerStatus() {
