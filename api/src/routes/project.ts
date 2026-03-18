@@ -218,6 +218,16 @@ router.post('/root', authenticate as any, async (req: Request, res: Response) =>
         : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
           ? String((req.body as any).workspaceId).trim()
           : '';
+    
+    // [FIX] إنشاء المجلد إذا لم يكن موجوداً
+    if (!fs.existsSync(newPath)) {
+      try {
+        fs.mkdirSync(newPath, { recursive: true });
+      } catch (e: any) {
+        return res.status(400).json({ error: `Cannot create directory: ${e.message}` });
+      }
+    }
+    
     const success = await workspaceService.setActiveRoot(newPath, workspaceId || undefined);
     if (!success) {
       return res.status(404).json({ error: 'Path does not exist' });
@@ -505,6 +515,31 @@ router.post('/content', authenticate as any, async (req: Request, res: Response)
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: 'Write failed' });
+  }
+});
+
+// [NEW] Endpoint لإعادة تحميل شجرة الملفات بعد إنشاء مشروع جديد
+router.post('/refresh', authenticate as any, async (req: Request, res: Response) => {
+  try {
+    const { path: refreshPath } = req.body;
+    const activeRoot = workspaceService.getActiveRoot();
+    const targetPath = refreshPath || activeRoot;
+    
+    // التحقق من وجود المجلد
+    try {
+      await fs.promises.access(targetPath);
+    } catch {
+      return res.status(404).json({ error: 'Path not found' });
+    }
+    
+    // تحديث الـ workspace root إذا كان المسار مختلفاً
+    if (targetPath !== activeRoot) {
+      await workspaceService.setActiveRoot(targetPath);
+    }
+    
+    res.json({ success: true, path: targetPath, name: path.basename(targetPath) });
+  } catch (e) {
+    res.status(500).json({ error: 'Refresh failed' });
   }
 });
 
