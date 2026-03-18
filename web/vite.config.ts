@@ -41,18 +41,22 @@ const createApiShim = () => {
     inflight = (async () => {
       lastCheckAt = now;
       const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), 300);
-      try {
-        const r = await fetch('http://127.0.0.1:5001/api/health', { signal: controller.signal });
-        // Any response from the API means it's alive (even 503 = DB down but LLM works)
-        cachedOk = true;
-      } catch {
-        cachedOk = false;
-      } finally {
-        clearTimeout(t);
-        inflight = null;
+      // [FIX] محاولة الاتصال بالـ API على المنافذ المختلفة
+      const ports = [5001, 8080, 3000];
+      for (const port of ports) {
+        const t = setTimeout(() => controller.abort(), 300);
+        try {
+          const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: controller.signal });
+          // Any response from the API means it's alive (even 503 = DB down but LLM works)
+          cachedOk = true;
+          clearTimeout(t);
+          return true;
+        } catch {
+          clearTimeout(t);
+        }
       }
-      return cachedOk;
+      cachedOk = false;
+      return false;
     })();
     return inflight;
   };
@@ -97,15 +101,28 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': {
+        // [FIX] محاولة الاتصال بـ API على منافذ متعددة
         target: 'http://127.0.0.1:5001',
         changeOrigin: true,
         ws: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('[Vite Proxy] error:', err.message);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('[Vite Proxy] Sending Request:', req.method, req.url);
+          });
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            console.log('[Vite Proxy] Received Response:', proxyRes.statusCode, req.url);
+          });
+        },
       },
       '/ws': {
         target: 'ws://127.0.0.1:5001',
         ws: true,
       },
       '/artifacts': {
+        // [FIX] تغيير المنفذ إلى 8080 (المنفذ الافتراضي للـ API)
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
       }
@@ -124,10 +141,14 @@ export default defineConfig({
     cssMinify: 'esbuild',
     reportCompressedSize: false,
     rollupOptions: {
-      maxParallelFileOps: 1, // Single-threaded to minimize RAM usage during AST-heavy transformation
+      maxParallelFileOps: 1,
       cache: false,
       output: {
-        // Removed manualChunks vendor strategy to allow Rollup to manage smaller, less memory-intensive chunks
+        // [FIX] تقسيم الملفات لتحسين الأداء
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          ui: ['lucide-react', 'framer-motion'],
+        }
       }
     },
     sourcemap: false,
