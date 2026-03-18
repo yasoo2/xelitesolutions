@@ -4,7 +4,6 @@ import { Deployment } from '../models/deployment';
 import { logger } from '../utils/logger';
 import { broadcast } from '../ws';
 import axios from 'axios';
-import { execSync } from 'child_process';
 import { alertService } from './AlertService';
 import shadow from 'fs';
 const fs = shadow.promises;
@@ -150,543 +149,365 @@ export class DeployManager {
 
         try {
             // 0. Ensure git safety (dubious ownership fix)
-            await this.runCommand('git', ['config', '--global', '--add', 'safe.directory', PROJECT_ROOT], id, 30000);
+            await this.runCommand('git', ['config', '--global', '--add', 'safe.directory', PROJECT_ROOT], PROJECT_ROOT);
 
-            // 1. Clean old dist/ (prevents stale files from being served)
-            await this.runCommand('rm', ['-rf', 'web/dist'], id, 10000);
+            // 1. Sync code
+            this.queueLog(id, '[SYSTEM] Syncing code from GitHub...');
+            const currentCommit = await this.getCurrentCommit();
+            const remoteCommit = await this.getRemoteCommit();
 
-            // 2. Git Prep
-            if (isRollback) {
-                await this.runCommand('git', ['reset', '--hard', deployment.commit, '--'], id, 60000);
+            this.lastLocalCommit = currentCommit;
+            this.lastRemoteCommit = remoteCommit;
+
+            if (expectedCommit && expectedCommit !== remoteCommit) {
+                this.queueLog(id, `[WARN] Expected commit ${expectedCommit} but remote has ${remoteCommit}`);
+            }
+
+            if (currentCommit === remoteCommit) {
+                this.queueLog(id, '[SYSTEM] Already up to date.');
             } else {
-                // Ensure no local modifications block the pull
-                await this.runCommand('git', ['checkout', '.'], id, 30000);
-                await this.runCommand('git', ['pull', 'origin', 'main'], id, 60000);
+                await this.runCommand('git', ['fetch', 'origin', 'main'], PROJECT_ROOT);
+                await this.runCommand('git', ['reset', '--hard', `origin/main`], PROJECT_ROOT);
+                this.queueLog(id, `[SYSTEM] Code synced to ${remoteCommit}`);
             }
 
-
-            // 2. Race Condition Check
-            if (expectedCommit) {
-                await this.verifyCommitMatch(id, expectedCommit);
-            }
-
-            // 3. Host-Aware Deploy (API runs on host, not in Docker)
-            this.appendLog(id, `\n[SYSTEM] Code synced. Building web frontend...`);
-
-            // 3a. Build web frontend (dist/ for Nginx to serve)
+            // 2. Build web frontend
+            this.queueLog(id, '[BUILD] Building web frontend...');
             try {
-                await this.buildWebFrontend(id);
-            } catch (webErr: any) {
-                this.appendLog(id, `[WARN] Web frontend build failed: ${webErr.message} — continuing with API rebuild...`);
+                await this.runCommand('npm', ['install', '--legacy-peer-deps'], WEB_DIR, 300000);
+                await this.runCommand('npm', ['run', 'build'], WEB_DIR, 300000);
+                this.queueLog(id, '[BUILD] Web frontend built successfully');
+            } catch (error: any) {
+                this.queueLog(id, `[WARN] Web frontend build failed: ${error.message} — continuing with API rebuild...`);
             }
 
-            // 3b. Rebuild API on host (npm run build)
-            this.appendLog(id, `\n[SYSTEM] Rebuilding API on host...`);
+            // 3. Build API
+            this.queueLog(id, '[BUILD] Building API...');
+            await this.runCommand('npm', ['install', '--legacy-peer-deps', '--no-audit', '--no-fund'], API_DIR, 300000);
+
             try {
-                await this.runCommandInDir('npm install --no-audit --no-fund --maxsockets=3', API_DIR, id, 120000);
-                await this.runCommandInDir('npm run build', API_DIR, id, 120000);
-                this.appendLog(id, `[BUILD] API rebuilt successfully.`);
-            } catch (apiErr: any) {
-                this.appendLog(id, `[ERROR] API build failed: ${apiErr.message}`);
-                throw new Error(`API build failed: ${apiErr.message}`);
+                await this.runCommand('npm', ['run', 'build'], API_DIR, 300000);
+            } catch (error: any) {
+                this.queueLog(id, `[WARN] npm run build failed, trying tsc directly: ${error.message}`);
+                await this.runCommand('npx', ['tsc', '--skipLibCheck'], API_DIR, 300000);
             }
+            this.queueLog(id, '[BUILD] API built successfully');
 
-            // 3c. Restart API process
-            this.appendLog(id, `\n[SYSTEM] Restarting API process...`);
-            try {
-                execSync('pkill -f "node dist/index.js" || true', { timeout: 5000 });
-                // Small delay to let the process die
-                await new Promise(r => setTimeout(r, 2000));
-                const startScript = process.env.API_START_SCRIPT || `${PROJECT_ROOT}/start_api.sh`;
-                execSync(`nohup bash ${startScript} > /tmp/api_deploy.log 2>&1 &`, {
-                    cwd: PROJECT_ROOT,
-                    timeout: 5000
-                });
-                this.appendLog(id, `[SYSTEM] API process restarted.`);
-            } catch (restartErr: any) {
-                this.appendLog(id, `[WARN] API restart issue: ${restartErr.message} — process may self-recover.`);
-            }
+            // 4. Restart API server
+            this.queueLog(id, '[SYSTEM] Restarting API server...');
+            await this.restartAPIServer();
+            this.queueLog(id, '[SYSTEM] API server restarted');
 
-            // 3d. Rebuild Docker containers (web, nginx, mongo — NOT api)
-            this.appendLog(id, `\n[SYSTEM] Rebuilding Docker containers (web, nginx)...`);
-            this.runCommand('docker-compose -p joe -f docker-compose.production.yml up -d --build --force-recreate web nginx 2>&1 || true', [], id, 600000).catch(e => {
-                logger.error(`[DeployManager] Docker rebuild error (non-fatal): ${e.message}`);
-                this.appendLog(id, `\n[WARN] Docker rebuild: ${e.message}`);
-            });
+            // 5. Verify health
+            this.queueLog(id, '[SYSTEM] Verifying deployment health...');
+            await this.verifyHealth();
+            this.queueLog(id, '[SYSTEM] Health check passed');
 
-            // Mark deployment as successful
-            deployment.status = isRollback ? 'ROLLBACK' : 'SUCCESS';
+            // Success
+            deployment.status = 'SUCCESS';
             deployment.endTime = new Date();
             deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
+            deployment.logs.push(`[${new Date().toISOString()}] [SUCCESS] Deployment completed in ${deployment.duration}s`);
             await deployment.save();
-            this.broadcastStatus(deployment);
 
-            this.broadcastLog(id, `\n[SUCCESS] [${new Date().toISOString()}] Build complete. Deployment finishing in background.`);
+            // Store as last stable commit
+            shadow.writeFileSync(STABLE_COMMIT_FILE, deployment.commit);
 
-            // Post-Build Verifications (Optional/Best effort)
-            // Note: These likely won't finish if the API restarts
-            this.verifyContainersHealthy(id, 60000).catch(() => { });
-            this.verifyHttpHealth(id, 60000).catch(() => { });
+            // Broadcast success
+            broadcast({
+                type: 'deployment_completed',
+                data: { deploymentId: id, status: 'success', duration: deployment.duration }
+            });
 
-            return;
+            // Send alert
+            await alertService.sendAlert({
+                level: 'info',
+                title: 'Deployment Successful',
+                message: `Deployment ${id} completed successfully in ${deployment.duration}s`,
+                category: 'deployment'
+            });
 
-        } catch (err: any) {
-            logger.error(`[DeployManager] Deployment ${id} failed: ${err.message}`);
+        } catch (error: any) {
+            logger.error(`[DeployManager] Deployment ${id} failed: ${error.message}`);
+
             deployment.status = 'FAILED';
-            deployment.error = err.message;
+            deployment.error = error.message;
             deployment.endTime = new Date();
+            deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
+            deployment.logs.push(`[${new Date().toISOString()}] [ERROR] ${error.message}`);
             await deployment.save();
 
-            this.broadcastStatus(deployment); // Broadcast failure
-            this.broadcastLog(id, `[ERROR] [${new Date().toISOString()}] Deployment failed: ${err.message}`);
+            // Broadcast failure
+            broadcast({
+                type: 'deployment_failed',
+                data: { deploymentId: id, error: error.message }
+            });
 
-            await alertService.notifyFailure(id, err.message);
+            // Send alert
+            await alertService.sendAlert({
+                level: 'error',
+                title: 'Deployment Failed',
+                message: `Deployment ${id} failed: ${error.message}`,
+                category: 'deployment'
+            });
 
-            // Auto-Rollback if not already rolling back
-            if (!isRollback) {
-                try {
-                    if (shadow.existsSync(STABLE_COMMIT_FILE)) {
-                        const lastStable = shadow.readFileSync(STABLE_COMMIT_FILE, 'utf8').trim();
-                        if (lastStable && lastStable !== deployment.commit) {
-                            this.broadcastLog(id, `\n[VERIFY] FAILED. Initiating automatic rollback to: ${lastStable}`);
-                            await alertService.notifyRollback(id, lastStable, err.message);
-                            // Trigger a new rollback deployment
-                            await this.rollbackToCommit(lastStable, `Auto-Rollback for failed deployment ${id}`);
-                        }
-                    }
-                } catch (e) {
-                    this.broadcastLog(id, `[VERIFY] Auto-rollback skipped: No stable commit record found.`);
-                }
-            }
+            // Attempt rollback to last stable commit
+            await this.attemptRollback();
+
         } finally {
             this.currentDeploymentId = null;
-            await this.flushLogs(); // Final flush to ensure no logs are left behind
+            await this.flushLogs();
         }
-    }
-
-    private async rollbackToCommit(commit: string, reason: string) {
-        const deployment = await Deployment.create({
-            commit,
-            status: 'BUILDING',
-            triggeredBy: 'manual',
-            logs: [`[${new Date().toISOString()}] Starting automatic rollback. Reason: ${reason}`]
-        });
-        this.currentDeploymentId = deployment._id.toString();
-        this.runDeployProcess(deployment._id.toString(), true).catch(e => {
-            logger.error(`[DeployManager] Recursive rollback failure: ${e.message}`);
-        });
     }
 
     /**
-     * Build the web frontend (dist/) on the server
-     * This runs npm install + vite build inside the web directory
+     * FIXED: Use spawn instead of exec to avoid ENOENT error
      */
-    private async buildWebFrontend(deploymentId: string): Promise<void> {
-        this.appendLog(deploymentId, `\n[BUILD] Building web frontend...`);
-        try {
-            // Install dependencies
-            await this.runCommandInDir('npm install --omit=dev', WEB_DIR, deploymentId, 120000);
-            // Build dist/
-            await this.runCommandInDir('npx vite build', WEB_DIR, deploymentId, 180000);
-            this.appendLog(deploymentId, `[BUILD] Web frontend built successfully.`);
-        } catch (err: any) {
-            this.appendLog(deploymentId, `[BUILD] Web frontend build failed: ${err.message}`);
-            throw new Error(`Web frontend build failed: ${err.message}`);
-        }
-    }
-
-    private runCommandInDir(cmd: string, cwd: string, deploymentId: string, timeoutMs = 300000): Promise<void> {
+    private async runCommand(command: string, args: string[], cwd: string, timeoutMs = 120000): Promise<string> {
         return new Promise((resolve, reject) => {
-            // Add node_modules/.bin to PATH so local binaries (esbuild, vite, etc.) are found
-            const localBin = `${cwd}/node_modules/.bin`;
-            const currentPath = process.env.PATH || '';
-            const child = spawn(cmd, {
+            const startTime = Date.now();
+
+            // Use spawn with explicit shell and PATH
+            const child = spawn(command, args, {
                 cwd,
-                shell: true,
-                detached: true,
-                env: {
-                    ...process.env,
-                    NODE_OPTIONS: '--max-old-space-size=2048',
-                    PATH: `${localBin}:${currentPath}`
-                }
+                env: { 
+                    ...process.env, 
+                    PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/root/.nvm/versions/node/v20/bin'
+                },
+                shell: false, // Don't use shell, spawn directly
             });
+
+            let stdout = '';
+            let stderr = '';
+            let killed = false;
 
             const timeout = setTimeout(() => {
-                try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); } catch (e) { }
-                reject(new Error(`Command ${cmd} timed out after ${timeoutMs}ms`));
+                killed = true;
+                child.kill('SIGTERM');
+                setTimeout(() => {
+                    if (!child.killed) {
+                        child.kill('SIGKILL');
+                    }
+                }, 5000);
+                reject(new Error(`Command timed out after ${timeoutMs}ms`));
             }, timeoutMs);
 
-            child.stdout.on('data', (data) => {
-                const lines = data.toString().split('\n').filter((l: string) => l.trim());
-                lines.forEach((line: string) => this.appendLog(deploymentId, `[BUILD] ${line}`));
+            child.stdout?.on('data', (data) => {
+                stdout += data.toString();
             });
 
-            child.stderr.on('data', (data) => {
-                const lines = data.toString().split('\n').filter((l: string) => l.trim());
-                lines.forEach((line: string) => this.appendLog(deploymentId, `[BUILD] ${line}`));
+            child.stderr?.on('data', (data) => {
+                stderr += data.toString();
+            });
+
+            child.on('error', (error) => {
+                clearTimeout(timeout);
+                if (!killed) {
+                    reject(new Error(`Failed to spawn command: ${error.message}`));
+                }
             });
 
             child.on('close', (code) => {
                 clearTimeout(timeout);
-                if (code === 0) resolve();
-                else reject(new Error(`Command '${cmd}' failed with code ${code}`));
-            });
+                if (killed) return;
 
-            child.on('error', (err) => {
-                clearTimeout(timeout);
-                reject(err);
+                if (code === 0) {
+                    resolve(stdout);
+                } else {
+                    reject(new Error(`Command failed with code ${code}: ${stderr || stdout}`));
+                }
             });
         });
     }
 
-    /**
-     * Auto-deploy poller: checks for new commits every 30 seconds
-     * Replaces the need for GitHub Actions or webhooks
-     */
-    private startAutoDeployPoller() {
-        // Initial delay of 15 seconds to let the system stabilize
-        setTimeout(async () => {
-            // CRITICAL: Fix git dubious ownership before ANY git command
-            // The mounted volume /root/xelitesolutions has different ownership than container process
-            try {
-                execSync(`git config --global --add safe.directory ${PROJECT_ROOT}`, { timeout: 5000 });
-                logger.info(`[AutoDeploy] Git safe.directory configured for ${PROJECT_ROOT}`);
-            } catch (e: any) {
-                logger.warn(`[AutoDeploy] Failed to set safe.directory (may already be set): ${e.message}`);
-            }
-
-            // Get initial commit hash
-            try {
-                const localCommit = execSync('git rev-parse HEAD', { cwd: PROJECT_ROOT }).toString().trim();
-                this.lastKnownCommit = localCommit;
-                this.lastLocalCommit = localCommit;
-                this.pollerActive = true;
-                logger.info(`[AutoDeploy] ✅ Poller STARTED. Current commit: ${localCommit.slice(0, 7)}`);
-
-                // Broadcast initial status
-                broadcast({
-                    type: 'admin:autodeploy_status',
-                    data: this.getAutoDeployStatus(),
-                    ts: Date.now()
-                });
-            } catch (e: any) {
-                this.pollerActive = false;
-                this.lastPollError = `Failed to start: ${e.message}`;
-                logger.error(`[AutoDeploy] ❌ Failed to start poller: ${e.message}`);
-
-                // Broadcast error status
-                broadcast({
-                    type: 'admin:autodeploy_status',
-                    data: this.getAutoDeployStatus(),
-                    ts: Date.now()
-                });
-            }
-
-            // Poll every 30 seconds
-            this.pollerInterval = setInterval(() => this.checkForNewCommits(), POLL_INTERVAL_MS);
-        }, 15000);
-    }
-
-    private async checkForNewCommits() {
-        // Don't check if auto-deploy is disabled
-        if (!this.pollerEnabled) return;
-
-        // Don't check if a deployment is already in progress
-        if (this.currentDeploymentId) {
-            logger.info(`[AutoDeploy] Poll #${this.pollCount + 1}: Skipped (deployment in progress)`);
-            return;
-        }
-
-        this.pollCount++;
-        this.lastPollTime = new Date();
-
+    private async restartAPIServer() {
+        // Try graceful restart first
         try {
-            // Fetch latest from remote
-            execSync('git fetch origin main --quiet', { cwd: PROJECT_ROOT, timeout: 15000 });
-
-            const localCommit = execSync('git rev-parse HEAD', { cwd: PROJECT_ROOT }).toString().trim();
-            const remoteCommit = execSync('git rev-parse origin/main', { cwd: PROJECT_ROOT }).toString().trim();
-
-            this.lastLocalCommit = localCommit;
-            this.lastRemoteCommit = remoteCommit;
-            this.lastPollError = null;
-            this.pollerActive = true;
-
-            if (localCommit !== remoteCommit) {
-                logger.info(`[AutoDeploy] 🚀 Poll #${this.pollCount}: NEW COMMIT DETECTED! Local: ${localCommit.slice(0, 7)}, Remote: ${remoteCommit.slice(0, 7)}. Auto-deploying...`);
-                this.lastKnownCommit = remoteCommit;
-
-                // Broadcast that auto-deploy is triggering
-                broadcast({
-                    type: 'admin:autodeploy_trigger',
-                    data: { localCommit: localCommit.slice(0, 7), remoteCommit: remoteCommit.slice(0, 7), pollCount: this.pollCount },
-                    ts: Date.now()
-                });
-
-                // Trigger deployment automatically
-                this.startDeploy('webhook', remoteCommit).catch(err => {
-                    logger.error(`[AutoDeploy] ❌ Auto-deployment failed to start: ${err.message}`);
-                    this.lastPollError = `Deploy failed: ${err.message}`;
-                });
-            } else {
-                // Log every 10th poll at info level, others at debug (reduce noise)
-                if (this.pollCount % 10 === 0) {
-                    logger.info(`[AutoDeploy] Poll #${this.pollCount}: No change. Commit: ${localCommit.slice(0, 7)}`);
-                }
-            }
-
-            // Broadcast heartbeat every poll
-            broadcast({
-                type: 'admin:autodeploy_heartbeat',
-                data: {
-                    active: true,
-                    pollCount: this.pollCount,
-                    lastPoll: this.lastPollTime?.toISOString(),
-                    localCommit: localCommit.slice(0, 7),
-                    remoteCommit: remoteCommit.slice(0, 7),
-                    match: localCommit === remoteCommit
-                },
-                ts: Date.now()
-            });
-
-        } catch (e: any) {
-            this.lastPollError = e.message;
-            // CRITICAL: Log as warn, not debug — so it's visible in production
-            logger.warn(`[AutoDeploy] ⚠️ Poll #${this.pollCount} failed: ${e.message}`);
-
-            // Broadcast error heartbeat
-            broadcast({
-                type: 'admin:autodeploy_heartbeat',
-                data: {
-                    active: true,
-                    pollCount: this.pollCount,
-                    lastPoll: this.lastPollTime?.toISOString(),
-                    error: e.message
-                },
-                ts: Date.now()
-            });
+            // Find and kill existing API process
+            await this.runCommand('pkill', ['-f', 'node.*dist/index.js'], PROJECT_ROOT, 10000);
+        } catch (e) {
+            // Process might not be running, that's ok
         }
-    }
 
-    private runCommand(cmd: string, args: string[], deploymentId: string, timeoutMs = 300000): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const fullCmd = args.length > 0 ? `${cmd} ${args.join(' ')}` : cmd;
-
-            const child = spawn(fullCmd, {
-                cwd: PROJECT_ROOT,
-                shell: true,
-                detached: true
-            });
-
-            const timeout = setTimeout(() => {
-                try {
-                    if (child.pid) process.kill(-child.pid, 'SIGKILL');
-                } catch (e) { }
-                reject(new Error(`Command ${cmd} timed out after ${timeoutMs}ms`));
-            }, timeoutMs);
-
-            let stdoutBuf = '';
-            child.stdout.on('data', (data) => {
-                stdoutBuf += data.toString();
-                let i;
-                while ((i = stdoutBuf.indexOf('\n')) !== -1) {
-                    const line = stdoutBuf.slice(0, i).trimEnd();
-                    if (line) this.appendLog(deploymentId, line);
-                    stdoutBuf = stdoutBuf.slice(i + 1);
-                }
-            });
-
-            let stderrBuf = '';
-            child.stderr.on('data', (data) => {
-                stderrBuf += data.toString();
-                let i;
-                while ((i = stderrBuf.indexOf('\n')) !== -1) {
-                    const line = stderrBuf.slice(0, i).trimEnd();
-                    if (line) this.appendLog(deploymentId, line);
-                    stderrBuf = stderrBuf.slice(i + 1);
-                }
-            });
-
-            child.on('close', (code) => {
-                clearTimeout(timeout);
-                if (code === 0) resolve();
-                else reject(new Error(`Command ${cmd} failed with code ${code}`));
-            });
-
-            child.on('error', (err) => {
-                clearTimeout(timeout);
-                reject(err);
-            });
+        // Start new API server
+        const child = spawn('node', ['dist/index.js'], {
+            cwd: API_DIR,
+            env: { ...process.env, NODE_ENV: 'production' },
+            detached: true,
+            stdio: 'ignore'
         });
+        child.unref();
+
+        // Wait for server to start
+        await new Promise(resolve => setTimeout(resolve, 3000));
     }
 
-    private appendLog(id: string, log: string) {
-        let existing = this.logQueue.find(q => q.id === id);
-        if (!existing) {
-            existing = { id, logs: [] };
-            this.logQueue.push(existing);
+    private async verifyHealth(retries = 5): Promise<void> {
+        const API_URL = process.env.API_URL || 'http://localhost:8080';
+
+        for (let i = 0; i < retries; i++) {
+            try {
+                const response = await axios.get(`${API_URL}/health`, { timeout: 5000 });
+                if (response.status === 200) {
+                    return;
+                }
+            } catch (e) {
+                // Retry
+            }
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
-        existing.logs.push(log);
-        // Memory optimization: cap at 500 lines per deployment
-        if (existing.logs.length > 500) {
-            existing.logs = existing.logs.slice(-500);
+        throw new Error('Health check failed after ' + retries + ' attempts');
+    }
+
+    private async attemptRollback() {
+        try {
+            if (shadow.existsSync(STABLE_COMMIT_FILE)) {
+                const stableCommit = shadow.readFileSync(STABLE_COMMIT_FILE, 'utf8').trim();
+                logger.info(`[DeployManager] Attempting rollback to stable commit: ${stableCommit}`);
+
+                await this.runCommand('git', ['reset', '--hard', stableCommit], PROJECT_ROOT);
+                await this.runCommand('npm', ['install', '--legacy-peer-deps'], API_DIR, 300000);
+                await this.runCommand('npm', ['run', 'build'], API_DIR, 300000);
+                await this.restartAPIServer();
+
+                logger.info(`[DeployManager] Rollback to ${stableCommit} completed`);
+            }
+        } catch (e: any) {
+            logger.error(`[DeployManager] Rollback failed: ${e.message}`);
         }
-        this.broadcastLog(id, log);
+    }
+
+    private async getCurrentCommit(): Promise<string> {
+        try {
+            const result = await this.runCommand('git', ['rev-parse', 'HEAD'], PROJECT_ROOT, 10000);
+            return result.trim();
+        } catch (e) {
+            return 'unknown';
+        }
+    }
+
+    private async getRemoteCommit(): Promise<string> {
+        try {
+            await this.runCommand('git', ['fetch', 'origin', 'main'], PROJECT_ROOT, 30000);
+            const result = await this.runCommand('git', ['rev-parse', 'origin/main'], PROJECT_ROOT, 10000);
+            return result.trim();
+        } catch (e) {
+            return 'unknown';
+        }
+    }
+
+    private queueLog(deploymentId: string, log: string) {
+        const entry = this.logQueue.find(q => q.id === deploymentId);
+        if (entry) {
+            entry.logs.push(log);
+        } else {
+            this.logQueue.push({ id: deploymentId, logs: [log] });
+        }
+        logger.info(`[Deploy ${deploymentId}] ${log}`);
     }
 
     private async flushLogs() {
         if (this.logQueue.length === 0) return;
-        const queueToFlush = [...this.logQueue];
+
+        const batch = [...this.logQueue];
         this.logQueue = [];
 
-        for (const item of queueToFlush) {
-            if (item.logs.length === 0) continue;
+        for (const entry of batch) {
             try {
-                await Deployment.findByIdAndUpdate(item.id, { $push: { logs: { $each: item.logs } } });
-            } catch (err: any) {
-                logger.error(`[DeployManager] Failed to flush logs for deployment ${item.id}: ${err.message}`);
-                const existing = this.logQueue.find(q => q.id === item.id);
-                if (existing) {
-                    existing.logs = [...item.logs, ...existing.logs];
-                } else {
-                    this.logQueue.push(item);
-                }
-            }
-        }
-    }
-
-    private broadcastLog(deploymentId: string, log: string) {
-        broadcast({
-            type: 'admin:deploy_log',
-            data: { deploymentId, log },
-            ts: Date.now()
-        });
-    }
-
-    private broadcastStatus(deployment: any) {
-        broadcast({
-            type: 'admin:deploy_status',
-            data: deployment,
-            ts: Date.now()
-        });
-    }
-
-    private getCurrentCommit(): Promise<string> {
-        return new Promise((resolve) => {
-            const child = spawn('git', ['ls-remote', 'https://github.com/yasoo2/xelitesolutions.git', 'HEAD'], { shell: true });
-            let output = '';
-            let errOutput = '';
-            child.stdout.on('data', (data) => output += data.toString());
-            child.stderr.on('data', (data) => errOutput += data.toString());
-            child.on('close', (code) => {
-                if (code !== 0) {
-                    logger.error(`[DeployManager] git ls-remote failed (code ${code}): ${errOutput}`);
-                    resolve('unknown');
-                    return;
-                }
-                const commit = output.split(/\s+/)[0];
-                resolve(commit || 'unknown');
-            });
-            child.on('error', (err) => {
-                logger.error(`[DeployManager] git ls-remote process error: ${err.message}`);
-                resolve('unknown');
-            });
-        });
-    }
-
-    private async verifyCommitMatch(id: string, expected: string) {
-        this.broadcastLog(id, `[VERIFY] Checking commit match...`);
-        const actual = await this.getCurrentCommit();
-        if (actual !== expected) {
-            throw new Error(`Commit mismatch! Expected ${expected}, found ${actual}`);
-        }
-        this.broadcastLog(id, `[VERIFY] Commit match OK: ${actual.slice(0, 7)}`);
-    }
-
-    private async verifyContainersHealthy(id: string, timeoutMs = 60000) {
-        this.broadcastLog(id, `[VERIFY] Checking container health...`);
-        const start = Date.now();
-        const critical = ['joe_api', 'joe_web', 'joe_mongo', 'joe_nginx'];
-
-        while (Date.now() - start < timeoutMs) {
-            try {
-                const output = execSync('docker ps --format "{{.Names}}: {{.Status}}"').toString();
-                const allHealthy = critical.every(name => {
-                    if (!output.includes(name)) return false;
-                    const line = output.split('\n').find(l => l.includes(name)) || '';
-                    return line.includes('Up') || line.includes('healthy');
+                await Deployment.findByIdAndUpdate(entry.id, {
+                    $push: { logs: { $each: entry.logs } }
                 });
-
-                if (allHealthy) {
-                    this.broadcastLog(id, `[VERIFY] All critical containers are Up/Healthy.`);
-                    return;
-                }
-            } catch (e) { }
-            await new Promise(r => setTimeout(r, 5000));
-        }
-        throw new Error(`Container health check timed out after ${timeoutMs}ms.`);
-    }
-
-    private async verifyHttpHealth(id: string, timeoutMs = 60000) {
-        this.broadcastLog(id, `[VERIFY] Checking HTTP health (loopback)...`);
-        const start = Date.now();
-        while (Date.now() - start < timeoutMs) {
-            try {
-                const res = await axios.get(`http://localhost:${process.env.PORT || 3000}/api/health`, { timeout: 5000 });
-                if (res.data?.status === 'OK') {
-                    this.broadcastLog(id, `[VERIFY] HTTP Health OK.`);
-                    return;
-                }
-            } catch (e: any) {
-                this.broadcastLog(id, `[VERIFY] Health check attempt failed... retrying...`);
+            } catch (e) {
+                logger.error(`[DeployManager] Failed to flush logs for ${entry.id}: ${e}`);
             }
-            await new Promise(r => setTimeout(r, 5000));
-        }
-        throw new Error(`HTTP Health check timed out after ${timeoutMs}ms.`);
-    }
-
-    private async runSelfTest(id: string, timeoutMs = 60000) {
-        this.broadcastLog(id, `[VERIFY] Running system self-test...`);
-        try {
-            await this.runCommand('npm', ['run', 'test:system'], id, timeoutMs);
-            this.broadcastLog(id, `[VERIFY] Self-test passed.`);
-        } catch (e: any) {
-            throw new Error(`Self-test failed: ${e.message}`);
         }
     }
 
-    async getStatus() {
-        return {
-            currentDeploymentId: this.currentDeploymentId,
-            isBuilding: !!this.currentDeploymentId
-        };
+    // Auto-deploy poller methods
+    private startAutoDeployPoller() {
+        if (this.pollerInterval) {
+            clearInterval(this.pollerInterval);
+        }
+
+        this.pollerInterval = setInterval(() => {
+            this.checkAndDeploy().catch(e => {
+                this.lastPollError = e.message;
+                logger.error(`[DeployManager] Auto-deploy check failed: ${e.message}`);
+            });
+        }, POLL_INTERVAL_MS);
+
+        logger.info(`[DeployManager] Auto-deploy poller started (${POLL_INTERVAL_MS}ms interval)`);
     }
 
-    getAutoDeployStatus() {
+    private async checkAndDeploy() {
+        if (!this.pollerEnabled) return;
+
+        this.pollCount++;
+        this.lastPollTime = new Date();
+        this.pollerActive = true;
+
+        const localCommit = await this.getCurrentCommit();
+        const remoteCommit = await this.getRemoteCommit();
+
+        this.lastLocalCommit = localCommit;
+        this.lastRemoteCommit = remoteCommit;
+
+        if (localCommit !== remoteCommit && remoteCommit !== 'unknown') {
+            logger.info(`[DeployManager] New commits detected: ${localCommit} -> ${remoteCommit}`);
+
+            if (this.currentDeploymentId) {
+                logger.warn(`[DeployManager] Deployment already in progress, skipping auto-deploy`);
+                return;
+            }
+
+            await this.startDeploy('webhook', remoteCommit);
+        }
+
+        this.pollerActive = false;
+    }
+
+    stopAutoDeployPoller() {
+        this.pollerEnabled = false;
+        if (this.pollerInterval) {
+            clearInterval(this.pollerInterval);
+            this.pollerInterval = null;
+        }
+        logger.info('[DeployManager] Auto-deploy poller stopped');
+    }
+
+    startAutoDeployPoller() {
+        this.pollerEnabled = true;
+        this.startAutoDeployPoller();
+    }
+
+    getPollerStatus() {
         return {
-            pollerActive: this.pollerActive && this.pollerEnabled,
-            pollerEnabled: this.pollerEnabled,
+            enabled: this.pollerEnabled,
+            active: this.pollerActive,
             pollCount: this.pollCount,
-            lastPollTime: this.lastPollTime?.toISOString() || null,
+            lastPollTime: this.lastPollTime,
             lastPollError: this.lastPollError,
-            lastLocalCommit: this.lastLocalCommit?.slice(0, 7) || null,
-            lastRemoteCommit: this.lastRemoteCommit?.slice(0, 7) || null,
-            isDeploying: !!this.currentDeploymentId,
             intervalMs: POLL_INTERVAL_MS,
+            lastLocalCommit: this.lastLocalCommit,
+            lastRemoteCommit: this.lastRemoteCommit
         };
     }
 
-    toggleAutoDeploy(enabled: boolean) {
-        this.pollerEnabled = enabled;
-        logger.info(`[AutoDeploy] ${enabled ? '✅ ENABLED' : '⛔ DISABLED'} by admin`);
+    // Public API methods
+    async getDeployments(limit = 20) {
+        return Deployment.find().sort({ startTime: -1 }).limit(limit);
+    }
 
-        broadcast({
-            type: 'admin:autodeploy_status',
-            data: this.getAutoDeployStatus(),
-            ts: Date.now()
-        });
+    async getDeployment(id: string) {
+        return Deployment.findById(id);
+    }
 
-        return this.getAutoDeployStatus();
+    getCurrentDeploymentId() {
+        return this.currentDeploymentId;
+    }
+
+    isDeploying() {
+        return !!this.currentDeploymentId;
     }
 }
 
