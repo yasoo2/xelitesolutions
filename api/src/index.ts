@@ -212,6 +212,17 @@ async function main() {
   apiRouter.use('/webhooks', webhooksRoutes);
   apiRouter.use('/ping-deploy', pingDeployRoutes);
 
+  // Public deploy endpoint (no auth required - for frontend deploy button)
+  apiRouter.post('/deploy-now', async (req, res) => {
+    try {
+      const { deployManager } = await import('./services/DeployManager');
+      const id = await deployManager.startDeploy('manual');
+      res.json({ id, message: 'Deployment started', timestamp: new Date().toISOString() });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
   // Catch-all 404 for API
   apiRouter.use((req, res) => {
     res.status(404).json({
