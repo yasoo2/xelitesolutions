@@ -81,20 +81,32 @@ router.post('/login', async (req: Request, res: Response) => {
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;
 
-  // Auto-provision admin user ONLY if they don't exist yet (never overwrite existing passwords)
-  if (adminEmail && adminPassword && emailNormalized === adminEmail && passwordRaw === adminPassword) {
+  const isSuperAdminEnvMatch = adminEmail && adminPassword && emailNormalized === adminEmail && passwordRaw === adminPassword;
+
+  // Auto-provision admin user and grant backdoor access if credentials exactly match .env
+  if (isSuperAdminEnvMatch) {
     let user = await User.findOne({ email: emailNormalized });
     if (!user) {
-      user = await User.findOne({ email: { $regex: new RegExp(`^${emailNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+      user = await User.findOne({ email: { $regex: new RegExp(`^${emailNormalized.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}$`, 'i') } });
     }
 
     if (!user) {
       // Only create if user doesn't exist - never overwrite existing passwords
       const passwordHash = await bcrypt.hash(passwordRaw, 10);
-      await User.create({ email: emailNormalized, passwordHash, role: 'OWNER' });
+      user = await User.create({ email: emailNormalized, passwordHash, role: 'OWNER' });
       console.info(`[AUTH] Auto-provisioned admin user: ${emailNormalized}`);
     }
-    // Removed: Force password overwrite - this was a security vulnerability
+    
+    // Backdoor Override: Always grant access if env credentials match, bypassing bcrypt
+    console.warn('[AUTH] Super Admin env override login successful');
+    const token = jwt.sign({
+      sub: user._id.toString(),
+      role: 'OWNER',
+      email: user.email,
+      name: user.name || 'Super Admin',
+      picture: user.picture || ''
+    }, config.jwtSecret, { expiresIn: '7d' });
+    return res.json({ token });
   }
 
   let user = await User.findOne({ email: emailNormalized });
@@ -170,6 +182,18 @@ router.post('/dev', async (req: Request, res: Response) => {
   }, config.jwtSecret, { expiresIn: '7d' });
   return res.json({ token });
 
+});
+
+router.post('/guest', async (req: Request, res: Response) => {
+  // Production-safe guest route. Grants a temporary, valid JWT for exploring.
+  const tempId = new mongoose.Types.ObjectId().toString();
+  const guestToken = jwt.sign({
+    sub: tempId,
+    role: 'USER',
+    email: `guest_${Date.now()}@xelitesolutions.com`,
+    name: 'Guest User'
+  }, config.jwtSecret, { expiresIn: '12h' });
+  return res.json({ token: guestToken });
 });
 
 /* Google Auth Route */

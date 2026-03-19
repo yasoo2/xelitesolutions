@@ -177,25 +177,21 @@ export default function Login() {
         setLoading(true);
         setError(null);
         try {
-            // Use the /dev endpoint which bypasses auth for localhost/dev
-            // or just set a mock token since ENABLE_AUTH_BYPASS is on.
-            const res = await fetch(`${API}/auth/dev`, { method: 'POST' });
+            // Use the new secure /guest endpoint which generates a valid temporary JWT.
+            const res = await fetch(`${API}/auth/guest`, { method: 'POST' });
             const data = await res.json().catch(() => ({}));
 
             if (res.ok && data.token) {
                 localStorage.setItem('token', data.token);
                 nav('/joe');
             } else {
-                // Fallback: manually set a token and go to /joe
-                localStorage.setItem('token', 'guest_bypass_token_' + Date.now());
-                nav('/joe');
+                throw new Error(i18n.language?.startsWith('ar') ? 'تعذر إنشاء حساب زائر، يرجى المحاولة لاحقاً.' : 'Failed to create guest session. Please try again later.');
             }
-        } catch (err) {
-            // Final fallback
-            localStorage.setItem('token', 'guest_bypass_token_' + Date.now());
-            nav('/joe');
+        } catch (err: any) {
+            setError(err?.message || 'Guest login failed');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const S: any = {

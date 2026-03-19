@@ -107,13 +107,11 @@ export default function Joe() {
     }, [t, nav]);
 
     const handleLogout = useCallback(() => {
-        if (confirm(t('logoutConfirm', 'هل أنت متأكد من تسجيل الخروج؟'))) {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            localStorage.removeItem('admin');
-            nav('/login');
-        }
-    }, [nav, t]);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('admin');
+        nav('/login');
+    }, [nav]);
 
     const handleGitHubConnected = useCallback((user: GitHubUser) => {
         setGhConnected(true);
