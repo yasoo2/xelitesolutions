@@ -41,3 +41,4 @@ api/api/
 api/crm-demo/
 api/xelite-crm/
 data/
+.file-cache.json

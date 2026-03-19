@@ -18,16 +18,29 @@ echo "🔨 Building API..."
 cd "$API_PATH"
 rm -rf node_modules package-lock.json
 npm install --legacy-peer-deps --no-audit --no-fund
-npm run build || npx tsc --skipLibCheck
+npm run build || npx tsc
 
 echo "🔄 Restarting server..."
-pkill -f "node.*dist/index.js" 2>/dev/null || true
+npx pm2 stop joe-api 2>/dev/null || true
 sleep 2
-nohup node dist/index.js > /tmp/api.log 2>&1 &
+npx pm2 start ecosystem.config.js
 
-echo "✅ Deployment complete!"
+echo "✅ Deployment initiated via PM2!"
 echo "📊 Checking health..."
-sleep 3
-curl -s http://localhost:8080/health && echo "" || echo "⚠️ Health check failed"
-echo ""
-echo "📋 View logs: tail -f /tmp/api.log"
+RETRIES=10
+INTERVAL=2
+
+for i in $(seq 1 $RETRIES); do
+    if curl -s -f "http://localhost:8080/health" >/dev/null 2>&1; then
+        echo "✅ Health check passed!"
+        echo ""
+        echo "📋 View logs: npx pm2 logs joe-api"
+        exit 0
+    fi
+    echo "⚠️ Waiting for server... ($i/$RETRIES)"
+    sleep $INTERVAL
+done
+
+echo "❌ Health check failed after $RETRIES attempts."
+echo "📋 View logs: npx pm2 logs joe-api"
+exit 1

@@ -70,20 +70,22 @@ git reset --hard origin/main 2>/dev/null || {
 log "🔨 Building API..."
 cd "$API_PATH"
 
-# Use direct node commands instead of npm to avoid ENOENT
-export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/root/.nvm/versions/node/v20/bin:$PATH"
+# Load NVM to ensure right node version
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
 # Install dependencies
 log "Installing dependencies..."
 rm -rf node_modules package-lock.json
-node /usr/bin/npm install --legacy-peer-deps --no-audit --no-fund 2>&1 | tee -a "$LOG_FILE" || {
+npm install --legacy-peer-deps --no-audit --no-fund 2>&1 | tee -a "$LOG_FILE" || {
     log "⚠️ npm install had issues, continuing..."
 }
 
 # Build
 log "Compiling TypeScript..."
-node /root/.nvm/versions/node/v20/bin/npx tsc --skipLibCheck 2>&1 | tee -a "$LOG_FILE" || {
-    log "⚠️ tsc had issues, checking if dist exists..."
+npx tsc 2>&1 | tee -a "$LOG_FILE" || {
+    log "❌ tsc build failed"
+    exit 1
 }
 
 # Check if build succeeded
@@ -94,7 +96,7 @@ fi
 
 # Stop old server
 log "🔄 Stopping old server..."
-pkill -f "node.*dist/index.js" 2>/dev/null || true
+npx pm2 stop joe-api 2>/dev/null || true
 sleep 3
 
 # Start new server
@@ -103,9 +105,8 @@ cd "$API_PATH"
 export NODE_ENV=production
 export PORT=8080
 
-nohup /root/.nvm/versions/node/v20/bin/node dist/index.js > /tmp/api.log 2>&1 &
-NEW_PID=$!
-log "New server PID: $NEW_PID"
+npx pm2 start ecosystem.config.js
+log "Server managed by PM2"
 
 # Wait and verify
 sleep 5

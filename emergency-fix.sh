@@ -74,7 +74,6 @@ fi
 
 # Hard reset to latest
 git reset --hard origin/main
-git clean -fd  # Remove untracked files
 log_success "تم تحديث الكود إلى: ${REMOTE_COMMIT:0:7}"
 
 # ═══════════════════════════════════════════════════════════════════
@@ -119,7 +118,7 @@ if npm run build; then
     log_success "تم بناء API بنجاح"
 else
     log_warn "فشل npm run build، محاولة بـ tsc..."
-    if npx tsc --skipLibCheck; then
+    if npx tsc; then
         log_success "تم بناء API بـ tsc"
     else
         log_error "فشل البناء بالكامل"
@@ -152,8 +151,7 @@ log_step "🔄 خطوة 5: إعادة تشغيل السيرفر"
 # ═══════════════════════════════════════════════════════════════════
 
 log_info "إيقاف السيرفر القديم..."
-pkill -f "node.*dist/index.js" 2>/dev/null || true
-pkill -f "node.*api/dist" 2>/dev/null || true
+npx pm2 stop joe-api 2>/dev/null || true
 sleep 3
 
 # Check if any node processes are still running
@@ -167,15 +165,12 @@ fi
 log_info "تشغيل السيرفر الجديد..."
 cd "$API_PATH"
 
-# Use nohup to keep it running after logout
 export NODE_ENV=production
 export PORT=8080
 export PROJECT_ROOT="$PROJECT_PATH"
 
-nohup node dist/index.js > /tmp/api.log 2>&1 &
-NEW_PID=$!
-
-log_info "السيرفر يعمل بـ PID: $NEW_PID"
+npx pm2 start ecosystem.config.js
+log_info "السيرفر يعمل الآن تحت إدارة PM2"
 sleep 5
 
 # ═══════════════════════════════════════════════════════════════════
@@ -211,8 +206,8 @@ for i in $(seq 1 $RETRIES); do
         echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
         echo ""
         log_info "الإصدار الجديد: ${REMOTE_COMMIT:0:7}"
-        log_info "PID: $NEW_PID"
-        log_info "اللوجز: tail -f /tmp/api.log"
+        log_info "تم تشغيل نظام PM2 بنجاح"
+        log_info "اللوجز: npx pm2 logs joe-api"
         log_info ""
         log_info "الآن عند دفع أي تحديث جديد، سيتم نشره تلقائياً!"
 
@@ -224,5 +219,5 @@ for i in $(seq 1 $RETRIES); do
 done
 
 log_error "❌ فشل فحص الصحة بعد $RETRIES محاولات"
-log_info "اللوجز: tail -f /tmp/api.log"
+log_info "اللوجز: npx pm2 logs joe-api"
 exit 1

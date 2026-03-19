@@ -158,7 +158,7 @@ main() {
         log_info "✅ API built successfully"
     else
         log_warn "⚠️ npm run build failed, trying tsc directly..."
-        if npx tsc --skipLibCheck; then
+        if npx tsc; then
             log_info "✅ API built with tsc"
         else
             log_error "❌ API build failed"
@@ -172,13 +172,12 @@ main() {
     log_info "========================================="
 
     log_info "Stopping existing API server..."
-    pkill -f "node.*dist/index.js" 2>/dev/null || true
+    npx pm2 stop joe-api 2>/dev/null || true
     sleep 2
 
     log_info "Starting new API server..."
-    nohup node dist/index.js > /tmp/api.log 2>&1 &
-    API_PID=$!
-    log_info "API server started with PID: $API_PID"
+    npx pm2 start ecosystem.config.js
+    log_info "API server managed by PM2"
 
     # Wait for server to start
     log_info "Waiting for server to start..."
@@ -189,8 +188,7 @@ main() {
         log_info "========================================="
         log_info "✅ Deployment completed successfully!"
         log_info "========================================="
-        log_info "API PID: $API_PID"
-        log_info "API Logs: tail -f /tmp/api.log"
+        log_info "API Logs: npx pm2 logs joe-api"
 
         # Save last stable commit
         echo "$REMOTE_COMMIT" > "$PROJECT_PATH/last_stable_commit"
@@ -200,7 +198,7 @@ main() {
         log_error "========================================="
         log_error "❌ Deployment failed - API health check failed"
         log_error "========================================="
-        log_error "Check logs: tail -f /tmp/api.log"
+        log_error "Check logs: npx pm2 logs joe-api"
 
         exit 1
     fi
@@ -222,11 +220,11 @@ rollback() {
 
         cd "$API_PATH"
         npm install --legacy-peer-deps
-        npm run build || npx tsc --skipLibCheck
+        npm run build
 
-        pkill -f "node.*dist/index.js" 2>/dev/null || true
+        npx pm2 stop joe-api 2>/dev/null || true
         sleep 2
-        nohup node dist/index.js > /tmp/api.log 2>&1 &
+        npx pm2 start ecosystem.config.js
 
         log_info "✅ Rollback completed"
     else

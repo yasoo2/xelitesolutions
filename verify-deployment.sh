@@ -98,7 +98,7 @@ check_file "$API_PATH/src/neural/NeuralCore.ts" "NeuralCore.ts" || NEURAL_OK=fal
 check_file "$API_PATH/src/neural/NeuralStateManager.ts" "NeuralStateManager.ts" || NEURAL_OK=false
 check_file "$API_PATH/src/neural/NeuralVisualization.ts" "NeuralVisualization.ts" || NEURAL_OK=false
 check_file "$API_PATH/src/neural/NeuralIntegration.ts" "NeuralIntegration.ts" || NEURAL_OK=false
-check_file "$API_PATH/src/neural/NeuralDashboard.tsx" "NeuralDashboard.tsx" || NEURAL_OK=false
+check_file "$WEB_PATH/src/components/neural/NeuralDashboard.tsx" "NeuralDashboard.tsx" || NEURAL_OK=false
 check_file "$API_PATH/src/neural/index.ts" "neural/index.ts" || NEURAL_OK=false
 check_file "$WEB_PATH/src/components/NeuralThinkingIndicator.tsx" "NeuralThinkingIndicator.tsx" || NEURAL_OK=false
 

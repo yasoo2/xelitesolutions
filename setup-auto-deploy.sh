@@ -66,36 +66,6 @@ CRON_JOB="*/2 * * * * cd /root/xelitesolutions && curl -fsSL https://raw.githubu
 
 log_success "تم إعداد Cron Job للدبلوي التلقائي (كل 2 دقيقة)"
 
-# ═══════════════════════════════════════════════════════════════════
-log_step "🔍 إعداد مراقبة الصحة"
-# ═══════════════════════════════════════════════════════════════════
-
-# Create health check script
-HEALTH_SCRIPT="/tmp/joe-health-check.sh"
-cat > "$HEALTH_SCRIPT" << 'EOF'
-#!/bin/bash
-# Health check and auto-restart
-if ! curl -s http://localhost:8080/health >/dev/null 2>&1; then
-    echo "[$(date)] Server not healthy, restarting..."
-    cd /root/xelitesolutions/api
-    pkill -f "node.*dist/index.js" 2>/dev/null || true
-    sleep 3
-    nohup /root/.nvm/versions/node/v20/bin/node dist/index.js > /tmp/api.log 2>&1 &
-    echo "[$(date)] Server restarted"
-fi
-EOF
-chmod +x "$HEALTH_SCRIPT"
-
-# Add health check cron (every minute)
-HEALTH_CRON="* * * * * /tmp/joe-health-check.sh >> /tmp/joe-health.log 2>&1"
-(crontab -l 2>/dev/null | grep -v "joe-health-check.sh"; echo "$HEALTH_CRON") | crontab -
-
-log_success "تم إعداد مراقبة الصحة (كل دقيقة)"
-
-# ═══════════════════════════════════════════════════════════════════
-log_step "📋 ملخص الإعداد"
-# ═══════════════════════════════════════════════════════════════════
-
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║         ✅ تم إعداد الدبلوي التلقائي بنجاح!              ║${NC}"
@@ -103,12 +73,12 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 log_info "الآن النظام سيعمل تلقائياً:"
 echo "  • فحص التحديثات: كل 2 دقيقة"
-echo "  • مراقبة الصحة: كل دقيقة"
-echo "  • الدبلoyi التلقائي: عند اكتشاف تحديث جديد"
+echo "  • الدبلوي التلقائي: عند اكتشاف تحديث جديد"
+echo "  • ملاحظة: إعادة التشغيل التلقائي عند التعطل تتم الآن عبر PM2 بدلاً من Cron"
 echo ""
 log_info "لعرض اللوجز:"
 echo "  tail -f /tmp/joe-cron.log"
-echo "  tail -f /tmp/joe-health.log"
+echo "  npx pm2 logs joe-api"
 echo ""
 log_info "للتحقق من Cron Jobs:"
 echo "  crontab -l"
