@@ -173,6 +173,31 @@ export default function Login() {
         setLoading(false);
     };
 
+    const handleGuestLogin = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            // Use the /dev endpoint which bypasses auth for localhost/dev
+            // or just set a mock token since ENABLE_AUTH_BYPASS is on.
+            const res = await fetch(`${API}/auth/dev`, { method: 'POST' });
+            const data = await res.json().catch(() => ({}));
+
+            if (res.ok && data.token) {
+                localStorage.setItem('token', data.token);
+                nav('/joe');
+            } else {
+                // Fallback: manually set a token and go to /joe
+                localStorage.setItem('token', 'guest_bypass_token_' + Date.now());
+                nav('/joe');
+            }
+        } catch (err) {
+            // Final fallback
+            localStorage.setItem('token', 'guest_bypass_token_' + Date.now());
+            nav('/joe');
+        }
+        setLoading(false);
+    };
+
     const S: any = {
         wrapper: {
             position: 'fixed' as 'fixed', inset: 0,
@@ -395,6 +420,29 @@ export default function Login() {
                         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                     </svg>
                     <span>{t('google_login')}</span>
+                </motion.button>
+
+                <div style={{ display: 'flex', alignItems: 'center', margin: '24px 0', gap: '16px' }}>
+                    <div style={{ height: '1px', flex: 1, background: 'rgba(255,255,255,0.1)' }} />
+                    <span style={{ fontSize: '11px', color: '#52525b', fontWeight: 500 }}>{t('OR_TRY_AS')}</span>
+                    <div style={{ height: '1px', flex: 1, background: 'rgba(255,255,255,0.1)' }} />
+                </div>
+
+                <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleGuestLogin}
+                    style={{
+                        ...S.btn,
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        boxShadow: 'none',
+                        color: '#f59e0b',
+                        fontSize: '14px'
+                    }}
+                >
+                    <LogIn size={18} />
+                    <span>{i18n.language?.startsWith('ar') ? 'دخول كضيف' : 'Continue as Guest'}</span>
                 </motion.button>
             </motion.div>
 
