@@ -13,11 +13,13 @@ import { RefreshCw, Trash2 } from 'lucide-react';
 
 interface EmbeddedTerminalProps {
     terminalId?: string;
+    workspaceId?: string;
     onReady?: () => void;
 }
 
 export default function EmbeddedTerminal({
     terminalId = 'panel-terminal',
+    workspaceId,
     onReady
 }: EmbeddedTerminalProps) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -133,7 +135,8 @@ export default function EmbeddedTerminal({
                         id: terminalId,
                         shell: 'bash',
                         cols: 80,
-                        rows: 24
+                        rows: 24,
+                        workspaceId
                     })
                 });
 
@@ -330,7 +333,8 @@ export default function EmbeddedTerminal({
                     id: terminalId,
                     shell: 'bash',
                     cols: 80,
-                    rows: 24
+                    rows: 24,
+                    workspaceId
                 })
             });
 

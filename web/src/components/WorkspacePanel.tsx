@@ -19,6 +19,7 @@ interface WorkspacePanelProps {
     onTabChange?: (tab: WorkspaceTab) => void;
     browserSessionId?: string;
     terminalId?: string;
+    workspaceId?: string;
     previewUrl?: string;
     children?: React.ReactNode;
     isMaximized?: boolean;
@@ -328,6 +329,7 @@ export default function WorkspacePanel({
     onTabChange,
     browserSessionId,
     terminalId,
+    workspaceId,
     previewUrl,
     children,
     isMaximized,
@@ -454,7 +456,7 @@ export default function WorkspacePanel({
                 {activeTab === 'terminal' && (
                     <ErrorBoundary fallbackTitle="تعذّر تحميل الطرفية (Terminal)">
                         <Suspense fallback={<LoadingFallback />}>
-                            <EmbeddedTerminal terminalId={terminalId} />
+                            <EmbeddedTerminal terminalId={terminalId} workspaceId={workspaceId} />
                         </Suspense>
                     </ErrorBoundary>
                 )}

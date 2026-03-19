@@ -667,6 +667,7 @@ export default function Joe() {
                 onSystemClick={() => nav('/super-admin/system')}
                 browserSessionId={browserSessionId || undefined}
                 terminalId={activeSessionId}
+                workspaceId={workspaceId || undefined}
                 previewUrl={previewUrl}
                 sessionId={activeSessionId}
                 sessionKind={activeSessionKind}

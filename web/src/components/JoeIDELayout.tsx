@@ -51,6 +51,7 @@ interface JoeIDELayoutProps {
     onSystemClick?: () => void;
     browserSessionId?: string;
     terminalId?: string;
+    workspaceId?: string;
     previewUrl?: string;
 
     // Session
@@ -118,6 +119,7 @@ export default function JoeIDELayout({
     onSystemClick,
     browserSessionId,
     terminalId,
+    workspaceId,
     previewUrl,
 
     // Session
@@ -350,6 +352,7 @@ export default function JoeIDELayout({
                             onTabChange={handleWorkspaceTabChange}
                             browserSessionId={browserSessionId}
                             terminalId={terminalId}
+                            workspaceId={workspaceId}
                             previewUrl={previewUrl}
                             isMaximized={isMaximized}
                             onMaximizeToggle={handleMaximizeToggle}
