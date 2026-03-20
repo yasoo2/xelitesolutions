@@ -28,10 +28,45 @@ export async function handleShellCommand(
     logs.push(`exec: ${command} ${args.join(' ')} (cwd=${validCwd})`);
 
     return new Promise((resolve) => {
-        const allowedCommands = ['git', 'npm', 'node', 'tsc', 'eslint', 'ls', 'cat', 'grep', 'find', 'npx', 'yarn', 'pnpm'];
+        // Expanded command whitelist for advanced software engineering capabilities
+        const allowedCommands = [
+            // Package managers & runtimes
+            'git', 'npm', 'node', 'npx', 'yarn', 'pnpm', 'bun', 'deno',
+            // TypeScript & JavaScript tooling
+            'tsc', 'eslint', 'prettier', 'jest', 'vitest', 'mocha', 'tsx', 'ts-node',
+            // Python
+            'python', 'python3', 'pip', 'pip3', 'poetry', 'pipenv', 'uvicorn', 'flask', 'django-admin',
+            // File system & text processing
+            'ls', 'cat', 'grep', 'find', 'head', 'tail', 'wc', 'sort', 'uniq', 'diff', 'sed', 'awk',
+            'cp', 'mv', 'mkdir', 'touch', 'tree', 'du', 'df',
+            // Networking & HTTP
+            'curl', 'wget',
+            // Build tools
+            'make', 'cmake', 'cargo', 'go', 'rustc', 'gcc', 'g++',
+            // Container & deployment
+            'docker', 'docker-compose',
+            // Utilities
+            'echo', 'env', 'which', 'whoami', 'pwd', 'date', 'tar', 'gzip', 'gunzip', 'zip', 'unzip',
+            'xargs', 'basename', 'dirname', 'realpath', 'readlink', 'stat', 'file',
+            // Database clients
+            'psql', 'mysql', 'sqlite3', 'mongosh', 'redis-cli',
+            // Process management
+            'kill', 'lsof', 'ps',
+        ];
+
+        // Security: Block dangerous system commands but allow engineering tools
+        const blockedCommands = ['sudo', 'su', 'passwd', 'chown', 'chroot', 'mount', 'umount',
+            'fdisk', 'mkfs', 'dd', 'shutdown', 'reboot', 'halt', 'poweroff',
+            'iptables', 'systemctl', 'service', 'useradd', 'userdel', 'groupadd'];
+
+        if (blockedCommands.includes(command)) {
+            console.warn(`[Security] Blocked dangerous system command: ${command}`);
+            resolve({ ok: false, error: 'command_blocked_for_security', logs });
+            return;
+        }
 
         if (!allowedCommands.includes(command)) {
-            console.warn(`[Security] Blocked potentially unsafe command: ${command}`);
+            console.warn(`[Security] Blocked command not in whitelist: ${command}`);
             resolve({ ok: false, error: 'command_not_allowed', logs });
             return;
         }

@@ -101,7 +101,30 @@ function splitCommandLine(raw: string) {
 
 function isAllowedLocalCommand(command: string) {
     const c = String(command || '').trim();
-    const allowedCommands = ['git', 'npm', 'node', 'tsc', 'eslint', 'ls', 'cat', 'grep', 'find'];
+    const allowedCommands = [
+        // Package managers & runtimes
+        'git', 'npm', 'node', 'npx', 'yarn', 'pnpm', 'bun', 'deno',
+        // TypeScript & JavaScript tooling
+        'tsc', 'eslint', 'prettier', 'jest', 'vitest', 'mocha', 'tsx', 'ts-node',
+        // Python
+        'python', 'python3', 'pip', 'pip3', 'poetry', 'pipenv', 'uvicorn', 'flask', 'django-admin',
+        // File system & text processing (read-only + safe write ops)
+        'ls', 'cat', 'grep', 'find', 'head', 'tail', 'wc', 'sort', 'uniq', 'diff', 'sed', 'awk',
+        'cp', 'mv', 'mkdir', 'touch', 'tree', 'du', 'df',
+        // Networking & HTTP
+        'curl', 'wget',
+        // Build tools
+        'make', 'cmake', 'cargo', 'go', 'rustc', 'gcc', 'g++',
+        // Container & deployment
+        'docker', 'docker-compose',
+        // Utilities
+        'echo', 'env', 'which', 'whoami', 'pwd', 'date', 'tar', 'gzip', 'gunzip', 'zip', 'unzip',
+        'xargs', 'basename', 'dirname', 'realpath', 'readlink', 'stat', 'file',
+        // Database clients
+        'psql', 'mysql', 'sqlite3', 'mongosh', 'redis-cli',
+        // Process management
+        'kill', 'lsof', 'ps',
+    ];
     return allowedCommands.includes(c);
 }
 

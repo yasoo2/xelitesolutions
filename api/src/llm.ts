@@ -307,15 +307,13 @@ export function selectToolDefsForProvider(
     /\b(image|png|jpg|jpeg|generate image)\b/i.test(routingTextRaw) ||
     /صورة|صور/i.test(routingTextRaw);
 
-  let computedLimit = 72;
-  if (routingTextRaw.length < 140) computedLimit = 56;
-  if (routingTextRaw.length > 700) computedLimit = 96;
-  if (wantsBrowser) computedLimit = Math.max(computedLimit, 88);
-  if (wantsSearch) computedLimit = Math.max(computedLimit, 80);
-  if (wantsFs) computedLimit = Math.max(computedLimit, 80);
-  if (wantsQuality) computedLimit = Math.max(computedLimit, 80);
-  if (wantsGit) computedLimit = Math.max(computedLimit, 72);
-  if (wantsImage) computedLimit = Math.max(computedLimit, 72);
+  // Upgraded: Always provide a generous tool limit so the LLM has more choices
+  // The LLM is better at selecting the right tool when it can see more options
+  let computedLimit = 96; // Base: generous default
+  if (routingTextRaw.length > 500) computedLimit = 128; // Complex tasks get more tools
+  if (wantsBrowser || wantsFs || wantsShell || wantsQuality || wantsGit) {
+    computedLimit = Math.max(computedLimit, 112); // Multi-domain tasks get maximum visibility
+  }
   const effectiveLimit = Math.max(
     PRIORITY_TOOL_NAMES.length,
     Math.min(limit, computedLimit),
@@ -703,18 +701,59 @@ After building ANY project or making ANY code changes, you MUST verify before re
 5. **Final Report**: In your \`echo\`, list: (a) what was built, (b) what was tested, (c) result (pass/fail).
 CRITICAL: NEVER use \`echo\` to report success if you haven't verified the build passes.
 
-### 🔧 ERROR RECOVERY STRATEGY:
-When a tool fails or code has errors, DO NOT give up:
-1. **Read the Error**: Parse the full error message — identify the file, line number, and error type.
-2. **Diagnose**: Common errors and fixes:
-   - "Module not found" → Run \`npm install <package>\`
-   - "Type error" → Check TypeScript types, add missing imports
-   - "Syntax error" → Read the problematic file and fix the syntax
-   - "Port in use" → Use \`shell_execute\` to find and kill the process
-   - "Permission denied" → Try with different path or check file permissions
-3. **Fix and Retry**: Make the fix, then re-run the failing command.
-4. **Pivot if Stuck**: If the same approach fails 3 times, try a fundamentally different strategy.
-5. **NEVER report an error to the user without attempting at least 2 fixes first.**
+### 🔧 ADVANCED ERROR RECOVERY & SELF-HEALING:
+When a tool fails or code has errors, you MUST self-heal like an advanced engineering agent:
+
+**Step 1 — Diagnose Automatically:**
+- Parse the full error message — identify file, line number, error type.
+- Use \`read_file\` to inspect the failing file around the error line.
+- Use \`shell_execute\` with \`grep\` or \`find\` to locate related files.
+
+**Step 2 — Auto-Fix Common Errors:**
+| Error Pattern | Auto-Fix Action |
+|---|---|
+| "Module not found" / "Cannot find module" | Run \`npm install <package>\` or check import paths |
+| "Type error" / "Property does not exist" | Read the type definition, add correct types/imports |
+| "Syntax error" | Read the file, identify the syntax issue, use \`file_edit\` to fix |
+| "Port in use" / "EADDRINUSE" | Run \`lsof -i :<port>\` then \`kill <pid>\` |
+| "Permission denied" | Check path exists, try alternative path |
+| "ENOENT" / "No such file" | Use \`ls\` to check path, create missing directories with \`mkdir -p\` |
+| "Build failed" | Read build output, fix errors in order (first error first) |
+| "Test failed" | Read test output, fix the failing assertion or the code it tests |
+| "Git conflict" | Read the conflicting file, resolve manually with \`file_edit\` |
+
+**Step 3 — Apply Fix and Verify:**
+- Make the fix using \`file_edit\` or \`shell_execute\`.
+- Re-run the original failing command to verify the fix works.
+- If the fix creates new errors, fix those too (chain fixes).
+
+**Step 4 — Escalation Strategy:**
+- If the same approach fails 3 times → pivot to a fundamentally different strategy.
+- If 5 different approaches all fail → use \`notify_user\` to explain what you tried and ask for guidance.
+- **NEVER report an error to the user without attempting at least 3 fixes first.**
+
+### 🏗️ ADVANCED ENGINEERING PATTERNS (Devin-Style):
+When working on complex software engineering tasks:
+
+**Code Understanding:**
+- Before modifying code, ALWAYS read the surrounding context (at least 50 lines around the target).
+- Check imports, type definitions, and related files before making changes.
+- Use \`grep_search\` to find all references to a function/variable before renaming or modifying it.
+
+**Incremental Development:**
+- Make small, focused changes. Verify each change before moving to the next.
+- After every code change, run the relevant build/lint/test command.
+- Commit working changes frequently with descriptive messages.
+
+**Debugging Methodology:**
+- Start with the error message, then trace backwards through the call stack.
+- Add temporary \`console.log\` statements if needed, then remove them after debugging.
+- Check recent git history to see what changed if something suddenly breaks.
+
+**Project Navigation:**
+- Use \`project_detect\` once at the start to understand the tech stack.
+- Use \`ls\` and \`read_file\` on package.json, tsconfig.json, etc. to understand the build system.
+- Map out the directory structure before diving into specific files.
 
 ### 📐 CODE QUALITY STANDARDS:
 When writing code, follow these standards:
@@ -1424,296 +1463,49 @@ export async function planNextStep(
       }
     }
 
-    // Unified context injection point
+    // === LLM-First Tool Selection (Advanced Engineering Mode) ===
+    // Instead of regex pattern matching, we now prioritize sending tools to the LLM
+    // for native function calling. This is how Devin AI and other advanced agents work.
+    // Regex patterns are kept only as a fast-path fallback for obvious cases.
 
-    // === Pattern Detection ===
-
-    // Browser patterns
-    const browserPatterns = {
-      open: /(open|افتح|ادخل|زور|اذهب|visit|go to|browse|شوف|طالع|ودني|وديني|خلني|بدي|ابغى|عايز)\s+(https?:\/\/|www\.|google|youtube|github|facebook|twitter|x\.com|instagram|tiktok|linkedin)/i,
-      hasUrl: /https?:\/\/[^\s]+/i,
-      multiStep:
-        /(then|ثم|بعد|بعدها|وبعدين|click|انقر|اضغط|دوس|type|اكتب|املأ|extract|استخرج|لخص|انسخ)/i,
-      analyze: /(analyze|تحليل|فحص|دراسة)\s+(https?:\/\/|www\.)/i,
-    };
-
-    // Search patterns (expanded for weather, news, current events, and people in power)
-    const searchPatterns =
-      /(ابحث|بحث|search|find|lookup|دور|فتش|شوف|طالع|لاقي|اطلع|ابغى|عايز|بدي|ماهي|ما\s*هي|ما\s*هو|من\s*هو|من\s*هي|رئيس|حاكم|ملك|وزير|من\s*هو\s*رئيس|الحالي|كيف\s*هو|كيف\s*احوال|احوال|درجة\s*حرارة|سعر|now|current|weather|طقس|جو|اخبار|news|price|stock|who\s*is|president|ruler|king|minister|latest|capital\s*of)\s+(عن|على|for|about|في|بـ|هو|هي)?/i;
-
-    // File patterns (expanded)
-    const filePatterns = {
-      read: /(read|اقرأ|قراءة|شوف|طالع|اعرض|افتح)\s+(file|ملف|الملف)/i,
-      write: /(write|اكتب|create|انشئ|سوي|اعمل|كون)\s+(file|ملف)/i,
-      list: /(list|show|عرض|اعرض|شوف|طالع|ls)\s+(files|الملفات|ملفات)/i,
-    };
-
-    // Code generation patterns (expanded)
-    const codePatterns =
-      /(اكتب|كود|code|function|دالة|class|كلاس|component|كومبوننت|api|endpoint|script|سكريبت|program|برنامج|تطبيق|application|app|نظام|system|sوي|اعمل|ابني|انشئ|طور|build|create|develop|implement|نفذ)/i;
+    // Quick URL extraction for browser shortcuts only
+    const hasExplicitUrl = /https?:\/\/[^\s]+/i.test(userText);
+    const isExplicitBrowserOpen = /(open|افتح|visit|زور|اذهب|go to)\s+(https?:\/\/)/i.test(userText);
 
     try {
-      // 1. Browser requests
-      if (
-        browserPatterns.open.test(userText) ||
-        browserPatterns.hasUrl.test(userText)
-      ) {
+      // FAST PATH: Only handle the most obvious browser URL opens via regex
+      // Everything else goes through LLM with tool definitions
+      if (isExplicitBrowserOpen && hasExplicitUrl) {
         const urlMatch = userText.match(/https?:\/\/[^\s]+/);
-        const url = urlMatch
-          ? urlMatch[0]
-          : userText.match(/google/i)
-            ? "https://www.google.com"
-            : userText.match(/youtube/i)
-              ? "https://www.youtube.com"
-              : userText.match(/github/i)
-                ? "https://github.com"
-                : userText.match(/facebook/i)
-                  ? "https://www.facebook.com"
-                  : userText.match(/instagram/i)
-                    ? "https://www.instagram.com"
-                    : userText.match(/twitter|x\.com/i)
-                      ? "https://x.com"
-                      : "";
-
-        if (url) {
-          if (browserPatterns.analyze.test(userText)) {
-            console.info("[Auto Enterprise] → Browser Analysis Task");
-            return {
-              name: "browser_run",
-              input: {
-                sessionId: `browser_${Date.now()}`,
-                instructionText: `Visit this repository and perform a deep architectural analysis: ${url}`,
-              },
-            };
-          }
-          if (browserPatterns.multiStep.test(userText)) {
-            console.info("[Auto Enterprise] → Browser Multi-Step Task");
-            return {
-              name: "browser_run",
-              input: {
-                sessionId: `browser_${Date.now()}`,
-                instructionText: userText,
-              },
-            };
-          } else {
-            console.info("[Auto Enterprise] → Browser Open");
-            return {
-              name: "browser_open",
-              input: {
-                url,
-                sessionId: `browser_${Date.now()}`,
-              },
-            };
-          }
-        }
-      }
-
-      // 2. Web search requests
-      if (searchPatterns.test(userText)) {
-        console.info("[Auto Enterprise] → Web Search");
-        return {
-          name: "web_search",
-          input: { query: userText },
-        };
-      }
-
-      // 3. File operations
-      if (filePatterns.read.test(userText)) {
-        const fileMatch = userText.match(
-          /(read|اقرأ|قراءة|شوف|طالع|اعرض|افتح)\s+(file|ملف|الملف)\s+(.+)/i,
-        );
-        const filePath = fileMatch?.[3]?.trim() || ".";
-        console.info("[Auto Enterprise] → Read File");
-        return {
-          name: "file_read",
-          input: { filePath },
-        };
-      }
-
-      if (filePatterns.list.test(userText) || /^ls$/i.test(userText.trim())) {
-        console.info("[Auto Enterprise] → List Files");
-        return {
-          name: "ls",
-          input: { path: "." },
-        };
-      }
-
-      // Simple build requests (any app/calculator/game/tool request)
-      const simpleBuildPatterns =
-        /(build|create|make|ابني|انشئ|أنشئ|سوي|اعمل)\s+(.{0,20})?(calculator|game|todo|app|tool|store|shop|حاسبة|لعبة|مهام|تطبيق|أداة|متجر|دكان)/i;
-
-      // Large-scale build patterns (enterprise systems)
-      const largeBuildPatterns =
-        /(build|create|develop|implement|ship|launch|ابني|انشئ|أنشئ|طور|نفذ|ابغى|عايز|بدي)\s+(.{0,40})?(system|platform|application|backend|api|service|microservice|dashboard|portal|saas|نظام|منصة|خدمة|ميكروسيرفس)/i;
-      const explicitLargeScale =
-        /(enterprise|large[\s-]?scale|microservices|multi[\s-]?tenant|kubernetes|docker|terraform|ci\/cd|scalable|ضخم|ضخمة|واسع|واسعة|مؤسسي)/i;
-
-      const isBuildingWebsite =
-        /(صفحة|موقع|هبوط|landing|page|website|builder|متجر|دكان|store|shop)/i.test(userText);
-
-      const wordCountInLlm = (userText || "").trim().split(/\s+/).length;
-      const isInstructional =
-        /^\d+[\.\)]|[\*•-]\s/m.test(userText) || // Numbering or bullets
-        /(step|rule|instruction|قواعد|خطوات|اولا|ثانيا|أولا|ثانياً)/i.test(userText) ||
-        wordCountInLlm > 20;
-
-
-      const parseWebsitePipelineInput = () => {
-        const text = String(userText || "");
-        const lower = text.toLowerCase();
-        const nameMatch =
-          text.match(/(?:named|called)\s+([a-z0-9_-]{2,})/i) ||
-          text.match(/(?:اسم|اسمه|سميه|سَمِّه|سمه)\s+([a-z0-9_-]{2,})/i);
-        const name = String(nameMatch?.[1] || "").trim() || "mega-web";
-
-        const isEcom =
-          /(ecommerce|e-commerce|shop|store|checkout|cart|stripe|paypal|payments?|سلة|دفع|متجر|تجارة\s*الكترونية)/i.test(
-            text,
-          );
-        const isBlog = /(blog|مدونة|مقال|مقالات|اخبار|أخبار)/i.test(text);
-        const type = isEcom ? "ecommerce" : isBlog ? "blog" : "saas";
-
-        const features = Array.from(
-          new Set(
-            [
-              /(auth|login|signup|oauth|jwt|مصادقة|تسجيل\s*الدخول|حسابات)/i.test(
-                text,
-              )
-                ? "auth"
-                : null,
-              /(admin|dashboard|cms|لوحة|لوحه|تحكم|ادارة|إدارة)/i.test(text)
-                ? "admin"
-                : null,
-              /(payment|checkout|stripe|paypal|دفع|بوابة\s*دفع)/i.test(text)
-                ? "payments"
-                : null,
-              /(search|filter|فلاتر|بحث)/i.test(text) ? "search" : null,
-              /(seo|سيو|meta|structured\s*data)/i.test(text) ? "seo" : null,
-              /(i18n|multilingual|arabic|english|عربي|انجليزي|ثنائي)/i.test(
-                text,
-              )
-                ? "i18n"
-                : null,
-            ].filter(Boolean) as string[],
-          ),
-        );
-
-        const aestheticMode = /(glass|زجاج)/i.test(text)
-          ? "glass"
-          : /(neon|نيون)/i.test(text)
-            ? "neon"
-            : /(minimal|مينيمال|بسيط)/i.test(text)
-              ? "minimal"
-              : /(corporate|رسمي|شركات)/i.test(text)
-                ? "corporate"
-                : undefined;
-
-        const language =
-          analysis?.language === "ar"
-            ? "ar"
-            : analysis?.language === "mixed"
-              ? "dual"
-              : "en";
-
-        const qualityTasks = ["lint", "typecheck", "test", "build"];
-        return {
-          name,
-          type,
-          features,
-          qualityTasks,
-          securityChecks: true,
-          autoFix: true,
-          aestheticMode,
-          language,
-        };
-      };
-
-      // [STUPID JOE FIX] Simple build requests → Use standard Orchestrator
-      if (!isInstructional && !isBuildingWebsite && simpleBuildPatterns.test(userText)) {
-        console.info(
-          "[Auto Enterprise] → Simple Build Detected: Routing to Agent Orchestrator",
-        );
-        return {
-          name: "website_full_pipeline",
-          input: { name: "mega-web", type: "saas", features: [], qualityTasks: ["lint", "typecheck", "test", "build"], securityChecks: true, autoFix: true, language: analysis?.language === "ar" ? "ar" : "en" },
-        };
-      }
-
-      // Large-scale builds → Agent Orchestrator
-      if (
-        !isInstructional &&
-        !isBuildingWebsite &&
-        (analysis.type === "code_generation" || codePatterns.test(userText)) &&
-        (analysis.complexity === "extreme" ||
-          explicitLargeScale.test(userText) ||
-          largeBuildPatterns.test(userText))
-      ) {
-        console.info("[Auto Enterprise] → Large Build Detected: Routing to Agent Orchestrator");
-        return {
-          name: "website_full_pipeline",
-          input: { name: "mega-web", type: "saas", features: ["auth", "admin", "payments"], qualityTasks: ["lint", "typecheck", "test", "build"], securityChecks: true, autoFix: true, language: analysis?.language === "ar" ? "ar" : "en" },
-        };
-      }
-
-      // 4. Code generation (let the intelligent model handle it via echo)
-      if (codePatterns.test(userText) && analysis.type === "code_generation") {
-        if (isBuildingWebsite && !isInstructional) {
-          if (
-            analysis.complexity === "extreme" ||
-            explicitLargeScale.test(userText) ||
-            largeBuildPatterns.test(userText)
-          ) {
-            console.info(
-              "[Auto Enterprise] → Large Website Build Detected: Routing to Agent Orchestrator",
-            );
-            return {
-              name: "website_full_pipeline",
-              input: parseWebsitePipelineInput(),
-            };
-          }
-          console.info(
-            "[Auto Enterprise] → Detected Website Build Request - using Pipeline",
-          );
+        if (urlMatch) {
+          console.info("[Auto Enterprise] → Fast Path: Explicit URL Open");
           return {
-            name: "website_full_pipeline",
-            input: parseWebsitePipelineInput(),
+            name: "browser_open",
+            input: {
+              url: urlMatch[0],
+              sessionId: `browser_${Date.now()}`,
+            },
           };
         }
-
-        console.info(
-          "[Auto Enterprise] → Code Generation via Intelligent Model",
-        );
-        const msgs = [
-          {
-            role: "system",
-            content:
-              "You are an expert software engineer. Generate clean, production-ready code with best practices.",
-          },
-          ...messages,
-        ];
-        const codeResponse = await routeToModel(
-          msgs,
-          analysis,
-          undefined,
-          undefined,
-          options?.onProgress,
-          options?.onThought,
-          tools
-        );
-        return {
-          name: "echo",
-          input: { text: codeResponse },
-        };
       }
 
-      // 5. General chat/questions - Use intelligent router with full persona
+
+      // === LLM-DRIVEN TOOL SELECTION (Advanced Engineering Mode) ===
+      // All task types (code gen, file ops, search, etc.) now go through the LLM
+      // with full tool definitions. The LLM decides which tool to use.
       console.info(
-        `[Auto Enterprise] → Intelligent Chat via ${selectedModel.name}`,
+        `[Auto Enterprise] → LLM-First Tool Selection via ${selectedModel.name}`,
       );
 
-      // [TOOL AWARENESS] Build condensed tool catalog for LLM visibility
-      const toolCatalog = tools.map(t => `- **${t.name}**: ${t.description}`).join('\n');
-      const toolAwarenessBlock = `\n\n## Available Tools (${tools.length}+)\nIf the user's request requires executing a tool, respond ONLY with JSON: {"name":"<tool_name>","input":{<params>}}\n\n### Strategic Guidance for Agents:\n1. **Discovery Turn**: If you don't know the project structure, start with \`project_detect\`. \n2. **Analysis Turn**: If you already see the structure in history, DO NOT repeat \`project_detect\`. Instead, use \`analyze_codebase\` or \`file_read\` on key files (e.g., package.json, src/index.ts) to understand logic.\n3. **Avoid Loops**: Do not call the same tool with the same inputs multiple times without a clearly different purpose.\n\n${toolCatalog}`;
+      // Build strategic tool catalog with parameter hints for LLM
+      const toolCatalog = tools.map(t => {
+        const params = t.inputSchema?.properties
+          ? Object.keys(t.inputSchema.properties).join(', ')
+          : '';
+        return `- **${t.name}**${params ? ` (${params})` : ''}: ${t.description}`;
+      }).join('\n');
+
+      const toolAwarenessBlock = `\n\n## YOUR TOOLS (${tools.length}+)\nYou MUST use tools to accomplish tasks. To call a tool, respond ONLY with a JSON block:\n{"name":"<tool_name>","input":{<params>},"reasoning":"why this tool"}\n\n### ENGINEERING STRATEGY:\n1. **Explore First**: Use \`ls\`, \`project_detect\`, \`read_file\` to understand the project before making changes.\n2. **Plan Then Execute**: For complex tasks, use \`todo_write\` to create a plan, then execute step-by-step.\n3. **Verify After Changes**: After writing code, use \`shell_execute\` to build/test. Fix errors before reporting.\n4. **Use Git**: Commit and push changes with \`git_ops\`.\n5. **Never Guess**: If unsure about file structure, read it. If unsure about dependencies, check package.json.\n6. **Self-Heal**: If a command fails, read the error, diagnose it, and fix it automatically.\n7. **Anti-Loop**: Never call the same tool with the same params more than twice. Pivot strategy if stuck.\n\n### TOOL CATALOG:\n${toolCatalog}`;
 
       const msgs = [
         {

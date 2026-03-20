@@ -171,13 +171,15 @@ export class AgentLoopService {
         let steps = 0;
         const runCfg = getSessionRunConfig(sessionId);
         const isPerpetual = runCfg?.kind === 'agent' || runCfg?.perpetual === true;
-        const MAX_STEPS = isPerpetual ? 50 : 10; // Reduced from 500 to prevent runaway loops
+        const MAX_STEPS = isPerpetual ? 200 : 50; // Upgraded: Allow more steps for complex engineering tasks
 
-        // Circuit Breaker State (Wakil 4.1)
+        // Circuit Breaker State (Wakil 4.1 - Enhanced)
         let lastErrorHash: string | null = null;
         let consecutiveFailures = 0;
         let lastToolSignature: string | null = null;
+        let consecutiveIdenticalTools = 0;
         const blacklist = new Set<string>(); // Wakil 4.4: Task-level blacklist
+        const toolHistory: Array<{ name: string; ok: boolean; timestamp: number }> = []; // Track tool execution history for smart recovery
 
         let currentRunId = initialRunId;
 
@@ -189,8 +191,34 @@ export class AgentLoopService {
                 messages = await Message.find({ sessionId }).sort({ createdAt: 1 }).lean();
             }
 
-            // 2. Plan Next Step (LLM)
-            const msgsForLLM = messages.map(m => ({ role: m.role || 'user', content: String(m.content || '') }));
+            // 2. Plan Next Step (LLM) — with Smart Context Summarization
+            let msgsForLLM = messages.map(m => ({ role: m.role || 'user', content: String(m.content || '') }));
+
+            // Smart Context Window: Summarize old messages to prevent context overflow
+            if (msgsForLLM.length > 30) {
+                const userGoal = msgsForLLM.find(m => m.role === 'user');
+                const recentMessages = msgsForLLM.slice(-20);
+                const olderMessages = msgsForLLM.slice(0, -20);
+
+                // Build a summary of older tool executions
+                const toolActions = olderMessages
+                    .filter(m => m.content.includes('execute:') || m.content.includes('Tool Call:') || m.content.includes('✅') || m.content.includes('❌'))
+                    .map(m => {
+                        const content = m.content.slice(0, 150);
+                        return content;
+                    });
+
+                const summaryText = `## Previous Actions Summary (${olderMessages.length} messages summarized):\n` +
+                    (toolActions.length > 0 ? toolActions.join('\n') : 'No significant tool actions in older messages.');
+
+                // Only prepend userGoal if it's not already in recentMessages
+                const userGoalInRecent = userGoal && recentMessages.includes(userGoal);
+                msgsForLLM = [
+                    ...(userGoal && !userGoalInRecent ? [userGoal] : []),
+                    { role: 'assistant' as const, content: summaryText },
+                    ...recentMessages
+                ];
+            }
 
             // Check run config
             const runCfg = getSessionRunConfig(sessionId);
@@ -253,16 +281,34 @@ export class AgentLoopService {
             const inputStr = JSON.stringify(plan.input || {});
             const currentSignature = `${plan.name}:${inputStr}`;
 
-            if (blacklist.has(currentSignature) || currentSignature === lastToolSignature) {
-                const abortMsg = blacklist.has(currentSignature)
-                    ? `⚠️ Blacklisted: Refusing to repeat previously forbidden/failed action \`${plan.name}\`.`
-                    : `⚠️ No State Change: Refusing to repeat \`${plan.name}\` with identical input.`;
-
+            if (blacklist.has(currentSignature)) {
+                const abortMsg = `⚠️ Blacklisted: Refusing to repeat previously forbidden/failed action \`${plan.name}\`. Pivoting strategy...`;
                 broadcast({ type: 'text', runId: currentRunId, data: abortMsg });
                 try {
                     if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: abortMsg, runId: currentRunId });
                 } catch { }
-                break;
+                // Mark run as skipped to avoid orphaned 'running' records
+                try { if (!offlineMode) await Run.findByIdAndUpdate(newRunId, { $set: { status: 'skipped' } }); } catch { }
+                continue;
+            }
+
+            // Track consecutive identical tool calls (allow 2 retries before flagging)
+            if (currentSignature === lastToolSignature) {
+                consecutiveIdenticalTools++;
+                if (consecutiveIdenticalTools >= 3) {
+                    const pivotMsg = `⚠️ Loop Detected: \`${plan.name}\` called 3 times with identical input. Forcing strategy pivot.`;
+                    broadcast({ type: 'text', runId: currentRunId, data: pivotMsg });
+                    try {
+                        if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: pivotMsg, runId: currentRunId });
+                    } catch { }
+                    blacklist.add(currentSignature);
+                    consecutiveIdenticalTools = 0;
+                    // Mark run as skipped to avoid orphaned 'running' records
+                    try { if (!offlineMode) await Run.findByIdAndUpdate(newRunId, { $set: { status: 'skipped' } }); } catch { }
+                    continue;
+                }
+            } else {
+                consecutiveIdenticalTools = 0;
             }
             lastToolSignature = currentSignature;
 
@@ -297,16 +343,30 @@ export class AgentLoopService {
                     lastErrorHash = errorHash;
                 }
 
-                if (consecutiveFailures >= (isPerpetual ? 5 : 3)) { // Allow 3 retries before tripping (was 1)
+                if (consecutiveFailures >= (isPerpetual ? 8 : 5)) { // Enhanced: Allow more retries for complex tasks
                     blacklist.add(currentSignature); // Wakil 4.4: Add failing signature to blacklist
                     console.error(`[AgentLoop] Blacklisted failing action: ${currentSignature}`);
                     console.error(`[AgentLoop] Circuit Breaker Tripped: Consecutive failure for ${plan.name}`);
-                    const abortMsg = `⚠️ Max retries exceeded for \`${plan.name}\`. Aborting to prevent infinite loop.`;
-                    broadcast({ type: 'text', runId: newRunId, data: abortMsg });
+                    const recoveryMsg = `⚠️ Tool \`${plan.name}\` failed ${consecutiveFailures} times. Blacklisting and attempting alternative approach...`;
+                    // Broadcast step_failed since step_started was already sent
+                    const eventResult = sanitizeToolResultForBroadcast(plan.name, result);
+                    broadcast({ type: 'step_failed', runId: newRunId, data: { name: `execute:${plan.name}`, result: eventResult } });
+                    broadcast({ type: 'text', runId: newRunId, data: recoveryMsg });
                     try {
-                        if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: abortMsg, runId: newRunId });
+                        if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: recoveryMsg, runId: newRunId });
                     } catch { }
-                    break;
+                    // Save ToolExecution record for audit trail
+                    try {
+                        if (!offlineMode) {
+                            await ToolExecution.create({
+                                runId: newRunId, sessionId, name: plan.name || 'unknown',
+                                input: persistedInput, output: result.output, ok: result.ok, logs: result.logs,
+                            });
+                        }
+                    } catch { }
+                    // Update Run status to avoid orphaned 'running' records
+                    try { if (!offlineMode) await Run.findByIdAndUpdate(newRunId, { $set: { status: 'failed' } }); } catch { }
+                    continue;
                 }
             } else {
                 lastErrorHash = null;
@@ -346,13 +406,23 @@ export class AgentLoopService {
             }
             try { if (!offlineMode) await Run.findByIdAndUpdate(newRunId, { $set: { status: result.ok ? 'done' : 'failed' } }); } catch { }
 
+            // Track tool execution for smart recovery
+            toolHistory.push({ name: plan.name, ok: result.ok ?? false, timestamp: Date.now() });
+
             // If tool failed, let the LLM see the error and attempt recovery
-            // DO NOT break immediately — the error is now in the message history
-            // The LLM will analyze it and decide whether to fix or abort
             if (!result.ok) {
-                console.log(`[AgentLoop] Tool '${plan.name}' failed. Letting LLM attempt self-recovery...`);
-                // Continue the loop — the next iteration will call planNextStep
-                // with the error in the conversation, allowing the LLM to diagnose and fix
+                const errorContext = typeof result.error === 'string' ? result.error : 'Unknown error';
+                console.log(`[AgentLoop] Tool '${plan.name}' failed: ${errorContext.slice(0, 200)}. Letting LLM attempt self-recovery...`);
+
+                // Inject recovery hint into the conversation
+                const recentFailures = toolHistory.filter(t => !t.ok && Date.now() - t.timestamp < 60000);
+                if (recentFailures.length >= 3) {
+                    const recoveryHint = `🔧 Recovery Hint: ${recentFailures.length} tools failed in the last minute. Consider: 1) Check if the file/path exists, 2) Try a different approach, 3) Read error output carefully, 4) Use \`ls\` or \`project_detect\` to understand the current state.`;
+                    broadcast({ type: 'text', runId: newRunId, data: recoveryHint });
+                    try {
+                        if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: recoveryHint, runId: newRunId });
+                    } catch { }
+                }
                 continue;
             }
 
