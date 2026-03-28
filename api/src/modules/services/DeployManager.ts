@@ -224,12 +224,7 @@ export class DeployManager {
             });
 
             // Send alert
-            await alertService.sendAlert({
-                level: 'info',
-                title: 'Deployment Successful',
-                message: `Deployment ${id} completed successfully in ${deployment.duration}s`,
-                category: 'deployment'
-            });
+            await alertService.notifySuccess(id, deployment.commit);
 
         } catch (error: any) {
             logger.error(`[DeployManager] Deployment ${id} failed: ${error.message}`);
@@ -248,12 +243,7 @@ export class DeployManager {
             });
 
             // Send alert
-            await alertService.sendAlert({
-                level: 'error',
-                title: 'Deployment Failed',
-                message: `Deployment ${id} failed: ${error.message}`,
-                category: 'deployment'
-            });
+            await alertService.notifyFailure(id, error.message);
 
             // Attempt rollback to last stable commit
             await this.attemptRollback();
@@ -348,7 +338,7 @@ export class DeployManager {
 
     private async verifyHealth(retries = 5): Promise<void> {
         const port = process.env.PORT || 5001;
-        const API_URL = process.env.API_URL || `http://localhost:${port}`;
+        const API_URL = process.env.API_URL || `http://127.0.0.1:${port}`;
 
         for (let i = 0; i < retries; i++) {
             try {

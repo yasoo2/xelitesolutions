@@ -91,6 +91,7 @@ router.get('/system/containers', async (req, res) => {
             timeout: 10000,
             encoding: 'utf8',
             env: { ...process.env, PATH: process.env.PATH },
+            stdio: ['pipe', 'pipe', 'ignore']
         });
         const containers = output.trim().split('\n').map(l => {
             if (!l) return null;
@@ -153,13 +154,13 @@ router.get('/system/health', async (req, res) => {
 
         let diskInfo = 'Unknown';
         try {
-            diskInfo = execSync("df -h / | awk 'NR==2{printf \"%s/%s (%s)\", $3,$2,$5}'").toString().trim();
+            diskInfo = execSync("df -h / | awk 'NR==2{printf \"%s/%s (%s)\", $3,$2,$5}'", { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
         } catch { }
 
         // Docker stats
         let containers: any[] = [];
         try {
-            const dockerOutput = execSync('docker ps --format "{{json .}}"').toString().trim();
+            const dockerOutput = execSync('docker ps --format "{{json .}}"', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
             containers = dockerOutput.split('\n').map(l => {
                 try { return JSON.parse(l); } catch { return null; }
             }).filter(Boolean);
