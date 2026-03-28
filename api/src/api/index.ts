@@ -1,0 +1,104 @@
+import http from 'http';
+import mongoose from 'mongoose';
+import pino from 'pino';
+import bcrypt from 'bcrypt';
+import { config } from '../shared/config';
+import { createApp } from './app';
+import { attachWebSocket } from './ws';
+import { User } from '../shared/models/user';
+import { executeTool } from '../modules/services/ToolService';
+import path from 'path';
+import fs from 'fs';
+
+const logger = process.env.NODE_ENV === 'production' 
+  ? pino() 
+  : pino({ transport: { target: 'pino-pretty', options: { translateTime: 'SYS:standard', colorize: true } } });
+
+function escapeRegExp(input: string) {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function ensureOwnerFromEnv() {
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminEmail || !adminPassword) return;
+  if (mongoose.connection.readyState !== 1) return;
+
+  let user = await User.findOne({ email: adminEmail });
+  if (!user) {
+    user = await User.findOne({ email: { $regex: new RegExp(`^${escapeRegExp(adminEmail)}$`, 'i') } });
+  }
+
+  if (!user) {
+    const passwordHash = await bcrypt.hash(adminPassword, 10);
+    await User.create({ email: adminEmail, passwordHash, role: 'SUPER_ADMIN' });
+    return;
+  }
+
+  let ok = false;
+  if (user.passwordHash) {
+    ok = await bcrypt.compare(adminPassword, user.passwordHash);
+  }
+  if (!ok || user.role !== 'SUPER_ADMIN' || user.email !== adminEmail) {
+    const passwordHash = await bcrypt.hash(adminPassword, 10);
+    user.email = adminEmail;
+    user.passwordHash = passwordHash;
+    user.role = 'SUPER_ADMIN';
+    await user.save();
+  }
+}
+
+async function main() {
+  logger.info('🚀 JOE API STARTUP INITIATED...');
+
+  const app = createApp();
+  const server = http.createServer(app);
+  attachWebSocket(server);
+
+  // Ensure projects data directory exists
+  const isApiDir = path.basename(process.cwd()) === 'api';
+  const projectRoot = isApiDir ? path.join(process.cwd(), '..') : process.cwd();
+  const projectsDir = path.join(projectRoot, 'data', 'projects');
+  if (!fs.existsSync(projectsDir)) {
+    try { fs.mkdirSync(projectsDir, { recursive: true }); } catch { }
+  }
+
+  server.listen(config.port, '0.0.0.0', () => {
+    logger.info({ port: config.port }, 'API server listening and WebSocket attached');
+
+    // Optional Startup Indexing
+    if (process.env.ENABLE_STARTUP_AUTO_INDEXING === 'true') {
+      setTimeout(() => {
+        logger.info('[DeepMemory] Starting Startup Auto-Indexing...');
+        executeTool('memorize_codebase', {
+          directory: process.cwd(),
+          extensions: ['ts', 'tsx', 'js', 'json', 'md', 'css', 'html', 'py']
+        }).catch(() => { });
+      }, Number(process.env.STARTUP_AUTO_INDEXING_DELAY_MS || '0'));
+    }
+  });
+
+  const connectWithRetry = async () => {
+    mongoose.set('bufferCommands', false);
+    for (let i = 0; i < 30; i++) {
+      try {
+        await mongoose.connect(config.mongoUri);
+        logger.info('✅ MongoDB connected successfully');
+        await ensureOwnerFromEnv();
+        return;
+      } catch (e: any) {
+        logger.warn(`MongoDB connection failed (Attempt ${i+1}), retrying in 2s...: ${e.message}`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    logger.error('Fatal: Could not connect to MongoDB. Exiting.');
+    process.exit(1);
+  };
+
+  void connectWithRetry();
+}
+
+main().catch((err) => {
+  logger.error(err, 'Fatal startup error');
+  process.exit(1);
+});

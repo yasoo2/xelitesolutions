@@ -1,5 +1,5 @@
-import { broadcast } from './ws';
-import { planNextStep } from './llm';
+import { broadcast } from './api/ws';
+import { planNextStep } from './core/llm';
 
 // Mock broadcast to capture events
 const events: any[] = [];
