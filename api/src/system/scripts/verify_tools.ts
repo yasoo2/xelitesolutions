@@ -5,7 +5,7 @@ import { routeToModel } from '../../core/llm/intelligent-router';
 import { executeTool } from '../../modules/services/ToolService';
 import { workspaceService } from '../../modules/services/WorkspaceService';
 
-const TOOLS_DIR = path.resolve(__dirname, '../tools/definitions');
+const TOOLS_DIR = path.resolve(__dirname, '../../modules/tools/definitions');
 
 async function maybeStartMockLocalLlm() {
     const enabled = String(process.env.LOCAL_LLM_MOCK || '').trim() === '1';

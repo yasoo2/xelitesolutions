@@ -339,7 +339,7 @@ export function analyzeTask(userMessage: string, conversationHistory?: any[]): T
     else if (taskType === 'browser_task') complexity = 'medium';
 
     // Check for extremely complex tasks
-    if (/(build.*application|ابني.*تطبيق|full.*system|نظام.*كامل|million|مليون|large.*scale|واسع.*النطاق)/i.test(msg)) {
+    if (/(build.*(application|website|app|system|ecommerce|fullstack)|ابني.*تطبيق|full.*system|نظام.*كامل|million|مليون|large.*scale|واسع.*النطاق)/i.test(msg)) {
         complexity = 'extreme';
         requiresTools = true;
     }
@@ -393,7 +393,7 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
     switch (analysis.type) {
         case 'code_generation':
             // استخدم Mixtral للمشاريع المعقدة بدلاً من Llama
-            if (analysis.complexity === 'extreme' || analysis.complexity === 'high') {
+            if (analysis.complexity === 'high') {
                 return MODELS['mixtral-8x7b']; // 32K context أفضل للمشاريع الكبيرة
             }
             return MODELS['gemma-2-9b'];

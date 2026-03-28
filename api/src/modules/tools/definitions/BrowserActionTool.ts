@@ -51,7 +51,7 @@ export class BrowserActionTool extends BaseTool {
                 const url = normalizeUrlForGoto(input.url, page.url());
 
                 // [Wakil 3.2] Port Validation Safeguard
-                const { isPortOpen, isLocalOrInternalUrl } = await import('../../utils/network');
+                const { isPortOpen, isLocalOrInternalUrl } = await import('../../../shared/utils/network');
                 if (isLocalOrInternalUrl(url)) {
                     try {
                         const u = new URL(url);
