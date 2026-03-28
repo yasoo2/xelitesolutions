@@ -383,11 +383,19 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
         return MODELS['mixtral-8x7b']; // Placeholder config, will be handled by fallback loop
     }
 
+    // 🔥 WEAK MODEL OPTIMIZATION: استخدام Mixtral للمشاريع الضخمة (32K context!)
+    if (analysis.complexity === 'extreme' || analysis.estimatedTokens > 6000) {
+        console.info('[IntelligentRouter] 🚀 Large project detected - Using Mixtral 8x7B (32K context)');
+        return MODELS['mixtral-8x7b'];
+    }
+
     // Task-specific selection (free tier)
     switch (analysis.type) {
         case 'code_generation':
-            if (analysis.complexity === 'extreme') return MODELS['llama-3.1-70b'];
-            if (analysis.complexity === 'high') return MODELS['mixtral-8x7b'];
+            // استخدم Mixtral للمشاريع المعقدة بدلاً من Llama
+            if (analysis.complexity === 'extreme' || analysis.complexity === 'high') {
+                return MODELS['mixtral-8x7b']; // 32K context أفضل للمشاريع الكبيرة
+            }
             return MODELS['gemma-2-9b'];
 
         case 'complex_reasoning':
@@ -429,11 +437,15 @@ async function callGroq(model: string, messages: any[], onPartial?: (delta: stri
 
     try {
         const stream = !!onPartial;
+        
+        // استخدم الحد الأقصى للموديل - Mixtral يدعم 32K!
+        const maxTokensForModel = model.includes('mixtral') ? 16000 : 8000;
+        
         const body: any = {
             model,
             messages,
             temperature: 0.7,
-            max_tokens: 8000,
+            max_tokens: maxTokensForModel,
             stream
         };
 
