@@ -7,13 +7,16 @@ import { broadcast } from '../../api/ws';
 import axios from 'axios';
 import { alertService } from './AlertService';
 import shadow from 'fs';
+import path from 'path';
 const fs = shadow.promises;
 const STABLE_COMMIT_FILE = './last_stable_commit';
 
 // Configurable project root - no more hardcoded /root/xelitesolutions
-const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
-const API_DIR = process.env.API_DIR || `${PROJECT_ROOT}/api`;
-const WEB_DIR = process.env.WEB_DIR || `${PROJECT_ROOT}/web`;
+// Ensure that if process.cwd() is inside /api, the root is calculated correctly.
+const defaultRoot = process.cwd().endsWith('/api') ? path.resolve(process.cwd(), '..') : process.cwd();
+const PROJECT_ROOT = process.env.PROJECT_ROOT || defaultRoot;
+const API_DIR = process.env.API_DIR || path.join(PROJECT_ROOT, 'api');
+const WEB_DIR = process.env.WEB_DIR || path.join(PROJECT_ROOT, 'web');
 const POLL_INTERVAL_MS = Math.max(10000, Number(process.env.DEPLOY_POLL_INTERVAL_MS) || 60000); // Default 60s, min 10s
 
 export class DeployManager {
