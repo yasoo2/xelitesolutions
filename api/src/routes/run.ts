@@ -1320,7 +1320,7 @@ function browserSessionIdFromUrl(url: string): string {
 }
 
 router.post('/start', authenticateOptional as any, async (req: Request, res: Response) => {
-  console.log(`[Run] POST /api/run called. Text length: ${String(req.body?.text || '').length}, Session: ${req.body?.sessionId}`);
+  console.log(`[Run] POST /api/runs/start called. Text length: ${String(req.body?.text || '').length}, Session: ${req.body?.sessionId}`);
   try {
     const offlineMode = process.env.OFFLINE_MODE === 'true';
     let { text, sessionId, attachments, provider, apiKey, baseUrl, model, sessionKind, browserSessionId, clientContext, isGodMode, userSystemInstructions } = req.body || {};

@@ -41,23 +41,35 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 }
 
 export function authenticateOptional(req: Request, res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  
+  // Try to verify token if provided
+  if (header && header.startsWith('Bearer ')) {
+    const token = header.slice('Bearer '.length);
+    try {
+      const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
+      (req as AuthenticatedRequest).auth = payload;
+      return next();
+    } catch {
+      // Invalid token - in dev mode with bypass, continue anyway
+      if (isDev && process.env.ENABLE_AUTH_BYPASS === 'true') {
+        console.warn('[AUTH] Invalid token provided, but auth bypass is active (dev mode)');
+        (req as AuthenticatedRequest).auth = { sub: '000000000000000000000001', role: 'OWNER' };
+        return next();
+      }
+      // In production or without bypass, reject invalid tokens
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+  }
+  
+  // No token provided - allow in dev mode with bypass
   if (isDev && process.env.ENABLE_AUTH_BYPASS === 'true') {
     (req as AuthenticatedRequest).auth = { sub: '000000000000000000000001', role: 'OWNER' };
     return next();
   }
-
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    return next();
-  }
-  const token = header.slice('Bearer '.length);
-  try {
-    const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
-    (req as AuthenticatedRequest).auth = payload;
-    return next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
+  
+  // No token and no bypass - continue without auth (optional auth)
+  return next();
 }
 // Super admin emails loaded from environment variable (comma-separated) instead of hardcoded
 const SUPER_ADMIN_EMAILS: string[] = (() => {
