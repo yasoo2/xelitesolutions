@@ -352,9 +352,9 @@ export default function DeploymentsPage() {
             {/* Auto-Deploy Status Card */}
             <div className="autodeploy-status-card">
                 <div className="autodeploy-left">
-                    <div className={`autodeploy-indicator ${autoDeployStatus?.pollerActive ? 'active' : 'inactive'}`}>
-                        <div className={`pulse-dot ${autoDeployStatus?.pollerActive ? 'green' : 'red'}`} />
-                        <span>{autoDeployStatus?.pollerActive ? 'Auto-Deploy Active' : 'Auto-Deploy Inactive'}</span>
+                    <div className={`autodeploy-indicator ${(autoDeployStatus?.pollerEnabled ?? true) ? 'active' : 'inactive'}`}>
+                        <div className={`pulse-dot ${!(autoDeployStatus?.pollerEnabled ?? true) ? 'red' : 'green'}`} />
+                        <span>{!(autoDeployStatus?.pollerEnabled ?? true) ? 'Auto-Deploy Disabled' : autoDeployStatus?.pollerActive ? 'Auto-Deploy Fetching...' : 'Auto-Deploy Standby'}</span>
                     </div>
                     {autoDeployStatus && (
                         <div className="autodeploy-details">

@@ -429,19 +429,17 @@ export default function SystemManagement() {
                         gap: '10px',
                         fontWeight: 600,
                         fontSize: '15px',
-                        color: autoDeployStatus?.pollerActive ? '#10b981' : '#ef4444'
+                        color: (autoDeployStatus?.pollerEnabled ?? true) ? '#10b981' : '#ef4444'
                     }}>
                         <div style={{
                             width: '10px',
                             height: '10px',
                             borderRadius: '50%',
-                            background: autoDeployStatus?.pollerActive ? '#10b981' : '#ef4444',
-                            boxShadow: autoDeployStatus?.pollerActive
-                                ? '0 0 8px #10b981'
-                                : '0 0 8px #ef4444',
+                            background: (autoDeployStatus?.pollerEnabled ?? true) ? '#10b981' : '#ef4444',
+                            boxShadow: (autoDeployStatus?.pollerEnabled ?? true) ? '0 0 8px #10b981' : '0 0 8px #ef4444',
                             animation: autoDeployStatus?.pollerActive ? 'pulse-glow 2s infinite' : 'none'
                         }} />
-                        <span>{autoDeployStatus?.pollerActive ? '🟢 Auto-Deploy Active' : '🔴 Auto-Deploy Inactive'}</span>
+                        <span>{!(autoDeployStatus?.pollerEnabled ?? true) ? '🔴 Auto-Deploy Disabled' : autoDeployStatus?.pollerActive ? '🟢 Auto-Deploy Fetching...' : '🟢 Auto-Deploy Standby'}</span>
                     </div>
                     {autoDeployStatus && (
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>
