@@ -170,16 +170,16 @@ export class DeployManager {
             if (currentCommit === remoteCommit) {
                 this.queueLog(id, '[SYSTEM] Already up to date.');
             } else {
-                await this.runCommand('git', ['fetch', 'origin', 'main'], PROJECT_ROOT);
-                await this.runCommand('git', ['reset', '--hard', `origin/main`], PROJECT_ROOT);
+                await this.runCommand('git', ['fetch', 'origin', 'main'], PROJECT_ROOT, 120000, id);
+                await this.runCommand('git', ['reset', '--hard', `origin/main`], PROJECT_ROOT, 120000, id);
                 this.queueLog(id, `[SYSTEM] Code synced to ${remoteCommit}`);
             }
 
             // 2. Build web frontend
             this.queueLog(id, '[BUILD] Building web frontend...');
             try {
-                await this.runCommand('npm', ['install', '--legacy-peer-deps'], WEB_DIR, 300000);
-                await this.runCommand('npm', ['run', 'build'], WEB_DIR, 300000);
+                await this.runCommand('npm', ['install', '--legacy-peer-deps'], WEB_DIR, 300000, id);
+                await this.runCommand('npm', ['run', 'build'], WEB_DIR, 300000, id);
                 this.queueLog(id, '[BUILD] Web frontend built successfully');
             } catch (error: any) {
                 this.queueLog(id, `[WARN] Web frontend build failed: ${error.message} — continuing with API rebuild...`);
@@ -187,13 +187,13 @@ export class DeployManager {
 
             // 3. Build API
             this.queueLog(id, '[BUILD] Building API...');
-            await this.runCommand('npm', ['install', '--legacy-peer-deps', '--no-audit', '--no-fund'], API_DIR, 300000);
+            await this.runCommand('npm', ['install', '--legacy-peer-deps', '--no-audit', '--no-fund'], API_DIR, 300000, id);
 
             try {
-                await this.runCommand('npm', ['run', 'build'], API_DIR, 300000);
+                await this.runCommand('npm', ['run', 'build'], API_DIR, 300000, id);
             } catch (error: any) {
                 this.queueLog(id, `[WARN] npm run build failed, trying tsc directly: ${error.message}`);
-                await this.runCommand('npx', ['tsc', '--skipLibCheck'], API_DIR, 300000);
+                await this.runCommand('npx', ['tsc', '--skipLibCheck'], API_DIR, 300000, id);
             }
             this.queueLog(id, '[BUILD] API built successfully');
 
@@ -257,7 +257,7 @@ export class DeployManager {
     /**
      * FIXED: Use spawn instead of exec to avoid ENOENT error
      */
-    private async runCommand(command: string, args: string[], cwd: string, timeoutMs = 120000): Promise<string> {
+    private async runCommand(command: string, args: string[], cwd: string, timeoutMs = 120000, deploymentId?: string): Promise<string> {
         return new Promise((resolve, reject) => {
             const startTime = Date.now();
 
@@ -287,11 +287,25 @@ export class DeployManager {
             }, timeoutMs);
 
             child.stdout?.on('data', (data) => {
-                stdout += data.toString();
+                const chunk = data.toString();
+                stdout += chunk;
+                if (deploymentId) {
+                    chunk.split('\n').forEach((l: string) => {
+                        const line = l.trim();
+                        if (line) this.queueLog(deploymentId, `    > ${line}`, true);
+                    });
+                }
             });
 
             child.stderr?.on('data', (data) => {
-                stderr += data.toString();
+                const chunk = data.toString();
+                stderr += chunk;
+                if (deploymentId) {
+                    chunk.split('\n').forEach((l: string) => {
+                        const line = l.trim();
+                        if (line) this.queueLog(deploymentId, `    [STREAM] ${line}`, true);
+                    });
+                }
             });
 
             child.on('error', (error) => {
@@ -391,7 +405,7 @@ export class DeployManager {
         }
     }
 
-    private queueLog(deploymentId: string, log: string) {
+    private queueLog(deploymentId: string, log: string, silentTerminal = false) {
         const entry = this.logQueue.find(q => q.id === deploymentId);
         if (entry) {
             entry.logs.push(log);
@@ -399,24 +413,26 @@ export class DeployManager {
             this.logQueue.push({ id: deploymentId, logs: [log] });
         }
 
-        // Add beautiful ANSI colors for the terminal output
-        let coloredLog = log;
-        if (log.includes('[SUCCESS]')) {
-            coloredLog = `\x1b[1;32m${log}\x1b[0m`; // Green
-        } else if (log.includes('[ERROR]') || log.includes('failed')) {
-            coloredLog = `\x1b[1;31m${log}\x1b[0m`; // Red
-        } else if (log.includes('[WARN]')) {
-            coloredLog = `\x1b[1;33m${log}\x1b[0m`; // Yellow
-        } else if (log.includes('[BUILD]')) {
-            coloredLog = `\x1b[1;36m${log}\x1b[0m`; // Cyan
-        } else if (log.includes('[SYSTEM]')) {
-            coloredLog = `\x1b[1;35m${log}\x1b[0m`; // Magenta
-        } else {
-            coloredLog = `\x1b[37m${log}\x1b[0m`; // White
-        }
+        if (!silentTerminal) {
+            // Add beautiful ANSI colors for the terminal output
+            let coloredLog = log;
+            if (log.includes('[SUCCESS]')) {
+                coloredLog = `\x1b[1;32m${log}\x1b[0m`; // Green
+            } else if (log.includes('[ERROR]') || log.includes('failed')) {
+                coloredLog = `\x1b[1;31m${log}\x1b[0m`; // Red
+            } else if (log.includes('[WARN]')) {
+                coloredLog = `\x1b[1;33m${log}\x1b[0m`; // Yellow
+            } else if (log.includes('[BUILD]')) {
+                coloredLog = `\x1b[1;36m${log}\x1b[0m`; // Cyan
+            } else if (log.includes('[SYSTEM]')) {
+                coloredLog = `\x1b[1;35m${log}\x1b[0m`; // Magenta
+            } else {
+                coloredLog = `\x1b[37m${log}\x1b[0m`; // White
+            }
 
-        const shortId = deploymentId.substring(0, 8);
-        logger.info(`\x1b[1;34m[Deploy ${shortId}]\x1b[0m ${coloredLog}`);
+            const shortId = deploymentId.substring(0, 8);
+            logger.info(`\x1b[1;34m[Deploy ${shortId}]\x1b[0m ${coloredLog}`);
+        }
     }
 
     private async flushLogs() {
