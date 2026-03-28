@@ -525,14 +525,15 @@ export class DeployManager {
 
     getPollerStatus() {
         return {
-            enabled: this.pollerEnabled,
-            active: this.pollerActive,
+            pollerEnabled: this.pollerEnabled,
+            pollerActive: this.pollerActive,
             pollCount: this.pollCount,
             lastPollTime: this.lastPollTime,
             lastPollError: this.lastPollError,
             intervalMs: POLL_INTERVAL_MS,
             lastLocalCommit: this.lastLocalCommit,
-            lastRemoteCommit: this.lastRemoteCommit
+            lastRemoteCommit: this.lastRemoteCommit,
+            isDeploying: !!this.currentDeploymentId
         };
     }
 

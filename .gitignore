@@ -43,3 +43,7 @@ api/xelite-crm/
 data/
 .file-cache.json
 archive/
+
+# Deploy artifacts (auto-generated, should not trigger local changes)
+api/logs/
+api/last_stable_commit
