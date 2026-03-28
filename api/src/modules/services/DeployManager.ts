@@ -407,7 +407,25 @@ export class DeployManager {
         } else {
             this.logQueue.push({ id: deploymentId, logs: [log] });
         }
-        logger.info(`[Deploy ${deploymentId}] ${log}`);
+
+        // Add beautiful ANSI colors for the terminal output
+        let coloredLog = log;
+        if (log.includes('[SUCCESS]')) {
+            coloredLog = `\x1b[1;32m${log}\x1b[0m`; // Green
+        } else if (log.includes('[ERROR]') || log.includes('failed')) {
+            coloredLog = `\x1b[1;31m${log}\x1b[0m`; // Red
+        } else if (log.includes('[WARN]')) {
+            coloredLog = `\x1b[1;33m${log}\x1b[0m`; // Yellow
+        } else if (log.includes('[BUILD]')) {
+            coloredLog = `\x1b[1;36m${log}\x1b[0m`; // Cyan
+        } else if (log.includes('[SYSTEM]')) {
+            coloredLog = `\x1b[1;35m${log}\x1b[0m`; // Magenta
+        } else {
+            coloredLog = `\x1b[37m${log}\x1b[0m`; // White
+        }
+
+        const shortId = deploymentId.substring(0, 8);
+        logger.info(`\x1b[1;34m[Deploy ${shortId}]\x1b[0m ${coloredLog}`);
     }
 
     private async flushLogs() {
