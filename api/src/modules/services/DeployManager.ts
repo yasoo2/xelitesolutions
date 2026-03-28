@@ -347,7 +347,8 @@ export class DeployManager {
     }
 
     private async verifyHealth(retries = 5): Promise<void> {
-        const API_URL = process.env.API_URL || 'http://localhost:8080';
+        const port = process.env.PORT || 5001;
+        const API_URL = process.env.API_URL || `http://localhost:${port}`;
 
         for (let i = 0; i < retries; i++) {
             try {
