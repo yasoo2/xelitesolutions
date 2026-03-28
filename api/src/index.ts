@@ -305,21 +305,26 @@ apiRouter.use('/build', buildRoutes);
     for (let i = 0; i < maxRetries; i++) {
       try {
         logger.info({ uri: config.mongoUri }, 'Attempting MongoDB connection...');
-        await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
-        logger.info('MongoDB connected');
+        await mongoose.connect(config.mongoUri, { 
+          serverSelectionTimeoutMS: 5000,
+          connectTimeoutMS: 10000,
+          socketTimeoutMS: 45000,
+        });
+        logger.info('✅ MongoDB connected successfully');
         try {
           await ensureOwnerFromEnv();
         } catch (e) {
           logger.error(e, 'Owner bootstrap failed');
         }
         return true; // Success
-      } catch (e) {
+      } catch (e: any) {
         const label = Number.isFinite(maxRetries) ? `${i + 1}/${maxRetries}` : `${i + 1}`;
-        logger.warn({ err: e }, `MongoDB connection failed (Attempt ${label}), retrying in 2s...`);
+        logger.warn({ err: e?.message || e }, `MongoDB connection failed (Attempt ${label}), retrying in 2s...`);
 
-        // [OFFLINE MODE] Check if we should fallback
-        if (!isProd && i >= 4) {
-          logger.warn('⚠️ MongoDB unavailable - API running in OFFLINE mode (LLM-only features available)');
+        // [OFFLINE MODE] Check if we should fallback - reduced from 4 to 2 attempts
+        if (!isProd && i >= 2) {
+          logger.warn('⚠️ MongoDB unavailable after 3 attempts - API running in OFFLINE mode (LLM-only features available)');
+          logger.info('💡 To fix: Ensure MongoDB is running on mongodb://localhost:27017/joe');
           process.env.OFFLINE_MODE = 'true';
           return false;
         }

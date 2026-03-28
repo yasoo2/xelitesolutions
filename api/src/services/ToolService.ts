@@ -159,8 +159,12 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         (effectiveInput as any).__userId = contextUserId;
     }
 
+    // Auto-assign default workspace if missing
     if (!contextWorkspaceId) {
-        console.warn(`[ToolService] ⚠️ SECURITY WARNING: Tool '${name}' executed without Workspace Context! Defaults to global/shared.`);
+        contextWorkspaceId = contextSessionId ? `session-${contextSessionId}` : 'default-workspace';
+        effectiveContext.workspaceId = contextWorkspaceId;
+        (effectiveInput as any).__workspaceId = contextWorkspaceId;
+        console.info(`[ToolService] ✅ Auto-assigned workspace context: ${contextWorkspaceId}`);
     }
 
     if (name === 'browser_open') {
