@@ -176,10 +176,7 @@ export class DeployManager {
                 this.queueLog(id, `[SYSTEM] Code synced to ${remoteCommit}`);
             }
 
-            // Clean any tracked build artifacts that would pollute git status for the next poll
-            try {
-                await this.runCommand('git', ['checkout', '--', 'web/dist'], PROJECT_ROOT, 10000);
-            } catch (_) { /* web/dist may not be tracked, that's fine */ }
+
 
             // 2. Build web frontend
             this.queueLog(id, '[BUILD] Building web frontend...');
@@ -491,10 +488,7 @@ export class DeployManager {
 
         // Check if there are local uncommitted changes (ignore tracked build artifacts)
         try {
-            // First, silently clean known build artifacts that git tracks
-            try {
-                await this.runCommand('git', ['checkout', '--', 'web/dist'], PROJECT_ROOT, 10000);
-            } catch (_) { /* web/dist might not be tracked */ }
+
 
             const status = await this.runCommand('git', ['status', '--short'], PROJECT_ROOT, 10000);
             if (status.trim()) {
