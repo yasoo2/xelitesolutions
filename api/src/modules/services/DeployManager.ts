@@ -35,6 +35,7 @@ export class DeployManager {
     private lastPollError: string | null = null;
     private lastLocalCommit: string | null = null;
     private lastRemoteCommit: string | null = null;
+    private lastDeployFinishTime: number = 0; // Cooldown tracker
 
     private constructor() {
         // Start flush interval
@@ -175,6 +176,11 @@ export class DeployManager {
                 this.queueLog(id, `[SYSTEM] Code synced to ${remoteCommit}`);
             }
 
+            // Clean any tracked build artifacts that would pollute git status for the next poll
+            try {
+                await this.runCommand('git', ['checkout', '--', 'web/dist'], PROJECT_ROOT, 10000);
+            } catch (_) { /* web/dist may not be tracked, that's fine */ }
+
             // 2. Build web frontend
             this.queueLog(id, '[BUILD] Building web frontend...');
             try {
@@ -213,6 +219,7 @@ export class DeployManager {
             deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
             deployment.logs.push(`[${new Date().toISOString()}] [SUCCESS] Deployment completed in ${deployment.duration}s`);
             await deployment.save();
+            this.lastDeployFinishTime = Date.now();
 
             // Store as last stable commit
             shadow.writeFileSync(STABLE_COMMIT_FILE, deployment.commit);
@@ -471,15 +478,27 @@ export class DeployManager {
     private async checkAndDeploy() {
         if (!this.pollerEnabled) return;
 
+        // Cooldown: skip if a deploy finished less than 3 minutes ago (prevents restart loops)
+        const cooldownMs = 180_000; // 3 minutes
+        if (this.lastDeployFinishTime && (Date.now() - this.lastDeployFinishTime < cooldownMs)) {
+            logger.info(`[DeployManager] In cooldown period (${Math.round((cooldownMs - (Date.now() - this.lastDeployFinishTime)) / 1000)}s remaining). Skipping.`);
+            return;
+        }
+
         this.pollCount++;
         this.lastPollTime = new Date();
         this.pollerActive = true;
 
-        // NEW: Check if there are local unpushed/uncommited changes
+        // Check if there are local uncommitted changes (ignore tracked build artifacts)
         try {
+            // First, silently clean known build artifacts that git tracks
+            try {
+                await this.runCommand('git', ['checkout', '--', 'web/dist'], PROJECT_ROOT, 10000);
+            } catch (_) { /* web/dist might not be tracked */ }
+
             const status = await this.runCommand('git', ['status', '--short'], PROJECT_ROOT, 10000);
             if (status.trim()) {
-                logger.warn(`[DeployManager] Detected local changes. Skipping auto-deploy to avoid data loss from git fetch/reset.`);
+                logger.warn(`[DeployManager] Detected local changes: ${status.trim()}. Skipping auto-deploy.`);
                 this.pollerActive = false;
                 return;
             }
