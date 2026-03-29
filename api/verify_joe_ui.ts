@@ -11,11 +11,14 @@ async function verifyJoeUI() {
     });
     const page = await context.newPage();
 
+    page.on('console', msg => console.log(`[Browser Console] ${msg.type()}: ${msg.text()}`));
+    page.on('pageerror', err => console.error('[Browser Error]', err));
+
     const artifactDir = '/Users/younissowadi/.gemini/antigravity/brain/c82731cd-f3a3-4c86-9e1f-4c2ef40d982f';
 
     try {
-        console.log('[Script] Navigating to Joe UI (127.0.0.1:5173)...');
-        await page.goto('http://127.0.0.1:5173', { waitUntil: 'networkidle' });
+        console.log('[Script] Navigating to Joe UI (127.0.0.1:5001)...');
+        await page.goto('http://127.0.0.1:5001', { waitUntil: 'networkidle' });
 
         // Screenshot 1: UI Initial Load
         await page.screenshot({ path: path.join(artifactDir, 'joe_ui_initial_load.png') });

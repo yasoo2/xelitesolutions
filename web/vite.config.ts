@@ -41,21 +41,21 @@ const createApiShim = () => {
     inflight = (async () => {
       lastCheckAt = now;
       const controller = new AbortController();
-      // [FIX] محاولة الاتصال بالـ API على المنافذ المختلفة
-      const ports = [5001, 8080, 3000];
+      const ports = [5001, 8080, 5000, 3000];
       for (const port of ports) {
-        const t = setTimeout(() => controller.abort(), 300);
+        const t = setTimeout(() => controller.abort(), 2000);
         try {
           const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: controller.signal });
-          // Any response from the API means it's alive (even 503 = DB down but LLM works)
           cachedOk = true;
           clearTimeout(t);
+          inflight = null;
           return true;
         } catch {
           clearTimeout(t);
         }
       }
       cachedOk = false;
+      inflight = null;
       return false;
     })();
     return inflight;
