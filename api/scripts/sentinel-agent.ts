@@ -232,7 +232,7 @@ async function dispatchTelemetry() {
         let responseBody = '';
         res.on('data', d => responseBody += d);
         res.on('end', () => {
-            if (res.statusCode === 200 || res.statusCode === 201) {
+            if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
                 log('INFO', 'Telemetry successfully ingested by Core.');
             } else {
                 log('WARN', `Core rejected telemetry: ${res.statusCode} - ${responseBody}`);
