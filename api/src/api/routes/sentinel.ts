@@ -1,5 +1,5 @@
 import { Router } from 'express';
-// TODO: Import Auth middleware when integrating
+import { authenticate, requireSuperAdmin } from '../middleware/auth';
 import { SentinelAuditLogModel } from '../../shared/models/SentinelAuditLog';
 import { SentinelIncidentModel } from '../../shared/models/SentinelIncident';
 import { SentinelAuditService } from '../../modules/sentinel/services/SentinelAuditService';
@@ -33,7 +33,7 @@ router.post('/telemetry', authenticateAgent, async (req, res) => {
 });
 
 // 1. Get Live Incidents
-router.get('/incidents', async (req, res) => {
+router.get('/incidents', authenticate, requireSuperAdmin, async (req, res) => {
     try {
         const filter: any = {};
         if (req.query.status) filter.status = req.query.status;
@@ -51,7 +51,7 @@ router.get('/incidents', async (req, res) => {
 });
 
 // 2. Get Audit Trail & Verify Chain Integrity
-router.get('/audit', async (req, res) => {
+router.get('/audit', authenticate, requireSuperAdmin, async (req, res) => {
     try {
         const integrityCheck = await SentinelAuditService.verifyIntegrity();
         const logs = await SentinelAuditLogModel.find().sort({ timestamp: -1 }).limit(100);
@@ -67,7 +67,7 @@ router.get('/audit', async (req, res) => {
 });
 
 // 3. Trigger Playbook Action
-router.post('/incidents/:id/action/:actionName', async (req, res) => {
+router.post('/incidents/:id/action/:actionName', authenticate, requireSuperAdmin, async (req, res) => {
     try {
         const { id, actionName } = req.params;
         const { target, dryRun } = req.body;

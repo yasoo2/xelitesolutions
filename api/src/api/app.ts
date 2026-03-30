@@ -138,11 +138,11 @@ export const createApp = () => {
   apiRouter.use('/browser', browserRoutes);
   apiRouter.use('/servers', authenticate, serverRoutes);
   apiRouter.use('/workspaces', workspacesRoutes);
+  apiRouter.use('/admin/sentinel', sentinelRoutes);
   apiRouter.use('/admin', adminRoutes);
   apiRouter.use('/webhooks', webhooksRoutes);
   apiRouter.use('/ping-deploy', pingDeployRoutes);
   apiRouter.use('/build', buildRoutes);
-  apiRouter.use('/admin/sentinel', sentinelRoutes);
 
   // Specific deployment endpoint
   apiRouter.post('/deploy-now', async (req, res) => {

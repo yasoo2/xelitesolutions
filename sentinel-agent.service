@@ -1,0 +1,17 @@
+[Unit]
+Description=Joe Sentinel Security Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+# The API runs locally on the production server on port 5000
+Environment=SENTINEL_API_URL=http://localhost:5000/api/admin/sentinel/telemetry
+Environment=SENTINEL_API_KEY=default-secret-key
+Environment=SENTINEL_SERVER_ID=joe-prod-01
+ExecStart=/usr/bin/env node /usr/local/bin/sentinel-agent.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
