@@ -8,9 +8,10 @@ import {
     Rocket, Search, UserPlus, UserMinus,
     Database, Terminal, ExternalLink,
     Loader2, MoreHorizontal, Trash2, Copy,
-    RotateCcw, Info, XCircle
+    RotateCcw, Info, XCircle, ShieldAlert
 } from 'lucide-react';
 import { API_URL } from '../../config';
+import SentinelDashboard from './sentinel/SentinelDashboard';
 
 // ═══════════════════════════════════════════════
 // TYPES (Cache Bust: v2)
@@ -64,7 +65,7 @@ interface User {
     createdAt: string;
 }
 
-type Tab = 'dashboard' | 'deployments' | 'admins';
+type Tab = 'dashboard' | 'deployments' | 'admins' | 'sentinel';
 
 export default function SystemManagement() {
     const navigate = useNavigate();
@@ -1044,6 +1045,9 @@ export default function SystemManagement() {
                     <button className={`tab-btn ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>
                         <Shield size={16} /> Admins
                     </button>
+                    <button className={`tab-btn ${activeTab === 'sentinel' ? 'active' : ''}`} onClick={() => setActiveTab('sentinel')}>
+                        <ShieldAlert size={16} /> Sentinel <span style={{ padding: '2px 6px', background: '#ef4444', color: 'white', fontSize: '10px', borderRadius: '4px', marginLeft: '6px' }}>NEW</span>
+                    </button>
                 </div>
                 <div className="mgmt-back-container">
                     <button className="btn-back" onClick={() => navigate('/joe')} title="العودة إلى مساحة العمل">
@@ -1056,6 +1060,7 @@ export default function SystemManagement() {
                 {activeTab === 'dashboard' && renderDashboard()}
                 {activeTab === 'deployments' && renderDeployments()}
                 {activeTab === 'admins' && renderAdmins()}
+                {activeTab === 'sentinel' && <SentinelDashboard />}
             </AnimatePresence>
 
             {/* Logs Modal - Direct Portal-like positioning */}
