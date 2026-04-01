@@ -24,9 +24,9 @@ const authenticateAgent = (req: any, res: any, next: any) => {
 router.post('/telemetry', authenticateAgent, async (req, res) => {
     try {
         const payload = req.body;
-        // Non-blocking background evaluation
+        const actions = SentinelPolicyEngine.getPendingActions(payload.serverId);
         SentinelPolicyEngine.evaluate(payload).catch(console.error);
-        res.status(202).json({ success: true, message: 'Telemetry received' });
+        res.status(200).json({ success: true, message: 'Telemetry received', actions });
     } catch (err: any) {
         res.status(500).json({ success: false, error: err.message });
     }
@@ -88,6 +88,36 @@ router.post('/incidents/:id/action/:actionName', authenticate, requireSuperAdmin
         res.status(200).json({ success: true, dryRun, logs });
     } catch (err: any) {
         res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 4. Get Live Telemetry
+router.get('/telemetry/live', authenticate, requireSuperAdmin, (req, res) => {
+    // Return all latest telemetry cache
+    res.status(200).json({ success: true, data: SentinelPolicyEngine.latestTelemetry });
+});
+
+// 5. Direct Action Execution
+router.post('/actions/execute', authenticate, requireSuperAdmin, (req, res) => {
+    try {
+        const { serverId, actionType, target } = req.body;
+        if (!serverId || !actionType || !target) {
+            return res.status(400).json({ success: false, error: 'Missing parameters' });
+        }
+        
+        const action = SentinelPolicyEngine.enqueueAction(serverId, actionType, target);
+        
+        SentinelAuditService.logAction(
+            req.user ? req.user.id : 'system',
+            `api_remote_action`,
+            `Enqueued ${actionType} against ${target} on Server ${serverId}`,
+            serverId,
+            true, {}
+        );
+
+        res.status(200).json({ success: true, message: 'Action queued for next agent ping', actionId: action.id });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 

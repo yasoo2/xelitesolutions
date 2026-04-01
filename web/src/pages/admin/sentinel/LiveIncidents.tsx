@@ -153,6 +153,14 @@ export default function LiveIncidents() {
                                         const file = inc.evidence.fim_changes[0]?.path;
                                         targetStr = `Quarantine ${file?.split('/').pop()}`;
                                         finalTarget = file;
+                                    } else if (action === 'KILL_PROCESS' && inc.evidence.unauthorized_users) {
+                                        const u = inc.evidence.unauthorized_users[0]?.user;
+                                        targetStr = `Kick User: ${u}`;
+                                        finalTarget = `-u ${u}`;
+                                    } else if (action === 'KILL_PROCESS' && inc.evidence.suspicious_processes) {
+                                        const pid = inc.evidence.suspicious_processes[0]?.pid;
+                                        targetStr = `Kill PID ${pid}`;
+                                        finalTarget = pid;
                                     }
 
                                     return (
