@@ -39,22 +39,23 @@ export default function LiveIncidents() {
     /**
      * Executes a playbook action against an incident target.
      */
-    const executePlaybook = async (incidentId: string, actionType: string, targetValue: string) => {
+    const executePlaybook = async (incidentId: string, serverId: any, actionType: string, targetValue: string) => {
         if (!window.confirm(`Are you sure you want to execute [${actionType}] on [${targetValue}]?`)) return;
 
         setExecutingMap(prev => ({ ...prev, [incidentId]: true }));
         try {
-            const res = await fetch(`${API_URL}/admin/sentinel/incidents/${incidentId}/action/${actionType}`, {
+            const serverIdStr = serverId?._id || serverId;
+            const res = await fetch(`/api/admin/sentinel/actions/execute`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify({ target: targetValue, dryRun: false })
+                body: JSON.stringify({ serverId: serverIdStr, actionType, target: targetValue })
             });
             const data = await res.json();
             if (data.success) {
-                alert('Playbook executed successfully. Check the Audit Trail for logs.');
+                alert('Action enqueued for Agent Execution! Threat will be neutralized within 10s.');
                 fetchIncidents();
             } else {
                 alert(`Action Failed: ${data.error}`);
@@ -163,11 +164,15 @@ export default function LiveIncidents() {
                                         finalTarget = pid;
                                     }
 
+                                    // Map to agent understood action type
+                                    const agentActionType = action === 'kill_process_tree' ? 'KILL_PROCESS' :
+                                                            action === 'quarantine_file' ? 'QUARANTINE_FILE' : action;
+
                                     return (
                                         <button
                                             key={action}
                                             disabled={executingMap[inc._id] || !finalTarget}
-                                            onClick={() => executePlaybook(inc._id, action, finalTarget)}
+                                            onClick={() => executePlaybook(inc._id, inc.serverId, agentActionType, finalTarget)}
                                             style={{
                                                 padding: '10px 16px',
                                                 background: 'rgba(239, 68, 68, 0.1)',

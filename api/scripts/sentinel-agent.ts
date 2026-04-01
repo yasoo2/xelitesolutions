@@ -44,6 +44,8 @@ function executeAction(action: any) {
             execSync(`iptables -A INPUT -s ${action.target} -j DROP`);
         } else if (action.type === 'STOP_SERVICE') {
             execSync(`systemctl stop ${action.target} && systemctl disable ${action.target}`);
+        } else if (action.type === 'QUARANTINE_FILE') {
+            execSync(`mkdir -p /root/sentinel_quarantine && mv ${action.target} /root/sentinel_quarantine/$(basename ${action.target}).$(date +%s).q && chmod 000 /root/sentinel_quarantine/*`);
         }
     } catch(e: any) {
         log('ERROR', `Action execution failed: ${e.message}`);
