@@ -44,6 +44,10 @@ const logger =
       },
     });
 
+function normalizeOrigin(origin: string) {
+  return String(origin || '').trim().replace(/\/+$/, '');
+}
+
 export const createApp = () => {
   const app = express();
   const apiRouter = express.Router();
@@ -51,28 +55,20 @@ export const createApp = () => {
   // [EMERGENCY] Early Health Check
   app.get('/health', (_req, res) => res.json({ status: 'OK', uptime: process.uptime(), source: 'app' }));
 
-  const allowedOrigins = new Set<string>([
-    'https://xelitesolutions.com',
-    'https://www.xelitesolutions.com',
-    'https://api.xelitesolutions.com',
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://localhost:5000',
-    'http://localhost:5001',
-    'http://localhost:8080',
-  ]);
+  const isProd = process.env.NODE_ENV === 'production';
+  const allowedOrigins = new Set<string>((config.allowedOrigins || []).map(normalizeOrigin).filter(Boolean));
 
   app.use(cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.has(origin) || process.env.NODE_ENV !== 'production') {
-        callback(null, true);
-      } else {
-        callback(null, true); // Permissive for recovery
-      }
+      if (!origin) return callback(null, true);
+      const normalized = normalizeOrigin(origin);
+      if (!isProd || allowedOrigins.has(normalized)) return callback(null, true);
+      logger.warn({ origin: normalized }, '[CORS] Rejected production origin');
+      return callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Worker-Key', 'x-worker-key'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Worker-Key', 'x-worker-key', 'X-Workspace-Id', 'x-workspace-id'],
   }));
 
   // Middleware: Block API requests until DB is ready
@@ -93,12 +89,14 @@ export const createApp = () => {
   // Mount Central API Router
   app.use('/api', apiRouter);
 
-  // Diagnostic Dashboard
-  const debugPath = process.cwd();
-  app.use('/debug', express.static(debugPath));
-  app.get('/debug', (req, res) => {
-    res.sendFile(path.join(debugPath, 'index.html'));
-  });
+  // Diagnostic Dashboard: never expose process.cwd() in production unless explicitly enabled.
+  if (!isProd || process.env.ENABLE_DEBUG_STATIC === 'true') {
+    const debugPath = process.cwd();
+    app.use('/debug', express.static(debugPath));
+    app.get('/debug', (_req, res) => {
+      res.sendFile(path.join(debugPath, 'index.html'));
+    });
+  }
 
   apiRouter.get('/health', async (_req, res) => {
     let dbStatus = 'DOWN';
@@ -145,7 +143,7 @@ export const createApp = () => {
   apiRouter.use('/build', buildRoutes);
 
   // Specific deployment endpoint
-  apiRouter.post('/deploy-now', async (req, res) => {
+  apiRouter.post('/deploy-now', async (_req, res) => {
     try {
       const { deployManager } = await import('../modules/services/DeployManager');
       const id = await deployManager.startDeploy('manual');
