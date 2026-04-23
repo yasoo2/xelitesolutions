@@ -64,12 +64,14 @@ const pointsToLocalhost = (u: string) => {
   return /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/|$)/.test(s);
 };
 
+const wsToHttpForLocalhostCheck = (u: string) => String(u || '').replace(/^ws/i, 'http');
+
 const apiEnv = !isLocalHost && pointsToLocalhost(apiEnvRaw) ? '' : apiEnvRaw;
-// const wsEnv = !isLocalHost && pointsToLocalhost(wsEnvRaw.replace(/^ws/i, 'http')) ? '' : wsEnvRaw;
+const wsEnv = !isLocalHost && pointsToLocalhost(wsToHttpForLocalhostCheck(wsEnvRaw)) ? '' : wsEnvRaw;
 
 const API_URL = apiEnv || inferApiUrl();
-// Use the derived WS URL based on the final API_URL to ensure consistency
-const WS_URL = inferWsUrl(API_URL);
+// Prefer explicit runtime/env WS URL. Fall back to a URL derived from the final API URL.
+const WS_URL = wsEnv || inferWsUrl(API_URL);
 const GOOGLE_CLIENT_ID = googleClientIdRaw;
 const readQueryChrome = () => {
   try {
