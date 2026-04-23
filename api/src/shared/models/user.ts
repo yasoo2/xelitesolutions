@@ -28,17 +28,19 @@ const UserSchema = new Schema<IUser>(
 export const User = mongoose.model<IUser>('User', UserSchema);
 
 // Password strength validation utility
-const MIN_PASSWORD_LENGTH = 1;
-const PASSWORD_REGEX = /.+/;
+const MIN_PASSWORD_LENGTH = 10;
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
 
 export function validatePasswordStrength(password: string): { valid: boolean; error?: string } {
   if (!password || password.length < MIN_PASSWORD_LENGTH) {
     return { valid: false, error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` };
   }
-  // PASSWORD_REGEX.test is now always true for non-empty passwords
+  if (!PASSWORD_REGEX.test(password)) {
+    return { valid: false, error: 'Password must include uppercase, lowercase, and a number' };
+  }
   return { valid: true };
 }
 
 // Account lockout constants
-export const MAX_FAILED_ATTEMPTS = 999999;
-export const LOCKOUT_DURATION_MS = 0; // Disable lockout
+export const MAX_FAILED_ATTEMPTS = 5;
+export const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
