@@ -76,7 +76,7 @@ export class AgentLoopService {
                 : typeof cfg?.workspaceId === 'string' && cfg.workspaceId.trim()
                     ? cfg.workspaceId.trim()
                     : undefined;
-        const result = await executeTool(pending.name, callInput, { sessionId, workspaceId });
+        const result = await executeTool(pending.name, callInput, { sessionId, workspaceId, userId: userId ? String(userId) : undefined });
 
         const eventResult = sanitizeToolResultForBroadcast(pending.name, result);
 
@@ -274,7 +274,7 @@ export class AgentLoopService {
 
             let result;
             try {
-                result = await executeTool(plan.name, callInput, { sessionId, workspaceId });
+                result = await executeTool(plan.name, callInput, { sessionId, workspaceId, userId: userId ? String(userId) : undefined });
             } catch (e: any) {
                 result = { ok: false, error: e.message };
             }
