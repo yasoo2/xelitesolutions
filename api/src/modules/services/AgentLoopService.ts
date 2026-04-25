@@ -216,8 +216,10 @@ export class AgentLoopService {
                 }
             } catch { }
 
-            phaseResults.push({ phaseNumber: phase?.phaseNumber || i + 1, ok: !!phaseResult.ok, output: phaseResult.output, error: phaseResult.error });
-            if (!phaseResult.ok) break;
+            const phaseStatus = String((phaseResult as any)?.output?.status || 'unknown');
+            const phasePassed = !!phaseResult.ok && phaseStatus === 'completed';
+            phaseResults.push({ phaseNumber: phase?.phaseNumber || i + 1, ok: phasePassed, status: phaseStatus, output: phaseResult.output, error: phaseResult.error });
+            if (!phasePassed) break;
             completedPhases++;
         }
 
