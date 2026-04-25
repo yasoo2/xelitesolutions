@@ -10,7 +10,7 @@ import { executeTool } from '../../services/ToolService';
  */
 export class PhaseExecutorTool implements ToolDefinition {
     name = 'phase_executor';
-    version = '2.1.0';
+    version = '2.1.1';
     description = 'Execute a single phase of a project plan by running each task\'s tool with trusted execution context';
     tags = ['execution', 'project', 'phase', 'builder'];
 
@@ -55,10 +55,10 @@ export class PhaseExecutorTool implements ToolDefinition {
         }
     };
 
-    permissions = [];
-    sideEffects = [];
+    permissions = ['execute'];
+    sideEffects = ['execute'];
     rateLimitPerMinute = 10;
-    auditFields = [];
+    auditFields = ['phase', 'projectContext'];
     mockSupported = false;
 
     async execute(input: { phase: any; projectContext?: any }, context?: any) {
