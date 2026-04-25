@@ -10,7 +10,8 @@
         "lint": "eslint .",
         "test:system": "ts-node src/tests/manual/verify_system.ts",
         "test:production": "ts-node src/tests/manual/verify_production.ts",
-        "test:loop": "ts-node src/tests/manual/verify_autonomous_loop.ts"
+        "test:loop": "ts-node src/tests/manual/verify_autonomous_loop.ts",
+        "guard:architecture": "ts-node src/tests/architecture/guard_architecture.ts"
     },
     "keywords": [],
     "author": "",
