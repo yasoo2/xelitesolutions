@@ -2,15 +2,16 @@ import { ToolDefinition } from '../types';
 import { executeTool } from '../../services/ToolService';
 
 /**
- * PhaseExecutorTool - Executes a single phase from a project plan
- * 
- * REAL EXECUTOR: Actually calls executeTool() for each task in the phase.
- * This is the bridge between planning and doing.
+ * PhaseExecutorTool - Executes a single phase from a project plan.
+ *
+ * This is the bridge between planning and doing. It must execute with a trusted
+ * context (userId, workspaceId, sessionId) so ToolService can enforce ownership,
+ * approvals, and workspace isolation consistently.
  */
 export class PhaseExecutorTool implements ToolDefinition {
     name = 'phase_executor';
-    version = '2.0.0';
-    description = 'Execute a single phase of a project plan by running each task\'s tool';
+    version = '2.1.0';
+    description = 'Execute a single phase of a project plan by running each task\'s tool with trusted execution context';
     tags = ['execution', 'project', 'phase', 'builder'];
 
     inputSchema = {
@@ -23,11 +24,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                     phaseNumber: { type: 'number' as const },
                     name: { type: 'string' as const },
                     description: { type: 'string' as const },
-                    tasks: {
-                        type: 'array' as const,
-                        items: { type: 'object' as const },
-                        description: 'List of tasks in this phase'
-                    }
+                    tasks: { type: 'array' as const, items: { type: 'object' as const } }
                 },
                 required: ['phaseNumber', 'name', 'tasks']
             },
@@ -38,7 +35,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                     projectName: { type: 'string' as const },
                     totalPhases: { type: 'number' as const },
                     sessionId: { type: 'string' as const },
-                    workspaceId: { type: 'string' as const }
+                    workspaceId: { type: 'string' as const },
+                    userId: { type: 'string' as const }
                 }
             }
         },
@@ -69,19 +67,29 @@ export class PhaseExecutorTool implements ToolDefinition {
         const results: Array<{ task: string; tool: string; ok: boolean; error?: string }> = [];
         let completedCount = 0;
 
+        const executionContext = {
+            sessionId: context?.sessionId || projectContext?.sessionId,
+            workspaceId: context?.workspaceId || projectContext?.workspaceId,
+            userId: context?.userId || projectContext?.userId,
+            onThought: (m: string) => context?.onThought?.(m),
+            onProgress: (m: string) => context?.onProgress?.(m),
+        };
+
         try {
             const tasks = Array.isArray(phase.tasks) ? phase.tasks : [];
             const totalTasks = tasks.length;
 
-            const startMsg = `[PhaseExecutor] Starting Phase ${phase.phaseNumber}: ${phase.name} (${totalTasks} tasks)`;
-            logs.push(startMsg);
+            if (!executionContext.sessionId) logs.push('[PhaseExecutor] Warning: missing sessionId in execution context');
+            if (!executionContext.workspaceId) logs.push('[PhaseExecutor] Warning: missing workspaceId in execution context');
+            if (!executionContext.userId) logs.push('[PhaseExecutor] Warning: missing userId in execution context');
+
+            logs.push(`[PhaseExecutor] Starting Phase ${phase.phaseNumber}: ${phase.name} (${totalTasks} tasks)`);
 
             for (let i = 0; i < tasks.length; i++) {
                 const task = tasks[i];
                 const toolName = String(task.tool || '').trim();
                 const taskDesc = String(task.task || task.description || `Task ${i + 1}`);
 
-                // Skip tasks without a tool specification
                 if (!toolName || toolName === 'manual') {
                     logs.push(`[PhaseExecutor] Task ${i + 1}: "${taskDesc}" — skipped (manual/no tool)`);
                     results.push({ task: taskDesc, tool: 'manual', ok: true });
@@ -89,46 +97,36 @@ export class PhaseExecutorTool implements ToolDefinition {
                     continue;
                 }
 
-                const execMsg = `[PhaseExecutor] Task ${i + 1}/${totalTasks}: "${taskDesc}" — executing tool: ${toolName}`;
-                logs.push(execMsg);
+                logs.push(`[PhaseExecutor] Task ${i + 1}/${totalTasks}: "${taskDesc}" — executing tool: ${toolName}`);
+
+                const toolArgs = {
+                    ...(task.args || {}),
+                    ...(task.input || {}),
+                };
+
+                if (executionContext.sessionId && typeof (toolArgs as any).sessionId !== 'string') (toolArgs as any).sessionId = executionContext.sessionId;
+                if (executionContext.workspaceId && typeof (toolArgs as any).workspaceId !== 'string') (toolArgs as any).workspaceId = executionContext.workspaceId;
 
                 try {
-                    // Build tool args from task definition + project context
-                    const toolArgs = {
-                        ...(task.args || {}),
-                        ...(task.input || {}),
-                    };
-
-                    // Inject workspace context if available
-                    if (projectContext?.sessionId) toolArgs.sessionId = projectContext.sessionId;
-                    if (projectContext?.workspaceId) toolArgs.workspaceId = projectContext.workspaceId;
-
                     const toolResult = await executeTool(toolName, toolArgs, {
-                        sessionId: projectContext?.sessionId,
-                        workspaceId: projectContext?.workspaceId,
-                        onThought: (m: string) => context?.onThought?.(m),
+                        ...executionContext,
                         onProgress: (m: string) => context?.onProgress?.(`[${toolName}] ${m}`),
                     });
 
                     if (toolResult.ok) {
-                        const successMsg = `[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`;
-                        logs.push(successMsg);
+                        logs.push(`[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`);
                         results.push({ task: taskDesc, tool: toolName, ok: true });
                         completedCount++;
                     } else {
                         const errMsg = String(toolResult.error || 'Unknown error');
-                        const failMsg = `[PhaseExecutor] ❌ Task ${i + 1} failed: ${toolName} — ${errMsg}`;
-                        logs.push(failMsg);
+                        logs.push(`[PhaseExecutor] ❌ Task ${i + 1} failed: ${toolName} — ${errMsg}`);
                         results.push({ task: taskDesc, tool: toolName, ok: false, error: errMsg });
 
-                        // If this is a required task (high priority), retry once before stopping
                         if (task.priority === 'high' || task.required === true) {
-                            logs.push(`[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...`);
+                            logs.push('[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...');
                             try {
                                 const retryResult = await executeTool(toolName, toolArgs, {
-                                    sessionId: projectContext?.sessionId,
-                                    workspaceId: projectContext?.workspaceId,
-                                    onThought: (m: string) => context?.onThought?.(m),
+                                    ...executionContext,
                                     onProgress: (m: string) => context?.onProgress?.(`[${toolName} RETRY] ${m}`),
                                 });
                                 if (retryResult.ok) {
@@ -136,7 +134,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                                     results[results.length - 1] = { task: taskDesc, tool: toolName, ok: true };
                                     completedCount++;
                                 } else {
-                                    logs.push(`[PhaseExecutor] ⛔ Retry also failed. Stopping phase.`);
+                                    logs.push('[PhaseExecutor] ⛔ Retry also failed. Stopping phase.');
                                     break;
                                 }
                             } catch (retryErr: any) {
@@ -151,18 +149,17 @@ export class PhaseExecutorTool implements ToolDefinition {
                     results.push({ task: taskDesc, tool: toolName, ok: false, error: errMsg });
 
                     if (task.priority === 'high' || task.required === true) {
-                        logs.push(`[PhaseExecutor] ⛔ Critical task threw. Stopping phase.`);
+                        logs.push('[PhaseExecutor] ⛔ Critical task threw. Stopping phase.');
                         break;
                     }
                 }
             }
 
-            const allOk = results.every(r => r.ok);
-            const status = allOk ? 'completed' : (completedCount > 0 ? 'partial' : 'failed');
+            const allOk = results.length > 0 && results.every(r => r.ok);
+            let status = allOk ? 'completed' : (completedCount > 0 ? 'partial' : 'failed');
 
             logs.push(`[PhaseExecutor] Phase ${phase.phaseNumber} ${status}: ${completedCount}/${totalTasks} tasks completed`);
 
-            // --- SELF-TEST: Run verification task if defined ---
             if (phase.verificationTask && allOk) {
                 const vTask = phase.verificationTask;
                 const vToolName = String(vTask.tool || 'shell_execute').trim();
@@ -170,10 +167,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 logs.push(`[PhaseExecutor] 🧪 Running verification: "${vTaskDesc}" with ${vToolName}`);
 
                 try {
-                    const vResult = await executeTool(vToolName, vTask.args || {}, {
-                        sessionId: projectContext?.sessionId,
-                        workspaceId: projectContext?.workspaceId,
-                    });
+                    const vResult = await executeTool(vToolName, vTask.args || {}, executionContext);
 
                     if (vResult.ok) {
                         logs.push(`[PhaseExecutor] ✅ Verification passed for Phase ${phase.phaseNumber}`);
@@ -182,40 +176,38 @@ export class PhaseExecutorTool implements ToolDefinition {
                         const vErr = String(vResult.error || 'Verification failed');
                         logs.push(`[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
                         results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: vErr });
-                        // Don't fail the whole phase for verification failure — log it and continue
+                        status = 'partial';
                     }
                 } catch (vError: any) {
                     logs.push(`[PhaseExecutor] ⚠️ Verification error: ${vError.message}`);
-                    results.push({ task: vTaskDesc, tool: 'shell_execute', ok: false, error: vError.message });
+                    results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: vError.message });
+                    status = 'partial';
                 }
             }
 
-            // --- AUTO-BUILD CHECK: If phase has code tasks and no explicit verification ---
             const hasCodeTasks = tasks.some((t: any) =>
-                ['ai_write_file', 'write_file', 'file_edit', 'scaffold_project'].includes(String(t.tool || ''))
+                ['ai_write_file', 'write_file', 'file_edit', 'file_edit_advanced', 'scaffold_project'].includes(String(t.tool || ''))
             );
-            if (hasCodeTasks && !phase.verificationTask && allOk && projectContext?.workspaceId) {
-                logs.push(`[PhaseExecutor] 🔍 Auto-running build check after code generation phase...`);
+            if (hasCodeTasks && !phase.verificationTask && allOk && executionContext.workspaceId) {
+                logs.push('[PhaseExecutor] 🔍 Auto-running build check after code generation phase...');
                 try {
                     const buildResult = await executeTool('shell_execute', {
                         command: 'npm run build 2>&1 || echo "BUILD_CHECK_FAILED"',
-                    }, {
-                        sessionId: projectContext?.sessionId,
-                        workspaceId: projectContext?.workspaceId,
-                    });
-                    const buildOutput = String(buildResult?.output?.stdout || buildResult?.output || '');
+                    }, executionContext);
+                    const buildOutput = String((buildResult as any)?.output?.stdout || (buildResult as any)?.output || '');
                     if (buildOutput.includes('BUILD_CHECK_FAILED') || !buildResult.ok) {
-                        logs.push(`[PhaseExecutor] ⚠️ Auto-build check found issues — LLM should fix in next phase`);
+                        logs.push('[PhaseExecutor] ⚠️ Auto-build check found issues — orchestrator should route to self-fix');
+                        status = 'partial';
                     } else {
-                        logs.push(`[PhaseExecutor] ✅ Auto-build check passed`);
+                        logs.push('[PhaseExecutor] ✅ Auto-build check passed');
                     }
                 } catch {
-                    logs.push(`[PhaseExecutor] ℹ️ Auto-build check skipped (no build script or error)`);
+                    logs.push('[PhaseExecutor] ℹ️ Auto-build check skipped (no build script or error)');
                 }
             }
 
             return {
-                ok: allOk || completedCount > 0,
+                ok: status === 'completed' || completedCount > 0,
                 output: {
                     phaseNumber: phase.phaseNumber,
                     phaseName: phase.name,
@@ -236,12 +228,12 @@ export class PhaseExecutorTool implements ToolDefinition {
                 ok: false,
                 error: error.message,
                 output: {
-                    phaseNumber: phase.phaseNumber,
+                    phaseNumber: phase?.phaseNumber,
                     status: 'fatal_error',
                     completedTasks: completedCount,
-                    totalTasks: Array.isArray(phase.tasks) ? phase.tasks.length : 0,
+                    totalTasks: Array.isArray(phase?.tasks) ? phase.tasks.length : 0,
                     results,
-                    nextPhase: phase.phaseNumber
+                    nextPhase: phase?.phaseNumber
                 },
                 logs
             };
