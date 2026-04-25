@@ -164,7 +164,7 @@ export class AgentLoopService {
         }
     }
 
-    private static async runFirstPlannedPhaseIfPresent(params: {
+    private static async runPlannedPhasesIfPresent(params: {
         sessionId: string;
         runId: string;
         userId?: string;
@@ -174,9 +174,9 @@ export class AgentLoopService {
         const { sessionId, runId, userId, workspaceId, plannerResult } = params;
         const planOutput = plannerResult?.output;
         const phases = Array.isArray(planOutput?.phases) ? planOutput.phases : [];
-        const firstPhase = phases[0];
-        if (!plannerResult?.ok || !firstPhase) return null;
+        if (!plannerResult?.ok || phases.length === 0) return null;
 
+        const maxPhases = Math.min(phases.length, Number(process.env.JOE_MAX_ORCHESTRATED_PHASES || 3));
         const projectContext = {
             projectName: planOutput?.projectName || 'Planned Project',
             totalPhases: typeof planOutput?.totalPhases === 'number' ? planOutput.totalPhases : phases.length,
@@ -185,33 +185,50 @@ export class AgentLoopService {
             userId: userId ? String(userId) : undefined,
         };
 
-        const phaseInput = { phase: firstPhase, projectContext };
-        const persistedPhaseInput = redactToolInputForStorage('phase_executor', phaseInput);
+        const phaseResults: any[] = [];
+        let completedPhases = 0;
 
-        broadcast({ type: 'step_started', runId, data: { name: 'execute:phase_executor', input: persistedPhaseInput } });
-        const phaseResult = await executeTool('phase_executor', phaseInput, {
-            sessionId,
-            workspaceId,
-            userId: userId ? String(userId) : undefined,
-        });
-        const eventResult = sanitizeToolResultForBroadcast('phase_executor', phaseResult);
-        broadcast({ type: phaseResult.ok ? 'step_done' : 'step_failed', runId, data: { name: 'execute:phase_executor', result: eventResult } });
+        for (let i = 0; i < maxPhases; i++) {
+            const phase = phases[i];
+            const phaseInput = { phase, projectContext };
+            const persistedPhaseInput = redactToolInputForStorage('phase_executor', phaseInput);
 
-        try {
-            if (!offlineMode) {
-                await ToolExecution.create({
-                    runId,
-                    sessionId,
-                    name: 'phase_executor',
-                    input: persistedPhaseInput,
-                    output: phaseResult.output,
-                    ok: phaseResult.ok,
-                    logs: phaseResult.logs,
-                });
-            }
-        } catch { }
+            broadcast({ type: 'step_started', runId, data: { name: `execute:phase_executor:${i + 1}`, input: persistedPhaseInput } });
+            const phaseResult = await executeTool('phase_executor', phaseInput, {
+                sessionId,
+                workspaceId,
+                userId: userId ? String(userId) : undefined,
+            });
+            const eventResult = sanitizeToolResultForBroadcast('phase_executor', phaseResult);
+            broadcast({ type: phaseResult.ok ? 'step_done' : 'step_failed', runId, data: { name: `execute:phase_executor:${i + 1}`, result: eventResult } });
 
-        return phaseResult;
+            try {
+                if (!offlineMode) {
+                    await ToolExecution.create({
+                        runId,
+                        sessionId,
+                        name: 'phase_executor',
+                        input: persistedPhaseInput,
+                        output: phaseResult.output,
+                        ok: phaseResult.ok,
+                        logs: phaseResult.logs,
+                    });
+                }
+            } catch { }
+
+            phaseResults.push({ phaseNumber: phase?.phaseNumber || i + 1, ok: !!phaseResult.ok, output: phaseResult.output, error: phaseResult.error });
+            if (!phaseResult.ok) break;
+            completedPhases++;
+        }
+
+        return {
+            ok: completedPhases === maxPhases,
+            completedPhases,
+            totalPlannedPhases: phases.length,
+            executedPhases: maxPhases,
+            stoppedEarly: completedPhases < maxPhases,
+            results: phaseResults,
+        };
     }
 
     // This is the core logic recovered from sessions.ts
@@ -331,33 +348,32 @@ export class AgentLoopService {
 
             if (result.ok && plan.name === 'project_planner') {
                 try {
-                    const phaseResult = await AgentLoopService.runFirstPlannedPhaseIfPresent({
+                    const pipelineResult = await AgentLoopService.runPlannedPhasesIfPresent({
                         sessionId,
                         runId: newRunId,
                         userId,
                         workspaceId,
                         plannerResult: result,
                     });
-                    if (phaseResult) {
+                    if (pipelineResult) {
                         result.output = {
                             ...(result.output || {}),
-                            orchestratedFirstPhase: phaseResult.output,
-                            firstPhaseOk: !!phaseResult.ok,
+                            orchestratedPipeline: pipelineResult,
+                            pipelineOk: !!pipelineResult.ok,
                         };
                         result.logs = [
                             ...(Array.isArray(result.logs) ? result.logs : []),
-                            '[AgentLoop] Orchestrator executed first planned phase via phase_executor',
-                            ...(Array.isArray(phaseResult.logs) ? phaseResult.logs : []),
+                            `[AgentLoop] Orchestrator executed ${pipelineResult.completedPhases}/${pipelineResult.executedPhases} planned phase(s) via phase_executor`,
                         ];
                     }
                 } catch (phaseError: any) {
                     result.output = {
                         ...(result.output || {}),
-                        orchestratedFirstPhaseError: String(phaseError?.message || phaseError || 'phase execution failed'),
+                        orchestratedPipelineError: String(phaseError?.message || phaseError || 'phase execution failed'),
                     };
                     result.logs = [
                         ...(Array.isArray(result.logs) ? result.logs : []),
-                        `[AgentLoop] First phase orchestration failed: ${String(phaseError?.message || phaseError)}`,
+                        `[AgentLoop] Planned phase orchestration failed: ${String(phaseError?.message || phaseError)}`,
                     ];
                 }
             }
