@@ -164,6 +164,56 @@ export class AgentLoopService {
         }
     }
 
+    private static async runFirstPlannedPhaseIfPresent(params: {
+        sessionId: string;
+        runId: string;
+        userId?: string;
+        workspaceId?: string;
+        plannerResult: any;
+    }) {
+        const { sessionId, runId, userId, workspaceId, plannerResult } = params;
+        const planOutput = plannerResult?.output;
+        const phases = Array.isArray(planOutput?.phases) ? planOutput.phases : [];
+        const firstPhase = phases[0];
+        if (!plannerResult?.ok || !firstPhase) return null;
+
+        const projectContext = {
+            projectName: planOutput?.projectName || 'Planned Project',
+            totalPhases: typeof planOutput?.totalPhases === 'number' ? planOutput.totalPhases : phases.length,
+            sessionId,
+            workspaceId,
+            userId: userId ? String(userId) : undefined,
+        };
+
+        const phaseInput = { phase: firstPhase, projectContext };
+        const persistedPhaseInput = redactToolInputForStorage('phase_executor', phaseInput);
+
+        broadcast({ type: 'step_started', runId, data: { name: 'execute:phase_executor', input: persistedPhaseInput } });
+        const phaseResult = await executeTool('phase_executor', phaseInput, {
+            sessionId,
+            workspaceId,
+            userId: userId ? String(userId) : undefined,
+        });
+        const eventResult = sanitizeToolResultForBroadcast('phase_executor', phaseResult);
+        broadcast({ type: phaseResult.ok ? 'step_done' : 'step_failed', runId, data: { name: 'execute:phase_executor', result: eventResult } });
+
+        try {
+            if (!offlineMode) {
+                await ToolExecution.create({
+                    runId,
+                    sessionId,
+                    name: 'phase_executor',
+                    input: persistedPhaseInput,
+                    output: phaseResult.output,
+                    ok: phaseResult.ok,
+                    logs: phaseResult.logs,
+                });
+            }
+        } catch { }
+
+        return phaseResult;
+    }
+
     // This is the core logic recovered from sessions.ts
     static async continueAgentLoop(sessionId: string, initialRunId: string, userId?: string): Promise<ContinueResult | void> {
         console.log(`[AgentLoop] Starting recursive loop for ${sessionId}`);
@@ -277,6 +327,39 @@ export class AgentLoopService {
                 result = await executeTool(plan.name, callInput, { sessionId, workspaceId, userId: userId ? String(userId) : undefined });
             } catch (e: any) {
                 result = { ok: false, error: e.message };
+            }
+
+            if (result.ok && plan.name === 'project_planner') {
+                try {
+                    const phaseResult = await AgentLoopService.runFirstPlannedPhaseIfPresent({
+                        sessionId,
+                        runId: newRunId,
+                        userId,
+                        workspaceId,
+                        plannerResult: result,
+                    });
+                    if (phaseResult) {
+                        result.output = {
+                            ...(result.output || {}),
+                            orchestratedFirstPhase: phaseResult.output,
+                            firstPhaseOk: !!phaseResult.ok,
+                        };
+                        result.logs = [
+                            ...(Array.isArray(result.logs) ? result.logs : []),
+                            '[AgentLoop] Orchestrator executed first planned phase via phase_executor',
+                            ...(Array.isArray(phaseResult.logs) ? phaseResult.logs : []),
+                        ];
+                    }
+                } catch (phaseError: any) {
+                    result.output = {
+                        ...(result.output || {}),
+                        orchestratedFirstPhaseError: String(phaseError?.message || phaseError || 'phase execution failed'),
+                    };
+                    result.logs = [
+                        ...(Array.isArray(result.logs) ? result.logs : []),
+                        `[AgentLoop] First phase orchestration failed: ${String(phaseError?.message || phaseError)}`,
+                    ];
+                }
             }
 
             // [Wakil] Construct final context-aware text (Include Reasoning)
