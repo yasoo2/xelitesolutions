@@ -6,6 +6,7 @@ import { ToolExecution } from '../../shared/models/toolExecution';
 import { Session } from '../../shared/models/session';
 import { broadcast, broadcastThinkingDetail } from '../../api/ws';
 import { executeTool } from './ToolService';
+import { RepairTicketService } from './RepairTicketService';
 
 import { getSessionRunConfig, popPendingTool, setSessionRunConfig, setSessionSecret, setUserSecretEncrypted, setPendingTool } from './secrets';
 import { redactToolInputForStorage, safeErrorMessage, redactSecretsFromString } from '../../shared/utils/redaction';
@@ -187,6 +188,7 @@ export class AgentLoopService {
 
         const phaseResults: any[] = [];
         let completedPhases = 0;
+        let repairTicket: any = null;
 
         for (let i = 0; i < maxPhases; i++) {
             const phase = phases[i];
@@ -218,7 +220,26 @@ export class AgentLoopService {
 
             const phaseStatus = String((phaseResult as any)?.output?.status || 'unknown');
             const phasePassed = !!phaseResult.ok && phaseStatus === 'completed';
-            phaseResults.push({ phaseNumber: phase?.phaseNumber || i + 1, ok: phasePassed, status: phaseStatus, output: phaseResult.output, error: phaseResult.error });
+            if (!phasePassed) {
+                repairTicket = RepairTicketService.build({
+                    projectName: planOutput?.projectName,
+                    phase,
+                    phaseIndex: i,
+                    phaseStatus,
+                    phaseResult,
+                    runId,
+                    sessionId,
+                    workspaceId,
+                });
+            }
+            phaseResults.push({
+                phaseNumber: phase?.phaseNumber || i + 1,
+                ok: phasePassed,
+                status: phaseStatus,
+                output: phaseResult.output,
+                error: phaseResult.error,
+                repairTicket: phasePassed ? undefined : repairTicket,
+            });
             if (!phasePassed) break;
             completedPhases++;
         }
@@ -229,6 +250,7 @@ export class AgentLoopService {
             totalPlannedPhases: phases.length,
             executedPhases: maxPhases,
             stoppedEarly: completedPhases < maxPhases,
+            repairTicket,
             results: phaseResults,
         };
     }
