@@ -8,6 +8,8 @@ import { broadcast, broadcastThinkingDetail } from '../../api/ws';
 import { executeTool } from './ToolService';
 import { RepairTicketService } from './RepairTicketService';
 import { SelfFixService } from './SelfFixService';
+import { SelfFixExecutionService } from './SelfFixExecutionService';
+
 
 
 import { getSessionRunConfig, popPendingTool, setSessionRunConfig, setSessionSecret, setUserSecretEncrypted, setPendingTool } from './secrets';
@@ -192,6 +194,8 @@ export class AgentLoopService {
         let completedPhases = 0;
         let repairTicket: any = null;
         let selfFixPlan: any = null;
+        let selfFixExecution: any = null;
+
 
 
         for (let i = 0; i < maxPhases; i++) {
@@ -223,7 +227,8 @@ export class AgentLoopService {
             } catch { }
 
             const phaseStatus = String((phaseResult as any)?.output?.status || 'unknown');
-            const phasePassed = !!phaseResult.ok && phaseStatus === 'completed';
+            let phasePassed = !!phaseResult.ok && phaseStatus === 'completed';
+
             if (!phasePassed) {
                 repairTicket = RepairTicketService.build({
                     projectName: planOutput?.projectName,
@@ -236,8 +241,23 @@ export class AgentLoopService {
                     workspaceId,
                 });
                 selfFixPlan = SelfFixService.plan(repairTicket);
+                if (selfFixPlan?.allowed) {
+                    selfFixExecution = await SelfFixExecutionService.executeOnce({
+                        phase,
+                        projectContext,
+                        selfFixPlan,
+                        executionContext: {
+                            sessionId,
+                            workspaceId,
+                            userId: userId ? String(userId) : undefined,
+                            onProgress: (m: string) => broadcastThinkingDetail(sessionId, m),
+                        },
+                    });
+                    phasePassed = !!selfFixExecution?.ok;
+                }
 
             }
+
             phaseResults.push({
                 phaseNumber: phase?.phaseNumber || i + 1,
                 ok: phasePassed,
@@ -246,6 +266,8 @@ export class AgentLoopService {
                 error: phaseResult.error,
                 repairTicket: phasePassed ? undefined : repairTicket,
                 selfFixPlan: phasePassed ? undefined : selfFixPlan,
+                selfFixExecution,
+
 
             });
             if (!phasePassed) break;
@@ -260,7 +282,9 @@ export class AgentLoopService {
             stoppedEarly: completedPhases < maxPhases,
             repairTicket,
             selfFixPlan,
+            selfFixExecution,
             results: phaseResults,
+
 
         };
     }

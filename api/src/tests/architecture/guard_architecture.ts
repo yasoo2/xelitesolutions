@@ -62,6 +62,12 @@ function run() {
     pass('SelfFixService limits repair attempts');
   }
 
+  if (!agentLoop.includes('SelfFixExecutionService')) {
+    fail('AgentLoopService must attach SelfFixExecutionService for automatic repair execution');
+  } else {
+    pass('AgentLoop is connected to self-fix execution');
+  }
+
   pass('Architecture guard passed');
 }
 
