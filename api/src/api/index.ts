@@ -1,3 +1,27 @@
+// Polyfill for libraries that expect browser globals (like pdfjs-dist used by pdf-parse)
+if (typeof (global as any).DOMMatrix === 'undefined') {
+  (global as any).DOMMatrix = class DOMMatrix {
+    constructor() {}
+    static fromMatrix() { return new DOMMatrix(); }
+    static fromFloat32Array() { return new DOMMatrix(); }
+    static fromFloat64Array() { return new DOMMatrix(); }
+    get is2D() { return true; }
+    get isIdentity() { return true; }
+    translate() { return new DOMMatrix(); }
+    scale() { return new DOMMatrix(); }
+    rotate() { return new DOMMatrix(); }
+    multiply() { return new DOMMatrix(); }
+  };
+}
+if (typeof (global as any).ImageData === 'undefined') {
+  (global as any).ImageData = class ImageData {
+    constructor(width: number, height: number) { (this as any).width = width; (this as any).height = height; (this as any).data = new Uint8ClampedArray(width * height * 4); }
+  };
+}
+if (typeof (global as any).Path2D === 'undefined') {
+  (global as any).Path2D = class Path2D { constructor() {} addPath() {} closePath() {} moveTo() {} lineTo() {} bezierCurveTo() {} quadraticCurveTo() {} arc() {} arcTo() {} ellipse() {} rect() {} };
+}
+
 import http from 'http';
 import mongoose from 'mongoose';
 import pino from 'pino';
@@ -22,7 +46,7 @@ async function ensureOwnerFromEnv() {
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (!adminEmail || !adminPassword) return;
-  if (mongoose.connection.readyState !== 1) return;
+  if (mongoose.connection.readyState !== 1 && process.env.PERSISTENCE_MODE !== 'JSON') return;
 
   let user = await User.findOne({ email: adminEmail });
   if (!user) {
@@ -79,6 +103,11 @@ async function main() {
   });
 
   const connectWithRetry = async () => {
+    if (process.env.MOCK_DB === '1' || process.env.MOCK_DB === 'true' || process.env.PERSISTENCE_MODE === 'JSON') {
+      logger.info('⚠️  JSON Persistence mode enabled: Data will be saved to api/data/db');
+      await ensureOwnerFromEnv();
+      return;
+    }
     mongoose.set('bufferCommands', false);
     for (let i = 0; i < 30; i++) {
       try {

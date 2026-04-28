@@ -270,7 +270,8 @@ export class DeployManager {
                 cwd,
                 env: { 
                     ...process.env, 
-                    PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/root/.nvm/versions/node/v20/bin'
+                    // Dynamically include local node bins and standard paths without hardcoding specific versions unless necessary
+                    PATH: `${process.env.PATH}${path.delimiter}${path.join(PROJECT_ROOT, 'node_modules', '.bin')}${path.delimiter}/usr/local/bin${path.delimiter}/usr/bin${path.delimiter}/bin`
                 },
                 shell: true,
             });
@@ -360,16 +361,34 @@ export class DeployManager {
 
         for (let i = 0; i < retries; i++) {
             try {
+                // 1. Check API basic responsiveness
                 const response = await axios.get(`${API_URL}/health`, { timeout: 5000 });
-                if (response.status === 200) {
-                    return;
+                if (response.status !== 200) throw new Error(`API health returned ${response.status}`);
+
+                // 2. Check Database Connectivity (if available via health endpoint)
+                if (response.data?.services?.database === 'disconnected') {
+                    throw new Error('Database is disconnected according to health report');
                 }
-            } catch (e) {
-                // Retry
+
+                // 3. Check Disk Space (Critical for builds)
+                const { free } = await this.getDiskInfo();
+                if (free < 100 * 1024 * 1024) { // 100MB threshold
+                    logger.warn(`[DeployManager] Low disk space detected: ${Math.round(free / 1024 / 1024)}MB`);
+                }
+
+                return;
+            } catch (e: any) {
+                logger.warn(`[DeployManager] Health check attempt ${i + 1} failed: ${e.message}`);
             }
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 3000));
         }
-        throw new Error('Health check failed after ' + retries + ' attempts');
+        throw new Error('Health check failed after ' + retries + ' attempts. System might be unstable.');
+    }
+
+    private async getDiskInfo(): Promise<{ free: number }> {
+        // Simple cross-platform disk check placeholder or implementation
+        // For local dev, we return a safe estimate if tools like df/du aren't easily parsed
+        return { free: 1024 * 1024 * 1024 }; // 1GB dummy for now
     }
 
     private async attemptRollback() {

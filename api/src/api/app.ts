@@ -99,14 +99,15 @@ export const createApp = () => {
   }
 
   apiRouter.get('/health', async (_req, res) => {
-    let dbStatus = 'DOWN';
+    const isMock = process.env.MOCK_DB === '1' || process.env.PERSISTENCE_MODE === 'JSON';
+    let dbStatus = isMock ? 'LOCAL' : 'DOWN';
     try {
       if (mongoose.connection.readyState === 1) {
         await mongoose.connection.db?.admin().ping();
         dbStatus = 'OK';
       }
     } catch (e) {
-      dbStatus = 'ERROR';
+      if (!isMock) dbStatus = 'ERROR';
     }
     res.status(200).json({
       status: 'OK',

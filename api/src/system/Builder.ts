@@ -190,7 +190,7 @@ module.exports = {
       devDependencies: { "nodemon": "^3.0.1" }
     }, null, 2));
 
-    let indexContent = `
+    const indexContent = `
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -199,104 +199,18 @@ require('dotenv').config();
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.disable('x-powered-by');
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.once('finish', () => {
-    const ms = Date.now() - start;
-    console.log(req.method + ' ' + req.originalUrl + ' ' + res.statusCode + ' ' + ms + 'ms');
-  });
-  next();
-});
 
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/app')
-  .then(() => console.log('✅ DB Connected'));
+  .then(() => console.log('✅ DB Connected'))
+  .catch(err => console.error('DB Connection Error:', err));
 
-app.get('/', (req, res) => res.json({ status: 'ok' }));
-app.get('/api/status', (req, res) => {
-  const state = mongoose.connection && mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  res.json({ ok: true, db: state, uptime: process.uptime(), ts: Date.now() });
-});
+app.get('/', (req, res) => res.json({ status: 'ok', msg: 'System initialized and ready for AI code injection.' }));
+
+// API Features requested: ${features.join(', ')}
+// Specific endpoints will be implemented progressively by the AI generator.
+
+app.listen(4000, () => console.log('🚀 API on 4000'));
 `;
-
-    if (features.includes('products')) {
-      indexContent += `
-const Product = mongoose.model('Product', new mongoose.Schema({ name: String, price: Number }));
-app.get('/api/products', async (req, res) => res.json(await Product.find()));
-`;
-    }
-
-    if (features.includes('auth')) {
-      indexContent += `
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const User = mongoose.model('User', new mongoose.Schema({ email: { type: String, unique: true }, password: String }));
-const signToken = (u) => jwt.sign({ uid: String(u._id) }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
-
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
-    const hash = await bcrypt.hash(password, 10);
-    const u = await User.create({ email, password: hash });
-    return res.json({ ok: true, token: signToken(u) });
-  } catch (e) {
-    return res.status(400).json({ error: 'register_failed', details: String(e.message || e) });
-  }
-});
-
-app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body || {};
-  const u = await User.findOne({ email });
-  if (!u) return res.status(401).json({ error: 'invalid_credentials' });
-  const ok = await bcrypt.compare(password, u.password);
-  if (!ok) return res.status(401).json({ error: 'invalid_credentials' });
-  return res.json({ ok: true, token: signToken(u) });
-});
-`;
-    }
-
-    if (features.includes('cart')) {
-      indexContent += `
-const Cart = mongoose.model('Cart', new mongoose.Schema({ uid: String, items: [{ productId: String, qty: Number }] }));
-app.post('/api/cart', async (req, res) => {
-  const { uid, productId, qty } = req.body || {};
-  if (!uid || !productId || !qty) return res.status(400).json({ error: 'missing_fields' });
-  const c = (await Cart.findOne({ uid })) || (await Cart.create({ uid, items: [] }));
-  const i = c.items.find(x => x.productId === productId);
-  if (i) i.qty += qty; else c.items.push({ productId, qty });
-  await c.save();
-  return res.json({ ok: true, cart: c.items });
-});
-app.get('/api/cart', async (req, res) => {
-  const uid = String(req.query.uid || '').trim();
-  const c = await Cart.findOne({ uid });
-  return res.json({ ok: true, cart: c?.items || [] });
-});
-`;
-    }
-
-    if (features.includes('orders')) {
-      indexContent += `
-const Order = mongoose.model('Order', new mongoose.Schema({ uid: String, items: [{ productId: String, qty: Number }], total: Number, createdAt: { type: Date, default: Date.now } }));
-app.post('/api/orders', async (req, res) => {
-  const { uid } = req.body || {};
-  const c = await Cart.findOne({ uid });
-  if (!c || !c.items.length) return res.status(400).json({ error: 'empty_cart' });
-  const total = c.items.reduce((sum, i) => sum + (i.qty * 10), 0);
-  const o = await Order.create({ uid, items: c.items, total });
-  c.items = []; await c.save();
-  return res.json({ ok: true, orderId: String(o._id), total });
-});
-app.get('/api/orders', async (req, res) => {
-  const uid = String(req.query.uid || '').trim();
-  const orders = await Order.find({ uid }).sort({ createdAt: -1 }).limit(20);
-  return res.json({ ok: true, orders });
-});
-`;
-    }
-
-    indexContent += `\napp.listen(4000, () => console.log('🚀 API on 4000'));`;
 
     fs.writeFileSync(path.join(apiRoot, 'src/index.js'), indexContent.trim());
   }
@@ -437,102 +351,34 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     const currency = isAr ? 'ر.س' : '$';
 
     fs.writeFileSync(path.join(webRoot, 'src/App.jsx'), `
-import React, { useState } from 'react';
-
-const products = [
-  { id: 1, name: '${isAr ? 'منتج مميز ١' : 'Premium Product 1'}', price: 99, image: '🛍️' },
-  { id: 2, name: '${isAr ? 'منتج مميز ٢' : 'Premium Product 2'}', price: 149, image: '✨' },
-  { id: 3, name: '${isAr ? 'منتج مميز ٣' : 'Premium Product 3'}', price: 199, image: '🎁' },
-  { id: 4, name: '${isAr ? 'منتج مميز ٤' : 'Premium Product 4'}', price: 79, image: '💎' },
-  { id: 5, name: '${isAr ? 'منتج مميز ٥' : 'Premium Product 5'}', price: 129, image: '🌟' },
-  { id: 6, name: '${isAr ? 'منتج مميز ٦' : 'Premium Product 6'}', price: 249, image: '🎀' },
-];
+import React from 'react';
 
 export default function App() {
-  const [cart, setCart] = useState([]);
-
-  const addToCart = (product) => {
-    setCart(prev => {
-      const existing = prev.find(i => i.id === product.id);
-      if (existing) return prev.map(i => i.id === product.id ? { ...i, qty: i.qty + 1 } : i);
-      return [...prev, { ...product, qty: 1 }];
-    });
-  };
-
-  const totalItems = cart.reduce((s, i) => s + i.qty, 0);
-
   return (
-    <div style={{ minHeight: '100vh' }}>
-      {/* Navbar */}
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <nav style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         padding: '16px 32px', background: 'var(--panel)', borderBottom: '1px solid var(--border)',
         position: 'sticky', top: 0, zIndex: 50, backdropFilter: 'blur(12px)'
       }}>
         <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)' }}>${displayTitle}</h2>
-        <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
-          <a href="#products" style={{ color: 'var(--text)', textDecoration: 'none', opacity: 0.8 }}>${productsTitle}</a>
-          <a href="#contact" style={{ color: 'var(--text)', textDecoration: 'none', opacity: 0.8 }}>${contactTitle}</a>
-          <div style={{
-            padding: '8px 16px', background: 'var(--accent)', color: '#fff', borderRadius: 8,
-            fontSize: 14, fontWeight: 600, cursor: 'pointer'
-          }}>🛒 {totalItems}</div>
-        </div>
       </nav>
 
-      {/* Hero */}
       <section style={{
-        padding: '80px 32px', textAlign: 'center',
-        background: 'linear-gradient(135deg, var(--panel), var(--bg))',
-        borderBottom: '1px solid var(--border)'
+        padding: '80px 32px', textAlign: 'center', flex: 1,
+        background: 'linear-gradient(135deg, var(--panel), var(--bg))'
       }}>
         <h1 style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', fontWeight: 900, marginBottom: 16,
           background: 'linear-gradient(135deg, var(--accent), #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-        }}>${heroTitle}</h1>
-        <p style={{ fontSize: 18, opacity: 0.7, marginBottom: 32, maxWidth: 600, margin: '0 auto 32px' }}>${heroSub}</p>
-        <a href="#products" style={{
-          display: 'inline-block', padding: '14px 40px', background: 'var(--accent)', color: '#fff',
-          borderRadius: 12, textDecoration: 'none', fontWeight: 700, fontSize: 16,
-          boxShadow: '0 4px 20px var(--accent-glow)', transition: 'transform 0.2s'
-        }}>${shopNow}</a>
+        }}>${displayTitle}</h1>
+        <p style={{ fontSize: 18, opacity: 0.7, marginBottom: 32, maxWidth: 600, margin: '0 auto 32px' }}>
+          ${isAr ? 'بيئة العمل جاهزة للحقن بأكواد الذكاء الاصطناعي' : 'Environment ready for AI code injection.'}
+        </p>
       </section>
 
-      {/* Products */}
-      <section id="products" style={{ padding: '60px 32px', maxWidth: 1200, margin: '0 auto' }}>
-        <h2 style={{ fontSize: 28, fontWeight: 800, marginBottom: 32, textAlign: 'center' }}>${productsTitle}</h2>
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 24
-        }}>
-          {products.map(p => (
-            <div key={p.id} style={{
-              background: 'var(--panel)', borderRadius: 16, overflow: 'hidden',
-              border: '1px solid var(--border)', transition: 'transform 0.2s, box-shadow 0.2s',
-              cursor: 'pointer'
-            }} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 8px 30px var(--accent-glow)'; }}
-               onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}>
-              <div style={{
-                height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 64, background: 'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(56,189,248,0.1))'
-              }}>{p.image}</div>
-              <div style={{ padding: 20 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{p.name}</h3>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)' }}>{p.price} ${currency}</span>
-                  <button onClick={() => addToCart(p)} style={{
-                    padding: '8px 20px', background: 'var(--accent)', color: '#fff', border: 'none',
-                    borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 14
-                  }}>${addToCart}</button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer id="contact" style={{
+      <footer style={{
         padding: '40px 32px', background: 'var(--panel)', borderTop: '1px solid var(--border)',
-        textAlign: 'center', marginTop: 40
+        textAlign: 'center'
       }}>
         <p style={{ opacity: 0.6, fontSize: 14 }}>${footerText}</p>
       </footer>

@@ -360,18 +360,40 @@ export class IterativeRefinement {
     async refineCode(
         initialCode: string,
         requirements: string[],
-        validator: (code: string) => boolean
+        validator: (code: string) => { isValid: boolean, issues?: string[] } | boolean
     ): Promise<string> {
         let currentCode = initialCode;
+        const { callLLM } = require('../llm');
         
         for (let i = 0; i < this.maxIterations; i++) {
-            if (validator(currentCode)) {
+            const validationResult = validator(currentCode);
+            const isValid = typeof validationResult === 'boolean' ? validationResult : validationResult.isValid;
+            
+            if (isValid) {
                 console.log(`[IterativeRefinement] Code validated after ${i + 1} iterations`);
                 break;
             }
             
-            // هنا يمكن إضافة منطق التحسين
-            // في الوقت الحالي، نعيد الكود كما هو
+            const issues = typeof validationResult === 'boolean' ? [] : (validationResult.issues || []);
+            console.log(`[IterativeRefinement] Applying LLM correction, iteration ${i + 1}`);
+            
+            const prompt = `The following code did not pass validation or contains issues that need correction. 
+Please fix the code so that it meets these requirements/fixes these issues:
+${requirements.join('\\n- ')}
+Issues found:
+${issues.join('\\n- ')}
+Return ONLY the full corrected code without formatting blocks like \`\`\`typescript, and no explanation.
+Code to fix:
+${currentCode}`;
+
+            try {
+                let updatedCode = await callLLM(prompt);
+                updatedCode = updatedCode.replace(/^\`\`\`(typescript|javascript|tsx|jsx|ts|js)?\n/i, '').replace(/\`\`\`$/i, '').trim();
+                currentCode = updatedCode;
+            } catch (err) {
+                console.error("[IterativeRefinement] LLM call failed", err);
+            }
+            
             this.iterations++;
         }
         

@@ -1,6 +1,7 @@
 import { SentinelIncidentService } from './SentinelIncidentService';
 import { SentinelPolicyModel } from '../../../shared/models/SentinelPolicy';
 import { Types } from 'mongoose';
+import { SentinelActionService } from './SentinelActionService';
 
 export interface TelemetryPayload {
     serverId: string;
@@ -110,6 +111,18 @@ export class SentinelPolicyEngine {
                 evidenceCollector,
                 Array.from(actionRecommendations)
             );
+
+            // Active Interdiction: Execute actions if not in shadow mode
+            for (const action of actionRecommendations) {
+                // If the action targets a specific process or IP, we need to extract from evidence
+                // For this evolution, we'll try to find targets in the evidence collector
+                let target = 'system';
+                if (action === 'KILL_PROCESS' && evidenceCollector['suspicious_processes']) {
+                    target = evidenceCollector['suspicious_processes'][0]?.pid || 'unknown';
+                }
+
+                await SentinelActionService.executeIntervention(payload.serverId, action, target);
+            }
         }
         
     }

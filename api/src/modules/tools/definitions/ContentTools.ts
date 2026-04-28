@@ -1,11 +1,9 @@
-
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
-import { JSDOM, VirtualConsole } from 'jsdom';
 import { Readability } from '@mozilla/readability';
-// import Parser from 'rss-parser'; // Removed: not in package.json, usage is dynamic below
 
-function createDom(rawHtml: string, url?: string) {
+async function createDom(rawHtml: string, url?: string) {
+    const { JSDOM, VirtualConsole } = await import('jsdom');
     const vc = new VirtualConsole();
     vc.on('jsdomError', () => { });
     return new JSDOM(rawHtml, url ? { url, virtualConsole: vc } : { virtualConsole: vc });
@@ -59,7 +57,7 @@ export class HtmlExtractTool extends BaseTool {
             // Simple fetch, true rendering requires browser
             const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JOE/1.0)' } });
             const html = await r.text();
-            const dom = createDom(html, url);
+            const dom = await createDom(html, url);
             const reader = new Readability(dom.window.document);
             const article = reader.parse();
 

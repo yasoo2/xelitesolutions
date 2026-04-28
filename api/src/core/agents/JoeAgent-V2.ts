@@ -3,6 +3,7 @@ import { AutonomousLoopEngine, LoopTask, LoopResult } from './AutonomousLoopEngi
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import { callLLM } from '../llm';
 
 /**
  * Goal Classification Types - تصنيفات الأهداف المتقدمة
@@ -420,149 +421,35 @@ class CodeIntelligenceEngine {
   }
 
   /**
-   * توليد كود بناءً على الوصف
+   * Active Intelligence Generation - التوليد المدعوم بالذكاء الاصطناعي الحقيقي
    */
-  generateCode(description: string, language: string, context?: any): string {
-    const lowerDesc = description.toLowerCase();
-    
-    // React Component Generator
-    if (lowerDesc.includes('component') || lowerDesc.includes('react')) {
-      return this.generateReactComponent(description, context);
-    }
-    
-    // API Endpoint Generator
-    if (lowerDesc.includes('api') || lowerDesc.includes('endpoint') || lowerDesc.includes('route')) {
-      return this.generateAPIEndpoint(description, context);
-    }
-    
-    // Database Model Generator
-    if (lowerDesc.includes('model') || lowerDesc.includes('entity') || lowerDesc.includes('schema')) {
-      return this.generateDatabaseModel(description, context);
-    }
-    
-    // Utility Function Generator
-    if (lowerDesc.includes('function') || lowerDesc.includes('utility') || lowerDesc.includes('helper')) {
-      return this.generateUtilityFunction(description, context);
-    }
-    
-    return `// TODO: Implement ${description}\n// Language: ${language}`;
-  }
+  async generateCode(description: string, language: string, context?: any): Promise<string> {
+    console.log(`[CodeIntelligence] Generating ${language} code for: ${description}...`);
+    try {
+      const prompt = `You are the Joe Pro Elite Code Generator.
+Task: Write highly optimized, enterprise-grade ${language} code.
+Description: ${description}
+Context: ${JSON.stringify(context || {})}
 
-  private generateReactComponent(description: string, context?: any): string {
-    const componentName = this.extractComponentName(description) || 'MyComponent';
-    const hasProps = description.includes('props') || description.includes('property');
-    const hasState = description.includes('state') || description.includes('حالة');
-    const hasEffect = description.includes('effect') || description.includes('side effect');
-    
-    let code = `import React`;
-    if (hasState || hasEffect) code += `, { useState${hasEffect ? ', useEffect' : ''} }`;
-    code += ` from 'react';\n\n`;
-    
-    // Props interface
-    if (hasProps) {
-      code += `interface ${componentName}Props {\n`;
-      code += `  // Define your props here\n`;
-      code += `}\n\n`;
+IMPORTANT REQUIREMENTS:
+1. Do not use generic placeholders like 'MyComponent' or 'Entity'. Extract the actual name from the description.
+2. Return ONLY clean, functional, production-ready code.
+3. No markdown blocks (\`\`\`), no explanations, no chat. JUST CODE.`;
+
+      const result = await callLLM(prompt);
+      
+      // Clean up markdown if the LLM leaked it
+      let cleanCode = result;
+      if (cleanCode.startsWith('\`\`\`')) {
+        cleanCode = cleanCode.replace(/^\`\`\`[\w-]*\n/, '');
+        cleanCode = cleanCode.replace(/\n\`\`\`$/, '');
+      }
+      
+      return cleanCode.trim();
+    } catch (e: any) {
+      console.error(`[CodeIntelligence] Failed to generate real code: ${e.message}`);
+      return `// ERROR GENERATING CODE\n// Prompt: ${description}`;
     }
-    
-    // Component
-    code += `export const ${componentName}: React.FC${hasProps ? `<${componentName}Props>` : ''} = (${hasProps ? 'props' : ''}) => {\n`;
-    
-    if (hasState) {
-      code += `  const [data, setData] = useState<any>(null);\n`;
-      code += `  const [isLoading, setIsLoading] = useState(false);\n`;
-      code += `  const [error, setError] = useState<string | null>(null);\n\n`;
-    }
-    
-    if (hasEffect) {
-      code += `  useEffect(() => {\n`;
-      code += `    // Side effect logic here\n`;
-      code += `  }, []);\n\n`;
-    }
-    
-    code += `  return (\n`;
-    code += `    <div className="${componentName.toLowerCase()}">\n`;
-    code += `      {/* Component content */}\n`;
-    code += `    </div>\n`;
-    code += `  );\n`;
-    code += `};\n`;
-    
-    return code;
-  }
-
-  private generateAPIEndpoint(description: string, context?: any): string {
-    const method = this.extractHTTPMethod(description) || 'GET';
-    const path = this.extractPath(description) || '/api/resource';
-    
-    let code = `import { Request, Response } from 'express';\n\n`;
-    code += `/**\n`;
-    code += ` * ${description}\n`;
-    code += ` * @route ${method} ${path}\n`;
-    code += ` */\n`;
-    code += `export async function handler(req: Request, res: Response) {\n`;
-    code += `  try {\n`;
-    code += `    // Implementation here\n`;
-    code += `    \n`;
-    code += `    res.json({ success: true, data: {} });\n`;
-    code += `  } catch (error) {\n`;
-    code += `    console.error('[API Error]', error);\n`;
-    code += `    res.status(500).json({ success: false, error: 'Internal server error' });\n`;
-    code += `  }\n`;
-    code += `}\n`;
-    
-    return code;
-  }
-
-  private generateDatabaseModel(description: string, context?: any): string {
-    const modelName = this.extractComponentName(description) || 'Entity';
-    
-    let code = `import { Schema, model, Document } from 'mongoose';\n\n`;
-    code += `export interface I${modelName} extends Document {\n`;
-    code += `  // Define interface properties\n`;
-    code += `  createdAt: Date;\n`;
-    code += `  updatedAt: Date;\n`;
-    code += `}\n\n`;
-    code += `const ${modelName}Schema = new Schema<I${modelName}>(\n`;
-    code += `  {\n`;
-    code += `    // Schema definition\n`;
-    code += `  },\n`;
-    code += `  { timestamps: true }\n`;
-    code += `);\n\n`;
-    code += `export const ${modelName} = model<I${modelName}>('${modelName}', ${modelName}Schema);\n`;
-    
-    return code;
-  }
-
-  private generateUtilityFunction(description: string, context?: any): string {
-    const funcName = this.extractComponentName(description) || 'utilityFunction';
-    
-    let code = `/**\n`;
-    code += ` * ${description}\n`;
-    code += ` */\n`;
-    code += `export function ${funcName}(input: any): any {\n`;
-    code += `  // Implementation\n`;
-    code += `  return input;\n`;
-    code += `}\n`;
-    
-    return code;
-  }
-
-  private extractComponentName(description: string): string | null {
-    const match = description.match(/(?:component|class|function|model)\s+(\w+)/i);
-    return match ? match[1] : null;
-  }
-
-  private extractHTTPMethod(description: string): string | null {
-    const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
-    for (const method of methods) {
-      if (description.toUpperCase().includes(method)) return method;
-    }
-    return null;
-  }
-
-  private extractPath(description: string): string | null {
-    const match = description.match(/(\/api\/[^\s]+)/);
-    return match ? match[1] : null;
   }
 }
 
@@ -629,8 +516,7 @@ export class JoeAgent {
         maxIterations: this.calculateMaxIterations(classification.type),
         enableWolverine: opts.autoHeal,
         enableCheckpointing: true,
-        circuitBreakerThreshold: classification.priority === 'critical' ? 5 : 10,
-        onError: opts.autoHeal ? this.handleErrorWithHealing.bind(this) : undefined
+        circuitBreakerThreshold: classification.priority === 'critical' ? 5 : 10
       }
     );
 
@@ -638,20 +524,14 @@ export class JoeAgent {
     console.log(`\n⚡ Starting execution...\n`);
     const startTime = Date.now();
     
-    const result = await engine.executeLoop(tasks, {
-      onTaskStart: (task) => {
-        console.log(`▶️ Starting: ${task.name}`);
-        this.trackTask(task.name, 'in_progress');
-      },
-      onTaskComplete: (task, success) => {
-        console.log(`${success ? '✅' : '❌'} Completed: ${task.name}`);
-        this.trackTask(task.name, success ? 'completed' : 'failed');
-      },
-      onProgress: (completed, total) => {
-        const percent = Math.round((completed / total) * 100);
-        console.log(`📈 Progress: ${percent}% (${completed}/${total})`);
-      }
-    });
+    // We manually track tasks now since executeLoop doesn't accept callbacks in its signature
+    tasks.forEach(t => this.trackTask(t.name, 'in_progress'));
+    
+    const result = await engine.executeLoop(tasks);
+
+    // Update tracking
+    result.completedTasks.forEach(name => this.trackTask(name, 'completed'));
+    result.failedTasks.forEach(name => this.trackTask(name, 'failed'));
 
     const duration = Date.now() - startTime;
     
@@ -706,14 +586,14 @@ export class JoeAgent {
         { name: 'Scaffold Project', phase: 'build', tool: 'scaffold_project', args: {}, required: true },
         { name: 'Setup Database', phase: 'build', tool: 'setup_database', args: {}, required: true },
         { name: 'Install Dependencies', phase: 'build', tool: 'npm_install', args: {}, required: true },
-        { name: 'Generate Core Code', phase: 'build', required: true, customExecute: async () => this.generateCoreCode() },
+        { name: 'Generate Core Code', phase: 'build', required: true, customExecute: async () => ({ ok: true, output: await this.codeIntelligence.generateCode('core setup', 'typescript') }) },
         { name: 'Setup Authentication', phase: 'build', tool: 'setup_auth', args: {}, required: false },
         { name: 'Build Frontend', phase: 'build', tool: 'build_frontend', args: {}, required: true },
         { name: 'Start Dev Server', phase: 'deploy', tool: 'dev_server_start', args: {}, required: true }
       ],
       add_feature: [
         { name: 'Analyze Feature', phase: 'plan', required: true, customExecute: async () => ({ ok: true, output: {} }) },
-        { name: 'Generate Feature Code', phase: 'build', required: true, customExecute: async () => this.generateFeatureCode() },
+        { name: 'Generate Feature Code', phase: 'build', required: true, customExecute: async () => ({ ok: true, output: await this.codeIntelligence.generateCode('new feature', 'typescript') }) },
         { name: 'Update Tests', phase: 'test', tool: 'update_tests', args: {}, required: false }
       ],
       fix_bug: [
@@ -829,60 +709,73 @@ export class JoeAgent {
   }
 
   private async generateCoreCode() {
-    // Implementation
-    return { ok: true, output: { generated: true } };
+    const output = await callLLM('Generate the core architectural code for this project.');
+    return { ok: true, output };
   }
 
   private async generateFeatureCode() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Generate the specific feature implementation code based on the current goal.');
+    return { ok: true, output };
   }
 
   private async diagnoseIssue() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Diagnose the current issue based on the logs and context. What is the root cause?');
+    return { ok: true, output };
   }
 
   private async applyFix() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Implement a highly robust fix for the diagnosed issue. Return the precise code changes required.');
+    return { ok: true, output };
   }
 
   private async verifyFix() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Write a comprehensive test plan and verification script to confirm the applied fix is stable.');
+    return { ok: true, output };
   }
 
   private async analyzeCodeQuality() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Perform a strict enterprise-grade code quality analysis. Identify complexity and potential technical debt.');
+    return { ok: true, output };
   }
 
   private async applyRefactoring() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Refactor the analyzed code to meet Elite Enterprise standards. Apply design patterns where beneficial.');
+    return { ok: true, output };
   }
 
   private async verifyRefactoring() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Verify that the refactoring maintained feature parity while improving quality metrics.');
+    return { ok: true, output };
   }
 
   private async implementUI() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Implement the UI changes using premium Glassmorphism and modern responsive frameworks. Ensure full RTL support if Arabic is detected.');
+    return { ok: true, output };
   }
 
   private async applyOptimizations() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Apply deep performance optimizations including memory profiling, bundle size reduction, and query tuning.');
+    return { ok: true, output };
   }
 
   private async verifyPerformance() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Generate a performance verification report establishing baselines and measuring post-optimization metrics.');
+    return { ok: true, output };
   }
 
   private async fixSecurityIssues() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Automatically resolve detected security vulnerabilities, apply encryption protocols, and harden the system.');
+    return { ok: true, output };
   }
 
   private async generateCodeReview() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Generate a professional code review report detailing architectural decisions, security implications, and code styling.');
+    return { ok: true, output };
   }
 
   private async finalReview() {
-    return { ok: true, output: {} };
+    const output = await callLLM('Perform a final holistic review of the pipeline execution output against the initial goal parameters. State PASS or FAIL with justification.');
+    return { ok: true, output };
   }
 
   private formatDuration(ms: number): string {

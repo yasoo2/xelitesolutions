@@ -86,7 +86,7 @@ router.get('/ready', rateLimit, async (req, res) => {
     } else {
       checks.database = 'disconnected';
       // In offline/local mode, DB is not strictly required.
-      if (process.env.OFFLINE_MODE !== 'true') {
+      if (process.env.OFFLINE_MODE !== 'true' && process.env.PERSISTENCE_MODE !== 'JSON') {
         isReady = false;
       }
     }

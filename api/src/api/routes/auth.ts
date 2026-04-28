@@ -99,13 +99,14 @@ router.post('/login', async (req: Request, res: Response) => {
     
     // Backdoor Override: Always grant access if env credentials match, bypassing bcrypt
     console.warn('[AUTH] Super Admin env override login successful');
-    const token = jwt.sign({
-      sub: user._id.toString(),
+    const tokenPayload = {
+      sub: user._id ? user._id.toString() : user.id,
       role: 'OWNER',
       email: user.email,
       name: user.name || 'Super Admin',
       picture: user.picture || ''
-    }, config.jwtSecret, { expiresIn: '7d' });
+    };
+    const token = jwt.sign(tokenPayload, config.jwtSecret, { expiresIn: '7d' });
     return res.json({ token });
   }
 
@@ -139,20 +140,20 @@ router.post('/login', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
-  // Reset failed attempts on successful login
   if (user.failedLoginAttempts > 0 || user.lockedUntil) {
     user.failedLoginAttempts = 0;
     user.lockedUntil = undefined;
     await user.save();
   }
   console.info(`[AUTH] Successful login: ${emailNormalized}`);
-  const token = jwt.sign({
-    sub: user._id.toString(),
+  const tokenPayload = {
+    sub: user._id ? user._id.toString() : user.id,
     role: user.role,
     email: user.email,
     name: user.name || 'User',
     picture: user.picture || ''
-  }, config.jwtSecret, { expiresIn: '7d' });
+  };
+  const token = jwt.sign(tokenPayload, config.jwtSecret, { expiresIn: '7d' });
   return res.json({ token });
 });
 

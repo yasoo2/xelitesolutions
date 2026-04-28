@@ -16,7 +16,7 @@ export class VectorDbService {
     private documents: Document[] = [];
     private storagePath: string;
 
-    constructor(storageDir: string = '.gemini/memory') {
+    constructor(storageDir: string = 'data/memory') {
         this.storagePath = path.resolve(process.cwd(), storageDir);
         if (!fs.existsSync(this.storagePath)) {
             fs.mkdirSync(this.storagePath, { recursive: true });

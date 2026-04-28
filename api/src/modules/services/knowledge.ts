@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
-const pdf = require('pdf-parse');
+const crypto = require('crypto');
+const uuidv4 = () => crypto.randomUUID();
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const KNOWLEDGE_FILE = path.join(DATA_DIR, 'knowledge.json');
@@ -66,48 +66,62 @@ export const KnowledgeService = {
     },
 
     search: async (query: string): Promise<{ document: Document, score: number, snippet: string }[]> => {
-        console.log(`[KnowledgeService] Searching: ${query}`);
         const docs = await loadKnowledge();
-        console.log(`[KnowledgeService] Docs in DB: ${docs.length}`);
         const q = query.toLowerCase();
+        const tokens = q.split(/\s+/).filter(t => t.length > 2);
 
-        // Simple keyword scoring
         const results = docs.map(doc => {
             const text = doc.content.toLowerCase();
             const filename = doc.filename.toLowerCase();
+            const tags = (doc.tags || []).map(t => t.toLowerCase());
+            
             let score = 0;
 
-            // Exact phrase match
-            if (text.includes(q)) score += 10;
-            if (filename.includes(q)) score += 5;
+            // 1. Exact phrase match (High weight)
+            if (text.includes(q)) score += 20;
+            if (filename.includes(q)) score += 30;
 
-            // Token match
-            const tokens = q.split(/\s+/);
-            let matches = 0;
-            tokens.forEach(t => {
-                if (text.includes(t)) matches++;
+            // 2. Token matches with field weighting
+            tokens.forEach(token => {
+                // Filename match
+                if (filename.includes(token)) score += 10;
+                
+                // Tag match (Very high relevance)
+                if (tags.some(t => t.includes(token))) score += 15;
+
+                // Content frequency match
+                const regex = new RegExp(token, 'gi');
+                const count = (text.match(regex) || []).length;
+                score += Math.min(count, 5); // Cap frequency score
             });
 
-            score += matches;
+            // 3. Recency boost (Small)
+            const daysOld = (Date.now() - doc.createdAt) / (1000 * 60 * 60 * 24);
+            if (daysOld < 7) score += 2;
 
-            // Find snippet
-            const idx = text.indexOf(q.split(' ')[0]);
-            const start = Math.max(0, idx - 50);
-            const snippet = doc.content.substring(start, start + 300) + '...';
+            // Find best snippet
+            const idx = text.indexOf(tokens[0] || q);
+            const start = Math.max(0, idx - 60);
+            const end = Math.min(text.length, start + 300);
+            let snippet = doc.content.substring(start, end).trim();
+            if (start > 0) snippet = '...' + snippet;
+            if (end < text.length) snippet += '...';
 
             return { document: doc, score, snippet };
         });
 
-        // Normalize scores roughly 0-1
+        // Filter and Normalize
         return results
             .filter(r => r.score > 0)
             .sort((a, b) => b.score - a.score)
-            .map(r => ({ ...r, score: Math.min(r.score / 10, 1) })); // Simple normalization assumption
+            .map(r => ({ ...r, score: Math.min(r.score / 50, 1) }));
     },
 
     parsePDF: async (buffer: Buffer): Promise<string> => {
         try {
-            const data = await pdf(buffer);
+            // Using dynamic import to avoid ESM/CJS require conflicts at startup
+            const pdf = await import('pdf-parse');
+            const data = await (pdf.default || pdf)(buffer);
             return data.text;
         } catch (e) {
             console.error('PDF Parse Error', e);

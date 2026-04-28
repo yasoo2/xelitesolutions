@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { JsonStore } from '../lib/jsondb';
 
 export interface IUser extends Document {
   email: string;
@@ -25,7 +26,39 @@ const UserSchema = new Schema<IUser>(
   { timestamps: true }
 );
 
-export const User = mongoose.model<IUser>('User', UserSchema);
+const MongooseUser = mongoose.model<IUser>('User', UserSchema);
+const userJSON = new JsonStore<IUser>('users');
+
+const wrapWithSave = (obj: any, store: JsonStore<any>) => {
+    if (!obj) return obj;
+    return new Proxy(obj, {
+        get(target, prop) {
+            if (prop === 'save') {
+                return async function() {
+                    const { _id, id, ...updateData } = target;
+                    await store.updateOne({ _id: target._id } as any, updateData);
+                    return target;
+                };
+            }
+            return target[prop];
+        }
+    });
+};
+
+export const User: any = new Proxy(MongooseUser, {
+    get(target, prop) {
+        if (mongoose.connection.readyState !== 1) {
+            if (prop === 'findOne') return async (q: any) => wrapWithSave(await userJSON.findOne(q), userJSON);
+            if (prop === 'create') return async (d: any) => wrapWithSave(await userJSON.create(d), userJSON);
+            if (prop === 'find') return async (q: any) => {
+                const results = await userJSON.find(q);
+                return results.map(r => wrapWithSave(r, userJSON));
+            };
+            if (prop === 'countDocuments') return async () => (await userJSON.find({})).length;
+        }
+        return (target as any)[prop];
+    }
+});
 
 // Password strength validation utility
 const MIN_PASSWORD_LENGTH = 1;

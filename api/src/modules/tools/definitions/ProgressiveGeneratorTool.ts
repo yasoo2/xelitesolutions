@@ -387,23 +387,9 @@ root.render(
     }
 
     private generateComponentFile(name: string, config: any): string {
-        return `import React from 'react';
-
-interface ${name}Props {
-  // Add props here
-}
-
-export const ${name}: React.FC<${name}Props> = (props) => {
-  return (
-    <div className="${name.toLowerCase()}">
-      <h2>${name}</h2>
-      {/* Component content */}
-    </div>
-  );
-};
-
-export default ${name};
-`;
+        return `PROMPT: Write a sophisticated React Functional Component named ${name} for a ${config.scale} ${config.type} application called ${config.name}. 
+Features: ${(config.features || []).join(', ')}. 
+Requirements: Use TypeScript, modern React hooks, and Tailwind/inline styling. Return ONLY the code.`;
     }
 
     private generateBackendCoreFiles(config: any): Map<string, string> {
@@ -472,30 +458,9 @@ app.listen(PORT, () => {
     }
 
     private generateRouteFile(name: string): string {
-        return `import { Router } from 'express';
-
-const router = Router();
-
-router.get('/', async (req, res) => {
-  try {
-    // Implement GET logic
-    res.json({ message: '${name} GET endpoint' });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.post('/', async (req, res) => {
-  try {
-    // Implement POST logic
-    res.json({ message: '${name} POST endpoint', data: req.body });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-export default router;
-`;
+        return `PROMPT: Write a complete Express.js Router for the business logic of '${name}'. 
+It should include GET, POST, PUT, DELETE with realistic logic or mongoose queries. 
+Return ONLY valid TypeScript code, no markdown block formatting.`;
     }
 
     private generateDocumentationFiles(config: any): Map<string, string> {
@@ -581,6 +546,8 @@ ${(config.features || []).map((f: string) => `- ${f}`).join('\n')}
         const resolvedBase = baseDir || path.join(process.cwd(), manifest.name);
         let generatedCount = 0;
 
+        const { callLLM } = require('../../core/llm');
+
         for (const [filePath, content] of batch.files.entries()) {
             const fullPath = path.join(resolvedBase, filePath);
             const dir = path.dirname(fullPath);
@@ -589,7 +556,20 @@ ${(config.features || []).map((f: string) => `- ${f}`).join('\n')}
                 fs.mkdirSync(dir, { recursive: true });
             }
 
-            fs.writeFileSync(fullPath, content, 'utf-8');
+            let finalContent = content;
+            if (content.startsWith('PROMPT:')) {
+                logs.push(`🤖 Generating using LLM: ${filePath}`);
+                try {
+                    const promptText = content.substring(7).trim();
+                    const llmResponse = await callLLM(`You are an expert developer. Generate code for the file: ${filePath}\n\nTask: ${promptText}\n\nReturn EXACTLY the code to inject into this file without markdown backticks (\`\`\`).`);
+                    finalContent = llmResponse.replace(/^\`\`\`[\s\S]*?\n/i, '').replace(/\`\`\`$/i, '').trim();
+                } catch (err: any) {
+                    logs.push(`❌ LLM failed for ${filePath}: ${err.message}`);
+                    finalContent = `// ERROR GENERATING CODE\n// Prompt was: ${content}`;
+                }
+            }
+
+            fs.writeFileSync(fullPath, finalContent, 'utf-8');
             generatedCount++;
         }
 

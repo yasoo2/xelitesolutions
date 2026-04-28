@@ -1370,7 +1370,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       model
     });
 
-    if (!dbReady && !offlineMode) {
+    if (!dbReady && !offlineMode && process.env.PERSISTENCE_MODE !== 'JSON') {
       return res.status(503).json({
         error: 'db_unavailable',
         message: 'Database connection not ready. Set MONGO_URI and start MongoDB.',

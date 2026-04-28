@@ -41,7 +41,7 @@ const createApiShim = () => {
     inflight = (async () => {
       lastCheckAt = now;
       const controller = new AbortController();
-      const ports = [5001, 8080, 5000, 3000];
+      const ports = [5002, 5001, 8080, 5000, 3000];
       for (const port of ports) {
         const t = setTimeout(() => controller.abort(), 2000);
         try {
@@ -97,12 +97,12 @@ export default defineConfig({
   ],
   server: {
     host: '0.0.0.0',
-    port: 5000,
+    port: 5001,
     allowedHosts: true,
     proxy: {
       '/api': {
         // [FIX] محاولة الاتصال بـ API على منافذ متعددة
-        target: 'http://127.0.0.1:5001',
+        target: 'http://127.0.0.1:5002',
         changeOrigin: true,
         ws: true,
         configure: (proxy, _options) => {
@@ -118,7 +118,7 @@ export default defineConfig({
         },
       },
       '/ws': {
-        target: 'ws://127.0.0.1:5001',
+        target: 'ws://127.0.0.1:5002',
         ws: true,
       },
       '/artifacts': {
@@ -127,9 +127,6 @@ export default defineConfig({
         changeOrigin: true,
       }
     },
-    hmr: {
-      clientPort: 443
-    }
   },
   resolve: {
     alias: {
