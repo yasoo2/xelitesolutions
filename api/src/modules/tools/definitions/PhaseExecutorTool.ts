@@ -1,4 +1,5 @@
-import { ToolDefinition } from '../types';
+import { ToolDefinition, ToolPermission } from '../types';
+
 import { executeTool } from '../../services/ToolService';
 
 /**
@@ -55,8 +56,9 @@ export class PhaseExecutorTool implements ToolDefinition {
         }
     };
 
-    permissions = ['execute'];
-    sideEffects = ['execute'];
+    permissions: ToolPermission[] = ['execute'];
+    sideEffects: ToolPermission[] = ['execute'];
+
     rateLimitPerMinute = 10;
     auditFields = ['phase', 'projectContext'];
     mockSupported = false;

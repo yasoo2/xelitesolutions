@@ -1,4 +1,5 @@
-import { ToolDefinition } from '../types';
+import { ToolDefinition, ToolPermission } from '../types';
+
 import { executeTool } from '../../services/ToolService';
 
 /**
@@ -44,8 +45,9 @@ export class AutoTesterTool implements ToolDefinition {
         }
     };
 
-    permissions = ['execute' as const];
-    sideEffects = [];
+    permissions: ToolPermission[] = ['execute'];
+    sideEffects: ToolPermission[] = [];
+
     rateLimitPerMinute = 20;
     auditFields = ['testType', 'projectPath'];
     mockSupported = false;

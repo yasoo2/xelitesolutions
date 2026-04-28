@@ -1,4 +1,5 @@
-import { ToolDefinition } from '../types';
+import { ToolDefinition, ToolPermission } from '../types';
+
 import { callLLM } from '../../../core/llm';
 
 /**
@@ -34,8 +35,9 @@ export class ProjectPlannerTool implements ToolDefinition {
         }
     };
 
-    permissions = [];
-    sideEffects = [];
+    permissions: ToolPermission[] = [];
+    sideEffects: ToolPermission[] = [];
+
     rateLimitPerMinute = 5;
     auditFields = ['projectDescription'];
     mockSupported = false;

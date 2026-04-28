@@ -397,7 +397,7 @@ export class AgentLoopService {
 
             const callInput = userId && plan.input && typeof plan.input === 'object' ? { ...(plan.input as any), userId: String(userId) } : plan.input;
 
-            let result;
+            let result: any;
             try {
                 result = await executeTool(plan.name, callInput, { sessionId, workspaceId, userId: userId ? String(userId) : undefined });
             } catch (e: any) {

@@ -121,7 +121,7 @@ export const KnowledgeService = {
         try {
             // Using dynamic import to avoid ESM/CJS require conflicts at startup
             const pdf = await import('pdf-parse');
-            const data = await (pdf.default || pdf)(buffer);
+            const data = await (pdf as any).default(buffer);
             return data.text;
         } catch (e) {
             console.error('PDF Parse Error', e);

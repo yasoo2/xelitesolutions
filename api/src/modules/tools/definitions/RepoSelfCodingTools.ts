@@ -113,6 +113,8 @@ export class RepoReadFileTool extends BaseTool {
   version = '1.0.0';
   tags = ['repo', 'self-coding', 'read'];
   inputSchema = { type: 'object' as const, properties: { path: { type: 'string' } }, required: ['path'] };
+  outputSchema = { type: 'object' as const, properties: { path: { type: 'string' }, content: { type: 'string' }, bytes: { type: 'number' } } };
+
   permissions: ToolPermission[] = ['read'];
   sideEffects: ToolPermission[] = [];
   rateLimitPerMinute = 120;
@@ -139,6 +141,8 @@ export class RepoSearchTool extends BaseTool {
   version = '1.0.0';
   tags = ['repo', 'self-coding', 'search'];
   inputSchema = { type: 'object' as const, properties: { query: { type: 'string' }, path: { type: 'string' }, maxResults: { type: 'number' } }, required: ['query'] };
+  outputSchema = { type: 'object' as const, properties: { query: { type: 'string' }, matches: { type: 'array' }, count: { type: 'number' } } };
+
   permissions: ToolPermission[] = ['read'];
   sideEffects: ToolPermission[] = [];
   rateLimitPerMinute = 60;
@@ -189,6 +193,8 @@ export class RepoApplyPatchTool extends BaseTool {
     },
     required: ['path', 'find', 'replace']
   };
+  outputSchema = { type: 'object' as const, properties: { path: { type: 'string' }, dryRun: { type: 'boolean' }, changed: { type: 'boolean' }, preview: { type: 'string' } } };
+
   permissions: ToolPermission[] = ['read', 'write'];
   sideEffects: ToolPermission[] = ['write'];
   rateLimitPerMinute = 30;
@@ -222,6 +228,8 @@ export class RepoRunCommandTool extends BaseTool {
   version = '1.0.0';
   tags = ['repo', 'self-coding', 'qa', 'command'];
   inputSchema = { type: 'object' as const, properties: { command: { type: 'string' }, cwd: { type: 'string' }, timeoutMs: { type: 'number' } }, required: ['command'] };
+  outputSchema = { type: 'object' as const, properties: { command: { type: 'string' }, exitCode: { type: 'number' }, stdout: { type: 'string' }, stderr: { type: 'string' } } };
+
   permissions: ToolPermission[] = ['execute'];
   sideEffects: ToolPermission[] = ['execute'];
   rateLimitPerMinute = 30;
@@ -259,6 +267,8 @@ export class RepoDiffSummaryTool extends BaseTool {
   version = '1.0.0';
   tags = ['repo', 'self-coding', 'diff'];
   inputSchema = { type: 'object' as const, properties: {} };
+  outputSchema = { type: 'object' as const, properties: { status: { type: 'string' }, diffStat: { type: 'string' }, stderr: { type: 'string' } } };
+
   permissions: ToolPermission[] = ['read', 'execute'];
   sideEffects: ToolPermission[] = [];
   rateLimitPerMinute = 60;

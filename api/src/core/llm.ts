@@ -63,6 +63,7 @@ export interface PlanOptions {
   userText?: string;
   onThought?: (chunk: string) => void;
   onProgress?: (msg: string) => void;
+  workspaceId?: string;
 }
 
 export async function planNextStep(

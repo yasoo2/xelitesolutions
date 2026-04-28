@@ -32,6 +32,8 @@ import { RetryManagerTool } from './definitions/RetryManagerTool';
 import { FallbackTool } from './definitions/FallbackTool';
 import { JavaBuilderTool } from './definitions/JavaBuilderTool';
 import { GoBuilderTool } from './definitions/GoBuilderTool';
+import { EchoTool, ShellExecuteTool, WriteFileTool } from './definitions/SystemTools';
+
 
 // Self Coding Tools
 import {
@@ -41,8 +43,6 @@ import {
   RepoRunCommandTool,
   RepoDiffSummaryTool
 } from './definitions/RepoSelfCodingTools';
-
-// --- Existing imports truncated for brevity ---
 
 export const tools: ToolDefinition[] = [
   new BrowserRunTool(),
@@ -55,7 +55,8 @@ export const tools: ToolDefinition[] = [
   new RepoRunCommandTool(),
   new RepoDiffSummaryTool(),
 
-  new ArchitectTool(),
+  ArchitectTool,
+
   new ProjectPlannerTool(),
   new PhaseExecutorTool(),
   new AutoTesterTool(),
@@ -68,4 +69,4 @@ export const tools: ToolDefinition[] = [
   new EchoTool(),
   new ShellExecuteTool(),
   new WriteFileTool()
-];
+] as any as ToolDefinition[];
