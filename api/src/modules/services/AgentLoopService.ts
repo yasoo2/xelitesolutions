@@ -7,6 +7,8 @@ import { Session } from '../../shared/models/session';
 import { broadcast, broadcastThinkingDetail } from '../../api/ws';
 import { executeTool } from './ToolService';
 import { RepairTicketService } from './RepairTicketService';
+import { SelfFixService } from './SelfFixService';
+
 
 import { getSessionRunConfig, popPendingTool, setSessionRunConfig, setSessionSecret, setUserSecretEncrypted, setPendingTool } from './secrets';
 import { redactToolInputForStorage, safeErrorMessage, redactSecretsFromString } from '../../shared/utils/redaction';
@@ -189,6 +191,8 @@ export class AgentLoopService {
         const phaseResults: any[] = [];
         let completedPhases = 0;
         let repairTicket: any = null;
+        let selfFixPlan: any = null;
+
 
         for (let i = 0; i < maxPhases; i++) {
             const phase = phases[i];
@@ -231,6 +235,8 @@ export class AgentLoopService {
                     sessionId,
                     workspaceId,
                 });
+                selfFixPlan = SelfFixService.plan(repairTicket);
+
             }
             phaseResults.push({
                 phaseNumber: phase?.phaseNumber || i + 1,
@@ -239,6 +245,8 @@ export class AgentLoopService {
                 output: phaseResult.output,
                 error: phaseResult.error,
                 repairTicket: phasePassed ? undefined : repairTicket,
+                selfFixPlan: phasePassed ? undefined : selfFixPlan,
+
             });
             if (!phasePassed) break;
             completedPhases++;
@@ -251,7 +259,9 @@ export class AgentLoopService {
             executedPhases: maxPhases,
             stoppedEarly: completedPhases < maxPhases,
             repairTicket,
+            selfFixPlan,
             results: phaseResults,
+
         };
     }
 
