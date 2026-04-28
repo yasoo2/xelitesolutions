@@ -53,7 +53,7 @@ async function verifySelfHealingSuccessLoop() {
                             task: 'Check for essential file',
                             tool: 'shell_execute',
                             args: {
-                                command: 'node -e "require(\'fs\').existsSync(\'required_file.txt\') || process.exit(1)"'
+                                command: 'node -e "if (!require(\'fs\').existsSync(\'required_file.txt\')) { console.error(\'MISSING_FILE: required_file.txt\'); process.exit(1); }"'
                             },
                             required: true,
                             priority: 'high'
@@ -66,20 +66,6 @@ async function verifySelfHealingSuccessLoop() {
 
     console.log('🚀 Triggering Orchestrated Pipeline...');
     
-    const { SelfFixService } = await import('../../modules/services/SelfFixService');
-    const originalPlan = SelfFixService.plan;
-    
-    SelfFixService.plan = (ticket) => {
-        const plan = originalPlan.call(SelfFixService, ticket);
-        if (plan.allowed) {
-            plan.suggestedTool = 'write_file';
-            plan.suggestedInput = {
-                filename: 'required_file.txt',
-                content: 'This file was created by the self-healing loop.'
-            };
-        }
-        return plan;
-    };
 
     const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({
         sessionId,

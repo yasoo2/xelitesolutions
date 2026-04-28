@@ -208,8 +208,12 @@ export class PhaseExecutorTool implements ToolDefinition {
                 }
             }
 
+            const ok = status === 'completed' || completedCount > 0;
+            const primaryError = ok ? undefined : (results.find(r => !r.ok)?.error || 'Phase failed');
+
             return {
-                ok: status === 'completed' || completedCount > 0,
+                ok,
+                error: primaryError,
                 output: {
                     phaseNumber: phase.phaseNumber,
                     phaseName: phase.name,

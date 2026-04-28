@@ -622,6 +622,7 @@ export class ShellExecuteTool extends BaseTool {
 
             return {
                 ok: r.ok,
+                error: r.ok ? undefined : String(r.error || 'command_failed'),
                 output: {
                     status: r.ok ? 'success' : 'failed',
                     stdout: String(r.output || ''),
