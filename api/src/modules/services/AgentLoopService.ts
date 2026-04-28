@@ -261,8 +261,8 @@ export class AgentLoopService {
             phaseResults.push({
                 phaseNumber: phase?.phaseNumber || i + 1,
                 ok: phasePassed,
-                status: phaseStatus,
-                output: phaseResult.output,
+                status: phasePassed ? 'completed' : phaseStatus,
+                output: (phasePassed && selfFixExecution?.rerunResult?.output) ? selfFixExecution.rerunResult.output : phaseResult.output,
                 error: phaseResult.error,
                 repairTicket: phasePassed ? undefined : repairTicket,
                 selfFixPlan: phasePassed ? undefined : selfFixPlan,
