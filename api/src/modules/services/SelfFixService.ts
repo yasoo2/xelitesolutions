@@ -17,8 +17,12 @@ export interface SelfFixPlan {
   sourceTicket: RepairTicket;
 }
 
+function rawTextOf(ticket: RepairTicket) {
+  return `${ticket.status}\n${ticket.primaryError}\n${ticket.failedTasks.map(t => `${t.task}\n${t.tool}: ${t.error}`).join('\n')}`;
+}
+
 function textOf(ticket: RepairTicket) {
-  return `${ticket.status}\n${ticket.primaryError}\n${ticket.failedTasks.map(t => `${t.task}\n${t.tool}: ${t.error}`).join('\n')}`.toLowerCase();
+  return rawTextOf(ticket).toLowerCase();
 }
 
 function extractMissingFilename(ticket: RepairTicket, text: string): string | null {
@@ -38,6 +42,40 @@ function extractMissingFilename(ticket: RepairTicket, text: string): string | nu
 
     const explicitMissing = value.match(/missing\s+(?:file|asset|config)[:\s]+([A-Za-z0-9._\-/]+\.[A-Za-z0-9]+)/i);
     if (explicitMissing?.[1]) return explicitMissing[1];
+  }
+
+  return null;
+}
+
+function extractBuildContext(ticket: RepairTicket) {
+  const raw = rawTextOf(ticket);
+  const tsStyle = raw.match(/([A-Za-z0-9_./\\-]+\.(?:ts|tsx|js|jsx))\((\d+),(\d+)\):\s*error\s*(TS\d+)?[:\s]+([^\n]+)/i);
+  if (tsStyle) {
+    return {
+      file: tsStyle[1].replace(/\\/g, '/'),
+      line: Number(tsStyle[2]),
+      column: Number(tsStyle[3]),
+      code: tsStyle[4] || undefined,
+      message: tsStyle[5]?.trim(),
+    };
+  }
+
+  const viteStyle = raw.match(/([A-Za-z0-9_./\\-]+\.(?:ts|tsx|js|jsx)):(\d+):(\d+)[:\s]+([^\n]+)/i);
+  if (viteStyle) {
+    return {
+      file: viteStyle[1].replace(/\\/g, '/'),
+      line: Number(viteStyle[2]),
+      column: Number(viteStyle[3]),
+      message: viteStyle[4]?.trim(),
+    };
+  }
+
+  const genericFile = raw.match(/([A-Za-z0-9_./\\-]+\.(?:ts|tsx|js|jsx|json|css|html))/i);
+  if (genericFile) {
+    return {
+      file: genericFile[1].replace(/\\/g, '/'),
+      message: ticket.primaryError,
+    };
   }
 
   return null;
@@ -85,16 +123,22 @@ export class SelfFixService {
       };
     }
 
-    if (/build failed|compile|typescript|tsc|syntaxerror|typeerror/i.test(text)) {
+    if (/build failed|compile|typescript|tsc|syntaxerror|typeerror|ts\d+/i.test(text)) {
+      const buildContext = extractBuildContext(ticket);
       return {
         type: 'self_fix_plan',
         allowed: true,
-        reason: 'Build or compile failure detected. Repair should inspect errors, patch code, then rebuild.',
+        reason: buildContext?.file
+          ? `Build/TypeScript failure detected in ${buildContext.file}. Create a targeted repair and rerun the failed phase.`
+          : 'Build or compile failure detected. Repair should inspect errors, patch code, then rerun the build.',
         maxAttempts: 1,
         strategy: 'build_fix',
         suggestedTool: 'ai_write_file',
         suggestedInput: {
-          instruction: 'Inspect the build error from the repair ticket, patch only the broken files, then rerun the build. Do not rewrite unrelated files.',
+          instruction: buildContext?.file
+            ? 'Patch only the file identified in buildContext using the error line/message. Do not rewrite unrelated files. Rerun the build after patching.'
+            : 'Inspect the build error from the repair ticket, patch only the broken files, then rerun the build. Do not rewrite unrelated files.',
+          buildContext,
           repairTicket: ticket,
         },
         safety: this.safety(),
