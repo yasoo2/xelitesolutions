@@ -8,15 +8,14 @@
         "build": "esbuild src/api/index.ts --bundle --platform=node --outfile=dist/index.js --packages=external",
         "start": "node dist/index.js",
         "lint": "eslint .",
-        "check:self-fix-patch": "eslint .",
-        "patch:self-fix": "eslint . --fix",
-        "guard:architecture": "knip",
         "test:system": "ts-node src/tests/manual/verify_system.ts",
         "test:production": "ts-node src/tests/manual/verify_production.ts",
         "test:loop": "ts-node src/tests/manual/verify_autonomous_loop.ts",
         "guard:architecture": "ts-node src/tests/architecture/guard_architecture.ts",
         "check:self-fix-patch": "node scripts/check-self-fix-patch.mjs",
-        "patch:self-fix": "node scripts/patch-wire-self-fix.mjs"
+        "patch:self-fix": "node scripts/patch-wire-self-fix.mjs",
+        "check:self-fix-execution-patch": "node scripts/check-self-fix-execution-patch.mjs",
+        "patch:self-fix-execution": "node scripts/patch-wire-self-fix-execution.mjs"
     },
     "keywords": [],
     "author": "",
