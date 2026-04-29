@@ -1,6 +1,15 @@
 import { executeTool } from './ToolService';
 import type { SelfFixPlan } from './SelfFixService';
 
+const ALLOWED_SELF_FIX_TOOLS = new Set([
+  'write_file',
+  'file_edit',
+  'file_edit_advanced',
+  'ai_write_file',
+  'shell_execute',
+  'npm_manager',
+]);
+
 export interface SelfFixExecutionInput {
   phase: any;
   projectContext: any;
@@ -39,12 +48,33 @@ export class SelfFixExecutionService {
       };
     }
 
+    if (selfFixPlan.maxAttempts !== 1 || selfFixPlan.safety?.runOnlyOnce !== true) {
+      return {
+        attempted: false,
+        allowed: false,
+        ok: false,
+        reason: 'Unsafe self-fix plan rejected: automatic repair must be limited to exactly one attempt.',
+        stopped: true,
+      };
+    }
+
     if (!selfFixPlan.suggestedTool) {
       return {
         attempted: false,
         allowed: true,
         ok: false,
         reason: 'Self-fix plan did not provide a safe suggestedTool.',
+        stopped: true,
+      };
+    }
+
+    if (!ALLOWED_SELF_FIX_TOOLS.has(selfFixPlan.suggestedTool)) {
+      return {
+        attempted: false,
+        allowed: false,
+        ok: false,
+        reason: `Self-fix tool rejected by allowlist: ${selfFixPlan.suggestedTool}`,
+        repairTool: selfFixPlan.suggestedTool,
         stopped: true,
       };
     }
