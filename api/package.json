@@ -19,7 +19,11 @@
         "check:self-fix-patch": "node scripts/check-self-fix-patch.mjs",
         "patch:self-fix": "node scripts/patch-wire-self-fix.mjs",
         "check:self-fix-execution-patch": "node scripts/check-self-fix-execution-patch.mjs",
-        "patch:self-fix-execution": "node scripts/patch-wire-self-fix-execution.mjs"
+        "patch:self-fix-execution": "node scripts/patch-wire-self-fix-execution.mjs",
+        "test:self-fix:build-context": "ts-node src/tests/manual/verify_self_fix_build_context.ts",
+        "test:self-fix:execution-safety": "ts-node src/tests/manual/verify_self_fix_execution_safety.ts",
+        "test:self-healing:failure": "ts-node src/tests/manual/verify_self_healing_loop.ts",
+        "test:self-healing:success": "ts-node src/tests/manual/verify_self_healing_success_loop.ts"
     },
     "keywords": [],
     "author": "",

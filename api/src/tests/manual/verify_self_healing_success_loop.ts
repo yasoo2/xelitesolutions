@@ -53,7 +53,7 @@ async function verifySelfHealingSuccessLoop() {
                             task: 'Check for essential file',
                             tool: 'shell_execute',
                             args: {
-                                command: 'node -e "if (!require(\'fs\').existsSync(\'required_file.txt\')) { console.error(\'MISSING_FILE: required_file.txt\'); process.exit(1); }"'
+                                command: 'node -e "if (!require(\'fs\').existsSync(\'required_file.txt\')) { console.error(\\\"MISSING FILE: \'required_file.txt\'\\\"); process.exit(1); }"'
                             },
                             required: true,
                             priority: 'high'
