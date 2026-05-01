@@ -17,6 +17,7 @@
         "test:self-fix:execution-safety": "ts-node src/tests/manual/verify_self_fix_execution_safety.ts",
         "test:self-fix:typescript-repair": "ts-node src/tests/manual/verify_self_fix_typescript_repair.ts",
         "test:self-fix:typescript-missing-name": "ts-node src/tests/manual/verify_self_fix_typescript_missing_name.ts",
+        "test:self-fix:typescript-number-to-string": "ts-node src/tests/manual/verify_self_fix_typescript_number_to_string.ts",
         "test:self-healing:failure": "ts-node src/tests/manual/verify_self_healing_loop.ts",
         "test:self-healing:success": "ts-node src/tests/manual/verify_self_healing_success_loop.ts",
         "check:self-fix-patch": "node scripts/check-self-fix-patch.mjs",
