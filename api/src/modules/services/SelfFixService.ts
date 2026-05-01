@@ -51,22 +51,26 @@ function extractBuildContext(ticket: RepairTicket) {
   const raw = rawTextOf(ticket);
   const tsStyle = raw.match(/([A-Za-z0-9_./\\-]+\.(?:ts|tsx|js|jsx))\((\d+),(\d+)\):\s*error\s*(TS\d+)?[:\s]+([^\n]+)/i);
   if (tsStyle) {
+    const sourceLine = extractSourceLineAfter(raw, tsStyle.index || 0);
     return {
       file: tsStyle[1].replace(/\\/g, '/'),
       line: Number(tsStyle[2]),
       column: Number(tsStyle[3]),
       code: tsStyle[4] || undefined,
       message: tsStyle[5]?.trim(),
+      sourceLine,
     };
   }
 
   const viteStyle = raw.match(/([A-Za-z0-9_./\\-]+\.(?:ts|tsx|js|jsx)):(\d+):(\d+)[:\s]+([^\n]+)/i);
   if (viteStyle) {
+    const sourceLine = extractSourceLineAfter(raw, viteStyle.index || 0);
     return {
       file: viteStyle[1].replace(/\\/g, '/'),
       line: Number(viteStyle[2]),
       column: Number(viteStyle[3]),
       message: viteStyle[4]?.trim(),
+      sourceLine,
     };
   }
 
@@ -76,6 +80,38 @@ function extractBuildContext(ticket: RepairTicket) {
       file: genericFile[1].replace(/\\/g, '/'),
       message: ticket.primaryError,
     };
+  }
+
+  return null;
+}
+
+function extractSourceLineAfter(raw: string, matchIndex: number) {
+  const tail = raw.slice(matchIndex).split(/\r?\n/).slice(1, 6);
+  for (const line of tail) {
+    const candidate = String(line || '').trim();
+    if (!candidate) continue;
+    if (/^\^+|^~+/.test(candidate)) continue;
+    if (/error\s+TS\d+|^\s*at\s+/i.test(candidate)) continue;
+    if (candidate.includes('=')) return candidate;
+  }
+  return undefined;
+}
+
+function buildTargetedTypeScriptEdit(buildContext: any) {
+  if (!buildContext?.file || !buildContext?.sourceLine) return null;
+  const code = String(buildContext.code || '');
+  const message = String(buildContext.message || '');
+  const sourceLine = String(buildContext.sourceLine || '').trim();
+
+  if (code === 'TS2322' && /type 'string' is not assignable to type 'number'/i.test(message)) {
+    const replace = sourceLine.replace(/=\s*['"](-?\d+(?:\.\d+)?)['"](\s*[;,]?)/, '= $1$2');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
   }
 
   return null;
@@ -125,6 +161,21 @@ export class SelfFixService {
 
     if (/build failed|compile|typescript|tsc|syntaxerror|typeerror|ts\d+/i.test(text)) {
       const buildContext = extractBuildContext(ticket);
+      const targetedEdit = buildTargetedTypeScriptEdit(buildContext);
+      if (targetedEdit) {
+        return {
+          type: 'self_fix_plan',
+          allowed: true,
+          reason: `Build/TypeScript failure detected in ${buildContext.file}. Apply a targeted single-line edit and rerun the failed phase.`,
+          maxAttempts: 1,
+          strategy: 'build_fix',
+          suggestedTool: 'file_edit',
+          suggestedInput: targetedEdit,
+          safety: this.safety(),
+          sourceTicket: ticket,
+        };
+      }
+
       return {
         type: 'self_fix_plan',
         allowed: true,

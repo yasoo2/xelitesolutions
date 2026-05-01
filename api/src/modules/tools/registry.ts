@@ -32,7 +32,7 @@ import { RetryManagerTool } from './definitions/RetryManagerTool';
 import { FallbackTool } from './definitions/FallbackTool';
 import { JavaBuilderTool } from './definitions/JavaBuilderTool';
 import { GoBuilderTool } from './definitions/GoBuilderTool';
-import { EchoTool, ShellExecuteTool, WriteFileTool } from './definitions/SystemTools';
+import { EchoTool, FileEditTool, ShellExecuteTool, WriteFileTool } from './definitions/SystemTools';
 
 
 // Self Coding Tools
@@ -67,6 +67,7 @@ export const tools: ToolDefinition[] = [
 
   // fallback minimal set to avoid breaking
   new EchoTool(),
+  new FileEditTool(),
   new ShellExecuteTool(),
   new WriteFileTool()
 ] as any as ToolDefinition[];

@@ -141,7 +141,7 @@ export class FileEditTool extends BaseTool {
 
     async execute(input: any) {
         const logs: string[] = [];
-        const filename = String(input?.filename ?? '');
+        const filename = String(input?.filename ?? input?.path ?? '');
         const find = String(input?.find ?? '');
         const replace = String(input?.replace ?? '');
         const full = resolveToolPath(filename);
@@ -369,6 +369,7 @@ export class GrepSearchTool extends BaseTool {
                         const child = spawn('grep', grepArgs, { shell: false, cwd: getWorkspaceRoot() });
                         let so = '';
                         let se = '';
+;
                         child.stdout.on('data', (d: any) => { so += d.toString(); });
                         child.stderr.on('data', (d: any) => { se += d.toString(); });
                         child.on('close', (c: number) => resolve({ code: typeof c === 'number' ? c : 1, stdout: so, stderr: se }));

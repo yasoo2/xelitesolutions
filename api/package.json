@@ -14,6 +14,7 @@
         "test:self-healing:failure": "ts-node src/tests/manual/verify_self_healing_loop.ts",
         "test:self-healing:success": "ts-node src/tests/manual/verify_self_healing_success_loop.ts",
         "test:self-fix:build-context": "ts-node src/tests/manual/verify_self_fix_build_context.ts",
+        "test:self-fix:typescript-repair": "ts-node src/tests/manual/verify_self_fix_typescript_repair.ts",
         "test:self-fix:execution-safety": "ts-node src/tests/manual/verify_self_fix_execution_safety.ts",
         "guard:architecture": "ts-node src/tests/architecture/guard_architecture.ts",
         "check:self-fix-patch": "node scripts/check-self-fix-patch.mjs",
@@ -21,7 +22,7 @@
         "check:self-fix-execution-patch": "node scripts/check-self-fix-execution-patch.mjs",
         "patch:self-fix-execution": "node scripts/patch-wire-self-fix-execution.mjs",
         "test:self-fix:build-context": "ts-node src/tests/manual/verify_self_fix_build_context.ts",
-        "test:self-fix:execution-safety": "ts-node src/tests/manual/verify_self_fix_execution_safety.ts",
+        "test:self-fix:execution-safety": "ts-node src/tests/manual/verify_self_ix_execution_safety.ts",
         "test:self-healing:failure": "ts-node src/tests/manual/verify_self_healing_loop.ts",
         "test:self-healing:success": "ts-node src/tests/manual/verify_self_healing_success_loop.ts"
     },
