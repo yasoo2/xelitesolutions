@@ -72,6 +72,7 @@ phaseResult.ok === true && phaseResult.output.status === 'completed'
 
 - Central execution/policy gateway.
 - Do not bypass it for shell, file, browser, deploy, Docker, GitHub, or workspace operations.
+- Important fix applied: ToolService aliasing/path normalization must pass `contextWorkspaceId` into `workspaceService.getActiveRoot(contextWorkspaceId)` when resolving workspace-relative paths. This prevents tools such as `file_edit`, `read_file`, `write_file`, and codebase memorization from resolving paths against the wrong `api` folder instead of the active project workspace.
 
 ### RepairTicketService
 
@@ -150,6 +151,24 @@ Both must stay tested:
 - Failure-stop: failure → repair attempt → rerun still fails → stop safely.
 - Success-path: initial failure → repair ticket → plan → repair execution → rerun succeeds → pipeline ok.
 
+### ToolService workspace path-resolution bug
+
+Root cause: ToolService aliasing normalized relative file paths before workspace execution context was active, so `workspaceService.getActiveRoot()` could fall back to the `api` folder. This caused self-fix TypeScript/file repair flows to fail with `File not found` even when the file existed in the project workspace.
+
+Fix applied in commit `7c57b43b4f7c90c2ac4e75529e90e1524a4c2ab5`:
+
+```ts
+workspaceService.getActiveRoot(contextWorkspaceId)
+```
+
+instead of:
+
+```ts
+workspaceService.getActiveRoot()
+```
+
+This was intentionally a narrow patch. Do not rewrite ToolService or weaken path safety while modifying this area.
+
 ## Current important files
 
 Read before editing:
@@ -163,11 +182,13 @@ api/src/modules/tools/definitions/PhaseExecutorTool.ts
 api/src/modules/services/RepairTicketService.ts
 api/src/modules/services/SelfFixService.ts
 api/src/modules/services/SelfFixExecutionService.ts
+api/src/modules/services/ToolService.ts
 api/src/tests/architecture/guard_architecture.ts
 api/src/tests/manual/verify_self_healing_loop.ts
 api/src/tests/manual/verify_self_healing_success_loop.ts
 api/src/tests/manual/verify_self_fix_build_context.ts
 api/src/tests/manual/verify_self_fix_execution_safety.ts
+api/src/tests/manual/verify_self_fix_typescript_repair.ts
 ```
 
 ## Required tests
@@ -181,6 +202,7 @@ npm run test:self-fix:build-context
 npm run test:self-fix:execution-safety
 npm run test:self-healing:failure
 npm run test:self-healing:success
+npm run test:self-fix:typescript-repair
 ```
 
 ## Current completed state
@@ -195,34 +217,37 @@ npm run test:self-healing:success
 - TypeScript/build `buildContext` extraction.
 - `SelfFixExecutionService` one-attempt execution.
 - Self-fix tool allowlist.
+- ToolService workspace path-resolution fixed using `contextWorkspaceId`.
 - Failure-stop test.
 - Native success-path test.
 - BuildContext extraction test.
 - Execution safety test.
+- TypeScript repair test added/updated.
 - Package scripts for the tests.
 - `AGENTS.md` added.
 
 ## Still not complete
 
-- Real TypeScript/build-error repair execution is not fully proven yet.
-- `ai_write_file` behavior must be verified before relying on `build_fix` execution.
+- Real TypeScript/build-error repair execution has a permanent test path now, but the behavior should continue being hardened across more TypeScript error shapes.
+- `ai_write_file` behavior must be verified before relying on broad `build_fix` execution.
 - Browser automation still needs a canonical path later.
 - Deployment/production repair must remain approval-gated.
 - Observability UI for repair tickets/plans/executions should be improved later.
 
 ## Next best step
 
-Implement and verify targeted TypeScript/build repair execution safely.
+Continue hardening targeted TypeScript/build repair execution safely.
 
 Recommended plan:
 
-1. Add a permanent test for a simple TypeScript failure.
+1. Add more TypeScript repair fixtures for common TS errors.
 2. Ensure `SelfFixService` extracts correct `buildContext`.
 3. Ensure repair only patches the targeted file.
 4. Rerun the failed phase.
 5. Pass only if phase becomes `completed`.
 6. Do not use broad rewrites.
 7. Do not use monkey patch unless clearly labeled as a unit test.
+8. Keep ToolService path resolution narrow and context-aware.
 
 ## Absolute warnings
 
@@ -237,19 +262,20 @@ Do not:
 - Claim production readiness based only on architecture guard.
 - Treat invalid commit hashes as proof.
 - Add unsafe tools to self-fix allowlist without review.
+- Revert the ToolService `contextWorkspaceId` path-resolution fix.
 
-## Codex startup prompt
+## Codex / Antigravity startup prompt
 
-Use this prompt for Codex:
+Use this prompt for Codex or Antigravity:
 
 ```text
 You are continuing Joe development in repo yasoo2/xelitesolutions.
 
 Before editing anything, read AGENTS.md and docs/CODEX_JOE_HANDOFF.md.
 
-Then inspect AgentLoopService, PhaseExecutorTool, RepairTicketService, SelfFixService, SelfFixExecutionService, guard_architecture, and api/package.json.
+Then inspect AgentLoopService, PhaseExecutorTool, RepairTicketService, SelfFixService, SelfFixExecutionService, ToolService, guard_architecture, and api/package.json.
 
-Current goal: continue improving Joe controlled self-healing. Next target: safe TypeScript/build-error repair using buildContext.
+Current goal: continue improving Joe controlled self-healing. Next target: harden TypeScript/build-error repair using buildContext and workspace-correct path resolution.
 
 Rules:
 - Do not make ProjectPlannerTool execute tools.
@@ -258,6 +284,7 @@ Rules:
 - One automatic repair attempt only.
 - Rerun the failed phase after repair.
 - Stop if rerun does not complete.
+- Keep ToolService path resolution context-aware using contextWorkspaceId.
 - Add/update permanent tests.
 
 After changes run:
@@ -267,6 +294,7 @@ npm run test:self-fix:build-context
 npm run test:self-fix:execution-safety
 npm run test:self-healing:failure
 npm run test:self-healing:success
+npm run test:self-fix:typescript-repair
 
 Report diff summary, test output, files changed, and a real GitHub commit hash.
 ```
