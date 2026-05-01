@@ -114,6 +114,17 @@ function buildTargetedTypeScriptEdit(buildContext: any) {
     }
   }
 
+  if (code === 'TS2322' && /type 'number' is not assignable to type 'string'/i.test(message)) {
+    const replace = sourceLine.replace(/=\s*(-?\d+(?:\.\d+)?)(\s*[;,]?)/, '= "$1"$2');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
   if (code === 'TS2304' && /cannot find name/i.test(message)) {
     const missingName = message.match(/cannot find name ['"]?([A-Za-z_$][\w$]*)['"]?/i)?.[1];
     if (missingName) {
