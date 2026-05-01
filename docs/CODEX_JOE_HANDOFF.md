@@ -1,0 +1,272 @@
+# Codex Joe Handoff
+
+This document is the compact source of truth for continuing Joe development in `yasoo2/xelitesolutions`.
+
+## Mission
+
+Joe is being transformed from a general AI tool runner into an orchestrator-driven multi-agent software engineering system. The long-term vision is a disciplined AI engineering company: planning, architecture, development, QA, repair, deployment, observability, and safety.
+
+## Main conclusion from deep analysis
+
+The core issue was not lack of tools. The core issues were:
+
+- Multiple competing execution paths.
+- Planner drifting toward execution.
+- Weak phase orchestration.
+- Treating `ok=true` as success instead of verifying completed phase status.
+- No structured repair/self-fix loop.
+- Risk of uncontrolled repeated attempts.
+- Risk of wrong user/workspace context.
+- Risk of future builders reintroducing old paths.
+
+The fix is one canonical pipeline protected by tests.
+
+## Canonical pipeline
+
+```text
+User request
+→ ProjectPlannerTool
+→ AgentLoopService orchestrator
+→ PhaseExecutorTool
+→ ToolService
+→ QualityGate
+→ RepairTicketService
+→ SelfFixService
+→ SelfFixExecutionService
+→ rerun failed phase
+→ continue if completed, otherwise stop
+```
+
+## Current confirmed architecture
+
+### ProjectPlannerTool
+
+- Planner-only.
+- Must not import/call `executeTool`.
+- Must not auto-execute generated tasks.
+- Must preserve planner-only/`autoExecuted: false` behavior.
+
+### AgentLoopService
+
+- Orchestrates planned phases.
+- Runs phases sequentially through `phase_executor`.
+- Applies quality gate.
+- Attaches `repairTicket`, `selfFixPlan`, and `selfFixExecution` to pipeline output.
+- Must stop on `partial`, `failed`, or `fatal_error` unless controlled self-fix succeeds.
+
+A phase passes only when:
+
+```ts
+phaseResult.ok === true && phaseResult.output.status === 'completed'
+```
+
+### PhaseExecutorTool
+
+- Executes one phase.
+- Runs task tools through `ToolService`.
+- Uses trusted `sessionId`, `workspaceId`, and `userId`.
+- Reports `completed`, `partial`, `failed`, or `fatal_error`.
+- Is not the orchestrator.
+
+### ToolService
+
+- Central execution/policy gateway.
+- Do not bypass it for shell, file, browser, deploy, Docker, GitHub, or workspace operations.
+
+### RepairTicketService
+
+- Diagnostic only.
+- Produces structured `phase_repair_ticket` objects.
+- Does not repair.
+
+### SelfFixService
+
+- Decision brain only.
+- Produces `self_fix_plan`.
+- Current strategies:
+  - `missing_file_fix`
+  - `dependency_fix`
+  - `build_fix`
+  - `code_fix`
+  - `permission_stop`
+  - `manual_review`
+- Detects missing files such as `MISSING_FILE: required_file.txt` and suggests `write_file`.
+- Extracts TypeScript/build context from errors such as:
+  - `src/App.tsx(14,7): error TS2322: ...`
+  - `src/App.tsx:14:7 ...`
+
+Expected `buildContext`:
+
+```json
+{
+  "file": "src/App.tsx",
+  "line": 14,
+  "column": 7,
+  "code": "TS2322",
+  "message": "..."
+}
+```
+
+### SelfFixExecutionService
+
+- Executes exactly one repair attempt.
+- Uses `ToolService` only.
+- Requires trusted `sessionId`, `workspaceId`, and `userId`.
+- Reruns the same failed phase.
+- Succeeds only if rerun reaches `status === "completed"`.
+- Stops on second failure.
+
+Allowed self-fix tools:
+
+```text
+write_file
+file_edit
+file_edit_advanced
+ai_write_file
+shell_execute
+npm_manager
+```
+
+Unsafe tools must be rejected by allowlist.
+
+## Important bugs and decisions
+
+### Misleading package scripts
+
+`api/package.json` once had misleading duplicate scripts such as `check:self-fix-patch = eslint`, `patch:self-fix = eslint --fix`, and `guard:architecture = knip`. These were corrected. Do not reintroduce misleading scripts.
+
+### Builder reports can be unreliable
+
+Some builder reports included invalid commit hashes or overstated success. A report is not accepted unless the commit hash exists on GitHub and the changed files are verified on `main`.
+
+### Monkey patch test issue
+
+The first success test monkey-patched `SelfFixService.plan`. That proved the execution path could work but did not prove native intelligence. The monkey patch was removed. `SelfFixService` now natively detects missing-file errors and suggests `write_file`.
+
+### Failure-stop and success-path are different
+
+Both must stay tested:
+
+- Failure-stop: failure → repair attempt → rerun still fails → stop safely.
+- Success-path: initial failure → repair ticket → plan → repair execution → rerun succeeds → pipeline ok.
+
+## Current important files
+
+Read before editing:
+
+```text
+AGENTS.md
+docs/CODEX_JOE_HANDOFF.md
+api/package.json
+api/src/modules/services/AgentLoopService.ts
+api/src/modules/tools/definitions/PhaseExecutorTool.ts
+api/src/modules/services/RepairTicketService.ts
+api/src/modules/services/SelfFixService.ts
+api/src/modules/services/SelfFixExecutionService.ts
+api/src/tests/architecture/guard_architecture.ts
+api/src/tests/manual/verify_self_healing_loop.ts
+api/src/tests/manual/verify_self_healing_success_loop.ts
+api/src/tests/manual/verify_self_fix_build_context.ts
+api/src/tests/manual/verify_self_fix_execution_safety.ts
+```
+
+## Required tests
+
+After related changes run:
+
+```bash
+cd api
+npm run guard:architecture
+npm run test:self-fix:build-context
+npm run test:self-fix:execution-safety
+npm run test:self-healing:failure
+npm run test:self-healing:success
+```
+
+## Current completed state
+
+- Planner-only `ProjectPlannerTool`.
+- `PhaseExecutorTool` as controlled execution bridge.
+- `AgentLoopService` phase orchestration.
+- Quality gate based on `status === completed`.
+- `RepairTicketService` diagnostic output.
+- `SelfFixService` decision plans.
+- Native missing-file repair strategy.
+- TypeScript/build `buildContext` extraction.
+- `SelfFixExecutionService` one-attempt execution.
+- Self-fix tool allowlist.
+- Failure-stop test.
+- Native success-path test.
+- BuildContext extraction test.
+- Execution safety test.
+- Package scripts for the tests.
+- `AGENTS.md` added.
+
+## Still not complete
+
+- Real TypeScript/build-error repair execution is not fully proven yet.
+- `ai_write_file` behavior must be verified before relying on `build_fix` execution.
+- Browser automation still needs a canonical path later.
+- Deployment/production repair must remain approval-gated.
+- Observability UI for repair tickets/plans/executions should be improved later.
+
+## Next best step
+
+Implement and verify targeted TypeScript/build repair execution safely.
+
+Recommended plan:
+
+1. Add a permanent test for a simple TypeScript failure.
+2. Ensure `SelfFixService` extracts correct `buildContext`.
+3. Ensure repair only patches the targeted file.
+4. Rerun the failed phase.
+5. Pass only if phase becomes `completed`.
+6. Do not use broad rewrites.
+7. Do not use monkey patch unless clearly labeled as a unit test.
+
+## Absolute warnings
+
+Do not:
+
+- Reintroduce planner execution.
+- Bypass `ToolService`.
+- Weaken self-fix safety.
+- Add deploy/delete/secret/GitHub push tools to self-fix without approval.
+- Trust user-provided userId/workspaceId over execution context.
+- Delete permanent tests after running them.
+- Claim production readiness based only on architecture guard.
+- Treat invalid commit hashes as proof.
+- Add unsafe tools to self-fix allowlist without review.
+
+## Codex startup prompt
+
+Use this prompt for Codex:
+
+```text
+You are continuing Joe development in repo yasoo2/xelitesolutions.
+
+Before editing anything, read AGENTS.md and docs/CODEX_JOE_HANDOFF.md.
+
+Then inspect AgentLoopService, PhaseExecutorTool, RepairTicketService, SelfFixService, SelfFixExecutionService, guard_architecture, and api/package.json.
+
+Current goal: continue improving Joe controlled self-healing. Next target: safe TypeScript/build-error repair using buildContext.
+
+Rules:
+- Do not make ProjectPlannerTool execute tools.
+- Do not bypass ToolService.
+- Do not weaken safety.
+- One automatic repair attempt only.
+- Rerun the failed phase after repair.
+- Stop if rerun does not complete.
+- Add/update permanent tests.
+
+After changes run:
+cd api
+npm run guard:architecture
+npm run test:self-fix:build-context
+npm run test:self-fix:execution-safety
+npm run test:self-healing:failure
+npm run test:self-healing:success
+
+Report diff summary, test output, files changed, and a real GitHub commit hash.
+```
