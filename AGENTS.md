@@ -1,0 +1,119 @@
+# AGENTS.md — Permanent Joe Development Rules
+
+This file is the first source of truth for any AI coding agent, Codex session, Builder, or human developer working on the Joe autonomous software engineering system.
+
+Repository: `yasoo2/xelitesolutions`
+
+## Mission
+
+Joe is an autonomous, multi-agent software engineering platform. The target architecture is not a simple chat assistant. Joe must behave like a disciplined engineering organization:
+
+- Product/PM thinking
+- Architecture planning
+- Controlled phase execution
+- Quality gates
+- Repair diagnosis
+- One-attempt self-fix
+- Verification and stop conditions
+- Strong workspace/user isolation
+- No unsafe autonomous destructive actions
+
+## Canonical execution pipeline
+
+The approved pipeline is:
+
+```text
+User request
+→ ProjectPlannerTool
+→ AgentLoopService orchestrator
+→ PhaseExecutorTool
+→ ToolService
+→ QualityGate
+→ RepairTicketService
+→ SelfFixService
+→ SelfFixExecutionService
+→ rerun failed phase
+→ continue if completed, otherwise stop
+```
+
+Do not introduce competing execution paths unless they are explicitly documented and guarded.
+
+## Non-negotiable architecture rules
+
+1. `ProjectPlannerTool` is planner-only. It must never import or call `executeTool` and must never auto-execute generated tasks.
+2. `AgentLoopService` is the orchestrator. Do not turn it back into an uncontrolled random LLM tool loop.
+3. `PhaseExecutorTool` is the bridge between plans and execution. It must execute one phase at a time through `ToolService`.
+4. `ToolService` is the policy and execution gateway. Do not bypass it for shell, file, browser, deploy, Docker, GitHub, or workspace actions.
+5. Trusted context must come from execution context, not from user-provided input. Use trusted `sessionId`, `workspaceId`, and `userId`.
+6. A phase passes only when `phaseResult.ok === true` and `phaseResult.output.status === "completed"`.
+7. `partial`, `failed`, and `fatal_error` must stop progression unless controlled self-fix succeeds.
+8. `RepairTicketService` is diagnostic. It creates structured repair tickets; it does not repair.
+9. `SelfFixService` is the decision brain. It creates a `self_fix_plan`; it does not execute directly.
+10. `SelfFixExecutionService` may execute only one repair attempt, through `ToolService`, then rerun the same failed phase.
+11. If the rerun does not return `status === "completed"`, Joe must stop and return the ticket/plan/execution result.
+12. No deploy, delete, secret, credential, production push, server mutation, or dangerous operation may be added to self-fix without explicit approval and guardrails.
+13. Do not weaken safety checks to make a test pass.
+14. Do not claim success without a real commit hash and verifiable files on GitHub `main`.
+15. Avoid large full-file rewrites of critical files such as `AgentLoopService.ts`; use surgical patches when possible.
+
+## Current self-healing rules
+
+Self-healing is intentionally strict:
+
+- One attempt only.
+- Tool allowlist only.
+- Trusted `sessionId/workspaceId/userId` required.
+- Repair tool must run through `ToolService`.
+- Same failed phase must be rerun after repair.
+- Rerun must produce `status === "completed"`.
+- Second failure means stop.
+
+Allowed self-fix repair tools currently include:
+
+```text
+write_file
+file_edit
+file_edit_advanced
+ai_write_file
+shell_execute
+npm_manager
+```
+
+Unsafe tools must be rejected by `SelfFixExecutionService`.
+
+## Required tests after related changes
+
+Run these after any architecture, planner, phase execution, repair, or self-fix change:
+
+```bash
+cd api
+npm run guard:architecture
+npm run test:self-fix:build-context
+npm run test:self-fix:execution-safety
+npm run test:self-healing:failure
+npm run test:self-healing:success
+```
+
+If any test is missing or broken, fix the test or the implementation. Do not delete permanent verification tests after using them.
+
+## Current development direction
+
+The next priority is improving build/TypeScript repair safely:
+
+- `SelfFixService` already extracts `buildContext` from TypeScript/build errors.
+- Future fixes should use `buildContext.file`, `line`, `column`, `code`, and `message` to make narrow repairs.
+- The repair must not rewrite unrelated files.
+- After repair, rerun only the failed phase.
+- Stop if the rerun does not complete.
+
+## Builder/Codex completion requirements
+
+When finishing a task, provide:
+
+1. Real git diff summary.
+2. Exact tests run and output summary.
+3. Real commit hash that exists on GitHub.
+4. Any files changed.
+5. Any known risk or limitation.
+
+If a commit hash cannot be verified on GitHub, it is not accepted as proof.
