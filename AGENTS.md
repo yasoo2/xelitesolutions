@@ -1,6 +1,6 @@
 # AGENTS.md — Permanent Joe Development Rules
 
-This file is the first source of truth for any AI coding agent, Codex session, Builder, or human developer working on the Joe autonomous software engineering system.
+This file is the first source of truth for any AI coding agent, Codex session, Builder, Antigravity session, or human developer working on the Joe autonomous software engineering system.
 
 Repository: `yasoo2/xelitesolutions`
 
@@ -54,7 +54,8 @@ Do not introduce competing execution paths unless they are explicitly documented
 12. No deploy, delete, secret, credential, production push, server mutation, or dangerous operation may be added to self-fix without explicit approval and guardrails.
 13. Do not weaken safety checks to make a test pass.
 14. Do not claim success without a real commit hash and verifiable files on GitHub `main`.
-15. Avoid large full-file rewrites of critical files such as `AgentLoopService.ts`; use surgical patches when possible.
+15. Avoid large full-file rewrites of critical files such as `AgentLoopService.ts` or `ToolService.ts`; use surgical patches when possible.
+16. Do not revert the ToolService workspace path-resolution fix. Workspace-relative paths must be resolved with `workspaceService.getActiveRoot(contextWorkspaceId)` where applicable.
 
 ## Current self-healing rules
 
@@ -81,9 +82,29 @@ npm_manager
 
 Unsafe tools must be rejected by `SelfFixExecutionService`.
 
+## ToolService workspace path-resolution rule
+
+ToolService path aliasing must respect the explicit workspace context.
+
+When resolving workspace-relative paths in the aliasing/path normalization layer, use:
+
+```ts
+workspaceService.getActiveRoot(contextWorkspaceId)
+```
+
+Do not fall back to:
+
+```ts
+workspaceService.getActiveRoot()
+```
+
+when `contextWorkspaceId` is already available.
+
+This prevents tools like `file_edit`, `read_file`, `write_file`, `ai_write_file`, and codebase-memory flows from accidentally resolving paths against the `api` folder instead of the active project workspace.
+
 ## Required tests after related changes
 
-Run these after any architecture, planner, phase execution, repair, or self-fix change:
+Run these after any architecture, planner, phase execution, repair, self-fix, ToolService, or workspace-path change:
 
 ```bash
 cd api
@@ -92,6 +113,7 @@ npm run test:self-fix:build-context
 npm run test:self-fix:execution-safety
 npm run test:self-healing:failure
 npm run test:self-healing:success
+npm run test:self-fix:typescript-repair
 ```
 
 If any test is missing or broken, fix the test or the implementation. Do not delete permanent verification tests after using them.
@@ -101,12 +123,14 @@ If any test is missing or broken, fix the test or the implementation. Do not del
 The next priority is improving build/TypeScript repair safely:
 
 - `SelfFixService` already extracts `buildContext` from TypeScript/build errors.
+- TypeScript repair now has a permanent verification path.
 - Future fixes should use `buildContext.file`, `line`, `column`, `code`, and `message` to make narrow repairs.
 - The repair must not rewrite unrelated files.
 - After repair, rerun only the failed phase.
 - Stop if the rerun does not complete.
+- Continue hardening across more TypeScript/build error shapes.
 
-## Builder/Codex completion requirements
+## Builder/Codex/Antigravity completion requirements
 
 When finishing a task, provide:
 
