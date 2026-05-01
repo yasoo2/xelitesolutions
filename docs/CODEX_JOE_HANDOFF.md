@@ -94,7 +94,11 @@ phaseResult.ok === true && phaseResult.output.status === 'completed'
 - Detects missing files such as `MISSING_FILE: required_file.txt` and suggests `write_file`.
 - Extracts TypeScript/build context from errors such as:
   - `src/App.tsx(14,7): error TS2322: ...`
+  - `src/App.tsx(2,10): error TS2304: Cannot find name 'answer'.`
   - `src/App.tsx:14:7 ...`
+- Has targeted repairs for:
+  - `TS2322` string-to-number assignment cases.
+  - `TS2304` simple missing-name return cases.
 
 Expected `buildContext`:
 
@@ -189,6 +193,7 @@ api/src/tests/manual/verify_self_healing_success_loop.ts
 api/src/tests/manual/verify_self_fix_build_context.ts
 api/src/tests/manual/verify_self_fix_execution_safety.ts
 api/src/tests/manual/verify_self_fix_typescript_repair.ts
+api/src/tests/manual/verify_self_fix_typescript_missing_name.ts
 ```
 
 ## Required tests
@@ -200,9 +205,10 @@ cd api
 npm run guard:architecture
 npm run test:self-fix:build-context
 npm run test:self-fix:execution-safety
+npm run test:self-fix:typescript-repair
+npm run test:self-fix:typescript-missing-name
 npm run test:self-healing:failure
 npm run test:self-healing:success
-npm run test:self-fix:typescript-repair
 ```
 
 ## Current completed state
@@ -215,6 +221,8 @@ npm run test:self-fix:typescript-repair
 - `SelfFixService` decision plans.
 - Native missing-file repair strategy.
 - TypeScript/build `buildContext` extraction.
+- Targeted TypeScript repair for TS2322 string-to-number assignment.
+- Targeted TypeScript repair for TS2304 simple missing-name return.
 - `SelfFixExecutionService` one-attempt execution.
 - Self-fix tool allowlist.
 - ToolService workspace path-resolution fixed using `contextWorkspaceId`.
@@ -222,13 +230,14 @@ npm run test:self-fix:typescript-repair
 - Native success-path test.
 - BuildContext extraction test.
 - Execution safety test.
-- TypeScript repair test added/updated.
+- TypeScript repair test.
+- TypeScript missing-name test.
 - Package scripts for the tests.
 - `AGENTS.md` added.
 
 ## Still not complete
 
-- Real TypeScript/build-error repair execution has a permanent test path now, but the behavior should continue being hardened across more TypeScript error shapes.
+- TypeScript/build-error repair is improving but should continue being hardened across more TypeScript error shapes.
 - `ai_write_file` behavior must be verified before relying on broad `build_fix` execution.
 - Browser automation still needs a canonical path later.
 - Deployment/production repair must remain approval-gated.
@@ -292,9 +301,10 @@ cd api
 npm run guard:architecture
 npm run test:self-fix:build-context
 npm run test:self-fix:execution-safety
+npm run test:self-fix:typescript-repair
+npm run test:self-fix:typescript-missing-name
 npm run test:self-healing:failure
 npm run test:self-healing:success
-npm run test:self-fix:typescript-repair
 
 Report diff summary, test output, files changed, and a real GitHub commit hash.
 ```
