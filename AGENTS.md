@@ -111,9 +111,10 @@ cd api
 npm run guard:architecture
 npm run test:self-fix:build-context
 npm run test:self-fix:execution-safety
+npm run test:self-fix:typescript-repair
+npm run test:self-fix:typescript-missing-name
 npm run test:self-healing:failure
 npm run test:self-healing:success
-npm run test:self-fix:typescript-repair
 ```
 
 If any test is missing or broken, fix the test or the implementation. Do not delete permanent verification tests after using them.
@@ -123,7 +124,7 @@ If any test is missing or broken, fix the test or the implementation. Do not del
 The next priority is improving build/TypeScript repair safely:
 
 - `SelfFixService` already extracts `buildContext` from TypeScript/build errors.
-- TypeScript repair now has a permanent verification path.
+- TypeScript repair now has permanent verification paths for TS2322 and TS2304.
 - Future fixes should use `buildContext.file`, `line`, `column`, `code`, and `message` to make narrow repairs.
 - The repair must not rewrite unrelated files.
 - After repair, rerun only the failed phase.
