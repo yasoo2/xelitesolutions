@@ -162,7 +162,7 @@ export class SelfFixService {
     if (/build failed|compile|typescript|tsc|syntaxerror|typeerror|ts\d+/i.test(text)) {
       const buildContext = extractBuildContext(ticket);
       const targetedEdit = buildTargetedTypeScriptEdit(buildContext);
-      if (targetedEdit) {
+      if (targetedEdit && buildContext) {
         return {
           type: 'self_fix_plan',
           allowed: true,
