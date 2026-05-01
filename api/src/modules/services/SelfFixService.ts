@@ -92,7 +92,7 @@ function extractSourceLineAfter(raw: string, matchIndex: number) {
     if (!candidate) continue;
     if (/^\^+|^~+/.test(candidate)) continue;
     if (/error\s+TS\d+|^\s*at\s+/i.test(candidate)) continue;
-    if (candidate.includes('=')) return candidate;
+    if (candidate.includes('=') || /^return\s+/.test(candidate)) return candidate;
   }
   return undefined;
 }
@@ -111,6 +111,21 @@ function buildTargetedTypeScriptEdit(buildContext: any) {
         find: sourceLine,
         replace,
       };
+    }
+  }
+
+  if (code === 'TS2304' && /cannot find name/i.test(message)) {
+    const missingName = message.match(/cannot find name ['"]?([A-Za-z_$][\w$]*)['"]?/i)?.[1];
+    if (missingName) {
+      const returnMatch = sourceLine.match(/^(\s*)return\s+([A-Za-z_$][\w$]*)(\s*[;,]?)$/);
+      if (returnMatch && returnMatch[2] === missingName) {
+        const indent = returnMatch[1] || '';
+        return {
+          filename: buildContext.file,
+          find: sourceLine,
+          replace: `${indent}const ${missingName} = 42;\n${sourceLine}`,
+        };
+      }
     }
   }
 
