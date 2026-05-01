@@ -241,7 +241,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
         if (fp) {
             const { workspaceService } = require('./WorkspaceService');
-            const activeRoot = workspaceService.getActiveRoot();
+            const activeRoot = workspaceService.getActiveRoot(contextWorkspaceId);
             const projectRoot = path.join(process.cwd(), path.basename(process.cwd()) === 'api' ? '..' : '.');
             const buildsDir = path.resolve(projectRoot, 'data/builds');
 
@@ -270,7 +270,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
         if (fp) {
             const { workspaceService } = require('./WorkspaceService');
-            const root = workspaceService.getActiveRoot();
+            const root = workspaceService.getActiveRoot(contextWorkspaceId);
             (effectiveInput as any).path = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
             delete (effectiveInput as any).filePath;
             delete (effectiveInput as any).filename;
@@ -281,7 +281,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
         if (fp) {
             const { workspaceService } = require('./WorkspaceService');
-            const root = workspaceService.getActiveRoot();
+            const root = workspaceService.getActiveRoot(contextWorkspaceId);
             (effectiveInput as any).path = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
             delete (effectiveInput as any).filePath;
             delete (effectiveInput as any).filename;
@@ -364,7 +364,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     if (name === 'memorize_codebase') {
         try {
             const { workspaceService } = require('./WorkspaceService');
-            const root = input.directory || workspaceService.getActiveRoot();
+            const root = input.directory || workspaceService.getActiveRoot(contextWorkspaceId);
             const exts = input.extensions || ['ts', 'tsx', 'js', 'json', 'md', 'py', 'css', 'html'];
             const pattern = `**/*.{${exts.join(',')}}`;
             const files = await glob(pattern, { cwd: root, ignore: ['**/node_modules/**', '**/dist/**', '**/.git/**'] });
