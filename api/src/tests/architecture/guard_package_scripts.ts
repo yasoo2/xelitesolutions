@@ -72,10 +72,12 @@ function main() {
 
   const requiredScripts: Record<string, string> = {
     'guard:architecture': 'ts-node src/tests/architecture/guard_architecture.ts',
+    'guard:package-scripts': 'ts-node src/tests/architecture/guard_package_scripts.ts',
     'test:self-fix:build-context': 'ts-node src/tests/manual/verify_self_fix_build_context.ts',
     'test:self-fix:execution-safety': 'ts-node src/tests/manual/verify_self_fix_execution_safety.ts',
     'test:self-fix:typescript-repair': 'ts-node src/tests/manual/verify_self_fix_typescript_repair.ts',
     'test:self-fix:typescript-missing-name': 'ts-node src/tests/manual/verify_self_fix_typescript_missing_name.ts',
+    'test:self-fix:typescript-number-to-string': 'ts-node src/tests/manual/verify_self_fix_typescript_number_to_string.ts',
     'test:self-healing:failure': 'ts-node src/tests/manual/verify_self_healing_loop.ts',
     'test:self-healing:success': 'ts-node src/tests/manual/verify_self_healing_success_loop.ts',
   };
