@@ -7,6 +7,14 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 /**
  * Permanent E2E verification test for Joe as a complete software engineer.
+ *
+ * Verifies:
+ * - planner path
+ * - orchestrated phase execution
+ * - verification gate
+ * - one-attempt self-healing
+ * - rerun and continuation
+ * - engineering report attachment for user-visible observability
  */
 async function verifyJoeFullEngineerFlow() {
     console.log('🧪 Starting Joe Full Engineer Flow Verification...');
@@ -130,6 +138,24 @@ if (content.includes('number = "10"')) {
             console.log('✅ PASS: Self-fix was triggered and succeeded for Phase 1.');
         } else {
             console.error('❌ FAIL: Self-fix failed:', phase1Result?.selfFixExecution?.reason);
+            passed = false;
+        }
+
+        if (pipelineResult.engineeringReport?.status === 'pipeline_completed') {
+            console.log('✅ PASS: engineeringReport is attached and reflects pipeline completion.');
+        } else {
+            console.error('❌ FAIL: engineeringReport missing or wrong:', pipelineResult.engineeringReport);
+            passed = false;
+        }
+
+        if (
+            typeof pipelineResult.engineeringReportMarkdown === 'string'
+            && pipelineResult.engineeringReportMarkdown.includes('Joe Engineering Execution Report')
+            && pipelineResult.engineeringReportMarkdown.includes('Current pipeline summary')
+        ) {
+            console.log('✅ PASS: engineeringReportMarkdown is present and user-visible.');
+        } else {
+            console.error('❌ FAIL: engineeringReportMarkdown missing or incomplete:', pipelineResult.engineeringReportMarkdown);
             passed = false;
         }
 
