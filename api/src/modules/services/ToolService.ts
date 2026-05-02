@@ -469,7 +469,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                 return { ok: false, error: 'unauthorized', logs };
             }
             const { getSessionRunConfig } = await import('./secrets');
-            const cfg = sid ? (getSessionRunConfig(sid) as any) : ({} as any);
+            const cfg = (sid ? getSessionRunConfig(sid) : null) || ({} as any);
             const envAutoAll = process.env.AUTO_APPROVE_ALL;
             const envAutoSafe = process.env.AUTO_APPROVE_SAFE;
             const autoAll = cfg.autoApproveAll === true ? true : envAutoAll === '1';
