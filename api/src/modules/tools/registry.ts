@@ -11,6 +11,7 @@ import { BulkFileGeneratorTool } from './definitions/BulkFileGeneratorTool';
 import { CentralAnswerTool } from './definitions/CentralAnswerTool';
 import { RequestAnalyzerTool } from './definitions/RequestAnalyzerTool';
 import { ProjectPlannerTool } from './definitions/ProjectPlannerTool';
+import { AIGeneratorTool } from './definitions/AIGeneratorTool';
 import { PhaseExecutorTool } from './definitions/PhaseExecutorTool';
 import { ProjectStateManagerTool } from './definitions/ProjectStateManagerTool';
 import { AutoTesterTool } from './definitions/AutoTesterTool';
@@ -57,6 +58,7 @@ export const tools: ToolDefinition[] = [
 
   ArchitectTool,
 
+  new AIGeneratorTool(),
   new ProjectPlannerTool(),
   new PhaseExecutorTool(),
   new AutoTesterTool(),

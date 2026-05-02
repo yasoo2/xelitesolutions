@@ -105,7 +105,7 @@ function ensureMockPersonalWorkspace(userId: string) {
 export class WorkspaceService {
     private currentRoot: string = process.cwd();
     // [FIX] استخدام مسار داخل مجلد المشروع بدلاً من /root/joe-projects
-    public readonly externalRoot: string = (() => {
+    public get externalRoot(): string {
         const envPath = process.env.EXTERNAL_PROJECTS_DIR;
         if (envPath) return envPath;
         
@@ -127,7 +127,7 @@ export class WorkspaceService {
         }
         
         return projectsDir;
-    })();
+    }
     
     private rootsByWorkspaceId = new Map<string, string>();
 
