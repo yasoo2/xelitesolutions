@@ -33,6 +33,7 @@ import { RetryManagerTool } from './definitions/RetryManagerTool';
 import { FallbackTool } from './definitions/FallbackTool';
 import { JavaBuilderTool } from './definitions/JavaBuilderTool';
 import { GoBuilderTool } from './definitions/GoBuilderTool';
+import { JoeEngineeringReportTool } from './definitions/JoeEngineeringReportTool';
 import { EchoTool, FileEditTool, ShellExecuteTool, WriteFileTool } from './definitions/SystemTools';
 
 
@@ -66,6 +67,7 @@ export const tools: ToolDefinition[] = [
   new SecurityScannerTool(),
   new PerformanceAnalyzerTool(),
   new ErrorRecoveryTool(),
+  new JoeEngineeringReportTool(),
 
   // fallback minimal set to avoid breaking
   new EchoTool(),
