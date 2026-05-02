@@ -62,7 +62,8 @@ import {
   User,
   Camera,
   Monitor,
-  Github
+  Github,
+  Code
 } from 'lucide-react';
 
 const DEBUG_TOOL_UI = false;
@@ -141,6 +142,150 @@ const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: 
           style={{ opacity: 0.3 }}
         />
       </svg>
+    </motion.div>
+  );
+};
+
+const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any }) => {
+  const [showRaw, setShowRaw] = useState(false);
+  const md = report.engineeringReportMarkdown || '';
+  
+  const generateSummaryFromJson = (r: any) => {
+    const ok = r.ok ? '✅ SUCCESS' : '❌ FAILED';
+    const progress = `${r.completedPhases} / ${r.totalPlannedPhases || '?'}`;
+    return `### Pipeline Summary\n- **Status**: ${ok}\n- **Progress**: ${progress}\n\nDetailed orchestration data available.`;
+  };
+
+  const displayMd = md || (report.engineeringReport ? generateSummaryFromJson(report.engineeringReport) : '');
+
+  if (!displayMd) return null;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95, y: 10 }} 
+      animate={{ opacity: 1, scale: 1, y: 0 }} 
+      className="engineering-report-container"
+    >
+      <div className="report-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <ShieldCheck size={20} className="report-icon" />
+          <span>Joe Engineering Report</span>
+        </div>
+        <button 
+          onClick={() => setShowRaw(!showRaw)}
+          className="debug-toggle-btn"
+          title="Toggle Debug Info"
+        >
+          <Code size={14} />
+        </button>
+      </div>
+
+      <div className="report-body">
+        <ReactMarkdown
+          components={{
+            h1: ({ ...props }) => <h1 style={{ fontSize: '1.2rem', margin: '0 0 1rem 0', color: 'var(--accent-primary)', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }} {...props} />,
+            h2: ({ ...props }) => <h2 style={{ fontSize: '1.1rem', margin: '1.5rem 0 0.8rem 0', color: 'var(--text-primary)' }} {...props} />,
+            h3: ({ ...props }) => <h3 style={{ fontSize: '1rem', margin: '1.2rem 0 0.6rem 0', color: 'var(--text-secondary)' }} {...props} />,
+            ul: ({ ...props }) => <ul style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }} {...props} />,
+            li: ({ ...props }) => <li style={{ marginBottom: '0.4rem' }} {...props} />,
+            p: ({ ...props }) => <p style={{ marginBottom: '1rem', opacity: 0.9 }} {...props} />,
+          }}
+        >
+          {displayMd}
+        </ReactMarkdown>
+      </div>
+
+      {showRaw && (
+        <motion.div 
+          initial={{ opacity: 0, height: 0 }} 
+          animate={{ opacity: 1, height: 'auto' }}
+          className="report-debug-info"
+        >
+          <div className="debug-header">RAW ORCHESTRATION DATA</div>
+          <pre className="debug-content">
+            {JSON.stringify(report.engineeringReport || report, null, 2)}
+          </pre>
+        </motion.div>
+      )}
+
+      <div className="report-footer">
+        {new Date(ts || Date.now()).toLocaleTimeString()}
+      </div>
+      <style>{`
+        .engineering-report-container {
+          margin: 20px 0;
+          padding: 24px;
+          background: rgba(15, 20, 28, 0.85);
+          border: 1px solid rgba(var(--accent-primary-rgb), 0.4);
+          border-radius: 16px;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.4), inset 0 0 20px rgba(var(--accent-primary-rgb), 0.05);
+          backdrop-filter: blur(12px);
+          position: relative;
+          overflow: hidden;
+        }
+        .report-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 20px;
+          font-weight: 800;
+          color: var(--accent-primary);
+          text-transform: uppercase;
+          letter-spacing: 1.5px;
+          font-size: 13px;
+        }
+        .debug-toggle-btn {
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
+          color: var(--text-muted);
+          padding: 4px 8px;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .debug-toggle-btn:hover {
+          background: rgba(var(--accent-primary-rgb), 0.1);
+          color: var(--accent-primary);
+        }
+        .report-debug-info {
+          margin-top: 20px;
+          background: rgba(0,0,0,0.3);
+          border-radius: 8px;
+          padding: 12px;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 11px;
+          overflow: hidden;
+        }
+        .debug-header {
+          font-size: 9px;
+          color: var(--accent-secondary);
+          margin-bottom: 8px;
+          font-weight: 700;
+          letter-spacing: 1px;
+        }
+        .debug-content {
+          color: var(--text-secondary);
+          white-space: pre-wrap;
+          word-break: break-all;
+          max-height: 300px;
+          overflow-y: auto;
+        }
+        .report-body {
+          font-size: 14px;
+          line-height: 1.7;
+          color: var(--text-primary);
+        }
+        .report-footer {
+          margin-top: 20px;
+          padding-top: 12px;
+          border-top: 1px solid rgba(255,255,255,0.05);
+          font-size: 10px;
+          color: var(--text-muted);
+          text-align: right;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+      `}</style>
     </motion.div>
   );
 };
@@ -2749,7 +2894,15 @@ export default function CommandComposer({
     for (const { e, idx } of sortedEvents) {
       const type = String(e?.type || '');
 
-      if (type === 'step_started' || type === 'step_progress' || type === 'step_done' || type === 'step_failed' || type === 'evidence_added') continue;
+      if (type === 'step_started' || type === 'step_progress' || type === 'evidence_added') continue;
+
+      if (type === 'step_done' || type === 'step_failed') {
+        const pipeline = e?.data?.result?.output?.orchestratedPipeline;
+        if (pipeline) {
+          out.push({ kind: 'engineering_report', key: `report:${idx}`, e, idx });
+        }
+        continue;
+      }
 
       if (type === 'user_input') out.push({ kind: 'user', key: `user:${idx}`, e, idx });
       else if (type === 'text') {
@@ -2893,6 +3046,19 @@ export default function CommandComposer({
                         </div>
                       </div>
                     </motion.div>
+                  );
+                }
+
+                if (item.kind === 'engineering_report') {
+                  const pipeline = item.e?.data?.result?.output?.orchestratedPipeline;
+                  if (!pipeline) return null;
+                  return (
+                    <EngineeringReport 
+                      key={item.key} 
+                      report={pipeline} 
+                      ts={item.e?.ts} 
+                      t={t}
+                    />
                   );
                 }
 
