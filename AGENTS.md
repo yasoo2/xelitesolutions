@@ -104,15 +104,17 @@ This prevents tools like `file_edit`, `read_file`, `write_file`, `ai_write_file`
 
 ## Required tests after related changes
 
-Run these after any architecture, planner, phase execution, repair, self-fix, ToolService, or workspace-path change:
+Run these after any architecture, planner, phase execution, repair, self-fix, ToolService, package-script, or workspace-path change:
 
 ```bash
 cd api
 npm run guard:architecture
+npm run guard:package-scripts
 npm run test:self-fix:build-context
 npm run test:self-fix:execution-safety
 npm run test:self-fix:typescript-repair
 npm run test:self-fix:typescript-missing-name
+npm run test:self-fix:typescript-number-to-string
 npm run test:self-healing:failure
 npm run test:self-healing:success
 ```
@@ -124,7 +126,7 @@ If any test is missing or broken, fix the test or the implementation. Do not del
 The next priority is improving build/TypeScript repair safely:
 
 - `SelfFixService` already extracts `buildContext` from TypeScript/build errors.
-- TypeScript repair now has permanent verification paths for TS2322 and TS2304.
+- TypeScript repair now has permanent verification paths for TS2322 string-to-number, TS2322 number-to-string, and TS2304 missing-name cases.
 - Future fixes should use `buildContext.file`, `line`, `column`, `code`, and `message` to make narrow repairs.
 - The repair must not rewrite unrelated files.
 - After repair, rerun only the failed phase.
