@@ -98,6 +98,7 @@ phaseResult.ok === true && phaseResult.output.status === 'completed'
   - `src/App.tsx:14:7 ...`
 - Has targeted repairs for:
   - `TS2322` string-to-number assignment cases.
+  - `TS2322` number-to-string assignment cases.
   - `TS2304` simple missing-name return cases.
 
 Expected `buildContext`:
@@ -138,7 +139,7 @@ Unsafe tools must be rejected by allowlist.
 
 ### Misleading package scripts
 
-`api/package.json` once had misleading duplicate scripts such as `check:self-fix-patch = eslint`, `patch:self-fix = eslint --fix`, and `guard:architecture = knip`. These were corrected. Do not reintroduce misleading scripts.
+`api/package.json` once had misleading duplicate scripts such as `check:self-fix-patch = eslint`, `patch:self-fix = eslint --fix`, and `guard:architecture = knip`. These were corrected. Do not reintroduce misleading scripts. `guard:package-scripts` now protects against duplicate or misleading self-fix script mappings.
 
 ### Builder reports can be unreliable
 
@@ -188,12 +189,14 @@ api/src/modules/services/SelfFixService.ts
 api/src/modules/services/SelfFixExecutionService.ts
 api/src/modules/services/ToolService.ts
 api/src/tests/architecture/guard_architecture.ts
+api/src/tests/architecture/guard_package_scripts.ts
 api/src/tests/manual/verify_self_healing_loop.ts
 api/src/tests/manual/verify_self_healing_success_loop.ts
 api/src/tests/manual/verify_self_fix_build_context.ts
 api/src/tests/manual/verify_self_fix_execution_safety.ts
 api/src/tests/manual/verify_self_fix_typescript_repair.ts
 api/src/tests/manual/verify_self_fix_typescript_missing_name.ts
+api/src/tests/manual/verify_self_fix_typescript_number_to_string.ts
 ```
 
 ## Required tests
@@ -203,10 +206,12 @@ After related changes run:
 ```bash
 cd api
 npm run guard:architecture
+npm run guard:package-scripts
 npm run test:self-fix:build-context
 npm run test:self-fix:execution-safety
 npm run test:self-fix:typescript-repair
 npm run test:self-fix:typescript-missing-name
+npm run test:self-fix:typescript-number-to-string
 npm run test:self-healing:failure
 npm run test:self-healing:success
 ```
@@ -222,16 +227,19 @@ npm run test:self-healing:success
 - Native missing-file repair strategy.
 - TypeScript/build `buildContext` extraction.
 - Targeted TypeScript repair for TS2322 string-to-number assignment.
+- Targeted TypeScript repair for TS2322 number-to-string assignment.
 - Targeted TypeScript repair for TS2304 simple missing-name return.
 - `SelfFixExecutionService` one-attempt execution.
 - Self-fix tool allowlist.
 - ToolService workspace path-resolution fixed using `contextWorkspaceId`.
+- Package scripts guard.
 - Failure-stop test.
 - Native success-path test.
 - BuildContext extraction test.
 - Execution safety test.
-- TypeScript repair test.
+- TypeScript string-to-number repair test.
 - TypeScript missing-name test.
+- TypeScript number-to-string test.
 - Package scripts for the tests.
 - `AGENTS.md` added.
 
@@ -282,7 +290,7 @@ You are continuing Joe development in repo yasoo2/xelitesolutions.
 
 Before editing anything, read AGENTS.md and docs/CODEX_JOE_HANDOFF.md.
 
-Then inspect AgentLoopService, PhaseExecutorTool, RepairTicketService, SelfFixService, SelfFixExecutionService, ToolService, guard_architecture, and api/package.json.
+Then inspect AgentLoopService, PhaseExecutorTool, RepairTicketService, SelfFixService, SelfFixExecutionService, ToolService, guard_architecture, guard_package_scripts, and api/package.json.
 
 Current goal: continue improving Joe controlled self-healing. Next target: harden TypeScript/build-error repair using buildContext and workspace-correct path resolution.
 
@@ -299,10 +307,12 @@ Rules:
 After changes run:
 cd api
 npm run guard:architecture
+npm run guard:package-scripts
 npm run test:self-fix:build-context
 npm run test:self-fix:execution-safety
 npm run test:self-fix:typescript-repair
 npm run test:self-fix:typescript-missing-name
+npm run test:self-fix:typescript-number-to-string
 npm run test:self-healing:failure
 npm run test:self-healing:success
 
