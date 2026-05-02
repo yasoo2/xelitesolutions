@@ -102,6 +102,12 @@ when `contextWorkspaceId` is already available.
 
 This prevents tools like `file_edit`, `read_file`, `write_file`, `ai_write_file`, and codebase-memory flows from accidentally resolving paths against the `api` folder instead of the active project workspace.
 
+## Full engineer flow verification
+
+`test:joe:engineer-flow` is the current permanent E2E infrastructure verification. It proves the canonical pipeline can plan, orchestrate, execute, verify, self-heal, rerun a failed phase, and continue to the next phase.
+
+Important limitation: this test currently uses a controlled mocked LLM plan to make the E2E scenario deterministic. It proves Joe's engineering infrastructure path, not unrestricted real-world project planning for every possible request. Do not claim universal production-grade autonomy from this test alone.
+
 ## Required tests after related changes
 
 Run these after any architecture, planner, phase execution, repair, self-fix, ToolService, package-script, or workspace-path change:
@@ -110,6 +116,7 @@ Run these after any architecture, planner, phase execution, repair, self-fix, To
 cd api
 npm run guard:architecture
 npm run guard:package-scripts
+npm run test:joe:engineer-flow
 npm run test:self-fix:build-context
 npm run test:self-fix:execution-safety
 npm run test:self-fix:typescript-repair
@@ -123,15 +130,17 @@ If any test is missing or broken, fix the test or the implementation. Do not del
 
 ## Current development direction
 
-The next priority is improving build/TypeScript repair safely:
+The next priority is improving build/TypeScript repair safely and gradually increasing E2E realism:
 
 - `SelfFixService` already extracts `buildContext` from TypeScript/build errors.
 - TypeScript repair now has permanent verification paths for TS2322 string-to-number, TS2322 number-to-string, and TS2304 missing-name cases.
+- `test:joe:engineer-flow` verifies the deterministic full pipeline.
 - Future fixes should use `buildContext.file`, `line`, `column`, `code`, and `message` to make narrow repairs.
 - The repair must not rewrite unrelated files.
 - After repair, rerun only the failed phase.
 - Stop if the rerun does not complete.
 - Continue hardening across more TypeScript/build error shapes.
+- Add a later E2E test with less mocking to test real planner behavior separately.
 
 ## Builder/Codex/Antigravity completion requirements
 
