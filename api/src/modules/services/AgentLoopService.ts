@@ -274,7 +274,7 @@ export class AgentLoopService {
             completedPhases++;
         }
 
-        return {
+        const pipelineResult: any = {
             ok: completedPhases === maxPhases,
             completedPhases,
             totalPlannedPhases: phases.length,
@@ -284,9 +284,28 @@ export class AgentLoopService {
             selfFixPlan,
             selfFixExecution,
             results: phaseResults,
-
-
         };
+
+        try {
+            const reportResult = await executeTool('joe_engineering_report', {
+                pipelineResult,
+                includeMarkdown: true,
+            }, {
+                sessionId,
+                workspaceId,
+                userId: userId ? String(userId) : undefined,
+            });
+            if (reportResult?.ok) {
+                pipelineResult.engineeringReport = reportResult.output?.report;
+                pipelineResult.engineeringReportMarkdown = reportResult.output?.markdown;
+            } else {
+                pipelineResult.engineeringReportError = reportResult?.error || 'engineering_report_failed';
+            }
+        } catch (reportError: any) {
+            pipelineResult.engineeringReportError = String(reportError?.message || reportError || 'engineering_report_failed');
+        }
+
+        return pipelineResult;
     }
 
     // This is the core logic recovered from sessions.ts
@@ -422,6 +441,7 @@ export class AgentLoopService {
                         result.logs = [
                             ...(Array.isArray(result.logs) ? result.logs : []),
                             `[AgentLoop] Orchestrator executed ${pipelineResult.completedPhases}/${pipelineResult.executedPhases} planned phase(s) via phase_executor`,
+                            pipelineResult.engineeringReport ? '[AgentLoop] Engineering execution report attached to orchestrated pipeline' : '[AgentLoop] Engineering execution report unavailable',
                         ];
                     }
                 } catch (phaseError: any) {
