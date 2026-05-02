@@ -149,6 +149,12 @@ Some builder reports included invalid commit hashes or overstated success. A rep
 
 The first success test monkey-patched `SelfFixService.plan`. That proved the execution path could work but did not prove native intelligence. The monkey patch was removed. `SelfFixService` now natively detects missing-file errors and suggests `write_file`.
 
+### Full engineer flow limitation
+
+`test:joe:engineer-flow` proves the deterministic E2E engineering infrastructure path: planner path, orchestrator, phase execution, verification, repair ticket, self-fix plan, self-fix execution, rerun, and phase continuation.
+
+Important limitation: the current test uses a controlled mocked LLM plan for determinism. It proves Joe's infrastructure, but it does not yet prove unrestricted real-world project planning for every possible project request. A future test should reduce mocking and verify real planner behavior separately.
+
 ### Failure-stop and success-path are different
 
 Both must stay tested:
@@ -190,6 +196,7 @@ api/src/modules/services/SelfFixExecutionService.ts
 api/src/modules/services/ToolService.ts
 api/src/tests/architecture/guard_architecture.ts
 api/src/tests/architecture/guard_package_scripts.ts
+api/src/tests/manual/verify_joe_full_engineer_flow.ts
 api/src/tests/manual/verify_self_healing_loop.ts
 api/src/tests/manual/verify_self_healing_success_loop.ts
 api/src/tests/manual/verify_self_fix_build_context.ts
@@ -207,6 +214,7 @@ After related changes run:
 cd api
 npm run guard:architecture
 npm run guard:package-scripts
+npm run test:joe:engineer-flow
 npm run test:self-fix:build-context
 npm run test:self-fix:execution-safety
 npm run test:self-fix:typescript-repair
@@ -233,6 +241,7 @@ npm run test:self-healing:success
 - Self-fix tool allowlist.
 - ToolService workspace path-resolution fixed using `contextWorkspaceId`.
 - Package scripts guard.
+- Full engineer flow deterministic E2E test.
 - Failure-stop test.
 - Native success-path test.
 - BuildContext extraction test.
@@ -246,6 +255,7 @@ npm run test:self-healing:success
 ## Still not complete
 
 - TypeScript/build-error repair is improving but should continue being hardened across more TypeScript error shapes.
+- `test:joe:engineer-flow` is deterministic and uses a mocked LLM plan; real planner behavior still needs separate verification.
 - `ai_write_file` behavior must be verified before relying on broad `build_fix` execution.
 - Browser automation still needs a canonical path later.
 - Deployment/production repair must remain approval-gated.
@@ -253,7 +263,7 @@ npm run test:self-healing:success
 
 ## Next best step
 
-Continue hardening targeted TypeScript/build repair execution safely.
+Continue hardening targeted TypeScript/build repair execution safely, then add a less-mocked E2E planner test.
 
 Recommended plan:
 
@@ -265,6 +275,7 @@ Recommended plan:
 6. Do not use broad rewrites.
 7. Do not use monkey patch unless clearly labeled as a unit test.
 8. Keep ToolService path resolution narrow and context-aware.
+9. Add a later E2E test that reduces LLM mocking and validates planner output quality separately.
 
 ## Absolute warnings
 
@@ -276,7 +287,7 @@ Do not:
 - Add deploy/delete/secret/GitHub push tools to self-fix without approval.
 - Trust user-provided userId/workspaceId over execution context.
 - Delete permanent tests after running them.
-- Claim production readiness based only on architecture guard.
+- Claim production readiness based only on architecture guard or mocked E2E.
 - Treat invalid commit hashes as proof.
 - Add unsafe tools to self-fix allowlist without review.
 - Revert the ToolService `contextWorkspaceId` path-resolution fix.
@@ -290,9 +301,9 @@ You are continuing Joe development in repo yasoo2/xelitesolutions.
 
 Before editing anything, read AGENTS.md and docs/CODEX_JOE_HANDOFF.md.
 
-Then inspect AgentLoopService, PhaseExecutorTool, RepairTicketService, SelfFixService, SelfFixExecutionService, ToolService, guard_architecture, guard_package_scripts, and api/package.json.
+Then inspect AgentLoopService, PhaseExecutorTool, RepairTicketService, SelfFixService, SelfFixExecutionService, ToolService, guard_architecture, guard_package_scripts, verify_joe_full_engineer_flow, and api/package.json.
 
-Current goal: continue improving Joe controlled self-healing. Next target: harden TypeScript/build-error repair using buildContext and workspace-correct path resolution.
+Current goal: continue improving Joe controlled self-healing and E2E engineering reliability. Next target: harden TypeScript/build-error repair using buildContext and add a future less-mocked planner/E2E verification.
 
 Rules:
 - Do not make ProjectPlannerTool execute tools.
@@ -302,12 +313,14 @@ Rules:
 - Rerun the failed phase after repair.
 - Stop if rerun does not complete.
 - Keep ToolService path resolution context-aware using contextWorkspaceId.
+- Do not claim universal autonomy from mocked E2E tests alone.
 - Add/update permanent tests.
 
 After changes run:
 cd api
 npm run guard:architecture
 npm run guard:package-scripts
+npm run test:joe:engineer-flow
 npm run test:self-fix:build-context
 npm run test:self-fix:execution-safety
 npm run test:self-fix:typescript-repair
