@@ -24,7 +24,8 @@
         "check:self-fix-patch": "node scripts/check-self-fix-patch.mjs",
         "patch:self-fix": "node scripts/patch-wire-self-fix.mjs",
         "check:self-fix-execution-patch": "node scripts/check-self-fix-execution-patch.mjs",
-        "patch:self-fix-execution": "node scripts/patch-wire-self-fix-execution.mjs"
+        "patch:self-fix-execution": "node scripts/patch-wire-self-fix-execution.mjs",
+        "test:terminal:manager": "ts-node src/tests/manual/verify_terminal_manager.ts"
     },
     "keywords": [],
     "author": "",

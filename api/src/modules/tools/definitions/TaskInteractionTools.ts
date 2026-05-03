@@ -7,6 +7,8 @@ import { broadcast, registerTerminalOwner } from '../../../api/ws';
 // Store for persistent terminals
 export const terminals = new Map<string, { pty: any, history: string[] }>();
 
+import { logger } from '../../../shared/utils/logger';
+
 function getWorkspaceRoot() {
     try {
         const { workspaceService } = require('../../services/WorkspaceService');
@@ -14,6 +16,14 @@ function getWorkspaceRoot() {
     } catch {
         return process.cwd();
     }
+}
+
+function resolveShell(requestedShell?: string): string {
+    if (process.platform === 'win32') return 'powershell.exe';
+    if (requestedShell && fs.existsSync(requestedShell)) return requestedShell;
+    if (fs.existsSync('/bin/bash')) return '/bin/bash';
+    if (fs.existsSync('/bin/sh')) return '/bin/sh';
+    return '/bin/sh';
 }
 
 function resolveToolPath(p: string) {
@@ -62,9 +72,13 @@ export class TerminalManagerTool extends BaseTool {
     async execute(input: any) {
         const action = input.action;
         const id = input.id || 'default';
+        const workDir = getWorkspaceRoot();
 
         if (action === 'create') {
             if (terminals.has(id)) return { ok: false, error: 'Terminal already exists', logs: [] };
+
+            const shell = resolveShell(input.shell);
+            logger.info(`terminal_create_requested id=${id} shell=${shell} cwd=${workDir}`);
 
             try {
                 let ptyProcess: any = null;
@@ -73,24 +87,22 @@ export class TerminalManagerTool extends BaseTool {
                 // Try node-pty first
                 try {
                     const pty = require('node-pty');
-                    const shell = input.shell || (process.platform === 'win32' ? 'powershell.exe' : '/bin/zsh');
                     ptyProcess = pty.spawn(shell, [], {
                         name: 'xterm-256color',
                         cols: input.cols || 80,
                         rows: input.rows || 30,
-                        cwd: getWorkspaceRoot(),
+                        cwd: workDir,
                         env: { ...process.env, TERM: 'xterm-256color' }
                     });
                 } catch (ptyError: any) {
                     // PTY failed, use child_process fallback
                     useFallback = true;
-                    console.log('[Terminal] PTY failed, using child_process fallback:', ptyError.message);
+                    logger.warn(`[Terminal] PTY failed, using child_process fallback: ${ptyError.message}`);
                 }
 
                 if (useFallback) {
                     // Fallback: Use child_process for an interactive-like shell
                     const { spawn, exec } = require('child_process');
-                    const workDir = getWorkspaceRoot();
 
                     // Create a line buffer for commands
                     let currentLine = '';
@@ -130,11 +142,15 @@ export class TerminalManagerTool extends BaseTool {
                             const term = terminals.get(id);
                             if (!term) return;
 
+                            logger.debug(`terminal_input_received id=${id} bytes=${data.length}`);
+
                             // Echo input character by character
                             for (const char of data) {
                                 if (char === '\r' || char === '\n') {
                                     // Execute command when Enter is pressed
-                                    broadcast({ type: 'terminal_output', id, data: '\r\n' });
+                                    const out = '\r\n';
+                                    logger.debug(`terminal_output_broadcast id=${id} bytes=${out.length}`);
+                                    broadcast({ type: 'terminal_output', id, data: out });
                                     const cmd = currentLine.trim();
                                     currentLine = '';
 
@@ -142,37 +158,48 @@ export class TerminalManagerTool extends BaseTool {
                                         executeCommand(cmd).then((output) => {
                                             if (output) {
                                                 term.history.push(output);
+                                                logger.debug(`terminal_output_broadcast id=${id} bytes=${output.length}`);
                                                 broadcast({ type: 'terminal_output', id, data: output });
                                             }
                                             // Show next prompt
                                             const prompt = `${path.basename(currentCwd)}$ `;
+                                            logger.debug(`terminal_output_broadcast id=${id} bytes=${prompt.length}`);
                                             broadcast({ type: 'terminal_output', id, data: prompt });
                                         });
                                     } else {
                                         // Empty command, just show prompt
                                         const prompt = `${path.basename(currentCwd)}$ `;
+                                        logger.debug(`terminal_output_broadcast id=${id} bytes=${prompt.length}`);
                                         broadcast({ type: 'terminal_output', id, data: prompt });
                                     }
                                 } else if (char === '\x7f' || char === '\b') {
                                     // Backspace
                                     if (currentLine.length > 0) {
                                         currentLine = currentLine.slice(0, -1);
-                                        broadcast({ type: 'terminal_output', id, data: '\b \b' });
+                                        const out = '\b \b';
+                                        logger.debug(`terminal_output_broadcast id=${id} bytes=${out.length}`);
+                                        broadcast({ type: 'terminal_output', id, data: out });
                                     }
                                 } else if (char === '\x03') {
                                     // Ctrl+C
                                     currentLine = '';
-                                    broadcast({ type: 'terminal_output', id, data: '^C\r\n' });
+                                    const out = '^C\r\n';
+                                    logger.debug(`terminal_output_broadcast id=${id} bytes=${out.length}`);
+                                    broadcast({ type: 'terminal_output', id, data: out });
                                     const prompt = `${path.basename(currentCwd)}$ `;
+                                    logger.debug(`terminal_output_broadcast id=${id} bytes=${prompt.length}`);
                                     broadcast({ type: 'terminal_output', id, data: prompt });
                                 } else {
                                     // Regular character - echo and add to buffer
                                     currentLine += char;
+                                    logger.debug(`terminal_output_broadcast id=${id} bytes=${char.length}`);
                                     broadcast({ type: 'terminal_output', id, data: char });
                                 }
                             }
                         },
-                        resize: () => { /* No-op for fallback */ },
+                        resize: (cols: number, rows: number) => {
+                            logger.info(`terminal_resize_received id=${id} cols=${cols} rows=${rows}`);
+                        },
                         kill: () => { /* No-op - no actual process to kill */ },
                         onData: () => { /* Data is broadcast directly in write() */ },
                         _isFallback: true
@@ -186,9 +213,11 @@ export class TerminalManagerTool extends BaseTool {
                     // Send initial prompt
                     setTimeout(() => {
                         const prompt = `${path.basename(currentCwd)}$ `;
+                        logger.debug(`terminal_output_broadcast id=${id} bytes=${prompt.length}`);
                         broadcast({ type: 'terminal_output', id, data: prompt });
                     }, 100);
 
+                    logger.info(`terminal_create_ok id=${id} mode=fallback pid=${ptyWrapper.pid}`);
                     return { ok: true, output: { id, pid: ptyWrapper.pid, message: 'Terminal created (fallback mode).', fallback: true }, logs: [`term_create=${id} fallback=true`] };
                 }
 
@@ -201,11 +230,14 @@ export class TerminalManagerTool extends BaseTool {
                 ptyProcess.onData((data: string) => {
                     term.history.push(data);
                     if (term.history.length > 5000) term.history.shift();
+                    logger.debug(`terminal_output_broadcast id=${id} bytes=${data.length}`);
                     broadcast({ type: 'terminal_output', id, data });
                 });
 
+                logger.info(`terminal_create_ok id=${id} mode=pty pid=${ptyProcess.pid}`);
                 return { ok: true, output: { id, pid: ptyProcess.pid, message: 'Terminal created.' }, logs: [`term_create=${id}`] };
             } catch (e: any) {
+                logger.error(`terminal_create_failed id=${id} error=${e.message}`);
                 return { ok: false, error: `Failed to spawn terminal: ${e.message}`, logs: [] };
             }
         }
@@ -222,6 +254,8 @@ export class TerminalManagerTool extends BaseTool {
             if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
 
             if (!input.command) return { ok: false, error: 'command input required', logs: [] };
+            
+            logger.debug(`terminal_input_received id=${id} bytes=${input.command.length}`);
             term.pty.write(input.command);
 
             // Wait a bit for output
@@ -233,6 +267,8 @@ export class TerminalManagerTool extends BaseTool {
         if (action === 'resize') {
             const term = terminals.get(id);
             if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
+            
+            logger.info(`terminal_resize_received id=${id} cols=${input.cols} rows=${input.rows}`);
             term.pty.resize(input.cols || 80, input.rows || 30);
             return { ok: true, output: { message: 'Resized' }, logs: [] };
         }
