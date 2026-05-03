@@ -186,17 +186,11 @@ export default function EmbeddedTerminal({
         // Handle input [Wakil 5.2: Block during Hard Quiet Mode]
         term.onData((data) => {
             if (!isReadyRef.current) {
-                if (import.meta.env.DEV) {
-                    console.debug('[Terminal] Input blocked: not ready');
-                }
                 return;
             }
             // [Wakil 5.2] HARD FREEZE: No input during agent run
             if (SocketService.isQuietMode()) {
                 return;
-            }
-            if (import.meta.env.DEV) {
-                console.debug(`[Terminal] Input sent: ${data.length} bytes`);
             }
             SocketService.send({
                 type: 'terminal_input',
@@ -248,9 +242,6 @@ export default function EmbeddedTerminal({
                     lastCols = cols;
                     lastRows = rows;
 
-                    if (import.meta.env.DEV) {
-                        console.debug(`[Terminal] Manual resize: ${cols}x${rows}`);
-                    }
 
                     term.resize(cols, rows);
 
@@ -261,9 +252,6 @@ export default function EmbeddedTerminal({
                         rows
                     });
                 } catch (e) {
-                    if (import.meta.env.DEV) {
-                        console.warn('[Terminal] Resize error:', e);
-                    }
                 }
             }, 300);
         });
