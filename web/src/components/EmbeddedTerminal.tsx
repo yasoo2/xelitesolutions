@@ -5,7 +5,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
+// import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 import { SocketService } from '../services/socket';
 import { API_URL } from '../config';
@@ -24,7 +24,7 @@ export default function EmbeddedTerminal({
 }: EmbeddedTerminalProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const termRef = useRef<Terminal | null>(null);
-    const fitAddonRef = useRef<FitAddon | null>(null);
+    // const fitAddonRef = useRef<FitAddon | null>(null);
     const isOpenRef = useRef(false);
     const [isReady, setIsReady] = useState(false);
     const isReadyRef = useRef(false);
@@ -78,8 +78,8 @@ export default function EmbeddedTerminal({
             scrollback: 10000,
         });
 
-        const fitAddon = new FitAddon();
-        term.loadAddon(fitAddon);
+        // const fitAddon = new FitAddon();
+        // term.loadAddon(fitAddon);
 
         // Track mounted state
         let isMounted = true;
@@ -105,17 +105,20 @@ export default function EmbeddedTerminal({
                 try {
                     term.open(containerRef.current);
                     termRef.current = term;
-                    fitAddonRef.current = fitAddon;
+                    // fitAddonRef.current = fitAddon;
                     isOpenRef.current = true;
 
                     // Initial fit safely
                     setTimeout(() => {
                         if (isMounted && isOpenRef.current && term.element && containerRef.current) {
                             try {
-                                // Double check visibility before fit
+                                // Double check visibility
                                 const rect = containerRef.current.getBoundingClientRect();
                                 if (rect.width > 0 && rect.height > 0) {
-                                    fitAddon.fit();
+                                    // Manual initial resize
+                                    const cols = Math.max(20, Math.floor(rect.width / 8.5));
+                                    const rows = Math.max(5, Math.floor(rect.height / 20));
+                                    term.resize(cols, rows);
                                 }
                             } catch (e) {
                                 if (import.meta.env.DEV) {
@@ -215,10 +218,9 @@ export default function EmbeddedTerminal({
                 if (!isMounted || !isOpenRef.current || !termRef.current) return;
 
                 const container = containerRef.current;
-                const term = termRef.current as any;
-                const fitAddon = fitAddonRef.current;
+                const term = termRef.current;
 
-                if (!container || !term || !fitAddon) return;
+                if (!container || !term) return;
 
                 try {
                     // [Wakil 5.1] Block resize during Quiet Mode
@@ -226,42 +228,38 @@ export default function EmbeddedTerminal({
 
                     // Defensive checks for xterm internals
                     if (!term.element || !term.textarea || !term.element.parentElement) return;
-                    if (term._core && term._core.isDisposed) return;
 
                     // Skip if container is hidden or has no size
                     const rect = container.getBoundingClientRect();
                     if (rect.width <= 0 || rect.height <= 0) return;
 
-                    try {
-                        // Fit strictly only if visible
-                        fitAddon.fit();
-                    } catch (e) {
-                        if (import.meta.env.DEV) {
-                            console.debug('[Terminal] fit() failed, skipping:', e);
-                        }
+                    // [REMOVED FIT-ADDON CRASH SOURCE]
+                    // Calculate manual dimensions
+                    const approximateCharWidth = 8.2;
+                    const approximateRowHeight = 19;
+                    const cols = Math.max(20, Math.floor(rect.width / approximateCharWidth));
+                    const rows = Math.max(5, Math.floor(rect.height / approximateRowHeight));
+
+                    if (isNaN(cols) || isNaN(rows)) return;
+
+                    // Strict deduplication at source
+                    if (cols === lastCols && rows === lastRows) return;
+
+                    lastCols = cols;
+                    lastRows = rows;
+
+                    if (import.meta.env.DEV) {
+                        console.debug(`[Terminal] Manual resize: ${cols}x${rows}`);
                     }
 
-                    // Robust proposal check
-                    const dims = fitAddon.proposeDimensions();
-                    if (dims && typeof dims === 'object' && typeof dims.cols === 'number' && typeof dims.rows === 'number') {
-                        const { cols, rows } = dims;
+                    term.resize(cols, rows);
 
-                        if (isNaN(cols) || isNaN(rows)) return;
-                        if (cols <= 0 || rows <= 0) return;
-
-                        // Strict deduplication at source
-                        if (cols === lastCols && rows === lastRows) return;
-
-                        lastCols = cols;
-                        lastRows = rows;
-
-                        SocketService.send({
-                            type: 'terminal_resize',
-                            id: terminalId,
-                            cols,
-                            rows
-                        });
-                    }
+                    SocketService.send({
+                        type: 'terminal_resize',
+                        id: terminalId,
+                        cols,
+                        rows
+                    });
                 } catch (e) {
                     if (import.meta.env.DEV) {
                         console.warn('[Terminal] Resize error:', e);
@@ -293,7 +291,7 @@ export default function EmbeddedTerminal({
 
             const termToDispose = term; // Keep local ref
             termRef.current = null;
-            fitAddonRef.current = null;
+            // fitAddonRef.current = null;
 
             try {
                 if (termToDispose) {
