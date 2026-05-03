@@ -70,6 +70,16 @@ async function performUpdate(targetCommit: string) {
         logger.info('[PingDeploy] Build complete');
 
         // Restart
+        if (process.platform === 'linux') {
+            try {
+                await runCommand('systemctl', ['restart', 'joe-api.service'], PROJECT_PATH);
+                logger.info('[PingDeploy] Server restarted via systemctl');
+                return;
+            } catch (e: any) {
+                logger.error(`[PingDeploy] systemctl restart failed: ${e.message}. Falling back to manual.`);
+            }
+        }
+
         await runCommand('pkill', ['-f', 'node.*dist/index.js'], PROJECT_PATH);
         await new Promise(r => setTimeout(r, 3000));
 
@@ -82,7 +92,7 @@ async function performUpdate(targetCommit: string) {
         });
         child.unref();
 
-        logger.info(`[PingDeploy] Server restarted, PID: ${child.pid}`);
+        logger.info(`[PingDeploy] Server restarted via spawn, PID: ${child.pid}`);
 
     } catch (error: any) {
         logger.error(`[PingDeploy] Update failed: ${error.message}`);

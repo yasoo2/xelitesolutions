@@ -38,6 +38,16 @@ async function runDeployment() {
         logger.info('[DeployHelper] API built');
 
         // 3. Restart main API
+        if (process.platform === 'linux') {
+            try {
+                await runCommand('systemctl', ['restart', 'joe-api.service'], PROJECT_PATH);
+                logger.info('[DeployHelper] Main API restarted via systemctl');
+                return;
+            } catch (e: any) {
+                logger.error(`[DeployHelper] systemctl restart failed: ${e.message}. Falling back to manual.`);
+            }
+        }
+
         await runCommand('pkill', ['-f', 'node.*dist/index.js'], PROJECT_PATH);
         await new Promise(r => setTimeout(r, 3000));
 
@@ -49,7 +59,7 @@ async function runDeployment() {
         });
         child.unref();
 
-        logger.info('[DeployHelper] Main API restarted');
+        logger.info('[DeployHelper] Main API restarted via spawn');
 
     } catch (error: any) {
         logger.error(`[DeployHelper] Deployment failed: ${error.message}`);

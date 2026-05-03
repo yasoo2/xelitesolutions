@@ -39,7 +39,7 @@ command_exists() {
 check_health() {
     local retries=$1
     local interval=$2
-    local url="http://localhost:$API_PORT/health"
+    local url="http://localhost:$API_PORT/api/health"
 
     log_info "Checking API health at $url..."
 
@@ -171,13 +171,9 @@ main() {
     log_info "🔄 Restarting API Server..."
     log_info "========================================="
 
-    log_info "Stopping existing API server..."
-    npx pm2 stop joe-api 2>/dev/null || true
-    sleep 2
-
-    log_info "Starting new API server..."
-    npx pm2 start ecosystem.config.js
-    log_info "API server managed by PM2"
+    log_info "Restarting API server via systemctl..."
+    sudo systemctl restart joe-api.service
+    log_info "API server managed by systemd"
 
     # Wait for server to start
     log_info "Waiting for server to start..."
@@ -188,7 +184,7 @@ main() {
         log_info "========================================="
         log_info "✅ Deployment completed successfully!"
         log_info "========================================="
-        log_info "API Logs: npx pm2 logs joe-api"
+        log_info "API Logs: sudo journalctl -u joe-api.service -n 200 --no-pager"
 
         # Save last stable commit
         echo "$REMOTE_COMMIT" > "$PROJECT_PATH/last_stable_commit"
@@ -198,7 +194,7 @@ main() {
         log_error "========================================="
         log_error "❌ Deployment failed - API health check failed"
         log_error "========================================="
-        log_error "Check logs: npx pm2 logs joe-api"
+        log_error "Check logs: sudo journalctl -u joe-api.service -n 200 --no-pager"
 
         exit 1
     fi
@@ -222,9 +218,8 @@ rollback() {
         npm install --legacy-peer-deps
         npm run build
 
-        npx pm2 stop joe-api 2>/dev/null || true
-        sleep 2
-        npx pm2 start ecosystem.config.js
+        log_info "Restarting API server via systemctl..."
+        sudo systemctl restart joe-api.service
 
         log_info "✅ Rollback completed"
     else

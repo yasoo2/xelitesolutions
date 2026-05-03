@@ -21,20 +21,18 @@ npm install --legacy-peer-deps --no-audit --no-fund
 npm run build || npx tsc
 
 echo "🔄 Restarting server..."
-npx pm2 stop joe-api 2>/dev/null || true
-sleep 2
-npx pm2 start ecosystem.config.js
+sudo systemctl restart joe-api.service
 
-echo "✅ Deployment initiated via PM2!"
+echo "✅ Deployment initiated via systemctl!"
 echo "📊 Checking health..."
-RETRIES=10
+RETRIES=15
 INTERVAL=2
 
 for i in $(seq 1 $RETRIES); do
-    if curl -s -f "http://localhost:8080/health" >/dev/null 2>&1; then
+    if curl -s -f "http://localhost:8080/api/health" >/dev/null 2>&1; then
         echo "✅ Health check passed!"
         echo ""
-        echo "📋 View logs: npx pm2 logs joe-api"
+        echo "📋 View logs: sudo journalctl -u joe-api.service -n 100 -f"
         exit 0
     fi
     echo "⚠️ Waiting for server... ($i/$RETRIES)"
@@ -42,5 +40,5 @@ for i in $(seq 1 $RETRIES); do
 done
 
 echo "❌ Health check failed after $RETRIES attempts."
-echo "📋 View logs: npx pm2 logs joe-api"
+echo "📋 View logs: sudo journalctl -u joe-api.service -n 200 --no-pager"
 exit 1

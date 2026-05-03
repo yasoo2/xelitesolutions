@@ -90,31 +90,49 @@ async function runDeployment(commit: string) {
 
         // Step 4: Restart server
         logger.info(`[Deploy ${deploymentId}] Restarting server...`);
-        try {
-            await runSpawn('pkill', ['-f', 'node.*dist/index.js'], PROJECT_PATH, 10000);
-        } catch (e) {
-            // Process might not be running
+        if (process.platform === 'linux') {
+            try {
+                await runSpawn('systemctl', ['restart', 'joe-api.service'], PROJECT_PATH, 30000);
+                logger.info(`[Deploy ${deploymentId}] Server restarted via systemctl`);
+            } catch (e: any) {
+                logger.error(`[Deploy ${deploymentId}] systemctl restart failed: ${e.message}. Falling back to manual.`);
+                
+                try {
+                    await runSpawn('pkill', ['-f', 'node.*dist/index.js'], PROJECT_PATH, 10000);
+                } catch (e) { }
+                await new Promise(r => setTimeout(r, 3000));
+
+                const child = spawn('node', ['dist/index.js'], {
+                    cwd: API_PATH,
+                    env: { ...process.env, NODE_ENV: 'production', PORT: '8080' },
+                    detached: true,
+                    stdio: 'ignore'
+                });
+                child.unref();
+                logger.info(`[Deploy ${deploymentId}] Server restarted via spawn with PID: ${child.pid}`);
+            }
+        } else {
+            try {
+                await runSpawn('pkill', ['-f', 'node.*dist/index.js'], PROJECT_PATH, 10000);
+            } catch (e) { }
+            await new Promise(r => setTimeout(r, 3000));
+
+            const child = spawn('node', ['dist/index.js'], {
+                cwd: API_PATH,
+                env: { ...process.env, NODE_ENV: 'production', PORT: '8080' },
+                detached: true,
+                stdio: 'ignore'
+            });
+            child.unref();
+            logger.info(`[Deploy ${deploymentId}] Server restarted via spawn with PID: ${child.pid}`);
         }
-
-        await new Promise(r => setTimeout(r, 3000));
-
-        // Start new server
-        const child = spawn('node', ['dist/index.js'], {
-            cwd: API_PATH,
-            env: { ...process.env, NODE_ENV: 'production', PORT: '8080' },
-            detached: true,
-            stdio: 'ignore'
-        });
-        child.unref();
-
-        logger.info(`[Deploy ${deploymentId}] Server restarted with PID: ${child.pid}`);
 
         // Step 5: Health check
         await new Promise(r => setTimeout(r, 5000));
         let healthy = false;
         for (let i = 0; i < 5; i++) {
             try {
-                const response = await fetch('http://localhost:8080/health');
+                const response = await fetch('http://localhost:8080/api/health');
                 if (response.ok) {
                     healthy = true;
                     break;

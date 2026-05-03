@@ -4,6 +4,14 @@ This file is the first source of truth for any AI coding agent, Codex session, B
 
 Repository: `yasoo2/xelitesolutions`
 
+## Server Architecture (Hetzner joe-server-1)
+
+- **API**: Runs on Host OS via `systemd` (`joe-api.service`). Listening on `8080`.
+- **Nginx/Web/Mongo**: Run in Docker containers.
+- **Nginx Proxy**: Routes `/api/*` to `host.docker.internal:8080`.
+- **Project Path**: `/root/xelitesolutions`.
+- **Health Check**: Always use `/api/health`.
+
 ## Mission
 
 Joe is an autonomous, multi-agent software engineering platform. The target architecture is not a simple chat assistant. Joe must behave like a disciplined engineering organization:
@@ -40,11 +48,12 @@ Do not introduce competing execution paths unless they are explicitly documented
 
 ## Non-negotiable architecture rules
 
-1. `ProjectPlannerTool` is planner-only. It must never import or call `executeTool` and must never auto-execute generated tasks.
-2. `AgentLoopService` is the orchestrator. Do not turn it back into an uncontrolled random LLM tool loop.
-3. `PhaseExecutorTool` is the bridge between plans and execution. It must execute one phase at a time through `ToolService`.
-4. `ToolService` is the policy and execution gateway. Do not bypass it for shell, file, browser, deploy, Docker, GitHub, or workspace actions.
-5. Trusted context must come from execution context, not from user-provided input. Use trusted `sessionId`, `workspaceId`, and `userId`.
+- `ProjectPlannerTool` is planner-only. It must never import or call `executeTool` and must never auto-execute generated tasks.
+- `AgentLoopService` is the orchestrator. Do not turn it back into an uncontrolled random LLM tool loop.
+- `PhaseExecutorTool` is the bridge between plans and execution. It must execute one phase at a time through `ToolService`.
+- `ToolService` is the policy and execution gateway. Do not bypass it for shell, file, browser, deploy, Docker, GitHub, or workspace actions.
+- **Restart Rule**: Use `systemctl restart joe-api.service` for API updates. Never use `docker restart joe_api` or `pm2`.
+- **Path Resolution**: Workspace-relative paths must be resolved with `workspaceService.getActiveRoot(contextWorkspaceId)`.
 6. A phase passes only when `phaseResult.ok === true` and `phaseResult.output.status === "completed"`.
 7. `partial`, `failed`, and `fatal_error` must stop progression unless controlled self-fix succeeds.
 8. `RepairTicketService` is diagnostic. It creates structured repair tickets; it does not repair.

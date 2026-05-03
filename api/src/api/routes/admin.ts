@@ -157,14 +157,26 @@ router.get('/system/health', async (req, res) => {
             diskInfo = execSync("df -h / | awk 'NR==2{printf \"%s/%s (%s)\", $3,$2,$5}'", { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
         } catch { }
 
-        // Docker stats
+        // Docker stats (filter for Joe services)
         let containers: any[] = [];
         try {
             const dockerOutput = execSync('docker ps --format "{{json .}}"', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
             containers = dockerOutput.split('\n').map(l => {
-                try { return JSON.parse(l); } catch { return null; }
+                try { 
+                    const c = JSON.parse(l);
+                    // Include all or filter for joe_
+                    return c;
+                } catch { return null; }
             }).filter(Boolean);
         } catch { }
+
+        // Systemd service status (Joe API)
+        let apiServiceStatus = 'unknown';
+        try {
+            apiServiceStatus = execSync('systemctl is-active joe-api.service', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+        } catch { 
+            apiServiceStatus = 'inactive';
+        }
 
         // MongoDB stats
         let dbStats: any = {};
@@ -194,6 +206,10 @@ router.get('/system/health', async (req, res) => {
                 platform: process.platform
             },
             containers,
+            apiService: {
+                name: 'joe-api.service',
+                status: apiServiceStatus
+            },
             database: dbStats,
             timestamp: new Date().toISOString()
         });

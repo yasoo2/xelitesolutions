@@ -334,15 +334,21 @@ export class DeployManager {
     }
 
     private async restartAPIServer() {
-        // Try graceful restart first
-        try {
-            // Find and kill existing API process
-            await this.runCommand('pkill', ['-f', 'node.*dist/index.js'], PROJECT_ROOT, 10000);
-        } catch (e) {
-            // Process might not be running, that's ok
+        if (process.platform === 'linux') {
+            try {
+                logger.info('[DeployManager] Restarting joe-api.service via systemctl...');
+                await this.runCommand('systemctl', ['restart', 'joe-api.service'], PROJECT_ROOT, 30000);
+                return;
+            } catch (e: any) {
+                logger.error(`[DeployManager] systemctl restart failed: ${e.message}. Falling back to manual spawn.`);
+            }
         }
 
-        // Start new API server
+        // Fallback or Non-Linux (Dev)
+        try {
+            await this.runCommand('pkill', ['-f', 'node.*dist/index.js'], PROJECT_ROOT, 10000);
+        } catch (e) { }
+
         const child = spawn('node', ['dist/index.js'], {
             cwd: API_DIR,
             env: { ...process.env, NODE_ENV: 'production' },
@@ -350,24 +356,22 @@ export class DeployManager {
             stdio: 'ignore'
         });
         child.unref();
-
-        // Wait for server to start
         await new Promise(resolve => setTimeout(resolve, 3000));
     }
 
     private async verifyHealth(retries = 5): Promise<void> {
-        const port = process.env.PORT || 5001;
+        const port = process.env.PORT || 8080;
         const API_URL = process.env.API_URL || `http://127.0.0.1:${port}`;
 
         for (let i = 0; i < retries; i++) {
             try {
-                // 1. Check API basic responsiveness
-                const response = await axios.get(`${API_URL}/health`, { timeout: 5000 });
+                // 1. Check API basic responsiveness (always use /api/health)
+                const response = await axios.get(`${API_URL}/api/health`, { timeout: 5000 });
                 if (response.status !== 200) throw new Error(`API health returned ${response.status}`);
 
                 // 2. Check Database Connectivity (if available via health endpoint)
-                if (response.data?.services?.database === 'disconnected') {
-                    throw new Error('Database is disconnected according to health report');
+                if (response.data?.database === 'DOWN' || response.data?.database === 'ERROR') {
+                    throw new Error(`Database is in state ${response.data.database} according to health report`);
                 }
 
                 // 3. Check Disk Space (Critical for builds)

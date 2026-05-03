@@ -150,34 +150,17 @@ fi
 log_step "🔄 خطوة 5: إعادة تشغيل السيرفر"
 # ═══════════════════════════════════════════════════════════════════
 
-log_info "إيقاف السيرفر القديم..."
-npx pm2 stop joe-api 2>/dev/null || true
-sleep 3
+log_info "إعادة تشغيل السيرفر عبر systemctl..."
+sudo systemctl restart joe-api.service
 
-# Check if any node processes are still running
-NODE_PIDS=$(pgrep -f "node.*dist" || echo "")
-if [ -n "$NODE_PIDS" ]; then
-    log_warn "بعض العمليات لا تزال تعمل، إيقافها بالقوة..."
-    kill -9 $NODE_PIDS 2>/dev/null || true
-    sleep 2
-fi
-
-log_info "تشغيل السيرفر الجديد..."
-cd "$API_PATH"
-
-export NODE_ENV=production
-export PORT=8080
-export PROJECT_ROOT="$PROJECT_PATH"
-
-npx pm2 start ecosystem.config.js
-log_info "السيرفر يعمل الآن تحت إدارة PM2"
+log_success "تم إرسال أمر إعادة التشغيل لنظام systemd"
 sleep 5
 
 # ═══════════════════════════════════════════════════════════════════
 log_step "🔍 خطوة 6: التحقق من الصحة"
 # ═══════════════════════════════════════════════════════════════════
 
-HEALTH_URL="http://localhost:8080/health"
+HEALTH_URL="http://localhost:8080/api/health"
 RETRIES=10
 INTERVAL=2
 
@@ -206,10 +189,10 @@ for i in $(seq 1 $RETRIES); do
         echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
         echo ""
         log_info "الإصدار الجديد: ${REMOTE_COMMIT:0:7}"
-        log_info "تم تشغيل نظام PM2 بنجاح"
-        log_info "اللوجز: npx pm2 logs joe-api"
+        log_info "تم تشغيل نظام systemd بنجاح"
+        log_info "اللوجز: sudo journalctl -u joe-api.service -n 100 -f"
         log_info ""
-        log_info "الآن عند دفع أي تحديث جديد، سيتم نشره تلقائياً!"
+        log_info "الآن عند دفع أي تحديث جديد، سيتم نشره تلقائياً (عبر systemd)!"
 
         exit 0
     fi
@@ -219,5 +202,5 @@ for i in $(seq 1 $RETRIES); do
 done
 
 log_error "❌ فشل فحص الصحة بعد $RETRIES محاولات"
-log_info "اللوجز: npx pm2 logs joe-api"
+log_info "اللوجز: sudo journalctl -u joe-api.service -n 200 --no-pager"
 exit 1

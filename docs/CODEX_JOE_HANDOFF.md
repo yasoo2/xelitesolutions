@@ -39,6 +39,12 @@ User request
 
 ## Current confirmed architecture
 
+### Server (Hetzner joe-server-1)
+- **API**: Host OS via `systemd` (`joe-api.service`).
+- **Nginx/Web/Mongo**: Docker containers.
+- **Project Path**: `/root/xelitesolutions`.
+- **Health Check**: Always use `/api/health`.
+
 ### ProjectPlannerTool
 
 - Planner-only.
@@ -315,6 +321,7 @@ Rules:
 - Keep ToolService path resolution context-aware using contextWorkspaceId.
 - Do not claim universal autonomy from mocked E2E tests alone.
 - Add/update permanent tests.
+- **Hetzner Architecture**: API is on host via systemd; do not look for a joe_api container or use PM2 for restart.
 
 After changes run:
 cd api
