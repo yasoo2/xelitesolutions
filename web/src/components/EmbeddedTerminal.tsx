@@ -77,13 +77,18 @@ export default function EmbeddedTerminal({
 
         // Track mounted state
         let isMounted = true;
+        let initRetries = 0;
+        const MAX_INIT_RETRIES = 50; // ~5 seconds max waiting
 
         const tryInit = () => {
             if (!containerRef.current || !isMounted) return;
 
             // Wait for container to have dimensions
             if (containerRef.current.clientWidth === 0 || containerRef.current.clientHeight === 0) {
-                setTimeout(tryInit, 100);
+                if (initRetries < MAX_INIT_RETRIES) {
+                    initRetries++;
+                    setTimeout(tryInit, 100);
+                }
                 return;
             }
 
@@ -101,9 +106,15 @@ export default function EmbeddedTerminal({
                     setTimeout(() => {
                         if (isMounted && isOpenRef.current && term.element && containerRef.current) {
                             try {
-                                fitAddon.fit();
+                                // Double check visibility before fit
+                                const rect = containerRef.current.getBoundingClientRect();
+                                if (rect.width > 0 && rect.height > 0) {
+                                    fitAddon.fit();
+                                }
                             } catch (e) {
-                                console.debug('[Terminal] Initial fit skipped:', e);
+                                if (import.meta.env.DEV) {
+                                    console.debug('[Terminal] Initial fit skipped:', e);
+                                }
                             }
                         }
                     }, 200);
@@ -185,56 +196,62 @@ export default function EmbeddedTerminal({
             if (!isMounted) return;
 
             resizeTimeout = setTimeout(() => {
-                if (!isMounted || !isOpenRef.current) return;
+                if (!isMounted || !isOpenRef.current || !termRef.current) return;
 
-                if (fitAddonRef.current && containerRef.current && termRef.current) {
+                const container = containerRef.current;
+                const term = termRef.current as any;
+                const fitAddon = fitAddonRef.current;
+
+                if (!container || !term || !fitAddon) return;
+
+                try {
                     // [Wakil 5.1] Block resize during Quiet Mode
-                    if (SocketService.isQuietMode()) {
-                        return;
-                    }
+                    if (SocketService.isQuietMode()) return;
+
+                    // Defensive checks for xterm internals
+                    if (!term.element || !term.textarea || !term.element.parentElement) return;
+                    if (term._core && term._core.isDisposed) return;
+
+                    // Skip if container is hidden or has no size
+                    const rect = container.getBoundingClientRect();
+                    if (rect.width <= 0 || rect.height <= 0) return;
+
                     try {
-                        const term = termRef.current as any;
-                        if (!term || !term.element) return;
-
-                        // Ensure terminal is still attached
-                        if (!term.element.parentElement) return;
-
-                        // Prevent writing to disposed terminal
-                        if (term._core && term._core.isDisposed) return;
-
-                        try {
-                            // Defensive fit
-                            fitAddonRef.current.fit();
-                        } catch {
-                            // Fall through to proposeDimensions if fit fails
+                        // Fit strictly only if visible
+                        fitAddon.fit();
+                    } catch (e) {
+                        if (import.meta.env.DEV) {
+                            console.debug('[Terminal] fit() failed, skipping:', e);
                         }
+                    }
 
-                        // Robust proposal check
-                        const dims = fitAddonRef.current.proposeDimensions();
-                        if (dims && typeof dims === 'object' && typeof dims.cols === 'number' && typeof dims.rows === 'number') {
-                            const cols = dims.cols;
-                            const rows = dims.rows;
+                    // Robust proposal check
+                    const dims = fitAddon.proposeDimensions();
+                    if (dims && typeof dims === 'object' && typeof dims.cols === 'number' && typeof dims.rows === 'number') {
+                        const { cols, rows } = dims;
 
-                            if (isNaN(cols) || isNaN(rows)) return;
-                            if (cols <= 0 || rows <= 0) return;
+                        if (isNaN(cols) || isNaN(rows)) return;
+                        if (cols <= 0 || rows <= 0) return;
 
-                            // [ELITE FIX] Strict deduplication at source
-                            if (cols === lastCols && rows === lastRows) return;
+                        // Strict deduplication at source
+                        if (cols === lastCols && rows === lastRows) return;
 
-                            lastCols = cols;
-                            lastRows = rows;
+                        lastCols = cols;
+                        lastRows = rows;
 
-                            SocketService.send({
-                                type: 'terminal_resize',
-                                id: terminalId,
-                                cols,
-                                rows
-                            });
-                        }
-                    } catch {
+                        SocketService.send({
+                            type: 'terminal_resize',
+                            id: terminalId,
+                            cols,
+                            rows
+                        });
+                    }
+                } catch (e) {
+                    if (import.meta.env.DEV) {
+                        console.warn('[Terminal] Resize error:', e);
                     }
                 }
-            }, 300); // Increased debounce to 300ms for stability
+            }, 300);
         });
 
         if (containerRef.current) {
