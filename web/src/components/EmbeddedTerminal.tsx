@@ -188,10 +188,6 @@ export default function EmbeddedTerminal({
             if (!isReadyRef.current) {
                 return;
             }
-            // [Wakil 5.2] HARD FREEZE: No input during agent run
-            if (SocketService.isQuietMode()) {
-                return;
-            }
             SocketService.send({
                 type: 'terminal_input',
                 id: terminalId,
@@ -217,8 +213,6 @@ export default function EmbeddedTerminal({
                 if (!container || !term) return;
 
                 try {
-                    // [Wakil 5.1] Block resize during Quiet Mode
-                    if (SocketService.isQuietMode()) return;
 
                     // Defensive checks for xterm internals
                     if (!term.element || !term.textarea || !term.element.parentElement) return;

@@ -460,7 +460,7 @@ export const SocketService = {
   },
   send(data: any) {
     // [Wakil 5.2] HARD Quiet Mode: Block ALL outgoing traffic EXCEPT critical signals
-    const criticalSignals = ['run', 'stop', 'join_session', 'heartbeat'];
+    const criticalSignals = ['run', 'stop', 'join_session', 'heartbeat', 'terminal_input', 'terminal_resize'];
     const isCritical = data && criticalSignals.includes(data.type);
 
     if (quietMode && !isCritical) {
