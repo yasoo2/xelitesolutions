@@ -183,9 +183,9 @@ export function attachWebSocket(server: Server) {
               })().catch(() => { });
             });
           } else {
-            Promise.resolve(require('./tools/definitions/TaskInteractionTools')).then(({ terminals }) => {
+            Promise.resolve(require('../modules/tools/terminal/TerminalState')).then(({ terminals }) => {
               const term = terminals.get(id);
-              if (term) term.pty.write(data);
+              if (term) term.write(data);
             });
           }
         }
@@ -205,9 +205,9 @@ export function attachWebSocket(server: Server) {
               })().catch(() => { });
             });
           } else {
-            Promise.resolve(require('./tools/definitions/TaskInteractionTools')).then(({ terminals }) => {
+            Promise.resolve(require('../modules/tools/terminal/TerminalState')).then(({ terminals }) => {
               const term = terminals.get(id);
-              if (term) term.pty.resize(cols, rows);
+              if (term) term.resize(cols, rows);
             });
           }
         }

@@ -1,4 +1,5 @@
-import { TerminalManagerTool, terminals } from '../../modules/tools/definitions/TaskInteractionTools';
+import { TerminalManagerTool } from '../../modules/tools/definitions/TaskInteractionTools';
+import { terminals } from '../../modules/tools/terminal/TerminalState';
 
 async function testTerminalManager() {
     console.log('🚀 Starting TerminalManagerTool verification...');

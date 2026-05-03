@@ -4,9 +4,7 @@ import { ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
 import { broadcast, registerTerminalOwner } from '../../../api/ws';
-// Store for persistent terminals
-export const terminals = new Map<string, { pty: any, history: string[] }>();
-
+import { terminals, registerTerminal, removeTerminal } from '../terminal/TerminalState';
 import { logger } from '../../../shared/utils/logger';
 
 function getWorkspaceRoot() {
@@ -205,8 +203,15 @@ export class TerminalManagerTool extends BaseTool {
                         _isFallback: true
                     };
 
-                    const term = { pty: ptyWrapper, history: [] as string[] };
-                    terminals.set(id, term);
+                    const term = { 
+                        pty: ptyWrapper, 
+                        history: [] as string[],
+                        write: (data: string) => ptyWrapper.write(data),
+                        resize: (cols: number, rows: number) => ptyWrapper.resize(cols, rows),
+                        kill: () => ptyWrapper.kill(),
+                        fallback: true
+                    };
+                    registerTerminal(id, term);
                     const userId = typeof input?.userId === 'string' ? String(input.userId).trim() : '';
                     if (userId) registerTerminalOwner(id, userId);
 
@@ -222,8 +227,14 @@ export class TerminalManagerTool extends BaseTool {
                 }
 
                 // PTY succeeded
-                const term = { pty: ptyProcess, history: [] as string[] };
-                terminals.set(id, term);
+                const term = { 
+                    pty: ptyProcess, 
+                    history: [] as string[],
+                    write: (data: string) => ptyProcess.write(data),
+                    resize: (cols: number, rows: number) => ptyProcess.resize(cols, rows),
+                    kill: () => ptyProcess.kill()
+                };
+                registerTerminal(id, term);
                 const userId = typeof input?.userId === 'string' ? String(input.userId).trim() : '';
                 if (userId) registerTerminalOwner(id, userId);
 
@@ -256,7 +267,7 @@ export class TerminalManagerTool extends BaseTool {
             if (!input.command) return { ok: false, error: 'command input required', logs: [] };
             
             logger.debug(`terminal_input_received id=${id} bytes=${input.command.length}`);
-            term.pty.write(input.command);
+            term.write(input.command);
 
             // Wait a bit for output
             await new Promise(r => setTimeout(r, 200));
@@ -269,15 +280,15 @@ export class TerminalManagerTool extends BaseTool {
             if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
             
             logger.info(`terminal_resize_received id=${id} cols=${input.cols} rows=${input.rows}`);
-            term.pty.resize(input.cols || 80, input.rows || 30);
+            term.resize(input.cols || 80, input.rows || 30);
             return { ok: true, output: { message: 'Resized' }, logs: [] };
         }
 
         if (action === 'kill') {
             const term = terminals.get(id);
             if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
-            term.pty.kill();
-            terminals.delete(id);
+            term.kill();
+            removeTerminal(id);
             return { ok: true, output: { message: 'Terminal killed' }, logs: [] };
         }
 
