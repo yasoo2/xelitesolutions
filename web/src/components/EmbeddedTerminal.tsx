@@ -27,8 +27,14 @@ export default function EmbeddedTerminal({
     const fitAddonRef = useRef<FitAddon | null>(null);
     const isOpenRef = useRef(false);
     const [isReady, setIsReady] = useState(false);
+    const isReadyRef = useRef(false);
     const [isConnecting, setIsConnecting] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    const setTerminalReady = useCallback((ready: boolean) => {
+        setIsReady(ready);
+        isReadyRef.current = ready;
+    }, []);
 
     // Get theme-based colors
     const getTerminalTheme = useCallback(() => {
@@ -154,11 +160,13 @@ export default function EmbeddedTerminal({
                 const data = await res.json();
 
                 if (data.ok || data.error?.includes('already exists')) {
-                    setIsReady(true);
+                    setTerminalReady(true);
                     setIsConnecting(false);
                     term.writeln('\x1b[1;32m● Terminal Ready\x1b[0m');
                     term.writeln('');
                     onReady?.();
+                    // Ensure focus after ready
+                    setTimeout(() => term.focus(), 100);
                 } else {
                     throw new Error(data.error || 'Failed to create terminal');
                 }
@@ -174,10 +182,18 @@ export default function EmbeddedTerminal({
 
         // Handle input [Wakil 5.2: Block during Hard Quiet Mode]
         term.onData((data) => {
-            if (!isReady) return;
+            if (!isReadyRef.current) {
+                if (import.meta.env.DEV) {
+                    console.debug('[Terminal] Input blocked: not ready');
+                }
+                return;
+            }
             // [Wakil 5.2] HARD FREEZE: No input during agent run
             if (SocketService.isQuietMode()) {
                 return;
+            }
+            if (import.meta.env.DEV) {
+                console.debug(`[Terminal] Input sent: ${data.length} bytes`);
             }
             SocketService.send({
                 type: 'terminal_input',
@@ -270,6 +286,7 @@ export default function EmbeddedTerminal({
         return () => {
             isMounted = false;
             isOpenRef.current = false;
+            setTerminalReady(false);
             if (resizeTimeout) clearTimeout(resizeTimeout);
             resizeObserver.disconnect();
             themeObserver.disconnect();
@@ -357,14 +374,16 @@ export default function EmbeddedTerminal({
 
             const data = await res.json();
             if (data.ok) {
-                setIsReady(true);
+                setTerminalReady(true);
                 setIsConnecting(false);
                 termRef.current?.writeln('\x1b[1;32m● Terminal Ready\x1b[0m\n');
+                setTimeout(() => termRef.current?.focus(), 100);
             } else {
                 throw new Error(data.error);
             }
         } catch (e: any) {
             setError(e.message);
+            setTerminalReady(false);
             setIsConnecting(false);
             termRef.current?.writeln(`\x1b[1;31m✗ ${e.message}\x1b[0m`);
         }
@@ -376,13 +395,17 @@ export default function EmbeddedTerminal({
     }, []);
 
     return (
-        <div className="joe-terminal-container" style={{
+        <div className="joe-terminal-container" 
+          onClick={() => termRef.current?.focus()}
+          tabIndex={0}
+          style={{
             display: 'flex',
             flexDirection: 'column',
             height: '100%',
             background: 'rgba(0,0,0,0.3)',
             borderRadius: '0 0 var(--joe-border-radius) var(--joe-border-radius)',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            outline: 'none'
         }}>
             {/* Toolbar */}
             <div className="joe-terminal-toolbar" style={{
