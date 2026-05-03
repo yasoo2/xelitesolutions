@@ -68,6 +68,14 @@ function run() {
     pass('AgentLoop is connected to self-fix execution');
   }
 
+  const registryPath = path.resolve(__dirname, '../../modules/tools/registry.ts');
+  const registry = readRequired(registryPath, 'Tool Registry');
+  if (!registry.includes('TerminalManagerTool')) {
+    fail('TerminalManagerTool must be registered in src/modules/tools/registry.ts');
+  } else {
+    pass('TerminalManagerTool is registered in tools registry');
+  }
+
   pass('Architecture guard passed');
 }
 

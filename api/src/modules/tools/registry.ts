@@ -2,6 +2,7 @@
 import { ToolDefinition } from './types';
 import { BrowserRunTool } from './definitions/BrowserRunTool';
 import { MemoryTools } from './definitions/MemoryTool';
+import { TerminalManagerTool, SafeReadFileTool, AskUserTool } from './definitions/TaskInteractionTools';
 
 import { VisualQATool } from './definitions/VisualQATool';
 import { ImageGenerationTool } from './definitions/ImageGenerationTool';
@@ -73,5 +74,8 @@ export const tools: ToolDefinition[] = [
   new EchoTool(),
   new FileEditTool(),
   new ShellExecuteTool(),
-  new WriteFileTool()
+  new WriteFileTool(),
+  new TerminalManagerTool(),
+  new SafeReadFileTool(),
+  new AskUserTool()
 ] as any as ToolDefinition[];
