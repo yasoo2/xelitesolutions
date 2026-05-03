@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 import { SocketService } from '../services/socket';
 import { API_URL } from '../config';
@@ -13,9 +12,9 @@ interface TerminalPanelProps {
 export default function TerminalPanel({ onClose }: TerminalPanelProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const termRef = useRef<Terminal | null>(null);
-    const fitAddonRef = useRef<FitAddon | null>(null);
     const [terminalId, setTerminalId] = useState<string>('default');
     const [isReady, setIsReady] = useState(false);
+    const isReadyRef = useRef(false);
     const [isMinimized, setIsMinimized] = useState(false);
 
     // Initialize Terminal
@@ -35,19 +34,14 @@ export default function TerminalPanel({ onClose }: TerminalPanelProps) {
             allowProposedApi: true
         });
 
-        const fitAddon = new FitAddon();
-        term.loadAddon(fitAddon);
         term.open(containerRef.current);
-        fitAddon.fit();
-
         termRef.current = term;
-        fitAddonRef.current = fitAddon;
 
         // Initialize connection
         const initTerminal = async () => {
             const token = localStorage.getItem('token');
             try {
-                await fetch(`${API_URL}/tools/terminal_manager/execute`, {
+                const res = await fetch(`${API_URL}/tools/terminal_manager/execute`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -61,8 +55,16 @@ export default function TerminalPanel({ onClose }: TerminalPanelProps) {
                         rows: 30
                     })
                 });
-                setIsReady(true);
-                term.writeln('\x1b[1;32m✓ Joe Shell Ready\x1b[0m');
+                const data = await res.json();
+                if (data.ok) {
+                    setIsReady(true);
+                    isReadyRef.current = true;
+                    term.writeln('\x1b[1;32m✓ Joe Shell Ready\x1b[0m');
+                    term.focus();
+                } else {
+                    term.writeln(`\x1b[1;31m✗ ${data.error || 'unknown_tool'}\x1b[0m`);
+                    term.writeln('\x1b[90mTip: Make sure the API server is running\x1b[0m');
+                }
             } catch (e) {
                 term.writeln('\x1b[1;31m✗ Connection Failed\x1b[0m');
             }
@@ -71,6 +73,7 @@ export default function TerminalPanel({ onClose }: TerminalPanelProps) {
 
         // Handle Input
         term.onData((data) => {
+            if (!isReadyRef.current) return;
             SocketService.send({
                 type: 'terminal_input',
                 id: terminalId,
@@ -78,51 +81,49 @@ export default function TerminalPanel({ onClose }: TerminalPanelProps) {
             });
         });
 
-        // Handle Resize with Debounce and Observer (Flattened)
-        if (containerRef.current && termRef.current && fitAddonRef.current) {
-            let isMounted = true;
-            const performFit = () => {
-                if (!isMounted || !fitAddonRef.current || !termRef.current) return;
-                try {
-                    const term = termRef.current;
-                    if (!term.element || !term.element.clientWidth) return;
+        // Manual Resize Logic
+        let lastCols = 0;
+        let lastRows = 0;
+        let isMounted = true;
+        
+        const performResize = () => {
+            if (!isMounted || !containerRef.current || !termRef.current) return;
+            const rect = containerRef.current.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
 
-                    fitAddonRef.current.fit();
-                    const dims = fitAddonRef.current.proposeDimensions();
-                    if (dims && typeof dims === 'object' && dims.cols && dims.rows) {
-                        SocketService.send({
-                            type: 'terminal_resize',
-                            id: terminalId,
-                            cols: Number(dims.cols),
-                            rows: Number(dims.rows)
-                        });
-                    }
-                } catch (e) {
-                    console.debug('Terminal fit error inhibited:', e);
-                }
-            };
+            const approximateCharWidth = 8.2;
+            const approximateRowHeight = 19;
+            const cols = Math.max(20, Math.floor(rect.width / approximateCharWidth));
+            const rows = Math.max(5, Math.floor(rect.height / approximateRowHeight));
 
-            const resizeObserver = new ResizeObserver(() => {
-                requestAnimationFrame(() => performFit());
+            if (cols === lastCols && rows === lastRows) return;
+            lastCols = cols;
+            lastRows = rows;
+
+            termRef.current.resize(cols, rows);
+            SocketService.send({
+                type: 'terminal_resize',
+                id: terminalId,
+                cols,
+                rows
             });
+        };
 
-            resizeObserver.observe(containerRef.current);
+        const resizeObserver = new ResizeObserver(() => {
+            requestAnimationFrame(performResize);
+        });
 
-            // Also fit after transition ends
-            const transitionTimeout = setTimeout(performFit, 350);
-
-            return () => {
-                isMounted = false;
-                resizeObserver.disconnect();
-                clearTimeout(transitionTimeout);
-                try {
-                    term.dispose();
-                } catch { }
-            };
-        }
+        resizeObserver.observe(containerRef.current);
+        const t = setTimeout(performResize, 350);
 
         return () => {
-            term.dispose();
+            isMounted = false;
+            resizeObserver.disconnect();
+            clearTimeout(t);
+            if (termRef.current) {
+                termRef.current.dispose();
+                termRef.current = null;
+            }
         };
     }, [terminalId]);
 
@@ -136,11 +137,10 @@ export default function TerminalPanel({ onClose }: TerminalPanelProps) {
         return () => { unsub(); };
     }, [terminalId]);
 
-    // Ensure fit on visibility change
+    // Ensure focus/resize on visibility change
     useEffect(() => {
-        if (!isMinimized && fitAddonRef.current && isReady) {
-            const t = setTimeout(() => fitAddonRef.current?.fit(), 100);
-            return () => clearTimeout(t);
+        if (!isMinimized && isReady) {
+            termRef.current?.focus();
         }
     }, [isMinimized, isReady]);
 

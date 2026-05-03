@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 import { SocketService } from '../../services/socket';
 import { ServerService, ServerConfig } from '../../services/server';
@@ -55,8 +54,8 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
 
     const containersRef = useRef<Record<string, HTMLDivElement | null>>({});
     const termsRef = useRef<Record<string, Terminal | null>>({});
-    const fitAddonsRef = useRef<Record<string, FitAddon | null>>({});
     const cleanupRef = useRef<Record<string, (() => void) | null>>({});
+    const isReadyRefs = useRef<Record<string, boolean>>({});
 
     useEffect(() => {
         loadServers();
@@ -109,16 +108,12 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
             allowProposedApi: true
         });
 
-        const fitAddon = new FitAddon();
-        term.loadAddon(fitAddon);
         term.open(container);
-        fitAddon.fit();
-
         termsRef.current[tabId] = term;
-        fitAddonsRef.current[tabId] = fitAddon;
 
         // Handle Input
         term.onData((data) => {
+            if (!isReadyRefs.current[tabId]) return;
             SocketService.send({
                 type: 'terminal_input',
                 id: tabId,
@@ -130,49 +125,63 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
         // Initialize Connection (Local or Remote)
         if (!serverId) {
             term.writeln('\x1b[1;35m🚀 Joe Enterprise Shell [Local]\x1b[0m');
+            isReadyRefs.current[tabId] = true;
             setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isReady: true } : t));
+            term.focus();
         } else {
             term.writeln(`\x1b[1;34m🌐 Connecting to remote server...\x1b[0m`);
             connectRemote(tabId, serverId);
         }
 
-        // Resize Handling
+        // Manual Resize Handling
         let isTabMounted = true;
-        const resizeObserver = new ResizeObserver(() => {
-            requestAnimationFrame(() => {
-                if (!isTabMounted) return;
-                const term = termsRef.current[tabId];
-                const fitAddon = fitAddonsRef.current[tabId];
-                if (!term || !fitAddon || !term.element || !term.element.clientWidth) return;
+        let lastCols = 0;
+        let lastRows = 0;
 
-                try {
-                    fitAddon.fit();
-                    const dims = fitAddon.proposeDimensions();
-                    if (dims && typeof dims === 'object' && dims.cols && dims.rows) {
-                        SocketService.send({
-                            type: 'terminal_resize',
-                            id: tabId,
-                            serverId,
-                            cols: Number(dims.cols),
-                            rows: Number(dims.rows)
-                        });
-                    }
-                } catch (e) {
-                    console.debug('[EnterpriseTerminal] Fit error inhibited');
-                }
+        const performResize = () => {
+            if (!isTabMounted) return;
+            const container = containersRef.current[tabId];
+            const term = termsRef.current[tabId];
+            if (!container || !term) return;
+
+            const rect = container.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+
+            const approximateCharWidth = 7.8;
+            const approximateRowHeight = 18;
+            const cols = Math.max(20, Math.floor(rect.width / approximateCharWidth));
+            const rows = Math.max(5, Math.floor(rect.height / approximateRowHeight));
+
+            if (cols === lastCols && rows === lastRows) return;
+            lastCols = cols;
+            lastRows = rows;
+
+            term.resize(cols, rows);
+            SocketService.send({
+                type: 'terminal_resize',
+                id: tabId,
+                serverId,
+                cols,
+                rows
             });
+        };
+
+        const resizeObserver = new ResizeObserver(() => {
+            requestAnimationFrame(performResize);
         });
         resizeObserver.observe(container);
+        const t = setTimeout(performResize, 350);
 
         const cleanup = () => {
             isTabMounted = false;
             resizeObserver.disconnect();
+            clearTimeout(t);
             try {
                 const term = termsRef.current[tabId];
                 if (term) term.dispose();
             } catch { }
             delete termsRef.current[tabId];
-            delete fitAddonsRef.current[tabId];
+            delete isReadyRefs.current[tabId];
             delete cleanupRef.current[tabId];
         };
         cleanupRef.current[tabId] = cleanup;
