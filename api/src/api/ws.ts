@@ -167,6 +167,7 @@ export function attachWebSocket(server: Server) {
         // Terminal Streaming Handlers
         if (msg.type === 'terminal_input') {
           const { id, data, serverId } = msg;
+          console.log(`terminal_ws_input_received id=${id} bytes=${data?.length || 0}`);
           if (userId) registerTerminalOwner(id, userId);
           if (serverId) {
             const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
@@ -177,15 +178,24 @@ export function attachWebSocket(server: Server) {
                   const ok = await ServerConfigModel.findOne({ _id: serverId, userId, isActive: true }).select('_id').lean();
                   if (!ok) return;
                 }
-                if (!sshManager.isConnected(serverId)) return;
+                if (!sshManager.isConnected(serverId)) {
+                    console.warn(`terminal_ws_input_ssh_not_connected id=${id} serverId=${serverId}`);
+                    return;
+                }
                 await sshManager.requestShell(serverId, id);
+                console.log(`terminal_ws_input_forwarded_ssh id=${id} bytes=${data?.length || 0}`);
                 sshManager.sendInput(id, data);
               })().catch(() => { });
             });
           } else {
             Promise.resolve(require('../modules/tools/terminal/TerminalState')).then(({ terminals }) => {
               const term = terminals.get(id);
-              if (term) term.write(data);
+              if (term) {
+                console.log(`terminal_ws_input_forwarded_local id=${id} bytes=${data?.length || 0}`);
+                term.write(data);
+              } else {
+                console.error(`terminal_ws_input_missing_terminal id=${id}`);
+              }
             });
           }
         }

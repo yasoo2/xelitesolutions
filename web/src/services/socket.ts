@@ -470,19 +470,29 @@ export const SocketService = {
     const msg = JSON.stringify(data);
 
     // [Wakil 5.1] Source-level deduplication
-    if (msg === lastSentPayload) {
+    // EXEMPT terminal_input from deduplication (must allow "aa")
+    const isTerminalInput = data && data.type === 'terminal_input';
+    if (!isTerminalInput && msg === lastSentPayload) {
       return;
     }
-    lastSentPayload = msg;
+    if (!isTerminalInput) {
+      lastSentPayload = msg;
+    }
 
     if (socket && socket.readyState === WebSocket.OPEN) {
+      if (isTerminalInput) {
+        console.debug('terminal_socket_send_open', data.data);
+      }
       socket.send(msg);
     } else {
       // SMART QUEUEING & DEDUPLICATION
+      if (isTerminalInput) {
+        console.debug('terminal_socket_queued', data.data);
+      }
       if (data && data.type === 'terminal_resize') {
         const existingIdx = pendingQueue.findIndex(q => q && typeof q !== 'string' && q.type === 'terminal_resize' && q.id === data.id);
         if (existingIdx !== -1) {
-            pendingQueue[existingIdx] = data;
+          pendingQueue[existingIdx] = data;
           return;
         }
       }

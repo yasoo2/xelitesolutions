@@ -185,9 +185,11 @@ export default function EmbeddedTerminal({
 
         // Handle input [Wakil 5.2: Block during Hard Quiet Mode]
         term.onData((data) => {
+            console.debug('terminal_xterm_ondata_fired', data);
             if (!isReadyRef.current) {
                 return;
             }
+            console.debug('terminal_input_sent', data);
             SocketService.send({
                 type: 'terminal_input',
                 id: terminalId,
