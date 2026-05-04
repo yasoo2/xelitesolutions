@@ -34,12 +34,26 @@ export default function EmbeddedTerminal({
     }, [output]);
 
     // Handle terminal creation
-    const initTerminal = useCallback(async () => {
+    const initTerminal = useCallback(async (isReconnect = false) => {
         setStatus('connecting');
         setError(null);
         const token = localStorage.getItem('token');
 
         try {
+            // If reconnecting, try to kill existing first (optional but cleaner)
+            if (isReconnect) {
+                try {
+                    await fetch(`${API_URL}/tools/terminal_manager/execute`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ action: 'kill', id: terminalId })
+                    });
+                } catch { /* ignore kill errors */ }
+            }
+
             const res = await fetch(`${API_URL}/tools/terminal_manager/execute`, {
                 method: 'POST',
                 headers: {
@@ -57,7 +71,7 @@ export default function EmbeddedTerminal({
             });
 
             const data = await res.json();
-            if (data.ok) {
+            if (data.ok || (data.output && data.output.existing)) {
                 setStatus('ready');
                 if (onReady) onReady();
             } else {
@@ -110,7 +124,7 @@ export default function EmbeddedTerminal({
 
     const handleReconnect = () => {
         setOutput(prev => prev + '\n--- Reconnecting ---\n');
-        initTerminal();
+        initTerminal(true);
     };
 
     return (

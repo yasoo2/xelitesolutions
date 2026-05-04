@@ -73,7 +73,18 @@ export class TerminalManagerTool extends BaseTool {
         const workDir = getWorkspaceRoot();
 
         if (action === 'create') {
-            if (terminals.has(id)) return { ok: false, error: 'Terminal already exists', logs: [] };
+            if (terminals.has(id)) {
+                logger.info(`terminal_create_existing_attached id=${id}`);
+                return {
+                    ok: true,
+                    output: {
+                        id,
+                        message: "Terminal already exists. Attached to existing terminal.",
+                        existing: true
+                    },
+                    logs: [`term_attach_existing=${id}`]
+                };
+            }
 
             const shell = resolveShell(input.shell);
             logger.info(`terminal_create_requested id=${id} shell=${shell} cwd=${workDir}`);
