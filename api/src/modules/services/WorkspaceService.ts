@@ -159,7 +159,14 @@ export class WorkspaceService {
             console.log(`[WorkspaceService] Auto-resolved workspace root: ${wsId} → ${autoPath}`);
             return autoPath;
         }
-        return this.currentRoot;
+        
+        // [CRITICAL SAFETY] Never fallback to process.cwd() for tool execution roots.
+        // Use a dedicated system-fallback directory within the externalRoot.
+        const fallback = path.join(this.externalRoot, 'system-fallback');
+        if (!fs.existsSync(fallback)) {
+            try { fs.mkdirSync(fallback, { recursive: true }); } catch { }
+        }
+        return fallback;
     }
 
     async setActiveRoot(newPath: string, workspaceId?: string): Promise<boolean> {

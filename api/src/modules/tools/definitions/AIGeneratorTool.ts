@@ -57,13 +57,21 @@ export class AIGeneratorTool implements ToolDefinition {
         aestheticMode?: string;
         language?: string;
         context?: string
-    }) {
+    }, context?: any) {
         const logs: string[] = [];
         const filePath = input.path;
         const callLLM = getLLM();
+        const contextWorkspaceId = context?.workspaceId;
 
+        const isRepair = input.context?.includes('repairTicket') || input.context?.includes('buildContext');
         const systemPrompt = `You are an ELITE Software Engineer and UI/UX Designer. 
 Your task is to generate complete, ultra-high-quality, production-ready code for a single file.
+
+${isRepair ? `REPAIR MODE ACTIVE:
+- You are fixing a specific bug or build error.
+- Use the provided buildContext and repairTicket to identify the exact line and cause of failure.
+- Patch the code surgically. Ensure the fix is correct and doesn't break other logic.
+- Preserve the existing project style and architecture.` : ''}
 
 CRITICAL DESIGN RULES (IF UI/FRONTEND):
 - AESTHETICS ARE PARAMOUNT. The design MUST be stunning, modern, and feel premium.
@@ -101,7 +109,7 @@ IMPORTANT: Provide the FULL, production-ready content of the file. No generic de
 
             // Resolve absolute path
             const { workspaceService } = require('../../services/WorkspaceService');
-            const root = workspaceService.getActiveRoot();
+            const root = workspaceService.getActiveRoot(contextWorkspaceId);
             const absPath = path.isAbsolute(filePath) ? filePath : path.resolve(root, filePath);
 
             // Ensure directory exists

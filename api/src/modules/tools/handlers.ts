@@ -36,7 +36,20 @@ export async function handleShellCommand(
             return;
         }
 
-        const child = spawn(command, args, { cwd: validCwd, shell: false });
+        const env = { ...process.env };
+        const runtimePath = "C:\\Users\\home\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin";
+        if (env.PATH) {
+            env.PATH = `${runtimePath};${env.PATH}`;
+        } else {
+            env.PATH = runtimePath;
+        }
+
+        let effectiveCommand = command;
+        if (process.platform === 'win32' && (command === 'npm' || command === 'npx')) {
+            effectiveCommand = `${command}.cmd`;
+        }
+
+        const child = spawn(effectiveCommand, args, { cwd: validCwd, shell: false, env });
 
         let stdout = '';
         let stderr = '';

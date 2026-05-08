@@ -236,29 +236,30 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     if (name === 'project_scaffold') {
         effectiveName = 'scaffold_project';
     }
-    if (name === 'file_write' || name === 'write_to_file' || name === 'create_file') {
-        effectiveName = 'write_file';
-        const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
+    if (name === 'file_write' || name === 'write_to_file' || name === 'create_file' || name === 'ai_write_file') {
+        effectiveName = name === 'ai_write_file' ? 'ai_write_file' : 'write_file';
+        const fp = String((effectiveInput as any)?.path ?? (effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? '');
         if (fp) {
             const { workspaceService } = require('./WorkspaceService');
-            const activeRoot = workspaceService.getActiveRoot(contextWorkspaceId);
-            const projectRoot = path.join(process.cwd(), path.basename(process.cwd()) === 'api' ? '..' : '.');
-            const buildsDir = path.resolve(projectRoot, 'data/builds');
-
-            // CRITICAL: If no active workspace, redirect to data/builds/ to prevent
-            // overwriting system files (e.g. api/package.json)
-            const root = activeRoot || path.resolve(buildsDir, 'workspace-default');
+            // CRITICAL: Strictly use contextWorkspaceId to resolve root. Never fallback to process.cwd() inside ToolService.
+            const root = workspaceService.getActiveRoot(contextWorkspaceId);
+            
+            // Resolve path safely relative to the workspace root
             const abs = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
 
-            // Ensure the target directory exists
-            if (!activeRoot && !path.isAbsolute(fp)) {
-                try { require('fs').mkdirSync(path.dirname(abs), { recursive: true }); } catch { }
-            }
+            // Ensure the directory exists before attempting to write
+            try { 
+                const dir = path.dirname(abs);
+                if (!fs.existsSync(dir)) {
+                    fs.mkdirSync(dir, { recursive: true }); 
+                }
+            } catch { }
 
-            if (abs.startsWith(root) || abs.startsWith(buildsDir) || (activeRoot && abs.startsWith(activeRoot))) {
+            // Security Gate: Ensure the path is within the resolved workspace root
+            if (abs.startsWith(root)) {
+                (effectiveInput as any).path = abs;
                 (effectiveInput as any).filename = abs;
                 delete (effectiveInput as any).filePath;
-                delete (effectiveInput as any).path;
             } else {
                 return { ok: false, error: 'path_outside_workspace: ' + abs, logs };
             }
@@ -271,9 +272,15 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         if (fp) {
             const { workspaceService } = require('./WorkspaceService');
             const root = workspaceService.getActiveRoot(contextWorkspaceId);
-            (effectiveInput as any).path = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
-            delete (effectiveInput as any).filePath;
-            delete (effectiveInput as any).filename;
+            const abs = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
+            
+            if (abs.startsWith(root)) {
+                (effectiveInput as any).path = abs;
+                delete (effectiveInput as any).filePath;
+                delete (effectiveInput as any).filename;
+            } else {
+                return { ok: false, error: 'path_outside_workspace: ' + abs, logs };
+            }
         }
     }
     if (name === 'file_read' || name === 'read_file' || name === 'view_file' || name === 'get_file') {
@@ -282,9 +289,15 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         if (fp) {
             const { workspaceService } = require('./WorkspaceService');
             const root = workspaceService.getActiveRoot(contextWorkspaceId);
-            (effectiveInput as any).path = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
-            delete (effectiveInput as any).filePath;
-            delete (effectiveInput as any).filename;
+            const abs = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
+
+            if (abs.startsWith(root)) {
+                (effectiveInput as any).path = abs;
+                delete (effectiveInput as any).filePath;
+                delete (effectiveInput as any).filename;
+            } else {
+                return { ok: false, error: 'path_outside_workspace: ' + abs, logs };
+            }
         }
     }
     if (name === 'audit' || name === 'dependency_scan' || name === 'security_audit') {

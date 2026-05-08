@@ -212,11 +212,11 @@ export class SelfFixService {
         strategy: 'build_fix',
         suggestedTool: 'ai_write_file',
         suggestedInput: {
-          instruction: buildContext?.file
-            ? 'Patch only the file identified in buildContext using the error line/message. Do not rewrite unrelated files. Rerun the build after patching.'
-            : 'Inspect the build error from the repair ticket, patch only the broken files, then rerun the build. Do not rewrite unrelated files.',
-          buildContext,
-          repairTicket: ticket,
+          path: buildContext?.file || 'src/index.ts',
+          description: buildContext?.file
+            ? `Fix the following TypeScript/Build error in ${buildContext.file}:\nError: ${buildContext.message}\nLine: ${buildContext.line}\nSource: ${buildContext.sourceLine || 'Unknown'}`
+            : `Inspect and fix the following build error:\n${ticket.primaryError}`,
+          context: JSON.stringify({ buildContext, repairTicket: ticket })
         },
         safety: this.safety(),
         sourceTicket: ticket,
@@ -232,8 +232,9 @@ export class SelfFixService {
         strategy: 'code_fix',
         suggestedTool: 'ai_write_file',
         suggestedInput: {
-          instruction: 'Repair only the failed tasks listed in the repair ticket. Preserve existing project structure and do not change unrelated files.',
-          repairTicket: ticket,
+          path: 'src/index.ts', // Fallback path, ideally should be derived from failed tasks
+          description: `Repair the following failed tasks in the current phase:\n${ticket.failedTasks.map(t => `- Task: ${t.task}\n  Error: ${t.error}`).join('\n')}`,
+          context: JSON.stringify({ repairTicket: ticket })
         },
         safety: this.safety(),
         sourceTicket: ticket,
