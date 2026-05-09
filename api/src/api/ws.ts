@@ -167,59 +167,20 @@ export function attachWebSocket(server: Server) {
         // Terminal Streaming Handlers
         if (msg.type === 'terminal_input') {
           const { id, data, serverId } = msg;
-          console.log(`terminal_ws_input_received id=${id} bytes=${data?.length || 0}`);
+          const ts = Date.now();
+          console.log(`[websocket.forward.received] sessionId=${id} ts=${ts} type=terminal_input`);
           if (userId) registerTerminalOwner(id, userId);
-          if (serverId) {
-            const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
-            if (!authBypass && (!userId || !mongoose.Types.ObjectId.isValid(String(serverId || '')))) return;
-            Promise.resolve(require('./terminal/ssh-manager')).then(({ sshManager }) => {
-              (async () => {
-                if (!authBypass) {
-                  const ok = await ServerConfigModel.findOne({ _id: serverId, userId, isActive: true }).select('_id').lean();
-                  if (!ok) return;
-                }
-                if (!sshManager.isConnected(serverId)) {
-                    console.warn(`terminal_ws_input_ssh_not_connected id=${id} serverId=${serverId}`);
-                    return;
-                }
-                await sshManager.requestShell(serverId, id);
-                console.log(`terminal_ws_input_forwarded_ssh id=${id} bytes=${data?.length || 0}`);
-                sshManager.sendInput(id, data);
-              })().catch(() => { });
-            });
-          } else {
-            Promise.resolve(require('../modules/tools/terminal/TerminalState')).then(({ terminals }) => {
-              const term = terminals.get(id);
-              if (term) {
-                console.log(`terminal_ws_input_forwarded_local id=${id} bytes=${data?.length || 0}`);
-                term.write(data);
-              } else {
-                console.error(`terminal_ws_input_missing_terminal id=${id}`);
-              }
-            });
-          }
+          Promise.resolve(require('../modules/terminal/terminal-kernel')).then(({ terminalKernel }) => {
+            console.log(`[websocket.forward.sent] sessionId=${id} ts=${Date.now()} target=kernel`);
+            terminalKernel.sendInput(id, data, serverId);
+          });
         }
         if (msg.type === 'terminal_resize') {
           const { id, cols, rows, serverId } = msg;
           if (userId) registerTerminalOwner(id, userId);
-          if (serverId) {
-            const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
-            if (!authBypass && (!userId || !mongoose.Types.ObjectId.isValid(String(serverId || '')))) return;
-            Promise.resolve(require('./terminal/ssh-manager')).then(({ sshManager }) => {
-              (async () => {
-                if (!authBypass) {
-                  const ok = await ServerConfigModel.findOne({ _id: serverId, userId, isActive: true }).select('_id').lean();
-                  if (!ok) return;
-                }
-                sshManager.resizeShell(id, cols, rows);
-              })().catch(() => { });
-            });
-          } else {
-            Promise.resolve(require('../modules/tools/terminal/TerminalState')).then(({ terminals }) => {
-              const term = terminals.get(id);
-              if (term) term.resize(cols, rows);
-            });
-          }
+          Promise.resolve(require('../modules/terminal/terminal-kernel')).then(({ terminalKernel }) => {
+            terminalKernel.resizeTerminal(id, cols, rows, serverId);
+          });
         }
       } catch (e) {
         // ignore non-json

@@ -6,6 +6,7 @@ import path from 'path';
 import { broadcast, registerTerminalOwner } from '../../../api/ws';
 import { terminals, registerTerminal, removeTerminal } from '../terminal/TerminalState';
 import { logger } from '../../../shared/utils/logger';
+import { terminalKernel } from '../../terminal/terminal-kernel';
 
 function getWorkspaceRoot() {
     try {
@@ -73,238 +74,67 @@ export class TerminalManagerTool extends BaseTool {
         const workDir = getWorkspaceRoot();
 
         if (action === 'create') {
-            if (terminals.has(id)) {
-                logger.info(`terminal_create_existing_attached id=${id}`);
-                return {
-                    ok: true,
-                    output: {
-                        id,
-                        message: "Terminal already exists. Attached to existing terminal.",
-                        existing: true
-                    },
-                    logs: [`term_attach_existing=${id}`]
-                };
-            }
-
-            const shell = resolveShell(input.shell);
-            logger.info(`terminal_create_requested id=${id} shell=${shell} cwd=${workDir}`);
-
             try {
-                let ptyProcess: any = null;
-                let useFallback = false;
-
-                // Try node-pty first
-                try {
-                    const pty = require('node-pty');
-                    ptyProcess = pty.spawn(shell, [], {
-                        name: 'xterm-256color',
-                        cols: input.cols || 80,
-                        rows: input.rows || 30,
-                        cwd: workDir,
-                        env: { ...process.env, TERM: 'xterm-256color' }
-                    });
-                } catch (ptyError: any) {
-                    // PTY failed, use child_process fallback
-                    useFallback = true;
-                    logger.warn(`[Terminal] PTY failed, using child_process fallback: ${ptyError.message}`);
-                }
-
-                if (useFallback) {
-                    // Fallback: Use child_process for an interactive-like shell
-                    const { spawn, exec } = require('child_process');
-
-                    // Create a line buffer for commands
-                    let currentLine = '';
-                    let currentCwd = workDir;
-
-                    // Helper to execute a command and return output
-                    const executeCommand = (cmd: string): Promise<string> => {
-                        return new Promise((resolve) => {
-                            // Handle cd specially
-                            const cdMatch = cmd.match(/^cd\s+(.+)$/);
-                            if (cdMatch) {
-                                const newPath = cdMatch[1].trim();
-                                const targetPath = path.isAbsolute(newPath) ? newPath : path.resolve(currentCwd, newPath);
-                                if (fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory()) {
-                                    currentCwd = targetPath;
-                                    resolve('');
-                                } else {
-                                    resolve(`cd: no such directory: ${newPath}\n`);
-                                }
-                                return;
-                            }
-
-                            exec(cmd, { cwd: currentCwd, shell: '/bin/sh', timeout: 30000 }, (err: any, stdout: string, stderr: string) => {
-                                if (err && !stdout && !stderr) {
-                                    resolve(`Error: ${err.message}\n`);
-                                } else {
-                                    resolve((stdout || '') + (stderr || ''));
-                                }
-                            });
-                        });
-                    };
-
-                    // Create a wrapper that mimics PTY interface
-                    const ptyWrapper = {
-                        pid: process.pid, // Use current process as fallback pid
-                        write: (data: string) => {
-                            const term = terminals.get(id);
-                            if (!term) return;
-
-                            logger.debug(`terminal_input_received id=${id} bytes=${data.length}`);
-
-                            // Echo input character by character
-                            for (const char of data) {
-                                if (char === '\r' || char === '\n') {
-                                    // Execute command when Enter is pressed
-                                    const out = '\r\n';
-                                    logger.debug(`terminal_output_broadcast id=${id} bytes=${out.length}`);
-                                    broadcast({ type: 'terminal_output', id, data: out });
-                                    const cmd = currentLine.trim();
-                                    currentLine = '';
-
-                                    if (cmd) {
-                                        executeCommand(cmd).then((output) => {
-                                            if (output) {
-                                                term.history.push(output);
-                                                logger.debug(`terminal_output_broadcast id=${id} bytes=${output.length}`);
-                                                broadcast({ type: 'terminal_output', id, data: output });
-                                            }
-                                            // Show next prompt
-                                            const prompt = `${path.basename(currentCwd)}$ `;
-                                            logger.debug(`terminal_output_broadcast id=${id} bytes=${prompt.length}`);
-                                            broadcast({ type: 'terminal_output', id, data: prompt });
-                                        });
-                                    } else {
-                                        // Empty command, just show prompt
-                                        const prompt = `${path.basename(currentCwd)}$ `;
-                                        logger.debug(`terminal_output_broadcast id=${id} bytes=${prompt.length}`);
-                                        broadcast({ type: 'terminal_output', id, data: prompt });
-                                    }
-                                } else if (char === '\x7f' || char === '\b') {
-                                    // Backspace
-                                    if (currentLine.length > 0) {
-                                        currentLine = currentLine.slice(0, -1);
-                                        const out = '\b \b';
-                                        logger.debug(`terminal_output_broadcast id=${id} bytes=${out.length}`);
-                                        broadcast({ type: 'terminal_output', id, data: out });
-                                    }
-                                } else if (char === '\x03') {
-                                    // Ctrl+C
-                                    currentLine = '';
-                                    const out = '^C\r\n';
-                                    logger.debug(`terminal_output_broadcast id=${id} bytes=${out.length}`);
-                                    broadcast({ type: 'terminal_output', id, data: out });
-                                    const prompt = `${path.basename(currentCwd)}$ `;
-                                    logger.debug(`terminal_output_broadcast id=${id} bytes=${prompt.length}`);
-                                    broadcast({ type: 'terminal_output', id, data: prompt });
-                                } else {
-                                    // Regular character - echo and add to buffer
-                                    currentLine += char;
-                                    logger.debug(`terminal_output_broadcast id=${id} bytes=${char.length}`);
-                                    broadcast({ type: 'terminal_output', id, data: char });
-                                }
-                            }
-                        },
-                        resize: (cols: number, rows: number) => {
-                            logger.info(`terminal_resize_received id=${id} cols=${cols} rows=${rows}`);
-                        },
-                        kill: () => { /* No-op - no actual process to kill */ },
-                        onData: () => { /* Data is broadcast directly in write() */ },
-                        _isFallback: true
-                    };
-
-                    const term = { 
-                        pty: ptyWrapper, 
-                        history: [] as string[],
-                        write: (data: string) => ptyWrapper.write(data),
-                        resize: (cols: number, rows: number) => ptyWrapper.resize(cols, rows),
-                        kill: () => ptyWrapper.kill(),
-                        fallback: true
-                    };
-                    registerTerminal(id, term);
-                    const userId = typeof input?.userId === 'string' ? String(input.userId).trim() : '';
-                    if (userId) registerTerminalOwner(id, userId);
-
-                    // Send initial prompt
-                    setTimeout(() => {
-                        const prompt = `${path.basename(currentCwd)}$ `;
-                        logger.debug(`terminal_output_broadcast id=${id} bytes=${prompt.length}`);
-                        broadcast({ type: 'terminal_output', id, data: prompt });
-                    }, 100);
-
-                    logger.info(`terminal_create_ok id=${id} mode=fallback pid=${ptyWrapper.pid}`);
-                    return { ok: true, output: { id, pid: ptyWrapper.pid, message: 'Terminal created (fallback mode).', fallback: true }, logs: [`term_create=${id} fallback=true`] };
-                }
-
-                // PTY succeeded
-                const term = { 
-                    pty: ptyProcess, 
-                    history: [] as string[],
-                    write: (data: string) => ptyProcess.write(data),
-                    resize: (cols: number, rows: number) => ptyProcess.resize(cols, rows),
-                    kill: () => ptyProcess.kill()
-                };
-                registerTerminal(id, term);
-                const userId = typeof input?.userId === 'string' ? String(input.userId).trim() : '';
-                if (userId) registerTerminalOwner(id, userId);
-
-                ptyProcess.onData((data: string) => {
-                    term.history.push(data);
-                    if (term.history.length > 5000) term.history.shift();
-                    logger.debug(`terminal_output_broadcast id=${id} bytes=${data.length}`);
-                    broadcast({ type: 'terminal_output', id, data });
+                const result: any = await terminalKernel.createTerminal(id, {
+                    shell: input.shell,
+                    cols: input.cols,
+                    rows: input.rows,
+                    userId: typeof input?.userId === 'string' ? String(input.userId).trim() : ''
                 });
 
-                logger.info(`terminal_create_ok id=${id} mode=pty pid=${ptyProcess.pid}`);
-                return { ok: true, output: { id, pid: ptyProcess.pid, message: 'Terminal created.' }, logs: [`term_create=${id}`] };
+                if (result.existing) {
+                    return {
+                        ok: true,
+                        output: { id, message: "Terminal already exists. Attached to existing terminal.", existing: true },
+                        logs: [`term_attach_existing=${id}`]
+                    };
+                }
+
+                return {
+                    ok: true,
+                    output: { 
+                        id, 
+                        pid: result.pid, 
+                        message: result.fallback ? 'Terminal created (fallback mode).' : 'Terminal created.',
+                        fallback: result.fallback 
+                    },
+                    logs: [`term_create=${id}${result.fallback ? ' fallback=true' : ''}`]
+                };
             } catch (e: any) {
-                logger.error(`terminal_create_failed id=${id} error=${e.message}`);
-                return { ok: false, error: `Failed to spawn terminal: ${e.message}`, logs: [] };
+                return { ok: false, error: `Failed to spawn terminal via kernel: ${e.message}`, logs: [] };
             }
         }
 
         if (action === 'read') {
-            const term = terminals.get(id);
-            if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
-            // Return concatenated history
-            return { ok: true, output: { history: term.history.join('') }, logs: [] };
+            try {
+                const history = await terminalKernel.readHistory(id);
+                return { ok: true, output: { history }, logs: [] };
+            } catch (e: any) {
+                return { ok: false, error: e.message, logs: [] };
+            }
         }
 
         if (action === 'write') {
-            const term = terminals.get(id);
-            if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
-
             if (!input.command) return { ok: false, error: 'command input required', logs: [] };
             
-            logger.debug(`terminal_input_received id=${id} bytes=${input.command.length}`);
-            term.write(input.command);
-
-            // Wait a bit for output
-            await new Promise(r => setTimeout(r, 200));
-
-            return { ok: true, output: { message: 'Input sent' }, logs: [`term_write=${id}`] };
+            await terminalKernel.sendInput(id, input.command);
+            return { ok: true, output: { message: 'Input sent via kernel' }, logs: [`term_write=${id}`] };
         }
 
         if (action === 'resize') {
-            const term = terminals.get(id);
-            if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
             
-            logger.info(`terminal_resize_received id=${id} cols=${input.cols} rows=${input.rows}`);
-            term.resize(input.cols || 80, input.rows || 30);
-            return { ok: true, output: { message: 'Resized' }, logs: [] };
+            await terminalKernel.resizeTerminal(id, input.cols || 80, input.rows || 30);
+            return { ok: true, output: { message: 'Resized via kernel' }, logs: [] };
         }
 
         if (action === 'kill') {
-            const term = terminals.get(id);
-            if (!term) return { ok: false, error: 'Terminal not found', logs: [] };
-            term.kill();
-            removeTerminal(id);
-            return { ok: true, output: { message: 'Terminal killed' }, logs: [] };
+            await terminalKernel.killTerminal(id);
+            return { ok: true, output: { message: 'Terminal killed via kernel' }, logs: [] };
         }
 
         if (action === 'list') {
-            return { ok: true, output: { terminals: Array.from(terminals.keys()) }, logs: [] };
+            const ids = await terminalKernel.listTerminals();
+            return { ok: true, output: { terminals: ids }, logs: [] };
         }
 
         return { ok: false, error: 'Unknown action', logs: [] };
