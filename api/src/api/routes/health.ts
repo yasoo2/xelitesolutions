@@ -59,8 +59,20 @@ router.get('/health', (req, res) => {
       total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
       rss: Math.round(process.memoryUsage().rss / 1024 / 1024)
     },
-    cpu: process.cpuUsage()
-  });
+    cpu: process.cpuUsage(),
+    version: (() => {
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const stableFile = path.join(process.cwd(), '..', 'last_stable_commit');
+            if (fs.existsSync(stableFile)) {
+                return fs.readFileSync(stableFile, 'utf8').trim();
+            }
+            return 'unknown';
+        } catch {
+            return 'error';
+        }
+    })()
 });
 
 /**
