@@ -113,7 +113,20 @@ export const createApp = () => {
       status: 'OK',
       database: dbStatus,
       uptime: process.uptime(),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      version: (() => {
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const stableFile = path.join(process.cwd(), '..', 'last_stable_commit');
+          if (fs.existsSync(stableFile)) {
+            return fs.readFileSync(stableFile, 'utf8').trim();
+          }
+          return 'no-commit-file';
+        } catch {
+          return 'unknown';
+        }
+      })()
     });
   });
 
