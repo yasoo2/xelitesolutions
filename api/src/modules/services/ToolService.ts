@@ -532,12 +532,16 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             const artifacts = Array.isArray(res?.artifacts) ? res.artifacts : undefined;
             const toolLogs = Array.isArray(res?.logs) ? res.logs : [];
             
-            // [NEW] Real-time Log Streaming
+            // [NEW] Real-time Log Streaming to Frontend Terminals
             toolLogs.forEach((line: string) => {
-                broadcast({
-                    type: 'terminal_output',
-                    id: 'panel-terminal',
-                    data: line + '\r\n'
+                const data = line + '\r\n';
+                // Broadcast to multiple common IDs to ensure visibility
+                ['local', 'default', 'panel-terminal'].forEach(id => {
+                    broadcast({
+                        type: 'terminal_output',
+                        id: id,
+                        data: data
+                    });
                 });
             });
 
