@@ -156,59 +156,27 @@ export class DeployManager {
             // 0. Ensure git safety (dubious ownership fix)
             await this.runCommand('git', ['config', '--global', '--add', 'safe.directory', PROJECT_ROOT], PROJECT_ROOT);
 
-            // 1. Sync code
-            this.queueLog(id, '[SYSTEM] Syncing code from GitHub...');
-            const currentCommit = await this.getCurrentCommit();
-            const remoteCommit = await this.getRemoteCommit();
-
-            this.lastLocalCommit = currentCommit;
-            this.lastRemoteCommit = remoteCommit;
-
-            if (expectedCommit && expectedCommit !== remoteCommit) {
-                this.queueLog(id, `[WARN] Expected commit ${expectedCommit} but remote has ${remoteCommit}`);
-            }
-
-            if (currentCommit === remoteCommit) {
-                this.queueLog(id, '[SYSTEM] Already up to date.');
-            } else {
-                await this.runCommand('git', ['fetch', 'origin', 'main'], PROJECT_ROOT, 120000, id);
-                await this.runCommand('git', ['reset', '--hard', `origin/main`], PROJECT_ROOT, 120000, id);
-                this.queueLog(id, `[SYSTEM] Code synced to ${remoteCommit}`);
-            }
-
-
-
-            // 2. Build web frontend
-            this.queueLog(id, '[BUILD] Building web frontend...');
+            // 1. Run the central deployment script
+            this.queueLog(id, '[SYSTEM] Executing central deployment script (deploy.sh)...');
+            const deployScript = path.join(PROJECT_ROOT, 'scripts', 'deploy.sh');
+            
             try {
-                await this.runCommand('npm', ['install', '--legacy-peer-deps'], WEB_DIR, 300000, id);
-                await this.runCommand('npm', ['run', 'build'], WEB_DIR, 300000, id);
-                this.queueLog(id, '[BUILD] Web frontend built successfully');
+                // Ensure script is executable
+                await this.runCommand('chmod', ['+x', deployScript], PROJECT_ROOT, 30000, id);
+                
+                // Run deployment script
+                await this.runCommand('bash', [deployScript, 'deploy'], PROJECT_ROOT, 600000, id);
+                this.queueLog(id, '[SYSTEM] Deployment script completed successfully');
             } catch (error: any) {
-                this.queueLog(id, `[WARN] Web frontend build failed: ${error.message} — continuing with API rebuild...`);
+                this.queueLog(id, `[ERROR] Deployment script failed: ${error.message}`);
+                throw error;
             }
 
-            // 3. Build API
-            this.queueLog(id, '[BUILD] Building API...');
-            await this.runCommand('npm', ['install', '--legacy-peer-deps', '--no-audit', '--no-fund'], API_DIR, 300000, id);
-
-            try {
-                await this.runCommand('npm', ['run', 'build'], API_DIR, 300000, id);
-            } catch (error: any) {
-                this.queueLog(id, `[WARN] npm run build failed, trying tsc directly: ${error.message}`);
-                await this.runCommand('npx', ['tsc', '--skipLibCheck'], API_DIR, 300000, id);
-            }
-            this.queueLog(id, '[BUILD] API built successfully');
-
-            // 4. Restart API server
-            this.queueLog(id, '[SYSTEM] Restarting API server...');
-            await this.restartAPIServer();
-            this.queueLog(id, '[SYSTEM] API server restarted');
-
-            // 5. Verify health
-            this.queueLog(id, '[SYSTEM] Verifying deployment health...');
+            // 2. Success verification (deploy.sh already handles restart and health check)
+            this.queueLog(id, '[SYSTEM] Verifying final health status...');
             await this.verifyHealth();
-            this.queueLog(id, '[SYSTEM] Health check passed');
+            this.queueLog(id, '[SYSTEM] Deployment verification passed');
+
 
             // Success
             deployment.status = 'SUCCESS';
@@ -336,8 +304,8 @@ export class DeployManager {
     private async restartAPIServer() {
         if (process.platform === 'linux') {
             try {
-                logger.info('[DeployManager] Restarting joe-api.service via systemctl...');
-                await this.runCommand('systemctl', ['restart', 'joe-api.service'], PROJECT_ROOT, 30000);
+                logger.info('[DeployManager] Restarting joe-api.service via sudo systemctl...');
+                await this.runCommand('sudo', ['systemctl', 'restart', 'joe-api.service'], PROJECT_ROOT, 30000);
                 return;
             } catch (e: any) {
                 logger.error(`[DeployManager] systemctl restart failed: ${e.message}. Falling back to manual spawn.`);

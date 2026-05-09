@@ -37,11 +37,9 @@ router.post('/deploy', async (req: Request, res: Response) => {
             timestamp: new Date().toISOString()
         });
 
-        // Run deployment in background
-        isDeploying = true;
-        runDeployment(commit).finally(() => {
-            isDeploying = false;
-        });
+        // Run deployment via central DeployManager
+        const { deployManager } = await import('../../modules/services/DeployManager');
+        await deployManager.startDeploy('webhook', commit);
 
     } catch (error: any) {
         logger.error(`[Webhook] Error: ${error.message}`);
@@ -51,158 +49,7 @@ router.post('/deploy', async (req: Request, res: Response) => {
     }
 });
 
-async function runDeployment(commit: string) {
-    const deploymentId = Date.now().toString();
-
-    try {
-        logger.info(`[Deploy ${deploymentId}] Starting deployment for ${commit}`);
-        broadcast({ type: 'deployment_started', data: { deploymentId, commit } });
-
-        // Step 1: Update code
-        logger.info(`[Deploy ${deploymentId}] Updating code...`);
-        await runSpawn('git', ['config', '--global', '--add', 'safe.directory', PROJECT_PATH], PROJECT_PATH);
-        await runSpawn('git', ['fetch', 'origin', 'main'], PROJECT_PATH);
-        await runSpawn('git', ['reset', '--hard', 'origin/main'], PROJECT_PATH);
-        logger.info(`[Deploy ${deploymentId}] Code updated`);
-
-        // Step 2: Build web (optional)
-        logger.info(`[Deploy ${deploymentId}] Building web...`);
-        try {
-            await runSpawn('npm', ['install', '--legacy-peer-deps'], `${PROJECT_PATH}/web`, 300000);
-            await runSpawn('npm', ['run', 'build'], `${PROJECT_PATH}/web`, 300000);
-            logger.info(`[Deploy ${deploymentId}] Web built`);
-        } catch (e: any) {
-            logger.warn(`[Deploy ${deploymentId}] Web build failed: ${e.message}`);
-        }
-
-        // Step 3: Build API
-        logger.info(`[Deploy ${deploymentId}] Building API...`);
-        await runSpawn('rm', ['-rf', 'node_modules', 'package-lock.json'], API_PATH);
-        await runSpawn('npm', ['install', '--legacy-peer-deps', '--no-audit', '--no-fund'], API_PATH, 300000);
-
-        try {
-            await runSpawn('npm', ['run', 'build'], API_PATH, 300000);
-        } catch (e: any) {
-            logger.warn(`[Deploy ${deploymentId}] npm build failed, trying tsc...`);
-            await runSpawn('npx', ['tsc', '--skipLibCheck'], API_PATH, 300000);
-        }
-        logger.info(`[Deploy ${deploymentId}] API built`);
-
-        // Step 4: Restart server
-        logger.info(`[Deploy ${deploymentId}] Restarting server...`);
-        if (process.platform === 'linux') {
-            try {
-                await runSpawn('systemctl', ['restart', 'joe-api.service'], PROJECT_PATH, 30000);
-                logger.info(`[Deploy ${deploymentId}] Server restarted via systemctl`);
-            } catch (e: any) {
-                logger.error(`[Deploy ${deploymentId}] systemctl restart failed: ${e.message}. Falling back to manual.`);
-                
-                try {
-                    await runSpawn('pkill', ['-f', 'node.*dist/index.js'], PROJECT_PATH, 10000);
-                } catch (e) { }
-                await new Promise(r => setTimeout(r, 3000));
-
-                const child = spawn('node', ['dist/index.js'], {
-                    cwd: API_PATH,
-                    env: { ...process.env, NODE_ENV: 'production', PORT: '8080' },
-                    detached: true,
-                    stdio: 'ignore'
-                });
-                child.unref();
-                logger.info(`[Deploy ${deploymentId}] Server restarted via spawn with PID: ${child.pid}`);
-            }
-        } else {
-            try {
-                await runSpawn('pkill', ['-f', 'node.*dist/index.js'], PROJECT_PATH, 10000);
-            } catch (e) { }
-            await new Promise(r => setTimeout(r, 3000));
-
-            const child = spawn('node', ['dist/index.js'], {
-                cwd: API_PATH,
-                env: { ...process.env, NODE_ENV: 'production', PORT: '8080' },
-                detached: true,
-                stdio: 'ignore'
-            });
-            child.unref();
-            logger.info(`[Deploy ${deploymentId}] Server restarted via spawn with PID: ${child.pid}`);
-        }
-
-        // Step 5: Health check
-        await new Promise(r => setTimeout(r, 5000));
-        let healthy = false;
-        for (let i = 0; i < 5; i++) {
-            try {
-                const response = await fetch('http://localhost:8080/api/health');
-                if (response.ok) {
-                    healthy = true;
-                    break;
-                }
-            } catch (e) {
-                // Retry
-            }
-            await new Promise(r => setTimeout(r, 2000));
-        }
-
-        if (healthy) {
-            logger.info(`[Deploy ${deploymentId}] ✅ Deployment successful!`);
-            broadcast({ type: 'deployment_completed', data: { deploymentId, commit, status: 'success' } });
-        } else {
-            throw new Error('Health check failed');
-        }
-
-    } catch (error: any) {
-        logger.error(`[Deploy ${deploymentId}] ❌ Deployment failed: ${error.message}`);
-        broadcast({ type: 'deployment_failed', data: { deploymentId, commit, error: error.message } });
-    }
-}
-
-function runSpawn(command: string, args: string[], cwd: string, timeoutMs = 120000): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const child = spawn(command, args, {
-            cwd,
-            env: { 
-                ...process.env, 
-                PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/root/.nvm/versions/node/v20/bin'
-            }
-        });
-
-        let stdout = '';
-        let stderr = '';
-        let killed = false;
-
-        const timeout = setTimeout(() => {
-            killed = true;
-            child.kill('SIGTERM');
-            setTimeout(() => {
-                if (!child.killed) {
-                    child.kill('SIGKILL');
-                }
-            }, 5000);
-            reject(new Error(`Command timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-
-        child.stdout?.on('data', (data) => { stdout += data.toString(); });
-        child.stderr?.on('data', (data) => { stderr += data.toString(); });
-
-        child.on('error', (error) => {
-            clearTimeout(timeout);
-            if (!killed) {
-                reject(new Error(`Spawn error: ${error.message}`));
-            }
-        });
-
-        child.on('close', (code) => {
-            clearTimeout(timeout);
-            if (killed) return;
-
-            if (code === 0) {
-                resolve(stdout);
-            } else {
-                reject(new Error(`Exit code ${code}: ${stderr || stdout}`));
-            }
-        });
-    });
-}
+export default router;
 
 // Status endpoint
 router.get('/deploy/status', (req, res) => {
