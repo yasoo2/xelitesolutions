@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IUserSecret extends Document {
-  userId: Types.ObjectId;
+  userId: string;
   provider: string;
   key: string;
   value: string;

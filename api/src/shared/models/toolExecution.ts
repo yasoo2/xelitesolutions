@@ -1,8 +1,8 @@
-import mongoose, { Schema, Document, Types } from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IToolExecution extends Document {
-  runId?: Types.ObjectId;
-  sessionId?: Types.ObjectId;
+  runId?: string;
+  sessionId?: string;
   name: string;
   input: any;
   output?: any;

@@ -6,7 +6,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 import { ServerConfig as IServerConfig } from './ServerConfig';
 
 export interface ServerConfigDocument extends Document, Omit<IServerConfig, 'id' | 'userId'> {
-    userId: Types.ObjectId;
+    userId: string;
 }
 
 const ServerConfigSchema = new Schema<ServerConfigDocument>({

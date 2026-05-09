@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IProject extends Document {
-  tenantId: Types.ObjectId;
+  tenantId: string;
   name: string;
   createdAt: Date;
   updatedAt: Date;

@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface SentinelServerBaselineDocument extends Document {
-    serverId: Types.ObjectId;
+    serverId: string;
     checksums: Map<string, string>; // filepath -> hash
     pm2Apps: Array<{ name: string; status: string; memory: number; cpu: number }>;
     dockerContainers: Array<{ id: string; name: string; state: string; image: string }>;

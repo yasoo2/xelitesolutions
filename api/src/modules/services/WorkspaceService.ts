@@ -105,17 +105,12 @@ function ensureMockPersonalWorkspace(userId: string) {
 
 export class WorkspaceService {
     private currentRoot: string = process.cwd();
-    // [FIX] استخدام مسار داخل مجلد المشروع بدلاً من /root/joe-projects
     public get externalRoot(): string {
         const envPath = process.env.EXTERNAL_PROJECTS_DIR;
         if (envPath) return envPath;
-        
-        // تحديد المسار بناءً على البيئة
         const isApiDir = path.basename(process.cwd()) === 'api';
         const baseDir = isApiDir ? path.join(process.cwd(), '..') : process.cwd();
         const projectsDir = path.join(baseDir, 'data', 'projects');
-        
-        // إنشاء المجلد إذا لم يكن موجوداً
         try {
             if (!fs.existsSync(projectsDir)) {
                 fs.mkdirSync(projectsDir, { recursive: true });
@@ -123,10 +118,8 @@ export class WorkspaceService {
             }
         } catch (e) {
             console.warn(`[WorkspaceService] Could not create projects dir: ${projectsDir}`, e);
-            // Fallback إلى مجلد مؤقت
             return path.join(require('os').tmpdir(), 'joe-projects');
         }
-        
         return projectsDir;
     }
     
@@ -143,26 +136,18 @@ export class WorkspaceService {
         if (wsId) {
             const root = this.rootsByWorkspaceId.get(wsId);
             if (root) return root;
-
-            // [FIX] تأكد من وجود المجلد قبل استخدامه
             const autoPath = path.join(this.externalRoot, wsId);
             try {
                 if (!fs.existsSync(autoPath)) {
                     fs.mkdirSync(autoPath, { recursive: true });
-                    console.log(`[WorkspaceService] Auto-created workspace dir: ${autoPath}`);
                 }
             } catch (e) {
                 console.warn(`[WorkspaceService] Could not create workspace dir: ${autoPath}`, e);
-                // Fallback إلى المجلد الخارجي نفسه
                 return this.externalRoot;
             }
             this.rootsByWorkspaceId.set(wsId, autoPath);
-            console.log(`[WorkspaceService] Auto-resolved workspace root: ${wsId} → ${autoPath}`);
             return autoPath;
         }
-        
-        // [CRITICAL SAFETY] Never fallback to process.cwd() for tool execution roots.
-        // Use a dedicated system-fallback directory within the externalRoot.
         const fallback = path.join(this.externalRoot, 'system-fallback');
         if (!fs.existsSync(fallback)) {
             try { fs.mkdirSync(fallback, { recursive: true }); } catch { }
@@ -172,12 +157,9 @@ export class WorkspaceService {
 
     async setActiveRoot(newPath: string, workspaceId?: string): Promise<boolean> {
         try {
-            // [FIX] إنشاء المجلد إذا لم يكن موجوداً
             if (!fs.existsSync(newPath)) {
                 fs.mkdirSync(newPath, { recursive: true });
             }
-            
-            // Validate path exists
             await import('fs').then(fs => fs.promises.access(newPath));
             const wsId = this.resolveWorkspaceId(workspaceId);
             if (wsId) this.rootsByWorkspaceId.set(wsId, newPath);
@@ -199,9 +181,6 @@ export class WorkspaceService {
         return await workspaceAsyncContext.run({ workspaceId: wsId }, async () => await fn());
     }
 
-    /**
-     * Create a new workspace and assign the creator as OWNER
-     */
     async createWorkspace(userId: string, name: string, slug?: string): Promise<IWorkspace> {
         if (!isDbConnected()) {
             const uid = safeObjectIdHex(userId);
@@ -236,25 +215,16 @@ export class WorkspaceService {
             return ws as unknown as IWorkspace;
         }
 
-        // [FIX] Make slug unique by including userId prefix to avoid duplicate key errors
         const baseSlug = slug || slugify(name);
         const userPrefix = String(userId || '').slice(-6);
         const finalSlug = `${baseSlug}-${userPrefix}`;
-
-        // Limits based on FREE plan default
         const defaults = {
             plan: 'free',
-            limits: {
-                maxAgents: 2,
-                maxTokensPerDay: 100000,
-                maxConcurrentJobs: 1,
-                storageGB: 1
-            }
+            limits: { maxAgents: 2, maxTokensPerDay: 100000, maxConcurrentJobs: 1, storageGB: 1 }
         };
 
-        // [FIX] Use findOneAndUpdate with upsert to handle duplicate slugs gracefully
         const workspace = await Workspace.findOneAndUpdate(
-            { ownerId: userId, slug: finalSlug },
+            { ownerId: userId, slug: finalSlug } as any,
             {
                 $setOnInsert: {
                     name,
@@ -266,39 +236,29 @@ export class WorkspaceService {
             { upsert: true, new: true }
         );
 
-        // Ensure owner membership exists
         await WorkspaceMember.findOneAndUpdate(
-            { workspaceId: workspace._id, userId: userId },
+            { workspaceId: String(workspace?._id), userId } as any,
             {
                 $setOnInsert: {
-                    workspaceId: workspace._id,
-                    userId: userId,
+                    workspaceId: String(workspace?._id),
+                    userId,
                     role: 'OWNER'
                 }
             },
             { upsert: true }
         );
 
-        // Set the active root for this workspace to an isolated external path
-        const projectPath = path.join(this.externalRoot, String(workspace._id));
-        
-        // [FIX] إنشاء المجلد إذا لم يكن موجوداً
+        const projectPath = path.join(this.externalRoot, String(workspace?._id));
         try {
             if (!fs.existsSync(projectPath)) {
                 fs.mkdirSync(projectPath, { recursive: true });
             }
-        } catch (e) {
-            console.warn(`[WorkspaceService] Could not create project path: ${projectPath}`, e);
-        }
-        
-        this.rootsByWorkspaceId.set(String(workspace._id), projectPath);
+        } catch { }
+        this.rootsByWorkspaceId.set(String(workspace?._id), projectPath);
 
-        return workspace;
+        return workspace as IWorkspace;
     }
 
-    /**
-     * Get workspace by ID with member check
-     */
     async getWorkspace(workspaceId: string, userId: string): Promise<IWorkspace | null> {
         if (!isDbConnected()) {
             const uid = safeObjectIdHex(userId);
@@ -309,18 +269,15 @@ export class WorkspaceService {
         }
 
         const member = await WorkspaceMember.findOne({
-            workspaceId: workspaceId,
-            userId: userId
-        });
+            workspaceId,
+            userId
+        } as any);
 
-        if (!member) return null; // Access Denied or Not Found
+        if (!member) return null;
 
         return await Workspace.findById(workspaceId);
     }
 
-    /**
-     * Get all workspaces for a user
-     */
     async getUserWorkspaces(userId: string) {
         if (!isDbConnected()) {
             const uid = safeObjectIdHex(userId);
@@ -328,13 +285,10 @@ export class WorkspaceService {
             return (mockWorkspacesByUserId.get(uid) || []) as any[];
         }
 
-        const memberships = await WorkspaceMember.find({ userId: userId }).populate('workspaceId');
+        const memberships = await WorkspaceMember.find({ userId } as any).populate('workspaceId');
         return memberships.map(m => m.workspaceId);
     }
 
-    /**
-     * Add a member to the workspace
-     */
     async addMember(adminUserId: string, workspaceId: string, targetEmail: string, role: 'ADMIN' | 'DEVELOPER' | 'VIEWER') {
         if (!isDbConnected()) {
             const uid = safeObjectIdHex(adminUserId);
@@ -342,11 +296,11 @@ export class WorkspaceService {
             const wsId = String(workspaceId || '').trim();
             const members = mockMembersByWorkspaceId.get(wsId) || [];
             const admin = members.find(m => m.userId._id === uid && (m.role === 'OWNER' || m.role === 'ADMIN'));
-            if (!admin) throw new Error('Unauthorized: Only Admins can add members');
+            if (!admin) throw new Error('Unauthorized');
 
             const email = String(targetEmail || '').trim().toLowerCase();
             const userHex = safeObjectIdHex(`user:${email}`);
-            if (members.some(m => m.userId.email.toLowerCase() === email)) throw new Error('User is already a member');
+            if (members.some(m => m.userId.email.toLowerCase() === email)) throw new Error('Already a member');
 
             members.push({
                 _id: safeObjectIdHex(`mem:${wsId}:${email}:${Date.now()}`),
@@ -358,125 +312,64 @@ export class WorkspaceService {
             return;
         }
 
-        // 1. Verify Admin permissions
         const admin = await WorkspaceMember.findOne({
-            workspaceId: workspaceId,
+            workspaceId,
             userId: adminUserId,
             role: { $in: ['OWNER', 'ADMIN'] }
-        });
-        if (!admin) throw new Error('Unauthorized: Only Admins can add members');
+        } as any);
+        if (!admin) throw new Error('Unauthorized');
 
-        // 2. Find target user
         const targetUser = await User.findOne({ email: targetEmail.toLowerCase() });
         if (!targetUser) throw new Error('User not found');
 
-        // 3. Add membership
         try {
             await WorkspaceMember.create({
-                workspaceId: workspaceId,
+                workspaceId,
                 userId: targetUser._id,
                 role
-            });
+            } as any);
         } catch (e: any) {
-            if (e.code === 11000) throw new Error('User is already a member');
+            if (e.code === 11000) throw new Error('Already a member');
             throw e;
         }
     }
 
-    /**
-     * Update workspace details (Name, Provider Config)
-     */
-    async updateWorkspace(adminUserId: string, workspaceId: string, updates: { name?: string, providerConfig?: any, activeRepo?: string, kind?: 'local' | 'github', projectInitialized?: boolean }) {
+    async updateWorkspace(adminUserId: string, workspaceId: string, updates: { name?: string, activeRepo?: string, kind?: 'local' | 'github', projectInitialized?: boolean }) {
         if (!isDbConnected()) {
             const uid = safeObjectIdHex(adminUserId);
             ensureMockPersonalWorkspace(uid);
             const wsId = String(workspaceId || '').trim();
             const list = mockWorkspacesByUserId.get(uid) || [];
             const ws = list.find(w => w._id === wsId);
-            if (!ws) throw new Error('Workspace not found');
+            if (!ws) throw new Error('Not found');
 
             const members = mockMembersByWorkspaceId.get(wsId) || [];
             const admin = members.find(m => m.userId._id === uid && (m.role === 'OWNER' || m.role === 'ADMIN'));
-            if (!admin) throw new Error('Unauthorized: Only Admins can update workspace');
+            if (!admin) throw new Error('Unauthorized');
 
             if (updates.name) ws.name = updates.name;
-            if (updates.activeRepo) {
-                ws.integrations = ws.integrations || {};
-                ws.integrations.github = {
-                    ...(ws.integrations.github || { installationId: '', repositories: [] }),
-                    activeRepo: updates.activeRepo
-                };
-            }
             if (updates.kind) ws.kind = updates.kind;
             if (updates.projectInitialized !== undefined) ws.projectInitialized = updates.projectInitialized;
             ws.updatedAt = new Date();
             return ws as unknown as IWorkspace;
         }
 
-        // 1. Verify Admin permissions
         const admin = await WorkspaceMember.findOne({
-            workspaceId: workspaceId,
+            workspaceId,
             userId: adminUserId,
             role: { $in: ['OWNER', 'ADMIN'] }
-        });
-        if (!admin) throw new Error('Unauthorized: Only Admins can update workspace');
+        } as any);
+        if (!admin) throw new Error('Unauthorized');
 
-        // 2. Update
         const workspace = await Workspace.findById(workspaceId);
-        if (!workspace) throw new Error('Workspace not found');
+        if (!workspace) throw new Error('Not found');
 
         if (updates.name) workspace.name = updates.name;
         if (updates.activeRepo) {
             if (!workspace.integrations) workspace.integrations = { github: { repositories: [] } } as any;
             if (!workspace.integrations.github) workspace.integrations.github = { installationId: '', repositories: [] };
-            if (workspace.integrations.github) {
-                workspace.integrations.github.activeRepo = updates.activeRepo;
-                
-                // [NEW] Sync the GitHub repo to the local workspace directory
-                try {
-                    const projectPath = path.join(this.externalRoot, String(workspace._id));
-                    
-                    // [FIX] تأكد من وجود المجلد
-                    if (!fs.existsSync(projectPath)) {
-                        fs.mkdirSync(projectPath, { recursive: true });
-                    }
-                    
-                    // Retrieve user token
-                    const token = await getUserSecret(adminUserId, 'github', 'GITHUB_TOKEN');
-                    if (token) {
-                        const cleanToken = token.replace(/[\s\n\r]/g, '');
-                        const repoUrl = `https://${cleanToken}@github.com/${updates.activeRepo}.git`;
-                        
-                        console.log(`[WorkspaceService] Cloning ${updates.activeRepo} to ${projectPath}...`);
-                        
-                        // Clear existing directory if it exists to ensure a fresh clone
-                        if (fs.existsSync(projectPath)) {
-                            fs.rmSync(projectPath, { recursive: true, force: true });
-                        }
-                        
-                        // Execute clone
-                        execSync(`git clone ${repoUrl} ${projectPath}`, { stdio: 'ignore' });
-                        console.log(`[WorkspaceService] Successfully cloned ${updates.activeRepo}`);
-                        
-                        // Update kind to github automatically
-                        workspace.kind = 'github';
-                    } else {
-                        console.warn(`[WorkspaceService] Could not find GITHUB_TOKEN for user ${adminUserId}. Skip cloning.`);
-                    }
-                } catch (err: any) {
-                    console.error(`[WorkspaceService] Failed to clone ${updates.activeRepo}:`, err.message);
-                }
-            }
-        }
-        if (updates.providerConfig) {
-            // Merge or overwrite provider config into integrations.llmProviders
-            if (!workspace.integrations) workspace.integrations = { llmProviders: {} } as any;
-            if (!workspace.integrations.llmProviders) workspace.integrations.llmProviders = {};
-
-            workspace.integrations.llmProviders = {
-                ...workspace.integrations.llmProviders,
-                ...updates.providerConfig
-            };
+            workspace.integrations.github.activeRepo = updates.activeRepo;
+            workspace.kind = 'github';
         }
         if (updates.kind) workspace.kind = updates.kind;
         if (updates.projectInitialized !== undefined) workspace.projectInitialized = updates.projectInitialized;
@@ -485,9 +378,6 @@ export class WorkspaceService {
         return workspace;
     }
 
-    /**
-     * Remove a member from the workspace
-     */
     async removeMember(adminUserId: string, workspaceId: string, targetMemberId: string) {
         if (!isDbConnected()) {
             const uid = safeObjectIdHex(adminUserId);
@@ -495,64 +385,49 @@ export class WorkspaceService {
             const wsId = String(workspaceId || '').trim();
             const members = mockMembersByWorkspaceId.get(wsId) || [];
             const admin = members.find(m => m.userId._id === uid && (m.role === 'OWNER' || m.role === 'ADMIN'));
-            if (!admin) throw new Error('Unauthorized: Only Admins can remove members');
+            if (!admin) throw new Error('Unauthorized');
 
             const idx = members.findIndex(m => m._id === String(targetMemberId || '').trim());
             if (idx === -1) return;
-            if (members[idx].role === 'OWNER') throw new Error('Cannot remove the Workspace Owner');
+            if (members[idx].role === 'OWNER') throw new Error('Cannot remove Owner');
             members.splice(idx, 1);
             mockMembersByWorkspaceId.set(wsId, members);
             return;
         }
 
-        // 1. Verify Admin permissions
         const admin = await WorkspaceMember.findOne({
-            workspaceId: workspaceId,
+            workspaceId,
             userId: adminUserId,
             role: { $in: ['OWNER', 'ADMIN'] }
-        });
-        if (!admin) throw new Error('Unauthorized: Only Admins can remove members');
+        } as any);
+        if (!admin) throw new Error('Unauthorized');
 
-        // Prevent removing self if Owner (optional safety, but let's just do basic check)
-        // Ideally, Owner cannot be removed by anyone.
         const target = await WorkspaceMember.findById(targetMemberId);
-        if (!target) return; // Already gone
-
-        if (target.role === 'OWNER') {
-            throw new Error('Cannot remove the Workspace Owner');
-        }
+        if (!target) return;
+        if (target.role === 'OWNER') throw new Error('Cannot remove Owner');
 
         await WorkspaceMember.findByIdAndDelete(targetMemberId);
     }
 
-    /**
-     * Get all members of a workspace
-     */
     async getWorkspaceMembers(userId: string, workspaceId: string) {
         if (!isDbConnected()) {
             const uid = safeObjectIdHex(userId);
             ensureMockPersonalWorkspace(uid);
             const wsId = String(workspaceId || '').trim();
             const members = mockMembersByWorkspaceId.get(wsId) || [];
-            const isMember = members.some(m => m.userId._id === uid);
-            if (!isMember) throw new Error('Unauthorized');
+            if (!members.some(m => m.userId._id === uid)) throw new Error('Unauthorized');
             return members as any[];
         }
 
-        // Verify membership first
         const member = await WorkspaceMember.findOne({
-            workspaceId: workspaceId,
-            userId: userId
-        });
+            workspaceId,
+            userId
+        } as any);
         if (!member) throw new Error('Unauthorized');
 
-        return await WorkspaceMember.find({ workspaceId: workspaceId })
-            .populate('userId', 'name email picture');
+        return await WorkspaceMember.find({ workspaceId } as any).populate('userId', 'name email picture');
     }
 
-    /**
-     * Migrate legacy user to have a default workspace
-     */
     async ensurePersonalWorkspace(userId: string) {
         if (!isDbConnected()) {
             return ensureMockPersonalWorkspace(userId) as unknown as IWorkspace;
@@ -562,7 +437,7 @@ export class WorkspaceService {
         if (existing.length > 0) return existing[0];
 
         const user = await User.findById(userId);
-        if (!user) throw new Error('User not found');
+        if (!user) throw new Error('Not found');
 
         const name = user.name ? `${user.name}'s Workspace` : 'Personal Workspace';
         return await this.createWorkspace(userId, name);

@@ -1,8 +1,8 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IWorkspaceMember extends Document {
-    workspaceId: Types.ObjectId;
-    userId: Types.ObjectId;
+    workspaceId: string;
+    userId: string;
     role: 'OWNER' | 'ADMIN' | 'DEVELOPER' | 'VIEWER' | 'AGENT';
     joinedAt: Date;
     updatedAt: Date;

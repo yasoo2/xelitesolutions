@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IRun extends Document {
-  sessionId: Types.ObjectId;
+  sessionId: string;
   status: 'pending' | 'running' | 'done' | 'blocked' | 'failed';
   steps: Array<{
     name: string;

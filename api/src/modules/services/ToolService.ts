@@ -533,7 +533,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             const toolLogs = Array.isArray(res?.logs) ? res.logs : [];
             
             // [NEW] Real-time Log Streaming
-            toolLogs.forEach(line => {
+            toolLogs.forEach((line: string) => {
                 broadcast({
                     type: 'terminal_output',
                     id: 'panel-terminal',

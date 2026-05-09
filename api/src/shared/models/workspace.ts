@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 export interface IWorkspace extends Document {
     slug: string;
     name: string;
-    ownerId: Types.ObjectId;
+    ownerId: string;
     status: 'active' | 'suspended' | 'archived';
     plan: 'free' | 'pro' | 'enterprise';
 
