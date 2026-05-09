@@ -50,7 +50,7 @@ export class MemoryService {
    * Completely isolated per userId
    */
   static async summarizeAndSave(userId: string, messages: string[], sessionId?: string, options?: any) {
-    if (!userId || messages.length === 0) return;
+    if (!userId || messages.length === 0 || process.env.PERSISTENCE_MODE === 'JSON') return;
 
     try {
       const conversationText = messages.join('\n');
@@ -91,7 +91,7 @@ export class MemoryService {
    * Returns last 3 summaries - completely isolated per user
    */
   static async getPersistentContext(userId: string, limit = 10): Promise<string> {
-    if (!userId) return '';
+    if (!userId || process.env.PERSISTENCE_MODE === 'JSON') return '';
 
     try {
       const summaries = await ConversationSummary.find({ userId })
@@ -125,7 +125,7 @@ export class MemoryService {
   }
 
   static async searchMemories(userId: string, text: string, limit = 5): Promise<string[]> {
-    if (!userId) return [];
+    if (!userId || process.env.PERSISTENCE_MODE === 'JSON') return [];
 
     const normalized = String(text || '')
       .normalize('NFKC')
@@ -170,7 +170,7 @@ export class MemoryService {
   }
 
   static async extractAndSaveMemories(userId: string, userText: string, options?: any) {
-    if (!userId || !userText) return;
+    if (!userId || !userText || process.env.PERSISTENCE_MODE === 'JSON') return;
 
     // Also track for summarization
     await this.trackMessage(userId, userText, 'user', options?.sessionId, options);

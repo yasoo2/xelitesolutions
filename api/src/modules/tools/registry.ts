@@ -13,6 +13,8 @@ import { CentralAnswerTool } from './definitions/CentralAnswerTool';
 import { RequestAnalyzerTool } from './definitions/RequestAnalyzerTool';
 import { ProjectPlannerTool } from './definitions/ProjectPlannerTool';
 import { AIGeneratorTool } from './definitions/AIGeneratorTool';
+import { ProgressiveGeneratorTool } from './definitions/ProgressiveGeneratorTool';
+import * as EliteTools from './definitions/EliteTools';
 import { PhaseExecutorTool } from './definitions/PhaseExecutorTool';
 import { ProjectStateManagerTool } from './definitions/ProjectStateManagerTool';
 import { AutoTesterTool } from './definitions/AutoTesterTool';
@@ -35,7 +37,7 @@ import { FallbackTool } from './definitions/FallbackTool';
 import { JavaBuilderTool } from './definitions/JavaBuilderTool';
 import { GoBuilderTool } from './definitions/GoBuilderTool';
 import { JoeEngineeringReportTool } from './definitions/JoeEngineeringReportTool';
-import { EchoTool, FileEditTool, ShellExecuteTool, WriteFileTool } from './definitions/SystemTools';
+import { EchoTool, FileEditTool, ShellExecuteTool, WriteFileTool, ScaffoldProjectTool, LsTool } from './definitions/SystemTools';
 
 
 // Self Coding Tools
@@ -46,6 +48,20 @@ import {
   RepoRunCommandTool,
   RepoDiffSummaryTool
 } from './definitions/RepoSelfCodingTools';
+
+function createTool(T: any): ToolDefinition {
+  if (typeof T === 'function') {
+    try { return new T(); } catch { }
+  }
+  if (T && typeof T.ProjectPlannerTool === 'function') return new T.ProjectPlannerTool();
+  if (T && typeof T.AIGeneratorTool === 'function') return new T.AIGeneratorTool();
+  if (T && typeof T.ProgressiveGeneratorTool === 'function') return new T.ProgressiveGeneratorTool();
+  if (T && typeof T.PhaseExecutorTool === 'function') return new T.PhaseExecutorTool();
+  if (T && typeof T.AutoTesterTool === 'function') return new T.AutoTesterTool();
+  // Fallback for others
+  if (T && T.default && typeof T.default === 'function') return new T.default();
+  return T;
+}
 
 export const tools: ToolDefinition[] = [
   new BrowserRunTool(),
@@ -60,22 +76,36 @@ export const tools: ToolDefinition[] = [
 
   ArchitectTool,
 
-  new AIGeneratorTool(),
-  new ProjectPlannerTool(),
-  new PhaseExecutorTool(),
-  new AutoTesterTool(),
-  new CodeReviewerTool(),
-  new SecurityScannerTool(),
-  new PerformanceAnalyzerTool(),
-  new ErrorRecoveryTool(),
-  new JoeEngineeringReportTool(),
+  createTool(AIGeneratorTool),
+  createTool(ProgressiveGeneratorTool),
+  
+  // ELITE TOOLS
+  new EliteTools.DependencyGraphTool(),
+  new EliteTools.BusinessLogicTool(),
+  new EliteTools.ChaosTestingTool(),
+  new EliteTools.ComplianceValidatorTool(),
+  new EliteTools.CostEstimatorTool(),
+  new EliteTools.AmbiguityResolverTool(),
+  new EliteTools.MultiAgentDebateTool(),
+  new EliteTools.SelfConfidenceTool(),
+
+  createTool(ProjectPlannerTool),
+  createTool(PhaseExecutorTool),
+  createTool(AutoTesterTool),
+  createTool(CodeReviewerTool),
+  createTool(SecurityScannerTool),
+  createTool(PerformanceAnalyzerTool),
+  createTool(ErrorRecoveryTool),
+  createTool(JoeEngineeringReportTool),
 
   // fallback minimal set to avoid breaking
   new EchoTool(),
   new FileEditTool(),
   new ShellExecuteTool(),
   new WriteFileTool(),
+  new ScaffoldProjectTool(),
+  new LsTool(),
   new TerminalManagerTool(),
   new SafeReadFileTool(),
   new AskUserTool()
-] as any as ToolDefinition[];
+].filter(Boolean) as any as ToolDefinition[];

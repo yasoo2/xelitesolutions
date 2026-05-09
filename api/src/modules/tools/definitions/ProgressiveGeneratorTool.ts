@@ -546,7 +546,7 @@ ${(config.features || []).map((f: string) => `- ${f}`).join('\n')}
         const resolvedBase = baseDir || path.join(process.cwd(), manifest.name);
         let generatedCount = 0;
 
-        const { callLLM } = require('../../core/llm');
+        const { callLLM } = require('../../../core/llm');
 
         for (const [filePath, content] of batch.files.entries()) {
             const fullPath = path.join(resolvedBase, filePath);

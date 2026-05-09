@@ -69,9 +69,9 @@ const wsToHttpForLocalhostCheck = (u: string) => String(u || '').replace(/^ws/i,
 const apiEnv = !isLocalHost && pointsToLocalhost(apiEnvRaw) ? '' : apiEnvRaw;
 const wsEnv = !isLocalHost && pointsToLocalhost(wsToHttpForLocalhostCheck(wsEnvRaw)) ? '' : wsEnvRaw;
 
-const API_URL = apiEnv || inferApiUrl();
-// Prefer explicit runtime/env WS URL. Fall back to a URL derived from the final API URL.
-const WS_URL = wsEnv || inferWsUrl(API_URL);
+const API_URL = '/api';
+const WS_URL = inferWsUrl(API_URL);
+console.log('[JOE] Final Config:', { API_URL, WS_URL });
 const GOOGLE_CLIENT_ID = googleClientIdRaw;
 const readQueryChrome = () => {
   try {

@@ -4,11 +4,11 @@ import path from 'path';
 // Helper to get LLM function lazily to avoid circular dependency
 const getLLM = () => {
     try {
-        // Assume callLLM is exported from llm.ts
-        const mod = require('../../llm');
+        const mod = require('../../../core/llm');
         return mod.callLLM || mod.default?.callLLM;
-    } catch (e) {
-        return async () => "Error: LLM not available in Elite Tools context";
+    } catch (e: any) {
+        console.error(`[EliteTools] LLM Load Error: ${e.message} (Path: ../../../core/llm)`);
+        return async () => `Error: LLM not available (${e.message})`;
     }
 };
 

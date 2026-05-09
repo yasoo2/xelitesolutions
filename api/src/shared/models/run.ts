@@ -15,7 +15,7 @@ export interface IRun extends Document {
 
 const RunSchema = new Schema<IRun>(
   {
-    sessionId: { type: Schema.Types.ObjectId, ref: 'Session', index: true, required: true },
+    sessionId: { type: String, ref: 'Session', index: true, required: true },
     status: { type: String, enum: ['pending', 'running', 'done', 'blocked', 'failed'], default: 'pending' },
     steps: [
       {

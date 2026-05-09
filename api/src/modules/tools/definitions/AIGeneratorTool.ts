@@ -5,7 +5,8 @@ import path from 'path';
 // Helper to get LLM function lazily to avoid circular dependency
 const getLLM = () => {
     try {
-        const mod = require('../../llm');
+        // Correct path to core/llm
+        const mod = require('../../../core/llm');
         return mod.callLLM || mod.default?.callLLM;
     } catch (e) {
         return async () => "Error: LLM not available in Elite Tools context";

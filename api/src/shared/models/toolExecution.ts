@@ -14,8 +14,8 @@ export interface IToolExecution extends Document {
 
 const ToolExecutionSchema = new Schema<IToolExecution>(
   {
-    runId: { type: Schema.Types.ObjectId, ref: 'Run', index: true },
-    sessionId: { type: Schema.Types.ObjectId, ref: 'Session', index: true },
+    runId: { type: String, ref: 'Run', index: true },
+    sessionId: { type: String, ref: 'Session', index: true },
     name: { type: String, required: true },
     input: { type: Schema.Types.Mixed },
     output: { type: Schema.Types.Mixed },
