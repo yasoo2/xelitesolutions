@@ -21,12 +21,14 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
   // Always try JWT first if a token is provided
   if (header && header.startsWith('Bearer ')) {
     const token = header.slice('Bearer '.length);
-    try {
-      const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
-      (req as AuthenticatedRequest).auth = payload;
-      return next();
-    } catch {
-      // Token invalid — fall through to bypass check
+    if (token && token !== 'null') {
+      try {
+        const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
+        (req as AuthenticatedRequest).auth = payload;
+        return next();
+      } catch {
+        // Token invalid — fall through to bypass check
+      }
     }
   }
 
@@ -46,19 +48,21 @@ export function authenticateOptional(req: Request, res: Response, next: NextFunc
   // Try to verify token if provided
   if (header && header.startsWith('Bearer ')) {
     const token = header.slice('Bearer '.length);
-    try {
-      const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
-      (req as AuthenticatedRequest).auth = payload;
-      return next();
-    } catch {
-      // Invalid token - in dev mode with bypass, continue anyway
-      if (isDev && process.env.ENABLE_AUTH_BYPASS === 'true') {
-        console.warn('[AUTH] Invalid token provided, but auth bypass is active (dev mode)');
-        (req as AuthenticatedRequest).auth = { sub: '000000000000000000000001', role: 'OWNER' };
+    if (token && token !== 'null') {
+      try {
+        const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
+        (req as AuthenticatedRequest).auth = payload;
         return next();
+      } catch {
+        // Invalid token - in dev mode with bypass, continue anyway
+        if (isDev && process.env.ENABLE_AUTH_BYPASS === 'true') {
+          console.warn('[AUTH] Invalid token provided, but auth bypass is active (dev mode)');
+          (req as AuthenticatedRequest).auth = { sub: '000000000000000000000001', role: 'OWNER' };
+          return next();
+        }
+        // In production or without bypass, reject invalid tokens
+        return res.status(401).json({ error: 'Invalid token' });
       }
-      // In production or without bypass, reject invalid tokens
-      return res.status(401).json({ error: 'Invalid token' });
     }
   }
   
