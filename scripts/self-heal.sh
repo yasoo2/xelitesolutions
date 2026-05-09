@@ -87,23 +87,17 @@ if [ -d "dist" ]; then
 fi
 npm run build || npx tsc --skipLibCheck || log "⚠️ Build had issues"
 
-# RESTART LOGIC (The most important part)
-log "🔄 RESTARTING API..."
-# 1. Try PM2
-export PATH="$PATH:$(npm bin -g):$HOME/.nvm/versions/node/v20.11.1/bin"
-npx pm2 restart joe-api --update-env || npx pm2 start ecosystem.config.js
+# RESTART LOGIC (NUCLEAR OPTION)
+log "☢️ TRIGGERING NUCLEAR RESTART..."
+# Kill all node processes running the API
+pkill -9 -f "node.*dist/index.js" || true
+pkill -9 -f "node.*api/index.js" || true
 
-# 2. Aggressive Fallback: if uptime doesn't reset, we might need pkill
-# (Wait a bit to see if PM2 worked)
-sleep 5
-if curl -s http://localhost:8080/api/health | grep -q "uptime"; then
-    log "✅ PM2 restart signaled"
-else
-    log "⚠️ PM2 failed, using pkill fallback..."
-    pkill -f "node.*dist/index.js" || true
-    sleep 2
-    npx pm2 start ecosystem.config.js || nohup node dist/index.js > /tmp/joe-api.log 2>&1 &
-fi
+# If using PM2, it will auto-restart. If using Systemd with Restart=always, it will auto-restart.
+# We also try to start it just in case
+cd "$API_PATH"
+export PATH="$PATH:$(npm bin -g):$HOME/.nvm/versions/node/v20.11.1/bin"
+npx pm2 start ecosystem.config.js || nohup node dist/index.js > /tmp/joe-api.log 2>&1 &
 
 log "🎉 Deployment logic finished"
 exit 0
