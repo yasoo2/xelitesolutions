@@ -308,7 +308,13 @@ export class DeployManager {
                 await this.runCommand('sudo', ['systemctl', 'restart', 'joe-api.service'], PROJECT_ROOT, 30000);
                 return;
             } catch (e: any) {
-                logger.error(`[DeployManager] systemctl restart failed: ${e.message}. Falling back to manual spawn.`);
+                logger.error(`[DeployManager] systemctl restart failed: ${e.message}. Trying self-exit fallback...`);
+                
+                // Final fallback: Self-exit and let PM2/Docker respawn us
+                setTimeout(() => {
+                    logger.info('[DeployManager] Self-exiting for automatic PM2/Docker restart...');
+                    process.exit(0);
+                }, 1000);
             }
         }
 
