@@ -10,7 +10,7 @@ export interface IArtifact extends Document {
 
 const ArtifactSchema = new Schema<IArtifact>(
   {
-    runId: { type: Schema.Types.ObjectId, ref: 'Run', index: true },
+    runId: { type: String, ref: 'Run', index: true },
     name: { type: String, required: true },
     href: { type: String, required: true },
   },

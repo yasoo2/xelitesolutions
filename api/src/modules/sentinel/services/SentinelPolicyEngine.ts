@@ -61,7 +61,7 @@ export class SentinelPolicyEngine {
         const actionRecommendations: Set<string> = new Set();
         let maxSeverity: 'info' | 'low' | 'medium' | 'high' | 'critical' = 'info';
 
-        const serverId = new Types.ObjectId(payload.serverId);
+        const serverId = payload.serverId;
 
         // 1. Users/SSH Analysis
         if (payload.users && payload.users.length > 0) {

@@ -16,7 +16,7 @@ export interface IUserSecret extends Document {
 
 const UserSecretSchema = new Schema<IUserSecret>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', index: true, required: true },
+    userId: { type: String, ref: 'User', index: true, required: true },
     provider: { type: String, required: true, index: true },
     key: { type: String, required: true, index: true },
     value: { type: String, required: true },

@@ -7,7 +7,7 @@ export class SentinelIncidentService {
      * Creates a new incident or updates an existing open one if the same rule triggers for the same server.
      */
     static async triggerIncident(
-        serverId: Types.ObjectId,
+        serverId: any,
         title: string,
         severity: 'info' | 'low' | 'medium' | 'high' | 'critical',
         rules: string[],

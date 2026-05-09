@@ -10,7 +10,7 @@ export interface SentinelServerBaselineDocument extends Document {
 }
 
 const SentinelServerBaselineSchema = new Schema<SentinelServerBaselineDocument>({
-    serverId: { type: Schema.Types.ObjectId, ref: 'ServerConfig', required: true, unique: true },
+    serverId: { type: String, ref: 'ServerConfig', required: true, unique: true },
     checksums: { type: Map, of: String, default: {} },
     pm2Apps: [{
         name: { type: String },

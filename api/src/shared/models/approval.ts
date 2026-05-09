@@ -11,7 +11,7 @@ export interface IApproval extends Document {
 
 const ApprovalSchema = new Schema<IApproval>(
   {
-    runId: { type: Schema.Types.ObjectId, ref: 'Run', index: true, required: true },
+    runId: { type: String, ref: 'Run', index: true, required: true },
     action: { type: String, required: true },
     risk: { type: String, required: true },
     status: { type: String, enum: ['pending', 'approved', 'denied'], default: 'pending' },

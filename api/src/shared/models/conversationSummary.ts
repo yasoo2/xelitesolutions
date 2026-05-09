@@ -23,7 +23,7 @@ const ConversationSummarySchema = new Schema<IConversationSummary>(
             index: true  // Critical: Fast lookups by user
         },
         sessionId: {
-            type: Schema.Types.ObjectId,
+            type: String,
             ref: 'Session',
             index: true
         },

@@ -14,9 +14,9 @@ export interface IMemoryItem extends Document {
 const MemoryItemSchema = new Schema<IMemoryItem>(
   {
     scope: { type: String, enum: ['session', 'project', 'user'], required: true },
-    sessionId: { type: Schema.Types.ObjectId, ref: 'Session', index: true },
-    projectId: { type: Schema.Types.ObjectId, ref: 'Project', index: true },
-    userId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    sessionId: { type: String, ref: 'Session', index: true },
+    projectId: { type: String, ref: 'Project', index: true },
+    userId: { type: String, ref: 'User', index: true },
     key: { type: String, required: true },
     value: { type: Schema.Types.Mixed },
   },

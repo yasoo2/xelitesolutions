@@ -21,7 +21,7 @@ const ServerConfigSchema = new Schema<ServerConfigDocument>({
     isActive: { type: Boolean, default: true },
     lastConnected: { type: Date },
     createdAt: { type: Date, default: Date.now },
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    userId: { type: String, ref: 'User', required: true },
 });
 
 // Index for faster queries

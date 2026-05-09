@@ -9,7 +9,7 @@ export interface ISummary extends Document {
 
 const SummarySchema = new Schema<ISummary>(
   {
-    sessionId: { type: Schema.Types.ObjectId, ref: 'Session', index: true, required: true },
+    sessionId: { type: String, ref: 'Session', index: true, required: true },
     content: { type: String, required: true },
   },
   { timestamps: true }

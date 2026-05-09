@@ -42,7 +42,7 @@ const WorkspaceSchema = new Schema<IWorkspace>(
     {
         slug: { type: String, required: true, unique: true, index: true, lowercase: true, trim: true },
         name: { type: String, required: true },
-        ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+        ownerId: { type: String, ref: 'User', required: true, index: true },
         status: { type: String, enum: ['active', 'suspended', 'archived'], default: 'active' },
         plan: { type: String, enum: ['free', 'pro', 'enterprise'], default: 'free' },
         kind: { type: String, enum: ['local', 'github'], default: 'local' },

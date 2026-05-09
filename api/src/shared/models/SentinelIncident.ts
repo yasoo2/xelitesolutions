@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 export interface SentinelIncidentDocument extends Document {
     title: string;
     severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
-    serverId: Types.ObjectId;
+    serverId: string;
     detectingRules: string[];
     evidence: any;
     status: 'open' | 'acknowledged' | 'contained' | 'resolved' | 'false_positive';
@@ -15,7 +15,7 @@ export interface SentinelIncidentDocument extends Document {
 const SentinelIncidentSchema = new Schema<SentinelIncidentDocument>({
     title: { type: String, required: true },
     severity: { type: String, enum: ['info', 'low', 'medium', 'high', 'critical'], required: true },
-    serverId: { type: Schema.Types.ObjectId, ref: 'ServerConfig', required: true },
+    serverId: { type: String, ref: 'ServerConfig', required: true },
     detectingRules: [{ type: String }],
     evidence: { type: Schema.Types.Mixed }, // Dynamic JSON payload
     status: { type: String, enum: ['open', 'acknowledged', 'contained', 'resolved', 'false_positive'], default: 'open' },

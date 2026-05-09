@@ -10,8 +10,8 @@ export interface IWorkspaceMember extends Document {
 
 const WorkspaceMemberSchema = new Schema<IWorkspaceMember>(
     {
-        workspaceId: { type: Schema.Types.ObjectId, ref: 'Workspace', required: true, index: true },
-        userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+        workspaceId: { type: String, ref: 'Workspace', required: true, index: true },
+        userId: { type: String, ref: 'User', required: true, index: true },
         role: { type: String, enum: ['OWNER', 'ADMIN', 'DEVELOPER', 'VIEWER', 'AGENT'], default: 'VIEWER' },
         joinedAt: { type: Date, default: Date.now }
     },

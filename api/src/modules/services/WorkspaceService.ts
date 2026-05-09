@@ -46,7 +46,8 @@ const mockWorkspacesByUserId = new Map<string, MockWorkspace[]>();
 const mockMembersByWorkspaceId = new Map<string, MockMember[]>();
 
 function isDbConnected() {
-    return mongoose.connection.readyState === 1;
+    const isPersistenceDisabled = process.env.PERSISTENCE_MODE === 'JSON';
+    return mongoose.connection.readyState === 1 && !isPersistenceDisabled;
 }
 
 function isValidObjectIdHex(id: string) {
@@ -253,12 +254,12 @@ export class WorkspaceService {
 
         // [FIX] Use findOneAndUpdate with upsert to handle duplicate slugs gracefully
         const workspace = await Workspace.findOneAndUpdate(
-            { ownerId: new Types.ObjectId(userId), slug: finalSlug },
+            { ownerId: userId, slug: finalSlug },
             {
                 $setOnInsert: {
                     name,
                     slug: finalSlug,
-                    ownerId: new Types.ObjectId(userId),
+                    ownerId: userId,
                     ...defaults
                 }
             },
@@ -267,11 +268,11 @@ export class WorkspaceService {
 
         // Ensure owner membership exists
         await WorkspaceMember.findOneAndUpdate(
-            { workspaceId: workspace._id, userId: new Types.ObjectId(userId) },
+            { workspaceId: workspace._id, userId: userId },
             {
                 $setOnInsert: {
                     workspaceId: workspace._id,
-                    userId: new Types.ObjectId(userId),
+                    userId: userId,
                     role: 'OWNER'
                 }
             },
@@ -308,8 +309,8 @@ export class WorkspaceService {
         }
 
         const member = await WorkspaceMember.findOne({
-            workspaceId: new Types.ObjectId(workspaceId),
-            userId: new Types.ObjectId(userId)
+            workspaceId: workspaceId,
+            userId: userId
         });
 
         if (!member) return null; // Access Denied or Not Found
@@ -327,7 +328,7 @@ export class WorkspaceService {
             return (mockWorkspacesByUserId.get(uid) || []) as any[];
         }
 
-        const memberships = await WorkspaceMember.find({ userId: new Types.ObjectId(userId) }).populate('workspaceId');
+        const memberships = await WorkspaceMember.find({ userId: userId }).populate('workspaceId');
         return memberships.map(m => m.workspaceId);
     }
 
@@ -359,8 +360,8 @@ export class WorkspaceService {
 
         // 1. Verify Admin permissions
         const admin = await WorkspaceMember.findOne({
-            workspaceId: new Types.ObjectId(workspaceId),
-            userId: new Types.ObjectId(adminUserId),
+            workspaceId: workspaceId,
+            userId: adminUserId,
             role: { $in: ['OWNER', 'ADMIN'] }
         });
         if (!admin) throw new Error('Unauthorized: Only Admins can add members');
@@ -372,7 +373,7 @@ export class WorkspaceService {
         // 3. Add membership
         try {
             await WorkspaceMember.create({
-                workspaceId: new Types.ObjectId(workspaceId),
+                workspaceId: workspaceId,
                 userId: targetUser._id,
                 role
             });
@@ -414,8 +415,8 @@ export class WorkspaceService {
 
         // 1. Verify Admin permissions
         const admin = await WorkspaceMember.findOne({
-            workspaceId: new Types.ObjectId(workspaceId),
-            userId: new Types.ObjectId(adminUserId),
+            workspaceId: workspaceId,
+            userId: adminUserId,
             role: { $in: ['OWNER', 'ADMIN'] }
         });
         if (!admin) throw new Error('Unauthorized: Only Admins can update workspace');
@@ -506,8 +507,8 @@ export class WorkspaceService {
 
         // 1. Verify Admin permissions
         const admin = await WorkspaceMember.findOne({
-            workspaceId: new Types.ObjectId(workspaceId),
-            userId: new Types.ObjectId(adminUserId),
+            workspaceId: workspaceId,
+            userId: adminUserId,
             role: { $in: ['OWNER', 'ADMIN'] }
         });
         if (!admin) throw new Error('Unauthorized: Only Admins can remove members');
@@ -540,12 +541,12 @@ export class WorkspaceService {
 
         // Verify membership first
         const member = await WorkspaceMember.findOne({
-            workspaceId: new Types.ObjectId(workspaceId),
-            userId: new Types.ObjectId(userId)
+            workspaceId: workspaceId,
+            userId: userId
         });
         if (!member) throw new Error('Unauthorized');
 
-        return await WorkspaceMember.find({ workspaceId: new Types.ObjectId(workspaceId) })
+        return await WorkspaceMember.find({ workspaceId: workspaceId })
             .populate('userId', 'name email picture');
     }
 
