@@ -49,8 +49,6 @@ router.post('/deploy', async (req: Request, res: Response) => {
     }
 });
 
-export default router;
-
 // Status endpoint
 router.get('/deploy/status', (req, res) => {
     res.json({
@@ -61,16 +59,13 @@ router.get('/deploy/status', (req, res) => {
 
 // Manual trigger
 router.post('/deploy/trigger', async (req, res) => {
-    if (isDeploying) {
-        return res.status(409).json({ error: 'Deployment already in progress' });
+    try {
+        const { deployManager } = await import('../../modules/services/DeployManager');
+        const id = await deployManager.startDeploy('manual');
+        res.json({ id, message: 'Manual deployment started' });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
     }
-
-    res.json({ message: 'Manual deployment started' });
-
-    isDeploying = true;
-    runDeployment('manual').finally(() => {
-        isDeploying = false;
-    });
 });
 
 export default router;
