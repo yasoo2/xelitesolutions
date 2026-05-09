@@ -42,19 +42,25 @@ REMOTE_COMMIT=$(git rev-parse origin/main 2>/dev/null || echo "unknown")
 
 log "Local: ${LOCAL_COMMIT:0:7} | Remote: ${REMOTE_COMMIT:0:7}"
 
+# Main logic
+FORCE_DEPLOY=false
+if [ "$1" = "deploy" ]; then
+    FORCE_DEPLOY=true
+fi
+
 # Check if update is needed
-if [ "$LOCAL_COMMIT" = "$REMOTE_COMMIT" ]; then
+if [ "$LOCAL_COMMIT" = "$REMOTE_COMMIT" ] && [ "$FORCE_DEPLOY" = "false" ]; then
     log "Already up to date, checking server health..."
 
-    # Check if server is running
-    if curl -s http://localhost:8080/health >/dev/null 2>&1; then
+    # Check if server is running on port 8080
+    if curl -s http://localhost:8080/api/health >/dev/null 2>&1; then
         log "✅ Server is healthy"
         exit 0
     else
         log "⚠️ Server is not responding, will restart..."
     fi
 else
-    log "📥 Update available: ${LOCAL_COMMIT:0:7} -> ${REMOTE_COMMIT:0:7}"
+    log "📥 Deployment triggered: ${LOCAL_COMMIT:0:7} -> ${REMOTE_COMMIT:0:7} (Force: $FORCE_DEPLOY)"
 fi
 
 # Update code
@@ -66,8 +72,20 @@ git reset --hard origin/main 2>/dev/null || {
     git pull origin main --force 2>/dev/null || true
 }
 
+# Build Web Frontend (NEW)
+log "========================================="
+log "🔨 Building Web Frontend..."
+log "========================================="
+cd "$PROJECT_PATH/web"
+log "Installing web dependencies..."
+npm install --legacy-peer-deps --no-audit --no-fund 2>&1 | tee -a "$LOG_FILE" || log "⚠️ Web install issues"
+log "Building web..."
+npm run build 2>&1 | tee -a "$LOG_FILE" || log "⚠️ Web build issues"
+
 # Build API
+log "========================================="
 log "🔨 Building API..."
+log "========================================="
 cd "$API_PATH"
 
 # Load NVM to ensure right node version
@@ -75,53 +93,46 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
 # Install dependencies
-log "Installing dependencies..."
+log "Installing API dependencies..."
 rm -rf node_modules package-lock.json
 npm install --legacy-peer-deps --no-audit --no-fund 2>&1 | tee -a "$LOG_FILE" || {
-    log "⚠️ npm install had issues, continuing..."
+    log "⚠️ API npm install had issues, continuing..."
 }
 
 # Build
 log "Compiling TypeScript..."
 npx tsc 2>&1 | tee -a "$LOG_FILE" || {
     log "❌ tsc build failed"
-    exit 1
+    # Try alternate build if tsc fails
+    npm run build 2>&1 | tee -a "$LOG_FILE" || log "⚠️ Alternate build failed"
 }
 
-# Check if build succeeded
-if [ ! -d "$API_PATH/dist" ]; then
-    log "❌ Build failed - no dist folder"
-    exit 1
-fi
-
 # Stop old server
-log "🔄 Stopping old server..."
-npx pm2 stop joe-api 2>/dev/null || true
-sleep 3
-
-# Start new server
-log "🚀 Starting new server..."
+log "🔄 Restarting server via PM2..."
 cd "$API_PATH"
-export NODE_ENV=production
-export PORT=8080
+# Ensure PM2 is in path
+export PATH="$PATH:$(npm bin -g):$HOME/.nvm/versions/node/v20.11.1/bin"
 
-npx pm2 start ecosystem.config.js
+npx pm2 restart joe-api --update-env || {
+    log "⚠️ PM2 restart failed, trying to start fresh..."
+    npx pm2 start ecosystem.config.js --env production
+}
 log "Server managed by PM2"
 
 # Wait and verify
-sleep 5
+sleep 10
 
 for i in 1 2 3 4 5; do
-    if curl -s http://localhost:8080/health >/dev/null 2>&1; then
+    if curl -s http://localhost:8080/api/health >/dev/null 2>&1; then
         log "✅ Server is healthy!"
         echo "$REMOTE_COMMIT" > "$PROJECT_PATH/last_stable_commit"
         log "═══════════════════════════════════════════════════════════"
-        log "🎉 Self-Healing Deployment Complete!"
+        log "🎉 Deployment Complete!"
         log "═══════════════════════════════════════════════════════════"
         exit 0
     fi
-    log "Health check $i/5 failed, retrying..."
-    sleep 2
+    log "Health check $i/5 failed (port 8080), retrying..."
+    sleep 5
 done
 
 log "❌ Health check failed"

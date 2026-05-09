@@ -156,23 +156,23 @@ export class DeployManager {
             // 0. Ensure git safety (dubious ownership fix)
             await this.runCommand('git', ['config', '--global', '--add', 'safe.directory', PROJECT_ROOT], PROJECT_ROOT);
 
-            // 1. Run the central deployment script
-            this.queueLog(id, '[SYSTEM] Executing central deployment script (deploy.sh)...');
-            const deployScript = path.join(PROJECT_ROOT, 'scripts', 'deploy.sh');
+            // 1. Run the central self-healing deployment script
+            this.queueLog(id, '[SYSTEM] Executing central self-healing deployment script (self-heal.sh)...');
+            const selfHealScript = path.join(PROJECT_ROOT, 'scripts', 'self-heal.sh');
             
             try {
                 // Ensure script is executable
-                await this.runCommand('chmod', ['+x', deployScript], PROJECT_ROOT, 30000, id);
+                await this.runCommand('chmod', ['+x', selfHealScript], PROJECT_ROOT, 30000, id);
                 
-                // Run deployment script
-                await this.runCommand('bash', [deployScript, 'deploy'], PROJECT_ROOT, 600000, id);
-                this.queueLog(id, '[SYSTEM] Deployment script completed successfully');
+                // Run self-heal script with 'deploy' argument to force update
+                await this.runCommand('bash', [selfHealScript, 'deploy'], PROJECT_ROOT, 900000, id);
+                this.queueLog(id, '[SYSTEM] Self-healing deployment script completed successfully');
             } catch (error: any) {
                 this.queueLog(id, `[ERROR] Deployment script failed: ${error.message}`);
                 throw error;
             }
 
-            // 2. Success verification (deploy.sh already handles restart and health check)
+            // 2. Success verification
             this.queueLog(id, '[SYSTEM] Verifying final health status...');
             await this.verifyHealth();
             this.queueLog(id, '[SYSTEM] Deployment verification passed');
