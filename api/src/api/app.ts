@@ -130,6 +130,21 @@ export const createApp = () => {
     });
   });
 
+  apiRouter.get('/debug-deploy-logs', async (_req, res) => {
+    try {
+      const logFile = '/tmp/joe-self-heal.log';
+      if (fs.existsSync(logFile)) {
+        const content = fs.readFileSync(logFile, 'utf8');
+        const lines = content.split('\n').slice(-100).join('\n');
+        res.type('text/plain').send(lines);
+      } else {
+        res.status(404).send('Log file /tmp/joe-self-heal.log not found');
+      }
+    } catch (e: any) {
+      res.status(500).send(`Error reading logs: ${e.message}`);
+    }
+  });
+
   // Sub-routes
   apiRouter.use('/auth', authRoutes);
   apiRouter.use('/tools', toolsRoutes);
