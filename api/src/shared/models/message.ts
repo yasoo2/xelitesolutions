@@ -12,7 +12,7 @@ export interface IMessage extends Document {
 
 const MessageSchema = new Schema<IMessage>(
   {
-    sessionId: { type: Schema.Types.ObjectId, ref: 'Session', index: true, required: true },
+    sessionId: { type: String, ref: 'Session', index: true, required: true },
     role: { type: String, enum: ['user', 'assistant', 'system'], required: true },
     content: { type: String, required: true },
     runId: { type: String },

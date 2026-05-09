@@ -105,6 +105,7 @@ async function main() {
   const connectWithRetry = async () => {
     if (process.env.MOCK_DB === '1' || process.env.MOCK_DB === 'true' || process.env.PERSISTENCE_MODE === 'JSON') {
       logger.info('⚠️  JSON Persistence mode enabled: Data will be saved to api/data/db');
+      mongoose.set('bufferCommands', false);
       await ensureOwnerFromEnv();
       return;
     }

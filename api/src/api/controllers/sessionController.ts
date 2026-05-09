@@ -19,7 +19,8 @@ export async function createSession(req: Request, res: Response) {
         const mockMessages: any[] = (global as any).mockMessages || [];
         (global as any).mockMessages = mockMessages;
 
-        const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true';
+        const isPersistenceDisabled = process.env.PERSISTENCE_MODE === 'JSON';
+        const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || isPersistenceDisabled;
         let tenantDoc: any = { _id: new mongoose.Types.ObjectId() };
 
         if (!isOffline) {
@@ -103,10 +104,11 @@ export function updateMockSessionTitle(sessionId: string, newTitle: string) {
 
 export async function listSessions(req: Request, res: Response) {
     const userId = (req as any).auth?.sub;
+    const isPersistenceDisabled = process.env.PERSISTENCE_MODE === 'JSON';
     try {
         // [OFFLINE MODE] Return mock sessions if DB is down
-        if (mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true') {
-            console.warn('[SessionController] DB offline - returning mock session list');
+        if (mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || isPersistenceDisabled) {
+            console.warn('[SessionController] DB offline or JSON mode - returning mock session list');
 
             // Ensure global store exists
             if (!(global as any).mockSessions) {
@@ -193,7 +195,8 @@ export async function addMessage(req: Request, res: Response) {
         return res.status(400).json({ error: 'Content is required' });
     }
 
-    const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true';
+    const isPersistenceDisabled = process.env.PERSISTENCE_MODE === 'JSON';
+    const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || isPersistenceDisabled;
 
     try {
         if (!isOffline) {
@@ -373,9 +376,10 @@ export async function listSessionMessages(req: Request, res: Response) {
     const sessionId = req.params.id as string;
     const userId = (req as any).auth?.sub;
 
+    const isPersistenceDisabled = process.env.PERSISTENCE_MODE === 'JSON';
     try {
         // [OFFLINE MODE] Return empty if DB is down
-        if (mongoose.connection.readyState !== 1) {
+        if (mongoose.connection.readyState !== 1 && !isPersistenceDisabled) {
             console.warn('[SessionController] DB offline - returning empty message list');
             return res.json({ events: [] });
         }
@@ -383,15 +387,8 @@ export async function listSessionMessages(req: Request, res: Response) {
 
         console.log(`[SessionController] Listing messages for sessionId: ${sessionId}, userId: ${userId}`);
 
-        const { ObjectId } = mongoose.Types;
-        let queryId: any = sessionId;
-        try {
-            queryId = new ObjectId(sessionId);
-        } catch (e) {
-            console.error(`[SessionController] Invalid ObjectId: ${sessionId}`);
-        }
-
-        const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true';
+        const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || isPersistenceDisabled;
+        const queryId = sessionId; // Use string IDs directly since schemas were updated to String
 
         // Fetch Messages, Tools, and Session in parallel
         let messages: any[] = [];

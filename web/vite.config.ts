@@ -28,7 +28,7 @@ export default defineConfig({
     proxy: {
       '/api': {
         // [FIX] محاولة الاتصال بـ API على منافذ متعددة
-        target: 'http://127.0.0.1:5002',
+        target: 'http://localhost:5002',
         changeOrigin: true,
         ws: true,
         configure: (proxy, _options) => {

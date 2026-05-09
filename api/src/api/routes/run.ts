@@ -1619,8 +1619,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           { upsert: true, new: true }
         );
 
-        const s = await Session.create({ title: `Session ${new Date().toLocaleString()}`, mode: 'ADVISOR', kind, userId, tenantId: tenantDoc._id, workspaceId });
-        sessionId = s._id.toString();
+        let s;
+        if (!isPersistenceDisabled) {
+          s = await Session.create({ title: `Session ${new Date().toLocaleString()}`, mode: 'ADVISOR', kind, userId, tenantId: tenantDoc._id, workspaceId });
+          sessionId = s._id.toString();
+        } else {
+          sessionId = `mock-session-${Date.now()}`;
+          s = { _id: sessionId, title: 'Mock Session' };
+        }
       } else {
         sessionId = `offline-session-${Date.now()}`;
         console.log('[Run/Start] OFFLINE MODE: Using mock sessionId', sessionId);
@@ -1667,11 +1673,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       );
     };
 
+    const isJsonMode = process.env.PERSISTENCE_MODE === 'JSON';
+    const isPersistenceDisabled = offlineMode || isJsonMode;
+
     // [OFFLINE MODE GUARD] Skip DB persistence when running without MongoDB
     let run: any = null;
-    if (offlineMode) {
-      runId = `offline-run-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      console.log(`[Run/Start] OFFLINE MODE: Using mock runId: ${runId}`);
+    if (isPersistenceDisabled) {
+      runId = `mock-run-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      console.log(`[Run/Start] ${isJsonMode ? 'JSON' : 'OFFLINE'} MODE: Using mock runId: ${runId}`);
     } else {
       run = await Run.create({ sessionId, status: 'running', steps: [] });
       runId = run._id.toString();
@@ -1681,7 +1690,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     if (true) {
       (async () => {
         try {
-          const session = !offlineMode ? await Session.findById(sessionId) : { title: 'New Session' };
+          const session = !isPersistenceDisabled ? await Session.findById(sessionId) : { title: 'New Session' };
           const currentTitle = session?.title || 'New Session';
 
           if (isAutoTitleCandidate(currentTitle)) {
@@ -1807,7 +1816,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       });
 
       // [OFFLINE MODE GUARD] Skip DB operations for system prompt in offline mode
-      if (!offlineMode) {
+      if (!isPersistenceDisabled) {
         const existing = await Message.findOne({ sessionId, role: 'system' }).select({ _id: 1 }).lean();
         if (!existing) {
           await Message.create({ sessionId, role: 'system', content: currentSystemPrompt, runId });
@@ -1815,7 +1824,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           systemPromptText = currentSystemPrompt;
         }
       } else {
-        console.log('[Run/Start] OFFLINE MODE: Skipping system prompt persistence');
+        console.log('[Run/Start] PERSISTENCE DISABLED: Skipping system prompt persistence');
         systemPromptText = currentSystemPrompt;
       }
 
@@ -1825,7 +1834,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     // Load Conversation History
     let previousMessages: { role: 'user' | 'assistant' | 'system', content: string }[] = [];
-    if (!offlineMode && sessionId) {
+    if (!isPersistenceDisabled && sessionId) {
       try {
         const docs = await Message.find({ sessionId, runId: { $ne: runId }, role: { $ne: 'system' } })
           .sort({ createdAt: -1 }) // Get newest first
@@ -1973,7 +1982,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           ev({ type: 'run_finished', data: { runId, ok: true } });
 
           // Update DB/Mock state asynchronously to avoid blocking response
-          if (!offlineMode) {
+          if (!isPersistenceDisabled) {
             Run.findByIdAndUpdate(runId, { $set: { status: 'done' } }).catch(console.error);
           }
 
@@ -2224,7 +2233,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     ev({ type: 'step_done', data: { name: 'plan', plan: initialPlan } });
 
     try {
-      if (!offlineMode) {
+      if (!isPersistenceDisabled) {
         await Run.findByIdAndUpdate(runId, { $push: { steps: { name: 'plan', status: 'done' } } });
       }
     } catch { }
@@ -2242,10 +2251,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     } catch { }
 
     // [OFFLINE MODE GUARD] Skip user message persistence
-    if (!offlineMode) {
+    if (!isPersistenceDisabled) {
       await Message.create({ sessionId, role: 'user', content: persistedUserText, runId });
     } else {
-      console.log('[Run/Start] OFFLINE MODE: Skipping user message persistence');
+      console.log('[Run/Start] PERSISTENCE DISABLED: Skipping user message persistence');
     }
 
 
@@ -2295,7 +2304,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             ev({ type: 'artifact_created', data: { name: a.name, href: a.href } });
           }
         }
-        if (!offlineMode) {
+        if (!isPersistenceDisabled) {
           await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
         }
 
@@ -2308,7 +2317,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
       // [FIX] Approval creation should be gated by offlineMode
       let ap: any = { _id: `offline-approval-${Date.now()}` };
-      if (!offlineMode) {
+      if (!isPersistenceDisabled) {
         ap = await Approval.create({ runId, action: String(text || ''), risk, status: 'pending' });
         await Run.findByIdAndUpdate(runId, { $set: { status: 'blocked' } });
       }
@@ -2354,7 +2363,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (result.artifacts) {
           // Persist artifacts in DB using Artifact model if needed
         }
-        if (!offlineMode) {
+        if (!isPersistenceDisabled) {
           await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
         }
 
@@ -2379,7 +2388,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const result = await executeToolWithRateLimitRetry('http_fetch', { url: 'https://ipinfo.io/json', sessionId }, { sessionId, workspaceId }, { runId });
         ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: 'execute:http_fetch', result } });
 
-        if (!offlineMode) {
+        if (!isPersistenceDisabled) {
           await ToolExecution.create({ runId, name: 'http_fetch', input: { url: 'https://ipinfo.io/json', sessionId }, output: result.output, ok: result.ok, logs: result.logs });
         }
 
@@ -2410,7 +2419,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         ev({ type: 'run_completed', data: { runId, result } });
         ev({ type: 'run_finished', data: { runId, status: 'done' } });
 
-        if (!offlineMode) {
+        if (!isPersistenceDisabled) {
           await Message.create({ sessionId, role: 'assistant', content: finalText, runId });
           await Run.findByIdAndUpdate(runId, { $set: { status: 'done' } });
         }
@@ -3729,7 +3738,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
               plan = { name: 'echo', input: { text: isArabicText(userTextForOverrides) ? 'أكيد. ما اسم المستودع الذي تريد إنشاؤه على GitHub؟' : 'Sure — what should the new GitHub repository be named?' } } as any;
               history.push({ role: 'assistant', content: 'ASKED_FOR_REPO_NAME' } as any);
               try {
-                if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: 'ASKED_FOR_REPO_NAME', runId });
+                if (!isPersistenceDisabled) await Message.create({ sessionId, role: 'assistant', content: 'ASKED_FOR_REPO_NAME', runId });
               } catch { }
             }
           }
@@ -4604,7 +4613,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             } else if (isEmptyProjectDetectOutput(out) && !historyHasMarker(history as any, 'PROJECT_DETECT_EMPTY')) {
               history.push({ role: 'assistant', content: 'PROJECT_DETECT_EMPTY' } as any);
               try {
-                if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: 'PROJECT_DETECT_EMPTY', runId });
+                if (!isPersistenceDisabled) await Message.create({ sessionId, role: 'assistant', content: 'PROJECT_DETECT_EMPTY', runId });
               } catch { }
 
               if (!pendingPlan) {
@@ -5236,7 +5245,7 @@ If this is a browser_open failure, DO NOT automatically retry the same URL. Ask 
         ev({ type: 'run_finished', data: { runId, status: 'done' } });
 
 
-        if (!offlineMode) {
+        if (!isPersistenceDisabled) {
           await Message.create({ sessionId, role: 'assistant', content: finalContent, runId });
           await Run.findByIdAndUpdate(runId, { $set: { status: lastResult?.ok ? 'done' : 'failed', response: finalContent } });
         }
