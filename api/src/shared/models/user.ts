@@ -45,16 +45,27 @@ const wrapWithSave = (obj: any, store: JsonStore<any>) => {
     });
 };
 
+const wrapQuery = (promise: Promise<any>) => {
+    const queryProxy: any = promise;
+    // Chainable Mongoose-like methods that should just return the same proxy/promise
+    const chainables = ['lean', 'select', 'populate', 'sort', 'limit', 'skip', 'exec'];
+    chainables.forEach(method => {
+        queryProxy[method] = function() { return queryProxy; };
+    });
+    return queryProxy;
+};
+
 export const User: any = new Proxy(MongooseUser, {
     get(target, prop) {
         if (mongoose.connection.readyState !== 1) {
-            if (prop === 'findOne') return async (q: any) => wrapWithSave(await userJSON.findOne(q), userJSON);
+            if (prop === 'findOne') return (q: any) => wrapQuery((async () => wrapWithSave(await userJSON.findOne(q), userJSON))());
             if (prop === 'create') return async (d: any) => wrapWithSave(await userJSON.create(d), userJSON);
-            if (prop === 'find') return async (q: any) => {
+            if (prop === 'find') return (q: any) => wrapQuery((async () => {
                 const results = await userJSON.find(q);
                 return results.map(r => wrapWithSave(r, userJSON));
-            };
+            })());
             if (prop === 'countDocuments') return async () => (await userJSON.find({})).length;
+            if (prop === 'findById') return (id: any) => wrapQuery((async () => wrapWithSave(await userJSON.findOne({ _id: id }), userJSON))());
         }
         return (target as any)[prop];
     }

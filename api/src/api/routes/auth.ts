@@ -20,9 +20,9 @@ router.post('/register', async (req: Request, res: Response) => {
   const pwCheck = validatePasswordStrength(passwordRaw);
   if (!pwCheck.valid) return res.status(400).json({ error: pwCheck.error });
   const passwordHash = await bcrypt.hash(passwordRaw, 10);
-  let exists = await User.findOne({ email: emailNormalized }).lean();
+  let exists = await User.findOne({ email: emailNormalized });
   if (!exists) {
-    exists = await User.findOne({ email: { $regex: new RegExp(`^${emailNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }).lean();
+    exists = await User.findOne({ email: { $regex: new RegExp(`^${emailNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
   }
   if (exists) return res.status(409).json({ error: 'Email already exists' });
   const userCount = await User.countDocuments();

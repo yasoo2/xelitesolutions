@@ -510,6 +510,15 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         // But for now, we assume tDef has the handler.
 
         if (typeof (tDef as any).execute === 'function') {
+            const { broadcast } = require('../../api/ws');
+            
+            // [NEW] Broadcast tool start
+            broadcast({
+                type: 'tool_started',
+                id: 'panel-terminal',
+                data: { tool: effectiveName, input: effectiveInput }
+            });
+
             const run = async () => {
                 if (effectiveContext.userId && typeof (effectiveInput as any).userId !== 'string') {
                     (effectiveInput as any).userId = effectiveContext.userId;
@@ -522,6 +531,16 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             const output = res?.output ?? null;
             const artifacts = Array.isArray(res?.artifacts) ? res.artifacts : undefined;
             const toolLogs = Array.isArray(res?.logs) ? res.logs : [];
+            
+            // [NEW] Real-time Log Streaming
+            toolLogs.forEach(line => {
+                broadcast({
+                    type: 'terminal_output',
+                    id: 'panel-terminal',
+                    data: line + '\r\n'
+                });
+            });
+
             logs.push(...toolLogs);
 
             let error = res?.error;
@@ -529,7 +548,20 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                 error = 'Tool reported failure without an error message';
             } else if (error) {
                 error = formatToolError(error);
+                // [NEW] Broadcast error
+                broadcast({
+                    type: 'terminal_output',
+                    id: 'panel-terminal',
+                    data: `\x1b[31mERROR: ${error}\x1b[0m\r\n`
+                });
             }
+
+            // [NEW] Broadcast tool completion
+            broadcast({
+                type: 'tool_done',
+                id: 'panel-terminal',
+                data: { tool: effectiveName, ok }
+            });
 
             return { ok, output, logs, artifacts, error };
         }
