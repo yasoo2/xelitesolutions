@@ -73,6 +73,7 @@ router.get('/health', (req, res) => {
             return 'error';
         }
     })()
+  });
 });
 
 /**

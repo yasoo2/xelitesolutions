@@ -44,7 +44,7 @@ export class SentinelIncidentService {
         const newIncident = await SentinelIncidentModel.create({
             title,
             severity,
-            serverId,
+            serverId: serverId as any,
             detectingRules: rules,
             evidence,
             recommendedActions
