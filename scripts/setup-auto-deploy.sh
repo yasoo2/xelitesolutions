@@ -59,7 +59,7 @@ log_step "⏰ إعداد Cron Job للدبلوي التلقائي"
 # ═══════════════════════════════════════════════════════════════════
 
 # Create cron job that checks for updates every 2 minutes
-CRON_JOB="*/2 * * * * cd /root/xelitesolutions && curl -fsSL https://raw.githubusercontent.com/yasoo2/xelitesolutions/main/self-heal.sh -o /tmp/self-heal.sh && chmod +x /tmp/self-heal.sh && /tmp/self-heal.sh >> /tmp/joe-cron.log 2>&1"
+CRON_JOB="*/2 * * * * cd /root/xelitesolutions && curl -fsSL https://raw.githubusercontent.com/yasoo2/xelitesolutions/main/scripts/self-heal.sh -o /tmp/self-heal.sh && chmod +x /tmp/self-heal.sh && /tmp/self-heal.sh >> /tmp/joe-cron.log 2>&1"
 
 # Add to crontab if not already exists
 (crontab -l 2>/dev/null | grep -v "self-heal.sh"; echo "$CRON_JOB") | crontab -
