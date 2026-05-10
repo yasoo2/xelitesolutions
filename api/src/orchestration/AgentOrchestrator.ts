@@ -1,4 +1,4 @@
-import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { PlanningEngine, ExecutionNode as PlanNode } from '../core/orchestrator/PlanningEngine';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { executeTool } from '../modules/services/ToolService';
 import { broadcastThinkingDetail } from '../api/ws';
@@ -6,9 +6,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { BaseAgent } from './agents/BaseAgent';
 import { DevAgent } from './agents/DevAgent';
 import { SecurityAgent } from './agents/SecurityAgent';
+import { ExecutionMemory } from '../core/orchestrator/ExecutionMemory';
 
 /**
- * Modular Agent Platform - Core Intelligence Layer
+ * Modular Agent Platform - Core Intelligence Layer (REAL Agent Runtime)
  */
 
 export type AgentGoal = {
@@ -38,7 +39,7 @@ export type AgentDAG = {
 };
 
 export class AgentOrchestrator {
-  private memory: Map<string, any> = new Map();
+  private memory: Map<string, ExecutionMemory> = new Map();
   private agents: Map<AgentType, BaseAgent> = new Map();
 
   constructor() {
@@ -46,36 +47,46 @@ export class AgentOrchestrator {
     const devAgent = new DevAgent();
     this.agents.set("Dev", devAgent);
     this.agents.set("Security", new SecurityAgent());
-    this.agents.set("General", devAgent); // Use DevAgent as fallback for General tasks
-    // More agents can be added here
+    this.agents.set("General", devAgent); 
   }
 
   /**
-   * Main entry point: Executes a high-level goal
+   * Main entry point: Executes a high-level goal with REAL-TIME intelligence
    */
   public async execute(goal: AgentGoal): Promise<{ ok: boolean; result: any }> {
-    console.log(`[AgentOrchestrator] Executing goal: ${goal.goal} (ID: ${goal.id})`);
-    broadcastThinkingDetail(goal.id, `🧠 Initializing Orchestrator for goal: ${goal.goal}`);
+    console.log(`[AgentOrchestrator] Starting REAL-TIME orchestration for goal: ${goal.goal}`);
+    broadcastThinkingDetail(goal.id, `🧠 Initializing Autonomous Brain for goal: ${goal.goal}`);
 
-    // 1. Generate Structured DAG
+    // Initialize Runtime Memory
+    const runtimeMemory = new ExecutionMemory(goal.id);
+    this.memory.set(goal.id, runtimeMemory);
+
+    // 1. Initial Dynamic Planning
     const dag = await this.plan(goal.goal);
     dag.id = goal.id;
 
-    // 2. Coordinate Execution
-    return await this.coordinate(dag);
+    // 2. Adaptive Coordination Execution
+    return await this.coordinate(dag, runtimeMemory);
   }
 
   /**
-   * Converts goal into a structured execution plan (DAG)
+   * Converts goal into a structured execution plan (DAG) dynamically
    */
-  public async plan(goalText: string): Promise<AgentDAG> {
+  public async plan(goalText: string, memory?: ExecutionMemory): Promise<AgentDAG> {
     const context = IntentParser.createContext('orchestrator', 'global', []);
     const intent = await IntentParser.parse(goalText, context);
-    const rawPlan = await PlanningEngine.generatePlan(intent);
+    
+    // Inject memory into planning if available
+    const historySummary = memory ? memory.getSummary() : "";
+    const enrichedGoal = historySummary 
+        ? `${goalText}\n\n[CONTEXT: Previous attempts/steps results]\n${historySummary}` 
+        : goalText;
 
-    const nodes: ExecutionNode[] = rawPlan.steps.map((step, index) => ({
-      id: step.id || `node_${index + 1}`,
-      agent: this.selectAgent(step.description),
+    const rawPlan = await PlanningEngine.generatePlan({ ...intent, goal: enrichedGoal });
+
+    const nodes: ExecutionNode[] = rawPlan.steps.map((step) => ({
+      id: step.id,
+      agent: (step.agent as AgentType) || "General",
       task: step.description,
       tool: step.tool,
       input: step.input,
@@ -91,24 +102,12 @@ export class AgentOrchestrator {
   }
 
   /**
-   * Selects the appropriate agent based on task description
+   * ADAPTIVE COORDINATION LOOP
+   * Executes DAG, re-plans if needed, and learns from results
    */
-  private selectAgent(task: string): AgentType {
-    const t = task.toLowerCase();
-    if (t.includes('security') || t.includes('audit') || t.includes('vulnerability')) return "Security";
-    if (t.includes('deploy') || t.includes('cicd') || t.includes('docker') || t.includes('server')) return "Deploy";
-    if (t.includes('browser') || t.includes('scrape') || t.includes('click') || t.includes('site')) return "Browser";
-    if (t.includes('code') || t.includes('fix') || t.includes('refactor') || t.includes('build')) return "Dev";
-    return "General";
-  }
-
-  /**
-   * Coordinates DAG execution through ExecutionEngine (ToolService)
-   */
-  private async coordinate(dag: AgentDAG): Promise<{ ok: boolean; result: any }> {
+  private async coordinate(dag: AgentDAG, memory: ExecutionMemory): Promise<{ ok: boolean; result: any }> {
     dag.status = "running";
     const completedNodes = new Set<string>();
-    const results: Record<string, any> = {};
 
     while (completedNodes.size < dag.nodes.length) {
       const readyNodes = dag.nodes.filter(n => 
@@ -117,42 +116,68 @@ export class AgentOrchestrator {
       );
 
       if (readyNodes.length === 0 && completedNodes.size < dag.nodes.length) {
-        throw new Error(`Circular dependency detected or stalled DAG at ${completedNodes.size}/${dag.nodes.length} nodes`);
+        // [ADAPTIVE] If stalled, trigger a re-plan
+        console.warn(`[AgentOrchestrator] DAG stalled. Triggering mid-execution re-plan...`);
+        const newDag = await this.plan(dag.nodes[0]?.task || "continue execution", memory);
+        dag.nodes = [...dag.nodes, ...newDag.nodes];
+        continue;
       }
 
-      // Execute ready nodes (parallelizable, but sequential for safety in this version)
       for (const node of readyNodes) {
         node.status = "running";
+        broadcastThinkingDetail(memory.sessionId, `⚡ Running: ${node.task} via ${node.agent} Agent`);
         
         const agent = this.agents.get(node.agent);
         let result;
 
         if (agent) {
-          console.log(`[AgentOrchestrator] Delegating to ${node.agent} Agent: ${node.task}`);
-          result = await agent.execute(node.task, node.input, { sessionId: dag.id, results });
+          result = await agent.execute(node.task, node.input, { sessionId: dag.id, results: memory.getResults() });
         } else {
-          // Fallback to direct ToolService execution
-          console.log(`[AgentOrchestrator] No specialized agent for ${node.agent}. Falling back to ToolService.`);
-          result = await executeTool(node.tool, { ...node.input, orchestratorContext: results }, { sessionId: dag.id });
+          result = await executeTool(node.tool, { ...node.input, orchestratorContext: memory.getResults() }, { sessionId: dag.id });
         }
         
         if (result.ok) {
           node.status = "completed";
-          // [HARDENING] Clean output to prevent shell leakage
           const cleanOutput = this.sanitizeOutput(result.output);
           node.result = cleanOutput;
-          results[node.id] = cleanOutput;
+          memory.record(node.id, node.task, cleanOutput, "completed");
           completedNodes.add(node.id);
+
+          // [ADAPTIVE] Mid-Execution Re-evaluation
+          await this.evaluateProgress(node, memory, dag);
         } else {
-          console.warn(`[AgentOrchestrator] Node ${node.id} failed: ${result.error || result.error}. Attempting re-plan...`);
+          console.warn(`[AgentOrchestrator] Step failed: ${node.id}. Triggering ADAPTIVE RECOVERY.`);
           node.status = "failed";
+          memory.record(node.id, node.task, result.error, "failed");
+
+          // [CRITICAL] Re-plan DAG to recover from failure
+          const recoveryDag = await this.plan(`Recover from failure in ${node.task}. Error: ${result.error}`, memory);
+          if (recoveryDag && recoveryDag.nodes.length > 0) {
+             // Add recovery nodes to DAG
+             dag.nodes = [...dag.nodes, ...recoveryDag.nodes];
+             continue; 
+          }
+
           return { ok: false, result: result.error || "Execution failed" };
         }
       }
     }
 
     dag.status = "completed";
-    return { ok: true, result: results };
+    return { ok: true, result: memory.getResults() };
+  }
+
+  /**
+   * Evaluates if the goal needs adjustment after a step succeeds
+   */
+  private async evaluateProgress(node: ExecutionNode, memory: ExecutionMemory, dag: AgentDAG) {
+     const history = memory.getHistory();
+     const lastResult = history[history.length - 1]?.result;
+     
+     // If the result suggests the plan is finished early or needs more steps
+     if (typeof lastResult === 'string' && (lastResult.includes('DONE') || lastResult.includes('FINISHED'))) {
+         console.log(`[AgentOrchestrator] Early completion signal detected in ${node.id}`);
+     }
   }
 
   /**

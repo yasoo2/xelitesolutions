@@ -22,7 +22,6 @@ import { canAccessBrowserSession } from '../../modules/browser/wsHub';
 import { freeIntelligenceOptimizer } from '../../core/llm/free-intelligence-optimizer';
 import { normalizeUrlForGoto } from '../../shared/utils/url';
 import { setSessionSecretEncrypted } from '../../modules/services/secrets';
-import { AutonomousOrchestrator } from '../../core/orchestrator/AutonomousOrchestrator';
 import { AgentOrchestrator } from '../../orchestration/AgentOrchestrator';
 import { IntentParser } from '../../core/intelligence/IntentParser';
 
