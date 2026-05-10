@@ -13,7 +13,32 @@ function getWorkspaceRoot() {
     }
 }
 
-// ... (resolveToolPath and splitCommandLine remain same)
+function resolveToolPath(p: string) {
+    const root = getWorkspaceRoot();
+    const val = String(p ?? '').trim();
+    if (!val || val === '.') return root;
+    const rootReal = (() => {
+        try { return fs.realpathSync(root); } catch { return root; }
+    })();
+    const abs = path.isAbsolute(val) ? path.resolve(val) : path.resolve(rootReal, val);
+    const absReal = (() => {
+        try { return fs.realpathSync(abs); } catch { return abs; }
+    })();
+    const rel = path.relative(rootReal, absReal);
+    const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    if (!inside) throw new Error('path_outside_workspace');
+    return absReal;
+}
+
+function splitCommandLine(cmd: string): string[] {
+    const parts = cmd.match(/[^\s"']+|"([^"]*)"|'([^']*)'/g);
+    if (!parts) return [];
+    return parts.map(p => {
+        if (p.startsWith('"') && p.endsWith('"')) return p.slice(1, -1);
+        if (p.startsWith("'") && p.endsWith("'")) return p.slice(1, -1);
+        return p;
+    });
+}
 
 async function spawnWithTimeout(cmd: string, args: string[], cwd: string, timeoutMs: number) {
     const result = await ExecutionGateway.execute(cmd, args, { cwd, timeout: timeoutMs, shell: true });
