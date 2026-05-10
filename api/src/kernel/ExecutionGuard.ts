@@ -18,46 +18,61 @@ export class ExecutionGuard {
         return action();
     }
 
+
     /**
      * Apply global monkey-patch to child_process.
      * Phase 1.7: HARD LOCK.
      */
     static install() {
         const cp = require('child_process');
-        const originalSpawn = cp.spawn;
-        const originalExec = cp.exec;
+        const originals = {
+            spawn: cp.spawn,
+            exec: cp.exec,
+            execSync: cp.execSync,
+            spawnSync: cp.spawnSync,
+            execFile: cp.execFile,
+            execFileSync: cp.execFileSync
+        };
+
+        const checkBypass = (method: string, command: string) => {
+            const stack = new Error().stack || '';
+            // Allow ExecutionEngine and internal bootstrap only
+            if (!stack.includes('ExecutionEngine') && !stack.includes('internal_system_bootstrap')) {
+                console.error(`[ExecutionGuard] BLOCKED direct ${method}: ${command}`);
+                throw new Error(`[ExecutionGuard] Direct ${method} blocked. All execution must route through ExecutionEngine.`);
+            }
+        };
 
         cp.spawn = function(command: string, args: any[], options: any) {
-            const stack = new Error().stack || '';
-            if (!stack.includes('ExecutionEngine') && !stack.includes('internal_system_bootstrap')) {
-                console.error(`[ExecutionGuard] BLOCKED direct spawn: ${command}`);
-                throw new Error(`[ExecutionGuard] Direct spawn blocked. Use ExecutionEngine.execute() instead.`);
-            }
-            return originalSpawn.apply(this, [command, args, options]);
+            checkBypass('spawn', command);
+            return originals.spawn.apply(this, [command, args, options]);
         };
 
         cp.exec = function(command: string, options: any, callback: any) {
-            const stack = new Error().stack || '';
-            if (!stack.includes('ExecutionEngine')) {
-                console.error(`[ExecutionGuard] BLOCKED direct exec: ${command}`);
-                throw new Error(`[ExecutionGuard] Direct exec blocked. Use ExecutionEngine.execute() instead.`);
-            }
-            return originalExec.apply(this, [command, options, callback]);
+            checkBypass('exec', command);
+            return originals.exec.apply(this, [command, options, callback]);
         };
 
-        console.log('[ExecutionGuard] Global Execution Guard INSTALLED.');
-    }
+        cp.execSync = function(command: string, options: any) {
+            checkBypass('execSync', command);
+            return originals.execSync.apply(this, [command, options]);
+        };
 
-    /**
-     * Global interceptor (conceptually).
-     * Phase 2.1: Routes through unified execute contract.
-     */
-    static async safeRun(command: string, options: any = {}) {
-        return await executionEngine.execute({
-            id: 'safe_run_' + Date.now(),
-            type: 'shell',
-            payload: { command, options },
-            priority: 'normal'
-        });
+        cp.spawnSync = function(command: string, args: any[], options: any) {
+            checkBypass('spawnSync', command);
+            return originals.spawnSync.apply(this, [command, args, options]);
+        };
+
+        cp.execFile = function(file: string, args: any[], options: any, callback: any) {
+            checkBypass('execFile', file);
+            return originals.execFile.apply(this, [file, args, options, callback]);
+        };
+
+        cp.execFileSync = function(file: string, args: any[], options: any) {
+            checkBypass('execFileSync', file);
+            return originals.execFileSync.apply(this, [file, args, options]);
+        };
+
+        console.log('[ExecutionGuard] Global Execution Guard INSTALLED (Full Coverage).');
     }
 }

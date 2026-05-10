@@ -403,14 +403,14 @@ export async function executeTool(name: string, input: any, context?: ToolContex
 
     if (effectiveName === 'grep_search') {
         const { BinaryService } = require('./BinaryService');
-        const check = BinaryService.checkBinary('grep');
+        const check = await BinaryService.checkBinary('grep');
         if (!check.exists || !check.compatible) {
             return { ok: false, error: `binary_issue: ${check.error || 'grep not found'}. ${BinaryService.getHint('grep', check)}`, logs };
         }
     }
     if (effectiveName === 'inspect_directory' || effectiveName === 'search_files') {
         const { BinaryService } = require('./BinaryService');
-        const check = BinaryService.checkBinary('find');
+        const check = await BinaryService.checkBinary('find');
         if (!check.exists || !check.compatible) {
             // These might use glob (JS) so we don't block UNLESS we know they use find
             // For now, let's be conservative. Grep definitely uses internal execution.

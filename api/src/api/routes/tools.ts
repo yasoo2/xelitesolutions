@@ -103,7 +103,8 @@ router.post('/:name/execute', authenticate, async (req: Request, res: Response) 
     { ...(req.body || {}), userId, __userId: userId },
     { sessionId: (req.body as any)?.sessionId, language, workspaceId }
   );
-  if (result && result.ok && result.output && typeof result.output === 'object') {
+  if (result && !result.ok && (result as any).data?.code === 'QUEUE_FULL') {
+    return res.status(503).json(result);
   }
   res.json(result);
 });

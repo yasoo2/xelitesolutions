@@ -45,28 +45,27 @@ export class ExecutionEnforcer {
                     const content = fs.readFileSync(fullPath, 'utf8');
                     
                     // Regex to find direct spawn/exec calls or imports from child_process
-                    const spawnRegex = /spawn\(/g;
-                    const execRegex = /exec\(/g;
+                    const spawnRegex = /(?<!\.)spawn(Sync)?\(/g;
+                    const execRegex = /(?<!\.)exec(Sync|File|FileSync)?\(/g;
                     const ptyRegex = /pty\.spawn\(/g;
                     const importRegex = /from ['"]child_process['"]|require\(['"]child_process['"]\)/g;
 
-                    // Filter out comments and string literals for more accuracy if possible, 
-                    // but for Phase 1.8 we want to be VERY strict.
-                    
                     if (importRegex.test(content)) violations.push(`${fullPath}: Illegal child_process import`);
-                    if (spawnRegex.test(content)) violations.push(`${fullPath}: Illegal spawn() call`);
-                    // Note: We need to be careful with .exec() as it's common in RegEx.
-                    // We look for exec( that doesn't look like regex.exec(
-                    const execMatches = content.match(execRegex);
-                    if (execMatches) {
-                        // More refined check for exec
+                    
+                    if (spawnRegex.test(content)) {
+                        violations.push(`${fullPath}: Illegal spawn/spawnSync() call`);
+                    }
+
+                    if (execRegex.test(content)) {
+                        // Filter out common false positives like regex.exec or pty.exec if any
                         const lines = content.split('\n');
                         lines.forEach((line, index) => {
-                            if (line.includes('exec(') && !line.includes('.exec(') && !line.includes('//') && !line.includes('/*')) {
-                                violations.push(`${fullPath}:${index + 1}: Potential illegal exec() call`);
+                            if (execRegex.test(line) && !line.includes('.exec(') && !line.includes('//') && !line.includes('/*')) {
+                                violations.push(`${fullPath}:${index + 1}: Potential illegal exec/execSync call`);
                             }
                         });
                     }
+                    
                     if (ptyRegex.test(content)) violations.push(`${fullPath}: Illegal pty.spawn() call`);
                 }
             }

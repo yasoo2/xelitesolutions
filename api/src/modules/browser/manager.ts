@@ -225,10 +225,10 @@ export async function createSession(sessionId: string) {
     try {
       browser = await chromium.launch(getChromiumLaunchOptions());
     } catch (e: any) {
-      const check = BinaryService.checkBinary('chromium'); // Playwright might not have a standalone 'chromium' binary in path
+      const check = await BinaryService.checkBinary('chromium'); // Playwright might not have a standalone 'chromium' binary in path
       // Actually playwright has its own internal path.
       // But we can check for common issues.
-      throw new Error(`browser_launch_failed: ${e.message}. ${BinaryService.getHint('chromium', { exists: false, compatible: false })}`);
+      throw new Error(`browser_launch_failed: ${e.message}. ${BinaryService.getHint('chromium', check)}`);
     }
   }
 

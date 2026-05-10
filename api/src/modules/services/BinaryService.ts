@@ -15,29 +15,44 @@ export class BinaryService {
     /**
      * Check if a binary is available and compatible
      */
-    static checkBinary(name: string): BinaryCheckResult {
+    static async checkBinary(name: string): Promise<BinaryCheckResult> {
         try {
             // 1. Try which/where
             const whichCmd = os.platform() === 'win32' ? 'where' : 'which';
-            const which = executionEngine.runSync(`${whichCmd} ${name}`);
+            const which = await executionEngine.execute({
+                id: `check_binary_${name}`,
+                type: 'shell',
+                payload: { command: `${whichCmd} ${name}` },
+                priority: 'low'
+            });
 
-            if (!which.ok) {
+            if (!which.success) {
                 return { exists: false, compatible: false, error: 'binary_not_found' };
             }
 
-            const binaryPath = (which.output || '').trim().split('\n')[0];
+            const binaryPath = (which.data?.output || '').trim().split('\n')[0];
 
             // 2. Check architecture on macOS
             if (os.platform() === 'darwin') {
-                const fileInfo = executionEngine.runSync(`file ${binaryPath}`);
-                const info = (fileInfo.output || '').toLowerCase();
+                const fileInfo = await executionEngine.execute({
+                    id: `check_arch_${name}`,
+                    type: 'shell',
+                    payload: { command: `file ${binaryPath}` },
+                    priority: 'low'
+                });
+                const info = (fileInfo.data?.output || '').toLowerCase();
 
                 const hasArm64 = info.includes('arm64');
                 const hasX64 = info.includes('x86_64') || info.includes('x86-64');
                 const isUniversal = info.includes('universal');
 
-                const hwArchRes = executionEngine.runSync('uname -m');
-                const hwArch = (hwArchRes.output || '').trim();
+                const hwArchRes = await executionEngine.execute({
+                    id: 'check_hw_arch',
+                    type: 'shell',
+                    payload: { command: 'uname -m' },
+                    priority: 'low'
+                });
+                const hwArch = (hwArchRes.data?.output || '').trim();
 
                 const isNative = (hwArch === 'arm64' && (hasArm64 || isUniversal)) || (hwArch === 'x86_64' && hasX64);
 

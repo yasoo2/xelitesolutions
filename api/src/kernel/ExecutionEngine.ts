@@ -66,24 +66,36 @@ export class ExecutionEngine {
             logger.warn('[ExecutionEngine] node-pty not available, will use fallback');
         }
         
-        // Periodic cache cleanup
+        // Periodic cache cleanup (Optimized to be non-blocking)
         setInterval(() => {
+            if (this.cache.size === 0) return;
             const now = Date.now();
+            const keysToDelete: string[] = [];
             for (const [key, val] of this.cache) {
-                if (now > val.expires) this.cache.delete(key);
+                if (now > val.expires) keysToDelete.push(key);
             }
-        }, 30000);
+            keysToDelete.forEach(k => this.cache.delete(k));
+        }, 60000); // 1 minute cleanup is enough
     }
 
     private generateCacheKey(request: ExecutionRequest): string {
         const payload = request.payload;
+        const env = payload.options?.env || {};
+        const envKeys = Object.keys(env).sort();
+        const envString = envKeys.map(k => `${k}=${env[k]}`).join(',');
+
         const parts = [
             request.type,
             payload.command || '',
             (payload.args || []).join(','),
-            payload.options?.cwd || ''
+            payload.options?.cwd || '',
+            envString
         ];
-        return parts.join('|');
+        const rawKey = parts.join('|');
+        
+        // Use a simple hash to keep the map key length manageable
+        const crypto = require('crypto');
+        return crypto.createHash('md5').update(rawKey).digest('hex');
     }
 
     private isCacheable(request: ExecutionRequest): boolean {
@@ -98,16 +110,15 @@ export class ExecutionEngine {
      * Unified Execution Entry Point (Phase 2.2 Optimized)
      */
     async execute(request: ExecutionRequest): Promise<ExecutionResult> {
-        // 1. Cache Check
+        // 1. Cache Check (Deterministic & Short-Circuiting)
         if (this.isCacheable(request)) {
             const key = this.generateCacheKey(request);
             const cached = this.cache.get(key);
             if (cached && Date.now() < cached.expires) {
-                logger.info(`[ENGINE] [CACHE HIT] id=${request.id || 'anon'} key=${key}`);
-                // Return a copy to prevent mutation issues
+                logger.info(`[CACHE HIT] execution skipped id=${request.id || 'anon'} key=${key}`);
                 return { ...cached.result, duration: 0 };
             }
-            logger.debug(`[ENGINE] [CACHE MISS] id=${request.id || 'anon'} key=${key}`);
+            logger.info(`[CACHE MISS] executing engine id=${request.id || 'anon'} key=${key}`);
         }
 
         // 2. Concurrency Control (Queue)
@@ -117,6 +128,7 @@ export class ExecutionEngine {
                 return {
                     success: false,
                     error: 'Execution queue is full. Please try again later.',
+                    data: { code: 'QUEUE_FULL' },
                     duration: 0
                 };
             }
@@ -408,13 +420,17 @@ export class ExecutionEngine {
     }
 
     /**
-     * Run a system command synchronously.
-     * ONLY for metadata/checks.
+     * Run a system command synchronously (INTERNAL ONLY).
+     * Now private to prevent bypass.
      */
-    runSync(command: string, options: any = {}) {
+    private runCommandInternalSync(command: string, options: any = {}) {
         const { spawnSync } = require('child_process');
-        const [cmd, ...args] = command.split(' ');
+        const parts = command.trim().split(/\s+/);
+        const cmd = parts[0];
+        const args = parts.slice(1);
         
+        logger.warn(`[ENGINE] [INTERNAL SYNC] executing: ${command}`);
+
         const result = spawnSync(cmd, args, {
             ...options,
             encoding: 'utf8',

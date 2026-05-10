@@ -98,7 +98,7 @@ export class WebPipelineTool extends BaseTool {
         const { BinaryService } = require('../../services/BinaryService');
         const crucialBinaries = ['node', 'npm', 'npx'];
         for (const b of crucialBinaries) {
-            const check = BinaryService.checkBinary(b);
+            const check = await BinaryService.checkBinary(b);
             if (!check.exists || check.error === 'warning_rosetta_required') {
                 const hint = BinaryService.getHint(b, check);
                 if (sessionId) broadcastThinkingDetail(sessionId, `⚠️ Environment Issue: ${hint}`);
