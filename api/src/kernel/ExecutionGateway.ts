@@ -11,9 +11,27 @@ export class ExecutionGateway {
     /**
      * Unified execute method.
      * Routes all system requests through ExecutionEngine.
+     * Supports both (request: ExecutionRequest) and (command: string, args?: string[], options?: any).
      */
-    static async execute(request: ExecutionRequest): Promise<ExecutionResult> {
+    static async execute(requestOrCommand: ExecutionRequest | string, args: string[] = [], options: any = {}): Promise<ExecutionResult> {
         const start = Date.now();
+        let request: ExecutionRequest;
+
+        if (typeof requestOrCommand === 'string') {
+            // Convert old signature to new ExecutionRequest
+            const fullCommand = args.length > 0 ? `${requestOrCommand} ${args.join(' ')}` : requestOrCommand;
+            request = {
+                id: options.sessionId || 'gate-' + Date.now(),
+                type: 'shell',
+                payload: {
+                    command: fullCommand,
+                    options
+                },
+                priority: options.priority || 'normal'
+            };
+        } else {
+            request = requestOrCommand;
+        }
         
         // Validation Layer
         if (!request.payload.command && request.type === 'shell') {

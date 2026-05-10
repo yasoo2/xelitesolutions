@@ -471,6 +471,7 @@ export class ShellExecuteTool extends BaseTool {
     inputSchema = {
         type: 'object' as const,
         properties: {
+            command: { type: 'string', description: 'The command to execute' },
             cwd: { type: 'string' },
             serverId: { type: 'string', description: 'ID of the remote server to execute on' },
             timeout: { type: 'number' },

@@ -102,7 +102,7 @@ export class ExecutionEngine {
         if (request.type !== 'shell') return false;
         const cmd = (request.payload.command || '').toLowerCase();
         // Safe read-only commands
-        const safeCommands = ['ls', 'git log', 'git status', 'pwd', 'df', 'whoami', 'cat', 'grep', 'find', 'du'];
+        const safeCommands = ['ls', 'git log', 'git status', 'pwd', 'df', 'whoami', 'cat', 'grep', 'find', 'du', 'where', 'which'];
         return safeCommands.some(c => cmd.startsWith(c));
     }
 
@@ -115,10 +115,10 @@ export class ExecutionEngine {
             const key = this.generateCacheKey(request);
             const cached = this.cache.get(key);
             if (cached && Date.now() < cached.expires) {
-                logger.info(`[CACHE HIT] execution skipped id=${request.id || 'anon'} key=${key}`);
+                logger.info(`[CACHE HIT] execution skipped id=${request.id || 'anon'} key=${key} cmd=${request.payload.command}`);
                 return { ...cached.result, duration: 0 };
             }
-            logger.info(`[CACHE MISS] executing engine id=${request.id || 'anon'} key=${key}`);
+            logger.info(`[CACHE MISS] executing engine id=${request.id || 'anon'} key=${key} cmd=${request.payload.command}`);
         }
 
         // 2. Concurrency Control (Queue)
