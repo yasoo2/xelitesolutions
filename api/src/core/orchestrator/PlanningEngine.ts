@@ -24,46 +24,52 @@ export interface ExecutionPlan {
 
 export class PlanningEngine {
     /**
-     * Generate a multi-step execution plan based on the intent
+     * Generate a dynamic multi-step execution DAG based on intent and optional memory
      */
-    static async generatePlan(intent: StructuredIntent): Promise<ExecutionPlan> {
-        console.log(`[PlanningEngine] Generating dynamic plan for goal: ${intent.goal}`);
+    static async generatePlan(params: { intent: StructuredIntent, memory?: any }): Promise<ExecutionPlan> {
+        const { intent, memory } = params;
+        console.log(`[PlanningEngine] Generating REAL-TIME DAG for: ${intent.goal}`);
 
-        // [DYNAMIC PLANNING] Use LLM to generate a structured step-by-step plan
-        const systemPrompt = `You are an Autonomous Software Engineering Planner.
-Break down the goal into a logical sequence of execution steps.
-Each step must specify:
-1. "task": Clear description of what to do.
-2. "tool": Best tool for the job (shell_execute, read_file, write_file, browser_run, grep_search, ls, npm_manager).
-3. "agent": Specialization required (Dev, Security, Browser).
+        const historyContext = memory ? `\nPrevious Execution History:\n${JSON.stringify(memory)}` : "";
+
+        const systemPrompt = `You are a Professional Software Architecture Planner.
+Generate a dynamic Execution DAG (Directed Acyclic Graph) for the given goal.
+
+Constraints:
+- Use ONLY existing tools: shell_execute, read_file, write_file, browser_run, grep_search, ls, npm_manager.
+- Define explicit dependencies (dependsOn).
+- Assign an agent to each node: Dev, Security, Browser, General.
+- DO NOT use static templates. Analyze the specific goal.
+
+Goal: ${intent.goal}
+Complexity: ${intent.complexity}
+Risk: ${intent.riskLevel}${historyContext}
 
 Return ONLY a JSON array of steps:
 [
-  { "id": "step_1", "task": "description", "tool": "tool_name", "agent": "agent_name", "dependsOn": [] }
+  { 
+    "id": "node_id", 
+    "task": "precise task description", 
+    "tool": "tool_name", 
+    "agent": "agent_type", 
+    "input": { "instruction": "..." }, 
+    "dependsOn": ["prev_node_id"] 
+  }
 ]`;
 
-        const messages = [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Goal: ${intent.goal}\nComplexity: ${intent.complexity}` }
-        ];
-
         try {
-            const response = await routeToModel(messages, intent.rawIntent as TaskAnalysis);
-            const jsonMatch = response.match(/\[[\s\S]*\]/);
-            
-            if (jsonMatch) {
-                const rawSteps = JSON.parse(jsonMatch[0]);
-                const steps: ExecutionStep[] = rawSteps.map((s: any) => ({
-                    id: s.id,
-                    description: s.task,
-                    tool: s.tool || 'shell_execute',
-                    agent: s.agent || 'Dev',
-                    input: { instruction: s.task },
-                    dependsOn: s.dependsOn || []
-                }));
+            // Using routeToModel for planning
+            const response = await routeToModel([
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `Analyze goal and generate DAG for: ${intent.goal}` }
+            ]);
 
+            const jsonMatch = response.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+                const steps: ExecutionStep[] = JSON.parse(jsonMatch[0]);
+                
                 return {
-                    id: `plan_${Date.now()}`,
+                    id: `dag_${Date.now()}`,
                     goal: intent.goal,
                     steps,
                     metadata: {
@@ -73,25 +79,22 @@ Return ONLY a JSON array of steps:
                 };
             }
         } catch (err) {
-            console.error('[PlanningEngine] Dynamic planning failed, falling back to basic plan:', err);
+            console.error('[PlanningEngine] Dynamic DAG generation failed:', err);
         }
 
         // Emergency Fallback (Dynamic but minimal)
         return {
-            id: `plan_${Date.now()}`,
+            id: `failover_${Date.now()}`,
             goal: intent.goal,
             steps: [{
-                id: 'step_1',
-                description: intent.goal,
-                tool: 'auto_agent',
+                id: 'recovery_node',
+                description: `Analyze and execute: ${intent.goal}`,
+                tool: 'shell_execute',
                 agent: intent.suggestedAgent,
-                input: { goal: intent.goal },
+                input: { instruction: intent.goal },
                 dependsOn: []
             }],
-            metadata: {
-                complexity: intent.complexity,
-                riskLevel: intent.riskLevel
-            }
+            metadata: { complexity: 'medium', riskLevel: 'low' }
         };
     }
 }

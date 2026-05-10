@@ -3,47 +3,69 @@ import { advancedAnalyzeTask, TaskAnalysis } from '../llm/intelligent-router';
 
 export interface StructuredIntent {
     goal: string;
-    constraints: string[];
-    requiredTools: string[];
-    riskLevel: 'low' | 'medium' | 'high';
+    constraints?: string[];
+    requiredTools?: string[];
+    riskLevel: 'low' | 'medium' | 'high' | 'critical';
     complexity: 'low' | 'medium' | 'high' | 'extreme';
-    entities: Record<string, any>;
+    entities?: Record<string, any>;
     suggestedAgent: string;
     rawIntent: any;
 }
 
 export class IntentParser {
     /**
-     * Parse natural language input into a structured intent object
+     * Parse raw user input into a sophisticated StructuredIntent
+     * This is a core reasoning step in the runtime engine.
      */
-    static async parse(text: string, context: ConversationContext): Promise<StructuredIntent> {
-        console.log(`[IntentParser] Parsing intent: "${text.substring(0, 50)}..."`);
-        
-        // [REAL RUNTIME BRAIN] Use advanced LLM analysis for deep intent understanding
-        const analysis: TaskAnalysis = await advancedAnalyzeTask(text);
-        
-        // Map TaskAnalysis to StructuredIntent
-        const intent: StructuredIntent = {
-            goal: text,
-            constraints: [],
-            requiredTools: [],
-            riskLevel: analysis.complexity === 'extreme' || analysis.complexity === 'high' ? 'high' : 'medium',
-            complexity: analysis.complexity,
-            entities: {},
-            suggestedAgent: this.mapTypeToAgent(analysis.type),
-            rawIntent: analysis
-        };
+    static async parse(userText: string, context: ConversationContext): Promise<StructuredIntent> {
+        console.log(`[IntentParser] Performing deep analysis: "${userText.substring(0, 50)}..."`);
 
-        return intent;
-    }
+        const systemPrompt = `You are a Senior Strategic Intent Analyst.
+Analyze the user's goal and current conversation context to produce a high-fidelity execution strategy.
 
-    private static mapTypeToAgent(type: string): string {
-        switch (type) {
-            case 'code_generation': return 'Dev';
-            case 'browser_task': return 'Browser';
-            case 'data_analysis': return 'Dev';
-            case 'complex_reasoning': return 'Dev';
-            default: return 'General';
+Context: ${JSON.stringify(context)}
+
+Analyze:
+1. Primary Intent: What is the core desired outcome?
+2. Domain: Dev, Security, DevOps, Browser, or Research.
+3. Complexity: low, medium, high, extreme.
+4. Risk Level: low, medium, high, critical.
+5. Technical Requirements: languages, frameworks, tools.
+6. Success Criteria: How do we know the goal is achieved?
+
+Return ONLY a JSON object:
+{
+  "primary": "string",
+  "domain": "string",
+  "complexity": "low|medium|high|extreme",
+  "riskLevel": "low|medium|high|critical",
+  "requirements": ["string"],
+  "successCriteria": ["string"],
+  "suggestedAgent": "Dev|Security|Browser|General"
+}`;
+
+        try {
+            // Using advancedAnalyzeTask with explicit system prompt
+            const analysis = await advancedAnalyzeTask(userText, systemPrompt);
+            
+            return {
+                goal: userText,
+                complexity: analysis.complexity || 'medium',
+                riskLevel: analysis.riskLevel || 'low',
+                suggestedAgent: analysis.suggestedAgent || 'General',
+                rawIntent: analysis,
+                constraints: analysis.requirements || [],
+                requiredTools: analysis.requirements || []
+            };
+        } catch (error) {
+            console.warn("[IntentParser] LLM analysis failed, falling back to safe default.");
+            return {
+                goal: userText,
+                complexity: 'medium',
+                riskLevel: 'low',
+                suggestedAgent: 'General',
+                rawIntent: { primary: userText }
+            };
         }
     }
 

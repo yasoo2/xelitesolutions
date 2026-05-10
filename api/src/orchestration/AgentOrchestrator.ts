@@ -103,7 +103,8 @@ export class AgentOrchestrator {
 
   /**
    * ADAPTIVE COORDINATION LOOP
-   * Executes DAG, re-plans if needed, and learns from results
+   * Executes DAG, evaluates progress after each step, and re-plans if needed.
+   * This is the "Main Execution Brain" of the runtime.
    */
   private async coordinate(dag: AgentDAG, memory: ExecutionMemory): Promise<{ ok: boolean; result: any }> {
     dag.status = "running";
@@ -116,24 +117,35 @@ export class AgentOrchestrator {
       );
 
       if (readyNodes.length === 0 && completedNodes.size < dag.nodes.length) {
-        // [ADAPTIVE] If stalled, trigger a re-plan
-        console.warn(`[AgentOrchestrator] DAG stalled. Triggering mid-execution re-plan...`);
-        const newDag = await this.plan(dag.nodes[0]?.task || "continue execution", memory);
+        // [STALLED] Trigger immediate dynamic re-planning
+        console.warn(`[AgentOrchestrator] Execution stalled. Re-computing strategy...`);
+        const newDag = await this.plan(dag.nodes[0]?.task || "continue goal", memory);
         dag.nodes = [...dag.nodes, ...newDag.nodes];
         continue;
       }
 
       for (const node of readyNodes) {
+        // [ADAPTIVE] Re-evaluate agent selection right before execution based on latest memory
+        const refinedAgentType = await this.selectOptimalAgent(node, memory);
+        if (refinedAgentType !== node.agent) {
+          console.log(`[AgentOrchestrator] Dynamic Agent Shift: ${node.agent} -> ${refinedAgentType} for task "${node.task}"`);
+          node.agent = refinedAgentType as AgentType;
+        }
+
         node.status = "running";
-        broadcastThinkingDetail(memory.sessionId, `⚡ Running: ${node.task} via ${node.agent} Agent`);
+        broadcastThinkingDetail(memory.sessionId, `🚀 Agent Execution: ${node.agent} is processing "${node.task}"`);
         
         const agent = this.agents.get(node.agent);
         let result;
 
-        if (agent) {
-          result = await agent.execute(node.task, node.input, { sessionId: dag.id, results: memory.getResults() });
-        } else {
-          result = await executeTool(node.tool, { ...node.input, orchestratorContext: memory.getResults() }, { sessionId: dag.id });
+        try {
+          if (agent) {
+            result = await agent.execute(node.task, node.input, { sessionId: dag.id, memory: memory.getHistory() });
+          } else {
+            result = await executeTool(node.tool, { ...node.input, context: memory.getHistory() }, { sessionId: dag.id });
+          }
+        } catch (err: any) {
+          result = { ok: false, error: err.message };
         }
         
         if (result.ok) {
@@ -143,22 +155,28 @@ export class AgentOrchestrator {
           memory.record(node.id, node.task, cleanOutput, "completed");
           completedNodes.add(node.id);
 
-          // [ADAPTIVE] Mid-Execution Re-evaluation
-          await this.evaluateProgress(node, memory, dag);
+          // [SELF-ADAPTIVE] Mid-Execution Evaluation
+          const evaluation = await this.evaluateProgress(node, memory, dag);
+          if (evaluation.shouldReplan) {
+            console.log(`[AgentOrchestrator] Progress evaluation triggered RE-PLAN.`);
+            broadcastThinkingDetail(memory.sessionId, "🧠 Goal analysis suggests path adjustment. Re-planning...");
+            const updatedDag = await this.plan(dag.id, memory); // Re-plan based on current memory
+            dag.nodes = updatedDag.nodes; 
+            break; // Break the current node loop to start fresh with new DAG
+          }
         } else {
-          console.warn(`[AgentOrchestrator] Step failed: ${node.id}. Triggering ADAPTIVE RECOVERY.`);
+          console.error(`[AgentOrchestrator] Node ${node.id} failed: ${result.error}`);
           node.status = "failed";
           memory.record(node.id, node.task, result.error, "failed");
 
-          // [CRITICAL] Re-plan DAG to recover from failure
-          const recoveryDag = await this.plan(`Recover from failure in ${node.task}. Error: ${result.error}`, memory);
-          if (recoveryDag && recoveryDag.nodes.length > 0) {
-             // Add recovery nodes to DAG
-             dag.nodes = [...dag.nodes, ...recoveryDag.nodes];
-             continue; 
+          // [RECOVERY] Attempt intelligent failure recovery
+          const recoveryResult = await this.attemptRecovery(node, result.error, memory, dag);
+          if (recoveryResult.recovered) {
+            dag.nodes = [...dag.nodes, ...recoveryResult.newNodes];
+            continue;
           }
 
-          return { ok: false, result: result.error || "Execution failed" };
+          return { ok: false, result: result.error || "Fatal execution error" };
         }
       }
     }
@@ -168,16 +186,64 @@ export class AgentOrchestrator {
   }
 
   /**
-   * Evaluates if the goal needs adjustment after a step succeeds
+   * Fail-Safe Dynamic Agent Selection
    */
-  private async evaluateProgress(node: ExecutionNode, memory: ExecutionMemory, dag: AgentDAG) {
-     const history = memory.getHistory();
-     const lastResult = history[history.length - 1]?.result;
-     
-     // If the result suggests the plan is finished early or needs more steps
-     if (typeof lastResult === 'string' && (lastResult.includes('DONE') || lastResult.includes('FINISHED'))) {
-         console.log(`[AgentOrchestrator] Early completion signal detected in ${node.id}`);
-     }
+  private async selectOptimalAgent(node: ExecutionNode, memory: ExecutionMemory): Promise<string> {
+    const history = memory.getSummary();
+    const prompt = `You are a Dispatcher for a Multi-Agent System.
+Task: ${node.task}
+Current History: ${history}
+
+Based on the task and recent results, which agent is best suited for this?
+Available Agents: Dev, Security, Browser, General.
+
+Return ONLY the agent name.`;
+
+    try {
+      const decision = await advancedAnalyzeTask(node.task, prompt);
+      const agent = typeof decision === 'string' ? decision : (decision.agent || decision.primary || 'General');
+      return ['Dev', 'Security', 'Browser', 'General'].includes(agent) ? agent : 'General';
+    } catch {
+      return node.agent; // Fallback to planned agent
+    }
+  }
+
+  /**
+   * Professional-grade progress evaluation
+   * Checks if the current path is still optimal.
+   */
+  private async evaluateProgress(lastNode: ExecutionNode, memory: ExecutionMemory, dag: AgentDAG): Promise<{ shouldReplan: boolean }> {
+    const history = memory.getSummary();
+    const systemPrompt = `Analyze the current execution history and determine if we need to adjust the plan.
+Goal: ${dag.id}
+History: ${history}
+
+If the last result suggests a better path or a new requirement, set shouldReplan to true.`;
+
+    try {
+      const evaluation = await advancedAnalyzeTask(`Evaluate progress for goal: ${dag.id}`, systemPrompt);
+      return { shouldReplan: !!evaluation.shouldReplan };
+    } catch {
+      return { shouldReplan: false };
+    }
+  }
+
+  /**
+   * Failure Recovery Brain
+   */
+  private async attemptRecovery(failedNode: ExecutionNode, error: any, memory: ExecutionMemory, dag: AgentDAG): Promise<{ recovered: boolean; newNodes: ExecutionNode[] }> {
+    broadcastThinkingDetail(memory.sessionId, `⚠️ Analyzing failure: ${failedNode.task}...`);
+    
+    // Ask PlanningEngine for recovery nodes
+    const recoveryPlan = await PlanningEngine.generatePlan({ 
+        intent: { goal: `Fix and continue: ${failedNode.task}`, complexity: 'high', riskLevel: 'medium', suggestedAgent: failedNode.agent, rawIntent: {} }, 
+        memory: memory.getHistory() 
+    });
+
+    return { 
+        recovered: recoveryPlan.steps.length > 0, 
+        newNodes: (recoveryPlan.steps as any).map((s: any) => ({ ...s, status: 'pending' })) 
+    };
   }
 
   /**
