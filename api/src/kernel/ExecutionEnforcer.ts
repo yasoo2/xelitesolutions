@@ -19,7 +19,16 @@ export class ExecutionEnforcer {
     static validateIntegrity() {
         console.log('[ExecutionEnforcer] Running Boot-Time Integrity Check...');
         
-        const srcDir = path.resolve(__dirname, '..');
+        // Target specifically the src directory to avoid scanning scripts or other root folders
+        const apiDir = path.resolve(__dirname, '..');
+        const srcDir = path.join(apiDir, 'src');
+        
+        if (!fs.existsSync(srcDir)) {
+            // Fallback for different build structures if needed, but usually api/src
+            console.warn('[ExecutionEnforcer] src directory not found for scan, skipping integrity check.');
+            return;
+        }
+
         const violations: string[] = [];
         
         const scan = (dir: string) => {

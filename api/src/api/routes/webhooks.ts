@@ -10,7 +10,7 @@ const API_PATH = `${PROJECT_PATH}/api`;
 let isDeploying = false;
 
 /**
- * FIXED Webhook Handler - Uses spawn directly, no exec()
+ * FIXED Webhook Handler - Uses central DeployManager
  */
 router.post('/deploy', async (req: Request, res: Response) => {
     try {

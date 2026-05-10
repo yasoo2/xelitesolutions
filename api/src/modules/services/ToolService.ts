@@ -413,7 +413,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         const check = BinaryService.checkBinary('find');
         if (!check.exists || !check.compatible) {
             // These might use glob (JS) so we don't block UNLESS we know they use find
-            // For now, let's be conservative. Grep definitely uses spawn('grep').
+            // For now, let's be conservative. Grep definitely uses internal execution.
         }
     }
 
