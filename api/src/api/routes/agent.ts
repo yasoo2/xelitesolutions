@@ -14,23 +14,21 @@ router.post('/', async (req, res) => {
         const { goal, sessionId, userId } = req.body;
         
         if (!goal) {
-            return res.status(400).json({ ok: false, error: 'Goal is required' });
+            return res.status(400).json({ success: false, error: 'Goal is required' });
         }
 
-        console.log(`[AgentRoute] Received goal: ${goal}`);
-        
         const orchestrator = new AgentOrchestrator();
         const result = await orchestrator.execute({ id: sessionId || `session-${Date.now()}`, goal });
         
         res.json({
-            ok: true,
-            result
+            success: result.ok,
+            data: result.result
         });
     } catch (error) {
         console.error('[AgentRoute] Execution failed:', error);
         res.status(500).json({
-            ok: false,
-            error: safeErrorMessage(error)
+            success: false,
+            error: 'An internal error occurred during execution'
         });
     }
 });
@@ -42,27 +40,23 @@ router.post('/', async (req, res) => {
 router.get('/plan', async (req, res) => {
     try {
         const goal = req.query.goal as string;
-        const sessionId = req.query.sessionId as string;
-        const userId = req.query.userId as string;
-
+        
         if (!goal) {
-            return res.status(400).json({ ok: false, error: 'Goal is required' });
+            return res.status(400).json({ success: false, error: 'Goal is required' });
         }
 
-        console.log(`[AgentRoute] Planning for goal: ${goal}`);
-        
         const orchestrator = new AgentOrchestrator();
         const plan = await orchestrator.plan(goal);
         
         res.json({
-            ok: true,
-            plan
+            success: true,
+            data: plan
         });
     } catch (error) {
         console.error('[AgentRoute] Planning failed:', error);
         res.status(500).json({
-            ok: false,
-            error: safeErrorMessage(error)
+            success: false,
+            error: 'An internal error occurred during planning'
         });
     }
 });

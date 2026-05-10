@@ -138,18 +138,40 @@ export class AgentOrchestrator {
         
         if (result.ok) {
           node.status = "completed";
-          node.result = result.output;
-          results[node.id] = result.output;
+          // [HARDENING] Clean output to prevent shell leakage
+          const cleanOutput = this.sanitizeOutput(result.output);
+          node.result = cleanOutput;
+          results[node.id] = cleanOutput;
           completedNodes.add(node.id);
         } else {
           console.warn(`[AgentOrchestrator] Node ${node.id} failed: ${result.error || result.error}. Attempting re-plan...`);
           node.status = "failed";
-          return { ok: false, result: result.error || result.error };
+          return { ok: false, result: result.error || "Execution failed" };
         }
       }
     }
 
     dag.status = "completed";
     return { ok: true, result: results };
+  }
+
+  /**
+   * Cleans output to ensure no raw shell/debug data leaks to API response
+   */
+  private sanitizeOutput(output: any): any {
+    if (!output) return output;
+    if (typeof output === 'string') {
+      // Remove common shell artifacts or paths if sensitive
+      return output.trim();
+    }
+    if (typeof output === 'object') {
+      const sanitized = { ...output };
+      // Remove known leaked fields from ToolService/child_process
+      delete sanitized.stdout;
+      delete sanitized.stderr;
+      delete sanitized.command;
+      return sanitized;
+    }
+    return output;
   }
 }

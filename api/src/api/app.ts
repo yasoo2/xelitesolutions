@@ -87,6 +87,34 @@ export const createApp = () => {
   app.use(express.json({ limit: '50mb' }));
   app.use(morgan('dev'));
 
+  // [HARDENING] Global Sanitization Middleware
+  // Strips shell leakage (stdout, stderr, command) from ALL JSON responses
+  app.use((req, res, next) => {
+    const originalJson = res.json;
+    res.json = function (body) {
+      if (body && typeof body === 'object') {
+        const sanitize = (obj: any) => {
+          if (!obj || typeof obj !== 'object') return;
+          if (Array.isArray(obj)) {
+            obj.forEach(sanitize);
+            return;
+          }
+          // Remove sensitive execution artifacts
+          delete obj.stdout;
+          delete obj.stderr;
+          delete obj.command;
+          delete obj.execCommand;
+          
+          // Recurse
+          Object.values(obj).forEach(sanitize);
+        };
+        sanitize(body);
+      }
+      return originalJson.call(this, body);
+    };
+    next();
+  });
+
   // Mount Central API Router
   app.use('/api', apiRouter);
 
@@ -197,6 +225,22 @@ export const createApp = () => {
       res.sendFile(path.join(webDistPath, 'index.html'));
     });
   }
+
+  // [HARDENING] Global Error Handler
+  // Standardizes all errors into { success: false, error: "..." }
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    logger.error({ err, path: req.path }, '[GlobalError] Unhandled error caught');
+    
+    // Clean error message (don't leak stack traces in production)
+    const message = process.env.NODE_ENV === 'production' 
+      ? 'An internal server error occurred' 
+      : err.message || 'Unknown error';
+
+    res.status(err.status || 500).json({
+      success: false,
+      error: message
+    });
+  });
 
   return app;
 };
