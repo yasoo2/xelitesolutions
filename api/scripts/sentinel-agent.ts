@@ -268,7 +268,7 @@ async function dispatchTelemetry() {
     const req = lib.request(options, (res) => {
         let responseBody = '';
         res.on('data', d => responseBody += d);
-        res.on('end', () => {
+        res.on('end', async () => {
             if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
                 try {
                     const data = JSON.parse(responseBody);
