@@ -1,50 +1,66 @@
 
-import { terminalKernel } from '../modules/terminal/terminal-kernel';
+import { executionEngine, ExecutionRequest, ExecutionResult } from './ExecutionEngine';
 import { logger } from '../shared/utils/logger';
-
-export interface ExecutionOptions {
-    cwd?: string;
-    env?: NodeJS.ProcessEnv;
-    timeout?: number;
-    shell?: boolean | string;
-    detached?: boolean;
-    stdio?: 'ignore' | 'pipe' | 'inherit';
-}
-
-export interface ExecutionResult {
-    ok: boolean;
-    output?: string;
-    error?: string;
-    exitCode?: number;
-}
 
 /**
  * ExecutionGateway
- * SINGLE ENTRY POINT for all system execution.
- * Phase 1.5: Enforcing absolute execution ownership.
+ * HIGH PERFORMANCE SECURE GATEWAY for all system execution.
+ * Phase 2.1: Centralized Execution Contract.
  */
 export class ExecutionGateway {
     /**
-     * Execute a one-off shell command.
-     * Forwards execution to TerminalKernel to maintain single ownership.
+     * Unified execute method.
+     * Routes all system requests through ExecutionEngine.
      */
-    static async execute(command: string, args: string[] = [], options: ExecutionOptions = {}): Promise<ExecutionResult> {
-        const fullCommand = args.length > 0 ? `${command} ${args.join(' ')}` : command;
-        const ts = Date.now();
-        const sessionId = (options as any).sessionId || 'internal';
+    static async execute(request: ExecutionRequest): Promise<ExecutionResult> {
+        const start = Date.now();
         
-        logger.info(`[GW EXEC] START sessionId=${sessionId} ts=${ts} command="${fullCommand}"`);
+        // Validation Layer
+        if (!request.payload.command && request.type === 'shell') {
+            return {
+                success: false,
+                error: 'Command is required for shell execution',
+                duration: Date.now() - start
+            };
+        }
 
         try {
-            if (!command) throw new Error('Command is required');
-
-            const result = await terminalKernel.executeOneOff(fullCommand, options);
-            
-            logger.info(`[GW EXEC] END sessionId=${sessionId} ts=${ts} ok=${result.ok} exitCode=${result.exitCode}`);
+            // Forward directly to Engine
+            const result = await executionEngine.execute(request);
             return result;
         } catch (e: any) {
-            logger.error(`[GW EXEC] ERROR sessionId=${sessionId} ts=${ts} error=${e.message}`);
-            return { ok: false, error: e.message, exitCode: 1 };
+            logger.error(`[GATEWAY] UNEXPECTED ERROR id=${request.id} error=${e.message}`);
+            return {
+                success: false,
+                error: e.message,
+                duration: Date.now() - start
+            };
         }
+    }
+
+    /**
+     * Backward compatibility wrapper for Phase 1 code.
+     * DEPRECATED: Use ExecutionGateway.execute(request) instead.
+     */
+    static async executeLegacy(command: string, args: string[] = [], options: any = {}): Promise<any> {
+        const fullCommand = args.length > 0 ? `${command} ${args.join(' ')}` : command;
+        const id = options.sessionId || 'legacy-' + Date.now();
+        
+        const result = await this.execute({
+            id,
+            type: 'shell',
+            payload: {
+                command: fullCommand,
+                options
+            },
+            priority: 'normal'
+        });
+
+        return {
+            ok: result.success,
+            output: result.data?.output || '',
+            error: result.error || result.data?.error || '',
+            exitCode: result.data?.exitCode ?? (result.success ? 0 : 1)
+        };
     }
 }

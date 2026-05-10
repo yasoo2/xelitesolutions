@@ -31,18 +31,16 @@ export class ExecutionGuard {
             const stack = new Error().stack || '';
             if (!stack.includes('ExecutionEngine') && !stack.includes('internal_system_bootstrap')) {
                 console.error(`[ExecutionGuard] BLOCKED direct spawn: ${command}`);
-                throw new Error(`[ExecutionGuard] Direct spawn blocked. Use executionEngine.run() instead.`);
+                throw new Error(`[ExecutionGuard] Direct spawn blocked. Use ExecutionEngine.execute() instead.`);
             }
             return originalSpawn.apply(this, [command, args, options]);
         };
 
         cp.exec = function(command: string, options: any, callback: any) {
             const stack = new Error().stack || '';
-            // Allow RegEx exec (which is on String/RegExp prototype, not child_process.exec)
-            // child_process.exec is what we are patching here.
             if (!stack.includes('ExecutionEngine')) {
                 console.error(`[ExecutionGuard] BLOCKED direct exec: ${command}`);
-                throw new Error(`[ExecutionGuard] Direct exec blocked. Use executionEngine.run() instead.`);
+                throw new Error(`[ExecutionGuard] Direct exec blocked. Use ExecutionEngine.execute() instead.`);
             }
             return originalExec.apply(this, [command, options, callback]);
         };
@@ -52,10 +50,14 @@ export class ExecutionGuard {
 
     /**
      * Global interceptor (conceptually).
-     * In this implementation, we use it as a mandatory wrapper in critical paths.
+     * Phase 2.1: Routes through unified execute contract.
      */
     static async safeRun(command: string, options: any = {}) {
-        // This is the ONLY allowed way to run commands if not calling ExecutionEngine directly.
-        return await executionEngine.run(command, options);
+        return await executionEngine.execute({
+            id: 'safe_run_' + Date.now(),
+            type: 'shell',
+            payload: { command, options },
+            priority: 'normal'
+        });
     }
 }

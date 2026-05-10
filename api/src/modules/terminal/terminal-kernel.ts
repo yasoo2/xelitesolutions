@@ -33,15 +33,25 @@ export class TerminalKernel {
         logger.info(`[Kernel] Requesting execution from engine: ${id}`);
 
         try {
-            // Delegate execution to Engine
-            const session = await executionEngine.createSession({
-                shell: options.shell,
-                cwd: options.cwd,
-                cols: options.cols,
-                rows: options.rows,
-                sessionId: id
+            // Use Unified Execution Engine Contract
+            const result = await executionEngine.execute({
+                id,
+                type: 'pty',
+                payload: {
+                    options: {
+                        shell: options.shell,
+                        cwd: options.cwd,
+                        cols: options.cols,
+                        rows: options.rows,
+                        sessionId: id
+                    }
+                },
+                priority: 'high'
             });
 
+            if (!result.success) throw new Error(result.error || 'Failed to create PTY session');
+
+            const session = result.data;
             const term = {
                 pty: session,
                 history: [] as string[],
@@ -144,23 +154,30 @@ export class TerminalKernel {
 
     /**
      * Execute a one-off command (non-interactive)
-     * Phase 1.6: Delegate to ExecutionEngine
+     * Phase 2.1: Unified Engine Execution
      */
     async executeOneOff(command: string, options: any = {}): Promise<any> {
-        const ts = Date.now();
-        const sessionId = options.sessionId || 'internal';
-        logger.info(`[kernel.execution.started] sessionId=${sessionId} ts=${ts} command="${command}"`);
+        const id = options.sessionId || 'internal-' + Date.now();
+        
+        const result = await executionEngine.execute({
+            id,
+            type: 'shell',
+            payload: {
+                command,
+                options
+            },
+            priority: 'normal'
+        });
+        
+        if (!result.success) {
+            return {
+                ok: false,
+                error: result.error,
+                exitCode: 1
+            };
+        }
 
-        // We wrap the engine call to maintain the existing logging and interface for now
-        // But the actual SPAWN happens inside ExecutionEngine.run()
-        const result = await executionEngine.run(command, options);
-        
-        // Note: ExecutionEngine handles its own stdout/stderr collection
-        // Kernel just receives the final result object.
-        // If we want real-time logging of one-off output, we'd need a more complex stream interface
-        // But for one-offs, this is the current pattern.
-        
-        return result;
+        return result.data;
     }
 }
 

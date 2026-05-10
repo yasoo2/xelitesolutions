@@ -4,6 +4,25 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../shared/utils/logger';
 
+export interface ExecutionRequest {
+    id: string;
+    type: 'shell' | 'pty' | 'internal';
+    payload: {
+        command?: string;
+        args?: string[];
+        options?: ExecutionOptions;
+        input?: string;
+    };
+    priority: 'low' | 'normal' | 'high';
+}
+
+export interface ExecutionResult {
+    success: boolean;
+    data?: any;
+    error?: string;
+    duration: number;
+}
+
 export interface ExecutionOptions {
     cwd?: string;
     env?: NodeJS.ProcessEnv;
@@ -28,8 +47,8 @@ export interface ExecutionSession {
 
 /**
  * ExecutionEngine
- * ISOLATED ENGINE for all system execution.
- * Phase 1.6: Final architectural separation.
+ * CENTRAL PERFORMANCE ENGINE for all system execution.
+ * Phase 2.1: High Performance Secure Execution.
  */
 export class ExecutionEngine {
     private pty: any = null;
@@ -39,6 +58,49 @@ export class ExecutionEngine {
             this.pty = require('node-pty');
         } catch (e) {
             logger.warn('[ExecutionEngine] node-pty not available, will use fallback');
+        }
+    }
+
+    /**
+     * Unified Execution Entry Point (Phase 2)
+     */
+    async execute(request: ExecutionRequest): Promise<ExecutionResult> {
+        const start = Date.now();
+        const sessionId = request.id || 'anonymous';
+        
+        logger.info(`[ENGINE] START type=${request.type} id=${sessionId} priority=${request.priority}`);
+
+        try {
+            let data: any;
+
+            switch (request.type) {
+                case 'shell':
+                    data = await this.run(request.payload.command!, request.payload.options);
+                    break;
+                case 'pty':
+                    data = await this.createSession(request.payload.options || {});
+                    break;
+                default:
+                    throw new Error(`Unsupported execution type: ${request.type}`);
+            }
+
+            const duration = Date.now() - start;
+            logger.info(`[ENGINE] END type=${request.type} id=${sessionId} duration=${duration}ms success=true`);
+            
+            return {
+                success: true,
+                data,
+                duration
+            };
+        } catch (e: any) {
+            const duration = Date.now() - start;
+            logger.error(`[ENGINE] ERROR type=${request.type} id=${sessionId} duration=${duration}ms error=${e.message}`);
+            
+            return {
+                success: false,
+                error: e.message,
+                duration
+            };
         }
     }
 
@@ -65,7 +127,6 @@ export class ExecutionEngine {
     async createSession(options: ExecutionOptions): Promise<ExecutionSession> {
         const shell = this.resolveShell(options.shell as string);
         const cwd = options.cwd || this.getWorkspaceRoot();
-        const sessionId = options.sessionId || 'unknown';
 
         if (this.pty) {
             try {
@@ -87,10 +148,10 @@ export class ExecutionEngine {
                 };
             } catch (e: any) {
                 logger.error(`[ExecutionEngine] PTY spawn failed: ${e.message}`);
+                throw e;
             }
         }
 
-        // Fallback implementation using child_process
         return this.createFallbackSession(shell, cwd, options);
     }
 
@@ -125,10 +186,10 @@ export class ExecutionEngine {
             });
         };
 
-        let currentLine = '';
         const ptyWrapper = {
             pid: process.pid,
             write: async (data: string) => {
+                let currentLine = '';
                 for (const char of data) {
                     if (char === '\r' || char === '\n') {
                         dataCallback('\r\n');
@@ -137,10 +198,8 @@ export class ExecutionEngine {
                         if (cmd) {
                             const output = await executeCommand(cmd);
                             if (output) dataCallback(output);
-                            dataCallback(`${path.basename(currentCwd)}$ `);
-                        } else {
-                            dataCallback(`${path.basename(currentCwd)}$ `);
                         }
+                        dataCallback(`${path.basename(currentCwd)}$ `);
                     } else if (char === '\x7f' || char === '\b') {
                         if (currentLine.length > 0) {
                             currentLine = currentLine.slice(0, -1);

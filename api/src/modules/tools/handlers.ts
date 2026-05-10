@@ -27,16 +27,24 @@ export async function handleShellCommand(
     logs.push(`exec: ${command} ${args.join(' ')} (cwd=${validCwd})`);
 
     const fullCommand = args.length > 0 ? `${command} ${args.join(' ')}` : command;
-    const result = await ExecutionGateway.execute(fullCommand, [], { 
-        cwd: validCwd, 
-        timeout: timeoutMs,
-        shell: true // Tool commands usually need a shell
+    const result = await ExecutionGateway.execute({
+        id: 'shell_' + Date.now(),
+        type: 'shell',
+        payload: {
+            command: fullCommand,
+            options: { 
+                cwd: validCwd, 
+                timeout: timeoutMs,
+                shell: true 
+            }
+        },
+        priority: 'normal'
     });
 
     return {
-        ok: result.ok,
-        output: result.output,
-        error: result.error,
+        ok: result.success,
+        output: result.data?.output || '',
+        error: result.error || result.data?.error || '',
         logs
     };
 }

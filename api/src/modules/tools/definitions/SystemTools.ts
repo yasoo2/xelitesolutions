@@ -294,8 +294,13 @@ export class GrepSearchTool extends BaseTool {
         const workDir = resolveToolPath(searchPath);
 
         try {
-            const hasGnuGrepRes = await executionEngine.run('grep --help');
-            const hasGnuGrep = (hasGnuGrepRes.output || '').includes('--exclude-dir');
+            const hasGnuGrepRes = await executionEngine.execute({
+                id: 'grep_check',
+                type: 'shell',
+                payload: { command: 'grep --help' },
+                priority: 'low'
+            });
+            const hasGnuGrep = (hasGnuGrepRes.data?.output || '').includes('--exclude-dir');
 
             logs.push(`grep.flavor=${hasGnuGrep ? 'gnu' : 'busybox/bsd'}`);
 
@@ -311,10 +316,15 @@ export class GrepSearchTool extends BaseTool {
                 args.push('--', query, workDir);
                 logs.push(`grep.args=${args.join(' ')}`);
 
-                const r = await executionEngine.run(`grep ${args.join(' ')}`, { cwd: getWorkspaceRoot() });
-                stdout = r.output;
-                stderr = r.error;
-                code = r.exitCode;
+                const r = await executionEngine.execute({
+                    id: 'grep_gnu',
+                    type: 'shell',
+                    payload: { command: `grep ${args.join(' ')}`, options: { cwd: getWorkspaceRoot() } },
+                    priority: 'normal'
+                });
+                stdout = r.data?.output || '';
+                stderr = r.data?.error || '';
+                code = r.data?.exitCode ?? (r.success ? 0 : 1);
             } else {
                 const excludePatterns = exclude ? [exclude] : ['node_modules', '.git', 'dist', 'build', '.gemini'];
                 let findCmd = `find ${workDir} -type f`;
@@ -325,15 +335,25 @@ export class GrepSearchTool extends BaseTool {
 
                 logs.push(`grep.fallback_find=${findCmd}`);
 
-                const findResult = await executionEngine.run(findCmd, { cwd: getWorkspaceRoot() });
-                const files = (findResult.output || '').split('\n').filter(Boolean);
+                const findResult = await executionEngine.execute({
+                    id: 'grep_fallback_find',
+                    type: 'shell',
+                    payload: { command: findCmd, options: { cwd: getWorkspaceRoot() } },
+                    priority: 'normal'
+                });
+                const files = (findResult.data?.output || '').split('\n').filter(Boolean);
                 
                 if (files.length > 0) {
                     const grepArgs = `-nI -- "${query}" ${files.slice(0, 500).join(' ')}`;
-                    const r = await executionEngine.run(`grep ${grepArgs}`, { cwd: getWorkspaceRoot() });
-                    stdout = r.output;
-                    stderr = r.error;
-                    code = r.exitCode;
+                    const r = await executionEngine.execute({
+                        id: 'grep_fallback_grep',
+                        type: 'shell',
+                        payload: { command: `grep ${grepArgs}`, options: { cwd: getWorkspaceRoot() } },
+                        priority: 'normal'
+                    });
+                    stdout = r.data?.output || '';
+                    stderr = r.data?.error || '';
+                    code = r.data?.exitCode ?? (r.success ? 0 : 1);
                 } else {
                     code = 1;
                 }
@@ -512,19 +532,24 @@ export class ShellExecuteTool extends BaseTool {
                 if (input.serverId) throw new Error('Background execution not yet supported for remote servers');
                 const id = 'bg_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
 
-                const result = await executionEngine.run(command, { cwd: workDir, detached: true, stdio: 'ignore' });
-
-                backgroundProcesses.set(id, {
-                    pid: result.pid,
-                    command: command,
-                    startTime: Date.now(),
-                    process: result
+                const result = await executionEngine.execute({
+                    id,
+                    type: 'shell',
+                    payload: { command, options: { cwd: workDir, detached: true, stdio: 'ignore' } },
+                    priority: 'low'
                 });
 
-                logs.push(`exec_bg=${redactCmd(command)} id=${id} pid=${result.pid}`);
+                backgroundProcesses.set(id, {
+                    pid: result.data?.pid || 0,
+                    command: command,
+                    startTime: Date.now(),
+                    process: result.data
+                });
+
+                logs.push(`exec_bg=${redactCmd(command)} id=${id} pid=${result.data?.pid}`);
                 return {
                     ok: true,
-                    output: { status: 'background', id, pid: result.pid, message: 'Command started in background.' },
+                    output: { status: 'background', id, pid: result.data?.pid, message: 'Command started in background.' },
                     logs
                 };
             }

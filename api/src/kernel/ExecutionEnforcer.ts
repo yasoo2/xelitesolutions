@@ -31,7 +31,7 @@ export class ExecutionEnforcer {
                     scan(fullPath);
                 } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.js')) {
                     // Skip ExecutionEngine and ExecutionGuard as they are the authorized owners
-                    if (entry.name === 'ExecutionEngine.ts' || entry.name === 'ExecutionGuard.ts' || entry.name === 'ExecutionEnforcer.ts') continue;
+                    if (entry.name === 'ExecutionEngine.ts' || entry.name === 'ExecutionGuard.ts' || entry.name === 'ExecutionEnforcer.ts' || entry.name === 'ExecutionGateway.ts') continue;
                     
                     const content = fs.readFileSync(fullPath, 'utf8');
                     

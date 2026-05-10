@@ -49,26 +49,36 @@ export class DeployManager {
         const fullCommand = args.length > 0 ? `${command} ${args.join(' ')}` : command;
         if (deploymentId) this.queueLog(deploymentId, `[EXEC] ${fullCommand}`);
 
-        const result = await ExecutionGateway.execute(fullCommand, [], {
-            cwd,
-            timeout: timeoutMs,
-            shell: true,
-            env: {
-                ...process.env,
-                PATH: `${process.env.PATH}${path.delimiter}${path.join(PROJECT_ROOT, 'node_modules', '.bin')}${path.delimiter}/usr/local/bin${path.delimiter}/usr/bin${path.delimiter}/bin`
-            }
+        const result = await ExecutionGateway.execute({
+            id: deploymentId || 'deploy_' + Date.now(),
+            type: 'shell',
+            payload: {
+                command: fullCommand,
+                options: {
+                    cwd,
+                    timeout: timeoutMs,
+                    shell: true,
+                    env: {
+                        ...process.env,
+                        PATH: `${process.env.PATH}${path.delimiter}${path.join(PROJECT_ROOT, 'node_modules', '.bin')}${path.delimiter}/usr/local/bin${path.delimiter}/usr/bin${path.delimiter}/bin`
+                    }
+                }
+            },
+            priority: 'high'
         });
 
-        if (result.ok) {
-            if (deploymentId && result.output) {
-                result.output.split('\n').forEach(line => {
+        if (result.success) {
+            const output = result.data?.output || '';
+            if (deploymentId && output) {
+                output.split('\n').forEach(line => {
                     if (line.trim()) this.queueLog(deploymentId, `    > ${line.trim()}`, true);
                 });
             }
-            return result.output || '';
+            return output;
         } else {
-            if (deploymentId && result.error) this.queueLog(deploymentId, `    [ERROR] ${result.error.trim()}`, true);
-            throw new Error(`Command failed: ${result.error || 'Unknown error'}`);
+            const error = result.error || result.data?.error || 'Unknown error';
+            if (deploymentId) this.queueLog(deploymentId, `    [ERROR] ${error.trim()}`, true);
+            throw new Error(`Command failed: ${error}`);
         }
     }
 
@@ -90,12 +100,20 @@ export class DeployManager {
 
         try { await this.runCommand('pkill', ['-f', 'node.*dist/index.js'], PROJECT_ROOT, 10000); } catch (e) { }
 
-        // Use ExecutionEngine instead of direct spawn
-        await executionEngine.run('node dist/index.js', {
-            cwd: API_DIR,
-            env: { ...process.env, NODE_ENV: 'production' },
-            detached: true,
-            stdio: 'ignore'
+        // Use Unified Execution Engine Contract
+        await executionEngine.execute({
+            id: 'api_restart',
+            type: 'shell',
+            payload: {
+                command: 'node dist/index.js',
+                options: {
+                    cwd: API_DIR,
+                    env: { ...process.env, NODE_ENV: 'production' },
+                    detached: true,
+                    stdio: 'ignore'
+                }
+            },
+            priority: 'high'
         });
         
         await new Promise(resolve => setTimeout(resolve, 3000));
