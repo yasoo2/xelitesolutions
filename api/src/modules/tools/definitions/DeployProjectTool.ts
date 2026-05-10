@@ -75,12 +75,17 @@ export class DeployProjectTool implements ToolDefinition {
                     const buildCmd = input.buildCommand || 'npm run build';
                     logs.push(`Building project with: ${buildCmd}`);
 
-                    const result = await ExecutionGateway.execute(buildCmd, [], {
-                        cwd: projectPath,
-                        timeout: 120000,
+                    const result = await ExecutionGateway.execute({
+                        id: `build_${Date.now()}`,
+                        type: 'shell',
+                        payload: {
+                            command: buildCmd,
+                            options: { cwd: projectPath, timeout: 120000 }
+                        },
+                        priority: 'normal'
                     });
                     
-                    if (!result.ok) throw new Error(result.error || 'Build failed');
+                    if (!result.success) throw new Error(result.error || 'Build failed');
 
                     // Find output directory
                     const possibleDirs = ['dist', 'build', 'out', '.next', 'public'];
@@ -111,15 +116,23 @@ export class DeployProjectTool implements ToolDefinition {
                     logs.push(`Starting server: ${startCmd} on port ${port}`);
 
                     const pidFile = path.join(projectPath, '.joe_server.pid');
-                    const result = await ExecutionGateway.execute(startCmd, [], { 
-                        cwd: projectPath,
-                        detached: true,
-                        shell: true,
-                        stdio: 'ignore'
+                    const result = await ExecutionGateway.execute({
+                        id: `start_${Date.now()}`,
+                        type: 'shell',
+                        payload: {
+                            command: startCmd,
+                            options: { 
+                                cwd: projectPath,
+                                detached: true,
+                                shell: true,
+                                stdio: 'ignore'
+                            }
+                        },
+                        priority: 'normal'
                     });
 
-                    const pid = result.pid || 'unknown';
-                    if (result.pid) fs.writeFileSync(pidFile, String(result.pid));
+                    const pid = result.data?.pid || 'unknown';
+                    if (result.data?.pid) fs.writeFileSync(pidFile, String(result.data.pid));
                     
                     logs.push(`Server started (PID: ${pid})`);
 
@@ -139,16 +152,37 @@ export class DeployProjectTool implements ToolDefinition {
                     const port = input.port || 3000;
                     logs.push(`Exposing port ${port} via localtunnel...`);
 
-                    const checkRes = await ExecutionGateway.execute('which', ['lt']);
-                    if (!checkRes.ok) {
+                    const checkRes = await ExecutionGateway.execute({
+                        id: 'check_lt',
+                        type: 'shell',
+                        payload: { command: 'which lt' },
+                        priority: 'low'
+                    });
+                    if (!checkRes.success) {
                         logs.push('Installing localtunnel...');
-                        await ExecutionGateway.execute('npm', ['install', '-g', 'localtunnel'], { timeout: 30000 });
+                        await ExecutionGateway.execute({
+                            id: 'install_lt',
+                            type: 'shell',
+                            payload: { 
+                                command: 'npm install -g localtunnel',
+                                options: { timeout: 30000 }
+                            },
+                            priority: 'normal'
+                        });
                     }
 
-                    const ltRes = await ExecutionGateway.execute('lt', ['--port', String(port)], {
-                        detached: true,
-                        shell: true,
-                        stdio: 'pipe'
+                    const ltRes = await ExecutionGateway.execute({
+                        id: `lt_${Date.now()}`,
+                        type: 'shell',
+                        payload: { 
+                            command: `lt --port ${port}`,
+                            options: {
+                                detached: true,
+                                shell: true,
+                                stdio: 'pipe'
+                            }
+                        },
+                        priority: 'normal'
                     });
 
                     await new Promise(r => setTimeout(r, 3000));
@@ -166,12 +200,20 @@ export class DeployProjectTool implements ToolDefinition {
                     const zipName = `${path.basename(projectPath)}_package.zip`;
                     const zipPath = path.join(projectPath, zipName);
 
-                    const result = await ExecutionGateway.execute('zip', ['-r', zipPath, '.', '-x', 'node_modules/*', '.git/*', '*.log'], {
-                        cwd: sourcePath,
-                        timeout: 60000
+                    const result = await ExecutionGateway.execute({
+                        id: `zip_${Date.now()}`,
+                        type: 'shell',
+                        payload: { 
+                            command: `zip -r ${zipPath} . -x node_modules/* .git/* *.log`,
+                            options: {
+                                cwd: sourcePath,
+                                timeout: 60000
+                            }
+                        },
+                        priority: 'normal'
                     });
 
-                    if (!result.ok) throw new Error(result.error || 'Zip failed');
+                    if (!result.success) throw new Error(result.error || 'Zip failed');
 
                     const stat = fs.statSync(zipPath);
                     const sizeMB = (stat.size / 1024 / 1024).toFixed(2);

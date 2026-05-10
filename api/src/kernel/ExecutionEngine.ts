@@ -56,6 +56,7 @@ export class ExecutionEngine {
     private queue: { request: ExecutionRequest, resolve: (res: ExecutionResult) => void, reject: (err: any) => void }[] = [];
     private activeCount = 0;
     private readonly MAX_CONCURRENT = 15;
+    private readonly MAX_QUEUE_SIZE = 100;
     private readonly CACHE_TTL_MS = 5000;
 
     constructor() {
@@ -102,12 +103,23 @@ export class ExecutionEngine {
             const key = this.generateCacheKey(request);
             const cached = this.cache.get(key);
             if (cached && Date.now() < cached.expires) {
-                return cached.result;
+                logger.info(`[ENGINE] [CACHE HIT] id=${request.id || 'anon'} key=${key}`);
+                // Return a copy to prevent mutation issues
+                return { ...cached.result, duration: 0 };
             }
+            logger.debug(`[ENGINE] [CACHE MISS] id=${request.id || 'anon'} key=${key}`);
         }
 
         // 2. Concurrency Control (Queue)
         if (this.activeCount >= this.MAX_CONCURRENT) {
+            if (this.queue.length >= this.MAX_QUEUE_SIZE) {
+                logger.warn(`[ENGINE] [QUEUE FULL] rejecting id=${request.id || 'anon'}`);
+                return {
+                    success: false,
+                    error: 'Execution queue is full. Please try again later.',
+                    duration: 0
+                };
+            }
             return new Promise((resolve, reject) => {
                 this.queue.push({ request, resolve, reject });
             });
@@ -126,7 +138,7 @@ export class ExecutionEngine {
 
             switch (request.type) {
                 case 'shell':
-                    data = await this.run(request.payload.command!, request.payload.options);
+                    data = await this.runCommandInternal(request.payload.command!, request.payload.options);
                     break;
                 case 'pty':
                     data = await this.createSession(request.payload.options || {});
@@ -304,9 +316,30 @@ export class ExecutionEngine {
     }
 
     /**
-     * Run a one-off command (spawn)
+     * Run a one-off command (legacy/internal wrapper)
+     * Now forced through the execute() gateway for performance and safety.
      */
     async run(command: string, options: ExecutionOptions = {}): Promise<any> {
+        const result = await this.execute({
+            id: 'run_' + Date.now(),
+            type: 'shell',
+            payload: {
+                command,
+                options
+            },
+            priority: 'normal'
+        });
+
+        return {
+            ok: result.success,
+            output: result.data?.output || '',
+            error: result.error || result.data?.error || '',
+            pid: result.data?.pid,
+            duration: result.duration
+        };
+    }
+
+    private async runCommandInternal(command: string, options: ExecutionOptions = {}): Promise<any> {
         return new Promise((resolve) => {
             const parts = command.trim().split(/\s+/);
             const cmd = parts[0];
@@ -352,7 +385,8 @@ export class ExecutionEngine {
                     ok: code === 0,
                     output: stdout,
                     error: stderr,
-                    exitCode: code
+                    exitCode: code,
+                    pid: child.pid
                 });
             });
 

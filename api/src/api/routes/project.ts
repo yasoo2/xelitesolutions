@@ -22,12 +22,20 @@ function sanitizeRepoDirName(input: string) {
 
 async function spawnWithTimeout(command: string, args: string[], cwd: string, timeoutMs: number, maxOutputChars = 2_000_000): Promise<SpawnResult> {
   const workDir = path.resolve(cwd || process.cwd());
-  const result = await ExecutionGateway.execute(command, args, { cwd: workDir, timeout: timeoutMs, shell: true });
+  const result = await ExecutionGateway.execute({
+    id: `project_${Date.now()}`,
+    type: 'shell',
+    payload: {
+      command: `${command} ${args.join(' ')}`,
+      options: { cwd: workDir, timeout: timeoutMs, shell: true }
+    },
+    priority: 'normal'
+  });
   
   return {
-    code: result.exitCode ?? (result.ok ? 0 : -1),
-    stdout: result.output || '',
-    stderr: result.error || ''
+    code: result.data?.exitCode ?? (result.success ? 0 : -1),
+    stdout: result.data?.output || '',
+    stderr: result.data?.error || result.error || ''
   };
 }
 

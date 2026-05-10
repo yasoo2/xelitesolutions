@@ -96,8 +96,16 @@ export class ArchiveFilesTool implements ToolDefinition {
                     cmd = `tar -cf "${archivePath}" ${sourceStr}`;
                 }
 
-                const result = await ExecutionGateway.execute(cmd, [], { timeout: 60000, shell: true });
-                if (!result.ok && format !== 'zip') throw new Error(result.error || 'Archive creation failed');
+                const result = await ExecutionGateway.execute({
+                    id: `archive_create_${Date.now()}`,
+                    type: 'shell',
+                    payload: {
+                        command: cmd,
+                        options: { timeout: 60000, shell: true }
+                    },
+                    priority: 'normal'
+                });
+                if (!result.success && format !== 'zip') throw new Error(result.error || 'Archive creation failed');
                 const stat = fs.statSync(archivePath);
                 const sizeKB = (stat.size / 1024).toFixed(1);
                 logs.push(`Archive created: ${archivePath} (${sizeKB} KB)`);
@@ -122,9 +130,17 @@ export class ArchiveFilesTool implements ToolDefinition {
                     cmd = `tar -xf "${archivePath}" -C "${extractTo}"`;
                 }
 
-                const result = await ExecutionGateway.execute(cmd, [], { timeout: 60000, shell: true });
-                if (!result.ok) throw new Error(result.error || 'Extraction failed');
-                const output = result.output || '';
+                const result = await ExecutionGateway.execute({
+                    id: `archive_extract_${Date.now()}`,
+                    type: 'shell',
+                    payload: {
+                        command: cmd,
+                        options: { timeout: 60000, shell: true }
+                    },
+                    priority: 'normal'
+                });
+                if (!result.success) throw new Error(result.error || 'Extraction failed');
+                const output = result.data?.output || '';
                 logs.push(`Extracted to: ${extractTo}`);
 
                 return {
@@ -142,9 +158,17 @@ export class ArchiveFilesTool implements ToolDefinition {
                     cmd = `tar -tf "${archivePath}"`;
                 }
 
-                const result = await ExecutionGateway.execute(cmd, [], { timeout: 30000, shell: true });
-                if (!result.ok) throw new Error(result.error || 'Listing failed');
-                const output = result.output || '';
+                const result = await ExecutionGateway.execute({
+                    id: `archive_list_${Date.now()}`,
+                    type: 'shell',
+                    payload: {
+                        command: cmd,
+                        options: { timeout: 30000, shell: true }
+                    },
+                    priority: 'low'
+                });
+                if (!result.success) throw new Error(result.error || 'Listing failed');
+                const output = result.data?.output || '';
                 const files = output.trim().split('\n').slice(0, 100);
                 logs.push(`Listed ${files.length} entries`);
 

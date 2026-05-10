@@ -19,11 +19,20 @@ function isValidNpmPackageName(name: string) {
 }
 
 async function spawnWithTimeout(cmd: string, args: string[], cwd: string, timeoutMs: number) {
-    const result = await ExecutionGateway.execute(cmd, args, { cwd, timeout: timeoutMs, shell: true });
+    const result = await ExecutionGateway.execute({
+        id: `npm_${Date.now()}`,
+        type: 'shell',
+        payload: {
+            command: `${cmd} ${args.join(' ')}`,
+            options: { cwd, timeout: timeoutMs, shell: true }
+        },
+        priority: 'normal'
+    });
+
     return {
-        code: result.exitCode ?? (result.ok ? 0 : 1),
-        stdout: result.output || '',
-        stderr: result.error || ''
+        code: result.data?.exitCode ?? (result.success ? 0 : 1),
+        stdout: result.data?.output || '',
+        stderr: result.data?.error || result.error || ''
     };
 }
 
