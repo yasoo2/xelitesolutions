@@ -281,6 +281,10 @@ export function broadcast(
   if (targetUserId === 'undefined') targetUserId = '';
 
   console.log(`[WS] Broadcast type=${normalized.type} target=${targetUserId || 'ALL'} clients=${liveWssRef.clients.size}`);
+  
+  if (normalized.type === 'terminal_output') {
+    console.log(`[websocket.outbound.sent] sessionId=${(normalized as any).id} ts=${normalized.ts} bytes=${(normalized as any).data?.length}`);
+  }
 
   liveWssRef.clients.forEach((client: WebSocket) => {
     if (client.readyState === WebSocket.OPEN) {

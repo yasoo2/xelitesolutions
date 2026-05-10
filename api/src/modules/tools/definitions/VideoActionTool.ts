@@ -1,9 +1,6 @@
-import { ToolDefinition, ToolPermission } from '../types';
-import { exec } from 'child_process';
-import util from 'util';
-import path from 'path';
 
-const execAsync = util.promisify(exec);
+import { ToolDefinition, ToolPermission } from '../types';
+import { executionEngine } from '../../../kernel/ExecutionEngine';
 
 export class VideoActionTool implements ToolDefinition {
     name = 'video_action';
@@ -33,7 +30,7 @@ export class VideoActionTool implements ToolDefinition {
 
     permissions: ToolPermission[] = ['execute', 'read', 'write'];
     sideEffects: ToolPermission[] = ['execute', 'write'];
-    rateLimitPerMinute = 5; // Heavy CPU task
+    rateLimitPerMinute = 5; 
     auditFields = ['action', 'inputFile'];
     mockSupported = false;
 
@@ -62,19 +59,19 @@ export class VideoActionTool implements ToolDefinition {
 
         const command = `ffmpeg -y ${args}`;
 
-        try {
-            const { stdout, stderr } = await execAsync(command); // ffmpeg usually writes logs to stderr
-            
+        const result = await executionEngine.run(command);
+        
+        if (result.ok) {
             return {
                 ok: true,
-                output: { success: true, savedPath: input.outputFile, ffmpegLogs: stderr },
+                output: { success: true, savedPath: input.outputFile, ffmpegLogs: result.error },
                 logs: [`FFMPEG Success: ${command}`]
             };
-        } catch (e: any) {
+        } else {
             return {
                 ok: false,
-                error: e.message,
-                output: { success: false, ffmpegLogs: e.stderr },
+                error: result.error || result.output,
+                output: { success: false, ffmpegLogs: result.error },
                 logs: [`FFMPEG Failed: ${command}`]
             };
         }

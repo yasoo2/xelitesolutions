@@ -1,3 +1,10 @@
+import { ExecutionEnforcer } from '../kernel/ExecutionEnforcer';
+import { ExecutionGuard } from '../kernel/ExecutionGuard';
+
+// Phase 1.8: Hard Architecture Enforcement
+ExecutionEnforcer.validateIntegrity();
+ExecutionGuard.install();
+
 // Polyfill for libraries that expect browser globals (like pdfjs-dist used by pdf-parse)
 if (typeof (global as any).DOMMatrix === 'undefined') {
   (global as any).DOMMatrix = class DOMMatrix {

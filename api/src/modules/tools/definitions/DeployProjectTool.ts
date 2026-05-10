@@ -1,16 +1,10 @@
 import { ToolDefinition } from '../types';
-import { execSync } from 'child_process';
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import * as fs from 'fs';
 import * as path from 'path';
 
 /**
  * DeployProjectTool — Project deployment and port exposure.
- *
- * Capabilities:
- * - Expose a local port for temporary public access (via localtunnel or similar)
- * - Deploy static sites to a public URL
- * - Start dev servers and capture their URLs
- * - Package a project for distribution (zip)
  */
 export class DeployProjectTool implements ToolDefinition {
     name = 'deploy_project';
@@ -81,12 +75,12 @@ export class DeployProjectTool implements ToolDefinition {
                     const buildCmd = input.buildCommand || 'npm run build';
                     logs.push(`Building project with: ${buildCmd}`);
 
-                    const output = execSync(buildCmd, {
+                    const result = await ExecutionGateway.execute(buildCmd, [], {
                         cwd: projectPath,
-                        encoding: 'utf-8',
                         timeout: 120000,
-                        stdio: ['pipe', 'pipe', 'pipe'],
                     });
+                    
+                    if (!result.ok) throw new Error(result.error || 'Build failed');
 
                     // Find output directory
                     const possibleDirs = ['dist', 'build', 'out', '.next', 'public'];
@@ -105,7 +99,7 @@ export class DeployProjectTool implements ToolDefinition {
                         output: {
                             status: 'built',
                             outputDir: outputDir ? path.join(projectPath, outputDir) : projectPath,
-                            buildOutput: output.substring(0, 500),
+                            buildOutput: (result.output || '').substring(0, 500),
                         },
                         logs,
                     };
@@ -116,18 +110,18 @@ export class DeployProjectTool implements ToolDefinition {
                     const port = input.port || 3000;
                     logs.push(`Starting server: ${startCmd} on port ${port}`);
 
-                    // Start in background using nohup
                     const pidFile = path.join(projectPath, '.joe_server.pid');
-                    execSync(
-                        `nohup ${startCmd} > /tmp/joe_server.log 2>&1 & echo $! > "${pidFile}"`,
-                        { cwd: projectPath, encoding: 'utf-8', timeout: 10000 }
-                    );
+                    const result = await ExecutionGateway.execute(startCmd, [], { 
+                        cwd: projectPath,
+                        detached: true,
+                        shell: true,
+                        stdio: 'ignore'
+                    });
 
-                    const pid = fs.existsSync(pidFile) ? fs.readFileSync(pidFile, 'utf-8').trim() : 'unknown';
+                    const pid = result.pid || 'unknown';
+                    if (result.pid) fs.writeFileSync(pidFile, String(result.pid));
+                    
                     logs.push(`Server started (PID: ${pid})`);
-
-                    // Wait a moment for the server to initialize
-                    execSync('sleep 2');
 
                     return {
                         ok: true,
@@ -145,35 +139,23 @@ export class DeployProjectTool implements ToolDefinition {
                     const port = input.port || 3000;
                     logs.push(`Exposing port ${port} via localtunnel...`);
 
-                    // Check if localtunnel is available, install if not
-                    try {
-                        execSync('which lt', { encoding: 'utf-8' });
-                    } catch {
+                    const checkRes = await ExecutionGateway.execute('which', ['lt']);
+                    if (!checkRes.ok) {
                         logs.push('Installing localtunnel...');
-                        execSync('npm install -g localtunnel', { encoding: 'utf-8', timeout: 30000 });
+                        await ExecutionGateway.execute('npm', ['install', '-g', 'localtunnel'], { timeout: 30000 });
                     }
 
-                    // Start localtunnel in background
-                    const ltLog = '/tmp/joe_lt.log';
-                    execSync(
-                        `nohup lt --port ${port} > ${ltLog} 2>&1 &`,
-                        { encoding: 'utf-8', timeout: 5000 }
-                    );
+                    const ltRes = await ExecutionGateway.execute('lt', ['--port', String(port)], {
+                        detached: true,
+                        shell: true,
+                        stdio: 'pipe'
+                    });
 
-                    // Wait and read the URL
-                    execSync('sleep 3');
-                    let url = 'pending...';
-                    if (fs.existsSync(ltLog)) {
-                        const log = fs.readFileSync(ltLog, 'utf-8');
-                        const match = log.match(/your url is: (https?:\/\/[^\s]+)/i);
-                        if (match) url = match[1];
-                    }
-
-                    logs.push(`Public URL: ${url}`);
-
+                    await new Promise(r => setTimeout(r, 3000));
+                    
                     return {
                         ok: true,
-                        output: { status: 'exposed', url, port },
+                        output: { status: 'exposed', url: 'localtunnel_started', port, pid: ltRes.pid },
                         logs,
                     };
                 }
@@ -184,11 +166,12 @@ export class DeployProjectTool implements ToolDefinition {
                     const zipName = `${path.basename(projectPath)}_package.zip`;
                     const zipPath = path.join(projectPath, zipName);
 
-                    // Create zip excluding node_modules and .git
-                    execSync(
-                        `cd "${sourcePath}" && zip -r "${zipPath}" . -x "node_modules/*" ".git/*" "*.log"`,
-                        { encoding: 'utf-8', timeout: 60000 }
-                    );
+                    const result = await ExecutionGateway.execute('zip', ['-r', zipPath, '.', '-x', 'node_modules/*', '.git/*', '*.log'], {
+                        cwd: sourcePath,
+                        timeout: 60000
+                    });
+
+                    if (!result.ok) throw new Error(result.error || 'Zip failed');
 
                     const stat = fs.statSync(zipPath);
                     const sizeMB = (stat.size / 1024 / 1024).toFixed(2);

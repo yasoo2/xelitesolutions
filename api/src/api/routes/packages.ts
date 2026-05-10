@@ -1,6 +1,5 @@
-
 import { Router, Request, Response } from 'express';
-import { spawn } from 'child_process';
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import fs from 'fs';
 import path from 'path';
 import { authenticate } from '../middleware/auth';
@@ -19,35 +18,13 @@ function isValidNpmPackageName(name: string) {
     return re.test(s);
 }
 
-function spawnWithTimeout(cmd: string, args: string[], cwd: string, timeoutMs: number) {
-    return new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
-        const child = spawn(cmd, args, { cwd, shell: false });
-        let stdout = '';
-        let stderr = '';
-        let done = false;
-
-        const timer = setTimeout(() => {
-            if (done) return;
-            done = true;
-            try { child.kill('SIGKILL'); } catch { }
-            resolve({ code: 124, stdout, stderr: stderr || 'timeout' });
-        }, Math.max(1, timeoutMs));
-
-        child.stdout.on('data', (d) => { stdout += d.toString(); });
-        child.stderr.on('data', (d) => { stderr += d.toString(); });
-        child.on('close', (code) => {
-            if (done) return;
-            done = true;
-            clearTimeout(timer);
-            resolve({ code: typeof code === 'number' ? code : 1, stdout, stderr });
-        });
-        child.on('error', (e: any) => {
-            if (done) return;
-            done = true;
-            clearTimeout(timer);
-            resolve({ code: 1, stdout, stderr: String(e?.message || e || 'spawn_failed') });
-        });
-    });
+async function spawnWithTimeout(cmd: string, args: string[], cwd: string, timeoutMs: number) {
+    const result = await ExecutionGateway.execute(cmd, args, { cwd, timeout: timeoutMs, shell: true });
+    return {
+        code: result.exitCode ?? (result.ok ? 0 : 1),
+        stdout: result.output || '',
+        stderr: result.error || ''
+    };
 }
 
 // GET /packages - List installed packages

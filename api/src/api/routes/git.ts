@@ -1,6 +1,5 @@
-
 import { Router, Request, Response } from 'express';
-import { spawn } from 'child_process';
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import path from 'path';
 import { authenticate } from '../middleware/auth';
 
@@ -24,35 +23,13 @@ function isSafeRepoPath(p: string) {
 
 async function gitExec(args: string[]) {
     const cwd = findWorkspaceRoot();
-    return await new Promise<{ ok: boolean; stdout: string; stderr: string; error?: string }>((resolve) => {
-        const child = spawn('git', args, { cwd, shell: false });
-        let stdout = '';
-        let stderr = '';
-        let done = false;
-
-        const timer = setTimeout(() => {
-            if (done) return;
-            done = true;
-            try { child.kill('SIGKILL'); } catch { }
-            resolve({ ok: false, stdout, stderr: stderr || 'timeout', error: 'Git command timed out' });
-        }, 20000);
-
-        child.stdout.on('data', (d) => { stdout += d.toString(); });
-        child.stderr.on('data', (d) => { stderr += d.toString(); });
-        child.on('close', (code) => {
-            if (done) return;
-            done = true;
-            clearTimeout(timer);
-            const ok = code === 0;
-            resolve({ ok, stdout, stderr, error: ok ? undefined : (stderr || 'Git command failed') });
-        });
-        child.on('error', (e: any) => {
-            if (done) return;
-            done = true;
-            clearTimeout(timer);
-            resolve({ ok: false, stdout, stderr: String(e?.message || e || 'spawn_failed'), error: 'Git command failed' });
-        });
-    });
+    const result = await ExecutionGateway.execute('git', args, { cwd, timeout: 30000 });
+    return {
+        ok: result.ok,
+        stdout: result.output || '',
+        stderr: result.error || '',
+        error: result.ok ? undefined : (result.error || 'Git command failed')
+    };
 }
 
 // GET /git/status

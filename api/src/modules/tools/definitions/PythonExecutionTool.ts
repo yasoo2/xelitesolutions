@@ -1,20 +1,11 @@
 import { ToolDefinition } from '../types';
-import { execSync } from 'child_process';
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
 /**
  * PythonExecutionTool — Isolated Python script runner.
- *
- * Allows the agent to write Python code, save it to a temp file,
- * and execute it via `python3`. This is critical for:
- * - Complex mathematical calculations (instead of "mental math")
- * - Data processing and analysis (pandas, json, csv)
- * - String manipulation and formatting
- * - Any task where LLM inference is unreliable
- *
- * Inspired by Manus / ChatGPT Code Interpreter.
  */
 export class PythonExecutionTool implements ToolDefinition {
     name = 'execute_python';
@@ -61,7 +52,7 @@ export class PythonExecutionTool implements ToolDefinition {
 
     async execute(input: any, context?: any) {
         const code = String(input.code || '');
-        const timeout = Math.min(Number(input.timeout) || 30, 120) * 1000; // Cap at 120 seconds
+        const timeout = Math.min(Number(input.timeout) || 30, 120) * 1000;
         const cwd = input.workingDirectory || process.cwd();
 
         if (!code.trim()) {
@@ -72,31 +63,20 @@ export class PythonExecutionTool implements ToolDefinition {
             };
         }
 
-        // Write code to a temporary file
         const tmpDir = os.tmpdir();
         const tmpFile = path.join(tmpDir, `joe_python_${Date.now()}.py`);
 
         try {
             fs.writeFileSync(tmpFile, code, 'utf-8');
 
-            // Execute the script
-            let stdout = '';
-            let stderr = '';
-            let exitCode = 0;
+            const result = await ExecutionGateway.execute('python3', [tmpFile], {
+                timeout,
+                cwd,
+            });
 
-            try {
-                stdout = execSync(`python3 "${tmpFile}"`, {
-                    timeout,
-                    cwd,
-                    encoding: 'utf-8',
-                    maxBuffer: 1024 * 1024 * 5, // 5MB max output
-                    stdio: ['pipe', 'pipe', 'pipe'],
-                });
-            } catch (execError: any) {
-                stdout = execError.stdout || '';
-                stderr = execError.stderr || '';
-                exitCode = execError.status || 1;
-            }
+            let stdout = result.output || '';
+            let stderr = result.error || '';
+            let exitCode = result.exitCode ?? (result.ok ? 0 : 1);
 
             // Clean up temp file
             try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
@@ -111,18 +91,16 @@ export class PythonExecutionTool implements ToolDefinition {
             }
 
             return {
-                ok: exitCode === 0,
+                ok: result.ok,
                 output: { stdout: stdout.trim(), stderr: stderr.trim(), exitCode },
-                error: exitCode !== 0 ? `Script exited with code ${exitCode}` : undefined,
+                error: !result.ok ? result.error || `Script exited with code ${exitCode}` : undefined,
                 logs: [
                     `Python script executed (exit code: ${exitCode})`,
                     stdout ? `stdout: ${stdout.substring(0, 200)}` : 'No stdout',
                 ],
             };
         } catch (error: any) {
-            // Clean up temp file on error
             try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
-
             return {
                 ok: false,
                 error: `Python execution failed: ${error.message}`,

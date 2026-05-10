@@ -7,11 +7,10 @@ import { workspaceService } from '../../services/WorkspaceService';
 import { commandRouter } from '../../terminal/command-router';
 import { broadcast } from '../../../api/ws';
 import { handleShellCommand } from '../handlers';
+import { executionEngine } from '../../../kernel/ExecutionEngine';
 
 // Background Process Store
 const backgroundProcesses = new Map<string, { pid: number, command: string, startTime: number, process: any }>();
-
-const spawn = require('child_process').spawn;
 
 // Helper
 function getWorkspaceRoot() {
@@ -43,11 +42,7 @@ function resolveToolPath(p: string) {
         root = getWorkspaceRoot();
     }
 
-    // Default to resolving relative to workspace root
     const abs = path.resolve(root, val);
-
-    // Safety check: ensure we are either in the workspace OR in the builds directory OR external root
-    // Project root is the parent of 'api' or the current folder
     const projectRoot = path.join(process.cwd(), path.basename(process.cwd()) === 'api' ? '..' : '.');
     const buildsDir = path.resolve(projectRoot, 'data/builds');
     const externalRoot = workspaceService.externalRoot;
@@ -156,14 +151,13 @@ export class FileEditTool extends BaseTool {
         fs.writeFileSync(full, content);
         logs.push(`edit=${filename}`);
 
-        // Broadcast diff event for UI
         const findLines = find.split('\n').length;
         const replaceLines = replace.split('\n').length;
         broadcast({
             type: 'diff',
             data: {
                 path: filename,
-                content: content,  // Added full raw content for immediate UI preview
+                content: content,
                 additions: replaceLines,
                 deletions: findLines,
                 lines: [
@@ -204,11 +198,9 @@ export class WriteFileTool extends BaseTool {
         if (!rawPath) return { ok: false, error: 'filename or path is required', logs: [] };
         const full = resolveToolPath(rawPath);
 
-        // Ensure directory exists
         const dir = path.dirname(full);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-        // Prevent writing to directories (e.g., if Joe tries to write to "." or "/")
         if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
             return { ok: false, error: `EISDIR: Cannot write file content to a directory path (${rawPath}). Please specify a full filename like '${rawPath}/index.html'.`, logs: [] };
         }
@@ -216,13 +208,12 @@ export class WriteFileTool extends BaseTool {
         fs.writeFileSync(full, content);
         logs.push(`write=${rawPath}`);
 
-        // Broadcast diff event for UI (new file)
         const lines = content.split('\n');
         broadcast({
             type: 'diff',
             data: {
                 path: rawPath,
-                content: content,  // Added full raw content for immediate UI preview
+                content: content,
                 additions: lines.length,
                 deletions: 0,
                 lines: lines.map((line, i) => ({ type: 'add', content: line, lineNumber: i + 1 }))
@@ -286,7 +277,7 @@ export class GrepSearchTool extends BaseTool {
         required: ['query']
     };
     outputSchema = { type: 'object' as const, properties: { matches: { type: 'array' }, count: { type: 'number' } } };
-    permissions: ToolPermission[] = ['read', 'execute']; // Execute because it runs grep
+    permissions: ToolPermission[] = ['read', 'execute'];
     sideEffects: ToolPermission[] = [];
     rateLimitPerMinute = 60;
     auditFields = ['query', 'path'];
@@ -297,18 +288,11 @@ export class GrepSearchTool extends BaseTool {
         const searchPath = String(input?.path ?? '.');
         const include = String(input?.include ?? '');
         const exclude = String(input?.exclude ?? '');
-
         const workDir = resolveToolPath(searchPath);
 
         try {
-            // Check for GNU-style grep (supports --exclude-dir)
-            const hasGnuGrep = await new Promise<boolean>((resolve) => {
-                const child = spawn('grep', ['--help'], { shell: false });
-                let helpText = '';
-                child.stdout.on('data', (d: any) => { helpText += d.toString(); });
-                child.on('close', () => resolve(helpText.includes('--exclude-dir')));
-                child.on('error', () => resolve(false));
-            });
+            const hasGnuGrepRes = await executionEngine.run('grep --help');
+            const hasGnuGrep = (hasGnuGrepRes.output || '').includes('--exclude-dir');
 
             logs.push(`grep.flavor=${hasGnuGrep ? 'gnu' : 'busybox/bsd'}`);
 
@@ -324,62 +308,31 @@ export class GrepSearchTool extends BaseTool {
                 args.push('--', query, workDir);
                 logs.push(`grep.args=${args.join(' ')}`);
 
-                const r = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
-                    const child = spawn('grep', args, { shell: false, cwd: getWorkspaceRoot() });
-                    let so = '';
-                    let se = '';
-                    child.stdout.on('data', (d: any) => { so += d.toString(); });
-                    child.stderr.on('data', (d: any) => { se += d.toString(); });
-                    child.on('close', (c: number) => resolve({ code: typeof c === 'number' ? c : 1, stdout: so, stderr: se }));
-                    child.on('error', (e: any) => resolve({ code: 1, stdout: so, stderr: String(e?.message || e || 'spawn_failed') }));
-                });
-                stdout = r.stdout;
-                stderr = r.stderr;
-                code = r.code;
+                const r = await executionEngine.run(`grep ${args.join(' ')}`, { cwd: getWorkspaceRoot() });
+                stdout = r.output;
+                stderr = r.error;
+                code = r.exitCode;
             } else {
-                // BusyBox/BSD Fallback: Use 'find' with '-exec grep' or manual pipe
-                // Strategy: find [path] -type f ! -path "*/node_modules/*" -exec grep -l [query] {} +
-                // But Joe wants line numbers and content, so:
-                // find [path] -type f ! -path "*/node_modules/*" | xargs grep -nI [query]
-
                 const excludePatterns = exclude ? [exclude] : ['node_modules', '.git', 'dist', 'build', '.gemini'];
-                const findArgs = [workDir, '-type', 'f'];
+                let findCmd = `find ${workDir} -type f`;
                 for (const pat of excludePatterns) {
-                    findArgs.push('!', '-path', `*/${pat}/*`);
+                    findCmd += ` ! -path "*/${pat}/*"`;
                 }
+                if (include) findCmd += ` -name "${include}"`;
 
-                if (include) {
-                    findArgs.push('-name', include);
-                }
+                logs.push(`grep.fallback_find=${findCmd}`);
 
-                logs.push(`grep.fallback_find=${findArgs.join(' ')}`);
-
-                const findResult = await new Promise<{ code: number; stdout: string }>((resolve) => {
-                    const child = spawn('find', findArgs, { shell: false, cwd: getWorkspaceRoot() });
-                    let so = '';
-                    child.stdout.on('data', (d: any) => { so += d.toString(); });
-                    child.on('close', (c: number) => resolve({ code: typeof c === 'number' ? c : 1, stdout: so }));
-                    child.on('error', () => resolve({ code: 1, stdout: '' }));
-                });
-
-                const files = findResult.stdout.split('\n').filter(Boolean);
+                const findResult = await executionEngine.run(findCmd, { cwd: getWorkspaceRoot() });
+                const files = (findResult.output || '').split('\n').filter(Boolean);
+                
                 if (files.length > 0) {
-                    const grepArgs = ['-nI', '--', query, ...files.slice(0, 500)]; // Limit file count to avoid E2BIG
-                    const r = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
-                        const child = spawn('grep', grepArgs, { shell: false, cwd: getWorkspaceRoot() });
-                        let so = '';
-                        let se = '';
-;
-                        child.stdout.on('data', (d: any) => { so += d.toString(); });
-                        child.stderr.on('data', (d: any) => { se += d.toString(); });
-                        child.on('close', (c: number) => resolve({ code: typeof c === 'number' ? c : 1, stdout: so, stderr: se }));
-                        child.on('error', (e: any) => resolve({ code: 1, stdout: so, stderr: String(e?.message || e || 'spawn_failed') }));
-                    });
-                    stdout = r.stdout;
-                    stderr = r.stderr;
-                    code = r.code;
+                    const grepArgs = `-nI -- "${query}" ${files.slice(0, 500).join(' ')}`;
+                    const r = await executionEngine.run(`grep ${grepArgs}`, { cwd: getWorkspaceRoot() });
+                    stdout = r.output;
+                    stderr = r.error;
+                    code = r.exitCode;
                 } else {
-                    code = 1; // No files found
+                    code = 1;
                 }
             }
 
@@ -526,7 +479,7 @@ export class ShellExecuteTool extends BaseTool {
             out = out.replace(/(\bapi[_-]?key\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
             out = out.replace(/(\bsecret\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
             out = out.replace(/(\b--token\s+)[^\s]+/gi, '$1[REDACTED]');
-            return out; // Shortened for brevity
+            return out;
         };
 
         if (dryRun) {
@@ -534,14 +487,12 @@ export class ShellExecuteTool extends BaseTool {
             return { ok: true, output: { dryRun: true, status: 'success', command: safeCmd, stdout: `[dry run] ${safeCmd}`, exitCode: 0 }, logs: [`dryRun: ${safeCmd}`] };
         }
 
-        // Simplistic safety
         if (command.includes('rm -rf /') || command.includes('sudo')) {
             const safeCmd = redactCmd(command);
             logs.push(`exec=${safeCmd} blocked=1`);
             return { ok: false, error: 'command_not_allowed', logs };
         }
 
-        // Persistent CWD
         const root = getWorkspaceRoot();
         const stateFile = path.join(root, '.joe', 'shell_state.json');
         if (!cwdInput && fs.existsSync(stateFile)) {
@@ -553,35 +504,24 @@ export class ShellExecuteTool extends BaseTool {
 
         const workDir = cwdInput ? resolveToolPath(cwdInput) : root;
 
-
-
         try {
             if (background) {
-                // Background Execution (Local only for now)
-                if (input.serverId) {
-                    throw new Error('Background execution not yet supported for remote servers');
-                }
+                if (input.serverId) throw new Error('Background execution not yet supported for remote servers');
                 const id = 'bg_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
 
-                const parsed = splitCommandLine(command);
-                if (!parsed) throw new Error('invalid_command');
-                if (!isAllowedLocalCommand(parsed.command)) throw new Error('command_not_allowed');
-
-                const child = spawn(parsed.command, parsed.args, { cwd: workDir, shell: false, detached: true, stdio: 'ignore' });
-
-                child.unref();
+                const result = await executionEngine.run(command, { cwd: workDir, detached: true, stdio: 'ignore' });
 
                 backgroundProcesses.set(id, {
-                    pid: child.pid,
+                    pid: result.pid,
                     command: command,
                     startTime: Date.now(),
-                    process: child
+                    process: result
                 });
 
-                logs.push(`exec_bg=${redactCmd(command)} id=${id} pid=${child.pid}`);
+                logs.push(`exec_bg=${redactCmd(command)} id=${id} pid=${result.pid}`);
                 return {
                     ok: true,
-                    output: { status: 'background', id, pid: child.pid, message: 'Command started in background.' },
+                    output: { status: 'background', id, pid: result.pid, message: 'Command started in background.' },
                     logs
                 };
             }
@@ -613,10 +553,7 @@ export class ShellExecuteTool extends BaseTool {
                 };
             }
 
-            const parsed = splitCommandLine(command);
-            if (!parsed) throw new Error('invalid_command');
-            if (!isAllowedLocalCommand(parsed.command)) throw new Error('command_not_allowed');
-            const r = await handleShellCommand(parsed.command, parsed.args, workDir, timeoutVal, false);
+            const r = await handleShellCommand(command, [], workDir, timeoutVal, false);
             const durationMs = Date.now() - startedAt;
             logs.push(...(r.logs || []));
             logs.push(`exec=${redactCmd(command)} server=local exit=${r.ok ? 0 : 1}`);
@@ -660,16 +597,15 @@ export class ShellStatusTool extends BaseTool {
         const proc = backgroundProcesses.get(id);
         if (!proc) return { ok: false, error: 'Process not found', logs: [] };
 
-        // Check if PID is running
         let running = true;
         try {
-            process.kill(proc.pid, 0); // signal 0 just checks existence
+            process.kill(proc.pid, 0);
         } catch (e) {
             running = false;
         }
 
         if (!running) {
-            backgroundProcesses.delete(id); // Cleanup dead
+            backgroundProcesses.delete(id);
         }
 
         return {

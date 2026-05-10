@@ -1,8 +1,6 @@
 
-import { spawnSync } from 'child_process';
 import os from 'os';
-import path from 'path';
-import fs from 'fs';
+import { executionEngine } from '../../kernel/ExecutionEngine';
 
 export interface BinaryCheckResult {
     exists: boolean;
@@ -21,30 +19,25 @@ export class BinaryService {
         try {
             // 1. Try which/where
             const whichCmd = os.platform() === 'win32' ? 'where' : 'which';
-            const which = spawnSync(whichCmd, [name], { encoding: 'utf8' });
+            const which = executionEngine.runSync(`${whichCmd} ${name}`);
 
-            if (which.status !== 0) {
+            if (!which.ok) {
                 return { exists: false, compatible: false, error: 'binary_not_found' };
             }
 
-            const binaryPath = which.stdout.trim().split('\n')[0];
+            const binaryPath = (which.output || '').trim().split('\n')[0];
 
             // 2. Check architecture on macOS
             if (os.platform() === 'darwin') {
-                const fileInfo = spawnSync('file', [binaryPath], { encoding: 'utf8' });
-                const info = fileInfo.stdout.toLowerCase();
+                const fileInfo = executionEngine.runSync(`file ${binaryPath}`);
+                const info = (fileInfo.output || '').toLowerCase();
 
-                // On macOS, arm64 is native, x86_64 is Rosetta
                 const hasArm64 = info.includes('arm64');
                 const hasX64 = info.includes('x86_64') || info.includes('x86-64');
                 const isUniversal = info.includes('universal');
 
-                // Determine actual hardware architecture (not just Node's arch)
-                const hwArch = spawnSync('uname', ['-m'], { encoding: 'utf8' }).stdout.trim();
-
-                // If we are on ARM64 and the binary is ONLY x64, it needs Rosetta.
-                // If it fails with exit code 1 or similar during spawn attempts, 
-                // it might be due to missing Rosetta.
+                const hwArchRes = executionEngine.runSync('uname -m');
+                const hwArch = (hwArchRes.output || '').trim();
 
                 const isNative = (hwArch === 'arm64' && (hasArm64 || isUniversal)) || (hwArch === 'x86_64' && hasX64);
 
@@ -57,7 +50,7 @@ export class BinaryService {
                     exists: true,
                     path: binaryPath,
                     arch: hasArm64 ? 'arm64' : (hasX64 ? 'x64' : 'unknown'),
-                    compatible: isNative || hasX64, // Assume x64 is compatible via Rosetta if not native arm64
+                    compatible: isNative || hasX64,
                     error
                 };
             }
@@ -76,7 +69,6 @@ export class BinaryService {
         if (result.error?.includes('binary_arch_mismatch')) {
             return `The binary '${name}' is compiled for x86_64 but your system is ARM64. Please install the native ARM64 version or ensure Rosetta 2 is installed.`;
         }
-
         if (lower === 'playwright' || lower === 'chromium' || lower === 'chrome') {
             return 'Run "npx playwright install" in the api directory.';
         }

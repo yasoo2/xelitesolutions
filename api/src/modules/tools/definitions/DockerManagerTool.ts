@@ -1,8 +1,6 @@
-import { ToolDefinition, ToolPermission } from '../types';
-import { exec } from 'child_process';
-import util from 'util';
 
-const execAsync = util.promisify(exec);
+import { ToolDefinition, ToolPermission } from '../types';
+import { executionEngine } from '../../../kernel/ExecutionEngine';
 
 export class DockerManagerTool implements ToolDefinition {
     name = 'docker_manager';
@@ -54,19 +52,20 @@ export class DockerManagerTool implements ToolDefinition {
             default: return { ok: false, error: 'Unknown action', logs: [] };
         }
 
-        try {
-            const { stdout, stderr } = await execAsync(command.trim());
+        const result = await executionEngine.run(command.trim());
+        
+        if (result.ok) {
             return {
                 ok: true,
-                output: { success: true, stdout, stderr },
+                output: { success: true, stdout: result.output, stderr: result.error },
                 logs: [`Executed: ${command}`]
             };
-        } catch (e: any) {
+        } else {
             return {
                 ok: false,
-                error: e.message,
-                output: { success: false, stdout: e.stdout, stderr: e.stderr },
-                logs: [`Failed: ${command} -> ${e.message}`]
+                error: result.error || result.output,
+                output: { success: false, stdout: result.output, stderr: result.error },
+                logs: [`Failed: ${command}`]
             };
         }
     }

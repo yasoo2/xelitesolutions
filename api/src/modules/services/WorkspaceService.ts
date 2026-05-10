@@ -6,7 +6,6 @@ import crypto from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
 import fs from 'fs';
-import { execSync } from 'child_process';
 import { getUserSecret } from './secrets';
 
 const workspaceAsyncContext = new AsyncLocalStorage<{ workspaceId?: string }>();

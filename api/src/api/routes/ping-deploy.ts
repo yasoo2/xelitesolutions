@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { spawn } from 'child_process';
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import { logger } from '../../shared/utils/logger';
 
 const router = Router();
@@ -7,6 +7,18 @@ const PROJECT_PATH = '/root/xelitesolutions';
 const API_PATH = `${PROJECT_PATH}/api`;
 
 let isUpdating = false;
+
+async function runCommand(command: string, args: string[], cwd: string): Promise<string> {
+    const result = await ExecutionGateway.execute(command, args, { 
+        cwd,
+        env: { 
+            ...process.env, 
+            PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/root/.nvm/versions/node/v20/bin'
+        }
+    });
+    if (result.ok) return result.output || '';
+    throw new Error(result.error || result.output || 'Command failed');
+}
 
 /**
  * Ping-trigger deployment - Can be called from external services
@@ -83,51 +95,19 @@ async function performUpdate(targetCommit: string) {
         await runCommand('pkill', ['-f', 'node.*dist/index.js'], PROJECT_PATH);
         await new Promise(r => setTimeout(r, 3000));
 
-        const { spawn } = await import('child_process');
-        const child = spawn('node', ['dist/index.js'], {
+        // Use Gateway for detached restart
+        await ExecutionGateway.execute('node', ['dist/index.js'], {
             cwd: API_PATH,
             env: { ...process.env, NODE_ENV: 'production' },
             detached: true,
             stdio: 'ignore'
         });
-        child.unref();
 
-        logger.info(`[PingDeploy] Server restarted via spawn, PID: ${child.pid}`);
+        logger.info(`[PingDeploy] Server restart requested via Gateway`);
 
     } catch (error: any) {
         logger.error(`[PingDeploy] Update failed: ${error.message}`);
     }
-}
-
-function runCommand(command: string, args: string[], cwd: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const { spawn } = require('child_process');
-        const child = spawn(command, args, {
-            cwd,
-            env: { 
-                ...process.env, 
-                PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/root/.nvm/versions/node/v20/bin'
-            }
-        });
-
-        let stdout = '';
-        let stderr = '';
-
-        child.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
-        child.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
-
-        child.on('close', (code: number) => {
-            if (code === 0) {
-                resolve(stdout);
-            } else {
-                reject(new Error(stderr || stdout));
-            }
-        });
-
-        child.on('error', (error: Error) => {
-            reject(error);
-        });
-    });
 }
 
 export default router;

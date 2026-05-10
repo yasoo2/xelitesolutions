@@ -1,8 +1,9 @@
+
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
+import { executionEngine } from '../../../kernel/ExecutionEngine';
 
 function getRepoRoot() {
   const cwd = process.cwd();
@@ -84,27 +85,13 @@ function isAllowedCommand(raw: string) {
   return allowedPrefixes.some(prefix => command === prefix || command.startsWith(prefix + ' '));
 }
 
-function runSafeCommand(command: string, cwd: string, timeoutMs: number) {
-  return new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
-    const child = spawn(command, { cwd, shell: true, env: process.env });
-    let stdout = '';
-    let stderr = '';
-    const timer = setTimeout(() => {
-      try { child.kill('SIGTERM'); } catch { }
-      resolve({ code: 124, stdout, stderr: stderr + '\ncommand_timeout' });
-    }, timeoutMs);
-
-    child.stdout.on('data', d => { stdout += d.toString(); });
-    child.stderr.on('data', d => { stderr += d.toString(); });
-    child.on('close', code => {
-      clearTimeout(timer);
-      resolve({ code: typeof code === 'number' ? code : 1, stdout, stderr });
-    });
-    child.on('error', err => {
-      clearTimeout(timer);
-      resolve({ code: 1, stdout, stderr: String(err?.message || err) });
-    });
-  });
+async function runSafeCommand(command: string, cwd: string, timeoutMs: number) {
+  const result = await executionEngine.run(command, { cwd, timeout: timeoutMs });
+  return {
+    code: result.exitCode,
+    stdout: result.output || '',
+    stderr: result.error || ''
+  };
 }
 
 export class RepoReadFileTool extends BaseTool {
@@ -249,8 +236,8 @@ export class RepoRunCommandTool extends BaseTool {
         output: {
           command,
           exitCode: result.code,
-          stdout: result.stdout.slice(-12000),
-          stderr: result.stderr.slice(-12000)
+          stdout: (result.stdout || '').slice(-12000),
+          stderr: (result.stderr || '').slice(-12000)
         },
         error: result.code === 0 ? undefined : 'command_failed',
         logs

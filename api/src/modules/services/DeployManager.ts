@@ -1,4 +1,5 @@
-import { spawn } from 'child_process';
+
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import mongoose from 'mongoose';
 import os from 'os';
 import { Deployment } from '../../shared/models/deployment';
@@ -8,297 +9,67 @@ import axios from 'axios';
 import { alertService } from './AlertService';
 import shadow from 'fs';
 import path from 'path';
+import { executionEngine } from '../../kernel/ExecutionEngine';
+
 const fs = shadow.promises;
 const STABLE_COMMIT_FILE = './last_stable_commit';
 
-// Configurable project root - no more hardcoded /root/xelitesolutions
-// Ensure that if process.cwd() is inside /api, the root is calculated correctly.
 const defaultRoot = process.cwd().endsWith('/api') ? path.resolve(process.cwd(), '..') : process.cwd();
 const PROJECT_ROOT = process.env.PROJECT_ROOT || defaultRoot;
 const API_DIR = process.env.API_DIR || path.join(PROJECT_ROOT, 'api');
 const WEB_DIR = process.env.WEB_DIR || path.join(PROJECT_ROOT, 'web');
-const POLL_INTERVAL_MS = Math.max(10000, Number(process.env.DEPLOY_POLL_INTERVAL_MS) || 60000); // Default 60s, min 10s
+const POLL_INTERVAL_MS = Math.max(10000, Number(process.env.DEPLOY_POLL_INTERVAL_MS) || 60000);
 
 export class DeployManager {
     private static instance: DeployManager;
-    private currentDeploymentId: string | null = null;
-    private logQueue: { id: string, logs: string[] }[] = [];
-    private flushInterval: NodeJS.Timeout | null = null;
     private pollerInterval: NodeJS.Timeout | null = null;
-    private lastKnownCommit: string | null = null;
-
-    // Auto-deploy poller health tracking
-    private pollerActive = false;
-    private pollerEnabled = true;  // Can be toggled via API
-    private pollCount = 0;
+    private currentDeploymentId: string | null = null;
+    private pollerEnabled: boolean = true;
+    private pollerActive: boolean = false;
+    private pollCount: number = 0;
     private lastPollTime: Date | null = null;
     private lastPollError: string | null = null;
     private lastLocalCommit: string | null = null;
     private lastRemoteCommit: string | null = null;
-    private lastDeployFinishTime: number = 0; // Cooldown tracker
+    private logQueue: { id: string, logs: string[] }[] = [];
+    private lastDeployFinishTime: number | null = null;
 
     private constructor() {
-        // Start flush interval
-        this.flushInterval = setInterval(() => this.flushLogs(), 2000);
-        this.repairZombieDeployments().catch(e => logger.error(`[DeployManager] Failed to repair zombie deployments: ${e.message}`));
-        // Start auto-deploy poller (configurable interval, default 60s)
         this.startAutoDeployPollerInternal();
-        logger.info(`[DeployManager] Instance created. Auto-deploy poller initializing...`);
     }
 
-    private async repairZombieDeployments() {
-        try {
-            // Wait for DB connection if not ready
-            let retries = 0;
-            while (mongoose.connection.readyState !== 1 && retries < 30) {
-                await new Promise(r => setTimeout(r, 1000));
-                retries++;
-            }
-
-            if (mongoose.connection.readyState !== 1) {
-                logger.error(`[DeployManager] DB not ready after 30s. Skipping repair.`);
-                return;
-            }
-
-            const zombies = await Deployment.find({ status: 'BUILDING' });
-            for (const zombie of zombies) {
-                const logs = zombie.logs || [];
-                const isRestarting = logs.some((l: string) =>
-                    l.includes('[SYSTEM] Container recreation initiated') ||
-                    l.includes('Container') && l.includes('Recreate')
-                );
-
-                if (isRestarting) {
-                    logger.info(`[DeployManager] Recovered successful deployment ${zombie._id}. Marking as SUCCESS.`);
-                    zombie.status = 'SUCCESS';
-                    zombie.endTime = new Date();
-                    zombie.duration = (zombie.endTime.getTime() - zombie.startTime.getTime()) / 1000;
-                    zombie.logs.push(`[${new Date().toISOString()}] [SUCCESS] Deployment recovered after container restart.`);
-                    await zombie.save();
-
-                    // Store as last stable commit
-                    shadow.writeFileSync(STABLE_COMMIT_FILE, zombie.commit);
-                } else {
-                    logger.info(`[DeployManager] Found zombie deployment ${zombie._id}. Marking as FAILED.`);
-                    zombie.status = 'FAILED';
-                    zombie.error = 'Server restarted during building process';
-                    zombie.endTime = new Date();
-                    zombie.logs.push(`[${new Date().toISOString()}] [ERROR] Deployment interrupted by server restart.`);
-                    await zombie.save();
-                }
-            }
-        } catch (e: any) {
-            logger.error(`[DeployManager] Maintenance error: ${e.message}`);
-        }
-    }
-
-    static getInstance() {
+    public static getInstance(): DeployManager {
         if (!DeployManager.instance) {
             DeployManager.instance = new DeployManager();
         }
         return DeployManager.instance;
     }
 
-    async startDeploy(triggeredBy: 'webhook' | 'manual', expectedCommit?: string): Promise<string> {
-        if (this.currentDeploymentId) {
-            // Check if it's really stuck or if we can Force clear it
-            const active = await Deployment.findById(this.currentDeploymentId);
-            if (active && (Date.now() - active.startTime.getTime() > 3600000)) { // 1 hour safety
-                logger.warn(`[DeployManager] Force clearing deployment ${this.currentDeploymentId} due to age (1h+)`);
-                this.currentDeploymentId = null;
-            } else {
-                throw new Error('A deployment is already in progress');
-            }
-        }
-
-        const currentCommit = await this.getCurrentCommit();
-        const deployment = await Deployment.create({
-            commit: expectedCommit || currentCommit,
-            status: 'BUILDING',
-            triggeredBy,
-            logs: [`[${new Date().toISOString()}] Starting deployment...`]
-        });
-
-        this.currentDeploymentId = deployment._id.toString();
-
-        // Run in background
-        this.runDeployProcess(deployment._id.toString(), false, expectedCommit).catch(err => {
-            logger.error(`[DeployManager] Critical failure in background process: ${err.message}`);
-        });
-
-        return deployment._id.toString();
-    }
-
-    async rollback(deploymentId: string): Promise<string> {
-        const target = await Deployment.findById(deploymentId);
-        if (!target) throw new Error('Deployment not found');
-
-        const deployment = await Deployment.create({
-            commit: target.commit,
-            status: 'BUILDING',
-            triggeredBy: 'manual',
-            logs: [`[${new Date().toISOString()}] Starting rollback to commit ${target.commit}...`]
-        });
-
-        this.currentDeploymentId = deployment._id.toString();
-        this.runDeployProcess(deployment._id.toString(), true).catch(err => {
-            logger.error(`[DeployManager] Critical failure in rollback: ${err.message}`);
-        });
-
-        return deployment._id.toString();
-    }
-
-    private async runDeployProcess(id: string, isRollback = false, expectedCommit?: string) {
-        const deployment = await Deployment.findById(id);
-        if (!deployment) return;
-
-        try {
-            // 0. Ensure git safety (dubious ownership fix)
-            await this.runCommand('git', ['config', '--global', '--add', 'safe.directory', PROJECT_ROOT], PROJECT_ROOT);
-
-            // 1. Run the central self-healing deployment script
-            this.queueLog(id, '[SYSTEM] Executing central self-healing deployment script (self-heal.sh)...');
-            const selfHealScript = path.join(PROJECT_ROOT, 'scripts', 'self-heal.sh');
-            
-            try {
-                // Ensure script is executable
-                await this.runCommand('chmod', ['+x', selfHealScript], PROJECT_ROOT, 30000, id);
-                
-                // Run self-heal script with 'deploy' argument to force update
-                await this.runCommand('bash', [selfHealScript, 'deploy'], PROJECT_ROOT, 900000, id);
-                this.queueLog(id, '[SYSTEM] Self-healing deployment script completed successfully');
-            } catch (error: any) {
-                this.queueLog(id, `[ERROR] Deployment script failed: ${error.message}`);
-                throw error;
-            }
-
-            // 2. Success verification
-            this.queueLog(id, '[SYSTEM] Verifying final health status...');
-            await this.verifyHealth();
-            this.queueLog(id, '[SYSTEM] Deployment verification passed');
-
-
-            // Success
-            deployment.status = 'SUCCESS';
-            deployment.endTime = new Date();
-            deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
-            deployment.logs.push(`[${new Date().toISOString()}] [SUCCESS] Deployment completed in ${deployment.duration}s`);
-            await deployment.save();
-            this.lastDeployFinishTime = Date.now();
-
-            // Store as last stable commit
-            shadow.writeFileSync(STABLE_COMMIT_FILE, deployment.commit);
-
-            // Broadcast success
-            broadcast({
-                type: 'deployment_completed',
-                data: { deploymentId: id, status: 'success', duration: deployment.duration }
-            });
-
-            // Send alert
-            await alertService.notifySuccess(id, deployment.commit);
-
-        } catch (error: any) {
-            logger.error(`[DeployManager] Deployment ${id} failed: ${error.message}`);
-
-            deployment.status = 'FAILED';
-            deployment.error = error.message;
-            deployment.endTime = new Date();
-            deployment.duration = (deployment.endTime.getTime() - deployment.startTime.getTime()) / 1000;
-            deployment.logs.push(`[${new Date().toISOString()}] [ERROR] ${error.message}`);
-            await deployment.save();
-
-            // Broadcast failure
-            broadcast({
-                type: 'deployment_failed',
-                data: { deploymentId: id, error: error.message }
-            });
-
-            // Send alert
-            await alertService.notifyFailure(id, error.message);
-
-            // Attempt rollback to last stable commit
-            await this.attemptRollback();
-
-        } finally {
-            this.currentDeploymentId = null;
-            await this.flushLogs();
-        }
-    }
-
-    /**
-     * FIXED: Use spawn instead of exec to avoid ENOENT error
-     */
     private async runCommand(command: string, args: string[], cwd: string, timeoutMs = 120000, deploymentId?: string): Promise<string> {
-        return new Promise((resolve, reject) => {
-            const startTime = Date.now();
+        const fullCommand = args.length > 0 ? `${command} ${args.join(' ')}` : command;
+        if (deploymentId) this.queueLog(deploymentId, `[EXEC] ${fullCommand}`);
 
-            // Use spawn with explicit shell and PATH
-            const child = spawn(command, args, {
-                cwd,
-                env: { 
-                    ...process.env, 
-                    // Dynamically include local node bins and standard paths without hardcoding specific versions unless necessary
-                    PATH: `${process.env.PATH}${path.delimiter}${path.join(PROJECT_ROOT, 'node_modules', '.bin')}${path.delimiter}/usr/local/bin${path.delimiter}/usr/bin${path.delimiter}/bin`
-                },
-                shell: true,
-            });
-
-            let stdout = '';
-            let stderr = '';
-            let killed = false;
-
-            const timeout = setTimeout(() => {
-                killed = true;
-                child.kill('SIGTERM');
-                setTimeout(() => {
-                    if (!child.killed) {
-                        child.kill('SIGKILL');
-                    }
-                }, 5000);
-                reject(new Error(`Command timed out after ${timeoutMs}ms`));
-            }, timeoutMs);
-
-            child.stdout?.on('data', (data) => {
-                const chunk = data.toString();
-                stdout += chunk;
-                if (deploymentId) {
-                    chunk.split('\n').forEach((l: string) => {
-                        const line = l.trim();
-                        if (line) this.queueLog(deploymentId, `    > ${line}`, true);
-                    });
-                }
-            });
-
-            child.stderr?.on('data', (data) => {
-                const chunk = data.toString();
-                stderr += chunk;
-                if (deploymentId) {
-                    chunk.split('\n').forEach((l: string) => {
-                        const line = l.trim();
-                        if (line) this.queueLog(deploymentId, `    [STREAM] ${line}`, true);
-                    });
-                }
-            });
-
-            child.on('error', (error) => {
-                clearTimeout(timeout);
-                if (!killed) {
-                    reject(new Error(`Failed to spawn command: ${error.message}`));
-                }
-            });
-
-            child.on('close', (code) => {
-                clearTimeout(timeout);
-                if (killed) return;
-
-                if (code === 0) {
-                    resolve(stdout);
-                } else {
-                    reject(new Error(`Command failed with code ${code}: ${stderr || stdout}`));
-                }
-            });
+        const result = await ExecutionGateway.execute(fullCommand, [], {
+            cwd,
+            timeout: timeoutMs,
+            shell: true,
+            env: {
+                ...process.env,
+                PATH: `${process.env.PATH}${path.delimiter}${path.join(PROJECT_ROOT, 'node_modules', '.bin')}${path.delimiter}/usr/local/bin${path.delimiter}/usr/bin${path.delimiter}/bin`
+            }
         });
+
+        if (result.ok) {
+            if (deploymentId && result.output) {
+                result.output.split('\n').forEach(line => {
+                    if (line.trim()) this.queueLog(deploymentId, `    > ${line.trim()}`, true);
+                });
+            }
+            return result.output || '';
+        } else {
+            if (deploymentId && result.error) this.queueLog(deploymentId, `    [ERROR] ${result.error.trim()}`, true);
+            throw new Error(`Command failed: ${result.error || 'Unknown error'}`);
+        }
     }
 
     private async restartAPIServer() {
@@ -309,78 +80,56 @@ export class DeployManager {
                 return;
             } catch (e: any) {
                 logger.error(`[DeployManager] systemctl restart failed: ${e.message}. Trying self-exit fallback...`);
-                
-                // Final fallback: Self-exit and let PM2/Docker respawn us
                 setTimeout(() => {
                     logger.info('[DeployManager] Self-exiting for automatic PM2/Docker restart...');
                     process.exit(0);
                 }, 1000);
+                return;
             }
         }
 
-        // Fallback or Non-Linux (Dev)
-        try {
-            await this.runCommand('pkill', ['-f', 'node.*dist/index.js'], PROJECT_ROOT, 10000);
-        } catch (e) { }
+        try { await this.runCommand('pkill', ['-f', 'node.*dist/index.js'], PROJECT_ROOT, 10000); } catch (e) { }
 
-        const child = spawn('node', ['dist/index.js'], {
+        // Use ExecutionEngine instead of direct spawn
+        await executionEngine.run('node dist/index.js', {
             cwd: API_DIR,
             env: { ...process.env, NODE_ENV: 'production' },
             detached: true,
             stdio: 'ignore'
         });
-        child.unref();
+        
         await new Promise(resolve => setTimeout(resolve, 3000));
     }
 
     private async verifyHealth(retries = 5): Promise<void> {
         const port = process.env.PORT || 8080;
         const API_URL = process.env.API_URL || `http://127.0.0.1:${port}`;
-
         for (let i = 0; i < retries; i++) {
             try {
-                // 1. Check API basic responsiveness (always use /api/health)
                 const response = await axios.get(`${API_URL}/api/health`, { timeout: 5000 });
                 if (response.status !== 200) throw new Error(`API health returned ${response.status}`);
-
-                // 2. Check Database Connectivity (if available via health endpoint)
-                if (response.data?.database === 'DOWN' || response.data?.database === 'ERROR') {
-                    throw new Error(`Database is in state ${response.data.database} according to health report`);
-                }
-
-                // 3. Check Disk Space (Critical for builds)
-                const { free } = await this.getDiskInfo();
-                if (free < 100 * 1024 * 1024) { // 100MB threshold
-                    logger.warn(`[DeployManager] Low disk space detected: ${Math.round(free / 1024 / 1024)}MB`);
-                }
-
                 return;
             } catch (e: any) {
                 logger.warn(`[DeployManager] Health check attempt ${i + 1} failed: ${e.message}`);
             }
             await new Promise(resolve => setTimeout(resolve, 3000));
         }
-        throw new Error('Health check failed after ' + retries + ' attempts. System might be unstable.');
+        throw new Error('Health check failed after ' + retries + ' attempts.');
     }
 
     private async getDiskInfo(): Promise<{ free: number }> {
-        // Simple cross-platform disk check placeholder or implementation
-        // For local dev, we return a safe estimate if tools like df/du aren't easily parsed
-        return { free: 1024 * 1024 * 1024 }; // 1GB dummy for now
+        return { free: 1024 * 1024 * 1024 };
     }
 
     private async attemptRollback() {
         try {
             if (shadow.existsSync(STABLE_COMMIT_FILE)) {
                 const stableCommit = shadow.readFileSync(STABLE_COMMIT_FILE, 'utf8').trim();
-                logger.info(`[DeployManager] Attempting rollback to stable commit: ${stableCommit}`);
-
+                logger.info(`[DeployManager] Rolling back to: ${stableCommit}`);
                 await this.runCommand('git', ['reset', '--hard', stableCommit], PROJECT_ROOT);
                 await this.runCommand('npm', ['install', '--legacy-peer-deps'], API_DIR, 300000);
                 await this.runCommand('npm', ['run', 'build'], API_DIR, 300000);
                 await this.restartAPIServer();
-
-                logger.info(`[DeployManager] Rollback to ${stableCommit} completed`);
             }
         } catch (e: any) {
             logger.error(`[DeployManager] Rollback failed: ${e.message}`);
@@ -391,9 +140,7 @@ export class DeployManager {
         try {
             const result = await this.runCommand('git', ['rev-parse', 'HEAD'], PROJECT_ROOT, 10000);
             return result.trim();
-        } catch (e) {
-            return 'unknown';
-        }
+        } catch (e) { return 'unknown'; }
     }
 
     private async getRemoteCommit(): Promise<string> {
@@ -401,136 +148,115 @@ export class DeployManager {
             await this.runCommand('git', ['fetch', 'origin', 'main'], PROJECT_ROOT, 30000);
             const result = await this.runCommand('git', ['rev-parse', 'origin/main'], PROJECT_ROOT, 10000);
             return result.trim();
-        } catch (e) {
-            return 'unknown';
-        }
+        } catch (e) { return 'unknown'; }
     }
 
     private queueLog(deploymentId: string, log: string, silentTerminal = false) {
         const entry = this.logQueue.find(q => q.id === deploymentId);
-        if (entry) {
-            entry.logs.push(log);
-        } else {
-            this.logQueue.push({ id: deploymentId, logs: [log] });
-        }
+        if (entry) entry.logs.push(log);
+        else this.logQueue.push({ id: deploymentId, logs: [log] });
 
         if (!silentTerminal) {
-            // Add beautiful ANSI colors for the terminal output
-            let coloredLog = log;
-            if (log.includes('[SUCCESS]')) {
-                coloredLog = `\x1b[1;32m${log}\x1b[0m`; // Green
-            } else if (log.includes('[ERROR]') || log.includes('failed')) {
-                coloredLog = `\x1b[1;31m${log}\x1b[0m`; // Red
-            } else if (log.includes('[WARN]')) {
-                coloredLog = `\x1b[1;33m${log}\x1b[0m`; // Yellow
-            } else if (log.includes('[BUILD]')) {
-                coloredLog = `\x1b[1;36m${log}\x1b[0m`; // Cyan
-            } else if (log.includes('[SYSTEM]')) {
-                coloredLog = `\x1b[1;35m${log}\x1b[0m`; // Magenta
-            } else {
-                coloredLog = `\x1b[37m${log}\x1b[0m`; // White
-            }
-
             const shortId = deploymentId.substring(0, 8);
-            logger.info(`\x1b[1;34m[Deploy ${shortId}]\x1b[0m ${coloredLog}`);
+            logger.info(`[Deploy ${shortId}] ${log}`);
         }
     }
 
     private async flushLogs() {
         if (this.logQueue.length === 0) return;
-
         const batch = [...this.logQueue];
         this.logQueue = [];
-
         for (const entry of batch) {
             try {
-                await Deployment.findByIdAndUpdate(entry.id, {
-                    $push: { logs: { $each: entry.logs } }
-                });
-            } catch (e) {
-                logger.error(`[DeployManager] Failed to flush logs for ${entry.id}: ${e}`);
-            }
+                await Deployment.findByIdAndUpdate(entry.id, { $push: { logs: { $each: entry.logs } } });
+            } catch (e) { logger.error(`[DeployManager] Log flush failed: ${e}`); }
         }
     }
 
-    // Auto-deploy poller methods
     private startAutoDeployPollerInternal() {
-        if (this.pollerInterval) {
-            clearInterval(this.pollerInterval);
-        }
-
+        if (this.pollerInterval) clearInterval(this.pollerInterval);
         this.pollerInterval = setInterval(() => {
             this.checkAndDeploy().catch(e => {
                 this.lastPollError = e.message;
-                logger.error(`[DeployManager] Auto-deploy check failed: ${e.message}`);
+                logger.error(`[DeployManager] Auto-deploy failed: ${e.message}`);
             });
         }, POLL_INTERVAL_MS);
-
-        logger.info(`[DeployManager] Auto-deploy poller started (${POLL_INTERVAL_MS}ms interval)`);
     }
 
     private async checkAndDeploy() {
         if (!this.pollerEnabled) return;
-
-        // Cooldown: skip if a deploy finished less than 3 minutes ago (prevents restart loops)
-        const cooldownMs = 180_000; // 3 minutes
-        if (this.lastDeployFinishTime && (Date.now() - this.lastDeployFinishTime < cooldownMs)) {
-            logger.info(`[DeployManager] In cooldown period (${Math.round((cooldownMs - (Date.now() - this.lastDeployFinishTime)) / 1000)}s remaining). Skipping.`);
-            return;
-        }
+        const cooldownMs = 180_000;
+        if (this.lastDeployFinishTime && (Date.now() - this.lastDeployFinishTime < cooldownMs)) return;
 
         this.pollCount++;
         this.lastPollTime = new Date();
         this.pollerActive = true;
 
-        // Check if there are local uncommitted changes (ignore tracked build artifacts)
         try {
-
-
             const status = await this.runCommand('git', ['status', '--short'], PROJECT_ROOT, 10000);
             if (status.trim()) {
-                logger.warn(`[DeployManager] Detected local changes: ${status.trim()}. Skipping auto-deploy.`);
                 this.pollerActive = false;
                 return;
             }
-        } catch (e: any) {
-            logger.error(`[DeployManager] Git status check failed: ${e.message}`);
-        }
+        } catch (e: any) { }
 
         const localCommit = await this.getCurrentCommit();
         const remoteCommit = await this.getRemoteCommit();
-
         this.lastLocalCommit = localCommit;
         this.lastRemoteCommit = remoteCommit;
 
         if (localCommit !== remoteCommit && remoteCommit !== 'unknown') {
-            logger.info(`[DeployManager] New commits detected: ${localCommit} -> ${remoteCommit}`);
-
-            if (this.currentDeploymentId) {
-                logger.warn(`[DeployManager] Deployment already in progress, skipping auto-deploy`);
-                return;
-            }
-
+            if (this.currentDeploymentId) return;
             await this.startDeploy('webhook', remoteCommit);
         }
-
         this.pollerActive = false;
+    }
+
+    async startDeploy(trigger: string, commitHash: string): Promise<string> {
+        const deployment = new Deployment({ trigger, commitHash, status: 'started', startTime: new Date() });
+        await deployment.save();
+        const id = deployment._id.toString();
+        this.currentDeploymentId = id;
+        
+        // Non-blocking deployment start
+        this.executeDeploymentFlow(id, commitHash).catch(e => {
+            logger.error(`[DeployManager] Critical deployment error: ${e.message}`);
+        });
+
+        return id;
+    }
+
+    private async executeDeploymentFlow(id: string, commitHash: string) {
+        try {
+            this.queueLog(id, `[SYSTEM] Starting deployment for commit ${commitHash}`);
+            await this.runCommand('git', ['pull', 'origin', 'main'], PROJECT_ROOT, 60000, id);
+            await this.runCommand('npm', ['install', '--legacy-peer-deps'], API_DIR, 300000, id);
+            await this.runCommand('npm', ['run', 'build'], API_DIR, 300000, id);
+            await this.restartAPIServer();
+            await this.verifyHealth();
+            
+            await Deployment.findByIdAndUpdate(id, { status: 'success', endTime: new Date() });
+            this.queueLog(id, `[SUCCESS] Deployment ${id} completed successfully`);
+            shadow.writeFileSync(STABLE_COMMIT_FILE, commitHash);
+        } catch (e: any) {
+            await Deployment.findByIdAndUpdate(id, { status: 'failed', endTime: new Date(), error: e.message });
+            this.queueLog(id, `[ERROR] Deployment ${id} failed: ${e.message}`);
+            await this.attemptRollback();
+        } finally {
+            this.currentDeploymentId = null;
+            this.lastDeployFinishTime = Date.now();
+            await this.flushLogs();
+        }
     }
 
     stopAutoDeployPoller() {
         this.pollerEnabled = false;
-        if (this.pollerInterval) {
-            clearInterval(this.pollerInterval);
-            this.pollerInterval = null;
-        }
-        logger.info('[DeployManager] Auto-deploy poller stopped');
+        if (this.pollerInterval) { clearInterval(this.pollerInterval); this.pollerInterval = null; }
     }
 
     enableAutoDeployPoller() {
         this.pollerEnabled = true;
-        if (!this.pollerInterval) {
-            this.startAutoDeployPollerInternal();
-        }
+        if (!this.pollerInterval) this.startAutoDeployPollerInternal();
     }
 
     getPollerStatus() {
@@ -547,22 +273,10 @@ export class DeployManager {
         };
     }
 
-    // Public API methods
-    async getDeployments(limit = 20) {
-        return Deployment.find().sort({ startTime: -1 }).limit(limit);
-    }
-
-    async getDeployment(id: string) {
-        return Deployment.findById(id);
-    }
-
-    getCurrentDeploymentId() {
-        return this.currentDeploymentId;
-    }
-
-    isDeploying() {
-        return !!this.currentDeploymentId;
-    }
+    async getDeployments(limit = 20) { return Deployment.find().sort({ startTime: -1 }).limit(limit); }
+    async getDeployment(id: string) { return Deployment.findById(id); }
+    getCurrentDeploymentId() { return this.currentDeploymentId; }
+    isDeploying() { return !!this.currentDeploymentId; }
 }
 
 export const deployManager = DeployManager.getInstance();

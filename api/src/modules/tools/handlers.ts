@@ -1,5 +1,4 @@
-
-import { spawn } from 'child_process';
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import path from 'path';
 import fs from 'fs';
 
@@ -27,74 +26,19 @@ export async function handleShellCommand(
 
     logs.push(`exec: ${command} ${args.join(' ')} (cwd=${validCwd})`);
 
-    return new Promise((resolve) => {
-        const allowedCommands = ['git', 'npm', 'node', 'tsc', 'eslint', 'ls', 'cat', 'grep', 'find', 'npx', 'yarn', 'pnpm'];
-
-        if (!allowedCommands.includes(command)) {
-            console.warn(`[Security] Blocked potentially unsafe command: ${command}`);
-            resolve({ ok: false, error: 'command_not_allowed', logs });
-            return;
-        }
-
-        const env = { ...process.env };
-        const runtimePath = "C:\\Users\\home\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin";
-        if (env.PATH) {
-            env.PATH = `${runtimePath};${env.PATH}`;
-        } else {
-            env.PATH = runtimePath;
-        }
-
-        let effectiveCommand = command;
-        if (process.platform === 'win32' && (command === 'npm' || command === 'npx')) {
-            effectiveCommand = `${command}.cmd`;
-        }
-
-        const child = spawn(effectiveCommand, args, { cwd: validCwd, shell: false, env });
-
-        let stdout = '';
-        let stderr = '';
-        let completed = false;
-
-        const timer = setTimeout(() => {
-            if (!completed) {
-                completed = true;
-                child.kill();
-                resolve({ ok: false, error: 'timeout', logs });
-            }
-        }, timeoutMs);
-
-        child.stdout.on('data', (d) => { stdout += d.toString(); });
-        child.stderr.on('data', (d) => { stderr += d.toString(); });
-
-        child.on('error', (err: any) => {
-            if (!completed) {
-                completed = true;
-                clearTimeout(timer);
-
-                // Add architecture hint if it looks like a binary mismatch
-                let errorMessage = err.message;
-                if (err.code === 'EBADARCH' || errorMessage.includes('bad CPU type')) {
-                    const { BinaryService } = require('../services/BinaryService');
-                    const check = BinaryService.checkBinary(command);
-                    errorMessage += `. ${BinaryService.getHint(command, check)}`;
-                }
-
-                resolve({ ok: false, error: errorMessage, logs });
-            }
-        });
-
-        child.on('close', (code) => {
-            if (!completed) {
-                completed = true;
-                clearTimeout(timer);
-                if (code === 0) {
-                    resolve({ ok: true, output: stdout.trim(), logs });
-                } else {
-                    resolve({ ok: false, error: stderr.trim() || stdout.trim() || `Exit code ${code}`, logs });
-                }
-            }
-        });
+    const fullCommand = args.length > 0 ? `${command} ${args.join(' ')}` : command;
+    const result = await ExecutionGateway.execute(fullCommand, [], { 
+        cwd: validCwd, 
+        timeout: timeoutMs,
+        shell: true // Tool commands usually need a shell
     });
+
+    return {
+        ok: result.ok,
+        output: result.output,
+        error: result.error,
+        logs
+    };
 }
 
 export async function handleGitCommand(

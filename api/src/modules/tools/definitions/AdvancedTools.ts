@@ -2,7 +2,6 @@ import { BaseTool } from './base';
 import { ToolPermission } from './types';
 import fs from 'fs';
 import path from 'path';
-import { spawn, execSync } from 'child_process';
 
 /**
  * Pattern Recognition Tool - أداة التعرف على الأنماط

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { authenticate } from '../middleware/auth';
-import { spawn } from 'child_process';
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import { workspaceService } from '../../modules/services/WorkspaceService';
 
 const router = Router();
@@ -22,45 +22,13 @@ function sanitizeRepoDirName(input: string) {
 
 async function spawnWithTimeout(command: string, args: string[], cwd: string, timeoutMs: number, maxOutputChars = 2_000_000): Promise<SpawnResult> {
   const workDir = path.resolve(cwd || process.cwd());
-  return await new Promise<SpawnResult>((resolve) => {
-    const child = spawn(command, args, { cwd: workDir, shell: false });
-    let stdout = '';
-    let stderr = '';
-    let done = false;
-
-    const finish = (code: number | null) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      resolve({ code, stdout, stderr });
-    };
-
-    const kill = () => {
-      try { child.kill('SIGKILL'); } catch { }
-    };
-
-    const timer = setTimeout(() => {
-      kill();
-      finish(-1);
-    }, timeoutMs);
-
-    child.stdout.on('data', (d) => {
-      stdout += d.toString();
-      if (stdout.length + stderr.length > maxOutputChars) {
-        kill();
-        finish(-1);
-      }
-    });
-    child.stderr.on('data', (d) => {
-      stderr += d.toString();
-      if (stdout.length + stderr.length > maxOutputChars) {
-        kill();
-        finish(-1);
-      }
-    });
-    child.on('close', (code) => finish(code));
-    child.on('error', () => finish(-1));
-  });
+  const result = await ExecutionGateway.execute(command, args, { cwd: workDir, timeout: timeoutMs, shell: true });
+  
+  return {
+    code: result.exitCode ?? (result.ok ? 0 : -1),
+    stdout: result.output || '',
+    stderr: result.error || ''
+  };
 }
 
 // Updated Resolver to use dynamic workspaceService.getActiveRoot()

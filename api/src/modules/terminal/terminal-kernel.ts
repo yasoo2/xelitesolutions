@@ -5,30 +5,12 @@ import { terminals, registerTerminal, removeTerminal } from '../tools/terminal/T
 import { broadcast, registerTerminalOwner } from '../../api/ws';
 import { logger } from '../../shared/utils/logger';
 import { sshManager } from './ssh-manager';
-import { ServerConfigModel } from '../../shared/models/ServerConfigModel';
-import mongoose from 'mongoose';
-
-function resolveShell(requestedShell?: string): string {
-    if (process.platform === 'win32') return 'powershell.exe';
-    if (requestedShell && fs.existsSync(requestedShell)) return requestedShell;
-    if (fs.existsSync('/bin/bash')) return '/bin/bash';
-    if (fs.existsSync('/bin/sh')) return '/bin/sh';
-    return '/bin/sh';
-}
-
-function getWorkspaceRoot() {
-    try {
-        const { workspaceService } = require('../services/WorkspaceService');
-        return workspaceService.getActiveRoot();
-    } catch {
-        return process.cwd();
-    }
-}
+import { executionEngine } from '../../kernel/ExecutionEngine';
 
 /**
  * TerminalKernel
- * Central control layer for all terminal operations.
- * Phase 1: Infrastructure Cleanup & Control Routing.
+ * CENTRAL CONTROL LAYER for all terminal operations.
+ * Phase 1.6: Control Only. Execution delegated to ExecutionEngine.
  */
 export class TerminalKernel {
     /**
@@ -37,8 +19,8 @@ export class TerminalKernel {
     async createTerminal(id: string, options: { serverId?: string; shell?: string; cwd?: string; cols?: number; rows?: number; userId?: string }) {
         const ts = Date.now();
         logger.info(`[kernel.session.created] sessionId=${id} ts=${ts} serverId=${options.serverId || 'local'}`);
+        
         if (options.serverId) {
-            // Remote sessions are managed by sshManager for now, but routed via Kernel
             await sshManager.requestShell(options.serverId, id);
             return { id, serverId: options.serverId };
         }
@@ -48,120 +30,31 @@ export class TerminalKernel {
             return { id, existing: true };
         }
 
-        const workDir = options.cwd || getWorkspaceRoot();
-        const shell = resolveShell(options.shell);
-        logger.info(`[Kernel] Terminal create requested: ${id} shell=${shell} cwd=${workDir}`);
+        logger.info(`[Kernel] Requesting execution from engine: ${id}`);
 
         try {
-            let ptyProcess: any = null;
-            let useFallback = false;
+            // Delegate execution to Engine
+            const session = await executionEngine.createSession({
+                shell: options.shell,
+                cwd: options.cwd,
+                cols: options.cols,
+                rows: options.rows,
+                sessionId: id
+            });
 
-            // Try node-pty first
-            try {
-                const pty = require('node-pty');
-                ptyProcess = pty.spawn(shell, [], {
-                    name: 'xterm-256color',
-                    cols: options.cols || 80,
-                    rows: options.rows || 30,
-                    cwd: workDir,
-                    env: { ...process.env, TERM: 'xterm-256color' }
-                });
-            } catch (ptyError: any) {
-                useFallback = true;
-                logger.warn(`[Kernel] PTY failed, using child_process fallback: ${ptyError.message}`);
-            }
-
-            if (useFallback) {
-                const { exec } = require('child_process');
-                let currentLine = '';
-                let currentCwd = workDir;
-
-                const executeCommand = (cmd: string): Promise<string> => {
-                    return new Promise((resolve) => {
-                        const cdMatch = cmd.match(/^cd\s+(.+)$/);
-                        if (cdMatch) {
-                            const newPath = cdMatch[1].trim();
-                            const targetPath = path.isAbsolute(newPath) ? newPath : path.resolve(currentCwd, newPath);
-                            if (fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory()) {
-                                currentCwd = targetPath;
-                                resolve('');
-                            } else {
-                                resolve(`cd: no such directory: ${newPath}\n`);
-                            }
-                            return;
-                        }
-
-                        exec(cmd, { cwd: currentCwd, shell: '/bin/sh', timeout: 30000 }, (err: any, stdout: string, stderr: string) => {
-                            if (err && !stdout && !stderr) {
-                                resolve(`Error: ${err.message}\n`);
-                            } else {
-                                resolve((stdout || '') + (stderr || ''));
-                            }
-                        });
-                    });
-                };
-
-                const ptyWrapper = {
-                    pid: process.pid,
-                    write: (data: string) => {
-                        const term = terminals.get(id);
-                        if (!term) return;
-                        for (const char of data) {
-                            if (char === '\r' || char === '\n') {
-                                broadcast({ type: 'terminal_output', id, data: '\r\n' });
-                                const cmd = currentLine.trim();
-                                currentLine = '';
-                                if (cmd) {
-                                    executeCommand(cmd).then((output) => {
-                                        if (output) {
-                                            term.history.push(output);
-                                            broadcast({ type: 'terminal_output', id, data: output });
-                                        }
-                                        broadcast({ type: 'terminal_output', id, data: `${path.basename(currentCwd)}$ ` });
-                                    });
-                                } else {
-                                    broadcast({ type: 'terminal_output', id, data: `${path.basename(currentCwd)}$ ` });
-                                }
-                            } else if (char === '\x7f' || char === '\b') {
-                                if (currentLine.length > 0) {
-                                    currentLine = currentLine.slice(0, -1);
-                                    broadcast({ type: 'terminal_output', id, data: '\b \b' });
-                                }
-                            } else if (char === '\x03') {
-                                currentLine = '';
-                                broadcast({ type: 'terminal_output', id, data: '^C\r\n' });
-                                broadcast({ type: 'terminal_output', id, data: `${path.basename(currentCwd)}$ ` });
-                            } else {
-                                currentLine += char;
-                                broadcast({ type: 'terminal_output', id, data: char });
-                            }
-                        }
-                    },
-                    resize: () => {},
-                    kill: () => {},
-                    onData: () => {},
-                    _isFallback: true
-                };
-
-                const term = { pty: ptyWrapper, history: [], write: (d: string) => ptyWrapper.write(d), resize: () => {}, kill: () => {}, fallback: true };
-                registerTerminal(id, term);
-                if (options.userId) registerTerminalOwner(id, options.userId);
-                
-                setTimeout(() => broadcast({ type: 'terminal_output', id, data: `${path.basename(currentCwd)}$ ` }), 100);
-                return { id, pid: ptyWrapper.pid, fallback: true };
-            }
-
-            const term = { 
-                pty: ptyProcess, 
+            const term = {
+                pty: session,
                 history: [] as string[],
-                write: (data: string) => ptyProcess.write(data),
-                resize: (cols: number, rows: number) => ptyProcess.resize(cols, rows),
-                kill: () => ptyProcess.kill()
+                write: (data: string) => session.write(data),
+                resize: (cols: number, rows: number) => session.resize(cols, rows),
+                kill: () => session.kill(),
+                fallback: session.fallback
             };
+
             registerTerminal(id, term);
             if (options.userId) registerTerminalOwner(id, options.userId);
 
-            ptyProcess.onData((data: string) => {
+            session.onData((data: string) => {
                 const outTs = Date.now();
                 term.history.push(data);
                 if (term.history.length > 5000) term.history.shift();
@@ -169,9 +62,14 @@ export class TerminalKernel {
                 broadcast({ type: 'terminal_output', id, data });
             });
 
-            return { id, pid: ptyProcess.pid };
+            session.onExit((code: number) => {
+                logger.info(`[Kernel] Session exit detected: ${id} code=${code}`);
+                this.killTerminal(id);
+            });
+
+            return { id, pid: session.pid, fallback: session.fallback };
         } catch (e: any) {
-            logger.error(`[Kernel] Terminal create failed: ${e.message}`);
+            logger.error(`[Kernel] Terminal creation delegation failed: ${e.message}`);
             throw e;
         }
     }
@@ -182,6 +80,7 @@ export class TerminalKernel {
     async sendInput(id: string, data: string, serverId?: string) {
         const ts = Date.now();
         logger.info(`[kernel.input.received] sessionId=${id} ts=${ts} bytes=${data.length} serverId=${serverId || 'local'}`);
+        
         if (serverId) {
             if (sshManager.isConnected(serverId)) {
                 await sshManager.sendInput(id, data);
@@ -195,8 +94,7 @@ export class TerminalKernel {
             return;
         }
         
-        logger.debug(`[Kernel] Forwarding input to terminal: ${id} (${data.length} bytes)`);
-        // Control routing only for now
+        logger.debug(`[Kernel] Forwarding input to engine for session: ${id}`);
         term.write(data);
     }
 
@@ -242,6 +140,27 @@ export class TerminalKernel {
      */
     async listTerminals(): Promise<string[]> {
         return Array.from(terminals.keys());
+    }
+
+    /**
+     * Execute a one-off command (non-interactive)
+     * Phase 1.6: Delegate to ExecutionEngine
+     */
+    async executeOneOff(command: string, options: any = {}): Promise<any> {
+        const ts = Date.now();
+        const sessionId = options.sessionId || 'internal';
+        logger.info(`[kernel.execution.started] sessionId=${sessionId} ts=${ts} command="${command}"`);
+
+        // We wrap the engine call to maintain the existing logging and interface for now
+        // But the actual SPAWN happens inside ExecutionEngine.run()
+        const result = await executionEngine.run(command, options);
+        
+        // Note: ExecutionEngine handles its own stdout/stderr collection
+        // Kernel just receives the final result object.
+        // If we want real-time logging of one-off output, we'd need a more complex stream interface
+        // But for one-offs, this is the current pattern.
+        
+        return result;
     }
 }
 

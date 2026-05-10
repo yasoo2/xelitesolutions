@@ -2,13 +2,20 @@ import { Router } from 'express';
 import { authenticate, requireSuperAdmin } from '../middleware/auth';
 import { Deployment } from '../../shared/models/deployment';
 import { deployManager } from '../../modules/services/DeployManager';
-import { execSync } from 'child_process';
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import { User } from '../../shared/models/user';
 import { logger } from '../../shared/utils/logger';
+import os from 'os';
+import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
+import { SystemConfig } from '../../shared/models/systemConfig';
 
 const router = Router();
 
 router.use(authenticate, requireSuperAdmin);
+
+// ... (Deployment routes remain same)
 
 router.get('/deployments', async (req, res) => {
     try {
@@ -56,7 +63,6 @@ router.post('/rollback/:id', async (req, res) => {
     }
 });
 
-// Auto-deploy poller status
 router.get('/autodeploy/status', async (req, res) => {
     try {
         res.json(deployManager.getPollerStatus());
@@ -65,7 +71,6 @@ router.get('/autodeploy/status', async (req, res) => {
     }
 });
 
-// Toggle auto-deploy on/off
 router.post('/autodeploy/toggle', async (req, res) => {
     try {
         const { enabled } = req.body;
@@ -83,17 +88,13 @@ router.post('/autodeploy/toggle', async (req, res) => {
     }
 });
 
-// Safe container listing - uses fixed command, no user input in shell
+// Safe container listing - uses Gateway
 router.get('/system/containers', async (req, res) => {
     try {
-        // Fixed command string - never interpolate user input into shell commands
-        const output = execSync('docker ps --format "{{json .}}"', {
-            timeout: 10000,
-            encoding: 'utf8',
-            env: { ...process.env, PATH: process.env.PATH },
-            stdio: ['pipe', 'pipe', 'ignore']
-        });
-        const containers = output.trim().split('\n').map(l => {
+        const result = await ExecutionGateway.execute('docker', ['ps', '--format', '{{json .}}']);
+        if (!result.ok) throw new Error(result.error);
+        
+        const containers = (result.output || '').trim().split('\n').map(l => {
             if (!l) return null;
             try { return JSON.parse(l); } catch { return null; }
         }).filter(Boolean);
@@ -103,8 +104,6 @@ router.get('/system/containers', async (req, res) => {
         res.status(500).json({ error: 'Failed to list containers' });
     }
 });
-
-import { SystemConfig } from '../../shared/models/systemConfig';
 
 router.get('/settings/notifications', async (req, res) => {
     try {
@@ -128,14 +127,9 @@ router.post('/settings/notifications', async (req, res) => {
     }
 });
 
-// ═══════════════════════════════════════════════
-// SYSTEM HEALTH & METRICS
-// ═══════════════════════════════════════════════
-import os from 'os';
-
 router.get('/system/health', async (req, res) => {
     try {
-        // CPU & Memory using Node's built-in OS module (avoids missing 'top'/'free' in Alpine/Slim images)
+        // CPU & Memory using Node's built-in OS module
         const totalMem = os.totalmem();
         const freeMem = os.freemem();
         const usedMem = totalMem - freeMem;
@@ -154,26 +148,26 @@ router.get('/system/health', async (req, res) => {
 
         let diskInfo = 'Unknown';
         try {
-            diskInfo = execSync("df -h / | awk 'NR==2{printf \"%s/%s (%s)\", $3,$2,$5}'", { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+            const diskRes = await ExecutionGateway.execute("df -h / | awk 'NR==2{printf \"%s/%s (%s)\", $3,$2,$5}'");
+            if (diskRes.ok) diskInfo = (diskRes.output || '').trim();
         } catch { }
 
-        // Docker stats (filter for Joe services)
+        // Docker stats
         let containers: any[] = [];
         try {
-            const dockerOutput = execSync('docker ps --format "{{json .}}"', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
-            containers = dockerOutput.split('\n').map(l => {
-                try { 
-                    const c = JSON.parse(l);
-                    // Include all or filter for joe_
-                    return c;
-                } catch { return null; }
-            }).filter(Boolean);
+            const dockerRes = await ExecutionGateway.execute('docker', ['ps', '--format', '{{json .}}']);
+            if (dockerRes.ok) {
+                containers = (dockerRes.output || '').split('\n').map(l => {
+                    try { return JSON.parse(l); } catch { return null; }
+                }).filter(Boolean);
+            }
         } catch { }
 
-        // Systemd service status (Joe API)
+        // Systemd status
         let apiServiceStatus = 'unknown';
         try {
-            apiServiceStatus = execSync('systemctl is-active joe-api.service', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+            const serviceRes = await ExecutionGateway.execute('systemctl', ['is-active', 'joe-api.service']);
+            apiServiceStatus = (serviceRes.output || '').trim() || (serviceRes.ok ? 'active' : 'inactive');
         } catch { 
             apiServiceStatus = 'inactive';
         }
@@ -218,9 +212,6 @@ router.get('/system/health', async (req, res) => {
     }
 });
 
-import fs from 'fs';
-import path from 'path';
-
 router.get('/system/backups', async (req, res) => {
     try {
         const backupDir = process.env.BACKUP_DIR || path.join(process.cwd(), 'backups');
@@ -246,27 +237,18 @@ router.get('/system/backups', async (req, res) => {
 
 router.post('/system/backup', async (req, res) => {
     try {
-        const { spawn } = require('child_process');
         const backupScript = path.join(process.cwd(), 'scripts', 'backup.sh');
-        const child = spawn('bash', [backupScript], { cwd: process.cwd() });
-        let output = '';
-        child.stdout.on('data', (d: Buffer) => output += d.toString());
-        child.stderr.on('data', (d: Buffer) => output += d.toString());
-        child.on('close', (code: number) => {
-            if (code === 0) {
-                res.json({ message: 'Backup completed successfully', output });
-            } else {
-                res.status(500).json({ error: 'Backup failed', output });
-            }
-        });
+        const result = await ExecutionGateway.execute('bash', [backupScript], { cwd: process.cwd() });
+        
+        if (result.ok) {
+            res.json({ message: 'Backup completed successfully', output: result.output });
+        } else {
+            res.status(500).json({ error: 'Backup failed', output: result.error || result.output });
+        }
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
-
-// ═══════════════════════════════════════════════
-// USER / ADMIN MANAGEMENT
-// ═══════════════════════════════════════════════
 
 router.get('/users', async (req, res) => {
     try {
@@ -316,7 +298,5 @@ router.patch('/users/:id/role', async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
-
-import mongoose from 'mongoose';
 
 export default router;

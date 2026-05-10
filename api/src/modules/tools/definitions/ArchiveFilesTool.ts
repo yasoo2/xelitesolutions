@@ -1,5 +1,5 @@
 import { ToolDefinition } from '../types';
-import { execSync } from 'child_process';
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -96,7 +96,8 @@ export class ArchiveFilesTool implements ToolDefinition {
                     cmd = `tar -cf "${archivePath}" ${sourceStr}`;
                 }
 
-                execSync(cmd, { encoding: 'utf-8', timeout: 60000 });
+                const result = await ExecutionGateway.execute(cmd, [], { timeout: 60000, shell: true });
+                if (!result.ok && format !== 'zip') throw new Error(result.error || 'Archive creation failed');
                 const stat = fs.statSync(archivePath);
                 const sizeKB = (stat.size / 1024).toFixed(1);
                 logs.push(`Archive created: ${archivePath} (${sizeKB} KB)`);
@@ -121,7 +122,9 @@ export class ArchiveFilesTool implements ToolDefinition {
                     cmd = `tar -xf "${archivePath}" -C "${extractTo}"`;
                 }
 
-                const output = execSync(cmd, { encoding: 'utf-8', timeout: 60000 });
+                const result = await ExecutionGateway.execute(cmd, [], { timeout: 60000, shell: true });
+                if (!result.ok) throw new Error(result.error || 'Extraction failed');
+                const output = result.output || '';
                 logs.push(`Extracted to: ${extractTo}`);
 
                 return {
@@ -139,7 +142,9 @@ export class ArchiveFilesTool implements ToolDefinition {
                     cmd = `tar -tf "${archivePath}"`;
                 }
 
-                const output = execSync(cmd, { encoding: 'utf-8', timeout: 30000 });
+                const result = await ExecutionGateway.execute(cmd, [], { timeout: 30000, shell: true });
+                if (!result.ok) throw new Error(result.error || 'Listing failed');
+                const output = result.output || '';
                 const files = output.trim().split('\n').slice(0, 100);
                 logs.push(`Listed ${files.length} entries`);
 

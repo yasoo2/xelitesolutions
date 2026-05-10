@@ -7,8 +7,7 @@ import os from 'os';
 import { getSessionSecret, getUserSecret } from '../../services/secrets';
 import { workspaceService } from '../../services/WorkspaceService';
 import { handleGitCommand } from '../handlers';
-
-const spawn = require('child_process').spawn;
+import { executionEngine } from '../../../kernel/ExecutionEngine';
 
 async function runGitWithEnv(operation: string, args: string[], env: any, cwd: string) {
     const op = String(operation || '');
@@ -16,18 +15,14 @@ async function runGitWithEnv(operation: string, args: string[], env: any, cwd: s
         throw new Error('invalid_git_operation');
     }
     const finalArgs = [op, ...args.map(a => String(a || ''))];
-    return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-        const child = spawn('git', finalArgs, { cwd, env, shell: false });
-        let stdout = '';
-        let stderr = '';
-        child.stdout.on('data', (d: any) => { stdout += d.toString(); });
-        child.stderr.on('data', (d: any) => { stderr += d.toString(); });
-        child.on('error', (err: any) => reject(err));
-        child.on('close', (code: number) => {
-            if (code === 0) resolve({ stdout, stderr });
-            else reject(new Error(stderr || stdout || `Exit code ${code}`));
-        });
-    });
+    const fullCommand = `git ${finalArgs.join(' ')}`;
+    
+    const result = await executionEngine.run(fullCommand, { cwd, env, shell: false });
+    if (result.ok) {
+        return { stdout: result.output, stderr: result.error };
+    } else {
+        throw new Error(result.error || result.output || `Exit code ${result.exitCode}`);
+    }
 }
 
 export class GitOpsTool extends BaseTool {
@@ -63,8 +58,6 @@ export class GitOpsTool extends BaseTool {
         const env: any = { ...process.env };
 
         try {
-
-            // Handle Authentication via ASKPASS
             const wantsAuth = ['push', 'fetch', 'pull', 'clone'].includes(op);
             if (wantsAuth && (sessionId || userId)) {
                 try {
@@ -80,7 +73,7 @@ export class GitOpsTool extends BaseTool {
 
                         env.GIT_ASKPASS = askpassPath;
                         env.GIT_TERMINAL_PROMPT = '0';
-                        env.DISPLAY = '1'; // prevent window prompts
+                        env.DISPLAY = '1';
                         env.JOE_GIT_TOKEN = token;
                     }
                 } catch (e: any) {
@@ -96,17 +89,14 @@ export class GitOpsTool extends BaseTool {
 
         } catch (e: any) {
             const errorMsg = e.message || e.stderr || '';
-
             const fallbackCwd = (typeof input?.cwd === 'string' && input.cwd.trim()) ? input.cwd.trim() : workspaceService.getActiveRoot();
 
-            // Smart Recovery 1: Missing Upstream
             if (op === 'push' && errorMsg.includes('no upstream branch')) {
                 logs.push('Smart Recovery: Setting upstream branch automatically...');
                 try {
                     const revParse = await handleGitCommand('rev-parse', ['--abbrev-ref', 'HEAD'], fallbackCwd);
                     const currentBranch = String(revParse?.output || '').trim();
                     if (currentBranch) {
-                        const upstreamArgs = ['push', '--set-upstream', 'origin', currentBranch];
                         const retryResult = await runGitWithEnv('push', ['--set-upstream', 'origin', currentBranch], { ...process.env, ...env }, fallbackCwd);
                         logs.push('Smart Recovery: Success');
                         return { ok: true, output: { output: retryResult.stdout || retryResult.stderr }, logs };
@@ -116,11 +106,9 @@ export class GitOpsTool extends BaseTool {
                 }
             }
 
-            // Smart Recovery 2: Remote Already Exists
             if (op === 'remote' && args[0] === 'add' && errorMsg.includes('remote origin already exists')) {
                 logs.push('Smart Recovery: Remote exists, updating URL...');
                 try {
-                    // Try set-url instead
                     const setUrlArgs = ['remote', 'set-url', ...args.slice(1)];
                     const retryResult = await runGitWithEnv('remote', setUrlArgs.slice(1), { ...process.env, ...env }, fallbackCwd);
                     logs.push('Smart Recovery: Success');

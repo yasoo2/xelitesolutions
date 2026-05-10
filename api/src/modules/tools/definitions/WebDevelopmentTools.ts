@@ -1,9 +1,9 @@
 import { BaseTool } from '../base';
 import { executeTool } from '../../services/ToolService';
 import { ToolPermission } from '../types';
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import path from 'path';
 import fs from 'fs';
-import { spawn } from 'child_process';
 import { Builder } from '../../../system/Builder';
 import { broadcastThinkingDetail, broadcast } from '../../../api/ws';
 
@@ -501,7 +501,8 @@ export class DevServerTool extends BaseTool {
         logs.push(`using_cwd: ${actualCwd}`);
 
         try {
-            const child = spawn(command, [], {
+            // Use ExecutionGateway for detached server start
+            const result = await ExecutionGateway.execute(command, [], {
                 cwd: actualCwd,
                 env: { ...process.env, PORT: String(port), HOST: '0.0.0.0', BROWSER: 'none' },
                 stdio: ['ignore', 'pipe', 'pipe'],
@@ -509,12 +510,12 @@ export class DevServerTool extends BaseTool {
                 shell: true
             });
 
-            let startupOutput = '';
-            child.stdout?.on('data', (d: Buffer) => { startupOutput += d.toString(); });
-            child.stderr?.on('data', (d: Buffer) => { startupOutput += d.toString(); });
-            child.unref();
+            if (!result.ok && result.exitCode !== null) {
+                logs.push(`dev_server_failed_to_start exitCode=${result.exitCode} error=${result.error}`);
+                return { ok: false, error: `Dev server failed to start: ${result.error}`, logs };
+            }
 
-            // Wait for server to actually start (up to 30 seconds — monorepo projects need more time)
+            // Wait for server to actually start (up to 30 seconds)
             const maxWait = 30000;
             const interval = 500;
             let elapsed = 0;
@@ -523,12 +524,6 @@ export class DevServerTool extends BaseTool {
             while (elapsed < maxWait) {
                 await new Promise(r => setTimeout(r, interval));
                 elapsed += interval;
-
-                // Check if process crashed
-                if (child.exitCode !== null) {
-                    logs.push(`dev_server_crashed exitCode=${child.exitCode} output=${startupOutput.slice(0, 500)}`);
-                    return { ok: false, error: `Dev server exited with code ${child.exitCode}: ${startupOutput.slice(0, 300)}`, logs };
-                }
 
                 // Check if server responds
                 try {
@@ -548,7 +543,7 @@ export class DevServerTool extends BaseTool {
                 }
             }
 
-            logs.push(`dev_server_wait elapsed=${elapsed}ms ready=${serverReady} output=${startupOutput.slice(0, 200)}`);
+            logs.push(`dev_server_wait elapsed=${elapsed}ms ready=${serverReady}`);
 
             // [FIX] استخدام localhost بدلاً من api في بيئة التطوير
             const isProd = process.env.NODE_ENV === 'production' ||

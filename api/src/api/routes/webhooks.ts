@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { spawn } from 'child_process';
 import { logger } from '../../shared/utils/logger';
 import { broadcast } from '../ws';
 

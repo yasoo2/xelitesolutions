@@ -2,7 +2,7 @@ import { ArchitectAgent } from './ArchitectAgent-V2';
 import { AutonomousLoopEngine, LoopTask, LoopResult } from './AutonomousLoopEngine';
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import { callLLM } from '../llm';
 
 /**
@@ -275,7 +275,7 @@ class SelfHealingEngine {
       // Try to kill process on port and restart
       if (params.port) {
         try {
-          execSync(`lsof -ti:${params.port} | xargs kill -9 2>/dev/null || true`);
+          await ExecutionGateway.execute(`lsof -ti:${params.port} | xargs kill -9 2>/dev/null || true`, [], { shell: true });
         } catch {
           // Ignore errors
         }
@@ -297,7 +297,7 @@ class SelfHealingEngine {
         // Ignore errors
       }
       // Reinstall
-      execSync('npm install --legacy-peer-deps', { cwd, stdio: 'inherit' });
+      await ExecutionGateway.execute('npm', ['install', '--legacy-peer-deps'], { cwd });
       return true;
     } catch {
       return false;
@@ -332,7 +332,7 @@ class SelfHealingEngine {
 
   private async autoFixLint(params: any): Promise<boolean> {
     try {
-      execSync('npm run lint -- --fix', { cwd: params.cwd, stdio: 'inherit' });
+      await ExecutionGateway.execute('npm', ['run', 'lint', '--', '--fix'], { cwd: params.cwd });
       return true;
     } catch {
       return false;
