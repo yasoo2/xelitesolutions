@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { AgentLoopService } from '../../modules/services/AgentLoopService';
+import { AgentOrchestrator } from '../../orchestration/AgentOrchestrator';
 import { safeErrorMessage } from '../../shared/utils/redaction';
 
 const router = Router();
@@ -18,7 +19,8 @@ router.post('/', async (req, res) => {
 
         console.log(`[AgentRoute] Received goal: ${goal}`);
         
-        const result = await AgentLoopService.execute(goal, { sessionId, userId });
+        const orchestrator = new AgentOrchestrator();
+        const result = await orchestrator.execute({ id: sessionId || `session-${Date.now()}`, goal });
         
         res.json({
             ok: true,
@@ -49,7 +51,8 @@ router.get('/plan', async (req, res) => {
 
         console.log(`[AgentRoute] Planning for goal: ${goal}`);
         
-        const plan = await AgentLoopService.plan(goal, { sessionId, userId });
+        const orchestrator = new AgentOrchestrator();
+        const plan = await orchestrator.plan(goal);
         
         res.json({
             ok: true,
