@@ -31,6 +31,7 @@ import webhooksRoutes from './routes/webhooks';
 import pingDeployRoutes from './routes/ping-deploy';
 import buildRoutes from './routes/build';
 import sentinelRoutes from './routes/sentinel';
+import agentRoutes from './routes/agent';
 
 import { authenticate } from './middleware/auth';
 
@@ -170,6 +171,7 @@ export const createApp = () => {
   apiRouter.use('/webhooks', webhooksRoutes);
   apiRouter.use('/ping-deploy', pingDeployRoutes);
   apiRouter.use('/build', buildRoutes);
+  apiRouter.use('/agent', agentRoutes);
 
   // Specific deployment endpoint
   apiRouter.post('/deploy-now', async (_req, res) => {

@@ -11,6 +11,7 @@ import { SelfFixService } from './SelfFixService';
 import { SelfFixExecutionService } from './SelfFixExecutionService';
 import { AutonomousOrchestrator } from '../../core/orchestrator/AutonomousOrchestrator';
 import { IntentParser } from '../../core/intelligence/IntentParser';
+import { PlanningEngine } from '../../core/orchestrator/PlanningEngine';
 
 
 
@@ -63,6 +64,50 @@ async function isMessageDuplicate(sessionId: string, text: string): Promise<bool
 
 
 export class AgentLoopService {
+    /**
+     * High-level entry point for autonomous execution
+     */
+    static async execute(goal: string, options: { sessionId?: string; userId?: string } = {}) {
+        const sessionId = options.sessionId || `session-${Date.now()}`;
+        const userId = options.userId || 'anonymous';
+
+        // Build context
+        const context = IntentParser.createContext(userId, sessionId, []);
+
+        // Create a Run for tracking (if not persistence disabled)
+        let runId = `mock-run-${Date.now()}`;
+        if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {
+            try {
+                const run = await Run.create({ sessionId, status: 'running', steps: [] });
+                runId = run._id.toString();
+            } catch (e) {
+                console.warn('[AgentLoopService] Failed to create run record, using mock ID');
+            }
+        }
+
+        try {
+            const result = await AutonomousOrchestrator.execute(goal, context, { runId });
+            return result;
+        } catch (error) {
+            console.error(`[AgentLoopService] Execution failed:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * High-level entry point for autonomous planning
+     */
+    static async plan(goal: string, options: { sessionId?: string; userId?: string } = {}) {
+        const sessionId = options.sessionId || `session-${Date.now()}`;
+        const userId = options.userId || 'anonymous';
+
+        const context = IntentParser.createContext(userId, sessionId, []);
+        const intent = await IntentParser.parse(goal, context);
+        const plan = await PlanningEngine.generatePlan(intent);
+
+        return plan;
+    }
+
 
     static async handlePendingToolExecution(sessionId: string, userId: string | undefined) {
         const pending = await popPendingTool(sessionId);
