@@ -12,6 +12,7 @@ import { SelfFixExecutionService } from './SelfFixExecutionService';
 import { AutonomousOrchestrator } from '../../core/orchestrator/AutonomousOrchestrator';
 import { IntentParser } from '../../core/intelligence/IntentParser';
 import { PlanningEngine } from '../../core/orchestrator/PlanningEngine';
+import { AgentOrchestrator } from '../../orchestration/AgentOrchestrator';
 
 
 
@@ -86,7 +87,8 @@ export class AgentLoopService {
         }
 
         try {
-            const result = await AutonomousOrchestrator.execute(goal, context, { runId });
+            const orchestrator = new AgentOrchestrator();
+            const result = await orchestrator.execute({ id: runId, goal });
             return result;
         } catch (error) {
             console.error(`[AgentLoopService] Execution failed:`, error);
@@ -101,9 +103,8 @@ export class AgentLoopService {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
 
-        const context = IntentParser.createContext(userId, sessionId, []);
-        const intent = await IntentParser.parse(goal, context);
-        const plan = await PlanningEngine.generatePlan(intent);
+        const orchestrator = new AgentOrchestrator();
+        const plan = await orchestrator.plan(goal);
 
         return plan;
     }

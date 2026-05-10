@@ -21,7 +21,7 @@ export class IntentParser {
         
         // Map contextual intent to structured intent
         const intent: StructuredIntent = {
-            goal: contextualIntent.suggestedAction || 'general_task',
+            goal: contextualIntent.suggestedAction || text,
             constraints: [],
             requiredTools: contextualIntent.entities?.tools || [],
             riskLevel: 'low',

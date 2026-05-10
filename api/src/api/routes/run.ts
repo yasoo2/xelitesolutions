@@ -23,6 +23,7 @@ import { freeIntelligenceOptimizer } from '../../core/llm/free-intelligence-opti
 import { normalizeUrlForGoto } from '../../shared/utils/url';
 import { setSessionSecretEncrypted } from '../../modules/services/secrets';
 import { AutonomousOrchestrator } from '../../core/orchestrator/AutonomousOrchestrator';
+import { AgentOrchestrator } from '../../orchestration/AgentOrchestrator';
 import { IntentParser } from '../../core/intelligence/IntentParser';
 
 const router = Router();
@@ -1967,12 +1968,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
       const intent = await IntentParser.parse(rawUserText, context);
 
       if (intent.complexity === 'high' || intent.complexity === 'extreme' || intent.rawIntent.primary === 'multi_step') {
-          console.log(`[Run] 🧠 Complexity detected. Delegating to AutonomousOrchestrator.`);
-          broadcastThinkingDetail(String(sessionId), "🧠 High-complexity task detected. Engaging Autonomous Orchestrator...");
+          console.log(`[Run] 🧠 Complexity detected. Delegating to Modular AgentOrchestrator.`);
+          broadcastThinkingDetail(String(sessionId), "🧠 High-complexity task detected. Engaging Modular Agent Orchestrator...");
           
-          const autonomousResult = await AutonomousOrchestrator.execute(rawUserText, context, { runId });
+          const orchestrator = new AgentOrchestrator();
+          const autonomousResult = await orchestrator.execute({ id: runId, goal: rawUserText });
           
-          const assistantText = `✅ **Autonomous Task Completed**\nSteps executed: ${autonomousResult.stepsExecuted}\nResult: ${typeof autonomousResult.output === 'string' ? autonomousResult.output : 'Success'}`;
+          const assistantText = `✅ **Modular Agent Execution Completed**\nResult: ${typeof autonomousResult.result === 'string' ? autonomousResult.result : 'Success'}`;
           
           ev({ type: 'text', data: assistantText });
           if (!isPersistenceDisabled) {
@@ -1983,7 +1985,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                } catch (e) { console.error("Persistence failed", e); }
           }
           ev({ type: 'run_finished', data: { runId, ok: true } });
-          return res.json({ ok: true, runId, output: autonomousResult.output });
+          return res.json({ ok: true, runId, output: autonomousResult.result });
       }
 
       // [OPTIMIZER] Check cache before other heuristics

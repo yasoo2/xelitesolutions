@@ -1,6 +1,7 @@
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { executeTool } from '../modules/services/ToolService';
+import { broadcastThinkingDetail } from '../api/ws';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseAgent } from './agents/BaseAgent';
 import { DevAgent } from './agents/DevAgent';
@@ -42,8 +43,10 @@ export class AgentOrchestrator {
 
   constructor() {
     // Register specialized agents
-    this.agents.set("Dev", new DevAgent());
+    const devAgent = new DevAgent();
+    this.agents.set("Dev", devAgent);
     this.agents.set("Security", new SecurityAgent());
+    this.agents.set("General", devAgent); // Use DevAgent as fallback for General tasks
     // More agents can be added here
   }
 
