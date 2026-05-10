@@ -10,9 +10,9 @@ import os from 'os';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { execSync } from 'child_process';
 import https from 'https';
 import http from 'http';
+import { executionEngine } from '../src/kernel/ExecutionEngine';
 
 // Configuration injected via ENV or config file
 const CONFIG = {
@@ -35,25 +35,38 @@ function log(level: 'INFO' | 'WARN' | 'ERROR', msg: string) {
 }
 
 // 1. Actions Executor
-function executeAction(action: any) {
+async function executeAction(action: any) {
     log('INFO', `Executing remote action: ${action.type} -> ${action.target}`);
     try {
+        let command = '';
         if (action.type === 'KILL_PROCESS') {
-            execSync(`kill -9 ${action.target}`);
+            command = `kill -9 ${action.target}`;
         } else if (action.type === 'BLOCK_IP') {
-            execSync(`iptables -A INPUT -s ${action.target} -j DROP`);
+            command = `iptables -A INPUT -s ${action.target} -j DROP`;
         } else if (action.type === 'STOP_SERVICE') {
-            execSync(`systemctl stop ${action.target} && systemctl disable ${action.target}`);
+            command = `systemctl stop ${action.target} && systemctl disable ${action.target}`;
         } else if (action.type === 'QUARANTINE_FILE') {
-            execSync(`mkdir -p /root/sentinel_quarantine && mv ${action.target} /root/sentinel_quarantine/$(basename ${action.target}).$(date +%s).q && chmod 000 /root/sentinel_quarantine/*`);
+            command = `mkdir -p /root/sentinel_quarantine && mv ${action.target} /root/sentinel_quarantine/$(basename ${action.target}).$(date +%s).q && chmod 000 /root/sentinel_quarantine/*`;
+        }
+
+        if (command) {
+            const result = await executionEngine.execute({
+                id: `sentinel-action-${Date.now()}`,
+                type: 'shell',
+                payload: { command },
+                priority: 'high'
+            });
+            if (!result.success) {
+                log('ERROR', `Action failed: ${result.error}`);
+            }
         }
     } catch(e: any) {
-        log('ERROR', `Action execution failed: ${e.message}`);
+        log('ERROR', `Action execution exception: ${e.message}`);
     }
 }
 
 // 2. Telemetry Collection
-function collectMetrics() {
+async function collectMetrics() {
     const cpus = os.cpus();
     const loadAvg = os.loadavg();
     const totalMem = os.totalmem();
@@ -62,8 +75,15 @@ function collectMetrics() {
 
     let diskUsedPercent = 0;
     try {
-        const dfOut = execSync("df -k / | tail -1 | awk '{print $5}'").toString().trim();
-        diskUsedPercent = parseInt(dfOut.replace('%', ''), 10);
+        const result = await executionEngine.execute({
+            id: `sentinel-metrics-${Date.now()}`,
+            type: 'shell',
+            payload: { command: "df -k / | tail -1 | awk '{print $5}'" },
+            priority: 'low'
+        });
+        if (result.success && result.data) {
+            diskUsedPercent = parseInt(String(result.data).trim().replace('%', ''), 10);
+        }
     } catch (e) { }
 
     return {
@@ -91,14 +111,24 @@ function collectMetrics() {
     };
 }
 
-function collectProcesses() {
+async function collectProcesses() {
     try {
         const isMac = os.platform() === 'darwin';
         const psCpuCmd = isMac ? 'ps -eo pid,ppid,user,%cpu,%mem,command -r | head -n 11' : 'ps -eo pid,ppid,user,%cpu,%mem,cmd --sort=-%cpu | head -n 11';
         const psMemCmd = isMac ? 'ps -eo pid,ppid,user,%cpu,%mem,command -m | head -n 11' : 'ps -eo pid,ppid,user,%cpu,%mem,cmd --sort=-%mem | head -n 11';
 
-        const psCpu = execSync(psCpuCmd).toString();
-        const psMem = execSync(psMemCmd).toString();
+        const runCmd = async (cmd: string) => {
+            const res = await executionEngine.execute({
+                id: `sentinel-ps-${Date.now()}`,
+                type: 'shell',
+                payload: { command: cmd },
+                priority: 'low'
+            });
+            return res.success ? String(res.data) : '';
+        };
+
+        const psCpu = await runCmd(psCpuCmd);
+        const psMem = await runCmd(psMemCmd);
         
         const parsePs = (out: string) => out.trim().split('\n').slice(1).map(line => {
             const parts = line.trim().split(/\s+/);
@@ -126,9 +156,15 @@ function collectProcesses() {
     }
 }
 
-function collectUsers() {
+async function collectUsers() {
     try {
-        const whoOut = execSync('who').toString().trim();
+        const result = await executionEngine.execute({
+            id: `sentinel-who-${Date.now()}`,
+            type: 'shell',
+            payload: { command: 'who' },
+            priority: 'low'
+        });
+        const whoOut = result.success ? String(result.data).trim() : '';
         if (!whoOut) return [];
         return whoOut.split('\n').map(line => {
             const parts = line.trim().split(/\s+/);
@@ -189,9 +225,15 @@ function scanFIMPaths() {
     return { changesDetected: changes };
 }
 
-function collectNetwork() {
+async function collectNetwork() {
     try {
-        const ssOut = execSync('ss -tulpn').toString();
+        const result = await executionEngine.execute({
+            id: `sentinel-network-${Date.now()}`,
+            type: 'shell',
+            payload: { command: 'ss -tulpn' },
+            priority: 'low'
+        });
+        const ssOut = result.success ? String(result.data) : '';
         return { rawPortsSnapshot: ssOut.length > 1000 ? ssOut.substring(0, 1000) + '...' : ssOut };
     } catch (e) {
         return { rawPortsSnapshot: '' };
@@ -202,11 +244,11 @@ function collectNetwork() {
 async function dispatchTelemetry() {
     const payload = {
         serverId: CONFIG.SERVER_ID,
-        metrics: collectMetrics(),
-        processes: collectProcesses(),
-        users: collectUsers(), // New Explicit Users Array
+        metrics: await collectMetrics(),
+        processes: await collectProcesses(),
+        users: await collectUsers(), // New Explicit Users Array
         fim: scanFIMPaths(),
-        network: collectNetwork()
+        network: await collectNetwork()
     };
 
     const payloadString = JSON.stringify(payload);
@@ -232,7 +274,7 @@ async function dispatchTelemetry() {
                     const data = JSON.parse(responseBody);
                     if (data && data.actions && Array.isArray(data.actions)) {
                         for (const action of data.actions) {
-                           executeAction(action);
+                           await executeAction(action);
                         }
                     }
                 } catch(e) { }
