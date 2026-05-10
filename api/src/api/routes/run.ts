@@ -22,6 +22,8 @@ import { canAccessBrowserSession } from '../../modules/browser/wsHub';
 import { freeIntelligenceOptimizer } from '../../core/llm/free-intelligence-optimizer';
 import { normalizeUrlForGoto } from '../../shared/utils/url';
 import { setSessionSecretEncrypted } from '../../modules/services/secrets';
+import { AutonomousOrchestrator } from '../../core/orchestrator/AutonomousOrchestrator';
+import { IntentParser } from '../../core/intelligence/IntentParser';
 
 const router = Router();
 
@@ -1958,6 +1960,32 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         } as any;
       }
 
+      const rawUserText = String(text || '').trim();
+
+      // --- PHASE 3: Autonomous Orchestrator Integration ---
+      const context = IntentParser.createContext(userId || 'anonymous', String(sessionId), history as any);
+      const intent = await IntentParser.parse(rawUserText, context);
+
+      if (intent.complexity === 'high' || intent.complexity === 'extreme' || intent.rawIntent.primary === 'multi_step') {
+          console.log(`[Run] 🧠 Complexity detected. Delegating to AutonomousOrchestrator.`);
+          broadcastThinkingDetail(String(sessionId), "🧠 High-complexity task detected. Engaging Autonomous Orchestrator...");
+          
+          const autonomousResult = await AutonomousOrchestrator.execute(rawUserText, context, { runId });
+          
+          const assistantText = `✅ **Autonomous Task Completed**\nSteps executed: ${autonomousResult.stepsExecuted}\nResult: ${typeof autonomousResult.output === 'string' ? autonomousResult.output : 'Success'}`;
+          
+          ev({ type: 'text', data: assistantText });
+          if (!isPersistenceDisabled) {
+               try {
+                 const { Message } = await import('../../shared/models/message');
+                 await Message.create({ sessionId, role: 'assistant', content: assistantText, runId });
+                 await Run.findByIdAndUpdate(runId, { $set: { status: 'done' } });
+               } catch (e) { console.error("Persistence failed", e); }
+          }
+          ev({ type: 'run_finished', data: { runId, ok: true } });
+          return res.json({ ok: true, runId, output: autonomousResult.output });
+      }
+
       // [OPTIMIZER] Check cache before other heuristics
       // GATE: Never use optimizer if there is clear build intent
       const buildIntentForOptimizer =
@@ -2707,6 +2735,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
           if (!q) q = s;
           pendingPlan = { name: 'web_search', input: { query: q } } as any;
         }
+
 
         while (steps < MAX_STEPS) {
           if (isRunCancelled(runId)) {

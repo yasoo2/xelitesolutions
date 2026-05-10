@@ -9,6 +9,8 @@ import { executeTool } from './ToolService';
 import { RepairTicketService } from './RepairTicketService';
 import { SelfFixService } from './SelfFixService';
 import { SelfFixExecutionService } from './SelfFixExecutionService';
+import { AutonomousOrchestrator } from '../../core/orchestrator/AutonomousOrchestrator';
+import { IntentParser } from '../../core/intelligence/IntentParser';
 
 
 
@@ -349,6 +351,26 @@ export class AgentLoopService {
                     const wsStr = wsObj ? String(wsObj) : '';
                     if (wsStr.trim()) workspaceId = wsStr.trim();
                 } catch { }
+            }
+
+            if (steps === 1) {
+                const context = IntentParser.createContext(userId || 'anonymous', sessionId, messages);
+                const intent = await IntentParser.parse(userText, context);
+
+                if (intent.complexity === 'high' || intent.complexity === 'extreme' || intent.rawIntent.primary === 'multi_step') {
+                    console.log(`[AgentLoop] 🧠 Complexity detected. Delegating to AutonomousOrchestrator.`);
+                    broadcastThinkingDetail(sessionId, "🧠 High-complexity task detected. Engaging Autonomous Orchestrator...");
+                    
+                    const autonomousResult = await AutonomousOrchestrator.execute(userText, context, { runId: currentRunId });
+                    
+                    const assistantText = `✅ **Autonomous Task Completed**\nSteps executed: ${autonomousResult.stepsExecuted}\nResult: ${typeof autonomousResult.output === 'string' ? autonomousResult.output : 'Success'}`;
+                    
+                    broadcast({ type: 'text', runId: currentRunId, data: assistantText });
+                    try {
+                        if (!offlineMode) await Message.create({ sessionId, role: 'assistant', content: assistantText, runId: currentRunId });
+                    } catch { }
+                    break; // Autonomous path complete for this request
+                }
             }
 
             let plan;
