@@ -192,74 +192,28 @@ export class BrowserRunTool extends BaseTool {
         let execError: string | undefined = undefined;
 
         let r: any = null;
-        if (instructionText && (!Array.isArray(actions) || actions.length === 0)) {
-            // [Wakil 5.4] High-level planner run with hard try/catch
-            const { runBrowserInstruction } = await import('../../browser/runner');
-            try {
-                r = await runBrowserInstruction({
-                    userId,
-                    sessionId: sid,
-                    instructionText,
-                    mode: mode as any,
-                    onThought: context?.onThought,
-                    onProgress: context?.onProgress
-                });
-            } catch (err: any) {
-                console.error('[BrowserRunTool] runBrowserInstruction threw exception:', err?.stack || err);
-                r = {
-                    ok: false,
-                    error: err?.message || 'browser_run_exception',
-                    detail: { message: err?.message, stack: err?.stack }
-                };
-            }
-            if (r && typeof r === 'object' && (r as any).ok) {
-                execOk = Boolean((r as any).result?.ok);
-                const inner = (r as any).result;
-                execSummary = String(inner?.summary || '');
-                if (!execOk) {
-                    const derived = this.deriveExecFailure(inner);
-                    execError = derived.error;
-                    execSummary = derived.summary;
-                    const ms = (derived as any)?.missingSecrets;
-                    if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
-                }
-            } else {
-                execOk = false;
-                execError = String((r as any)?.error || '').trim() || 'browser_run_failed';
-                const detail = (r as any)?.detail;
-                if (execError === 'browser_unavailable' && detail && typeof detail === 'object') {
-                    const code = String(detail?.code || '').trim();
-                    const msg = String(detail?.message || '').trim();
-                    execSummary = `${code || 'browser_unavailable'}: ${msg || execError}`.slice(0, 1000);
-                } else {
-                    execSummary = execError + (execError === 'browser_unavailable' ? '\nHint: Check if Playwright is installed and the browser is accessible.' : '');
-                }
-                const ms = (r as any)?.missingSecrets;
-                if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
-            }
-        } else {
-            // Direct Action execution
-            try {
-                const { executePlannedActions } = await import('../../browser/executor');
-                r = (await executePlannedActions({ userId, sessionId: sid, actions: actions as any })) as any;
-            } catch (e: any) {
-                execOk = false;
-                const c = this.classifyBrowserRuntimeError(e);
-                execError = 'browser_unavailable';
-                execSummary = `${c.code}: ${c.message}`.slice(0, 600);
-                r = null;
-            }
+        
+        // Direct Action execution ONLY (Pure Execution Engine)
+        try {
+            const { executePlannedActions } = await import('../../browser/executor');
+            r = (await executePlannedActions({ userId, sessionId: sid, actions: actions as any })) as any;
+        } catch (e: any) {
+            execOk = false;
+            const c = this.classifyBrowserRuntimeError(e);
+            execError = 'browser_unavailable';
+            execSummary = `${c.code}: ${c.message}`.slice(0, 600);
+            r = null;
+        }
 
-            if (r) {
-                execOk = Boolean(r?.ok);
-                execSummary = String(r?.summary || execSummary || '');
-                if (!execOk) {
-                    const derived = this.deriveExecFailure(r);
-                    execError = derived.error;
-                    execSummary = derived.summary;
-                    const ms = (derived as any)?.missingSecrets;
-                    if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
-                }
+        if (r) {
+            execOk = Boolean(r?.ok);
+            execSummary = String(r?.summary || execSummary || '');
+            if (!execOk) {
+                const derived = this.deriveExecFailure(r);
+                execError = derived.error;
+                execSummary = derived.summary;
+                const ms = (derived as any)?.missingSecrets;
+                if (Array.isArray(ms)) missingSecrets = ms.map((x: any) => String(x || '')).filter(Boolean);
             }
         }
 

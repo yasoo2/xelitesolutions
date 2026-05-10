@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { BaseAgent } from './agents/BaseAgent';
 import { DevAgent } from './agents/DevAgent';
 import { SecurityAgent } from './agents/SecurityAgent';
+import { BrowserAgent } from './agents/BrowserAgent';
 import { ExecutionMemory } from '../core/orchestrator/ExecutionMemory';
 
 /**
@@ -47,6 +48,7 @@ export class AgentOrchestrator {
     const devAgent = new DevAgent();
     this.agents.set("Dev", devAgent);
     this.agents.set("Security", new SecurityAgent());
+    this.agents.set("Browser", new BrowserAgent());
     this.agents.set("General", devAgent); 
   }
 
@@ -111,29 +113,32 @@ export class AgentOrchestrator {
     const completedNodes = new Set<string>();
 
     while (completedNodes.size < dag.nodes.length) {
+      console.log(`[AgentOrchestrator] Step Iteration. Completed: ${completedNodes.size}/${dag.nodes.length}`);
+      
       const readyNodes = dag.nodes.filter(n => 
         n.status === "pending" && 
         n.dependencies.every(depId => completedNodes.has(depId))
       );
 
       if (readyNodes.length === 0 && completedNodes.size < dag.nodes.length) {
-        // [STALLED] Trigger immediate dynamic re-planning
-        console.warn(`[AgentOrchestrator] Execution stalled. Re-computing strategy...`);
+        // [DECISION] Trigger dynamic re-planning on stall
+        broadcastThinkingDetail(memory.sessionId, "🧠 Execution stalled. Re-evaluating strategy...");
         const newDag = await this.plan(dag.nodes[0]?.task || "continue goal", memory);
         dag.nodes = [...dag.nodes, ...newDag.nodes];
         continue;
       }
 
       for (const node of readyNodes) {
-        // [ADAPTIVE] Re-evaluate agent selection right before execution based on latest memory
+        // [DECISION] Re-evaluate agent fit
         const refinedAgentType = await this.selectOptimalAgent(node, memory);
         if (refinedAgentType !== node.agent) {
-          console.log(`[AgentOrchestrator] Dynamic Agent Shift: ${node.agent} -> ${refinedAgentType} for task "${node.task}"`);
+          broadcastThinkingDetail(memory.sessionId, `🔄 Shifted agent for "${node.task}" to ${refinedAgentType}`);
           node.agent = refinedAgentType as AgentType;
         }
 
         node.status = "running";
-        broadcastThinkingDetail(memory.sessionId, `🚀 Agent Execution: ${node.agent} is processing "${node.task}"`);
+        console.log(`[AgentOrchestrator] Executing node: ${node.id} (${node.task})`);
+        broadcastThinkingDetail(memory.sessionId, `🚀 Running: ${node.task} via ${node.agent} Agent`);
         
         const agent = this.agents.get(node.agent);
         let result;
@@ -155,23 +160,23 @@ export class AgentOrchestrator {
           memory.record(node.id, node.task, cleanOutput, "completed");
           completedNodes.add(node.id);
 
-          // [SELF-ADAPTIVE] Mid-Execution Evaluation
+          // [DECISION] Mid-flight progress assessment
           const evaluation = await this.evaluateProgress(node, memory, dag);
           if (evaluation.shouldReplan) {
-            console.log(`[AgentOrchestrator] Progress evaluation triggered RE-PLAN.`);
-            broadcastThinkingDetail(memory.sessionId, "🧠 Goal analysis suggests path adjustment. Re-planning...");
-            const updatedDag = await this.plan(dag.id, memory); // Re-plan based on current memory
+            broadcastThinkingDetail(memory.sessionId, "🧠 Path adjustment required. Re-calculating execution graph...");
+            const updatedDag = await this.plan(dag.id, memory);
             dag.nodes = updatedDag.nodes; 
-            break; // Break the current node loop to start fresh with new DAG
+            break; 
           }
         } else {
           console.error(`[AgentOrchestrator] Node ${node.id} failed: ${result.error}`);
           node.status = "failed";
           memory.record(node.id, node.task, result.error, "failed");
 
-          // [RECOVERY] Attempt intelligent failure recovery
+          // [DECISION] Intelligent recovery attempt
           const recoveryResult = await this.attemptRecovery(node, result.error, memory, dag);
           if (recoveryResult.recovered) {
+            broadcastThinkingDetail(memory.sessionId, `⚠️ Recovering from failure in "${node.task}". Injecting repair nodes...`);
             dag.nodes = [...dag.nodes, ...recoveryResult.newNodes];
             continue;
           }

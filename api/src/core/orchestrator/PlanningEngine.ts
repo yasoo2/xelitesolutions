@@ -32,14 +32,18 @@ export class PlanningEngine {
 
         const historyContext = memory ? `\nPrevious Execution History:\n${JSON.stringify(memory)}` : "";
 
+        const entropySeed = Math.random().toString(36).substring(7);
         const systemPrompt = `You are a Professional Software Architecture Planner.
 Generate a dynamic Execution DAG (Directed Acyclic Graph) for the given goal.
+
+Entropy Seed: ${entropySeed} (Use this to explore different optimal paths if possible)
 
 Constraints:
 - Use ONLY existing tools: shell_execute, read_file, write_file, browser_run, grep_search, ls, npm_manager.
 - Define explicit dependencies (dependsOn).
 - Assign an agent to each node: Dev, Security, Browser, General.
-- DO NOT use static templates. Analyze the specific goal.
+- DO NOT use static templates. Analyze the specific goal from a fresh perspective.
+- Provide a brief "reasoning" field for EACH step explaining why this path was chosen.
 
 Goal: ${intent.goal}
 Complexity: ${intent.complexity}
