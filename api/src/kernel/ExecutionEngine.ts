@@ -52,6 +52,11 @@ export interface ExecutionSession {
  */
 export class ExecutionEngine {
     private pty: any = null;
+    private cache = new Map<string, { result: ExecutionResult, expires: number }>();
+    private queue: { request: ExecutionRequest, resolve: (res: ExecutionResult) => void, reject: (err: any) => void }[] = [];
+    private activeCount = 0;
+    private readonly MAX_CONCURRENT = 15;
+    private readonly CACHE_TTL_MS = 5000;
 
     constructor() {
         try {
@@ -59,17 +64,63 @@ export class ExecutionEngine {
         } catch (e) {
             logger.warn('[ExecutionEngine] node-pty not available, will use fallback');
         }
+        
+        // Periodic cache cleanup
+        setInterval(() => {
+            const now = Date.now();
+            for (const [key, val] of this.cache) {
+                if (now > val.expires) this.cache.delete(key);
+            }
+        }, 30000);
+    }
+
+    private generateCacheKey(request: ExecutionRequest): string {
+        const payload = request.payload;
+        const parts = [
+            request.type,
+            payload.command || '',
+            (payload.args || []).join(','),
+            payload.options?.cwd || ''
+        ];
+        return parts.join('|');
+    }
+
+    private isCacheable(request: ExecutionRequest): boolean {
+        if (request.type !== 'shell') return false;
+        const cmd = (request.payload.command || '').toLowerCase();
+        // Safe read-only commands
+        const safeCommands = ['ls', 'git log', 'git status', 'pwd', 'df', 'whoami', 'cat', 'grep', 'find', 'du'];
+        return safeCommands.some(c => cmd.startsWith(c));
     }
 
     /**
-     * Unified Execution Entry Point (Phase 2)
+     * Unified Execution Entry Point (Phase 2.2 Optimized)
      */
     async execute(request: ExecutionRequest): Promise<ExecutionResult> {
+        // 1. Cache Check
+        if (this.isCacheable(request)) {
+            const key = this.generateCacheKey(request);
+            const cached = this.cache.get(key);
+            if (cached && Date.now() < cached.expires) {
+                return cached.result;
+            }
+        }
+
+        // 2. Concurrency Control (Queue)
+        if (this.activeCount >= this.MAX_CONCURRENT) {
+            return new Promise((resolve, reject) => {
+                this.queue.push({ request, resolve, reject });
+            });
+        }
+
+        return this.processExecution(request);
+    }
+
+    private async processExecution(request: ExecutionRequest): Promise<ExecutionResult> {
+        this.activeCount++;
         const start = Date.now();
         const sessionId = request.id || 'anonymous';
         
-        logger.info(`[ENGINE] START type=${request.type} id=${sessionId} priority=${request.priority}`);
-
         try {
             let data: any;
 
@@ -85,22 +136,49 @@ export class ExecutionEngine {
             }
 
             const duration = Date.now() - start;
-            logger.info(`[ENGINE] END type=${request.type} id=${sessionId} duration=${duration}ms success=true`);
+            if (duration > 500) {
+                logger.warn(`[ENGINE] SLOW EXECUTION id=${sessionId} duration=${duration}ms cmd=${request.payload.command?.substring(0, 50)}`);
+            } else {
+                // Reduced log for fast execution
+                logger.debug(`[ENGINE] OK id=${sessionId} duration=${duration}ms`);
+            }
             
-            return {
+            const result: ExecutionResult = {
                 success: true,
                 data,
                 duration
             };
+
+            // 3. Cache Storage
+            if (this.isCacheable(request)) {
+                const key = this.generateCacheKey(request);
+                this.cache.set(key, { result, expires: Date.now() + this.CACHE_TTL_MS });
+            }
+
+            return result;
         } catch (e: any) {
             const duration = Date.now() - start;
-            logger.error(`[ENGINE] ERROR type=${request.type} id=${sessionId} duration=${duration}ms error=${e.message}`);
+            logger.error(`[ENGINE] ERROR id=${sessionId} duration=${duration}ms error=${e.message}`);
             
             return {
                 success: false,
                 error: e.message,
                 duration
             };
+        } finally {
+            this.activeCount--;
+            this.processQueue();
+        }
+    }
+
+    private processQueue() {
+        if (this.queue.length > 0 && this.activeCount < this.MAX_CONCURRENT) {
+            const next = this.queue.shift();
+            if (next) {
+                this.processExecution(next.request)
+                    .then(next.resolve)
+                    .catch(next.reject);
+            }
         }
     }
 
