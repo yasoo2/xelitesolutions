@@ -141,7 +141,10 @@ export class FileEditTool extends BaseTool {
         const replace = String(input?.replace ?? '');
         const full = resolveToolPath(filename);
 
-        if (!fs.existsSync(full)) return { ok: false, error: 'File not found', logs };
+        if (!fs.existsSync(full)) {
+            console.error(`[file_edit] File not found. input.filename: ${filename}, resolved full path: ${full}`);
+            return { ok: false, error: 'File not found', logs };
+        }
 
         let content = fs.readFileSync(full, 'utf-8');
         if (!content.includes(find)) {
