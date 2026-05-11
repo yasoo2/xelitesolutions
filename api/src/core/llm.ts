@@ -1,12 +1,14 @@
 import OpenAI from "openai";
 import intelligentRouter from "./llm/intelligent-router";
 import { getSystemPrompt } from "./llm/system-prompt";
-import { setDynamicOpenAIKey, getDynamicOpenAIKey, getApiKeyForUser } from "./llm/utils";
+import { setDynamicOpenAIKey, getDynamicOpenAIKey, getApiKeyForUser, setActiveProvider, getActiveProvider } from "./llm/utils";
 
 export { 
     setDynamicOpenAIKey, 
     getDynamicOpenAIKey,
-    getSystemPrompt
+    getSystemPrompt,
+    setActiveProvider,
+    getActiveProvider
 };
 
 const {
@@ -32,6 +34,14 @@ export async function generateSessionTitle(text: string): Promise<string> {
 }
 
 /**
- * NOTE: planNextStep() has been decommissioned.
- * All autonomous orchestration is now handled by AgentOrchestrator.ts
+ * planNextStep() has been decommissioned.
+ * Stub added for legacy compatibility.
  */
+export async function planNextStep(task: string, context: any[] = []): Promise<any> {
+    console.warn('[LLM] planNextStep() is deprecated. Use AgentOrchestrator instead.');
+    return { 
+        thought: "Orchestration has moved to the Agent Platform.",
+        tool: "none",
+        input: {}
+    };
+}

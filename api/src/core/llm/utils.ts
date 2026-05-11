@@ -71,6 +71,20 @@ export function getApiKeyForUser(userId: string) {
   return userApiKeys.get(userId) || process.env.OPENAI_API_KEY || "";
 }
 
+
 export function getDynamicOpenAIKey(userId: string) {
   return userApiKeys.get(userId) || "";
+}
+
+// Support for dynamic provider selection
+const userProviders = new Map<string, string>();
+
+export function setActiveProvider(userId: string, provider: string) {
+    if (userId) {
+        userProviders.set(userId, provider);
+    }
+}
+
+export function getActiveProvider(userId: string): string {
+    return userProviders.get(userId) || 'joe';
 }
