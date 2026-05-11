@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../shared/utils/logger';
 import { traceManager } from '../modules/services/TraceManager';
+import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 
 export interface ExecutionRequest {
     id: string;
@@ -112,6 +113,9 @@ export class ExecutionEngine {
      * Unified Execution Entry Point (Phase 2.2 Optimized)
      */
     async execute(request: ExecutionRequest): Promise<ExecutionResult> {
+        // [FIREWALL] Strict Single Brain Enforcement
+        executionFirewall.validateExecution('ExecutionEngine:execute', { type: request.type, traceId: request.traceId });
+
         // 1. Cache Check (Deterministic & Short-Circuiting)
         if (this.isCacheable(request)) {
             const key = this.generateCacheKey(request);
@@ -360,6 +364,9 @@ export class ExecutionEngine {
      * Now forced through the execute() gateway for performance and safety.
      */
     async run(command: string, options: ExecutionOptions = {}): Promise<any> {
+        // [FIREWALL] Strict Single Brain Enforcement
+        executionFirewall.validateExecution('ExecutionEngine:run', { command });
+
         const result = await this.execute({
             id: 'run_' + Date.now(),
             type: 'shell',

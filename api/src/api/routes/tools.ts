@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { tools } from '../../modules/tools/registry';
 import { executeTool } from '../../modules/services/ToolService';
+import { AgentOrchestrator } from '../../orchestration/AgentOrchestrator';
 import { broadcast, LiveEvent } from '../ws';
 import { authenticate } from '../middleware/auth';
 
@@ -31,39 +32,13 @@ router.post('/run', async (req: Request, res: Response) => {
 
 
 
-  if (!sessionId) {
-    const steps: LiveEvent[] = [
-      { type: 'step_started', data: { name: 'plan' } },
-      { type: 'step_done', data: { name: 'plan' } },
-      { type: 'step_started', data: { name: 'execute:echo', input } },
-    ];
-    steps.forEach(ev => broadcast(ev));
-    const result = await executeTool('echo', input, { sessionId: sessionId || undefined, workspaceId });
-    broadcast({ type: result.ok ? 'step_done' : 'step_failed', data: { name: 'execute:echo', result } });
-    return res.json(result);
-  }
+  const orchestrator = new AgentOrchestrator();
+  const result = await orchestrator.execute({ 
+    id: sessionId || `session-${Date.now()}`, 
+    goal: text 
+  });
 
-  let runId = '';
-
-  const r = await Run.create({ sessionId, status: 'running', steps: [{ name: 'plan', status: 'done' }] });
-  runId = r._id.toString();
-
-  const ev = (e: LiveEvent) => broadcast({ ...e, runId });
-  ev({ type: 'step_started', data: { name: 'plan' } });
-  ev({ type: 'step_done', data: { name: 'plan' } });
-  ev({ type: 'step_started', data: { name: 'execute:echo', input } });
-
-  const result = await executeTool('echo', input, { sessionId, workspaceId });
-  ev({ type: result.ok ? 'step_done' : 'step_failed', data: { name: 'execute:echo', result } });
-
-  try {
-    await ToolExecution.create({ runId, name: 'echo', input, output: result.output, ok: result.ok, logs: result.logs || [] });
-  } catch { }
-  try {
-    await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } });
-  } catch { }
-
-  return res.json({ runId, sessionId, result });
+  return res.json({ runId, sessionId, result: { ok: result.ok, output: result.result } });
 });
 
 router.post('/selftest', authenticate, async (req: Request, res: Response) => {
@@ -77,19 +52,17 @@ router.post('/selftest', authenticate, async (req: Request, res: Response) => {
   const available = new Set(tools.map(t => String((t as any)?.name || '').trim()).filter(Boolean));
   const toolPresence = Object.fromEntries(requiredTools.map(n => [n, available.has(n)]));
 
-  const sessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId.trim() : undefined;
-  const detectPath = typeof req.body?.path === 'string' ? req.body.path : '.';
-  const detect = await executeTool(
-    'project_detect',
-    { path: detectPath, userId, __userId: userId, workspaceId, __workspaceId: workspaceId },
-    { sessionId, workspaceId }
-  );
+  const orchestrator = new AgentOrchestrator();
+  const detectResult = await orchestrator.execute({
+    id: sessionId || `session-${Date.now()}`,
+    goal: `Detect project structure at path "${detectPath}" in workspace ${workspaceId}`
+  });
 
-  const ok = requiredTools.every(n => toolPresence[n]) && !!detect?.ok;
+  const ok = requiredTools.every(n => toolPresence[n]) && !!detectResult?.ok;
   return res.json({
     ok,
     toolPresence,
-    projectDetect: detect
+    projectDetect: detectResult.result
   });
 });
 
@@ -98,15 +71,16 @@ router.post('/:name/execute', authenticate, async (req: Request, res: Response) 
   const userId = (req as any)?.auth?.sub;
   const language = req.headers['accept-language'] || 'en';
   const workspaceId = extractWorkspaceId(req);
-  const result = await executeTool(
-    name,
-    { ...(req.body || {}), userId, __userId: userId },
-    { sessionId: (req.body as any)?.sessionId, language, workspaceId }
-  );
-  if (result && !result.ok && (result as any).data?.code === 'QUEUE_FULL') {
-    return res.status(503).json(result);
-  }
-  res.json(result);
+  const orchestrator = new AgentOrchestrator();
+  const result = await orchestrator.execute({
+    id: (req.body as any)?.sessionId || `session-${Date.now()}`,
+    goal: `Execute tool "${name}" with input ${JSON.stringify(req.body || {})}`
+  });
+
+  res.json({
+    ok: result.ok,
+    output: result.result
+  });
 });
 
 export default router;

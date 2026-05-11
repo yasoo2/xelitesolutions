@@ -1,0 +1,47 @@
+import { AsyncLocalStorage } from 'async_hooks';
+import { logger } from '../shared/utils/logger';
+
+/**
+ * AgentExecutionFirewall
+ * 
+ * Enforces the "Single Brain" architecture by ensuring that all system execution
+ * (Tools and Engine) is initiated through the AgentOrchestrator.
+ */
+class AgentExecutionFirewall {
+    private static instance: AgentExecutionFirewall;
+    private context = new AsyncLocalStorage<{ isOrchestrator: boolean; traceId?: string }>();
+
+    private constructor() {}
+
+    public static getInstance(): AgentExecutionFirewall {
+        if (!AgentExecutionFirewall.instance) {
+            AgentExecutionFirewall.instance = new AgentExecutionFirewall();
+        }
+        return AgentExecutionFirewall.instance;
+    }
+
+    /**
+     * Executes a function within the authorized Orchestrator context
+     */
+    public runInContext<T>(traceId: string | undefined, fn: () => T): T {
+        return this.context.run({ isOrchestrator: true, traceId }, fn);
+    }
+
+    /**
+     * Validates that the current execution context is authorized.
+     * Throws an error if direct execution bypass is detected.
+     */
+    public validateExecution(component: string, metadata: any = {}): void {
+        const store = this.context.getStore();
+        const isAuthorized = store?.isOrchestrator === true;
+
+        if (isAuthorized) {
+            logger.debug(`[FIREWALL] [ALLOWED] ${component} - traceId=${store?.traceId || 'none'}`);
+        } else {
+            logger.error(`[FIREWALL] [BLOCKED] ${component} - Direct execution bypass detected! Metadata: ${JSON.stringify(metadata)}`);
+            throw new Error(`Execution bypass detected in ${component}. All execution must go through AgentOrchestrator.coordinate().`);
+        }
+    }
+}
+
+export const executionFirewall = AgentExecutionFirewall.getInstance();

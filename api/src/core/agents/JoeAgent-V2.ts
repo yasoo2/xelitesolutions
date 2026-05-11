@@ -41,6 +41,10 @@ JSON Format:
         try {
             const decision = await advancedAnalyzeTask(task, toolSelectionPrompt);
             
+            if (!decision || !decision.tool) {
+                throw new Error(`Invalid tool decision from LLM: ${JSON.stringify(decision)}`);
+            }
+            
             // Ensure CWD is passed for shell tools if not present
             if (decision.tool === 'shell_execute' && !decision.args.cwd) {
                 decision.args.cwd = this.rootDir;

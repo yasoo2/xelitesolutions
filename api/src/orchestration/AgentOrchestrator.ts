@@ -9,6 +9,7 @@ import { SecurityAgent } from './agents/SecurityAgent';
 import { BrowserAgent } from './agents/BrowserAgent';
 import { ExecutionMemory } from '../core/orchestrator/ExecutionMemory';
 import { traceManager } from '../modules/services/TraceManager';
+import { executionFirewall } from './AgentExecutionFirewall';
 
 /**
  * Modular Agent Platform - Core Intelligence Layer (REAL Agent Runtime)
@@ -79,7 +80,9 @@ export class AgentOrchestrator {
     }
 
     // 2. Adaptive Coordination Execution
-    const result = await this.coordinate(dag, runtimeMemory, goal.traceId);
+    const result = await executionFirewall.runInContext(goal.traceId, () => {
+        return this.coordinate(dag, runtimeMemory, goal.traceId);
+    });
     
     if (goal.traceId) {
         traceManager.endTrace(goal.traceId);
@@ -101,7 +104,7 @@ export class AgentOrchestrator {
         ? `${goalText}\n\n[CONTEXT: Previous attempts/steps results]\n${historySummary}` 
         : goalText;
 
-    const rawPlan = await PlanningEngine.generatePlan({ ...intent, goal: enrichedGoal });
+    const rawPlan = await PlanningEngine.generatePlan({ intent, memory: memory?.getHistory() }, traceId);
 
     const nodes: ExecutionNode[] = rawPlan.steps.map((step) => ({
       id: step.id,

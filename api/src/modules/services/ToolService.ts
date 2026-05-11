@@ -8,6 +8,7 @@ import { ToolDefinition } from '../tools/types';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
 import { normalizeUrlForGoto } from '../../shared/utils/url';
 import { traceManager } from './TraceManager';
+import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 
 // Rate Limiting Logic (Ported) with periodic cleanup to prevent memory leaks
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
@@ -132,6 +133,8 @@ function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' |
 }
 
 export async function executeTool(name: string, input: any, context?: ToolContext) {
+    // [FIREWALL] Strict Single Brain Enforcement
+    executionFirewall.validateExecution(`ToolService:${name}`, { input, sessionId: context?.sessionId });
     const logs: string[] = [];
     const t0 = Date.now();
     let effectiveName = name;
