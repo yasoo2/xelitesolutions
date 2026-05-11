@@ -11,11 +11,12 @@ export class AgentLoopService {
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    static async execute(goal: string, options: { sessionId?: string; userId?: string } = {}) {
+    static async execute(goal: string, options: { sessionId?: string; userId?: string; traceId?: string } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
+        const traceId = options.traceId;
 
-        console.log(`[AgentLoopService] REAL-TIME Execution Request: ${goal}`);
+        console.log(`[AgentLoopService] REAL-TIME Execution Request: ${goal} (traceId=${traceId})`);
         broadcastThinkingDetail(sessionId, "🧠 Activating Dynamic Agent Runtime...");
 
         // Create Run record for observability
@@ -34,6 +35,7 @@ export class AgentLoopService {
         try {
             const result = await orchestrator.execute({ 
                 id: runId, 
+                traceId,
                 goal,
                 context: { userId, sessionId }
             });
@@ -56,8 +58,8 @@ export class AgentLoopService {
     /**
      * Unified Autonomous Planning Entry Point
      */
-    static async plan(goal: string, options: { sessionId?: string; userId?: string } = {}) {
+    static async plan(goal: string, options: { sessionId?: string; userId?: string; traceId?: string } = {}) {
         const orchestrator = new AgentOrchestrator();
-        return await orchestrator.plan(goal);
+        return await orchestrator.plan(goal, undefined, options.traceId);
     }
 }

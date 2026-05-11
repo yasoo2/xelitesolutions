@@ -14,14 +14,13 @@ export class DevAgent extends BaseAgent {
   public async execute(task: string, input: any, context?: any): Promise<{ ok: boolean; output: any; error?: string }> {
     console.log(`[DevAgent] Executing: ${task}`);
     
-    // Convert task and input into a goal for JoeAgent
-    const goal = input.goal || task;
-    const result = await this.joe.ignite(goal, { autoHeal: true });
+    // Pass traceId down if present in context
+    const result = await this.joe.execute(task, input, context);
     
     return {
-      ok: result.success,
-      output: result.output || result.completedTasks,
-      error: result.finalError
+      ok: result.ok,
+      output: result.output,
+      error: result.error
     };
   }
 

@@ -26,7 +26,7 @@ export class PlanningEngine {
     /**
      * Generate a dynamic multi-step execution DAG based on intent and optional memory
      */
-    static async generatePlan(params: { intent: StructuredIntent, memory?: any }): Promise<ExecutionPlan> {
+    static async generatePlan(params: { intent: StructuredIntent, memory?: any }, traceId?: string): Promise<ExecutionPlan> {
         const { intent, memory } = params;
         console.log(`[PlanningEngine] Generating REAL-TIME DAG for: ${intent.goal}`);
 

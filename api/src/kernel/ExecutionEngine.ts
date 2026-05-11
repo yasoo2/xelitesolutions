@@ -3,9 +3,11 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../shared/utils/logger';
+import { traceManager } from '../modules/services/TraceManager';
 
 export interface ExecutionRequest {
     id: string;
+    traceId?: string;
     type: 'shell' | 'pty' | 'internal';
     payload: {
         command?: string;
@@ -145,6 +147,16 @@ export class ExecutionEngine {
         const start = Date.now();
         const sessionId = request.id || 'anonymous';
         
+        if (request.traceId) {
+            traceManager.logEvent(request.traceId, 'execution', {
+                mode: request.type,
+                command: request.payload.command,
+                args: request.payload.args,
+                cwd: request.payload.options?.cwd,
+                timestamp: start
+            });
+        }
+        
         try {
             let data: any;
 
@@ -173,6 +185,14 @@ export class ExecutionEngine {
                 duration
             };
 
+            if (request.traceId) {
+                traceManager.logEvent(request.traceId, 'execution', {
+                    status: 'success',
+                    duration,
+                    output: typeof data === 'string' ? data.substring(0, 1000) : (data?.output?.substring(0, 1000) || 'binary/object')
+                });
+            }
+
             // 3. Cache Storage
             if (this.isCacheable(request)) {
                 const key = this.generateCacheKey(request);
@@ -184,6 +204,14 @@ export class ExecutionEngine {
             const duration = Date.now() - start;
             logger.error(`[ENGINE] ERROR id=${sessionId} duration=${duration}ms error=${e.message}`);
             
+            if (request.traceId) {
+                traceManager.logEvent(request.traceId, 'execution', {
+                    status: 'failed',
+                    duration,
+                    error: e.message
+                });
+            }
+
             return {
                 success: false,
                 error: e.message,

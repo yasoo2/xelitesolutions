@@ -7,6 +7,7 @@ import { glob } from 'glob';
 import { ToolDefinition } from '../tools/types';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
 import { normalizeUrlForGoto } from '../../shared/utils/url';
+import { traceManager } from './TraceManager';
 
 // Rate Limiting Logic (Ported) with periodic cleanup to prevent memory leaks
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
@@ -75,6 +76,7 @@ export interface ToolContext {
     workspaceId?: string; // New: Strict Isolation Context
     userId?: string;
     language?: string;
+    traceId?: string;
     onProgress?: (msg: string) => void;
     onThought?: (msg: string) => void;
 }
@@ -134,6 +136,14 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     const t0 = Date.now();
     let effectiveName = name;
     let effectiveInput = { ...input };
+
+    if (context?.traceId) {
+        traceManager.logEvent(context.traceId, 'tool', {
+            name: effectiveName,
+            input: effectiveInput,
+            status: 'started'
+        });
+    }
 
 
     // --- Aliasing & Compatibility Layer ---
@@ -531,6 +541,17 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             const output = res?.output ?? null;
             const artifacts = Array.isArray(res?.artifacts) ? res.artifacts : undefined;
             const toolLogs = Array.isArray(res?.logs) ? res.logs : [];
+            const duration = Date.now() - t0;
+
+            if (context?.traceId) {
+                traceManager.logEvent(context.traceId, 'tool', {
+                    name: effectiveName,
+                    status: ok ? 'success' : 'failed',
+                    duration,
+                    output: typeof output === 'string' ? output.substring(0, 1000) : 'object/binary',
+                    error: res?.error
+                });
+            }
             
             // [NEW] Real-time Log Streaming to Frontend Terminals
             toolLogs.forEach((line: string) => {

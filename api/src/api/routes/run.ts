@@ -6,6 +6,7 @@ import { Run } from '../../shared/models/run';
 import { ToolExecution } from '../../shared/models/toolExecution';
 import { Artifact } from '../../shared/models/artifact';
 import { Session } from '../../shared/models/session';
+import { traceManager } from '../../modules/services/TraceManager';
 
 const router = Router();
 
@@ -25,16 +26,19 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     }
 
     try {
+        const traceId = traceManager.startTrace(sessionId || 'anonymous', text);
         // Delegate to the unified autonomous runtime
         const result = await AgentLoopService.execute(text, { 
             sessionId, 
-            userId 
+            userId,
+            traceId
         });
 
         return res.json({
             ok: result.ok,
             runId: result.result?.runId,
-            data: result.result
+            data: result.result,
+            traceId
         });
     } catch (error: any) {
         console.error('[RunRoute] Execution failed:', error);

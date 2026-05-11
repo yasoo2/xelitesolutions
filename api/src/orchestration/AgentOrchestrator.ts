@@ -8,6 +8,7 @@ import { DevAgent } from './agents/DevAgent';
 import { SecurityAgent } from './agents/SecurityAgent';
 import { BrowserAgent } from './agents/BrowserAgent';
 import { ExecutionMemory } from '../core/orchestrator/ExecutionMemory';
+import { traceManager } from '../modules/services/TraceManager';
 
 /**
  * Modular Agent Platform - Core Intelligence Layer (REAL Agent Runtime)
@@ -15,6 +16,7 @@ import { ExecutionMemory } from '../core/orchestrator/ExecutionMemory';
 
 export type AgentGoal = {
   id: string;
+  traceId?: string;
   goal: string;
   context?: Record<string, any>;
   priority?: "low" | "medium" | "high";
@@ -24,6 +26,7 @@ export type AgentType = "Dev" | "Security" | "Deploy" | "Browser" | "General";
 
 export type ExecutionNode = {
   id: string;
+  traceId?: string;
   agent: AgentType;
   task: string;
   tool: string;
@@ -64,17 +67,31 @@ export class AgentOrchestrator {
     this.memory.set(goal.id, runtimeMemory);
 
     // 1. Initial Dynamic Planning
-    const dag = await this.plan(goal.goal);
+    const dag = await this.plan(goal.goal, undefined, goal.traceId);
     dag.id = goal.id;
 
+    if (goal.traceId) {
+        traceManager.logEvent(goal.traceId, 'orchestrator', {
+            event: 'execution_started',
+            goal: goal.goal,
+            dag_structure: dag.nodes.map(n => ({ id: n.id, task: n.task, tool: n.tool }))
+        });
+    }
+
     // 2. Adaptive Coordination Execution
-    return await this.coordinate(dag, runtimeMemory);
+    const result = await this.coordinate(dag, runtimeMemory, goal.traceId);
+    
+    if (goal.traceId) {
+        traceManager.endTrace(goal.traceId);
+    }
+    
+    return result;
   }
 
   /**
    * Converts goal into a structured execution plan (DAG) dynamically
    */
-  public async plan(goalText: string, memory?: ExecutionMemory): Promise<AgentDAG> {
+  public async plan(goalText: string, memory?: ExecutionMemory, traceId?: string): Promise<AgentDAG> {
     const context = IntentParser.createContext('orchestrator', 'global', []);
     const intent = await IntentParser.parse(goalText, context);
     
@@ -88,6 +105,7 @@ export class AgentOrchestrator {
 
     const nodes: ExecutionNode[] = rawPlan.steps.map((step) => ({
       id: step.id,
+      traceId,
       agent: (step.agent as AgentType) || "General",
       task: step.description,
       tool: step.tool,
@@ -95,6 +113,14 @@ export class AgentOrchestrator {
       dependencies: step.dependsOn || [],
       status: "pending"
     }));
+
+    if (traceId) {
+        traceManager.logEvent(traceId, 'planning', {
+            goal: goalText,
+            steps_generated: nodes.length,
+            reasoning: rawPlan.reasoning
+        });
+    }
 
     return {
       id: uuidv4(),
@@ -108,7 +134,7 @@ export class AgentOrchestrator {
    * Executes DAG, evaluates progress after each step, and re-plans if needed.
    * This is the "Main Execution Brain" of the runtime.
    */
-  private async coordinate(dag: AgentDAG, memory: ExecutionMemory): Promise<{ ok: boolean; result: any }> {
+  private async coordinate(dag: AgentDAG, memory: ExecutionMemory, traceId?: string): Promise<{ ok: boolean; result: any }> {
     dag.status = "running";
     const completedNodes = new Set<string>();
 
@@ -123,7 +149,8 @@ export class AgentOrchestrator {
       if (readyNodes.length === 0 && completedNodes.size < dag.nodes.length) {
         // [DECISION] Trigger dynamic re-planning on stall
         broadcastThinkingDetail(memory.sessionId, "🧠 Execution stalled. Re-evaluating strategy...");
-        const newDag = await this.plan(dag.nodes[0]?.task || "continue goal", memory);
+        if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'stall_detected', completed: completedNodes.size });
+        const newDag = await this.plan(dag.nodes[0]?.task || "continue goal", memory, traceId);
         dag.nodes = [...dag.nodes, ...newDag.nodes];
         continue;
       }
@@ -137,17 +164,30 @@ export class AgentOrchestrator {
         }
 
         node.status = "running";
+        const startTime = Date.now();
         console.log(`[AgentOrchestrator] Executing node: ${node.id} (${node.task})`);
         broadcastThinkingDetail(memory.sessionId, `🚀 Running: ${node.task} via ${node.agent} Agent`);
+
+        if (traceId) {
+            traceManager.logEvent(traceId, 'orchestrator', {
+                event: 'node_execution_started',
+                nodeId: node.id,
+                task: node.task,
+                agent: node.agent,
+                tool: node.tool,
+                input: node.input,
+                startTime
+            });
+        }
         
         const agent = this.agents.get(node.agent);
         let result;
 
         try {
           if (agent) {
-            result = await agent.execute(node.task, node.input, { sessionId: dag.id, memory: memory.getHistory() });
+            result = await agent.execute(node.task, node.input, { sessionId: dag.id, memory: memory.getHistory(), traceId });
           } else {
-            result = await executeTool(node.tool, { ...node.input, context: memory.getHistory() }, { sessionId: dag.id });
+            result = await executeTool(node.tool, { ...node.input, context: memory.getHistory() }, { sessionId: dag.id, traceId });
           }
         } catch (err: any) {
           result = { ok: false, error: err.message };
@@ -160,11 +200,21 @@ export class AgentOrchestrator {
           memory.record(node.id, node.task, cleanOutput, "completed");
           completedNodes.add(node.id);
 
+          if (traceId) {
+            traceManager.logEvent(traceId, 'orchestrator', {
+                event: 'node_execution_completed',
+                nodeId: node.id,
+                status: 'success',
+                duration: Date.now() - startTime
+            });
+          }
+
           // [DECISION] Mid-flight progress assessment
           const evaluation = await this.evaluateProgress(node, memory, dag);
           if (evaluation.shouldReplan) {
             broadcastThinkingDetail(memory.sessionId, "🧠 Path adjustment required. Re-calculating execution graph...");
-            const updatedDag = await this.plan(dag.id, memory);
+            if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'replan_triggered', nodeId: node.id });
+            const updatedDag = await this.plan(dag.id, memory, traceId);
             dag.nodes = updatedDag.nodes; 
             break; 
           }
@@ -173,10 +223,21 @@ export class AgentOrchestrator {
           node.status = "failed";
           memory.record(node.id, node.task, result.error, "failed");
 
+          if (traceId) {
+            traceManager.logEvent(traceId, 'orchestrator', {
+                event: 'node_execution_completed',
+                nodeId: node.id,
+                status: 'failed',
+                error: result.error,
+                duration: Date.now() - startTime
+            });
+          }
+
           // [DECISION] Intelligent recovery attempt
-          const recoveryResult = await this.attemptRecovery(node, result.error, memory, dag);
+          const recoveryResult = await this.attemptRecovery(node, result.error, memory, dag, traceId);
           if (recoveryResult.recovered) {
             broadcastThinkingDetail(memory.sessionId, `⚠️ Recovering from failure in "${node.task}". Injecting repair nodes...`);
+            if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_attempted', nodeId: node.id, status: 'recovered' });
             dag.nodes = [...dag.nodes, ...recoveryResult.newNodes];
             continue;
           }
@@ -236,14 +297,14 @@ If the last result suggests a better path or a new requirement, set shouldReplan
   /**
    * Failure Recovery Brain
    */
-  private async attemptRecovery(failedNode: ExecutionNode, error: any, memory: ExecutionMemory, dag: AgentDAG): Promise<{ recovered: boolean; newNodes: ExecutionNode[] }> {
+  private async attemptRecovery(failedNode: ExecutionNode, error: any, memory: ExecutionMemory, dag: AgentDAG, traceId?: string): Promise<{ recovered: boolean; newNodes: ExecutionNode[] }> {
     broadcastThinkingDetail(memory.sessionId, `⚠️ Analyzing failure: ${failedNode.task}...`);
     
     // Ask PlanningEngine for recovery nodes
     const recoveryPlan = await PlanningEngine.generatePlan({ 
         intent: { goal: `Fix and continue: ${failedNode.task}`, complexity: 'high', riskLevel: 'medium', suggestedAgent: failedNode.agent, rawIntent: {} }, 
         memory: memory.getHistory() 
-    });
+    }, traceId);
 
     return { 
         recovered: recoveryPlan.steps.length > 0, 

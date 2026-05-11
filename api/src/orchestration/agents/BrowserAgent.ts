@@ -27,7 +27,7 @@ Example: { "actions": [ { "type": "goto", "url": "..." }, { "type": "click", "se
             const result = await executeTool('browser_run', { 
                 sessionId: input.sessionId,
                 actions: plan.actions 
-            }, { sessionId: context.sessionId });
+            }, { sessionId: context.sessionId, traceId: context.traceId });
 
             return {
                 ok: result.ok,
