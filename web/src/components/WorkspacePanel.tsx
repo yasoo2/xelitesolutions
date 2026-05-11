@@ -7,7 +7,7 @@ import {
 import { ErrorBoundary } from './ErrorBoundary';
 
 // Lazy load the heavy components
-const EmbeddedTerminal = lazy(() => import('./EmbeddedTerminal'));
+const EnterpriseTerminalPanel = lazy(() => import('./terminal/EnterpriseTerminalPanel'));
 const EmbeddedBrowser = lazy(() => import('./EmbeddedBrowser'));
 const PreviewPanel = lazy(() => import('./PreviewPanel'));
 
@@ -456,7 +456,7 @@ export default function WorkspacePanel({
                 {activeTab === 'terminal' && (
                     <ErrorBoundary fallbackTitle="تعذّر تحميل الطرفية (Terminal)">
                         <Suspense fallback={<LoadingFallback />}>
-                            <EmbeddedTerminal terminalId={terminalId} workspaceId={workspaceId} />
+                            <EnterpriseTerminalPanel terminalId={terminalId} workspaceId={workspaceId} isEmbedded={true} />
                         </Suspense>
                     </ErrorBoundary>
                 )}

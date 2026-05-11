@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { Terminal } from 'xterm';
 import 'xterm/css/xterm.css';
 import { SocketService } from '../../services/socket';
+import { API_URL } from '../../config';
 import { ServerService, ServerConfig } from '../../services/server';
 import {
     Maximize2,
@@ -31,13 +32,15 @@ interface TerminalTab {
 interface EnterpriseTerminalPanelProps {
     onClose?: () => void;
     isEmbedded?: boolean;
+    terminalId?: string;
+    workspaceId?: string;
 }
 
-export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: EnterpriseTerminalPanelProps) {
+export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalId, workspaceId }: EnterpriseTerminalPanelProps) {
     const [tabs, setTabs] = useState<TerminalTab[]>([
-        { id: 'local', name: 'Localhost', isReady: false }
+        { id: terminalId || 'local', name: 'Localhost', isReady: false }
     ]);
-    const [activeTabId, setActiveTabId] = useState('local');
+    const [activeTabId, setActiveTabId] = useState(terminalId || 'local');
     const [isMinimized, setIsMinimized] = useState(false);
     const [showAddServer, setShowAddServer] = useState(false);
     const [servers, setServers] = useState<ServerConfig[]>([]);
@@ -125,9 +128,38 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded }: Enterpr
         // Initialize Connection (Local or Remote)
         if (!serverId) {
             term.writeln('\x1b[1;35m🚀 Joe Enterprise Shell [Local]\x1b[0m');
-            isReadyRefs.current[tabId] = true;
-            setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isReady: true } : t));
-            term.focus();
+            
+            // ELITE FIX: Call backend to create session
+            const initLocal = async () => {
+                try {
+                    const token = localStorage.getItem('token');
+                    const res = await fetch(`${API_URL}/tools/terminal_manager/execute`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            action: 'create',
+                            id: tabId,
+                            shell: 'bash',
+                            workspaceId
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                        isReadyRefs.current[tabId] = true;
+                        setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isReady: true } : t));
+                        term.focus();
+                        term.writeln('\x1b[1;32m✓ Session Ready\x1b[0m');
+                    } else {
+                        term.writeln(`\x1b[1;31m✗ ${data.error || 'Failed to create session'}\x1b[0m`);
+                    }
+                } catch (e) {
+                    term.writeln('\x1b[1;31m✗ Backend Connection Failed\x1b[0m');
+                }
+            };
+            initLocal();
         } else {
             term.writeln(`\x1b[1;34m🌐 Connecting to remote server...\x1b[0m`);
             connectRemote(tabId, serverId);

@@ -28,6 +28,13 @@ class AgentExecutionFirewall {
     }
 
     /**
+     * Executes a function as a trusted system background task
+     */
+    public runAsSystem<T>(fn: () => T): T {
+        return this.context.run({ isOrchestrator: true, isSystem: true }, fn);
+    }
+
+    /**
      * Validates that the current execution context is authorized.
      * Throws an error if direct execution bypass is detected.
      */
@@ -36,7 +43,8 @@ class AgentExecutionFirewall {
         const isAuthorized = store?.isOrchestrator === true;
 
         if (isAuthorized) {
-            logger.debug(`[FIREWALL] [ALLOWED] ${component} - traceId=${store?.traceId || 'none'}`);
+            const contextType = (store as any)?.isSystem ? 'SYSTEM' : 'AGENT';
+            logger.debug(`[FIREWALL] [ALLOWED] ${component} - type=${contextType} traceId=${store?.traceId || 'none'}`);
         } else {
             logger.error(`[FIREWALL] [BLOCKED] ${component} - Direct execution bypass detected! Metadata: ${JSON.stringify(metadata)}`);
             throw new Error(`Execution bypass detected in ${component}. All execution must go through AgentOrchestrator.coordinate().`);

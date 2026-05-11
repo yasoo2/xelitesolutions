@@ -10,6 +10,7 @@ import { alertService } from './AlertService';
 import shadow from 'fs';
 import path from 'path';
 import { executionEngine } from '../../kernel/ExecutionEngine';
+import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 
 const fs = shadow.promises;
 const STABLE_COMMIT_FILE = './last_stable_commit';
@@ -194,9 +195,11 @@ export class DeployManager {
     private startAutoDeployPollerInternal() {
         if (this.pollerInterval) clearInterval(this.pollerInterval);
         this.pollerInterval = setInterval(() => {
-            this.checkAndDeploy().catch(e => {
-                this.lastPollError = e.message;
-                logger.error(`[DeployManager] Auto-deploy failed: ${e.message}`);
+            executionFirewall.runAsSystem(() => {
+                this.checkAndDeploy().catch(e => {
+                    this.lastPollError = e.message;
+                    logger.error(`[DeployManager] Auto-deploy failed: ${e.message}`);
+                });
             });
         }, POLL_INTERVAL_MS);
     }
@@ -237,8 +240,10 @@ export class DeployManager {
         this.currentDeploymentId = id;
         
         // Non-blocking deployment start
-        this.executeDeploymentFlow(id, commitHash).catch(e => {
-            logger.error(`[DeployManager] Critical deployment error: ${e.message}`);
+        executionFirewall.runAsSystem(() => {
+            this.executeDeploymentFlow(id, commitHash).catch(e => {
+                logger.error(`[DeployManager] Critical deployment error: ${e.message}`);
+            });
         });
 
         return id;
