@@ -138,7 +138,7 @@ export class ExecutionEngine {
                 };
             }
             return new Promise((resolve, reject) => {
-                const context = executionFirewall.getInstance ? (executionFirewall as any).context?.getStore() : null;
+                const context = executionFirewall.context?.getStore();
                 this.queue.push({ request, context, resolve, reject });
             });
         }
@@ -233,7 +233,7 @@ export class ExecutionEngine {
             if (next) {
                 const run = () => this.processExecution(next.request).then(next.resolve).catch(next.reject);
                 if (next.context) {
-                    (executionFirewall as any).context?.run(next.context, run);
+                    executionFirewall.context.run(next.context, run);
                 } else {
                     run();
                 }
