@@ -163,11 +163,15 @@ export class DeployManager {
         }
     }
 
-    private async getCurrentCommit(): Promise<string> {
-        try {
-            const result = await this.runCommand('git', ['rev-parse', 'HEAD'], PROJECT_ROOT, 10000);
-            return result.trim();
-        } catch (e) { return 'unknown'; }
+    public async getCurrentCommit(): Promise<string> {
+        return new Promise((resolve) => {
+            executionFirewall.runAsSystem(async () => {
+                try {
+                    const result = await this.runCommand('git', ['rev-parse', 'HEAD'], PROJECT_ROOT, 10000);
+                    resolve(result.trim());
+                } catch (e) { resolve('unknown'); }
+            });
+        });
     }
 
     private async getRemoteCommit(): Promise<string> {
@@ -187,8 +191,8 @@ export class DeployManager {
             const shortId = deploymentId.substring(0, 8);
             logger.info(`[Deploy ${shortId}] ${log}`);
             broadcast({
-                type: 'admin:deployment_log',
-                data: { id: deploymentId, log, ts: Date.now() }
+                type: 'admin:deploy_log',
+                data: { deploymentId: deploymentId, log, ts: Date.now() }
             });
         }
     }
@@ -270,8 +274,8 @@ export class DeployManager {
         try {
             this.queueLog(id, `[SYSTEM] Starting deployment for commit ${commitHash}`);
             
-            // 1. Pull latest code
-            await this.runCommand('git', ['pull', 'origin', 'main'], PROJECT_ROOT, 60000, id);
+            // 1. Pull latest code (force and abort merge if any issue to prevent hangs)
+            await this.runCommand('git', ['pull', 'origin', 'main', '--no-edit', '--ff-only'], PROJECT_ROOT, 60000, id);
             
             // 2. Build API
             this.queueLog(id, `[BUILD] Building API...`);
@@ -302,10 +306,12 @@ export class DeployManager {
             await this.verifyHealth();
             
             await Deployment.findByIdAndUpdate(id, { status: 'SUCCESS', endTime: new Date() });
+            broadcast({ type: 'admin:deploy_status', data: { _id: id, status: 'SUCCESS' } });
             this.queueLog(id, `[SUCCESS] Deployment ${id} completed successfully`);
             shadow.writeFileSync(STABLE_COMMIT_FILE, commitHash);
         } catch (e: any) {
             await Deployment.findByIdAndUpdate(id, { status: 'FAILED', endTime: new Date(), error: e.message });
+            broadcast({ type: 'admin:deploy_status', data: { _id: id, status: 'FAILED', error: e.message } });
             this.queueLog(id, `[ERROR] Deployment ${id} failed: ${e.message}`);
             await this.attemptRollback();
         } finally {
