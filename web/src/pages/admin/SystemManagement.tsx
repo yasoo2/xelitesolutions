@@ -11,6 +11,7 @@ import {
     RotateCcw, Info, XCircle, ShieldAlert
 } from 'lucide-react';
 import { API_URL } from '../../config';
+import { SocketService } from '../../services/socket';
 import SentinelDashboard from './sentinel/SentinelDashboard';
 
 // ═══════════════════════════════════════════════
@@ -47,7 +48,7 @@ interface Backup {
 interface Deployment {
     _id: string;
     commit: string;
-    status: 'PENDING' | 'BUILDING' | 'SUCCESS' | 'FAILED' | 'ROLLBACK';
+    status: 'PENDING' | 'STARTED' | 'BUILDING' | 'SUCCESS' | 'FAILED' | 'ROLLBACK';
     startTime: string;
     endTime?: string;
     duration?: number;
@@ -106,7 +107,7 @@ export default function SystemManagement() {
 
     // WebSocket listener for live logs
     useEffect(() => {
-        const unsubscribe = SocketService.subscribe((msg) => {
+        const unsubscribe = SocketService.subscribe((msg: any) => {
             if (msg.type === 'admin:deployment_log') {
                 const { id, log } = msg.data;
                 setSelectedDep(prev => {
