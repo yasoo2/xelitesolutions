@@ -258,7 +258,7 @@ export default function SystemManagement() {
                 const data = await res.json();
                 await fetchDeployments();
                 if (data && data.id) {
-                    const newDep = {
+                    const newDep: Deployment = {
                         _id: data.id,
                         commit: 'HEAD',
                         status: 'STARTED',
@@ -268,7 +268,7 @@ export default function SystemManagement() {
                     };
                     setSelectedDep(newDep);
                     // Also add to the list immediately
-                    setDeployments(prev => [newDep as any, ...prev]);
+                    setDeployments(prev => [newDep, ...prev]);
                 }
             }
         } catch (e) { console.error(e); }
