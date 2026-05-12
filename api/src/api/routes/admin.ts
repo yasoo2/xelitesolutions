@@ -302,7 +302,8 @@ router.patch('/users/:id/role', async (req, res) => {
 router.post('/deploy', async (req, res) => {
     try {
         const { deployManager } = await import('../../modules/services/DeployManager');
-        const id = await deployManager.startDeploy('manual');
+        const commitHash = await deployManager.getCurrentCommit();
+        const id = await deployManager.startDeploy('manual', commitHash);
         res.json({ id, message: 'Deployment started' });
     } catch (e: any) {
         res.status(400).json({ error: e.message });
