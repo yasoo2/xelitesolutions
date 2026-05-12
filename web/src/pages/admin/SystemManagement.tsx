@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -102,6 +102,35 @@ export default function SystemManagement() {
         lastRemoteCommit: string | null;
         isDeploying: boolean;
     } | null>(null);
+    const logEndRef = useRef<HTMLDivElement>(null);
+
+    // WebSocket listener for live logs
+    useEffect(() => {
+        const unsubscribe = SocketService.subscribe((msg) => {
+            if (msg.type === 'admin:deployment_log') {
+                const { id, log } = msg.data;
+                setSelectedDep(prev => {
+                    if (prev && prev._id === id) {
+                        return { ...prev, logs: [...(prev.logs || []), log] };
+                    }
+                    return prev;
+                });
+                
+                // Also update the main deployments list if needed (though fetchDeployments usually handles this)
+                setDeployments(prev => prev.map(d => 
+                    d._id === id ? { ...d, logs: [...(d.logs || []), log] } : d
+                ));
+            }
+        });
+        return () => unsubscribe();
+    }, []);
+
+    // Auto-scroll logic
+    useEffect(() => {
+        if (logEndRef.current) {
+            logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [selectedDep?.logs]);
 
     // ═══════════════════════════════════════════════
     // DATA FETCHING
@@ -228,19 +257,21 @@ export default function SystemManagement() {
                 const data = await res.json();
                 await fetchDeployments();
                 if (data && data.id) {
-                    setSelectedDep({
+                    const newDep = {
                         _id: data.id,
                         commit: 'HEAD',
-                        status: 'BUILDING',
+                        status: 'STARTED',
                         triggeredBy: 'manual',
                         startTime: new Date().toISOString(),
                         logs: ['=== Deployment Initiated ===']
-                    });
+                    };
+                    setSelectedDep(newDep);
+                    // Also add to the list immediately
+                    setDeployments(prev => [newDep as any, ...prev]);
                 }
             }
         } catch (e) { console.error(e); }
-        setIsDeploying(true); // Keep it true for better feedback during log streaming
-        setTimeout(() => setIsDeploying(false), 2000); // Temporary guard
+        // We keep isDeploying true until we detect success/failure via polling or sockets
     };
 
     const handleClearHistory = async () => {
@@ -1025,6 +1056,42 @@ export default function SystemManagement() {
                     .user-item { flex-direction: column; align-items: flex-start; }
                     .role-toggle-btn { width: 100%; justify-content: center; }
                 }
+
+                @keyframes orbit {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(5px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+
+                .rocket-loader-container {
+                    position: relative;
+                    width: 16px;
+                    height: 16px;
+                    display: flex;
+                    alignItems: center;
+                    justifyContent: center;
+                }
+
+                .deploying-rocket {
+                    color: var(--accent-primary);
+                    filter: drop-shadow(0 0 5px var(--accent-primary));
+                }
+
+                .rocket-orbit {
+                    position: absolute;
+                    top: -4px;
+                    left: -4px;
+                    right: -4px;
+                    bottom: -4px;
+                    border: 2px solid transparent;
+                    border-top-color: var(--accent-primary);
+                    border-radius: 50%;
+                    animation: orbit 1s linear infinite;
+                }
             `}</style>
 
             <div className="mgmt-header">
@@ -1040,7 +1107,15 @@ export default function SystemManagement() {
                         <Activity size={16} /> Dashboard
                     </button>
                     <button className={`tab-btn ${activeTab === 'deployments' ? 'active' : ''}`} onClick={() => setActiveTab('deployments')}>
-                        <Rocket size={16} /> Deployments
+                        {deployments.some(d => d.status === 'STARTED' || d.status === 'BUILDING') ? (
+                            <div className="rocket-loader-container">
+                                <Rocket size={16} className="deploying-rocket" />
+                                <div className="rocket-orbit" />
+                            </div>
+                        ) : (
+                            <Rocket size={16} />
+                        )} 
+                        Deployments
                     </button>
                     <button className={`tab-btn ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>
                         <Shield size={16} /> Admins
@@ -1136,16 +1211,21 @@ export default function SystemManagement() {
                         <div style={{ flex: 1, overflowY: 'auto', padding: '32px', background: '#050505', color: '#cbd5e1', fontSize: '13px', lineHeight: '1.7', fontFamily: '"JetBrains Mono", "Fira Code", monospace' }}>
                             {selectedDep.logs && selectedDep.logs.length > 0 ? (
                                 selectedDep.logs.map((line: string, i: number) => (
-                                    <div key={i} style={{ display: 'flex', gap: '20px', marginBottom: '4px' }}>
-                                        <span style={{ color: '#2d3748', userSelect: 'none', minWidth: '40px', textAlign: 'right' }}>{i + 1}</span>
+                                    <div key={i} style={{ display: 'flex', gap: '20px', marginBottom: '4px', animation: 'fadeIn 0.3s ease-out' }}>
+                                        <span style={{ color: '#2d3748', userSelect: 'none', minWidth: '40px', textAlign: 'right', fontSize: '11px' }}>{i + 1}</span>
                                         <span style={{
-                                            color: line.toLowerCase().includes('error') ? '#ff5252' : line.toLowerCase().includes('success') ? '#00e676' : '#cbd5e1'
+                                            color: line.toLowerCase().includes('error') ? '#ff5252' : 
+                                                   line.toLowerCase().includes('success') ? '#00e676' : 
+                                                   line.toLowerCase().includes('[build]') ? '#38bdf8' :
+                                                   line.toLowerCase().includes('[docker]') ? '#fbbf24' : '#cbd5e1',
+                                            textShadow: line.toLowerCase().includes('error') ? '0 0 8px rgba(255,82,82,0.3)' : 'none'
                                         }}>{line}</span>
                                     </div>
                                 ))
                             ) : (
                                 <div style={{ textAlign: 'center', padding: '80px', color: '#334155', fontStyle: 'italic' }}>No deployment trace recorded.</div>
                             )}
+                            <div ref={logEndRef} />
                         </div>
                     </motion.div>
                 </div>

@@ -178,6 +178,10 @@ export class DeployManager {
         if (!silentTerminal) {
             const shortId = deploymentId.substring(0, 8);
             logger.info(`[Deploy ${shortId}] ${log}`);
+            broadcast({
+                type: 'admin:deployment_log',
+                data: { id: deploymentId, log, ts: Date.now() }
+            });
         }
     }
 
