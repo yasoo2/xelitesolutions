@@ -59,6 +59,12 @@ export const createApp = () => {
   const isProd = process.env.NODE_ENV === 'production';
   const allowedOrigins = new Set<string>((config.allowedOrigins || []).map(normalizeOrigin).filter(Boolean));
 
+  // [DEBUG] Log every single request before any processing
+  app.use((req, res, next) => {
+    console.log(`[RAW-HTTP] ${req.method} ${req.path} - Headers: ${JSON.stringify(req.headers)}`);
+    next();
+  });
+
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
@@ -87,10 +93,8 @@ export const createApp = () => {
   app.use(express.json({ limit: '50mb' }));
   app.use(morgan('dev'));
 
-  app.use((req, res, next) => {
-    console.log(`[HTTP] ${req.method} ${req.path}`);
-    next();
-  });
+  app.use(express.json({ limit: '50mb' }));
+  app.use(morgan('dev'));
 
   // [HARDENING] Global Sanitization Middleware
 
