@@ -447,14 +447,14 @@ export default function DeploymentsPage() {
                                         <tr key={d._id}>
                                             <td><span className="id-tag">{d._id.slice(-6)}</span></td>
                                             <td>
-                                                <span className={`status-badge ${d.status.toLowerCase()}`}>
+                                                <span className={`status-badge ${(d.status || 'UNKNOWN').toLowerCase()}`}>
                                                     {d.status === 'SUCCESS' && <CheckCircle size={14} />}
                                                     {d.status === 'FAILED' && <XCircle size={14} />}
                                                     {d.status === 'BUILDING' && <Loader2 size={14} className="spin" />}
-                                                    {d.status}
+                                                    {d.status || 'UNKNOWN'}
                                                 </span>
                                             </td>
-                                            <td><span className="commit-hash">{d.commit.slice(0, 7)}</span></td>
+                                            <td><span className="commit-hash">{(d.commit || 'unknown').slice(0, 7)}</span></td>
                                             <td>
                                                 <div className="time-info">
                                                     <div>{new Date(d.startTime).toLocaleString()}</div>
