@@ -234,7 +234,12 @@ export class DeployManager {
     }
 
     async startDeploy(trigger: string, commitHash: string): Promise<string> {
-        const deployment = new Deployment({ trigger, commitHash, status: 'started', startTime: new Date() });
+        const deployment = new Deployment({ 
+            triggeredBy: trigger === 'webhook' ? 'webhook' : 'manual', 
+            commit: commitHash, 
+            status: 'STARTED', 
+            startTime: new Date() 
+        });
         await deployment.save();
         const id = deployment._id.toString();
         this.currentDeploymentId = id;
@@ -252,17 +257,43 @@ export class DeployManager {
     private async executeDeploymentFlow(id: string, commitHash: string) {
         try {
             this.queueLog(id, `[SYSTEM] Starting deployment for commit ${commitHash}`);
+            
+            // 1. Pull latest code
             await this.runCommand('git', ['pull', 'origin', 'main'], PROJECT_ROOT, 60000, id);
+            
+            // 2. Build API
+            this.queueLog(id, `[BUILD] Building API...`);
             await this.runCommand('npm', ['install', '--legacy-peer-deps'], API_DIR, 300000, id);
             await this.runCommand('npm', ['run', 'build'], API_DIR, 300000, id);
+            
+            // 3. Build Web
+            this.queueLog(id, `[BUILD] Building Web Frontend...`);
+            await this.runCommand('npm', ['install', '--legacy-peer-deps'], WEB_DIR, 300000, id);
+            await this.runCommand('npm', ['run', 'build'], WEB_DIR, 300000, id);
+            
+            // 4. Docker Rebuild (if on Linux/Server)
+            if (process.platform === 'linux') {
+                this.queueLog(id, `[DOCKER] Rebuilding joe-web image...`);
+                try {
+                    await this.runCommand('docker', ['build', '-t', 'joe-web', '.'], WEB_DIR, 600000, id);
+                    await this.runCommand('docker', ['stop', 'joe_web'], PROJECT_ROOT, 30000, id).catch(() => {});
+                    await this.runCommand('docker', ['rm', 'joe_web'], PROJECT_ROOT, 30000, id).catch(() => {});
+                    await this.runCommand('docker', ['run', '-d', '--name', 'joe_web', '--network', 'joe-network', '--restart', 'always', 'joe-web'], PROJECT_ROOT, 60000, id);
+                } catch (dockerErr: any) {
+                    this.queueLog(id, `[WARNING] Docker rebuild failed: ${dockerErr.message}. Web may not be updated.`);
+                }
+            }
+
+            // 5. Restart API
+            this.queueLog(id, `[SYSTEM] Restarting API...`);
             await this.restartAPIServer();
             await this.verifyHealth();
             
-            await Deployment.findByIdAndUpdate(id, { status: 'success', endTime: new Date() });
+            await Deployment.findByIdAndUpdate(id, { status: 'SUCCESS', endTime: new Date() });
             this.queueLog(id, `[SUCCESS] Deployment ${id} completed successfully`);
             shadow.writeFileSync(STABLE_COMMIT_FILE, commitHash);
         } catch (e: any) {
-            await Deployment.findByIdAndUpdate(id, { status: 'failed', endTime: new Date(), error: e.message });
+            await Deployment.findByIdAndUpdate(id, { status: 'FAILED', endTime: new Date(), error: e.message });
             this.queueLog(id, `[ERROR] Deployment ${id} failed: ${e.message}`);
             await this.attemptRollback();
         } finally {
