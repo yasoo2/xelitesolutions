@@ -19,7 +19,7 @@ router.use(authenticate, requireSuperAdmin);
 
 router.get('/deployments', async (req, res) => {
     try {
-        const list = await Deployment.find().sort({ createdAt: -1 }).limit(20);
+        const list = await Deployment.find().sort({ createdAt: -1 }).limit(100);
         res.json(list);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
