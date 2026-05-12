@@ -230,6 +230,8 @@ export class DeployManager {
         this.pollerActive = true;
 
         try {
+            // Force reset any local changes (e.g. package-lock.json) so auto-deploy never gets stuck
+            await this.runCommand('git', ['reset', '--hard'], PROJECT_ROOT, 10000);
             const status = await this.runCommand('git', ['status', '--short'], PROJECT_ROOT, 10000);
             if (status.trim()) {
                 this.pollerActive = false;
