@@ -301,11 +301,15 @@ router.patch('/users/:id/role', async (req, res) => {
 
 router.post('/deploy', async (req, res) => {
     try {
+        console.log('[AdminAPI] Received deploy request');
         const { deployManager } = await import('../../modules/services/DeployManager');
         const commitHash = await deployManager.getCurrentCommit();
+        console.log(`[AdminAPI] Current commit: ${commitHash}`);
         const id = await deployManager.startDeploy('manual', commitHash);
+        console.log(`[AdminAPI] Deployment started with ID: ${id}`);
         res.json({ id, message: 'Deployment started' });
     } catch (e: any) {
+        console.error(`[AdminAPI] Deployment trigger failed: ${e.stack || e.message}`);
         res.status(400).json({ error: e.message });
     }
 });
