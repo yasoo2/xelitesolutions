@@ -252,7 +252,11 @@ export default function SystemManagement() {
         try {
             const res = await fetch(`${API_URL}/admin/deploy`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` }
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({})
             });
             if (res.ok) {
                 const data = await res.json();
@@ -270,9 +274,16 @@ export default function SystemManagement() {
                     // Also add to the list immediately
                     setDeployments(prev => [newDep, ...prev]);
                 }
+            } else {
+                const errorData = await res.text();
+                alert(`Deployment failed to start: ${res.status} ${errorData}`);
             }
-        } catch (e) { console.error(e); }
-        // We keep isDeploying true until we detect success/failure via polling or sockets
+        } catch (e: any) { 
+            console.error(e); 
+            alert(`Network Error: ${e.message}`);
+        } finally {
+            setIsDeploying(false);
+        }
     };
 
     const handleClearHistory = async () => {
