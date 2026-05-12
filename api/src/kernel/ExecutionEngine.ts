@@ -1,4 +1,3 @@
-
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
@@ -56,7 +55,7 @@ export interface ExecutionSession {
 export class ExecutionEngine {
     private pty: any = null;
     private cache = new Map<string, { result: ExecutionResult, expires: number }>();
-    private queue: { request: ExecutionRequest, resolve: (res: ExecutionResult) => void, reject: (err: any) => void }[] = [];
+    private queue: { request: ExecutionRequest, context: any, resolve: (res: ExecutionResult) => void, reject: (err: any) => void }[] = [];
     private activeCount = 0;
     private readonly MAX_CONCURRENT = 15;
     private readonly MAX_QUEUE_SIZE = 100;
@@ -139,7 +138,8 @@ export class ExecutionEngine {
                 };
             }
             return new Promise((resolve, reject) => {
-                this.queue.push({ request, resolve, reject });
+                const context = executionFirewall.getInstance ? (executionFirewall as any).context?.getStore() : null;
+                this.queue.push({ request, context, resolve, reject });
             });
         }
 
@@ -231,9 +231,12 @@ export class ExecutionEngine {
         if (this.queue.length > 0 && this.activeCount < this.MAX_CONCURRENT) {
             const next = this.queue.shift();
             if (next) {
-                this.processExecution(next.request)
-                    .then(next.resolve)
-                    .catch(next.reject);
+                const run = () => this.processExecution(next.request).then(next.resolve).catch(next.reject);
+                if (next.context) {
+                    (executionFirewall as any).context?.run(next.context, run);
+                } else {
+                    run();
+                }
             }
         }
     }

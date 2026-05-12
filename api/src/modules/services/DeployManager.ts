@@ -61,7 +61,15 @@ export class DeployManager {
                     shell: true,
                     env: {
                         ...process.env,
-                        PATH: `${process.env.PATH}${path.delimiter}${path.join(PROJECT_ROOT, 'node_modules', '.bin')}${path.delimiter}/usr/local/bin${path.delimiter}/usr/bin${path.delimiter}/bin`
+                        PATH: [
+                            process.env.PATH,
+                            path.join(API_DIR, 'node_modules', '.bin'),
+                            path.join(WEB_DIR, 'node_modules', '.bin'),
+                            path.join(PROJECT_ROOT, 'node_modules', '.bin'),
+                            '/usr/local/bin',
+                            '/usr/bin',
+                            '/bin'
+                        ].join(path.delimiter)
                     }
                 }
             },

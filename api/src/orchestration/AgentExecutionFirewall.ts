@@ -9,7 +9,7 @@ import { logger } from '../shared/utils/logger';
  */
 class AgentExecutionFirewall {
     private static instance: AgentExecutionFirewall;
-    private context = new AsyncLocalStorage<{ isOrchestrator: boolean; traceId?: string }>();
+    public context = new AsyncLocalStorage<{ isOrchestrator: boolean; isSystem?: boolean; traceId?: string }>();
 
     private constructor() {}
 
