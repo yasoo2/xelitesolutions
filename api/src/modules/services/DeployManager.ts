@@ -183,6 +183,13 @@ export class DeployManager {
         } catch (e) { return 'unknown'; }
     }
 
+    private broadcastStatus(id: string, status: string) {
+        broadcast({
+            type: 'admin:deploy_status',
+            data: { _id: id, status }
+        });
+    }
+
     private queueLog(deploymentId: string, log: string, silentTerminal = false) {
         const entry = this.logQueue.find(q => q.id === deploymentId);
         if (entry) entry.logs.push(log);
