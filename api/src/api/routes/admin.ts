@@ -295,11 +295,13 @@ router.post('/deploy', async (req, res) => {
     try {
         console.log('[AdminAPI] Received deploy request');
         const { deployManager } = await import('../../modules/services/DeployManager');
-        const commitHash = await deployManager.getCurrentCommit();
-        console.log(`[AdminAPI] Current commit: ${commitHash}`);
-        const id = await deployManager.startDeploy('manual', commitHash);
-        console.log(`[AdminAPI] Deployment started with ID: ${id}`);
-        res.json({ id, message: 'Deployment started' });
+        
+        // Start deployment process immediately without waiting for commit hash
+        // We use 'manual-pending' as a placeholder until the flow resolves the real commit
+        const id = await deployManager.startDeploy('manual', 'pending');
+        
+        console.log(`[AdminAPI] Deployment initiated with ID: ${id}`);
+        res.json({ id, message: 'Deployment initiated successfully' });
     } catch (e: any) {
         console.error(`[AdminAPI] Deployment trigger failed: ${e.stack || e.message}`);
         res.status(400).json({ error: e.message });

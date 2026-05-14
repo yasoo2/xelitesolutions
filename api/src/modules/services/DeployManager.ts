@@ -61,6 +61,7 @@ export class DeployManager {
                     shell: true,
                     env: {
                         ...process.env,
+                        GIT_TERMINAL_PROMPT: '0',
                         PATH: [
                             process.env.PATH,
                             path.join(API_DIR, 'node_modules', '.bin'),
@@ -270,10 +271,16 @@ export class DeployManager {
 
     private async executeDeploymentFlow(id: string, commitHash: string) {
         try {
-            this.queueLog(id, `[SYSTEM] Starting deployment for commit ${commitHash}`);
+            this.queueLog(id, `[SYSTEM] Initiating deployment flow...`);
             
             // 1. Pull latest code (force and abort merge if any issue to prevent hangs)
             await this.runCommand('git', ['pull', 'origin', 'main', '--no-edit', '--ff-only'], PROJECT_ROOT, 60000, id);
+            
+            // Resolve real commit hash
+            const actualCommit = await this.getCurrentCommit();
+            await Deployment.findByIdAndUpdate(id, { commit: actualCommit, status: 'BUILDING' });
+            this.broadcastStatus(id, 'BUILDING');
+            this.queueLog(id, `[SYSTEM] Current commit resolved: ${actualCommit}`);
             
             // 2. Build API
             this.queueLog(id, `[BUILD] Building API...`);
@@ -299,14 +306,16 @@ export class DeployManager {
             }
 
             // 5. Restart API
-            this.queueLog(id, `[SYSTEM] Restarting API...`);
+            this.queueLog(id, `[SYSTEM] Saving stable commit and restarting API...`);
+            const finalCommit = await this.getCurrentCommit();
+            shadow.writeFileSync(path.join(PROJECT_ROOT, 'last_stable_commit'), finalCommit);
+            
             await this.restartAPIServer();
             await this.verifyHealth();
             
             await Deployment.findByIdAndUpdate(id, { status: 'SUCCESS', endTime: new Date() });
             broadcast({ type: 'admin:deploy_status', data: { _id: id, status: 'SUCCESS' } });
             this.queueLog(id, `[SUCCESS] Deployment ${id} completed successfully`);
-            shadow.writeFileSync(STABLE_COMMIT_FILE, commitHash);
         } catch (e: any) {
             await Deployment.findByIdAndUpdate(id, { status: 'FAILED', endTime: new Date(), error: e.message });
             broadcast({ type: 'admin:deploy_status', data: { _id: id, status: 'FAILED', error: e.message } });

@@ -138,6 +138,15 @@ export default function DeploymentsPage() {
                     // Refresh status in real-time
                     setDeployments(prev => {
                         const exists = prev.find(d => d._id === msg.data._id);
+                        
+                        // WOW Factor: Auto-pop the modal if this is a brand new auto-deploy!
+                        if (!exists && msg.data.triggeredBy === 'webhook' && msg.data.status === 'BUILDING') {
+                            setTimeout(() => {
+                                setSelectedLogId(msg.data._id);
+                                setLiveLogs(['[JOE] Auto-Deploy triggered... streaming logs...']);
+                            }, 100);
+                        }
+                        
                         if (exists) {
                             return prev.map(d => d._id === msg.data._id ? msg.data : d);
                         }
