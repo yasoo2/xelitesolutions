@@ -6,7 +6,10 @@ import { advancedAnalyzeTask } from '../../core/llm/intelligent-router';
  * BrowserAgent - Autonomous Web Interaction Specialist
  */
 export class BrowserAgent extends BaseAgent {
-    async execute(task: string, input: any, context: any): Promise<{ ok: boolean; output?: any; error?: string }> {
+    public readonly name = "Browser-Automation";
+    public readonly type = "Browser";
+
+    async execute(task: string, input: any, context: any): Promise<{ ok: boolean; output: any; error?: string }> {
         console.log(`[BrowserAgent] Executing Web Task: "${task}"`);
 
         const systemPrompt = `You are a Browser Automation Expert.
@@ -21,7 +24,7 @@ Example: { "actions": [ { "type": "goto", "url": "..." }, { "type": "click", "se
 
         try {
             // [DYNAMIC PLANNING] The agent plans its own actions at runtime
-            const plan = await advancedAnalyzeTask(task, systemPrompt);
+            const plan: any = await advancedAnalyzeTask(task, systemPrompt as any);
             
             // [EXECUTION] Call the browser_run tool with the generated actions
             const result = await executeTool('browser_run', { 
@@ -31,11 +34,19 @@ Example: { "actions": [ { "type": "goto", "url": "..." }, { "type": "click", "se
 
             return {
                 ok: result.ok,
-                output: result.output,
+                output: result.output ?? null,
                 error: result.error
             };
         } catch (error: any) {
-            return { ok: false, error: `Browser execution failed: ${error.message}` };
+            return { ok: false, output: null, error: `Browser execution failed: ${error.message}` };
         }
     }
+
+    public canHandle(task: string): number {
+        const t = task.toLowerCase();
+        if (t.includes('browser') || t.includes('web') || t.includes('click') || t.includes('navigate') || t.includes('متصفح')) return 0.9;
+        if (t.includes('search') || t.includes('بحث') || t.includes('افتح')) return 0.7;
+        return 0.1;
+    }
 }
+

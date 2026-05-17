@@ -39,7 +39,7 @@ JSON Format:
 }`;
 
         try {
-            const decision = await advancedAnalyzeTask(task, toolSelectionPrompt);
+            const decision: any = await advancedAnalyzeTask(task, toolSelectionPrompt as any);
             
             if (!decision || !decision.tool) {
                 throw new Error(`Invalid tool decision from LLM: ${JSON.stringify(decision)}`);

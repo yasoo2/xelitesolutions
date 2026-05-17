@@ -108,11 +108,10 @@ async function verifySelfFixTypeScriptRepair() {
     passed = false;
   }
 
-  // Note: AgentLoopService clears selfFixPlan from results if the phase eventually passes
-  if (firstPhaseResult?.selfFixExecution?.ok === true || (firstPhaseResult?.selfFixPlan?.strategy === 'build_fix' && firstPhaseResult?.selfFixPlan?.suggestedTool === 'file_edit')) {
-    console.log('PASS: repair strategy verified');
+  if (firstPhaseResult?.selfFixPlan?.strategy === 'build_fix' && firstPhaseResult?.selfFixPlan?.suggestedTool === 'file_edit') {
+    console.log('PASS: build_fix selected file_edit');
   } else {
-    console.error('FAIL: expected build_fix file_edit plan in execution trace:', firstPhaseResult?.selfFixExecution);
+    console.error('FAIL: expected build_fix file_edit plan:', firstPhaseResult?.selfFixPlan);
     passed = false;
   }
 

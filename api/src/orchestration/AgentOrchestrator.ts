@@ -1,8 +1,8 @@
-import { PlanningEngine, ExecutionNode as PlanNode } from '../core/orchestrator/PlanningEngine';
+import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { executeTool } from '../modules/services/ToolService';
 import { broadcastThinkingDetail } from '../api/ws';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { BaseAgent } from './agents/BaseAgent';
 import { DevAgent } from './agents/DevAgent';
 import { SecurityAgent } from './agents/SecurityAgent';
@@ -10,6 +10,7 @@ import { BrowserAgent } from './agents/BrowserAgent';
 import { ExecutionMemory } from '../core/orchestrator/ExecutionMemory';
 import { traceManager } from '../modules/services/TraceManager';
 import { executionFirewall } from './AgentExecutionFirewall';
+import { advancedAnalyzeTask } from '../core/llm/intelligent-router';
 
 /**
  * Modular Agent Platform - Core Intelligence Layer (REAL Agent Runtime)
@@ -121,12 +122,12 @@ export class AgentOrchestrator {
         traceManager.logEvent(traceId, 'planning', {
             goal: goalText,
             steps_generated: nodes.length,
-            reasoning: rawPlan.reasoning
+            reasoning: (rawPlan as any).reasoning
         });
     }
 
     return {
-      id: uuidv4(),
+      id: randomUUID(),
       nodes,
       status: "idle"
     };
@@ -269,7 +270,7 @@ Available Agents: Dev, Security, Browser, General.
 Return ONLY the agent name.`;
 
     try {
-      const decision = await advancedAnalyzeTask(node.task, prompt);
+      const decision: any = await advancedAnalyzeTask(node.task, prompt as any);
       const agent = typeof decision === 'string' ? decision : (decision.agent || decision.primary || 'General');
       return ['Dev', 'Security', 'Browser', 'General'].includes(agent) ? agent : 'General';
     } catch {
@@ -290,7 +291,7 @@ History: ${history}
 If the last result suggests a better path or a new requirement, set shouldReplan to true.`;
 
     try {
-      const evaluation = await advancedAnalyzeTask(`Evaluate progress for goal: ${dag.id}`, systemPrompt);
+      const evaluation: any = await advancedAnalyzeTask(`Evaluate progress for goal: ${dag.id}`, systemPrompt as any);
       return { shouldReplan: !!evaluation.shouldReplan };
     } catch {
       return { shouldReplan: false };

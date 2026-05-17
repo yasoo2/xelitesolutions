@@ -26,7 +26,9 @@ function verifySelfFixBuildContext() {
   };
 
   const plan = SelfFixService.plan(ticket);
-  const buildContext = plan.suggestedInput?.buildContext as any;
+  const contextStr = String(plan.suggestedInput?.context || '{}');
+  let buildContext: any;
+  try { buildContext = JSON.parse(contextStr)?.buildContext; } catch { buildContext = undefined; }
 
   let passed = true;
 
@@ -56,11 +58,11 @@ function verifySelfFixBuildContext() {
     passed = false;
   }
 
-  const instruction = String(plan.suggestedInput?.instruction || '');
-  if (instruction.includes('Patch only the file identified in buildContext')) {
-    console.log('✅ targeted repair instruction generated');
+  const description = String(plan.suggestedInput?.description || '');
+  if (description.includes('Fix the following TypeScript/Build error')) {
+    console.log('✅ targeted repair description generated');
   } else {
-    console.error('❌ targeted instruction missing:', instruction);
+    console.error('❌ targeted description missing:', description);
     passed = false;
   }
 

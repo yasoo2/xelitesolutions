@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 
 export type TraceEventKind = 'orchestrator' | 'tool' | 'execution' | 'planning';
 
@@ -33,7 +33,7 @@ export class TraceManager {
     }
 
     public startTrace(sessionId: string, goal: string): string {
-        const traceId = `trace-${uuidv4()}`;
+        const traceId = `trace-${randomUUID()}`;
         this.traces.set(traceId, {
             traceId,
             sessionId,

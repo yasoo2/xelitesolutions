@@ -46,7 +46,7 @@ Return ONLY a JSON object:
 
         try {
             // Using advancedAnalyzeTask with explicit system prompt
-            const analysis = await advancedAnalyzeTask(userText, systemPrompt);
+            const analysis: any = await advancedAnalyzeTask(userText, systemPrompt as any);
             
             return {
                 goal: userText,
