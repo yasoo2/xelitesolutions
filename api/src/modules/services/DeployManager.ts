@@ -77,8 +77,8 @@ export class DeployManager {
             priority: 'high'
         });
 
-        if (result.success) {
-            const output = result.data?.output || '';
+        if (result.success && result.data?.ok !== false) {
+            const output = (result.data?.output || '') + (result.data?.error ? '\n' + result.data.error : '');
             if (deploymentId && output) {
                 output.split('\n').forEach(line => {
                     if (line.trim()) this.queueLog(deploymentId, `    > ${line.trim()}`, true);
