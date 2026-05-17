@@ -203,6 +203,9 @@ export class DeployManager {
                 data: { deploymentId: deploymentId, log, ts: Date.now() }
             });
         }
+        
+        // Immediately persist log to DB to prevent loss if process crashes or restarts
+        Deployment.findByIdAndUpdate(deploymentId, { $push: { logs: log } }).catch(() => {});
     }
 
     private async flushLogs() {
@@ -313,16 +316,20 @@ export class DeployManager {
             }
 
             // 5. Restart API
-            this.queueLog(id, `[SYSTEM] Saving stable commit and restarting API...`);
+            this.queueLog(id, `[SYSTEM] Saving stable commit and preparing to restart API...`);
             const finalCommit = await this.getCurrentCommit();
             shadow.writeFileSync(path.join(PROJECT_ROOT, 'last_stable_commit'), finalCommit);
             
-            await this.restartAPIServer();
-            await this.verifyHealth();
-            
+            // Mark as SUCCESS and flush logs BEFORE restarting since the restart will kill this process
             await Deployment.findByIdAndUpdate(id, { status: 'SUCCESS', endTime: new Date() });
             broadcast({ type: 'admin:deploy_status', data: { _id: id, status: 'SUCCESS' } });
             this.queueLog(id, `[SUCCESS] Deployment ${id} completed successfully`);
+            await this.flushLogs();
+            
+            this.queueLog(id, `[SYSTEM] Restarting API now...`);
+            await this.restartAPIServer();
+            // Code below may not execute if the process is killed by systemctl
+            await this.verifyHealth();
         } catch (e: any) {
             await Deployment.findByIdAndUpdate(id, { status: 'FAILED', endTime: new Date(), error: e.message });
             broadcast({ type: 'admin:deploy_status', data: { _id: id, status: 'FAILED', error: e.message } });
