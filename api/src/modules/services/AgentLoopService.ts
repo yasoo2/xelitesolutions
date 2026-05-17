@@ -6,6 +6,7 @@ import { RepairTicketService, type RepairTicket } from './RepairTicketService';
 import { SelfFixService } from './SelfFixService';
 import { SelfFixExecutionService } from './SelfFixExecutionService';
 import { executeTool } from './ToolService';
+import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 
 /**
  * AgentLoopService - Dynamic Runtime Gateway
@@ -88,6 +89,18 @@ export class AgentLoopService {
             return { ok: false, completedPhases: 0, results: [], error: 'No valid phases in planner result' };
         }
 
+        // Wrap in firewall context so ToolService recognizes this as authorized orchestration
+        return executionFirewall.runInContext(undefined, () => this._executePhases(opts));
+    }
+
+    private static async _executePhases(opts: {
+        sessionId: string;
+        runId: string;
+        userId: string;
+        workspaceId: string;
+        plannerResult: any;
+    }) {
+        const { sessionId, runId, userId, workspaceId, plannerResult } = opts;
         const phases = plannerResult.output.phases;
         const projectContext = {
             projectName: plannerResult.output.projectName || 'Unknown',
@@ -115,12 +128,12 @@ export class AgentLoopService {
                 .filter((r: any) => !r.ok)
                 .map((r: any) => ({ task: r.task, tool: r.tool, ok: false, error: r.error }));
 
-            const repairTicket = RepairTicketService.create({
-                phaseNumber: phase.phaseNumber,
-                phaseName: phase.name,
-                status,
-                failedTasks,
-                primaryError: failedTasks[0]?.error || phaseResult?.error || 'Phase did not complete',
+            const repairTicket = RepairTicketService.build({
+                phase,
+                phaseResult,
+                projectName: projectContext.projectName,
+                sessionId,
+                workspaceId,
             });
 
             const selfFixPlan = SelfFixService.plan(repairTicket);
