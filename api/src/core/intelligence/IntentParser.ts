@@ -1,5 +1,5 @@
 import { analyzeContextualIntent, ConversationContext, buildConversationContext } from '../llm/context-engine';
-import { advancedAnalyzeTask, TaskAnalysis } from '../llm/intelligent-router';
+import intelligentRouter from '../llm/intelligent-router';
 
 export interface StructuredIntent {
     goal: string;
@@ -45,8 +45,26 @@ Return ONLY a JSON object:
 }`;
 
         try {
-            // Using advancedAnalyzeTask with explicit system prompt
-            const analysis: any = await advancedAnalyzeTask(userText, systemPrompt as any);
+            const messages = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userText }
+            ];
+            
+            const responseText = await intelligentRouter.routeToModel(messages, {
+                type: 'complex_reasoning',
+                complexity: 'high',
+                requiresTools: false,
+                estimatedTokens: 1000,
+                language: 'en'
+            } as any);
+
+            let analysis: any;
+            try {
+                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+                analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
+            } catch (e) {
+                analysis = {};
+            }
             
             return {
                 goal: userText,

@@ -10,7 +10,7 @@ import { BrowserAgent } from './agents/BrowserAgent';
 import { ExecutionMemory } from '../core/orchestrator/ExecutionMemory';
 import { traceManager } from '../modules/services/TraceManager';
 import { executionFirewall } from './AgentExecutionFirewall';
-import { advancedAnalyzeTask } from '../core/llm/intelligent-router';
+import intelligentRouter from '../core/llm/intelligent-router';
 
 /**
  * Modular Agent Platform - Core Intelligence Layer (REAL Agent Runtime)
@@ -270,7 +270,26 @@ Available Agents: Dev, Security, Browser, General.
 Return ONLY the agent name.`;
 
     try {
-      const decision: any = await advancedAnalyzeTask(node.task, prompt as any);
+      const messages = [
+          { role: 'system', content: prompt },
+          { role: 'user', content: node.task }
+      ];
+      const responseText = await intelligentRouter.routeToModel(messages, {
+          type: 'complex_reasoning',
+          complexity: 'low',
+          requiresTools: false,
+          estimatedTokens: 100,
+          language: 'en'
+      } as any);
+
+      let decision: any;
+      try {
+          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+          decision = jsonMatch ? JSON.parse(jsonMatch[0]) : responseText.trim();
+      } catch (e) {
+          decision = responseText.trim();
+      }
+
       const agent = typeof decision === 'string' ? decision : (decision.agent || decision.primary || 'General');
       return ['Dev', 'Security', 'Browser', 'General'].includes(agent) ? agent : 'General';
     } catch {
@@ -291,7 +310,26 @@ History: ${history}
 If the last result suggests a better path or a new requirement, set shouldReplan to true.`;
 
     try {
-      const evaluation: any = await advancedAnalyzeTask(`Evaluate progress for goal: ${dag.id}`, systemPrompt as any);
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Evaluate progress for goal: ${dag.id}` }
+      ];
+      
+      const responseText = await intelligentRouter.routeToModel(messages, {
+        type: 'complex_reasoning',
+        complexity: 'low',
+        requiresTools: false,
+        estimatedTokens: 100,
+        language: 'en'
+      } as any);
+      
+      let evaluation: any;
+      try {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        evaluation = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
+      } catch (e) {
+        evaluation = {};
+      }
       return { shouldReplan: !!evaluation.shouldReplan };
     } catch {
       return { shouldReplan: false };

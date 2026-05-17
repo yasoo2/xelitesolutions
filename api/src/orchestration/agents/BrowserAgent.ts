@@ -1,6 +1,6 @@
 import { BaseAgent } from './BaseAgent';
 import { executeTool } from '../../modules/services/ToolService';
-import { advancedAnalyzeTask } from '../../core/llm/intelligent-router';
+import intelligentRouter from '../../core/llm/intelligent-router';
 
 /**
  * BrowserAgent - Autonomous Web Interaction Specialist
@@ -23,8 +23,26 @@ Return ONLY a JSON object with an "actions" array.
 Example: { "actions": [ { "type": "goto", "url": "..." }, { "type": "click", "selector": "..." } ] }`;
 
         try {
-            // [DYNAMIC PLANNING] The agent plans its own actions at runtime
-            const plan: any = await advancedAnalyzeTask(task, systemPrompt as any);
+            const messages = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: task }
+            ];
+            
+            const responseText = await intelligentRouter.routeToModel(messages, {
+                type: 'browser_task',
+                complexity: 'medium',
+                requiresTools: true,
+                estimatedTokens: 1000,
+                language: 'en'
+            } as any);
+
+            let plan: any;
+            try {
+                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+                plan = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
+            } catch (e) {
+                plan = { actions: [] };
+            }
             
             // [EXECUTION] Call the browser_run tool with the generated actions
             const result = await executeTool('browser_run', { 

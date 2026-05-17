@@ -1,5 +1,5 @@
 import { executeTool } from '../../modules/services/ToolService';
-import { advancedAnalyzeTask } from '../llm/intelligent-router';
+import intelligentRouter from '../llm/intelligent-router';
 
 /**
  * JoeAgent V2 - Core Task Execution Unit
@@ -39,10 +39,30 @@ JSON Format:
 }`;
 
         try {
-            const decision: any = await advancedAnalyzeTask(task, toolSelectionPrompt as any);
+            const messages = [
+                { role: 'system', content: toolSelectionPrompt },
+                { role: 'user', content: task }
+            ];
+            
+            const responseText = await intelligentRouter.routeToModel(messages, {
+                type: 'code_generation',
+                complexity: 'medium',
+                requiresTools: true,
+                estimatedTokens: 1000,
+                language: 'en'
+            } as any);
+
+            let decision: any;
+            try {
+                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+                decision = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
+            } catch (e) {
+                // If it fails to parse, assume shell_execute as fallback
+                decision = { tool: 'shell_execute', args: { command: task }, reasoning: 'Fallback' };
+            }
             
             if (!decision || !decision.tool) {
-                throw new Error(`Invalid tool decision from LLM: ${JSON.stringify(decision)}`);
+                throw new Error(`Invalid tool decision from LLM: ${responseText}`);
             }
             
             // Ensure CWD is passed for shell tools if not present
