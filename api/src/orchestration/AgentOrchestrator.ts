@@ -309,9 +309,20 @@ If the last result suggests a better path or a new requirement, set shouldReplan
         memory: memory.getHistory() 
     }, traceId);
 
+    const newNodes: ExecutionNode[] = (recoveryPlan.steps as any).map((step: any) => ({
+      id: step.id,
+      traceId,
+      agent: (step.agent as AgentType) || failedNode.agent || "General",
+      task: step.description || step.task || "Recovery task",
+      tool: step.tool,
+      input: step.input,
+      dependencies: step.dependsOn || [],
+      status: "pending"
+    }));
+
     return { 
-        recovered: recoveryPlan.steps.length > 0, 
-        newNodes: (recoveryPlan.steps as any).map((s: any) => ({ ...s, status: 'pending' })) 
+        recovered: newNodes.length > 0, 
+        newNodes 
     };
   }
 
