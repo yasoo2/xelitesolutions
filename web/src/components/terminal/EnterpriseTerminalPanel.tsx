@@ -179,7 +179,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
         <div
             className={`${isEmbedded
                 ? 'w-full h-full'
-                : \`fixed bottom-4 right-4 bg-[#09090b] border border-white/10 rounded-xl shadow-2xl transition-all duration-300 \${isMinimized ? 'w-64 h-12' : 'w-[800px] h-[500px]'}\`
+                : `fixed bottom-4 right-4 bg-[#09090b] border border-white/10 rounded-xl shadow-2xl transition-all duration-300 ${isMinimized ? 'w-64 h-12' : 'w-[800px] h-[500px]'}`
                 } overflow-hidden flex flex-col`}
             style={{ zIndex: isEmbedded ? 1 : 100 }}
         >
@@ -195,7 +195,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                     </div>
                     <div className="h-4 w-[1px] bg-white/10 mx-2"></div>
                     <div className="flex items-center gap-2">
-                        <div className={`w-1.5 h-1.5 rounded-full \${isConnecting ? 'bg-blue-500 animate-pulse' : isReady ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-red-500'}`}></div>
+                        <div className={`w-1.5 h-1.5 rounded-full ${isConnecting ? 'bg-blue-500 animate-pulse' : isReady ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-red-500'}`}></div>
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
                             {isConnecting ? 'Connecting' : isReady ? 'Connected' : 'Offline'}
                         </span>
@@ -246,7 +246,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
             )}
             
             {/* Global Styles for xterm overrides */}
-            <style>{\`
+            <style>{`
                 .xterm-viewport {
                     scrollbar-width: thin;
                     scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
@@ -261,7 +261,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                     background-color: rgba(255, 255, 255, 0.1);
                     border-radius: 4px;
                 }
-            \`}</style>
+            `}</style>
         </div>
     );
 }
