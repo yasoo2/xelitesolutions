@@ -564,9 +564,26 @@ export default function DeploymentsPage() {
                                     <button
                                         className="copy-logs-btn"
                                         onClick={() => {
-                                            const text = liveLogs.join('\n');
-                                            navigator.clipboard.writeText(text);
-                                            alert('Logs copied to clipboard');
+                                            try {
+                                                const text = liveLogs.join('\n');
+                                                if (navigator.clipboard && window.isSecureContext) {
+                                                    navigator.clipboard.writeText(text).catch(() => {});
+                                                } else {
+                                                    const textArea = document.createElement("textarea");
+                                                    textArea.value = text;
+                                                    textArea.style.position = "fixed";
+                                                    textArea.style.left = "-999999px";
+                                                    textArea.style.top = "-999999px";
+                                                    document.body.appendChild(textArea);
+                                                    textArea.focus();
+                                                    textArea.select();
+                                                    document.execCommand("copy");
+                                                    textArea.remove();
+                                                }
+                                                alert('Logs copied to clipboard!');
+                                            } catch (e) {
+                                                alert('Failed to copy logs');
+                                            }
                                         }}
                                         title="Copy all logs"
                                     >
