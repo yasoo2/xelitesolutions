@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import { logger } from '../../shared/utils/logger';
+import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 
 const router = Router();
 const PROJECT_PATH = '/root/xelitesolutions';
@@ -9,15 +10,17 @@ const API_PATH = `${PROJECT_PATH}/api`;
 let isUpdating = false;
 
 async function runCommand(command: string, args: string[], cwd: string): Promise<string> {
-    const result = await ExecutionGateway.execute(command, args, { 
-        cwd,
-        env: { 
-            ...process.env, 
-            PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/root/.nvm/versions/node/v20/bin'
-        }
+    return await executionFirewall.runAsSystem(async () => {
+        const result = await ExecutionGateway.execute(command, args, { 
+            cwd,
+            env: { 
+                ...process.env, 
+                PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/root/.nvm/versions/node/v20/bin'
+            }
+        });
+        if (result.ok) return result.output || '';
+        throw new Error(result.error || result.output || 'Command failed');
     });
-    if (result.ok) return result.output || '';
-    throw new Error(result.error || result.output || 'Command failed');
 }
 
 /**
@@ -96,11 +99,13 @@ async function performUpdate(targetCommit: string) {
         await new Promise(r => setTimeout(r, 3000));
 
         // Use Gateway for detached restart
-        await ExecutionGateway.execute('node', ['dist/index.js'], {
-            cwd: API_PATH,
-            env: { ...process.env, NODE_ENV: 'production' },
-            detached: true,
-            stdio: 'ignore'
+        await executionFirewall.runAsSystem(async () => {
+            return await ExecutionGateway.execute('node', ['dist/index.js'], {
+                cwd: API_PATH,
+                env: { ...process.env, NODE_ENV: 'production' },
+                detached: true,
+                stdio: 'ignore'
+            });
         });
 
         logger.info(`[PingDeploy] Server restart requested via Gateway`);

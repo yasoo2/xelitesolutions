@@ -1,6 +1,7 @@
 
 import { executionEngine, ExecutionRequest, ExecutionResult } from './ExecutionEngine';
 import { logger } from '../shared/utils/logger';
+import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 
 /**
  * ExecutionGateway
@@ -14,6 +15,9 @@ export class ExecutionGateway {
      * Supports both (request: ExecutionRequest) and (command: string, args?: string[], options?: any).
      */
     static async execute(requestOrCommand: ExecutionRequest | string, args: string[] = [], options: any = {}): Promise<ExecutionResult> {
+        // [FIREWALL] Enforce strict, centralized single-brain orchestration context authorization
+        executionFirewall.validateExecution('ExecutionGateway:execute');
+
         const start = Date.now();
         let request: ExecutionRequest;
 

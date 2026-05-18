@@ -38,15 +38,15 @@ class AgentExecutionFirewall {
      * Validates that the current execution context is authorized.
      * Throws an error if direct execution bypass is detected.
      */
-    public validateExecution(component: string, metadata: any = {}): void {
+    public validateExecution(component: string): void {
         const store = this.context.getStore();
         const isAuthorized = store?.isOrchestrator === true;
 
         if (isAuthorized) {
-            const contextType = (store as any)?.isSystem ? 'SYSTEM' : 'AGENT';
+            const contextType = store?.isSystem ? 'SYSTEM' : 'AGENT';
             logger.debug(`[FIREWALL] [ALLOWED] ${component} - type=${contextType} traceId=${store?.traceId || 'none'}`);
         } else {
-            logger.error(`[FIREWALL] [BLOCKED] ${component} - Direct execution bypass detected! Metadata: ${JSON.stringify(metadata)}`);
+            logger.error(`[FIREWALL] [BLOCKED] ${component} - Direct execution bypass detected! Context: ${JSON.stringify(store || null)}`);
             throw new Error(`Execution bypass detected in ${component}. All execution must go through AgentOrchestrator.coordinate().`);
         }
     }

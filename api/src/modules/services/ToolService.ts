@@ -134,7 +134,7 @@ function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' |
 
 export async function executeTool(name: string, input: any, context?: ToolContext) {
     // [FIREWALL] Strict Single Brain Enforcement
-    executionFirewall.validateExecution(`ToolService:${name}`, { input, sessionId: context?.sessionId });
+    executionFirewall.validateExecution(`ToolService:${name}`);
     const logs: string[] = [];
     const t0 = Date.now();
     let effectiveName = name;

@@ -4,6 +4,7 @@ import { Deployment } from '../../shared/models/deployment';
 import { deployManager } from '../../modules/services/DeployManager';
 import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import { User } from '../../shared/models/user';
+import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { logger } from '../../shared/utils/logger';
 import os from 'os';
 import mongoose from 'mongoose';
@@ -83,7 +84,9 @@ router.post('/autodeploy/toggle', async (req, res) => {
 // Safe container listing - uses Gateway
 router.get('/system/containers', async (req, res) => {
     try {
-        const result = await ExecutionGateway.execute('docker', ['ps', '--format', '{{json .}}']);
+        const result = await executionFirewall.runAsSystem(async () => {
+            return await ExecutionGateway.execute('docker', ['ps', '--format', '{{json .}}']);
+        });
         if (!result.ok) throw new Error(result.error);
         
         const containers = (result.output || '').trim().split('\n').map(l => {
@@ -140,14 +143,18 @@ router.get('/system/health', async (req, res) => {
 
         let diskInfo = 'Unknown';
         try {
-            const diskRes = await ExecutionGateway.execute("df -h / | awk 'NR==2{printf \"%s/%s (%s)\", $3,$2,$5}'");
+            const diskRes = await executionFirewall.runAsSystem(async () => {
+                return await ExecutionGateway.execute("df -h / | awk 'NR==2{printf \"%s/%s (%s)\", $3,$2,$5}'");
+            });
             if (diskRes.ok) diskInfo = (diskRes.output || '').trim();
         } catch { }
 
         // Docker stats
         let containers: any[] = [];
         try {
-            const dockerRes = await ExecutionGateway.execute('docker', ['ps', '--format', '{{json .}}']);
+            const dockerRes = await executionFirewall.runAsSystem(async () => {
+                return await ExecutionGateway.execute('docker', ['ps', '--format', '{{json .}}']);
+            });
             if (dockerRes.ok) {
                 containers = (dockerRes.output || '').split('\n').map(l => {
                     try { return JSON.parse(l); } catch { return null; }
@@ -158,7 +165,9 @@ router.get('/system/health', async (req, res) => {
         // Systemd status
         let apiServiceStatus = 'unknown';
         try {
-            const serviceRes = await ExecutionGateway.execute('systemctl', ['is-active', 'joe-api.service']);
+            const serviceRes = await executionFirewall.runAsSystem(async () => {
+                return await ExecutionGateway.execute('systemctl', ['is-active', 'joe-api.service']);
+            });
             apiServiceStatus = (serviceRes.output || '').trim() || (serviceRes.ok ? 'active' : 'inactive');
         } catch { 
             apiServiceStatus = 'inactive';
@@ -230,7 +239,9 @@ router.get('/system/backups', async (req, res) => {
 router.post('/system/backup', async (req, res) => {
     try {
         const backupScript = path.join(process.cwd(), 'scripts', 'backup.sh');
-        const result = await ExecutionGateway.execute('bash', [backupScript], { cwd: process.cwd() });
+        const result = await executionFirewall.runAsSystem(async () => {
+            return await ExecutionGateway.execute('bash', [backupScript], { cwd: process.cwd() });
+        });
         
         if (result.ok) {
             res.json({ message: 'Backup completed successfully', output: result.output });

@@ -3,6 +3,7 @@ import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import fs from 'fs';
 import path from 'path';
 import { authenticate } from '../middleware/auth';
+import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 
 const router = Router();
 
@@ -19,21 +20,23 @@ function isValidNpmPackageName(name: string) {
 }
 
 async function spawnWithTimeout(cmd: string, args: string[], cwd: string, timeoutMs: number) {
-    const result = await ExecutionGateway.execute({
-        id: `npm_${Date.now()}`,
-        type: 'shell',
-        payload: {
-            command: `${cmd} ${args.join(' ')}`,
-            options: { cwd, timeout: timeoutMs, shell: true }
-        },
-        priority: 'normal'
-    });
+    return await executionFirewall.runAsSystem(async () => {
+        const result = await ExecutionGateway.execute({
+            id: `npm_${Date.now()}`,
+            type: 'shell',
+            payload: {
+                command: `${cmd} ${args.join(' ')}`,
+                options: { cwd, timeout: timeoutMs, shell: true }
+            },
+            priority: 'normal'
+        });
 
-    return {
-        code: result.data?.exitCode ?? (result.success ? 0 : 1),
-        stdout: result.data?.output || '',
-        stderr: result.data?.error || result.error || ''
-    };
+        return {
+            code: result.data?.exitCode ?? (result.success ? 0 : 1),
+            stdout: result.data?.output || '',
+            stderr: result.data?.error || result.error || ''
+        };
+    });
 }
 
 // GET /packages - List installed packages

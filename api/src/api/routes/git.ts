@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import path from 'path';
 import { authenticate } from '../middleware/auth';
+import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 
 const router = Router();
 
@@ -23,13 +24,15 @@ function isSafeRepoPath(p: string) {
 
 async function gitExec(args: string[]) {
     const cwd = findWorkspaceRoot();
-    const result = await ExecutionGateway.execute('git', args, { cwd, timeout: 30000 });
-    return {
-        ok: result.ok,
-        stdout: result.output || '',
-        stderr: result.error || '',
-        error: result.ok ? undefined : (result.error || 'Git command failed')
-    };
+    return await executionFirewall.runAsSystem(async () => {
+        const result = await ExecutionGateway.execute('git', args, { cwd, timeout: 30000 });
+        return {
+            ok: result.ok,
+            stdout: result.output || '',
+            stderr: result.error || '',
+            error: result.ok ? undefined : (result.error || 'Git command failed')
+        };
+    });
 }
 
 // GET /git/status
