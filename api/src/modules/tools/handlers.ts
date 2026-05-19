@@ -42,7 +42,7 @@ export async function handleShellCommand(
     });
 
     return {
-        ok: result.success,
+        ok: result.success && result.data?.ok !== false,
         output: result.data?.output || '',
         error: result.error || result.data?.error || '',
         logs

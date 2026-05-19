@@ -102,6 +102,7 @@ async function verifySelfHealingLoop() {
     console.log('\n✨ Verification Complete. Status:', testPassed ? 'PASSED' : 'FAILED');
     
     if (!testPassed) process.exit(1);
+    process.exit(0);
 }
 
 verifySelfHealingLoop().catch(e => {

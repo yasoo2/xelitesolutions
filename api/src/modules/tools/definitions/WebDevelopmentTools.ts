@@ -510,9 +510,9 @@ export class DevServerTool extends BaseTool {
                 shell: true
             });
 
-            if (!result.ok && result.exitCode !== null) {
-                logs.push(`dev_server_failed_to_start exitCode=${result.exitCode} error=${result.error}`);
-                return { ok: false, error: `Dev server failed to start: ${result.error}`, logs };
+            if (!result.success || (result.data && result.data.ok === false)) {
+                logs.push(`dev_server_failed_to_start exitCode=${result.data?.exitCode} error=${result.error || result.data?.error}`);
+                return { ok: false, error: `Dev server failed to start: ${result.error || result.data?.error}`, logs };
             }
 
             // Wait for server to actually start (up to 30 seconds)

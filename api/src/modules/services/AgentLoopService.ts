@@ -166,6 +166,31 @@ export class AgentLoopService {
             return { ok: false, completedPhases, results, repairTicket, selfFixPlan, selfFixExecution };
         }
 
-        return { ok: true, completedPhases, results };
+        const pipelineResult: any = {
+            ok: true,
+            completedPhases,
+            results
+        };
+
+        try {
+            const reportResult = await executeTool('joe_engineering_report', {
+                pipelineResult,
+                includeMarkdown: true,
+            }, {
+                sessionId,
+                workspaceId,
+                userId: userId ? String(userId) : undefined,
+            });
+            if (reportResult?.ok) {
+                pipelineResult.engineeringReport = reportResult.output?.report;
+                pipelineResult.engineeringReportMarkdown = reportResult.output?.markdown;
+            } else {
+                pipelineResult.engineeringReportError = reportResult?.error || 'engineering_report_failed';
+            }
+        } catch (reportError: any) {
+            pipelineResult.engineeringReportError = String(reportError?.message || reportError || 'engineering_report_failed');
+        }
+
+        return pipelineResult;
     }
 }

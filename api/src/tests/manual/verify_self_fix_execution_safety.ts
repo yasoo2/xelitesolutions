@@ -71,6 +71,7 @@ async function verifySelfFixExecutionSafety() {
 
   console.log('\n✨ Verification Complete. Status:', passed ? 'PASSED' : 'FAILED');
   if (!passed) process.exit(1);
+  process.exit(0);
 }
 
 verifySelfFixExecutionSafety().catch(e => {

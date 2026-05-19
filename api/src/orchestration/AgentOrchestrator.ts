@@ -82,7 +82,7 @@ export class AgentOrchestrator {
 
     // 2. Adaptive Coordination Execution
     const result = await executionFirewall.runInContext(goal.traceId, () => {
-        return this.coordinate(dag, runtimeMemory, goal.traceId);
+        return this.coordinate(dag, runtimeMemory, goal.context, goal.traceId);
     });
     
     if (goal.traceId) {
@@ -138,7 +138,12 @@ export class AgentOrchestrator {
    * Executes DAG, evaluates progress after each step, and re-plans if needed.
    * This is the "Main Execution Brain" of the runtime.
    */
-  private async coordinate(dag: AgentDAG, memory: ExecutionMemory, traceId?: string): Promise<{ ok: boolean; result: any }> {
+  private async coordinate(
+    dag: AgentDAG,
+    memory: ExecutionMemory,
+    goalContext?: Record<string, any>,
+    traceId?: string
+  ): Promise<{ ok: boolean; result: any }> {
     dag.status = "running";
     const completedNodes = new Set<string>();
 
@@ -187,11 +192,19 @@ export class AgentOrchestrator {
         const agent = this.agents.get(node.agent);
         let result;
 
+        const executionContext = {
+            sessionId: goalContext?.sessionId || dag.id,
+            workspaceId: goalContext?.workspaceId,
+            userId: goalContext?.userId,
+            traceId,
+            memory: memory.getHistory()
+        };
+
         try {
           if (agent) {
-            result = await agent.execute(node.task, node.input, { sessionId: dag.id, memory: memory.getHistory(), traceId });
+            result = await agent.execute(node.task, node.input, executionContext);
           } else {
-            result = await executeTool(node.tool, { ...node.input, context: memory.getHistory() }, { sessionId: dag.id, traceId });
+            result = await executeTool(node.tool, { ...node.input, context: memory.getHistory() }, executionContext);
           }
         } catch (err: any) {
           result = { ok: false, error: err.message };

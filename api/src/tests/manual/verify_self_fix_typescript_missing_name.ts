@@ -131,6 +131,7 @@ async function verifySelfFixTypeScriptMissingName() {
 
   console.log('\nVerification Complete. Status:', passed ? 'PASSED' : 'FAILED');
   if (!passed) process.exit(1);
+  process.exit(0);
 }
 
 verifySelfFixTypeScriptMissingName().catch(e => {

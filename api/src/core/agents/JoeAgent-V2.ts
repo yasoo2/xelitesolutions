@@ -70,7 +70,12 @@ JSON Format:
                 decision.args.cwd = this.rootDir;
             }
 
-            const result = await executeTool(decision.tool, decision.args, { sessionId: context.sessionId, traceId: context.traceId });
+            const result = await executeTool(decision.tool, decision.args, { 
+                sessionId: context.sessionId, 
+                workspaceId: context.workspaceId,
+                userId: context.userId,
+                traceId: context.traceId 
+            });
             
             return {
                 ok: result.ok,

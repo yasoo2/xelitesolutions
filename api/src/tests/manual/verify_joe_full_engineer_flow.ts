@@ -101,26 +101,29 @@ if (content.includes('number = "10"')) {
 
     const { executeTool } = await import('../../modules/services/ToolService');
     const { AgentLoopService } = await import('../../modules/services/AgentLoopService');
+    const { executionFirewall } = await import('../../orchestration/AgentExecutionFirewall');
 
     const sessionId = 'test-session-e2e-' + Date.now();
     const workspaceId = 'task-manager-workspace';
     const userId = 'engineer-joe';
 
     try {
-        console.log('📋 Running ProjectPlannerTool...');
-        const plannerResult = await executeTool('project_planner', {
-            projectDescription: 'Build a small task manager app.'
-        }, { sessionId, workspaceId, userId });
+        const pipelineResult = await executionFirewall.runAsSystem(async () => {
+            console.log('📋 Running ProjectPlannerTool...');
+            const plannerResult = await executeTool('project_planner', {
+                projectDescription: 'Build a small task manager app.'
+            }, { sessionId, workspaceId, userId });
 
-        if (!plannerResult.ok) throw new Error(`Planner failed: ${plannerResult.error}`);
+            if (!plannerResult.ok) throw new Error(`Planner failed: ${plannerResult.error}`);
 
-        console.log('🚀 Running AgentLoopService orchestrator...');
-        const pipelineResult: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({
-            sessionId,
-            runId: 'full-flow-run',
-            userId,
-            workspaceId,
-            plannerResult
+            console.log('🚀 Running AgentLoopService orchestrator...');
+            return await (AgentLoopService as any).runPlannedPhasesIfPresent({
+                sessionId,
+                runId: 'full-flow-run',
+                userId,
+                workspaceId,
+                plannerResult
+            });
         });
 
         let passed = true;
@@ -175,7 +178,7 @@ if (content.includes('number = "10"')) {
 
         console.log('\n✨ Full Engineer Flow Verification:', passed ? 'PASSED' : 'FAILED');
         if (!passed) process.exit(1);
-
+        process.exit(0);
     } finally {
         (llm as any).callLLM = originalCallLLM;
     }

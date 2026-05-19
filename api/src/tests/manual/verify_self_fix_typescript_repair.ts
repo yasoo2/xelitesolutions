@@ -138,6 +138,7 @@ async function verifySelfFixTypeScriptRepair() {
 
   console.log('\nVerification Complete. Status:', passed ? 'PASSED' : 'FAILED');
   if (!passed) process.exit(1);
+  process.exit(0);
 }
 
 verifySelfFixTypeScriptRepair().catch(e => {

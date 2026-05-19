@@ -122,6 +122,7 @@ async function verifySelfFixTypeScriptNumberToString() {
 
   console.log('\nVerification Complete. Status:', passed ? 'PASSED' : 'FAILED');
   if (!passed) process.exit(1);
+  process.exit(0);
 }
 
 verifySelfFixTypeScriptNumberToString().catch(e => {

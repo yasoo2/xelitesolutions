@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../shared/utils/logger';
 import { traceManager } from '../modules/services/TraceManager';
+import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 
 export interface ExecutionRequest {
     id: string;
