@@ -723,7 +723,15 @@ export async function routeToModel(
             // [ELITE FIX] If Gemini/Google selected but no key, fallback to free DeepSeek/Pollinations immediately
             if ((cfgProvider === 'gemini' || cfgProvider === 'google') && !effectiveApiKey) {
                 console.warn(`[IntelligentRouter] Gemini selected but no key found. Falling back to DeepSeek (Free).`);
-                return await deepSeekProvider.chatComplete(flatMessages, undefined, tools);
+                try {
+                    const res = await deepSeekProvider.chatComplete(flatMessages, undefined, 3, tools);
+                    if (res) return res;
+                    console.warn(`[IntelligentRouter] DeepSeek returned empty, trying Pollinations...`);
+                    return await pollinationsProvider.chatComplete(flatMessages, undefined, 3, tools);
+                } catch (e) {
+                    console.error(`[IntelligentRouter] Fallback failed, trying Pollinations...`);
+                    return await pollinationsProvider.chatComplete(flatMessages, undefined, 3, tools);
+                }
             }
                  
             const effectiveBaseUrl = cfgBaseUrl?.trim() || 

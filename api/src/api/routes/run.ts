@@ -27,8 +27,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 
     try {
         const traceId = traceManager.startTrace(sessionId || 'anonymous', text);
-        // Delegate to the unified autonomous runtime
-        const result = await AgentLoopService.execute(text, { 
+        
+        // Generate a runId immediately so we can return it
+        const tempRunId = `run-${Date.now()}`;
+        
+        // [ELITE FIX] Make execution non-blocking to prevent Nginx timeouts and frontend hang
+        // The background process will handle its own errors and broadcast status via WS
+        AgentLoopService.execute(text, { 
             sessionId, 
             userId,
             traceId,
@@ -38,12 +43,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                 apiKey,
                 baseUrl
             }
+        }).catch(err => {
+            console.error(`[RunRoute] Background execution fatal error:`, err);
         });
 
+        // Return immediately so the frontend can start listening for WS updates
         return res.json({
-            ok: result.ok,
-            runId: result.result?.runId,
-            data: result.result,
+            ok: true,
+            runId: tempRunId,
             traceId
         });
     } catch (error: any) {
