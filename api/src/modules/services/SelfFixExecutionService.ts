@@ -20,6 +20,7 @@ export interface SelfFixExecutionInput {
     userId?: string;
     onProgress?: (message: string) => void;
     onThought?: (message: string) => void;
+    modelConfig?: any;
   };
 }
 

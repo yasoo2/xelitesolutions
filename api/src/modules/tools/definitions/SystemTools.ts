@@ -13,9 +13,9 @@ import { executionEngine } from '../../../kernel/ExecutionEngine';
 const backgroundProcesses = new Map<string, { pid: number, command: string, startTime: number, process: any }>();
 
 // Helper
-function getWorkspaceRoot() {
+function getWorkspaceRoot(workspaceId?: string) {
     try {
-        const active = workspaceService.getActiveRoot();
+        const active = workspaceService.getActiveRoot(workspaceId);
         if (active) return active;
     } catch { }
 
@@ -30,16 +30,16 @@ function getWorkspaceRoot() {
     return cwd;
 }
 
-function resolveToolPath(p: string) {
+function resolveToolPath(p: string, workspaceId?: string) {
     const val = String(p ?? '').trim();
-    if (!val) return getWorkspaceRoot(); // Empty path = workspace root
+    if (!val) return getWorkspaceRoot(workspaceId); // Empty path = workspace root
     if (path.isAbsolute(val)) return val;
 
     let root: string;
     try {
-        root = workspaceService.getActiveRoot() || getWorkspaceRoot();
+        root = workspaceService.getActiveRoot(workspaceId) || getWorkspaceRoot(workspaceId);
     } catch {
-        root = getWorkspaceRoot();
+        root = getWorkspaceRoot(workspaceId);
     }
 
     const abs = path.resolve(root, val);
@@ -134,12 +134,12 @@ export class FileEditTool extends BaseTool {
     rateLimitPerMinute = 60;
     auditFields = ['filename'];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const logs: string[] = [];
         const filename = String(input?.filename ?? input?.path ?? '');
         const find = String(input?.find ?? '');
         const replace = String(input?.replace ?? '');
-        const full = resolveToolPath(filename);
+        const full = resolveToolPath(filename, context?.workspaceId);
 
         if (!fs.existsSync(full)) {
             console.error(`[file_edit] File not found. input.filename: ${filename}, resolved full path: ${full}`);
@@ -194,12 +194,12 @@ export class WriteFileTool extends BaseTool {
     rateLimitPerMinute = 60;
     auditFields = ['filename'];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const logs: string[] = [];
         const rawPath = String(input?.filename || input?.path || '').trim();
         const content = String(input?.content ?? '');
         if (!rawPath) return { ok: false, error: 'filename or path is required', logs: [] };
-        const full = resolveToolPath(rawPath);
+        const full = resolveToolPath(rawPath, context?.workspaceId);
 
         const dir = path.dirname(full);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -245,11 +245,11 @@ export class LsTool extends BaseTool {
     rateLimitPerMinute = 120;
     auditFields = ['path'];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const logs: string[] = [];
         const p = String(input?.path ?? '.');
         const includeHidden = Boolean(input?.includeHidden);
-        const full = resolveToolPath(p);
+        const full = resolveToolPath(p, context?.workspaceId);
 
         try {
             const names = fs.readdirSync(full, { withFileTypes: true })
@@ -285,13 +285,13 @@ export class GrepSearchTool extends BaseTool {
     rateLimitPerMinute = 60;
     auditFields = ['query', 'path'];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const logs: string[] = [];
         const query = String(input?.query ?? '');
         const searchPath = String(input?.path ?? '.');
         const include = String(input?.include ?? '');
         const exclude = String(input?.exclude ?? '');
-        const workDir = resolveToolPath(searchPath);
+        const workDir = resolveToolPath(searchPath, context?.workspaceId);
 
         try {
             const hasGnuGrepRes = await executionEngine.execute({
@@ -433,11 +433,11 @@ export class ScaffoldProjectTool extends BaseTool {
     permissions: ToolPermission[] = ['write'];
     sideEffects: ToolPermission[] = ['write'];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const logs: string[] = [];
         const structure = input?.structure || {};
         const baseDir = String(input?.baseDir || input?.name || '.');
-        const resolvedBase = resolveToolPath(baseDir);
+        const resolvedBase = resolveToolPath(baseDir, context?.workspaceId);
         const created: string[] = [];
         const errors: string[] = [];
 
@@ -517,7 +517,7 @@ export class ShellExecuteTool extends BaseTool {
             return { ok: false, error: 'command_not_allowed', logs };
         }
 
-        const root = getWorkspaceRoot();
+        const root = getWorkspaceRoot(context?.workspaceId);
         const stateFile = path.join(root, '.joe', 'shell_state.json');
         if (!cwdInput && fs.existsSync(stateFile)) {
             try {
@@ -526,7 +526,7 @@ export class ShellExecuteTool extends BaseTool {
             } catch { }
         }
 
-        const workDir = cwdInput ? resolveToolPath(cwdInput) : root;
+        const workDir = cwdInput ? resolveToolPath(cwdInput, context?.workspaceId) : root;
 
         try {
             if (background) {

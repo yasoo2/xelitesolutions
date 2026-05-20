@@ -4,6 +4,7 @@ import { workspaceService } from '../services/WorkspaceService';
 
 export interface ResolvePathOptions {
     sandbox?: boolean; // If true, forces path into buildsDir/workspace-default if no active workspace
+    workspaceId?: string;
 }
 
 /**
@@ -15,7 +16,7 @@ export function resolveToolPath(p: string, options: ResolvePathOptions = {}) {
     if (path.isAbsolute(val)) return val;
 
     // Use active workspace root if available
-    const activeRoot = workspaceService.getActiveRoot();
+    const activeRoot = workspaceService.getActiveRoot(options.workspaceId);
 
     // [Wakil 6.8] Standardized Robust Project Root Detection
     let projectRoot = process.cwd();

@@ -83,6 +83,7 @@ export class AgentLoopService {
         userId: string;
         workspaceId: string;
         plannerResult: any;
+        modelConfig?: any;
     }) {
         const { sessionId, runId, userId, workspaceId, plannerResult } = opts;
 
@@ -100,8 +101,9 @@ export class AgentLoopService {
         userId: string;
         workspaceId: string;
         plannerResult: any;
+        modelConfig?: any;
     }) {
-        const { sessionId, runId, userId, workspaceId, plannerResult } = opts;
+        const { sessionId, runId, userId, workspaceId, plannerResult, modelConfig } = opts;
         const phases = plannerResult.output.phases;
         const projectContext = {
             projectName: plannerResult.output.projectName || 'Unknown',
@@ -110,7 +112,7 @@ export class AgentLoopService {
             workspaceId,
             userId,
         };
-        const executionContext = { sessionId, workspaceId, userId };
+        const executionContext = { sessionId, workspaceId, userId, modelConfig };
         const results: any[] = [];
         let completedPhases = 0;
 
