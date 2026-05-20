@@ -4,14 +4,14 @@ services:
     container_name: joe_mongo
     restart: unless-stopped
     volumes:
-      - ./data/mongo:/data/db
+      - ../data/mongo:/data/db
     ports:
       - "27017:27017"
     networks: [ joe_net ]
 
   api:
     build:
-      context: ./api
+      context: ../api
       dockerfile: Dockerfile
     container_name: joe_api
     restart: unless-stopped
@@ -22,7 +22,7 @@ services:
       - BROWSER_WS_ENDPOINT=ws://browser-worker:5050/ws
       - WORKER_API_KEY=joe_secret_browser_key
     env_file:
-      - .env
+      - ../.env
     depends_on:
       - mongo
       - browser-worker
@@ -38,7 +38,7 @@ services:
 
   browser-worker:
     build:
-      context: ./services/joe-browser-worker
+      context: ../services/joe-browser-worker
       dockerfile: Dockerfile
     container_name: joe_browser_worker
     restart: unless-stopped
@@ -57,7 +57,7 @@ services:
 
   web:
     build:
-      context: ./web
+      context: ../web
       dockerfile: Dockerfile
       args:
         - VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
@@ -70,7 +70,7 @@ services:
       - "8080:80"
     networks: [ joe_net ]
     env_file:
-      - .env
+      - ../.env
 
   nginx:
     image: nginx:alpine

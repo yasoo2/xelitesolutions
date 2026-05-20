@@ -41,7 +41,7 @@ services:
       - joe-network
 
   browser-worker:
-    build: ./services/joe-browser-worker
+    build: ../services/joe-browser-worker
     container_name: joe_browser_worker
     restart: always
     mem_limit: 512m
