@@ -95,18 +95,19 @@ Return ONLY a JSON array of steps:
         }
 
         // Emergency Fallback (Dynamic but minimal)
+        console.warn(`[PlanningEngine] Using failover node for: ${intent.goal}`);
         return {
             id: `failover_${Date.now()}`,
             goal: intent.goal,
             steps: [{
                 id: 'recovery_node',
-                description: `Analyze and execute: ${intent.goal}`,
-                tool: 'shell_execute',
-                agent: intent.suggestedAgent,
-                input: { instruction: intent.goal },
+                description: `Respond to: ${intent.goal}`,
+                tool: 'central_answer', // Use central_answer instead of shell_execute
+                agent: intent.suggestedAgent || 'General',
+                input: { question: intent.goal }, // Use question for central_answer
                 dependsOn: []
             }],
-            metadata: { complexity: 'medium', riskLevel: 'low' }
+            metadata: { complexity: 'low', riskLevel: 'low' }
         };
     }
 }

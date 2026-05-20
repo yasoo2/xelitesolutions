@@ -57,7 +57,7 @@ Your goal is to build the extraordinary.`;
             const answer = await routeToModel([
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: question }
-            ]);
+            ], undefined, undefined, undefined, undefined, undefined, undefined, context);
 
             return {
                 ok: true,

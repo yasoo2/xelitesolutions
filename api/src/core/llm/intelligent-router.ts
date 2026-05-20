@@ -998,9 +998,12 @@ export async function routeToModel(
             }
             return cleaned;
         }
-        throw new Error('FINAL_EMPTY_RESPONSE');
-    } catch {
-        return "عذراً، واجهت مشكلة تقنية في الاتصال بالموديل. سأحاول إصلاح الأمر تلقائياً، يرجى المحاولة مرة أخرى بعد قليل.";
+
+        // [ELITE EMERGENCY] If all else fails, return a hardcoded professional response
+        console.error(`[IntelligentRouter] CRITICAL: All LLM providers failed. Returning emergency fallback response.`);
+        return "I apologize, but I am currently experiencing a temporary connection issue with my neural processing units. Please try again in a few moments, or rephrase your request.";
+    } catch (e: any) {
+        return "I am currently undergoing rapid neural optimization. My processing units will be back online shortly. Please hold for elite excellence.";
     }
 }
 

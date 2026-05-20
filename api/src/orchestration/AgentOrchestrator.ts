@@ -36,6 +36,7 @@ export type ExecutionNode = {
   dependencies: string[];
   status: "pending" | "running" | "completed" | "failed";
   result?: any;
+  retryCount?: number;
 };
 
 export type AgentDAG = {
@@ -255,11 +256,19 @@ export class AgentOrchestrator {
           }
 
           // [DECISION] Intelligent recovery attempt
+          const currentRetryCount = node.retryCount || 0;
+          if (currentRetryCount >= 2) {
+            console.error(`[AgentOrchestrator] Max retries reached for node: ${node.id}`);
+            return { ok: false, result: result.error || "Fatal execution error: Max retries reached" };
+          }
+
           const recoveryResult = await this.attemptRecovery(node, result.error, memory, dag, traceId);
           if (recoveryResult.recovered) {
             broadcastThinkingDetail(memory.sessionId, `⚠️ Recovering from failure in "${node.task}". Injecting repair nodes...`);
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_attempted', nodeId: node.id, status: 'recovered' });
-            dag.nodes = [...dag.nodes, ...recoveryResult.newNodes];
+            
+            const nodesWithRetry = recoveryResult.newNodes.map(n => ({ ...n, retryCount: currentRetryCount + 1 }));
+            dag.nodes = [...dag.nodes, ...nodesWithRetry];
             continue;
           }
 

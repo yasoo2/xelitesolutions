@@ -91,6 +91,7 @@ export const tools: ToolDefinition[] = [
 
   createTool(ProjectPlannerTool),
   createTool(PhaseExecutorTool),
+  createTool(CentralAnswerTool),
   createTool(AutoTesterTool),
   createTool(CodeReviewerTool),
   createTool(SecurityScannerTool),
