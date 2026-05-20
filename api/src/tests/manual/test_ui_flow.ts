@@ -46,7 +46,7 @@ async function run() {
 
     try {
         console.log("Navigating to login page...");
-        await page.goto('http://joe_web/login', { waitUntil: 'networkidle', timeout: 30000 });
+        await page.goto('http://joe_nginx/login', { waitUntil: 'networkidle', timeout: 30000 });
         await page.screenshot({ path: path.join(screenshotDir, '01_login_page.png') });
 
         console.log("Filling login credentials...");
@@ -58,12 +58,12 @@ async function run() {
         await page.click('button[type="submit"]');
 
         console.log("Waiting for navigation to dashboard/IDE...");
-        await page.waitForTimeout(6000);
+        await page.waitForTimeout(12000);
         await page.screenshot({ path: path.join(screenshotDir, '03_dashboard_loaded.png') });
 
         console.log("Locating prompt input...");
         const textarea = page.locator('textarea.main-input');
-        await textarea.waitFor({ state: 'visible', timeout: 10000 });
+        await textarea.waitFor({ state: 'visible', timeout: 15000 });
 
         console.log("Typing prompt: 'من انت؟'...");
         await textarea.fill('من انت؟');
