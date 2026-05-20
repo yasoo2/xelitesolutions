@@ -1,0 +1,106 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: joe_mongo
+    restart: unless-stopped
+    volumes:
+      - ./data/mongo:/data/db
+    ports:
+      - "27017:27017"
+    networks: [ joe_net ]
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: joe_api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MONGO_URI=mongodb://mongo:27017/joe
+      - BROWSER_WS_ENDPOINT=ws://browser-worker:5050/ws
+      - WORKER_API_KEY=joe_secret_browser_key
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+      - browser-worker
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: [ "CMD-SHELL", "node -e \"fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"" ]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    networks: [ joe_net ]
+
+  browser-worker:
+    build:
+      context: ./services/joe-browser-worker
+      dockerfile: Dockerfile
+    container_name: joe_browser_worker
+    restart: unless-stopped
+    environment:
+      - PORT=7070
+      - WORKER_API_KEY=joe_secret_browser_key
+      - BROWSER_HEADLESS=true
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    networks:
+      - joe_net
+    ports:
+      - "5050:5050"
+      - "7070:7070"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        - VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+        - VITE_API_URL=http://46.224.187.142:3000
+    image: joe-web:latest
+    container_name: joe_web
+    restart: unless-stopped
+    depends_on: [ api ]
+    ports:
+      - "8080:80"
+    networks: [ joe_net ]
+    env_file:
+      - .env
+
+  nginx:
+    image: nginx:alpine
+    container_name: joe_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - /opt/joe/certbot/conf:/etc/letsencrypt
+      - /opt/joe/certbot/www:/var/www/certbot
+    networks:
+      - joe_net
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - /opt/joe/certbot/conf:/etc/letsencrypt
+      - /opt/joe/certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - joe_net
+
+networks:
+  joe_net:
+    driver: bridge

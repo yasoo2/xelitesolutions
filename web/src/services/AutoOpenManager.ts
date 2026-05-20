@@ -39,6 +39,7 @@ class AutoOpenManagerClass {
      * Trigger panel open
      */
     private triggerOpen(panel: PanelType, data?: any) {
+        console.log(`[AutoOpenManager] triggerOpen called for panel: ${panel}`, { enabled: this.config.enabled, panelEnabled: this.config.panels[panel] });
         if (!this.config.enabled || !this.config.panels[panel]) return;
         this.listeners.forEach(cb => cb(panel, data));
     }
@@ -97,8 +98,10 @@ class AutoOpenManagerClass {
             this.processToolUsage(event.data.tool.name, event.data.tool.input);
         }
 
-        // When preview is ready
-        if (event.type === 'preview_ready') {
+        // When preview is ready (matches both event types)
+        if (event.type === 'preview_ready' || event.type === 'preview_url' || event.type === 'build_progress') {
+            const isBuild = event.type === 'build_progress';
+            console.log(`[AutoOpenManager] ${isBuild ? 'Build progress' : 'Preview'} event received, switching tab`, event.type);
             this.triggerOpen('preview', event.data);
         }
 

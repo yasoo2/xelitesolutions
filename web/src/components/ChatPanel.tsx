@@ -1,8 +1,13 @@
-import React, { useRef, useEffect } from 'react';
-import { Sparkles, Send, Mic, User, Bot } from 'lucide-react';
+import React, { useRef, useEffect, useState } from 'react';
+import { Sparkles, Send, Mic, User, Bot, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import NeuralThinkingIndicator from './NeuralThinkingIndicator';
+import TaskTracker from './TaskTracker';
+import TodosPanel from './TodosPanel';
+
+import { SocketService } from '../services/socket';
 
 interface Message {
     id: string;
@@ -19,6 +24,7 @@ interface ChatPanelProps {
     isLoading?: boolean;
     placeholder?: string;
     children?: React.ReactNode; // For CommandComposer
+    isCollapsed?: boolean;
 }
 
 export default function ChatPanel({
@@ -28,10 +34,28 @@ export default function ChatPanel({
     onSend,
     isLoading = false,
     placeholder = 'Ask Joe or type a command...',
-    children
+    children,
+    isCollapsed = false
 }: ChatPanelProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // [Wakil 6.0] Subscribe to thinking phase
+    const [thinkingPhase, setThinkingPhase] = useState<'analyzing' | 'synthesizing' | 'executing' | 'idle'>('idle');
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+
+    const handleCopy = (id: string, text: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
+
+    useEffect(() => {
+        const unsubscribe = SocketService.subscribeThinkingPhase((phase: any) => {
+            setThinkingPhase(phase);
+        });
+        return () => unsubscribe();
+    }, []);
 
     // Auto scroll to bottom
     useEffect(() => {
@@ -57,7 +81,7 @@ export default function ChatPanel({
     };
 
     return (
-        <aside className="joe-chat-panel">
+        <aside className={`joe-chat-panel ${isCollapsed ? 'collapsed' : ''}`}>
             {/* Header */}
             <div className="joe-chat-header">
                 <div className="joe-chat-title">
@@ -83,17 +107,8 @@ export default function ChatPanel({
                 ) : (
                     messages.map((msg) => (
                         <div key={msg.id} className={`joe-message ${msg.role}`}>
-                            <div className={`joe-message-avatar ${msg.role === 'assistant' ? 'ai' : ''}`}>
-                                {msg.role === 'assistant' ? 'J' : (
-                                    <div style={{
-                                        width: '100%', height: '100%', borderRadius: 8,
-                                        background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-                                        color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: 12, fontWeight: 700
-                                    }}>
-                                        U
-                                    </div>
-                                )}
+                            <div className={`joe-message-avatar ${msg.role === 'assistant' ? 'ai' : 'user'}`}>
+                                {msg.role === 'assistant' ? 'J' : 'U'}
                             </div>
                             <div className="joe-message-content">
                                 <div className="joe-message-bubble">
@@ -101,17 +116,73 @@ export default function ChatPanel({
                                         components={{
                                             code({ className, children, ...props }: any) {
                                                 const match = /language-(\w+)/.exec(className || '');
+
+                                                // Detection for custom Code Citation format: language-ts:10:20:src/index.ts
+                                                // Actually, marked might just pass the whole string after the backticks as the class name.
+                                                // e.g. ```typescript:10:20:src/index.ts -> className: "language-typescript:10:20:src/index.ts"
+                                                const citationMatch = className?.match(/language-([a-zA-Z0-9]+):(\d+):(\d+):(.+)/);
+
+                                                if (citationMatch) {
+                                                    const [_, lang, startLine, endLine, filepath] = citationMatch;
+                                                    return (
+                                                        <div className="joe-code-citation group" style={{
+                                                            background: 'rgba(20,25,32,0.8)',
+                                                            border: '1px solid rgba(240, 193, 75, 0.3)',
+                                                            borderRadius: '12px',
+                                                            overflow: 'hidden',
+                                                            marginTop: '8px',
+                                                            marginBottom: '8px',
+                                                            transition: 'all 0.2s ease',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                            onClick={() => {
+                                                                // TODO: Trigger AutoOpenManager or Workspace Service to open the file.
+                                                                void 0;
+                                                            }}
+                                                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--joe-gold-primary)'; e.currentTarget.style.boxShadow = '0 0 15px rgba(240,193,75,0.15)'; }}
+                                                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(240, 193, 75, 0.3)'; e.currentTarget.style.boxShadow = 'none'; }}
+                                                        >
+                                                            <div className="joe-citation-header" style={{
+                                                                background: 'rgba(0,0,0,0.4)',
+                                                                padding: '6px 12px',
+                                                                display: 'flex',
+                                                                justifyContent: 'space-between',
+                                                                alignItems: 'center',
+                                                                fontSize: '12px',
+                                                                borderBottom: '1px solid rgba(255,255,255,0.05)'
+                                                            }}>
+                                                                <span style={{ color: 'var(--joe-gold-primary)', fontWeight: 600 }}>{filepath}</span>
+                                                                <span style={{ color: 'var(--joe-text-muted)' }}>Lines {startLine}-{endLine}</span>
+                                                            </div>
+                                                            <div className="joe-citation-body" style={{ opacity: 0.9 }}>
+                                                                <SyntaxHighlighter
+                                                                    style={vscDarkPlus as any}
+                                                                    language={lang}
+                                                                    PreTag="div"
+                                                                    customStyle={{ margin: 0, padding: '12px', background: 'transparent' }}
+                                                                    {...props}
+                                                                >
+                                                                    {String(children).replace(/\n$/, '')}
+                                                                </SyntaxHighlighter>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+
                                                 return match ? (
-                                                    <SyntaxHighlighter
-                                                        style={vscDarkPlus as any}
-                                                        language={match[1]}
-                                                        PreTag="div"
-                                                        {...props}
-                                                    >
-                                                        {String(children).replace(/\n$/, '')}
-                                                    </SyntaxHighlighter>
+                                                    <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                                        <SyntaxHighlighter
+                                                            style={vscDarkPlus as any}
+                                                            language={match[1]}
+                                                            PreTag="div"
+                                                            customStyle={{ margin: 0 }}
+                                                            {...props}
+                                                        >
+                                                            {String(children).replace(/\n$/, '')}
+                                                        </SyntaxHighlighter>
+                                                    </div>
                                                 ) : (
-                                                    <code className={className} {...props}>
+                                                    <code className={className} {...props} style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--joe-gold-primary)' }}>
                                                         {children}
                                                     </code>
                                                 );
@@ -121,23 +192,43 @@ export default function ChatPanel({
                                         {msg.content}
                                     </ReactMarkdown>
                                 </div>
+                                {msg.role === 'assistant' && (
+                                    <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '6px', opacity: 0.6 }}>
+                                        <button
+                                            onClick={() => handleCopy(msg.id, msg.content)}
+                                            title="انسخ الرد"
+                                            style={{
+                                                background: 'transparent', border: 'none', color: 'var(--joe-text-muted)',
+                                                cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', display: 'flex',
+                                                alignItems: 'center', gap: '6px', fontSize: '12px', transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--joe-text)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                                            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--joe-text-muted)'; e.currentTarget.style.background = 'transparent'; }}
+                                        >
+                                            {copiedId === msg.id ? <Check size={14} color="var(--joe-success, #4CAF50)" /> : <Copy size={14} />}
+                                            {copiedId === msg.id ? 'تم النسخ' : 'نسخ النص'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))
                 )}
-                {isLoading && (
+                <div ref={messagesEndRef} />
+
+                {(isLoading || thinkingPhase !== 'idle') && (
                     <div className="joe-message assistant">
                         <div className="joe-message-avatar ai">J</div>
-                        <div className="joe-message-content">
-                            <div className="joe-message-bubble" style={{ display: 'flex', gap: 4 }}>
-                                <span className="typing-dot" style={{ animationDelay: '0ms' }}>●</span>
-                                <span className="typing-dot" style={{ animationDelay: '150ms' }}>●</span>
-                                <span className="typing-dot" style={{ animationDelay: '300ms' }}>●</span>
-                            </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px' }}>
+                            <NeuralThinkingIndicator
+                                visible={isLoading || thinkingPhase !== 'idle'}
+                                phase={thinkingPhase}
+                                variant="bubble"
+                            />
+                            <TaskTracker />
                         </div>
                     </div>
                 )}
-                <div ref={messagesEndRef} />
             </div>
 
             {/* Input Area - Use children if provided (for CommandComposer) */}
@@ -146,8 +237,11 @@ export default function ChatPanel({
                     {children}
                 </div>
             ) : (
-                <div className="joe-chat-input-area">
-                    <div className="joe-chat-input-wrapper">
+                <div className="joe-chat-input-area" style={{ position: 'relative' }}>
+                    <div className="joe-chat-input-wrapper" style={{ position: 'relative' }}>
+                        <div style={{ position: 'absolute', bottom: 'calc(100% + 12px)', right: 0, zIndex: 100 }}>
+                            <TodosPanel />
+                        </div>
                         <textarea
                             ref={inputRef}
                             value={inputValue}
@@ -175,10 +269,50 @@ export default function ChatPanel({
           animation: typingPulse 1s infinite;
           color: var(--joe-gold-primary);
         }
-        @keyframes typingPulse {
-          0%, 100% { opacity: 0.3; }
-          50% { opacity: 1; }
-        }
+/* ========== Typing Animation - Premium Gold Glow ========== */
+.joe-message-bubble.typing {
+    padding: 10px 16px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.typing-dot {
+    width: 6px;
+    height: 6px;
+    background-color: var(--joe-gold-primary);
+    border-radius: 50%;
+    animation: premiumTyping 1.4s infinite ease-in-out;
+    box-shadow: 0 0 10px var(--joe-gold-glow);
+}
+
+@keyframes premiumTyping {
+    0%, 80%, 100% { 
+        transform: scale(0.6);
+        opacity: 0.4;
+    }
+    40% { 
+        transform: scale(1.1);
+        opacity: 1;
+        box-shadow: 0 0 15px var(--joe-gold-primary);
+    }
+}
+
+.joe-chat-panel {
+    background: var(--joe-bg-panel);
+}
+
+.joe-chat-header {
+    background: transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.joe-chat-header .joe-chat-title span {
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-size: 13px;
+    opacity: 0.9;
+}
       `}</style>
         </aside>
     );

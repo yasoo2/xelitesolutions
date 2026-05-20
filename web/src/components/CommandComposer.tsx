@@ -6,8 +6,13 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 import { useTranslation } from 'react-i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
+import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GitHubConnectModal } from './GitHubConnectModal';
+
+import NeuralThinkingIndicator from './NeuralThinkingIndicator';
+import TaskTracker from './TaskTracker';
+import TodosPanel from './TodosPanel';
+
 
 // Web Speech API types
 interface IWindow extends Window {
@@ -57,7 +62,8 @@ import {
   User,
   Camera,
   Monitor,
-  Github
+  Github,
+  Code
 } from 'lucide-react';
 
 const DEBUG_TOOL_UI = false;
@@ -136,6 +142,150 @@ const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: 
           style={{ opacity: 0.3 }}
         />
       </svg>
+    </motion.div>
+  );
+};
+
+const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any }) => {
+  const [showRaw, setShowRaw] = useState(false);
+  const md = report.engineeringReportMarkdown || '';
+  
+  const generateSummaryFromJson = (r: any) => {
+    const ok = r.ok ? '✅ SUCCESS' : '❌ FAILED';
+    const progress = `${r.completedPhases} / ${r.totalPlannedPhases || '?'}`;
+    return `### Pipeline Summary\n- **Status**: ${ok}\n- **Progress**: ${progress}\n\nDetailed orchestration data available.`;
+  };
+
+  const displayMd = md || (report.engineeringReport ? generateSummaryFromJson(report.engineeringReport) : '');
+
+  if (!displayMd) return null;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95, y: 10 }} 
+      animate={{ opacity: 1, scale: 1, y: 0 }} 
+      className="engineering-report-container"
+    >
+      <div className="report-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <ShieldCheck size={20} className="report-icon" />
+          <span>Joe Engineering Report</span>
+        </div>
+        <button 
+          onClick={() => setShowRaw(!showRaw)}
+          className="debug-toggle-btn"
+          title="Toggle Debug Info"
+        >
+          <Code size={14} />
+        </button>
+      </div>
+
+      <div className="report-body">
+        <ReactMarkdown
+          components={{
+            h1: ({ ...props }) => <h1 style={{ fontSize: '1.2rem', margin: '0 0 1rem 0', color: 'var(--accent-primary)', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }} {...props} />,
+            h2: ({ ...props }) => <h2 style={{ fontSize: '1.1rem', margin: '1.5rem 0 0.8rem 0', color: 'var(--text-primary)' }} {...props} />,
+            h3: ({ ...props }) => <h3 style={{ fontSize: '1rem', margin: '1.2rem 0 0.6rem 0', color: 'var(--text-secondary)' }} {...props} />,
+            ul: ({ ...props }) => <ul style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }} {...props} />,
+            li: ({ ...props }) => <li style={{ marginBottom: '0.4rem' }} {...props} />,
+            p: ({ ...props }) => <p style={{ marginBottom: '1rem', opacity: 0.9 }} {...props} />,
+          }}
+        >
+          {displayMd}
+        </ReactMarkdown>
+      </div>
+
+      {showRaw && (
+        <motion.div 
+          initial={{ opacity: 0, height: 0 }} 
+          animate={{ opacity: 1, height: 'auto' }}
+          className="report-debug-info"
+        >
+          <div className="debug-header">RAW ORCHESTRATION DATA</div>
+          <pre className="debug-content">
+            {JSON.stringify(report.engineeringReport || report, null, 2)}
+          </pre>
+        </motion.div>
+      )}
+
+      <div className="report-footer">
+        {new Date(ts || Date.now()).toLocaleTimeString()}
+      </div>
+      <style>{`
+        .engineering-report-container {
+          margin: 20px 0;
+          padding: 24px;
+          background: rgba(15, 20, 28, 0.85);
+          border: 1px solid rgba(var(--accent-primary-rgb), 0.4);
+          border-radius: 16px;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.4), inset 0 0 20px rgba(var(--accent-primary-rgb), 0.05);
+          backdrop-filter: blur(12px);
+          position: relative;
+          overflow: hidden;
+        }
+        .report-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 20px;
+          font-weight: 800;
+          color: var(--accent-primary);
+          text-transform: uppercase;
+          letter-spacing: 1.5px;
+          font-size: 13px;
+        }
+        .debug-toggle-btn {
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
+          color: var(--text-muted);
+          padding: 4px 8px;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .debug-toggle-btn:hover {
+          background: rgba(var(--accent-primary-rgb), 0.1);
+          color: var(--accent-primary);
+        }
+        .report-debug-info {
+          margin-top: 20px;
+          background: rgba(0,0,0,0.3);
+          border-radius: 8px;
+          padding: 12px;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 11px;
+          overflow: hidden;
+        }
+        .debug-header {
+          font-size: 9px;
+          color: var(--accent-secondary);
+          margin-bottom: 8px;
+          font-weight: 700;
+          letter-spacing: 1px;
+        }
+        .debug-content {
+          color: var(--text-secondary);
+          white-space: pre-wrap;
+          word-break: break-all;
+          max-height: 300px;
+          overflow-y: auto;
+        }
+        .report-body {
+          font-size: 14px;
+          line-height: 1.7;
+          color: var(--text-primary);
+        }
+        .report-footer {
+          margin-top: 20px;
+          padding-top: 12px;
+          border-top: 1px solid rgba(255,255,255,0.05);
+          font-size: 10px;
+          color: var(--text-muted);
+          text-align: right;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+      `}</style>
     </motion.div>
   );
 };
@@ -563,13 +713,13 @@ const OPENROUTER_MODELS = [
 
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   auto: { name: 'Auto (مجاني)', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
-  openrouter: { name: 'OpenRouter', apiKey: '', isConnected: false, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free', isFree: true },
+  deepseek: { name: 'DeepSeek (مجاني)', apiKey: 'free-mode', isConnected: true, model: 'deepseek-chat', isCustom: true, isFree: true },
+  openrouter: { name: 'OpenRouter (مجاني)', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free', isFree: true },
+  gemini: { name: 'Google Gemini (مجاني)', apiKey: 'free-mode', isConnected: true, model: 'gemini-1.5-flash', isFree: true },
   openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
   anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
-  gemini: { name: 'Google Gemini', apiKey: '', isConnected: false, model: 'gemini-1.5-flash' },
   grok: { name: 'xAI (Grok)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
 };
-
 export default function CommandComposer({
   sessionId,
   sessionKind = 'chat',
@@ -580,7 +730,9 @@ export default function CommandComposer({
   onStepsUpdate,
   onMessagesUpdate,
   hideHistory = false,
-  workspaceId
+  workspaceId,
+  githubConnected = false,
+  onGitClick
 
 }: {
   sessionId?: string;
@@ -593,6 +745,8 @@ export default function CommandComposer({
   onMessagesUpdate?: (msgs: any[]) => void;
   hideHistory?: boolean;
   workspaceId?: string | null;
+  githubConnected?: boolean;
+  onGitClick?: () => void;
 
 }) {
   const { t } = useTranslation();
@@ -659,10 +813,14 @@ export default function CommandComposer({
   const [draftText, setDraftText] = useState('');
   const [draftActive, setDraftActive] = useState(false);
 
+  // [Wakil 5.3] Neural Thinking Indicator
+  const [thinkingPhase, setThinkingPhase] = useState<'analyzing' | 'synthesizing' | 'executing' | 'idle'>(
+    SocketService.getThinkingPhase() as any || 'idle'
+  );
+  const isQuietMode = SocketService.isQuietMode();
+
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<number>();
   const endRef = useRef<HTMLDivElement>(null);
   const eventsScrollRef = useRef<HTMLDivElement>(null);
   const eventsContentRef = useRef<HTMLDivElement>(null);
@@ -689,7 +847,7 @@ export default function CommandComposer({
   /* Removed duplicate declaration */
 
   // GitHub Modal State
-  const [showGithubModal, setShowGithubModal] = useState(false);
+
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
@@ -709,6 +867,7 @@ export default function CommandComposer({
     // Reorder providers: Auto first, then OpenRouter, then paid providers, then Joe (Free)
     const baseProviders: { [key: string]: ProviderConfig } = {
       auto: { ...DEFAULT_PROVIDERS.auto },
+      deepseek: { ...DEFAULT_PROVIDERS.deepseek },
       openrouter: { ...DEFAULT_PROVIDERS.openrouter },
       openai: { ...DEFAULT_PROVIDERS.openai },
       anthropic: { ...DEFAULT_PROVIDERS.anthropic },
@@ -727,16 +886,15 @@ export default function CommandComposer({
     } catch { }
 
     const pickFirstKeyedProvider = () => {
-      // PRIORITY: Use Auto by default
-      return 'auto';
-
-      // Use specific providers if keys exist
-      if (String(baseProviders.openai?.apiKey || '').trim()) return 'openai';
-      if (String(baseProviders.anthropic?.apiKey || '').trim()) return 'anthropic';
+      // PRIORITY: Force Gemini by default to prevent "Empty Query" free-tier instant exits
+      console.log('[ProviderDebug] pickFirstKeyedProvider: Defaulting to gemini');
+      return 'gemini';
     };
 
     try {
       const savedActive = localStorage.getItem('active_provider');
+      console.log('[ProviderDebug] Loaded active_provider:', savedActive);
+
       if (savedActive && baseProviders[savedActive]) {
         return { providers: baseProviders, activeProvider: savedActive };
       }
@@ -1136,6 +1294,14 @@ export default function CommandComposer({
     activeToolNameRef.current = activeToolName;
   }, [activeToolName]);
 
+  // [Wakil 6.0] Subscribe to thinking phase updates
+  useEffect(() => {
+    const unsubscribe = SocketService.subscribeThinkingPhase((phase: any) => {
+      setThinkingPhase(phase);
+    });
+    return () => unsubscribe();
+  }, []);
+
   const showTool = (name: string) => {
     const next = String(name || '').trim();
     if (!next) return;
@@ -1170,367 +1336,302 @@ export default function CommandComposer({
     return totalDelay;
   };
 
+  // [Wakil 4.7] Refactored to use Singleton SocketService
+  // Removed local WebSocket connection logic to prevent duplication
   useEffect(() => {
-    void connectWS();
+    // Subscribe to incoming messages
+    const unsubscribeMessages = SocketService.subscribe((msg: any) => {
+      // [Wakil 4.7] Centralized Handling via SocketService
+      handleMessage({ data: JSON.stringify(msg) } as MessageEvent);
+    });
+
+    // Subscribe to status changes
+    const unsubscribeStatus = SocketService.subscribeStatus(({ state }) => {
+      setIsConnected(state === 'connected');
+      if (state === 'unauthorized') handleUnauthorized();
+    });
+
+    // Initial check
+    SocketService.connect();
+
     return () => {
-      if (wsRef.current) wsRef.current.close();
-      if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
+      unsubscribeMessages();
+      unsubscribeStatus();
       clearToolTimers();
       clearDraftTimer();
     };
   }, []);
 
-  async function connectWS() {
+  // Legacy handler wrapper for compatibility with existing logic
+  const handleMessage = (evt: MessageEvent) => {
     try {
-      if (wsRef.current) {
-        if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) return;
-        try { wsRef.current.close(); } catch { }
+      const msg = JSON.parse(evt.data);
+      if (typeof msg?.seq === 'number' && Number.isFinite(msg.seq)) {
+        if (msg.seq > lastLiveSeqRef.current) lastLiveSeqRef.current = msg.seq;
+      }
+      if (typeof msg?.runId === 'string' && msg.runId.trim()) {
+        setActiveRunId(msg.runId.trim());
+      }
+      if (msg.type === 'user_input') {
+        clearToolTimers();
+        setStatus('thinking');
+        setIsThinking(true);
+        setActiveToolName(null);
+        setToolVisible(false);
+        return;
       }
 
-      try {
-        const healthRes = await fetch(`${API}/health`, { cache: 'no-store' });
-        const isShim = healthRes.headers.get('x-joe-api-shim') === '1';
-        if (isShim) {
-          setIsConnected(false);
-          if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
-          reconnectTimerRef.current = window.setTimeout(() => void connectWS(), 15000);
-          return;
-        }
-      } catch { }
+      if (msg.type === 'run_finished' || msg.type === 'run_completed') {
+        window.dispatchEvent(new CustomEvent('sessions:refresh'));
+      }
 
-      const token = (() => {
-        try {
-          return localStorage.getItem('token');
-        } catch {
-          return null;
-        }
-      })();
-      const withToken = (url: string) => {
-        if (!token) return url;
-        const hasQuery = url.includes('?');
-        const sep = hasQuery ? '&' : '?';
-        return `${url}${sep}token=${encodeURIComponent(token)}`;
-      };
-      const primaryUrl = withToken(WS);
-      const fallbackBase = API.replace(/\/api\/?$/, '').replace(/^http/, 'ws');
-      const fallbackUrl = withToken(`${fallbackBase}/ws`);
+      if (msg.type === 'artifact_created') {
+        const kind = msg.data?.kind;
+        const href = msg.data?.href;
+        if (typeof href === 'string' && /^https?:\/\//i.test(href)) {
+          const name = String(msg.data?.name || '').trim();
+          const lowerName = name.toLowerCase();
+          const lowerKind = String(kind || '').toLowerCase();
+          const looksLikeAsset = /\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|pdf|zip|tar|gz)(\?|#|$)/i.test(href);
 
-      const handleMessage = (evt: MessageEvent) => {
-        try {
-          const msg = JSON.parse(evt.data);
-          if (typeof msg?.seq === 'number' && Number.isFinite(msg.seq)) {
-            if (msg.seq > lastLiveSeqRef.current) lastLiveSeqRef.current = msg.seq;
-          }
-          if (typeof msg?.runId === 'string' && msg.runId.trim()) {
-            setActiveRunId(msg.runId.trim());
-          }
-          if (msg.type === 'user_input') {
-            clearToolTimers();
-            setStatus('thinking');
-            setIsThinking(true);
-            setActiveToolName(null);
-            setToolVisible(false);
-            return;
-          }
+          let shouldAutoOpen = false;
+          if (!looksLikeAsset) {
+            try {
+              const u = new URL(href);
+              const host = u.hostname.toLowerCase();
+              const looksLocal = host === 'localhost' || host === '127.0.0.1';
+              const looksPreviewHost =
+                host.endsWith('.vercel.app') ||
+                host.endsWith('.netlify.app') ||
+                host.endsWith('.pages.dev') ||
+                host.endsWith('.web.app');
+              if (looksLocal || looksPreviewHost) shouldAutoOpen = true;
+            } catch { }
 
-          if (msg.type === 'run_finished' || msg.type === 'run_completed') {
-            window.dispatchEvent(new CustomEvent('sessions:refresh'));
-          }
-
-          if (msg.type === 'artifact_created') {
-            const kind = msg.data?.kind;
-            const href = msg.data?.href;
-            if (typeof href === 'string' && /^https?:\/\//i.test(href)) {
-              const name = String(msg.data?.name || '').trim();
-              const lowerName = name.toLowerCase();
-              const lowerKind = String(kind || '').toLowerCase();
-              const looksLikeAsset = /\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|pdf|zip|tar|gz)(\?|#|$)/i.test(href);
-
-              let shouldAutoOpen = false;
-              if (!looksLikeAsset) {
-                try {
-                  const u = new URL(href);
-                  const host = u.hostname.toLowerCase();
-                  const looksLocal = host === 'localhost' || host === '127.0.0.1';
-                  const looksPreviewHost =
-                    host.endsWith('.vercel.app') ||
-                    host.endsWith('.netlify.app') ||
-                    host.endsWith('.pages.dev') ||
-                    host.endsWith('.web.app');
-                  if (looksLocal || looksPreviewHost) shouldAutoOpen = true;
-                } catch { }
-
-                if (!shouldAutoOpen) {
-                  if (lowerKind.includes('deploy') || lowerKind.includes('preview')) shouldAutoOpen = true;
-                  else if (/(preview|deploy|site|demo|app)/i.test(lowerName)) shouldAutoOpen = true;
-                }
-              }
-
-              if (shouldAutoOpen && lastAutoOpenedHrefRef.current !== href) {
-                lastAutoOpenedHrefRef.current = href;
-                try {
-                  window.open(href, '_blank', 'noopener,noreferrer');
-                } catch { }
-              }
+            if (!shouldAutoOpen) {
+              if (lowerKind.includes('deploy') || lowerKind.includes('preview')) shouldAutoOpen = true;
+              else if (/(preview|deploy|site|demo|app)/i.test(lowerName)) shouldAutoOpen = true;
             }
           }
 
-          if (msg.type === 'approval_required') {
-            const data = msg.data || {};
-            const { id, risk, action } = data;
-            const runId = typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : '';
-            if (id) {
-              const sig = `${String(id)}:${String(runId || '')}`;
-              if (lastGateSigRef.current.approval === sig) return;
-              lastGateSigRef.current.approval = sig;
-              setApproval({ id, runId, risk, action });
-              const actionText = String(action || '').trim();
-              const riskText = String(risk || '').trim();
-              const lines = [
-                t('approvalGateTitle', 'Approval is required before continuing.'),
-                actionText ? `- ${t('action', 'Action')}: ${actionText}` : '',
-                riskText ? `- ${t('risk', 'Risk')}: ${riskText}` : '',
-                '',
-                t('approvalGateInstruction', 'Type "approve" to continue or "deny" to cancel.'),
-              ].filter(Boolean);
-              setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
-            }
+          if (shouldAutoOpen && lastAutoOpenedHrefRef.current !== href) {
+            lastAutoOpenedHrefRef.current = href;
+            try {
+              window.open(href, '_blank', 'noopener,noreferrer');
+            } catch { }
           }
+        }
+      }
 
-          if (msg.type === 'secret_required') {
-            const data = msg.data || {};
-            const sid = String(data?.sessionId || sessionId || '').trim();
-            const key = String(data?.key || '').trim();
-            if (sid && key) {
-              const runId = typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : '';
-              const sig = `${sid}:${key}:${runId}`;
-              if (lastGateSigRef.current.secret === sig) return;
-              lastGateSigRef.current.secret = sig;
-              setSecretPrompt({
-                sessionId: sid,
-                runId: typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : undefined,
-                provider: typeof data?.provider === 'string' ? data.provider : undefined,
-                key,
-                label: typeof data?.label === 'string' ? data.label : undefined,
-                reason: typeof data?.reason === 'string' ? data.reason : undefined,
+      if (msg.type === 'approval_required') {
+        const data = msg.data || {};
+        const { id, risk, action } = data;
+        const runId = typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : '';
+        if (id) {
+          const sig = `${String(id)}:${String(runId || '')}`;
+          if (lastGateSigRef.current.approval === sig) return;
+          lastGateSigRef.current.approval = sig;
+          setApproval({ id, runId, risk, action });
+          const actionText = String(action || '').trim();
+          const riskText = String(risk || '').trim();
+          const lines = [
+            t('approvalGateTitle', 'Approval is required before continuing.'),
+            actionText ? `- ${t('action', 'Action')}: ${actionText}` : '',
+            riskText ? `- ${t('risk', 'Risk')}: ${riskText}` : '',
+            '',
+            t('approvalGateInstruction', 'Type "approve" to continue or "deny" to cancel.'),
+          ].filter(Boolean);
+          setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
+        }
+      }
+
+      if (msg.type === 'secret_required') {
+        const data = msg.data || {};
+        const sid = String(data?.sessionId || sessionId || '').trim();
+        const key = String(data?.key || '').trim();
+        if (sid && key) {
+          const runId = typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : '';
+          const sig = `${sid}:${key}:${runId}`;
+          if (lastGateSigRef.current.secret === sig) return;
+          lastGateSigRef.current.secret = sig;
+          setSecretPrompt({
+            sessionId: sid,
+            runId: typeof data?.runId === 'string' ? data.runId : typeof msg?.runId === 'string' ? msg.runId : undefined,
+            provider: typeof data?.provider === 'string' ? data.provider : undefined,
+            key,
+            label: typeof data?.label === 'string' ? data.label : undefined,
+            reason: typeof data?.reason === 'string' ? data.reason : undefined,
+          });
+          const label = typeof data?.label === 'string' && data.label.trim() ? data.label.trim() : key;
+          const reason = typeof data?.reason === 'string' && data.reason.trim() ? data.reason.trim() : '';
+          const lines = [
+            t('secretGateTitle', 'A token/key is required to continue.'),
+            `- ${t('secretGateRequired', 'Required')}: ${label}`,
+            reason ? `- ${t('secretGateReason', 'Reason')}: ${reason}` : '',
+            '',
+            t('secretGateInstruction', 'Paste the token here and send it as a single message.'),
+            t('secretGatePrivacy', 'The token will not be shown after sending.'),
+          ].filter(Boolean);
+          setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
+        }
+      }
+
+      if (msg.type === 'step_started') {
+        const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
+        const name = String(msg?.data?.name || '');
+        if (name) stepStartTimes.current[`${rid}:${name}`] = Date.now();
+        if (name === 'plan') {
+          showTool('plan');
+        } else if (name.startsWith('planning_step_')) {
+          showTool('plan');
+        } else if (name.startsWith('execute:')) {
+          showTool(name.slice('execute:'.length));
+        } else if (name) {
+          showTool(name);
+        }
+
+        // [AUTO-SWITCH] Dispatch workspace tab switch event based on tool type
+        const toolName = name.startsWith('execute:') ? name.slice('execute:'.length) : name;
+        const shellTools = ['shell_execute', 'terminal_manager', 'npm_manager', 'npm_install', 'npm_build'];
+        const browserTools = ['browser_open', 'browser_run', 'browser_vision', 'browser_action'];
+        const previewTools = ['dev_server', 'website_full_pipeline', 'scaffold_project'];
+        let targetTab: string | null = null;
+        if (shellTools.includes(toolName)) targetTab = 'terminal';
+        else if (browserTools.includes(toolName)) targetTab = 'browser';
+        else if (previewTools.includes(toolName)) targetTab = 'preview';
+        if (targetTab) {
+          window.dispatchEvent(new CustomEvent('joe:workspace-tab-switch', { detail: { tab: targetTab } }));
+        }
+      }
+
+      if (msg.type === 'step_done') {
+        const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
+        const name = String(msg?.data?.name || '');
+
+        const start = stepStartTimes.current[`${rid}:${name}`];
+        if (start) {
+          msg.duration = Date.now() - start;
+          delete stepStartTimes.current[`${rid}:${name}`];
+        }
+
+        hideToolSoon();
+      }
+
+      if (msg.type === 'text') {
+        const id = typeof msg?.id === 'string' ? msg.id : '';
+        const isSystemPrompt = id.startsWith('system_prompt:');
+        if (isSystemPrompt) return;
+
+        const rid = typeof msg?.runId === 'string' ? msg.runId : '';
+        const rawSigPart =
+          typeof msg?.data === 'string'
+            ? msg.data
+            : msg?.data != null
+              ? (() => {
+                try { return JSON.stringify(msg.data); } catch { return String(msg.data); }
+              })()
+              : '';
+
+        // Strict deduplication: Ignore runId, focus on content. 
+        // If the exact same text arrives within 10 seconds, ignore it.
+        const sig = rawSigPart.trim();
+        const now = Date.now();
+        if (lastTextDedupRef.current && lastTextDedupRef.current.sig === sig && now - lastTextDedupRef.current.ts < 10000) return;
+        lastTextDedupRef.current = { sig, ts: now };
+
+        const hadTool = toolVisibleRef.current || activeToolNameRef.current != null;
+        clearToolTimers();
+        clearDraftTimer();
+        if (hadTool) {
+          setToolVisible(false);
+          setActiveToolName(null);
+        }
+        setStatus('answering');
+        setIsThinking(true);
+
+        const delay = 0; // SPEED OPTIMIZATION: Instant UI update
+        window.setTimeout(() => {
+          try {
+            let content: any = msg.data;
+            try {
+              if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
+                const p = JSON.parse(content);
+                content = p.text || p.output || content;
+              }
+            } catch { }
+
+            const cleaned = cleanAssistantText(content);
+            const finalText = String(cleaned || content || '').trimEnd();
+
+            if (!finalText) {
+              setEvents((prev) => {
+                if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+                // Double check against last message content
+                const last = prev[prev.length - 1];
+                if (last && last.type === 'text' && String(last.data || '').trim() === String(msg.data || '').trim()) return prev;
+                return [...prev, msg];
               });
-              const label = typeof data?.label === 'string' && data.label.trim() ? data.label.trim() : key;
-              const reason = typeof data?.reason === 'string' && data.reason.trim() ? data.reason.trim() : '';
-              const lines = [
-                t('secretGateTitle', 'A token/key is required to continue.'),
-                `- ${t('secretGateRequired', 'Required')}: ${label}`,
-                reason ? `- ${t('secretGateReason', 'Reason')}: ${reason}` : '',
-                '',
-                t('secretGateInstruction', 'Paste the token here and send it as a single message.'),
-                t('secretGatePrivacy', 'The token will not be shown after sending.'),
-              ].filter(Boolean);
-              setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
-            }
-          }
-
-          if (msg.type === 'step_started') {
-            const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
-            const name = String(msg?.data?.name || '');
-            if (name) stepStartTimes.current[`${rid}:${name}`] = Date.now();
-            if (name === 'plan') {
-              showTool('plan');
-            } else if (name.startsWith('planning_step_')) {
-              showTool('plan');
-            } else if (name.startsWith('execute:')) {
-              showTool(name.slice('execute:'.length));
-            } else if (name) {
-              showTool(name);
-            }
-          }
-
-          if (msg.type === 'step_done') {
-            const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
-            const name = String(msg?.data?.name || '');
-
-            const start = stepStartTimes.current[`${rid}:${name}`];
-            if (start) {
-              msg.duration = Date.now() - start;
-              delete stepStartTimes.current[`${rid}:${name}`];
+              setIsThinking(false);
+              setStatus('idle');
+              stopDraft();
+              return;
             }
 
-            hideToolSoon();
-          }
+            stopDraft();
 
-          if (msg.type === 'text') {
-            const id = typeof msg?.id === 'string' ? msg.id : '';
-            const isSystemPrompt = id.startsWith('system_prompt:');
-            if (isSystemPrompt) return;
+            const normalizedMsg = {
+              ...msg,
+              data: msg?.data != null && typeof msg.data === 'object' ? { ...(msg.data as any), text: finalText } : { text: finalText },
+            };
 
-            const rid = typeof msg?.runId === 'string' ? msg.runId : '';
-            const rawSigPart =
-              typeof msg?.data === 'string'
-                ? msg.data
-                : msg?.data != null
-                  ? (() => {
-                    try { return JSON.stringify(msg.data); } catch { return String(msg.data); }
-                  })()
-                  : '';
-
-            // Strict deduplication: Ignore runId, focus on content. 
-            // If the exact same text arrives within 10 seconds, ignore it.
-            const sig = rawSigPart.trim();
-            const now = Date.now();
-            if (lastTextDedupRef.current && lastTextDedupRef.current.sig === sig && now - lastTextDedupRef.current.ts < 10000) return;
-            lastTextDedupRef.current = { sig, ts: now };
-
-            const hadTool = toolVisibleRef.current || activeToolNameRef.current != null;
-            clearToolTimers();
-            clearDraftTimer();
-            if (hadTool) {
-              setToolVisible(false);
-              setActiveToolName(null);
-            }
-            setStatus('answering');
-            setIsThinking(true);
-
-            const delay = 0; // SPEED OPTIMIZATION: Instant UI update
-            window.setTimeout(() => {
-              try {
-                let content: any = msg.data;
-                try {
-                  if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
-                    const p = JSON.parse(content);
-                    content = p.text || p.output || content;
-                  }
-                } catch { }
-
-                const cleaned = cleanAssistantText(content);
-                const finalText = String(cleaned || content || '').trimEnd();
-
-                if (!finalText) {
-                  setEvents((prev) => {
-                    if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
-                    // Double check against last message content
-                    const last = prev[prev.length - 1];
-                    if (last && last.type === 'text' && String(last.data || '').trim() === String(msg.data || '').trim()) return prev;
-                    return [...prev, msg];
-                  });
-                  setIsThinking(false);
-                  setStatus('idle');
-                  stopDraft();
-                  return;
-                }
-
-                stopDraft();
-
-                const normalizedMsg = {
-                  ...msg,
-                  data: msg?.data != null && typeof msg.data === 'object' ? { ...(msg.data as any), text: finalText } : { text: finalText },
-                };
-
-                setEvents((prev) => {
-                  if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
-                  const last = prev[prev.length - 1];
-                  const lastText =
-                    last && last.type === 'text'
-                      ? typeof last.data === 'string'
-                        ? last.data
-                        : last?.data?.text
-                      : '';
-                  if (last && last.type === 'text' && String(lastText || '').trim() === finalText.trim()) return prev;
-                  return [...prev, normalizedMsg];
-                });
-
-                setIsThinking(false);
-                setStatus('idle');
-              } catch (e) {
-                console.error('Error in text streaming:', e);
-                setIsThinking(false);
-                setStatus('idle');
-                stopDraft();
-                setEvents((prev) => {
-                  if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
-                  // Double check against last message content
-                  const last = prev[prev.length - 1];
-                  if (last && last.type === 'text' && String(last.data || '').trim() === String(msg.data || '').trim()) return prev;
-                  return [...prev, msg];
-                });
-              }
-            }, delay);
-            return;
-          }
-
-          if (msg.type === 'run_finished') {
-            if (statusRef.current !== 'answering') hideToolSoon();
-          }
-
-          if (!showToolUi && ['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added'].includes(msg.type)) return;
-          if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_result', 'run_finished', 'run_completed'].includes(msg.type)) {
-            setEvents(prev => {
-              const id = typeof msg?.id === 'string' ? msg.id : '';
+            setEvents((prev) => {
               if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+              const last = prev[prev.length - 1];
+              const lastText =
+                last && last.type === 'text'
+                  ? typeof last.data === 'string'
+                    ? last.data
+                    : last?.data?.text
+                  : '';
+              if (last && last.type === 'text' && String(lastText || '').trim() === finalText.trim()) return prev;
+              return [...prev, normalizedMsg];
+            });
+
+            setIsThinking(false);
+            setStatus('idle');
+          } catch (e) {
+            console.error('Error in text streaming:', e);
+            setIsThinking(false);
+            setStatus('idle');
+            stopDraft();
+            setEvents((prev) => {
+              if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+              // Double check against last message content
+              const last = prev[prev.length - 1];
+              if (last && last.type === 'text' && String(last.data || '').trim() === String(msg.data || '').trim()) return prev;
               return [...prev, msg];
             });
           }
-        } catch (e) {
-          console.error('WS parse error:', e);
-        }
-      };
+        }, delay);
+        return;
+      }
 
-      const attach = (ws: WebSocket, allowFallback: boolean) => {
-        ws.onopen = () => {
-          if (wsRef.current !== ws) return;
-          setIsConnected(true);
-        };
+      if (msg.type === 'run_finished') {
+        if (statusRef.current !== 'answering') hideToolSoon();
+      }
 
-        ws.onmessage = handleMessage;
-
-        ws.onclose = () => {
-          if (wsRef.current !== ws) return;
-          setIsConnected(false);
-
-          // Reset thinking state on disconnect to avoid stuck UI
-          if (isThinkingRef.current || statusRef.current !== 'idle') {
-            setStatus('idle');
-            setIsThinking(false);
-            setActiveToolName(null);
-            setToolVisible(false);
-            clearToolTimers();
-            clearDraftTimer();
-          }
-
-          const triedFallback = (ws as any)?.__triedFallback === true;
-          if (allowFallback && !triedFallback && primaryUrl !== fallbackUrl) {
-            try {
-              const fws = new WebSocket(fallbackUrl);
-              (fws as any).__triedFallback = true;
-              wsRef.current = fws;
-              attach(fws, false);
-              return;
-            } catch { }
-          }
-
-          reconnectTimerRef.current = window.setTimeout(() => void connectWS(), 2000);
-        };
-
-        ws.onerror = () => {
-          if (wsRef.current !== ws) return;
-          setIsConnected(false);
-
-          if (isThinkingRef.current || statusRef.current !== 'idle') {
-            setStatus('idle');
-            setIsThinking(false);
-            setActiveToolName(null);
-            setToolVisible(false);
-            clearToolTimers();
-            clearDraftTimer();
-          }
-        };
-      };
-
-      const ws = new WebSocket(primaryUrl);
-      wsRef.current = ws;
-      attach(ws, true);
+      if (!showToolUi && ['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added'].includes(msg.type)) return;
+      if (['step_started', 'step_progress', 'step_done', 'step_failed', 'evidence_added', 'artifact_created', 'approval_result', 'run_finished', 'run_completed'].includes(msg.type)) {
+        setEvents(prev => {
+          const id = typeof msg?.id === 'string' ? msg.id : '';
+          if (id && prev.some((e: any) => typeof e?.id === 'string' && e.id === id)) return prev;
+          return [...prev, msg];
+        });
+      }
     } catch (e) {
-      console.error('WS connect failed:', e);
-      setIsConnected(false);
+      console.error('WS parse error:', e);
     }
-  }
+  };
 
   useEffect(() => {
     const prev = prevSessionIdRef.current;
@@ -2095,28 +2196,47 @@ export default function CommandComposer({
       return `https://${candidate}`;
     };
 
+    const normalizeForIntent = (input: string) => {
+      let s = String(input || '');
+      try {
+        s = s.normalize('NFKC');
+      } catch { }
+      s = s
+        .toLowerCase()
+        .replace(/[\u064B-\u065F\u0670]/g, '')
+        .replace(/[\u0640]/g, '')
+        .replace(/[أإآٱ]/g, 'ا')
+        .replace(/ؤ/g, 'و')
+        .replace(/ئ/g, 'ي')
+        .replace(/ى/g, 'ي')
+        .replace(/ة/g, 'ه');
+      s = s.replace(/[^\p{L}\p{N}\s]+/gu, ' ').replace(/\s+/g, ' ').trim();
+      return s;
+    };
+
     const needsBrowserForText = (raw: string) => {
       const s = String(raw || '').trim();
+      const sNorm = normalizeForIntent(s);
       if (!s) return false;
 
       const hasUrl = Boolean(extractLikelyUrl(s));
       if (hasUrl) return true;
 
-      const explicitBrowser = /(\b(browser|web|preview)\b|متصفح|داخل المتصفح|معاينة|المعاينة)/i.test(s);
+      const explicitBrowser = /(\b(browser|web|preview)\b|متصفح|داخل المتصفح|معاينه|معاينة|المعاينه|المعاينة)/i.test(sNorm);
       if (explicitBrowser) return true;
 
-      const openKeyword = /(افتح|افتحي|افتحوا|اذهب|زيارة|open|go to|visit)/i.test(s);
-      const githubKeyword = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(s);
-      const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(s);
+      const openKeyword = /(افتح|افتحي|افتحوا|افتحلي|افتح\s+لي|اذهب|زيارة|روح|زور|وديني|ودني|ودنا|وريني|اعرض|عرض|شوف|طلعني|طالع|open|go to|visit|browse|show)/i.test(sNorm);
+      const githubKeyword = /(github|git\s*hub|جيت\s*هاب|جيتهاب|جت\s*هاب|غيت\s*هاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(sNorm);
+      const analysisKeyword = /(كود|code|repo|repository|مستودع|ملفات|files|اختبر|تحقق|راجع|audit|lint|build|typecheck|تحليل)/i.test(sNorm);
 
       if (openKeyword && githubKeyword && analysisKeyword) return false;
 
-      const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|أمر|ترمينال)/i.test(s);
+      const isFileOp = /(file|folder|directory|ملف|مجلد|مسار|path|terminal|command|امر|أمر|ترمينال)/i.test(sNorm);
       if (openKeyword && isFileOp) return false;
 
       if (openKeyword) return true;
 
-      const knownSites = /(youtube|يوتيوب|google|جوجل|facebook|فيسبوك|x\.com|twitter|تويتر|instagram|انستغرام)/i.test(s);
+      const knownSites = /(youtube|يوتيوب|google|جوجل|قوقل|facebook|فيسبوك|x\.com|twitter|تويتر|instagram|انستغرام|openai|اوبن\s*اي|yahoo|ياهو)/i.test(sNorm);
       if (knownSites) return true;
 
       return false;
@@ -2135,14 +2255,15 @@ export default function CommandComposer({
     const token = localStorage.getItem('token');
     try {
       let effectiveBrowserSessionId = browserSessionId;
-      // Allow auto-open in chat mode too
-      if ((sessionKind === 'agent' || sessionKind === 'chat') && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {
+      // Allow auto-open in chat mode too. Skip if no sessionId yet (first message).
+      if (sessionId && (sessionKind === 'agent' || sessionKind === 'chat') && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {
+        const inputNorm = normalizeForIntent(inputText);
         const urlMatch = inputText.match(/https?:\/\/[^\s"'<>]+/i);
         const directUrl = urlMatch?.[0];
         const extractedUrl = extractLikelyUrl(inputText);
-        const wantsYoutube = /youtube|يوتيوب/i.test(inputText);
-        const wantsGithub = /(github|جيتهاب|كتهاب|كيتهاب)/i.test(inputText);
-        const wantsPreview = /(preview|معاينة|المعاينة|عرض الموقع|show site)/i.test(inputText);
+        const wantsYoutube = /(youtube|يوتيوب)/i.test(inputNorm);
+        const wantsGithub = /(github|git\s*hub|جيت\s*هاب|جيتهاب|جت\s*هاب|غيت\s*هاب|كت\s*هاب|كتهاب|كيت\s*هاب|كيتهاب)/i.test(inputNorm);
+        const wantsPreview = /(preview|معاينه|معاينة|المعاينه|المعاينة|عرض\s+الموقع|show\s+site)/i.test(inputNorm);
         const normalizePreviewUrl = (u: string) => {
           try {
             const parsed = new URL(u);
@@ -2213,14 +2334,17 @@ export default function CommandComposer({
       let providerToSend = activeProvider;
       let providerCfgToSend = providers[providerToSend];
 
-      // [FIX] Allow 'auto' mode to proceed without API key check
-      const isAuto = providerToSend === 'auto';
-      const isFreeOpenRouter = providerToSend === 'openrouter' && providers['openrouter']?.isFree;
+      // [FIX] Allow all free providers to proceed without API key check
+      const isFreeProvider = !!providerCfgToSend?.isFree;
 
-      if (!isAuto && !isFreeOpenRouter && (!String(providerCfgToSend?.apiKey || '').trim() || !providerCfgToSend?.isConnected)) {
+      console.log(`[ProviderDebug] run() start. active=${activeProvider}, toSend=${providerToSend}, isFree=${isFreeProvider}`);
+
+      if (!isFreeProvider && (!String(providerCfgToSend?.apiKey || '').trim() || !providerCfgToSend?.isConnected)) {
+        console.log('[ProviderDebug] Provider invalid, falling back...');
         const valid = pickFirstValidProvider();
         providerToSend = valid;
         providerCfgToSend = providers[valid];
+        console.log('[ProviderDebug] Fallback provider:', valid);
       }
 
       const payload: any = {
@@ -2428,6 +2552,17 @@ export default function CommandComposer({
 
   const checkConnection = async (key: string) => {
     const p = providers[key];
+
+    // Free providers auto-connect instantly — no verification needed
+    if (p?.isFree) {
+      setProviders(prev => ({
+        ...prev,
+        [key]: { ...prev[key], isConnected: true, lastError: undefined, apiKey: prev[key].apiKey || 'free-mode' }
+      }));
+      setActiveProvider(key);
+      return;
+    }
+
     setProviders(prev => ({ ...prev, [key]: { ...prev[key], isVerifying: true, lastError: undefined } }));
 
     const token = localStorage.getItem('token');
@@ -2759,7 +2894,15 @@ export default function CommandComposer({
     for (const { e, idx } of sortedEvents) {
       const type = String(e?.type || '');
 
-      if (type === 'step_started' || type === 'step_progress' || type === 'step_done' || type === 'step_failed' || type === 'evidence_added') continue;
+      if (type === 'step_started' || type === 'step_progress' || type === 'evidence_added') continue;
+
+      if (type === 'step_done' || type === 'step_failed') {
+        const pipeline = e?.data?.result?.output?.orchestratedPipeline;
+        if (pipeline) {
+          out.push({ kind: 'engineering_report', key: `report:${idx}`, e, idx });
+        }
+        continue;
+      }
 
       if (type === 'user_input') out.push({ kind: 'user', key: `user:${idx}`, e, idx });
       else if (type === 'text') {
@@ -2775,6 +2918,8 @@ export default function CommandComposer({
 
   return (
     <div className={`composer ${sessionKind === 'agent' ? 'composer-agent' : ''}`}>
+      {null}
+
       {!hideHistory && (
         <div className="events" ref={eventsScrollRef}>
           <div className="events-content" ref={eventsContentRef}>
@@ -2904,6 +3049,19 @@ export default function CommandComposer({
                   );
                 }
 
+                if (item.kind === 'engineering_report') {
+                  const pipeline = item.e?.data?.result?.output?.orchestratedPipeline;
+                  if (!pipeline) return null;
+                  return (
+                    <EngineeringReport 
+                      key={item.key} 
+                      report={pipeline} 
+                      ts={item.e?.ts} 
+                      t={t}
+                    />
+                  );
+                }
+
                 return null;
               })}
               {status === 'answering' && draftActive && draftText ? (
@@ -2948,28 +3106,43 @@ export default function CommandComposer({
               <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Cpu size={18} /> Providers
               </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {Object.entries(providers).map(([key, p]) => (
-                  <button key={key} onClick={() => setActiveProvider(key)} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 12px', borderRadius: 8, border: 'none',
-                    background: activeProvider === key ? 'var(--bg-primary, var(--bg-card))' : 'transparent',
-                    color: activeProvider === key ? 'var(--text-primary)' : 'var(--text-muted)',
-                    cursor: 'pointer', textAlign: 'left',
-                    fontWeight: activeProvider === key ? 600 : 400,
-                    transition: 'all 0.2s'
-                  }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{
-                        width: 8, height: 8, borderRadius: '50%',
-                        background: p.isConnected ? 'var(--accent-success)' : (p.apiKey ? 'var(--accent-secondary)' : '#71717a'),
-                        boxShadow: p.isConnected ? '0 0 8px rgba(34, 197, 94, 0.6)' : p.apiKey ? '0 0 8px rgba(var(--accent-secondary-rgb), 0.45)' : 'none'
-                      }} />
-                      {p.name.split(' ')[0]}
-                    </span>
-                    {activeProvider === key && <ChevronRight size={14} />}
-                  </button>
-                ))}
+
+              <div className="provider-section">
+                <div className="section-header free">🆓 مجاني — Free</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {Object.entries(providers).filter(([, p]) => p.isFree).map(([key, p]) => (
+                    <button
+                      key={key}
+                      className={`provider-item ${activeProvider === key ? 'active' : ''}`}
+                      onClick={() => { setActiveProvider(key); if (p.isFree && !p.isConnected) checkConnection(key); }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span className={`provider-status-dot ${p.isConnected ? 'connected' : 'disconnected'}`} />
+                        {p.name.split(' ')[0]}
+                      </span>
+                      {activeProvider === key && <ChevronRight size={14} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="provider-section">
+                <div className="section-header paid">💳 مدفوع — Paid</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {Object.entries(providers).filter(([, p]) => !p.isFree).map(([key, p]) => (
+                    <button
+                      key={key}
+                      className={`provider-item ${activeProvider === key ? 'active' : ''}`}
+                      onClick={() => setActiveProvider(key)}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span className={`provider-status-dot ${p.isConnected ? 'connected' : (p.apiKey ? 'active' : 'disconnected')}`} />
+                        {p.name.split(' ')[0]}
+                      </span>
+                      {activeProvider === key && <ChevronRight size={14} />}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -2977,176 +3150,157 @@ export default function CommandComposer({
             <div className="providers-right">
               {providers[activeProvider] && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-                    <div>
-                      <h2 style={{ margin: 0, fontSize: 20 }}>{providers[activeProvider].name}</h2>
-                      <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{
-                          padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-                          background: providers[activeProvider].isConnected ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                          color: providers[activeProvider].isConnected ? '#22c55e' : '#ef4444'
-                        }}>
-                          {providers[activeProvider].isConnected ? 'CONNECTED' : 'DISCONNECTED'}
-                        </div>
-                        {providers[activeProvider].isVerifying && <Loader2 size={12} className="spin" />}
-                      </div>
-                    </div>
-                    <button onClick={() => setShowProviders(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                      <X size={20} />
-                    </button>
-                  </div>
-
-                  <div style={{ flex: 1 }}>
-                    {/* OpenRouter Model Selection */}
-                    {activeProvider === 'openrouter' && (
-                      <div style={{ marginBottom: 20 }}>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>اختر النموذج</label>
-                        <select
-                          value={providers[activeProvider].model || ''}
-                          onChange={(e) => {
-                            const selectedModel = OPENROUTER_MODELS.find(m => m.id === e.target.value);
-                            const isFreeModel = selectedModel?.free ?? true;
-                            setProviders(prev => ({
-                              ...prev,
-                              [activeProvider]: {
-                                ...prev[activeProvider],
-                                model: e.target.value,
-                                isFree: isFreeModel,
-                                // Auto-connect for free models, require API key for paid
-                                isConnected: isFreeModel || !!prev[activeProvider].apiKey
-                              }
-                            }));
-                          }}
-                          style={{
-                            width: '100%', padding: '12px', borderRadius: 8,
-                            border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
-                            color: 'var(--text-primary)', outline: 'none', fontSize: 14, cursor: 'pointer'
-                          }}
-                        >
-                          <optgroup label="🆓 نماذج مجانية">
-                            {OPENROUTER_MODELS.filter(m => m.free).map(m => (
-                              <option key={m.id} value={m.id}>{m.name} - {m.description}</option>
-                            ))}
-                          </optgroup>
-                          <optgroup label="💳 نماذج مدفوعة (تحتاج API Key)">
-                            {OPENROUTER_MODELS.filter(m => !m.free).map(m => (
-                              <option key={m.id} value={m.id}>{m.name} - {m.description}</option>
-                            ))}
-                          </optgroup>
-                        </select>
-                        {/* Show selected model info */}
-                        {(() => {
-                          const selected = OPENROUTER_MODELS.find(m => m.id === providers[activeProvider].model);
-                          if (!selected) return null;
-                          return (
-                            <div style={{
-                              marginTop: 8, padding: '8px 12px', borderRadius: 8,
-                              background: selected.free ? 'rgba(34, 197, 94, 0.1)' : 'rgba(59, 130, 246, 0.1)',
-                              border: `1px solid ${selected.free ? 'rgba(34, 197, 94, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
-                              fontSize: 12
-                            }}>
-                              {selected.free ? (
-                                <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني - لا يحتاج API Key</span>
-                              ) : (
-                                <span style={{ color: '#3b82f6' }}>💳 هذا النموذج مدفوع - يحتاج API Key من OpenRouter</span>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    )}
-
-                    {/* API Key - Hide for Auto, and for OpenRouter with free model */}
-                    {activeProvider !== 'auto' && !(activeProvider === 'openrouter' && OPENROUTER_MODELS.find(m => m.id === providers[activeProvider].model)?.free) && (
-                      <div style={{ marginBottom: 20 }}>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>API Key</label>
-                        <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
-                          <div style={{ position: 'relative', flex: 1 }}>
-                            <input
-                              type={showKey[activeProvider] ? "text" : "password"}
-                              value={providers[activeProvider].apiKey}
-                              onChange={(e) => {
-                                const newKey = e.target.value;
-                                setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], apiKey: newKey, isConnected: false } }));
-                                // Send API key to server for OpenAI
-                                if (activeProvider === 'openai' && newKey.trim().startsWith('sk-')) {
-                                  fetch(`${API}/providers/openai/key`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ apiKey: newKey.trim() })
-                                  }).catch(err => console.error('Failed to send API key to server:', err));
-                                }
-                              }}
-                              placeholder={activeProvider === 'openrouter' ? 'sk-or-...' : 'sk-...'}
-                              style={{
-                                width: '100%', padding: '10px 12px', borderRadius: 8,
-                                border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
-                                color: 'var(--text-primary)', outline: 'none', fontSize: 14
-                              }}
-                            />
-                            <button
-                              onClick={() => setShowKey(prev => ({ ...prev, [activeProvider]: !prev[activeProvider] }))}
-                              style={{ position: 'absolute', right: 10, top: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-                            >
-                              {showKey[activeProvider] ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
+                  {/* OpenRouter Model Selection */}
+                  {activeProvider === 'openrouter' && (
+                    <div style={{ marginBottom: 20 }}>
+                      <label className="section-label">اختر النموذج</label>
+                      <select
+                        className="model-select"
+                        value={providers[activeProvider].model || ''}
+                        onChange={(e) => {
+                          const selectedModel = OPENROUTER_MODELS.find(m => m.id === e.target.value);
+                          const isFreeModel = selectedModel?.free ?? true;
+                          setProviders(prev => ({
+                            ...prev,
+                            [activeProvider]: {
+                              ...prev[activeProvider],
+                              model: e.target.value,
+                              isFree: isFreeModel,
+                              isConnected: isFreeModel || !!prev[activeProvider].apiKey
+                            }
+                          }));
+                        }}
+                      >
+                        <optgroup label="🆓 نماذج مجانية">
+                          {OPENROUTER_MODELS.filter(m => m.free).map(m => (
+                            <option key={m.id} value={m.id}>{m.name} - {m.description}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="💳 نماذج مدفوعة (تحتاج API Key)">
+                          {OPENROUTER_MODELS.filter(m => !m.free).map(m => (
+                            <option key={m.id} value={m.id}>{m.name} - {m.description}</option>
+                          ))}
+                        </optgroup>
+                      </select>
+                      {/* Show selected model info */}
+                      {(() => {
+                        const selected = OPENROUTER_MODELS.find(m => m.id === providers[activeProvider].model);
+                        if (!selected) return null;
+                        return (
+                          <div style={{
+                            marginTop: 8, padding: '8px 12px', borderRadius: 8,
+                            background: selected.free ? 'rgba(34, 197, 94, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+                            border: `1px solid ${selected.free ? 'rgba(34, 197, 94, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
+                            fontSize: 12
+                          }}>
+                            {selected.free ? (
+                              <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني - لا يحتاج API Key</span>
+                            ) : (
+                              <span style={{ color: '#3b82f6' }}>💳 هذا النموذج مدفوع - يحتاج API Key من OpenRouter</span>
+                            )}
                           </div>
-                          <button
-                            onClick={() => {
-                              deleteProviderKey(activeProvider);
-                              // Clear API key on server for OpenAI
-                              if (activeProvider === 'openai') {
-                                fetch(`${API}/providers/clear`, {
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Free Provider Info Box */}
+                  {providers[activeProvider]?.isFree && activeProvider !== 'auto' && activeProvider !== 'openrouter' && (
+                    <div className="info-box free">
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>✅ مزود مجاني — متصل تلقائياً</div>
+                      <div>هذا المزود مجاني ولا يحتاج أي مفتاح API. يمكنك البدء بالمحادثة مباشرة.</div>
+                    </div>
+                  )}
+
+                  {/* API Key - Hide for all free providers */}
+                  {!providers[activeProvider]?.isFree && (
+                    <div style={{ marginBottom: 20 }}>
+                      <label className="section-label">API Key</label>
+                      <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
+                        <div style={{ position: 'relative', flex: 1 }}>
+                          <input
+                            type={showKey[activeProvider] ? "text" : "password"}
+                            className="api-key-input"
+                            value={providers[activeProvider].apiKey}
+                            onChange={(e) => {
+                              const newKey = e.target.value;
+                              setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], apiKey: newKey, isConnected: false } }));
+                              if (activeProvider === 'openai' && newKey.trim().startsWith('sk-')) {
+                                fetch(`${API}/providers/openai/key`, {
                                   method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' }
-                                }).catch(err => console.error('Failed to clear API key on server:', err));
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ apiKey: newKey.trim() })
+                                }).catch(err => console.error('Failed to send API key to server:', err));
                               }
                             }}
-                            title="Clear Key"
-                            style={{
-                              padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-color)',
-                              background: 'var(--bg-secondary)', color: '#ef4444', cursor: 'pointer'
-                            }}
+                            placeholder={activeProvider === 'openrouter' ? 'sk-or-...' : 'sk-...'}
+                          />
+                          <button
+                            onClick={() => setShowKey(prev => ({ ...prev, [activeProvider]: !prev[activeProvider] }))}
+                            style={{ position: 'absolute', right: 10, top: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
                           >
-                            <Trash2 size={18} />
+                            {showKey[activeProvider] ? <EyeOff size={16} /> : <Eye size={16} />}
                           </button>
                         </div>
-                        {activeProvider === 'openrouter' && (
-                          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-                            احصل على API Key من <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)' }}>openrouter.ai/keys</a>
-                          </div>
-                        )}
+                        <button
+                          onClick={() => {
+                            deleteProviderKey(activeProvider);
+                            // Clear API key on server for OpenAI
+                            if (activeProvider === 'openai') {
+                              fetch(`${API}/providers/clear`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' }
+                              }).catch(err => console.error('Failed to clear API key on server:', err));
+                            }
+                          }}
+                          title="Clear Key"
+                          style={{
+                            padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-color)',
+                            background: 'var(--bg-secondary)', color: '#ef4444', cursor: 'pointer'
+                          }}
+                        >
+                          <Trash2 size={18} />
+                        </button>
                       </div>
-                    )}
+                      {activeProvider === 'openrouter' && (
+                        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                          احصل على API Key من <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)' }}>openrouter.ai/keys</a>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                    {/* Auto Provider Info */}
-                    {activeProvider === 'auto' && (
-                      <div style={{
-                        marginBottom: 20, padding: '16px', borderRadius: 12,
-                        background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(59, 130, 246, 0.1))',
-                        border: '1px solid rgba(34, 197, 94, 0.2)'
-                      }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: '#22c55e' }}>
-                          ✨ الوضع التلقائي المجاني
-                        </div>
-                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                          يستخدم نماذج AI مجانية بذكاء. لا يحتاج أي مفتاح API.
-                          <br />
-                          مناسب للمحادثات العامة والمهام البسيطة.
-                        </div>
+                  {/* Auto Provider Info */}
+                  {activeProvider === 'auto' && (
+                    <div className="info-box free">
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ الوضع التلقائي المجاني</div>
+                      <div>يستخدم نماذج AI مجانية بذكاء. لا يحتاج أي مفتاح API. مناسب للمحادثات العامة والمهام البسيطة.</div>
+                    </div>
+                  )}
+
+
+                  {/* Model ID - Hide for Auto and OpenRouter (which has dropdown) */}
+                  {activeProvider !== 'auto' && activeProvider !== 'openrouter' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: activeProvider === 'grok' ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 20 }}>
+                      <div>
+                        <label className="section-label">Model ID</label>
+                        <input
+                          type="text"
+                          className="api-key-input"
+                          value={providers[activeProvider].model || ''}
+                          onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], model: e.target.value } }))}
+                          placeholder="gpt-4o"
+                        />
                       </div>
-                    )}
-
-                    {/* Model ID - Hide for Auto and OpenRouter (which has dropdown) */}
-                    {activeProvider !== 'auto' && activeProvider !== 'openrouter' && (
-                      <div style={{ display: 'grid', gridTemplateColumns: activeProvider === 'grok' ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 20 }}>
+                      {activeProvider === 'grok' && (
                         <div>
-                          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Model ID</label>
+                          <label className="section-label">Base URL</label>
                           <input
                             type="text"
-                            value={providers[activeProvider].model || ''}
-                            onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], model: e.target.value } }))}
-                            placeholder="gpt-4o"
+                            className="api-key-input"
+                            value={providers[activeProvider].baseUrl || ''}
+                            onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], baseUrl: e.target.value } }))}
+                            placeholder="https://api..."
                             style={{
                               width: '100%', padding: '10px 12px', borderRadius: 8,
                               border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
@@ -3154,38 +3308,23 @@ export default function CommandComposer({
                             }}
                           />
                         </div>
-                        {activeProvider === 'grok' && (
-                          <div>
-                            <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Base URL</label>
-                            <input
-                              type="text"
-                              value={providers[activeProvider].baseUrl || ''}
-                              onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], baseUrl: e.target.value } }))}
-                              placeholder="https://api..."
-                              style={{
-                                width: '100%', padding: '10px 12px', borderRadius: 8,
-                                border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
-                                color: 'var(--text-primary)', outline: 'none', fontSize: 14
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      )}
+                    </div>
+                  )}
 
 
 
-                    {providers[activeProvider].lastError && (
-                      <div style={{
-                        padding: 12, borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)',
-                        border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', fontSize: 13,
-                        marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8
-                      }}>
-                        <XCircle size={16} />
-                        {providers[activeProvider].lastError}
-                      </div>
-                    )}
-                  </div>
+                  {providers[activeProvider].lastError && (
+                    <div style={{
+                      padding: 12, borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', fontSize: 13,
+                      marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8
+                    }}>
+                      <XCircle size={16} />
+                      {providers[activeProvider].lastError}
+                    </div>
+                  )}
+
 
                   <div style={{ display: 'flex', gap: 12, paddingTop: 20, borderTop: '1px solid var(--border-color)' }}>
                     <button
@@ -3242,88 +3381,90 @@ export default function CommandComposer({
         document.body
       )}
 
-      {secretPrompt && (
-        <div className="modal">
-          <div className="panel" style={{ width: 400, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-              <div style={{ padding: 10, borderRadius: 12, background: 'rgba(var(--accent-secondary-rgb), 0.1)', color: 'var(--accent-secondary)' }}>
-                <Lock size={24} />
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{t('secretGateTitle', 'Authentication Required')}</h3>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>GitHub / Service Token</div>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <p style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 8, lineHeight: 1.5 }}>
-                {t('secretGateInstruction', 'Please enter your Personal Access Token to continue.')}
-              </p>
-              {secretPrompt.reason && (
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', background: 'var(--bg-card)', padding: 8, borderRadius: 6, marginBottom: 12 }}>
-                  {secretPrompt.reason}
+      {
+        secretPrompt && (
+          <div className="modal">
+            <div className="panel" style={{ width: 400, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <div style={{ padding: 10, borderRadius: 12, background: 'rgba(var(--accent-secondary-rgb), 0.1)', color: 'var(--accent-secondary)' }}>
+                  <Lock size={24} />
                 </div>
-              )}
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="password"
-                  autoFocus
-                  placeholder="ghp_xxxxxxxxxxxx"
-                  onKeyDown={async (e) => {
-                    if (e.key === 'Enter') {
-                      const val = (e.target as HTMLInputElement).value;
-                      if (val) {
-                        const sid = secretPrompt.sessionId;
-                        const key = secretPrompt.key;
-                        const provider = secretPrompt.provider;
-                        setSecretPrompt(null);
-                        setEvents(prev => [...prev, { type: 'user_input', data: '🔐 [Token Provided]', ts: Date.now() }]);
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{t('secretGateTitle', 'Authentication Required')}</h3>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>GitHub / Service Token</div>
+                </div>
+              </div>
 
-                        const token = localStorage.getItem('token');
-                        try {
-                          const res = await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-                            body: JSON.stringify({ key, value: val, ...(provider ? { provider } : {}) }),
-                          });
-                          if (res.status === 401) {
-                            handleUnauthorized();
-                            return;
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 8, lineHeight: 1.5 }}>
+                  {t('secretGateInstruction', 'Please enter your Personal Access Token to continue.')}
+                </p>
+                {secretPrompt.reason && (
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)', background: 'var(--bg-card)', padding: 8, borderRadius: 6, marginBottom: 12 }}>
+                    {secretPrompt.reason}
+                  </div>
+                )}
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="password"
+                    autoFocus
+                    placeholder="ghp_xxxxxxxxxxxx"
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        const val = (e.target as HTMLInputElement).value;
+                        if (val) {
+                          const sid = secretPrompt.sessionId;
+                          const key = secretPrompt.key;
+                          const provider = secretPrompt.provider;
+                          setSecretPrompt(null);
+                          setEvents(prev => [...prev, { type: 'user_input', data: '🔐 [Token Provided]', ts: Date.now() }]);
+
+                          const token = localStorage.getItem('token');
+                          try {
+                            const res = await fetch(`${API}/sessions/${encodeURIComponent(sid)}/secrets`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                              body: JSON.stringify({ key, value: val, ...(provider ? { provider } : {}) }),
+                            });
+                            if (res.status === 401) {
+                              handleUnauthorized();
+                              return;
+                            }
+                            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                            setEvents(prev => [...prev, { type: 'text', data: '✅ Token verified. Resuming operation...', ts: Date.now() }]);
+                            pendingBrowserRetryRef.current = null;
+                          } catch (err) {
+                            setEvents(prev => [...prev, { type: 'error', data: 'Failed to save token.', ts: Date.now() }]);
                           }
-                          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                          setEvents(prev => [...prev, { type: 'text', data: '✅ Token verified. Resuming operation...', ts: Date.now() }]);
-                          pendingBrowserRetryRef.current = null;
-                        } catch (err) {
-                          setEvents(prev => [...prev, { type: 'error', data: 'Failed to save token.', ts: Date.now() }]);
                         }
                       }
-                    }
-                  }}
-                  style={{
-                    width: '100%', padding: '12px', paddingLeft: 40, borderRadius: 8,
-                    background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)',
-                    color: '#fff', outline: 'none', fontSize: 14, fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
-                  }}
-                />
-                <Key size={16} style={{ position: 'absolute', left: 12, top: 14, color: 'var(--text-secondary)' }} />
+                    }}
+                    style={{
+                      width: '100%', padding: '12px', paddingLeft: 40, borderRadius: 8,
+                      background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)',
+                      color: '#fff', outline: 'none', fontSize: 14, fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+                    }}
+                  />
+                  <Key size={16} style={{ position: 'absolute', left: 12, top: 14, color: 'var(--text-secondary)' }} />
+                </div>
+                <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <ShieldCheck size={12} />
+                  <span>Your token is sent securely and not stored permanently.</span>
+                </div>
               </div>
-              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
-                <ShieldCheck size={12} />
-                <span>Your token is sent securely and not stored permanently.</span>
-              </div>
-            </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                onClick={() => setSecretPrompt(null)}
-                style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button
+                  onClick={() => setSecretPrompt(null)}
+                  style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       <div className={`composer-footer ${sessionKind === 'agent' ? 'composer-footer-embedded' : ''}`}>
         <div
@@ -3417,6 +3558,21 @@ export default function CommandComposer({
                 )}
               </div>
             )}
+
+            {status === 'thinking' && (
+              <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px' }}>
+                <NeuralThinkingIndicator
+                  visible={true}
+                  phase={thinkingPhase}
+                  variant="inline"
+                />
+                <TaskTracker />
+              </div>
+            )}
+
+            <TodosPanel sessionId={sessionId} />
+
+
             <textarea
               className="main-input"
               ref={(el) => {
@@ -3456,17 +3612,7 @@ export default function CommandComposer({
             {/* Actions Footer Refactored for Corner Positioning */}
             <div className="composer-actions">
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <GitHubConnectModal
-                  isOpen={showGithubModal}
-                  onClose={() => setShowGithubModal(false)}
-                  onConnected={(repo) => {
-                    setEvents(prev => [...prev, {
-                      type: 'system',
-                      data: { text: `✅ Successfully connected to **${repo}**. The workspace has been updated.` },
-                      duration: 0
-                    }]);
-                  }}
-                />
+
 
                 <input
                   type="file"
@@ -3476,16 +3622,148 @@ export default function CommandComposer({
                   style={{ display: 'none' }}
                 />
 
-                <button
-                  className={`provider-btn ${!providers[activeProvider]?.isConnected ? 'is-disconnected' : ''}`}
-                  onClick={() => setShowProviders(true)}
-                  title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
-                >
-                  <Cpu size={14} />
-                  <span className="provider-label" style={{ marginLeft: 6, fontSize: 12 }}>
-                    {(activeProvider === 'openai' ? 'OpenAI' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 8)}
-                  </span>
-                </button>
+                {/* Dynamic Provider Logo Helper */}
+                {(() => {
+                  const getProviderLogo = (key: string) => {
+                    const isCon = providers[key]?.isConnected;
+                    const color = isCon ? "#10b981" : "#ef4444";
+                    const mutedColor = "var(--text-muted)";
+
+                    // Brand Gradients Definition
+                    const Gradients = () => (
+                      <svg width="0" height="0" style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>
+                        <defs>
+                          <linearGradient id="gemini-grade" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#4E75F5" />
+                            <stop offset="100%" stopColor="#9D46F5" />
+                          </linearGradient>
+                          <linearGradient id="deepseek-grade" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#4d6bfe" />
+                            <stop offset="100%" stopColor="#2c3e50" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                    );
+
+                    if (key === 'auto') return (
+                      <div style={{ position: 'relative', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Bot size={22} color="#8b5cf6" style={{ filter: 'drop-shadow(0 0 6px rgba(139, 92, 246, 0.5))' }} />
+                        {isCon && <div style={{
+                          position: 'absolute', bottom: -1, right: -1, width: 8, height: 8,
+                          background: '#10b981', borderRadius: '50%', border: '2px solid var(--bg-primary)',
+                          boxShadow: '0 0 4px #10b981'
+                        }} />}
+                      </div>
+                    );
+
+                    if (key === 'openai') return (
+                      // 100% Official OpenAI Blossom Logo
+                      <svg viewBox="0 0 156 154" width="22" height="22" fill={isCon ? "#ffffff" : mutedColor} style={{ transition: 'fill 0.3s' }}>
+                        <path d="M59.7325 56.1915V41.6219C59.7325 40.3948 60.1929 39.4741 61.266 38.8613L90.5592 21.9915C94.5469 19.6912 99.3013 18.6181 104.208 18.6181C122.612 18.6181 134.268 32.8813 134.268 48.0637C134.268 49.1369 134.268 50.364 134.114 51.5911L103.748 33.8005C101.908 32.7274 100.067 32.7274 98.2267 33.8005L59.7325 56.1915ZM128.133 112.937V78.1222C128.133 75.9745 127.212 74.441 125.372 73.3678L86.878 50.9768L99.4538 43.7682C100.527 43.1554 101.448 43.1554 102.521 43.7682L131.814 60.6381C140.25 65.5464 145.923 75.9745 145.923 86.0961C145.923 97.7512 139.023 108.487 128.133 112.935V112.937ZM50.6841 82.2638L38.1083 74.9028C37.0351 74.29 36.5748 73.3693 36.5748 72.1422V38.4025C36.5748 21.9929 49.1506 9.5696 66.1744 9.5696C72.6162 9.5696 78.5962 11.7174 83.6585 15.5511L53.4461 33.0352C51.6062 34.1084 50.6855 35.6419 50.6855 37.7897V82.2653L50.6841 82.2638ZM77.7533 97.9066L59.7325 87.785V66.3146L77.7533 56.193L95.7725 66.3146V87.785L77.7533 97.9066ZM89.3321 144.53C82.8903 144.53 76.9103 142.382 71.848 138.549L102.06 121.064C103.9 119.991 104.821 118.458 104.821 116.31V71.8343L117.551 79.1954C118.624 79.8082 119.084 80.7289 119.084 81.956V115.696C119.084 132.105 106.354 144.529 89.3321 144.529V144.53ZM52.9843 110.33L23.6911 93.4601C15.2554 88.5517 9.58181 78.1237 9.58181 68.0021C9.58181 56.193 16.6365 45.611 27.5248 41.163V76.1299C27.5248 78.2776 28.4455 79.8111 30.2854 80.8843L68.6271 103.121L56.0513 110.33C54.9781 110.943 54.0574 110.943 52.9843 110.33ZM51.2983 135.482C33.9681 135.482 21.2384 122.445 21.2384 106.342C21.2384 105.115 21.3923 103.888 21.3923 105.115C21.5448 102.661L51.7572 120.145C53.5971 121.218 55.4385 121.218 57.2784 120.145L95.7725 97.9081V112.478C95.7725 113.705 95.3122 114.625 94.239 115.238L64.9458 132.108C60.9582 134.408 56.2037 135.482 51.2969 135.482H51.2983ZM89.3321 153.731C107.889 153.731 123.378 140.542 126.907 123.058C144.083 118.61 155.126 102.507 155.126 86.0976C155.126 75.3617 150.525 64.9336 142.243 57.4186C143.01 54.1977 143.471 50.9768 143.471 47.7573C143.471 25.8267 125.68 9.41567 105.129 9.41567C100.989 9.41567 97.0011 10.0285 93.0134 11.4095C86.1112 4.66126 76.6024 0.367188 66.1744 0.367188C47.6171 0.367188 32.1282 13.5558 28.5994 31.0399C11.4232 35.4879 0.380859 51.5911 0.380859 68.0006C0.380859 78.7365 4.98133 89.1645 13.2631 96.6795C12.4963 99.9004 12.036 103.121 12.036 106.341C12.036 128.271 29.8265 144.682 50.3777 144.682C54.5178 144.682 58.5055 144.07 62.4931 142.689C69.3938 149.437 78.9026 153.731 89.3321 153.731Z" />
+                      </svg>
+                    );
+
+                    if (key === 'anthropic') return (
+                      // 100% Official Anthropic Symbol
+                      <svg viewBox="0 0 25 25" width="22" height="22" fill={isCon ? "#D97757" : mutedColor}>
+                        <path d="M11.376 24L10.776 23.544L10.44 22.8L10.776 21.312L11.16 19.392L11.472 17.856L11.76 15.96L11.928 15.336L11.904 15.288L11.784 15.312L10.344 17.28L8.16 20.232L6.432 22.056L6.024 22.224L5.304 21.864L5.376 21.192L5.784 20.616L8.16 17.568L9.6 15.672L10.536 14.592L10.512 14.448H10.464L4.128 18.576L3 18.72L2.496 18.264L2.568 17.52L2.808 17.28L4.704 15.96L9.432 13.32L9.504 13.08L9.432 12.96H9.192L8.4 12.912L5.712 12.84L3.384 12.744L1.104 12.624L0.528 12.504L0 11.784L0.048 11.424L0.528 11.112L1.224 11.16L2.736 11.28L5.016 11.424L6.672 11.52L9.12 11.784H9.504L9.552 11.616L9.432 11.52L9.336 11.424L6.96 9.84L4.416 8.16L3.072 7.176L2.352 6.672L1.992 6.216L1.848 5.208L2.496 4.488L3.384 4.56L3.6 4.608L4.488 5.304L6.384 6.768L8.88 8.616L9.24 8.904L9.408 8.808V8.736L9.24 8.472L7.896 6.024L6.456 3.528L5.808 2.496L5.64 1.872C5.576 1.656 5.544 1.416 5.544 1.152L6.288 0.144001L6.696 0L7.704 0.144001L8.112 0.504001L8.736 1.92L9.72 4.152L11.28 7.176L11.736 8.088L11.976 8.904L12.072 9.168H12.24V9.024L12.36 7.296L12.6 5.208L12.84 2.52L12.912 1.752L13.296 0.840001L14.04 0.360001L14.616 0.624001L15.096 1.32L15.024 1.752L14.76 3.6L14.184 6.504L13.824 8.472H14.04L14.28 8.208L15.264 6.912L16.92 4.848L17.64 4.032L18.504 3.12L19.056 2.688H20.088L20.832 3.816L20.496 4.992L19.44 6.336L18.552 7.464L17.28 9.168L16.512 10.536L16.584 10.632H16.752L19.608 10.008L21.168 9.744L22.992 9.432L23.832 9.816L23.928 10.2L23.592 11.016L21.624 11.496L19.32 11.952L15.888 12.768L15.84 12.792L15.888 12.864L17.424 13.008L18.096 13.056H19.728L22.752 13.272L23.544 13.8L24 14.424L23.928 14.928L22.704 15.528L21.072 15.144L17.232 14.232L15.936 13.92H15.744V14.016L16.848 15.096L18.84 16.896L21.36 19.224L21.48 19.8L21.168 20.28L20.832 20.232L18.624 18.552L17.76 17.808L15.84 16.2H15.72V16.368L16.152 17.016L18.504 20.544L18.624 21.624L18.456 21.96L17.832 22.176L17.184 22.056L15.792 20.136L14.376 17.952L13.224 16.008L13.104 16.104L12.408 23.352L12.096 23.712L11.376 24" />
+                      </svg>
+                    );
+
+                    if (key === 'gemini') return (
+                      // Official Google Multicolored "G" Logo
+                      <svg viewBox="0 0 24 24" width="20" height="20">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill={isCon ? "#4285F4" : mutedColor} />
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill={isCon ? "#34A853" : mutedColor} />
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill={isCon ? "#FBBC05" : mutedColor} />
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill={isCon ? "#EA4335" : mutedColor} />
+                      </svg>
+                    );
+
+                    if (key === 'deepseek') return (
+                      // Official DeepSeek Blue Whale Logo
+                      <svg viewBox="0 0 64 64" width="22" height="22">
+                        <path d="M46.7 18.2L31.3 2.8C25.4-3.1 15.6 1.4 15.6 9.8v10.9c0 1.9 1.1 3.5 2.8 4.3L32.2 32c10.3 5.1 22.3 1.9 27.5-8.4l1.6-3.1c.9-1.9.4-4.2-1.2-5.7L46.7 18.2zM21.2 25.1c-.8-.8-2.1-.8-2.9 0l-12.8 12.8c-1.6 1.6-1.6 4.2 0 5.7l1.2 1.2c.8.8 2.1.8 2.9 0L24 32.3c1.6-1.6 1.6-4.2 0-5.7l-2.8-1.5z"
+                          fill={isCon ? "#4d6bfe" : mutedColor} />
+                      </svg>
+                    );
+
+                    if (key === 'mistral') return (
+                      // 100% Official Mistral AI "M" Icon
+                      <svg viewBox="0 0 191 135" width="22" height="22" fill="none">
+                        <path d="M54.3219 0H27.1528V27.0892H54.3219V0Z" fill={isCon ? "#FFD800" : mutedColor} />
+                        <path d="M162.984 0H135.815V27.0892H162.984V0Z" fill={isCon ? "#FFD800" : mutedColor} />
+                        <path d="M81.482 27.0913H27.1528V54.1805H81.482V27.0913Z" fill={isCon ? "#FFAF00" : mutedColor} />
+                        <path d="M162.99 27.0913H108.661V54.1805H162.99V27.0913Z" fill={isCon ? "#FFAF00" : mutedColor} />
+                        <path d="M162.971 54.168H27.1528V81.2572H162.971V54.168Z" fill={isCon ? "#FF8205" : mutedColor} />
+                        <path d="M54.3219 81.2593H27.1528V108.349H54.3219V81.2593Z" fill={isCon ? "#FA500F" : mutedColor} />
+                        <path d="M108.661 81.2593H81.4917V108.349H108.661V81.2593Z" fill={isCon ? "#FA500F" : mutedColor} />
+                        <path d="M162.984 81.2593H135.815V108.349H162.984V81.2593Z" fill={isCon ? "#FA500F" : mutedColor} />
+                        <path d="M81.4879 108.339H-0.00146484V135.429H81.4879V108.339Z" fill={isCon ? "#E10500" : mutedColor} />
+                        <path d="M190.159 108.339H108.661V135.429H190.159V108.339Z" fill={isCon ? "#E10500" : mutedColor} />
+                      </svg>
+                    );
+
+                    if (key === 'openrouter') return (
+                      // 100% Official OpenRouter Logo (Circuit/Arrow)
+                      <svg viewBox="0 0 512 512" width="22" height="22" fill={isCon ? "currentColor" : mutedColor}>
+                        <path d="M3 248.945C18 248.945 76 236 106 219C136 202 136 202 198 158C276.497 102.293 332 120.945 423 120.945" stroke={isCon ? "#6366f1" : mutedColor} strokeWidth="90" fill="none" />
+                        <path d="M511 121.5L357.25 210.268L357.25 32.7324L511 121.5Z" fill={isCon ? "#6366f1" : mutedColor} />
+                        <path d="M0 249C15 249 73 261.945 103 278.945C133 295.945 133 295.945 195 339.945C273.497 395.652 329 377 420 377" stroke={isCon ? "#6366f1" : mutedColor} strokeWidth="90" fill="none" />
+                        <path d="M508 376.445L354.25 287.678L354.25 465.213L508 376.445Z" fill={isCon ? "#6366f1" : mutedColor} />
+                      </svg>
+                    );
+
+                    if (key === 'huggingface') return (
+                      // 100% Official Hugging Face Smiley Logo
+                      <svg viewBox="0 0 95 88" width="24" height="24">
+                        <path fill={isCon ? "#FFD21E" : mutedColor} d="M47.21 76.5a34.75 34.75 0 1 0 0-69.5 34.75 34.75 0 0 0 0 69.5Z" />
+                        <path fill={isCon ? "#FF9D0B" : mutedColor} d="M81.96 41.75a34.75 34.75 0 1 0-69.5 0 34.75 34.75 0 0 0 69.5 0Zm-73.5 0a38.75 38.75 0 1 1 77.5 0 38.75 38.75 0 0 1-77.5 0Z" />
+                        <path fill={isCon ? "#3A3B45" : mutedColor} d="M58.5 32.3c1.28.44 1.78 3.06 3.07 2.38a5 5 0 1 0-6.76-2.07c.61 1.15 2.55-.72 3.7-.32ZM34.95 32.3c-1.28.44-1.79 3.06-3.07 2.38a5 5 0 1 1 6.76-2.07c-.61 1.15-2.56-.72-3.7-.32Z" />
+                        <path fill={isCon ? "#FF323D" : mutedColor} d="M46.96 56.29c9.83 0 13-8.76 13-13.26 0-2.34-1.57-1.6-4.09-.36-2.33 1.15-5.46 2.74-8.9 2.74-7.19 0-13-6.88-13-2.38s3.16 13.26 13 13.26Z" />
+                      </svg>
+                    );
+
+                    if (key === 'perplexity') return (
+                      // 100% Official Perplexity Logo
+                      <svg viewBox="0 0 30 32" width="22" height="22" fill={isCon ? "#20b2aa" : mutedColor}>
+                        <path d="M15 0.124727C15.4832 0.124727 15.8748 0.516607 15.875 0.999727V8.88645L24.3809 0.380586C24.6311 0.130476 25.0081 0.0557816 25.335 0.191133C25.6618 0.326537 25.8749 0.645944 25.875 0.999727V10.1003H28.75L28.8398 10.1052C29.2809 10.1502 29.625 10.5224 29.625 10.9753V23.5007C29.6246 23.9836 29.233 24.3757 28.75 24.3757H25.875V30.9997C25.875 31.3536 25.6619 31.6729 25.335 31.8083C25.008 31.9438 24.6311 31.8691 24.3809 31.6189L15.875 23.113V30.9997C15.875 31.483 15.4832 31.8747 15 31.8747C14.5168 31.8747 14.125 31.483 14.125 30.9997V23.113L5.61914 31.6189C5.36889 31.8691 4.992 31.9438 4.66504 31.8083C4.33815 31.6729 4.125 31.3536 4.125 30.9997V24.3757H1.25C0.76699 24.3757 0.375388 23.9836 0.375 23.5007V10.9753C0.375 10.4921 0.766751 10.1003 1.25 10.1003H4.125V0.999727C4.12511 0.645944 4.33818 0.326537 4.66504 0.191133C4.99192 0.0557816 5.36892 0.130476 5.61914 0.380586L14.125 8.88645V0.999727C14.1252 0.516607 14.5168 0.124727 15 0.124727ZM5.875 20.1462V28.8864L14.125 20.6364V12.9275L5.875 20.1462ZM15.875 20.6364L24.125 28.8864V20.1462L15.875 12.9275V20.6364ZM2.125 22.6257H4.125V19.7497L4.12988 19.656C4.15334 19.4388 4.25778 19.2369 4.42383 19.0915L12.6992 11.8503H5.20312C5.13787 11.8658 5.07001 11.8747 5 11.8747C4.92999 11.8747 4.86213 11.8658 4.79688 11.8503H2.125V22.6257ZM25.5762 19.0915C25.7659 19.2576 25.8749 19.4976 25.875 19.7497V22.6257H27.875V11.8503H25.2031C25.1379 11.8658 25.07 11.8747 25 11.8747C24.93 11.8747 24.8621 11.8658 24.7969 11.8503H17.3008L25.5762 19.0915ZM5.875 10.1003H12.8623L5.875 3.11301V10.1003ZM17.1377 10.1003H24.125V3.11301L17.1377 10.1003Z" />
+                      </svg>
+                    );
+
+                    if (key === 'together') return (
+                      // 100% Official Together AI Logo (Dot)
+                      <svg viewBox="0 0 100 30" width="30" height="22" fill={isCon ? "currentColor" : mutedColor}>
+                        <path d="M88.067 14.1988C88.067 15.1664 87.2731 15.9508 86.2937 15.9508C85.3144 15.9508 84.5205 15.1664 84.5205 14.1988C84.5205 13.2312 85.3144 12.4468 86.2937 12.4468C87.2731 12.4468 88.067 13.2312 88.067 14.1988Z" fill="#0F6FFF" />
+                      </svg>
+                    );
+
+                    if (key === 'provider-') return null;
+
+                    if (key === 'grok') return (
+                      // Official xAI Grok (Feb 2025 "Saturn G" Monogram)
+                      <svg viewBox="0 0 88 33" width="30" height="22" fill={isCon ? "#ffffff" : mutedColor}>
+                        <path d="M13.2371 21.0407L24.3186 12.8506C24.8619 12.4491 25.6384 12.6057 25.8973 13.2294C27.2597 16.5185 26.651 20.4712 23.9403 23.1851C21.2297 25.8989 17.4581 26.4941 14.0108 25.1386L10.2449 26.8843C15.6463 30.5806 22.2053 29.6665 26.304 25.5601C29.5551 22.3051 30.562 17.8683 29.6205 13.8673L29.629 13.8758C28.2637 7.99809 29.9647 5.64871 33.449 0.844576C33.5314 0.730667 33.6139 0.616757 33.6964 0.5L29.1113 5.09055V5.07631L13.2343 21.0436" />
+                        <path d="M10.9503 23.0313C7.07343 19.3235 7.74185 13.5853 11.0498 10.2763C13.4959 7.82722 17.5036 6.82767 21.0021 8.2971L24.7595 6.55998C24.0826 6.07017 23.215 5.54334 22.2195 5.17313C17.7198 3.31926 12.3326 4.24192 8.67479 7.90126C5.15635 11.4239 4.0499 16.8403 5.94992 21.4622C7.36924 24.9165 5.04257 27.3598 2.69884 29.826C1.86829 30.7002 1.0349 31.5745 0.36364 32.5L10.9474 23.0341" />
+                      </svg>
+                    );
+
+                    return <Cpu size={18} color={isCon ? color : 'var(--text-muted)'} />;
+                  };
+
+                  return (
+                    <button
+                      className={`provider-btn provider-${activeProvider} ${providers[activeProvider]?.isConnected ? 'is-connected' : 'is-disconnected'}`}
+                      onClick={() => setShowProviders(true)}
+                      title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
+                    >
+                      {getProviderLogo(activeProvider)}
+                      <span className="provider-label" style={{ marginLeft: 6, fontSize: 12 }}>
+                        {(activeProvider === 'openai' ? 'OpenAI' : activeProvider === 'deepseek' ? 'DeepSeek' : activeProvider === 'openrouter' ? 'Router' : activeProvider === 'anthropic' ? 'Claude' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 10)}
+                      </span>
+                    </button>
+                  );
+                })()}
 
                 <button
                   className="action-btn"
@@ -3500,11 +3778,13 @@ export default function CommandComposer({
 
                 <button
                   className="action-btn"
-                  onClick={() => setShowGithubModal(true)}
-                  title="Connect to GitHub Repo"
+                  onClick={onGitClick}
+                  title="GitHub Integration"
                 >
-                  <Github size={14} />
+                  <Github size={14} color={githubConnected ? "#10b981" : "#ef4444"} />
                 </button>
+
+
 
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}
@@ -3523,13 +3803,25 @@ export default function CommandComposer({
                     stopCurrentRun();
                     return;
                   }
-                  if (isUploading) return;
-                  run();
+                  if (isUploading) {
+                    return;
+                  }
+                  try {
+                    run();
+                  } catch (e) {
+                    console.error('run() threw synchronously:', e);
+                  }
                 }}
                 disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
                 title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
+                style={{ position: 'relative' }}
               >
-                {status !== 'idle' || !!approval || !!secretPrompt ? <Square size={14} fill="currentColor" /> : <ArrowUp size={16} />}
+                {status !== 'idle' || !!approval || !!secretPrompt ? (
+                  <>
+                    <Square size={14} fill="currentColor" style={{ zIndex: 2 }} />
+                    <div className="btn-thinking-pulse" />
+                  </>
+                ) : <ArrowUp size={16} />}
               </button>
             </div>
           </div>
@@ -3554,6 +3846,6 @@ export default function CommandComposer({
           )}
         </div>
       </div>
-    </div>
+    </div >
   );
 }

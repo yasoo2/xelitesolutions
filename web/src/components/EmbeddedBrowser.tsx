@@ -16,6 +16,7 @@ import {
     Search,
     X
 } from 'lucide-react';
+
 import ModernBrowserStream from './ModernBrowserStream';
 import { API_URL } from '../config';
 
@@ -41,7 +42,10 @@ export default function EmbeddedBrowser({
             const detail = e.detail as { url?: string; sessionId?: string };
             if (detail?.url) {
                 setCurrentUrl(detail.url);
-                setInputUrl(detail.url);
+                // Only update input if user isn't actively editing
+                if (!showUrlInput) {
+                    setInputUrl(detail.url);
+                }
             }
             if (detail?.sessionId) {
                 setIsConnected(true);
@@ -51,7 +55,14 @@ export default function EmbeddedBrowser({
 
         window.addEventListener('browser:session_status', handleStatus as any);
         return () => window.removeEventListener('browser:session_status', handleStatus as any);
-    }, [onReady]);
+    }, [onReady, showUrlInput]);
+
+    // Reset state when sessionId changes
+    useEffect(() => {
+        setCurrentUrl('');
+        setInputUrl('');
+        setIsLoading(false);
+    }, [sessionId]);
 
     // Navigate to URL
     const handleNavigate = useCallback(async (url: string) => {
@@ -74,7 +85,7 @@ export default function EmbeddedBrowser({
 
         try {
             const token = localStorage.getItem('token');
-            await fetch(`${API_URL}/tools/browser_run/execute`, {
+            await fetch(`${API_URL}/browser/nav/goto`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -82,13 +93,13 @@ export default function EmbeddedBrowser({
                 },
                 body: JSON.stringify({
                     sessionId,
-                    actions: [{ type: 'goto', url: targetUrl }]
+                    url: targetUrl
                 })
             });
             setCurrentUrl(targetUrl);
             setInputUrl(targetUrl);
-        } catch (e) {
-            console.error('Navigation failed:', e);
+        } catch {
+            // Navigation failed silently
         } finally {
             setIsLoading(false);
         }
@@ -99,7 +110,7 @@ export default function EmbeddedBrowser({
         setIsLoading(true);
         try {
             const token = localStorage.getItem('token');
-            await fetch(`${API_URL}/tools/browser_run/execute`, {
+            await fetch(`${API_URL}/browser/actions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -110,8 +121,8 @@ export default function EmbeddedBrowser({
                     actions: [action]
                 })
             });
-        } catch (e) {
-            console.error('Action failed:', e);
+        } catch {
+            // Action failed silently
         } finally {
             setIsLoading(false);
         }
@@ -130,20 +141,21 @@ export default function EmbeddedBrowser({
     };
 
     return (
-        <div style={{
+        <div className="joe-browser-container" style={{
             display: 'flex',
             flexDirection: 'column',
             height: '100%',
-            background: 'var(--bg-dark)'
+            background: 'rgba(0,0,0,0.2)'
         }}>
             {/* Toolbar */}
-            <div style={{
+            <div className="joe-browser-toolbar" style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
-                padding: '4px 8px',
-                borderBottom: '1px solid var(--border-color)',
-                background: 'var(--bg-secondary)',
+                gap: 12,
+                padding: '10px 16px',
+                borderBottom: '1px solid var(--joe-border)',
+                background: 'var(--joe-bg-card)',
+                backdropFilter: 'blur(10px)',
             }}>
                 {/* Navigation buttons */}
                 <div style={{ display: 'flex', gap: 2 }}>
@@ -160,6 +172,7 @@ export default function EmbeddedBrowser({
 
                 {/* URL Bar */}
                 <div
+                    className="joe-browser-url-bar"
                     onClick={() => {
                         setShowUrlInput(true);
                         setTimeout(() => inputRef.current?.focus(), 50);
@@ -168,13 +181,15 @@ export default function EmbeddedBrowser({
                         flex: 1,
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 8,
-                        padding: '6px 12px',
-                        background: 'var(--bg-card)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 6,
+                        gap: 10,
+                        padding: '8px 14px',
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        border: '1px solid var(--joe-border)',
+                        borderRadius: 10,
                         cursor: 'text',
                         minWidth: 0,
+                        transition: 'all 0.2s ease',
+                        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.2)'
                     }}
                 >
                     {showUrlInput ? (
@@ -235,6 +250,7 @@ export default function EmbeddedBrowser({
             {/* Browser View */}
             <div style={{ flex: 1, overflow: 'hidden' }}>
                 <ModernBrowserStream sessionId={sessionId} showBoxes={true} />
+
             </div>
         </div>
     );
@@ -259,22 +275,36 @@ function BrowserButton({
             disabled={disabled}
             title={tooltip}
             style={{
-                width: 28,
-                height: 28,
-                borderRadius: 4,
-                border: 'none',
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                border: '1px solid transparent',
                 background: 'transparent',
-                color: disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+                color: disabled ? 'var(--joe-text-muted)' : 'var(--joe-text-secondary)',
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 opacity: disabled ? 0.5 : 1,
-                transition: 'all 0.15s',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+            onMouseOver={(e) => {
+                if (!disabled) {
+                    e.currentTarget.style.background = 'var(--joe-bg-hover)';
+                    e.currentTarget.style.color = 'var(--joe-gold-primary)';
+                    e.currentTarget.style.borderColor = 'var(--joe-gold-border)';
+                }
+            }}
+            onMouseOut={(e) => {
+                if (!disabled) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = 'var(--joe-text-secondary)';
+                    e.currentTarget.style.borderColor = 'transparent';
+                }
             }}
         >
             <Icon
-                size={14}
+                size={16}
                 style={spinning ? { animation: 'spin 1s linear infinite' } : undefined}
             />
         </button>

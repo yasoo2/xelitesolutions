@@ -7,10 +7,33 @@ export class Builder {
     type: 'ecommerce' | 'saas' | 'blog',
     features: string[] = [],
     baseDir?: string,
-    options: { aestheticMode?: string; language?: string } = {}
+    options: { aestheticMode?: string; language?: string; port?: number; overwrite?: boolean } = {}
   ) {
-    const root = path.resolve(baseDir || process.cwd(), name);
-    if (fs.existsSync(root)) throw new Error(`Project ${name} already exists`);
+    // [FIX] تحديد المسار الصحيح للمشروع
+    const isApiDir = path.basename(process.cwd()) === 'api';
+    const projectRoot = isApiDir ? path.join(process.cwd(), '..') : process.cwd();
+    
+    // إذا لم يتم تحديد baseDir، استخدم مجلد data/projects
+    let effectiveBaseDir = baseDir;
+    if (!effectiveBaseDir) {
+      effectiveBaseDir = path.join(projectRoot, 'data', 'projects');
+    }
+    
+    // تأكد من وجود المجلد الأساسي
+    if (!fs.existsSync(effectiveBaseDir)) {
+      fs.mkdirSync(effectiveBaseDir, { recursive: true });
+    }
+    
+    const root = path.resolve(effectiveBaseDir, name);
+    
+    if (fs.existsSync(root)) {
+      if (options.overwrite !== false) {
+        console.log(`[Builder] Overwriting existing project at ${root}`);
+        fs.rmSync(root, { recursive: true, force: true });
+      } else {
+        throw new Error(`Project ${name} already exists`);
+      }
+    }
 
     fs.mkdirSync(root, { recursive: true });
 
@@ -167,7 +190,7 @@ module.exports = {
       devDependencies: { "nodemon": "^3.0.1" }
     }, null, 2));
 
-    let indexContent = `
+    const indexContent = `
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -176,104 +199,18 @@ require('dotenv').config();
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.disable('x-powered-by');
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.once('finish', () => {
-    const ms = Date.now() - start;
-    console.log(req.method + ' ' + req.originalUrl + ' ' + res.statusCode + ' ' + ms + 'ms');
-  });
-  next();
-});
 
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/app')
-  .then(() => console.log('✅ DB Connected'));
+  .then(() => console.log('✅ DB Connected'))
+  .catch(err => console.error('DB Connection Error:', err));
 
-app.get('/', (req, res) => res.json({ status: 'ok' }));
-app.get('/api/status', (req, res) => {
-  const state = mongoose.connection && mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  res.json({ ok: true, db: state, uptime: process.uptime(), ts: Date.now() });
-});
+app.get('/', (req, res) => res.json({ status: 'ok', msg: 'System initialized and ready for AI code injection.' }));
+
+// API Features requested: ${features.join(', ')}
+// Specific endpoints will be implemented progressively by the AI generator.
+
+app.listen(4000, () => console.log('🚀 API on 4000'));
 `;
-
-    if (features.includes('products')) {
-      indexContent += `
-const Product = mongoose.model('Product', new mongoose.Schema({ name: String, price: Number }));
-app.get('/api/products', async (req, res) => res.json(await Product.find()));
-`;
-    }
-
-    if (features.includes('auth')) {
-      indexContent += `
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const User = mongoose.model('User', new mongoose.Schema({ email: { type: String, unique: true }, password: String }));
-const signToken = (u) => jwt.sign({ uid: String(u._id) }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
-
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
-    const hash = await bcrypt.hash(password, 10);
-    const u = await User.create({ email, password: hash });
-    return res.json({ ok: true, token: signToken(u) });
-  } catch (e) {
-    return res.status(400).json({ error: 'register_failed', details: String(e.message || e) });
-  }
-});
-
-app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body || {};
-  const u = await User.findOne({ email });
-  if (!u) return res.status(401).json({ error: 'invalid_credentials' });
-  const ok = await bcrypt.compare(password, u.password);
-  if (!ok) return res.status(401).json({ error: 'invalid_credentials' });
-  return res.json({ ok: true, token: signToken(u) });
-});
-`;
-    }
-
-    if (features.includes('cart')) {
-      indexContent += `
-const Cart = mongoose.model('Cart', new mongoose.Schema({ uid: String, items: [{ productId: String, qty: Number }] }));
-app.post('/api/cart', async (req, res) => {
-  const { uid, productId, qty } = req.body || {};
-  if (!uid || !productId || !qty) return res.status(400).json({ error: 'missing_fields' });
-  const c = (await Cart.findOne({ uid })) || (await Cart.create({ uid, items: [] }));
-  const i = c.items.find(x => x.productId === productId);
-  if (i) i.qty += qty; else c.items.push({ productId, qty });
-  await c.save();
-  return res.json({ ok: true, cart: c.items });
-});
-app.get('/api/cart', async (req, res) => {
-  const uid = String(req.query.uid || '').trim();
-  const c = await Cart.findOne({ uid });
-  return res.json({ ok: true, cart: c?.items || [] });
-});
-`;
-    }
-
-    if (features.includes('orders')) {
-      indexContent += `
-const Order = mongoose.model('Order', new mongoose.Schema({ uid: String, items: [{ productId: String, qty: Number }], total: Number, createdAt: { type: Date, default: Date.now } }));
-app.post('/api/orders', async (req, res) => {
-  const { uid } = req.body || {};
-  const c = await Cart.findOne({ uid });
-  if (!c || !c.items.length) return res.status(400).json({ error: 'empty_cart' });
-  const total = c.items.reduce((sum, i) => sum + (i.qty * 10), 0);
-  const o = await Order.create({ uid, items: c.items, total });
-  c.items = []; await c.save();
-  return res.json({ ok: true, orderId: String(o._id), total });
-});
-app.get('/api/orders', async (req, res) => {
-  const uid = String(req.query.uid || '').trim();
-  const orders = await Order.find({ uid }).sort({ createdAt: -1 }).limit(20);
-  return res.json({ ok: true, orders });
-});
-`;
-    }
-
-    indexContent += `\napp.listen(4000, () => console.log('🚀 API on 4000'));`;
 
     fs.writeFileSync(path.join(apiRoot, 'src/index.js'), indexContent.trim());
   }
@@ -297,14 +234,37 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
-  server: { proxy: { '/api': 'http://localhost:4000' } },
+  base: '/preview/${options.port || 5180}/',
+  server: { port: ${options.port || 5180}, host: '0.0.0.0', allowedHosts: true, proxy: { '/api': 'http://localhost:4000' } },
   test: { environment: 'node' }
 });`);
 
     const isAr = options.language === 'ar' || options.language === 'dual';
     const lang = isAr ? 'ar' : 'en';
     const dir = isAr ? 'rtl' : 'ltr';
-    const title = name;
+
+    // Extract proper display title from description or name
+    const desc = String(options.description || '').trim();
+    let displayTitle = name;
+    if (desc && isAr) {
+      // Match: متجر + anything after it in Arabic
+      const titleMatch = desc.match(/(?:متجر|دكان|محل|موقع|صفحة|تطبيق)\s+([\u0600-\u06FF\s]+)/i);
+      if (titleMatch?.[1]) {
+        // Clean up prepositions: "للاكياس النايلون" → "اكياس النايلون"
+        let cleaned = titleMatch[1].trim()
+          .replace(/^لل/, '')      // لل → remove
+          .replace(/^لبيع\s*/, '') // لبيع → remove
+          .replace(/^ل/, '')       // ل → remove
+          .replace(/^ال/, '')      // ال → remove
+          .trim();
+        displayTitle = 'متجر ' + cleaned;
+      } else {
+        // Try: "ابني لي متجر حلويات" → capture everything after build verb
+        const afterBuild = desc.match(/(?:ابني|انشئ|أنشئ|سوي|اعمل|صمم)\s+(?:لي?\s+)?([\u0600-\u06FF\s]+)/i);
+        if (afterBuild?.[1]) displayTitle = afterBuild[1].trim();
+      }
+    }
+    const title = displayTitle;
 
     const aesthetic = options.aestheticMode || 'corporate';
     const themes: any = {
@@ -355,17 +315,17 @@ export default defineConfig({
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${title}</title>
-    ${isAr ? '<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">' : ''}
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    ${isAr ? '<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&display=swap" rel="stylesheet">' : ''}
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
     <style>
       :root {
         ${activeTheme}
       }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
         font-family: ${isAr ? "'Cairo', " : ''}'Inter', sans-serif;
         background: var(--bg);
         color: var(--text);
-        margin: 0;
       }
     </style>
   </head>
@@ -380,31 +340,48 @@ import './index.css';
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 `);
 
-    const welcomeMsg = isAr ? 'أهلاً بك في ' + name : 'Welcome to ' + name;
-    const subMsg = isAr ? 'تم البناء بواسطة Joe AI — جاهز للانطلاق.' : 'Built by Joe AI — Ready to run.';
-    const glassStyle = aesthetic === 'glass' ? 'backdrop-blur-md bg-white/5 border border-white/10 p-12 rounded-3xl shadow-2xl' : 'p-8';
+    const heroTitle = isAr ? displayTitle : `Welcome to ${name}`;
+    const heroSub = isAr ? 'اكتشف أفضل المنتجات بأسعار مذهلة' : 'Discover the best products at amazing prices';
+    const shopNow = isAr ? 'تسوق الآن' : 'Shop Now';
+    const aboutUs = isAr ? 'من نحن' : 'About Us';
+    const productsTitle = isAr ? 'منتجاتنا المميزة' : 'Featured Products';
+    const addToCart = isAr ? 'أضف للسلة' : 'Add to Cart';
+    const contactTitle = isAr ? 'تواصل معنا' : 'Contact Us';
+    const footerText = isAr ? `© 2025 ${displayTitle}. جميع الحقوق محفوظة.` : `© 2025 ${name}. All rights reserved.`;
+    const currency = isAr ? 'ر.س' : '$';
 
     fs.writeFileSync(path.join(webRoot, 'src/App.jsx'), `
 import React from 'react';
+
 export default function App() {
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="${glassStyle} max-w-2xl text-center">
-        <h1 className="text-5xl font-extrabold mb-6 bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
-          ${welcomeMsg}
-        </h1>
-        <p className="text-xl opacity-70 mb-8">
-          ${subMsg}
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <nav style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '16px 32px', background: 'var(--panel)', borderBottom: '1px solid var(--border)',
+        position: 'sticky', top: 0, zIndex: 50, backdropFilter: 'blur(12px)'
+      }}>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)' }}>${displayTitle}</h2>
+      </nav>
+
+      <section style={{
+        padding: '80px 32px', textAlign: 'center', flex: 1,
+        background: 'linear-gradient(135deg, var(--panel), var(--bg))'
+      }}>
+        <h1 style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', fontWeight: 900, marginBottom: 16,
+          background: 'linear-gradient(135deg, var(--accent), #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
+        }}>${displayTitle}</h1>
+        <p style={{ fontSize: 18, opacity: 0.7, marginBottom: 32, maxWidth: 600, margin: '0 auto 32px' }}>
+          ${isAr ? 'بيئة العمل جاهزة للحقن بأكواد الذكاء الاصطناعي' : 'Environment ready for AI code injection.'}
         </p>
-        <div className="flex gap-4 justify-center">
-          <button className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition-all">
-            ${isAr ? 'ابدأ الاستكشاف' : 'Start Exploring'}
-          </button>
-          <button className="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-xl transition-all">
-            ${isAr ? 'لوحة التحكم' : 'Dashboard'}
-          </button>
-        </div>
-      </div>
+      </section>
+
+      <footer style={{
+        padding: '40px 32px', background: 'var(--panel)', borderTop: '1px solid var(--border)',
+        textAlign: 'center'
+      }}>
+        <p style={{ opacity: 0.6, fontSize: 14 }}>${footerText}</p>
+      </footer>
     </div>
   );
 }

@@ -1,219 +1,59 @@
-/**
- * EmbeddedTerminal - Terminal component for BottomPanel
- * Uses xterm.js with WebSocket connection
- */
-
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import 'xterm/css/xterm.css';
 import { SocketService } from '../services/socket';
 import { API_URL } from '../config';
-import { RefreshCw, Plus, Settings, Trash2 } from 'lucide-react';
+import { RefreshCw, Trash2, Terminal as TerminalIcon } from 'lucide-react';
 
 interface EmbeddedTerminalProps {
     terminalId?: string;
+    workspaceId?: string;
     onReady?: () => void;
 }
 
+/**
+ * EmbeddedTerminal - SAFE React-based fallback
+ * Does not use xterm.js to avoid dimensions crashes in production.
+ */
 export default function EmbeddedTerminal({
     terminalId = 'panel-terminal',
+    workspaceId,
     onReady
 }: EmbeddedTerminalProps) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const termRef = useRef<Terminal | null>(null);
-    const fitAddonRef = useRef<FitAddon | null>(null);
-    const [isReady, setIsReady] = useState(false);
-    const [isConnecting, setIsConnecting] = useState(true);
+    const [output, setOutput] = useState<string>('');
+    const [inputValue, setInputValue] = useState<string>('');
+    const [status, setStatus] = useState<'connecting' | 'ready' | 'error'>('connecting');
     const [error, setError] = useState<string | null>(null);
+    const outputRef = useRef<HTMLPreElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+    const isMountedRef = useRef(true);
 
-    // Get theme-based colors
-    const getTerminalTheme = useCallback(() => {
-        const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-        return {
-            background: isDark ? '#0d1117' : '#f6f8fa',
-            foreground: isDark ? '#c9d1d9' : '#24292f',
-            cursor: isDark ? '#58a6ff' : '#0969da',
-            cursorAccent: isDark ? '#0d1117' : '#f6f8fa',
-            selectionBackground: isDark ? 'rgba(56, 139, 253, 0.3)' : 'rgba(9, 105, 218, 0.2)',
-            black: isDark ? '#484f58' : '#24292f',
-            red: '#f85149',
-            green: '#3fb950',
-            yellow: '#d29922',
-            blue: '#58a6ff',
-            magenta: '#bc8cff',
-            cyan: '#39c5cf',
-            white: isDark ? '#b1bac4' : '#6e7781',
-            brightBlack: isDark ? '#6e7681' : '#57606a',
-            brightRed: '#ff7b72',
-            brightGreen: '#56d364',
-            brightYellow: '#e3b341',
-            brightBlue: '#79c0ff',
-            brightMagenta: '#d2a8ff',
-            brightCyan: '#56d4dd',
-            brightWhite: isDark ? '#f0f6fc' : '#8c959f',
-        };
-    }, []);
-
-    // Initialize terminal
+    // Auto-scroll output
     useEffect(() => {
-        if (!containerRef.current) return;
+        if (outputRef.current) {
+            outputRef.current.scrollTop = outputRef.current.scrollHeight;
+        }
+    }, [output]);
 
-        const term = new Terminal({
-            cursorBlink: true,
-            fontFamily: '"JetBrains Mono", "Fira Code", "Consolas", monospace',
-            fontSize: 13,
-            lineHeight: 1.4,
-            theme: getTerminalTheme(),
-            allowProposedApi: true,
-            scrollback: 10000,
-        });
-
-        const fitAddon = new FitAddon();
-        term.loadAddon(fitAddon);
-        term.open(containerRef.current);
-
-        // Delay fit to ensure container has size
-        setTimeout(() => {
-            try {
-                if (containerRef.current && containerRef.current.clientWidth > 0) {
-                    fitAddon.fit();
-                }
-            } catch (e) {
-                console.warn('Initial fit failed:', e);
-            }
-        }, 100);
-
-        termRef.current = term;
-        fitAddonRef.current = fitAddon;
-
-        // Create terminal session
-        const initTerminal = async () => {
-            setIsConnecting(true);
-            setError(null);
-
-            const token = localStorage.getItem('token');
-            try {
-                const res = await fetch(`${API_URL}/tools/terminal_manager/execute`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        action: 'create',
-                        id: terminalId,
-                        shell: 'bash',
-                        cols: 80,
-                        rows: 24
-                    })
-                });
-
-                const data = await res.json();
-
-                if (data.ok || data.error?.includes('already exists')) {
-                    setIsReady(true);
-                    setIsConnecting(false);
-                    term.writeln('\x1b[1;32m● Terminal Ready\x1b[0m');
-                    term.writeln('');
-                    onReady?.();
-                } else {
-                    throw new Error(data.error || 'Failed to create terminal');
-                }
-            } catch (e: any) {
-                setError(e.message);
-                setIsConnecting(false);
-                term.writeln(`\x1b[1;31m✗ ${e.message}\x1b[0m`);
-                term.writeln('\x1b[90mTip: Make sure the API server is running\x1b[0m');
-            }
-        };
-
-        initTerminal();
-
-        // Handle input
-        term.onData((data) => {
-            if (!isReady) return;
-            SocketService.send({
-                type: 'terminal_input',
-                id: terminalId,
-                data
-            });
-        });
-
-        // Handle resize
-        const resizeObserver = new ResizeObserver(() => {
-            if (fitAddonRef.current && containerRef.current) {
-                try {
-                    // Check if container is visible and has dimensions
-                    const { clientWidth, clientHeight } = containerRef.current;
-                    if (clientWidth === 0 || clientHeight === 0) return;
-
-                    fitAddonRef.current.fit();
-                    const dims = fitAddonRef.current.proposeDimensions();
-                    if (dims?.cols && dims?.rows) {
-                        SocketService.send({
-                            type: 'terminal_resize',
-                            id: terminalId,
-                            cols: dims.cols,
-                            rows: dims.rows
-                        });
-                    }
-                } catch (e) {
-                    // Ignore resize errors
-                }
-            }
-        });
-
-        resizeObserver.observe(containerRef.current);
-
-        // Listen for theme changes
-        const themeObserver = new MutationObserver(() => {
-            term.options.theme = getTerminalTheme();
-        });
-        themeObserver.observe(document.documentElement, {
-            attributes: true,
-            attributeFilter: ['data-theme']
-        });
-
-        return () => {
-            resizeObserver.disconnect();
-            themeObserver.disconnect();
-            term.dispose();
-        };
-    }, [terminalId, getTerminalTheme, onReady]);
-
-    // Handle incoming data
-    useEffect(() => {
-        const unsub = SocketService.subscribe((msg: any) => {
-            if (msg.type === 'terminal_output' && msg.id === terminalId) {
-                termRef.current?.write(msg.data);
-            }
-        });
-        return () => { unsub(); };
-    }, [terminalId]);
-
-    // Retry connection
-    const handleRetry = useCallback(async () => {
-        if (!termRef.current) return;
-
-        setIsConnecting(true);
+    // Handle terminal creation
+    const initTerminal = useCallback(async (isReconnect = false) => {
+        setStatus('connecting');
         setError(null);
-        termRef.current.clear();
-        termRef.current.writeln('\x1b[90mReconnecting...\x1b[0m');
-
         const token = localStorage.getItem('token');
-        try {
-            // Kill existing first
-            await fetch(`${API_URL}/tools/terminal_manager/execute`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ action: 'kill', id: terminalId })
-            }).catch(() => { });
 
-            // Create new
+        try {
+            // If reconnecting, try to kill existing first (optional but cleaner)
+            if (isReconnect) {
+                try {
+                    await fetch(`${API_URL}/tools/terminal_manager/execute`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ action: 'kill', id: terminalId })
+                    });
+                } catch { /* ignore kill errors */ }
+            }
+
             const res = await fetch(`${API_URL}/tools/terminal_manager/execute`, {
                 method: 'POST',
                 headers: {
@@ -225,121 +65,141 @@ export default function EmbeddedTerminal({
                     id: terminalId,
                     shell: 'bash',
                     cols: 80,
-                    rows: 24
+                    rows: 24,
+                    workspaceId
                 })
             });
 
             const data = await res.json();
-            if (data.ok) {
-                setIsReady(true);
-                setIsConnecting(false);
-                termRef.current?.writeln('\x1b[1;32m● Terminal Ready\x1b[0m\n');
+            if (data.ok || (data.output && data.output.existing)) {
+                setStatus('ready');
+                if (onReady) onReady();
             } else {
-                throw new Error(data.error);
+                setStatus('error');
+                setError(data.error || 'Failed to create terminal');
             }
-        } catch (e: any) {
-            setError(e.message);
-            setIsConnecting(false);
-            termRef.current?.writeln(`\x1b[1;31m✗ ${e.message}\x1b[0m`);
+        } catch (e) {
+            setStatus('error');
+            setError('Connection failed');
         }
-    }, [terminalId]);
+    }, [terminalId, workspaceId, onReady]);
 
-    // Clear terminal
-    const handleClear = useCallback(() => {
-        termRef.current?.clear();
-    }, []);
+    useEffect(() => {
+        isMountedRef.current = true;
+        initTerminal();
+
+        const unsubscribe = SocketService.subscribe((msg: any) => {
+            if (!isMountedRef.current) return;
+            if (msg.type === 'terminal_output' && msg.id === terminalId) {
+                console.debug('terminal_plain_output_received', msg.data);
+                setOutput(prev => prev + msg.data);
+            }
+        });
+
+        return () => {
+            isMountedRef.current = false;
+            unsubscribe();
+        };
+    }, [terminalId, initTerminal]);
+
+    const handleSend = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!inputValue.trim() && inputValue !== '\n') return;
+        
+        const cmd = inputValue + '\n';
+        console.debug('terminal_plain_input_sent', cmd);
+        
+        SocketService.send({
+            type: 'terminal_input',
+            id: terminalId,
+            data: cmd
+        });
+
+        // Instant local feedback (optional but helpful)
+        // setOutput(prev => prev + 'joe$ ' + inputValue + '\n');
+        setInputValue('');
+    };
+
+    const handleClear = () => setOutput('');
+
+    const handleReconnect = () => {
+        setOutput(prev => prev + '\n--- Reconnecting ---\n');
+        initTerminal(true);
+    };
 
     return (
-        <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100%',
-            background: 'var(--bg-dark)'
-        }}>
-            {/* Toolbar */}
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '4px 8px',
-                borderBottom: '1px solid var(--border-color)',
-                background: 'var(--bg-secondary)',
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{
-                        fontSize: 11,
-                        color: 'var(--text-muted)',
-                        fontFamily: 'monospace'
-                    }}>
-                        {terminalId}
-                    </span>
-                    <span style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: '50%',
-                        background: isReady ? '#22c55e' : isConnecting ? '#eab308' : '#ef4444',
-                    }} />
+        <div className="flex flex-col h-full bg-[#0d1117] text-[#c9d1d9] font-mono text-sm overflow-hidden border border-white/5 rounded-lg shadow-2xl">
+            {/* Header / Status Bar */}
+            <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-white/5 select-none">
+                <div className="flex items-center gap-3">
+                    <div className={`p-1.5 rounded-md ${
+                        status === 'ready' ? 'bg-green-500/10 text-green-400' : 
+                        status === 'connecting' ? 'bg-blue-500/10 text-blue-400' : 'bg-red-500/10 text-red-400'
+                    }`}>
+                        <TerminalIcon size={14} className={status === 'connecting' ? 'animate-pulse' : ''} />
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Terminal Session</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-200">{terminalId}</span>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                                status === 'ready' ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 
+                                status === 'connecting' ? 'bg-blue-500 animate-pulse' : 'bg-red-500'
+                            }`} />
+                        </div>
+                    </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: 4 }}>
-                    <TerminalButton
-                        icon={RefreshCw}
-                        tooltip="إعادة الاتصال"
-                        onClick={handleRetry}
-                        disabled={isConnecting}
-                    />
-                    <TerminalButton
-                        icon={Trash2}
-                        tooltip="مسح"
+                <div className="flex items-center gap-2">
+                    <button 
                         onClick={handleClear}
-                    />
+                        title="Clear Output"
+                        className="p-1.5 hover:bg-white/5 rounded-md text-slate-400 hover:text-white transition-all active:scale-95"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                    <button 
+                        onClick={handleReconnect}
+                        title="Reconnect"
+                        className="p-1.5 hover:bg-white/5 rounded-md text-slate-400 hover:text-white transition-all active:scale-95"
+                    >
+                        <RefreshCw size={14} className={status === 'connecting' ? 'animate-spin' : ''} />
+                    </button>
                 </div>
             </div>
 
-            {/* Terminal Container */}
-            <div
-                ref={containerRef}
-                style={{
-                    flex: 1,
-                    padding: 4,
-                    overflow: 'hidden'
-                }}
-            />
-        </div>
-    );
-}
+            {/* Output Area */}
+            <pre 
+                ref={outputRef}
+                className="flex-1 p-4 overflow-y-auto whitespace-pre-wrap break-all scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent selection:bg-blue-500/30"
+                style={{ scrollBehavior: 'smooth' }}
+            >
+                {output || (status === 'connecting' ? 'Initializing Joe Terminal Runtime...\n' : 'Terminal started. Type a command to begin.\n')}
+                {error && <div className="text-red-400 mt-2 font-bold uppercase tracking-widest text-[10px]">Error: {error}</div>}
+            </pre>
 
-function TerminalButton({
-    icon: Icon,
-    tooltip,
-    onClick,
-    disabled = false
-}: {
-    icon: React.ElementType;
-    tooltip: string;
-    onClick: () => void;
-    disabled?: boolean;
-}) {
-    return (
-        <button
-            onClick={onClick}
-            disabled={disabled}
-            title={tooltip}
-            style={{
-                width: 24,
-                height: 24,
-                borderRadius: 4,
-                border: 'none',
-                background: 'transparent',
-                color: disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: disabled ? 0.5 : 1,
-            }}
-        >
-            <Icon size={14} />
-        </button>
+            {/* Input Area */}
+            <form 
+                onSubmit={handleSend}
+                className="p-3 bg-[#161b22] border-t border-white/5 flex items-center gap-2"
+            >
+                <span className="text-green-400 font-bold select-none">joe$</span>
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    placeholder={status === 'ready' ? "Enter command..." : "Connecting..."}
+                    disabled={status !== 'ready'}
+                    className="flex-1 bg-transparent border-none outline-none text-[#c9d1d9] placeholder-slate-600 font-mono text-sm"
+                    autoFocus
+                />
+                {status === 'ready' && (
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter select-none px-2 py-1 border border-white/5 rounded bg-black/20">
+                        Enter ↵
+                    </div>
+                )}
+            </form>
+        </div>
     );
 }

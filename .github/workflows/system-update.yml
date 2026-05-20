@@ -1,0 +1,88 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy via SSH
+        shell: bash
+        env:
+          HOST: ${{ secrets.SSH_HOST || secrets.HOST }}
+          PORT: ${{ secrets.SSH_PORT || secrets.PORT || '22' }}
+          USER: ${{ secrets.USERNAME || 'root' }}
+        run: |
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=5 -p "$PORT" "$USER@$HOST" "bash -s" << 'REMOTE'
+          set -e
+          
+          cd /root/xelitesolutions || exit 1
+          echo "=== Deploy started at $(date) ==="
+          
+          # 1. Pull latest code (web/dist already built and committed)
+          echo "=== 1. Pulling latest code ==="
+          git fetch origin main
+          git reset --hard origin/main
+          
+          # 2. Light cleanup (NO --volumes to protect mongo data)
+          echo "=== 2. Cleanup ==="
+          docker image prune -f 2>/dev/null || true
+          sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+          
+          # 3. Build API (runs on HOST, not Docker)
+          echo "=== 3. Building API ==="
+          cd api
+          npm run build 2>&1 | tail -5
+          cd ..
+          
+          # 4. Build Docker containers (web + browser-worker only)
+          echo "=== 4. Building web container ==="
+          docker compose -p joe -f docker-compose.production.yml build web 2>&1 | tail -5
+          
+          echo "=== 5. Building browser-worker ==="
+          docker compose -p joe -f docker-compose.production.yml build browser-worker 2>&1 | tail -5
+          
+          # 5. Restart Docker services
+          echo "=== 6. Restarting Docker services ==="
+          docker compose -p joe -f docker-compose.production.yml up -d --remove-orphans 2>&1 | tail -5
+          
+          # 6. Restart API (runs on host)
+          echo "=== 7. Restarting API ==="
+          pkill -f 'node dist/index.js' 2>/dev/null || true
+          sleep 2
+          nohup bash /root/start_api.sh > /tmp/api.log 2>&1 &
+          sleep 3
+          
+          # 7. Health check
+          echo "=== 8. Health Check ==="
+          API_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:8080/api/health || echo "000")
+          if [ "$API_STATUS" = "200" ]; then
+            echo "✅ API: OK (200)"
+          else
+            echo "❌ API: FAILED ($API_STATUS) — check /tmp/api.log"
+            exit 1
+          fi
+          
+          docker compose -p joe -f docker-compose.production.yml ps
+          echo "=== Deploy completed at $(date) ==="
+          REMOTE

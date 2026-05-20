@@ -4,20 +4,25 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { GOOGLE_CLIENT_ID } from './config';
 import App from './App';
-const Home = lazy(() => import('./pages/Home'));
+
 const Login = lazy(() => import('./pages/Login'));
 
 
-const JoePremium = lazy(() => import('./pages/JoePremium'));
+const Joe = lazy(() => import('./pages/Joe'));
 const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
+const SystemManagement = lazy(() => import('./pages/admin/SystemManagement'));
+import { jwtDecode } from 'jwt-decode';
 import './theme.css';
 import './global.css';
 import './i18n';
 
 const shouldIgnoreNoiseError = (val: any) => {
   const s = String(val?.stack || val?.message || val?.filename || val || '');
-  return s.includes('solanaActionsContentScript.js');
+  return s.includes('solanaActionsContentScript.js') ||
+    s.includes('React Router Future Flag Warning') ||
+    s.includes('[Socket Debug]') ||
+    s.includes('Download the React DevTools');
 };
 
 // Global console.error proxy to filter out extension noise
@@ -115,16 +120,38 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireSuperAdmin({ children }: { children: React.ReactNode }) {
+  let token: string | null = null;
+  try {
+    token = localStorage.getItem('token');
+  } catch { }
+
+  if (!token) return <Navigate to="/login" replace />;
+
+  try {
+    const decoded: any = jwtDecode(token);
+    const email = decoded.email?.toLowerCase().trim() || '';
+    const isAdmin = decoded.role === 'SUPER_ADMIN' ||
+      decoded.role === 'OWNER' ||
+      email === 'info.auraaluxury@gmail.com' ||
+      email === 'younes.sowady2011@gmail.com' ||
+      localStorage.getItem('admin') === 'true';
+
+    if (!isAdmin) {
+      return <Navigate to="/joe" replace />;
+    }
+  } catch {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     {(() => {
       const appTree = (
-        <BrowserRouter
-          future={{
-            v7_startTransition: true,
-            v7_relativeSplatPath: true,
-          }}
-        >
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             <Route path="/" element={<App />}>
               <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />
@@ -137,7 +164,7 @@ createRoot(document.getElementById('root')!).render(
                 element={
                   <RequireAuth>
                     <Suspense fallback={<div className="route-loading">Loading…</div>}>
-                      <JoePremium />
+                      <Joe />
                     </Suspense>
                   </RequireAuth>
                 }
@@ -154,14 +181,23 @@ createRoot(document.getElementById('root')!).render(
               />
               <Route
                 path="joe-premium"
+                element={<Navigate to="/joe" replace />}
+              />
+              <Route
+                path="super-admin"
                 element={
-                  <RequireAuth>
-                    <Suspense fallback={<div className="route-loading">Loading...</div>}>
-                      <JoePremium />
+                  <RequireSuperAdmin>
+                    <Suspense fallback={<div className="route-loading">Loading…</div>}>
+                      <SystemManagement />
                     </Suspense>
-                  </RequireAuth>
+                  </RequireSuperAdmin>
                 }
               />
+              <Route path="super-admin/system" element={<Navigate to="/super-admin" replace />} />
+              <Route path="super-admin/deployments" element={<Navigate to="/super-admin" replace />} />
+              <Route path="admin" element={<Navigate to="/super-admin/deployments" replace />} />
+              <Route path="admin/deployments" element={<Navigate to="/super-admin/deployments" replace />} />
+
             </Route>
           </Routes>
         </BrowserRouter>

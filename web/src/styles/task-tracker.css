@@ -1,0 +1,228 @@
+/* ========== Premium Task Tracker (Manus-Style) ========== */
+.task-tracker {
+    margin: 16px 0;
+    padding: 16px;
+    background: rgba(20, 25, 32, 0.6);
+    border: 1px solid rgba(240, 193, 75, 0.15);
+    border-radius: 12px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+    position: relative;
+    max-width: 100%;
+}
+
+.task-tracker:hover {
+    border-color: rgba(240, 193, 75, 0.3);
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4), 0 0 15px rgba(240, 193, 75, 0.1);
+}
+
+.task-tracker.all-done {
+    border-color: rgba(34, 197, 94, 0.3);
+    background: rgba(20, 32, 25, 0.5);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(34, 197, 94, 0.1);
+}
+
+.task-tracker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.task-tracker-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--joe-text-primary);
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+}
+
+.task-tracker-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    color: var(--joe-text-muted);
+}
+
+.task-tracker-count {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px 8px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.task-tracker.all-done .task-tracker-count {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.2);
+}
+
+.task-tracker-elapsed {
+    color: var(--joe-gold-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Progress Bar */
+.task-tracker-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 16px;
+    position: relative;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.task-tracker-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--joe-gold-primary), var(--joe-gold-secondary));
+    border-radius: 4px;
+    transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    box-shadow: 0 0 10px var(--joe-gold-glow);
+}
+
+.task-tracker-progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    animation: shimmerProgress 1.5s infinite linear;
+}
+
+.task-tracker-progress-fill.done {
+    background: linear-gradient(90deg, #10b981, #34d399);
+    /* Emerald green */
+    box-shadow: 0 0 15px rgba(52, 211, 153, 0.4);
+}
+
+@keyframes shimmerProgress {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+/* Task List */
+.task-tracker-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 250px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.task-tracker-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.task-tracker-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.task-tracker-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.task-tracker-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid transparent;
+}
+
+.task-tracker-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.task-tracker-item.status-in_progress {
+    background: rgba(99, 102, 241, 0.05);
+    border-color: rgba(99, 102, 241, 0.15);
+}
+
+.task-tracker-item.status-completed {
+    opacity: 0.8;
+}
+
+.task-tracker-item.status-pending {
+    opacity: 0.5;
+}
+
+.task-tracker-item-label {
+    font-size: 13px;
+    color: var(--joe-text-secondary);
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.task-tracker-item.status-in_progress .task-tracker-item-label {
+    color: var(--joe-text-primary);
+}
+
+.task-tracker-item.status-completed .task-tracker-item-label {
+    color: var(--joe-text-muted);
+}
+
+/* Icons & Animations */
+.task-tracker-item-icon {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+}
+
+.task-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.task-checkmark-circle {
+    stroke-dasharray: 63;
+    stroke-dashoffset: 63;
+    animation: drawCircle 0.4s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+
+.task-checkmark-path {
+    stroke-dasharray: 20;
+    stroke-dashoffset: 20;
+    animation: drawCheck 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.3s forwards;
+}
+
+@keyframes drawCircle {
+    100% {
+        stroke-dashoffset: 0;
+    }
+}
+
+@keyframes drawCheck {
+    100% {
+        stroke-dashoffset: 0;
+    }
+}

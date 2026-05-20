@@ -1,7 +1,22 @@
-node_modules
-dist
+# Docker build context for pre-built API (single-stage Dockerfile)
+# node_modules and dist must be pre-built on host before docker build
+
+# Ignore unnecessary files
 .git
+.gitignore
 .env
+.env.*
+*.md
 *.log
-docker-compose*.yml
-Dockerfile
+src/
+scripts/
+tsconfig.json
+eslint.config.js
+jest.config.js
+cortex.json
+healthcheck.js
+api/
+crm-demo/
+xelite-crm/
+data/
+uploads/

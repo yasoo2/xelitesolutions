@@ -1,5 +1,16 @@
-node_modules
-dist
-.git
-*.log
-Dockerfile
+# Ignore everything
+*
+
+# Whitelist
+!package.json
+!package-lock.json
+!src/
+!src/**/
+!tsconfig.json
+!Dockerfile
+
+# Exclusions
+node_modules/
+dist/
+**/node_modules/
+**/dist/

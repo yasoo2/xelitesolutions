@@ -1,0 +1,110 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: joe_mongo
+    restart: always
+    command: [ "mongod", "--wiredTigerCacheSizeGB", "0.25" ]
+    mem_limit: 512m
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - ./data/mongo:/data/db
+    networks:
+      - joe-network
+    healthcheck:
+      test: [ "CMD-SHELL", "mongosh --eval 'db.adminCommand({ping:1})' || exit 1" ]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # API runs directly on host (not in Docker) due to native module glibc incompatibility
+  # Start API with: /root/start_api.sh
+
+  web:
+    build:
+      context: ../web
+      args:
+        - VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+    container_name: joe_web
+    restart: always
+    mem_limit: 128m
+    env_file:
+      - .env
+    environment: {}
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost/index.html" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - joe-network
+
+  browser-worker:
+    build: ./services/joe-browser-worker
+    container_name: joe_browser_worker
+    restart: always
+    mem_limit: 512m
+    environment:
+      - PORT=7070
+    env_file:
+      - .env
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:7070/health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - joe-network
+    ports:
+      - "5050:5050"
+      - "7070:7070"
+
+  nginx:
+    image: nginx:alpine
+    container_name: joe_nginx
+    restart: always
+    mem_limit: 64m
+    ports:
+      - "80:80"
+      - "443:443"
+    healthcheck:
+      test: [ "CMD", "nginx", "-t" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - /opt/joe/certbot/conf:/etc/letsencrypt
+      - /opt/joe/certbot/www:/var/www/certbot
+    networks:
+      - joe-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - web
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+
+  certbot:
+    image: certbot/certbot
+    mem_limit: 64m
+    volumes:
+      - /opt/joe/certbot/conf:/etc/letsencrypt
+      - /opt/joe/certbot/www:/var/www/certbot
+    networks:
+      - joe-network
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  mongo_data:
+  lance_data:
+  deep_memory:
+
+
+networks:
+  joe-network:
+    name: joe-network
+    driver: bridge

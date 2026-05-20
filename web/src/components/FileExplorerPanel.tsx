@@ -1,6 +1,8 @@
-import React from 'react';
-import { FilePlus, FolderPlus, GitBranch, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { FilePlus, FolderPlus, GitBranch, RefreshCw, HardDrive } from 'lucide-react';
 import EliteFileExplorer from './EliteFileExplorer';
+
+import { GitHubRepo, GitHubUser } from '../services/githubService';
 
 interface FileExplorerPanelProps {
     onNewFile?: () => void;
@@ -8,6 +10,9 @@ interface FileExplorerPanelProps {
     onGitChanges?: () => void;
     onRefresh?: () => void;
     showGitChanges?: boolean;
+    isCollapsed?: boolean;
+    activeRepo?: GitHubRepo | null;
+    githubUser?: GitHubUser | null;
 }
 
 export default function FileExplorerPanel({
@@ -15,14 +20,41 @@ export default function FileExplorerPanel({
     onNewFolder,
     onGitChanges,
     onRefresh,
-    showGitChanges = false
+    showGitChanges = false,
+    isCollapsed = false,
+    activeRepo = null,
+    githubUser = null
 }: FileExplorerPanelProps) {
+    const [gitChangeCount, setGitChangeCount] = useState(0);
+
+    // Listen for git change count from EliteFileExplorer
+    useEffect(() => {
+        const handler = (e: Event) => {
+            setGitChangeCount((e as CustomEvent).detail || 0);
+        };
+        window.addEventListener('git-change-count', handler);
+        return () => window.removeEventListener('git-change-count', handler);
+    }, []);
+
     return (
-        <aside className="joe-files-panel">
+        <aside className={`joe-files-panel ${isCollapsed ? 'collapsed' : ''}`}>
             {/* Header */}
             <div className="joe-files-header">
                 <span className="joe-files-title">File Explorer</span>
                 <div className="joe-files-actions">
+                    <button
+                        className="joe-files-action-btn"
+                        onClick={() => {
+                            if ((window as any)._triggerConnectWorkspace) {
+                                (window as any)._triggerConnectWorkspace();
+                            }
+                        }}
+                        title="ربط مجلد محلي (Connect Local Folder)"
+                        style={{ color: 'var(--accent-primary)' }}
+                    >
+                        <HardDrive size={16} />
+                    </button>
+                    <div style={{ width: 1, height: 16, background: 'var(--border-color)', margin: '0 4px' }} />
                     <button
                         className="joe-files-action-btn"
                         onClick={onNewFile}
@@ -48,8 +80,17 @@ export default function FileExplorerPanel({
             </div>
 
             {/* File Tree */}
-            <div className="joe-files-content">
-                <EliteFileExplorer />
+            <div className="joe-files-content" style={{ position: 'relative' }}>
+                <EliteFileExplorer
+                    activeRepo={activeRepo}
+                    githubUser={githubUser}
+                    ref={(ref: any) => {
+                        // Pass a trigger so the panel can force EliteFileExplorer to open the folder dialog
+                        if (ref) {
+                            (window as any)._triggerConnectWorkspace = () => ref.triggerConnectWorkspace();
+                        }
+                    }}
+                />
             </div>
 
             {/* Footer Actions */}
@@ -60,7 +101,7 @@ export default function FileExplorerPanel({
                 >
                     <GitBranch size={14} />
                     <span>Git Changes</span>
-                    {showGitChanges && (
+                    {gitChangeCount > 0 && (
                         <span style={{
                             marginLeft: 'auto',
                             background: 'var(--joe-gold-primary)',
@@ -68,9 +109,11 @@ export default function FileExplorerPanel({
                             padding: '2px 8px',
                             borderRadius: 999,
                             fontSize: 11,
-                            fontWeight: 600
+                            fontWeight: 600,
+                            minWidth: 18,
+                            textAlign: 'center' as const
                         }}>
-                            3
+                            {gitChangeCount}
                         </span>
                     )}
                 </button>

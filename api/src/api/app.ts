@@ -1,0 +1,230 @@
+import express from 'express';
+import cors from 'cors';
+import morgan from 'morgan';
+import mongoose from 'mongoose';
+import pino from 'pino';
+import path from 'path';
+import fs from 'fs';
+import { config } from '../shared/config';
+
+// Routes
+import authRoutes from './routes/auth';
+import toolsRoutes from './routes/tools';
+import runRoutes from './routes/run';
+import sessionsRoutes from './routes/sessions';
+import filesRoutes from './routes/files';
+import approvalsRoutes from './routes/approvals';
+import projectRoutes from './routes/project';
+import assetsRoutes from './routes/assets';
+import memoryRoutes from './routes/memory';
+import knowledgeRoutes from './routes/knowledge';
+import systemRoutes from './routes/system';
+import providersRoutes from './routes/providers';
+import packagesRoutes from './routes/packages';
+import gitRoutes from './routes/git';
+import githubRoutes from './routes/github';
+import browserRoutes from './routes/browser';
+import serverRoutes from './routes/servers';
+import workspacesRoutes from './routes/workspaces';
+import adminRoutes from './routes/admin';
+import webhooksRoutes from './routes/webhooks';
+import pingDeployRoutes from './routes/ping-deploy';
+import buildRoutes from './routes/build';
+import sentinelRoutes from './routes/sentinel';
+import agentRoutes from './routes/agent';
+
+import { authenticate } from './middleware/auth';
+
+const logger =
+  process.env.NODE_ENV === 'production'
+    ? pino()
+    : pino({
+      transport: {
+        target: 'pino-pretty',
+        options: { translateTime: 'SYS:standard', colorize: true },
+      },
+    });
+
+function normalizeOrigin(origin: string) {
+  return String(origin || '').trim().replace(/\/+$/, '');
+}
+
+export const createApp = () => {
+  const app = express();
+  const apiRouter = express.Router();
+
+  // [EMERGENCY] Early Health Check
+  app.get('/health', (_req, res) => res.json({ status: 'OK', uptime: process.uptime(), source: 'app' }));
+
+  const isProd = process.env.NODE_ENV === 'production';
+  const allowedOrigins = new Set<string>((config.allowedOrigins || []).map(normalizeOrigin).filter(Boolean));
+
+  // [DEBUG] Log every single request before any processing
+  app.use((req, res, next) => {
+    console.log(`[RAW-HTTP] ${req.method} ${req.path} - Headers: ${JSON.stringify(req.headers)}`);
+    next();
+  });
+
+  app.use(cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const normalized = normalizeOrigin(origin);
+      if (!isProd || allowedOrigins.has(normalized)) return callback(null, true);
+      logger.warn({ origin: normalized }, '[CORS] Rejected production origin');
+      return callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Worker-Key', 'x-worker-key', 'X-Workspace-Id', 'x-workspace-id'],
+  }));
+
+  // Middleware: Block API requests until DB is ready
+  app.use((req, res, next) => {
+    if (process.env.NODE_ENV === 'production' && req.path.startsWith('/api') && req.path !== '/api/health' && mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        error: 'Service Unavailable',
+        message: 'Database initializing...',
+        retryAfter: 5
+      });
+    }
+    next();
+  });
+
+  app.use(express.json({ limit: '50mb' }));
+  app.use(morgan('dev'));
+
+  app.use(express.json({ limit: '50mb' }));
+  app.use(morgan('dev'));
+
+  // [HARDENING] Global Sanitization Middleware
+
+  // Mount Central API Router
+  app.use('/api', apiRouter);
+
+  // Diagnostic Dashboard: never expose process.cwd() in production unless explicitly enabled.
+  if (!isProd || process.env.ENABLE_DEBUG_STATIC === 'true') {
+    const debugPath = process.cwd();
+    app.use('/debug', express.static(debugPath));
+    app.get('/debug', (_req, res) => {
+      res.sendFile(path.join(debugPath, 'index.html'));
+    });
+  }
+
+  apiRouter.get('/health', async (_req, res) => {
+    const isMock = process.env.MOCK_DB === '1' || process.env.PERSISTENCE_MODE === 'JSON';
+    let dbStatus = isMock ? 'LOCAL' : 'DOWN';
+    try {
+      if (mongoose.connection.readyState === 1) {
+        await mongoose.connection.db?.admin().ping();
+        dbStatus = 'OK';
+      }
+    } catch (e) {
+      if (!isMock) dbStatus = 'ERROR';
+    }
+    res.status(200).json({
+      status: 'OK',
+      database: dbStatus,
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      version: (() => {
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const stableFile = path.join(process.cwd(), '..', 'last_stable_commit');
+          if (fs.existsSync(stableFile)) {
+            return fs.readFileSync(stableFile, 'utf8').trim();
+          }
+          return 'no-commit-file';
+        } catch {
+          return 'unknown';
+        }
+      })()
+    });
+  });
+
+  apiRouter.get('/debug-deploy-logs', async (_req, res) => {
+    try {
+      const logFile = '/tmp/joe-self-heal.log';
+      if (fs.existsSync(logFile)) {
+        const content = fs.readFileSync(logFile, 'utf8');
+        const lines = content.split('\n').slice(-100).join('\n');
+        res.type('text/plain').send(lines);
+      } else {
+        res.status(404).send('Log file /tmp/joe-self-heal.log not found');
+      }
+    } catch (e: any) {
+      res.status(500).send(`Error reading logs: ${e.message}`);
+    }
+  });
+
+  // Sub-routes
+  apiRouter.use('/auth', authRoutes);
+  apiRouter.use('/tools', toolsRoutes);
+  apiRouter.use('/runs', runRoutes);
+  apiRouter.use('/run', runRoutes);
+  apiRouter.use('/sessions', sessionsRoutes);
+  apiRouter.use('/files', filesRoutes);
+  apiRouter.use('/approvals', approvalsRoutes);
+  apiRouter.use('/project', projectRoutes);
+  apiRouter.use('/assets', assetsRoutes);
+  apiRouter.use('/memory', memoryRoutes);
+  apiRouter.use('/knowledge', knowledgeRoutes);
+  apiRouter.use('/system', systemRoutes);
+  apiRouter.use('/providers', providersRoutes);
+  apiRouter.use('/packages', packagesRoutes);
+  apiRouter.use('/git', gitRoutes);
+  apiRouter.use('/github', githubRoutes);
+  apiRouter.use('/browser', browserRoutes);
+  apiRouter.use('/servers', authenticate, serverRoutes);
+  apiRouter.use('/workspaces', workspacesRoutes);
+  apiRouter.use('/admin/sentinel', sentinelRoutes);
+  apiRouter.use('/admin', adminRoutes);
+  apiRouter.use('/webhooks', webhooksRoutes);
+  apiRouter.use('/ping-deploy', pingDeployRoutes);
+  apiRouter.use('/build', buildRoutes);
+  apiRouter.use('/agent', agentRoutes);
+
+  // Specific deployment endpoint
+  apiRouter.post('/deploy-now', async (_req, res) => {
+    try {
+      const { deployManager } = await import('../modules/services/DeployManager');
+      const id = await deployManager.startDeploy('manual');
+      res.json({ id, message: 'Deployment started' });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // Artifacts exposure
+  const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+  app.use('/artifacts', express.static(ARTIFACT_DIR));
+
+  // Static frontend
+  const webDistPath = path.join(__dirname, '../../../web/dist');
+  if (fs.existsSync(webDistPath)) {
+    app.use(express.static(webDistPath));
+    app.get(/(.*)/, (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path.startsWith('/artifacts')) return next();
+      res.sendFile(path.join(webDistPath, 'index.html'));
+    });
+  }
+
+  // [HARDENING] Global Error Handler
+  // Standardizes all errors into { success: false, error: "..." }
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error(`[GlobalError] ${req.method} ${req.path} - Error:`, err);
+    logger.error({ err, path: req.path }, '[GlobalError] Unhandled error caught');
+    
+    // Clean error message (don't leak stack traces in production)
+    const message = process.env.NODE_ENV === 'production' 
+      ? 'An internal server error occurred' 
+      : err.message || 'Unknown error';
+
+    res.status(err.status || 500).json({
+      success: false,
+      error: message
+    });
+  });
+
+  return app;
+};

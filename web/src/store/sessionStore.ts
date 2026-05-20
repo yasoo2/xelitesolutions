@@ -18,26 +18,29 @@ export interface Folder {
 }
 
 // Helper to ensure token exists (for dev environment auto-creation)
-// We keep this specific logic here or move to auth service? 
-// For now, keep it local or use apiClient helper if extended.
-// But apiClient uses localStorage. 
-// This ensureToken logic actually *fetches* a dev token if none exists.
+// SECURITY: Only auto-creates dev tokens on localhost AND when not in production build
 async function ensureToken() {
   const existing = localStorage.getItem('token');
-  if (existing && isValidToken(existing)) return existing;
+  if (existing) {
+    if (isValidToken(existing)) return existing;
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+  }
 
+  // Only allow dev token auto-creation on localhost - never in production
   const isLocal = /localhost|127\.0\.0\.1/.test(window.location.hostname);
-  if (!isLocal) return null;
+  const isProduction = import.meta.env.PROD === true;
+  if (!isLocal || isProduction) return null;
 
   try {
-    // We use raw fetch here because api.post would fail with 401/no token logic loop?
-    // Actually api.post handles headers. If we call a public endpoint it's fine.
-    // But /auth/dev might need special handling. Let's stick to simple fetch for this bootstrap.
     const res = await fetch(`${API_URL}/auth/dev`, { method: 'POST' });
     if (!res.ok) return null;
     const data = await res.json().catch(() => ({}));
     const token = typeof data?.token === 'string' ? data.token : '';
-    if (token) localStorage.setItem('token', token);
+    if (token) {
+      console.warn('[Auth] Using auto-generated dev token. This should NEVER happen in production.');
+      localStorage.setItem('token', token);
+    }
     return token;
   } catch {
     return null;
@@ -58,6 +61,7 @@ interface SessionState {
   deleteSession: (id: string) => Promise<void>;
   setSelected: (id: string | null) => void;
   setAgentSelected: (id: string | null) => void;
+  deleteAllSessions: () => Promise<void>;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -92,7 +96,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       }));
     } catch (e: any) {
       if (e.message === 'Unauthorized' || e.message?.includes('Invalid token')) return;
-      console.error('Failed to load sessions', e);
+      // Session load failed silently
     }
   },
 
@@ -102,7 +106,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       set({ folders });
     } catch (e: any) {
       if (e.message === 'Unauthorized' || e.message?.includes('Invalid token')) return;
-      console.error('Failed to load folders', e);
+      // Folder load failed silently
       set({ folders: [] });
     }
   },
@@ -112,8 +116,8 @@ export const useSessionStore = create<SessionState>((set) => ({
     try {
       await api.post('/folders', { name });
       await useSessionStore.getState().loadFolders();
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // Folder creation failed silently
     } finally {
       set(state => ({ loadingStates: { ...state.loadingStates, creatingFolder: false } }));
     }
@@ -125,8 +129,8 @@ export const useSessionStore = create<SessionState>((set) => ({
       await api.delete(`/folders/${id}`);
       await useSessionStore.getState().loadFolders();
       await useSessionStore.getState().loadAllSessions();
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // Folder deletion failed silently
     } finally {
       set(state => ({ loadingStates: { ...state.loadingStates, [`deleting-folder-${id}`]: false } }));
     }
@@ -137,8 +141,8 @@ export const useSessionStore = create<SessionState>((set) => ({
     try {
       await api.delete(`/sessions/${id}`);
       await useSessionStore.getState().loadAllSessions();
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // Session deletion failed silently
     } finally {
       set(state => ({ loadingStates: { ...state.loadingStates, [`deleting-session-${id}`]: false } }));
     }
@@ -149,8 +153,8 @@ export const useSessionStore = create<SessionState>((set) => ({
     try {
       await api.delete('/sessions');
       set({ sessions: [], agentSessions: [], selected: null, agentSelected: null });
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // Session deletion failed silently
     } finally {
       set(state => ({ loadingStates: { ...state.loadingStates, deletingAll: false } }));
     }

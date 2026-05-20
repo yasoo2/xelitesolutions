@@ -195,15 +195,10 @@
 
 html,
 body {
-  height: 100%;
+  min-height: 100%;
   width: 100%;
-  overflow: hidden;
-  /* Critical: Prevent body scroll */
   margin: 0;
   padding: 0;
-  position: fixed;
-  /* Lock viewport on mobile */
-  inset: 0;
 }
 
 /* Premium Scrollbars (Obsidian Lux) */
@@ -291,6 +286,16 @@ body {
 
 .provider-btn:hover .provider-label {
   color: var(--text-primary);
+}
+
+.provider-btn.is-connected {
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  background: rgba(16, 185, 129, 0.05) !important;
+}
+
+.provider-btn.is-connected .provider-label,
+.provider-btn.is-connected svg {
+  color: #10b981 !important;
 }
 
 .provider-btn.is-disconnected {
@@ -442,14 +447,12 @@ body {
 }
 
 .app {
-  height: 100vh;
-  height: 100svh;
+  min-height: 100vh;
+  min-height: 100svh;
   /* Sustain mobile viewport */
   width: 100vw;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  /* Ensure nothing spills out */
 }
 
 .center {
@@ -457,7 +460,6 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow-y: auto;
   /* Let child containers handle scroll or handle it here if it's the main */
   flex: 1;
   min-height: 0;
@@ -2839,9 +2841,9 @@ html[data-theme="light"] .chat-view {
 }
 
 .events-content {
-  max-width: 980px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 18px 16px 0;
+  padding: 18px 24px 0;
 }
 
 html.live-panel-open .events-content {
@@ -3391,8 +3393,8 @@ html[data-theme="light"] .chat-bubble-content code {
 
 /* Ensure content doesn't get hidden behind the floating command bar */
 .events-content {
-  padding-bottom: 200px !important;
-  /* Huge padding to clear the floating bar */
+  padding-bottom: 120px !important;
+  /* Reduced padding to provide more visible chat space */
 }
 
 .composer-footer {
@@ -5077,4 +5079,23 @@ html[data-theme="light"] .send-btn {
 
 .elite-context-menu-item.danger:hover {
   background: rgba(239, 68, 68, 0.1);
+}
+
+/* ABSOLUTE SCROLL FORCE - KILLING ALL LOCKS */
+html,
+body,
+#root,
+.app {
+  overflow: auto !important;
+  overflow-y: auto !important;
+  height: auto !important;
+  min-height: 100vh !important;
+  position: static !important;
+}
+
+/* Specificity override for any system/harness locks */
+html:root body.antigravity-scroll-lock,
+html:root body[style*="overflow: hidden"] {
+  overflow: auto !important;
+  position: static !important;
 }

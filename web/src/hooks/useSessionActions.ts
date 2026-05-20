@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { api } from '../services/apiClient';
 import { useSessionStore } from '../store/sessionStore';
@@ -9,14 +8,20 @@ export function useSessionActions() {
     const { t } = useTranslation();
     const [isCreatingChatSession, setIsCreatingChatSession] = useState(false);
 
-    async function createSession(onSuccess?: () => void) {
+    async function createSession(options?: { kind?: 'chat' | 'agent', onSuccess?: () => void }) {
         setIsCreatingChatSession(true);
+        const { kind = 'chat', onSuccess } = options || {};
         try {
-            const data: any = await api.post('/sessions', {});
+            const data: any = await api.post('/sessions', { kind });
             const id = String(data?.id || data?._id || '').trim();
             if (!id) return;
 
-            setSelected(id);
+            if (kind === 'agent') {
+                useSessionStore.getState().setAgentSelected(id);
+            } else {
+                setSelected(id);
+            }
+
             await loadAllSessions();
             onSuccess?.();
 
@@ -47,12 +52,15 @@ export function useSessionActions() {
     }
 
     async function deleteAllSessions() {
-        if (!confirm('هل أنت متأكد من حذف جميع الجلسات؟ لا يمكن التراجع عن هذا الإجراء.')) return;
         try {
             await api.delete('/sessions');
+            // Clear local state immediately for instant UI feedback
+            useSessionStore.getState().setSelected(null);
+            useSessionStore.setState({ sessions: [], agentSessions: [] });
             await loadAllSessions();
-            setSelected(null);
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error('Failed to delete all sessions:', e);
+        }
     }
 
     async function togglePin(id: string, currentPinned: boolean) {

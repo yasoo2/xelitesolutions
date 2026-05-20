@@ -1,21 +1,56 @@
 import { API_URL, WS_URL } from '../config';
+import { AutoOpenManager } from './AutoOpenManager';
+
+const __DEV__ = import.meta.env.DEV;
 
 let socket: WebSocket | null = null;
 const listeners: Set<(data: any) => void> = new Set();
 const statusListeners: Set<(status: { state: string; detail?: string }) => void> = new Set();
-let pendingQueue: string[] = [];
-let connectTimer: number | null = null;
+let pendingQueue: any[] = []; // Changed to any[] to support structured data for deduplication
+let connectTimer: any = null;
+let isConnecting = false;
+let connectingTimeoutTimer: any = null;
+const CONNECTING_TIMEOUT = 8000;
+const seenMessageIds = new Set<string>(); // Deduplication cache
+const MAX_SEEN_IDS = 1000;
+let _lastPreviewUrl = '';
+
+// [Wakil 5.1] Quiet Mode & Source Deduplication
+let quietMode = false;
+let lastSentPayload: string | null = null;
 let connectAttempts = 0;
-let triedFallback = false;
+const MAX_RECONNECT_ATTEMPTS = 20; // Stop reconnecting after 20 attempts
 let lastUrl = '';
+let triedFallback = false;
+let cachedIsShim: boolean | null = null;
+let lastShimCheckAt = 0;
 let authProbePromise: Promise<'ok' | 'unauthorized' | 'error'> | null = null;
 let lastAuthProbeAt = 0;
-let lastShimCheckAt = 0;
-let cachedIsShim: boolean | null = null;
+
+// [Wakil 5.3] Neural Thinking Indicator State
+let thinkingPhase: 'analyzing' | 'synthesizing' | 'executing' | 'idle' = 'idle';
+const thinkingPhaseListeners: Set<(phase: string) => void> = new Set();
+
+// [Wakil 6.0] Deep Reasoning State
+let thinkingDetails: string[] = [];
+const thinkingDetailsListeners: Set<(details: string[]) => void> = new Set();
+
+// [ELITE SPEC] Thinking Status (Short human-friendly status like "Navigating...")
+let thinkingStatus = '';
+const thinkingStatusListeners: Set<(status: string) => void> = new Set();
+
+// [New] Task Tracker State
+let taskTrackerData: any[] = [];
+const taskTrackerListeners: Set<(tasks: any[]) => void> = new Set();
 
 function computeFallbackWsUrl(primaryUrl: string) {
   const wsFromHttpBase = (httpUrl: string) => {
-    const base = httpUrl.replace(/\/api\/?$/, '');
+    let base = httpUrl;
+    if (!base.startsWith('http')) {
+      // Resolve against current origin if relative
+      base = new URL(base, window.location.origin).href;
+    }
+    base = base.replace(/\/api\/?$/, '');
     return `${base.replace(/^http/i, 'ws')}/api/ws`;
   };
   const candidates = [
@@ -77,18 +112,31 @@ async function probeAuth(token: string): Promise<'ok' | 'unauthorized' | 'error'
 }
 
 async function connect() {
-  console.log('[Socket Debug] connect() called');
   if (!WS_URL) {
-    console.error('[Socket Debug] WS_URL is missing or empty');
-    return;
-  }
-  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-    console.log('[Socket Debug] Socket already open/connecting', socket.readyState);
+    if (__DEV__) console.warn('[Socket] WS_URL is missing or empty');
     return;
   }
 
+  // [Wakil 4.7] Strict Singleton Guard
+  if (isConnecting) {
+    return;
+  }
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    return;
+  }
+
+  isConnecting = true;
+  if (connectingTimeoutTimer) clearTimeout(connectingTimeoutTimer);
+  connectingTimeoutTimer = setTimeout(() => {
+    if (isConnecting) {
+      if (__DEV__) console.warn('[Socket] Connection attempt timed out, resetting');
+      isConnecting = false;
+      connect();
+    }
+  }, CONNECTING_TIMEOUT);
+
   const token = localStorage.getItem('token');
-  console.log('[Socket Debug] Token found:', token ? token.slice(0, 10) + '...' : 'null');
 
   if (connectTimer != null) {
     window.clearTimeout(connectTimer);
@@ -96,8 +144,8 @@ async function connect() {
   }
 
   if (await isApiShimActive()) {
-    console.log('[Socket Debug] API Shim Active, backing off');
     setStatus('error', 'api_shim');
+    isConnecting = false; // UNLOCK on bail
     connectTimer = window.setTimeout(() => void connect(), 15000);
     return;
   }
@@ -105,15 +153,21 @@ async function connect() {
   const primaryUrl = WS_URL;
   const fallbackUrl = computeFallbackWsUrl(primaryUrl);
   let urlToUse = (triedFallback || !fallbackUrl) ? primaryUrl : (connectAttempts > 0 ? fallbackUrl : primaryUrl);
-  console.log('[Socket Debug] Initial URL:', urlToUse);
 
-  // Append Token
+  // Check max reconnection attempts
+  if (connectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    if (__DEV__) console.warn(`[Socket] Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached.`);
+    setStatus('error', 'max_reconnect_attempts_exceeded');
+    isConnecting = false;
+    return;
+  }
+
+  // Append Token via subprotocol header instead of URL query parameter for security
   const u = new URL(urlToUse);
   if (token) {
     u.searchParams.set('token', token);
   }
   urlToUse = u.toString();
-  console.log('[Socket Debug] Connecting to:', urlToUse);
 
   lastUrl = urlToUse;
 
@@ -122,30 +176,39 @@ async function connect() {
   setStatus(connectAttempts > 0 ? 'reconnecting' : 'connecting', urlToUse);
 
   try {
+    if (socket) {
+      try { socket.close(); } catch { }
+      socket = null;
+    }
     socket = new WebSocket(urlToUse);
   } catch (err) {
-    console.error('[Socket Debug] new WebSocket() threw:', err);
+    if (__DEV__) console.warn('[Socket] new WebSocket() threw:', err);
+    isConnecting = false; // UNLOCK
     return;
   }
 
   socket.onopen = (event) => {
-    console.log('[Socket Debug] onopen fired');
     const ws = event.target as WebSocket;
     opened = true;
+    isConnecting = false;
+    if (connectingTimeoutTimer) clearTimeout(connectingTimeoutTimer);
     connectAttempts = 0;
     triedFallback = false;
     setStatus('connected', lastUrl);
 
+    // Initial heartbeat
+    SocketService.send({ type: 'heartbeat', ts: Date.now() });
+
     // Flush pending safely using the socket instance that just opened
-    while (pendingQueue.length > 0) {
-      if (ws.readyState !== WebSocket.OPEN) break;
-      const msg = pendingQueue.shift();
-      if (msg) {
-        try {
-          ws.send(msg);
-        } catch (err) {
-          console.error('WebSocket send error in onopen:', err);
-        }
+    const toFlush = [...pendingQueue];
+    pendingQueue = [];
+
+    for (const item of toFlush) {
+      const payload = typeof item === 'string' ? item : JSON.stringify(item);
+      try {
+        ws.send(payload);
+      } catch (err) {
+        if (__DEV__) console.warn('[Socket] Flush error:', err);
       }
     }
   };
@@ -153,14 +216,153 @@ async function connect() {
   socket.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
+
+      // [Wakil 4.7] Deduplication Logic
+      const id = data.id || data.seq || (data.ts && data.type ? `${data.type}:${data.ts}` : null);
+      if (id) {
+        const key = String(id);
+        if (seenMessageIds.has(key)) {
+          // Silently skip duplicate (reduced from verbose logging)
+          return;
+        }
+        seenMessageIds.add(key);
+        if (seenMessageIds.size > MAX_SEEN_IDS) {
+          // Simple prune
+          const it = seenMessageIds.values();
+          for (let i = 0; i < 200; i++) {
+            const res = it.next();
+            if (res.done) break;
+            seenMessageIds.delete(res.value);
+          }
+        }
+      }
+
+      // [Wakil 5.5] Auto Quiet Mode & Thinking Phase Management
+      const msgType = String(data?.type || '');
+
+      // [Wakil 6.0] Handle explicit thinking_phase messages
+      if (msgType === 'thinking_phase') {
+        const phase = data?.data?.phase;
+        const detail = data?.data?.detail;
+        if (phase && ['analyzing', 'synthesizing', 'executing', 'idle'].includes(phase)) {
+          thinkingPhase = phase;
+          thinkingPhaseListeners.forEach(cb => { try { cb(phase); } catch { } });
+
+          if (detail !== undefined) {
+            thinkingStatus = detail || ''; // Allow empty string to clear
+            thinkingStatusListeners.forEach(cb => { try { cb(thinkingStatus); } catch { } });
+          }
+        }
+      } else if (msgType === 'thinking_detail') {
+        const detail = data?.data?.detail;
+        if (detail && typeof detail === 'string') {
+          thinkingDetails.push(detail);
+          thinkingDetailsListeners.forEach(cb => { try { cb([...thinkingDetails]); } catch { } });
+        }
+      }
+
+      // Auto phase management based on events
+      if (msgType === 'step_started') {
+        if (!quietMode) {
+          quietMode = true;
+          thinkingPhase = 'analyzing';
+          thinkingPhaseListeners.forEach(cb => { try { cb('analyzing'); } catch { } });
+        }
+      } else if (msgType === 'step_done' || msgType === 'step_failed') {
+        if (quietMode) {
+          thinkingPhase = 'synthesizing';
+          thinkingPhaseListeners.forEach(cb => { try { cb('synthesizing'); } catch { } });
+        }
+      } else if (msgType === 'tool_start') {
+        if (quietMode) {
+          thinkingPhase = 'executing';
+          thinkingPhaseListeners.forEach(cb => { try { cb('executing'); } catch { } });
+        }
+      } else if (msgType === 'run_finished' || msgType === 'text') {
+        if (quietMode) {
+          quietMode = false;
+          thinkingPhase = 'idle';
+          thinkingStatus = '';
+          thinkingPhaseListeners.forEach(cb => { try { cb('idle'); } catch { } });
+          thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
+        }
+      } else if (msgType === 'thought') {
+        // [Wakil 6.0] Matrix-style thought logs
+        const text = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
+        if (text) {
+          thinkingDetails.push(text);
+          thinkingDetailsListeners.forEach(cb => { try { cb([...thinkingDetails]); } catch { } });
+        }
+      } else if (msgType === 'run_started') {
+        // Reset state and immediately activate 'analyzing' phase for neural indicator
+        thinkingDetails = [];
+        thinkingStatus = '';
+        thinkingPhase = 'analyzing';
+        taskTrackerData = []; // Reset tasks on new run
+        thinkingDetailsListeners.forEach(cb => { try { cb([]); } catch { } });
+        thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
+        thinkingPhaseListeners.forEach(cb => { try { cb('analyzing'); } catch { } });
+        taskTrackerListeners.forEach(cb => { try { cb([]); } catch { } });
+      } else if (msgType === 'task_tracker' || msgType === 'todo_update') {
+        // [New] Receive task lists from the API (Unifying task_tracker and todo_update)
+        const rawData = data?.data || [];
+        const tasks = Array.isArray(rawData) ? rawData : (rawData.todos || []);
+
+        // Map 'content' to 'label' for backward compatibility with TaskTracker.tsx component
+        const mappedTasks = tasks.map((t: any) => ({
+          ...t,
+          label: t.label || t.content || t.text
+        }));
+
+        taskTrackerData = mappedTasks;
+        taskTrackerListeners.forEach(cb => { try { cb(mappedTasks); } catch { } });
+
+        // Also dispatch to TodosPanel-specific handlers if needed (already handled by general listeners)
+      } else if (msgType === 'workspace_updated') {
+        // [Pipeline Fix] When a new project is built, refresh File Explorer
+        const wsData = data?.data || {};
+        window.dispatchEvent(new CustomEvent('workspace:updated', { detail: wsData }));
+      } else if (msgType === 'build_progress') {
+        // [Flow Agent] Live build progress events for PreviewPanel overlay
+        const progressData = data?.data || {};
+        window.dispatchEvent(new CustomEvent('preview:build_progress', { detail: progressData }));
+      } else if (msgType === 'preview_ready' || msgType === 'preview_url') {
+        // [Preview Pipeline] When the API sends a preview URL, dispatch it to PreviewPanel
+        const url = data?.data?.url || data?.url;
+        if (url) {
+          _lastPreviewUrl = url;
+          window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url } }));
+        } else if (msgType === 'preview_url' && data?.data?.type === 'refresh') {
+          // If a refresh is requested but no new URL is provided, simply re-dispatch the last known URL
+          // so the Preview Panel triggers an auto-switch at the end of long builds
+          if (_lastPreviewUrl) {
+            window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url: _lastPreviewUrl } }));
+          }
+        }
+      } else if (msgType === 'diff') {
+        // [Code Preview] When a file is created or modified, notify the PreviewPanel
+        const path = data?.data?.path;
+        const content = data?.data?.content;
+        if (path && content !== undefined) {
+          window.dispatchEvent(new CustomEvent('preview:code_diff', { detail: { path, content } }));
+        }
+      }
+
+      try {
+        AutoOpenManager.processStepEvent(data);
+      } catch { }
+
       listeners.forEach(l => l(data));
     } catch (e) {
     }
   };
 
   socket.onclose = (ev) => {
-    console.log('[Socket Debug] onclose:', ev.code, ev.reason);
-    socket = null;
+    if (socket === ev.target) {
+      socket = null;
+    }
+    isConnecting = false; // UNLOCK just in case
+
     const reason = String((ev as any)?.reason || '');
     if (ev?.code === 1008 || reason.startsWith('unauthorized')) {
       try {
@@ -195,7 +397,7 @@ async function connect() {
       })();
       if (tokenNow && isValidToken(tokenNow)) {
         setStatus('checking_auth', lastUrl);
-        void probeAuth(tokenNow).then((r) => {
+        void probeAuth(String(tokenNow)).then((r) => {
           if (r === 'unauthorized') {
             try {
               localStorage.removeItem('token');
@@ -227,32 +429,129 @@ async function connect() {
   };
 
   socket.onerror = (e) => {
-    console.error('[Socket Debug] onerror:', e);
+    isConnecting = false; // UNLOCK
     setStatus('error', lastUrl);
   };
 }
 
 export const SocketService = {
   connect,
+  // [Wakil 4.7] Force Reset (for logout)
+  disconnect() {
+    if (socket) {
+      socket.close();
+      socket = null;
+    }
+    if (connectTimer) {
+      window.clearTimeout(connectTimer);
+      connectTimer = null;
+    }
+    isConnecting = false;
+    pendingQueue = [];
+    seenMessageIds.clear();
+    lastSentPayload = null;
+  },
+  // [Wakil 5.1] Quiet Mode controls
+  setQuietMode(enabled: boolean) {
+    quietMode = enabled;
+  },
+  isQuietMode() {
+    return quietMode;
+  },
   send(data: any) {
+    // [Wakil 5.2] HARD Quiet Mode: Block ALL outgoing traffic EXCEPT critical signals
+    const criticalSignals = ['run', 'stop', 'join_session', 'heartbeat', 'terminal_input', 'terminal_resize'];
+    const isCritical = data && criticalSignals.includes(data.type);
+
+    if (quietMode && !isCritical) {
+      return; // NO SEND. NO QUEUE. ZERO TRAFFIC.
+    }
+
     const msg = JSON.stringify(data);
+
+    // [Wakil 5.1] Source-level deduplication
+    // EXEMPT terminal_input from deduplication (must allow "aa")
+    const isTerminalInput = data && data.type === 'terminal_input';
+    if (!isTerminalInput && msg === lastSentPayload) {
+      return;
+    }
+    if (!isTerminalInput) {
+      lastSentPayload = msg;
+    }
+
     if (socket && socket.readyState === WebSocket.OPEN) {
-      console.log('[Socket] Sending:', msg);
+      if (isTerminalInput) {
+        console.debug('terminal_socket_send_open', data.data);
+      }
       socket.send(msg);
     } else {
-      console.warn('[Socket] Not connected. Queuing message:', msg);
-      pendingQueue.push(msg);
-      if (!socket) connect();
+      // SMART QUEUEING & DEDUPLICATION
+      if (isTerminalInput) {
+        console.debug('terminal_socket_queued', data.data);
+      }
+      if (data && data.type === 'terminal_resize') {
+        const existingIdx = pendingQueue.findIndex(q => q && typeof q !== 'string' && q.type === 'terminal_resize' && q.id === data.id);
+        if (existingIdx !== -1) {
+          pendingQueue[existingIdx] = data;
+          return;
+        }
+      }
+
+      pendingQueue.push(data); // Store as object for better deduplication in future if needed
+      if (!socket && !isConnecting) connect();
+      else if (socket && socket.readyState === WebSocket.CLOSED && !isConnecting) connect();
     }
+  },
+  sendMessage(sessionId: string, text: string) {
+    this.send({
+      type: 'text',
+      sessionId,
+      text,
+      ts: Date.now()
+    });
   },
   subscribe(cb: (data: any) => void) {
     listeners.add(cb);
-    if (!socket) connect();
-    return () => listeners.delete(cb);
+    if (!socket && !isConnecting) connect();
+    return () => { listeners.delete(cb); };
   },
   subscribeStatus(cb: (status: { state: string; detail?: string }) => void) {
     statusListeners.add(cb);
-    if (!socket) connect();
-    return () => statusListeners.delete(cb);
+    if (!socket && !isConnecting) connect();
+    return () => { statusListeners.delete(cb); };
   },
+  // [Wakil 5.3] Thinking Phase State
+  setThinkingPhase(phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle') {
+    thinkingPhase = phase;
+    thinkingPhaseListeners.forEach(cb => {
+      try { cb(phase); } catch { }
+    });
+  },
+  getThinkingPhase() {
+    return thinkingPhase;
+  },
+  subscribeThinkingPhase(cb: (phase: string) => void) {
+    thinkingPhaseListeners.add(cb);
+    return () => { thinkingPhaseListeners.delete(cb); };
+  },
+  subscribeThinkingDetails(cb: (details: string[]) => void) {
+    cb([...thinkingDetails]);
+    thinkingDetailsListeners.add(cb);
+    return () => { thinkingDetailsListeners.delete(cb); };
+  },
+  subscribeThinkingStatus(cb: (status: string) => void) {
+    cb(thinkingStatus);
+    thinkingStatusListeners.add(cb);
+    return () => { thinkingStatusListeners.delete(cb); };
+  },
+  // [New] Task Tracker Subscription
+  subscribeTaskTracker(cb: (tasks: any[]) => void) {
+    cb([...taskTrackerData]);
+    taskTrackerListeners.add(cb);
+    return () => { taskTrackerListeners.delete(cb); };
+  },
+  // [Wakil 6.1] Get last preview URL (for mount-time read)
+  getLastPreviewUrl() {
+    return _lastPreviewUrl;
+  }
 };

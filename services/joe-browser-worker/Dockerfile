@@ -1,18 +1,21 @@
-FROM node:20-bookworm-slim
+FROM mcr.microsoft.com/playwright:v1.58.2-noble
 
 WORKDIR /app
 
 COPY package*.json ./
 
-# Install prod deps and clean cache
-RUN npm install && \
-    npx playwright install --with-deps chromium chromium-headless-shell && \
-    npm cache clean --force && \
-    rm -rf /var/lib/apt/lists/*
+# Install npm dependencies
+RUN npm install
+
+# Playwright browsers (deps are already in the base image)
+RUN npx playwright install chromium chromium-headless-shell && \
+    npm cache clean --force
 
 COPY . .
 
-# Build and cleanup source maps/docs if applicable
+ENV NODE_OPTIONS="--max-old-space-size=6144"
+
+# Build
 RUN npm run build
 
 EXPOSE 7070

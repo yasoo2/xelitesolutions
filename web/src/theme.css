@@ -67,47 +67,51 @@ html {
 }
 
 html[data-theme="light"] {
-  /* Premium Theme Accents */
-  --accent-primary: #2563eb;
-  /* Royal Blue */
-  --accent-secondary: #0f172a;
-  /* Slate 900 */
-  --accent-primary-rgb: 37, 99, 235;
-  --accent-secondary-rgb: 15, 23, 42;
-  --accent-rgb: 37, 99, 235;
-  --accent-glow: rgba(37, 99, 235, 0.2);
-  --brand-mark-yellow: #2563eb;
-  --brand-mark-yellow-rgb: 37, 99, 235;
+  /* Premium Sky Blue Theme Accents */
+  --accent-primary: #0ea5e9;
+  /* Sky Blue 500 */
+  --accent-secondary: #0c4a6e;
+  /* Sky Blue 900 */
+  --accent-primary-rgb: 14, 165, 233;
+  --accent-secondary-rgb: 12, 74, 110;
+  --accent-rgb: 14, 165, 233;
+  --accent-glow: rgba(14, 165, 233, 0.2);
+  --brand-mark-yellow: #0ea5e9;
+  --brand-mark-yellow-rgb: 14, 165, 233;
 
-  --bg-dark: #f8fafc;
-  /* Slate 50 */
+  --bg-dark: #ffffff;
+  /* Pure White */
   --bg-card: #ffffff;
-  --bg-secondary: #f1f5f9;
-  --bg-input: #e2e8f0;
-  --bg-hover: rgba(217, 119, 6, 0.05);
+  --bg-secondary: #f0f9ff;
+  /* Sky Blue 50 */
+  --bg-input: #e0f2fe;
+  /* Sky Blue 100 */
+  --bg-hover: rgba(14, 165, 233, 0.08);
 
   --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-secondary: #0369a1;
+  /* Sky Blue 700 */
+  --text-muted: #0ea5e9;
+  /* Sky Blue 500 */
 
-  --border-color: #e2e8f0;
-  --border-light: #cbd5e1;
+  --border-color: #bae6fd;
+  /* Sky Blue 200 */
+  --border-light: #f0f9ff;
+  /* Sky Blue 50 */
 
-  --shadow-md: 0 10px 30px -5px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 25px 50px -10px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 10px 30px -5px rgba(14, 165, 233, 0.1);
+  --shadow-xl: 0 25px 50px -10px rgba(14, 165, 233, 0.15);
 
-  /* Brand Identity Tokens (Light Mode - Deep Bronze/Gold) */
-  --brand-gradient: linear-gradient(135deg, #b45309 0%, #d97706 100%);
-  --brand-text-gradient: linear-gradient(135deg, #b45309 0%, #d97706 25%, #78350f 50%, #d97706 75%, #b45309 100%);
+  /* Brand Identity Tokens (Light Mode - Sky Blue / Indigo) */
+  --brand-gradient: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
+  --brand-text-gradient: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 25%, #6366f1 50%, #3b82f6 75%, #0ea5e9 100%);
   --brand-text-shadow:
-    0 1px 0 #92400e,
-    0 2px 0 #78350f,
-    0 3px 0 rgba(0, 0, 0, 0.1),
-    0 4px 6px rgba(0, 0, 0, 0.1),
-    0 0 20px rgba(217, 119, 6, 0.2);
-  --brand-badge-bg: rgba(0, 0, 0, 0.05);
-  --brand-badge-text: #475569;
-  --brand-badge-border: rgba(217, 119, 6, 0.3);
+    0 1px 0 rgba(14, 165, 233, 0.1),
+    0 2px 0 rgba(99, 102, 241, 0.05),
+    0 0 20px rgba(14, 165, 233, 0.1);
+  --brand-badge-bg: rgba(14, 165, 233, 0.05);
+  --brand-badge-text: #0ea5e9;
+  --brand-badge-border: rgba(14, 165, 233, 0.2);
 }
 
 .spin {

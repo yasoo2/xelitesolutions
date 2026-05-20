@@ -5,6 +5,7 @@
 
 import React, { useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import {
     MessageSquare,
     Plus,
@@ -27,6 +28,7 @@ interface SessionsBarProps {
     sessions: Session[];
     onSelect: (id: string) => void;
     onDelete: (id: string) => void;
+    onDeleteAll?: () => void;
     onNew: () => void;
     showInAgentMode?: boolean; // If false, hide in agent mode
 }
@@ -35,11 +37,19 @@ export default function SessionsBar({
     sessions,
     onSelect,
     onDelete,
+    onDeleteAll,
     onNew,
     showInAgentMode = false
 }: SessionsBarProps) {
+    const { t } = useTranslation();
     const scrollRef = useRef<HTMLDivElement>(null);
     const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+    const handleDeleteAll = () => {
+        if (window.confirm(t('sidebar.deleteAllConfirm'))) {
+            onDeleteAll?.();
+        }
+    };
 
     const scroll = useCallback((direction: 'left' | 'right') => {
         if (!scrollRef.current) return;
@@ -71,7 +81,7 @@ export default function SessionsBar({
                 paddingLeft: 4
             }}>
                 <MessageSquare size={14} />
-                <span className="hide-mobile">الجلسات</span>
+                <span className="hide-mobile">{t('sidebar.sessions')}</span>
             </div>
 
             {/* Scroll Left */}
@@ -122,7 +132,7 @@ export default function SessionsBar({
                         display: 'flex',
                         alignItems: 'center'
                     }}>
-                        لا توجد جلسات
+                        {t('sidebar.noResults')}
                     </div>
                 )}
             </div>
@@ -143,27 +153,58 @@ export default function SessionsBar({
                 <ChevronLeft size={16} />
             </button>
 
-            {/* New Session Button */}
-            <button
-                onClick={onNew}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '6px 12px',
-                    background: 'var(--accent-primary)',
-                    color: '#000',
-                    border: 'none',
-                    borderRadius: 6,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                }}
-            >
-                <Plus size={14} />
-                <span className="hide-mobile">جديد</span>
-            </button>
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {sessions.length > 0 && onDeleteAll && (
+                    <button
+                        onClick={handleDeleteAll}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 32,
+                            height: 32,
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            color: '#ef4444',
+                            border: '1px solid rgba(239, 68, 68, 0.2)',
+                            borderRadius: 6,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                        }}
+                        title={t('sidebar.deleteAll')}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                        }}
+                    >
+                        <Trash2 size={16} />
+                    </button>
+                )}
+
+                {/* New Session Button */}
+                <button
+                    onClick={onNew}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '6px 12px',
+                        background: 'var(--accent-primary)',
+                        color: '#000',
+                        border: 'none',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                    }}
+                >
+                    <Plus size={14} />
+                    <span className="hide-mobile">{t('sidebar.newChat')}</span>
+                </button>
+            </div>
         </div>
     );
 }
@@ -181,6 +222,7 @@ function SessionChip({
     isHovered: boolean;
     onHover: (hovered: boolean) => void;
 }) {
+    const { t } = useTranslation();
     return (
         <motion.div
             layout
@@ -214,7 +256,7 @@ function SessionChip({
                     textOverflow: 'ellipsis',
                 }}
             >
-                {session.title || 'جلسة جديدة'}
+                {session.title || t('sidebar.newChat')}
             </span>
 
             <AnimatePresence>
@@ -246,15 +288,15 @@ function SessionChip({
 }
 
 // Time formatting helper
-function formatTime(date: Date): string {
+function formatTime(date: Date, t: any): string {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
 
-    if (minutes < 1) return 'الآن';
-    if (minutes < 60) return `منذ ${minutes} دقيقة`;
-    if (hours < 24) return `منذ ${hours} ساعة`;
-    return `منذ ${days} يوم`;
+    if (minutes < 1) return t('time.now', 'Just now');
+    if (minutes < 60) return t('time.minutes_ago', { count: minutes, defaultValue: '{{count}}m ago' });
+    if (hours < 24) return t('time.hours_ago', { count: hours, defaultValue: '{{count}}h ago' });
+    return t('time.days_ago', { count: days, defaultValue: '{{count}}d ago' });
 }
