@@ -5,7 +5,27 @@ import dotenv from 'dotenv';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
+async function startBrowserWorker() {
+    const workerUrl = 'http://localhost:7070';
+    const apiKey = process.env.WORKER_API_KEY || '';
+    console.log(`Triggering browser start at ${workerUrl}/browser/start...`);
+    try {
+        const res = await fetch(`${workerUrl}/browser/start`, {
+            method: 'POST',
+            headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : undefined
+        });
+        const data: any = await res.json();
+        console.log("Browser start response:", data);
+        return data.wsEndpoint;
+    } catch (err: any) {
+        console.warn("Failed to trigger browser worker start:", err.message);
+        return null;
+    }
+}
+
 async function run() {
+    await startBrowserWorker();
+    
     console.log("Connecting to browser worker...");
     const wsEndpoint = process.env.BROWSER_WS_ENDPOINT || 'ws://localhost:5050/ws';
     const apiKey = process.env.WORKER_API_KEY || '';
