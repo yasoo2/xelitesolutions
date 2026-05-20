@@ -112,14 +112,21 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
 
         // Handle Resize
         const handleResize = () => {
-            if (!fitAddonRef.current || !termRef.current) return;
-            fitAddonRef.current.fit();
-            SocketService.send({
-                type: 'terminal_resize',
-                id: activeTabId,
-                cols: termRef.current.cols,
-                rows: termRef.current.rows
-            });
+            if (!fitAddonRef.current || !termRef.current || !containerRef.current) return;
+            const rect = containerRef.current.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return;
+
+            try {
+                fitAddonRef.current.fit();
+                SocketService.send({
+                    type: 'terminal_resize',
+                    id: activeTabId,
+                    cols: termRef.current.cols,
+                    rows: termRef.current.rows
+                });
+            } catch (err) {
+                console.warn('[Terminal] Resize error:', err);
+            }
         };
 
         window.addEventListener('resize', handleResize);
@@ -129,12 +136,12 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
         return () => {
             window.removeEventListener('resize', handleResize);
             resizeObserver.disconnect();
-            try {
-                term.dispose();
-            } catch { }
             termRef.current = null;
             fitAddonRef.current = null;
             isReadyRef.current = false;
+            try {
+                term.dispose();
+            } catch { }
         };
     }, [activeTabId, isMinimized, workspaceId]);
 
