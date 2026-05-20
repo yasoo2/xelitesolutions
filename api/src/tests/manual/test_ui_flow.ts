@@ -34,7 +34,10 @@ async function run() {
         headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : undefined
     });
     const context = await browser.newContext({
-        viewport: { width: 1280, height: 720 }
+        viewport: { width: 1280, height: 720 },
+        extraHTTPHeaders: {
+            'Host': '46.224.187.142'
+        }
     });
     const page = await context.newPage();
 
@@ -55,7 +58,12 @@ async function run() {
         await page.screenshot({ path: path.join(screenshotDir, '02_credentials_filled.png') });
 
         console.log("Clicking login submit button...");
-        await page.click('button[type="submit"]');
+        await Promise.all([
+            page.waitForURL('**/joe**', { timeout: 15000 }).catch(() => {}),
+            page.click('button[type="submit"]')
+        ]);
+        await page.waitForTimeout(3000);
+        await page.screenshot({ path: path.join(screenshotDir, '02b_after_login_click.png') });
 
         console.log("Waiting for navigation to dashboard/IDE...");
         await page.waitForTimeout(12000);
