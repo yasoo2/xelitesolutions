@@ -50,7 +50,7 @@ JSON Format:
                 requiresTools: true,
                 estimatedTokens: 1000,
                 language: 'en'
-            } as any);
+            } as any, undefined, undefined, undefined, undefined, undefined, context);
 
             let decision: any;
             try {
@@ -74,7 +74,8 @@ JSON Format:
                 sessionId: context.sessionId, 
                 workspaceId: context.workspaceId,
                 userId: context.userId,
-                traceId: context.traceId 
+                traceId: context.traceId,
+                modelConfig: context.modelConfig
             });
             
             return {

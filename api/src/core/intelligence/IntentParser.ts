@@ -56,7 +56,7 @@ Return ONLY a JSON object:
                 requiresTools: false,
                 estimatedTokens: 1000,
                 language: 'en'
-            } as any);
+            } as any, undefined, undefined, undefined, undefined, undefined, context);
 
             let analysis: any;
             try {
@@ -90,7 +90,11 @@ Return ONLY a JSON object:
     /**
      * Helper to create context if only history is available
      */
-    static createContext(userId: string, sessionId: string, history: any[]): ConversationContext {
-        return buildConversationContext(userId, sessionId, history);
+    static createContext(userId: string, sessionId: string, history: any[], modelConfig?: any): ConversationContext {
+        const ctx = buildConversationContext(userId, sessionId, history);
+        if (modelConfig) {
+            (ctx as any).modelConfig = modelConfig;
+        }
+        return ctx;
     }
 }

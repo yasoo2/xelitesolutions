@@ -16,7 +16,7 @@ const router = Router();
  * Legacy simulation logic has been decommissioned.
  */
 router.post('/start', authenticateOptional as any, async (req: Request, res: Response) => {
-    const { text, sessionId, userId: bodyUserId } = req.body || {};
+    const { text, sessionId, userId: bodyUserId, provider, model, apiKey, baseUrl } = req.body || {};
     const userId = (req as any).auth?.sub || bodyUserId || 'anonymous';
     
     console.log(`[RunRoute] Unified execution requested for session: ${sessionId}`);
@@ -31,7 +31,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         const result = await AgentLoopService.execute(text, { 
             sessionId, 
             userId,
-            traceId
+            traceId,
+            modelConfig: {
+                provider,
+                model,
+                apiKey,
+                baseUrl
+            }
         });
 
         return res.json({

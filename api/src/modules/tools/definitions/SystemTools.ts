@@ -486,7 +486,7 @@ export class ShellExecuteTool extends BaseTool {
     rateLimitPerMinute = 60;
     auditFields = ['command', 'cwd'];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const startedAt = Date.now();
         const logs: string[] = [];
         const command = String(input?.command ?? '');
@@ -582,7 +582,7 @@ export class ShellExecuteTool extends BaseTool {
                 };
             }
 
-            const r = await handleShellCommand(command, [], workDir, timeoutVal, false);
+            const r = await handleShellCommand(command, [], workDir, timeoutVal, false, context?.sessionId);
             const durationMs = Date.now() - startedAt;
             logs.push(...(r.logs || []));
             logs.push(`exec=${redactCmd(command)} server=local exit=${r.ok ? 0 : 1}`);

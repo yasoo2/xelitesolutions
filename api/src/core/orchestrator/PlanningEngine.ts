@@ -26,7 +26,7 @@ export class PlanningEngine {
     /**
      * Generate a dynamic multi-step execution DAG based on intent and optional memory
      */
-    static async generatePlan(params: { intent: StructuredIntent, memory?: any }, traceId?: string): Promise<ExecutionPlan> {
+    static async generatePlan(params: { intent: StructuredIntent, memory?: any }, traceId?: string, context?: any): Promise<ExecutionPlan> {
         const { intent, memory } = params;
         console.log(`[PlanningEngine] Generating REAL-TIME DAG for: ${intent.goal}`);
 
@@ -66,7 +66,7 @@ Return ONLY a JSON array of steps:
             const response = await routeToModel([
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Analyze goal and generate DAG for: ${intent.goal}` }
-            ]);
+            ], undefined, undefined, undefined, undefined, undefined, undefined, context);
 
             const jsonMatch = response.match(/\[[\s\S]*\]/);
             if (jsonMatch) {

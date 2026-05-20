@@ -6,6 +6,10 @@
 
 import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider, openAIProvider } from './providers/registry';
 import { LLMCacheTool } from '../../modules/tools/definitions/LLMCacheTool';
+import { OpenAIProvider } from './providers/openai';
+import { GeminiProvider } from './providers/gemini';
+import { OpenRouterProvider } from './providers/openrouter';
+import OpenAI from 'openai';
 
 let hack: any = pollinationsProvider;
 let openrouter: any = openRouterProvider;
@@ -534,7 +538,8 @@ export async function routeToModel(
     onPartial?: (delta: string) => void,
     onProgress?: (msg: string) => void,
     onThought?: (msg: string) => void,
-    tools?: any[]
+    tools?: any[],
+    context?: any
 ): Promise<string> {
 
     if (process.env.MOCK_LLM === 'true') {
@@ -703,6 +708,74 @@ export async function routeToModel(
             .replace(/<think>[\s\S]*?<\/think>/g, '')
             .trim();
     };
+
+    // Check for user-selected provider overrides in context
+    if (context?.modelConfig) {
+        const { provider: cfgProvider, model: cfgModel, apiKey: cfgApiKey, baseUrl: cfgBaseUrl } = context.modelConfig;
+        if (cfgProvider && cfgProvider !== 'mock') {
+            console.log(`✨ [IntelligentRouter] Custom Route: Provider=${cfgProvider}, Model=${cfgModel}, HasKey=${!!cfgApiKey}, HasUrl=${!!cfgBaseUrl}`);
+            
+            const effectiveApiKey = cfgApiKey?.trim() || 
+                (cfgProvider === 'openai' ? process.env.OPENAI_API_KEY :
+                 cfgProvider === 'gemini' || cfgProvider === 'google' ? (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) :
+                 cfgProvider === 'openrouter' ? process.env.OPENROUTER_API_KEY : '');
+                 
+            const effectiveBaseUrl = cfgBaseUrl?.trim() || 
+                (cfgProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' :
+                 cfgProvider === 'gemini' || cfgProvider === 'google' ? 'https://generativelanguage.googleapis.com/v1beta/openai/' : undefined);
+
+            try {
+                if (cfgProvider === 'gemini' || cfgProvider === 'google') {
+                    // Clean up messages for Gemini
+                    const cleanedMessages = messages.map(m => ({
+                        role: m.role,
+                        content: typeof m.content === 'string' ? m.content : flattenMultimodalMessages([m])[0]?.content || ''
+                    }));
+                    
+                    const client = new OpenAI({
+                        apiKey: effectiveApiKey || 'dummy',
+                        baseURL: effectiveBaseUrl || 'https://generativelanguage.googleapis.com/v1beta/openai/'
+                    });
+                    const completion = await client.chat.completions.create({
+                        model: cfgModel || 'models/gemini-2.0-flash',
+                        messages: cleanedMessages as any,
+                        tools: tools as any,
+                        tool_choice: tools ? 'auto' : undefined,
+                    });
+                    const message = completion.choices[0]?.message;
+                    if (message?.tool_calls && message.tool_calls.length > 0) {
+                        return JSON.stringify({
+                            type: 'tool_calls',
+                            tool_calls: message.tool_calls,
+                        });
+                    }
+                    return cleanOutput(message?.content || '');
+                } else {
+                    // OpenAI, OpenRouter, or other OpenAI-compatible endpoint
+                    const client = new OpenAI({
+                        apiKey: effectiveApiKey || 'dummy',
+                        baseURL: effectiveBaseUrl
+                    });
+                    const completion = await client.chat.completions.create({
+                        model: cfgModel || (cfgProvider === 'openai' ? 'gpt-4o' : 'google/gemma-2-9b-it:free'),
+                        messages: flatMessages as any,
+                        tools: tools as any,
+                        tool_choice: tools ? 'auto' : undefined,
+                    });
+                    const message = completion.choices[0]?.message;
+                    if (message?.tool_calls && message.tool_calls.length > 0) {
+                        return JSON.stringify({
+                            type: 'tool_calls',
+                            tool_calls: message.tool_calls,
+                        });
+                    }
+                    return cleanOutput(message?.content || '');
+                }
+            } catch (err: any) {
+                console.error(`[IntelligentRouter] Direct custom provider routing failed: ${err.message}. Falling back to default routing.`);
+            }
+        }
+    }
 
     // Analyze if not provided (using flat messages for analysis)
     const taskAnalysis = analysis || await advancedAnalyzeTask(

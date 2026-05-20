@@ -31,9 +31,10 @@ const BASE_URL = 'https://openrouter.ai/api/v1';
 export class OpenRouterProvider {
     private client: OpenAI;
 
-    constructor(apiKey: string = 'dummy') {
+    constructor(apiKey?: string) {
+        const key = apiKey || process.env.OPENROUTER_API_KEY || 'dummy';
         this.client = new OpenAI({
-            apiKey: apiKey,
+            apiKey: key,
             baseURL: BASE_URL,
             defaultHeaders: {
                 'HTTP-Referer': 'https://xelitesolutions.com',

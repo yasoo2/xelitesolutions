@@ -23,7 +23,7 @@ export class DbSchemaMigratorTool extends BaseTool {
     permissions: ToolPermission[] = ['execute', 'read'];
     sideEffects: ToolPermission[] = ['execute'];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const engine = input.engine || 'prisma';
         const action = input.action;
         let args: string[] = [];
@@ -51,7 +51,7 @@ export class DbSchemaMigratorTool extends BaseTool {
         }
 
         try {
-            const r = await handleShellCommand('npx', args, process.cwd(), 600000, false);
+            const r = await handleShellCommand('npx', args, process.cwd(), 600000, false, context?.sessionId);
             if (!r.ok) {
                 return { ok: false, error: `Migration failed: ${r.error}`, logs: [] };
             }

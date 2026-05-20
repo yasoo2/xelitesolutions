@@ -14,7 +14,8 @@ export async function handleShellCommand(
     args: string[],
     cwd?: string,
     timeoutMs = 60000,
-    dryRun = false
+    dryRun = false,
+    sessionId?: string
 ): Promise<HandlerResult> {
     const logs: string[] = [];
     const validCwd = cwd ? path.resolve(cwd) : process.cwd();
@@ -28,7 +29,7 @@ export async function handleShellCommand(
 
     const fullCommand = args.length > 0 ? `${command} ${args.join(' ')}` : command;
     const result = await ExecutionGateway.execute({
-        id: 'shell_' + Date.now(),
+        id: sessionId || 'shell_' + Date.now(),
         type: 'shell',
         payload: {
             command: fullCommand,

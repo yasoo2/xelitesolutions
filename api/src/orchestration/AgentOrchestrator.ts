@@ -47,6 +47,7 @@ export type AgentDAG = {
 export class AgentOrchestrator {
   private memory: Map<string, ExecutionMemory> = new Map();
   private agents: Map<AgentType, BaseAgent> = new Map();
+  private context?: Record<string, any>;
 
   constructor() {
     // Register specialized agents
@@ -63,6 +64,8 @@ export class AgentOrchestrator {
   public async execute(goal: AgentGoal): Promise<{ ok: boolean; result: any }> {
     console.log(`[AgentOrchestrator] Starting REAL-TIME orchestration for goal: ${goal.goal}`);
     broadcastThinkingDetail(goal.id, `🧠 Initializing Autonomous Brain for goal: ${goal.goal}`);
+
+    this.context = goal.context;
 
     // Initialize Runtime Memory
     const runtimeMemory = new ExecutionMemory(goal.id);
@@ -96,7 +99,7 @@ export class AgentOrchestrator {
    * Converts goal into a structured execution plan (DAG) dynamically
    */
   public async plan(goalText: string, memory?: ExecutionMemory, traceId?: string): Promise<AgentDAG> {
-    const context = IntentParser.createContext('orchestrator', 'global', []);
+    const context = IntentParser.createContext('orchestrator', 'global', [], this.context);
     const intent = await IntentParser.parse(goalText, context);
     
     // Inject memory into planning if available
@@ -105,7 +108,7 @@ export class AgentOrchestrator {
         ? `${goalText}\n\n[CONTEXT: Previous attempts/steps results]\n${historySummary}` 
         : goalText;
 
-    const rawPlan = await PlanningEngine.generatePlan({ intent, memory: memory?.getHistory() }, traceId);
+    const rawPlan = await PlanningEngine.generatePlan({ intent, memory: memory?.getHistory() }, traceId, this.context);
 
     const nodes: ExecutionNode[] = rawPlan.steps.map((step) => ({
       id: step.id,
@@ -197,7 +200,8 @@ export class AgentOrchestrator {
             workspaceId: goalContext?.workspaceId,
             userId: goalContext?.userId,
             traceId,
-            memory: memory.getHistory()
+            memory: memory.getHistory(),
+            modelConfig: goalContext?.modelConfig
         };
 
         try {
@@ -293,7 +297,7 @@ Return ONLY the agent name.`;
           requiresTools: false,
           estimatedTokens: 100,
           language: 'en'
-      } as any);
+      } as any, undefined, undefined, undefined, undefined, undefined, this.context);
 
       let decision: any;
       try {
@@ -334,7 +338,7 @@ If the last result suggests a better path or a new requirement, set shouldReplan
         requiresTools: false,
         estimatedTokens: 100,
         language: 'en'
-      } as any);
+      } as any, undefined, undefined, undefined, undefined, undefined, this.context);
       
       let evaluation: any;
       try {
@@ -359,7 +363,7 @@ If the last result suggests a better path or a new requirement, set shouldReplan
     const recoveryPlan = await PlanningEngine.generatePlan({ 
         intent: { goal: `Fix and continue: ${failedNode.task}`, complexity: 'high', riskLevel: 'medium', suggestedAgent: failedNode.agent, rawIntent: {} }, 
         memory: memory.getHistory() 
-    }, traceId);
+    }, traceId, this.context);
 
     const newNodes: ExecutionNode[] = (recoveryPlan.steps as any).map((step: any) => ({
       id: step.id,

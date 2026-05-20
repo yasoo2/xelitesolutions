@@ -80,6 +80,7 @@ export interface ToolContext {
     traceId?: string;
     onProgress?: (msg: string) => void;
     onThought?: (msg: string) => void;
+    modelConfig?: any;
 }
 
 function normalizeUserId(v: any) {
