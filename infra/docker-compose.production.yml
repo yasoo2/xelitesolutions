@@ -41,7 +41,9 @@ services:
       - joe-network
 
   browser-worker:
-    build: ../services/joe-browser-worker
+    build:
+      context: ..
+      dockerfile: services/joe-browser-worker/Dockerfile
     container_name: joe_browser_worker
     restart: always
     mem_limit: 512m
