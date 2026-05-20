@@ -18,8 +18,11 @@ async function runCommand(command: string, args: string[], cwd: string): Promise
                 PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/root/.nvm/versions/node/v20/bin'
             }
         });
-        if (result.ok) return result.output || '';
-        throw new Error(result.error || result.output || 'Command failed');
+        if (result.success && result.data?.ok !== false) {
+            return result.data?.output || '';
+        }
+        const error = result.error || result.data?.error || 'Command failed';
+        throw new Error(error);
     });
 }
 

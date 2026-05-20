@@ -26,11 +26,12 @@ async function gitExec(args: string[]) {
     const cwd = findWorkspaceRoot();
     return await executionFirewall.runAsSystem(async () => {
         const result = await ExecutionGateway.execute('git', args, { cwd, timeout: 30000 });
+        const ok = result.success && result.data?.ok !== false;
         return {
-            ok: result.ok,
-            stdout: result.output || '',
-            stderr: result.error || '',
-            error: result.ok ? undefined : (result.error || 'Git command failed')
+            ok,
+            stdout: result.data?.output || '',
+            stderr: result.data?.error || result.error || '',
+            error: ok ? undefined : (result.error || result.data?.error || 'Git command failed')
         };
     });
 }
