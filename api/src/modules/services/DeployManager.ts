@@ -36,7 +36,19 @@ export class DeployManager {
     private lastDeployFinishTime: number | null = null;
 
     private constructor() {
+        this.setupSafeDirectory().catch(err => {
+            logger.error(`[DeployManager] Failed to setup safe.directory: ${err.message}`);
+        });
         this.startAutoDeployPollerInternal();
+    }
+
+    private async setupSafeDirectory() {
+        try {
+            await this.runCommand('git', ['config', '--global', '--add', 'safe.directory', '*'], PROJECT_ROOT);
+            logger.info('[DeployManager] Added safe.directory exception for git successfully.');
+        } catch (e: any) {
+            logger.warn(`[DeployManager] safe.directory setup warning: ${e.message}`);
+        }
     }
 
     public static getInstance(): DeployManager {
