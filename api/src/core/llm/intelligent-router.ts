@@ -719,6 +719,12 @@ export async function routeToModel(
                 (cfgProvider === 'openai' ? process.env.OPENAI_API_KEY :
                  cfgProvider === 'gemini' || cfgProvider === 'google' ? (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) :
                  cfgProvider === 'openrouter' ? process.env.OPENROUTER_API_KEY : '');
+
+            // [ELITE FIX] If Gemini/Google selected but no key, fallback to free DeepSeek/Pollinations immediately
+            if ((cfgProvider === 'gemini' || cfgProvider === 'google') && !effectiveApiKey) {
+                console.warn(`[IntelligentRouter] Gemini selected but no key found. Falling back to DeepSeek (Free).`);
+                return await deepSeekProvider.chatComplete(flatMessages, undefined, tools);
+            }
                  
             const effectiveBaseUrl = cfgBaseUrl?.trim() || 
                 (cfgProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' :
@@ -779,13 +785,13 @@ export async function routeToModel(
         }
     }
 
-    // Analyze if not provided (using flat messages for analysis)
-    const taskAnalysis = analysis || await advancedAnalyzeTask(
+    // [SPEED UP] If we already have a direct provider, skip heavy analysis
+    const taskAnalysis = (analysis || (context?.modelConfig?.provider ? { complexity: 'medium' } : await advancedAnalyzeTask(
         flatMessages.find(m => m.role === 'user')?.content || '',
         messages,
         onProgress,
         onThought
-    );
+    ))) as any;
 
     // Select best model
     const suggested = analysis?.suggestedModel ? MODELS[analysis.suggestedModel] : undefined;

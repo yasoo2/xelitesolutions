@@ -2373,6 +2373,7 @@ export default function CommandComposer({
         },
         body: JSON.stringify(payload),
       });
+      console.log(`[JOE] /runs/start Response Status: ${res.status}`);
       const raw = await res.text();
       let data: any = null;
       try {
