@@ -43,11 +43,11 @@ async function spawnWithTimeout(command: string, args: string[], cwd: string, ti
 }
 
 // Updated Resolver to use dynamic workspaceService.getActiveRoot()
-async function resolvePathInsideWorkspace(inputPath: string): Promise<string | null> {
+async function resolvePathInsideWorkspace(inputPath: string, workspaceId?: string): Promise<string | null> {
   const raw = String(inputPath || '').trim();
   if (!raw) return null;
 
-  const activeRoot = workspaceService.getActiveRoot();
+  const activeRoot = workspaceService.getActiveRoot(workspaceId);
   const workspaceReal =
     (await fs.promises.realpath(activeRoot).catch(() => null)) || activeRoot;
 
@@ -243,9 +243,15 @@ router.post('/git/clone', authenticate as any, async (req: Request, res: Respons
 
 router.get('/graph', authenticate as any, async (req: Request, res: Response) => {
   try {
-    const activeRoot = workspaceService.getActiveRoot();
+    const workspaceId =
+      (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+        ? req.headers['x-workspace-id'].trim()
+        : (req.query && typeof (req.query as any).workspaceId === 'string' && String((req.query as any).workspaceId).trim())
+          ? String((req.query as any).workspaceId).trim()
+          : '';
+    const activeRoot = workspaceService.getActiveRoot(workspaceId || undefined);
     const cwdRaw = req.query.path ? String(req.query.path) : activeRoot;
-    const cwd = (await resolvePathInsideWorkspace(cwdRaw)) || activeRoot;
+    const cwd = (await resolvePathInsideWorkspace(cwdRaw, workspaceId || undefined)) || activeRoot;
 
     try {
       await fs.promises.access(cwd);
@@ -328,9 +334,15 @@ router.get('/graph', authenticate as any, async (req: Request, res: Response) =>
 // File Tree Endpoint (Lazy)
 router.get('/tree', authenticate as any, async (req: Request, res: Response) => {
   try {
-    const activeRoot = workspaceService.getActiveRoot();
+    const workspaceId =
+      (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+        ? req.headers['x-workspace-id'].trim()
+        : (req.query && typeof (req.query as any).workspaceId === 'string' && String((req.query as any).workspaceId).trim())
+          ? String((req.query as any).workspaceId).trim()
+          : '';
+    const activeRoot = workspaceService.getActiveRoot(workspaceId || undefined);
     const rootPathRaw = req.query.path ? String(req.query.path) : activeRoot;
-    const rootPath = await resolvePathInsideWorkspace(rootPathRaw);
+    const rootPath = await resolvePathInsideWorkspace(rootPathRaw, workspaceId || undefined);
     if (!rootPath) return res.status(400).json({ error: 'Invalid path' });
 
     try {
@@ -375,7 +387,13 @@ router.get('/search', authenticate as any, async (req: Request, res: Response) =
     if (!query) return res.json({ results: [] });
     if (query.startsWith('-') || query.length > 200) return res.json({ results: [] });
 
-    const activeRoot = workspaceService.getActiveRoot();
+    const workspaceId =
+      (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+        ? req.headers['x-workspace-id'].trim()
+        : (req.query && typeof (req.query as any).workspaceId === 'string' && String((req.query as any).workspaceId).trim())
+          ? String((req.query as any).workspaceId).trim()
+          : '';
+    const activeRoot = workspaceService.getActiveRoot(workspaceId || undefined);
     const results: SearchResult[] = [];
     await searchInDir(activeRoot, query, results, 100, ['node_modules', '.git', 'dist', 'build', '.DS_Store']);
     res.json({ results });
@@ -387,8 +405,14 @@ router.get('/search', authenticate as any, async (req: Request, res: Response) =
 // File Content Endpoint (Read)
 router.get('/content', authenticate as any, async (req: Request, res: Response) => {
   try {
+    const workspaceId =
+      (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+        ? req.headers['x-workspace-id'].trim()
+        : (req.query && typeof (req.query as any).workspaceId === 'string' && String((req.query as any).workspaceId).trim())
+          ? String((req.query as any).workspaceId).trim()
+          : '';
     const filePathRaw = String(req.query.path || '');
-    const filePath = await resolvePathInsideWorkspace(filePathRaw);
+    const filePath = await resolvePathInsideWorkspace(filePathRaw, workspaceId || undefined);
     if (!filePath) {
       return res.status(404).json({ error: 'File not found' });
     }
@@ -409,8 +433,14 @@ router.get('/content', authenticate as any, async (req: Request, res: Response) 
 router.post('/file/rename', authenticate as any, async (req: Request, res: Response) => {
   try {
     const { oldPath: oldRaw, newPath: newRaw } = req.body;
-    const oldPath = await resolvePathInsideWorkspace(oldRaw);
-    const newPath = await resolvePathInsideWorkspace(newRaw);
+    const workspaceId =
+      (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+        ? req.headers['x-workspace-id'].trim()
+        : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
+          ? String((req.body as any).workspaceId).trim()
+          : '';
+    const oldPath = await resolvePathInsideWorkspace(oldRaw, workspaceId || undefined);
+    const newPath = await resolvePathInsideWorkspace(newRaw, workspaceId || undefined);
 
     if (!oldPath || !newPath) return res.status(400).json({ error: 'Invalid paths' });
 
@@ -431,7 +461,13 @@ router.post('/file/rename', authenticate as any, async (req: Request, res: Respo
 router.post('/file/delete', authenticate as any, async (req: Request, res: Response) => {
   try {
     const { path: rawPath } = req.body;
-    const itemPath = await resolvePathInsideWorkspace(rawPath);
+    const workspaceId =
+      (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+        ? req.headers['x-workspace-id'].trim()
+        : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
+          ? String((req.body as any).workspaceId).trim()
+          : '';
+    const itemPath = await resolvePathInsideWorkspace(rawPath, workspaceId || undefined);
     if (!itemPath) return res.status(400).json({ error: 'Invalid path' });
 
     try {
@@ -456,8 +492,13 @@ router.post('/file/delete', authenticate as any, async (req: Request, res: Respo
 router.post('/folder/create', authenticate as any, async (req: Request, res: Response) => {
   try {
     const { path: rawPath } = req.body;
-    // For new folder, check if we are creating inside valid root.
-    const activeRoot = workspaceService.getActiveRoot();
+    const workspaceId =
+      (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+        ? req.headers['x-workspace-id'].trim()
+        : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
+          ? String((req.body as any).workspaceId).trim()
+          : '';
+    const activeRoot = workspaceService.getActiveRoot(workspaceId || undefined);
     const workspaceReal = await fs.promises.realpath(activeRoot).catch(() => activeRoot);
     const candidate = path.isAbsolute(rawPath) ? path.resolve(rawPath) : path.resolve(workspaceReal, rawPath);
     const rel = path.relative(workspaceReal, candidate);
@@ -476,9 +517,13 @@ router.post('/folder/create', authenticate as any, async (req: Request, res: Res
 router.post('/content', authenticate as any, async (req: Request, res: Response) => {
   try {
     const { path: filePathRaw, content } = req.body;
-
-    // Allow creating new files: check path safety without requiring existence
-    const activeRoot = workspaceService.getActiveRoot();
+    const workspaceId =
+      (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+        ? req.headers['x-workspace-id'].trim()
+        : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
+          ? String((req.body as any).workspaceId).trim()
+          : '';
+    const activeRoot = workspaceService.getActiveRoot(workspaceId || undefined);
     const workspaceReal = await fs.promises.realpath(activeRoot).catch(() => activeRoot);
     const filePath = path.isAbsolute(filePathRaw) ? path.resolve(filePathRaw) : path.resolve(workspaceReal, filePathRaw);
     const rel = path.relative(workspaceReal, filePath);
@@ -501,7 +546,13 @@ router.post('/content', authenticate as any, async (req: Request, res: Response)
 router.post('/refresh', authenticate as any, async (req: Request, res: Response) => {
   try {
     const { path: refreshPath } = req.body;
-    const activeRoot = workspaceService.getActiveRoot();
+    const workspaceId =
+      (typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim())
+        ? req.headers['x-workspace-id'].trim()
+        : (req.body && typeof (req.body as any).workspaceId === 'string' && String((req.body as any).workspaceId).trim())
+          ? String((req.body as any).workspaceId).trim()
+          : '';
+    const activeRoot = workspaceService.getActiveRoot(workspaceId || undefined);
     const targetPath = refreshPath || activeRoot;
     
     // التحقق من وجود المجلد
@@ -513,7 +564,7 @@ router.post('/refresh', authenticate as any, async (req: Request, res: Response)
     
     // تحديث الـ workspace root إذا كان المسار مختلفاً
     if (targetPath !== activeRoot) {
-      await workspaceService.setActiveRoot(targetPath);
+      await workspaceService.setActiveRoot(targetPath, workspaceId || undefined);
     }
     
     res.json({ success: true, path: targetPath, name: path.basename(targetPath) });

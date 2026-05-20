@@ -1,6 +1,7 @@
 import { logger } from '../../../shared/utils/logger';
 import { SentinelAction } from './SentinelPolicyEngine';
 import { ShellExecuteTool } from '../../tools/definitions/SystemTools';
+import { executionFirewall } from '../../../orchestration/AgentExecutionFirewall';
 
 export class SentinelActionService {
     private static shellTool = new ShellExecuteTool();
@@ -37,10 +38,10 @@ export class SentinelActionService {
     private static async killProcess(pid: string) {
         logger.warn(`[Sentinel] TERMINATING SUSPICIOUS PROCESS: PID ${pid}`);
         // We use the shell tool directly to ensure we have context
-        const result = await this.shellTool.execute({
+        const result = await executionFirewall.runAsSystem(() => this.shellTool.execute({
             command: `kill -9 ${pid}`,
             cwd: process.cwd()
-        });
+        }));
         
         if (!result.ok) {
             throw new Error(`Kill command failed: ${result.error}`);
@@ -52,10 +53,10 @@ export class SentinelActionService {
         logger.warn(`[Sentinel] BLOCKING SUSPICIOUS IP: ${ip}`);
         // Windows or Linux specific? Let's assume generic iptables for now as a placeholder
         // or a generic "deny" policy.
-        const result = await this.shellTool.execute({
+        const result = await executionFirewall.runAsSystem(() => this.shellTool.execute({
             command: `iptables -A INPUT -s ${ip} -j DROP`,
             cwd: process.cwd()
-        });
+        }));
 
         if (!result.ok) {
             // If iptables fails (e.g. on Windows), log it but don't crash

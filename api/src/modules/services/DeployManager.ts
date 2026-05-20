@@ -50,31 +50,33 @@ export class DeployManager {
         const fullCommand = args.length > 0 ? `${command} ${args.join(' ')}` : command;
         if (deploymentId) this.queueLog(deploymentId, `[EXEC] ${fullCommand}`);
 
-        const result = await ExecutionGateway.execute({
-            id: deploymentId || 'deploy_' + Date.now(),
-            type: 'shell',
-            payload: {
-                command: fullCommand,
-                options: {
-                    cwd,
-                    timeout: timeoutMs,
-                    shell: true,
-                    env: {
-                        ...process.env,
-                        GIT_TERMINAL_PROMPT: '0',
-                        PATH: [
-                            process.env.PATH,
-                            path.join(API_DIR, 'node_modules', '.bin'),
-                            path.join(WEB_DIR, 'node_modules', '.bin'),
-                            path.join(PROJECT_ROOT, 'node_modules', '.bin'),
-                            '/usr/local/bin',
-                            '/usr/bin',
-                            '/bin'
-                        ].join(path.delimiter)
+        const result = await executionFirewall.runAsSystem(async () => {
+            return await ExecutionGateway.execute({
+                id: deploymentId || 'deploy_' + Date.now(),
+                type: 'shell',
+                payload: {
+                    command: fullCommand,
+                    options: {
+                        cwd,
+                        timeout: timeoutMs,
+                        shell: true,
+                        env: {
+                            ...process.env,
+                            GIT_TERMINAL_PROMPT: '0',
+                            PATH: [
+                                process.env.PATH,
+                                path.join(API_DIR, 'node_modules', '.bin'),
+                                path.join(WEB_DIR, 'node_modules', '.bin'),
+                                path.join(PROJECT_ROOT, 'node_modules', '.bin'),
+                                '/usr/local/bin',
+                                '/usr/bin',
+                                '/bin'
+                            ].join(path.delimiter)
+                        }
                     }
-                }
-            },
-            priority: 'high'
+                },
+                priority: 'high'
+            });
         });
 
         if (result.success && result.data?.ok !== false) {
