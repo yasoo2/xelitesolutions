@@ -1,10 +1,18 @@
 import { chromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 async function run() {
     console.log("Connecting to browser worker...");
-    const browser = await chromium.connect('ws://localhost:5050/ws');
+    const wsEndpoint = process.env.BROWSER_WS_ENDPOINT || 'ws://localhost:5050/ws';
+    const apiKey = process.env.WORKER_API_KEY || '';
+    
+    const browser = await chromium.connect(wsEndpoint, {
+        headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : undefined
+    });
     const context = await browser.newContext({
         viewport: { width: 1280, height: 720 }
     });
