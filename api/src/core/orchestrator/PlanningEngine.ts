@@ -28,6 +28,24 @@ export class PlanningEngine {
      */
     static async generatePlan(params: { intent: StructuredIntent, memory?: any }, traceId?: string, context?: any): Promise<ExecutionPlan> {
         const { intent, memory } = params;
+
+        // [ELITE FAST-PATH] Direct answer for general questions or chat
+        if ((intent as any).type === 'general' || (intent as any).type === 'chat' || intent.goal.length < 30) {
+            return {
+                id: `chat_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'direct_response',
+                    description: `Answering: ${intent.goal}`,
+                    tool: 'central_answer',
+                    agent: 'General',
+                    input: { question: intent.goal },
+                    dependsOn: []
+                }],
+                metadata: { complexity: 'low', riskLevel: 'low' }
+            };
+        }
+
         console.log(`[PlanningEngine] Generating REAL-TIME DAG for: ${intent.goal}`);
 
         const historyContext = memory ? `\nPrevious Execution History:\n${JSON.stringify(memory)}` : "";
