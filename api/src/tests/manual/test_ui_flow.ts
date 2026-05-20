@@ -34,10 +34,7 @@ async function run() {
         headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : undefined
     });
     const context = await browser.newContext({
-        viewport: { width: 1280, height: 720 },
-        extraHTTPHeaders: {
-            'Host': '46.224.187.142'
-        }
+        viewport: { width: 1280, height: 720 }
     });
     const page = await context.newPage();
 
@@ -49,7 +46,7 @@ async function run() {
 
     try {
         console.log("Navigating to login page...");
-        await page.goto('http://joe_nginx/login', { waitUntil: 'networkidle', timeout: 30000 });
+        await page.goto('http://nginx/login', { waitUntil: 'networkidle', timeout: 30000 });
         await page.screenshot({ path: path.join(screenshotDir, '01_login_page.png') });
 
         console.log("Filling login credentials...");
