@@ -46,7 +46,7 @@ async function run() {
 
     try {
         console.log("Navigating to login page...");
-        await page.goto('http://127.0.0.1/login', { waitUntil: 'networkidle', timeout: 30000 });
+        await page.goto('https://xelitesolutions.com/login', { waitUntil: 'networkidle', timeout: 30000 });
         await page.screenshot({ path: path.join(screenshotDir, '01_login_page.png') });
 
         console.log("Filling login credentials...");
