@@ -31,7 +31,7 @@ check_service "API" "http://localhost:3000/health"
 check_service "Browser Worker" "http://localhost:5050/health"
 
 # Check Web
-check_service "Web Frontend" "http://localhost:8080"
+check_service "Web Frontend" "http://localhost:5000"
 
 # Docker container status
 echo ""

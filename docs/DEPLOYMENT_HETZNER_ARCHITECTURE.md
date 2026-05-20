@@ -12,7 +12,7 @@
 - **Execution**: Runs directly on the **Host OS** as a `systemd` service.
 - **Service Name**: `joe-api.service`
 - **Working Directory**: `/root/xelitesolutions/api`
-- **Listening On**: `0.0.0.0:8080` (Host)
+- **Listening On**: `0.0.0.0:5000` (Host)
 - **Management Commands**:
   - `systemctl status joe-api.service`
   - `systemctl restart joe-api.service`
@@ -21,7 +21,7 @@
 ### 2. Frontend & Proxy (Docker)
 - **Web**: `joe_web` (Container) - Serves the React frontend.
 - **Nginx**: `joe_nginx` (Container) - Acts as the entry point and reverse proxy.
-  - Proxies `/api/*` requests to `host.docker.internal:8080`.
+  - Proxies `/api/*` requests to `host.docker.internal:5000`.
 - **Database**: `joe_mongo` (Container) - MongoDB database.
 - **Worker**: `joe_browser_worker` (Container) - Playwright/Browser execution environment.
 

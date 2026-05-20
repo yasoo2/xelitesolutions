@@ -6,9 +6,9 @@ Repository: `yasoo2/xelitesolutions`
 
 ## Server Architecture (Hetzner joe-server-1)
 
-- **API**: Runs on Host OS via `systemd` (`joe-api.service`). Listening on `8080`.
+- **API**: Runs on Host OS via `systemd` (`joe-api.service`). Listening on `5000`.
 - **Nginx/Web/Mongo**: Run in Docker containers.
-- **Nginx Proxy**: Routes `/api/*` to `host.docker.internal:8080`.
+- **Nginx Proxy**: Routes `/api/*` to `host.docker.internal:5000`.
 - **Project Path**: `/root/xelitesolutions`.
 - **Health Check**: Always use `/api/health`.
 
