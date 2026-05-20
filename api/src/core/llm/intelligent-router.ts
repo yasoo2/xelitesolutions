@@ -148,6 +148,9 @@ export const MODELS: Record<string, ModelConfig> = {
  * Uses a lightweight model to deeply understand the task
  */
 export async function advancedAnalyzeTask(userMessage: string, history?: any[], onProgress?: (msg: string) => void, onThought?: (msg: string) => void): Promise<TaskAnalysis> {
+    if (process.env.MOCK_LLM === 'true') {
+        return analyzeTask(userMessage, history);
+    }
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
 
     const systemPrompt = `Analyze the following user request and return a JSON object.
@@ -533,6 +536,143 @@ export async function routeToModel(
     onThought?: (msg: string) => void,
     tools?: any[]
 ): Promise<string> {
+
+    if (process.env.MOCK_LLM === 'true') {
+        const promptText = JSON.stringify(messages);
+        console.log(`[MOCK ROUTER] Intercepted call (length: ${promptText.length}): ${promptText.substring(0, 120)}...`);
+        
+        // 0. Plan evaluation mock
+        if (promptText.includes('adjust the plan')) {
+            console.log('✨ [MOCK ROUTER] Matched: Plan Evaluator');
+            return JSON.stringify({ shouldReplan: false });
+        }
+
+        // 1. Intent parser mock
+        if (promptText.includes('Senior Strategic Intent Analyst')) {
+            console.log('✨ [MOCK ROUTER] Matched: Intent Parser');
+            return JSON.stringify({
+                primary: promptText.includes('dashboard') ? 'Create a premium, modern dashboard web page in a file named dashboard.html' : 'Create a file named welcome.txt',
+                domain: 'Dev',
+                complexity: 'medium',
+                riskLevel: 'low',
+                requirements: ['write_file'],
+                successCriteria: [promptText.includes('dashboard') ? 'dashboard.html created with beautiful styling' : 'welcome.txt created successfully'],
+                suggestedAgent: 'Dev'
+            });
+        }
+
+        // 2. Planning engine mock
+        if (promptText.includes('Professional Software Architecture Planner')) {
+            console.log('✨ [MOCK ROUTER] Matched: Planning Engine');
+            return JSON.stringify([
+                {
+                    id: promptText.includes('dashboard') ? 'write_dashboard_page' : 'write_welcome_file',
+                    description: promptText.includes('dashboard') ? 'Create the premium dashboard HTML page with glassmorphism CSS styling.' : 'Create the welcome file.',
+                    tool: 'write_file',
+                    agent: 'Dev',
+                    input: {},
+                    dependsOn: []
+                }
+            ]);
+        }
+
+        // 3. Task complexity/risk analyzer mock
+        if (promptText.includes('Complexity and Risk') || promptText.includes('Task Complexity and Risk')) {
+            console.log('✨ [MOCK ROUTER] Matched: Complexity/Risk Analyzer');
+            return JSON.stringify({
+                complexity: 'medium',
+                riskLevel: 'low',
+                type: 'code_generation',
+                requiresTools: true,
+                estimatedTokens: 1000,
+                language: 'en'
+            });
+        }
+
+        // 4. Agent dispatcher mock
+        if (promptText.includes('Dispatcher for a Multi-Agent System')) {
+            console.log('✨ [MOCK ROUTER] Matched: Agent Dispatcher');
+            return 'Dev';
+        }
+
+        // 5. JoeAgent task executor tool selection mock
+        if (promptText.includes('Professional AI Agent') || promptText.includes('Choose the single best tool')) {
+            console.log('✨ [MOCK ROUTER] Matched: Tool Selector');
+            if (promptText.includes('dashboard')) {
+                const dashboardHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Joe Premium Task Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #08090c;
+            --bg-secondary: #0f111a;
+            --accent-primary: #8b5cf6;
+            --accent-secondary: #ec4899;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --glass-bg: rgba(255, 255, 255, 0.02);
+            --glass-border: rgba(255, 255, 255, 0.05);
+            --glow-color: rgba(139, 92, 246, 0.15);
+            --font-main: 'Outfit', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background-color: var(--bg-primary); color: var(--text-primary); font-family: var(--font-main); min-height: 100vh; display: flex; overflow: hidden; }
+        .sidebar { width: 280px; background: var(--bg-secondary); border-right: 1px solid var(--glass-border); display: flex; flex-direction: column; padding: 24px; }
+        .logo-section { display: flex; align-items: center; gap: 12px; margin-bottom: 40px; }
+        .logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; color: white; }
+        .logo-text { font-size: 20px; font-weight: 800; background: linear-gradient(to right, #ffffff, var(--text-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .main-content { flex: 1; padding: 40px; overflow-y: auto; position: relative; }
+        .welcome-title { font-size: 32px; font-weight: 800; margin-bottom: 6px; }
+        .welcome-subtitle { color: var(--text-secondary); font-size: 15px; }
+        .tasks-container { background: var(--glass-bg); border: 1px solid var(--glass-border); backdrop-filter: blur(12px); border-radius: 20px; padding: 32px; margin-top: 30px; }
+        .task-list { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; }
+        .task-item { display: flex; align-items: center; justify-content: space-between; padding: 20px; background: rgba(255, 255, 255, 0.01); border: 1px solid var(--glass-border); border-radius: 12px; }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="logo-section"><div class="logo-icon">J</div><span class="logo-text">Joe Systems</span></div>
+    </aside>
+    <main class="main-content">
+        <h1 class="welcome-title">System Dashboard</h1>
+        <p class="welcome-subtitle">Workspace Overview & Active Tasks</p>
+        <section class="tasks-container">
+            <h2>Priority Tasks</h2>
+            <div class="task-list">
+                <div class="task-item"><span>Run guard validation suite</span><strong>High</strong></div>
+                <div class="task-item"><span>Configure API health check alerts</span><strong>Medium</strong></div>
+            </div>
+        </section>
+    </main>
+</body>
+</html>`;
+                return JSON.stringify({
+                    tool: 'write_file',
+                    args: {
+                        filename: 'dashboard.html',
+                        content: dashboardHtml
+                    },
+                    reasoning: 'Creating the premium dashboard HTML page with glassmorphism CSS layout.'
+                });
+            } else {
+                return JSON.stringify({
+                    tool: 'write_file',
+                    args: {
+                        filename: 'welcome.txt',
+                        content: 'System tested successfully'
+                    },
+                    reasoning: 'Creating the welcome.txt file with success content.'
+                });
+            }
+        }
+        
+        return "System is running and ready to handle tasks in Mock Mode!";
+    }
 
     // Flatten multimodal messages for text-only providers (and for analysis)
     const flatMessages = flattenMultimodalMessages(messages);

@@ -517,6 +517,7 @@ async function verifyJoeBuildPage() {
     console.log('This test prompts Joe to build a beautiful, premium page and verifies execution.');
 
     process.env.JOE_PRO_ALPHA = '1';
+    process.env.MOCK_LLM = 'true';
     
     // Set a custom external projects directory
     const projectsRoot = path.join(process.cwd(), 'data/tests/joe_build_page');
