@@ -736,8 +736,10 @@ export async function routeToModel(
                         apiKey: effectiveApiKey || 'dummy',
                         baseURL: effectiveBaseUrl || 'https://generativelanguage.googleapis.com/v1beta/openai/'
                     });
+                    const modelName = cfgModel || 'models/gemini-2.0-flash';
+                    const resolvedModel = modelName.startsWith('models/') ? modelName : `models/${modelName}`;
                     const completion = await client.chat.completions.create({
-                        model: cfgModel || 'models/gemini-2.0-flash',
+                        model: resolvedModel,
                         messages: cleanedMessages as any,
                         tools: tools as any,
                         tool_choice: tools ? 'auto' : undefined,

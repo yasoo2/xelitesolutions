@@ -114,7 +114,7 @@ export class AgentOrchestrator {
       id: step.id,
       traceId,
       agent: (step.agent as AgentType) || "General",
-      task: step.description,
+      task: step.description || (step as any).task || "Task",
       tool: step.tool,
       input: step.input,
       dependencies: step.dependsOn || [],

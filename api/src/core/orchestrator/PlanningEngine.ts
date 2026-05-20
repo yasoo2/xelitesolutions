@@ -70,7 +70,15 @@ Return ONLY a JSON array of steps:
 
             const jsonMatch = response.match(/\[[\s\S]*\]/);
             if (jsonMatch) {
-                const steps: ExecutionStep[] = JSON.parse(jsonMatch[0]);
+                const rawSteps = JSON.parse(jsonMatch[0]);
+                const steps: ExecutionStep[] = (Array.isArray(rawSteps) ? rawSteps : []).map((step: any) => ({
+                    id: String(step.id || `step_${Math.random().toString(36).substring(7)}`),
+                    description: String(step.description || step.task || step.task_description || `Execute task`),
+                    tool: String(step.tool || 'shell_execute'),
+                    agent: String(step.agent || 'General'),
+                    input: step.input || {},
+                    dependsOn: Array.isArray(step.dependsOn) ? step.dependsOn.map(String) : []
+                }));
                 
                 return {
                     id: `dag_${Date.now()}`,
