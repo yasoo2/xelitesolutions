@@ -304,7 +304,7 @@ export async function executePlannedActions(params: {
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
           // [Wakil 3.2] Port Validation Safeguard
-          const { isPortOpen, isLocalOrInternalUrl } = await import('../utils/network');
+          const { isPortOpen, isLocalOrInternalUrl } = await import('../../shared/utils/network');
           if (isLocalOrInternalUrl(url)) {
             try {
               const u = new URL(url);

@@ -33,15 +33,21 @@ export async function generateSessionTitle(text: string): Promise<string> {
     return title.replace(/["']/g, "").trim() || "New Session";
 }
 
-/**
- * planNextStep() has been decommissioned.
- * Stub added for legacy compatibility.
- */
-export async function planNextStep(task: string, context: any[] = []): Promise<any> {
-    console.warn('[LLM] planNextStep() is deprecated. Use AgentOrchestrator instead.');
-    return { 
-        thought: "Orchestration has moved to the Agent Platform.",
-        tool: "none",
-        input: {}
-    };
+export async function planNextStep(messagesOrTask: string | any[], opts?: any): Promise<any> {
+    const messages = Array.isArray(messagesOrTask) 
+      ? messagesOrTask 
+      : [{ role: 'user', content: String(messagesOrTask || '') }];
+    const response = await routeToModel(messages, typeof opts === 'object' ? opts : undefined);
+    try {
+      if (typeof response === 'string') {
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        return JSON.parse(jsonMatch ? jsonMatch[0] : response);
+      }
+      return response;
+    } catch {
+      return { 
+        thought: String(response || ''),
+        actions: []
+      };
+    }
 }
