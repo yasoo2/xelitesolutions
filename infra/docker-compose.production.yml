@@ -85,7 +85,7 @@ services:
     networks:
       - joe-network
     extra_hosts:
-      - "host.docker.internal:172.18.0.1"
+      - "host.docker.internal:host-gateway"
     depends_on:
       - web
       - browser-worker

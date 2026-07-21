@@ -43,6 +43,7 @@
         "dotenv": "^17.3.1",
         "duck-duck-scrape": "^2.2.7",
         "express": "^5.2.1",
+        "express-rate-limit": "^8.6.0",
         "extend": "^3.0.2",
         "gcp-metadata": "7.0.1",
         "glob": "^13.0.3",

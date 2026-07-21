@@ -30,14 +30,8 @@ if (/^mongodb\+srv:\/\//i.test(mongoUri)) {
 const jwtSecret = (() => {
   const envSecret = process.env.JWT_SECRET;
   if (envSecret && envSecret.trim()) return envSecret;
-  if (isProd) {
-    console.error(
-      'CRITICAL: JWT_SECRET is not set in production! Refusing to use ephemeral secret. Set JWT_SECRET in .env.',
-    );
-    throw new Error('JWT_SECRET must be set in production environment');
-  }
-  console.warn('WARN: Using insecure generated JWT secret. Set JWT_SECRET in .env for production.');
-  return require('crypto').randomBytes(32).toString('hex');
+  console.error('CRITICAL: JWT_SECRET is not set! Refusing to start without a valid secret. Set JWT_SECRET in .env.');
+  throw new Error('JWT_SECRET must be set');
 })();
 
 export const config = {

@@ -25,7 +25,28 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit (Universal)
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB limit (Universal)
+  fileFilter: (req, file, cb) => {
+    // AUDIT-117: Reject executables, HTML, and scripts
+    const dangerousExtensions = ['.exe', '.sh', '.bat', '.cmd', '.msi', '.ps1', '.html', '.htm'];
+    const lowerName = file.originalname.toLowerCase();
+    
+    if (dangerousExtensions.some(ext => lowerName.endsWith(ext))) {
+      return cb(new Error('File type not allowed for security reasons.'));
+    }
+
+    const dangerousMimes = [
+      'application/x-msdownload',
+      'application/x-sh',
+      'text/html'
+    ];
+    
+    if (dangerousMimes.includes(file.mimetype)) {
+      return cb(new Error('MIME type not allowed for security reasons.'));
+    }
+    
+    cb(null, true);
+  }
 });
 
 // Upload endpoint

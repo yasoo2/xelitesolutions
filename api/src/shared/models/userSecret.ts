@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
-
+import crypto from 'crypto';
+import { config } from '../config';
 export interface IUserSecret extends Document {
   userId: string;
   provider: string;
@@ -31,5 +32,36 @@ const UserSecretSchema = new Schema<IUserSecret>(
 
 UserSecretSchema.index({ userId: 1, provider: 1, key: 1 }, { unique: true });
 
-export const UserSecret = mongoose.model<IUserSecret>('UserSecret', UserSecretSchema);
+UserSecretSchema.pre('save', function (next) {
+  if (this.isModified('value') && (!this.enc || !this.enc.alg)) {
+    const iv = crypto.randomBytes(12);
+    // Use first 32 chars of jwtSecret (padded if necessary) as encryption key
+    const key = Buffer.from(config.jwtSecret.slice(0, 32).padEnd(32, '0'));
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    let encrypted = cipher.update(this.value, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    const tag = cipher.getAuthTag();
+    this.value = encrypted;
+    this.enc = { alg: 'aes-256-gcm', ivB64: iv.toString('base64'), tagB64: tag.toString('base64') };
+  }
+  next();
+});
 
+UserSecretSchema.methods.getDecryptedValue = function (): string {
+  if (!this.enc || this.enc.alg !== 'aes-256-gcm') {
+    return this.value; // Unencrypted legacy (lazy migration handled upstream)
+  }
+  try {
+    const key = Buffer.from(config.jwtSecret.slice(0, 32).padEnd(32, '0'));
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(this.enc.ivB64, 'base64'));
+    decipher.setAuthTag(Buffer.from(this.enc.tagB64, 'base64'));
+    let decrypted = decipher.update(this.value, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (e) {
+    console.error('[UserSecret] Failed to decrypt secret');
+    return this.value;
+  }
+};
+
+export const UserSecret = mongoose.model<IUserSecret>('UserSecret', UserSecretSchema);

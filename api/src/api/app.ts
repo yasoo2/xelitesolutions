@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import pino from 'pino';
 import path from 'path';
 import fs from 'fs';
+import rateLimit from 'express-rate-limit';
 import { config } from '../shared/config';
 
 // Routes
@@ -93,10 +94,27 @@ export const createApp = () => {
   app.use(express.json({ limit: '50mb' }));
   app.use(morgan('dev'));
 
-  app.use(express.json({ limit: '50mb' }));
-  app.use(morgan('dev'));
-
   // [HARDENING] Global Sanitization Middleware
+
+  // [HARDENING] Rate Limiting
+  const globalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 1000, // Limit each IP to 1000 requests per windowMs
+    message: { success: false, error: 'Too many requests, please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use('/api', globalLimiter);
+
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 50, // Limit each IP to 50 login/guest requests per windowMs
+    message: { success: false, error: 'Too many authentication attempts, please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use('/api/auth/login', authLimiter);
+  app.use('/api/auth/guest', authLimiter);
 
   // Mount Central API Router
   app.use('/api', apiRouter);

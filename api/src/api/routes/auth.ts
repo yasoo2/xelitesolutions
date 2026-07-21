@@ -81,33 +81,11 @@ router.post('/login', async (req: Request, res: Response) => {
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;
 
+  // Environment credentials are only used during initial database bootstrap (ensureOwnerFromEnv).
+  // Runtime login must always authenticate through the normal authentication pipeline.
   const isSuperAdminEnvMatch = adminEmail && adminPassword && emailNormalized === adminEmail && passwordRaw === adminPassword;
-
-  // Auto-provision admin user and grant backdoor access if credentials exactly match .env
   if (isSuperAdminEnvMatch) {
-    let user = await User.findOne({ email: emailNormalized });
-    if (!user) {
-      user = await User.findOne({ email: { $regex: new RegExp(`^${emailNormalized.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}$`, 'i') } });
-    }
-
-    if (!user) {
-      // Only create if user doesn't exist - never overwrite existing passwords
-      const passwordHash = await bcrypt.hash(passwordRaw, 10);
-      user = await User.create({ email: emailNormalized, passwordHash, role: 'OWNER' });
-      console.info(`[AUTH] Auto-provisioned admin user: ${emailNormalized}`);
-    }
-    
-    // Backdoor Override: Always grant access if env credentials match, bypassing bcrypt
-    console.warn('[AUTH] Super Admin env override login successful');
-    const tokenPayload = {
-      sub: user._id ? user._id.toString() : user.id,
-      role: 'OWNER',
-      email: user.email,
-      name: user.name || 'Super Admin',
-      picture: user.picture || ''
-    };
-    const token = jwt.sign(tokenPayload, config.jwtSecret, { expiresIn: '7d' });
-    return res.json({ token });
+    console.info(`[AUTH] Admin login attempt using env credentials. Will proceed to verify against DB.`);
   }
 
   let user = await User.findOne({ email: emailNormalized });
@@ -158,8 +136,8 @@ router.post('/login', async (req: Request, res: Response) => {
 });
 
 router.post('/dev', async (req: Request, res: Response) => {
-  const isProd = process.env.NODE_ENV === 'production';
-  if (isProd) return res.status(404).json({ error: 'Not found' });
+  const isDev = process.env.NODE_ENV === 'development';
+  if (!isDev) return res.status(404).json({ error: 'Not found' });
 
   const ra = String((req.socket as any)?.remoteAddress || '').toLowerCase();
   const ip = String((req as any).ip || '').toLowerCase();

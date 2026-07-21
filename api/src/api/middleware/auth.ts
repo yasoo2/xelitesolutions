@@ -1,9 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../../shared/config';
-
-const isDev = process.env.NODE_ENV !== 'production';
-
+const isDev = process.env.NODE_ENV === 'development';
 export interface AuthPayload {
   sub: string;
   role: 'OWNER' | 'ADMIN' | 'USER' | 'SUPER_ADMIN';

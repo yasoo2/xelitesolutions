@@ -60,7 +60,11 @@ async function resolvePathInsideWorkspace(inputPath: string, workspaceId?: strin
   // Security check: Must be inside active root
   const rel = path.relative(workspaceReal, candidateReal);
   const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-  return inside ? candidateReal : null;
+  
+  // Extra boundary enforcement (AUDIT-119)
+  const isStrictlyInside = candidateReal.startsWith(workspaceReal + path.sep) || candidateReal === workspaceReal;
+  
+  return (inside && isStrictlyInside) ? candidateReal : null;
 }
 
 interface GraphNode {
