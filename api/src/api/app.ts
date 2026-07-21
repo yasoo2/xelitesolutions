@@ -218,7 +218,13 @@ export const createApp = () => {
   app.use('/artifacts', express.static(ARTIFACT_DIR));
 
   // Static frontend
-  const webDistPath = path.join(__dirname, '../../../web/dist');
+  const candidates = [
+    path.resolve(process.cwd(), '../web/dist'),
+    path.resolve(process.cwd(), 'web/dist'),
+    path.resolve(__dirname, '../../../web/dist'),
+    path.resolve(__dirname, '../../web/dist')
+  ];
+  const webDistPath = candidates.find(p => fs.existsSync(p)) || candidates[0];
   if (fs.existsSync(webDistPath)) {
     app.use(express.static(webDistPath));
     app.get(/(.*)/, (req, res, next) => {
