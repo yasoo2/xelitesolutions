@@ -4,7 +4,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * 
  * نظام عصبي متقدم يحاكي عمل الدماغ البشري
- * يتضمن: Neural Core, State Manager, Visualization, Dashboard, Integration
+ * يتضمن: Neural Core, State Manager, Visualization, Integration
  * 
  * @version 2.0.0
  * @author Joe Enterprise Team
@@ -16,90 +16,51 @@
 
 export {
   NeuralNetwork,
-  NeuralCore,
   neuralCore,
-  NeuralState,
-  NeuronType,
-  SynapticStrength,
-  NeuralActivation,
-  Neuron,
-  Synapse,
-  Thought,
-  NeuralPathway,
-  MemoryEngram,
+  type NeuralState,
+  type NeuronType,
+  type SynapticStrength,
+  type NeuralActivation,
+  type Neuron,
+  type Synapse,
+  type Thought,
+  type NeuralPathway,
+  type MemoryEngram,
 } from './NeuralCore';
 
 export {
   NeuralStateManager,
-  StateTransition,
-  TransitionCondition,
-  StateContext,
-  StateSnapshot,
-  EmotionalState,
   createStateManager,
+  type StateTransition,
+  type TransitionCondition,
+  type StateContext,
+  type StateSnapshot,
+  type EmotionalState,
 } from './NeuralStateManager';
 
 export {
   NeuralVisualizer,
-  VisualizationConfig,
-  NeuronVisual,
-  SynapseVisual,
-  ThoughtBubble,
-  HeatmapCell,
-  DecisionNode,
-  NeuralMetrics,
-  StreamEvent,
   createVisualizer,
+  type VisualizationConfig,
+  type NeuronVisual,
+  type SynapseVisual,
+  type ThoughtBubble,
+  type HeatmapCell,
+  type DecisionNode,
+  type NeuralMetrics,
+  type StreamEvent,
 } from './NeuralVisualization';
 
 export {
-  NeuralDashboard,
-} from './NeuralDashboard';
-
-export {
   NeuralAgent,
-  NeuralAgentConfig,
-  TaskExecutionPlan,
-  NeuralTaskStep,
-  ExecutionContext,
-  NeuralResponse,
-  CreateNeuralAgentOptions,
   createNeuralAgent,
+  type NeuralAgentConfig,
+  type TaskExecutionPlan,
+  type NeuralTaskStep,
+  type ExecutionContext,
+  type NeuralResponse,
+  type CreateNeuralAgentOptions,
 } from './NeuralIntegration';
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// TYPES RE-EXPORT - إعادة تصدير الأنواع
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export type {
-  NeuralState as TNeuralState,
-  NeuronType as TNeuronType,
-  SynapticStrength as TSynapticStrength,
-  NeuralActivation as TNeuralActivation,
-  Neuron as TNeuron,
-  Synapse as TSynapse,
-  Thought as TThought,
-  NeuralPathway as TNeuralPathway,
-  MemoryEngram as TMemoryEngram,
-  StateTransition as TStateTransition,
-  TransitionCondition as TTransitionCondition,
-  StateContext as TStateContext,
-  StateSnapshot as TStateSnapshot,
-  EmotionalState as TEmotionalState,
-  VisualizationConfig as TVisualizationConfig,
-  NeuronVisual as TNeuronVisual,
-  SynapseVisual as TSynapseVisual,
-  ThoughtBubble as TThoughtBubble,
-  HeatmapCell as THeatmapCell,
-  DecisionNode as TDecisionNode,
-  NeuralMetrics as TNeuralMetrics,
-  StreamEvent as TStreamEvent,
-  NeuralAgentConfig as TNeuralAgentConfig,
-  TaskExecutionPlan as TTaskExecutionPlan,
-  NeuralTaskStep as TNeuralTaskStep,
-  ExecutionContext as TExecutionContext,
-  NeuralResponse as TNeuralResponse,
-} from './NeuralCore';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONSTANTS - الثوابت
@@ -138,18 +99,20 @@ export const NEURON_TYPES = [
 // UTILITY FUNCTIONS - دوال المساعدة
 // ═══════════════════════════════════════════════════════════════════════════════
 
+import type { NeuralState, NeuronType } from './NeuralCore';
+
 /**
  * Check if a value is a valid neural state
  */
 export const isNeuralState = (value: string): value is NeuralState => {
-  return NEURAL_STATES.includes(value as NeuralState);
+  return NEURAL_STATES.includes(value as typeof NEURAL_STATES[number]);
 };
 
 /**
  * Check if a value is a valid neuron type
  */
 export const isNeuronType = (value: string): value is NeuronType => {
-  return NEURON_TYPES.includes(value as NeuronType);
+  return NEURON_TYPES.includes(value as typeof NEURON_TYPES[number]);
 };
 
 /**

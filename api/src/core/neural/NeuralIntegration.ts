@@ -192,7 +192,7 @@ export class NeuralAgent extends EventEmitter {
       const result = await this.executePlan(plan, options);
 
       // Complete task
-      await this.transitionState('completing', 'task-complete', { result });
+      await this.transitionState('completing', 'task-complete', { progress: 1 });
 
       // Store success memory
       this.neuralNetwork.storeMemory(

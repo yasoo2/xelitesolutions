@@ -60,7 +60,7 @@ router.get('/deploy/status', (req, res) => {
 router.post('/deploy/trigger', async (req, res) => {
     try {
         const { deployManager } = await import('../../modules/services/DeployManager');
-        const id = await deployManager.startDeploy('manual');
+        const id = await deployManager.startDeploy('manual', 'HEAD');
         res.json({ id, message: 'Manual deployment started' });
     } catch (e: any) {
         res.status(500).json({ error: e.message });

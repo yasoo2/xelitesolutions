@@ -186,7 +186,7 @@ ${previousContext ? `📝 **Previous Context**:\n${previousContext}\n` : ''}
         'اكتب كود نظيف وقابل للصيانة'
     ];
     
-    const examples = [];
+    const examples: string[] = [];
     
     return {
         systemPrompt,

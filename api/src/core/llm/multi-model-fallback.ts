@@ -70,7 +70,7 @@ export class MultiModelFallback {
     ): Promise<ModelResponse> {
         try {
             const content = await routeToModel(messages, {
-                type: task?.type || 'general',
+                type: (task?.type || 'general') as any,
                 complexity: task?.complexity as any || 'medium',
                 requiresTools: task?.requiresTools || false,
                 estimatedTokens: 4000,
