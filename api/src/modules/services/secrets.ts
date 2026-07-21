@@ -107,7 +107,8 @@ export async function setUserSecretEncrypted(
 
   const mongoose = require('mongoose');
   if (mongoose.connection.readyState !== 1) {
-    console.warn(`[Secrets] Database not connected, cannot save user secret ${p}:${k}`);
+    console.warn(`[Secrets] Database not connected, saving user secret ${p}:${k} to memory session bucket`);
+    setSessionSecretEncrypted(`user-${uid}`, `${p}:${k}`, value);
     return;
   }
 
@@ -126,8 +127,7 @@ export async function getUserSecret(
 
   const mongoose = require('mongoose');
   if (mongoose.connection.readyState !== 1) {
-    console.warn(`[Secrets] Database not connected, skipping getUserSecret for ${p}:${k}`);
-    return null;
+    return getSessionSecret(`user-${uid}`, `${p}:${k}`);
   }
 
   const { UserSecret } = require('../../shared/models/userSecret');

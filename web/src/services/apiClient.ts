@@ -35,10 +35,14 @@ class ApiClient {
 
     private async handleResponse(res: Response, endpoint: string) {
         if (res.status === 401) {
-            // DO NOT trigger logout/redirect for login attempts
-            const isAuthRoute = endpoint.includes('/auth/login') || endpoint.includes('/auth/google');
+            // DO NOT trigger logout/redirect for login attempts or third-party integration errors (e.g. GitHub PAT errors)
+            const isExcludedFromLogout = 
+                endpoint.includes('/auth/login') || 
+                endpoint.includes('/auth/google') || 
+                endpoint.includes('/github/') || 
+                endpoint.includes('/providers');
 
-            if (!isAuthRoute) {
+            if (!isExcludedFromLogout) {
                 try {
                     localStorage.removeItem('token');
                 } catch { }

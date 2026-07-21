@@ -112,7 +112,7 @@ router.get('/repos', authenticate as any, async (req: Request, res: Response) =>
     try {
         const userId = (req as any).auth?.sub;
         const token = userId ? await getUserSecret(userId, 'github', 'GITHUB_TOKEN') : null;
-        if (!token) return res.status(401).json({ error: 'GitHub not connected' });
+        if (!token) return res.status(400).json({ error: 'GitHub not connected', connected: false });
         const clean = token.replace(/[\s\n\r]/g, '');
 
         const sort = req.query.sort || 'updated';
@@ -141,7 +141,7 @@ router.post('/repos', authenticate as any, async (req: Request, res: Response) =
     try {
         const userId = (req as any).auth?.sub;
         const token = userId ? await getUserSecret(userId, 'github', 'GITHUB_TOKEN') : null;
-        if (!token) return res.status(401).json({ error: 'GitHub not connected' });
+        if (!token) return res.status(400).json({ error: 'GitHub not connected', connected: false });
 
         const result = await repoTool.execute({
             action: 'create',
@@ -162,7 +162,7 @@ router.get('/repos/:owner/:repo/contents', authenticate as any, async (req: Requ
     try {
         const userId = (req as any).auth?.sub;
         const token = userId ? await getUserSecret(userId, 'github', 'GITHUB_TOKEN') : null;
-        if (!token) return res.status(401).json({ error: 'GitHub not connected' });
+        if (!token) return res.status(400).json({ error: 'GitHub not connected', connected: false });
         const clean = token.replace(/[\s\n\r]/g, '');
 
         const { owner, repo } = req.params;
@@ -194,7 +194,7 @@ router.get('/repos/:owner/:repo/commits', authenticate as any, async (req: Reque
     try {
         const userId = (req as any).auth?.sub;
         const token = userId ? await getUserSecret(userId, 'github', 'GITHUB_TOKEN') : null;
-        if (!token) return res.status(401).json({ error: 'GitHub not connected' });
+        if (!token) return res.status(400).json({ error: 'GitHub not connected', connected: false });
         const clean = token.replace(/[\s\n\r]/g, '');
 
         const { owner, repo } = req.params;
@@ -216,7 +216,7 @@ router.get('/repos/:owner/:repo/branches', authenticate as any, async (req: Requ
     try {
         const userId = (req as any).auth?.sub;
         const token = userId ? await getUserSecret(userId, 'github', 'GITHUB_TOKEN') : null;
-        if (!token) return res.status(401).json({ error: 'GitHub not connected' });
+        if (!token) return res.status(400).json({ error: 'GitHub not connected', connected: false });
         const clean = token.replace(/[\s\n\r]/g, '');
 
         const { owner, repo } = req.params;
