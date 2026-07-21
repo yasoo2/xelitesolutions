@@ -69,7 +69,7 @@ export class ExecutionEngine {
         }
         
         // Periodic cache cleanup (Optimized to be non-blocking)
-        setInterval(() => {
+        const cacheCleanupTimer = setInterval(() => {
             if (this.cache.size === 0) return;
             const now = Date.now();
             const keysToDelete: string[] = [];
@@ -78,6 +78,7 @@ export class ExecutionEngine {
             }
             keysToDelete.forEach(k => this.cache.delete(k));
         }, 60000); // 1 minute cleanup is enough
+        cacheCleanupTimer.unref?.();
     }
 
     private generateCacheKey(request: ExecutionRequest): string {

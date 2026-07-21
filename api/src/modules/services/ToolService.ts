@@ -15,7 +15,7 @@ const toolRateBuckets = new Map<string, { minute: number; count: number }>();
 const TOOL_RATE_BUCKET_MAX = 1000;
 
 // Clean up stale rate limit buckets every 5 minutes
-setInterval(() => {
+const rateLimitCleanupTimer = setInterval(() => {
     const currentMinute = Math.floor(Date.now() / 60000);
     for (const [key, bucket] of toolRateBuckets) {
         if (currentMinute - bucket.minute > 5) {
@@ -33,6 +33,7 @@ setInterval(() => {
         }
     }
 }, 5 * 60 * 1000);
+rateLimitCleanupTimer.unref?.();
 
 export function formatToolError(err: any): string {
     if (!err) return 'Unknown error (no message provided)';

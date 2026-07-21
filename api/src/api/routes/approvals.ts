@@ -7,6 +7,7 @@ import { executeTool } from '../../modules/services/ToolService';
 import { Run } from '../../shared/models/run';
 import { Session } from '../../shared/models/session';
 import { authenticate } from '../middleware/auth';
+import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 
 const router = Router();
 
@@ -202,7 +203,9 @@ router.post('/:id/decision', authenticate as any, async (req, res) => {
         : typeof ctx.input?.__workspaceId === 'string' && ctx.input.__workspaceId.trim()
           ? ctx.input.__workspaceId.trim()
           : undefined;
-    const result = await executeTool(ctx.name, ctx.input, { sessionId, workspaceId });
+    const result = await executionFirewall.runInContext(undefined, () =>
+      executeTool(ctx.name, ctx.input, { sessionId, workspaceId, userId })
+    );
     const eventResult = sanitizeToolResultForBroadcast(ctx.name, result);
     broadcast({ type: result.ok ? 'step_done' : 'step_failed', runId: ctx.runId, data: { name: `execute:${ctx.name}`, result: eventResult } });
     if (result.artifacts) {
