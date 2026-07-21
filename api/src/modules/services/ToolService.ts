@@ -97,6 +97,8 @@ function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' |
         const cmd = String((input as any)?.command || '').toLowerCase();
         if (/(rm\s+-rf|drop\s+table|shutdown|kill\s+process|\bsudo\b)/i.test(cmd)) return 'critical';
         if (/(chmod\s+777|chown\s+root|mkfs|dd\s+if=|:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;:)/i.test(cmd)) return 'critical';
+        if (/(curl|wget|scp|ssh|docker|systemctl|service\s+|kubectl|terraform|ansible|git\s+push|npm\s+publish)/i.test(cmd)) return 'high';
+        if (/(^|[;&|])\s*(node|npm|npx|pnpm|yarn|ts-node|tsc)\b/i.test(cmd)) return 'medium';
         return 'high';
     }
     if (n === 'git_ops') {
@@ -457,7 +459,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             return { ok: false, error: 'unknown_tool', logs };
         }
 
-        const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
+        const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true' || executionFirewall.isSystemContext();
         if (!authBypass) {
             const perms = Array.isArray((tDef as any).permissions) ? (tDef as any).permissions : [];
             const effects = Array.isArray((tDef as any).sideEffects) ? (tDef as any).sideEffects : [];

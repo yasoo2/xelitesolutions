@@ -724,7 +724,7 @@ export async function routeToModel(
             if ((cfgProvider === 'gemini' || cfgProvider === 'google') && !effectiveApiKey) {
                 console.warn(`[IntelligentRouter] Gemini selected but no key found. Falling back to DeepSeek (Free).`);
                 try {
-                    const res = await deepSeekProvider.chatComplete(flatMessages, undefined, 3, tools);
+                    const res = await deepSeekProvider.chatComplete(flatMessages, undefined, tools);
                     if (res) return res;
                     console.warn(`[IntelligentRouter] DeepSeek returned empty, trying Pollinations...`);
                     return await pollinationsProvider.chatComplete(flatMessages, undefined, 3, tools);
