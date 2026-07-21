@@ -15,7 +15,7 @@ const toolRateBuckets = new Map<string, { minute: number; count: number }>();
 const TOOL_RATE_BUCKET_MAX = 1000;
 
 // Clean up stale rate limit buckets every 5 minutes
-setInterval(() => {
+const rateLimitCleanupTimer = setInterval(() => {
     const currentMinute = Math.floor(Date.now() / 60000);
     for (const [key, bucket] of toolRateBuckets) {
         if (currentMinute - bucket.minute > 5) {
@@ -33,6 +33,7 @@ setInterval(() => {
         }
     }
 }, 5 * 60 * 1000);
+rateLimitCleanupTimer.unref?.();
 
 export function formatToolError(err: any): string {
     if (!err) return 'Unknown error (no message provided)';
@@ -97,6 +98,8 @@ function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' |
         const cmd = String((input as any)?.command || '').toLowerCase();
         if (/(rm\s+-rf|drop\s+table|shutdown|kill\s+process|\bsudo\b)/i.test(cmd)) return 'critical';
         if (/(chmod\s+777|chown\s+root|mkfs|dd\s+if=|:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;:)/i.test(cmd)) return 'critical';
+        if (/(curl|wget|scp|ssh|docker|systemctl|service\s+|kubectl|terraform|ansible|git\s+push|npm\s+publish)/i.test(cmd)) return 'high';
+        if (/(^|[;&|])\s*(node|npm|npx|pnpm|yarn|ts-node|tsc)\b/i.test(cmd)) return 'medium';
         return 'high';
     }
     if (n === 'git_ops') {

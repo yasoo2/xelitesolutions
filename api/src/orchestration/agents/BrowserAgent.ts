@@ -48,7 +48,12 @@ Example: { "actions": [ { "type": "goto", "url": "..." }, { "type": "click", "se
             const result = await executeTool('browser_run', { 
                 sessionId: input.sessionId,
                 actions: plan.actions 
-            }, { sessionId: context.sessionId, traceId: context.traceId });
+            }, {
+                sessionId: context.sessionId,
+                workspaceId: context.workspaceId,
+                userId: context.userId,
+                traceId: context.traceId
+            });
 
             return {
                 ok: result.ok,
@@ -67,4 +72,3 @@ Example: { "actions": [ { "type": "goto", "url": "..." }, { "type": "click", "se
         return 0.1;
     }
 }
-

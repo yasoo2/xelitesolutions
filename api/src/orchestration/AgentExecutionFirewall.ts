@@ -24,7 +24,8 @@ class AgentExecutionFirewall {
      * Executes a function within the authorized Orchestrator context
      */
     public runInContext<T>(traceId: string | undefined, fn: () => T): T {
-        return this.context.run({ isOrchestrator: true, traceId }, fn);
+        const parent = this.context.getStore();
+        return this.context.run({ isOrchestrator: true, isSystem: parent?.isSystem, traceId }, fn);
     }
 
     /**

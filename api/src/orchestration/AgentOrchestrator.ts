@@ -150,8 +150,17 @@ export class AgentOrchestrator {
   ): Promise<{ ok: boolean; result: any }> {
     dag.status = "running";
     const completedNodes = new Set<string>();
+    let iterations = 0;
+    let stalledReplans = 0;
+    const maxIterations = Math.max(10, dag.nodes.length * 5);
 
     while (completedNodes.size < dag.nodes.length) {
+      iterations++;
+      if (iterations > maxIterations) {
+        dag.status = "failed";
+        return { ok: false, result: "Execution stopped: orchestration iteration limit exceeded" };
+      }
+
       console.log(`[AgentOrchestrator] Step Iteration. Completed: ${completedNodes.size}/${dag.nodes.length}`);
       
       const readyNodes = dag.nodes.filter(n => 
@@ -163,8 +172,19 @@ export class AgentOrchestrator {
         // [DECISION] Trigger dynamic re-planning on stall
         broadcastThinkingDetail(memory.sessionId, "🧠 Execution stalled. Re-evaluating strategy...");
         if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'stall_detected', completed: completedNodes.size });
+        stalledReplans++;
+        if (stalledReplans > 2) {
+          dag.status = "failed";
+          return { ok: false, result: "Execution stopped: no ready nodes after recovery/replanning attempts" };
+        }
         const newDag = await this.plan(dag.nodes[0]?.task || "continue goal", memory, traceId);
-        dag.nodes = [...dag.nodes, ...newDag.nodes];
+        const existingIds = new Set(dag.nodes.map(n => n.id));
+        const uniqueNodes = newDag.nodes.filter(n => !existingIds.has(n.id));
+        if (uniqueNodes.length === 0) {
+          dag.status = "failed";
+          return { ok: false, result: "Execution stopped: replanning produced no new executable nodes" };
+        }
+        dag.nodes = [...dag.nodes, ...uniqueNodes];
         continue;
       }
 
@@ -237,7 +257,9 @@ export class AgentOrchestrator {
             broadcastThinkingDetail(memory.sessionId, "🧠 Path adjustment required. Re-calculating execution graph...");
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'replan_triggered', nodeId: node.id });
             const updatedDag = await this.plan(dag.id, memory, traceId);
-            dag.nodes = updatedDag.nodes; 
+            const existingIds = new Set(dag.nodes.map(n => n.id));
+            const uniqueNodes = updatedDag.nodes.filter(n => !existingIds.has(n.id));
+            dag.nodes = [...dag.nodes, ...uniqueNodes];
             break; 
           }
         } else {
@@ -267,7 +289,16 @@ export class AgentOrchestrator {
             broadcastThinkingDetail(memory.sessionId, `⚠️ Recovering from failure in "${node.task}". Injecting repair nodes...`);
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_attempted', nodeId: node.id, status: 'recovered' });
             
-            const nodesWithRetry = recoveryResult.newNodes.map(n => ({ ...n, retryCount: currentRetryCount + 1 }));
+            const existingIds = new Set(dag.nodes.map(n => n.id));
+            const nodesWithRetry = recoveryResult.newNodes
+              .filter(n => !existingIds.has(n.id))
+              .map(n => ({ ...n, retryCount: currentRetryCount + 1 }));
+            if (nodesWithRetry.length === 0) {
+              return { ok: false, result: "Recovery failed: no new recovery nodes were produced" };
+            }
+            node.status = "pending";
+            node.retryCount = currentRetryCount + 1;
+            node.dependencies = Array.from(new Set([...node.dependencies, ...nodesWithRetry.map(n => n.id)]));
             dag.nodes = [...dag.nodes, ...nodesWithRetry];
             continue;
           }
