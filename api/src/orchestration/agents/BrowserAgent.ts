@@ -11,10 +11,15 @@ export class BrowserAgent extends BaseAgent {
 
     async execute(task: string, input: any, context: any): Promise<{ ok: boolean; output: any; error?: string }> {
         console.log(`[BrowserAgent] Executing Web Task: "${task}"`);
+        const sessionId = input.sessionId || context.sessionId || 'default-browser-session';
 
-        const systemPrompt = `You are a Browser Automation Expert.
+        let actions: any[] = [];
+
+        // Attempt LLM plan generation
+        try {
+            const systemPrompt = `You are a Browser Automation Expert.
 Task: ${task}
-Session: ${input.sessionId}
+Session: ${sessionId}
 
 Translate this task into a sequence of browser actions.
 Available Actions: goto, click, type, hover, scroll, wait, key, extract_text, get_elements, click_coordinates.
@@ -22,7 +27,6 @@ Available Actions: goto, click, type, hover, scroll, wait, key, extract_text, ge
 Return ONLY a JSON object with an "actions" array.
 Example: { "actions": [ { "type": "goto", "url": "..." }, { "type": "click", "selector": "..." } ] }`;
 
-        try {
             const messages = [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: task }
@@ -36,20 +40,58 @@ Example: { "actions": [ { "type": "goto", "url": "..." }, { "type": "click", "se
                 language: 'en'
             } as any);
 
-            let plan: any;
             try {
                 const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-                plan = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
+                const plan = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
+                if (Array.isArray(plan.actions) && plan.actions.length > 0) {
+                    actions = plan.actions;
+                }
             } catch (e) {
-                plan = { actions: [] };
+                // Ignore parse errors, fallback will trigger
             }
-            
+        } catch (error: any) {
+            console.warn(`[BrowserAgent] LLM plan generation failed (${error.message}), using deterministic browser fallback.`);
+        }
+
+        // [DETERMINISTIC FALLBACK] If LLM failed or generated empty actions, build actions from task keywords
+        if (actions.length === 0) {
+            const tLower = task.toLowerCase();
+            let targetUrl = '';
+
+            // Extract explicit URL
+            const urlMatch = task.match(/https?:\/\/[^\s]+/i);
+            if (urlMatch) {
+                targetUrl = urlMatch[0];
+            } else if (tLower.includes('ياهو') || tLower.includes('yahoo')) {
+                // Extract search terms after "عن" or "about" if present
+                const queryMatch = task.match(/(?:عن|about|for)\s+(.+)/i);
+                const query = queryMatch ? queryMatch[1].trim() : task;
+                targetUrl = `https://search.yahoo.com/search?p=${encodeURIComponent(query)}`;
+            } else if (tLower.includes('جوجل') || tLower.includes('غوغل') || tLower.includes('google')) {
+                const queryMatch = task.match(/(?:عن|about|for)\s+(.+)/i);
+                const query = queryMatch ? queryMatch[1].trim() : task;
+                targetUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+            } else if (tLower.includes('ويكيبيديا') || tLower.includes('wikipedia')) {
+                targetUrl = `https://ar.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(task)}`;
+            } else {
+                targetUrl = `https://www.google.com/search?q=${encodeURIComponent(task)}`;
+            }
+
+            console.log(`[BrowserAgent] Generated fallback target URL: ${targetUrl}`);
+            actions = [
+                { type: 'goto', url: targetUrl },
+                { type: 'wait', ms: 3000 }
+            ];
+        }
+
+        try {
             // [EXECUTION] Call the browser_run tool with the generated actions
             const result = await executeTool('browser_run', { 
-                sessionId: input.sessionId,
-                actions: plan.actions 
+                sessionId,
+                actions,
+                instructionText: task
             }, {
-                sessionId: context.sessionId,
+                sessionId,
                 workspaceId: context.workspaceId,
                 userId: context.userId,
                 traceId: context.traceId

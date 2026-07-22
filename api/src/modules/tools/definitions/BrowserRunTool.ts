@@ -166,15 +166,34 @@ export class BrowserRunTool extends BaseTool {
         const mode = input?.mode || 'browser_test';
 
         // Normalize Goto
-        const actions = rawActs.map((a: any) => {
+        let actions = rawActs.map((a: any) => {
             if (a && typeof a === 'object' && String(a.type || '').toLowerCase() === 'goto') {
-                // (Assumes normalizeBrowserUrl is available or inline it. For brevity, assuming user inputs valid URLs or the executor handles it largely)
-                // But let's restore the helper if we can. 
-                // Better yet, executor.ts handles normalization too (normalizeUrlForGoto). 
                 return a;
             }
             return a;
         });
+
+        if (actions.length === 0 && instructionText) {
+            const tLower = instructionText.toLowerCase();
+            let targetUrl = '';
+            const urlMatch = instructionText.match(/https?:\/\/[^\s]+/i);
+            if (urlMatch) {
+                targetUrl = urlMatch[0];
+            } else if (tLower.includes('ياهو') || tLower.includes('yahoo')) {
+                const queryMatch = instructionText.match(/(?:عن|about|for)\s+(.+)/i);
+                const query = queryMatch ? queryMatch[1].trim() : instructionText;
+                targetUrl = `https://search.yahoo.com/search?p=${encodeURIComponent(query)}`;
+            } else if (tLower.includes('جوجل') || tLower.includes('غوغل') || tLower.includes('google')) {
+                const queryMatch = instructionText.match(/(?:عن|about|for)\s+(.+)/i);
+                const query = queryMatch ? queryMatch[1].trim() : instructionText;
+                targetUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+            } else if (tLower.includes('ويكيبيديا') || tLower.includes('wikipedia')) {
+                targetUrl = `https://ar.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(instructionText)}`;
+            } else {
+                targetUrl = `https://www.google.com/search?q=${encodeURIComponent(instructionText)}`;
+            }
+            actions = [{ type: 'goto', url: targetUrl }, { type: 'wait', ms: 3000 }];
+        }
 
         if (!instructionText && actions.length === 0) return { ok: false, error: 'actions_or_instruction_required', logs };
 

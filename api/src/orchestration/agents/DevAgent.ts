@@ -14,6 +14,23 @@ export class DevAgent extends BaseAgent {
   public async execute(task: string, input: any, context?: any): Promise<{ ok: boolean; output: any; error?: string }> {
     console.log(`[DevAgent] Executing: ${task}`);
     
+    // Safety check: If a browser task lands in DevAgent (e.g. from failover recovery node), delegate to browser_run
+    const tLower = task.toLowerCase();
+    const isBrowserTask = tLower.includes('متصفح') || tLower.includes('افتح') || tLower.includes('ابحث') || tLower.includes('browser') || tLower.includes('navigate') || tLower.includes('search');
+    if (isBrowserTask) {
+        console.log(`[DevAgent] Redirecting browser task to browser_run tool...`);
+        const { executeTool } = await import('../../modules/services/ToolService');
+        const result = await executeTool('browser_run', { 
+            sessionId: input?.sessionId || context?.sessionId || 'default-session',
+            instructionText: task
+        }, context);
+        return {
+            ok: result.ok,
+            output: result.output,
+            error: result.error
+        };
+    }
+
     // Pass traceId down if present in context
     const result = await this.joe.execute(task, input, context);
     
