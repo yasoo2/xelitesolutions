@@ -1,5 +1,5 @@
 import { ToolDefinition } from '../types';
-import { ExecutionGateway } from '../../kernel/ExecutionGateway';
+import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -104,7 +104,7 @@ export class DeployProjectTool implements ToolDefinition {
                         output: {
                             status: 'built',
                             outputDir: outputDir ? path.join(projectPath, outputDir) : projectPath,
-                            buildOutput: (result.output || '').substring(0, 500),
+                            buildOutput: (result.data?.output || '').substring(0, 500),
                         },
                         logs,
                     };
@@ -189,7 +189,7 @@ export class DeployProjectTool implements ToolDefinition {
                     
                     return {
                         ok: true,
-                        output: { status: 'exposed', url: 'localtunnel_started', port, pid: ltRes.pid },
+                        output: { status: 'exposed', url: 'localtunnel_started', port, pid: ltRes.data?.pid },
                         logs,
                     };
                 }

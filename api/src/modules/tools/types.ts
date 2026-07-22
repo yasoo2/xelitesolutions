@@ -24,6 +24,6 @@ export interface ToolExecutionResult {
   ok: boolean;
   error?: string;
   output?: any;
-  logs: string[];
+  logs?: string[];
   artifacts?: { name: string; href: string }[];
 }

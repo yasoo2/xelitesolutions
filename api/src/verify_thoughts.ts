@@ -11,8 +11,8 @@ async function test() {
     console.log('Testing planNextStep event emission...');
 
     await planNextStep([{ role: 'user', content: 'Say hello' }], {
-        onProgress: (p) => broadcast({ type: 'thought', data: `> ${p}` }),
-        onThought: (t) => broadcast({ type: 'thought', data: t })
+        onProgress: (p: string) => broadcast({ type: 'thought', data: `> ${p}` }),
+        onThought: (t: string) => broadcast({ type: 'thought', data: t })
     });
 
     console.log('Captured Events:', JSON.stringify(events, null, 2));

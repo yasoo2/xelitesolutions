@@ -1,6 +1,6 @@
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
-import { ExecutionGateway } from '../../kernel/ExecutionGateway';
+import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import fs from 'fs';
 import path from 'path';
 

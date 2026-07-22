@@ -1,5 +1,5 @@
 import { ToolDefinition } from '../types';
-import { ExecutionGateway } from '../../kernel/ExecutionGateway';
+import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -74,9 +74,9 @@ export class PythonExecutionTool implements ToolDefinition {
                 cwd,
             });
 
-            let stdout = result.output || '';
-            let stderr = result.error || '';
-            let exitCode = result.exitCode ?? (result.ok ? 0 : 1);
+            let stdout = result.data?.output || '';
+            let stderr = result.data?.error || result.error || '';
+            let exitCode = result.data?.exitCode ?? (result.data?.ok ? 0 : 1);
 
             // Clean up temp file
             try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
@@ -91,9 +91,9 @@ export class PythonExecutionTool implements ToolDefinition {
             }
 
             return {
-                ok: result.ok,
+                ok: !!result.data?.ok,
                 output: { stdout: stdout.trim(), stderr: stderr.trim(), exitCode },
-                error: !result.ok ? result.error || `Script exited with code ${exitCode}` : undefined,
+                error: !result.data?.ok ? (result.data?.error || result.error || `Script exited with code ${exitCode}`) : undefined,
                 logs: [
                     `Python script executed (exit code: ${exitCode})`,
                     stdout ? `stdout: ${stdout.substring(0, 200)}` : 'No stdout',

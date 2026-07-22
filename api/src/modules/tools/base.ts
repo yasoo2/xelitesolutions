@@ -7,7 +7,8 @@ export abstract class BaseTool implements ToolDefinition {
     abstract tags: string[];
 
     abstract inputSchema: Record<string, any>;
-    abstract outputSchema: Record<string, any>;
+    // Sensible default so tools are not forced to declare an output schema.
+    outputSchema: Record<string, any> = { type: 'object', properties: {} };
 
     permissions: ToolPermission[] = ['execute'];
     sideEffects: ToolPermission[] = [];
