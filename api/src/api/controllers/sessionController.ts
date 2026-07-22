@@ -402,7 +402,7 @@ export async function listSessionMessages(req: Request, res: Response) {
             console.warn('[SessionController] DB offline - returning mock session detail from store. Count:', mockSessions.length);
 
             // Try to find session in store
-            let foundSession = mockSessions.find((s: any) => s.id === sessionId || s._id.toString() === sessionId);
+            let foundSession = mockSessions.find((s: any) => s.id === sessionId || String(s._id || s.id) === sessionId);
             if (!foundSession) {
                 // Fallback if not found (e.g. init mocks)
                 if (sessionId === 'mock-session-1') foundSession = { _id: 'mock-session-1', id: 'mock-session-1', title: 'New Session', userId };

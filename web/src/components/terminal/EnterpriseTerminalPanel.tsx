@@ -59,9 +59,19 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
         term.loadAddon(fitAddon);
         
         term.open(containerRef.current);
-        fitAddon.fit();
         termRef.current = term;
         fitAddonRef.current = fitAddon;
+
+        // Safely fit after DOM layout to prevent xterm "dimensions" crash
+        requestAnimationFrame(() => {
+            try {
+                if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
+                    fitAddon.fit();
+                }
+            } catch (err) {
+                console.warn('[Terminal] Initial fit skipped:', err);
+            }
+        });
 
         // Input handler
         term.onData((data) => {
