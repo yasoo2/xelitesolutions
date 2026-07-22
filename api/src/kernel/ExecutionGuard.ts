@@ -36,8 +36,15 @@ export class ExecutionGuard {
 
         const checkBypass = (method: string, command: string) => {
             const stack = new Error().stack || '';
-            // Allow ExecutionEngine and internal bootstrap only
-            if (!stack.includes('ExecutionEngine') && !stack.includes('internal_system_bootstrap')) {
+            const cmdStr = String(command || '');
+            const isBrowserProcess = stack.includes('playwright') || 
+                                    stack.includes('modules/browser') || 
+                                    stack.includes('manager') ||
+                                    cmdStr.includes('chrome') || 
+                                    cmdStr.includes('chromium');
+
+            // Allow ExecutionEngine, internal bootstrap, and browser worker launch
+            if (!stack.includes('ExecutionEngine') && !stack.includes('internal_system_bootstrap') && !isBrowserProcess) {
                 console.error(`[ExecutionGuard] BLOCKED direct ${method}: ${command}`);
                 throw new Error(`[ExecutionGuard] Direct ${method} blocked. All execution must route through ExecutionEngine.`);
             }
