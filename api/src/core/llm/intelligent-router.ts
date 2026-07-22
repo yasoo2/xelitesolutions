@@ -4,7 +4,7 @@
  * Supports: Llama 3.1 70B, Mixtral 8x7B, Gemma 2 9B (all via Groq - FREE!)
  */
 
-import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider, openAIProvider, cerebrasProvider, mistralProvider, huggingfaceProvider } from './providers/registry';
+import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider, openAIProvider, cerebrasProvider, mistralProvider, huggingfaceProvider, llm7Provider } from './providers/registry';
 import { LLMCacheTool } from '../../modules/tools/definitions/LLMCacheTool';
 import { OpenAIProvider } from './providers/openai';
 import { GeminiProvider } from './providers/gemini';
@@ -949,7 +949,19 @@ export async function routeToModel(
         });
     }
 
-    // 9. DeepSeek via keyless proxy — last-resort free path
+    // 9. KEYLESS tier — no API key required. Primary brain when no keys are set.
+    //    LLM7 first (anonymous OpenAI-compatible gateway), then Pollinations proxies.
+    if (llm7Provider.isAvailable()) {
+        meshProviders.push({
+            name: 'LLM7 (Keyless)',
+            run: async () => {
+                const res = await llm7Provider.chatComplete(effectiveMessages, undefined, tools);
+                if (!res || res.length < 2) throw new Error('LLM7 response too short');
+                return res;
+            }
+        });
+    }
+
     meshProviders.push({
         name: 'DeepSeek (Pollinations)',
         run: async () => {
@@ -1001,6 +1013,10 @@ export async function routeToModel(
             }
             if (p.name === 'Local (Auto)') {
                 timeoutValue = taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme' ? 25000 : 15000;
+            }
+            if (p.name === 'LLM7 (Keyless)') {
+                // Keyless gateways can be slower; give the primary keyless brain room.
+                timeoutValue = taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme' ? 25000 : 18000;
             }
             if (p.name === 'Pollinations (Backup)' || p.name === 'DeepSeek (Pollinations)') {
                 timeoutValue = 6000;

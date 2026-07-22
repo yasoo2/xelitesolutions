@@ -8,6 +8,7 @@ import { DeepSeekProvider, deepSeekProvider } from './deepseek';
 import { OpenAIProvider, openAIProvider } from './openai';
 import { CerebrasProvider, cerebrasProvider } from './cerebras';
 import { MistralProvider, mistralProvider } from './mistral';
+import { LLM7Provider, llm7Provider } from './llm7';
 
 // Singleton instances
 export const pollinationsProvider = new PollinationsProvider();
@@ -17,6 +18,7 @@ export const groqProvider = new GroqProvider();
 export const localProvider = new LocalProvider();
 export { geminiProvider, GeminiProvider, deepSeekProvider, openAIProvider, OpenAIProvider };
 export { cerebrasProvider, CerebrasProvider, mistralProvider, MistralProvider };
+export { llm7Provider, LLM7Provider };
 
 export default {
     pollinations: pollinationsProvider,
@@ -28,5 +30,6 @@ export default {
     deepseek: deepSeekProvider,
     openai: openAIProvider,
     cerebras: cerebrasProvider,
-    mistral: mistralProvider
+    mistral: mistralProvider,
+    llm7: llm7Provider
 };
