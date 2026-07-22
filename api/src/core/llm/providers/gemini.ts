@@ -35,9 +35,7 @@ export class GeminiProvider {
     }
 
     isAvailable(): boolean {
-        // [ELITE SECURE] strictly validate that we have a Google key, not an OpenAI key
-        const isGoogleKey = String(this.apiKey).startsWith('AIza');
-        return !!this.apiKey && !!this.client && isGoogleKey;
+        return !!this.apiKey && this.apiKey !== 'dummy' && !!this.client;
     }
 
     /**

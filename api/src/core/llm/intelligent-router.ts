@@ -740,32 +740,14 @@ export async function routeToModel(
 
             try {
                 if (cfgProvider === 'gemini' || cfgProvider === 'google') {
-                    // Clean up messages for Gemini
-                    const cleanedMessages = messages.map(m => ({
-                        role: m.role,
-                        content: typeof m.content === 'string' ? m.content : flattenMultimodalMessages([m])[0]?.content || ''
-                    }));
-                    
-                    const client = new OpenAI({
-                        apiKey: effectiveApiKey || 'dummy',
-                        baseURL: effectiveBaseUrl || 'https://generativelanguage.googleapis.com/v1beta/openai/'
-                    });
-                    const modelName = cfgModel || 'models/gemini-2.0-flash';
-                    const resolvedModel = modelName.startsWith('models/') ? modelName : `models/${modelName}`;
-                    const completion = await client.chat.completions.create({
-                        model: resolvedModel,
-                        messages: cleanedMessages as any,
-                        tools: tools as any,
-                        tool_choice: tools ? 'auto' : undefined,
-                    });
-                    const message = completion.choices[0]?.message;
-                    if (message?.tool_calls && message.tool_calls.length > 0) {
-                        return JSON.stringify({
-                            type: 'tool_calls',
-                            tool_calls: message.tool_calls,
-                        });
+                    console.log(`[IntelligentRouter] Routing via GeminiProvider with sanitized schemas...`);
+                    const gProvider = new GeminiProvider(effectiveApiKey);
+                    const rawModel = cfgModel || 'gemini-2.0-flash';
+                    const answer = await gProvider.chatComplete(messages, rawModel, tools);
+                    if (answer && answer.length > 0) {
+                        return cleanOutput(answer);
                     }
-                    return cleanOutput(message?.content || '');
+                    throw new Error('Gemini returned empty response');
                 } else {
                     // OpenAI, OpenRouter, or other OpenAI-compatible endpoint
                     const client = new OpenAI({
