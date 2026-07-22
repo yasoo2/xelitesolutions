@@ -76,12 +76,13 @@ Return ONLY a JSON object:
                 requiredTools: analysis.requirements || []
             };
         } catch (error) {
-            console.warn("[IntentParser] LLM analysis failed, falling back to safe default.");
+            console.warn("[IntentParser] LLM analysis failed, falling back to Browser agent default.");
             return {
                 goal: userText,
                 complexity: 'medium',
                 riskLevel: 'low',
-                suggestedAgent: 'General',
+                suggestedAgent: 'Browser',
+                requiredTools: ['browser_run'],
                 rawIntent: { primary: userText }
             };
         }
