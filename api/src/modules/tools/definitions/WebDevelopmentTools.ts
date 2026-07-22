@@ -1,7 +1,7 @@
 import { BaseTool } from '../base';
 import { executeTool } from '../../services/ToolService';
 import { ToolPermission } from '../types';
-import { ExecutionGateway } from '../../kernel/ExecutionGateway';
+import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import path from 'path';
 import fs from 'fs';
 import { Builder } from '../../../system/Builder';

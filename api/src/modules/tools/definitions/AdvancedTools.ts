@@ -1,5 +1,5 @@
-import { BaseTool } from './base';
-import { ToolPermission } from './types';
+import { BaseTool } from '../base';
+import { ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
 
@@ -49,7 +49,7 @@ export class PatternRecognitionTool extends BaseTool {
     const languagePatterns = this.patterns[language as keyof typeof this.patterns] || [];
 
     // Detect patterns
-    lines.forEach((line, index) => {
+    lines.forEach((line: string, index: number) => {
       languagePatterns.forEach(pattern => {
         if (pattern.regex.test(line)) {
           detectedPatterns.push({
@@ -515,7 +515,7 @@ export class PerformanceProfilerTool extends BaseTool {
     const issues: Array<{ type: string; line: number; issue: string; severity: 'high' | 'medium' | 'low' }> = [];
     const lines = code.split('\n');
 
-    lines.forEach((line, index) => {
+    lines.forEach((line: string, index: number) => {
       // Detect nested loops
       if (/for\s*\([^)]*\)\s*{[^}]*for\s*\(/.test(line)) {
         issues.push({

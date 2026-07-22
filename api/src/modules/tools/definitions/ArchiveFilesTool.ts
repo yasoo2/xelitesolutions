@@ -1,5 +1,5 @@
 import { ToolDefinition } from '../types';
-import { ExecutionGateway } from '../../kernel/ExecutionGateway';
+import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import * as path from 'path';
 import * as fs from 'fs';
 
