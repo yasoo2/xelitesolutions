@@ -70,13 +70,13 @@ export class ToolRegistry {
     
     // استخراج البيانات الوصفية من الأداة
     this.metadata.set(toolName, {
-      name: tool.name,
-      description: tool.description,
+      name: tool.name || '',
+      description: tool.description || '',
       version: tool.version || '1.0.0',
       tags: tool.tags || [],
       permissions: tool.permissions || [],
       rateLimitPerMinute: tool.rateLimitPerMinute || 60,
-      requiresApproval: tool.requiresApproval || false,
+      requiresApproval: (tool as any).requiresApproval || false,
       category: metadata?.category || 'utility',
       complexity: metadata?.complexity || 'simple',
       estimatedDuration: metadata?.estimatedDuration || 30,

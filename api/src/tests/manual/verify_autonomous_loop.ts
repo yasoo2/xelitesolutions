@@ -12,7 +12,7 @@ async function verifyAutonomousLoop() {
         process.exit(0);
     }
 
-    const { ProjectManagerAgent } = await import('../../agents/ProjectManagerAgent');
+    const { ProjectManagerAgent } = await import('../../core/agents/ProjectManagerAgent');
 
     const TEST_DIR = path.join(__dirname, '../../../test_autonomous_loop');
 

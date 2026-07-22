@@ -6,7 +6,7 @@ import {
     ComplianceValidatorTool,
     CostEstimatorTool,
     AmbiguityResolverTool
-} from '../tools/definitions/EliteTools';
+} from '../../modules/tools/definitions/EliteTools';
 
 async function verify() {
     console.log('🧪 Verifying Elite Tools Suite...\n');
