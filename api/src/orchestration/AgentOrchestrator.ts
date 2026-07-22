@@ -371,6 +371,10 @@ Return ONLY the agent name.`;
    * Checks if the current path is still optimal.
    */
   private async evaluateProgress(lastNode: ExecutionNode, memory: ExecutionMemory, dag: AgentDAG): Promise<{ shouldReplan: boolean }> {
+    if (lastNode.agent === 'Browser' || lastNode.tool === 'browser_run') {
+        return { shouldReplan: false };
+    }
+
     const history = memory.getSummary();
     const systemPrompt = `Analyze the current execution history and determine if we need to adjust the plan.
 Goal: ${dag.id}

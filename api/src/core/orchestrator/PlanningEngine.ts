@@ -114,15 +114,16 @@ Return ONLY a JSON array of steps:
 
         // Emergency Fallback (Dynamic but minimal)
         console.warn(`[PlanningEngine] Using failover node for: ${intent.goal}`);
+        const isBrowserFallback = (intent.suggestedAgent === 'Browser') || (intent.requiredTools && intent.requiredTools.includes('browser_run'));
         return {
             id: `failover_${Date.now()}`,
             goal: intent.goal,
             steps: [{
                 id: 'recovery_node',
                 description: `Respond to: ${intent.goal}`,
-                tool: 'central_answer', // Use central_answer instead of shell_execute
-                agent: intent.suggestedAgent || 'General',
-                input: { question: intent.goal }, // Use question for central_answer
+                tool: isBrowserFallback ? 'browser_run' : 'central_answer',
+                agent: isBrowserFallback ? 'Browser' : (intent.suggestedAgent || 'General'),
+                input: isBrowserFallback ? { instruction: intent.goal, task: intent.goal } : { question: intent.goal },
                 dependsOn: []
             }],
             metadata: { complexity: 'low', riskLevel: 'low' }
