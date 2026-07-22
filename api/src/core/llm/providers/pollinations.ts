@@ -70,15 +70,15 @@ export class PollinationsProvider {
             }
             return response;
         } catch (error: any) {
-            const isRetryable = error.status === 429 || error.status === 503 || error.message.includes('timeout');
+            const isRetryable = (error.status === 503 || error.message?.includes('timeout')) && error.status !== 402 && error.status !== 429;
             if (isRetryable && retries > 0) {
-                const delay = error.status === 429 ? 3000 : 1500;
+                const delay = 1000;
                 console.warn(`[Pollinations] Failed (${error.status || 'timeout'}), retrying in ${delay / 1000}s... (${retries} left)`);
                 await new Promise(resolve => setTimeout(resolve, delay));
                 return this.executeChat(messages, model, retries - 1, tools);
             }
-            console.error("Pollinations Chat Failed:", error.message);
-            return ""; // Return empty string to trigger router fallback correctly
+            console.error(`Pollinations Chat Failed: ${error.status || error.message}`);
+            return ""; // Return empty string to trigger router fallback immediately
         }
     }
 }

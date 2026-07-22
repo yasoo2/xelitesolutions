@@ -57,8 +57,19 @@ JSON Format:
                 const jsonMatch = responseText.match(/\{[\s\S]*\}/);
                 decision = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
             } catch (e) {
-                // If it fails to parse, assume shell_execute as fallback
-                decision = { tool: 'shell_execute', args: { command: task }, reasoning: 'Fallback' };
+                // Smart intent-based fallback when LLM output is not valid JSON
+                const tLower = task.toLowerCase();
+                if (tLower.includes('browser') || tLower.includes('web') || tLower.includes('متصفح') || tLower.includes('افتح') || tLower.includes('ابحث')) {
+                    decision = { tool: 'browser_run', args: { sessionId: input.sessionId, instructionText: task }, reasoning: 'Browser fallback' };
+                } else if (tLower.includes('read') || tLower.includes('اقرأ') || tLower.includes('عرض')) {
+                    decision = { tool: 'read_file', args: { path: input.path || 'package.json' }, reasoning: 'Read file fallback' };
+                } else if (tLower.includes('write') || tLower.includes('create') || tLower.includes('أنشئ') || tLower.includes('اكتب')) {
+                    decision = { tool: 'write_file', args: { path: input.path || 'output.txt', content: task }, reasoning: 'Write file fallback' };
+                } else if (tLower.startsWith('npm') || tLower.startsWith('git') || tLower.startsWith('node') || tLower.startsWith('cd ') || tLower.startsWith('dir') || tLower.startsWith('ls')) {
+                    decision = { tool: 'shell_execute', args: { command: task, cwd: this.rootDir }, reasoning: 'Shell command fallback' };
+                } else {
+                    decision = { tool: 'central_answer', args: { question: task }, reasoning: 'General question fallback' };
+                }
             }
             
             if (!decision || !decision.tool) {
