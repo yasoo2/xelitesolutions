@@ -1,7 +1,7 @@
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { executeTool } from '../modules/services/ToolService';
-import { broadcastThinkingDetail } from '../api/ws';
+import { broadcastThinkingDetail, broadcast } from '../api/ws';
 import { randomUUID } from 'crypto';
 import { BaseAgent } from './agents/BaseAgent';
 import { DevAgent } from './agents/DevAgent';
@@ -200,6 +200,18 @@ export class AgentOrchestrator {
         const startTime = Date.now();
         console.log(`[AgentOrchestrator] Executing node: ${node.id} (${node.task})`);
         broadcastThinkingDetail(memory.sessionId, `🚀 Running: ${node.task} via ${node.agent} Agent`);
+
+        const isBrowserNode = node.agent === 'Browser' || node.tool === 'browser_run' || (node.task && (node.task.toLowerCase().includes('browser') || node.task.includes('متصفح')));
+        if (isBrowserNode) {
+          broadcast({
+            type: 'step_started',
+            data: {
+              sessionId: memory.sessionId,
+              tool: { name: 'browser_run', input: { task: node.task } }
+            },
+            sessionId: memory.sessionId
+          });
+        }
 
         if (traceId) {
             traceManager.logEvent(traceId, 'orchestrator', {

@@ -203,6 +203,19 @@ export default function JoeIDELayout({
         return () => window.removeEventListener('joe:workspace-uncollapse', handleUncollapse);
     }, []);
 
+    useEffect(() => {
+        const handleOpenBrowserTab = () => {
+            setIsExplorerCollapsed(false);
+            if (onWorkspaceTabChange) {
+                onWorkspaceTabChange('browser');
+            } else {
+                setInternalWorkspaceTab('browser');
+            }
+        };
+        window.addEventListener('joe:open-browser-tab', handleOpenBrowserTab);
+        return () => window.removeEventListener('joe:open-browser-tab', handleOpenBrowserTab);
+    }, [onWorkspaceTabChange]);
+
     // Internal state for workspace tab if not controlled
     const [internalWorkspaceTab, setInternalWorkspaceTab] = useState<WorkspaceTab>('terminal');
 

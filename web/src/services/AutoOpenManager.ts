@@ -60,13 +60,16 @@ class AutoOpenManagerClass {
         }
 
         // Browser tools
+        const tLower = (toolName || '').toLowerCase();
         if (
-            toolName === 'browser_navigate' ||
-            toolName === 'browser_click' ||
-            toolName === 'browser_type' ||
-            toolName === 'browser_screenshot' ||
-            toolName === 'web_browse' ||
-            toolName.includes('browser')
+            tLower === 'browser_navigate' ||
+            tLower === 'browser_click' ||
+            tLower === 'browser_type' ||
+            tLower === 'browser_screenshot' ||
+            tLower === 'browser_run' ||
+            tLower === 'web_browse' ||
+            tLower.includes('browser') ||
+            tLower.includes('navigate')
         ) {
             this.triggerOpen('browser', toolData);
         }
@@ -93,9 +96,32 @@ class AutoOpenManagerClass {
      * Process AI step events - for streaming responses
      */
     processStepEvent(event: { type: string; data?: any }) {
+        // Direct browser activation events
+        if (
+            event.type === 'browser_opened' ||
+            event.type === 'show_browser' ||
+            event.type === 'browser_started'
+        ) {
+            this.triggerOpen('browser', event.data);
+        }
+
         // When step involves tool call, process it
-        if (event.type === 'step_started' && event.data?.tool) {
-            this.processToolUsage(event.data.tool.name, event.data.tool.input);
+        if ((event.type === 'step_started' || event.type === 'tool_started') && event.data?.tool) {
+            this.processToolUsage(event.data.tool.name || event.data.tool, event.data.tool.input);
+        }
+
+        // Detect browser tasks from thinking details
+        if (event.type === 'thinking_detail' && typeof event.data?.detail === 'string') {
+            const detailLower = event.data.detail.toLowerCase();
+            if (
+                detailLower.includes('browser agent') ||
+                detailLower.includes('via browser') ||
+                detailLower.includes('using the browser') ||
+                detailLower.includes('متصفح') ||
+                detailLower.includes('فتح المتصفح')
+            ) {
+                this.triggerOpen('browser', event.data);
+            }
         }
 
         // When preview is ready (matches both event types)
