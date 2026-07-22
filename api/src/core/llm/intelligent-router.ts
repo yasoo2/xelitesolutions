@@ -712,10 +712,11 @@ export async function routeToModel(
     // Check for user-selected provider overrides in context
     if (context?.modelConfig) {
         const { provider: cfgProvider, model: cfgModel, apiKey: cfgApiKey, baseUrl: cfgBaseUrl } = context.modelConfig;
-        if (cfgProvider && cfgProvider !== 'mock') {
+        const isAuto = !cfgProvider || cfgProvider === 'mock' || cfgProvider === 'auto' || cfgProvider === 'free' || cfgProvider === 'default' || cfgApiKey === 'auto-mode';
+        if (!isAuto) {
             console.log(`✨ [IntelligentRouter] Custom Route: Provider=${cfgProvider}, Model=${cfgModel}, HasKey=${!!cfgApiKey}, HasUrl=${!!cfgBaseUrl}`);
             
-            const effectiveApiKey = cfgApiKey?.trim() || 
+            const effectiveApiKey = (cfgApiKey && cfgApiKey !== 'auto-mode') ? cfgApiKey.trim() : 
                 (cfgProvider === 'openai' ? process.env.OPENAI_API_KEY :
                  cfgProvider === 'gemini' || cfgProvider === 'google' ? (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) :
                  cfgProvider === 'openrouter' ? process.env.OPENROUTER_API_KEY : '');
