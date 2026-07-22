@@ -10,6 +10,7 @@ export interface ISession extends Document {
   kind?: 'chat' | 'agent';
   status: 'active' | 'archived' | 'deleted';
   folderId?: string;
+  isPinned?: boolean;
   metadata?: Record<string, any>;
   createdAt: Date;
   updatedAt: Date;
@@ -26,6 +27,7 @@ const SessionSchema = new Schema<ISession>(
     kind: { type: String, enum: ['chat', 'agent'], default: 'chat' },
     status: { type: String, enum: ['active', 'archived', 'deleted'], default: 'active' },
     folderId: { type: String, ref: 'Folder', index: true },
+    isPinned: { type: Boolean, default: false },
     metadata: { type: Schema.Types.Mixed },
   },
   { timestamps: true }

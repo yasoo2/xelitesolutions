@@ -71,15 +71,15 @@ router.post('/incidents/:id/action/:actionName', authenticate, requireSuperAdmin
     try {
         const { id, actionName } = req.params;
         const { target, dryRun } = req.body;
-        // The actorId should ideally come from auth token, using 'system' for now
-        const actorId = req.user ? req.user.id : 'system'; 
+        // The actorId comes from the authenticated token (auth.sub), falling back to 'system'
+        const actorId = (req as any).auth?.sub || 'system';
 
         const incident = await SentinelIncidentModel.findById(id);
         if (!incident) return res.status(404).json({ error: 'Incident not found' });
 
         const SentinelActionRunner = (await import('../../modules/sentinel/services/SentinelActionRunner')).SentinelActionRunner;
         
-        const logs = await SentinelActionRunner.executeAction(id, incident.serverId, actionName, { target }, dryRun === true, actorId);
+        const logs = await SentinelActionRunner.executeAction(String(id), incident.serverId, String(actionName), { target }, dryRun === true, actorId);
 
         if (!dryRun) {
             await incident.updateOne({ status: 'contained' });
@@ -108,11 +108,10 @@ router.post('/actions/execute', authenticate, requireSuperAdmin, (req, res) => {
         const action = SentinelPolicyEngine.enqueueAction(serverId, actionType, target);
         
         SentinelAuditService.logAction(
-            req.user ? req.user.id : 'system',
+            (req as any).auth?.sub || 'system',
             `api_remote_action`,
             `Enqueued ${actionType} against ${target} on Server ${serverId}`,
-            serverId,
-            true, {}
+            'success'
         );
 
         res.status(200).json({ success: true, message: 'Action queued for next agent ping', actionId: action.id });

@@ -318,7 +318,7 @@ async function handleAutoNaming(sessionId: string, messages: any[], isOffline: b
         const userMsgs = messages.filter(m => m.role === 'user');
         if (userMsgs.length < 1) return;
 
-        const newTitle = await generateSessionTitle(userMsgs.map(m => ({ role: 'user', content: m.content || '' })));
+        const newTitle = await generateSessionTitle(userMsgs.map(m => String(m.content || '')).join('\n'));
         if (newTitle && newTitle !== 'New Session' && !isAutoTitleCandidate(newTitle)) {
             if (!isOffline) {
                 await Session.findByIdAndUpdate(sessionId, { title: newTitle });
@@ -343,8 +343,8 @@ export async function updateSecrets(req: Request, res: Response) {
     }
 
     try {
-        const { setSessionSecretEncrypted, setUserSecretEncrypted } = await import('../services/secrets');
-        const { AgentLoopService } = await import('../services/AgentLoopService');
+        const { setSessionSecretEncrypted, setUserSecretEncrypted } = await import('../../modules/services/secrets');
+        const { AgentLoopService } = await import('../../modules/services/AgentLoopService');
 
         // 1. Save locally for this session
         setSessionSecretEncrypted(id, key, value);
@@ -355,9 +355,11 @@ export async function updateSecrets(req: Request, res: Response) {
         }
 
         // 3. Trigger Resumption (Async)
-        AgentLoopService.handlePendingToolExecution(id, authUserId).catch(err => {
-            console.error('[SessionController] Failed to resume pending tool:', err);
-        });
+        // Resume any pending tool execution for this session if the service supports it.
+        Promise.resolve((AgentLoopService as any).handlePendingToolExecution?.(id, authUserId))
+            .catch((err: any) => {
+                console.error('[SessionController] Failed to resume pending tool:', err);
+            });
 
         return res.json({ ok: true, message: 'Secrets saved and resumption triggered' });
     } catch (e: any) {

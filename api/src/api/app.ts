@@ -206,7 +206,8 @@ export const createApp = () => {
   apiRouter.post('/deploy-now', async (_req, res) => {
     try {
       const { deployManager } = await import('../modules/services/DeployManager');
-      const id = await deployManager.startDeploy('manual');
+      const commitHash = await deployManager.getCurrentCommit().catch(() => 'HEAD');
+      const id = await deployManager.startDeploy('manual', commitHash);
       res.json({ id, message: 'Deployment started' });
     } catch (e: any) {
       res.status(400).json({ error: e.message });

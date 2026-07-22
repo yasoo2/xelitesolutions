@@ -87,9 +87,9 @@ router.get('/system/containers', async (req, res) => {
         const result = await executionFirewall.runAsSystem(async () => {
             return await ExecutionGateway.execute('docker', ['ps', '--format', '{{json .}}']);
         });
-        if (!result.ok) throw new Error(result.error);
-        
-        const containers = (result.output || '').trim().split('\n').map(l => {
+        if (!result.data?.ok) throw new Error(result.data?.error || result.error);
+
+        const containers = (result.data?.output || '').trim().split('\n').map((l: string) => {
             if (!l) return null;
             try { return JSON.parse(l); } catch { return null; }
         }).filter(Boolean);
@@ -146,7 +146,7 @@ router.get('/system/health', async (req, res) => {
             const diskRes = await executionFirewall.runAsSystem(async () => {
                 return await ExecutionGateway.execute("df -h / | awk 'NR==2{printf \"%s/%s (%s)\", $3,$2,$5}'");
             });
-            if (diskRes.ok) diskInfo = (diskRes.output || '').trim();
+            if (diskRes.data?.ok) diskInfo = (diskRes.data?.output || '').trim();
         } catch { }
 
         // Docker stats
@@ -155,8 +155,8 @@ router.get('/system/health', async (req, res) => {
             const dockerRes = await executionFirewall.runAsSystem(async () => {
                 return await ExecutionGateway.execute('docker', ['ps', '--format', '{{json .}}']);
             });
-            if (dockerRes.ok) {
-                containers = (dockerRes.output || '').split('\n').map(l => {
+            if (dockerRes.data?.ok) {
+                containers = (dockerRes.data?.output || '').split('\n').map((l: string) => {
                     try { return JSON.parse(l); } catch { return null; }
                 }).filter(Boolean);
             }
@@ -168,7 +168,7 @@ router.get('/system/health', async (req, res) => {
             const serviceRes = await executionFirewall.runAsSystem(async () => {
                 return await ExecutionGateway.execute('systemctl', ['is-active', 'joe-api.service']);
             });
-            apiServiceStatus = (serviceRes.output || '').trim() || (serviceRes.ok ? 'active' : 'inactive');
+            apiServiceStatus = (serviceRes.data?.output || '').trim() || (serviceRes.data?.ok ? 'active' : 'inactive');
         } catch { 
             apiServiceStatus = 'inactive';
         }
@@ -243,10 +243,10 @@ router.post('/system/backup', async (req, res) => {
             return await ExecutionGateway.execute('bash', [backupScript], { cwd: process.cwd() });
         });
         
-        if (result.ok) {
-            res.json({ message: 'Backup completed successfully', output: result.output });
+        if (result.data?.ok) {
+            res.json({ message: 'Backup completed successfully', output: result.data?.output });
         } else {
-            res.status(500).json({ error: 'Backup failed', output: result.error || result.output });
+            res.status(500).json({ error: 'Backup failed', output: result.data?.error || result.data?.output });
         }
     } catch (e: any) {
         res.status(500).json({ error: e.message });
