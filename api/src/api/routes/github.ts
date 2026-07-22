@@ -90,7 +90,7 @@ router.get('/status', authenticate as any, async (req: Request, res: Response) =
         let activeRepo = undefined;
         const workspaceId = (req.headers['x-workspace-id'] as string) || (req.query.workspaceId as string);
         if (workspaceId && userId) {
-            const { workspaceService } = await import('../services/WorkspaceService');
+            const { workspaceService } = await import('../../modules/services/WorkspaceService');
             const ws = await workspaceService.getWorkspace(workspaceId, userId);
             activeRepo = ws?.integrations?.github?.activeRepo;
         }
