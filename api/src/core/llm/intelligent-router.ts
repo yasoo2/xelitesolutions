@@ -4,7 +4,7 @@
  * Supports: Llama 3.1 70B, Mixtral 8x7B, Gemma 2 9B (all via Groq - FREE!)
  */
 
-import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider, openAIProvider } from './providers/registry';
+import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider, openAIProvider, cerebrasProvider, mistralProvider, huggingfaceProvider } from './providers/registry';
 import { LLMCacheTool } from '../../modules/tools/definitions/LLMCacheTool';
 import { OpenAIProvider } from './providers/openai';
 import { GeminiProvider } from './providers/gemini';
@@ -829,12 +829,30 @@ export async function routeToModel(
         String(process.env.LOCAL_LLM_DISABLE || '').trim() !== '1';
     const localStrict = String(process.env.LOCAL_LLM_STRICT || '').trim() === '1';
 
-    // Unified Multi-Provider Mesh for Auto Mode
+    // ============================================================================
+    // FREE-FIRST Multi-Provider Mesh ("Chain of Steel")
+    // ----------------------------------------------------------------------------
+    // Joe is designed to run primarily on FREE intelligence. The mesh is ordered so
+    // the strongest FREE providers are tried first; paid providers only act as a
+    // deep fallback, and keyless proxies are the very last resort.
+    //
+    // Priority (each step is skipped automatically if its key is absent):
+    //   0. Forced provider (LLM_PROVIDER env override)
+    //   1. Local  (self-hosted Ollama / LM Studio — zero cost, private)
+    //   2. Gemini    (FREE — strongest free model, 1500 req/day, 1M context)
+    //   3. Groq      (FREE — fastest inference, Llama 3.3 70B)
+    //   4. Cerebras  (FREE — ~1M tokens/day, ultra-fast)
+    //   5. OpenRouter(FREE — one key, ~30 free models)
+    //   6. Mistral   (FREE — ~1B tokens/month, strong multilingual/code)
+    //   7. HuggingFace (FREE — open models inference)
+    //   8. OpenAI    (PAID — deep fallback only)
+    //   9. DeepSeek / Pollinations (keyless proxy — last resort)
+    // ============================================================================
 
     const meshProviders: Array<{ name: string; run: () => Promise<string> }> = [];
     const preferredProvider = String(process.env.LLM_PROVIDER || '').trim().toLowerCase();
 
-    // [PRIORITY] Check for forced provider via env
+    // 0. [PRIORITY] Forced provider via env
     if (preferredProvider === 'pollinations') {
         meshProviders.push({
             name: 'Pollinations (Forced)',
@@ -845,6 +863,8 @@ export async function routeToModel(
             }
         });
     }
+
+    // 1. Local self-hosted (zero cost, fully private)
     if (hasLocal) {
         meshProviders.push({
             name: 'Local (Auto)',
@@ -855,17 +875,71 @@ export async function routeToModel(
             }
         });
     }
+
+    // 2. Gemini — strongest FREE provider (prioritized above paid providers)
+    if (geminiProvider.isAvailable()) {
+        meshProviders.push({
+            name: 'Gemini (Free)',
+            run: async () => {
+                return await geminiProvider.chatComplete(effectiveMessages, 'models/gemini-2.0-flash', tools);
+            }
+        });
+    }
+
+    // 3. Groq — fastest FREE inference (Llama 3.3 70B)
     if (hasGroqKey) {
         meshProviders.push({
             name: 'Groq (Free)',
             run: async () => {
-                const model = (selectedModel.provider === 'groq' && selectedModel.model) ? selectedModel.model : 'llama-3.1-70b-versatile';
+                const model = (selectedModel.provider === 'groq' && selectedModel.model) ? selectedModel.model : 'llama-3.3-70b-versatile';
                 return await callGroq(model, flatMessages, onPartial, tools);
             }
         });
     }
 
-    // [ELITE ADDITION] Add real OpenAI direct provider as high-priority
+    // 4. Cerebras — FREE, ~1M tokens/day, ultra-fast
+    if (cerebrasProvider.isAvailable()) {
+        meshProviders.push({
+            name: 'Cerebras (Free)',
+            run: async () => {
+                return await cerebrasProvider.chatComplete(effectiveMessages, undefined, tools);
+            }
+        });
+    }
+
+    // 5. OpenRouter — one FREE key unlocks ~30 free models
+    if (hasOpenRouterKey) {
+        meshProviders.push({
+            name: 'OpenRouter (Free)',
+            run: async () => {
+                return await openRouterProvider.chatComplete(flatMessages, 'moonshotai/kimi-k2:free', tools);
+            }
+        });
+    }
+
+    // 6. Mistral — FREE tier, ~1B tokens/month
+    if (mistralProvider.isAvailable()) {
+        meshProviders.push({
+            name: 'Mistral (Free)',
+            run: async () => {
+                return await mistralProvider.chatComplete(effectiveMessages, undefined, tools);
+            }
+        });
+    }
+
+    // 7. HuggingFace — FREE open-model inference
+    if (huggingfaceProvider.isAvailable()) {
+        meshProviders.push({
+            name: 'HuggingFace (Free)',
+            run: async () => {
+                const res = await huggingfaceProvider.chatComplete(flatMessages);
+                if (!res || res.length < 2) throw new Error('HuggingFace response too short');
+                return res;
+            }
+        });
+    }
+
+    // 8. OpenAI — PAID, deep fallback only
     if (openAIProvider.isAvailable()) {
         meshProviders.push({
             name: 'OpenAI (Direct)',
@@ -874,26 +948,8 @@ export async function routeToModel(
             }
         });
     }
-    if (hasOpenRouterKey) {
-        meshProviders.push({
-            name: 'OpenRouter (Free)',
-            run: async () => {
-                return await openRouterProvider.chatComplete(flatMessages, 'google/gemma-2-9b-it:free', tools);
-            }
-        });
-    }
 
-    // [ELITE FIX] Enable Gemini Fallback if available
-    if (geminiProvider.isAvailable()) {
-        meshProviders.push({
-            name: 'Gemini (Backup)',
-            run: async () => {
-                return await geminiProvider.chatComplete(effectiveMessages, 'models/gemini-2.0-flash', tools);
-            }
-        });
-    }
-
-    // Add DeepSeek via Pollinations as a high-quality free fallback
+    // 9. DeepSeek via keyless proxy — last-resort free path
     meshProviders.push({
         name: 'DeepSeek (Pollinations)',
         run: async () => {

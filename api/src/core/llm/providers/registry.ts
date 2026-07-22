@@ -6,6 +6,8 @@ import { LocalProvider } from './local';
 import { GeminiProvider, geminiProvider } from './gemini';
 import { DeepSeekProvider, deepSeekProvider } from './deepseek';
 import { OpenAIProvider, openAIProvider } from './openai';
+import { CerebrasProvider, cerebrasProvider } from './cerebras';
+import { MistralProvider, mistralProvider } from './mistral';
 
 // Singleton instances
 export const pollinationsProvider = new PollinationsProvider();
@@ -14,6 +16,7 @@ export const huggingfaceProvider = new HuggingFaceProvider();
 export const groqProvider = new GroqProvider();
 export const localProvider = new LocalProvider();
 export { geminiProvider, GeminiProvider, deepSeekProvider, openAIProvider, OpenAIProvider };
+export { cerebrasProvider, CerebrasProvider, mistralProvider, MistralProvider };
 
 export default {
     pollinations: pollinationsProvider,
@@ -23,5 +26,7 @@ export default {
     local: localProvider,
     gemini: geminiProvider,
     deepseek: deepSeekProvider,
-    openai: openAIProvider
+    openai: openAIProvider,
+    cerebras: cerebrasProvider,
+    mistral: mistralProvider
 };
