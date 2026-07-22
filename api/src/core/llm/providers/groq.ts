@@ -6,7 +6,11 @@ export class GroqProvider {
         this.apiKey = process.env.GROQ_API_KEY || ''; // Will rely on user providing it or system default if available
     }
 
-    async chatComplete(messages: any[], model: string = 'llama-3.1-70b-versatile', tools?: any[]): Promise<string> {
+    isAvailable(): boolean {
+        return !!this.apiKey && this.apiKey !== 'dummy';
+    }
+
+    async chatComplete(messages: any[], model: string = 'llama-3.3-70b-versatile', tools?: any[]): Promise<string> {
         if (!this.apiKey) {
             throw new Error('GROQ_API_KEY not found');
         }

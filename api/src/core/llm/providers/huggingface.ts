@@ -13,14 +13,20 @@ const BASE_URL = 'https://api-inference.huggingface.co/v1';
 
 export class HuggingFaceProvider {
     private client: OpenAI;
+    private apiKey: string;
 
     constructor(apiKey?: string) {
         const key = apiKey || process.env.HUGGINGFACE_API_KEY || 'hf_dummy';
+        this.apiKey = key;
 
         this.client = new OpenAI({
             apiKey: key,
             baseURL: BASE_URL,
         });
+    }
+
+    isAvailable(): boolean {
+        return !!this.apiKey && this.apiKey !== 'hf_dummy' && this.apiKey !== 'dummy';
     }
 
     async chatComplete(messages: any[], model?: string): Promise<string> {
