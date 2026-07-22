@@ -33,9 +33,10 @@ router.post('/run', async (req: Request, res: Response) => {
 
 
   const orchestrator = new AgentOrchestrator();
-  const result = await orchestrator.execute({ 
-    id: sessionId || `session-${Date.now()}`, 
-    goal: text 
+  const runId = sessionId || `session-${Date.now()}`;
+  const result = await orchestrator.execute({
+    id: runId,
+    goal: text
   });
 
   return res.json({ runId, sessionId, result: { ok: result.ok, output: result.result } });
@@ -47,6 +48,13 @@ router.post('/selftest', authenticate, async (req: Request, res: Response) => {
 
   const userId = String((req as any)?.auth?.sub || '').trim();
   if (!userId) return res.status(401).json({ ok: false, error: 'unauthorized' });
+
+  const sessionId = typeof req.body?.sessionId === 'string' && req.body.sessionId.trim()
+    ? req.body.sessionId.trim()
+    : `session-${Date.now()}`;
+  const detectPath = typeof req.body?.path === 'string' && req.body.path.trim()
+    ? req.body.path.trim()
+    : '.';
 
   const requiredTools = ['project_detect', 'auth_builder', 'swagger_docs', 'dead_code_detector', 'mobile_builder'];
   const available = new Set(tools.map(t => String((t as any)?.name || '').trim()).filter(Boolean));

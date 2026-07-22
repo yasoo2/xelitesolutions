@@ -37,14 +37,14 @@ UserSecretSchema.pre('save', function (next) {
     const iv = crypto.randomBytes(12);
     // Use first 32 chars of jwtSecret (padded if necessary) as encryption key
     const key = Buffer.from(config.jwtSecret.slice(0, 32).padEnd(32, '0'));
-    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv) as crypto.CipherGCM;
     let encrypted = cipher.update(this.value, 'utf8', 'hex');
     encrypted += cipher.final('hex');
     const tag = cipher.getAuthTag();
     this.value = encrypted;
     this.enc = { alg: 'aes-256-gcm', ivB64: iv.toString('base64'), tagB64: tag.toString('base64') };
   }
-  next();
+  (next as any)();
 });
 
 UserSecretSchema.methods.getDecryptedValue = function (): string {

@@ -234,7 +234,7 @@ router.get('/log', authenticate as any, async (req: Request, res: Response) => {
         return res.json({ ok: false, commits: [] });
     }
 
-    const commits = (result.stdout || '').split('\n').filter(Boolean).map(line => {
+    const commits = (result.stdout || '').split('\n').filter(Boolean).map((line: string) => {
         const [hash, author, email, timestamp, ...msgParts] = line.split('|');
         return {
             hash: (hash || '').substring(0, 8),

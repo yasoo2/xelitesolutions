@@ -30,10 +30,10 @@ export async function requireWorkspace(req: WorkspaceRequest, res: Response, nex
     try {
         const wsId = new mongoose.Types.ObjectId(workspaceId);
 
-        // 3. Verify Membership
+        // 3. Verify Membership (workspaceId/userId are stored as string refs)
         const member = await WorkspaceMember.findOne({
-            workspaceId: wsId,
-            userId: new mongoose.Types.ObjectId(userId)
+            workspaceId: String(workspaceId),
+            userId: String(userId)
         });
 
         if (!member) {

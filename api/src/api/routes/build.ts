@@ -43,7 +43,7 @@ router.post('/project', authenticate as any, async (req: Request, res: Response)
                 success: result.success, 
                 goal, 
                 projectPath,
-                iterations: result.iterations,
+                iterations: result.totalIterations,
                 timestamp: new Date().toISOString()
             }
         });
@@ -52,7 +52,7 @@ router.post('/project', authenticate as any, async (req: Request, res: Response)
             success: result.success,
             goal,
             projectPath,
-            iterations: result.iterations,
+            iterations: result.totalIterations,
             finalError: result.finalError,
             message: result.success ? 'Project built successfully' : 'Build failed'
         });

@@ -182,6 +182,20 @@ export class DeployManager {
         }
     }
 
+    /**
+     * Public rollback: redeploy the commit of a previous deployment.
+     * @param deploymentId The _id of the past deployment to roll back to.
+     * @returns The id of the new (rollback) deployment.
+     */
+    public async rollback(deploymentId: string): Promise<string> {
+        const target: any = await Deployment.findById(deploymentId).lean();
+        if (!target || !target.commit) {
+            throw new Error(`Deployment ${deploymentId} not found or has no commit to roll back to`);
+        }
+        logger.info(`[DeployManager] Manual rollback requested to commit ${target.commit} (from deployment ${deploymentId})`);
+        return await this.startDeploy('rollback', target.commit);
+    }
+
     public async getCurrentCommit(): Promise<string> {
         return new Promise((resolve) => {
             executionFirewall.runAsSystem(async () => {
