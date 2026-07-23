@@ -101,6 +101,43 @@ services:
       - joe-network
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
+  # ============================================================================
+  # Ollama - self-hosted KEYLESS brain. Runs the open model that powers Joe with
+  # NO API key and NO per-request limits. The pulled model persists in
+  # ./data/ollama so it survives restarts and moves with the deployment.
+  # The API (on host) reaches it via LOCAL_LLM_BASE_URL=http://localhost:11434/v1
+  # ============================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: joe_ollama
+    restart: always
+    mem_limit: 8g
+    volumes:
+      - ./data/ollama:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    networks:
+      - joe-network
+    healthcheck:
+      test: [ "CMD-SHELL", "ollama list || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # One-shot: pull the model on first deploy so the AI is ready automatically.
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: joe_ollama_pull
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_HOST=ollama:11434
+    entrypoint: [ "/bin/sh", "-c", "sleep 8; ollama pull ${LOCAL_LLM_MODEL:-llama3.1:8b}; echo 'ollama model ready'" ]
+    networks:
+      - joe-network
+    restart: "no"
+
 volumes:
   mongo_data:
   lance_data:
