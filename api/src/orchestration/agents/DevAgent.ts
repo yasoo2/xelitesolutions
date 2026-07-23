@@ -14,6 +14,15 @@ export class DevAgent extends BaseAgent {
   public async execute(task: string, input: any, context?: any): Promise<{ ok: boolean; output: any; error?: string }> {
     console.log(`[DevAgent] Executing: ${task}`);
     
+    // Direct-answer: greetings / conversational tasks answered directly via central_answer,
+    // NOT through the tool-picker (which would misroute to browser_run and spiral into recovery).
+    if (/^(answering|respond to)\s*:/i.test(task) || (context?.tool === 'central_answer')) {
+      const { executeTool } = await import('../../modules/services/ToolService');
+      const question = input?.question || task.replace(/^(answering|respond to)\s*:\s*/i, '').trim() || task;
+      const answer = await executeTool('central_answer', { question }, context);
+      return { ok: answer.ok, output: answer.output, error: answer.error };
+    }
+
     // Safety check: If a browser task lands in DevAgent (e.g. from failover recovery node), delegate to browser_run
     const tLower = task.toLowerCase();
     const isBrowserTask = tLower.includes('متصفح') || tLower.includes('افتح') || tLower.includes('ابحث') || tLower.includes('browser') || tLower.includes('navigate') || tLower.includes('search');
