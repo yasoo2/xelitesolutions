@@ -12,6 +12,11 @@ const PREFERRED_MODELS = [
     'qwen2.5-72b-instruct', 'gemini', 'nova-fast', 'openai-fast', 'openai', 'openai-large'
 ];
 const PREMIUM_PREFIXES = ['claude', 'gpt-5', 'o1', 'o3', 'o4', 'grok', 'gemini-2.5-pro'];
+// Image / video / audio / embedding models are NOT chat models — trying them for
+// text completion returns 400 and wastes the (limited) keyless quota.
+const NON_CHAT_PATTERNS = ['image', 'img', 'flux', 'dall', 'sdxl', 'stable-diffusion',
+    'stable-diff', 'firefly', 'imagen', 'kontext', 'video', 'veo', 'sora', 'audio',
+    'tts', 'whisper', 'voice', 'speech', 'embed', 'rerank', 'moderation'];
 
 export class LLM7Provider {
     private client: OpenAI;
@@ -19,6 +24,7 @@ export class LLM7Provider {
     private discovered: string[] | null = null;
     private discoveredAt = 0;
     private blocked = new Set<string>();
+    private cooldownUntil = 0; // set when the gateway returns 429 (global rate limit)
 
     constructor() {
         this.apiKey = (process.env.LLM7_API_KEY || 'unused').trim() || 'unused';
@@ -26,12 +32,19 @@ export class LLM7Provider {
     }
 
     isAvailable(): boolean {
-        return String(process.env.LLM7_DISABLE || '').trim() !== '1';
+        if (String(process.env.LLM7_DISABLE || '').trim() === '1') return false;
+        if (Date.now() < this.cooldownUntil) return false; // still rate-limited
+        return true;
     }
 
     private isPremium(id: string): boolean {
         const low = id.toLowerCase();
         return PREMIUM_PREFIXES.some(p => low.startsWith(p) || low.includes(p));
+    }
+
+    private isNonChat(id: string): boolean {
+        const low = id.toLowerCase();
+        return NON_CHAT_PATTERNS.some(p => low.includes(p));
     }
 
     private async getAvailableModels(): Promise<string[]> {
@@ -59,7 +72,7 @@ export class LLM7Provider {
         push((process.env.LLM7_MODEL || '').trim());
         if (available.length > 0) {
             for (const p of PREFERRED_MODELS) if (available.includes(p)) push(p);
-            for (const a of available) if (!this.isPremium(a)) push(a);
+            for (const a of available) if (!this.isPremium(a) && !this.isNonChat(a)) push(a);
         } else {
             for (const p of PREFERRED_MODELS) push(p);
         }
@@ -93,6 +106,15 @@ export class LLM7Provider {
                 lastErr = error;
                 const status = error?.status || 0;
                 if (status === 401 || status === 402 || status === 403) this.blocked.add(m);
+                if (status === 429) {
+                    // Global rate limit — remember the cooldown so the router skips
+                    // LLM7 entirely (via isAvailable) instead of retrying every model.
+                    const retry = /retry after (\d+)/i.exec(String(error?.message || ''));
+                    const secs = retry ? Math.min(parseInt(retry[1], 10), 900) : 60;
+                    this.cooldownUntil = Date.now() + secs * 1000;
+                    console.warn(`[LLM7] rate-limited (429). Cooling down ${secs}s and falling back to other providers.`);
+                    break;
+                }
                 console.warn(`[LLM7] model "${m}" failed: ${status || error.message}`);
             }
         }
