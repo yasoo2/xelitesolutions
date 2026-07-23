@@ -28,6 +28,31 @@ export class PlanningEngine {
      */
     static async generatePlan(params: { intent: StructuredIntent, memory?: any }, traceId?: string, context?: any): Promise<ExecutionPlan> {
         const { intent, memory } = params;
+        const goalLower = String(intent.goal || '').toLowerCase();
+
+        // [BUILD FAST-PATH] "build/create a web page/site/app" -> ACTUALLY build it:
+        // generate the code, write the file, and open it in the live preview. This is
+        // deterministic (reliable even on weak free models) and makes Joe execute like
+        // an engineering team instead of just replying with code text.
+        const buildVerb = /\b(build|create|make|develop|design|generate|code|scaffold)\b/.test(goalLower)
+            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو)/.test(intent.goal || '');
+        const webNoun = /\b(page|site|website|web ?app|landing|portfolio|dashboard|form|store|shop|html|ui|interface)\b/.test(goalLower)
+            || /(صفحة|موقع|تطبيق|واجهة|متجر|لوحة|نموذج|بورتفوليو|معرض|هبوط)/.test(intent.goal || '');
+        if (buildVerb && webNoun) {
+            return {
+                id: `build_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'build_page',
+                    description: `Building: ${intent.goal}`,
+                    tool: 'web_page_builder',
+                    agent: 'Dev',
+                    input: { request: intent.goal },
+                    dependsOn: []
+                }],
+                metadata: { complexity: 'medium', riskLevel: 'low' }
+            };
+        }
 
         // [ELITE FAST-PATH] Direct answer for general questions or chat
         if ((intent as any).type === 'general' || (intent as any).type === 'chat' || intent.goal.length < 30) {

@@ -253,6 +253,10 @@ export class AgentOrchestrator {
               || (node.task || '').replace(/^(answering|respond to)\s*:\s*/i, '').trim()
               || node.task;
             result = await executeTool('central_answer', { question }, executionContext);
+          } else if (node.tool === 'web_page_builder') {
+            // Deterministic build tool — run it directly so the weak-model tool-picker
+            // can't downgrade a "build a page" request back into a chat answer.
+            result = await executeTool('web_page_builder', node.input, executionContext);
           } else if (agent) {
             result = await agent.execute(node.task, node.input, executionContext);
           } else {
