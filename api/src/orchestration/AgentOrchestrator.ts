@@ -196,12 +196,18 @@ export class AgentOrchestrator {
           node.agent = refinedAgentType as AgentType;
         }
 
+        // Keep the tool consistent with the resolved agent (no repo task -> browser).
+        if (node.tool !== 'central_answer') {
+          if (node.agent === 'Browser') { node.tool = 'browser_run'; }
+          else if (node.tool === 'browser_run') { node.tool = 'shell_execute'; }
+        }
+
         node.status = "running";
         const startTime = Date.now();
         console.log(`[AgentOrchestrator] Executing node: ${node.id} (${node.task})`);
         broadcastThinkingDetail(memory.sessionId, `🚀 Running: ${node.task} via ${node.agent} Agent`);
 
-        const isBrowserNode = node.agent === 'Browser' || node.tool === 'browser_run' || (node.task && (node.task.toLowerCase().includes('browser') || node.task.includes('متصفح')));
+        const isBrowserNode = node.agent === 'Browser' || node.tool === 'browser_run';
         if (isBrowserNode) {
           broadcast({
             type: 'step_started',
@@ -347,88 +353,46 @@ export class AgentOrchestrator {
   }
 
   /**
-   * Fail-Safe Dynamic Agent Selection
+   * A task is a real web/browser task ONLY when it navigates to a URL or an
+   * explicit web page - NOT merely because it contains the word "browser" or
+   * "search" (which wrongly sent repo-search tasks to the browser).
    */
-  private async selectOptimalAgent(node: ExecutionNode, memory: ExecutionMemory): Promise<string> {
-    const history = memory.getSummary();
-    const prompt = `You are a Dispatcher for a Multi-Agent System.
-Task: ${node.task}
-Current History: ${history}
+  static isWebTask(text: string): boolean {
+    const t = String(text || '');
+    const low = t.toLowerCase();
+    if (/https?:\/\//.test(low)) return true;
+    if (/\bwww\.[a-z0-9-]+\.[a-z]{2,}/.test(low)) return true;
+    if (/\b[a-z0-9-]+\.(com|org|net|io|dev|co|app|gov|edu|ai)\b/.test(low)) return true;
+    if (/(navigate to|browse to|open (the )?(web ?site|url|page|link)|go to (the )?(web ?site|url|https?|page))/.test(low)) return true;
+    if (/(افتح|اذهب\s*(إلى|الى)|تصفّ?ح)\s*(الموقع|الرابط|صفحة|الصفحة|https?)/.test(t)) return true;
+    return false;
+  }
 
-Based on the task and recent results, which agent is best suited for this?
-Available Agents: Dev, Security, Browser, General.
-
-Return ONLY the agent name.`;
-
-    try {
-      const messages = [
-          { role: 'system', content: prompt },
-          { role: 'user', content: node.task }
-      ];
-      const responseText = await intelligentRouter.routeToModel(messages, {
-          type: 'complex_reasoning',
-          complexity: 'low',
-          requiresTools: false,
-          estimatedTokens: 100,
-          language: 'en'
-      } as any, undefined, undefined, undefined, undefined, undefined, this.context);
-
-      let decision: any;
-      try {
-          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-          decision = jsonMatch ? JSON.parse(jsonMatch[0]) : responseText.trim();
-      } catch (e) {
-          decision = responseText.trim();
-      }
-
-      const agent = typeof decision === 'string' ? decision : (decision.agent || decision.primary || 'General');
-      return ['Dev', 'Security', 'Browser', 'General'].includes(agent) ? agent : 'General';
-    } catch {
-      return node.agent; // Fallback to planned agent
+  /**
+   * Deterministic agent routing (no LLM call): instant and correct on free models.
+   */
+  private async selectOptimalAgent(node: ExecutionNode, _memory: ExecutionMemory): Promise<string> {
+    if (node.tool === 'central_answer' || /^(answering|respond to)\s*:/i.test(node.task || '')) {
+      return 'General';
     }
+    if (AgentOrchestrator.isWebTask(node.task) || AgentOrchestrator.isWebTask(JSON.stringify(node.input || ''))) {
+      return 'Browser';
+    }
+    const t = (node.task || '').toLowerCase();
+    if (/\b(security|vulnerab|exploit|owasp|penetration|cve)\b|أمان|ثغرة|اختراق/.test(t)) {
+      return 'Security';
+    }
+    return 'Dev';
   }
 
   /**
    * Professional-grade progress evaluation
    * Checks if the current path is still optimal.
    */
-  private async evaluateProgress(lastNode: ExecutionNode, memory: ExecutionMemory, dag: AgentDAG): Promise<{ shouldReplan: boolean }> {
-    if (lastNode.agent === 'Browser' || lastNode.tool === 'browser_run') {
-        return { shouldReplan: false };
-    }
-
-    const history = memory.getSummary();
-    const systemPrompt = `Analyze the current execution history and determine if we need to adjust the plan.
-Goal: ${dag.id}
-History: ${history}
-
-If the last result suggests a better path or a new requirement, set shouldReplan to true.`;
-
-    try {
-      const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Evaluate progress for goal: ${dag.id}` }
-      ];
-      
-      const responseText = await intelligentRouter.routeToModel(messages, {
-        type: 'complex_reasoning',
-        complexity: 'low',
-        requiresTools: false,
-        estimatedTokens: 100,
-        language: 'en'
-      } as any, undefined, undefined, undefined, undefined, undefined, this.context);
-      
-      let evaluation: any;
-      try {
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        evaluation = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
-      } catch (e) {
-        evaluation = {};
-      }
-      return { shouldReplan: !!evaluation.shouldReplan };
-    } catch {
-      return { shouldReplan: false };
-    }
+  private async evaluateProgress(_lastNode: ExecutionNode, _memory: ExecutionMemory, _dag: AgentDAG): Promise<{ shouldReplan: boolean }> {
+    // Mid-flight LLM replanning disabled: on free models it fired spurious replans
+    // that exploded the DAG and slowed everything. Saves one LLM call per node.
+    return { shouldReplan: false };
   }
 
   /**

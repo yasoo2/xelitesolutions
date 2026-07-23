@@ -23,9 +23,12 @@ export class DevAgent extends BaseAgent {
       return { ok: answer.ok, output: answer.output, error: answer.error };
     }
 
-    // Safety check: If a browser task lands in DevAgent (e.g. from failover recovery node), delegate to browser_run
+    // Delegate to the browser ONLY for real web navigation (URL / "open the website").
     const tLower = task.toLowerCase();
-    const isBrowserTask = tLower.includes('متصفح') || tLower.includes('افتح') || tLower.includes('ابحث') || tLower.includes('browser') || tLower.includes('navigate') || tLower.includes('search');
+    const isBrowserTask = /https?:\/\//.test(tLower)
+      || /\bwww\.[a-z0-9-]+\.[a-z]{2,}/.test(tLower)
+      || /(navigate to|browse to|open (the )?(web ?site|url|page|link)|go to (the )?(web ?site|url|https?))/.test(tLower)
+      || /(افتح|اذهب)\s*(الموقع|الرابط|صفحة|https?)/.test(task);
     if (isBrowserTask) {
         console.log(`[DevAgent] Redirecting browser task to browser_run tool...`);
         const { executeTool } = await import('../../modules/services/ToolService');
