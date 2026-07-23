@@ -1,6 +1,6 @@
 import { Run } from '../../shared/models/run';
 import { AgentOrchestrator } from '../../orchestration/AgentOrchestrator';
-import { broadcastThinkingDetail } from '../../api/ws';
+import { broadcastThinkingDetail, broadcast } from '../../api/ws';
 // [ARCHITECTURE] Required connections for self-healing pipeline (AGENTS.md)
 import { RepairTicketService, type RepairTicket } from './RepairTicketService';
 import { SelfFixService } from './SelfFixService';
@@ -50,19 +50,70 @@ export class AgentLoopService {
                 context: { userId, sessionId, modelConfig }
             });
 
+            // [FIX] Surface the final answer to the chat UI.
+            // The /run/start route is fire-and-forget, so without this broadcast the
+            // orchestrator's result is discarded and the chat shows no reply even
+            // though the answer was computed correctly. We emit a 'text' event (the
+            // assistant message the frontend renders) plus 'run_finished' (stops the
+            // loading spinner). sessionId is included both top-level and in data so
+            // the frontend's session filter accepts it.
+            const answerText = AgentLoopService.extractAnswer(result);
+            const finalText = result.ok
+                ? (answerText || '✅ تم التنفيذ.')
+                : `⚠️ ${answerText || 'تعذّر إكمال الطلب.'}`;
+            broadcast({ type: 'text', sessionId, data: { text: finalText, sessionId }, runId } as any);
+            broadcast({ type: 'run_finished', runId, data: { runId, ok: result.ok, sessionId } } as any);
+
             // Update run status upon completion
             if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {
                 await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } }).catch(() => {});
             }
 
             return result;
-        } catch (error) {
+        } catch (error: any) {
             console.error(`[AgentLoopService] Fatal runtime error:`, error);
+            // Still tell the UI so it stops "thinking" and shows what went wrong.
+            broadcast({ type: 'text', sessionId, data: { text: `⚠️ ${error?.message || 'خطأ غير متوقع في التنفيذ'}`, sessionId }, runId } as any);
+            broadcast({ type: 'run_finished', runId, data: { runId, ok: false, sessionId } } as any);
             if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {
                 await Run.findByIdAndUpdate(runId, { $set: { status: 'failed' } }).catch(() => {});
             }
             throw error;
         }
+    }
+
+    /**
+     * Extracts a human-readable answer string from an orchestrator result.
+     * The orchestrator returns { ok, result } where result maps stepId -> output.
+     * For a chat/direct-answer node this output is the reply text.
+     */
+    private static extractAnswer(result: { ok: boolean; result: any }): string {
+        const toText = (v: any): string => {
+            if (v == null) return '';
+            if (typeof v === 'string') return v.trim();
+            if (typeof v === 'object') {
+                if (typeof v.output === 'string') return v.output.trim();
+                if (typeof v.text === 'string') return v.text.trim();
+                if (typeof v.answer === 'string') return v.answer.trim();
+                if (typeof v.message === 'string') return v.message.trim();
+                try { return JSON.stringify(v); } catch { return String(v); }
+            }
+            return String(v);
+        };
+        const r = result?.result;
+        if (r == null) return '';
+        if (typeof r === 'string') return r.trim();
+        if (typeof r === 'object') {
+            for (const key of ['direct_response', 'recovery_node']) {
+                if (r[key] != null) { const t = toText(r[key]); if (t) return t; }
+            }
+            const vals = Object.values(r);
+            for (let i = vals.length - 1; i >= 0; i--) {
+                const t = toText(vals[i]);
+                if (t) return t;
+            }
+        }
+        return '';
     }
 
     /**
