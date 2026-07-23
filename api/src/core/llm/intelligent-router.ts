@@ -4,7 +4,7 @@
  * Supports: Llama 3.1 70B, Mixtral 8x7B, Gemma 2 9B (all via Groq - FREE!)
  */
 
-import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider, openAIProvider, cerebrasProvider, mistralProvider, huggingfaceProvider, llm7Provider } from './providers/registry';
+import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider, openAIProvider, cerebrasProvider, mistralProvider, huggingfaceProvider, llm7Provider, duckAIProvider } from './providers/registry';
 import { LLMCacheTool } from '../../modules/tools/definitions/LLMCacheTool';
 import { OpenAIProvider } from './providers/openai';
 import { GeminiProvider } from './providers/gemini';
@@ -980,6 +980,18 @@ export async function routeToModel(
         });
     }
 
+    // 9b. DuckDuckGo AI — additional KEYLESS brain (GPT-4o-mini / Llama 3.3 70B).
+    if (duckAIProvider.isAvailable()) {
+        meshProviders.push({
+            name: 'DuckAI (Keyless)',
+            run: async () => {
+                const res = await duckAIProvider.chatComplete(flatMessages, undefined, tools);
+                if (!res || res.length < 2) throw new Error('DuckAI response too short');
+                return res;
+            }
+        });
+    }
+
     meshProviders.push({
         name: 'DeepSeek (Pollinations)',
         run: async () => {
@@ -1032,8 +1044,8 @@ export async function routeToModel(
             if (p.name === 'Local (Auto)') {
                 timeoutValue = taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme' ? 25000 : 15000;
             }
-            if (p.name === 'LLM7 (Keyless)') {
-                // Keyless gateways can be slower; give the primary keyless brain room.
+            if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)') {
+                // Keyless gateways can be slower; give the keyless brains room.
                 timeoutValue = taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme' ? 25000 : 18000;
             }
             if (p.name === 'Pollinations (Backup)' || p.name === 'DeepSeek (Pollinations)') {

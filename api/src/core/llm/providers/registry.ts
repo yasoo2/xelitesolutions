@@ -9,6 +9,7 @@ import { OpenAIProvider, openAIProvider } from './openai';
 import { CerebrasProvider, cerebrasProvider } from './cerebras';
 import { MistralProvider, mistralProvider } from './mistral';
 import { LLM7Provider, llm7Provider } from './llm7';
+import { DuckAIProvider, duckAIProvider } from './duckai';
 
 // Singleton instances
 export const pollinationsProvider = new PollinationsProvider();
@@ -19,6 +20,7 @@ export const localProvider = new LocalProvider();
 export { geminiProvider, GeminiProvider, deepSeekProvider, openAIProvider, OpenAIProvider };
 export { cerebrasProvider, CerebrasProvider, mistralProvider, MistralProvider };
 export { llm7Provider, LLM7Provider };
+export { duckAIProvider, DuckAIProvider };
 
 export default {
     pollinations: pollinationsProvider,
@@ -31,5 +33,6 @@ export default {
     openai: openAIProvider,
     cerebras: cerebrasProvider,
     mistral: mistralProvider,
-    llm7: llm7Provider
+    llm7: llm7Provider,
+    duckai: duckAIProvider
 };
