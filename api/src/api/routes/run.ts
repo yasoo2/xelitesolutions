@@ -7,6 +7,7 @@ import { ToolExecution } from '../../shared/models/toolExecution';
 import { Artifact } from '../../shared/models/artifact';
 import { Session } from '../../shared/models/session';
 import { traceManager } from '../../modules/services/TraceManager';
+import { broadcast } from '../ws';
 
 const router = Router();
 
@@ -33,6 +34,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
             store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'user', content: text, createdAt: new Date() });
         }
+    } catch { /* non-fatal */ }
+
+    // Echo the user's message to the chat via WebSocket so it shows in the
+    // conversation. The composer that posts here does not add it client-side, so
+    // without this only Joe's reply would appear.
+    try {
+        broadcast({ type: 'user_input', sessionId, data: { text, sessionId }, id: `uin-${Date.now()}` } as any);
     } catch { /* non-fatal */ }
 
     try {
