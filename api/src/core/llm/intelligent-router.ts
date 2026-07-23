@@ -531,6 +531,13 @@ async function callGroq(model: string, messages: any[], onPartial?: (delta: stri
  * Intelligent routing with automatic fallback
  * Works WITHOUT API keys - uses Pollinations as free fallback
  */
+// Remembers custom-provider routes (provider+key+model) that failed with an
+// auth/config error (400/401/403 / invalid key). Without this a bad key entered
+// in the UI is retried on EVERY call - four failed Gemini attempts per step -
+// which silently makes Joe extremely slow. Once blocked, we skip straight to the
+// FREE provider mesh for the rest of the process.
+const failedCustomRoutes = new Set<string>();
+
 export async function routeToModel(
     messages: any[],
     analysis?: TaskAnalysis,
@@ -714,6 +721,10 @@ export async function routeToModel(
         const { provider: cfgProvider, model: cfgModel, apiKey: cfgApiKey, baseUrl: cfgBaseUrl } = context.modelConfig;
         const isAuto = !cfgProvider || cfgProvider === 'mock' || cfgProvider === 'auto' || cfgProvider === 'free' || cfgProvider === 'default' || cfgApiKey === 'auto-mode';
         if (!isAuto) {
+          const routeKey = `${cfgProvider}:${String(cfgApiKey || '').slice(0, 12)}:${cfgModel || ''}`;
+          if (failedCustomRoutes.has(routeKey)) {
+            console.log(`[IntelligentRouter] Skipping known-bad custom route ${cfgProvider}/${cfgModel} (previously failed auth/config) - using FREE providers.`);
+          } else {
             console.log(`✨ [IntelligentRouter] Custom Route: Provider=${cfgProvider}, Model=${cfgModel}, HasKey=${!!cfgApiKey}, HasUrl=${!!cfgBaseUrl}`);
             
             const effectiveApiKey = (cfgApiKey && cfgApiKey !== 'auto-mode') ? cfgApiKey.trim() : 
@@ -772,7 +783,14 @@ export async function routeToModel(
                 }
             } catch (err: any) {
                 console.error(`[IntelligentRouter] Direct custom provider routing failed: ${err.message}. Falling back to default routing.`);
+                const status = (err && (err.status || err.statusCode)) || 0;
+                const msg = String(err?.message || '');
+                if (status === 400 || status === 401 || status === 403 || /\b(400|401|403)\b|api[_ -]?key|invalid|unauthor|permission/i.test(msg)) {
+                    failedCustomRoutes.add(routeKey);
+                    console.warn(`[IntelligentRouter] Custom route ${cfgProvider}/${cfgModel} DISABLED for this session (auth/config error). Joe will use FREE providers only - fix or remove the key in the model settings.`);
+                }
             }
+          }
         }
     }
 
