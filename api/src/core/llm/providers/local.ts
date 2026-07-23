@@ -36,15 +36,26 @@ export class LocalProvider {
         const baseURL = this.baseUrl();
         if (!baseURL) throw new Error('LOCAL_LLM_BASE_URL not configured');
 
+        // Local CPU inference of a 7-8B model — especially the first (cold) request
+        // that loads the model into RAM — easily exceeds 20s. Use a generous timeout
+        // (override with LOCAL_LLM_TIMEOUT ms) and no retries so Joe waits for the
+        // local brain instead of aborting and falling back to a weaker provider.
+        const timeoutMs = (() => {
+            const t = parseInt(String(process.env.LOCAL_LLM_TIMEOUT || '').trim(), 10);
+            return Number.isFinite(t) && t > 0 ? t : 180000;
+        })();
+
         const client = new OpenAI({
             apiKey: this.apiKey(),
             baseURL,
+            timeout: timeoutMs,
+            maxRetries: 0,
         });
 
         const completion = await client.chat.completions.create({
             model: model || this.model(),
             messages: messages.map(m => ({ role: m.role, content: m.content })) as any,
-        }, { timeout: 20000 });
+        }, { timeout: timeoutMs });
 
         return completion.choices[0]?.message?.content || '';
     }
