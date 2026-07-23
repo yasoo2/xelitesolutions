@@ -64,6 +64,14 @@ export class AgentLoopService {
             broadcast({ type: 'text', sessionId, data: { text: finalText, sessionId }, runId } as any);
             broadcast({ type: 'run_finished', runId, data: { runId, ok: result.ok, sessionId } } as any);
 
+            // Persist Joe's reply too (offline/JSON mode) so reloads show it.
+            try {
+                if (process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
+                    const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
+                    store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: finalText, createdAt: new Date(), runId });
+                }
+            } catch { /* non-fatal */ }
+
             // Update run status upon completion
             if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {
                 await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } }).catch(() => {});

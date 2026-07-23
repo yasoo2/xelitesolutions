@@ -1,8 +1,9 @@
 @echo off
 REM ============================================================
 REM  start-joe.bat - run Joe locally on port 5002 (Windows)
-REM  No API key: runs on FREE AI (LLM7 / Pollinations)
-REM  Usage: double-click this file
+REM  No API key: runs on FREE AI (local Ollama / keyless gateways)
+REM  Builds BOTH the web UI and the API so updates always apply.
+REM  Usage: double-click this file (or:  .\start-joe.bat )
 REM ============================================================
 setlocal
 cd /d "%~dp0"
@@ -24,25 +25,40 @@ echo ============================================
 where node >nul 2>nul
 if errorlevel 1 goto no_node
 
-cd api
-
-if exist node_modules goto do_build
+REM ---------- WEB (frontend UI) ----------
+cd web
+if exist node_modules goto web_build
 echo.
-echo [1/3] Installing dependencies - first run only - may take a few minutes...
+echo [1/4] Installing web dependencies - first run only - may take a few minutes...
 call npm install --no-audit --no-fund --legacy-peer-deps
-if errorlevel 1 goto install_failed
-goto do_build
+if errorlevel 1 goto web_install_failed
 
-:do_build
+:web_build
 echo.
-echo [2/3] Building API...
+echo [2/4] Building the web UI...
 call npm run build
-if errorlevel 1 goto build_failed
-echo [2/3] API built OK
+if errorlevel 1 goto web_build_failed
+echo [2/4] Web UI built OK
+cd ..
+
+REM ---------- API (backend) ----------
+cd api
+if exist node_modules goto api_build
+echo.
+echo [3/4] Installing API dependencies - first run only - may take a few minutes...
+call npm install --no-audit --no-fund --legacy-peer-deps
+if errorlevel 1 goto api_install_failed
+
+:api_build
+echo.
+echo [3/4] Building the API...
+call npm run build
+if errorlevel 1 goto api_build_failed
+echo [3/4] API built OK
 
 :run
 echo.
-echo [3/3] Starting Joe  --  http://localhost:5002/joe   - press Ctrl+C to stop
+echo [4/4] Starting Joe  --  http://localhost:5002/joe   - press Ctrl+C to stop
 node dist\index.js
 echo.
 echo [!] Joe stopped. Restarting in 3 seconds...
@@ -54,12 +70,22 @@ echo [X] Node.js is not installed. Install it from https://nodejs.org then retry
 pause
 exit /b 1
 
-:install_failed
-echo [X] npm install failed. See the errors above.
+:web_install_failed
+echo [X] Web npm install failed. See the errors above.
 pause
 exit /b 1
 
-:build_failed
+:web_build_failed
+echo [X] Web build failed. See the errors above.
+pause
+exit /b 1
+
+:api_install_failed
+echo [X] API npm install failed. See the errors above.
+pause
+exit /b 1
+
+:api_build_failed
 echo [X] Build failed. See the errors above.
 pause
 exit /b 1

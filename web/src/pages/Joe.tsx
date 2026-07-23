@@ -330,7 +330,13 @@ export default function Joe() {
                     return [];
                 });
 
-                setMessages(validMessages as Message[]);
+                // Do NOT wipe the on-screen conversation when the server has no
+                // persisted history for this session (offline/JSON mode, or a brand
+                // new session). Otherwise the message the user just sent — and Joe's
+                // streamed reply — disappear, leaving only Joe's answer.
+                if (validMessages.length > 0) {
+                    setMessages(validMessages as Message[]);
+                }
             } catch {
                 // Silently handle message load failures
             }

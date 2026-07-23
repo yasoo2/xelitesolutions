@@ -25,6 +25,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         return res.status(400).json({ error: 'Goal text is required' });
     }
 
+    // Persist the user message in offline/JSON mode so the chat shows the FULL
+    // conversation (user + Joe) and it survives reloads. Agent runs go through this
+    // route, which previously saved nothing — so only Joe's reply ever appeared.
+    try {
+        if (process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
+            const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
+            store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'user', content: text, createdAt: new Date() });
+        }
+    } catch { /* non-fatal */ }
+
     try {
         const traceId = traceManager.startTrace(sessionId || 'anonymous', text);
         
