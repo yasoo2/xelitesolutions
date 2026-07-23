@@ -1,38 +1,69 @@
 # ============================================================
-# start-joe.ps1 — تشغيل Joe API على المنفذ 5002 بشكل دائم
+# start-joe.ps1 — تشغيل Joe محلياً على المنفذ 5002 (ويندوز)
+# بلا مفتاح: يعمل على الذكاء المجاني (LLM7 / Pollinations)
 # يعيد التشغيل تلقائياً عند الانهيار
+# التشغيل:  انقر بزر الفأرة الأيمن على الملف -> "Run with PowerShell"
+#           أو من PowerShell:  ./start-joe.ps1
 # ============================================================
 
+# --- الوضع المحلي أحادي المستخدم (بلا قاعدة بيانات وبلا تسجيل دخول) ---
 $env:PORT = "5002"
 $env:JWT_SECRET = "dev-secret-joe-local"
-$env:PERSISTENCE_MODE = "JSON"
-$env:MOCK_DB = "true"
+$env:PERSISTENCE_MODE = "JSON"     # حفظ في ملفات JSON بدل MongoDB
+$env:MOCK_DB = "true"              # لا حاجة لقاعدة بيانات
+$env:ENABLE_AUTH_BYPASS = "true"   # مستخدم واحد: الأدوات تعمل بلا تسجيل دخول
+$env:AUTO_APPROVE_ALL = "1"        # موافقة تلقائية على تنفيذ الأدوات
+$env:NODE_ENV = "development"
 
 $apiDir = "$PSScriptRoot\api"
 
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "  JOE API — Auto-Restart Mode" -ForegroundColor Cyan
+Write-Host "  JOE — Local Free-AI Mode (no API key)" -ForegroundColor Cyan
 Write-Host "  http://localhost:5002/joe" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor Cyan
 
-# بناء API أولاً
-Write-Host "`n[1/2] Building API..." -ForegroundColor Yellow
-Push-Location $apiDir
-npm run build 2>&1 | Out-Null
-Pop-Location
-Write-Host "[1/2] API built OK" -ForegroundColor Green
+# التحقق من وجود Node
+$node = Get-Command node -ErrorAction SilentlyContinue
+if (-not $node) {
+    Write-Host "[X] Node.js غير مثبّت. ثبّته من https://nodejs.org ثم أعد المحاولة." -ForegroundColor Red
+    Read-Host "اضغط Enter للخروج"
+    exit 1
+}
 
-# تشغيل مع إعادة تشغيل تلقائية
+Push-Location $apiDir
+
+# [1/3] تثبيت التبعيات إن لزم
+if (-not (Test-Path "$apiDir\node_modules")) {
+    Write-Host "`n[1/3] Installing dependencies (first run only, قد يأخذ دقائق)..." -ForegroundColor Yellow
+    npm install --no-audit --no-fund --legacy-peer-deps
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[X] فشل تثبيت التبعيات. راجع الأخطاء أعلاه." -ForegroundColor Red
+        Pop-Location; Read-Host "اضغط Enter للخروج"; exit 1
+    }
+} else {
+    Write-Host "`n[1/3] Dependencies already installed." -ForegroundColor Green
+}
+
+# [2/3] بناء الـ API (تظهر الأخطاء إن وُجدت)
+Write-Host "`n[2/3] Building API..." -ForegroundColor Yellow
+npm run build
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[X] فشل البناء. راجع الأخطاء أعلاه." -ForegroundColor Red
+    Pop-Location; Read-Host "اضغط Enter للخروج"; exit 1
+}
+Write-Host "[2/3] API built OK" -ForegroundColor Green
+
+Pop-Location
+
+# [3/3] التشغيل مع إعادة تشغيل تلقائية
 $restartCount = 0
 while ($true) {
     $restartCount++
-    Write-Host "`n[2/2] Starting API (attempt #$restartCount)..." -ForegroundColor Yellow
-    
+    Write-Host "`n[3/3] Starting Joe (attempt #$restartCount)  ->  http://localhost:5002/joe" -ForegroundColor Yellow
     Push-Location $apiDir
     node dist/index.js
     $exitCode = $LASTEXITCODE
     Pop-Location
-    
-    Write-Host "`n[!] API stopped (exit code: $exitCode). Restarting in 3 seconds..." -ForegroundColor Red
+    Write-Host "`n[!] Joe stopped (exit code: $exitCode). Restarting in 3 seconds... (اضغط Ctrl+C للإيقاف)" -ForegroundColor Red
     Start-Sleep -Seconds 3
 }
