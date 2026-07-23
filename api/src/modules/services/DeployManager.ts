@@ -252,6 +252,8 @@ export class DeployManager {
     }
 
     private startAutoDeployPollerInternal() {
+        const offline = process.env.MOCK_DB === "1" || process.env.MOCK_DB === "true" || process.env.PERSISTENCE_MODE === "JSON" || process.env.ENABLE_AUTH_BYPASS === "true" || process.env.DISABLE_AUTO_DEPLOY === "1" || process.env.NODE_ENV !== "production";
+        if (offline) { logger.info("[DeployManager] Auto-deploy poller disabled (local/offline mode)."); return; }
         if (this.pollerInterval) clearInterval(this.pollerInterval);
         this.pollerInterval = setInterval(() => {
             executionFirewall.runAsSystem(() => {
