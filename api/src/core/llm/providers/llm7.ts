@@ -1,8 +1,6 @@
 /**
- * LLM7 Provider  (KEYLESS)
- * Free, anonymous, OpenAI-compatible gateway (https://llm7.io). Primary keyless
- * brain for Joe. Discovers available models from /v1/models at runtime instead
- * of hard-coding names (which break with 400 "model unavailable").
+ * LLM7 Provider (KEYLESS) - free anonymous OpenAI-compatible gateway (llm7.io).
+ * Discovers models from /v1/models, skips premium/paid models, remembers 401s.
  * Overrides: LLM7_BASE_URL, LLM7_MODEL, LLM7_API_KEY, LLM7_DISABLE=1
  */
 import OpenAI from 'openai';
@@ -10,15 +8,17 @@ import OpenAI from 'openai';
 const LLM7_BASE_URL = (process.env.LLM7_BASE_URL || 'https://api.llm7.io/v1').trim();
 const PREFERRED_MODELS = [
     'gpt-4.1-mini', 'gpt-4o-mini', 'gpt-4.1-nano', 'deepseek-v3', 'deepseek-r1',
-    'mistral-small-2503', 'qwen2.5-coder-32b-instruct', 'gemini', 'nova-fast',
-    'openai-fast', 'openai', 'openai-large'
+    'mistral-small-2503', 'mistral-small-3.1-24b-instruct-2503', 'qwen2.5-coder-32b-instruct',
+    'qwen2.5-72b-instruct', 'gemini', 'nova-fast', 'openai-fast', 'openai', 'openai-large'
 ];
+const PREMIUM_PREFIXES = ['claude', 'gpt-5', 'o1', 'o3', 'o4', 'grok', 'gemini-2.5-pro'];
 
 export class LLM7Provider {
     private client: OpenAI;
     private apiKey: string;
     private discovered: string[] | null = null;
     private discoveredAt = 0;
+    private blocked = new Set<string>();
 
     constructor() {
         this.apiKey = (process.env.LLM7_API_KEY || 'unused').trim() || 'unused';
@@ -27,6 +27,11 @@ export class LLM7Provider {
 
     isAvailable(): boolean {
         return String(process.env.LLM7_DISABLE || '').trim() !== '1';
+    }
+
+    private isPremium(id: string): boolean {
+        const low = id.toLowerCase();
+        return PREMIUM_PREFIXES.some(p => low.startsWith(p) || low.includes(p));
     }
 
     private async getAvailableModels(): Promise<string[]> {
@@ -48,16 +53,17 @@ export class LLM7Provider {
     private async buildCandidates(forced?: string): Promise<string[]> {
         const available = await this.getAvailableModels();
         const out: string[] = [];
-        const push = (m?: string) => { if (m && !out.includes(m)) out.push(m); };
+        const ok = (m?: string) => !!m && !this.blocked.has(m) && !out.includes(m);
+        const push = (m?: string) => { if (ok(m)) out.push(m as string); };
         push(forced);
         push((process.env.LLM7_MODEL || '').trim());
         if (available.length > 0) {
             for (const p of PREFERRED_MODELS) if (available.includes(p)) push(p);
-            for (const a of available) push(a);
+            for (const a of available) if (!this.isPremium(a)) push(a);
         } else {
             for (const p of PREFERRED_MODELS) push(p);
         }
-        return out.slice(0, 8);
+        return out.slice(0, 6);
     }
 
     async chatComplete(messages: any[], model?: string, tools?: any[]): Promise<string> {
@@ -85,7 +91,9 @@ export class LLM7Provider {
                 lastErr = new Error('LLM7 empty response');
             } catch (error: any) {
                 lastErr = error;
-                console.warn(`[LLM7] model "${m}" failed: ${error.status || error.message}`);
+                const status = error?.status || 0;
+                if (status === 401 || status === 402 || status === 403) this.blocked.add(m);
+                console.warn(`[LLM7] model "${m}" failed: ${status || error.message}`);
             }
         }
         throw new Error(`LLM7 keyless gateway failed: ${lastErr?.message || 'unknown error'}`);
