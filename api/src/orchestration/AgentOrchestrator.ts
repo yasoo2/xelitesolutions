@@ -234,11 +234,20 @@ export class AgentOrchestrator {
             userId: goalContext?.userId,
             traceId,
             memory: memory.getHistory(),
-            modelConfig: goalContext?.modelConfig
+            modelConfig: goalContext?.modelConfig,
+            language: goalContext?.language
         };
 
+        const isDirectAnswer = node.tool === 'central_answer'
+          || /^(answering|respond to)\s*:/i.test(node.task || '');
+
         try {
-          if (agent) {
+          if (isDirectAnswer) {
+            const question = node.input?.question
+              || (node.task || '').replace(/^(answering|respond to)\s*:\s*/i, '').trim()
+              || node.task;
+            result = await executeTool('central_answer', { question }, executionContext);
+          } else if (agent) {
             result = await agent.execute(node.task, node.input, executionContext);
           } else {
             result = await executeTool(node.tool, { ...node.input, context: memory.getHistory() }, executionContext);

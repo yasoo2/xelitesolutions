@@ -28,7 +28,8 @@ Task: ${task}
 Input: ${JSON.stringify(input)}
 Context: ${JSON.stringify(context)}
 
-Choose the single best tool for this task: shell_execute, read_file, write_file, browser_run, grep_search, ls, npm_manager.
+Choose the single best tool for this task: central_answer, shell_execute, read_file, write_file, browser_run, grep_search, ls, npm_manager.
+Use "central_answer" for greetings, conversation, or any question that should be answered directly in words (do NOT use browser_run for a simple reply).
 Explain your reasoning then return a JSON object.
 
 JSON Format:
