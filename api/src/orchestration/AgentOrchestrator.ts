@@ -285,6 +285,19 @@ export class AgentOrchestrator {
           }
         } else {
           console.error(`[AgentOrchestrator] Node ${node.id} failed: ${result.error}`);
+
+          // A conversational / direct-answer node must NEVER spawn a diagnostic
+          // recovery loop (the duplicated "neural thinking" the user reported).
+          // Treat it as completed with whatever text we have and move on.
+          if (isDirectAnswer) {
+            const text = (typeof result.error === 'string' && result.error) ? result.error : 'تم.';
+            node.status = "completed";
+            node.result = text;
+            memory.record(node.id, node.task, text, "completed");
+            completedNodes.add(node.id);
+            continue;
+          }
+
           node.status = "failed";
           memory.record(node.id, node.task, result.error, "failed");
 

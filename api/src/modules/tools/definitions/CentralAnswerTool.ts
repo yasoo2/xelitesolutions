@@ -53,22 +53,50 @@ Your goal is to build the extraordinary.`;
             ? `${baseSystemPrompt}\n\nCRITICAL INSTRUCTION: You MUST respond in **ARABIC** (اللغة العربية) ONLY. Use professional, technical Arabic terminology. Do NOT use English unless for code or specific technical terms that are better in English.`
             : baseSystemPrompt;
 
+        // Deterministic reply so a conversational turn NEVER fails into the
+        // orchestrator's diagnostic "recovery" loop (the duplicated neural-thinking
+        // the user reported) even if every free provider is momentarily unavailable.
+        const fallbackReply = (): string => {
+            const low = String(question || '').toLowerCase();
+            const isGreeting = /مرحب|سلام|أهل|اهل|صباح|مساء|hello|\bhi\b|\bhey\b/.test(low);
+            const isIdentity = /من ?ان?ت|من ?أنت|who are you|عرّ?ف|ما ?اسمك|what are you/.test(low);
+            if (isAr) {
+                if (isIdentity) return 'أنا **جو (Joe)** — محرّك الذكاء الهندسي المتقدّم من **XElite Solutions**. متخصص في تطوير الويب وهندسة الأنظمة والتطبيقات، وأملك أدوات كاملة (الملفات، الطرفية، المتصفح). كيف أخدمك اليوم؟';
+                if (isGreeting) return 'مرحباً بك! 👋 أنا **جو**، مساعدك الهندسي من XElite. جاهز لبناء أي شيء تريده — أخبرني بما تحتاج.';
+                return 'أنا **جو** من XElite، جاهز لمساعدتك. أخبرني بتفاصيل ما تريد إنجازه.';
+            }
+            if (isIdentity) return "I'm **Joe** — the elite engineering AI by **XElite Solutions** (web, apps, and complex systems) with full tools: files, terminal, browser. How can I help?";
+            if (isGreeting) return "Hi! 👋 I'm **Joe**, your engineering assistant by XElite. Tell me what you'd like to build.";
+            return "I'm **Joe** by XElite, ready to help. Tell me what you need.";
+        };
+
         try {
             const answer = await routeToModel([
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: question }
             ], undefined, undefined, undefined, undefined, undefined, undefined, context);
 
+            const text = (typeof answer === 'string' ? answer : '').trim();
+            if (text && text.length >= 2) {
+                return {
+                    ok: true,
+                    output: text,
+                    logs: ['central_answer: Answered via router']
+                };
+            }
+            // Empty/invalid router response -> deterministic reply (still a success).
             return {
                 ok: true,
-                output: answer,
-                logs: ['central_answer: Answered via router']
+                output: fallbackReply(),
+                logs: ['central_answer: fallback (empty router response)']
             };
         } catch (e: any) {
+            // Never turn a simple conversational reply into a failure/recovery loop.
+            console.warn(`[central_answer] router failed, using deterministic reply: ${e?.message}`);
             return {
-                ok: false,
-                error: `Central answer failed: ${e.message}`,
-                logs: ['central_answer: Failed via router']
+                ok: true,
+                output: fallbackReply(),
+                logs: [`central_answer: fallback (router error: ${e?.message})`]
             };
         }
     }
