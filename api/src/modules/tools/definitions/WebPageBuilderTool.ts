@@ -91,15 +91,27 @@ ${isAr ? '- The page is in Arabic: set <html lang="ar" dir="rtl"> and write all 
 
         const url = `http://localhost:${PORT}/artifacts/${filename}`;
 
-        // Open it in the live Preview panel (frontend switches to the preview tab).
+        // Stream the engineering steps to the terminal panel so the user SEES the work.
+        const term = (line: string) => {
+            try { ['local', 'default', 'panel-terminal'].forEach(id => broadcast({ type: 'terminal_output', id, data: line + '\r\n' } as any)); } catch { /* ignore */ }
+        };
+        term('web_page_builder: generating page with the local AI...');
+        term('generated ' + html.length + ' bytes of HTML');
+        term('wrote file: ' + filename);
+        term('preview: ' + url);
+
+        // Open it in the live Preview panel. Two signals for reliability: preview_ready
+        // and a step_done carrying an internal URL (the UI auto-opens internal URLs).
         try {
             broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any);
+            broadcast({ type: 'step_done', tool: 'web_page_builder', sessionId, data: { result: { ok: true, output: { url, previewUrl: url } } } } as any);
         } catch { /* non-fatal */ }
         if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `✅ تم بناء الصفحة وفتحها في المعاينة` : `✅ Page built and opened in Preview`);
 
+        const codeBlock = '```html\n' + html + '\n```';
         const message = isAr
-            ? `✅ تم بناء الصفحة فعلياً وحفظها وعرضها في نافذة المعاينة (Preview).\n\n📄 الملف: ${filename}\n🌐 الرابط: ${url}\n\nاطلب أي تعديل وسأعيد بناءها.`
-            : `✅ Built the page for real, saved it, and opened it in the Preview panel.\n\n📄 File: ${filename}\n🌐 URL: ${url}\n\nAsk for any change and I'll rebuild it.`;
+            ? `✅ تم بناء الصفحة فعلياً وحفظها وعرضها في المعاينة.\n\n📄 الملف: ${filename}\n🌐 الرابط: ${url}\n\nإن لم تفتح المعاينة تلقائياً، افتح الرابط أعلاه أو تبويب Preview.\n\nالكود الكامل:\n${codeBlock}`
+            : `✅ Built the page, saved it, and opened it in Preview.\n\n📄 File: ${filename}\n🌐 URL: ${url}\n\nIf preview didn't open, open the URL above or the Preview tab.\n\nFull code:\n${codeBlock}`;
 
         return { ok: true, output: { message, url, previewUrl: url, path: filename }, logs };
     }
