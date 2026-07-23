@@ -1042,7 +1042,13 @@ export async function routeToModel(
                 timeoutValue = 20000;
             }
             if (p.name === 'Local (Auto)') {
-                timeoutValue = taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme' ? 25000 : 15000;
+                // Local CPU inference — especially the first (cold) request that loads
+                // the model into RAM — can take far longer than a network call. Give it
+                // generous room (override with LOCAL_LLM_TIMEOUT ms) so Joe actually uses
+                // the local brain instead of timing out and falling back to a weaker
+                // keyless gateway. It still returns as soon as the model responds.
+                const envT = parseInt(String(process.env.LOCAL_LLM_TIMEOUT || '').trim(), 10);
+                timeoutValue = Number.isFinite(envT) && envT > 0 ? envT : 180000;
             }
             if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)') {
                 // Keyless gateways can be slower; give the keyless brains room.
