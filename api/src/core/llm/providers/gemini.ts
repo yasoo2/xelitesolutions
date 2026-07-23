@@ -10,7 +10,7 @@ const GEMINI_API_KEY = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
 // Robust Model List with Fallbacks
-const DEFAULT_MODEL = 'models/gemini-2.0-flash';
+const DEFAULT_MODEL = (process.env.GEMINI_MODEL || 'models/gemini-flash-latest').trim();
 const FALLBACK_MODELS = [
     'models/gemini-flash-latest',
     'models/gemini-2.0-flash-exp',
@@ -202,8 +202,9 @@ export class GeminiProvider {
                 const isBadRequest = error.status === 400 || error.message?.includes('400');
 
                 if (isQuota) {
-                    console.error(`[Gemini] Model ${currentModel} QUOTA EXCEEDED.`);
-                    throw error;
+                    console.warn(`[Gemini] Model ${currentModel} QUOTA EXCEEDED, trying next model...`);
+                    lastError = error;
+                    continue;
                 }
 
                 const errorDetail = await (async () => {
@@ -274,8 +275,9 @@ export class GeminiProvider {
             } catch (error: any) {
                 const status = Number(error?.status ?? error?.response?.status ?? NaN);
                 if (status === 429) {
-                    console.error(`[Gemini] Tool Chat model ${currentModel} QUOTA EXHAUSTED.`);
-                    throw error;
+                    console.warn(`[Gemini] Tool Chat model ${currentModel} QUOTA EXHAUSTED, trying next model...`);
+                    lastError = error;
+                    continue;
                 }
 
                 // Extract comprehensive error details for debugging
@@ -417,8 +419,9 @@ export class GeminiProvider {
             } catch (error: any) {
                 const status = Number(error?.status ?? error?.response?.status ?? NaN);
                 if (status === 429) {
-                    console.error(`[Gemini] Streaming Tool Chat model ${currentModel} QUOTA EXHAUSTED.`);
-                    throw error;
+                    console.warn(`[Gemini] Streaming Tool Chat model ${currentModel} QUOTA EXHAUSTED, trying next model...`);
+                    lastError = error;
+                    continue;
                 }
 
                 // Extract comprehensive error details

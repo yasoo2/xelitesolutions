@@ -881,7 +881,7 @@ export async function routeToModel(
         meshProviders.push({
             name: 'Gemini (Free)',
             run: async () => {
-                return await geminiProvider.chatComplete(effectiveMessages, 'models/gemini-2.0-flash', tools);
+                return await geminiProvider.chatComplete(effectiveMessages, process.env.GEMINI_MODEL || 'models/gemini-flash-latest', tools);
             }
         });
     }
