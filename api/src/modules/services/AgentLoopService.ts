@@ -7,6 +7,7 @@ import { SelfFixService } from './SelfFixService';
 import { SelfFixExecutionService } from './SelfFixExecutionService';
 import { executeTool } from './ToolService';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
+import { longTermMemory } from '../../core/memory/long-term-memory';
 
 /**
  * AgentLoopService - Dynamic Runtime Gateway
@@ -41,13 +42,24 @@ export class AgentLoopService {
         }
 
         const orchestrator = new AgentOrchestrator();
-        
+
+        // [PERSISTENT MEMORY] Recall what Joe already knows about this user/project
+        // (name, preferred stack, recent context) and inject it so answers are
+        // personalised and carry across sessions. Disk-backed JSON — works fully
+        // offline. Best-effort: never blocks the run.
+        const memUserId = String(userId || 'local-user');
+        let memoryContext = '';
         try {
-            const result = await orchestrator.execute({ 
-                id: runId, 
+            memoryContext = await longTermMemory.getContextSummary(memUserId);
+            if (memoryContext) broadcastThinkingDetail(sessionId, `🗂️ استرجعتُ سياق مشروعك من الذاكرة`);
+        } catch { /* non-fatal */ }
+
+        try {
+            const result = await orchestrator.execute({
+                id: runId,
                 traceId,
                 goal,
-                context: { userId, sessionId, modelConfig }
+                context: { userId, sessionId, modelConfig, memoryContext }
             });
 
             // [FIX] Surface the final answer to the chat UI.
@@ -70,6 +82,19 @@ export class AgentLoopService {
                     const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                     store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: finalText, createdAt: new Date(), runId });
                 }
+            } catch { /* non-fatal */ }
+
+            // [PERSISTENT MEMORY] Learn from this turn so Joe remembers it next
+            // session: extracts facts (name, preferred languages, project types)
+            // and stores a Q/A memory. Best-effort, non-blocking.
+            try {
+                await longTermMemory.learnFromConversation(memUserId, [{ role: 'user', content: goal }]);
+                await longTermMemory.remember(memUserId, {
+                    type: 'conversation',
+                    content: `س: ${goal}\nج: ${String(finalText).slice(0, 400)}`,
+                    metadata: { sessionId, runId },
+                    importance: result.ok ? 0.6 : 0.4,
+                });
             } catch { /* non-fatal */ }
 
             // Update run status upon completion

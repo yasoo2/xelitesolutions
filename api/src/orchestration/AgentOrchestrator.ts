@@ -251,7 +251,10 @@ export class AgentOrchestrator {
             traceId,
             memory: memory.getHistory(),
             modelConfig: goalContext?.modelConfig,
-            language: goalContext?.language
+            language: goalContext?.language,
+            // [PERSISTENT MEMORY] Forward the recalled user/project context so tools
+            // (central_answer, page builder) can personalise their output.
+            memoryContext: goalContext?.memoryContext
         };
 
         const isDirectAnswer = node.tool === 'central_answer'

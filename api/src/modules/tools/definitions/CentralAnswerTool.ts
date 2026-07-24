@@ -49,9 +49,16 @@ Your responses should be **powerful, enticing, and professional**. Use language 
 You have full autonomous capabilities (Files, Terminal, Browser).
 Always identify as **Joe**. Never mention ChatGPT or OpenAI.
 Your goal is to build the extraordinary.`;
-        const systemPrompt = isAr
+        // [PERSISTENT MEMORY] Inject what Joe remembers about this user/project so
+        // replies are personalised and consistent across sessions.
+        const memoryContext = String(context?.memoryContext || '').trim();
+        const memoryBlock = memoryContext
+            ? `\n\nWHAT YOU ALREADY KNOW ABOUT THIS USER/PROJECT (use it naturally, do not repeat it verbatim):\n${memoryContext.slice(0, 800)}`
+            : '';
+
+        const systemPrompt = (isAr
             ? `${baseSystemPrompt}\n\nCRITICAL INSTRUCTION: You MUST respond in **ARABIC** (اللغة العربية) ONLY. Use professional, technical Arabic terminology. Do NOT use English unless for code or specific technical terms that are better in English.`
-            : baseSystemPrompt;
+            : baseSystemPrompt) + memoryBlock;
 
         // Deterministic reply so a conversational turn NEVER fails into the
         // orchestrator's diagnostic "recovery" loop (the duplicated neural-thinking
