@@ -2,6 +2,7 @@ import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { executeTool } from '../modules/services/ToolService';
 import { broadcastThinkingDetail, broadcast } from '../api/ws';
+import { emitDepartment } from './departments';
 import { randomUUID } from 'crypto';
 import { BaseAgent } from './agents/BaseAgent';
 import { DevAgent } from './agents/DevAgent';
@@ -72,7 +73,11 @@ export class AgentOrchestrator {
     const runtimeMemory = new ExecutionMemory(goal.id);
     this.memory.set(goal.id, runtimeMemory);
 
+    // [Departments] BA analyses the request, then the Architect plans it.
+    emitDepartment(goal.id, 'analyst');
+
     // 1. Initial Dynamic Planning
+    emitDepartment(goal.id, 'architect');
     const dag = await this.plan(goal.goal, undefined, goal.traceId);
     dag.id = goal.id;
 
@@ -84,15 +89,20 @@ export class AgentOrchestrator {
         });
     }
 
-    // 2. Adaptive Coordination Execution
+    // 2. Adaptive Coordination Execution (Developer department)
+    emitDepartment(goal.id, 'developer');
     const result = await executionFirewall.runInContext(goal.traceId, () => {
         return this.coordinate(dag, runtimeMemory, goal.context, goal.traceId);
     });
-    
+
+    // [Departments] QA reviews the outcome, then it's delivered.
+    emitDepartment(goal.id, 'reviewer');
+    emitDepartment(goal.id, 'delivered', result.ok ? 'ok' : 'failed');
+
     if (goal.traceId) {
         traceManager.endTrace(goal.traceId);
     }
-    
+
     return result;
   }
 
@@ -321,7 +331,8 @@ export class AgentOrchestrator {
             });
           }
 
-          // [DECISION] Intelligent recovery attempt
+          // [DECISION] Intelligent recovery attempt (Reviewer/QA department steps in)
+          emitDepartment(memory.sessionId, 'reviewer', `recovering: ${node.task}`);
           const currentRetryCount = node.retryCount || 0;
           if (currentRetryCount >= 2) {
             console.error(`[AgentOrchestrator] Max retries reached for node: ${node.id}`);

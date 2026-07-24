@@ -16,6 +16,7 @@ import { api } from '../services/apiClient';
 import SettingsDialog from '../components/SettingsDialog';
 import GitHubConnectDialog from '../components/GitHubConnectDialog';
 import ProjectOnboardingModal from '../components/ProjectOnboardingModal';
+import DepartmentStatusCard from '../components/DepartmentStatusCard';
 import { githubService, GitHubRepo, GitHubUser, GitHubCommit } from '../services/githubService';
 import { useTranslation } from 'react-i18next';
 
@@ -71,6 +72,8 @@ export default function Joe() {
     const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
     const [workspace, setWorkspace] = useState<any>(null);
     const [userRole, setUserRole] = useState<string | undefined>(undefined);
+    // Live "engineering company" department pipeline (BA -> Architect -> Dev -> QA -> Delivered)
+    const [departmentStatus, setDepartmentStatus] = useState<any>(null);
 
     const { t, i18n } = useTranslation();
 
@@ -223,9 +226,17 @@ export default function Joe() {
                 }
             }
 
+            // [DEPARTMENTS] Live pipeline card (BA -> Architect -> Dev -> QA -> Delivered)
+            if (msg.type === 'department_status' &&
+                (msg.sessionId === activeSessionId || msg.data?.sessionId === activeSessionId)) {
+                setDepartmentStatus(msg.data);
+            }
+
             // Handle message finishing
             if (msg.type === 'run_finished' || msg.type === 'step_failed') {
                 setIsLoading(false);
+                // Clear the department card shortly after the run ends.
+                setTimeout(() => setDepartmentStatus(null), 4000);
             }
 
             // Handle workspace root updates from the agent
@@ -700,15 +711,21 @@ export default function Joe() {
                 onCreateRepo={() => setIsGitHubOpen(true)}
                 githubLoading={ghLoading}
                 chatChildren={
-                    <CommandComposer
-                        sessionId={activeSessionId}
-                        sessionKind={activeSessionKind}
-                        hideHistory={true}
-                        workspaceId={workspaceId}
-                        onMessagesUpdate={handleComposerMessages}
-                        githubConnected={ghConnected}
-                        onGitClick={() => setIsGitHubOpen(true)}
-                    />
+                    <>
+                        <DepartmentStatusCard
+                            status={departmentStatus}
+                            isArabic={String(i18n.language || '').startsWith('ar')}
+                        />
+                        <CommandComposer
+                            sessionId={activeSessionId}
+                            sessionKind={activeSessionKind}
+                            hideHistory={true}
+                            workspaceId={workspaceId}
+                            onMessagesUpdate={handleComposerMessages}
+                            githubConnected={ghConnected}
+                            onGitClick={() => setIsGitHubOpen(true)}
+                        />
+                    </>
                 }
             >
                 <SettingsDialog
