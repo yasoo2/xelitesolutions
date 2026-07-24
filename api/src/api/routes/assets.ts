@@ -17,6 +17,23 @@ router.get('/', authenticate as any, async (req: Request, res: Response) => {
     const userId = (req as any).auth?.sub;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
+    // [OFFLINE] Uploaded files live in .file-cache.json; return them (artifacts on disk).
+    if (process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1' || process.env.OFFLINE_MODE === 'true') {
+      let files: any[] = [];
+      try {
+        const _fs = require('fs'); const _path = require('path');
+        const cacheFilePath = _path.join(__dirname, '../../.file-cache.json');
+        if (_fs.existsSync(cacheFilePath)) {
+          const cache = JSON.parse(_fs.readFileSync(cacheFilePath, 'utf-8'));
+          files = Object.values(cache).map((f: any) => ({
+            id: f.id, name: f.originalName, type: f.mimeType, size: f.size,
+            createdAt: new Date(), category: 'upload', url: `/files/${f.id}/raw`
+          }));
+        }
+      } catch { /* ignore */ }
+      return res.json({ files, artifacts: [] });
+    }
+
     const allowed = await Session.findOne({ _id: String(sessionId), userId }).select('_id').lean();
     if (!allowed) return res.status(403).json({ error: 'Forbidden' });
 

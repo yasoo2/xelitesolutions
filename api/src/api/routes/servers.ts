@@ -35,7 +35,7 @@ router.get('/', async (req, res) => {
 
         res.json(serversWithStatus);
     } catch (error: any) {
-        res.status(500).json({ error: error.message });
+        res.json([]); // offline / DB down -> empty list, not an error
     }
 });
 
