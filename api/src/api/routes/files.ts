@@ -218,7 +218,7 @@ router.get('/:id', authenticate as any, async (req: Request, res: Response) => {
   try {
     let file: any = null;
     try { file = await FileModel.findById(req.params.id); } catch { /* offline */ }
-    if (!file) file = readFileFromCache(req.params.id);
+    if (!file) file = readFileFromCache(String(req.params.id));
     if (!file) return res.status(404).json({ error: 'File not found' });
     res.json(file);
   } catch (e) {
@@ -231,7 +231,7 @@ router.get('/:id/raw', authenticate as any, async (req: Request, res: Response) 
   try {
     let file: any = null;
     try { file = await FileModel.findById(req.params.id); } catch { /* offline */ }
-    if (!file) file = readFileFromCache(req.params.id);
+    if (!file) file = readFileFromCache(String(req.params.id));
     if (!file || !file.path) return res.status(404).json({ error: 'File not found' });
     res.sendFile(file.path);
   } catch (e) {
