@@ -56,6 +56,11 @@ call npm run build
 if errorlevel 1 goto api_build_failed
 echo [3/4] API built OK
 
+echo.
+echo [3/4] Ensuring the browser engine (Chromium) is installed for Joe's browser...
+call npx --yes playwright install chromium
+echo [3/4] Browser engine ready
+
 :run
 echo.
 echo [4/4] Starting Joe  --  http://localhost:5002/joe   - press Ctrl+C to stop

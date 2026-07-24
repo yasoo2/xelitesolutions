@@ -52,10 +52,14 @@ export class LocalProvider {
             maxRetries: 0,
         });
 
+        // keep_alive: -1 tells Ollama to keep the model resident in RAM instead of
+        // unloading it after ~5 min idle — so the SECOND and later requests skip the
+        // slow cold-load. Harmless on non-Ollama OpenAI servers (ignored).
         const completion = await client.chat.completions.create({
             model: model || this.model(),
             messages: messages.map(m => ({ role: m.role, content: m.content })) as any,
-        }, { timeout: timeoutMs });
+            keep_alive: -1,
+        } as any, { timeout: timeoutMs });
 
         return completion.choices[0]?.message?.content || '';
     }
