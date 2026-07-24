@@ -58,20 +58,28 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
         
-        term.open(containerRef.current);
         termRef.current = term;
         fitAddonRef.current = fitAddon;
 
-        // Safely fit after DOM layout to prevent xterm "dimensions" crash
-        requestAnimationFrame(() => {
-            try {
-                if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
-                    fitAddon.fit();
+        // [FIX] Only open xterm once the container is actually visible/sized.
+        // Opening on a hidden (0-size) tab leaves the renderer half-initialised and
+        // xterm later crashes in Viewport._innerRefresh ("dimensions" of undefined).
+        let openTries = 0;
+        const openWhenVisible = () => {
+            const el = containerRef.current;
+            if (!el || termRef.current !== term) return; // unmounted or replaced
+            if (el.clientWidth > 0 && el.clientHeight > 0) {
+                try {
+                    term.open(el);
+                    if (el.clientWidth > 0 && el.clientHeight > 0) fitAddon.fit();
+                } catch (err) {
+                    console.warn('[Terminal] open/fit skipped:', err);
                 }
-            } catch (err) {
-                console.warn('[Terminal] Initial fit skipped:', err);
+            } else if (openTries++ < 600) {
+                requestAnimationFrame(openWhenVisible);
             }
-        });
+        };
+        requestAnimationFrame(openWhenVisible);
 
         // Input handler
         term.onData((data) => {
