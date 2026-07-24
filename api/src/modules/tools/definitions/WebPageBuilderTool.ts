@@ -5,6 +5,7 @@ import { routeToModel } from '../../../core/llm/intelligent-router';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
 import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
+import { workspaceService } from '../../services/WorkspaceService';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 const PORT = String(process.env.PORT || '5002');
@@ -169,6 +170,24 @@ ${prev!.html}`
         }
         store[sessionKey] = { filename, html, multiFile: isMultiFile };
         logs.push(`web_page_builder: ${isEdit ? 'edited' : 'wrote'} ${filename} (${html.length} bytes)${projectFiles.length ? ` + ${projectFiles.length} project files` : ''} in ${ARTIFACT_DIR}`);
+
+        // [BROWSABLE OUTPUT] Mirror the generated file(s) into the active workspace
+        // root under joe-output/<session>/ so they show up in the file explorer and
+        // the user can browse/edit them. Best-effort; preview still serves from
+        // ARTIFACT_DIR. Then tell the UI to refresh the tree.
+        try {
+            const root = workspaceService.getActiveRoot(context?.workspaceId);
+            const outDir = path.join(root, 'joe-output', `joe-${sessionKey}`);
+            fs.mkdirSync(outDir, { recursive: true });
+            if (projectFiles.length) {
+                fs.writeFileSync(path.join(outDir, 'index.html'), projIndex, 'utf-8');
+                if (projCss) fs.writeFileSync(path.join(outDir, 'styles.css'), projCss, 'utf-8');
+                if (projJs) fs.writeFileSync(path.join(outDir, 'script.js'), projJs, 'utf-8');
+            } else {
+                fs.writeFileSync(path.join(outDir, 'index.html'), html, 'utf-8');
+            }
+            broadcast({ type: 'workspace_updated', sessionId, data: { sessionId, path: outDir } } as any);
+        } catch { /* non-fatal: preview still works from ARTIFACT_DIR */ }
 
         // Cache-busting query so the Preview iframe RELOADS to show the change.
         const url = `${base}?v=${Date.now()}`;
