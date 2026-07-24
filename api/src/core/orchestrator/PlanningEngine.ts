@@ -38,7 +38,12 @@ export class PlanningEngine {
             || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو)/.test(intent.goal || '');
         const webNoun = /\b(page|site|website|web ?app|landing|portfolio|dashboard|form|store|shop|html|ui|interface)\b/.test(goalLower)
             || /(صفحة|موقع|تطبيق|واجهة|متجر|لوحة|نموذج|بورتفوليو|معرض|هبوط)/.test(intent.goal || '');
-        if (buildVerb && webNoun) {
+        // Route follow-up edits (add button / change colour / ...) to the SAME page.
+        const activeKey = String((context && context.sessionId) || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const hasActivePage = !!((global as any).joePages && (global as any).joePages[activeKey]);
+        const editIntent = /\b(add|change|modify|update|edit|remove|bigger|smaller|colou?r|button|background|header|footer|font|title)\b/i.test(goalLower)
+            || /(أضف|اضف|غيّر|غير|عدّل|عدل|بدّل|بدل|اجعل|احذف|كبّر|صغّر|لون|زر|خلفية|حجم|عنوان|خط)/.test(intent.goal || '');
+        if ((buildVerb && webNoun) || (hasActivePage && editIntent)) {
             return {
                 id: `build_${Date.now()}`,
                 goal: intent.goal,

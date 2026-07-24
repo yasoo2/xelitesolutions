@@ -44,23 +44,45 @@ export class WebPageBuilderTool implements ToolDefinition {
         ).trim();
         const sessionId = context?.sessionId;
         if (!request) return { ok: false, error: 'no_request', logs };
+        const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
 
         const isAr = /[؀-ۿ]/.test(request);
-        if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `🏗️ أبني الصفحة: ${request}` : `🏗️ Building the page: ${request}`);
 
-        const systemPrompt = `You are an elite front-end engineer at XElite Solutions.
-Build a COMPLETE, single self-contained HTML file for the user's request.
-STRICT RULES:
-- Output ONLY raw HTML. No explanations, no markdown code fences.
-- Put ALL CSS inside a <style> tag and ALL JavaScript inside a <script> tag (one single file).
-- Modern, beautiful, fully responsive design with real layout, spacing and colors.
-- For graphics use inline SVG, CSS gradients or emoji. Do NOT reference external image hosts that may 404 (never use placeholder.com).
-${isAr ? '- The page is in Arabic: set <html lang="ar" dir="rtl"> and write all visible text in Arabic.' : ''}`;
+        // Per-session page memory: follow-up requests EDIT the current page instead
+        // of regenerating a brand new one from scratch.
+        const store: Record<string, { filename: string; html: string }> =
+            (global as any).joePages || ((global as any).joePages = {});
+        const prev = store[sessionKey];
+        const wantsNew = /(new page|from scratch|صفحة جديدة|من الصفر|ابدأ من جديد)/i.test(request);
+        const isEdit = !!prev && !wantsNew;
+
+        if (sessionId) broadcastThinkingDetail(sessionId, isEdit
+            ? (isAr ? `✏️ أعدّل الصفحة: ${request}` : `✏️ Editing the page: ${request}`)
+            : (isAr ? `🏗️ أبني الصفحة: ${request}` : `🏗️ Building the page: ${request}`));
+
+        const baseRules = `STRICT RULES:
+- Output ONLY raw HTML for ONE complete self-contained file. No explanations, no markdown fences.
+- ALL CSS in a <style> tag and ALL JS in a <script> tag (single file).
+- Modern, beautiful, fully responsive. Use inline SVG / CSS gradients / emoji for graphics (never external image hosts / placeholder.com).
+${isAr ? '- Arabic page: <html lang="ar" dir="rtl"> with Arabic text.' : ''}`;
+
+        const systemPrompt = isEdit
+            ? `You are an elite front-end engineer. MODIFY the existing HTML page: apply EXACTLY the change requested and keep everything else intact. Return the COMPLETE updated HTML file.
+${baseRules}`
+            : `You are an elite front-end engineer at XElite Solutions. Build a COMPLETE single self-contained HTML file for the request.
+${baseRules}`;
+
+        const userContent = isEdit
+            ? `Change to apply: ${request}
+
+CURRENT HTML (modify this and return the FULL updated file):
+${prev!.html}`
+            : request;
 
         let html = '';
         try {
             html = await routeToModel(
-                [{ role: 'system', content: systemPrompt }, { role: 'user', content: request }],
+                [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
                 undefined, undefined, undefined, undefined, undefined, undefined, context
             );
         } catch (e: any) {
@@ -74,22 +96,26 @@ ${isAr ? '- The page is in Arabic: set <html lang="ar" dir="rtl"> and write all 
         const docIdx = html.search(/<!DOCTYPE html>|<html[\s>]/i);
         if (docIdx > 0) html = html.slice(docIdx);
         if (!/<html[\s>]/i.test(html)) {
-            html = `<!DOCTYPE html>\n<html lang="${isAr ? 'ar' : 'en'}"${isAr ? ' dir="rtl"' : ''}>\n<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>XElite</title></head>\n<body>\n${html}\n</body>\n</html>`;
+            if (isEdit && prev) { html = prev.html; }
+            else { html = `<!DOCTYPE html>\n<html lang="${isAr ? 'ar' : 'en'}"${isAr ? ' dir="rtl"' : ''}>\n<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>XElite</title></head>\n<body>\n${html}\n</body>\n</html>`; }
         }
 
-        // Write the file into the artifacts dir (served by the API at /artifacts).
-        let filename = String(input?.filename || '').trim();
-        if (!filename || !/\.html?$/i.test(filename)) filename = `page-${Date.now()}.html`;
-        filename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+        // Stable filename per session so the preview URL stays consistent across edits.
+        const filename = (prev?.filename && /\.html?$/i.test(prev.filename))
+            ? prev.filename
+            : `joe-${sessionKey}.html`;
         try {
             fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
             fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
         } catch (e: any) {
             return { ok: false, error: `write_failed: ${e?.message || e}`, logs };
         }
-        logs.push(`web_page_builder: wrote ${filename} (${html.length} bytes) to ${ARTIFACT_DIR}`);
+        store[sessionKey] = { filename, html };
+        logs.push(`web_page_builder: ${isEdit ? 'edited' : 'wrote'} ${filename} (${html.length} bytes) in ${ARTIFACT_DIR}`);
 
-        const url = `http://localhost:${PORT}/artifacts/${filename}`;
+        // Cache-busting query so the Preview iframe RELOADS to show the change.
+        const base = `http://localhost:${PORT}/artifacts/${filename}`;
+        const url = `${base}?v=${Date.now()}`;
 
         // Stream the engineering steps to the terminal panel so the user SEES the work.
         const term = (line: string) => {
@@ -106,12 +132,13 @@ ${isAr ? '- The page is in Arabic: set <html lang="ar" dir="rtl"> and write all 
             broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any);
             broadcast({ type: 'step_done', tool: 'web_page_builder', sessionId, data: { result: { ok: true, output: { url, previewUrl: url } } } } as any);
         } catch { /* non-fatal */ }
-        if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `✅ تم بناء الصفحة وفتحها في المعاينة` : `✅ Page built and opened in Preview`);
+        if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `✅ تم تحديث الصفحة في المعاينة` : `✅ Page updated in Preview`);
 
         const codeBlock = '```html\n' + html + '\n```';
+        const verb = isEdit ? (isAr ? 'تم تعديل الصفحة' : 'Updated the page') : (isAr ? 'تم بناء الصفحة' : 'Built the page');
         const message = isAr
-            ? `✅ تم بناء الصفحة فعلياً وحفظها وعرضها في المعاينة.\n\n📄 الملف: ${filename}\n🌐 الرابط: ${url}\n\nإن لم تفتح المعاينة تلقائياً، افتح الرابط أعلاه أو تبويب Preview.\n\nالكود الكامل:\n${codeBlock}`
-            : `✅ Built the page, saved it, and opened it in Preview.\n\n📄 File: ${filename}\n🌐 URL: ${url}\n\nIf preview didn't open, open the URL above or the Preview tab.\n\nFull code:\n${codeBlock}`;
+            ? `✅ ${verb} وعُرضت في المعاينة.\n\n📄 الملف: ${filename}\n🌐 الرابط: ${base}\n\nاطلب أي تعديل آخر (مثل: «أضف زر» أو «غيّر اللون») وسيظهر مباشرة في المعاينة.\n\nالكود الكامل:\n${codeBlock}`
+            : `✅ ${verb} and shown in Preview.\n\n📄 File: ${filename}\n🌐 URL: ${base}\n\nAsk for any further change (e.g. "add a button" / "change the color") and it updates live.\n\nFull code:\n${codeBlock}`;
 
         return { ok: true, output: { message, url, previewUrl: url, path: filename }, logs };
     }
