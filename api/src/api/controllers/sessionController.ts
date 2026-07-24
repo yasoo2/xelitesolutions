@@ -131,8 +131,16 @@ export async function listSessions(req: Request, res: Response) {
 
 export async function deleteSession(req: Request, res: Response) {
     const id = req.params.id as string;
+    const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON';
     try {
-
+        if (isOffline) {
+            // [OFFLINE] Remove from the mock store (the X button lives here in JSON mode).
+            const list: any[] = (global as any).mockSessions || [];
+            (global as any).mockSessions = list.filter((x: any) => String(x.id ?? x._id) !== String(id) && String(x._id) !== String(id));
+            const msgs: any[] = (global as any).mockMessages || [];
+            (global as any).mockMessages = msgs.filter((m: any) => String(m.sessionId) !== String(id));
+            return res.json({ ok: true });
+        }
         await Session.findByIdAndDelete(id);
         return res.json({ ok: true });
     } catch (e) {
@@ -141,7 +149,13 @@ export async function deleteSession(req: Request, res: Response) {
 }
 
 export async function deleteAllSessions(req: Request, res: Response) {
+    const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON';
     try {
+        if (isOffline) {
+            (global as any).mockSessions = [];
+            (global as any).mockMessages = [];
+            return res.json({ ok: true, count: 0 });
+        }
         // NOTE: listSessions uses find({}) without userId filter (single-tenant, inconsistent userId formats).
         // deleteMany must match the same scope, otherwise it deletes 0 documents.
         const result = await Session.deleteMany({});
@@ -161,7 +175,16 @@ export async function deleteAllSessions(req: Request, res: Response) {
 
 export async function togglePin(req: Request, res: Response) {
     const id = req.params.id as string;
+    const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON';
     try {
+        if (isOffline) {
+            const list: any[] = (global as any).mockSessions || [];
+            const ms = list.find((x: any) => String(x.id ?? x._id) === String(id) || String(x._id) === String(id));
+            if (!ms) return res.status(404).json({ error: 'Session not found' });
+            ms.isPinned = !ms.isPinned;
+            ms.updatedAt = new Date();
+            return res.json(ms);
+        }
         const s = await Session.findById(id);
         if (s) {
             s.isPinned = !s.isPinned;
@@ -178,7 +201,14 @@ export async function togglePin(req: Request, res: Response) {
 export async function moveSession(req: Request, res: Response) {
     const id = req.params.id as string;
     const folderId = req.body.folderId;
+    const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON';
     try {
+        if (isOffline) {
+            const list: any[] = (global as any).mockSessions || [];
+            const ms = list.find((x: any) => String(x.id ?? x._id) === String(id) || String(x._id) === String(id));
+            if (ms) { ms.folderId = folderId; ms.updatedAt = new Date(); }
+            return res.json(ms || null);
+        }
         const s = await Session.findByIdAndUpdate(id, { folderId }, { new: true });
         return res.json(s);
     } catch (e) {
