@@ -3,6 +3,7 @@ import path from 'path';
 import { ToolDefinition } from '../types';
 import { routeToModel } from '../../../core/llm/intelligent-router';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
+import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 const PORT = String(process.env.PORT || '5002');
@@ -99,6 +100,13 @@ ${prev!.html}`
             if (isEdit && prev) { html = prev.html; }
             else { html = `<!DOCTYPE html>\n<html lang="${isAr ? 'ar' : 'en'}"${isAr ? ' dir="rtl"' : ''}>\n<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>XElite</title></head>\n<body>\n${html}\n</body>\n</html>`; }
         }
+
+        // [REVIVED weak-model-enhancer] Self-correction pass: strip leftover
+        // TODO/placeholder comments the weak local model sometimes emits.
+        try {
+            const q = selfCorrectionSystem.checkCodeQuality(html, 'html');
+            if (!q.isValid) html = selfCorrectionSystem.suggestCorrections(html, q.issues);
+        } catch { /* non-fatal */ }
 
         // Stable filename per session so the preview URL stays consistent across edits.
         const filename = (prev?.filename && /\.html?$/i.test(prev.filename))

@@ -9,7 +9,7 @@ export class SecurityAgent extends BaseAgent {
     console.log(`[SecurityAgent] Auditing: ${task}`);
     
     // Leverage specialized security tools
-    const result = await executeTool('security_scan', { target: input.path || '.', depth: 'deep' }, {
+    const result = await executeTool('security_scanner', { target: input.path || '.', depth: 'deep' }, {
       sessionId: context?.sessionId,
       workspaceId: context?.workspaceId,
       userId: context?.userId,
