@@ -6,6 +6,7 @@ const router = Router();
 
 // Create Session
 router.post('/', authenticate as any, SessionController.createSession);
+router.post('/merge', authenticate as any, SessionController.mergeSessions);
 
 // List Sessions
 router.get('/', authenticate as any, SessionController.listSessions);

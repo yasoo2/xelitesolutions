@@ -198,6 +198,26 @@ export async function togglePin(req: Request, res: Response) {
 }
 
 
+export async function mergeSessions(req: Request, res: Response) {
+    const { sourceId, targetId } = req.body || {};
+    if (!sourceId || !targetId) return res.status(400).json({ error: 'sourceId and targetId are required' });
+    const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON';
+    try {
+        if (isOffline) {
+            const msgs: any[] = (global as any).mockMessages || [];
+            for (const m of msgs) if (String(m.sessionId) === String(sourceId)) m.sessionId = targetId;
+            const list: any[] = (global as any).mockSessions || [];
+            (global as any).mockSessions = list.filter((s: any) => String(s.id ?? s._id) !== String(sourceId) && String(s._id) !== String(sourceId));
+            return res.json({ ok: true });
+        }
+        await Message.updateMany({ sessionId: sourceId }, { $set: { sessionId: targetId } });
+        await Session.findByIdAndDelete(sourceId);
+        return res.json({ ok: true });
+    } catch (e) {
+        return res.status(500).json({ error: 'Failed to merge sessions' });
+    }
+}
+
 export async function moveSession(req: Request, res: Response) {
     const id = req.params.id as string;
     const folderId = req.body.folderId;

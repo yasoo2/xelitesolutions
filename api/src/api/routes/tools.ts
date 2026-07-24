@@ -74,6 +74,24 @@ router.post('/selftest', authenticate, async (req: Request, res: Response) => {
   });
 });
 
+router.post('/execute', authenticate, async (req: Request, res: Response) => {
+  const name = String((req.body as any)?.tool || (req.body as any)?.name || '').trim();
+  if (!name) return res.status(400).json({ ok: false, error: 'tool is required' });
+  const userId = (req as any)?.auth?.sub;
+  const workspaceId = extractWorkspaceId(req);
+  const sessionId = (req.body as any)?.sessionId || `session-${Date.now()}`;
+  const input = (req.body as any)?.input || (req.body as any)?.args || req.body || {};
+  try {
+    const { executionFirewall } = require('../../orchestration/AgentExecutionFirewall');
+    const result = await executionFirewall.runAsSystem(async () => {
+        return await executeTool(name, input, { workspaceId, userId, sessionId });
+    });
+    res.json({ ok: result.ok !== undefined ? result.ok : result.success !== false, output: result.output ?? result.data ?? result, error: result.error });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 router.post('/:name/execute', authenticate, async (req: Request, res: Response) => {
   const name = String(req.params.name);
   const userId = (req as any)?.auth?.sub;
