@@ -6,6 +6,17 @@ const pdf = require('pdf-parse');
 import { FileModel } from '../../shared/models/file';
 import { authenticate } from '../middleware/auth';
 
+// Offline fallback: uploads are always written to .file-cache.json (see /upload),
+// so file retrieval must read from it when MongoDB is unavailable (JSON/mock mode).
+function readFileFromCache(id: string): any | null {
+    try {
+        const cacheFilePath = path.join(__dirname, '../../.file-cache.json');
+        if (!fs.existsSync(cacheFilePath)) return null;
+        const cache = JSON.parse(fs.readFileSync(cacheFilePath, 'utf-8'));
+        return cache[id] || null;
+    } catch { return null; }
+}
+
 const router = Router();
 
 // Configure Multer
@@ -205,7 +216,9 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
 // Get file content/metadata
 router.get('/:id', authenticate as any, async (req: Request, res: Response) => {
   try {
-    const file = await FileModel.findById(req.params.id);
+    let file: any = null;
+    try { file = await FileModel.findById(req.params.id); } catch { /* offline */ }
+    if (!file) file = readFileFromCache(req.params.id);
     if (!file) return res.status(404).json({ error: 'File not found' });
     res.json(file);
   } catch (e) {
@@ -216,8 +229,10 @@ router.get('/:id', authenticate as any, async (req: Request, res: Response) => {
 // Serve raw file
 router.get('/:id/raw', authenticate as any, async (req: Request, res: Response) => {
   try {
-    const file = await FileModel.findById(req.params.id);
-    if (!file) return res.status(404).json({ error: 'File not found' });
+    let file: any = null;
+    try { file = await FileModel.findById(req.params.id); } catch { /* offline */ }
+    if (!file) file = readFileFromCache(req.params.id);
+    if (!file || !file.path) return res.status(404).json({ error: 'File not found' });
     res.sendFile(file.path);
   } catch (e) {
     res.status(500).json({ error: 'Error serving file' });
