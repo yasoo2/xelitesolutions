@@ -139,15 +139,17 @@ export default function Joe() {
                 window.dispatchEvent(new CustomEvent('joe:workspace-uncollapse'));
             };
 
+            // [FIX] The backend emits 'tool_started' / 'step_started' (NOT 'tool_start'),
+            // and the tool NAME lives in msg.data.tool or msg.data.name ('execute:<tool>'),
+            // not msg.tool. Extract it robustly so the panels auto-open correctly.
+            const isToolStart = msg.type === 'tool_start' || msg.type === 'tool_started' || msg.type === 'step_started';
+            const toolName: string = msg.tool
+                || msg.data?.tool
+                || (typeof msg.data?.name === 'string' ? msg.data.name.replace(/^execute:/, '') : '')
+                || (typeof msg.data?.tool?.name === 'string' ? msg.data.tool.name : '');
+
             // Auto switch to terminal for command execution
-            if (msg.type === 'tool_start' && (
-                msg.tool === 'run_command' ||
-                msg.tool === 'shell_execute' ||
-                msg.tool === 'terminal_manager' ||
-                msg.tool === 'npm_manager' ||
-                msg.tool === 'npm_install' ||
-                msg.tool === 'npm_build'
-            )) {
+            if ((isToolStart && ['run_command', 'shell_execute', 'terminal_manager', 'npm_manager', 'npm_install', 'npm_build'].includes(toolName))) {
                 setWorkspaceTab('terminal');
                 triggerUncollapse();
             }
@@ -157,28 +159,17 @@ export default function Joe() {
             }
 
             // Auto switch to browser for browser actions
-            if ((msg.type === 'tool_start' || msg.type === 'step_started') && (
-                (msg.tool?.startsWith('browser_')) ||
-                (msg.data?.name?.includes('execute:browser_')) ||
-                (msg.data?.name?.includes('execute:open_page')) ||
-                (msg.data?.name?.includes('execute:click_element')) ||
-                msg.tool === 'open_page' ||
-                msg.tool === 'click_element'
-            )) {
+            if (isToolStart && (toolName.startsWith('browser_') || toolName === 'open_page' || toolName === 'click_element')) {
                 setWorkspaceTab('browser');
                 triggerUncollapse();
             }
-            if (msg.type === 'browser_screenshot' || msg.type === 'browser_update') {
+            if (msg.type === 'browser_screenshot' || msg.type === 'browser_update' || msg.type === 'browser_started' || msg.type === 'browser_opened') {
                 setWorkspaceTab('browser');
                 triggerUncollapse();
             }
 
-            if (msg.type === 'tool_start' && (
-                msg.tool === 'dev_server' ||
-                msg.tool === 'dev_server_start' ||
-                msg.tool === 'website_full_pipeline' ||
-                msg.tool === 'scaffold_project'
-            )) {
+            // Auto switch to preview for build / page tools
+            if (isToolStart && ['dev_server', 'dev_server_start', 'website_full_pipeline', 'scaffold_project', 'scaffold_full_stack', 'web_page_builder'].includes(toolName)) {
                 setWorkspaceTab('preview');
                 triggerUncollapse();
             }
