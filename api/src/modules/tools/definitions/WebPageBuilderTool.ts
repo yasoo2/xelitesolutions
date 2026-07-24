@@ -4,7 +4,7 @@ import { ToolDefinition } from '../types';
 import { routeToModel } from '../../../core/llm/intelligent-router';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
-import { reviewHtml, browserSmokeTest } from '../../../core/quality/html-qa';
+import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 const PORT = String(process.env.PORT || '5002');
@@ -52,11 +52,17 @@ export class WebPageBuilderTool implements ToolDefinition {
 
         // Per-session page memory: follow-up requests EDIT the current page instead
         // of regenerating a brand new one from scratch.
-        const store: Record<string, { filename: string; html: string }> =
+        const store: Record<string, { filename: string; html: string; multiFile?: boolean }> =
             (global as any).joePages || ((global as any).joePages = {});
         const prev = store[sessionKey];
         const wantsNew = /(new page|from scratch|صفحة جديدة|من الصفر|ابدأ من جديد)/i.test(request);
         const isEdit = !!prev && !wantsNew;
+
+        // Multi-file project mode: produce a real index.html + styles.css + script.js
+        // structure (like a real team) instead of one self-contained file. Triggered
+        // by explicit intent; once on, it stays on for follow-up edits of the session.
+        const multiFileIntent = /(multi.?file|separate files|split.*(css|js)|as a project|ملفات? منفصلة|منفصل|مشروع كامل|مشروع منظم|css منفصل|js منفصل|افصل)/i.test(request);
+        const isMultiFile = multiFileIntent || (isEdit && !!(prev as any)?.multiFile);
 
         // Department pipeline (visible in the thinking panel) — BA analyses the
         // request, Developer builds, QA reviews. Makes Joe feel like a team.
@@ -127,21 +133,44 @@ ${prev!.html}`
             qaFixed = review.fixed;
         } catch { /* non-fatal */ }
 
+        // The combined self-contained HTML is always the source of truth for edits.
         // Stable filename per session so the preview URL stays consistent across edits.
         const filename = (prev?.filename && /\.html?$/i.test(prev.filename))
             ? prev.filename
             : `joe-${sessionKey}.html`;
+
+        // Multi-file mode: split into a real index.html + styles.css + script.js
+        // project inside a per-session folder, and preview that folder's index.html.
+        let base: string;
+        const projectFiles: Array<{ name: string; bytes: number }> = [];
+        let projIndex = '', projCss = '', projJs = '';
         try {
             fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+            // Always write the combined file too (keeps single-file preview working
+            // and is the source of truth for future edits).
             fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+
+            const split = isMultiFile ? splitHtmlProject(html) : null;
+            if (split && split.multiFile) {
+                const dir = `joe-${sessionKey}`;
+                const abs = path.join(ARTIFACT_DIR, dir);
+                fs.mkdirSync(abs, { recursive: true });
+                fs.writeFileSync(path.join(abs, 'index.html'), split.indexHtml, 'utf-8');
+                projectFiles.push({ name: 'index.html', bytes: split.indexHtml.length });
+                projIndex = split.indexHtml;
+                if (split.css) { fs.writeFileSync(path.join(abs, 'styles.css'), split.css, 'utf-8'); projectFiles.push({ name: 'styles.css', bytes: split.css.length }); projCss = split.css; }
+                if (split.js) { fs.writeFileSync(path.join(abs, 'script.js'), split.js, 'utf-8'); projectFiles.push({ name: 'script.js', bytes: split.js.length }); projJs = split.js; }
+                base = `http://localhost:${PORT}/artifacts/${dir}/index.html`;
+            } else {
+                base = `http://localhost:${PORT}/artifacts/${filename}`;
+            }
         } catch (e: any) {
             return { ok: false, error: `write_failed: ${e?.message || e}`, logs };
         }
-        store[sessionKey] = { filename, html };
-        logs.push(`web_page_builder: ${isEdit ? 'edited' : 'wrote'} ${filename} (${html.length} bytes) in ${ARTIFACT_DIR}`);
+        store[sessionKey] = { filename, html, multiFile: isMultiFile };
+        logs.push(`web_page_builder: ${isEdit ? 'edited' : 'wrote'} ${filename} (${html.length} bytes)${projectFiles.length ? ` + ${projectFiles.length} project files` : ''} in ${ARTIFACT_DIR}`);
 
         // Cache-busting query so the Preview iframe RELOADS to show the change.
-        const base = `http://localhost:${PORT}/artifacts/${filename}`;
         const url = `${base}?v=${Date.now()}`;
 
         // Stream the engineering steps to the terminal panel so the user SEES the work.
@@ -153,7 +182,12 @@ ${prev!.html}`
         if (qaFixed.length) term('QA auto-fixed: ' + qaFixed.join('; '));
         if (qaIssues.length) term('QA notes: ' + qaIssues.join('; '));
         else term('QA review: passed (no blocking issues)');
-        term('wrote file: ' + filename);
+        if (projectFiles.length) {
+            term('project structure (multi-file):');
+            projectFiles.forEach(f => term('  📄 ' + f.name + ' (' + f.bytes + ' bytes)'));
+        } else {
+            term('wrote file: ' + filename);
+        }
         term('preview: ' + url);
 
         // Open it in the live Preview panel. Two signals for reliability: preview_ready
@@ -193,11 +227,22 @@ ${prev!.html}`
             return parts.join('\n') + qaBrowserLine;
         })();
 
-        const codeBlock = '```html\n' + html + '\n```';
-        const verb = isEdit ? (isAr ? 'تم تعديل الصفحة' : 'Updated the page') : (isAr ? 'تم بناء الصفحة' : 'Built the page');
+        const isProject = projectFiles.length > 0;
+        // Reply code: for a project, show each file; otherwise the single HTML file.
+        const codeBlock = isProject
+            ? [
+                '**index.html**\n```html\n' + projIndex + '\n```',
+                projCss ? '**styles.css**\n```css\n' + projCss + '\n```' : '',
+                projJs ? '**script.js**\n```js\n' + projJs + '\n```' : '',
+              ].filter(Boolean).join('\n\n')
+            : '```html\n' + html + '\n```';
+        const verb = isEdit ? (isAr ? 'تم تعديل المشروع' : 'Updated the project') : (isAr ? (isProject ? 'تم بناء المشروع' : 'تم بناء الصفحة') : (isProject ? 'Built the project' : 'Built the page'));
+        const fileLine = isProject
+            ? (isAr ? `📁 المشروع (${projectFiles.length} ملفات): ${projectFiles.map(f => f.name).join('، ')}` : `📁 Project (${projectFiles.length} files): ${projectFiles.map(f => f.name).join(', ')}`)
+            : (isAr ? `📄 الملف: ${filename}` : `📄 File: ${filename}`);
         const message = isAr
-            ? `✅ ${verb} وعُرضت في المعاينة.\n\n📄 الملف: ${filename}\n🌐 الرابط: ${base}\n\n${qaSummary}\n\nاطلب أي تعديل آخر (مثل: «أضف زر» أو «غيّر اللون») وسيظهر مباشرة في المعاينة.\n\nالكود الكامل:\n${codeBlock}`
-            : `✅ ${verb} and shown in Preview.\n\n📄 File: ${filename}\n🌐 URL: ${base}\n\n${qaSummary}\n\nAsk for any further change (e.g. "add a button" / "change the color") and it updates live.\n\nFull code:\n${codeBlock}`;
+            ? `✅ ${verb} وعُرض في المعاينة.\n\n${fileLine}\n🌐 الرابط: ${base}\n\n${qaSummary}\n\nاطلب أي تعديل آخر (مثل: «أضف زر» أو «غيّر اللون») وسيظهر مباشرة في المعاينة.\n\nالكود الكامل:\n${codeBlock}`
+            : `✅ ${verb} and shown in Preview.\n\n${fileLine}\n🌐 URL: ${base}\n\n${qaSummary}\n\nAsk for any further change (e.g. "add a button" / "change the color") and it updates live.\n\nFull code:\n${codeBlock}`;
 
         return { ok: true, output: { message, url, previewUrl: url, path: filename }, logs };
     }

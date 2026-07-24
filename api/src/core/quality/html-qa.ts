@@ -82,6 +82,63 @@ export function reviewHtml(rawHtml: string, isArabic = false): HtmlReview {
     return { html, issues, fixed, score };
 }
 
+export interface SplitProject {
+    indexHtml: string;
+    css: string;
+    js: string;
+    multiFile: boolean;   // false when there was nothing to split out
+}
+
+/**
+ * Split a single self-contained HTML file into a real multi-file project:
+ *   index.html + styles.css + script.js
+ *
+ * Deterministic (no LLM call), so it's instant and free. Inline <style> blocks
+ * become styles.css (linked in <head>), and inline <script> blocks (without a
+ * src) become script.js (linked before </body>). External <script src> tags are
+ * left untouched. Returns multiFile=false when there was no CSS/JS to extract.
+ */
+export function splitHtmlProject(rawHtml: string): SplitProject {
+    let html = String(rawHtml || '');
+    const cssParts: string[] = [];
+    const jsParts: string[] = [];
+
+    // Extract inline <style> ... </style> blocks.
+    html = html.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (_m, body) => {
+        if (String(body).trim()) cssParts.push(String(body).trim());
+        return '';
+    });
+
+    // Extract inline <script> ... </script> blocks (skip ones with a src=).
+    html = html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (m, attrs, body) => {
+        if (/\bsrc\s*=/.test(String(attrs))) return m; // external script: keep as-is
+        if (String(body).trim()) jsParts.push(String(body).trim());
+        return '';
+    });
+
+    const css = cssParts.join('\n\n');
+    const js = jsParts.join('\n\n');
+    const multiFile = css.length > 0 || js.length > 0;
+
+    // Re-link the extracted files.
+    if (css) {
+        const link = '    <link rel="stylesheet" href="styles.css">';
+        if (/<\/head>/i.test(html)) html = html.replace(/<\/head>/i, `${link}\n</head>`);
+        else if (/<head\b[^>]*>/i.test(html)) html = html.replace(/(<head\b[^>]*>)/i, `$1\n${link}`);
+        else html = `${link}\n${html}`;
+    }
+    if (js) {
+        const tag = '    <script src="script.js"></script>';
+        if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, `${tag}\n</body>`);
+        else html = `${html}\n${tag}`;
+    }
+
+    // Tidy the empty lines left where blocks were removed.
+    html = html.replace(/\n{3,}/g, '\n\n');
+
+    return { indexHtml: html, css, js, multiFile };
+}
+
 export interface BrowserSmoke {
     ok: boolean;
     consoleErrors: string[];
