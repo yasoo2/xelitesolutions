@@ -13,6 +13,8 @@ import authRoutes from './routes/auth';
 import toolsRoutes from './routes/tools';
 import runRoutes from './routes/run';
 import sessionsRoutes from './routes/sessions';
+import foldersRoutes from './routes/folders';
+import queueRoutes from './routes/queue';
 import filesRoutes from './routes/files';
 import approvalsRoutes from './routes/approvals';
 import projectRoutes from './routes/project';
@@ -181,6 +183,8 @@ export const createApp = () => {
   apiRouter.use('/runs', runRoutes);
   apiRouter.use('/run', runRoutes);
   apiRouter.use('/sessions', sessionsRoutes);
+  apiRouter.use('/folders', foldersRoutes);
+  apiRouter.use('/queue', queueRoutes);
   apiRouter.use('/files', filesRoutes);
   apiRouter.use('/approvals', approvalsRoutes);
   apiRouter.use('/project', projectRoutes);
