@@ -17,6 +17,14 @@ set ENABLE_AUTH_BYPASS=true
 set AUTO_APPROVE_ALL=1
 set NODE_ENV=development
 
+REM --- Local Brain: point Joe at your local Ollama (free, keyless, offline) ---
+REM Joe auto-detects your installed models, picks a fast chat model + the
+REM strongest coding model, and warms them up on boot. If Ollama is not running
+REM Joe simply falls back to the free keyless AI mesh - nothing breaks.
+if not defined LOCAL_LLM_BASE_URL set LOCAL_LLM_BASE_URL=http://localhost:11434/v1
+REM Give the local CPU model plenty of time on the first (cold) request.
+if not defined LOCAL_LLM_TIMEOUT set LOCAL_LLM_TIMEOUT=180000
+
 echo ============================================
 echo   JOE - Local Free-AI Mode - no API key
 echo   http://localhost:5002/joe

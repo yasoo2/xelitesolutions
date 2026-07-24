@@ -38,6 +38,7 @@ import { createApp } from './app';
 import { attachWebSocket } from './ws';
 import { User } from '../shared/models/user';
 import { executeTool } from '../modules/services/ToolService';
+import { initLocalBrain } from '../core/llm/local-brain';
 import path from 'path';
 import fs from 'fs';
 
@@ -96,6 +97,13 @@ async function main() {
 
   server.listen(config.port, '0.0.0.0', () => {
     logger.info({ port: config.port }, 'API server listening and WebSocket attached');
+
+    // Local Brain: detect installed Ollama models, choose a fast chat model +
+    // the strongest coding model, and warm them up so the first request is fast.
+    // Best-effort — degrades quietly to the keyless free mesh if Ollama is absent.
+    initLocalBrain()
+      .then((summary) => logger.info(`🧠 ${summary}`))
+      .catch(() => { /* non-fatal */ });
 
     // Optional Startup Indexing
     if (process.env.ENABLE_STARTUP_AUTO_INDEXING === 'true') {

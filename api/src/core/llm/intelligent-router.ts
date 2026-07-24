@@ -9,6 +9,7 @@ import { LLMCacheTool } from '../../modules/tools/definitions/LLMCacheTool';
 import { OpenAIProvider } from './providers/openai';
 import { GeminiProvider } from './providers/gemini';
 import { OpenRouterProvider } from './providers/openrouter';
+import { pickLocalModel } from './local-brain';
 import OpenAI from 'openai';
 
 let hack: any = pollinationsProvider;
@@ -887,7 +888,11 @@ export async function routeToModel(
         meshProviders.push({
             name: 'Local (Auto)',
             run: async () => {
-                const res = await localProvider.chatComplete(flatMessages);
+                // Task-based model routing: build/code tasks get the strongest
+                // installed coder model; chat gets the fast small model. Falls back
+                // to LOCAL_LLM_MODEL when detection hasn't run.
+                const localModel = pickLocalModel(taskAnalysis?.type);
+                const res = await localProvider.chatComplete(flatMessages, localModel);
                 if (!res || res.length < 2) throw new Error('Local response too short');
                 return res;
             }

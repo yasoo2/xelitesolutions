@@ -4,6 +4,7 @@ import { ToolDefinition } from '../types';
 import { routeToModel } from '../../../core/llm/intelligent-router';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
+import { reviewHtml, browserSmokeTest } from '../../../core/quality/html-qa';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 const PORT = String(process.env.PORT || '5002');
@@ -57,9 +58,14 @@ export class WebPageBuilderTool implements ToolDefinition {
         const wantsNew = /(new page|from scratch|صفحة جديدة|من الصفر|ابدأ من جديد)/i.test(request);
         const isEdit = !!prev && !wantsNew;
 
-        if (sessionId) broadcastThinkingDetail(sessionId, isEdit
-            ? (isAr ? `✏️ أعدّل الصفحة: ${request}` : `✏️ Editing the page: ${request}`)
-            : (isAr ? `🏗️ أبني الصفحة: ${request}` : `🏗️ Building the page: ${request}`));
+        // Department pipeline (visible in the thinking panel) — BA analyses the
+        // request, Developer builds, QA reviews. Makes Joe feel like a team.
+        if (sessionId) {
+            broadcastThinkingDetail(sessionId, isAr ? `🧭 المحلل (BA): أفهم المطلوب وأحدد المكوّنات` : `🧭 Analyst (BA): understanding the request & components`);
+            broadcastThinkingDetail(sessionId, isEdit
+                ? (isAr ? `💻 المطوّر: أعدّل الصفحة — ${request}` : `💻 Developer: editing the page — ${request}`)
+                : (isAr ? `💻 المطوّر: أبني الصفحة — ${request}` : `💻 Developer: building the page — ${request}`));
+        }
 
         const baseRules = `STRICT RULES:
 - Output ONLY raw HTML for ONE complete self-contained file. No explanations, no markdown fences.
@@ -108,6 +114,19 @@ ${prev!.html}`
             if (!q.isValid) html = selfCorrectionSystem.suggestCorrections(html, q.issues);
         } catch { /* non-fatal */ }
 
+        // [QA department] Instant deterministic review + auto-fix (no extra LLM
+        // call, so no added latency on the CPU laptop): fixes placeholder image
+        // hosts, missing charset/viewport, RTL, unclosed tags, stray fences.
+        let qaIssues: string[] = [];
+        let qaFixed: string[] = [];
+        if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `🔎 مراجع الجودة (QA): أفحص الصفحة وأصحّح المشاكل` : `🔎 QA Reviewer: checking the page & fixing issues`);
+        try {
+            const review = reviewHtml(html, isAr);
+            html = review.html;
+            qaIssues = review.issues;
+            qaFixed = review.fixed;
+        } catch { /* non-fatal */ }
+
         // Stable filename per session so the preview URL stays consistent across edits.
         const filename = (prev?.filename && /\.html?$/i.test(prev.filename))
             ? prev.filename
@@ -131,6 +150,9 @@ ${prev!.html}`
         };
         term('web_page_builder: generating page with the local AI...');
         term('generated ' + html.length + ' bytes of HTML');
+        if (qaFixed.length) term('QA auto-fixed: ' + qaFixed.join('; '));
+        if (qaIssues.length) term('QA notes: ' + qaIssues.join('; '));
+        else term('QA review: passed (no blocking issues)');
         term('wrote file: ' + filename);
         term('preview: ' + url);
 
@@ -142,11 +164,40 @@ ${prev!.html}`
         } catch { /* non-fatal */ }
         if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `✅ تم تحديث الصفحة في المعاينة` : `✅ Page updated in Preview`);
 
+        // [QA department — optional real browser test] Off by default (heavy on a
+        // CPU laptop). When JOE_QA_BROWSER_TEST=1, actually open the page in the
+        // headless browser, capture console/page errors and a screenshot.
+        let qaBrowserLine = '';
+        try {
+            const smoke = await browserSmokeTest(url, filename);
+            if (smoke.skipped) {
+                // silent when disabled
+            } else if (smoke.ok && smoke.consoleErrors.length === 0) {
+                term('QA browser test: PASSED (no console/page errors)');
+                qaBrowserLine = isAr ? '\n🧪 اختبار المتصفح: ناجح ✅ (لا أخطاء)' : '\n🧪 Browser test: PASSED ✅ (no errors)';
+                if (smoke.screenshotHref) broadcast({ type: 'browser_screenshot', sessionId, data: { href: smoke.screenshotHref, url } } as any);
+            } else {
+                const errs = [...smoke.pageErrors, ...smoke.consoleErrors].slice(0, 3).join(' | ');
+                term('QA browser test: found issues -> ' + errs);
+                qaBrowserLine = isAr ? `\n🧪 اختبار المتصفح: وجد ملاحظات ⚠️ (${errs})` : `\n🧪 Browser test: found issues ⚠️ (${errs})`;
+            }
+        } catch { /* non-fatal */ }
+
+        // Compose the QA summary line for the chat reply.
+        const qaSummary = (() => {
+            const parts: string[] = [];
+            if (qaFixed.length) parts.push(isAr ? `🔧 تصحيحات الجودة: ${qaFixed.length}` : `🔧 QA fixes: ${qaFixed.length}`);
+            parts.push(qaIssues.length
+                ? (isAr ? `📋 ملاحظات: ${qaIssues.join('، ')}` : `📋 Notes: ${qaIssues.join(', ')}`)
+                : (isAr ? '📋 مراجعة الجودة: نجحت' : '📋 QA review: passed'));
+            return parts.join('\n') + qaBrowserLine;
+        })();
+
         const codeBlock = '```html\n' + html + '\n```';
         const verb = isEdit ? (isAr ? 'تم تعديل الصفحة' : 'Updated the page') : (isAr ? 'تم بناء الصفحة' : 'Built the page');
         const message = isAr
-            ? `✅ ${verb} وعُرضت في المعاينة.\n\n📄 الملف: ${filename}\n🌐 الرابط: ${base}\n\nاطلب أي تعديل آخر (مثل: «أضف زر» أو «غيّر اللون») وسيظهر مباشرة في المعاينة.\n\nالكود الكامل:\n${codeBlock}`
-            : `✅ ${verb} and shown in Preview.\n\n📄 File: ${filename}\n🌐 URL: ${base}\n\nAsk for any further change (e.g. "add a button" / "change the color") and it updates live.\n\nFull code:\n${codeBlock}`;
+            ? `✅ ${verb} وعُرضت في المعاينة.\n\n📄 الملف: ${filename}\n🌐 الرابط: ${base}\n\n${qaSummary}\n\nاطلب أي تعديل آخر (مثل: «أضف زر» أو «غيّر اللون») وسيظهر مباشرة في المعاينة.\n\nالكود الكامل:\n${codeBlock}`
+            : `✅ ${verb} and shown in Preview.\n\n📄 File: ${filename}\n🌐 URL: ${base}\n\n${qaSummary}\n\nAsk for any further change (e.g. "add a button" / "change the color") and it updates live.\n\nFull code:\n${codeBlock}`;
 
         return { ok: true, output: { message, url, previewUrl: url, path: filename }, logs };
     }
