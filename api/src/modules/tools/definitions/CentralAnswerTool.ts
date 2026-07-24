@@ -70,6 +70,37 @@ Your goal is to build the extraordinary.`;
             return "I'm **Joe** by XElite, ready to help. Tell me what you need.";
         };
 
+        // [INSTANT FAST-PATH] Pure greetings / identity / thanks answer IMMEDIATELY
+        // with no model call at all — instant even on a slow CPU-only laptop. Only
+        // fires for SHORT messages that are ONLY small-talk (anything with a real
+        // task like "hi, build me a page" still goes to the model below).
+        const instant = ((): string | null => {
+            const q = String(question || '').trim();
+            const wordCount = q.split(/\s+/).filter(Boolean).length;
+            if (q.length > 40 || wordCount > 6) return null;
+            const low = q.toLowerCase();
+            // NOTE: JS \b only recognises ASCII word chars, so it never matches after
+            // an Arabic letter. Match Arabic roots on the raw text (no \b) and keep
+            // \b only for the Latin alternatives.
+            const isGreeting = /^(هلا|مرحب|سلام|السلام|أهل|اهل|صباح|مساء|تحية|هاي)/.test(q) || /^(hi|hii|hey|hello|yo|hola)\b/i.test(low);
+            const isIdentity = /^(من ?ان?ت|من ?أنت|ما ?اسمك|عرّ?ف عن نفسك|عرف عن نفسك)/.test(q) || /^(who are you|what('?s| is) your name)/i.test(low);
+            const isThanks = /^(شكرا|شكراً|مشكور|يعطيك|تسلم)/.test(q) || /^(thanks|thank you|thx|tnx)\b/i.test(low);
+            // Reject if it also contains a task verb (build/create/open/write/...).
+            const hasTask = /(ابن|انش|اعمل|صمم|برمج|افتح|اكتب|اقرأ|احذف|شغل|نفذ|ابحث|build|create|make|open|write|read|delete|run|search|fix|add)/i.test(low);
+            if (hasTask) return null;
+            if (isThanks) return isAr ? 'على الرحب والسعة! 🙌 أنا **جو** جاهز لأي مهمة تالية.' : "You're welcome! 🙌 I'm **Joe**, ready for the next task.";
+            if (isIdentity) return isAr
+                ? 'أنا **جو (Joe)** — محرّك الذكاء الهندسي المتقدّم من **XElite Solutions**، وأملك أدوات كاملة (الملفات، الطرفية، المتصفح). كيف أخدمك؟'
+                : "I'm **Joe** — the elite engineering AI by **XElite Solutions**, with full tools: files, terminal, browser. How can I help?";
+            if (isGreeting) return isAr
+                ? 'مرحباً بك! 👋 أنا **جو**، مساعدك الهندسي من XElite. أخبرني بما تريد بناءه.'
+                : "Hi! 👋 I'm **Joe**, your engineering assistant by XElite. Tell me what you'd like to build.";
+            return null;
+        })();
+        if (instant) {
+            return { ok: true, output: instant, logs: ['central_answer: instant fast-path (no model call)'] };
+        }
+
         try {
             const answer = await routeToModel([
                 { role: 'system', content: systemPrompt },

@@ -118,6 +118,13 @@ export class CodeReviewerTool implements ToolDefinition {
         const ext = path.extname(filePath);
         const language = this.detectLanguage(ext);
 
+        // Always run the INSTANT deterministic pass first (free, offline).
+        const basic = this.basicReview(content, language);
+
+        // 'quick' review returns the deterministic result immediately — no waiting
+        // on a slow local model. Deeper reviews add an LLM pass on top.
+        if (reviewType === 'quick') return basic;
+
         const reviewPrompt = `You are an expert code reviewer. Review the following ${language} code and provide feedback.
 
 FILE: ${path.basename(filePath)}
@@ -157,53 +164,104 @@ Return ONLY valid JSON.`;
             const jsonStr = jsonMatch ? jsonMatch[0] : response;
             const review = JSON.parse(jsonStr);
 
-            return {
-                score: review.score || 70,
-                issues: Array.isArray(review.issues) ? review.issues : [],
-                suggestions: Array.isArray(review.suggestions) ? review.suggestions : []
-            };
+            // Merge the LLM findings with the deterministic ones so the critical
+            // static checks (secrets, merge markers, eval) are never dropped.
+            const llmIssues = Array.isArray(review.issues) ? review.issues : [];
+            const llmSuggestions = Array.isArray(review.suggestions) ? review.suggestions : [];
+            const mergedIssues = [...basic.issues, ...llmIssues];
+            const mergedSuggestions = [...basic.suggestions, ...llmSuggestions];
+            // Take the stricter (lower) of the two scores.
+            const score = Math.min(typeof review.score === 'number' ? review.score : 70, basic.score);
+            return { score, issues: mergedIssues, suggestions: mergedSuggestions };
         } catch (error) {
-            // Fallback to basic review
-            return this.basicReview(content);
+            // LLM unavailable/invalid — the deterministic review still stands.
+            return basic;
         }
     }
 
-    private basicReview(content: string): any {
+    /**
+     * Deterministic static review — no LLM required. Runs instantly and works
+     * fully offline/keyless, so a code review is always useful even when the
+     * local model is slow or every provider is momentarily down.
+     */
+    private basicReview(content: string, language = 'text'): any {
         const issues: any[] = [];
+        const suggestions: any[] = [];
         const lines = content.split('\n');
+        const lineOf = (idx: number) => idx + 1;
 
-        // Basic checks
-        if (content.includes('console.log')) {
-            issues.push({
-                severity: 'warning',
-                category: 'best-practice',
-                message: 'Remove console.log statements in production code'
+        // --- CRITICAL: leaked secrets ---
+        const secretPatterns: Array<[RegExp, string]> = [
+            [/\b(?:ghp|gho|ghs|ghr)_[A-Za-z0-9]{20,}/, 'Hard-coded GitHub token'],
+            [/\bsk-[A-Za-z0-9]{20,}/, 'Hard-coded OpenAI-style API key'],
+            [/\bAIza[A-Za-z0-9_\-]{30,}/, 'Hard-coded Google API key'],
+            [/\bAKIA[A-Z0-9]{16}\b/, 'Hard-coded AWS access key'],
+            [/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/, 'Embedded private key'],
+        ];
+        lines.forEach((line, i) => {
+            for (const [re, msg] of secretPatterns) {
+                if (re.test(line)) issues.push({ line: lineOf(i), severity: 'critical', category: 'security', message: `${msg} — move it to an environment variable and revoke it.` });
+            }
+        });
+
+        // --- CRITICAL: unresolved merge conflict markers ---
+        lines.forEach((line, i) => {
+            if (/^(<{7}|={7}|>{7})(\s|$)/.test(line)) issues.push({ line: lineOf(i), severity: 'critical', category: 'code-smell', message: 'Unresolved merge-conflict marker.' });
+        });
+
+        // --- WARNING: dangerous eval / dynamic execution ---
+        lines.forEach((line, i) => {
+            if (/\beval\s*\(/.test(line) || /new Function\s*\(/.test(line)) issues.push({ line: lineOf(i), severity: 'warning', category: 'security', message: 'Avoid eval()/new Function() — injection risk.' });
+        });
+
+        // --- WARNING: empty catch blocks (swallowed errors) ---
+        if (/catch\s*\([^)]*\)\s*\{\s*\}/.test(content) || /except\s*:\s*\n\s*pass/.test(content)) {
+            issues.push({ severity: 'warning', category: 'best-practice', message: 'Empty catch/except swallows errors silently — at least log them.' });
+        }
+
+        // --- WARNING: leftover TODO/FIXME ---
+        lines.forEach((line, i) => {
+            if (/\b(TODO|FIXME|XXX|HACK)\b/.test(line)) issues.push({ line: lineOf(i), severity: 'info', category: 'code-smell', message: 'Leftover TODO/FIXME marker.' });
+        });
+
+        // --- JS/TS specific ---
+        if (/javascript|typescript/.test(language)) {
+            lines.forEach((line, i) => {
+                if (/\bconsole\.log\b/.test(line)) issues.push({ line: lineOf(i), severity: 'info', category: 'best-practice', message: 'Leftover console.log — remove for production.' });
+                if (/\bvar\s+\w/.test(line)) issues.push({ line: lineOf(i), severity: 'warning', category: 'best-practice', message: 'Use const/let instead of var.' });
+                if (/==(?!=)/.test(line) && !/===/.test(line)) issues.push({ line: lineOf(i), severity: 'info', category: 'best-practice', message: 'Prefer strict equality (===) over ==.' });
             });
         }
 
-        if (content.includes('var ')) {
-            issues.push({
-                severity: 'warning',
-                category: 'best-practice',
-                message: 'Use const/let instead of var'
+        // --- Python specific ---
+        if (language === 'python') {
+            lines.forEach((line, i) => {
+                if (/except\s*:/.test(line) && !/except\s+\w/.test(line)) issues.push({ line: lineOf(i), severity: 'warning', category: 'best-practice', message: 'Bare except — catch specific exceptions.' });
+                if (/\bprint\s*\(/.test(line)) issues.push({ line: lineOf(i), severity: 'info', category: 'best-practice', message: 'Leftover print() — use logging for production.' });
             });
         }
 
-        if (lines.length > 500) {
-            issues.push({
-                severity: 'info',
-                category: 'complexity',
-                message: 'File is very long. Consider splitting into smaller modules.'
-            });
+        // --- Balance check (quick heuristic for obvious breakage) ---
+        const opens = (content.match(/[{([]/g) || []).length;
+        const closes = (content.match(/[})\]]/g) || []).length;
+        if (Math.abs(opens - closes) > 0) {
+            issues.push({ severity: 'warning', category: 'complexity', message: `Unbalanced brackets (${opens} open vs ${closes} close) — possible syntax error.` });
         }
 
-        return {
-            score: 75 - (issues.length * 5),
-            issues,
-            suggestions: [
-                { category: 'maintainability', message: 'Consider adding more comments' }
-            ]
-        };
+        // --- Size / structure ---
+        if (lines.length > 500) issues.push({ severity: 'info', category: 'complexity', message: 'File is very long (>500 lines). Consider splitting into modules.' });
+        const longLines = lines.filter(l => l.length > 200).length;
+        if (longLines > 0) suggestions.push({ category: 'readability', message: `${longLines} very long line(s) (>200 chars) — consider wrapping.` });
+
+        // Score: critical hurts most, then warnings, then info.
+        const critical = issues.filter(i => i.severity === 'critical').length;
+        const warning = issues.filter(i => i.severity === 'warning').length;
+        const info = issues.filter(i => i.severity === 'info').length;
+        const score = Math.max(0, 100 - critical * 30 - warning * 10 - info * 3);
+
+        if (suggestions.length === 0) suggestions.push({ category: 'maintainability', message: 'Consider adding tests and doc comments for key functions.' });
+
+        return { score, issues, suggestions };
     }
 
     private detectLanguage(ext: string): string {
