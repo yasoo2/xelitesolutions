@@ -96,13 +96,39 @@ export default function ChatPanel({
             {/* Messages */}
             <div className="joe-chat-messages">
                 {messages.length === 0 ? (
-                    <div style={{
+                    <div className="joe-chat-empty" style={{
+                        margin: 'auto',
                         textAlign: 'center',
-                        padding: '40px 20px',
-                        color: 'var(--joe-text-muted)'
+                        padding: '24px 20px',
+                        maxWidth: 560,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 14
                     }}>
-                        <Sparkles size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
-                        <p style={{ fontSize: 14 }}>How can I help you with your code today?</p>
+                        <div style={{
+                            width: 64, height: 64, borderRadius: 20,
+                            display: 'grid', placeItems: 'center',
+                            background: 'linear-gradient(135deg, var(--joe-gold-primary), var(--joe-gold-dark))',
+                            color: '#08130d', boxShadow: 'var(--joe-shadow-gold, 0 0 30px rgba(52,196,139,0.3))'
+                        }}>
+                            <Sparkles size={30} />
+                        </div>
+                        <h2 style={{ margin: 0, fontSize: 24, fontWeight: 750, color: 'var(--joe-text-primary)', letterSpacing: '-0.01em' }}>
+                            كيف أساعدك اليوم؟
+                        </h2>
+                        <p style={{ margin: 0, fontSize: 14.5, color: 'var(--joe-text-secondary)', lineHeight: 1.7 }}>
+                            أنا <b>جو</b> — مهندسك البرمجي. اطلب مني أن أبني موقعاً، أكتب كوداً، أو أنفّذ مهمة، وسأعمل عبر أدواتي (الملفات، الطرفية، المتصفح) وأعرض النتيجة مباشرة.
+                        </p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 4 }}>
+                            {['ابنِ صفحة هبوط لمتجر قهوة', 'اكتب دالة تحقّق من البريد', 'أنشئ لعبة بسيطة بالمتصفح'].map((s) => (
+                                <span key={s} style={{
+                                    fontSize: 12.5, color: 'var(--joe-text-secondary)',
+                                    border: '1px solid var(--joe-border)', background: 'var(--joe-bg-card)',
+                                    padding: '7px 13px', borderRadius: 999
+                                }}>{s}</span>
+                            ))}
+                        </div>
                     </div>
                 ) : (
                     messages.map((msg) => (

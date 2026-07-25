@@ -167,6 +167,10 @@ export default function JoeIDELayout({
     // Sidebar states
     const [sidebarView, setSidebarView] = useState<'explorer' | 'github'>('explorer');
     const [isChatCollapsed, setIsChatCollapsed] = useState(false);
+    // The chat is now the primary centered column; the workspace (preview/terminal/
+    // browser) is a collapsible side CANVAS. Start open so tools are visible, but the
+    // user can collapse it to give the chat the whole screen (ChatGPT/Claude style).
+    const [isWorkspaceCollapsed, setIsWorkspaceCollapsed] = useState(false);
     // The File Explorer is now an on-demand slide-over DRAWER (overlay) on desktop
     // too — hidden by default so the chat and preview get the full width. It opens
     // over the workspace via the edge tab / header toggle / file actions, without
@@ -195,6 +199,16 @@ export default function JoeIDELayout({
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    // When a live preview URL arrives, reveal the canvas so the user sees the result.
+    useEffect(() => {
+        if (previewUrl) setIsWorkspaceCollapsed(false);
+    }, [previewUrl]);
+    useEffect(() => {
+        const openCanvas = () => setIsWorkspaceCollapsed(false);
+        window.addEventListener('preview:ready', openCanvas);
+        return () => window.removeEventListener('preview:ready', openCanvas);
+    }, []);
+
     // Force uncollapse when an explicit action requires it (e.g. from Joe.tsx tools or CommandComposer icons)
     useEffect(() => {
         // The workspace is always visible now; 'workspace-uncollapse' should reveal
@@ -207,6 +221,7 @@ export default function JoeIDELayout({
 
     useEffect(() => {
         const handleOpenBrowserTab = () => {
+            setIsWorkspaceCollapsed(false);
             if (onWorkspaceTabChange) {
                 onWorkspaceTabChange('browser');
             } else {
@@ -222,8 +237,8 @@ export default function JoeIDELayout({
 
     const activeWorkspaceTab = workspaceTab ?? internalWorkspaceTab;
     const handleWorkspaceTabChange = useCallback((tab: WorkspaceTab) => {
-        // The workspace is always visible now (the explorer is an overlay drawer),
-        // so switching a tab must NOT pop the file drawer over the preview.
+        // Activating a tab reveals the canvas (in case it was collapsed).
+        setIsWorkspaceCollapsed(false);
         if (onWorkspaceTabChange) {
             onWorkspaceTabChange(tab);
         } else {
@@ -288,6 +303,7 @@ export default function JoeIDELayout({
 
     const toggleChat = useCallback(() => setIsChatCollapsed(prev => !prev), []);
     const toggleExplorer = useCallback(() => setIsExplorerCollapsed(prev => !prev), []);
+    const toggleWorkspace = useCallback(() => setIsWorkspaceCollapsed(prev => !prev), []);
 
     // Auto-open handler for Neural Interconnection
     const handleAutoOpen = useCallback((panel: PanelType, data?: any) => {
@@ -336,8 +352,10 @@ export default function JoeIDELayout({
                 onThemeToggle={onThemeToggle}
                 onToggleChat={toggleChat}
                 onToggleExplorer={toggleExplorer}
+                onToggleWorkspace={toggleWorkspace}
                 isChatCollapsed={isChatCollapsed}
                 isExplorerCollapsed={isExplorerCollapsed}
+                isWorkspaceCollapsed={isWorkspaceCollapsed}
                 onNewProject={onNewProject}
             />
 
@@ -359,7 +377,7 @@ export default function JoeIDELayout({
 
                 {/* Center: Workspace */}
                 <ErrorBoundary fallbackTitle="تعذّر تحميل منطقة العمل">
-                    <div className="joe-workspace-container relative flex-1 w-full h-full">
+                    <div className={`joe-workspace-container relative h-full ${isWorkspaceCollapsed ? 'canvas-collapsed' : ''}`}>
                         <WorkspacePanel
                             activeTab={activeWorkspaceTab}
                             onTabChange={handleWorkspaceTabChange}

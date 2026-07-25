@@ -1,4 +1,4 @@
-import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Rocket, Activity, Shield } from 'lucide-react';
+import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield } from 'lucide-react';
 
 interface JoeHeaderProps {
     userAvatar?: string;
@@ -13,8 +13,10 @@ interface JoeHeaderProps {
     onThemeToggle?: () => void;
     onToggleChat?: () => void;
     onToggleExplorer?: () => void;
+    onToggleWorkspace?: () => void;
     isChatCollapsed?: boolean;
     isExplorerCollapsed?: boolean;
+    isWorkspaceCollapsed?: boolean;
 }
 
 export default function JoeHeader({
@@ -30,8 +32,10 @@ export default function JoeHeader({
     onThemeToggle,
     onToggleChat,
     onToggleExplorer,
+    onToggleWorkspace,
     isChatCollapsed,
-    isExplorerCollapsed
+    isExplorerCollapsed,
+    isWorkspaceCollapsed
 }: JoeHeaderProps) {
     // Generate avatar color from name/email
     const getAvatarColor = (str: string) => {
@@ -70,6 +74,13 @@ export default function JoeHeader({
                         title="Toggle Chat"
                     >
                         <PanelLeft size={18} />
+                    </button>
+                    <button
+                        className={`joe-header-btn sidebar-toggle ${isWorkspaceCollapsed ? 'inactive' : 'active'}`}
+                        onClick={onToggleWorkspace}
+                        title="إظهار/إخفاء مساحة العمل (المعاينة والطرفية)"
+                    >
+                        <Columns2 size={18} />
                     </button>
                     <button
                         className={`joe-header-btn sidebar-toggle ${isExplorerCollapsed ? 'inactive' : 'active'}`}
