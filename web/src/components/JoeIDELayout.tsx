@@ -6,6 +6,7 @@ import WorkspacePanel from './WorkspacePanel';
 import FileExplorerPanel from './FileExplorerPanel';
 import GitHubPanel from './GitHubPanel';
 import SessionsBar from './SessionsBar';
+import CommandPalette, { Command } from './CommandPalette';
 import { GitHubRepo, GitHubCommit, GitHubUser } from '../services/githubService';
 import { FolderOpen } from 'lucide-react';
 import '../styles/joe-premium.css';
@@ -321,6 +322,19 @@ export default function JoeIDELayout({
     const toggleExplorer = useCallback(() => setIsExplorerCollapsed(prev => !prev), []);
     const toggleWorkspace = useCallback(() => setIsWorkspaceCollapsed(prev => !prev), []);
 
+    // ⌘K / Ctrl+K Command Palette
+    const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+                e.preventDefault();
+                setIsPaletteOpen(v => !v);
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
+
     // Auto-open handler for Neural Interconnection
     const handleAutoOpen = useCallback((panel: PanelType, data?: any) => {
         if (panel === 'preview') {
@@ -347,6 +361,20 @@ export default function JoeIDELayout({
     }, [isChatCollapsed, isExplorerCollapsed]);
 
     const isMaximized = isChatCollapsed && isExplorerCollapsed;
+
+    // Command Palette actions — wired to the real app actions in scope.
+    const paletteCommands: Command[] = React.useMemo(() => [
+        { id: 'new-chat', label: 'محادثة جديدة', hint: 'New chat', icon: '＋', keywords: 'session جلسة جديد', run: () => onNewSession && onNewSession() },
+        { id: 'new-project', label: 'مشروع جديد', hint: 'New project', icon: '📁', keywords: 'project onboarding', run: () => onNewProject && onNewProject() },
+        { id: 'tab-preview', label: 'فتح المعاينة', hint: 'Preview', icon: '👁', keywords: 'preview معاينة', run: () => handleWorkspaceTabChange('preview') },
+        { id: 'tab-terminal', label: 'فتح الطرفية', hint: 'Terminal', icon: '⌘', keywords: 'terminal طرفية shell', run: () => handleWorkspaceTabChange('terminal') },
+        { id: 'tab-browser', label: 'فتح المتصفح', hint: 'Browser', icon: '🌐', keywords: 'browser متصفح', run: () => handleWorkspaceTabChange('browser') },
+        { id: 'toggle-canvas', label: 'إظهار/إخفاء مساحة العمل', hint: 'Canvas', icon: '▣', keywords: 'workspace canvas كانفاس', run: () => toggleWorkspace() },
+        { id: 'toggle-files', label: 'مستكشف الملفات', hint: 'Files', icon: '🗂', keywords: 'files explorer ملفات', run: () => toggleExplorer() },
+        { id: 'git', label: 'تغييرات Git', hint: 'Git', icon: '⎇', keywords: 'git github changes', run: () => handleGitChanges() },
+        { id: 'theme', label: 'تبديل المظهر (فاتح/داكن)', hint: 'Theme', icon: '◐', keywords: 'theme dark light مظهر', run: () => onThemeToggle && onThemeToggle() },
+        { id: 'settings', label: 'الإعدادات', hint: 'Settings', icon: '⚙', keywords: 'settings إعدادات', run: () => onSettingsClick && onSettingsClick() },
+    ], [onNewSession, onNewProject, handleWorkspaceTabChange, toggleWorkspace, toggleExplorer, handleGitChanges, onThemeToggle, onSettingsClick]);
 
     // For CommandComposer, we need an active session ID and browser session ID
     const activeSessionId = sessionId; // Assuming sessionId is the active one
@@ -526,6 +554,14 @@ export default function JoeIDELayout({
             )}
 
             {children}
+
+            {/* ⌘K Command Palette */}
+            <CommandPalette
+                open={isPaletteOpen}
+                onClose={() => setIsPaletteOpen(false)}
+                commands={paletteCommands}
+                isArabic
+            />
         </div>
     );
 }
