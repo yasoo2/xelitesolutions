@@ -6,6 +6,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
 import TaskTracker from './TaskTracker';
 import TodosPanel from './TodosPanel';
+import ArtifactCard from './ArtifactCard';
 
 import { SocketService } from '../services/socket';
 
@@ -141,6 +142,15 @@ export default function ChatPanel({
                                     <ReactMarkdown
                                         components={{
                                             code({ className, children, ...props }: any) {
+                                                // [ARTIFACT] A ```joe-artifact <json>``` block renders an elegant
+                                                // artifact card (file + open-preview/download) instead of raw JSON.
+                                                if (/language-joe-artifact/.test(className || '')) {
+                                                    try {
+                                                        const meta = JSON.parse(String(children).trim());
+                                                        return <ArtifactCard meta={meta} isArabic />;
+                                                    } catch { return null; }
+                                                }
+
                                                 const match = /language-(\w+)/.exec(className || '');
 
                                                 // Detection for custom Code Citation format: language-ts:10:20:src/index.ts

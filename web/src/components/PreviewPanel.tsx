@@ -72,6 +72,9 @@ export default function PreviewPanel({
                 setInputUrl(detail.url);
                 setError(null);
                 setBuildProgress(null); // Clear build progress when ready
+                // Force a HARD iframe reload so edits (e.g. "add a button") always
+                // appear, even if the browser would otherwise reuse the cached frame.
+                setKey(k => k + 1);
                 onReady?.();
             }
         };

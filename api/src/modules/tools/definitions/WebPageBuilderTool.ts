@@ -109,10 +109,14 @@ ${prev!.html}`
         if (fence) html = fence[1].trim();
         const docIdx = html.search(/<!DOCTYPE html>|<html[\s>]/i);
         if (docIdx > 0) html = html.slice(docIdx);
+        let editFellBack = false;
         if (!/<html[\s>]/i.test(html)) {
-            if (isEdit && prev) { html = prev.html; }
+            if (isEdit && prev) { html = prev.html; editFellBack = true; }
             else { html = `<!DOCTYPE html>\n<html lang="${isAr ? 'ar' : 'en'}"${isAr ? ' dir="rtl"' : ''}>\n<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>XElite</title></head>\n<body>\n${html}\n</body>\n</html>`; }
         }
+        // Detect a no-op edit: the model returned HTML identical to the current page
+        // (weak models sometimes echo it back). We must NOT claim we changed it.
+        const editNoOp = isEdit && !!prev && (editFellBack || html.trim() === prev.html.trim());
 
         // [REVIVED weak-model-enhancer] Self-correction pass: strip leftover
         // TODO/placeholder comments the weak local model sometimes emits.
@@ -247,6 +251,15 @@ ${prev!.html}`
         })();
 
         const isProject = projectFiles.length > 0;
+        // [ARTIFACT] Machine-readable block the chat renders as an elegant artifact
+        // card (open in preview / view file). Placed above the code for quick access.
+        const artifactBlock = '```joe-artifact\n' + JSON.stringify({
+            kind: 'web',
+            filename,
+            url: base,
+            previewUrl: base,
+            files: isProject ? projectFiles.map(f => f.name) : [filename],
+        }) + '\n```';
         // Reply code: for a project, show each file; otherwise the single HTML file.
         const codeBlock = isProject
             ? [
@@ -255,13 +268,17 @@ ${prev!.html}`
                 projJs ? '**script.js**\n```js\n' + projJs + '\n```' : '',
               ].filter(Boolean).join('\n\n')
             : '```html\n' + html + '\n```';
-        const verb = isEdit ? (isAr ? 'تم تعديل المشروع' : 'Updated the project') : (isAr ? (isProject ? 'تم بناء المشروع' : 'تم بناء الصفحة') : (isProject ? 'Built the project' : 'Built the page'));
+        const verb = editNoOp
+            ? (isAr ? '⚠️ لم أستطع تطبيق التعديل تلقائياً (النموذج لم يُرجع تغييراً). أعد صياغة الطلب أو حاول مجدداً' : '⚠️ Could not apply the change automatically (the model returned no change). Rephrase or try again')
+            : isEdit ? (isAr ? 'تم تعديل المشروع' : 'Updated the project') : (isAr ? (isProject ? 'تم بناء المشروع' : 'تم بناء الصفحة') : (isProject ? 'Built the project' : 'Built the page'));
         const fileLine = isProject
             ? (isAr ? `📁 المشروع (${projectFiles.length} ملفات): ${projectFiles.map(f => f.name).join('، ')}` : `📁 Project (${projectFiles.length} files): ${projectFiles.map(f => f.name).join(', ')}`)
             : (isAr ? `📄 الملف: ${filename}` : `📄 File: ${filename}`);
+        const okPrefix = editNoOp ? '' : '✅ ';
+        const shownTail = editNoOp ? '' : (isAr ? ' وعُرض في المعاينة.' : ' and shown in Preview.');
         const message = isAr
-            ? `✅ ${verb} وعُرض في المعاينة.\n\n${fileLine}\n🌐 الرابط: ${base}\n\n${qaSummary}\n\nاطلب أي تعديل آخر (مثل: «أضف زر» أو «غيّر اللون») وسيظهر مباشرة في المعاينة.\n\nالكود الكامل:\n${codeBlock}`
-            : `✅ ${verb} and shown in Preview.\n\n${fileLine}\n🌐 URL: ${base}\n\n${qaSummary}\n\nAsk for any further change (e.g. "add a button" / "change the color") and it updates live.\n\nFull code:\n${codeBlock}`;
+            ? `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}\n\n${qaSummary}\n\nاطلب أي تعديل آخر (مثل: «أضف زر» أو «غيّر اللون») وسيظهر مباشرة في المعاينة.\n\nالكود الكامل:\n${codeBlock}`
+            : `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}\n\n${qaSummary}\n\nAsk for any further change (e.g. "add a button" / "change the color") and it updates live.\n\nFull code:\n${codeBlock}`;
 
         return { ok: true, output: { message, url, previewUrl: url, path: filename }, logs };
     }
