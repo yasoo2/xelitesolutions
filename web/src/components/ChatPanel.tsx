@@ -219,7 +219,7 @@ export default function ChatPanel({
                                     </ReactMarkdown>
                                 </div>
                                 {msg.role === 'assistant' && (
-                                    <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '6px', opacity: 0.6 }}>
+                                    <div className="joe-msg-actions" style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '6px' }}>
                                         <button
                                             onClick={() => handleCopy(msg.id, msg.content)}
                                             title="انسخ الرد"
