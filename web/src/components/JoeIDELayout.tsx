@@ -203,6 +203,14 @@ export default function JoeIDELayout({
     useEffect(() => {
         if (previewUrl) setIsWorkspaceCollapsed(false);
     }, [previewUrl]);
+
+    // SMART AUTO-OPEN: whenever the active workspace tab changes because a task
+    // needs it (Joe.tsx switches to 'terminal' on commands, 'preview' on a built
+    // page, 'browser' on web automation), reveal the canvas so the user sees the
+    // work happen. Covers terminal + preview + browser with one rule.
+    useEffect(() => {
+        if (workspaceTab) setIsWorkspaceCollapsed(false);
+    }, [workspaceTab]);
     useEffect(() => {
         const openCanvas = () => setIsWorkspaceCollapsed(false);
         window.addEventListener('preview:ready', openCanvas);
@@ -259,6 +267,14 @@ export default function JoeIDELayout({
         const unsubscribe = import('../services/socket').then(({ SocketService }) => {
             return SocketService.subscribe((event: any) => {
                 if (!event) return;
+
+                // SMART AUTO-OPEN: when a tool/command actually starts running, or the
+                // terminal produces output, reveal the canvas so the user watches the
+                // work happen (covers terminal even when the tab was already 'terminal').
+                if (event.type === 'step_started' || event.type === 'tool_started'
+                    || event.type === 'run_started' || event.type === 'terminal_output') {
+                    setIsWorkspaceCollapsed(false);
+                }
 
                 // Logs
                 if (event.type === 'step_started') {
