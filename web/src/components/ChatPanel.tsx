@@ -127,7 +127,7 @@ export default function ChatPanel({
                                                     return (
                                                         <div className="joe-code-citation group" style={{
                                                             background: 'rgba(20,25,32,0.8)',
-                                                            border: '1px solid rgba(240, 193, 75, 0.3)',
+                                                            border: '1px solid rgba(52, 196, 139, 0.3)',
                                                             borderRadius: '12px',
                                                             overflow: 'hidden',
                                                             marginTop: '8px',
@@ -139,8 +139,8 @@ export default function ChatPanel({
                                                                 // TODO: Trigger AutoOpenManager or Workspace Service to open the file.
                                                                 void 0;
                                                             }}
-                                                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--joe-gold-primary)'; e.currentTarget.style.boxShadow = '0 0 15px rgba(240,193,75,0.15)'; }}
-                                                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(240, 193, 75, 0.3)'; e.currentTarget.style.boxShadow = 'none'; }}
+                                                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--joe-gold-primary)'; e.currentTarget.style.boxShadow = '0 0 15px rgba(52, 196, 139,0.15)'; }}
+                                                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(52, 196, 139, 0.3)'; e.currentTarget.style.boxShadow = 'none'; }}
                                                         >
                                                             <div className="joe-citation-header" style={{
                                                                 background: 'rgba(0,0,0,0.4)',

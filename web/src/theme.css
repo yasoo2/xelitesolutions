@@ -2,30 +2,30 @@
 html[data-theme="dark"],
 html.dark {
   /* Obsidian Lux Palette */
-  --accent-primary: #F0B90B;
+  --accent-primary: #34c48b;
   /* Luxury Gold */
   --accent-secondary: #E2E8F0;
   /* Platinum Silver */
-  --accent-primary-rgb: 240, 185, 11;
+  --accent-primary-rgb: 52, 196, 139;
   --accent-secondary-rgb: 226, 232, 240;
 
-  --accent-rgb: 240, 185, 11;
-  --accent-glow: rgba(240, 185, 11, 0.4);
+  --accent-rgb: 52, 196, 139;
+  --accent-glow: rgba(52, 196, 139, 0.4);
 
-  --brand-mark-yellow: #F0B90B;
-  --brand-mark-yellow-rgb: 240, 185, 11;
+  --brand-mark-yellow: #34c48b;
+  --brand-mark-yellow-rgb: 52, 196, 139;
 
   --accent-danger: #ef4444;
   --accent-success: #10b981;
   /* Emerald */
 
-  --bg-dark: #09090b;
+  --bg-dark: #1a1b1e;
   /* Zinc 950 (Deep Matte Black) */
-  --bg-card: #18181b;
+  --bg-card: #232428;
   /* Zinc 900 (Lighter Matte) */
   --bg-secondary: rgba(255, 255, 255, 0.03);
   --bg-input: rgba(0, 0, 0, 0.3);
-  --bg-hover: rgba(240, 185, 11, 0.08);
+  --bg-hover: rgba(52, 196, 139, 0.08);
   /* Gold tint on hover */
 
   --text-primary: #f8fafc;
@@ -35,9 +35,9 @@ html.dark {
   --text-muted: #64748b;
   /* Slate 500 */
 
-  --border-color: rgba(240, 185, 11, 0.15);
+  --border-color: rgba(52, 196, 139, 0.15);
   /* Subtle Gold Border */
-  --border-light: rgba(240, 185, 11, 0.25);
+  --border-light: rgba(52, 196, 139, 0.25);
 
   --radius-lg: 12px;
   /* Sharper corners for luxury feel */
@@ -46,18 +46,16 @@ html.dark {
   --shadow-md: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 25px 60px -10px rgba(0, 0, 0, 0.7);
 
-  /* Brand Identity Tokens (Dark Mode Default) */
-  --brand-gradient: linear-gradient(135deg, #bf953f 0%, #fcf6ba 25%, #b38728 50%, #fbf5b7 75%, #aa771c 100%);
-  --brand-text-gradient: linear-gradient(135deg, #bf953f 0%, #fcf6ba 25%, #b38728 50%, #fbf5b7 75%, #aa771c 100%);
+  /* Brand Identity Tokens (Dark Mode Default) — Emerald */
+  --brand-gradient: linear-gradient(135deg, #2ba179 0%, #5fe0aa 45%, #1f7d5c 100%);
+  --brand-text-gradient: linear-gradient(135deg, #6ee7b7 0%, #34c48b 50%, #2ba179 100%);
   --brand-text-shadow:
-    0 1px 0 #cc9933,
-    0 2px 0 #b3862b,
-    0 3px 0 #997325,
+    0 1px 0 rgba(0, 0, 0, 0.25),
     0 4px 6px rgba(0, 0, 0, 0.4),
-    0 0 20px rgba(255, 215, 0, 0.4);
+    0 0 20px rgba(52, 196, 139, 0.35);
   --brand-badge-bg: rgba(255, 255, 255, 0.1);
   --brand-badge-text: rgba(255, 255, 255, 0.7);
-  --brand-badge-border: rgba(255, 215, 0, 0.3);
+  --brand-badge-border: rgba(52, 196, 139, 0.3);
 }
 
 html {
@@ -68,50 +66,43 @@ html {
 
 html[data-theme="light"] {
   /* Premium Sky Blue Theme Accents */
-  --accent-primary: #0ea5e9;
+  --accent-primary: #1f9d6b;
   /* Sky Blue 500 */
   --accent-secondary: #0c4a6e;
   /* Sky Blue 900 */
-  --accent-primary-rgb: 14, 165, 233;
+  --accent-primary-rgb: 31, 157, 107;
   --accent-secondary-rgb: 12, 74, 110;
-  --accent-rgb: 14, 165, 233;
-  --accent-glow: rgba(14, 165, 233, 0.2);
-  --brand-mark-yellow: #0ea5e9;
-  --brand-mark-yellow-rgb: 14, 165, 233;
+  --accent-rgb: 31, 157, 107;
+  --accent-glow: rgba(31, 157, 107, 0.2);
+  --brand-mark-yellow: #1f9d6b;
+  --brand-mark-yellow-rgb: 31, 157, 107;
 
-  --bg-dark: #ffffff;
-  /* Pure White */
+  --bg-dark: #f6f6f4;
+  /* Warm off-white */
   --bg-card: #ffffff;
-  --bg-secondary: #f0f9ff;
-  /* Sky Blue 50 */
-  --bg-input: #e0f2fe;
-  /* Sky Blue 100 */
-  --bg-hover: rgba(14, 165, 233, 0.08);
+  --bg-secondary: #efefec;
+  --bg-input: #eeeeeb;
+  --bg-hover: rgba(31, 157, 107, 0.08);
 
-  --text-primary: #0f172a;
-  --text-secondary: #0369a1;
-  /* Sky Blue 700 */
-  --text-muted: #0ea5e9;
-  /* Sky Blue 500 */
+  --text-primary: #1c1c1a;
+  --text-secondary: #55564f;
+  --text-muted: #8a8b84;
 
-  --border-color: #bae6fd;
-  /* Sky Blue 200 */
-  --border-light: #f0f9ff;
-  /* Sky Blue 50 */
+  --border-color: rgba(0, 0, 0, 0.08);
+  --border-light: rgba(0, 0, 0, 0.05);
 
-  --shadow-md: 0 10px 30px -5px rgba(14, 165, 233, 0.1);
-  --shadow-xl: 0 25px 50px -10px rgba(14, 165, 233, 0.15);
+  --shadow-md: 0 10px 30px -5px rgba(31, 157, 107, 0.1);
+  --shadow-xl: 0 25px 50px -10px rgba(31, 157, 107, 0.15);
 
-  /* Brand Identity Tokens (Light Mode - Sky Blue / Indigo) */
-  --brand-gradient: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
-  --brand-text-gradient: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 25%, #6366f1 50%, #3b82f6 75%, #0ea5e9 100%);
+  /* Brand Identity Tokens (Light Mode — Emerald) */
+  --brand-gradient: linear-gradient(135deg, #17825a 0%, #34c48b 100%);
+  --brand-text-gradient: linear-gradient(135deg, #0f6647 0%, #1f9d6b 50%, #17825a 100%);
   --brand-text-shadow:
-    0 1px 0 rgba(14, 165, 233, 0.1),
-    0 2px 0 rgba(99, 102, 241, 0.05),
-    0 0 20px rgba(14, 165, 233, 0.1);
-  --brand-badge-bg: rgba(14, 165, 233, 0.05);
-  --brand-badge-text: #0ea5e9;
-  --brand-badge-border: rgba(14, 165, 233, 0.2);
+    0 1px 0 rgba(31, 157, 107, 0.1),
+    0 0 20px rgba(31, 157, 107, 0.1);
+  --brand-badge-bg: rgba(31, 157, 107, 0.05);
+  --brand-badge-text: #1f9d6b;
+  --brand-badge-border: rgba(31, 157, 107, 0.2);
 }
 
 .spin {
@@ -185,7 +176,7 @@ html[data-theme="light"] {
 .hero-logo-content {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(240, 185, 11, 0.05), rgba(0, 0, 0, 0.4));
+  background: linear-gradient(135deg, rgba(52, 196, 139, 0.05), rgba(0, 0, 0, 0.4));
   border-radius: 28px;
   border: 1px solid var(--border-color);
   display: flex;
@@ -200,7 +191,7 @@ html[data-theme="light"] {
 .hero-logo-container:hover .hero-logo-content {
   transform: translateY(-2px) scale(1.02);
   border-color: var(--accent-primary);
-  box-shadow: 0 26px 90px rgba(240, 185, 11, 0.15);
+  box-shadow: 0 26px 90px rgba(52, 196, 139, 0.15);
 }
 
 .hero-logo-text {
@@ -292,7 +283,7 @@ html[data-theme="light"] {
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, transparent 0%, rgba(240, 185, 11, 0.05) 100%);
+  background: linear-gradient(135deg, transparent 0%, rgba(52, 196, 139, 0.05) 100%);
   opacity: 0;
   transition: opacity 0.3s ease;
 }
@@ -300,7 +291,7 @@ html[data-theme="light"] {
 .hero-card:hover {
   transform: translateY(-3px);
   border-color: var(--accent-primary);
-  box-shadow: 0 10px 40px -10px rgba(240, 185, 11, 0.1);
+  box-shadow: 0 10px 40px -10px rgba(52, 196, 139, 0.1);
 }
 
 .hero-card:hover::before {
@@ -311,13 +302,13 @@ html[data-theme="light"] {
   width: 48px;
   height: 48px;
   border-radius: 10px;
-  background: rgba(240, 185, 11, 0.1);
+  background: rgba(52, 196, 139, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--accent-primary);
   flex-shrink: 0;
-  border: 1px solid rgba(240, 185, 11, 0.1);
+  border: 1px solid rgba(52, 196, 139, 0.1);
   transition: all 0.3s ease;
 }
 

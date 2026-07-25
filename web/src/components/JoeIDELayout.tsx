@@ -460,13 +460,13 @@ export default function JoeIDELayout({
                         width: 48,
                         height: 48,
                         borderRadius: '50%',
-                        border: '2px solid var(--joe-gold-primary, #f0c14b)',
-                        background: 'linear-gradient(135deg, #f0c14b 0%, #b8860b 100%)',
+                        border: '2px solid var(--joe-gold-primary, #34c48b)',
+                        background: 'linear-gradient(135deg, #34c48b 0%, #1f7d5c 100%)',
                         color: '#0a0c10',
                         alignItems: 'center',
                         justifyContent: 'center',
                         cursor: 'pointer',
-                        boxShadow: '0 4px 20px rgba(240, 193, 75, 0.4), 0 0 30px rgba(240, 193, 75, 0.2)',
+                        boxShadow: '0 4px 20px rgba(52, 196, 139, 0.4), 0 0 30px rgba(52, 196, 139, 0.2)',
                         fontSize: 20,
                     }}
                 >

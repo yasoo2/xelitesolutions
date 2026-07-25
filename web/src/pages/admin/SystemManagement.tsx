@@ -565,7 +565,7 @@ export default function SystemManagement() {
                         <Clock size={20} color="var(--accent-primary)" />
                         <span className="section-title">Deployment Pipeline</span>
                     </div>
-                    <span className="section-badge" style={{ background: 'rgba(240,185,11,0.1)', color: 'var(--accent-primary)' }}>
+                    <span className="section-badge" style={{ background: 'rgba(52, 196, 139,0.1)', color: 'var(--accent-primary)' }}>
                         {deployments.length} Total Logs
                     </span>
                 </div>
@@ -867,7 +867,7 @@ export default function SystemManagement() {
                 }
                 .btn-deploy-refined:hover { 
                     transform: translateY(-3px) scale(1.02); 
-                    box-shadow: 0 15px 35px rgba(240, 185, 11, 0.3); 
+                    box-shadow: 0 15px 35px rgba(52, 196, 139, 0.3); 
                 }
                 .btn-deploy-refined:active { transform: scale(0.98); }
                 .btn-deploy-refined:disabled { opacity: 0.5; transform: none; box-shadow: none; cursor: not-allowed; }
@@ -923,7 +923,7 @@ export default function SystemManagement() {
                 }
                 .dep-badge.success { background: rgba(0,230,118,0.15); color: #00e676; }
                 .dep-badge.failed { background: rgba(255,82,82,0.15); color: #ff5252; }
-                .dep-badge.building { background: rgba(240,185,11,0.15); color: var(--accent-primary); }
+                .dep-badge.building { background: rgba(52, 196, 139,0.15); color: var(--accent-primary); }
                 
                 .dep-commit { font-family: 'JetBrains Mono', monospace; color: var(--text-muted); margin-right: 16px; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 6px; font-size: 13px; }
                 .dep-time { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
@@ -987,7 +987,7 @@ export default function SystemManagement() {
                 .user-email { font-size: 14px; color: var(--text-secondary); margin-top: 2px; }
                 .user-role-badge { 
                     padding: 6px 14px; 
-                    background: rgba(240, 185, 11, 0.1); 
+                    background: rgba(52, 196, 139, 0.1); 
                     color: var(--accent-primary); 
                     border-radius: 24px; 
                     font-size: 12px; 
@@ -1027,7 +1027,7 @@ export default function SystemManagement() {
                     height: 44px;
                     border-radius: 12px;
                     border: 1px solid var(--accent-primary);
-                    background: rgba(240, 193, 75, 0.1);
+                    background: rgba(52, 196, 139, 0.1);
                     color: var(--accent-primary);
                     font-weight: 700;
                     font-size: 14px;
@@ -1176,7 +1176,7 @@ export default function SystemManagement() {
                     >
                         <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                                <div style={{ width: '36px', height: '36px', background: 'rgba(240, 185, 11, 0.1)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <div style={{ width: '36px', height: '36px', background: 'rgba(52, 196, 139, 0.1)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <Terminal size={20} color="var(--accent-primary)" />
                                 </div>
                                 <div>

@@ -156,7 +156,7 @@ export default function LandingPage() {
             <footer style={{
                 padding: '100px 20px',
                 borderTop: '1px solid var(--border-color)',
-                background: 'linear-gradient(to bottom, transparent, rgba(240, 185, 11, 0.02))'
+                background: 'linear-gradient(to bottom, transparent, rgba(52, 196, 139, 0.02))'
             }}>
                 <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
                     <h2 style={{ fontSize: '2rem', marginBottom: '20px' }}>Ready to Scale?</h2>

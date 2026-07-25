@@ -51,7 +51,7 @@ export const DepartmentStatusCard: React.FC<Props> = ({ status, isArabic }) => {
                 margin: '0 0 8px',
                 borderRadius: 'var(--joe-border-radius-sm, 12px)',
                 background: 'var(--joe-bg-card, rgba(20,25,32,0.9))',
-                border: '1px solid var(--joe-border, rgba(240,193,75,0.25))',
+                border: '1px solid var(--joe-border, rgba(52, 196, 139,0.25))',
                 boxShadow: 'var(--joe-shadow-sm, 0 2px 8px rgba(0,0,0,0.4))',
                 fontSize: 12,
                 color: 'var(--joe-text-secondary, #b0bac5)',
@@ -65,9 +65,9 @@ export const DepartmentStatusCard: React.FC<Props> = ({ status, isArabic }) => {
                 const isDone = doneSet.has(stage.key);
                 const label = isArabic ? stage.labelAr : stage.label;
                 const color = isActive
-                    ? 'var(--joe-gold-primary, #f0c14b)'
+                    ? 'var(--joe-gold-primary, #34c48b)'
                     : isDone
-                        ? 'var(--joe-gold-secondary, #d4af37)'
+                        ? 'var(--joe-gold-secondary, #2ba179)'
                         : 'var(--joe-text-muted, #6b7280)';
                 return (
                     <React.Fragment key={stage.key}>
@@ -80,9 +80,9 @@ export const DepartmentStatusCard: React.FC<Props> = ({ status, isArabic }) => {
                                 borderRadius: 999,
                                 color,
                                 fontWeight: isActive ? 700 : 500,
-                                background: isActive ? 'var(--joe-gold-subtle, rgba(240,193,75,0.15))' : 'transparent',
-                                border: `1px solid ${isActive ? 'var(--joe-gold-border, rgba(240,193,75,0.35))' : 'transparent'}`,
-                                boxShadow: isActive ? 'var(--joe-shadow-gold, 0 0 25px rgba(240,193,75,0.25))' : 'none',
+                                background: isActive ? 'var(--joe-gold-subtle, rgba(52, 196, 139,0.15))' : 'transparent',
+                                border: `1px solid ${isActive ? 'var(--joe-gold-border, rgba(52, 196, 139,0.35))' : 'transparent'}`,
+                                boxShadow: isActive ? 'var(--joe-shadow-gold, 0 0 25px rgba(52, 196, 139,0.25))' : 'none',
                                 transition: 'all var(--joe-transition-speed, 0.35s) ease',
                             }}
                         >
@@ -92,7 +92,7 @@ export const DepartmentStatusCard: React.FC<Props> = ({ status, isArabic }) => {
                                 <span
                                     style={{
                                         width: 6, height: 6, borderRadius: '50%',
-                                        background: 'var(--joe-gold-primary, #f0c14b)',
+                                        background: 'var(--joe-gold-primary, #34c48b)',
                                         animation: 'joeDeptPulse 1s ease-in-out infinite',
                                     }}
                                 />

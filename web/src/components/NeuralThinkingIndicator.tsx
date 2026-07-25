@@ -79,7 +79,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
         .neural-container.bubble {
           margin-bottom: 0px;
           background: rgba(20, 25, 32, 0.8);
-          border-color: rgba(240, 193, 75, 0.2);
+          border-color: rgba(52, 196, 139, 0.2);
         }
 
         .neural-container.expanded {

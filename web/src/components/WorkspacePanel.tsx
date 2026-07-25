@@ -48,7 +48,7 @@ function CopyBtn({ text }: { text: string }) {
             title="نسخ"
             style={{
                 background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-                color: copied ? 'var(--joe-gold-primary, #d4af37)' : 'var(--joe-text-muted, #888)',
+                color: copied ? 'var(--joe-gold-primary, #2ba179)' : 'var(--joe-text-muted, #888)',
                 opacity: copied ? 1 : 0,
                 transition: 'opacity 0.15s, color 0.2s',
                 flexShrink: 0,
@@ -108,7 +108,7 @@ function PanelToolbar({ filter, onFilterChange, onCopyAll, onClear, count, label
             {/* Copy All */}
             <button onClick={handleCopyAll} title="نسخ الكل" style={{
                 background: 'none', border: 'none', cursor: 'pointer',
-                color: copied ? 'var(--joe-gold-primary, #d4af37)' : 'var(--joe-text-muted)',
+                color: copied ? 'var(--joe-gold-primary, #2ba179)' : 'var(--joe-text-muted)',
                 padding: 4, display: 'flex', alignItems: 'center', borderRadius: 4,
                 transition: 'color 0.2s',
             }}>
@@ -214,7 +214,7 @@ function EnhancedLogsPanel({ logs }: { logs: string[] }) {
                     onClick={() => setAutoScroll(!autoScroll)}
                     title={autoScroll ? 'إيقاف التمرير التلقائي' : 'تفعيل التمرير التلقائي'}
                     style={{
-                        background: autoScroll ? 'var(--joe-gold-primary, #d4af37)' : 'transparent',
+                        background: autoScroll ? 'var(--joe-gold-primary, #2ba179)' : 'transparent',
                         border: autoScroll ? 'none' : '1px solid var(--joe-text-muted)',
                         borderRadius: 4, padding: '2px 6px', cursor: 'pointer',
                         color: autoScroll ? '#000' : 'var(--joe-text-muted)',
@@ -401,7 +401,7 @@ export default function WorkspacePanel({
                             {/* Badge */}
                             {tab.badge !== undefined && tab.badge > 0 && (
                                 <span style={{
-                                    background: tab.id === 'problems' ? '#ef4444' : 'var(--joe-gold-primary, #d4af37)',
+                                    background: tab.id === 'problems' ? '#ef4444' : 'var(--joe-gold-primary, #2ba179)',
                                     color: '#fff',
                                     fontSize: 9,
                                     fontWeight: 700,
