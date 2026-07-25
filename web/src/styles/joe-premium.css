@@ -2854,3 +2854,118 @@
     color: var(--joe-text-muted);
     border-top: 1px dashed rgba(255, 255, 255, 0.05);
 }
+/* ============================================================
+   File Explorer — On-demand Slide-over Drawer (overlay)
+   Frees the chat + preview to use the full width; the explorer
+   overlays the workspace on demand instead of taking a column.
+   ============================================================ */
+.joe-files-drawer { display: flex; }
+
+/* ---- Desktop: absolute overlay inside .joe-main ---- */
+.joe-files-drawer.desktop {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--joe-files-width, 300px);
+    max-width: 92vw;
+    z-index: 60;
+    transform: translateX(0);
+    opacity: 1;
+    transition: transform var(--joe-transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
+        opacity var(--joe-transition-speed) ease;
+    box-shadow: -8px 0 40px rgba(0, 0, 0, 0.55);
+    border-left: 1px solid var(--joe-gold-border, rgba(240, 193, 75, 0.35));
+    background: var(--joe-bg-panel);
+}
+.joe-files-drawer.desktop.collapsed {
+    transform: translateX(106%);
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: none;
+}
+
+/* ---- Mobile: fixed full-height drawer ---- */
+.joe-files-drawer.mobile {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(85vw, 340px);
+    z-index: 1000;
+    transform: translateX(0);
+    transition: transform var(--joe-transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: -8px 0 40px rgba(0, 0, 0, 0.6);
+    background: var(--joe-bg-panel);
+}
+.joe-files-drawer.mobile.collapsed {
+    transform: translateX(106%);
+    pointer-events: none;
+}
+
+/* Inner panel fills the drawer regardless of the legacy width var and does NOT
+   self-position (the drawer wrapper owns positioning — overrides the old mobile
+   `position: fixed` on .joe-files-panel). */
+.joe-files-drawer .joe-files-panel {
+    position: static !important;
+    inset: auto !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    --joe-files-actual-width: 100% !important;
+    height: 100%;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    box-shadow: none !important;
+    z-index: auto !important;
+}
+
+/* Desktop backdrop */
+.joe-files-drawer-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    animation: joeDrawerFade 0.2s ease;
+}
+@keyframes joeDrawerFade { from { opacity: 0; } to { opacity: 1; } }
+
+/* Always-visible gold edge tab (desktop) */
+.joe-files-edge-tab {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    z-index: 61;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 7px;
+    border: 1px solid var(--joe-gold-border, rgba(240, 193, 75, 0.35));
+    border-right: none;
+    border-radius: 12px 0 0 12px;
+    background: var(--joe-bg-card, rgba(20, 25, 32, 0.92));
+    color: var(--joe-gold-primary, #f0c14b);
+    cursor: pointer;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
+    transition: right var(--joe-transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
+        background 0.2s ease, box-shadow 0.2s ease;
+}
+.joe-files-edge-tab:hover {
+    background: var(--joe-gold-subtle, rgba(240, 193, 75, 0.15));
+    box-shadow: var(--joe-shadow-gold, 0 0 25px rgba(240, 193, 75, 0.25));
+}
+.joe-files-edge-tab.open {
+    right: var(--joe-files-width, 300px);
+}
+.joe-files-edge-tab-label {
+    writing-mode: vertical-rl;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+}

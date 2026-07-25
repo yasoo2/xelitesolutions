@@ -167,10 +167,11 @@ export default function JoeIDELayout({
     // Sidebar states
     const [sidebarView, setSidebarView] = useState<'explorer' | 'github'>('explorer');
     const [isChatCollapsed, setIsChatCollapsed] = useState(false);
-    const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(() => {
-        // Autocollapse explorer on mobile (must match isMobile threshold of 900)
-        return typeof window !== 'undefined' ? window.innerWidth <= 900 : false;
-    });
+    // The File Explorer is now an on-demand slide-over DRAWER (overlay) on desktop
+    // too — hidden by default so the chat and preview get the full width. It opens
+    // over the workspace via the edge tab / header toggle / file actions, without
+    // shrinking the preview. So it starts collapsed on every screen size.
+    const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(true);
 
     // Handle initial mobile state for chat
     const [wasMobileInitChecked, setWasMobileInitChecked] = useState(false);
@@ -196,16 +197,16 @@ export default function JoeIDELayout({
 
     // Force uncollapse when an explicit action requires it (e.g. from Joe.tsx tools or CommandComposer icons)
     useEffect(() => {
-        const handleUncollapse = () => {
-            setIsExplorerCollapsed(false);
-        };
+        // The workspace is always visible now; 'workspace-uncollapse' should reveal
+        // the workspace, not force the file drawer open over the preview. No-op kept
+        // as a named handler in case other code dispatches it.
+        const handleUncollapse = () => { /* workspace is always visible in overlay layout */ };
         window.addEventListener('joe:workspace-uncollapse', handleUncollapse);
         return () => window.removeEventListener('joe:workspace-uncollapse', handleUncollapse);
     }, []);
 
     useEffect(() => {
         const handleOpenBrowserTab = () => {
-            setIsExplorerCollapsed(false);
             if (onWorkspaceTabChange) {
                 onWorkspaceTabChange('browser');
             } else {
@@ -221,15 +222,14 @@ export default function JoeIDELayout({
 
     const activeWorkspaceTab = workspaceTab ?? internalWorkspaceTab;
     const handleWorkspaceTabChange = useCallback((tab: WorkspaceTab) => {
-        // Force the workspace to be visible if a tab is being activated
-        setIsExplorerCollapsed(false);
-
+        // The workspace is always visible now (the explorer is an overlay drawer),
+        // so switching a tab must NOT pop the file drawer over the preview.
         if (onWorkspaceTabChange) {
             onWorkspaceTabChange(tab);
         } else {
             setInternalWorkspaceTab(tab);
         }
-    }, [onWorkspaceTabChange, setIsExplorerCollapsed]);
+    }, [onWorkspaceTabChange]);
 
 
 
@@ -380,33 +380,59 @@ export default function JoeIDELayout({
                     </div>
                 </ErrorBoundary>
 
-                {/* Right: File Explorer / GitHub Panel */}
-                <ErrorBoundary fallbackTitle="تعذّر تحميل الشريط الجانبي">
-                    {sidebarView === 'explorer' ? (
-                        <FileExplorerPanel
-                            onNewFile={onNewFile}
-                            onNewFolder={onNewFolder}
-                            onGitChanges={handleGitChanges}
-                            activeRepo={activeRepo}
-                            githubUser={githubUser}
-                            isCollapsed={isExplorerCollapsed}
-                        />
-                    ) : (
-                        <GitHubPanel
-                            user={githubUser}
-                            repos={githubRepos}
-                            activeRepo={activeRepo}
-                            commits={githubCommits}
-                            onSelectRepo={onSelectRepo || (() => { })}
-                            onRefresh={onRefreshGithub || (() => { })}
-                            onConnect={onConnectGithub || (() => { })}
-                            onDisconnect={onDisconnectGithub || (() => { })}
-                            onCreateRepo={onCreateRepo || (() => { })}
-                            onBackToFileExplorer={() => setSidebarView('explorer')}
-                            isLoading={githubLoading}
-                        />
-                    )}
-                </ErrorBoundary>
+                {/* Right: File Explorer / GitHub as an on-demand SLIDE-OVER DRAWER.
+                    Overlays the workspace instead of taking a permanent column, so
+                    chat + preview keep full width. Opened via the gold edge tab,
+                    header toggle, or file/git actions. */}
+                <div
+                    className={`joe-files-drawer ${isExplorerCollapsed ? 'collapsed' : 'open'} ${isMobile ? 'mobile' : 'desktop'}`}
+                    aria-hidden={isExplorerCollapsed}
+                >
+                    <ErrorBoundary fallbackTitle="تعذّر تحميل الشريط الجانبي">
+                        {sidebarView === 'explorer' ? (
+                            <FileExplorerPanel
+                                onNewFile={onNewFile}
+                                onNewFolder={onNewFolder}
+                                onGitChanges={handleGitChanges}
+                                activeRepo={activeRepo}
+                                githubUser={githubUser}
+                                isCollapsed={false}
+                            />
+                        ) : (
+                            <GitHubPanel
+                                user={githubUser}
+                                repos={githubRepos}
+                                activeRepo={activeRepo}
+                                commits={githubCommits}
+                                onSelectRepo={onSelectRepo || (() => { })}
+                                onRefresh={onRefreshGithub || (() => { })}
+                                onConnect={onConnectGithub || (() => { })}
+                                onDisconnect={onDisconnectGithub || (() => { })}
+                                onCreateRepo={onCreateRepo || (() => { })}
+                                onBackToFileExplorer={() => setSidebarView('explorer')}
+                                isLoading={githubLoading}
+                            />
+                        )}
+                    </ErrorBoundary>
+                </div>
+
+                {/* Backdrop while the drawer is open (desktop; mobile has its own below) */}
+                {!isMobile && !isExplorerCollapsed && (
+                    <div className="joe-files-drawer-backdrop" onClick={toggleExplorer} aria-hidden="true" />
+                )}
+
+                {/* Always-visible gold edge tab to open/close the drawer (desktop) */}
+                {!isMobile && (
+                    <button
+                        className={`joe-files-edge-tab ${isExplorerCollapsed ? '' : 'open'}`}
+                        onClick={toggleExplorer}
+                        title={isExplorerCollapsed ? 'فتح مستكشف الملفات' : 'إغلاق مستكشف الملفات'}
+                        aria-label="toggle file explorer"
+                    >
+                        <FolderOpen size={16} />
+                        <span className="joe-files-edge-tab-label">الملفات</span>
+                    </button>
+                )}
             </div>
 
             {/* Sessions Bar */}
