@@ -139,6 +139,30 @@ export class PlanningEngine {
             };
         }
 
+        // [OPEN BROWSER FAST-PATH] "open the browser", "go to <url>", "visit <site>".
+        // This must be deterministic: a bare "افتح المتصفح" has no URL, so it would
+        // otherwise fall through to the LLM DAG planner (which on weak free models
+        // returns malformed JSON and invents non-existent tools). Route it straight
+        // to browser_open, which navigates the LIVE-streamed session so the user
+        // actually watches the page load.
+        const openBrowserIntent = /(افتح|شغّ?ل|شغل|ادخل|روح|اذهب)\s*(لي\s*)?(ال)?(متصفح|براوزر|المتصفّح)|open\s*(the\s*)?browser|launch\s*browser|شغّ?ل\s*المتصفح/i.test(goalRaw);
+        const navigateIntent = /(اذهب\s*(إلى|الى|ل)|روح\s*(إلى|الى|ل)|افتح\s+(موقع|رابط|صفحة)?|زر\s+الموقع|تصفّ?ح|go\s*to|navigate\s*(to)?|visit|open)\b/i.test(goalRaw);
+        if (openBrowserIntent || (navigateIntent && urlMatch)) {
+            return {
+                id: `browser_open_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'browser_open',
+                    description: urlMatch ? `Open browser at ${urlMatch[0]}` : 'Open the live browser',
+                    tool: 'browser_launch',
+                    agent: 'Browser',
+                    input: { url: urlMatch ? urlMatch[0] : '', request: intent.goal },
+                    dependsOn: []
+                }],
+                metadata: { complexity: 'low', riskLevel: 'low' }
+            };
+        }
+
         // [ELITE FAST-PATH] Direct answer for general questions or chat
         if ((intent as any).type === 'general' || (intent as any).type === 'chat' || intent.goal.length < 30) {
             return {

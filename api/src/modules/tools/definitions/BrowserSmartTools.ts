@@ -1,11 +1,19 @@
 import fs from 'fs';
 import path from 'path';
 import { ToolDefinition } from '../types';
-import { getBrowserSession, withBrowserConcurrency } from '../../browser/manager';
+import { getBrowserSession, withBrowserConcurrency, startStreaming } from '../../browser/manager';
 import { routeToModel } from '../../../core/llm/intelligent-router';
 import { broadcast } from '../../../api/ws';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+
+/** The browser session the live-view panel streams. All chat-driven browser
+ *  tools MUST operate on this same session, otherwise their navigation happens
+ *  on an invisible page and the user never sees the live stream. */
+export const PANEL_BROWSER_SID = 'panel-browser';
+function browserSid(context: any): string {
+    return String((context && context.browserSessionId) || PANEL_BROWSER_SID);
+}
 
 /** Normalise a user-supplied URL (add https:// when missing). */
 function normalizeUrl(raw: string): string {
@@ -30,6 +38,9 @@ function publishShot(sessionId: string | undefined, buf: Buffer, url: string): s
 /** Shared: get a page, optionally navigate, return { page, url }. */
 async function openPage(sessionId: string, rawUrl?: string) {
     const s = await getBrowserSession(sessionId);
+    // Ensure the live-view stream is running for this session so the user sees
+    // the navigation happen in real time (no-op if it's already streaming).
+    try { startStreaming(sessionId); } catch { /* non-fatal */ }
     const page = s.page;
     const target = normalizeUrl(rawUrl || '');
     if (target) {
@@ -83,7 +94,7 @@ export class BrowserExtractDataTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || ''; const selector = String(input?.selector || '').trim();
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -150,7 +161,7 @@ export class BrowserCheckLinksTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || ''; const limit = Math.max(1, Math.min(60, Number(input?.limit) || 40));
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -194,7 +205,7 @@ export class BrowserPerformanceTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -248,7 +259,7 @@ export class BrowserSEOAuditTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -300,7 +311,7 @@ export class BrowserConsoleScanTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -350,7 +361,7 @@ export class BrowserSavePdfTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -385,7 +396,7 @@ export class BrowserReadabilityTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -434,7 +445,7 @@ export class BrowserContrastAuditTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -500,7 +511,7 @@ export class BrowserA11yDeepTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -562,7 +573,7 @@ export class BrowserExtractMetaTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -621,7 +632,7 @@ export class BrowserCompareTool implements ToolDefinition {
     permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         let before = normalizeUrl(input?.before || '');
         let after = normalizeUrl(input?.after || '');
         const single = normalizeUrl(input?.url || '');
@@ -755,7 +766,7 @@ export class BrowserSummarizeTool implements ToolDefinition {
     permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || input?.link || '';
         const question = String(input?.question || input?.instruction || '').trim();
         if (!url) return { ok: false, error: 'no_url' };
@@ -817,7 +828,7 @@ export class BrowserUIAuditTool implements ToolDefinition {
     permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || input?.link || '';
         const ar = isAr(String(input?.request || input?.instruction || '')) || true; // default Arabic UI
         if (!url) return { ok: false, error: 'no_url' };
@@ -916,7 +927,7 @@ export class BrowserFillFormTool implements ToolDefinition {
     permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || input?.link || '';
         const fields = (input?.fields && typeof input.fields === 'object') ? input.fields : {};
         const submit = !!input?.submit;
@@ -1006,7 +1017,7 @@ export class BrowserTranslateTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         const rawTarget = String(input?.target || '').trim().toLowerCase();
@@ -1067,7 +1078,7 @@ export class BrowserResponsiveCheckTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         const viewports = [
@@ -1160,7 +1171,7 @@ export class BrowserFindTextTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         const query = String(input?.query || input?.text || input?.term || '').trim();
         if (!url) return { ok: false, error: 'no_url' };
@@ -1245,7 +1256,7 @@ export class BrowserDesignTokensTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -1323,7 +1334,7 @@ export class BrowserClickTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         const text = String(input?.text || input?.label || '').trim();
         const selector = String(input?.selector || '').trim();
@@ -1400,7 +1411,7 @@ export class BrowserFullPageShotTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -1446,7 +1457,7 @@ export class BrowserSmartAgentTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         const question = String(input?.question || input?.instruction || '').trim();
         if (!url) return { ok: false, error: 'no_url' };
@@ -1585,7 +1596,7 @@ export class BrowserAutofixTool implements ToolDefinition {
     outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
-        const sessionId = String(context?.sessionId || 'default');
+        const sessionId = browserSid(context);
         const url = input?.url || '';
         if (!url) return { ok: false, error: 'no_url' };
         try {
@@ -1685,5 +1696,50 @@ export class BrowserAutofixTool implements ToolDefinition {
                 return { ok: true, output: { message, fixes, count: fixes.length, fixedFile: fixedHref, beforeScreenshot: beforeShot, afterScreenshot: afterShot, screenshot: afterShot, url: finalUrl } };
             });
         } catch (e: any) { return { ok: false, error: `autofix_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
+   browser_open — open the live browser (optionally at a URL)
+   ============================================================ */
+export class BrowserOpenTool implements ToolDefinition {
+    // NOTE: name is 'browser_launch' (NOT 'browser_open') because ToolService
+    // aliases 'browser_open' -> the generic 'browser_run', which would shadow this
+    // tool and hit the session-ownership check. 'browser_launch' runs directly.
+    name = 'browser_launch';
+    version = '1.0.0';
+    description = 'Open the live browser panel and navigate to a URL (or a default start page when none is given). Starts the live stream so the user watches the page load in real time. Use for "open the browser", "go to <url>", "visit <site>".';
+    tags = ['browser', 'web', 'open', 'navigate', 'live'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            url: { type: 'string' as const, description: 'URL to open. Optional — defaults to a start page.' },
+        },
+        required: [],
+    };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = browserSid(context);
+        const raw = String(input?.url || input?.link || input?.request || '').trim();
+        const urlInText = raw.match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me|gov|edu)(?:\/[^\s]*)?/i);
+        const target = urlInText ? normalizeUrl(urlInText[0]) : (process.env.BROWSER_HOME_URL || 'https://www.google.com');
+        try {
+            return await withBrowserConcurrency(async () => {
+                // Kick the live stream first so the panel is already showing frames
+                // as the navigation happens.
+                try { startStreaming(sessionId); } catch { /* non-fatal */ }
+                const { page, url: finalUrl } = await openPage(sessionId, target);
+                await page.waitForTimeout(500);
+                const title = await page.title().catch(() => '');
+                const buf = await page.screenshot({ type: 'jpeg', quality: 62, animations: 'disabled' });
+                const shot = publishShot(sessionId, Buffer.from(buf), finalUrl);
+                const message = `🌐 فتحتُ المتصفح على: ${finalUrl}${title ? `\n📄 ${title}` : ''}\nالبثّ الحي يعمل الآن — يمكنك أن تطلب مني تصفّح الصفحة أو تحليلها أو النقر فيها.`;
+                return { ok: true, output: { message, url: finalUrl, title, screenshot: shot, live: true } };
+            });
+        } catch (e: any) {
+            return { ok: false, error: `open_failed: ${e?.message || e}`, output: { message: `⚠️ تعذّر فتح المتصفح: ${e?.message || e}` } };
+        }
     }
 }

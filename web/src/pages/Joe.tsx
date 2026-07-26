@@ -290,12 +290,12 @@ export default function Joe() {
         return () => window.removeEventListener('joe:workspace-tab-switch', handler);
     }, []);
 
-    // Browser session ID
+    // Browser session ID — use ONE stable session ('panel-browser') that both the
+    // live-view panel streams AND the chat-driven browser tools navigate. Using a
+    // per-chat id (browser:<sessionId>) split them onto two different Chromium pages,
+    // so the tools worked on an invisible page and the live stream stayed blank.
     useEffect(() => {
-        const sessionId = activeSessionId;
-        if (sessionId) {
-            setBrowserSessionId(`browser:${sessionId}`);
-        }
+        setBrowserSessionId('panel-browser');
     }, [activeSessionId]);
 
     // Load messages when the session changes. CRITICAL: clear the previous

@@ -290,6 +290,18 @@ export default function JoeIDELayout({
                     setIsWorkspaceCollapsed(false);
                 }
 
+                // When a BROWSER tool runs, reveal the canvas AND switch to the
+                // browser tab so the user actually sees the live stream (otherwise it
+                // opens on the terminal and the browser work stays hidden).
+                const toolName = String(
+                    event?.data?.tool?.name || event?.data?.name || event?.tool || event?.data?.toolName || ''
+                ).toLowerCase();
+                if ((event.type === 'step_started' || event.type === 'tool_started'
+                    || event.type === 'browser_screenshot' || event.type === 'stream_frame')
+                    && (toolName.includes('browser') || event.type === 'browser_screenshot' || event.type === 'stream_frame')) {
+                    window.dispatchEvent(new Event('joe:open-browser-tab'));
+                }
+
                 // Logs
                 if (event.type === 'step_started') {
                     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Step Started: ${event.data?.name || 'Unknown'}`]);
