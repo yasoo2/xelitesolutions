@@ -1567,3 +1567,123 @@ export class BrowserSmartAgentTool implements ToolDefinition {
         } catch (e: any) { return { ok: false, error: `smart_agent_failed: ${e?.message || e}` }; }
     }
 }
+
+/* ============================================================
+   22) browser_autofix — apply a11y/SEO fixes, show before/after
+   ============================================================ */
+export class BrowserAutofixTool implements ToolDefinition {
+    name = 'browser_autofix';
+    version = '1.0.0';
+    description = 'Open a page, automatically apply deterministic accessibility & SEO fixes (viewport meta, html lang, missing alt text, unlabeled inputs, single H1, meta description, empty links), then save the corrected HTML as a downloadable artifact and return before/after screenshots plus the list of fixes applied.';
+    tags = ['browser', 'web', 'autofix', 'accessibility', 'seo', 'repair'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: { url: { type: 'string' as const, description: 'Page URL to fix' } },
+        required: ['url'],
+    };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                // before screenshot
+                const beforeBuf = await page.screenshot({ type: 'jpeg', quality: 60, animations: 'disabled' });
+                const beforeShot = publishShot(sessionId, Buffer.from(beforeBuf), finalUrl);
+
+                // apply deterministic fixes to the live DOM, collect what changed
+                const result = await page.evaluate(() => {
+                    const fixes: string[] = [];
+                    const clean = (t: string) => (t || '').replace(/\s+/g, ' ').trim();
+
+                    // 1) html lang
+                    if (!document.documentElement.getAttribute('lang')) {
+                        const arabic = /[؀-ۿ]/.test(document.body?.innerText || '');
+                        document.documentElement.setAttribute('lang', arabic ? 'ar' : 'en');
+                        if (arabic && !document.documentElement.getAttribute('dir')) document.documentElement.setAttribute('dir', 'rtl');
+                        fixes.push(`أضفتُ lang="${arabic ? 'ar' : 'en'}"${arabic ? ' و dir="rtl"' : ''} على <html>.`);
+                    }
+                    // 2) viewport meta
+                    if (!document.querySelector('meta[name="viewport"]')) {
+                        const m = document.createElement('meta'); m.setAttribute('name', 'viewport'); m.setAttribute('content', 'width=device-width, initial-scale=1');
+                        document.head.appendChild(m); fixes.push('أضفتُ وسم viewport (تجاوب الجوال).');
+                    }
+                    // 3) charset
+                    if (!document.querySelector('meta[charset]')) {
+                        const m = document.createElement('meta'); m.setAttribute('charset', 'utf-8'); document.head.insertBefore(m, document.head.firstChild);
+                        fixes.push('أضفتُ meta charset="utf-8".');
+                    }
+                    // 4) missing alt on images
+                    let altFixed = 0;
+                    Array.from(document.querySelectorAll('img')).forEach(img => {
+                        if (!img.getAttribute('alt')) {
+                            const src = (img.getAttribute('src') || '').split('/').pop()?.split('.')[0] || 'صورة';
+                            img.setAttribute('alt', decodeURIComponent(src).replace(/[-_]+/g, ' ').slice(0, 60) || 'صورة');
+                            altFixed++;
+                        }
+                    });
+                    if (altFixed) fixes.push(`أضفتُ نصاً بديلاً (alt) لـ ${altFixed} صورة.`);
+                    // 5) unlabeled inputs -> aria-label from placeholder/name/type
+                    let labelFixed = 0;
+                    Array.from(document.querySelectorAll('input,textarea,select')).forEach(el => {
+                        const t = (el as HTMLInputElement).type;
+                        if (['hidden', 'submit', 'button'].includes(t)) return;
+                        const id = el.getAttribute('id');
+                        const hasLabel = (id && document.querySelector(`label[for="${id}"]`)) || el.getAttribute('aria-label');
+                        if (!hasLabel) {
+                            const guess = el.getAttribute('placeholder') || el.getAttribute('name') || t || 'حقل';
+                            el.setAttribute('aria-label', clean(guess).slice(0, 40));
+                            labelFixed++;
+                        }
+                    });
+                    if (labelFixed) fixes.push(`أضفتُ aria-label لـ ${labelFixed} حقل إدخال.`);
+                    // 6) multiple H1 -> keep first, demote rest to H2
+                    const h1s = Array.from(document.querySelectorAll('h1'));
+                    if (h1s.length > 1) {
+                        h1s.slice(1).forEach(h => { const h2 = document.createElement('h2'); h2.innerHTML = h.innerHTML; Array.from(h.attributes).forEach(a => h2.setAttribute(a.name, a.value)); h.replaceWith(h2); });
+                        fixes.push(`خفّضتُ ${h1s.length - 1} عنوان H1 زائد إلى H2 (عنوان رئيسي واحد).`);
+                    }
+                    // 7) meta description from first meaningful paragraph
+                    if (!document.querySelector('meta[name="description"]')) {
+                        const p = Array.from(document.querySelectorAll('p')).map(x => clean((x as HTMLElement).innerText)).find(t => t.length > 40);
+                        if (p) { const m = document.createElement('meta'); m.setAttribute('name', 'description'); m.setAttribute('content', p.slice(0, 155)); document.head.appendChild(m); fixes.push('أضفتُ meta description من محتوى الصفحة.'); }
+                    }
+                    // 8) empty/# links -> mark with role/button hint (non-destructive)
+                    let emptyFixed = 0;
+                    Array.from(document.querySelectorAll('a')).forEach(a => {
+                        const h = a.getAttribute('href');
+                        if ((!h || h === '#' || h.trim() === '') && !a.getAttribute('role')) { a.setAttribute('role', 'button'); a.setAttribute('tabindex', '0'); emptyFixed++; }
+                    });
+                    if (emptyFixed) fixes.push(`عالجتُ ${emptyFixed} رابط فارغ (role="button" + tabindex).`);
+
+                    return { fixes, html: '<!doctype html>\n' + document.documentElement.outerHTML };
+                });
+
+                // after screenshot (DOM already mutated)
+                await page.waitForTimeout(200);
+                const afterBuf = await page.screenshot({ type: 'jpeg', quality: 60, animations: 'disabled' });
+                const afterShot = publishShot(sessionId, Buffer.from(afterBuf), finalUrl);
+
+                // save corrected HTML as a downloadable artifact
+                let fixedHref: string | undefined;
+                try {
+                    fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+                    const name = `autofix-${Date.now()}.html`;
+                    fs.writeFileSync(path.join(ARTIFACT_DIR, name), result.html, 'utf-8');
+                    fixedHref = `/artifacts/${name}`;
+                } catch { /* ignore */ }
+
+                const fixes = result.fixes || [];
+                const message = fixes.length
+                    ? `🔧 الإصلاح التلقائي (${finalUrl}) — طبّقتُ ${fixes.length} إصلاحاً:\n${fixes.map(f => `• ${f}`).join('\n')}` +
+                    (fixedHref ? `\n\n⬇️ الصفحة المُصلَحة: ${fixedHref}` : '')
+                    : `✅ الصفحة (${finalUrl}) سليمة — لا حاجة لإصلاحات وصولية/SEO أساسية.`;
+                return { ok: true, output: { message, fixes, count: fixes.length, fixedFile: fixedHref, beforeScreenshot: beforeShot, afterScreenshot: afterShot, screenshot: afterShot, url: finalUrl } };
+            });
+        } catch (e: any) { return { ok: false, error: `autofix_failed: ${e?.message || e}` }; }
+    }
+}
