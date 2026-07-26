@@ -3565,7 +3565,11 @@ export default function CommandComposer({
               </div>
             )}
 
-            {status === 'thinking' && (
+            {/* When history is rendered elsewhere (ChatPanel), that panel owns the
+                thinking indicator — showing it here too caused the "neural thinking
+                duplicated twice" the user reported. Only show it when this composer
+                also owns the history. */}
+            {!hideHistory && status === 'thinking' && (
               <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px' }}>
                 <NeuralThinkingIndicator
                   visible={true}

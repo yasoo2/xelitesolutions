@@ -61,6 +61,42 @@ export function getBrowserViewport() {
   return parseViewport(process.env.BROWSER_VIEWPORT);
 }
 
+/**
+ * Locate an installed Chromium executable so the browser launches reliably even
+ * when Playwright's default resolved path doesn't match what's installed (the
+ * "browser doesn't work at all" case). Checks an explicit env override, then
+ * Playwright's own resolved path, then scans PLAYWRIGHT_BROWSERS_PATH.
+ */
+export function findChromiumExecutable(): string | undefined {
+  const envPath = (process.env.BROWSER_EXECUTABLE_PATH || process.env.CHROMIUM_PATH || '').trim();
+  if (envPath && fs.existsSync(envPath)) return envPath;
+
+  // Playwright's own resolved path (works when the matching build is installed).
+  try {
+    const pw = require('playwright');
+    const p = pw?.chromium?.executablePath?.();
+    if (p && fs.existsSync(p)) return p;
+  } catch { /* ignore */ }
+
+  // Scan the browsers cache for any installed chromium build (any version).
+  const base = (process.env.PLAYWRIGHT_BROWSERS_PATH || '').trim();
+  if (base && fs.existsSync(base)) {
+    try {
+      const dirs = fs.readdirSync(base).filter((d) => /^chromium(-|_)/.test(d));
+      for (const d of dirs) {
+        const candidates = [
+          path.join(base, d, 'chrome-linux', 'chrome'),
+          path.join(base, d, 'chrome-linux', 'headless_shell'),
+          path.join(base, d, 'chrome-win', 'chrome.exe'),
+          path.join(base, d, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
+        ];
+        for (const c of candidates) { if (fs.existsSync(c)) return c; }
+      }
+    } catch { /* ignore */ }
+  }
+  return undefined;
+}
+
 export function getChromiumLaunchOptions(): LaunchOptions {
   const headlessEnv = parseBool(process.env.BROWSER_HEADLESS);
   const headedEnv = parseBool(process.env.BROWSER_HEADED) ?? parseBool(process.env.BROWSER_HEADFUL);
@@ -78,7 +114,10 @@ export function getChromiumLaunchOptions(): LaunchOptions {
   const noSandbox = parseBool(process.env.BROWSER_NO_SANDBOX) ?? parseBool(process.env.BROWSER_DISABLE_SANDBOX);
   if (noSandbox) args.push('--no-sandbox', '--disable-setuid-sandbox');
 
-  return { headless, args };
+  const opts: LaunchOptions = { headless, args };
+  const exe = findChromiumExecutable();
+  if (exe) opts.executablePath = exe;
+  return opts;
 }
 
 function sleep(ms: number) {
@@ -225,10 +264,14 @@ export async function createSession(sessionId: string) {
     try {
       browser = await chromium.launch(getChromiumLaunchOptions());
     } catch (e: any) {
-      const check = await BinaryService.checkBinary('chromium'); // Playwright might not have a standalone 'chromium' binary in path
-      // Actually playwright has its own internal path.
-      // But we can check for common issues.
-      throw new Error(`browser_launch_failed: ${e.message}. ${BinaryService.getHint('chromium', check)}`);
+      // The browser engine isn't installed / can't launch. Give an actionable hint
+      // instead of a raw error so the user knows exactly how to fix it.
+      throw new Error(
+        `browser_launch_failed: ${e?.message || e}. ` +
+        `تعذّر تشغيل متصفح Joe. شغّل هذا الأمر مرة واحدة داخل مجلد النظام: ` +
+        `"npx playwright install chromium" ثم أعد التشغيل. ` +
+        `(يمكن أيضاً ضبط BROWSER_EXECUTABLE_PATH على مسار Chrome/Chromium مثبّت لديك.)`
+      );
     }
   }
 
