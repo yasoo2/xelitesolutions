@@ -55,6 +55,26 @@ Write-Host "[2/3] API built OK" -ForegroundColor Green
 
 Pop-Location
 
+# [2b/3] Build the web UI too. This MUST run after every git pull, otherwise the
+# frontend stays stale and bugs like "the browser does nothing" or "sessions do
+# not show" reappear even though the fixes were pulled.
+$webDir = "$PSScriptRoot\web"
+if (Test-Path $webDir) {
+    Push-Location $webDir
+    if (-not (Test-Path "$webDir\node_modules")) {
+        Write-Host "`n[2b/3] Installing web dependencies (first run only)..." -ForegroundColor Yellow
+        npm install --no-audit --no-fund --legacy-peer-deps
+    }
+    Write-Host "`n[2b/3] Building Web UI (ensures the latest frontend fixes are live)..." -ForegroundColor Yellow
+    npm run build
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[!] Web build failed - starting with the last successful build." -ForegroundColor Red
+    } else {
+        Write-Host "[2b/3] Web UI built OK" -ForegroundColor Green
+    }
+    Pop-Location
+}
+
 # [3/3] التشغيل مع إعادة تشغيل تلقائية
 $restartCount = 0
 while ($true) {

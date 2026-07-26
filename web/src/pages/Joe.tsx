@@ -452,7 +452,15 @@ export default function Joe() {
         // [ELITE FIX] Eager connection initialization
         SocketService.connect();
 
-        loadAllSessions();
+        // Load sessions; if there are none yet, open exactly ONE real session so
+        // the user always lands on a working, visible chat (shown in the sessions
+        // bar). New sessions then accumulate alongside it.
+        loadAllSessions().then(() => {
+            const st = useSessionStore.getState();
+            if (st.sessions.length === 0 && st.agentSessions.length === 0) {
+                createSession({ kind: 'agent' });
+            }
+        }).catch(() => { });
 
         const initGithub = async () => {
             // Wait for workspaceId if needed

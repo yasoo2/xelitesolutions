@@ -145,9 +145,16 @@ export class PlanningEngine {
         // returns malformed JSON and invents non-existent tools). Route it straight
         // to browser_open, which navigates the LIVE-streamed session so the user
         // actually watches the page load.
-        const openBrowserIntent = /(افتح|شغّ?ل|شغل|ادخل|روح|اذهب)\s*(لي\s*)?(ال)?(متصفح|براوزر|المتصفّح)|open\s*(the\s*)?browser|launch\s*browser|شغّ?ل\s*المتصفح/i.test(goalRaw);
-        const navigateIntent = /(اذهب\s*(إلى|الى|ل)|روح\s*(إلى|الى|ل)|افتح\s+(موقع|رابط|صفحة)?|زر\s+الموقع|تصفّ?ح|go\s*to|navigate\s*(to)?|visit|open)\b/i.test(goalRaw);
-        if (openBrowserIntent || (navigateIntent && urlMatch)) {
+        const openBrowserIntent = /(افتح|شغّ?ل|شغل|ادخل|روح|اذهب|استخدم|جرّ?ب|شوف|اعرض)\s*(لي\s*)?(ال)?(متصفح|براوزر|المتصفّح)|open\s*(the\s*)?browser|launch\s*browser|use\s*(the\s*)?browser|شغّ?ل\s*المتصفح/i.test(goalRaw);
+        const navigateIntent = /(اذهب\s*(إلى|الى|ل)|روح\s*(إلى|الى|ل)|افتح\s+(موقع|رابط|صفحة|الموقع)?|زر\s+(الموقع|الرابط)|ادخل\s+(موقع|على)|تصفّ?ح|عايِ?ن|افحص\s+الموقع|go\s*to|navigate\s*(to)?|visit|browse|open)\b/i.test(goalRaw);
+        const browserWord = /(متصفح|براوزر|browser|الويب\b|صفحة\s*الويب|الموقع|website|web\s*page)/i.test(goalRaw);
+        // Route to the live browser when: an explicit open/use-browser phrasing is
+        // present; OR a URL is mentioned with any navigate/browser cue; OR the
+        // intent analyser already decided this is a Browser task. Deterministic so
+        // it never falls into the weak-model DAG planner.
+        if (openBrowserIntent
+            || (urlMatch && (navigateIntent || browserWord))
+            || (urlMatch && String(intent.suggestedAgent || '') === 'Browser')) {
             return {
                 id: `browser_open_${Date.now()}`,
                 goal: intent.goal,
@@ -248,16 +255,19 @@ Return ONLY a JSON array of steps:
 
         // Emergency Fallback (Dynamic but minimal)
         console.warn(`[PlanningEngine] Using failover node for: ${intent.goal}`);
-        const isBrowserFallback = (intent.suggestedAgent === 'Browser') || (intent.requiredTools && intent.requiredTools.includes('browser_run'));
+        const isBrowserFallback = (intent.suggestedAgent === 'Browser') || (intent.requiredTools && intent.requiredTools.includes('browser_run')) || !!urlMatch;
+        // For browser intents, open the live browser deterministically instead of
+        // the generic browser_run (which needs explicit actions and otherwise dies
+        // with "actions_or_instruction_required" -> "Recovery failed").
         return {
             id: `failover_${Date.now()}`,
             goal: intent.goal,
             steps: [{
-                id: 'recovery_node',
+                id: isBrowserFallback ? 'browser_open' : 'recovery_node',
                 description: `Respond to: ${intent.goal}`,
-                tool: isBrowserFallback ? 'browser_run' : 'central_answer',
+                tool: isBrowserFallback ? 'browser_launch' : 'central_answer',
                 agent: isBrowserFallback ? 'Browser' : (intent.suggestedAgent || 'General'),
-                input: isBrowserFallback ? { instruction: intent.goal, task: intent.goal } : { question: intent.goal },
+                input: isBrowserFallback ? { url: urlMatch ? urlMatch[0] : '', request: intent.goal } : { question: intent.goal },
                 dependsOn: []
             }],
             metadata: { complexity: 'low', riskLevel: 'low' }
