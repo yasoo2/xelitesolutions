@@ -139,6 +139,35 @@ export class PlanningEngine {
             };
         }
 
+        // [WEB SEARCH FAST-PATH] "ابحث عن X" / "search for X" -> actually SEARCH
+        // (navigate to Google results for X) instead of just opening a blank Google.
+        // Previously a search fell to the failover which opened the browser on the
+        // homepage and did nothing.
+        const searchIntent = /(^|\s)(ابحث|إبحث|بحث|دوّ?ر|فتّ?ش|جوجل|google|search|بحث\s*في\s*الإنترنت|ابحث\s*في\s*الويب)/i.test(goalRaw);
+        if (searchIntent && !urlMatch) {
+            // Extract the query: after "عن"/"about"/"for", else the whole goal minus the verb.
+            let query = goalRaw;
+            const qm = goalRaw.match(/(?:ابحث|إبحث|بحث|دوّ?ر|فتّ?ش|search(?:\s*for)?|google|جوجل)\s*(?:عن|about|for|في)?\s*(.+)/i);
+            if (qm && qm[1]) query = qm[1].trim();
+            query = query.replace(/^(لي|من\s*فضلك|please)\s+/i, '').trim();
+            if (query.length >= 2) {
+                const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+                return {
+                    id: `browser_search_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'browser_open',
+                        description: `Search the web for: ${query}`,
+                        tool: 'browser_launch',
+                        agent: 'Browser',
+                        input: { url: searchUrl, request: intent.goal },
+                        dependsOn: []
+                    }],
+                    metadata: { complexity: 'low', riskLevel: 'low' }
+                };
+            }
+        }
+
         // [OPEN BROWSER FAST-PATH] "open the browser", "go to <url>", "visit <site>".
         // This must be deterministic: a bare "افتح المتصفح" has no URL, so it would
         // otherwise fall through to the LLM DAG planner (which on weak free models

@@ -364,12 +364,31 @@ export function isAutoTitleCandidate(title: string) {
     );
 }
 
+// Guards against the title "thrash" where the frontend polls /messages a few
+// times during a run and each poll fires a concurrent rename (each producing a
+// different title). Locked synchronously on entry; a session is named ONCE.
+const _autoNamingLock = new Set<string>();
 async function handleAutoNaming(sessionId: string, messages: any[], isOffline: boolean) {
+    if (_autoNamingLock.has(sessionId)) return; // already naming / named this session
+    _autoNamingLock.add(sessionId);
+    let succeeded = false;
     try {
         const userMsgs = messages.filter(m => m.role === 'user');
         if (userMsgs.length < 1) return;
 
-        const newTitle = await generateSessionTitle(userMsgs.map(m => String(m.content || '')).join('\n'));
+        const rawTitle = await generateSessionTitle(userMsgs.map(m => String(m.content || '')).join('\n'));
+        // Sanitize: titles must be SHORT and content-based. Weak local models
+        // sometimes return a whole greeting/sentence instead of a title — in that
+        // case fall back to the user's first message, trimmed.
+        const firstUser = String(userMsgs[0]?.content || '').replace(/\s+/g, ' ').trim();
+        const cleanTitle = (raw: string): string => {
+            let t = String(raw || '').split('\n')[0].trim().replace(/^["'«»`*#\s]+|["'«»`*\s]+$/g, '').trim();
+            const looksLikeSentence = t.length > 60 || /^(أهلا|أهلاً|مرحبا|السلام|welcome|hello|hi\b|hey\b|sure\b|بالطبع|حسنا)/i.test(t) || /[.!؟?]$/.test(t) && t.length > 45;
+            if (!t || looksLikeSentence) t = firstUser;
+            if (t.length > 60) t = t.slice(0, 57).trim() + '…';
+            return t;
+        };
+        const newTitle = cleanTitle(rawTitle);
         if (newTitle && newTitle !== 'New Session' && !isAutoTitleCandidate(newTitle)) {
             if (!isOffline) {
                 await Session.findByIdAndUpdate(sessionId, { title: newTitle });
@@ -378,9 +397,14 @@ async function handleAutoNaming(sessionId: string, messages: any[], isOffline: b
             }
             broadcast({ type: 'sessions:refresh', data: { sessionId, newTitle } });
             console.log(`[SessionController] Auto-renamed session ${sessionId} to: ${newTitle} (Offline: ${isOffline})`);
+            succeeded = true;
         }
     } catch (e) {
         console.error('[SessionController] handleAutoNaming failed', e);
+    } finally {
+        // Keep the lock only if we actually named it; otherwise release so a later
+        // message can retry (but never several at once).
+        if (!succeeded) _autoNamingLock.delete(sessionId);
     }
 }
 
