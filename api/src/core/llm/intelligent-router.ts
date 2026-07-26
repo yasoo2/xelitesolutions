@@ -720,7 +720,14 @@ export async function routeToModel(
     // Check for user-selected provider overrides in context
     if (context?.modelConfig) {
         const { provider: cfgProvider, model: cfgModel, apiKey: cfgApiKey, baseUrl: cfgBaseUrl } = context.modelConfig;
-        const isAuto = !cfgProvider || cfgProvider === 'mock' || cfgProvider === 'auto' || cfgProvider === 'free' || cfgProvider === 'default' || cfgApiKey === 'auto-mode';
+        // A provider selected WITHOUT a real key (placeholder 'auto-mode'/'free-mode'
+        // or blank) must route through the free-first mesh — NOT be sent to the real
+        // provider API with a fake key (which is why the free non-Auto providers like
+        // Groq/Cerebras/Mistral "didn't connect"). Only a real, non-placeholder key
+        // takes the custom route.
+        const keyStr = String(cfgApiKey || '').trim();
+        const placeholderKey = !keyStr || keyStr === 'auto-mode' || keyStr === 'free-mode' || keyStr === 'free' || keyStr === 'dummy';
+        const isAuto = !cfgProvider || cfgProvider === 'mock' || cfgProvider === 'auto' || cfgProvider === 'free' || cfgProvider === 'default' || placeholderKey;
         if (!isAuto) {
           const routeKey = `${cfgProvider}:${String(cfgApiKey || '').slice(0, 12)}:${cfgModel || ''}`;
           if (failedCustomRoutes.has(routeKey)) {

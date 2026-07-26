@@ -2566,6 +2566,7 @@ export default function CommandComposer({
         [key]: { ...prev[key], isConnected: true, lastError: undefined, apiKey: prev[key].apiKey || 'free-mode' }
       }));
       setActiveProvider(key);
+      setShowProviders(false); // enter the chosen provider and close the list
       return;
     }
 
@@ -2599,6 +2600,7 @@ export default function CommandComposer({
           [key]: { ...prev[key], isVerifying: false, isConnected: true, lastError: undefined }
         }));
         setActiveProvider(key);
+        setShowProviders(false); // verified successfully → switch to it and close the list
       } else {
         throw new Error(data.error || 'Connection failed');
       }
