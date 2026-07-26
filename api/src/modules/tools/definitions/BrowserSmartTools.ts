@@ -1301,3 +1301,127 @@ export class BrowserDesignTokensTool implements ToolDefinition {
         } catch (e: any) { return { ok: false, error: `design_tokens_failed: ${e?.message || e}` }; }
     }
 }
+
+/* ============================================================
+   19) browser_click — click an element by text or selector
+   ============================================================ */
+export class BrowserClickTool implements ToolDefinition {
+    name = 'browser_click';
+    version = '1.0.0';
+    description = 'Open a page and click an element identified by visible text or a CSS selector, then report what changed (URL navigation, new content, or nothing) with a before/after screenshot.';
+    tags = ['browser', 'web', 'click', 'interact', 'automation', 'test'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            url: { type: 'string' as const, description: 'Page URL' },
+            text: { type: 'string' as const, description: 'Visible text of the element to click (button/link)' },
+            selector: { type: 'string' as const, description: 'CSS selector of the element to click (alternative to text)' },
+        },
+        required: ['url'],
+    };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        const text = String(input?.text || input?.label || '').trim();
+        const selector = String(input?.selector || '').trim();
+        if (!url) return { ok: false, error: 'no_url' };
+        if (!text && !selector) return { ok: false, error: 'no_target' };
+        const ar = isAr(text) || isAr(String(input?.request || ''));
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: beforeUrl } = await openPage(sessionId, url);
+                const beforeSig = await page.evaluate(() => ({ len: (document.body?.innerText || '').length, html: document.body?.innerHTML.length || 0 }));
+
+                // locate the element
+                const found = await page.evaluate(({ text, selector }) => {
+                    const vis = (el: Element) => { const r = (el as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+                    let el: Element | null = null;
+                    if (selector) { try { el = document.querySelector(selector); } catch { el = null; } }
+                    if (!el && text) {
+                        const t = text.toLowerCase();
+                        const cands = Array.from(document.querySelectorAll('a,button,[role="button"],input[type="submit"],input[type="button"],[onclick]'));
+                        el = cands.find(c => vis(c) && ((c as HTMLElement).innerText || (c as HTMLInputElement).value || '').toLowerCase().trim() === t)
+                            || cands.find(c => vis(c) && ((c as HTMLElement).innerText || (c as HTMLInputElement).value || '').toLowerCase().includes(t))
+                            || null;
+                    }
+                    if (!el) return { ok: false, tag: '', desc: '' };
+                    (el as HTMLElement).setAttribute('data-joe-click', '1');
+                    (el as HTMLElement).scrollIntoView({ block: 'center' });
+                    return { ok: true, tag: el.tagName.toLowerCase(), desc: ((el as HTMLElement).innerText || (el as HTMLInputElement).value || el.getAttribute('aria-label') || '').slice(0, 60) };
+                }, { text, selector });
+
+                if (!found.ok) {
+                    return { ok: false, error: 'element_not_found', output: { message: ar ? `لم أجد عنصراً يطابق «${text || selector}» في ${beforeUrl}.` : `No element matching "${text || selector}" on ${beforeUrl}.` } };
+                }
+
+                // click and observe navigation
+                let navigated = false;
+                try {
+                    await Promise.all([
+                        page.waitForNavigation({ timeout: 4000, waitUntil: 'domcontentloaded' }).then(() => { navigated = true; }).catch(() => { }),
+                        page.click('[data-joe-click="1"]', { timeout: 4000 }),
+                    ]);
+                } catch { /* click may not navigate */ }
+                await page.waitForTimeout(700);
+                const afterUrl = page.url();
+                const afterSig = await page.evaluate(() => ({ len: (document.body?.innerText || '').length, html: document.body?.innerHTML.length || 0 }));
+                const buf = await page.screenshot({ type: 'jpeg', quality: 60, animations: 'disabled' });
+                const shot = publishShot(sessionId, Buffer.from(buf), afterUrl);
+
+                const urlChanged = afterUrl !== beforeUrl;
+                const contentChanged = Math.abs(afterSig.html - beforeSig.html) > 40 || Math.abs(afterSig.len - beforeSig.len) > 20;
+                const change = urlChanged ? (ar ? `انتقل إلى ${afterUrl}` : `navigated to ${afterUrl}`)
+                    : contentChanged ? (ar ? 'تغيّر محتوى الصفحة (بدون انتقال)' : 'page content changed (no navigation)')
+                        : (ar ? 'لم يحدث تغيّر ملحوظ — قد يكون الزر بلا وظيفة' : 'no visible change — the control may be dead');
+                const message = (ar ? `🖱️ نقرتُ على <${found.tag}> «${found.desc}».\nالنتيجة: ${change}` : `🖱️ Clicked <${found.tag}> "${found.desc}".\nResult: ${change}`);
+                return { ok: true, output: { message, clicked: found.desc, tag: found.tag, urlChanged, contentChanged, beforeUrl, afterUrl, navigated, screenshot: shot } };
+            });
+        } catch (e: any) { return { ok: false, error: `click_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
+   20) browser_fullpage_shot — full-length page screenshot
+   ============================================================ */
+export class BrowserFullPageShotTool implements ToolDefinition {
+    name = 'browser_fullpage_shot';
+    version = '1.0.0';
+    description = 'Open a page and capture a full-length screenshot of the entire scrollable page (top to bottom), plus its total pixel height and a quick content summary.';
+    tags = ['browser', 'web', 'screenshot', 'capture', 'fullpage'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: { url: { type: 'string' as const, description: 'Page URL to capture' } },
+        required: ['url'],
+    };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                // trigger lazy-loaded content by scrolling to the bottom, then back up
+                const height = await page.evaluate(async () => {
+                    await new Promise<void>(res => {
+                        let y = 0; const step = window.innerHeight;
+                        const t = setInterval(() => { window.scrollBy(0, step); y += step; if (y >= document.body.scrollHeight) { clearInterval(t); window.scrollTo(0, 0); res(); } }, 60);
+                    });
+                    return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+                });
+                await page.waitForTimeout(400);
+                const meta = await page.evaluate(() => ({ title: document.title || '', imgs: document.querySelectorAll('img').length, links: document.querySelectorAll('a').length, sections: document.querySelectorAll('section,article,main,header,footer').length }));
+                const buf = await page.screenshot({ type: 'jpeg', quality: 62, fullPage: true, animations: 'disabled' });
+                const shot = publishShot(sessionId, Buffer.from(buf), finalUrl);
+
+                const message = `🖼️ لقطة كاملة للصفحة (${finalUrl}):\n• العنوان: ${meta.title}\n• الارتفاع الكلي: ${height}px\n• الأقسام: ${meta.sections} — الصور: ${meta.imgs} — الروابط: ${meta.links}`;
+                return { ok: true, output: { message, height, ...meta, url: finalUrl, screenshot: shot } };
+            });
+        } catch (e: any) { return { ok: false, error: `fullpage_shot_failed: ${e?.message || e}` }; }
+    }
+}

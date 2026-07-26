@@ -79,8 +79,12 @@ export class PlanningEngine {
         const responsiveIntent = /(تجاوب|responsive|الجوال|موبايل|mobile\s*view|أحجام\s*الشاشات|شاشات|breakpoints?)/i.test(goalRaw);
         const findIntent = /(ابحث\s*عن|جد\s|find\s|أين\s*ورد|كم\s*مرة|highlight|ظلّل|علّم)/i.test(goalRaw);
         const designIntent = /(نظام\s*التصميم|الألوان|ألوان\s*الصفحة|design\s*tokens?|palette|لوحة\s*ألوان|الخطوط\s*المستخدمة|typography)/i.test(goalRaw);
-        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent || readIntent || contrastIntent || a11yIntent || metaIntent || translateIntent || responsiveIntent || findIntent || designIntent)) {
-            const tool = designIntent ? 'browser_design_tokens'
+        const clickIntent = /(انقر|اضغط|click|press|فعّل\s*الزر|اضغط\s*على)/i.test(goalRaw);
+        const fullshotIntent = /(لقطة\s*كاملة|screenshot\s*كامل|full\s*page|صورة\s*كاملة|كامل\s*الصفحة|طويلة)/i.test(goalRaw);
+        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent || readIntent || contrastIntent || a11yIntent || metaIntent || translateIntent || responsiveIntent || findIntent || designIntent || clickIntent || fullshotIntent)) {
+            const tool = clickIntent ? 'browser_click'
+                : fullshotIntent ? 'browser_fullpage_shot'
+                : designIntent ? 'browser_design_tokens'
                 : findIntent ? 'browser_find_text'
                 : responsiveIntent ? 'browser_responsive_check'
                 : translateIntent ? 'browser_translate'
@@ -109,6 +113,12 @@ export class PlanningEngine {
                 const qm = goalRaw.match(/[«"'"]([^«»"'"]+)[»"'"]/)
                     || goalRaw.match(/(?:ابحث\s*عن|جد|find|search\s*for)\s+([^\s].{0,60})/i);
                 if (qm) smartInput.query = String(qm[1]).replace(/\s+(في|على|بالصفحة|in|on)\b.*$/i, '').trim();
+            }
+            if (tool === 'browser_click') {
+                // pull the button/link label: quoted text, or the words after "click"/"انقر"
+                const cm = goalRaw.match(/[«"'"]([^«»"'"]+)[»"'"]/)
+                    || goalRaw.match(/(?:انقر\s*(?:على)?|اضغط\s*(?:على)?|click|press)\s+([^\s].{0,50})/i);
+                if (cm) smartInput.text = String(cm[1]).replace(/\s+(في|على\s*الصفحة|زر|in|on|the\s*button)\b.*$/i, '').trim();
             }
             return {
                 id: `browser_${Date.now()}`,
