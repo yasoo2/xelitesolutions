@@ -1425,3 +1425,145 @@ export class BrowserFullPageShotTool implements ToolDefinition {
         } catch (e: any) { return { ok: false, error: `fullpage_shot_failed: ${e?.message || e}` }; }
     }
 }
+
+/* ============================================================
+   21) browser_smart_agent — one-pass multi-lens page analysis
+   ============================================================ */
+export class BrowserSmartAgentTool implements ToolDefinition {
+    name = 'browser_smart_agent';
+    version = '1.0.0';
+    description = 'Autonomous multi-lens page analyst: opens a page once and gathers content summary, UI/accessibility issues, SEO/meta health, the design system (colours/fonts), responsiveness and performance signals — then returns a single consolidated, scored report with an AI executive summary.';
+    tags = ['browser', 'web', 'agent', 'analyze', 'audit', 'comprehensive'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            url: { type: 'string' as const, description: 'Page URL to analyse end-to-end' },
+            question: { type: 'string' as const, description: 'Optional focus/question for the executive summary' },
+        },
+        required: ['url'],
+    };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        const question = String(input?.question || input?.instruction || '').trim();
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const t0 = Date.now();
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                const loadMs = Date.now() - t0;
+
+                // ---- single-pass gather: content + UI + SEO + design + perf ----
+                const data = await page.evaluate(() => {
+                    const clean = (t: string) => (t || '').replace(/\s+/g, ' ').trim();
+                    const norm = (c: string) => { const m = (c || '').match(/rgba?\(([^)]+)\)/); if (!m) return ''; const [r, g, b, a] = m[1].split(',').map(x => parseFloat(x)); if (a === 0) return ''; if ([r, g, b].some(isNaN)) return ''; return '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join(''); };
+
+                    // content
+                    const title = document.title || '';
+                    const desc = (document.querySelector('meta[name="description"]') as HTMLMetaElement)?.content || '';
+                    const headings = Array.from(document.querySelectorAll('h1,h2,h3')).slice(0, 25).map(h => clean((h as HTMLElement).innerText)).filter(Boolean);
+                    const main = (document.querySelector('main,article') || document.body) as HTMLElement;
+                    const text = clean(main?.innerText || '').slice(0, 6000);
+
+                    // UI / a11y issues
+                    const imgs = Array.from(document.querySelectorAll('img'));
+                    const imgsNoAlt = imgs.filter(i => !i.getAttribute('alt')).length;
+                    const inputs = Array.from(document.querySelectorAll('input,textarea,select')) as HTMLElement[];
+                    const inputsNoLabel = inputs.filter(el => {
+                        const t = (el as HTMLInputElement).type; if (['hidden', 'submit', 'button'].includes(t)) return false;
+                        const id = el.getAttribute('id');
+                        const hasLabel = (id && document.querySelector(`label[for="${id}"]`)) || el.getAttribute('aria-label') || el.getAttribute('placeholder');
+                        return !hasLabel;
+                    }).length;
+                    const h1 = document.querySelectorAll('h1').length;
+                    const hasViewport = !!document.querySelector('meta[name="viewport"]');
+                    const lang = document.documentElement.getAttribute('lang') || '';
+                    const emptyLinks = Array.from(document.querySelectorAll('a')).filter(a => { const h = a.getAttribute('href'); return !h || h === '#' || h.trim() === ''; }).length;
+
+                    // SEO / meta
+                    const canonical = !!document.querySelector('link[rel="canonical"]');
+                    const og = document.querySelectorAll('meta[property^="og:"]').length;
+                    const jsonld = document.querySelectorAll('script[type="application/ld+json"]').length;
+
+                    // design tokens (light)
+                    const bgMap = new Map<string, number>(), accMap = new Map<string, number>(), fontMap = new Map<string, number>();
+                    Array.from(document.querySelectorAll('body *')).slice(0, 2500).forEach(el => {
+                        const cs = getComputedStyle(el as HTMLElement); const r = (el as HTMLElement).getBoundingClientRect();
+                        if (r.width * r.height > 800) { const b = norm(cs.backgroundColor); if (b) bgMap.set(b, (bgMap.get(b) || 0) + 1); }
+                        if (el.tagName === 'A' || el.tagName === 'BUTTON') { const a = norm(cs.color); if (a) accMap.set(a, (accMap.get(a) || 0) + 1); }
+                        const f = (cs.fontFamily || '').split(',')[0].replace(/["']/g, '').trim(); if (f) fontMap.set(f, (fontMap.get(f) || 0) + 1);
+                    });
+                    const topN = (m: Map<string, number>, n: number) => Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, n).map(e => e[0]);
+
+                    // perf signals
+                    const domNodes = document.querySelectorAll('*').length;
+                    const scripts = document.querySelectorAll('script[src]').length;
+                    const inlineStyles = document.querySelectorAll('[style]').length;
+
+                    return {
+                        title, desc, headings, text,
+                        ui: { imgs: imgs.length, imgsNoAlt, inputs: inputs.length, inputsNoLabel, h1, hasViewport, lang, emptyLinks },
+                        seo: { hasDesc: !!desc, canonical, og, jsonld, titleLen: title.length },
+                        design: { backgrounds: topN(bgMap, 4), accents: topN(accMap, 3), fonts: topN(fontMap, 3) },
+                        perf: { domNodes, scripts, inlineStyles, loadNote: '' },
+                    };
+                });
+
+                const buf = await page.screenshot({ type: 'jpeg', quality: 62, fullPage: true, animations: 'disabled' });
+                const shot = publishShot(sessionId, Buffer.from(buf), finalUrl);
+
+                // ---- scoring across lenses ----
+                const findings: string[] = [];
+                let ui = 100, seo = 100, perf = 100;
+                if (!data.ui.hasViewport) { ui -= 25; findings.push('❌ لا يوجد وسم viewport (لن تتكيّف مع الجوال).'); }
+                if (data.ui.h1 === 0) { ui -= 12; findings.push('❌ لا يوجد عنوان H1.'); }
+                if (data.ui.h1 > 1) { ui -= 6; findings.push(`⚠️ يوجد ${data.ui.h1} عناوين H1 (يُفضّل واحد).`); }
+                if (data.ui.imgsNoAlt) { ui -= Math.min(15, data.ui.imgsNoAlt * 3); findings.push(`⚠️ ${data.ui.imgsNoAlt} صورة بلا نص بديل (alt).`); }
+                if (data.ui.inputsNoLabel) { ui -= Math.min(15, data.ui.inputsNoLabel * 4); findings.push(`⚠️ ${data.ui.inputsNoLabel} حقل إدخال بلا تسمية.`); }
+                if (data.ui.emptyLinks) { ui -= Math.min(10, data.ui.emptyLinks * 2); findings.push(`⚠️ ${data.ui.emptyLinks} رابط فارغ أو #.`); }
+                if (!data.ui.lang) { ui -= 6; findings.push('⚠️ لم تُحدَّد لغة الصفحة (lang).'); }
+                if (!data.seo.hasDesc) { seo -= 20; findings.push('❌ لا يوجد وصف meta description.'); }
+                if (!data.seo.canonical) { seo -= 10; findings.push('⚠️ لا يوجد رابط canonical.'); }
+                if (data.seo.og === 0) { seo -= 15; findings.push('⚠️ لا توجد وسوم Open Graph (مشاركة اجتماعية ضعيفة).'); }
+                if (data.seo.titleLen === 0) { seo -= 20; findings.push('❌ لا يوجد عنوان للصفحة.'); }
+                else if (data.seo.titleLen > 65) { seo -= 6; findings.push('⚠️ عنوان الصفحة طويل (>65 حرفاً).'); }
+                if (data.perf.domNodes > 1500) { perf -= 15; findings.push(`⚠️ عدد عناصر DOM كبير (${data.perf.domNodes}).`); }
+                if (data.perf.scripts > 15) { perf -= 10; findings.push(`⚠️ عدد سكربتات خارجية كبير (${data.perf.scripts}).`); }
+                if (loadMs > 4000) { perf -= 15; findings.push(`⚠️ زمن التحميل بطيء (${loadMs}ms).`); }
+                const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+                ui = clamp(ui); seo = clamp(seo); perf = clamp(perf);
+                const overall = clamp((ui + seo + perf) / 3);
+
+                // ---- AI executive summary (with deterministic fallback) ----
+                const ar = isAr(question) || isAr(data.title) || isAr(String(input?.request || '')) || true;
+                const sys = 'أنت مستشار منتجات وواجهات. اكتب خلاصة تنفيذية موجزة بالعربية (٣-٥ أسطر) لصفحة ويب بناءً على تحليلها: ما الغرض منها، أبرز نقاط القوة، وأهم ٣ تحسينات مقترحة عملية. لا تُكرّر الأرقام الخام.';
+                const userContent = `URL: ${finalUrl}\nTitle: ${data.title}\nHeadings: ${data.headings.join(' | ')}\nUI score: ${ui}, SEO: ${seo}, Perf: ${perf}\nFindings: ${findings.join(' ; ')}\nContent: ${data.text.slice(0, 3000)}\n${question ? `Focus: ${question}` : ''}`;
+                let brief = '';
+                try { brief = await routeToModel([{ role: 'system', content: sys }, { role: 'user', content: userContent }], undefined, undefined, undefined, undefined, undefined, undefined, context); } catch { brief = ''; }
+                if (!brief || brief.trim().length < 2) brief = `صفحة «${data.title}». أبرز العناوين: ${data.headings.slice(0, 5).join(' • ') || '—'}.`;
+
+                const grade = overall >= 90 ? 'ممتاز ✅' : overall >= 70 ? 'جيد 👍' : overall >= 50 ? 'متوسط ⚠️' : 'يحتاج عملاً ❌';
+                const message =
+                    `🤖 تقرير الوكيل الذكي الشامل — ${finalUrl}\n` +
+                    `النتيجة الكلّية: ${overall}/100 (${grade})\n` +
+                    `┌ الواجهة/الوصولية: ${ui}/100\n├ SEO/الوسوم: ${seo}/100\n└ الأداء: ${perf}/100  (تحميل ${loadMs}ms)\n\n` +
+                    `📝 الخلاصة التنفيذية:\n${brief}\n\n` +
+                    `🎨 نظام التصميم: خلفيات ${data.design.backgrounds.join('، ') || '—'} | تمييز ${data.design.accents.join('، ') || '—'} | خطوط ${data.design.fonts.join('، ') || '—'}\n\n` +
+                    (findings.length ? `🔧 أهم الملاحظات (${findings.length}):\n${findings.slice(0, 12).map(f => `• ${f}`).join('\n')}` : '🎉 لا مشاكل جوهرية.');
+
+                return {
+                    ok: true,
+                    output: {
+                        message, url: finalUrl, title: data.title, screenshot: shot,
+                        scores: { overall, ui, seo, perf, loadMs }, grade,
+                        summary: brief, findings, design: data.design,
+                        ui: data.ui, seo: data.seo, perf: data.perf,
+                    },
+                };
+            });
+        } catch (e: any) { return { ok: false, error: `smart_agent_failed: ${e?.message || e}` }; }
+    }
+}

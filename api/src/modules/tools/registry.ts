@@ -1,7 +1,7 @@
 
 import { ToolDefinition } from './types';
 import { BrowserRunTool } from './definitions/BrowserRunTool';
-import { BrowserSummarizeTool, BrowserUIAuditTool, BrowserFillFormTool, BrowserCompareTool, BrowserExtractDataTool, BrowserCheckLinksTool, BrowserPerformanceTool, BrowserSEOAuditTool, BrowserConsoleScanTool, BrowserSavePdfTool, BrowserReadabilityTool, BrowserContrastAuditTool, BrowserA11yDeepTool, BrowserExtractMetaTool, BrowserTranslateTool, BrowserResponsiveCheckTool, BrowserFindTextTool, BrowserDesignTokensTool, BrowserClickTool, BrowserFullPageShotTool } from './definitions/BrowserSmartTools';
+import { BrowserSummarizeTool, BrowserUIAuditTool, BrowserFillFormTool, BrowserCompareTool, BrowserExtractDataTool, BrowserCheckLinksTool, BrowserPerformanceTool, BrowserSEOAuditTool, BrowserConsoleScanTool, BrowserSavePdfTool, BrowserReadabilityTool, BrowserContrastAuditTool, BrowserA11yDeepTool, BrowserExtractMetaTool, BrowserTranslateTool, BrowserResponsiveCheckTool, BrowserFindTextTool, BrowserDesignTokensTool, BrowserClickTool, BrowserFullPageShotTool, BrowserSmartAgentTool } from './definitions/BrowserSmartTools';
 import { MemoryTools } from './definitions/MemoryTool';
 import { TerminalManagerTool, SafeReadFileTool, AskUserTool } from './definitions/TaskInteractionTools';
 
@@ -203,6 +203,7 @@ const baseTools: ToolDefinition[] = [
   new BrowserDesignTokensTool(),
   new BrowserClickTool(),
   new BrowserFullPageShotTool(),
+  new BrowserSmartAgentTool(),
   ...MemoryTools,
 
   // SELF CODING CORE
