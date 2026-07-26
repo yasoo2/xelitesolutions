@@ -63,6 +63,230 @@ function setDiff(a: string[], b: string[]) {
     return (a || []).filter(x => !nb.has(x.toLowerCase().trim()));
 }
 
+function toCsv(rows: any[]): string {
+    if (!rows.length) return '';
+    const cols = Array.from(rows.reduce((s: Set<string>, r: any) => { Object.keys(r || {}).forEach(k => s.add(k)); return s; }, new Set<string>()));
+    const esc = (v: any) => { const t = String(v ?? ''); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+    return [cols.join(','), ...rows.map(r => cols.map(c => esc(r[c])).join(','))].join('\n');
+}
+
+/* ============================================================
+   5) browser_extract_data — tables/lists -> JSON + CSV
+   ============================================================ */
+export class BrowserExtractDataTool implements ToolDefinition {
+    name = 'browser_extract_data';
+    version = '1.0.0';
+    description = 'Open a page and extract structured data (tables or lists) into JSON, and save a CSV file. Optionally pass a CSS selector.';
+    tags = ['browser', 'web', 'extract', 'data', 'scrape', 'csv'];
+    inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const }, selector: { type: 'string' as const } }, required: ['url'] };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || ''; const selector = String(input?.selector || '').trim();
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                const result = await page.evaluate((sel: string) => {
+                    const clean = (t: string) => (t || '').replace(/\s+/g, ' ').trim();
+                    // 1) explicit selector -> list of texts
+                    if (sel) {
+                        const els = Array.from(document.querySelectorAll(sel));
+                        return { kind: 'selector', rows: els.map((e, i) => ({ index: i + 1, text: clean((e as HTMLElement).innerText) })) };
+                    }
+                    // 2) largest table -> rows keyed by header
+                    const tables = Array.from(document.querySelectorAll('table'));
+                    let best: HTMLTableElement | null = null; let bestCells = 0;
+                    tables.forEach(t => { const c = t.querySelectorAll('td,th').length; if (c > bestCells) { bestCells = c; best = t as HTMLTableElement; } });
+                    if (best && bestCells > 0) {
+                        const rowsEls = Array.from((best as HTMLTableElement).querySelectorAll('tr'));
+                        const headerCells = Array.from(rowsEls[0]?.querySelectorAll('th,td') || []).map(c => clean((c as HTMLElement).innerText) || `col${1}`);
+                        const rows = rowsEls.slice(1).map(tr => {
+                            const cells = Array.from(tr.querySelectorAll('td,th')).map(c => clean((c as HTMLElement).innerText));
+                            const obj: any = {}; cells.forEach((v, i) => obj[headerCells[i] || `col${i + 1}`] = v); return obj;
+                        }).filter(r => Object.keys(r).length);
+                        return { kind: 'table', rows };
+                    }
+                    // 3) fallback: largest <ul>/<ol>
+                    const lists = Array.from(document.querySelectorAll('ul,ol'));
+                    let bl: Element | null = null; let bn = 0;
+                    lists.forEach(l => { const n = l.querySelectorAll('li').length; if (n > bn) { bn = n; bl = l; } });
+                    if (bl && bn > 0) return { kind: 'list', rows: Array.from((bl as Element).querySelectorAll('li')).map((li, i) => ({ index: i + 1, text: clean((li as HTMLElement).innerText) })) };
+                    return { kind: 'none', rows: [] };
+                }, selector);
+
+                const rows = result.rows || [];
+                let csvHref: string | undefined;
+                if (rows.length) {
+                    try {
+                        fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+                        const name = `extract-${Date.now()}.csv`;
+                        fs.writeFileSync(path.join(ARTIFACT_DIR, name), '﻿' + toCsv(rows), 'utf-8'); // BOM for Excel/Arabic
+                        csvHref = `/artifacts/${name}`;
+                    } catch { /* ignore */ }
+                }
+                const preview = JSON.stringify(rows.slice(0, 8), null, 1);
+                const message = rows.length
+                    ? `📊 استخرجتُ ${rows.length} صفّاً (${result.kind}) من ${finalUrl}.\n${csvHref ? `⬇️ ملف CSV: ${csvHref}\n` : ''}\nمعاينة:\n\`\`\`json\n${preview}\n\`\`\``
+                    : `لم أجد جدولاً أو قائمة قابلة للاستخراج في ${finalUrl}.`;
+                return { ok: rows.length > 0, output: { message, kind: result.kind, count: rows.length, rows: rows.slice(0, 200), csv: csvHref, url: finalUrl } };
+            });
+        } catch (e: any) { return { ok: false, error: `extract_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
+   6) browser_check_links — find broken links on a page
+   ============================================================ */
+export class BrowserCheckLinksTool implements ToolDefinition {
+    name = 'browser_check_links';
+    version = '1.0.0';
+    description = 'Open a page, collect its links, and check each for broken (4xx/5xx/unreachable) status. Returns a report of broken links.';
+    tags = ['browser', 'web', 'links', 'audit', 'qa'];
+    inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const }, limit: { type: 'number' as const } }, required: ['url'] };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || ''; const limit = Math.max(1, Math.min(60, Number(input?.limit) || 40));
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            const links: string[] = await withBrowserConcurrency(async () => {
+                const { page } = await openPage(sessionId, url);
+                return await page.evaluate(() => Array.from(document.querySelectorAll('a[href]'))
+                    .map(a => (a as HTMLAnchorElement).href)
+                    .filter(h => /^https?:\/\//i.test(h)));
+            });
+            const unique = Array.from(new Set(links)).slice(0, limit);
+            const check = async (link: string) => {
+                try {
+                    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 8000);
+                    let res = await fetch(link, { method: 'HEAD', signal: ctrl.signal }).catch(() => null as any);
+                    if (!res || res.status === 405 || res.status === 501) res = await fetch(link, { method: 'GET', signal: ctrl.signal }).catch(() => null as any);
+                    clearTimeout(t);
+                    if (!res) return { link, status: 0, ok: false };
+                    return { link, status: res.status, ok: res.status < 400 };
+                } catch { return { link, status: 0, ok: false }; }
+            };
+            const results = await Promise.all(unique.map(check));
+            const broken = results.filter(r => !r.ok);
+            const message = `🔗 فحص الروابط في الصفحة (${unique.length} رابطاً):\n` +
+                (broken.length ? `❌ ${broken.length} رابط مكسور:\n` + broken.map(b => `  • ${b.status || 'تعذّر الوصول'} — ${b.link}`).slice(0, 15).join('\n')
+                    : '✅ كل الروابط تعمل.');
+            return { ok: true, output: { message, total: unique.length, brokenCount: broken.length, broken, url } };
+        } catch (e: any) { return { ok: false, error: `check_links_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
+   7) browser_performance — page load performance metrics
+   ============================================================ */
+export class BrowserPerformanceTool implements ToolDefinition {
+    name = 'browser_performance';
+    version = '1.0.0';
+    description = 'Open a page and measure performance: load time, DOMContentLoaded, transfer size, resource counts by type, and slowest resources.';
+    tags = ['browser', 'web', 'performance', 'speed', 'audit'];
+    inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const s = await getBrowserSession(sessionId);
+                const page = s.page;
+                const t0 = Date.now();
+                await page.goto(normalizeUrl(url), { waitUntil: 'load', timeout: 30000 });
+                const wall = Date.now() - t0;
+                await page.waitForTimeout(400);
+                const perf = await page.evaluate(() => {
+                    const nav = performance.getEntriesByType('navigation')[0] as any;
+                    const res = performance.getEntriesByType('resource') as any[];
+                    const byType: Record<string, number> = {};
+                    let totalBytes = 0;
+                    res.forEach(r => { byType[r.initiatorType] = (byType[r.initiatorType] || 0) + 1; totalBytes += (r.transferSize || 0); });
+                    const slowest = res.map(r => ({ name: String(r.name).slice(-60), ms: Math.round(r.duration) })).sort((a, b) => b.ms - a.ms).slice(0, 5);
+                    return {
+                        domContentLoaded: nav ? Math.round(nav.domContentLoadedEventEnd) : null,
+                        load: nav ? Math.round(nav.loadEventEnd) : null,
+                        transferBytes: nav ? (nav.transferSize || 0) : 0,
+                        resourceBytes: totalBytes,
+                        resourceCount: res.length,
+                        byType, slowest,
+                    };
+                });
+                const kb = (n: number) => `${(n / 1024).toFixed(0)}KB`;
+                const grade = wall < 1500 ? 'ممتاز ⚡' : wall < 3500 ? 'جيد' : 'بطيء ⚠️';
+                const message = `⚡ أداء الصفحة (${url}):\n\n` +
+                    `⏱️ زمن التحميل: ${wall}ms (${grade})\n` +
+                    `📄 DOMContentLoaded: ${perf.domContentLoaded ?? '—'}ms · Load: ${perf.load ?? '—'}ms\n` +
+                    `📦 الموارد: ${perf.resourceCount} ملف · الحجم: ${kb(perf.resourceBytes)}\n` +
+                    `🧩 حسب النوع: ${Object.entries(perf.byType).map(([k, v]) => `${k}:${v}`).join(' · ')}\n` +
+                    (perf.slowest.length ? `🐢 الأبطأ:\n` + perf.slowest.map((r: any) => `  • ${r.ms}ms — ${r.name}`).join('\n') : '');
+                return { ok: true, output: { message, wallMs: wall, ...perf, url } };
+            });
+        } catch (e: any) { return { ok: false, error: `performance_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
+   8) browser_seo_audit — SEO / meta / social tags audit
+   ============================================================ */
+export class BrowserSEOAuditTool implements ToolDefinition {
+    name = 'browser_seo_audit';
+    version = '1.0.0';
+    description = 'Open a page and audit its SEO: title, meta description, canonical, robots, Open Graph/Twitter cards, headings, image alt coverage, and HTTPS.';
+    tags = ['browser', 'web', 'seo', 'audit', 'meta'];
+    inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                const seo = await page.evaluate(() => {
+                    const meta = (n: string) => (document.querySelector(`meta[name="${n}"]`) as HTMLMetaElement)?.content || '';
+                    const prop = (p: string) => (document.querySelector(`meta[property="${p}"]`) as HTMLMetaElement)?.content || '';
+                    const issues: { severity: string; message: string }[] = [];
+                    const title = document.title || '';
+                    if (!title) issues.push({ severity: 'critical', message: 'لا يوجد <title>.' });
+                    else if (title.length < 10 || title.length > 65) issues.push({ severity: 'warning', message: `طول العنوان ${title.length} حرفاً (يُفضّل 10–60).` });
+                    const desc = meta('description');
+                    if (!desc) issues.push({ severity: 'warning', message: 'لا يوجد meta description.' });
+                    else if (desc.length < 50 || desc.length > 160) issues.push({ severity: 'info', message: `وصف الميتا ${desc.length} حرفاً (يُفضّل 50–160).` });
+                    if (!document.querySelector('link[rel="canonical"]')) issues.push({ severity: 'info', message: 'لا يوجد رابط canonical.' });
+                    if (!prop('og:title') || !prop('og:image')) issues.push({ severity: 'info', message: 'بطاقات Open Graph ناقصة (og:title/og:image) — تؤثر على المشاركة الاجتماعية.' });
+                    if (document.querySelectorAll('h1').length !== 1) issues.push({ severity: 'warning', message: `عدد <h1> = ${document.querySelectorAll('h1').length} (يُفضّل واحد).` });
+                    if (!document.documentElement.getAttribute('lang')) issues.push({ severity: 'warning', message: 'وسم <html> بلا lang.' });
+                    const imgs = Array.from(document.querySelectorAll('img'));
+                    const noAlt = imgs.filter(i => !i.getAttribute('alt')).length;
+                    if (noAlt) issues.push({ severity: 'info', message: `${noAlt}/${imgs.length} صورة بلا alt (يضر SEO الصور).` });
+                    if (location.protocol !== 'https:') issues.push({ severity: 'warning', message: 'الصفحة ليست على HTTPS.' });
+                    return { title, desc, issues };
+                });
+                const crit = seo.issues.filter((i: any) => i.severity === 'critical').length;
+                const warn = seo.issues.filter((i: any) => i.severity === 'warning').length;
+                const info = seo.issues.filter((i: any) => i.severity === 'info').length;
+                const score = Math.max(0, 100 - crit * 25 - warn * 10 - info * 4);
+                const icon = (sv: string) => sv === 'critical' ? '🔴' : sv === 'warning' ? '🟡' : '🔵';
+                const lines = seo.issues.length ? seo.issues.map((i: any) => `${icon(i.severity)} ${i.message}`).join('\n') : '✅ SEO سليم.';
+                const message = `🔍 تدقيق SEO: ${finalUrl}\n\nالدرجة: ${score}/100\n\n${lines}`;
+                return { ok: true, output: { message, score, issues: seo.issues, title: seo.title, url: finalUrl } };
+            });
+        } catch (e: any) { return { ok: false, error: `seo_failed: ${e?.message || e}` }; }
+    }
+}
+
 /* ============================================================
    4) browser_compare — before/after visual + structural diff
    ============================================================ */

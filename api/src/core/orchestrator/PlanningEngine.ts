@@ -64,17 +64,31 @@ export class PlanningEngine {
         const urlMatch = goalRaw.match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);
         const summarizeIntent = /(لخّ?ص|تلخيص|summari[sz]e|اقرأ\s*الصفحة|ما\s*مضمون)/i.test(goalRaw);
         const auditIntent = /(دقّ?ق|تدقيق|افحص\s*الواجهة|audit|فحص\s*ui|راجع\s*التصميم|مشاكل\s*الواجهة|accessib)/i.test(goalRaw);
-        if (urlMatch && (summarizeIntent || auditIntent)) {
-            const tool = auditIntent ? 'browser_ui_audit' : 'browser_summarize';
+        const extractIntent = /(استخرج|استخراج|extract|جدول|قائمة|csv|بيانات\s*الصفحة)/i.test(goalRaw);
+        const linksIntent = /(روابط\s*مكسور|مكسور|broken\s*links|فحص\s*الروابط|check\s*links)/i.test(goalRaw);
+        const perfIntent = /(أداء|السرعة|سرعة\s*الصفحة|performance|speed|زمن\s*التحميل)/i.test(goalRaw);
+        const seoIntent = /(seo|سيو|تحسين\s*محركات|meta\s*tags|الوسوم)/i.test(goalRaw);
+        const compareIntent = /(قارن|مقارنة|before\s*\/?\s*after|قبل\s*وبعد|قبل\/بعد)/i.test(goalRaw);
+        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent)) {
+            const tool = compareIntent ? 'browser_compare'
+                : linksIntent ? 'browser_check_links'
+                : perfIntent ? 'browser_performance'
+                : seoIntent ? 'browser_seo_audit'
+                : extractIntent ? 'browser_extract_data'
+                : auditIntent ? 'browser_ui_audit'
+                : 'browser_summarize';
+            const urls = goalRaw.match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/ig) || [urlMatch[0]];
+            const smartInput: any = { url: urlMatch[0], question: intent.goal, request: intent.goal };
+            if (tool === 'browser_compare' && urls.length >= 2) { smartInput.before = urls[0]; smartInput.after = urls[1]; }
             return {
                 id: `browser_${Date.now()}`,
                 goal: intent.goal,
                 steps: [{
                     id: 'browser_smart',
-                    description: `${auditIntent ? 'Auditing' : 'Summarizing'} ${urlMatch[0]}`,
+                    description: `${tool} on ${urlMatch[0]}`,
                     tool,
                     agent: 'Browser',
-                    input: { url: urlMatch[0], question: intent.goal, request: intent.goal },
+                    input: smartInput,
                     dependsOn: []
                 }],
                 metadata: { complexity: 'medium', riskLevel: 'low' }

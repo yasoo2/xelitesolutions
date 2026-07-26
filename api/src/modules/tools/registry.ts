@@ -1,7 +1,7 @@
 
 import { ToolDefinition } from './types';
 import { BrowserRunTool } from './definitions/BrowserRunTool';
-import { BrowserSummarizeTool, BrowserUIAuditTool, BrowserFillFormTool, BrowserCompareTool } from './definitions/BrowserSmartTools';
+import { BrowserSummarizeTool, BrowserUIAuditTool, BrowserFillFormTool, BrowserCompareTool, BrowserExtractDataTool, BrowserCheckLinksTool, BrowserPerformanceTool, BrowserSEOAuditTool } from './definitions/BrowserSmartTools';
 import { MemoryTools } from './definitions/MemoryTool';
 import { TerminalManagerTool, SafeReadFileTool, AskUserTool } from './definitions/TaskInteractionTools';
 
@@ -187,6 +187,10 @@ const baseTools: ToolDefinition[] = [
   new BrowserUIAuditTool(),
   new BrowserFillFormTool(),
   new BrowserCompareTool(),
+  new BrowserExtractDataTool(),
+  new BrowserCheckLinksTool(),
+  new BrowserPerformanceTool(),
+  new BrowserSEOAuditTool(),
   ...MemoryTools,
 
   // SELF CODING CORE
