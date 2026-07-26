@@ -3019,3 +3019,102 @@
     font-weight: 700;
     letter-spacing: 1px;
 }
+
+/* ============================================================
+   Chat-first canvas: manual close button + full responsiveness
+   ============================================================ */
+
+/* Manual close (✕) for the workspace canvas — always reachable while open */
+.joe-canvas-close {
+    position: absolute;
+    top: 9px;
+    left: 8px;
+    z-index: 40;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    border: 1px solid var(--joe-border, rgba(52,196,139,0.25));
+    background: var(--joe-bg-card, rgba(37,38,43,0.95));
+    color: var(--joe-text-secondary, #a2a5ad);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+    line-height: 1;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.joe-canvas-close:hover {
+    color: var(--joe-gold-primary, #34c48b);
+    border-color: var(--joe-gold-border, rgba(52,196,139,0.4));
+    background: var(--joe-gold-subtle, rgba(52,196,139,0.12));
+}
+.joe-workspace-container.canvas-collapsed .joe-canvas-close { display: none; }
+
+/* Give the workspace tab bar room so the close button never overlaps a tab */
+.joe-workspace-container .joe-workspace-tabs,
+.joe-workspace-container .workspace-tabs { padding-left: 42px; }
+
+/* Breathing room so message bubbles never touch neighbouring panels */
+.joe-chat-messages { padding-top: 20px; padding-bottom: 18px; }
+.joe-message { margin: 1px 0; }
+
+/* ---------- Responsive: tablets & small laptops ---------- */
+@media (max-width: 1100px) {
+    .joe-workspace-container { width: clamp(340px, 50vw, 620px); }
+    .joe-chat-messages {
+        padding-left: max(16px, calc((100% - 720px) / 2)) !important;
+        padding-right: max(16px, calc((100% - 720px) / 2)) !important;
+    }
+}
+
+/* ---------- Responsive: phones (canvas becomes a full-screen overlay) ---------- */
+@media (max-width: 900px) {
+    .joe-main { position: relative; }
+
+    /* Chat always fills the screen; canvas overlays on top when opened */
+    .joe-chat-panel { flex: 1 1 100% !important; width: 100% !important; }
+
+    .joe-workspace-container {
+        position: fixed !important;
+        top: var(--joe-header-height, 56px);
+        left: 0; right: 0; bottom: 0;
+        width: 100% !important;
+        max-width: 100% !important;
+        z-index: 1500 !important;
+        border: none !important;
+        background: var(--joe-bg-primary) !important;
+        box-shadow: 0 -8px 40px rgba(0,0,0,0.5);
+        transform: translateY(0);
+        transition: transform var(--joe-transition-speed, 0.3s) cubic-bezier(0.4,0,0.2,1), opacity var(--joe-transition-speed) ease;
+    }
+    /* The workspace panel fills the overlay so its content isn't see-through */
+    .joe-workspace-container > .joe-workspace,
+    .joe-workspace-container .joe-workspace-content {
+        flex: 1 1 auto;
+        min-height: 0;
+        background: var(--joe-bg-primary);
+    }
+    .joe-workspace-container.canvas-collapsed {
+        transform: translateY(100%);
+        opacity: 0;
+        pointer-events: none;
+    }
+    .joe-canvas-close { width: 34px; height: 34px; font-size: 15px; }
+
+    /* Center chat comfortably on phones */
+    .joe-chat-messages {
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+    }
+    .joe-chat-input-area > * { max-width: 100%; }
+    .joe-message.user .joe-message-bubble { max-width: 92%; }
+}
+
+/* ---------- Responsive: small phones (compact header) ---------- */
+@media (max-width: 560px) {
+    .joe-header-actions { gap: 2px; }
+    .joe-header-btn { width: 32px; height: 32px; }
+    .joe-chat-header { padding: 10px 12px; }
+    .joe-chat-title span { font-size: 12px; }
+    .joe-department-card { font-size: 11px; }
+}

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
 import JoeHeader from './JoeHeader';
 import TodosPanel from './TodosPanel';
 import ChatPanel from './ChatPanel';
@@ -168,10 +168,11 @@ export default function JoeIDELayout({
     // Sidebar states
     const [sidebarView, setSidebarView] = useState<'explorer' | 'github'>('explorer');
     const [isChatCollapsed, setIsChatCollapsed] = useState(false);
-    // The chat is now the primary centered column; the workspace (preview/terminal/
-    // browser) is a collapsible side CANVAS. Start open so tools are visible, but the
-    // user can collapse it to give the chat the whole screen (ChatGPT/Claude style).
-    const [isWorkspaceCollapsed, setIsWorkspaceCollapsed] = useState(false);
+    // The chat is the primary FULL-PAGE column by default; the workspace
+    // (preview/terminal/browser) is a collapsible side CANVAS that stays hidden
+    // until a task needs it (auto-opens) or the user opens it manually via the
+    // header toggle. This gives a clean, chat-first, ChatGPT/Claude-style default.
+    const [isWorkspaceCollapsed, setIsWorkspaceCollapsed] = useState(true);
     // The File Explorer is now an on-demand slide-over DRAWER (overlay) on desktop
     // too — hidden by default so the chat and preview get the full width. It opens
     // over the workspace via the edge tab / header toggle / file actions, without
@@ -200,17 +201,28 @@ export default function JoeIDELayout({
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    // Auto-open is disabled for the first moment after load, so the terminal's
+    // idle "Connected" banner and initial tool wiring don't pop the canvas over the
+    // full-page chat. Real tasks (which happen after the user acts) still open it.
+    const canAutoOpen = useRef(false);
+    useEffect(() => {
+        const t = setTimeout(() => { canAutoOpen.current = true; }, 2500);
+        return () => clearTimeout(t);
+    }, []);
+
     // When a live preview URL arrives, reveal the canvas so the user sees the result.
     useEffect(() => {
         if (previewUrl) setIsWorkspaceCollapsed(false);
     }, [previewUrl]);
 
-    // SMART AUTO-OPEN: whenever the active workspace tab changes because a task
-    // needs it (Joe.tsx switches to 'terminal' on commands, 'preview' on a built
-    // page, 'browser' on web automation), reveal the canvas so the user sees the
-    // work happen. Covers terminal + preview + browser with one rule.
+    // SMART AUTO-OPEN: when the active workspace tab CHANGES because a task needs
+    // it (Joe.tsx switches to terminal/preview/browser as work runs), reveal the
+    // canvas. Guarded so it does NOT fire on the initial mount — the chat must stay
+    // full-page by default until a real task or the user opens the canvas.
+    const firstTabRender = useRef(true);
     useEffect(() => {
-        if (workspaceTab) setIsWorkspaceCollapsed(false);
+        if (firstTabRender.current) { firstTabRender.current = false; return; }
+        if (canAutoOpen.current && workspaceTab) setIsWorkspaceCollapsed(false);
     }, [workspaceTab]);
     useEffect(() => {
         const openCanvas = () => setIsWorkspaceCollapsed(false);
@@ -230,7 +242,7 @@ export default function JoeIDELayout({
 
     useEffect(() => {
         const handleOpenBrowserTab = () => {
-            setIsWorkspaceCollapsed(false);
+            if (canAutoOpen.current) setIsWorkspaceCollapsed(false);
             if (onWorkspaceTabChange) {
                 onWorkspaceTabChange('browser');
             } else {
@@ -269,11 +281,12 @@ export default function JoeIDELayout({
             return SocketService.subscribe((event: any) => {
                 if (!event) return;
 
-                // SMART AUTO-OPEN: when a tool/command actually starts running, or the
-                // terminal produces output, reveal the canvas so the user watches the
-                // work happen (covers terminal even when the tab was already 'terminal').
-                if (event.type === 'step_started' || event.type === 'tool_started'
-                    || event.type === 'run_started' || event.type === 'terminal_output') {
+                // SMART AUTO-OPEN: when a real task/tool STARTS, reveal the canvas so
+                // the user watches the work happen. We do NOT open on terminal_output
+                // (the shell prints an idle banner on load — that must not pop the
+                // canvas over the full-page chat).
+                if (canAutoOpen.current && (event.type === 'step_started' || event.type === 'tool_started'
+                    || event.type === 'run_started')) {
                     setIsWorkspaceCollapsed(false);
                 }
 
@@ -335,16 +348,15 @@ export default function JoeIDELayout({
         return () => window.removeEventListener('keydown', onKey);
     }, []);
 
-    // Auto-open handler for Neural Interconnection
+    // Auto-open handler for Neural Interconnection. Switches the tab, and reveals
+    // the canvas ONLY after the initial settle window (so it doesn't fight the
+    // full-page-chat default on load).
     const handleAutoOpen = useCallback((panel: PanelType, data?: any) => {
-        if (panel === 'preview') {
-            handleWorkspaceTabChange('preview');
-        } else if (panel === 'browser') {
-            handleWorkspaceTabChange('browser');
-        } else if (panel === 'terminal') {
-            handleWorkspaceTabChange('terminal');
-        }
-    }, [handleWorkspaceTabChange]);
+        const tab: WorkspaceTab | null = panel === 'preview' ? 'preview' : panel === 'browser' ? 'browser' : panel === 'terminal' ? 'terminal' : null;
+        if (!tab) return;
+        if (onWorkspaceTabChange) onWorkspaceTabChange(tab); else setInternalWorkspaceTab(tab);
+        if (canAutoOpen.current) setIsWorkspaceCollapsed(false);
+    }, [onWorkspaceTabChange]);
 
     useAutoOpen(handleAutoOpen);
 
@@ -419,9 +431,16 @@ export default function JoeIDELayout({
                     </ChatPanel>
                 </ErrorBoundary>
 
-                {/* Center: Workspace */}
+                {/* Center: Workspace CANVAS (collapsible, overlay on mobile) */}
                 <ErrorBoundary fallbackTitle="تعذّر تحميل منطقة العمل">
                     <div className={`joe-workspace-container relative h-full ${isWorkspaceCollapsed ? 'canvas-collapsed' : ''}`}>
+                        {/* Manual close button (always available while the canvas is open) */}
+                        <button
+                            className="joe-canvas-close"
+                            onClick={toggleWorkspace}
+                            title="إغلاق مساحة العمل"
+                            aria-label="close workspace canvas"
+                        >✕</button>
                         <WorkspacePanel
                             activeTab={activeWorkspaceTab}
                             onTabChange={handleWorkspaceTabChange}
