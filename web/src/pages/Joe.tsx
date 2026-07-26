@@ -298,20 +298,23 @@ export default function Joe() {
         }
     }, [activeSessionId]);
 
-    // Load messages when session changes
+    // Load messages when the session changes. CRITICAL: clear the previous
+    // session's messages immediately so a NEW/empty session never shows the old
+    // conversation. A cancel flag prevents a late-resolving load from a previous
+    // session from overwriting the current one.
     useEffect(() => {
         const sessionId = activeSessionId;
-        if (!sessionId) {
-            setMessages([]);
-            return;
-        }
+        let cancelled = false;
+
+        // Always start the switched-to session from a clean slate.
+        setMessages([]);
+        if (!sessionId) return;
 
         const loadMessages = async () => {
             try {
-                // ELITE FIX: Use apiClient for consistent auth
                 const data: any = await api.get(`/sessions/${sessionId}/messages`);
+                if (cancelled) return; // session changed while loading
 
-                // API returns 'events', map them to Message[]
                 const validMessages = (data.events || []).flatMap((e: any) => {
                     if (e.type === 'user_input') {
                         return [{
@@ -332,11 +335,9 @@ export default function Joe() {
                     return [];
                 });
 
-                // Do NOT wipe the on-screen conversation when the server has no
-                // persisted history for this session (offline/JSON mode, or a brand
-                // new session). Otherwise the message the user just sent — and Joe's
-                // streamed reply — disappear, leaving only Joe's answer.
-                if (validMessages.length > 0) {
+                // Only populate when this session actually has history; a brand-new
+                // session correctly stays empty (we cleared it above).
+                if (!cancelled && validMessages.length > 0) {
                     setMessages(validMessages as Message[]);
                 }
             } catch {
@@ -345,6 +346,7 @@ export default function Joe() {
         };
 
         loadMessages();
+        return () => { cancelled = true; };
     }, [activeSessionId]);
 
     // Workspace Management
