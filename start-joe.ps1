@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # start-joe.ps1 — تشغيل Joe محلياً على المنفذ 5002 (ويندوز)
 # بلا مفتاح: يعمل على الذكاء المجاني (LLM7 / Pollinations)
 # يعيد التشغيل تلقائياً عند الانهيار
@@ -18,7 +18,7 @@ $env:NODE_ENV = "development"
 $apiDir = "$PSScriptRoot\api"
 
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "  JOE — Local Free-AI Mode (no API key)" -ForegroundColor Cyan
+Write-Host "  JOE - Local Free-AI Mode (no API key)" -ForegroundColor Cyan
 Write-Host "  http://localhost:5002/joe" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor Cyan
 
