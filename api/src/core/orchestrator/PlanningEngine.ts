@@ -71,8 +71,12 @@ export class PlanningEngine {
         const compareIntent = /(قارن|مقارنة|before\s*\/?\s*after|قبل\s*وبعد|قبل\/بعد)/i.test(goalRaw);
         const consoleIntent = /(أخطاء|errors?|console|كونسول|جافا\s*سكربت|javascript|أعطال)/i.test(goalRaw);
         const pdfIntent = /(pdf|احفظ.*صفحة|صدّ?ر.*صفحة|export\s*pdf|save\s*pdf)/i.test(goalRaw);
-        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent)) {
-            const tool = pdfIntent ? 'browser_save_pdf'
+        const readIntent = /(المقال|اقرأ\s*المقال|readab|article|نص\s*المقال|محتوى\s*نظيف)/i.test(goalRaw);
+        const contrastIntent = /(تباين|contrast|ألوان\s*الوصول|wcag)/i.test(goalRaw);
+        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent || readIntent || contrastIntent)) {
+            const tool = contrastIntent ? 'browser_contrast_audit'
+                : readIntent ? 'browser_readability'
+                : pdfIntent ? 'browser_save_pdf'
                 : consoleIntent ? 'browser_console_scan'
                 : compareIntent ? 'browser_compare'
                 : linksIntent ? 'browser_check_links'

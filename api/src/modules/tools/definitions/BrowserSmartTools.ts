@@ -373,6 +373,121 @@ export class BrowserSavePdfTool implements ToolDefinition {
 }
 
 /* ============================================================
+   11) browser_readability — clean article/main-content extraction
+   ============================================================ */
+export class BrowserReadabilityTool implements ToolDefinition {
+    name = 'browser_readability';
+    version = '1.0.0';
+    description = 'Open a page and extract the clean main article/content (stripping nav, ads, sidebars), with title, author, word count and reading time.';
+    tags = ['browser', 'web', 'readability', 'article', 'extract'];
+    inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                const art = await page.evaluate(() => {
+                    const clean = (t: string) => (t || '').replace(/\s+/g, ' ').trim();
+                    // Score candidates by paragraph text density.
+                    const candidates = Array.from(document.querySelectorAll('article, main, [role="main"], .content, #content, .post, .article, body'));
+                    let best: HTMLElement | null = null; let bestScore = 0;
+                    for (const c of candidates) {
+                        const ps = Array.from(c.querySelectorAll('p'));
+                        const score = ps.reduce((s, p) => s + ((p as HTMLElement).innerText || '').length, 0);
+                        if (score > bestScore) { bestScore = score; best = c as HTMLElement; }
+                    }
+                    const root = best || document.body;
+                    // Collect paragraph/heading text in order, skip tiny/boilerplate bits.
+                    const parts: string[] = [];
+                    root.querySelectorAll('h1,h2,h3,p,li,blockquote').forEach(el => {
+                        const t = clean((el as HTMLElement).innerText);
+                        if (t.length >= 25 || /^h[1-3]$/i.test(el.tagName)) parts.push(t);
+                    });
+                    const author = (document.querySelector('meta[name="author"]') as HTMLMetaElement)?.content
+                        || (document.querySelector('[rel="author"], .author, .byline') as HTMLElement)?.innerText || '';
+                    return { title: document.title || '', author: clean(author), text: parts.join('\n\n').slice(0, 9000) };
+                });
+                const words = art.text.split(/\s+/).filter(Boolean).length;
+                const mins = Math.max(1, Math.round(words / 200));
+                const message = `📖 المقال (${finalUrl}):\n\n**${art.title}**${art.author ? ` — ${art.author}` : ''}\n⏱️ ${words} كلمة · ~${mins} دقيقة قراءة\n\n${art.text.slice(0, 1500)}${art.text.length > 1500 ? '…' : ''}`;
+                return { ok: words > 0, output: { message, title: art.title, author: art.author, words, readingMinutes: mins, text: art.text, url: finalUrl } };
+            });
+        } catch (e: any) { return { ok: false, error: `readability_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
+   12) browser_contrast_audit — WCAG colour-contrast audit
+   ============================================================ */
+export class BrowserContrastAuditTool implements ToolDefinition {
+    name = 'browser_contrast_audit';
+    version = '1.0.0';
+    description = 'Open a page and audit text colour contrast against WCAG AA (4.5:1 normal, 3:1 large). Lists low-contrast text with its ratio.';
+    tags = ['browser', 'web', 'accessibility', 'contrast', 'wcag', 'audit'];
+    inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                const res = await page.evaluate(() => {
+                    const parse = (c: string): [number, number, number, number] => {
+                        const m = c.match(/rgba?\(([^)]+)\)/); if (!m) return [0, 0, 0, 0];
+                        const p = m[1].split(',').map(s => parseFloat(s)); return [p[0] || 0, p[1] || 0, p[2] || 0, p[3] === undefined ? 1 : p[3]];
+                    };
+                    const lum = (r: number, g: number, b: number) => { const a = [r, g, b].map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]; };
+                    const ratio = (f: number[], b: number[]) => { const L1 = lum(f[0], f[1], f[2]), L2 = lum(b[0], b[1], b[2]); const hi = Math.max(L1, L2), lo = Math.min(L1, L2); return (hi + 0.05) / (lo + 0.05); };
+                    const effBg = (el: Element): number[] => {
+                        let node: Element | null = el;
+                        while (node) { const bg = parse(getComputedStyle(node).backgroundColor); if (bg[3] > 0) return bg; node = node.parentElement; }
+                        return [255, 255, 255, 1];
+                    };
+                    const isVisible = (el: HTMLElement) => { const r = el.getBoundingClientRect(); const st = getComputedStyle(el); return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none' && parseFloat(st.opacity) > 0.1; };
+                    const seen = new Set<string>(); const fails: any[] = []; let checked = 0;
+                    const els = Array.from(document.querySelectorAll('p,span,a,li,h1,h2,h3,h4,button,label,td,th,div')) as HTMLElement[];
+                    for (const el of els) {
+                        const txt = (el.childNodes.length && Array.from(el.childNodes).some(n => n.nodeType === 3 && (n.textContent || '').trim().length > 1)) ? (el.textContent || '').trim() : '';
+                        if (!txt || txt.length < 2 || !isVisible(el)) continue;
+                        checked++;
+                        const st = getComputedStyle(el);
+                        const fg = parse(st.color); if (fg[3] === 0) continue;
+                        const bg = effBg(el);
+                        const rt = ratio(fg, bg);
+                        const size = parseFloat(st.fontSize) || 16; const bold = (parseInt(st.fontWeight) || 400) >= 700;
+                        const large = size >= 24 || (size >= 18.66 && bold);
+                        const min = large ? 3 : 4.5;
+                        if (rt < min) {
+                            const key = txt.slice(0, 30) + rt.toFixed(2);
+                            if (!seen.has(key)) { seen.add(key); fails.push({ text: txt.slice(0, 40), ratio: Math.round(rt * 100) / 100, need: min }); }
+                        }
+                        if (checked > 400) break;
+                    }
+                    return { checked, fails: fails.slice(0, 20) };
+                });
+                const buf = await page.screenshot({ type: 'jpeg', quality: 60, animations: 'disabled' });
+                const shot = publishShot(sessionId, Buffer.from(buf), finalUrl);
+                const score = Math.max(0, 100 - res.fails.length * 6);
+                const message = res.fails.length
+                    ? `🎨 تدقيق تباين الألوان (WCAG AA) — ${finalUrl}\nالدرجة: ${score}/100 · فحصتُ ${res.checked} عنصراً · ${res.fails.length} ضعيف التباين:\n` +
+                      res.fails.map((f: any) => `  🔸 نسبة ${f.ratio}:1 (يلزم ${f.need}:1) — «${f.text}»`).join('\n')
+                    : `✅ تباين الألوان جيد — كل النصوص المفحوصة (${res.checked}) تجتاز WCAG AA.`;
+                return { ok: true, output: { message, score, checked: res.checked, fails: res.fails, url: finalUrl, screenshot: shot } };
+            });
+        } catch (e: any) { return { ok: false, error: `contrast_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
    4) browser_compare — before/after visual + structural diff
    ============================================================ */
 export class BrowserCompareTool implements ToolDefinition {
