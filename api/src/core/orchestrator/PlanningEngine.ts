@@ -143,27 +143,34 @@ export class PlanningEngine {
         // (navigate to Google results for X) instead of just opening a blank Google.
         // Previously a search fell to the failover which opened the browser on the
         // homepage and did nothing.
-        const searchIntent = /(^|\s)(ابحث|إبحث|بحث|دوّ?ر|فتّ?ش|جوجل|google|search|بحث\s*في\s*الإنترنت|ابحث\s*في\s*الويب)/i.test(goalRaw);
+        // NOTE: match the verb even with an attached "و" (and) prefix — e.g.
+        // "افتح المتصفح وابحث عن X". The old (^|\s) anchor missed "وابحث", so the
+        // request fell to the plain open-browser path and only showed Google.
+        const searchIntent = /(ابحث|إبحث|ابحثي|دوّ?ر\s|فتّ?ش|جوجل|google|\bsearch\b|بحث\s*(عن|في)|ابحث\s*في\s*الويب)/i.test(goalRaw);
         if (searchIntent && !urlMatch) {
             // Extract the query: after "عن"/"about"/"for", else the whole goal minus the verb.
             let query = goalRaw;
-            const qm = goalRaw.match(/(?:ابحث|إبحث|بحث|دوّ?ر|فتّ?ش|search(?:\s*for)?|google|جوجل)\s*(?:عن|about|for|في)?\s*(.+)/i);
+            const qm = goalRaw.match(/(?:و?ابحث|و?إبحث|و?بحث|دوّ?ر|فتّ?ش|search(?:\s*for)?|google|جوجل)\s*(?:عن|about|for|في)?\s*(.+)/i);
             if (qm && qm[1]) query = qm[1].trim();
             query = query.replace(/^(لي|من\s*فضلك|please)\s+/i, '').trim();
             if (query.length >= 2) {
                 const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+                // Route to browser_summarize: it navigates to the results LIVE (so the
+                // user watches it), then has the model read the page and answer the
+                // query — i.e. it actually searches AND analyses, instead of just
+                // parking on the Google homepage.
                 return {
                     id: `browser_search_${Date.now()}`,
                     goal: intent.goal,
                     steps: [{
-                        id: 'browser_open',
-                        description: `Search the web for: ${query}`,
-                        tool: 'browser_launch',
+                        id: 'browser_smart',
+                        description: `Search & analyse: ${query}`,
+                        tool: 'browser_summarize',
                         agent: 'Browser',
-                        input: { url: searchUrl, request: intent.goal },
+                        input: { url: searchUrl, question: query, request: intent.goal },
                         dependsOn: []
                     }],
-                    metadata: { complexity: 'low', riskLevel: 'low' }
+                    metadata: { complexity: 'medium', riskLevel: 'low' }
                 };
             }
         }
