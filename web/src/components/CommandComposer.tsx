@@ -2561,21 +2561,15 @@ export default function CommandComposer({
     setApproval(null);
   }
 
-  const checkConnection = async (key: string) => {
+  // Verify a provider by actually testing it. GREEN dot on success, RED on
+  // failure, pulsing while verifying. Applies to free providers too (the free
+  // mesh is what gets tested).
+  const checkConnection = async (key: string, opts?: { closeOnSuccess?: boolean }) => {
     const p = providers[key];
 
-    // Free providers auto-connect instantly — no verification needed
-    if (p?.isFree) {
-      setProviders(prev => ({
-        ...prev,
-        [key]: { ...prev[key], isConnected: true, lastError: undefined, apiKey: prev[key].apiKey || 'free-mode' }
-      }));
-      setActiveProvider(key);
-      setShowProviders(false); // enter the chosen provider and close the list
-      return;
-    }
-
-    setProviders(prev => ({ ...prev, [key]: { ...prev[key], isVerifying: true, lastError: undefined } }));
+    // Mark as active + verifying (clears any previous state).
+    setActiveProvider(key);
+    setProviders(prev => ({ ...prev, [key]: { ...prev[key], isVerifying: true, isConnected: false, lastError: undefined } }));
 
     const token = localStorage.getItem('token');
     try {
@@ -2587,32 +2581,34 @@ export default function CommandComposer({
         },
         body: JSON.stringify({
           provider: key,
-          apiKey: p.apiKey,
+          apiKey: p.apiKey || (p.isFree ? 'free-mode' : ''),
           baseUrl: p.baseUrl,
-          model: p.model
-        })
+          model: p.model,
+        }),
       });
 
       if (res.status === 401) {
         handleUnauthorized();
         throw new Error(t('unauthorized', 'Unauthorized'));
       }
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
 
-      if (res.ok) {
+      if (data?.ok) {
         setProviders(prev => ({
           ...prev,
-          [key]: { ...prev[key], isVerifying: false, isConnected: true, lastError: undefined }
+          [key]: { ...prev[key], isVerifying: false, isConnected: true, lastError: undefined, apiKey: prev[key].apiKey || (prev[key].isFree ? 'free-mode' : prev[key].apiKey) },
         }));
-        setActiveProvider(key);
-        setShowProviders(false); // verified successfully → switch to it and close the list
+        if (opts?.closeOnSuccess) setShowProviders(false); // green → switch & close
       } else {
-        throw new Error(data.error || 'Connection failed');
+        setProviders(prev => ({
+          ...prev,
+          [key]: { ...prev[key], isVerifying: false, isConnected: false, lastError: data?.error || 'لا يعمل' },
+        }));
       }
     } catch (err: any) {
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], isVerifying: false, isConnected: false, lastError: err.message }
+        [key]: { ...prev[key], isVerifying: false, isConnected: false, lastError: err.message || 'لا يعمل' },
       }));
     }
   };
@@ -3127,10 +3123,11 @@ export default function CommandComposer({
                     <button
                       key={key}
                       className={`provider-item ${activeProvider === key ? 'active' : ''}`}
-                      onClick={() => { setActiveProvider(key); if (p.isFree && !p.isConnected) checkConnection(key); }}
+                      onClick={() => checkConnection(key)}
+                      title={p.lastError ? `لا يعمل: ${p.lastError}` : p.isConnected ? 'يعمل' : ''}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span className={`provider-status-dot ${p.isConnected ? 'connected' : 'disconnected'}`} />
+                        <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.isConnected ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
                         {p.name.split(' ')[0]}
                       </span>
                       {activeProvider === key && <ChevronRight size={14} />}
@@ -3146,10 +3143,11 @@ export default function CommandComposer({
                     <button
                       key={key}
                       className={`provider-item ${activeProvider === key ? 'active' : ''}`}
-                      onClick={() => setActiveProvider(key)}
+                      onClick={() => { setActiveProvider(key); if (p.apiKey) checkConnection(key); }}
+                      title={p.lastError ? `لا يعمل: ${p.lastError}` : p.isConnected ? 'يعمل' : ''}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span className={`provider-status-dot ${p.isConnected ? 'connected' : (p.apiKey ? 'active' : 'disconnected')}`} />
+                        <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.isConnected ? 'connected' : p.lastError ? 'failed' : (p.apiKey ? 'active' : 'disconnected')}`} />
                         {p.name.split(' ')[0]}
                       </span>
                       {activeProvider === key && <ChevronRight size={14} />}
@@ -3341,11 +3339,11 @@ export default function CommandComposer({
 
                   <div style={{ display: 'flex', gap: 12, paddingTop: 20, borderTop: '1px solid var(--border-color)' }}>
                     <button
-                      onClick={() => checkConnection(activeProvider)}
+                      onClick={() => checkConnection(activeProvider, { closeOnSuccess: true })}
                       disabled={providers[activeProvider].isVerifying}
                       style={{
                         flex: 1, padding: '12px', borderRadius: 8, border: 'none',
-                        background: providers[activeProvider].isConnected ? '#22c55e' : 'var(--accent-primary)',
+                        background: providers[activeProvider].isConnected ? '#22c55e' : providers[activeProvider].lastError ? '#ef4444' : 'var(--accent-primary)',
                         color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                         opacity: providers[activeProvider].isVerifying ? 0.7 : 1

@@ -849,6 +849,38 @@
     background: #71717a !important;
 }
 
+/* Verifying: amber, pulsing while we test the provider */
+.provider-status-dot.verifying,
+.providers-modal .provider-status-dot.verifying {
+    background: #f59e0b !important;
+    box-shadow: 0 0 8px #f59e0b !important;
+    animation: joe-dot-pulse 0.9s ease-in-out infinite;
+}
+
+/* Failed: red — the provider did not respond */
+.provider-status-dot.failed,
+.providers-modal .provider-status-dot.failed {
+    background: #ef4444 !important;
+    box-shadow: 0 0 8px #ef4444 !important;
+}
+
+/* Connected: ensure a clear green even if the token is missing */
+.provider-status-dot.connected,
+.providers-modal .provider-status-dot.connected {
+    background: #22c55e !important;
+    box-shadow: 0 0 8px #22c55e !important;
+}
+
+.provider-status-dot.active,
+.providers-modal .provider-status-dot.active {
+    background: #38bdf8 !important;
+}
+
+@keyframes joe-dot-pulse {
+    0%, 100% { opacity: 0.5; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1.15); }
+}
+
 .providers-modal .model-select {
     width: 100% !important;
     padding: 12px 14px !important;

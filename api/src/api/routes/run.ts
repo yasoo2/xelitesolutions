@@ -12,6 +12,35 @@ import { broadcast } from '../ws';
 const router = Router();
 
 /**
+ * [PROVIDER VERIFY] Actually test a provider with a tiny prompt and report
+ * whether it responds. The provider button is coloured GREEN on ok, RED on fail.
+ * Works for free providers too — a placeholder key routes through the free mesh,
+ * so "verify" checks that the free path (keyless proxies / local model) responds.
+ */
+router.post('/verify', authenticateOptional as any, async (req: Request, res: Response) => {
+    const { provider, apiKey, baseUrl, model } = req.body || {};
+    try {
+        const { routeToModel } = require('../../core/llm/intelligent-router');
+        const context = { modelConfig: { provider, apiKey, baseUrl, model } };
+        const withTimeout = <T,>(p: Promise<T>, ms: number) => Promise.race([
+            p,
+            new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+        ]);
+        const answer: string = await withTimeout(
+            routeToModel([{ role: 'user', content: 'Reply with the single word: OK' }],
+                undefined, undefined, undefined, undefined, undefined, undefined, context),
+            25000
+        );
+        const ok = !!(answer && String(answer).trim().length > 0);
+        if (!ok) return res.status(200).json({ ok: false, error: 'empty_response', provider });
+        return res.json({ ok: true, provider });
+    } catch (e: any) {
+        // 200 with ok:false so the UI can colour the button red (not a hard error).
+        return res.status(200).json({ ok: false, error: e?.message || 'verify_failed', provider });
+    }
+});
+
+/**
  * [REAL-TIME RUNTIME GATEWAY]
  * This route now delegates all intelligence to the AgentOrchestrator.
  * Legacy simulation logic has been decommissioned.

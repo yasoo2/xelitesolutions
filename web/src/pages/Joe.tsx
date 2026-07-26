@@ -29,6 +29,9 @@ interface Message {
 
 export default function Joe() {
     const nav = useNavigate();
+    // Ensures the "open one session on first launch" logic runs exactly once,
+    // even though the init effect re-runs when the workspace id resolves.
+    const didInitSessionRef = React.useRef(false);
 
     // Session store
     const {
@@ -455,9 +458,14 @@ export default function Joe() {
         // Load sessions; if there are none yet, open exactly ONE real session so
         // the user always lands on a working, visible chat (shown in the sessions
         // bar). New sessions then accumulate alongside it.
+        // GUARD: this effect re-runs when workspaceId resolves (null -> id); without
+        // this one-time flag the second run would create a SECOND session before the
+        // first was committed, so two sessions appeared on first launch.
         loadAllSessions().then(() => {
+            if (didInitSessionRef.current) return;
             const st = useSessionStore.getState();
             if (st.sessions.length === 0 && st.agentSessions.length === 0) {
+                didInitSessionRef.current = true;
                 createSession({ kind: 'agent' });
             }
         }).catch(() => { });
