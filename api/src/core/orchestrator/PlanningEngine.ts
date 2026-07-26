@@ -75,8 +75,12 @@ export class PlanningEngine {
         const contrastIntent = /(تباين|contrast|ألوان\s*الوصول|wcag)/i.test(goalRaw);
         const a11yIntent = /(وصولية|accessib|a11y|aria|قارئ\s*الشاشة|لوحة\s*المفاتيح)/i.test(goalRaw);
         const metaIntent = /(بيانات\s*وصفية|metadata|meta\s*tags|structured\s*data|json-?ld|الوسوم\s*الوصفية)/i.test(goalRaw);
-        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent || readIntent || contrastIntent || a11yIntent || metaIntent)) {
-            const tool = metaIntent ? 'browser_extract_meta'
+        const translateIntent = /(ترجم|ترجمة|translate|translation|بالعربية|to\s*(english|arabic|french))/i.test(goalRaw);
+        const responsiveIntent = /(تجاوب|responsive|الجوال|موبايل|mobile\s*view|أحجام\s*الشاشات|شاشات|breakpoints?)/i.test(goalRaw);
+        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent || readIntent || contrastIntent || a11yIntent || metaIntent || translateIntent || responsiveIntent)) {
+            const tool = responsiveIntent ? 'browser_responsive_check'
+                : translateIntent ? 'browser_translate'
+                : metaIntent ? 'browser_extract_meta'
                 : a11yIntent ? 'browser_a11y_deep'
                 : contrastIntent ? 'browser_contrast_audit'
                 : readIntent ? 'browser_readability'
@@ -92,6 +96,10 @@ export class PlanningEngine {
             const urls = goalRaw.match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/ig) || [urlMatch[0]];
             const smartInput: any = { url: urlMatch[0], question: intent.goal, request: intent.goal };
             if (tool === 'browser_compare' && urls.length >= 2) { smartInput.before = urls[0]; smartInput.after = urls[1]; }
+            if (tool === 'browser_translate') {
+                const tm = goalRaw.match(/to\s+(english|arabic|french|spanish|german|turkish)|إلى\s*(الإنجليزية|الانجليزية|العربية|الفرنسية)/i);
+                if (tm) smartInput.target = (tm[1] || tm[2] || '').toLowerCase();
+            }
             return {
                 id: `browser_${Date.now()}`,
                 goal: intent.goal,

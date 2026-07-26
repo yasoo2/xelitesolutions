@@ -985,3 +985,157 @@ export class BrowserFillFormTool implements ToolDefinition {
         }
     }
 }
+
+/* ============================================================
+   15) browser_translate — extract page text + translate via LLM
+   ============================================================ */
+export class BrowserTranslateTool implements ToolDefinition {
+    name = 'browser_translate';
+    version = '1.0.0';
+    description = 'Open a page, extract its readable text (title, headings, paragraphs) and translate it into a target language (default Arabic) using the LLM, with a deterministic fallback that keeps the original text.';
+    tags = ['browser', 'web', 'translate', 'i18n', 'language'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            url: { type: 'string' as const, description: 'Page URL to translate' },
+            target: { type: 'string' as const, description: 'Target language (e.g. "ar", "arabic", "en", "english", "fr"). Default: arabic.' },
+        },
+        required: ['url'],
+    };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        const rawTarget = String(input?.target || '').trim().toLowerCase();
+        const targetAr = !rawTarget || /^(ar|arabic|عرب)/.test(rawTarget) || isAr(rawTarget);
+        const targetLabel = targetAr ? 'Arabic (العربية)'
+            : /^(en|eng)/.test(rawTarget) ? 'English'
+                : /^(fr)/.test(rawTarget) ? 'French'
+                    : /^(es)/.test(rawTarget) ? 'Spanish'
+                        : /^(de)/.test(rawTarget) ? 'German'
+                            : /^(tr)/.test(rawTarget) ? 'Turkish'
+                                : input.target;
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                const data = await page.evaluate(() => {
+                    const clean = (t: string) => (t || '').replace(/\s+/g, ' ').trim();
+                    const title = document.title || '';
+                    const main = (document.querySelector('main, article') || document.body) as HTMLElement;
+                    const blocks = Array.from(main.querySelectorAll('h1,h2,h3,h4,p,li'))
+                        .map(el => clean((el as HTMLElement).innerText))
+                        .filter(t => t.length > 1)
+                        .slice(0, 120);
+                    return { title, blocks, text: clean(main?.innerText || '').slice(0, 8000) };
+                });
+                const buf = await page.screenshot({ type: 'jpeg', quality: 60, animations: 'disabled' });
+                const shot = publishShot(sessionId, Buffer.from(buf), finalUrl);
+
+                const sys = `You are a professional translator. Translate the following web page content into ${targetLabel}. Preserve the structure: keep the title on its own first line, then each block on its own line in the same order. Translate faithfully and naturally; do NOT add commentary, notes, or explanations. Output ONLY the translation.`;
+                const userContent = `Title: ${data.title}\n\nBlocks:\n${data.blocks.join('\n')}`;
+                let translated = '';
+                try {
+                    translated = await routeToModel([{ role: 'system', content: sys }, { role: 'user', content: userContent }], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                } catch { translated = ''; }
+                if (!translated || translated.trim().length < 2) {
+                    translated = (targetAr ? '⚠️ تعذّرت الترجمة بالذكاء الآن؛ هذا هو النص الأصلي:\n\n' : '⚠️ Translation unavailable; original text follows:\n\n') + data.title + '\n' + data.blocks.slice(0, 60).join('\n');
+                }
+                const header = targetAr ? `🌐 ترجمة الصفحة (${finalUrl}) إلى ${targetLabel}:\n\n` : `🌐 Page translation (${finalUrl}) → ${targetLabel}:\n\n`;
+                return { ok: true, output: { message: header + translated, translation: translated, target: targetLabel, blocks: data.blocks.length, url: finalUrl, screenshot: shot } };
+            });
+        } catch (e: any) { return { ok: false, error: `translate_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
+   16) browser_responsive_check — multi-viewport responsive audit
+   ============================================================ */
+export class BrowserResponsiveCheckTool implements ToolDefinition {
+    name = 'browser_responsive_check';
+    version = '1.0.0';
+    description = 'Open a page and test it across mobile / tablet / desktop viewports: captures a screenshot of each, and flags horizontal overflow, tiny tap targets, unreadable font sizes, and missing viewport meta. Returns a responsiveness score.';
+    tags = ['browser', 'web', 'responsive', 'mobile', 'ui', 'audit'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: { url: { type: 'string' as const, description: 'Page URL to test' } },
+        required: ['url'],
+    };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        const viewports = [
+            { name: 'mobile', label: '📱 جوال', w: 390, h: 844 },
+            { name: 'tablet', label: '📲 لوحي', w: 820, h: 1180 },
+            { name: 'desktop', label: '🖥️ سطح المكتب', w: 1440, h: 900 },
+        ];
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                const results: any[] = [];
+                for (const vp of viewports) {
+                    await page.setViewportSize({ width: vp.w, height: vp.h });
+                    await page.waitForTimeout(500);
+                    const metrics = await page.evaluate((vw: number) => {
+                        const doc = document.documentElement;
+                        const scrollW = Math.max(doc.scrollWidth, document.body?.scrollWidth || 0);
+                        const overflowX = scrollW > vw + 2;
+                        // find elements physically wider than the viewport
+                        const wide: string[] = [];
+                        Array.from(document.querySelectorAll('*')).slice(0, 4000).forEach(el => {
+                            const r = (el as HTMLElement).getBoundingClientRect();
+                            if (r.width > vw + 4 && r.height > 0 && wide.length < 8) {
+                                const tag = el.tagName.toLowerCase();
+                                const cls = (el.getAttribute('class') || '').split(/\s+/).slice(0, 2).join('.');
+                                wide.push(cls ? `${tag}.${cls}` : tag);
+                            }
+                        });
+                        // tap targets (interactive elements smaller than 40px)
+                        let tiny = 0;
+                        Array.from(document.querySelectorAll('a,button,input,select,[role="button"]')).forEach(el => {
+                            const r = (el as HTMLElement).getBoundingClientRect();
+                            if (r.width > 0 && r.height > 0 && (r.width < 40 || r.height < 40)) tiny++;
+                        });
+                        // small fonts
+                        let smallFonts = 0;
+                        Array.from(document.querySelectorAll('p,span,li,a,td')).slice(0, 1500).forEach(el => {
+                            const fs = parseFloat(getComputedStyle(el as HTMLElement).fontSize || '16');
+                            if (fs && fs < 12) smallFonts++;
+                        });
+                        const hasViewportMeta = !!document.querySelector('meta[name="viewport"]');
+                        return { scrollW, overflowX, wide: Array.from(new Set(wide)), tiny, smallFonts, hasViewportMeta };
+                    }, vp.w);
+                    const buf = await page.screenshot({ type: 'jpeg', quality: 55, animations: 'disabled' });
+                    const shot = publishShot(sessionId, Buffer.from(buf), `${finalUrl}#${vp.name}`);
+                    results.push({ ...vp, ...metrics, screenshot: shot });
+                }
+                // restore a sane desktop viewport
+                await page.setViewportSize({ width: 1280, height: 800 }).catch(() => { });
+
+                // scoring
+                let score = 100;
+                const issues: string[] = [];
+                if (!results[0]?.hasViewportMeta) { score -= 25; issues.push('❌ لا يوجد وسم viewport — الصفحة لن تتكيّف مع الجوال.'); }
+                results.forEach(r => {
+                    if (r.overflowX) { score -= 15; issues.push(`↔️ تمرير أفقي على ${r.label} (${r.w}px)${r.wide.length ? ` — عناصر عريضة: ${r.wide.join('، ')}` : ''}.`); }
+                });
+                const mob = results.find(r => r.name === 'mobile');
+                if (mob?.tiny > 0) { score -= Math.min(15, mob.tiny * 2); issues.push(`👆 ${mob.tiny} هدف لمس أصغر من 40px على الجوال.`); }
+                if (mob?.smallFonts > 0) { score -= Math.min(10, mob.smallFonts); issues.push(`🔎 ${mob.smallFonts} عنصر بخط أصغر من 12px على الجوال.`); }
+                score = Math.max(0, Math.min(100, score));
+
+                const grade = score >= 90 ? 'ممتاز ✅' : score >= 70 ? 'جيد 👍' : score >= 50 ? 'متوسط ⚠️' : 'ضعيف ❌';
+                const message = `📐 فحص التجاوب (${finalUrl}) — النتيجة: ${score}/100 (${grade})\n\n` +
+                    results.map(r => `${r.label} ${r.w}×${r.h}: ${r.overflowX ? 'تمرير أفقي ⚠️' : 'لا تمرير أفقي ✅'}`).join('\n') +
+                    (issues.length ? `\n\nالملاحظات:\n${issues.map(i => `• ${i}`).join('\n')}` : '\n\nلا مشاكل تجاوب واضحة. 🎉');
+                return { ok: true, output: { message, score, grade, viewports: results.map(r => ({ name: r.name, w: r.w, h: r.h, overflowX: r.overflowX, tiny: r.tiny, smallFonts: r.smallFonts, wide: r.wide, screenshot: r.screenshot })), issues, url: finalUrl } };
+            });
+        } catch (e: any) { return { ok: false, error: `responsive_check_failed: ${e?.message || e}` }; }
+    }
+}
