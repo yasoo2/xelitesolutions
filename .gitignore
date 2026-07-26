@@ -46,4 +46,6 @@ archive/
 
 # Deploy artifacts (auto-generated, should not trigger local changes)
 api/logs/
+web/src/logs/
+**/logs/
 api/last_stable_commit
