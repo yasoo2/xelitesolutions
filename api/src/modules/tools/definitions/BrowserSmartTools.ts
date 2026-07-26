@@ -45,6 +45,7 @@ async function openPage(sessionId: string, rawUrl?: string) {
     const page = s.page;
     const target = normalizeUrl(rawUrl || '');
     if (target) {
+        narrateAction(sessionId, 'goto', target);
         await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30000 });
         await page.waitForTimeout(600);
     }
@@ -62,6 +63,25 @@ async function moveCursorTo(page: any, sessionId: string, x: number, y: number, 
         broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: Date.now(), x, y } as any);
         if (box) broadcastBrowserEvent(sessionId, { type: 'highlight_boxes', ts: Date.now(), boxes: [{ x: box.x, y: box.y, width: box.w, height: box.h, label: box.label }] } as any);
         await page.waitForTimeout(600); // let the cursor animate into view in the stream
+    } catch { /* non-fatal */ }
+}
+
+/** Narrate one browser step into the panel's activity log (action_sent +
+ *  action_done) — the same feed browser_run fills. Reconnects the log for the
+ *  smart tools so the user sees what Joe is doing step by step. */
+function narrateAction(sessionId: string, actionType: string, summary?: string) {
+    try {
+        const actionId = `a${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
+        broadcastBrowserEvent(sessionId, { type: 'action_sent', ts: Date.now(), actionId, actionType, summary } as any);
+        broadcastBrowserEvent(sessionId, { type: 'action_done', ts: Date.now(), actionId, actionType, summary } as any);
+    } catch { /* non-fatal */ }
+}
+
+/** Emit the final result card shown in the panel (green on success). */
+function narrateFinal(sessionId: string, ok: boolean, summary: string) {
+    try {
+        if (ok) broadcastBrowserEvent(sessionId, { type: 'final_success', ts: Date.now(), summary } as any);
+        else broadcastBrowserEvent(sessionId, { type: 'final_report', ts: Date.now(), ok: false, summary, steps: [], evidence: [] } as any);
     } catch { /* non-fatal */ }
 }
 
@@ -936,6 +956,8 @@ export class BrowserUIAuditTool implements ToolDefinition {
                         ? audit.issues.map((i: any) => `${icon(i.severity)} ${i.message}`).join('\n')
                         : '✅ لم أجد مشاكل واضحة.';
                     const message = `🔎 تدقيق واجهة الصفحة: ${page.url()}\n\nالدرجة: ${score}/100 (🔴 ${crit} · 🟡 ${warn} · 🔵 ${info})\n\n${lines}`;
+                    narrateAction(sessionId, 'ui_audit', `الدرجة ${score}/100`);
+                    narrateFinal(sessionId, true, `تدقيق الواجهة — الدرجة ${score}/100 (${audit.issues.length} ملاحظة)`);
                     return { ok: true, output: { message, score, issues: audit.issues, counts: audit.counts, url: page.url(), screenshot: shot } };
                 } finally {
                     try { page.off('console', onErr); page.off('pageerror', onPageErr); } catch { }
@@ -1031,6 +1053,8 @@ export class BrowserFillFormTool implements ToolDefinition {
                 const message = `📝 تعبئة النموذج (${finalUrl}):\n✅ عُبّئت: ${filled.join('، ') || 'لا شيء'}` +
                     (missed.length ? `\n⚠️ لم أجد: ${missed.join('، ')}` : '') +
                     (submit ? `\n📤 الإرسال: ${submitted ? 'تم' : 'لم أجد زر إرسال'}` : '');
+                narrateAction(sessionId, 'fill_form', `عُبّئت ${filled.length} حقلاً${submit ? ' + إرسال' : ''}`);
+                narrateFinal(sessionId, filled.length > 0, message);
                 return { ok: filled.length > 0, output: { message, filled, missed, submitted, url: page.url(), screenshot: shot } };
             });
         } catch (e: any) {
@@ -1415,6 +1439,7 @@ export class BrowserClickTool implements ToolDefinition {
                 // so the user watches the pointer travel and press (same overlay
                 // the browser_run executor uses).
                 await moveCursorTo(page, sessionId, found.cx, found.cy, { x: found.bx, y: found.by, w: found.bw, h: found.bh, label: found.desc?.slice(0, 24) || 'click' });
+                narrateAction(sessionId, 'click', found.desc || text || selector);
 
                 // click and observe navigation
                 let navigated = false;
@@ -1436,6 +1461,7 @@ export class BrowserClickTool implements ToolDefinition {
                     : contentChanged ? (ar ? 'تغيّر محتوى الصفحة (بدون انتقال)' : 'page content changed (no navigation)')
                         : (ar ? 'لم يحدث تغيّر ملحوظ — قد يكون الزر بلا وظيفة' : 'no visible change — the control may be dead');
                 const message = (ar ? `🖱️ نقرتُ على <${found.tag}> «${found.desc}».\nالنتيجة: ${change}` : `🖱️ Clicked <${found.tag}> "${found.desc}".\nResult: ${change}`);
+                narrateFinal(sessionId, true, message);
                 return { ok: true, output: { message, clicked: found.desc, tag: found.tag, urlChanged, contentChanged, beforeUrl, afterUrl, navigated, screenshot: shot } };
             });
         } catch (e: any) { return { ok: false, error: `click_failed: ${e?.message || e}` }; }
@@ -1613,6 +1639,8 @@ export class BrowserSmartAgentTool implements ToolDefinition {
                     `🎨 نظام التصميم: خلفيات ${data.design.backgrounds.join('، ') || '—'} | تمييز ${data.design.accents.join('، ') || '—'} | خطوط ${data.design.fonts.join('، ') || '—'}\n\n` +
                     (findings.length ? `🔧 أهم الملاحظات (${findings.length}):\n${findings.slice(0, 12).map(f => `• ${f}`).join('\n')}` : '🎉 لا مشاكل جوهرية.');
 
+                narrateAction(sessionId, 'analyze', `النتيجة ${overall}/100`);
+                narrateFinal(sessionId, true, `التحليل الشامل — ${overall}/100 (واجهة ${ui} · SEO ${seo} · أداء ${perf})`);
                 return {
                     ok: true,
                     output: {
@@ -1784,6 +1812,7 @@ export class BrowserOpenTool implements ToolDefinition {
                 const buf = await page.screenshot({ type: 'jpeg', quality: 62, animations: 'disabled' });
                 const shot = publishShot(sessionId, Buffer.from(buf), finalUrl);
                 const message = `🌐 فتحتُ المتصفح على: ${finalUrl}${title ? `\n📄 ${title}` : ''}\nالبثّ الحي يعمل الآن — يمكنك أن تطلب مني تصفّح الصفحة أو تحليلها أو النقر فيها.`;
+                narrateFinal(sessionId, true, `فتح المتصفح: ${title || finalUrl}`);
                 return { ok: true, output: { message, url: finalUrl, title, screenshot: shot, live: true } };
             });
         } catch (e: any) {
