@@ -270,7 +270,7 @@ export class AgentOrchestrator {
             // Deterministic build tool — run it directly so the weak-model tool-picker
             // can't downgrade a "build a page" request back into a chat answer.
             result = await executeTool('web_page_builder', node.input, executionContext);
-          } else if (node.tool === 'browser_summarize' || node.tool === 'browser_ui_audit' || node.tool === 'browser_fill_form') {
+          } else if (node.tool === 'browser_summarize' || node.tool === 'browser_ui_audit' || node.tool === 'browser_fill_form' || node.tool === 'browser_compare') {
             // Deterministic browser smart-tools — run the exact tool directly.
             result = await executeTool(node.tool, node.input, executionContext);
           } else if (agent) {

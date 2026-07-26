@@ -41,6 +41,162 @@ async function openPage(sessionId: string, rawUrl?: string) {
 
 const isAr = (t: string) => /[؀-ۿ]/.test(String(t || ''));
 
+/** Extract a structural signature of the current page (for before/after diffing). */
+async function pageSignature(page: any) {
+    return await page.evaluate(() => {
+        const txt = (el: Element) => ((el as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
+        const list = (sel: string) => Array.from(document.querySelectorAll(sel)).map(txt).filter(Boolean).slice(0, 60);
+        return {
+            title: document.title || '',
+            buttons: list('button, [role="button"], input[type="submit"]'),
+            links: list('a'),
+            headings: list('h1, h2, h3'),
+            inputs: Array.from(document.querySelectorAll('input, textarea, select')).map(el => el.getAttribute('name') || el.getAttribute('id') || el.getAttribute('placeholder') || '').filter(Boolean).slice(0, 60),
+            images: document.querySelectorAll('img').length,
+            bodyLen: ((document.body?.innerText || '').replace(/\s+/g, ' ').trim()).length,
+        };
+    });
+}
+
+function setDiff(a: string[], b: string[]) {
+    const nb = new Set((b || []).map(x => x.toLowerCase().trim()));
+    return (a || []).filter(x => !nb.has(x.toLowerCase().trim()));
+}
+
+/* ============================================================
+   4) browser_compare — before/after visual + structural diff
+   ============================================================ */
+export class BrowserCompareTool implements ToolDefinition {
+    name = 'browser_compare';
+    version = '1.0.0';
+    description = 'Compare a page before/after a change: pass {before,after} URLs, or a single {url} to capture a baseline the first time and diff on the next call. Returns what was added/removed and a visual diff image + % changed.';
+    tags = ['browser', 'web', 'compare', 'diff', 'visual', 'qa'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            url: { type: 'string' as const, description: 'Single URL: first call captures a baseline, next call diffs against it' },
+            before: { type: 'string' as const, description: 'URL of the BEFORE state' },
+            after: { type: 'string' as const, description: 'URL of the AFTER state' },
+        },
+    };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const };
+    permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        let before = normalizeUrl(input?.before || '');
+        let after = normalizeUrl(input?.after || '');
+        const single = normalizeUrl(input?.url || '');
+
+        // Single-URL baseline workflow.
+        const baselines: Record<string, { sig: any; png: string }> = (global as any).joeCompareBaselines || ((global as any).joeCompareBaselines = {});
+        try {
+            return await withBrowserConcurrency(async () => {
+                const s = await getBrowserSession(sessionId);
+                const page = s.page;
+
+                const capture = async (url: string) => {
+                    await page.goto(url, { waitUntil: 'load', timeout: 30000 });
+                    await page.waitForTimeout(600);
+                    const sig = await pageSignature(page);
+                    const png = (await page.screenshot({ type: 'png', animations: 'disabled' })) as Buffer;
+                    return { sig, pngB64: png.toString('base64') };
+                };
+
+                let beforeCap: { sig: any; pngB64: string };
+                let afterCap: { sig: any; pngB64: string };
+
+                if (before && after) {
+                    beforeCap = await capture(before);
+                    afterCap = await capture(after);
+                } else if (single) {
+                    const cur = await capture(single);
+                    const prev = baselines[single];
+                    if (!prev) {
+                        baselines[single] = { sig: cur.sig, png: cur.pngB64 };
+                        return { ok: true, output: { message: `📸 التقطتُ لقطة أساس (baseline) للصفحة: ${single}\nأجرِ تعديلك ثم اطلب المقارنة مرة أخرى لِأُظهر لك ما تغيّر.`, baseline: true, url: single } };
+                    }
+                    beforeCap = { sig: prev.sig, pngB64: prev.png };
+                    afterCap = cur;
+                    before = single; after = single;
+                    baselines[single] = { sig: cur.sig, png: cur.pngB64 }; // refresh baseline
+                } else {
+                    return { ok: false, error: 'need_before_after_or_url' };
+                }
+
+                // --- Structural diff (what changed) ---
+                const a = beforeCap.sig, b = afterCap.sig;
+                const changes: string[] = [];
+                const addedBtns = setDiff(b.buttons, a.buttons); const remBtns = setDiff(a.buttons, b.buttons);
+                const addedLinks = setDiff(b.links, a.links); const remLinks = setDiff(a.links, b.links);
+                const addedH = setDiff(b.headings, a.headings); const remH = setDiff(a.headings, b.headings);
+                if (addedBtns.length) changes.push(`➕ أزرار جديدة: ${addedBtns.join('، ')}`);
+                if (remBtns.length) changes.push(`➖ أزرار محذوفة: ${remBtns.join('، ')}`);
+                if (addedLinks.length) changes.push(`➕ روابط جديدة: ${addedLinks.slice(0, 8).join('، ')}`);
+                if (remLinks.length) changes.push(`➖ روابط محذوفة: ${remLinks.slice(0, 8).join('، ')}`);
+                if (addedH.length) changes.push(`➕ عناوين جديدة: ${addedH.join('، ')}`);
+                if (remH.length) changes.push(`➖ عناوين محذوفة: ${remH.join('، ')}`);
+                if (b.images !== a.images) changes.push(`🖼️ عدد الصور: ${a.images} ← ${b.images}`);
+                if (b.title !== a.title) changes.push(`🏷️ العنوان: «${a.title}» ← «${b.title}»`);
+                const lenDelta = b.bodyLen - a.bodyLen;
+                if (Math.abs(lenDelta) > 20) changes.push(`📝 حجم النص: ${lenDelta > 0 ? '+' : ''}${lenDelta} حرف`);
+
+                // --- Visual diff via canvas (no external libs) ---
+                let pctChanged = -1;
+                let compositeHref: string | undefined;
+                try {
+                    const compareHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+                      body{margin:0;background:#0f1113;font-family:sans-serif;color:#ddd}
+                      .row{display:flex;gap:2px}.col{flex:1;text-align:center}
+                      .lbl{font-size:13px;padding:6px;color:#9aa}img,canvas{width:100%;display:block;border-top:1px solid #333}
+                    </style></head><body>
+                      <div class="row">
+                        <div class="col"><div class="lbl">قبل</div><img id="ib"></div>
+                        <div class="col"><div class="lbl">بعد</div><img id="ia"></div>
+                        <div class="col"><div class="lbl">الفرق</div><canvas id="cd"></canvas></div>
+                      </div>
+                      <script>
+                        const ib=document.getElementById('ib'), ia=document.getElementById('ia'), cd=document.getElementById('cd');
+                        function load(img,src){return new Promise(r=>{img.onload=()=>r(img);img.src=src;});}
+                        (async()=>{
+                          const b=await load(ib,'data:image/png;base64,${beforeCap.pngB64}');
+                          const a=await load(ia,'data:image/png;base64,${afterCap.pngB64}');
+                          const w=Math.min(b.naturalWidth,a.naturalWidth), h=Math.min(b.naturalHeight,a.naturalHeight);
+                          const c1=document.createElement('canvas'),c2=document.createElement('canvas');
+                          c1.width=c2.width=cd.width=w; c1.height=c2.height=cd.height=h;
+                          const x1=c1.getContext('2d'),x2=c2.getContext('2d'),xd=cd.getContext('2d');
+                          x1.drawImage(b,0,0,w,h); x2.drawImage(a,0,0,w,h);
+                          const d1=x1.getImageData(0,0,w,h),d2=x2.getImageData(0,0,w,h),out=xd.createImageData(w,h);
+                          let diff=0; const n=w*h;
+                          for(let i=0;i<d1.data.length;i+=4){
+                            const dr=Math.abs(d1.data[i]-d2.data[i]),dg=Math.abs(d1.data[i+1]-d2.data[i+1]),db=Math.abs(d1.data[i+2]-d2.data[i+2]);
+                            if(dr+dg+db>60){diff++;out.data[i]=255;out.data[i+1]=40;out.data[i+2]=40;out.data[i+3]=255;}
+                            else {out.data[i]=d2.data[i];out.data[i+1]=d2.data[i+1];out.data[i+2]=d2.data[i+2];out.data[i+3]=90;}
+                          }
+                          xd.putImageData(out,0,0);
+                          (window).__pct=((diff/n)*100).toFixed(1);
+                          document.title='PCT:'+(window).__pct;
+                        })();
+                      </script></body></html>`;
+                    await page.setContent(compareHtml, { waitUntil: 'load' });
+                    await page.waitForFunction(() => (window as any).__pct !== undefined, { timeout: 8000 }).catch(() => { });
+                    pctChanged = parseFloat(await page.evaluate(() => (window as any).__pct ?? '-1'));
+                    const comp = (await page.screenshot({ type: 'jpeg', quality: 70, fullPage: true })) as Buffer;
+                    compositeHref = publishShot(sessionId, Buffer.from(comp), after);
+                } catch { /* visual diff optional */ }
+
+                const headline = changes.length ? changes.join('\n') : 'لا تغييرات بنيوية واضحة (قد يكون التغيير في الألوان/التنسيق فقط).';
+                const pctLine = pctChanged >= 0 ? `\n\n👁️ نسبة التغيّر البصري: ${pctChanged}%` : '';
+                const message = `🔀 مقارنة قبل/بعد:\n\n${headline}${pctLine}`;
+                return { ok: true, output: { message, changes, pctChanged, url: after, composite: compositeHref } };
+            });
+        } catch (e: any) {
+            return { ok: false, error: `compare_failed: ${e?.message || e}` };
+        }
+    }
+}
+
 /* ============================================================
    1) browser_summarize — read a page and summarise it
    ============================================================ */
