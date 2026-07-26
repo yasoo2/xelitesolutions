@@ -59,6 +59,28 @@ export class PlanningEngine {
             };
         }
 
+        // [BROWSER SMART TOOLS FAST-PATH] summarise / audit a URL reliably.
+        const goalRaw = intent.goal || '';
+        const urlMatch = goalRaw.match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);
+        const summarizeIntent = /(لخّ?ص|تلخيص|summari[sz]e|اقرأ\s*الصفحة|ما\s*مضمون)/i.test(goalRaw);
+        const auditIntent = /(دقّ?ق|تدقيق|افحص\s*الواجهة|audit|فحص\s*ui|راجع\s*التصميم|مشاكل\s*الواجهة|accessib)/i.test(goalRaw);
+        if (urlMatch && (summarizeIntent || auditIntent)) {
+            const tool = auditIntent ? 'browser_ui_audit' : 'browser_summarize';
+            return {
+                id: `browser_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'browser_smart',
+                    description: `${auditIntent ? 'Auditing' : 'Summarizing'} ${urlMatch[0]}`,
+                    tool,
+                    agent: 'Browser',
+                    input: { url: urlMatch[0], question: intent.goal, request: intent.goal },
+                    dependsOn: []
+                }],
+                metadata: { complexity: 'medium', riskLevel: 'low' }
+            };
+        }
+
         // [ELITE FAST-PATH] Direct answer for general questions or chat
         if ((intent as any).type === 'general' || (intent as any).type === 'chat' || intent.goal.length < 30) {
             return {
