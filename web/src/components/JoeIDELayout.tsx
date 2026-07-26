@@ -438,6 +438,7 @@ export default function JoeIDELayout({
                         onSend={onSend}
                         isLoading={isLoading}
                         isCollapsed={isChatCollapsed}
+                        sessionId={sessionId}
                     >
                         {chatChildren}
                     </ChatPanel>

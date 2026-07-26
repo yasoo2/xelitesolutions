@@ -1,195 +1,146 @@
 /**
- * NeuralThinkingIndicator - Wakil 6.0
- * A deep reasoning visualization with Matrix-style logs.
+ * NeuralThinkingIndicator
+ * A calm, modern "Joe is thinking" indicator with an optional reasoning log.
+ * Visibility is driven ENTIRELY by the `visible` prop (which the parent computes
+ * per active session), so it never leaks from one session into another.
  */
 
 import React, { useEffect, useState, useRef } from 'react';
 import { SocketService } from '../services/socket';
 
-
 interface NeuralThinkingIndicatorProps {
   phase?: 'analyzing' | 'synthesizing' | 'executing' | 'idle';
   visible: boolean;
   variant?: 'inline' | 'bubble';
+  sessionId?: string;
 }
 
-const phaseLabels: Record<string, { emoji: string; text: string; textAr: string; color: string }> = {
-  analyzing: { emoji: '🧠', text: 'Analyzing', textAr: 'Joe يفكر...', color: '#00d2ff' }, // Cyan
-  synthesizing: { emoji: '⚙️', text: 'Synthesizing', textAr: 'Joe يخطط...', color: '#b0fb5d' }, // Matrix Green
-  executing: { emoji: '🚀', text: 'Executing', textAr: 'Joe ينفذ...', color: '#ffd700' }, // Gold
-  idle: { emoji: '', text: '', textAr: '', color: '#aab3c5' },
+const phaseLabels: Record<string, { text: string; textAr: string; color: string }> = {
+  analyzing: { text: 'Analyzing', textAr: 'جو يفكّر', color: '#34c48b' },
+  synthesizing: { text: 'Planning', textAr: 'جو يخطّط', color: '#3bb2f6' },
+  executing: { text: 'Executing', textAr: 'جو ينفّذ', color: '#f0a83b' },
+  idle: { text: '', textAr: 'جو يفكّر', color: '#34c48b' },
 };
 
-export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, variant = 'inline' }: NeuralThinkingIndicatorProps) {
+export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, variant = 'inline', sessionId }: NeuralThinkingIndicatorProps) {
   const [currentPhase, setCurrentPhase] = useState(phase);
   const [status, setStatus] = useState('');
   const [details, setDetails] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const activeSessionRef = useRef(sessionId);
+  useEffect(() => { activeSessionRef.current = sessionId; }, [sessionId]);
 
   useEffect(() => {
-    const unsubDetails = SocketService.subscribeThinkingDetails((newDetails) => {
-      setDetails(newDetails);
-    });
-    const unsubPhase = SocketService.subscribeThinkingPhase((p: any) => {
+    const unsubDetails = SocketService.subscribeThinkingDetails((newDetails) => setDetails(newDetails));
+    const unsubPhase = SocketService.subscribeThinkingPhase((p: any, evSid?: string) => {
+      if (evSid && activeSessionRef.current && evSid !== activeSessionRef.current) return;
       setCurrentPhase(p);
     });
-    const unsubStatus = SocketService.subscribeThinkingStatus((s: string) => {
-      setStatus(s);
-    });
-    return () => {
-      unsubDetails();
-      unsubPhase();
-      unsubStatus();
-    };
+    const unsubStatus = SocketService.subscribeThinkingStatus((s: string) => setStatus(s));
+    return () => { unsubDetails(); unsubPhase(); unsubStatus(); };
   }, []);
 
+  // Clear all reasoning state the moment the active session changes, so the
+  // previous session's thinking never shows in the new one.
   useEffect(() => {
-    if (visible && details.length > 0) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
+    setDetails([]);
+    setStatus('');
+    setCurrentPhase('idle');
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (visible && details.length > 0) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [details, visible]);
 
-  // Only hide when not visible AND idle with no details
-  if (!visible && currentPhase === 'idle' && details.length === 0) return null;
+  // Single source of truth: the parent decides (per session) when to show us.
+  if (!visible) return null;
 
   const current = phaseLabels[currentPhase] || phaseLabels.analyzing;
-  const isMatrixMode = details.length > 0;
+  const hasLog = details.length > 0;
 
   return (
-    <div className={`neural-container ${isMatrixMode ? 'expanded' : ''} ${variant}`}>
-
+    <div className={`neural-card ${variant} ${hasLog ? 'has-log' : ''}`} dir="rtl">
       <style>{`
-        .neural-container {
-          display: flex;
-          position: relative;
-          flex-direction: column;
-          gap: 0;
-          background: rgba(0, 0, 0, 0.4);
-          border: 1px solid rgba(255, 255, 255, 0.05);
-          border-radius: 12px;
-          padding: 8px 12px;
-          backdrop-filter: blur(8px);
+        .neural-card {
+          --nc: ${current.color};
+          display: flex; flex-direction: column; gap: 0;
+          border-radius: 14px;
+          border: 1px solid color-mix(in srgb, var(--nc) 22%, transparent);
+          background:
+            linear-gradient(180deg, color-mix(in srgb, var(--nc) 8%, transparent), transparent),
+            var(--joe-bg-panel, rgba(22,26,30,0.85));
+          padding: 9px 13px;
+          backdrop-filter: blur(10px);
           overflow: hidden;
-          transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
-          margin-bottom: 8px;
           max-width: 100%;
-          z-index: 10;
+          margin-bottom: 8px;
+          box-shadow: 0 6px 22px -12px color-mix(in srgb, var(--nc) 60%, transparent);
+          animation: nc-in .35s cubic-bezier(0.22,1,0.36,1);
         }
+        .neural-card.bubble { margin-bottom: 0; }
+        @keyframes nc-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
-        .neural-container.bubble {
-          margin-bottom: 0px;
-          background: rgba(20, 25, 32, 0.8);
-          border-color: rgba(52, 196, 139, 0.2);
+        .neural-head { display: flex; align-items: center; gap: 10px; }
+
+        /* soft breathing orb */
+        .nc-orb { position: relative; width: 16px; height: 16px; flex: none; }
+        .nc-orb::before, .nc-orb::after {
+          content: ""; position: absolute; inset: 0; border-radius: 50%;
+          background: radial-gradient(circle at 35% 35%, color-mix(in srgb, var(--nc) 95%, white), var(--nc));
         }
+        .nc-orb::after { animation: nc-halo 1.8s ease-out infinite; opacity: .5; }
+        @keyframes nc-halo { 0% { transform: scale(1); opacity: .5; } 70%,100% { transform: scale(2.1); opacity: 0; } }
+        .nc-orb .core { position: absolute; inset: 3px; border-radius: 50%; background: var(--nc); animation: nc-breathe 1.6s ease-in-out infinite; }
+        @keyframes nc-breathe { 0%,100% { transform: scale(.82); } 50% { transform: scale(1.05); } }
 
-        .neural-container.expanded {
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        .nc-label {
+          font-size: 13px; font-weight: 700; color: var(--nc);
+          letter-spacing: .2px; display: inline-flex; align-items: baseline; gap: 2px;
         }
+        .nc-status { color: var(--joe-text-secondary, #9aa8a2); font-weight: 500; font-size: 12px; }
+        .nc-dots i { animation: nc-blink 1.4s infinite both; }
+        .nc-dots i:nth-child(2){ animation-delay: .2s; } .nc-dots i:nth-child(3){ animation-delay: .4s; }
+        @keyframes nc-blink { 0%,80%,100% { opacity: .2; } 40% { opacity: 1; } }
 
-        .neural-header {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 4px 0px;
-          cursor: default;
+        /* thin animated progress shimmer under the header */
+        .nc-track { height: 2px; border-radius: 2px; margin-top: 8px; overflow: hidden; background: color-mix(in srgb, var(--nc) 14%, transparent); }
+        .nc-track > i { display: block; height: 100%; width: 40%; border-radius: 2px;
+          background: linear-gradient(90deg, transparent, var(--nc), transparent);
+          animation: nc-sweep 1.5s ease-in-out infinite; }
+        @keyframes nc-sweep { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
+
+        .nc-log {
+          margin-top: 9px; padding-top: 8px; display: flex; flex-direction: column; gap: 3px;
+          max-height: 140px; overflow-y: auto; scrollbar-width: thin;
+          border-top: 1px solid color-mix(in srgb, var(--nc) 14%, transparent);
         }
-
-        .neural-dots {
-          display: flex;
-          gap: 5px;
+        .nc-log::-webkit-scrollbar { width: 3px; }
+        .nc-log::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--nc) 30%, transparent); border-radius: 4px; }
+        .nc-log .ln {
+          font-size: 11.5px; line-height: 1.5; color: var(--joe-text-secondary, #9aa8a2);
+          white-space: pre-wrap; word-break: break-word; opacity: 0; animation: nc-fade .3s ease-out forwards;
+          padding-inline-start: 12px; position: relative;
         }
-
-        .neural-dot {
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-          background: ${current.color};
-          animation: neural-pulse 1.4s ease-in-out infinite;
-          box-shadow: 0 0 8px ${current.color}66;
-        }
-
-        .neural-dot:nth-child(2) { animation-delay: 0.2s; }
-        .neural-dot:nth-child(3) { animation-delay: 0.4s; }
-
-        @keyframes neural-pulse {
-          0%, 100% { transform: scale(0.8); opacity: 0.3; }
-          50% { transform: scale(1.1); opacity: 1; }
-        }
-
-        .neural-label {
-          font-size: 11px;
-          font-weight: 700;
-          color: ${current.color};
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          letter-spacing: 1px;
-          text-transform: uppercase;
-        }
-
-        .neural-log-window {
-          padding: 8px 0;
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          max-height: 150px;
-          overflow-y: auto;
-          scrollbar-width: thin;
-          scrollbar-color: rgba(255,255,255,0.1) transparent;
-          border-top: 1px solid rgba(255,255,255,0.05);
-          margin-top: 4px;
-        }
-
-        .neural-log-window::-webkit-scrollbar { width: 3px; }
-        .neural-log-window::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.1);
-          border-radius: 4px;
-        }
-
-        .log-line {
-          font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
-          font-size: 10px;
-          line-height: 1.4;
-          color: var(--joe-thinking-text);
-          white-space: pre-wrap;
-          word-break: break-word;
-          opacity: 0;
-          animation: fade-in-up 0.3s ease-out forwards;
-          border-left: 1px solid transparent;
-          padding-left: 8px;
-        }
-
-        .log-line:last-child {
-          color: ${current.color};
-          border-left-color: ${current.color};
-          font-weight: 600;
-        }
-
-        @keyframes fade-in-up {
-          from { opacity: 0; transform: translateY(4px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
+        .nc-log .ln::before { content: ""; position: absolute; inset-inline-start: 0; top: .55em; width: 5px; height: 5px; border-radius: 50%; background: color-mix(in srgb, var(--nc) 40%, transparent); }
+        .nc-log .ln:last-child { color: var(--joe-text-primary, #e9eeeb); font-weight: 600; }
+        .nc-log .ln:last-child::before { background: var(--nc); box-shadow: 0 0 6px var(--nc); }
+        @keyframes nc-fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+        @media (prefers-reduced-motion: reduce) { .nc-orb .core, .nc-orb::after, .nc-track > i, .nc-dots i { animation: none !important; } }
       `}</style>
 
-      <div className="neural-header">
-        <div className="neural-dots">
-          <div className="neural-dot" />
-          <div className="neural-dot" />
-          <div className="neural-dot" />
-        </div>
-        <div className="neural-label">
-          <span>{current.emoji}</span>
-          <span>{status || current.textAr}</span>
-        </div>
+      <div className="neural-head">
+        <span className="nc-orb"><span className="core" /></span>
+        <span className="nc-label">
+          {status || current.textAr}
+          <span className="nc-dots"><i>.</i><i>.</i><i>.</i></span>
+        </span>
       </div>
 
-      {isMatrixMode && (
-        <div className="neural-log-window">
-          {details.map((line, i) => (
-            <div key={i} className="log-line">
-              {line}
-            </div>
-          ))}
+      {!hasLog && <div className="nc-track"><i /></div>}
+
+      {hasLog && (
+        <div className="nc-log">
+          {details.map((line, i) => (<div key={i} className="ln">{line}</div>))}
           <div ref={bottomRef} />
         </div>
       )}

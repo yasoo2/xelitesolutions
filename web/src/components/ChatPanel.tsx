@@ -26,6 +26,7 @@ interface ChatPanelProps {
     placeholder?: string;
     children?: React.ReactNode; // For CommandComposer
     isCollapsed?: boolean;
+    sessionId?: string;
 }
 
 export default function ChatPanel({
@@ -36,7 +37,8 @@ export default function ChatPanel({
     isLoading = false,
     placeholder = 'Ask Joe or type a command...',
     children,
-    isCollapsed = false
+    isCollapsed = false,
+    sessionId
 }: ChatPanelProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -51,12 +53,24 @@ export default function ChatPanel({
         setTimeout(() => setCopiedId(null), 2000);
     };
 
+    // Track the active session so thinking events from OTHER sessions never show
+    // here (previously session 1's indicator leaked into session 2).
+    const activeSessionRef = useRef(sessionId);
+    useEffect(() => { activeSessionRef.current = sessionId; }, [sessionId]);
+
     useEffect(() => {
-        const unsubscribe = SocketService.subscribeThinkingPhase((phase: any) => {
+        const unsubscribe = SocketService.subscribeThinkingPhase((phase: any, evSid?: string) => {
+            // Ignore updates that belong to a different session.
+            if (evSid && activeSessionRef.current && evSid !== activeSessionRef.current) return;
             setThinkingPhase(phase);
         });
         return () => unsubscribe();
     }, []);
+
+    // Switching sessions must clear any leftover indicator immediately.
+    useEffect(() => {
+        setThinkingPhase('idle');
+    }, [sessionId]);
 
     // Auto scroll to bottom
     useEffect(() => {
@@ -260,6 +274,7 @@ export default function ChatPanel({
                                 visible={isLoading || thinkingPhase !== 'idle'}
                                 phase={thinkingPhase}
                                 variant="bubble"
+                                sessionId={sessionId}
                             />
                             <TaskTracker />
                         </div>

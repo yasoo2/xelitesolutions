@@ -1299,13 +1299,18 @@ export default function CommandComposer({
     activeToolNameRef.current = activeToolName;
   }, [activeToolName]);
 
-  // [Wakil 6.0] Subscribe to thinking phase updates
+  // [Wakil 6.0] Subscribe to thinking phase updates — ignore events from OTHER
+  // sessions and reset when the active session changes (no cross-session leak).
+  const activeSidRef = useRef(sessionId);
+  useEffect(() => { activeSidRef.current = sessionId; }, [sessionId]);
   useEffect(() => {
-    const unsubscribe = SocketService.subscribeThinkingPhase((phase: any) => {
+    const unsubscribe = SocketService.subscribeThinkingPhase((phase: any, evSid?: string) => {
+      if (evSid && activeSidRef.current && evSid !== activeSidRef.current) return;
       setThinkingPhase(phase);
     });
     return () => unsubscribe();
   }, []);
+  useEffect(() => { setThinkingPhase('idle'); }, [sessionId]);
 
   const showTool = (name: string) => {
     const next = String(name || '').trim();
@@ -3577,6 +3582,7 @@ export default function CommandComposer({
                   visible={true}
                   phase={thinkingPhase}
                   variant="inline"
+                  sessionId={sessionId}
                 />
                 <TaskTracker />
               </div>

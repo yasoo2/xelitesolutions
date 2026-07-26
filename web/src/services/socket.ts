@@ -29,7 +29,7 @@ let lastAuthProbeAt = 0;
 
 // [Wakil 5.3] Neural Thinking Indicator State
 let thinkingPhase: 'analyzing' | 'synthesizing' | 'executing' | 'idle' = 'idle';
-const thinkingPhaseListeners: Set<(phase: string) => void> = new Set();
+const thinkingPhaseListeners: Set<(phase: string, sessionId?: string) => void> = new Set();
 
 // [Wakil 6.0] Deep Reasoning State
 let thinkingDetails: string[] = [];
@@ -239,14 +239,20 @@ async function connect() {
 
       // [Wakil 5.5] Auto Quiet Mode & Thinking Phase Management
       const msgType = String(data?.type || '');
+      // Which session this event belongs to — so the neural indicator only shows
+      // in the session that is actually running (no cross-session leak).
+      const evSid = String(data?.sessionId || data?.data?.sessionId || '');
+      const emitPhase = (p: any) => {
+        thinkingPhase = p;
+        thinkingPhaseListeners.forEach(cb => { try { cb(p, evSid); } catch { } });
+      };
 
       // [Wakil 6.0] Handle explicit thinking_phase messages
       if (msgType === 'thinking_phase') {
         const phase = data?.data?.phase;
         const detail = data?.data?.detail;
         if (phase && ['analyzing', 'synthesizing', 'executing', 'idle'].includes(phase)) {
-          thinkingPhase = phase;
-          thinkingPhaseListeners.forEach(cb => { try { cb(phase); } catch { } });
+          emitPhase(phase);
 
           if (detail !== undefined) {
             thinkingStatus = detail || ''; // Allow empty string to clear
@@ -265,25 +271,21 @@ async function connect() {
       if (msgType === 'step_started') {
         if (!quietMode) {
           quietMode = true;
-          thinkingPhase = 'analyzing';
-          thinkingPhaseListeners.forEach(cb => { try { cb('analyzing'); } catch { } });
+          emitPhase('analyzing');
         }
       } else if (msgType === 'step_done' || msgType === 'step_failed') {
         if (quietMode) {
-          thinkingPhase = 'synthesizing';
-          thinkingPhaseListeners.forEach(cb => { try { cb('synthesizing'); } catch { } });
+          emitPhase('synthesizing');
         }
       } else if (msgType === 'tool_start') {
         if (quietMode) {
-          thinkingPhase = 'executing';
-          thinkingPhaseListeners.forEach(cb => { try { cb('executing'); } catch { } });
+          emitPhase('executing');
         }
       } else if (msgType === 'run_finished' || msgType === 'text') {
         if (quietMode) {
           quietMode = false;
-          thinkingPhase = 'idle';
           thinkingStatus = '';
-          thinkingPhaseListeners.forEach(cb => { try { cb('idle'); } catch { } });
+          emitPhase('idle');
           thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
         }
       } else if (msgType === 'thought') {
@@ -297,11 +299,10 @@ async function connect() {
         // Reset state and immediately activate 'analyzing' phase for neural indicator
         thinkingDetails = [];
         thinkingStatus = '';
-        thinkingPhase = 'analyzing';
         taskTrackerData = []; // Reset tasks on new run
         thinkingDetailsListeners.forEach(cb => { try { cb([]); } catch { } });
         thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
-        thinkingPhaseListeners.forEach(cb => { try { cb('analyzing'); } catch { } });
+        emitPhase('analyzing');
         taskTrackerListeners.forEach(cb => { try { cb([]); } catch { } });
       } else if (msgType === 'task_tracker' || msgType === 'todo_update') {
         // [New] Receive task lists from the API (Unifying task_tracker and todo_update)
@@ -530,7 +531,7 @@ export const SocketService = {
   getThinkingPhase() {
     return thinkingPhase;
   },
-  subscribeThinkingPhase(cb: (phase: string) => void) {
+  subscribeThinkingPhase(cb: (phase: string, sessionId?: string) => void) {
     thinkingPhaseListeners.add(cb);
     return () => { thinkingPhaseListeners.delete(cb); };
   },
