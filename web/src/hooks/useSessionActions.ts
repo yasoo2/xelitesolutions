@@ -16,9 +16,14 @@ export function useSessionActions() {
             const id = String(data?.id || data?._id || '').trim();
             if (!id) return;
 
+            // Maintain the single-active invariant (see sessionStore.loadAllSessions):
+            // set the new session as active AND clear the other kind, so the freshly
+            // created session actually opens instead of being shadowed by a stale one.
             if (kind === 'agent') {
+                useSessionStore.getState().setSelected(null);
                 useSessionStore.getState().setAgentSelected(id);
             } else {
+                useSessionStore.getState().setAgentSelected(null);
                 setSelected(id);
             }
 

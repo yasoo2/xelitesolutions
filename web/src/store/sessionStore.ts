@@ -88,12 +88,29 @@ export const useSessionStore = create<SessionState>((set) => ({
       const chatSessions = allSessions.filter((s: any) => s.kind === 'chat' || !s.kind);
       const agentSessions = allSessions.filter((s: any) => s.kind === 'agent');
 
-      set(state => ({
-        sessions: chatSessions,
-        agentSessions: agentSessions,
-        selected: state.selected || chatSessions[0]?.id || null,
-        agentSelected: state.agentSelected || agentSessions[0]?.id || null,
-      }));
+      // CRITICAL invariant: the view derives its active session as
+      // `agentSelected || selected`, so AT MOST ONE of them may be set — otherwise
+      // an agent session permanently shadows whatever chat/session the user picked,
+      // and every reload (create/delete/pin) snaps the view back to the first agent
+      // session ("all sessions open the same chat"). Here we (1) drop any selection
+      // that no longer exists, (2) never keep both set, and (3) only choose a
+      // default when nothing is currently active.
+      set(state => {
+        const chatIds = new Set(chatSessions.map((s: any) => s.id));
+        const agentIds = new Set(agentSessions.map((s: any) => s.id));
+        let selected = state.selected && chatIds.has(state.selected) ? state.selected : null;
+        let agentSelected = state.agentSelected && agentIds.has(state.agentSelected) ? state.agentSelected : null;
+        // agentSelected wins in the view, so if both survived, keep only the chat one
+        // when the user was last on chat; otherwise the agent one. We can't know
+        // recency here, so prefer the explicitly-selected chat to avoid the shadow bug.
+        if (selected && agentSelected) agentSelected = null;
+        // Default to a single session only when the user has nothing active at all.
+        if (!selected && !agentSelected) {
+          if (agentSessions[0]) agentSelected = agentSessions[0].id;
+          else if (chatSessions[0]) selected = chatSessions[0].id;
+        }
+        return { sessions: chatSessions, agentSessions, selected, agentSelected };
+      });
     } catch (e: any) {
       if (e.message === 'Unauthorized' || e.message?.includes('Invalid token')) return;
       // Session load failed silently

@@ -207,9 +207,18 @@ export class AgentOrchestrator {
         }
 
         // Keep the tool consistent with the resolved agent (no repo task -> browser).
+        // CRITICAL: never clobber a specific browser smart-tool (browser_summarize,
+        // browser_responsive_check, browser_smart_agent, ...) — those are chosen
+        // deterministically by PlanningEngine and executed directly below. Coercing
+        // them to the generic browser_run here is what made every smart-browser
+        // prompt fall through to a failed browser_run + "Recovery failed".
         if (node.tool !== 'central_answer') {
-          if (node.agent === 'Browser') { node.tool = 'browser_run'; }
-          else if (node.tool === 'browser_run') { node.tool = 'shell_execute'; }
+          const isSmartBrowserTool = typeof node.tool === 'string'
+            && node.tool.startsWith('browser_') && node.tool !== 'browser_run';
+          if (!isSmartBrowserTool) {
+            if (node.agent === 'Browser') { node.tool = 'browser_run'; }
+            else if (node.tool === 'browser_run') { node.tool = 'shell_execute'; }
+          }
         }
 
         node.status = "running";
