@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { ToolDefinition } from '../types';
 import { getBrowserSession, withBrowserConcurrency, startStreaming } from '../../browser/manager';
+import { broadcastBrowserEvent } from '../../browser/wsHub';
 import { routeToModel } from '../../../core/llm/intelligent-router';
 import { broadcast } from '../../../api/ws';
 
@@ -51,6 +52,29 @@ async function openPage(sessionId: string, rawUrl?: string) {
 }
 
 const isAr = (t: string) => /[؀-ۿ]/.test(String(t || ''));
+
+/** Move the on-screen AI cursor (the frontend's live overlay) to (x,y) in
+ *  viewport-pixel space and flash a highlight box there. This REUSES the
+ *  existing cursor_move / highlight_boxes overlay that the browser panel already
+ *  renders — the same system browser_run uses — instead of a second cursor. */
+async function moveCursorTo(page: any, sessionId: string, x: number, y: number, box?: { x: number; y: number; w: number; h: number; label?: string }) {
+    try {
+        broadcastBrowserEvent(sessionId, { type: 'cursor_move', ts: Date.now(), x, y } as any);
+        if (box) broadcastBrowserEvent(sessionId, { type: 'highlight_boxes', ts: Date.now(), boxes: [{ x: box.x, y: box.y, width: box.w, height: box.h, label: box.label }] } as any);
+        await page.waitForTimeout(600); // let the cursor animate into view in the stream
+    } catch { /* non-fatal */ }
+}
+
+/** Flash coloured outline boxes over flagged elements using the panel's existing
+ *  highlight overlay (viewport-pixel rects). */
+function drawBoxes(sessionId: string, boxes: { x: number; y: number; w: number; h: number; label?: string }[]) {
+    try {
+        broadcastBrowserEvent(sessionId, {
+            type: 'highlight_boxes', ts: Date.now(),
+            boxes: (boxes || []).map(b => ({ x: b.x, y: b.y, width: b.w, height: b.h, label: b.label })),
+        } as any);
+    } catch { /* non-fatal */ }
+}
 
 /** Extract a structural signature of the current page (for before/after diffing). */
 async function pageSignature(page: any) {
@@ -877,10 +901,28 @@ export class BrowserUIAuditTool implements ToolDefinition {
                         // Tiny tap targets (quick heuristic)
                         const smallTargets = (q('a, button') as HTMLElement[]).filter(el => { const r = el.getBoundingClientRect(); return r.width > 0 && (r.width < 24 || r.height < 24); }).length;
                         if (smallTargets > 3) issues.push({ severity: 'info', message: `${smallTargets} عنصر تفاعلي صغير (<24px) قد يصعب لمسه على الجوال.` });
-                        return { issues, counts: { images: imgs.length, inputs: inputs.length, h1 } };
+
+                        // Collect on-screen boxes for the flagged elements so we can
+                        // outline them in red on the page (visual audit overlay).
+                        const boxes: any[] = [];
+                        const push = (el: Element, label: string) => {
+                            const r = (el as HTMLElement).getBoundingClientRect();
+                            if (r.width > 0 && r.height > 0 && r.top < innerHeight && r.bottom > 0 && boxes.length < 30)
+                                boxes.push({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height), label });
+                        };
+                        imgs.filter(i => !i.hasAttribute('alt')).forEach(i => push(i, 'بلا alt'));
+                        imgs.filter(i => i.complete && i.naturalWidth === 0).forEach(i => push(i, 'صورة مكسورة'));
+                        inputs.filter((el: any) => { const id = el.getAttribute('id'); const hasLabel = id && document.querySelector(`label[for="${id}"]`); return !hasLabel && !el.getAttribute('aria-label') && !el.getAttribute('placeholder'); }).forEach((el: any) => push(el, 'حقل بلا تسمية'));
+                        (q('button, a') as HTMLElement[]).filter(b => !b.innerText.trim() && !b.getAttribute('aria-label') && !b.querySelector('img[alt], svg')).forEach(b => push(b, 'بلا نص'));
+
+                        return { issues, counts: { images: imgs.length, inputs: inputs.length, h1 }, boxes };
                     });
 
                     if (consoleErrors.length) audit.issues.push({ severity: 'critical', message: `${consoleErrors.length} خطأ في console: ${consoleErrors.slice(0, 2).join(' | ')}` } as any);
+
+                    // Outline the flagged elements in the panel's highlight overlay
+                    // so the user sees exactly where each problem is.
+                    if ((audit as any).boxes?.length) { drawBoxes(sessionId, (audit as any).boxes); await page.waitForTimeout(250); }
 
                     const buf = await page.screenshot({ type: 'jpeg', quality: 60, animations: 'disabled' });
                     const shot = publishShot(sessionId, Buffer.from(buf), page.url());
@@ -1358,15 +1400,21 @@ export class BrowserClickTool implements ToolDefinition {
                             || cands.find(c => vis(c) && ((c as HTMLElement).innerText || (c as HTMLInputElement).value || '').toLowerCase().includes(t))
                             || null;
                     }
-                    if (!el) return { ok: false, tag: '', desc: '' };
+                    if (!el) return { ok: false, tag: '', desc: '', cx: 0, cy: 0, bx: 0, by: 0, bw: 0, bh: 0 };
                     (el as HTMLElement).setAttribute('data-joe-click', '1');
                     (el as HTMLElement).scrollIntoView({ block: 'center' });
-                    return { ok: true, tag: el.tagName.toLowerCase(), desc: ((el as HTMLElement).innerText || (el as HTMLInputElement).value || el.getAttribute('aria-label') || '').slice(0, 60) };
+                    const r = (el as HTMLElement).getBoundingClientRect();
+                    return { ok: true, tag: el.tagName.toLowerCase(), desc: ((el as HTMLElement).innerText || (el as HTMLInputElement).value || el.getAttribute('aria-label') || '').slice(0, 60), cx: Math.round(r.left + r.width / 2), cy: Math.round(r.top + r.height / 2), bx: Math.round(r.left), by: Math.round(r.top), bw: Math.round(r.width), bh: Math.round(r.height) };
                 }, { text, selector });
 
                 if (!found.ok) {
                     return { ok: false, error: 'element_not_found', output: { message: ar ? `لم أجد عنصراً يطابق «${text || selector}» في ${beforeUrl}.` : `No element matching "${text || selector}" on ${beforeUrl}.` } };
                 }
+
+                // Move the on-screen cursor overlay to the target and outline it,
+                // so the user watches the pointer travel and press (same overlay
+                // the browser_run executor uses).
+                await moveCursorTo(page, sessionId, found.cx, found.cy, { x: found.bx, y: found.by, w: found.bw, h: found.bh, label: found.desc?.slice(0, 24) || 'click' });
 
                 // click and observe navigation
                 let navigated = false;
