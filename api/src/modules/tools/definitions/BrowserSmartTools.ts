@@ -1139,3 +1139,165 @@ export class BrowserResponsiveCheckTool implements ToolDefinition {
         } catch (e: any) { return { ok: false, error: `responsive_check_failed: ${e?.message || e}` }; }
     }
 }
+
+/* ============================================================
+   17) browser_find_text — locate/highlight text on a page
+   ============================================================ */
+export class BrowserFindTextTool implements ToolDefinition {
+    name = 'browser_find_text';
+    version = '1.0.0';
+    description = 'Open a page and find every occurrence of a search term: returns the count, surrounding context snippets, and a screenshot with the matches highlighted.';
+    tags = ['browser', 'web', 'find', 'search', 'text', 'highlight'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            url: { type: 'string' as const, description: 'Page URL to search in' },
+            query: { type: 'string' as const, description: 'Text to find (case-insensitive)' },
+        },
+        required: ['url', 'query'],
+    };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        const query = String(input?.query || input?.text || input?.term || '').trim();
+        if (!url) return { ok: false, error: 'no_url' };
+        if (!query) return { ok: false, error: 'no_query' };
+        const ar = isAr(query);
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                const result = await page.evaluate((q: string) => {
+                    const needle = q.toLowerCase();
+                    const bodyText = (document.body?.innerText || '');
+                    const lower = bodyText.toLowerCase();
+                    // count + context snippets
+                    const snippets: string[] = [];
+                    let idx = lower.indexOf(needle); let count = 0;
+                    while (idx !== -1 && count < 500) {
+                        count++;
+                        if (snippets.length < 8) {
+                            const start = Math.max(0, idx - 40);
+                            const end = Math.min(bodyText.length, idx + q.length + 40);
+                            let snip = bodyText.slice(start, end).replace(/\s+/g, ' ').trim();
+                            snippets.push((start > 0 ? '…' : '') + snip + (end < bodyText.length ? '…' : ''));
+                        }
+                        idx = lower.indexOf(needle, idx + needle.length);
+                    }
+                    // highlight in the DOM via a TreeWalker (no external libs)
+                    let highlighted = 0;
+                    try {
+                        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                        const targets: Text[] = [];
+                        let n: Node | null;
+                        while ((n = walker.nextNode())) {
+                            const t = n as Text;
+                            if (t.nodeValue && t.nodeValue.toLowerCase().includes(needle) && t.parentElement && !['SCRIPT', 'STYLE'].includes(t.parentElement.tagName)) targets.push(t);
+                        }
+                        targets.slice(0, 300).forEach(t => {
+                            const parent = t.parentElement!;
+                            const parts = t.nodeValue!.split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig'));
+                            const frag = document.createDocumentFragment();
+                            parts.forEach(p => {
+                                if (p.toLowerCase() === needle) {
+                                    const mark = document.createElement('mark');
+                                    mark.style.cssText = 'background:#ffe066;color:#111;padding:0 2px;border-radius:2px';
+                                    mark.textContent = p; frag.appendChild(mark); highlighted++;
+                                } else frag.appendChild(document.createTextNode(p));
+                            });
+                            parent.replaceChild(frag, t);
+                        });
+                        const first = document.querySelector('mark');
+                        if (first) first.scrollIntoView({ block: 'center' });
+                    } catch { /* ignore */ }
+                    return { count, snippets, highlighted, title: document.title || '' };
+                }, query);
+                await page.waitForTimeout(200);
+                const buf = await page.screenshot({ type: 'jpeg', quality: 60, animations: 'disabled' });
+                const shot = publishShot(sessionId, Buffer.from(buf), finalUrl);
+
+                const message = result.count > 0
+                    ? (ar ? `🔍 وجدتُ «${query}» ${result.count} مرة في ${finalUrl}.\n\nمقتطفات:\n` : `🔍 Found "${query}" ${result.count} time(s) in ${finalUrl}.\n\nSnippets:\n`) +
+                    result.snippets.map((s, i) => `${i + 1}. ${s}`).join('\n')
+                    : (ar ? `لم أجد «${query}» في ${finalUrl}.` : `"${query}" not found in ${finalUrl}.`);
+                return { ok: result.count > 0, output: { message, query, count: result.count, snippets: result.snippets, highlighted: result.highlighted, url: finalUrl, screenshot: shot } };
+            });
+        } catch (e: any) { return { ok: false, error: `find_text_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
+   18) browser_design_tokens — extract colour palette + typography
+   ============================================================ */
+export class BrowserDesignTokensTool implements ToolDefinition {
+    name = 'browser_design_tokens';
+    version = '1.0.0';
+    description = 'Open a page and extract its de-facto design system: dominant colours (backgrounds, text, accents/links, buttons), font families and the type scale (font sizes in use), border-radius and spacing hints — useful for auditing or redesigning the UI.';
+    tags = ['browser', 'web', 'design', 'tokens', 'colors', 'typography', 'ui'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: { url: { type: 'string' as const, description: 'Page URL to analyse' } },
+        required: ['url'],
+    };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                const tokens = await page.evaluate(() => {
+                    const tally = (m: Map<string, number>, k: string) => { if (!k) return; m.set(k, (m.get(k) || 0) + 1); };
+                    const top = (m: Map<string, number>, n: number) => Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => ({ value: k, count: v }));
+                    const norm = (c: string) => {
+                        if (!c || c === 'transparent' || /rgba?\([^)]*,\s*0\s*\)/.test(c)) return '';
+                        const m = c.match(/rgba?\(([^)]+)\)/);
+                        if (!m) return c;
+                        const [r, g, b] = m[1].split(',').map(x => parseInt(x.trim(), 10));
+                        if ([r, g, b].some(v => isNaN(v))) return '';
+                        return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+                    };
+                    const bg = new Map<string, number>(), text = new Map<string, number>(), accent = new Map<string, number>();
+                    const fonts = new Map<string, number>(), sizes = new Map<string, number>(), radii = new Map<string, number>();
+                    const btnBg = new Map<string, number>();
+                    const els = Array.from(document.querySelectorAll('body *')).slice(0, 4000);
+                    els.forEach(el => {
+                        const cs = getComputedStyle(el as HTMLElement);
+                        const r = (el as HTMLElement).getBoundingClientRect();
+                        if (r.width * r.height > 400) tally(bg, norm(cs.backgroundColor));
+                        if ((el as HTMLElement).innerText && (el as HTMLElement).innerText.trim()) tally(text, norm(cs.color));
+                        tally(fonts, (cs.fontFamily || '').split(',')[0].replace(/["']/g, '').trim());
+                        tally(sizes, cs.fontSize);
+                        const rad = parseFloat(cs.borderRadius); if (rad > 0) tally(radii, cs.borderRadius.split(' ')[0]);
+                        const tag = el.tagName.toLowerCase();
+                        if (tag === 'a') tally(accent, norm(cs.color));
+                        if (tag === 'button' || (el.getAttribute('role') === 'button') || (el as HTMLInputElement).type === 'submit') tally(btnBg, norm(cs.backgroundColor));
+                    });
+                    return {
+                        title: document.title || '',
+                        backgrounds: top(bg, 6), textColors: top(text, 6), accents: top(accent, 5), buttons: top(btnBg, 5),
+                        fonts: top(fonts, 6), typeScale: top(sizes, 10).sort((a, b) => parseFloat(b.value) - parseFloat(a.value)), radii: top(radii, 5),
+                    };
+                });
+                const buf = await page.screenshot({ type: 'jpeg', quality: 60, animations: 'disabled' });
+                const shot = publishShot(sessionId, Buffer.from(buf), finalUrl);
+
+                const fmt = (arr: any[]) => arr.map(x => `${x.value} (×${x.count})`).join('، ') || '—';
+                const message = `🎨 نظام تصميم الصفحة (${finalUrl}):\n\n` +
+                    `• الخلفيات: ${fmt(tokens.backgrounds)}\n` +
+                    `• ألوان النص: ${fmt(tokens.textColors)}\n` +
+                    `• ألوان التمييز/الروابط: ${fmt(tokens.accents)}\n` +
+                    `• أزرار: ${fmt(tokens.buttons)}\n` +
+                    `• الخطوط: ${fmt(tokens.fonts)}\n` +
+                    `• مقاس النص: ${tokens.typeScale.map(x => x.value).join('، ') || '—'}\n` +
+                    `• الاستدارة: ${fmt(tokens.radii)}`;
+                return { ok: true, output: { message, ...tokens, url: finalUrl, screenshot: shot } };
+            });
+        } catch (e: any) { return { ok: false, error: `design_tokens_failed: ${e?.message || e}` }; }
+    }
+}

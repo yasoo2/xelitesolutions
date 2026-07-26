@@ -77,8 +77,12 @@ export class PlanningEngine {
         const metaIntent = /(بيانات\s*وصفية|metadata|meta\s*tags|structured\s*data|json-?ld|الوسوم\s*الوصفية)/i.test(goalRaw);
         const translateIntent = /(ترجم|ترجمة|translate|translation|بالعربية|to\s*(english|arabic|french))/i.test(goalRaw);
         const responsiveIntent = /(تجاوب|responsive|الجوال|موبايل|mobile\s*view|أحجام\s*الشاشات|شاشات|breakpoints?)/i.test(goalRaw);
-        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent || readIntent || contrastIntent || a11yIntent || metaIntent || translateIntent || responsiveIntent)) {
-            const tool = responsiveIntent ? 'browser_responsive_check'
+        const findIntent = /(ابحث\s*عن|جد\s|find\s|أين\s*ورد|كم\s*مرة|highlight|ظلّل|علّم)/i.test(goalRaw);
+        const designIntent = /(نظام\s*التصميم|الألوان|ألوان\s*الصفحة|design\s*tokens?|palette|لوحة\s*ألوان|الخطوط\s*المستخدمة|typography)/i.test(goalRaw);
+        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent || readIntent || contrastIntent || a11yIntent || metaIntent || translateIntent || responsiveIntent || findIntent || designIntent)) {
+            const tool = designIntent ? 'browser_design_tokens'
+                : findIntent ? 'browser_find_text'
+                : responsiveIntent ? 'browser_responsive_check'
                 : translateIntent ? 'browser_translate'
                 : metaIntent ? 'browser_extract_meta'
                 : a11yIntent ? 'browser_a11y_deep'
@@ -99,6 +103,12 @@ export class PlanningEngine {
             if (tool === 'browser_translate') {
                 const tm = goalRaw.match(/to\s+(english|arabic|french|spanish|german|turkish)|إلى\s*(الإنجليزية|الانجليزية|العربية|الفرنسية)/i);
                 if (tm) smartInput.target = (tm[1] || tm[2] || '').toLowerCase();
+            }
+            if (tool === 'browser_find_text') {
+                // pull the search term: quoted text, or the words after "find"/"ابحث عن"
+                const qm = goalRaw.match(/[«"'"]([^«»"'"]+)[»"'"]/)
+                    || goalRaw.match(/(?:ابحث\s*عن|جد|find|search\s*for)\s+([^\s].{0,60})/i);
+                if (qm) smartInput.query = String(qm[1]).replace(/\s+(في|على|بالصفحة|in|on)\b.*$/i, '').trim();
             }
             return {
                 id: `browser_${Date.now()}`,
