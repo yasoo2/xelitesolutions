@@ -288,6 +288,91 @@ export class BrowserSEOAuditTool implements ToolDefinition {
 }
 
 /* ============================================================
+   9) browser_console_scan — detect JS / console / network errors
+   ============================================================ */
+export class BrowserConsoleScanTool implements ToolDefinition {
+    name = 'browser_console_scan';
+    version = '1.0.0';
+    description = 'Open a page and capture JavaScript errors, console errors/warnings, and failed network requests (4xx/5xx). Reports whether the page is error-free.';
+    tags = ['browser', 'web', 'errors', 'console', 'qa', 'debug'];
+    inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const s = await getBrowserSession(sessionId);
+                const page = s.page;
+                const consoleErrors: string[] = []; const consoleWarns: string[] = [];
+                const pageErrors: string[] = []; const netFails: string[] = [];
+                const onConsole = (m: any) => { try { const t = m.type?.(); const tx = String(m.text()).slice(0, 200); if (t === 'error') consoleErrors.push(tx); else if (t === 'warning') consoleWarns.push(tx); } catch { } };
+                const onPageErr = (e: any) => { try { pageErrors.push(String(e?.message || e).slice(0, 200)); } catch { } };
+                const onReqFail = (r: any) => { try { netFails.push(`${r.failure?.()?.errorText || 'failed'} — ${String(r.url()).slice(0, 120)}`); } catch { } };
+                const onResp = (r: any) => { try { const st = r.status(); if (st >= 400) netFails.push(`${st} — ${String(r.url()).slice(0, 120)}`); } catch { } };
+                page.on('console', onConsole); page.on('pageerror', onPageErr); page.on('requestfailed', onReqFail); page.on('response', onResp);
+                try {
+                    await page.goto(normalizeUrl(url), { waitUntil: 'load', timeout: 30000 });
+                    await page.waitForTimeout(1800);
+                    const buf = await page.screenshot({ type: 'jpeg', quality: 60, animations: 'disabled' });
+                    const shot = publishShot(sessionId, Buffer.from(buf), page.url());
+                    const total = consoleErrors.length + pageErrors.length + netFails.length;
+                    const sec = (title: string, arr: string[]) => arr.length ? `\n${title} (${arr.length}):\n` + arr.slice(0, 6).map(x => `  • ${x}`).join('\n') : '';
+                    const message = total === 0 && consoleWarns.length === 0
+                        ? `✅ الصفحة نظيفة — لا أخطاء JavaScript ولا أخطاء شبكة (${page.url()}).`
+                        : `🐞 فحص أخطاء الصفحة (${page.url()}):` +
+                          sec('🔴 أخطاء JavaScript', pageErrors) +
+                          sec('🔴 أخطاء console', consoleErrors) +
+                          sec('🌐 طلبات فاشلة', netFails) +
+                          sec('🟡 تحذيرات', consoleWarns);
+                    return { ok: true, output: { message, errorCount: total, pageErrors, consoleErrors, netFails, warnings: consoleWarns, url: page.url(), screenshot: shot } };
+                } finally {
+                    try { page.off('console', onConsole); page.off('pageerror', onPageErr); page.off('requestfailed', onReqFail); page.off('response', onResp); } catch { }
+                }
+            });
+        } catch (e: any) { return { ok: false, error: `console_scan_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
+   10) browser_save_pdf — export the page to a PDF file
+   ============================================================ */
+export class BrowserSavePdfTool implements ToolDefinition {
+    name = 'browser_save_pdf';
+    version = '1.0.0';
+    description = 'Open a page and save it as a PDF file (served from /artifacts).';
+    tags = ['browser', 'web', 'pdf', 'export'];
+    inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                let pdfHref: string | undefined;
+                try {
+                    const buf = await page.pdf({ format: 'A4', printBackground: true }) as Buffer;
+                    fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+                    const name = `page-${Date.now()}.pdf`;
+                    fs.writeFileSync(path.join(ARTIFACT_DIR, name), buf);
+                    pdfHref = `/artifacts/${name}`;
+                } catch (e: any) {
+                    return { ok: false, error: `pdf_failed: ${e?.message || e} (يتطلّب متصفحاً بدون واجهة headless).` };
+                }
+                return { ok: true, output: { message: `📄 حُفظت الصفحة كملف PDF: ${pdfHref}\n(المصدر: ${finalUrl})`, pdf: pdfHref, url: finalUrl } };
+            });
+        } catch (e: any) { return { ok: false, error: `save_pdf_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
    4) browser_compare — before/after visual + structural diff
    ============================================================ */
 export class BrowserCompareTool implements ToolDefinition {

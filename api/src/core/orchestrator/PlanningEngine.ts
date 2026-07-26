@@ -69,8 +69,12 @@ export class PlanningEngine {
         const perfIntent = /(أداء|السرعة|سرعة\s*الصفحة|performance|speed|زمن\s*التحميل)/i.test(goalRaw);
         const seoIntent = /(seo|سيو|تحسين\s*محركات|meta\s*tags|الوسوم)/i.test(goalRaw);
         const compareIntent = /(قارن|مقارنة|before\s*\/?\s*after|قبل\s*وبعد|قبل\/بعد)/i.test(goalRaw);
-        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent)) {
-            const tool = compareIntent ? 'browser_compare'
+        const consoleIntent = /(أخطاء|errors?|console|كونسول|جافا\s*سكربت|javascript|أعطال)/i.test(goalRaw);
+        const pdfIntent = /(pdf|احفظ.*صفحة|صدّ?ر.*صفحة|export\s*pdf|save\s*pdf)/i.test(goalRaw);
+        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent)) {
+            const tool = pdfIntent ? 'browser_save_pdf'
+                : consoleIntent ? 'browser_console_scan'
+                : compareIntent ? 'browser_compare'
                 : linksIntent ? 'browser_check_links'
                 : perfIntent ? 'browser_performance'
                 : seoIntent ? 'browser_seo_audit'
