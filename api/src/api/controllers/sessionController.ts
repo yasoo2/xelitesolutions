@@ -110,12 +110,13 @@ export async function listSessions(req: Request, res: Response) {
         if (mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || isPersistenceDisabled) {
             console.warn('[SessionController] DB offline or JSON mode - returning mock session list');
 
-            // Ensure global store exists
+            // Start with NO sessions. Previously this seeded two dummy sessions
+            // ("New Session" + "Untitled Session") on every boot, so the user saw
+            // two phantom chats appear automatically each time. The send flow and
+            // the "New Session" button both create a real session on demand, so an
+            // empty start is correct.
             if (!(global as any).mockSessions) {
-                (global as any).mockSessions = [
-                    { _id: 'mock-session-1', id: 'mock-session-1', title: 'New Session', kind: 'agent', updatedAt: new Date() },
-                    { _id: 'mock-session-2', id: 'mock-session-2', title: 'Untitled Session', kind: 'agent', updatedAt: new Date() }
-                ];
+                (global as any).mockSessions = [];
             }
 
             return res.json((global as any).mockSessions);
