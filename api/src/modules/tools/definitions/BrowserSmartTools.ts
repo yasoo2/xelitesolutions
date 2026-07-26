@@ -488,6 +488,119 @@ export class BrowserContrastAuditTool implements ToolDefinition {
 }
 
 /* ============================================================
+   13) browser_a11y_deep — deep accessibility audit
+   ============================================================ */
+export class BrowserA11yDeepTool implements ToolDefinition {
+    name = 'browser_a11y_deep';
+    version = '1.0.0';
+    description = 'Open a page and run a deep accessibility audit: landmarks, heading order, duplicate IDs, empty/# links, positive tabindex, aria-hidden focusables, skip link, focusable count.';
+    tags = ['browser', 'web', 'accessibility', 'a11y', 'aria', 'audit'];
+    inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                const a = await page.evaluate(() => {
+                    const issues: { severity: string; message: string }[] = [];
+                    const q = (s: string) => Array.from(document.querySelectorAll(s));
+                    // Landmarks
+                    if (!document.querySelector('header, [role="banner"]')) issues.push({ severity: 'info', message: 'لا يوجد رأس صفحة (header/banner).' });
+                    if (!document.querySelector('nav, [role="navigation"]')) issues.push({ severity: 'info', message: 'لا يوجد شريط تنقّل (nav).' });
+                    if (!document.querySelector('main, [role="main"]')) issues.push({ severity: 'warning', message: 'لا يوجد منطقة محتوى رئيسية (main) — يصعّب التنقّل بالقارئ الصوتي.' });
+                    // Skip link
+                    const firstLink = document.querySelector('a') as HTMLAnchorElement;
+                    if (!(firstLink && /#(content|main|skip)/i.test(firstLink.getAttribute('href') || ''))) issues.push({ severity: 'info', message: 'لا يوجد رابط «تخطٍّ إلى المحتوى» (skip link).' });
+                    // Duplicate IDs
+                    const ids: Record<string, number> = {}; q('[id]').forEach(e => { const id = e.id; ids[id] = (ids[id] || 0) + 1; });
+                    const dups = Object.entries(ids).filter(([, n]) => n > 1).map(([k]) => k);
+                    if (dups.length) issues.push({ severity: 'warning', message: `معرّفات id مكرّرة: ${dups.slice(0, 5).join('، ')} (يكسر aria/label).` });
+                    // Empty / # links
+                    const badLinks = (q('a') as HTMLAnchorElement[]).filter(a => { const h = a.getAttribute('href'); return !h || h === '#' || /^javascript:/i.test(h); }).length;
+                    if (badLinks) issues.push({ severity: 'info', message: `${badLinks} رابط بلا وجهة حقيقية (#/جافاسكربت).` });
+                    // Positive tabindex (anti-pattern)
+                    const posTab = q('[tabindex]').filter(e => parseInt(e.getAttribute('tabindex') || '0') > 0).length;
+                    if (posTab) issues.push({ severity: 'warning', message: `${posTab} عنصر بـ tabindex موجب — يفسد ترتيب التنقّل بلوحة المفاتيح.` });
+                    // aria-hidden on focusables
+                    const hiddenFocus = q('[aria-hidden="true"] a, [aria-hidden="true"] button, [aria-hidden="true"] input').length;
+                    if (hiddenFocus) issues.push({ severity: 'warning', message: `${hiddenFocus} عنصر تفاعلي داخل aria-hidden (غير مرئي للقارئ لكنه قابل للتركيز).` });
+                    // Heading order (no skipped levels)
+                    const levels = (q('h1,h2,h3,h4,h5,h6') as HTMLElement[]).map(h => parseInt(h.tagName[1]));
+                    let skip = false; for (let i = 1; i < levels.length; i++) if (levels[i] - levels[i - 1] > 1) skip = true;
+                    if (skip) issues.push({ severity: 'info', message: 'ترتيب العناوين يتخطّى مستويات (مثل h1 ثم h3).' });
+                    const focusables = q('a[href], button, input, select, textarea, [tabindex]').length;
+                    return { issues, focusables };
+                });
+                const crit = a.issues.filter((i: any) => i.severity === 'critical').length;
+                const warn = a.issues.filter((i: any) => i.severity === 'warning').length;
+                const info = a.issues.filter((i: any) => i.severity === 'info').length;
+                const score = Math.max(0, 100 - crit * 20 - warn * 10 - info * 4);
+                const icon = (sv: string) => sv === 'critical' ? '🔴' : sv === 'warning' ? '🟡' : '🔵';
+                const lines = a.issues.length ? a.issues.map((i: any) => `${icon(i.severity)} ${i.message}`).join('\n') : '✅ لا مشاكل وصولية عميقة واضحة.';
+                const message = `♿ تدقيق الوصولية العميق: ${finalUrl}\n\nالدرجة: ${score}/100 · عناصر قابلة للتركيز: ${a.focusables}\n\n${lines}`;
+                return { ok: true, output: { message, score, issues: a.issues, focusables: a.focusables, url: finalUrl } };
+            });
+        } catch (e: any) { return { ok: false, error: `a11y_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
+   14) browser_extract_meta — all metadata + JSON-LD structured data
+   ============================================================ */
+export class BrowserExtractMetaTool implements ToolDefinition {
+    name = 'browser_extract_meta';
+    version = '1.0.0';
+    description = 'Open a page and extract ALL metadata: title, description, canonical, robots, Open Graph, Twitter cards, favicon, JSON-LD structured data, and a headings outline.';
+    tags = ['browser', 'web', 'meta', 'seo', 'structured-data', 'extract'];
+    inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = String(context?.sessionId || 'default');
+        const url = input?.url || '';
+        if (!url) return { ok: false, error: 'no_url' };
+        try {
+            return await withBrowserConcurrency(async () => {
+                const { page, url: finalUrl } = await openPage(sessionId, url);
+                const meta = await page.evaluate(() => {
+                    const clean = (t: string) => (t || '').replace(/\s+/g, ' ').trim();
+                    const named: Record<string, string> = {}; const og: Record<string, string> = {}; const tw: Record<string, string> = {};
+                    document.querySelectorAll('meta').forEach(m => {
+                        const n = m.getAttribute('name'); const p = m.getAttribute('property'); const c = m.getAttribute('content') || '';
+                        if (p && /^og:/i.test(p)) og[p] = c; else if ((n || p) && /^twitter:/i.test(n || p || '')) tw[n || p!] = c; else if (n) named[n] = c;
+                    });
+                    const jsonld: any[] = [];
+                    document.querySelectorAll('script[type="application/ld+json"]').forEach(s => { try { jsonld.push(JSON.parse(s.textContent || '')); } catch { } });
+                    const outline = Array.from(document.querySelectorAll('h1,h2,h3')).map(h => `${'  '.repeat(parseInt(h.tagName[1]) - 1)}${h.tagName} ${clean((h as HTMLElement).innerText)}`);
+                    return {
+                        title: document.title || '',
+                        description: named['description'] || '',
+                        keywords: named['keywords'] || '',
+                        robots: named['robots'] || '',
+                        canonical: (document.querySelector('link[rel="canonical"]') as HTMLLinkElement)?.href || '',
+                        favicon: (document.querySelector('link[rel*="icon"]') as HTMLLinkElement)?.href || '',
+                        lang: document.documentElement.getAttribute('lang') || '',
+                        openGraph: og, twitter: tw, jsonld, outline,
+                    };
+                });
+                const ogCount = Object.keys(meta.openGraph).length; const twCount = Object.keys(meta.twitter).length;
+                const message = `🏷️ البيانات الوصفية (${finalUrl}):\n\n` +
+                    `• العنوان: ${meta.title || '—'}\n• الوصف: ${meta.description || '—'}\n• اللغة: ${meta.lang || '—'} · canonical: ${meta.canonical ? '✓' : '—'} · robots: ${meta.robots || '—'}\n` +
+                    `• Open Graph: ${ogCount} وسم · Twitter: ${twCount} وسم · JSON-LD: ${meta.jsonld.length} كتلة\n\n` +
+                    (meta.outline.length ? `مخطّط العناوين:\n${meta.outline.slice(0, 15).join('\n')}` : '');
+                return { ok: true, output: { message, ...meta, url: finalUrl } };
+            });
+        } catch (e: any) { return { ok: false, error: `extract_meta_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
    4) browser_compare — before/after visual + structural diff
    ============================================================ */
 export class BrowserCompareTool implements ToolDefinition {

@@ -73,8 +73,12 @@ export class PlanningEngine {
         const pdfIntent = /(pdf|احفظ.*صفحة|صدّ?ر.*صفحة|export\s*pdf|save\s*pdf)/i.test(goalRaw);
         const readIntent = /(المقال|اقرأ\s*المقال|readab|article|نص\s*المقال|محتوى\s*نظيف)/i.test(goalRaw);
         const contrastIntent = /(تباين|contrast|ألوان\s*الوصول|wcag)/i.test(goalRaw);
-        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent || readIntent || contrastIntent)) {
-            const tool = contrastIntent ? 'browser_contrast_audit'
+        const a11yIntent = /(وصولية|accessib|a11y|aria|قارئ\s*الشاشة|لوحة\s*المفاتيح)/i.test(goalRaw);
+        const metaIntent = /(بيانات\s*وصفية|metadata|meta\s*tags|structured\s*data|json-?ld|الوسوم\s*الوصفية)/i.test(goalRaw);
+        if (urlMatch && (summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent || readIntent || contrastIntent || a11yIntent || metaIntent)) {
+            const tool = metaIntent ? 'browser_extract_meta'
+                : a11yIntent ? 'browser_a11y_deep'
+                : contrastIntent ? 'browser_contrast_audit'
                 : readIntent ? 'browser_readability'
                 : pdfIntent ? 'browser_save_pdf'
                 : consoleIntent ? 'browser_console_scan'
