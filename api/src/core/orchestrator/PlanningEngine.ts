@@ -71,6 +71,11 @@ export class PlanningEngine {
                 .replace(/\s+/g, ' ')
                 .trim();
         }
+        // Compound requests ("ابحث عن X ومن ثم ابحث عن Y", "search X then Y") carry a
+        // SECOND clause the greedy capture swallowed. Keep only the FIRST search term
+        // by cutting at a clause boundary. Note: a bare "و" is NOT a boundary (so
+        // "الفرق بين X و Y" stays intact) — only explicit sequencing words are.
+        query = query.split(/\s+(?:ومن\s*ثم|ثم\s*ابحث|ثمّ|ثم|وبعد(?:ها|\s*ذلك)?|و\s*ابحث|وابحث|وأيضاً|وكذلك|and\s+then|then\s+search|then|after\s+that)\s+/i)[0].trim();
         // strip a trailing engine/browser mention: "... في جوجل" / "... in google"
         query = query.replace(/\s*(?:في|على|من|عبر|بواسطة|in|on|via)?\s*(?:جوجل|google|قوقل|غوغل|قووقل|المتصفّ?ح|المتصفح|النت|الإنترنت|الانترنت|الويب|browser|the\s*web)\s*$/i, '').trim();
         // strip leading residue + trailing punctuation

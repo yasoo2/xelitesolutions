@@ -1811,9 +1811,25 @@ export class BrowserSearchTool implements ToolDefinition {
                 //    watches the search box get filled, like a real person.
                 const { page } = await openPage(sessionId, engine);
 
-                // 2) Locate the search box (Google uses textarea[name=q]; be generic).
-                const box = await page.evaluate(() => {
-                    const sels = ['textarea[name="q"]', 'input[name="q"]', 'input[type="search"]', 'input[aria-label*="search" i]', 'input[title*="search" i]', 'input[placeholder*="بحث"]', 'input[placeholder*="search" i]'];
+                // Dismiss a cookie/consent wall if one is shown (Google/EU/generic),
+                // otherwise the search box is hidden behind it and typing fails — the
+                // "it only opens Google and does nothing" symptom.
+                const dismissConsent = async () => {
+                    try {
+                        await page.evaluate(() => {
+                            const texts = ['accept all', 'i agree', 'agree', 'accept', 'أوافق', 'موافق', 'قبول الكل', 'قبول', 'اوافق', 'الموافقة', 'reject all', 'أرفض الكل'];
+                            const clickable = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"], a, div[jsname]')) as HTMLElement[];
+                            const hit = clickable.find(b => { const t = ((b.innerText || (b as HTMLInputElement).value || b.getAttribute('aria-label') || '')).toLowerCase().trim(); return t && texts.some(x => t === x || t.includes(x)); })
+                                || (document.querySelector('#L2AGLb, #introAgreeButton, button[aria-label*="Accept" i], button[aria-label*="قبول" i]') as HTMLElement | null);
+                            if (hit) hit.click();
+                        });
+                        await page.waitForTimeout(600);
+                    } catch { /* non-fatal */ }
+                };
+
+                // 2) Locate the search box (generic across engines).
+                const findBox = async () => page.evaluate(() => {
+                    const sels = ['textarea[name="q"]', 'input[name="q"]', 'input[type="search"]', 'input[aria-label*="search" i]', 'input[aria-label*="بحث"]', 'input[title*="search" i]', 'input[placeholder*="بحث"]', 'input[placeholder*="search" i]', 'input#sb_form_q'];
                     let el: HTMLElement | null = null;
                     for (const s of sels) { const c = document.querySelector(s) as HTMLElement | null; if (c) { const r = c.getBoundingClientRect(); if (r.width > 0 && r.height > 0) { el = c; break; } } }
                     if (!el) return null;
@@ -1822,6 +1838,21 @@ export class BrowserSearchTool implements ToolDefinition {
                     const r = el.getBoundingClientRect();
                     return { cx: Math.round(r.left + r.width / 2), cy: Math.round(r.top + r.height / 2), bx: Math.round(r.left), by: Math.round(r.top), bw: Math.round(r.width), bh: Math.round(r.height) };
                 });
+
+                // Try the requested engine; if its box is unreachable (consent wall /
+                // bot page), hop to a consent-free engine so the visible typing STILL
+                // happens instead of silently bailing.
+                await dismissConsent();
+                let box = await findBox();
+                const fallbackEngines = ['https://www.bing.com', 'https://duckduckgo.com'];
+                for (let i = 0; !box && i < fallbackEngines.length; i++) {
+                    narrateAction(sessionId, 'goto', fallbackEngines[i]);
+                    try { await page.goto(fallbackEngines[i], { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch { /* try next */ }
+                    await page.waitForTimeout(500);
+                    await dismissConsent();
+                    box = await findBox();
+                }
+                const activeEngineOrigin = (() => { try { return new URL(page.url()).origin; } catch { return engine.replace(/\/+$/, ''); } })();
 
                 let submitted = false;
                 let resultsUrl = page.url();
@@ -1850,8 +1881,9 @@ export class BrowserSearchTool implements ToolDefinition {
                     await page.waitForTimeout(900);
                     resultsUrl = page.url();
                 } else {
-                    // Fallback: no visible box (blocked/JS-less) — go straight to results.
-                    const direct = `${engine.replace(/\/+$/, '')}/search?q=${encodeURIComponent(query)}`;
+                    // Fallback: no visible box anywhere (blocked/JS-less) — go straight
+                    // to results on whichever engine we ended on.
+                    const direct = `${activeEngineOrigin}/search?q=${encodeURIComponent(query)}`;
                     narrateAction(sessionId, 'goto', direct);
                     try { await page.goto(direct, { waitUntil: 'domcontentloaded', timeout: 30000 }); submitted = true; } catch { /* ignore */ }
                     await page.waitForTimeout(700);
