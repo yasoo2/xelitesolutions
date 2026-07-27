@@ -1,8 +1,89 @@
 import { chromium, type Browser, type BrowserContext, type Page, type Locator, type LaunchOptions } from 'playwright';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
+
+/* ============================================================
+   PER-USER ENCRYPTED SESSION PERSISTENCE
+   ------------------------------------------------------------
+   Each browser session (which is per-user in the online model) can persist its
+   login state (cookies + origin localStorage = Playwright "storageState") so the
+   user logs in ONCE and stays logged in — WITHOUT storing any password. The blob
+   is encrypted at rest (AES-256-GCM) with a key derived per-session from a master
+   secret, so one user's sessions are cryptographically isolated from another's.
+   This is the shared foundation for both local (single user) and future online
+   (hundreds of isolated users) operation.
+   ============================================================ */
+const SESSION_STATE_DIR = process.env.BROWSER_SESSION_DIR
+  || path.join(process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', 'browser-sessions');
+
+/** A stable, filesystem-safe id for a session's stored state. */
+function sessionStateFile(sessionId: string): string {
+  const hash = crypto.createHash('sha256').update(String(sessionId || 'default')).digest('hex').slice(0, 40);
+  return path.join(SESSION_STATE_DIR, `${hash}.enc`);
+}
+
+/** Per-session key derived from a master secret so users are isolated. */
+function sessionKey(sessionId: string): Buffer {
+  const master = process.env.BROWSER_SESSION_SECRET || process.env.JWT_SECRET || 'joe-local-browser-secret';
+  return crypto.createHash('sha256').update(`${master}::${sessionId}`).digest(); // 32 bytes
+}
+
+/** Persist the current login/session state for a browser session (encrypted). */
+export async function saveBrowserSession(sessionId: string): Promise<{ ok: boolean; error?: string; origins?: number; cookies?: number }> {
+  const sid = String(sessionId || '').trim();
+  const s = sessions.get(sid);
+  if (!s) return { ok: false, error: 'no_active_session' };
+  try {
+    const storage = await s.context.storageState();
+    const plaintext = Buffer.from(JSON.stringify(storage), 'utf-8');
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', sessionKey(sid), iv);
+    const enc = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    fs.mkdirSync(SESSION_STATE_DIR, { recursive: true });
+    // Layout: [12-byte iv][16-byte tag][ciphertext]
+    fs.writeFileSync(sessionStateFile(sid), Buffer.concat([iv, tag, enc]));
+    return { ok: true, origins: storage.origins?.length || 0, cookies: storage.cookies?.length || 0 };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'save_failed' };
+  }
+}
+
+/** Load & decrypt a saved session state (returns undefined if none/invalid). */
+function loadBrowserSessionState(sessionId: string): any | undefined {
+  const sid = String(sessionId || '').trim();
+  const file = sessionStateFile(sid);
+  try {
+    if (!fs.existsSync(file)) return undefined;
+    const blob = fs.readFileSync(file);
+    if (blob.length < 28) return undefined;
+    const iv = blob.subarray(0, 12);
+    const tag = blob.subarray(12, 28);
+    const enc = blob.subarray(28);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', sessionKey(sid), iv);
+    decipher.setAuthTag(tag);
+    const dec = Buffer.concat([decipher.update(enc), decipher.final()]);
+    return JSON.parse(dec.toString('utf-8'));
+  } catch {
+    return undefined; // corrupt or wrong key -> start fresh
+  }
+}
+
+/** Whether a saved (logged-in) session exists for this session id. */
+export function hasSavedBrowserSession(sessionId: string): boolean {
+  try { return fs.existsSync(sessionStateFile(String(sessionId || '').trim())); } catch { return false; }
+}
+
+/** Forget a saved session (logout / privacy). Also clears the live context. */
+export async function clearBrowserSession(sessionId: string): Promise<{ ok: boolean }> {
+  const sid = String(sessionId || '').trim();
+  try { const f = sessionStateFile(sid); if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
+  try { const s = sessions.get(sid); if (s) await s.context.clearCookies(); } catch { /* ignore */ }
+  return { ok: true };
+}
 
 type SessionState = {
   browser: Browser;
@@ -284,6 +365,13 @@ export async function createSession(sessionId: string) {
   ];
   const selectedUA = userAgents[Math.floor(Math.random() * userAgents.length)];
 
+  // Restore this session's saved login state (per-user isolated, encrypted) so
+  // the user stays logged in across tasks without re-entering credentials.
+  const savedState = loadBrowserSessionState(sessionId);
+  if (savedState) {
+    try { console.log(`[BrowserManager] Restoring saved session for ${sessionId} (${savedState.cookies?.length || 0} cookies)`); } catch { }
+  }
+
   const context = await browser.newContext({
     viewport: { width: viewport.w, height: viewport.h },
     locale: 'ar',
@@ -291,6 +379,7 @@ export async function createSession(sessionId: string) {
     extraHTTPHeaders: {
       'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
     },
+    ...(savedState ? { storageState: savedState } : {}),
   });
 
   // Apply Stealth

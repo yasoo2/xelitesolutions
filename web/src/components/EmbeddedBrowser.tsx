@@ -14,7 +14,9 @@ import {
     Maximize2,
     Camera,
     Search,
-    X
+    X,
+    LogIn,
+    Check
 } from 'lucide-react';
 
 import ModernBrowserStream from './ModernBrowserStream';
@@ -140,6 +142,27 @@ export default function EmbeddedBrowser({
         }
     };
 
+    // Save the current login/session so the user stays signed in on this site
+    // across future tasks (encrypted, no password stored).
+    const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+    const handleSaveLogin = useCallback(async () => {
+        setSaveState('saving');
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/browser/session/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ sessionId }),
+            });
+            const data = await res.json().catch(() => ({ ok: false }));
+            setSaveState(data?.ok ? 'saved' : 'error');
+        } catch {
+            setSaveState('error');
+        } finally {
+            setTimeout(() => setSaveState('idle'), 2500);
+        }
+    }, [sessionId]);
+
     return (
         <div className="joe-browser-container" style={{
             display: 'flex',
@@ -241,7 +264,12 @@ export default function EmbeddedBrowser({
                 </div>
 
                 {/* Extra actions */}
-                <div style={{ display: 'flex', gap: 2 }}>
+                <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    <BrowserButton
+                        icon={saveState === 'saved' ? Check : saveState === 'error' ? X : LogIn}
+                        tooltip={saveState === 'saving' ? 'جارٍ الحفظ…' : saveState === 'saved' ? 'تم حفظ الجلسة' : saveState === 'error' ? 'فشل الحفظ' : 'احفظ تسجيل الدخول (تبقى مسجّلاً)'}
+                        onClick={handleSaveLogin}
+                    />
                     <BrowserButton icon={Camera} tooltip="لقطة شاشة" onClick={handleScreenshot} />
                     <BrowserButton icon={ExternalLink} tooltip="فتح خارجياً" onClick={openExternal} disabled={!currentUrl} />
                 </div>

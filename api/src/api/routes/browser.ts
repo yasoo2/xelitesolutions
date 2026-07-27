@@ -2,10 +2,38 @@ import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
 import { runBrowserInstruction } from '../../modules/browser/runner';
 import { executePlannedActions } from '../../modules/browser/executor';
-import { stopSession, getBrowserSession } from '../../modules/browser/manager';
+import { stopSession, getBrowserSession, saveBrowserSession, clearBrowserSession, hasSavedBrowserSession } from '../../modules/browser/manager';
 import { canAccessBrowserSession } from '../../modules/browser/wsHub';
 
 const router = Router();
+
+/**
+ * [SESSION PERSISTENCE] Save the current login state so the user stays signed in
+ * across tasks (no password stored; encrypted per-user). Call this AFTER the user
+ * has logged into a site in the live browser.
+ */
+router.post('/session/save', authenticate as any, async (req: Request, res: Response) => {
+  const sid = String(req.body?.sessionId || 'panel-browser').trim();
+  const access = await ensureBrowserSessionAccess(req, res, sid);
+  if (!access.ok) return res.status(access.status).json(access.body);
+  const result = await saveBrowserSession(sid);
+  return res.status(result.ok ? 200 : 400).json(result);
+});
+
+/** Forget the saved login state for this session (logout / privacy). */
+router.post('/session/clear', authenticate as any, async (req: Request, res: Response) => {
+  const sid = String(req.body?.sessionId || 'panel-browser').trim();
+  const access = await ensureBrowserSessionAccess(req, res, sid);
+  if (!access.ok) return res.status(access.status).json(access.body);
+  const result = await clearBrowserSession(sid);
+  return res.json(result);
+});
+
+/** Whether a saved (logged-in) session exists for this session. */
+router.get('/session/status', authenticate as any, async (req: Request, res: Response) => {
+  const sid = String(req.query?.sessionId || 'panel-browser').trim();
+  return res.json({ ok: true, saved: hasSavedBrowserSession(sid) });
+});
 
 // [Wakil 5.1] Browser Run Concurrency Guard
 const activeBrowserRuns = new Map<string, number>();
