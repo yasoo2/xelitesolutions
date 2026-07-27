@@ -251,11 +251,26 @@ Rules:
         // request fell to the plain open-browser path and only showed Google.
         const searchIntent = /(ابحث|إبحث|ابحثي|دوّ?ر\s|فتّ?ش|جوجل|google|\bsearch\b|بحث\s*(عن|في)|ابحث\s*في\s*الويب)/i.test(goalRaw);
         if (searchIntent && !urlMatch) {
-            // Extract the query: after "عن"/"about"/"for", else the whole goal minus the verb.
-            let query = goalRaw;
-            const qm = goalRaw.match(/(?:و?ابحث|و?إبحث|و?بحث|دوّ?ر|فتّ?ش|search(?:\s*for)?|google|جوجل)\s*(?:عن|about|for|في)?\s*(.+)/i);
-            if (qm && qm[1]) query = qm[1].trim();
-            query = query.replace(/^(لي|من\s*فضلك|please)\s+/i, '').trim();
+            // Extract the CLEAN topic. Strategy: prefer the text after the last
+            // "عن/about/for/حول" (the natural Arabic "search ABOUT X"); otherwise
+            // strip all the command noise (open/browser/google/type/in the search…)
+            // and keep what's left. This avoids the old bug where "جوجل" captured the
+            // rest ("...وابحث عن دمشق" -> "دمشق", not "واكتب في البحث عن دمشق").
+            let query = '';
+            const about = goalRaw.match(/(?:عن|حول|about|for|بخصوص|على\s*موضوع)\s+(.+)$/i);
+            if (about && about[1]) {
+                query = about[1].trim();
+            } else {
+                query = goalRaw
+                    .replace(/(افتح|شغّ?ل|ادخل|اذهب|روح|رح|open|go\s*to|launch|visit)\s*(لي\s*)?(على|الى|إلى|to)?\s*/gi, ' ')
+                    .replace(/(المتصفّ?ح|المتصفح|browser|جوجل|google|قوقل|غوغل|قوقل)/gi, ' ')
+                    .replace(/(و?اكتب|و?ابحث|و?إبحث|و?بحث|دوّ?ر|فتّ?ش|type|search|write)\s*(في\s*)?(البحث|بالبحث|خانة\s*البحث|search\s*box)?\s*(عن|for|:)?\s*/gi, ' ')
+                    .replace(/^(لي|من\s*فضلك|please|رجاء|و|ثم)\s+/i, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+            }
+            // final cleanups
+            query = query.replace(/^(لي|من\s*فضلك|please|عن|في|على)\s+/i, '').replace(/[.،,]+$/,'').trim();
             if (query.length >= 2) {
                 const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
                 // Route to browser_summarize: it navigates to the results LIVE (so the
