@@ -46,6 +46,38 @@ export class PlanningEngine {
         return map[action] || null;
     }
 
+    /** True when the request explicitly asks to SEARCH/look up something (a real
+     *  search verb — not merely "open google"). Kept narrow on purpose so plain
+     *  "افتح جوجل" stays an open, while "ابحث عن X" / "search for X" is a search. */
+    static hasSearchIntent(goalRaw: string): boolean {
+        return /(ابحث|إبحث|ابحثي|ابحثلي|دوّ?ر\s*(?:لي\s*)?عن|فتّ?ش\s*عن|بحث\s*عن|\bsearch\s*for\b|\bsearch\b|\blook\s*up\b|جِ?د\s*لي|ابغى?\s*ابحث)/i.test(goalRaw || '');
+    }
+
+    /** Extract the CLEAN search topic from natural composite phrasings, using the
+     *  user's own words (never the LLM's — which mangles names like نابلس->نبعلس).
+     *  Prefers text after a search verb / "عن/about/for", strips command noise and
+     *  any trailing engine mention ("... في جوجل"). */
+    static extractSearchQuery(goalRaw: string): string {
+        let query = '';
+        const about = String(goalRaw || '').match(/(?:ابحث\s*(?:لي\s*)?عن|ابحثي\s*عن|ابحثلي\s*عن|دوّ?ر\s*(?:لي\s*)?عن|فتّ?ش\s*عن|بحث\s*عن|بخصوص|على\s*موضوع|عن|حول|about|search\s*for|look\s*up|for)\s+(.+)$/i);
+        if (about && about[1]) {
+            query = about[1].trim();
+        } else {
+            query = String(goalRaw || '')
+                .replace(/(افتح|شغّ?ل|ادخل|اذهب|روح|رح|open|go\s*to|launch|visit)\s*(لي\s*)?(على|الى|إلى|to)?\s*/gi, ' ')
+                .replace(/(المتصفّ?ح|المتصفح|browser|جوجل|google|قوقل|غوغل|قووقل)/gi, ' ')
+                .replace(/(و?اكتب|و?ابحث|و?إبحث|و?بحث|دوّ?ر|فتّ?ش|type|search|write)\s*(في\s*)?(البحث|بالبحث|خانة\s*البحث|search\s*box)?\s*(عن|for|:)?\s*/gi, ' ')
+                .replace(/^(لي|من\s*فضلك|please|رجاء|و|ثم|ومن\s*ثم)\s+/i, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+        // strip a trailing engine/browser mention: "... في جوجل" / "... in google"
+        query = query.replace(/\s*(?:في|على|من|عبر|بواسطة|in|on|via)?\s*(?:جوجل|google|قوقل|غوغل|قووقل|المتصفّ?ح|المتصفح|النت|الإنترنت|الانترنت|الويب|browser|the\s*web)\s*$/i, '').trim();
+        // strip leading residue + trailing punctuation
+        query = query.replace(/^(?:لي|من\s*فضلك|please|عن|في|على|ثم|و)\s+/i, '').replace(/[.،,]+$/, '').trim();
+        return query;
+    }
+
     /**
      * Semantic browser-intent router. Uses the model to understand the request in
      * ANY language/phrasing and return {action, url, query, text, lang}. Robust:
@@ -133,6 +165,25 @@ Rules:
         // remain only as a deterministic fallback when the model is unavailable.
         const looksBrowser = !!urlMatch || String(intent.suggestedAgent || '') === 'Browser'
             || /(متصفح|براوزر|موقع|صفحة|الويب|الإنترنت|الانترنت|ابحث|إبحث|بحث|جد|جِد|دوّ?ر|فتّ?ش|افتح|تصفّ?ح|عايِ?ن|لخّ?ص|حلّ?ل|دقّ?ق|افحص|انقر|اضغط|املأ|عبّ?ئ|ترجم|قارن|استخرج|browser|web|site|page|search|find|look\s*up|google|open|visit|go\s*to|summari|analy|audit|click|fill|translate|compare|extract|scrape|seo)/i.test(goalRaw);
+        // [SEARCH HAS PRIORITY] A request with an explicit search verb ("ابحث عن X",
+        // "search for X") is a SEARCH — even when it's wrapped in "افتح المتصفح و…".
+        // The LLM classifier tends to latch onto the leading "افتح" and misroute the
+        // whole thing to a plain open, and it also corrupts names (نابلس->نبعلس). So
+        // we resolve search deterministically FIRST, from the user's own words, and
+        // send it to the VISIBLE search tool. Only when there's no explicit site URL.
+        if (looksBrowser && !urlMatch && PlanningEngine.hasSearchIntent(goalRaw)) {
+            const q = PlanningEngine.extractSearchQuery(goalRaw);
+            if (q.length >= 2) {
+                console.log(`[PlanningEngine] search priority -> browser_search query="${q}"`);
+                return {
+                    id: `browser_search_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{ id: 'browser_smart', description: `Search (live typing): ${q}`, tool: 'browser_search', agent: 'Browser', input: { query: q, question: q, request: intent.goal }, dependsOn: [] }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
+        }
+
         if (looksBrowser) {
             try {
                 const c = await PlanningEngine.classifyBrowserIntent(intent.goal, context);
@@ -260,28 +311,11 @@ Rules:
         // NOTE: match the verb even with an attached "و" (and) prefix — e.g.
         // "افتح المتصفح وابحث عن X". The old (^|\s) anchor missed "وابحث", so the
         // request fell to the plain open-browser path and only showed Google.
-        const searchIntent = /(ابحث|إبحث|ابحثي|دوّ?ر\s|فتّ?ش|جوجل|google|\bsearch\b|بحث\s*(عن|في)|ابحث\s*في\s*الويب)/i.test(goalRaw);
+        const searchIntent = PlanningEngine.hasSearchIntent(goalRaw);
         if (searchIntent && !urlMatch) {
-            // Extract the CLEAN topic. Strategy: prefer the text after the last
-            // "عن/about/for/حول" (the natural Arabic "search ABOUT X"); otherwise
-            // strip all the command noise (open/browser/google/type/in the search…)
-            // and keep what's left. This avoids the old bug where "جوجل" captured the
-            // rest ("...وابحث عن دمشق" -> "دمشق", not "واكتب في البحث عن دمشق").
-            let query = '';
-            const about = goalRaw.match(/(?:عن|حول|about|for|بخصوص|على\s*موضوع)\s+(.+)$/i);
-            if (about && about[1]) {
-                query = about[1].trim();
-            } else {
-                query = goalRaw
-                    .replace(/(افتح|شغّ?ل|ادخل|اذهب|روح|رح|open|go\s*to|launch|visit)\s*(لي\s*)?(على|الى|إلى|to)?\s*/gi, ' ')
-                    .replace(/(المتصفّ?ح|المتصفح|browser|جوجل|google|قوقل|غوغل|قوقل)/gi, ' ')
-                    .replace(/(و?اكتب|و?ابحث|و?إبحث|و?بحث|دوّ?ر|فتّ?ش|type|search|write)\s*(في\s*)?(البحث|بالبحث|خانة\s*البحث|search\s*box)?\s*(عن|for|:)?\s*/gi, ' ')
-                    .replace(/^(لي|من\s*فضلك|please|رجاء|و|ثم)\s+/i, '')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-            }
-            // final cleanups
-            query = query.replace(/^(لي|من\s*فضلك|please|عن|في|على)\s+/i, '').replace(/[.،,]+$/,'').trim();
+            // Extract the CLEAN topic from the user's own words (shared helper —
+            // same logic used by the search-priority path above).
+            const query = PlanningEngine.extractSearchQuery(goalRaw);
             if (query.length >= 2) {
                 // Route to browser_search: it opens the engine, moves the cursor to
                 // the search box, types the query LETTER-BY-LETTER in the live stream,
