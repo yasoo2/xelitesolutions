@@ -180,7 +180,9 @@ Rules:
             if (mgr.isPersistentBrowserMode && mgr.isPersistentBrowserMode()) {
                 const bsid = String((context && context.browserSessionId) || 'panel-browser');
                 if (!mgr.hasBrowserConsent(bsid)) {
-                    const affirm = /^\s*(أوافق|اوافق|موافق|موافقة|نعم|أقبل|اقبل|أوكي|اوكي|تمام|أكيد|اكيد|ok|okay|yes|agree|i\s*agree)\b/i.test(goalRaw);
+                    // NOTE: no \b after the words — \b is an ASCII word boundary and
+                    // does NOT match after Arabic letters, so "اوافق" failed before.
+                    const affirm = /^\s*(أوافق|اوافق|موافق|موافقة|نعم|أقبل|اقبل|أوكي|اوكي|تمام|أكيد|اكيد|ok|okay|yes|agree)(\s|$|[.،,!]|ي)/i.test(goalRaw.trim() + ' ');
                     if (affirm) {
                         return { id: `consent_${Date.now()}`, goal: intent.goal, steps: [{ id: 'browser_consent', description: 'grant local-browser consent', tool: 'browser_consent', agent: 'Browser', input: { grant: true }, dependsOn: [] }], metadata: { complexity: 'low', riskLevel: 'low' } };
                     }

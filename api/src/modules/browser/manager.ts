@@ -101,6 +101,41 @@ export function isPersistentBrowserMode(): boolean {
   return (parseBool(process.env.USE_SYSTEM_CHROME) ?? false) || (parseBool(process.env.BROWSER_PERSISTENT_PROFILE) ?? false);
 }
 
+/** True when Joe should inherit the user's REAL browser profile (their existing
+ *  logins) instead of a dedicated Joe profile. */
+export function isUserRealProfileMode(): boolean {
+  return (parseBool(process.env.USE_USER_BROWSER_PROFILE) ?? false);
+}
+
+/** Detect the user's REAL default-browser profile directory so Joe opens already
+ *  logged in with the SAME account the user uses (Google, etc.) — no sign-in.
+ *  Windows paths; an explicit BROWSER_USER_DATA_DIR (+ BROWSER_CHANNEL) wins.
+ *  Returns { userDataDir, channel } or null when none is found. */
+export function getUserRealBrowserProfile(): { userDataDir: string; channel?: string; name: string } | null {
+  const envDir = (process.env.BROWSER_USER_DATA_DIR || '').trim();
+  if (envDir && fs.existsSync(envDir)) return { userDataDir: envDir, channel: (process.env.BROWSER_CHANNEL || 'chrome').trim() || undefined, name: 'مخصّص' };
+  const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  const roaming = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+  const macHome = os.homedir();
+  const candidates: { dir: string; channel?: string; name: string }[] = [
+    // Windows
+    { dir: path.join(local, 'Google', 'Chrome', 'User Data'), channel: 'chrome', name: 'Chrome' },
+    { dir: path.join(local, 'Microsoft', 'Edge', 'User Data'), channel: 'msedge', name: 'Edge' },
+    { dir: path.join(local, 'BraveSoftware', 'Brave-Browser', 'User Data'), name: 'Brave' },
+    { dir: path.join(roaming, 'Opera Software', 'Opera Stable'), name: 'Opera' },
+    { dir: path.join(local, 'Chromium', 'User Data'), name: 'Chromium' },
+    // macOS
+    { dir: path.join(macHome, 'Library', 'Application Support', 'Google', 'Chrome'), channel: 'chrome', name: 'Chrome' },
+    { dir: path.join(macHome, 'Library', 'Application Support', 'Microsoft Edge'), channel: 'msedge', name: 'Edge' },
+    // Linux
+    { dir: path.join(macHome, '.config', 'google-chrome'), channel: 'chrome', name: 'Chrome' },
+    { dir: path.join(macHome, '.config', 'microsoft-edge'), channel: 'msedge', name: 'Edge' },
+    { dir: path.join(macHome, '.config', 'chromium'), name: 'Chromium' },
+  ];
+  for (const c of candidates) { try { if (fs.existsSync(c.dir)) return { userDataDir: c.dir, channel: c.channel, name: c.name }; } catch { /* ignore */ } }
+  return null;
+}
+
 /** Per-session Chrome profile directory (isolated per user in the online model).
  *  Defaults to a stable per-OS location (not /tmp) so logins survive restarts. */
 export function getBrowserProfileDir(sessionId: string): string {
@@ -396,29 +431,51 @@ export async function createSession(sessionId: string) {
     // directly (there is no separate Browser handle — context.browser() is null).
     try {
       const base = getChromiumLaunchOptions();
-      const profileDir = getBrowserProfileDir(sessionId);
-      fs.mkdirSync(profileDir, { recursive: true });
+
+      // Decide which profile to use: the user's REAL browser profile (so Joe is
+      // already logged in with their account, no sign-in) when enabled and found;
+      // otherwise a dedicated persistent Joe profile.
+      const real = isUserRealProfileMode() ? getUserRealBrowserProfile() : null;
+      const profileDir = real ? real.userDataDir : getBrowserProfileDir(sessionId);
+      if (!real) fs.mkdirSync(profileDir, { recursive: true });
+
       const persistentOpts: any = {
         ...base,
         viewport: { width: viewport.w, height: viewport.h },
         locale: 'ar',
         acceptDownloads: true,
+        // Reduce the "controlled by automation" banner / first-run noise.
+        ignoreDefaultArgs: ['--enable-automation'],
+        args: [...(base.args || []), '--no-first-run', '--no-default-browser-check'],
       };
-      // USE_SYSTEM_CHROME=1 -> the user's installed Google Chrome (their real
-      // browser). Falls back to the bundled Chromium build if Chrome is absent.
-      if ((parseBool(process.env.USE_SYSTEM_CHROME) ?? false)) { persistentOpts.channel = 'chrome'; delete persistentOpts.executablePath; }
+      // Prefer the channel matching the detected real browser (chrome/msedge), else
+      // USE_SYSTEM_CHROME picks installed Chrome. Falls back to bundled Chromium.
+      const wantChannel = real?.channel || ((parseBool(process.env.USE_SYSTEM_CHROME) ?? false) ? 'chrome' : '');
+      if (wantChannel) { persistentOpts.channel = wantChannel; delete persistentOpts.executablePath; }
       try {
         persistentContext = await chromium.launchPersistentContext(profileDir, persistentOpts);
-      } catch (inner) {
-        // channel:'chrome' not installed -> retry with the bundled Chromium.
+      } catch (inner: any) {
+        const msg = String(inner?.message || inner || '');
+        // A locked profile means the user's own browser is currently open on it.
+        if (real && /ProcessSingleton|SingletonLock|already (running|in use)|cannot create|being used|profile appears to be in use|failed to create a unique/i.test(msg)) {
+          throw new Error(
+            `browser_profile_locked: متصفحك (${real.name}) مفتوح حالياً بنفس الحساب، ولا يمكن لجو استخدامه في آنٍ واحد. ` +
+            `أغلق نوافذ ${real.name} كلها ثم أعد المحاولة — سيفتح جو بنفس حسابك تلقائياً بلا تسجيل دخول.`
+          );
+        }
+        // channel not installed -> retry with the bundled Chromium (dedicated profile only).
         delete persistentOpts.channel;
         const exe = findChromiumExecutable(); if (exe) persistentOpts.executablePath = exe;
-        persistentContext = await chromium.launchPersistentContext(profileDir, persistentOpts);
+        const fallbackDir = real ? getBrowserProfileDir(sessionId) : profileDir;
+        if (real) fs.mkdirSync(fallbackDir, { recursive: true });
+        persistentContext = await chromium.launchPersistentContext(fallbackDir, persistentOpts);
       }
-      try { console.log(`[BrowserManager] Persistent profile launched: ${profileDir} (${(parseBool(process.env.USE_SYSTEM_CHROME) ?? false) ? 'system Chrome' : 'bundled Chromium'})`); } catch { }
+      try { console.log(`[BrowserManager] Persistent profile launched: ${profileDir} (${real ? `user's real ${real.name} — inherits login` : (parseBool(process.env.USE_SYSTEM_CHROME) ?? false) ? 'system Chrome' : 'bundled Chromium'})`); } catch { }
     } catch (e: any) {
+      const m = String(e?.message || e);
+      if (m.startsWith('browser_profile_locked')) throw e; // pass the actionable message through
       throw new Error(
-        `browser_launch_failed: ${e?.message || e}. ` +
+        `browser_launch_failed: ${m}. ` +
         `تعذّر تشغيل متصفح جو بملف التعريف الدائم. تأكّد من تثبيت Google Chrome، ` +
         `أو أزل USE_SYSTEM_CHROME لاستخدام Chromium المرفق.`
       );
