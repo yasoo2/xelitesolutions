@@ -23,6 +23,70 @@ export interface ExecutionPlan {
 }
 
 export class PlanningEngine {
+    /** Map a high-level browser action (chosen by the model) to the exact tool. */
+    static browserToolForAction(action: string): string | null {
+        const map: Record<string, string> = {
+            open: 'browser_launch', go: 'browser_launch', visit: 'browser_launch',
+            search: 'browser_summarize', lookup: 'browser_summarize',
+            summarize: 'browser_summarize', read: 'browser_readability',
+            analyze: 'browser_smart_agent', full: 'browser_smart_agent', report: 'browser_smart_agent',
+            audit: 'browser_ui_audit', ui: 'browser_ui_audit',
+            click: 'browser_click', press: 'browser_click',
+            fill: 'browser_fill_form', form: 'browser_fill_form',
+            extract: 'browser_extract_data', scrape: 'browser_extract_data',
+            translate: 'browser_translate', responsive: 'browser_responsive_check',
+            compare: 'browser_compare', find: 'browser_find_text',
+            seo: 'browser_seo_audit', performance: 'browser_performance', speed: 'browser_performance',
+            links: 'browser_check_links', console: 'browser_console_scan', errors: 'browser_console_scan',
+            pdf: 'browser_save_pdf', readability: 'browser_readability',
+            contrast: 'browser_contrast_audit', a11y: 'browser_a11y_deep', accessibility: 'browser_a11y_deep',
+            meta: 'browser_extract_meta', design: 'browser_design_tokens', colors: 'browser_design_tokens',
+            autofix: 'browser_autofix', fix: 'browser_autofix', fullpage: 'browser_fullpage_shot', screenshot: 'browser_fullpage_shot',
+        };
+        return map[action] || null;
+    }
+
+    /**
+     * Semantic browser-intent router. Uses the model to understand the request in
+     * ANY language/phrasing and return {action, url, query, text, lang}. Robust:
+     * strict JSON, whitelist-validated, times out, returns null on any failure so
+     * the deterministic keyword paths can take over.
+     */
+    static async classifyBrowserIntent(goal: string, context?: any): Promise<{ action: string; tool: string; url: string; query: string; text: string; lang: string } | null> {
+        const sys = `You are the intent router of a smart AI browser. Read the user's request in ANY language or phrasing and pick the single best browser action. Output ONLY one compact JSON object, no markdown/no prose:
+{"action":"open|search|summarize|analyze|audit|click|fill|extract|translate|responsive|compare|find|seo|performance|links|console|pdf|readability|contrast|a11y|meta|design|autofix|fullpage|none","url":"","query":"","text":"","lang":""}
+Rules:
+- Wants to look up a topic / ask a question to research / "search"/"find info about" -> action="search"; put the topic in "query".
+- Names a website or gives a link and wants to open it -> action="open"; put it in "url".
+- Summarize/read a page -> "summarize" (url). Full/deep/comprehensive analysis -> "analyze" (url).
+- Click a button/link -> "click"; put the label in "text" (and url if given).
+- Fill a form -> "fill". Translate a page -> "translate" (set "lang"). Audit UI/design -> "audit".
+- If the request is NOT about the web/browser at all -> action="none".
+- Put a value in "url" ONLY if the user explicitly named a site or link.`;
+        let raw = '';
+        try {
+            raw = await Promise.race([
+                routeToModel([{ role: 'system', content: sys }, { role: 'user', content: `Request: ${goal}` }], undefined, undefined, undefined, undefined, undefined, undefined, context),
+                new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), 18000)),
+            ]);
+        } catch { return null; }
+        const m = raw && raw.match(/\{[\s\S]*\}/);
+        if (!m) return null;
+        let obj: any;
+        try { obj = JSON.parse(m[0]); } catch { return null; }
+        const action = String(obj?.action || '').toLowerCase().trim();
+        if (!action || action === 'none') return null;
+        const tool = PlanningEngine.browserToolForAction(action);
+        if (!tool) return null;
+        return {
+            action, tool,
+            url: String(obj?.url || '').trim(),
+            query: String(obj?.query || '').trim(),
+            text: String(obj?.text || '').trim(),
+            lang: String(obj?.lang || '').trim(),
+        };
+    }
+
     /**
      * Generate a dynamic multi-step execution DAG based on intent and optional memory
      */
@@ -62,6 +126,45 @@ export class PlanningEngine {
         // [BROWSER SMART TOOLS FAST-PATH] summarise / audit a URL reliably.
         const goalRaw = intent.goal || '';
         const urlMatch = goalRaw.match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);
+
+        // [INTELLIGENT BROWSER ROUTER] Understand the request semantically (any
+        // language / any phrasing) with the model, instead of relying on brittle
+        // keyword regexes. This is the primary path; the keyword fast-paths below
+        // remain only as a deterministic fallback when the model is unavailable.
+        const looksBrowser = !!urlMatch || String(intent.suggestedAgent || '') === 'Browser'
+            || /(متصفح|براوزر|موقع|صفحة|الويب|الإنترنت|الانترنت|ابحث|إبحث|بحث|جد|جِد|دوّ?ر|فتّ?ش|افتح|تصفّ?ح|عايِ?ن|لخّ?ص|حلّ?ل|دقّ?ق|افحص|انقر|اضغط|املأ|عبّ?ئ|ترجم|قارن|استخرج|browser|web|site|page|search|find|look\s*up|google|open|visit|go\s*to|summari|analy|audit|click|fill|translate|compare|extract|scrape|seo)/i.test(goalRaw);
+        if (looksBrowser) {
+            try {
+                const c = await PlanningEngine.classifyBrowserIntent(intent.goal, context);
+                if (c && c.tool) {
+                    let url = c.url;
+                    if (c.action === 'search' || (c.action === 'find' && !url && !urlMatch)) {
+                        const q = c.query || c.text || intent.goal;
+                        url = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+                    }
+                    if (!url && urlMatch) url = urlMatch[0];
+                    const input: any = { url: url || '', request: intent.goal, question: c.query || intent.goal };
+                    if (c.tool === 'browser_click' && c.text) input.text = c.text;
+                    if (c.tool === 'browser_find_text') input.query = c.query || c.text || '';
+                    if (c.tool === 'browser_translate' && c.lang) input.target = c.lang;
+                    // Tools other than launch/summarize-search need a real URL; if we
+                    // don't have one, fall through to the deterministic paths.
+                    const hasUsableTarget = !!url || c.tool === 'browser_launch';
+                    if (hasUsableTarget) {
+                        console.log(`[PlanningEngine] AI browser router -> ${c.tool} (action=${c.action}) url=${url || '(default)'}`);
+                        return {
+                            id: `browser_ai_${Date.now()}`,
+                            goal: intent.goal,
+                            steps: [{ id: 'browser_smart', description: `${c.tool} (${c.action})`, tool: c.tool, agent: 'Browser', input, dependsOn: [] }],
+                            metadata: { complexity: 'medium', riskLevel: 'low' },
+                        };
+                    }
+                }
+            } catch (e) {
+                console.warn('[PlanningEngine] AI browser router failed, using keyword fallback:', (e as any)?.message || e);
+            }
+        }
+
         const summarizeIntent = /(لخّ?ص|تلخيص|summari[sz]e|اقرأ\s*الصفحة|ما\s*مضمون)/i.test(goalRaw);
         const auditIntent = /(دقّ?ق|تدقيق|افحص\s*الواجهة|audit|فحص\s*ui|راجع\s*التصميم|مشاكل\s*الواجهة|accessib)/i.test(goalRaw);
         const extractIntent = /(استخرج|استخراج|extract|جدول|قائمة|csv|بيانات\s*الصفحة)/i.test(goalRaw);
