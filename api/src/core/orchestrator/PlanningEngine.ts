@@ -27,7 +27,7 @@ export class PlanningEngine {
     static browserToolForAction(action: string): string | null {
         const map: Record<string, string> = {
             open: 'browser_launch', go: 'browser_launch', visit: 'browser_launch',
-            search: 'browser_summarize', lookup: 'browser_summarize',
+            search: 'browser_search', lookup: 'browser_search',
             summarize: 'browser_summarize', read: 'browser_readability',
             analyze: 'browser_smart_agent', full: 'browser_smart_agent', report: 'browser_smart_agent',
             audit: 'browser_ui_audit', ui: 'browser_ui_audit',
@@ -138,16 +138,27 @@ Rules:
                 const c = await PlanningEngine.classifyBrowserIntent(intent.goal, context);
                 if (c && c.tool) {
                     let url = c.url;
-                    if (c.action === 'search' || (c.action === 'find' && !url && !urlMatch)) {
-                        const q = c.query || c.text || intent.goal;
-                        url = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+                    // "search" routes to the VISIBLE search agent (browser_search):
+                    // it opens the engine, types the query into the box live, then
+                    // reads the results — no results-URL needed, just the query.
+                    if (c.tool === 'browser_search') {
+                        const q = (c.query || c.text || '').trim();
+                        if (q.length >= 2) {
+                            console.log(`[PlanningEngine] AI browser router -> browser_search query="${q}"`);
+                            return {
+                                id: `browser_ai_${Date.now()}`,
+                                goal: intent.goal,
+                                steps: [{ id: 'browser_smart', description: `search: ${q}`, tool: 'browser_search', agent: 'Browser', input: { query: q, question: c.query || intent.goal, request: intent.goal }, dependsOn: [] }],
+                                metadata: { complexity: 'medium', riskLevel: 'low' },
+                            };
+                        }
                     }
                     if (!url && urlMatch) url = urlMatch[0];
                     const input: any = { url: url || '', request: intent.goal, question: c.query || intent.goal };
                     if (c.tool === 'browser_click' && c.text) input.text = c.text;
                     if (c.tool === 'browser_find_text') input.query = c.query || c.text || '';
                     if (c.tool === 'browser_translate' && c.lang) input.target = c.lang;
-                    // Tools other than launch/summarize-search need a real URL; if we
+                    // Tools other than launch/search need a real URL; if we
                     // don't have one, fall through to the deterministic paths.
                     const hasUsableTarget = !!url || c.tool === 'browser_launch';
                     if (hasUsableTarget) {
@@ -272,20 +283,19 @@ Rules:
             // final cleanups
             query = query.replace(/^(لي|من\s*فضلك|please|عن|في|على)\s+/i, '').replace(/[.،,]+$/,'').trim();
             if (query.length >= 2) {
-                const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-                // Route to browser_summarize: it navigates to the results LIVE (so the
-                // user watches it), then has the model read the page and answer the
-                // query — i.e. it actually searches AND analyses, instead of just
-                // parking on the Google homepage.
+                // Route to browser_search: it opens the engine, moves the cursor to
+                // the search box, types the query LETTER-BY-LETTER in the live stream,
+                // presses Enter, then reads and answers from the results — the human,
+                // visible way (instead of silently jumping to a results URL).
                 return {
                     id: `browser_search_${Date.now()}`,
                     goal: intent.goal,
                     steps: [{
                         id: 'browser_smart',
-                        description: `Search & analyse: ${query}`,
-                        tool: 'browser_summarize',
+                        description: `Search (live typing): ${query}`,
+                        tool: 'browser_search',
                         agent: 'Browser',
-                        input: { url: searchUrl, question: query, request: intent.goal },
+                        input: { query, question: query, request: intent.goal },
                         dependsOn: []
                     }],
                     metadata: { complexity: 'medium', riskLevel: 'low' }

@@ -1776,6 +1776,140 @@ export class BrowserAutofixTool implements ToolDefinition {
 }
 
 /* ============================================================
+   browser_search — VISIBLE multi-step search: open engine,
+   move the cursor to the search box, type the query letter by
+   letter live, press Enter, read the results. This is the
+   "types in the search box with a moving cursor" experience.
+   ============================================================ */
+export class BrowserSearchTool implements ToolDefinition {
+    name = 'browser_search';
+    version = '1.0.0';
+    description = 'Perform a web search the human way, visibly: open the search engine, move the cursor to the search box, type the query letter-by-letter in the live stream, press Enter, then read and summarise the results. Use this for "search for X", "look up X", "افتح المتصفح وابحث عن X".';
+    tags = ['browser', 'web', 'search', 'google', 'live', 'agent'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            query: { type: 'string' as const, description: 'What to search for (the topic only, no command words).' },
+            engine: { type: 'string' as const, description: 'Optional engine URL (defaults to Google).' },
+            question: { type: 'string' as const, description: 'Optional question to answer from the results.' },
+        },
+        required: ['query'],
+    };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const sessionId = browserSid(context);
+        const query = String(input?.query || input?.q || input?.text || '').trim();
+        const question = String(input?.question || input?.request || '').trim() || query;
+        const engine = normalizeUrl(String(input?.engine || '').trim()) || 'https://www.google.com';
+        if (!query) return { ok: false, error: 'no_query' };
+        const ar = isAr(query) || isAr(question);
+        try {
+            return await withBrowserConcurrency(async () => {
+                // 1) Open the engine's home page (not the results URL) so the user
+                //    watches the search box get filled, like a real person.
+                const { page } = await openPage(sessionId, engine);
+
+                // 2) Locate the search box (Google uses textarea[name=q]; be generic).
+                const box = await page.evaluate(() => {
+                    const sels = ['textarea[name="q"]', 'input[name="q"]', 'input[type="search"]', 'input[aria-label*="search" i]', 'input[title*="search" i]', 'input[placeholder*="بحث"]', 'input[placeholder*="search" i]'];
+                    let el: HTMLElement | null = null;
+                    for (const s of sels) { const c = document.querySelector(s) as HTMLElement | null; if (c) { const r = c.getBoundingClientRect(); if (r.width > 0 && r.height > 0) { el = c; break; } } }
+                    if (!el) return null;
+                    el.setAttribute('data-joe-search', '1');
+                    el.scrollIntoView({ block: 'center' });
+                    const r = el.getBoundingClientRect();
+                    return { cx: Math.round(r.left + r.width / 2), cy: Math.round(r.top + r.height / 2), bx: Math.round(r.left), by: Math.round(r.top), bw: Math.round(r.width), bh: Math.round(r.height) };
+                });
+
+                let submitted = false;
+                let resultsUrl = page.url();
+                if (box) {
+                    // 3) Move the on-screen cursor to the box and outline it, then focus.
+                    await moveCursorTo(page, sessionId, box.cx, box.cy, { x: box.bx, y: box.by, w: box.bw, h: box.bh, label: ar ? 'خانة البحث' : 'search box' });
+                    narrateAction(sessionId, 'focus', ar ? 'خانة البحث' : 'search box');
+                    try { await page.click('[data-joe-search="1"]', { timeout: 4000 }); } catch { /* focus best-effort */ }
+                    await page.waitForTimeout(250);
+
+                    // 4) Type the query letter-by-letter so the letters appear live
+                    //    in the stream (real keystrokes, human cadence).
+                    narrateAction(sessionId, 'type', query);
+                    try { await page.type('[data-joe-search="1"]', query, { delay: 85 }); }
+                    catch { try { await page.keyboard.type(query, { delay: 85 }); } catch { /* ignore */ } }
+                    await page.waitForTimeout(350);
+
+                    // 5) Press Enter and wait for the results to load.
+                    narrateAction(sessionId, 'submit', ar ? 'إرسال البحث' : 'submit search');
+                    try {
+                        await Promise.all([
+                            page.waitForNavigation({ timeout: 8000, waitUntil: 'domcontentloaded' }).then(() => { submitted = true; }).catch(() => { }),
+                            page.keyboard.press('Enter'),
+                        ]);
+                    } catch { /* some engines search in place */ }
+                    await page.waitForTimeout(900);
+                    resultsUrl = page.url();
+                } else {
+                    // Fallback: no visible box (blocked/JS-less) — go straight to results.
+                    const direct = `${engine.replace(/\/+$/, '')}/search?q=${encodeURIComponent(query)}`;
+                    narrateAction(sessionId, 'goto', direct);
+                    try { await page.goto(direct, { waitUntil: 'domcontentloaded', timeout: 30000 }); submitted = true; } catch { /* ignore */ }
+                    await page.waitForTimeout(700);
+                    resultsUrl = page.url();
+                }
+
+                // 6) Read the top results + screenshot.
+                const results = await page.evaluate(() => {
+                    const clean = (t: string) => (t || '').replace(/\s+/g, ' ').trim();
+                    const out: { title: string; snippet: string }[] = [];
+                    const seen = new Set<string>();
+                    // Google result blocks; fall back to headings + following text.
+                    const blocks = Array.from(document.querySelectorAll('div.g, div[data-sokoban-container], div.MjjYud, .tF2Cxc, li, article'));
+                    for (const b of blocks) {
+                        const h = b.querySelector('h3, h2, a > h3') as HTMLElement | null;
+                        const title = clean(h?.innerText || '');
+                        if (!title || title.length < 4 || seen.has(title)) continue;
+                        const sn = clean((b as HTMLElement).innerText || '').slice(0, 220);
+                        out.push({ title, snippet: sn });
+                        seen.add(title);
+                        if (out.length >= 8) break;
+                    }
+                    return { title: document.title || '', bodyText: clean((document.body?.innerText || '')).slice(0, 4000), results: out };
+                });
+
+                const buf = await page.screenshot({ type: 'jpeg', quality: 62, animations: 'disabled' });
+                const shot = publishShot(sessionId, Buffer.from(buf), resultsUrl);
+
+                // 7) Optional AI answer synthesised from the results text.
+                let answer = '';
+                if (results.bodyText && results.bodyText.length > 40) {
+                    try {
+                        const r: any = await routeToModel({
+                            messages: [
+                                { role: 'system', content: ar ? 'أجب باختصار ودقة بالعربية اعتماداً على نتائج البحث التالية فقط.' : 'Answer concisely from the following search results only.' },
+                                { role: 'user', content: `${ar ? 'السؤال' : 'Question'}: ${question}\n\n${ar ? 'النتائج' : 'Results'}:\n${results.bodyText.slice(0, 3000)}` },
+                            ],
+                        } as any);
+                        answer = String(r?.content || r?.text || r?.message || '').trim();
+                    } catch { /* summary is best-effort */ }
+                }
+
+                const topLines = (results.results || []).slice(0, 5).map((x, i) => `${i + 1}. ${x.title}`).join('\n');
+                const message = (ar
+                    ? `🔎 بحثتُ عن «${query}» ${box ? '(كتبتُها في خانة البحث أمامك)' : ''}\n📄 ${resultsUrl}`
+                    : `🔎 Searched for "${query}" ${box ? '(typed it into the search box live)' : ''}\n📄 ${resultsUrl}`)
+                    + (topLines ? `\n\n${ar ? 'أهم النتائج' : 'Top results'}:\n${topLines}` : '')
+                    + (answer ? `\n\n${ar ? '🧠 الخلاصة' : '🧠 Summary'}:\n${answer}` : '');
+                narrateFinal(sessionId, true, ar ? `اكتمل البحث عن «${query}»` : `Search done: "${query}"`);
+                return { ok: true, output: { message, query, url: resultsUrl, submitted, typedLive: !!box, results: results.results, answer, screenshot: shot } };
+            });
+        } catch (e: any) {
+            return { ok: false, error: `search_failed: ${e?.message || e}`, output: { message: `⚠️ ${isAr(query) ? 'تعذّر البحث' : 'search failed'}: ${e?.message || e}` } };
+        }
+    }
+}
+
+/* ============================================================
    browser_open — open the live browser (optionally at a URL)
    ============================================================ */
 export class BrowserOpenTool implements ToolDefinition {
