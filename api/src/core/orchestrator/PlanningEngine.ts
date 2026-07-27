@@ -160,6 +160,27 @@ Rules:
             };
         }
 
+        // [GOOGLE ACCOUNT FAST-PATH] "read my email / calendar / drive" -> act in the
+        // user's connected Google account via official APIs (needs OAuth connect first).
+        {
+            const g = intent.goal || '';
+            const gmailRead = /(بريد|ايميل|إيميل|رسائل|جيميل|gmail|inbox|صندوق\s*الوارد|mail)/i.test(g);
+            const calList = /(تقويم|مواعيد|أجندة|اجندة|calendar|events?|اجتماعات)/i.test(g);
+            const driveList = /(درايف|ملفاتي|drive|ملفات\s*جوجل)/i.test(g);
+            const sendMail = /(أرسل|ارسل|ابعث|send)\s+(بريد|ايميل|إيميل|رسالة|mail|email)/i.test(g);
+            if (gmailRead || calList || driveList || sendMail) {
+                const action = sendMail ? 'gmail_send' : calList ? 'calendar_list' : driveList ? 'drive_list' : 'gmail_list';
+                const input: any = { action, request: intent.goal };
+                if (action === 'gmail_list') { const q = g.match(/(?:عن|من|بخصوص|about|from)\s+(.+)$/i); if (q) input.query = q[1].trim(); }
+                return {
+                    id: `google_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{ id: 'google_account', description: `Google: ${action}`, tool: 'google_account', agent: 'General', input, dependsOn: [] }],
+                    metadata: { complexity: 'low', riskLevel: 'low' },
+                };
+            }
+        }
+
         // [BROWSER SMART TOOLS FAST-PATH] summarise / audit a URL reliably.
         const goalRaw = intent.goal || '';
         const urlMatch = goalRaw.match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);

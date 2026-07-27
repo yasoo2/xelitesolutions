@@ -2,6 +2,7 @@
 import { ToolDefinition } from './types';
 import { BrowserRunTool } from './definitions/BrowserRunTool';
 import { BrowserSummarizeTool, BrowserUIAuditTool, BrowserFillFormTool, BrowserCompareTool, BrowserExtractDataTool, BrowserCheckLinksTool, BrowserPerformanceTool, BrowserSEOAuditTool, BrowserConsoleScanTool, BrowserSavePdfTool, BrowserReadabilityTool, BrowserContrastAuditTool, BrowserA11yDeepTool, BrowserExtractMetaTool, BrowserTranslateTool, BrowserResponsiveCheckTool, BrowserFindTextTool, BrowserDesignTokensTool, BrowserClickTool, BrowserFullPageShotTool, BrowserSmartAgentTool, BrowserAutofixTool, BrowserConsentTool, BrowserSearchTool, BrowserOpenTool } from './definitions/BrowserSmartTools';
+import { GoogleAccountTool } from './definitions/GoogleAccountTool';
 import { MemoryTools } from './definitions/MemoryTool';
 import { TerminalManagerTool, SafeReadFileTool, AskUserTool } from './definitions/TaskInteractionTools';
 
@@ -208,6 +209,7 @@ const baseTools: ToolDefinition[] = [
   new BrowserConsentTool(),
   new BrowserSearchTool(),
   new BrowserOpenTool(),
+  new GoogleAccountTool(),
   ...MemoryTools,
 
   // SELF CODING CORE

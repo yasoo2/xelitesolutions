@@ -27,6 +27,7 @@ import packagesRoutes from './routes/packages';
 import gitRoutes from './routes/git';
 import githubRoutes from './routes/github';
 import browserRoutes from './routes/browser';
+import oauthRoutes from './routes/oauth';
 import serverRoutes from './routes/servers';
 import workspacesRoutes from './routes/workspaces';
 import adminRoutes from './routes/admin';
@@ -197,6 +198,7 @@ export const createApp = () => {
   apiRouter.use('/git', gitRoutes);
   apiRouter.use('/github', githubRoutes);
   apiRouter.use('/browser', browserRoutes);
+  apiRouter.use('/oauth', oauthRoutes);
   apiRouter.use('/servers', authenticate, serverRoutes);
   apiRouter.use('/workspaces', workspacesRoutes);
   apiRouter.use('/admin/sentinel', sentinelRoutes);

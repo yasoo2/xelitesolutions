@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     Moon, Sun, Check, LogOut, X,
     Palette, Globe, Shield, ChevronLeft,
-    Monitor, Smartphone
+    Monitor, Smartphone, Mail
 } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface SettingsDialogProps {
     isOpen: boolean;
@@ -187,6 +188,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                             </div>
                         </div>
                         <div className="stg-account-section">
+                            <GoogleConnect t={t} />
                             <div className="stg-danger-zone">
                                 <div className="stg-danger-label">
                                     <LogOut size={16} />
@@ -244,6 +246,63 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         {renderContent()}
                     </div>
                 </div>
+            </div>
+        </div>
+    );
+};
+
+/** Connect / disconnect the user's Google account (Gmail, Calendar, Drive) via
+ *  the standard OAuth flow. Joe then acts in the account through official APIs. */
+const GoogleConnect: React.FC<{ t: (k: string, f: string) => string }> = ({ t }) => {
+    const [status, setStatus] = useState<{ configured: boolean; connected: boolean; email?: string | null } | null>(null);
+    const [busy, setBusy] = useState(false);
+
+    const token = () => localStorage.getItem('token') || '';
+    const load = useCallback(async () => {
+        try {
+            const res = await fetch(`${API_URL}/oauth/google/status`, { headers: { Authorization: `Bearer ${token()}` } });
+            const d = await res.json();
+            setStatus({ configured: !!d.configured, connected: !!d.connected, email: d.email });
+        } catch { setStatus({ configured: false, connected: false }); }
+    }, []);
+
+    useEffect(() => {
+        load();
+        // Reflect the ?google=connected redirect param, then clean the URL.
+        const p = new URLSearchParams(window.location.search);
+        if (p.get('google')) { setTimeout(load, 300); const u = new URL(window.location.href); u.searchParams.delete('google'); u.searchParams.delete('email'); window.history.replaceState({}, '', u.toString()); }
+    }, [load]);
+
+    const connect = () => {
+        // Full-page navigation to the OAuth start (pass the token so the server can
+        // attribute the connection to this user even without a header).
+        window.location.href = `${API_URL}/oauth/google/start?token=${encodeURIComponent(token())}`;
+    };
+    const disconnect = async () => {
+        setBusy(true);
+        try { await fetch(`${API_URL}/oauth/google/disconnect`, { method: 'POST', headers: { Authorization: `Bearer ${token()}` } }); } catch { /* ignore */ }
+        setBusy(false); load();
+    };
+
+    if (!status) return null;
+
+    return (
+        <div className="stg-google-connect" style={{ border: '1px solid var(--joe-border, rgba(255,255,255,0.1))', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Mail size={20} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>{t('googleAccount', 'حساب Google')}</div>
+                    <div style={{ fontSize: 12, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {!status.configured
+                            ? t('googleNotConfigured', 'لم تُضبط بيانات Google بعد (GOOGLE_CLIENT_ID/SECRET)')
+                            : status.connected
+                                ? `${t('connectedAs', 'متصل باسم')} ${status.email || ''}`
+                                : t('googleConnectDesc', 'اربط حسابك ليتصرّف جو في بريدك وتقويمك وملفاتك')}
+                    </div>
+                </div>
+                {status.configured && (status.connected
+                    ? <button className="stg-logout-btn" disabled={busy} onClick={disconnect} style={{ whiteSpace: 'nowrap' }}>{t('disconnect', 'فصل')}</button>
+                    : <button className="stg-logout-btn" onClick={connect} style={{ whiteSpace: 'nowrap', background: '#1a73e8', color: '#fff' }}>{t('connectGoogle', 'ربط Google')}</button>)}
             </div>
         </div>
     );
