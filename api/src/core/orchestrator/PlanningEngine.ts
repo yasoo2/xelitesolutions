@@ -170,6 +170,27 @@ Rules:
         // remain only as a deterministic fallback when the model is unavailable.
         const looksBrowser = !!urlMatch || String(intent.suggestedAgent || '') === 'Browser'
             || /(متصفح|براوزر|موقع|صفحة|الويب|الإنترنت|الانترنت|ابحث|إبحث|بحث|جد|جِد|دوّ?ر|فتّ?ش|افتح|تصفّ?ح|عايِ?ن|لخّ?ص|حلّ?ل|دقّ?ق|افحص|انقر|اضغط|املأ|عبّ?ئ|ترجم|قارن|استخرج|browser|web|site|page|search|find|look\s*up|google|open|visit|go\s*to|summari|analy|audit|click|fill|translate|compare|extract|scrape|seo)/i.test(goalRaw);
+
+        // [LOCAL BROWSER CONSENT GATE] When Joe is configured to drive the user's own
+        // local Chrome profile (persistent mode), he must ASK permission once before
+        // using it. If the user hasn't approved yet: a bare "أوافق" grants it; any
+        // other browser request is intercepted with the consent prompt.
+        try {
+            const mgr = require('../../modules/browser/manager');
+            if (mgr.isPersistentBrowserMode && mgr.isPersistentBrowserMode()) {
+                const bsid = String((context && context.browserSessionId) || 'panel-browser');
+                if (!mgr.hasBrowserConsent(bsid)) {
+                    const affirm = /^\s*(أوافق|اوافق|موافق|موافقة|نعم|أقبل|اقبل|أوكي|اوكي|تمام|أكيد|اكيد|ok|okay|yes|agree|i\s*agree)\b/i.test(goalRaw);
+                    if (affirm) {
+                        return { id: `consent_${Date.now()}`, goal: intent.goal, steps: [{ id: 'browser_consent', description: 'grant local-browser consent', tool: 'browser_consent', agent: 'Browser', input: { grant: true }, dependsOn: [] }], metadata: { complexity: 'low', riskLevel: 'low' } };
+                    }
+                    if (looksBrowser) {
+                        return { id: `consent_${Date.now()}`, goal: intent.goal, steps: [{ id: 'browser_consent', description: 'request local-browser consent', tool: 'browser_consent', agent: 'Browser', input: { grant: false }, dependsOn: [] }], metadata: { complexity: 'low', riskLevel: 'low' } };
+                    }
+                }
+            }
+        } catch { /* consent module optional; never block planning */ }
+
         // [SEARCH HAS PRIORITY] A request with an explicit search verb ("ابحث عن X",
         // "search for X") is a SEARCH — even when it's wrapped in "افتح المتصفح و…".
         // The LLM classifier tends to latch onto the leading "افتح" and misroute the

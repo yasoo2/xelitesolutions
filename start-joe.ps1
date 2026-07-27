@@ -15,6 +15,14 @@ $env:ENABLE_AUTH_BYPASS = "true"   # مستخدم واحد: الأدوات تع�
 $env:AUTO_APPROVE_ALL = "1"        # موافقة تلقائية على تنفيذ الأدوات
 $env:NODE_ENV = "development"
 
+# --- متصفح جو المحلي بحساب المستخدم ---
+# يشغّل جو نافذة Chrome حقيقية بملف تعريف دائم: تسجّل دخولك لحساباتك مرة واحدة
+# داخلها فتبقى محفوظة للأبد (بحسابك الخاص). يطلب جو موافقتك مرّة واحدة قبل الاستخدام.
+# لإيقاف هذه الميزة والعودة للمتصفح المعزول، احذف السطر التالي أو اجعله "0".
+$env:USE_SYSTEM_CHROME = "1"       # استخدم Chrome المثبّت (يعود لـ Chromium المرفق إن لم يوجد)
+$env:BROWSER_HEADED = "1"          # نافذة مرئية ليسجّل المستخدم دخوله
+$env:BROWSER_PROFILE_DIR = "$env:USERPROFILE\.joe\chrome-profiles"
+
 $apiDir = "$PSScriptRoot\api"
 
 Write-Host "============================================" -ForegroundColor Cyan

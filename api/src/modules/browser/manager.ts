@@ -1,6 +1,7 @@
 import { chromium, type Browser, type BrowserContext, type Page, type Locator, type LaunchOptions } from 'playwright';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import crypto from 'crypto';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
@@ -85,8 +86,55 @@ export async function clearBrowserSession(sessionId: string): Promise<{ ok: bool
   return { ok: true };
 }
 
+/* ============================================================
+   LOCAL CHROME PROFILE MODE  (opt-in, per-user)
+   ------------------------------------------------------------
+   When enabled, Joe drives a REAL, persistent Chrome profile per session instead
+   of a throwaway incognito context. The user logs into their own accounts ONCE
+   inside Joe's window and stays logged in forever (the profile keeps cookies,
+   localStorage, extensions, consent choices). This is "each user with their own
+   account", and it's gated behind an explicit one-time CONSENT the user grants.
+   Enable with USE_SYSTEM_CHROME=1 (uses the installed Google Chrome) or
+   BROWSER_PERSISTENT_PROFILE=1 (uses the bundled Chromium as a persistent profile).
+   ============================================================ */
+export function isPersistentBrowserMode(): boolean {
+  return (parseBool(process.env.USE_SYSTEM_CHROME) ?? false) || (parseBool(process.env.BROWSER_PERSISTENT_PROFILE) ?? false);
+}
+
+/** Per-session Chrome profile directory (isolated per user in the online model).
+ *  Defaults to a stable per-OS location (not /tmp) so logins survive restarts. */
+export function getBrowserProfileDir(sessionId: string): string {
+  const base = process.env.BROWSER_PROFILE_DIR
+    || path.join(process.env.USERPROFILE || os.homedir() || '.', '.joe', 'chrome-profiles');
+  const safe = crypto.createHash('sha256').update(String(sessionId || 'default')).digest('hex').slice(0, 32);
+  return path.join(base, safe);
+}
+
+// ---- Consent: Joe must ask before driving the user's local browser profile ----
+const CONSENT_DIR = process.env.BROWSER_CONSENT_DIR
+  || path.join(process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', 'browser-consent');
+function consentFile(sessionId: string): string {
+  const hash = crypto.createHash('sha256').update(String(sessionId || 'default')).digest('hex').slice(0, 40);
+  return path.join(CONSENT_DIR, `${hash}.ok`);
+}
+/** Whether this session's user has approved Joe using their local browser profile. */
+export function hasBrowserConsent(sessionId: string): boolean {
+  if (!isPersistentBrowserMode()) return true; // consent only matters in profile mode
+  try { return fs.existsSync(consentFile(String(sessionId || '').trim())); } catch { return false; }
+}
+/** Record the user's approval (persisted, so we ask only once). */
+export function grantBrowserConsent(sessionId: string): { ok: boolean } {
+  try { fs.mkdirSync(CONSENT_DIR, { recursive: true }); fs.writeFileSync(consentFile(String(sessionId || '').trim()), new Date().toISOString()); return { ok: true }; }
+  catch { return { ok: false }; }
+}
+/** Revoke approval (privacy / logout). */
+export function revokeBrowserConsent(sessionId: string): { ok: boolean } {
+  try { const f = consentFile(String(sessionId || '').trim()); if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
+  return { ok: true };
+}
+
 type SessionState = {
-  browser: Browser;
+  browser: Browser | null; // null when launched as a persistent profile context
   context: BrowserContext;
   page: Page;
   allowedOrigin: string | null;
@@ -293,6 +341,7 @@ export async function createSession(sessionId: string) {
   const viewport = getBrowserViewport();
 
   let browser: Browser | null = null;
+  let persistentContext: BrowserContext | null = null;
   const { BinaryService } = require('../services/BinaryService');
 
   /* MODIFIED: Logging and Fallback */
@@ -341,6 +390,39 @@ export async function createSession(sessionId: string) {
         await new Promise(r => setTimeout(r, delay));
       }
     }
+  } else if (isPersistentBrowserMode()) {
+    // Persistent local profile: a REAL Chrome/Chromium profile that keeps the
+    // user's logins across tasks. launchPersistentContext returns the CONTEXT
+    // directly (there is no separate Browser handle — context.browser() is null).
+    try {
+      const base = getChromiumLaunchOptions();
+      const profileDir = getBrowserProfileDir(sessionId);
+      fs.mkdirSync(profileDir, { recursive: true });
+      const persistentOpts: any = {
+        ...base,
+        viewport: { width: viewport.w, height: viewport.h },
+        locale: 'ar',
+        acceptDownloads: true,
+      };
+      // USE_SYSTEM_CHROME=1 -> the user's installed Google Chrome (their real
+      // browser). Falls back to the bundled Chromium build if Chrome is absent.
+      if ((parseBool(process.env.USE_SYSTEM_CHROME) ?? false)) { persistentOpts.channel = 'chrome'; delete persistentOpts.executablePath; }
+      try {
+        persistentContext = await chromium.launchPersistentContext(profileDir, persistentOpts);
+      } catch (inner) {
+        // channel:'chrome' not installed -> retry with the bundled Chromium.
+        delete persistentOpts.channel;
+        const exe = findChromiumExecutable(); if (exe) persistentOpts.executablePath = exe;
+        persistentContext = await chromium.launchPersistentContext(profileDir, persistentOpts);
+      }
+      try { console.log(`[BrowserManager] Persistent profile launched: ${profileDir} (${(parseBool(process.env.USE_SYSTEM_CHROME) ?? false) ? 'system Chrome' : 'bundled Chromium'})`); } catch { }
+    } catch (e: any) {
+      throw new Error(
+        `browser_launch_failed: ${e?.message || e}. ` +
+        `تعذّر تشغيل متصفح جو بملف التعريف الدائم. تأكّد من تثبيت Google Chrome، ` +
+        `أو أزل USE_SYSTEM_CHROME لاستخدام Chromium المرفق.`
+      );
+    }
   } else {
     try {
       browser = await chromium.launch(getChromiumLaunchOptions());
@@ -356,7 +438,7 @@ export async function createSession(sessionId: string) {
     }
   }
 
-  if (!browser) throw new Error('browser_connection_failed_after_retries');
+  if (!browser && !persistentContext) throw new Error('browser_connection_failed_after_retries');
 
   const userAgents = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -372,7 +454,9 @@ export async function createSession(sessionId: string) {
     try { console.log(`[BrowserManager] Restoring saved session for ${sessionId} (${savedState.cookies?.length || 0} cookies)`); } catch { }
   }
 
-  const context = await browser.newContext({
+  // In persistent-profile mode the profile IS the login state, so we reuse the
+  // context that launchPersistentContext already opened (and its first page).
+  const context = persistentContext ?? await browser!.newContext({
     viewport: { width: viewport.w, height: viewport.h },
     locale: 'ar',
     userAgent: selectedUA,
@@ -392,7 +476,7 @@ export async function createSession(sessionId: string) {
 
   context.setDefaultNavigationTimeout(cfg.navTimeoutMs);
   context.setDefaultTimeout(cfg.actionTimeoutMs);
-  const page = await context.newPage();
+  const page = persistentContext ? (context.pages()[0] || await context.newPage()) : await context.newPage();
 
   const state: SessionState = {
     browser,
@@ -547,7 +631,7 @@ export async function stopSession(sessionId: string) {
     s.streamTimer = null;
   }
   try { await s.context.close(); } catch { }
-  try { await s.browser.close(); } catch { }
+  try { if (s.browser) await s.browser.close(); } catch { }
 }
 
 export async function healthcheckBrowser() {

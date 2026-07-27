@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { ToolDefinition } from '../types';
-import { getBrowserSession, withBrowserConcurrency, startStreaming } from '../../browser/manager';
+import { getBrowserSession, withBrowserConcurrency, startStreaming, isPersistentBrowserMode, hasBrowserConsent, grantBrowserConsent } from '../../browser/manager';
 import { broadcastBrowserEvent } from '../../browser/wsHub';
 import { routeToModel } from '../../../core/llm/intelligent-router';
 import { broadcast } from '../../../api/ws';
@@ -1772,6 +1772,36 @@ export class BrowserAutofixTool implements ToolDefinition {
                 return { ok: true, output: { message, fixes, count: fixes.length, fixedFile: fixedHref, beforeScreenshot: beforeShot, afterScreenshot: afterShot, screenshot: afterShot, url: finalUrl } };
             });
         } catch (e: any) { return { ok: false, error: `autofix_failed: ${e?.message || e}` }; }
+    }
+}
+
+/* ============================================================
+   browser_consent — ask for / record the user's permission to
+   drive their LOCAL Chrome profile (their own account). Only
+   used when persistent-profile mode is enabled.
+   ============================================================ */
+export class BrowserConsentTool implements ToolDefinition {
+    name = 'browser_consent';
+    version = '1.0.0';
+    description = 'Ask for, or record, the user\'s one-time permission for Joe to use their local Chrome profile (their own logged-in account). grant=true records approval.';
+    tags = ['browser', 'consent', 'permission', 'privacy'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: { grant: { type: 'boolean' as const, description: 'true to record the user\'s approval' } },
+        required: [],
+    };
+    get parameters() { return this.inputSchema; }
+    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = true;
+
+    async execute(input: any, context?: any) {
+        const sessionId = browserSid(context);
+        if (input?.grant) {
+            grantBrowserConsent(sessionId);
+            const message = '✅ تم تفعيل متصفحك المحلي بحسابك.\n\nمن الآن سأفتح Chrome الخاص بك (ملف تعريف دائم). في أول مرة سجّل دخولك لحساباتك (Google، إلخ) داخل النافذة — وستبقى مسجّلاً للأبد بلا حاجة لكلمة مرور محفوظة.\n\nأعد إرسال طلبك الآن، مثلاً: «افتح المتصفح وابحث عن ...».';
+            return { ok: true, output: { message, consent: true } };
+        }
+        const message = '🔐 لكي أستخدم متصفحك المحلي (Chrome) بحسابك الشخصي، أحتاج موافقتك مرّة واحدة.\n\nاكتب: **أوافق**\n\n• لن أحفظ أي كلمة مرور — أنت تسجّل دخولك بنفسك داخل النافذة.\n• يبقى دخولك محفوظاً في ملف تعريف Chrome دائم خاص بك.\n• يمكنك سحب الموافقة في أي وقت.';
+        return { ok: true, output: { message, consent: false, needsConsent: true } };
     }
 }
 
