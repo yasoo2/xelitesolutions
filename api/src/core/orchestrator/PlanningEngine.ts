@@ -237,6 +237,33 @@ Rules:
             }
         } catch { /* consent module optional; never block planning */ }
 
+        // [BROWSER + FILE COMPOUND FAST-PATH] "browse/extract X, THEN write/save it to
+        // a file" is TWO tools in one request. Build a 2-node plan — browser extracts,
+        // then write_file consumes the browser result via {{FROM:browse}} — so the
+        // browser chains with the other tools instead of the fast-path stopping early.
+        {
+            const g = goalRaw;
+            const wantsFile = /(اكتب|اكتبها|احفظ|احفظها|دوّ?ن|خزّ?ن|صدّ?ر|صدّ?رها|write|save|export|store)/i.test(g)
+                && (/(ملف|file)/i.test(g) || /\.(txt|md|csv|json|html|log)\b/i.test(g));
+            if ((!!urlMatch || looksBrowser) && wantsFile) {
+                const fnameMatch = g.match(/\b([\w\-]+\.(?:txt|md|csv|json|html|log))\b/i)
+                    || g.match(/(?:ملف|file)\s+["']?([\w\-.]+)["']?/i);
+                let fname = (fnameMatch && fnameMatch[1]) ? fnameMatch[1] : 'joe-output.txt';
+                if (!/\.[a-z0-9]{2,5}$/i.test(fname)) fname += '.txt';
+                const browsePart = (g.split(/\s*(?:ثم|وبعدها|بعد\s*ذلك|بعدها|و?اكتبها?|و?احفظها?|then\b|and\s+then\b)\s*/i)[0] || g).trim() || g;
+                console.log(`[PlanningEngine] browser+file compound -> browse then write ${fname}`);
+                return {
+                    id: `browser_file_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [
+                        { id: 'browse', description: browsePart, tool: 'browser_run', agent: 'Browser', input: { task: browsePart, request: intent.goal }, dependsOn: [] },
+                        { id: 'save', description: `احفظ النتيجة في ${fname}`, tool: 'write_file', agent: 'Dev', input: { path: fname, content: '{{FROM:browse}}' }, dependsOn: ['browse'] },
+                    ],
+                    metadata: { complexity: 'high', riskLevel: 'medium' },
+                };
+            }
+        }
+
         // [BROWSER AGENT FAST-PATH] A request to LOG IN to a site, or to DO an
         // interactive action on a site (fill/post/book/order/send/subscribe…), needs
         // the closed-loop ReAct agent — not a one-shot search. Route it to the

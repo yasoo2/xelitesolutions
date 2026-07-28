@@ -269,25 +269,31 @@ export class AgentOrchestrator {
         const isDirectAnswer = node.tool === 'central_answer'
           || /^(answering|respond to)\s*:/i.test(node.task || '');
 
+        // Resolve {{FROM:<nodeId>}} references so a later node can CONSUME an earlier
+        // node's output — e.g. write the browser's extracted data into a file. This
+        // is what makes the browser chain with the other tools in one request.
+        const nodeInput = this.resolveInputRefs(node.input, dag);
+
         try {
           if (isDirectAnswer) {
-            const question = node.input?.question
+            const question = nodeInput?.question
               || (node.task || '').replace(/^(answering|respond to)\s*:\s*/i, '').trim()
               || node.task;
             result = await executeTool('central_answer', { question }, executionContext);
           } else if (node.tool === 'web_page_builder') {
             // Deterministic build tool — run it directly so the weak-model tool-picker
             // can't downgrade a "build a page" request back into a chat answer.
-            result = await executeTool('web_page_builder', node.input, executionContext);
-          } else if (typeof node.tool === 'string' && ((node.tool.startsWith('browser_') && node.tool !== 'browser_run') || node.tool === 'google_account' || node.tool === 'user_browser')) {
+            result = await executeTool('web_page_builder', nodeInput, executionContext);
+          } else if (typeof node.tool === 'string' && ((node.tool.startsWith('browser_') && node.tool !== 'browser_run') || node.tool === 'google_account' || node.tool === 'user_browser' || ['write_file', 'file_write', 'create_file', 'write_to_file', 'read_file', 'file_read'].includes(node.tool))) {
             // Deterministic tools (browser smart-tools, Google account, user's own
-            // browser) — run the exact tool directly so the weak-model tool-picker
-            // can't downgrade them or an agent mis-handle them as a browser task.
-            result = await executeTool(node.tool, node.input, executionContext);
+            // browser, file read/write) — run the exact tool directly so the weak-model
+            // tool-picker or a Dev agent can't mis-handle a node that already names its
+            // tool and carries a resolved input (e.g. write the browser's data to a file).
+            result = await executeTool(node.tool, nodeInput, executionContext);
           } else if (agent) {
-            result = await agent.execute(node.task, node.input, executionContext);
+            result = await agent.execute(node.task, nodeInput, executionContext);
           } else {
-            result = await executeTool(node.tool, { ...node.input, context: memory.getHistory() }, executionContext);
+            result = await executeTool(node.tool, { ...nodeInput, context: memory.getHistory() }, executionContext);
           }
         } catch (err: any) {
           result = { ok: false, error: err.message };
@@ -397,6 +403,34 @@ export class AgentOrchestrator {
 
     dag.status = "completed";
     return { ok: true, result: memory.getResults() };
+  }
+
+  /**
+   * Replace {{FROM:<nodeId>}} markers in a node's input with the referenced node's
+   * result, so one tool can consume another's output (browser -> file, etc.).
+   */
+  private resolveInputRefs(input: any, dag: any): any {
+    const textOf = (r: any): string => {
+      if (r == null) return '';
+      if (typeof r === 'string') return r;
+      const o = r.output ?? r;
+      return String(
+        o?.answer ?? o?.message ?? o?.summary ?? o?.text ??
+        (typeof o === 'string' ? o : JSON.stringify(o))
+      );
+    };
+    const walk = (v: any): any => {
+      if (typeof v === 'string') {
+        return v.replace(/\{\{\s*FROM:([a-zA-Z0-9_-]+)\s*\}\}/g, (_m, id) => {
+          const dep = (dag?.nodes || []).find((n: any) => n.id === id);
+          return dep ? textOf(dep.result) : '';
+        });
+      }
+      if (Array.isArray(v)) return v.map(walk);
+      if (v && typeof v === 'object') { const out: any = {}; for (const k of Object.keys(v)) out[k] = walk(v[k]); return out; }
+      return v;
+    };
+    try { return walk(input); } catch { return input; }
   }
 
   /**
