@@ -1,116 +1,112 @@
 import { BaseAgent } from './BaseAgent';
-import { executeTool } from '../../modules/services/ToolService';
 import intelligentRouter from '../../core/llm/intelligent-router';
+import { runReactBrowserTask, renderObservation, type Decider, type ReactAction } from '../../modules/browser/reactLoop';
 
 /**
- * BrowserAgent - Autonomous Web Interaction Specialist
+ * BrowserAgent — Autonomous Web Interaction Specialist.
+ *
+ * Runs a REAL closed observe→decide→act loop (see reactLoop.ts): it looks at the
+ * live page, asks the model for the single next action based on what is actually
+ * there, executes it, then looks again — repeating until the task is done or it
+ * needs the user (2FA / CAPTCHA / a missing credential). This replaces the old
+ * single-shot "plan the whole thing blind, then fire" behaviour.
  */
 export class BrowserAgent extends BaseAgent {
     public readonly name = "Browser-Automation";
     public readonly type = "Browser";
 
     async execute(task: string, input: any, context: any): Promise<{ ok: boolean; output: any; error?: string }> {
-        console.log(`[BrowserAgent] Executing Web Task: "${task}"`);
-        const sessionId = input.sessionId || context.sessionId || 'default-browser-session';
-
-        let actions: any[] = [];
-
-        // Attempt LLM plan generation
-        try {
-            const systemPrompt = `You are a Browser Automation Expert.
-Task: ${task}
-Session: ${sessionId}
-
-Translate this task into a sequence of browser actions.
-Available Actions: goto, click, type, hover, scroll, wait, key, extract_text, get_elements, click_coordinates.
-
-Return ONLY a JSON object with an "actions" array.
-Example: { "actions": [ { "type": "goto", "url": "..." }, { "type": "click", "selector": "..." } ] }`;
-
-            const messages = [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: task }
-            ];
-            
-            const responseText = await intelligentRouter.routeToModel(messages, {
-                type: 'browser_task',
-                complexity: 'medium',
-                requiresTools: true,
-                estimatedTokens: 1000,
-                language: 'en'
-            } as any);
-
-            try {
-                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-                const plan = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
-                if (Array.isArray(plan.actions) && plan.actions.length > 0) {
-                    actions = plan.actions;
-                }
-            } catch (e) {
-                // Ignore parse errors, fallback will trigger
-            }
-        } catch (error: any) {
-            console.warn(`[BrowserAgent] LLM plan generation failed (${error.message}), using deterministic browser fallback.`);
-        }
-
-        // [DETERMINISTIC FALLBACK] If LLM failed or generated empty actions, build actions from task keywords
-        if (actions.length === 0) {
-            const tLower = task.toLowerCase();
-            let targetUrl = '';
-
-            // Extract explicit URL
-            const urlMatch = task.match(/https?:\/\/[^\s]+/i);
-            if (urlMatch) {
-                targetUrl = urlMatch[0];
-            } else if (tLower.includes('ياهو') || tLower.includes('yahoo')) {
-                // Extract search terms after "عن" or "about" if present
-                const queryMatch = task.match(/(?:عن|about|for)\s+(.+)/i);
-                const query = queryMatch ? queryMatch[1].trim() : task;
-                targetUrl = `https://search.yahoo.com/search?p=${encodeURIComponent(query)}`;
-            } else if (tLower.includes('جوجل') || tLower.includes('غوغل') || tLower.includes('google')) {
-                const queryMatch = task.match(/(?:عن|about|for)\s+(.+)/i);
-                const query = queryMatch ? queryMatch[1].trim() : task;
-                targetUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-            } else if (tLower.includes('ويكيبيديا') || tLower.includes('wikipedia')) {
-                targetUrl = `https://ar.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(task)}`;
-            } else {
-                targetUrl = `https://www.google.com/search?q=${encodeURIComponent(task)}`;
-            }
-
-            console.log(`[BrowserAgent] Generated fallback target URL: ${targetUrl}`);
-            actions = [
-                { type: 'goto', url: targetUrl },
-                { type: 'wait', ms: 3000 }
-            ];
-        }
+        console.log(`[BrowserAgent] ReAct web task: "${task}"`);
+        const sessionId = input?.sessionId || context?.sessionId || 'default-browser-session';
+        const userId = String(context?.userId || input?.userId || '').trim();
+        const startUrl = deriveStartUrl(task);
 
         try {
-            // [EXECUTION] Call the browser_run tool with the generated actions
-            const result = await executeTool('browser_run', { 
+            const result = await runReactBrowserTask({
                 sessionId,
-                actions,
-                instructionText: task
-            }, {
-                sessionId,
-                workspaceId: context.workspaceId,
-                userId: context.userId,
-                traceId: context.traceId
+                userId,
+                task,
+                startUrl,
+                maxSteps: Number(process.env.BROWSER_AGENT_MAX_STEPS || 12),
+                decide: makeLlmDecider(),
             });
-
             return {
                 ok: result.ok,
-                output: result.output ?? null,
-                error: result.error
+                output: result,
+                error: result.ok ? undefined : result.summary,
             };
         } catch (error: any) {
-            return { ok: false, output: null, error: `Browser execution failed: ${error.message}` };
+            return { ok: false, output: null, error: `Browser execution failed: ${error?.message || error}` };
         }
     }
 
     public canHandle(task: string): number {
         const t = task.toLowerCase();
         if (t.includes('browser') || t.includes('web') || t.includes('click') || t.includes('navigate') || t.includes('متصفح')) return 0.9;
-        if (t.includes('search') || t.includes('بحث') || t.includes('افتح')) return 0.7;
+        if (t.includes('search') || t.includes('بحث') || t.includes('افتح') || t.includes('login') || t.includes('تسجيل')) return 0.7;
         return 0.1;
     }
+}
+
+/** The LLM "brain": turns the current observation into the next single action. */
+export function makeLlmDecider(): Decider {
+    return async ({ task, observation, history, stepBudgetLeft }) => {
+        const hist = history.slice(-6)
+            .map(s => `- ${JSON.stringify(s.action)} => ${s.ok ? 'ok' : 'FAILED:' + (s.note || '')}`)
+            .join('\n') || '(none yet)';
+
+        const system = `You are an autonomous web-browser agent controlling a REAL browser.
+Goal: ${task}
+
+Act ONE step at a time. Choose the single best next action based ONLY on what is
+actually present on the page right now (the ELEMENTS list). Respond with ONLY a
+JSON object — no prose. Allowed actions:
+{"action":"goto","url":"https://..."}
+{"action":"click","index":N}
+{"action":"type","index":N,"text":"..."}
+{"action":"key","key":"Enter"}
+{"action":"scroll","direction":"down"}
+{"action":"done","answer":"<short result for the user>"}
+{"action":"ask_user","message":"<what you need: a 2FA code, a CAPTCHA, or credentials>"}
+
+Rules:
+- Enter a username/email with text "{{SECRET:JOE_LOGIN_EMAIL}}".
+- Enter a password with text "{{SECRET:JOE_LOGIN_PASSWORD}}". NEVER write a real password literally.
+- If a CAPTCHA or a 2FA / OTP step is reached, use ask_user.
+- When the goal is clearly achieved, use done with a concise answer.
+- Steps left: ${stepBudgetLeft}.`;
+
+        const user = `Current page:\n${renderObservation(observation)}\n\nHistory of your actions:\n${hist}\n\nReturn ONLY the next action as JSON.`;
+
+        const text = await intelligentRouter.routeToModel(
+            [{ role: 'system', content: system }, { role: 'user', content: user }],
+            { type: 'browser_task', complexity: 'medium', requiresTools: false, estimatedTokens: 800, language: 'en' } as any
+        );
+        return parseAction(text);
+    };
+}
+
+/** Robustly extract a JSON action from a model response; fall back to ask_user. */
+export function parseAction(text: string): ReactAction {
+    try {
+        const m = String(text || '').match(/\{[\s\S]*\}/);
+        const obj = m ? JSON.parse(m[0]) : JSON.parse(String(text));
+        if (obj && typeof obj.action === 'string') return obj as ReactAction;
+    } catch { /* fall through */ }
+    return { action: 'ask_user', message: 'تعذّر فهم الخطوة التالية من النموذج. أعد صياغة الطلب بتفاصيل أوضح.' };
+}
+
+/** Give the loop a productive first page: an explicit URL if present, otherwise a
+ *  web search for the request. The loop then reacts to whatever actually loads. */
+export function deriveStartUrl(task: string): string | undefined {
+    const t = String(task || '');
+    const url = t.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
+    if (url) return url;
+    const tl = t.toLowerCase();
+    const q = (t.match(/(?:عن|about|for|ابحث(?:\s+عن)?|search)\s+(.+)/i)?.[1] || t).trim();
+    if (tl.includes('yahoo') || tl.includes('ياهو')) return `https://search.yahoo.com/search?p=${encodeURIComponent(q)}`;
+    if (tl.includes('wikipedia') || tl.includes('ويكيبيديا')) return `https://ar.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(q)}`;
+    // Only auto-search when the task reads like a lookup; login/site tasks let the brain goto.
+    if (/\b(search|find|بحث|ابحث)\b/i.test(t)) return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+    return undefined;
 }
