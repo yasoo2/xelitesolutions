@@ -49,3 +49,6 @@ api/logs/
 web/src/logs/
 **/logs/
 api/last_stable_commit
+
+# Joe local secrets (never commit)
+joe-secrets.ps1

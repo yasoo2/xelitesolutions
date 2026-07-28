@@ -25,6 +25,20 @@ $env:BROWSER_HEADED = "0"            # بلا نافذة خارجية — كل �
 # للعودة لملف تعريف معزول خاص بجو (بلا وراثة حسابك): اجعل USE_USER_BROWSER_PROFILE = "0"
 # لتحديد متصفح/مسار يدوياً:  $env:BROWSER_USER_DATA_DIR = "...";  $env:BROWSER_CHANNEL = "msedge"
 
+# --- الأسرار الخاصة بك (لا تُرفع إلى GitHub، لا تُمسح عند git pull) ---
+# ضع مفاتيحك (Google، إلخ) في ملف joe-secrets.ps1 بجانب هذا الملف. إنه مُتجاهَل
+# في .gitignore، فيبقى محفوظاً للأبد. انسخ joe-secrets.example.ps1 وسمِّه
+# joe-secrets.ps1 واملأه مرّة واحدة. مثال محتواه:
+#   $env:GOOGLE_CLIENT_ID = "....apps.googleusercontent.com"
+#   $env:GOOGLE_CLIENT_SECRET = "GOCSPX-...."
+$secretsFile = "$PSScriptRoot\joe-secrets.ps1"
+if (Test-Path $secretsFile) {
+    . $secretsFile
+    Write-Host "[secrets] تم تحميل joe-secrets.ps1" -ForegroundColor Green
+} else {
+    Write-Host "[secrets] لا يوجد joe-secrets.ps1 (انسخ joe-secrets.example.ps1 واملأه لتفعيل Google)." -ForegroundColor DarkYellow
+}
+
 $apiDir = "$PSScriptRoot\api"
 
 Write-Host "============================================" -ForegroundColor Cyan
