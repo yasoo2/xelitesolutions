@@ -19,6 +19,36 @@
    ============================================================ */
 import { getBrowserSession } from './manager';
 import { executePlannedActions } from './executor';
+import { broadcastBrowserEvent } from './wsHub';
+
+/** Emit one live narration event to the session's panel (best-effort, never throws). */
+function emitAgentStep(sessionId: string, ev: {
+  phase: 'observe' | 'decide' | 'act' | 'result' | 'done' | 'needs_user';
+  step: number; url?: string; title?: string; elementCount?: number;
+  action?: string; reason?: string; ok?: boolean; note?: string; message?: string;
+}) {
+  try { broadcastBrowserEvent(sessionId, { type: 'agent_step', ts: Date.now(), ...ev } as any); } catch { /* panel optional */ }
+}
+
+/** A short, human-readable, CREDENTIAL-SAFE description of an action (never the
+ *  real secret value — passwords/emails show as a label only). */
+function describeAction(a: ReactAction, o?: Observation): string {
+  switch (a.action) {
+    case 'goto': return `يفتح ${a.url}`;
+    case 'click': { const el = o?.elements.find(e => e.index === a.index); return `ينقر #${a.index}${el?.text ? ` «${el.text.slice(0, 30)}»` : ''}`; }
+    case 'type': {
+      const el = o?.elements.find(e => e.index === a.index);
+      const isSecret = /\{\{\s*SECRET\s*:/i.test(a.text || '');
+      const label = isSecret ? (/PASSWORD/i.test(a.text || '') ? 'كلمة المرور' : 'بيانات الدخول') : `«${String(a.text || '').slice(0, 24)}»`;
+      return `يكتب ${label}${el?.text ? ` في #${a.index} (${el.text.slice(0, 20)})` : ` في #${a.index}`}`;
+    }
+    case 'key': return `يضغط زر ${a.key}`;
+    case 'scroll': return `يمرّر ${a.direction === 'up' ? 'للأعلى' : 'للأسفل'}`;
+    case 'done': return 'أنهى المهمة';
+    case 'ask_user': return 'يطلب تدخّل المستخدم';
+    default: return String((a as any).action || '');
+  }
+}
 
 export interface ObservedElement {
   index: number;
@@ -178,6 +208,7 @@ export async function runReactBrowserTask(params: {
 
   for (let n = 1; n <= maxSteps; n++) {
     const observation = await observePage(page);
+    emitAgentStep(sessionId, { phase: 'observe', step: n, url: observation.url, title: observation.title, elementCount: observation.elements.length });
 
     let action: ReactAction;
     try {
@@ -185,14 +216,17 @@ export async function runReactBrowserTask(params: {
     } catch (e: any) {
       return finish('error', false, `تعذّر اتخاذ القرار: ${String(e?.message || e)}`);
     }
+    emitAgentStep(sessionId, { phase: 'decide', step: n, action: describeAction(action, observation), reason: (action as any).reason });
 
     // Terminal decisions.
     if (action.action === 'done') {
       steps.push({ n, action, ok: true, url: observation.url });
+      emitAgentStep(sessionId, { phase: 'done', step: n, message: action.answer, url: observation.url });
       return finish('done', true, 'أنجز الوكيل المهمة.', action.answer, observation.url);
     }
     if (action.action === 'ask_user') {
       steps.push({ n, action, ok: true, url: observation.url });
+      emitAgentStep(sessionId, { phase: 'needs_user', step: n, message: action.message, url: observation.url });
       return finish('needs_user', false, action.message || 'المهمة تحتاج تدخّلك.', undefined, observation.url);
     }
 
@@ -207,8 +241,11 @@ export async function runReactBrowserTask(params: {
     const execActions = toExecutorActions(action, observation);
     if (!execActions) {
       steps.push({ n, action, ok: false, note: 'invalid_action', url: observation.url });
+      emitAgentStep(sessionId, { phase: 'result', step: n, ok: false, note: 'إجراء غير صالح', action: describeAction(action, observation) });
       continue; // let the brain see it failed and choose again
     }
+
+    emitAgentStep(sessionId, { phase: 'act', step: n, action: describeAction(action, observation) });
 
     let res: any;
     try {
@@ -221,6 +258,7 @@ export async function runReactBrowserTask(params: {
     const missing = firstMissingSecret(res);
     if (missing) {
       steps.push({ n, action, ok: false, note: `missing_secret:${missing}`, url: page.url() });
+      emitAgentStep(sessionId, { phase: 'needs_user', step: n, message: `يحتاج بيانات: ${missing}`, url: page.url() });
       const out = finish('needs_user', false,
         `النظام يحتاج بيانات تسجيل الدخول (${missing}) لإكمال المهمة. زوّدني بها مرّة واحدة لتُحفظ بأمان.`,
         undefined, page.url());
@@ -229,6 +267,7 @@ export async function runReactBrowserTask(params: {
     }
 
     steps.push({ n, action, ok: Boolean(res?.ok), note: res?.ok ? undefined : String(res?.summary || 'step_failed'), url: page.url() });
+    emitAgentStep(sessionId, { phase: 'result', step: n, ok: Boolean(res?.ok), url: page.url(), note: res?.ok ? undefined : String(res?.summary || '').slice(0, 80) });
   }
 
   const finalUrl = (() => { try { return page.url(); } catch { return ''; } })();

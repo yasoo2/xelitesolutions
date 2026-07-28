@@ -90,6 +90,23 @@ export type DebugSnapshotEvent = {
   stopReason: string;
 };
 
+/** Live narration of the ReAct browser agent's observe→decide→act loop, streamed
+ *  to Joe's panel so the user watches the agent think and act step by step. */
+export type AgentStepEvent = {
+  type: 'agent_step';
+  ts: number;
+  phase: 'observe' | 'decide' | 'act' | 'result' | 'done' | 'needs_user';
+  step: number;
+  url?: string;
+  title?: string;
+  elementCount?: number;
+  action?: string;   // human-readable, credential-safe (never the real secret)
+  reason?: string;
+  ok?: boolean;
+  note?: string;
+  message?: string;
+};
+
 export type BrowserWsEvent =
   | StreamFrameEvent
   | CursorMoveEvent
@@ -100,7 +117,8 @@ export type BrowserWsEvent =
   | StepEvent
   | FinalReportEvent
   | FinalStatusEvent
-  | DebugSnapshotEvent;
+  | DebugSnapshotEvent
+  | AgentStepEvent;
 
 export type ElementType =
   | 'input'

@@ -14,7 +14,11 @@ type WsEvent =
   | { type: 'final_report'; ts: number; ok: boolean; summary: string; steps: any[]; evidence: any[] }
   | { type: 'final_success'; ts: number; summary: string }
   | { type: 'final_failed'; ts: number; summary: string; reason: string }
-  | { type: 'debug_snapshot'; ts: number; compiledPlanJson: any; actionsJson: any; actionCount: number; stopReason: string };
+  | { type: 'debug_snapshot'; ts: number; compiledPlanJson: any; actionsJson: any; actionCount: number; stopReason: string }
+  | { type: 'agent_step'; ts: number; phase: AgentPhase; step: number; url?: string; title?: string; elementCount?: number; action?: string; reason?: string; ok?: boolean; note?: string; message?: string };
+
+type AgentPhase = 'observe' | 'decide' | 'act' | 'result' | 'done' | 'needs_user';
+type AgentStep = { ts: number; phase: AgentPhase; step: number; text: string; ok?: boolean };
 
 type Props = { sessionId: string; showBoxes?: boolean };
 
@@ -35,6 +39,9 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const [actions, setActions] = useState<
     Array<{ ts: number; type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; actionId: string; actionType: string; summary?: string; reason?: string; error?: string }>
   >([]);
+  // Live narration of the autonomous agent's observe→decide→act loop.
+  const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
+  const [agentActive, setAgentActive] = useState(false);
 
   const boxesRef = useRef(boxes);
   const actionsRef = useRef(actions);
@@ -359,6 +366,27 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           setLastStep(`${msg.stepId}: ${msg.name}`);
           return;
         }
+        if (msg.type === 'agent_step') {
+          const m: any = msg;
+          const phase: AgentPhase = m.phase;
+          const text = (() => {
+            switch (phase) {
+              case 'observe': return `يراقب الصفحة${m.title ? ` — ${String(m.title).slice(0, 40)}` : ''} (${m.elementCount ?? 0} عنصر)`;
+              case 'decide': return `يقرّر: ${m.action || ''}${m.reason ? ` — ${m.reason}` : ''}`;
+              case 'act': return `ينفّذ: ${m.action || ''}`;
+              case 'result': return m.ok === false ? `فشلت الخطوة${m.note ? ` — ${m.note}` : ''}` : 'تمّت الخطوة';
+              case 'done': return `✅ أنهى المهمة${m.message ? ` — ${m.message}` : ''}`;
+              case 'needs_user': return `🙋 يحتاج تدخّلك${m.message ? ` — ${m.message}` : ''}`;
+              default: return String(m.action || m.message || phase);
+            }
+          })();
+          setAgentActive(phase !== 'done' && phase !== 'needs_user');
+          setAgentSteps(prev => {
+            const next = [...prev, { ts: m.ts || Date.now(), phase, step: Number(m.step || 0), text, ok: m.ok }];
+            return next.slice(-40);
+          });
+          return;
+        }
         if (msg.type === 'final_report') {
           setFinal({ ok: msg.ok, summary: msg.summary });
           return;
@@ -429,6 +457,48 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           stroke-linecap: round;
         }
       `}</style>
+        {agentSteps.length > 0 ? (
+          <div
+            dir="rtl"
+            style={{
+              position: 'absolute', top: 10, insetInlineEnd: 10, zIndex: 7,
+              width: 300, maxWidth: '46%', maxHeight: '70%', display: 'flex', flexDirection: 'column',
+              background: 'rgba(12,14,20,0.86)', color: '#e8eef7', borderRadius: 12,
+              border: '1px solid rgba(120,150,255,0.28)', boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
+              backdropFilter: 'blur(6px)', fontSize: 12.5, overflow: 'hidden',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: agentActive ? '#22c55e' : '#64748b',
+                boxShadow: agentActive ? '0 0 8px #22c55e' : 'none',
+                animation: agentActive ? 'joeAgentPulse 1.1s ease-in-out infinite' : 'none',
+              }} />
+              <strong style={{ flex: 1, fontSize: 13 }}>🤖 خطوات الوكيل</strong>
+              <button
+                onClick={() => setAgentSteps([])}
+                style={{ background: 'transparent', border: 'none', color: '#9fb2cc', cursor: 'pointer', fontSize: 12 }}
+                title="مسح"
+              >مسح</button>
+            </div>
+            <style>{`@keyframes joeAgentPulse{0%,100%{opacity:1}50%{opacity:0.35}}`}</style>
+            <div style={{ overflowY: 'auto', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {agentSteps.map((s, i) => {
+                const icon = s.phase === 'observe' ? '👁' : s.phase === 'decide' ? '🧠' : s.phase === 'act' ? '✋'
+                  : s.phase === 'result' ? (s.ok === false ? '⚠️' : '✓') : s.phase === 'done' ? '✅' : '🙋';
+                const dim = s.phase === 'observe' || s.phase === 'result';
+                return (
+                  <div key={i} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', opacity: dim ? 0.72 : 1, lineHeight: 1.5 }}>
+                    <span style={{ flexShrink: 0 }}>{icon}</span>
+                    <span style={{ flexShrink: 0, color: '#7f9bd6', fontVariantNumeric: 'tabular-nums' }}>#{s.step}</span>
+                    <span style={{ wordBreak: 'break-word' }}>{s.text}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         <canvas
           ref={canvasRef}
           tabIndex={0}
