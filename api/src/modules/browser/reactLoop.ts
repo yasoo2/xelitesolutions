@@ -49,6 +49,7 @@ function describeAction(a: ReactAction, o?: Observation): string {
       const label = isSecret ? (/PASSWORD/i.test(a.text || '') ? 'كلمة المرور' : 'بيانات الدخول') : `«${String(a.text || '').slice(0, 24)}»`;
       return `يكتب ${label}${el?.text ? ` في #${a.index} (${el.text.slice(0, 20)})` : ` في #${a.index}`}`;
     }
+    case 'select': { const el = o?.elements.find(e => e.index === a.index); return `يختار «${a.value}»${el?.text ? ` من #${a.index}` : ` من #${a.index}`}`; }
     case 'key': return `يضغط زر ${a.key}`;
     case 'scroll': return `يمرّر ${a.direction === 'up' ? 'للأعلى' : 'للأسفل'}`;
     case 'done': return 'أنهى المهمة';
@@ -78,6 +79,7 @@ export type ReactAction =
   | { action: 'goto'; url: string; reason?: string }
   | { action: 'click'; index: number; reason?: string }
   | { action: 'type'; index: number; text: string; reason?: string }
+  | { action: 'select'; index: number; value: string; reason?: string }
   | { action: 'key'; key: string; reason?: string }
   | { action: 'scroll'; direction?: 'up' | 'down'; reason?: string }
   | { action: 'done'; answer?: string; reason?: string }
@@ -111,6 +113,31 @@ export type Decider = (ctx: {
   stepBudgetLeft: number;
 }) => Promise<ReactAction>;
 
+/** Best-effort: dismiss a cookie/consent overlay so it doesn't block everything.
+ *  Clicks the first visible button whose text matches a common accept/close label.
+ *  Runs inside the page and returns what it clicked (for logging), or null. */
+export async function dismissConsent(page: any): Promise<string | null> {
+  try {
+    return await page.evaluate(() => {
+      const ACCEPT = /^(accept all|accept|agree|i agree|allow all|allow|got it|ok|okay|continue|قبول الكل|قبول|أوافق|موافق|موافقة|السماح|تم|فهمت|متابعة)$/i;
+      const cands = Array.from(document.querySelectorAll('button, a, [role=button], input[type=button], input[type=submit]')) as any[];
+      for (const el of cands) {
+        const r = el.getBoundingClientRect();
+        if (!(r.width > 0 && r.height > 0)) continue;
+        const t = String((el.innerText || el.value || el.getAttribute('aria-label') || '')).trim();
+        if (t && t.length <= 24 && ACCEPT.test(t)) { el.click(); return t; }
+      }
+      return null;
+    });
+  } catch { return null; }
+}
+
+/** Let dynamic content settle before observing (best-effort, short). */
+async function settle(page: any): Promise<void> {
+  try { await page.waitForLoadState('domcontentloaded', { timeout: 3000 }); } catch { /* ignore */ }
+  try { await page.waitForLoadState('networkidle', { timeout: 2500 }); } catch { /* ignore */ }
+}
+
 /** Read the live page into a compact, LLM-friendly observation. Every interactive
  *  element carries its on-screen center so actions can target it by coordinate. */
 export async function observePage(page: any): Promise<Observation> {
@@ -128,23 +155,28 @@ export async function observePage(page: any): Promise<Observation> {
       const tag = el.tagName.toLowerCase();
       const type = (el.getAttribute('type') || el.getAttribute('role') || '').toLowerCase() || undefined;
       const isPw = tag === 'input' && type === 'password';
-      const label =
+      let label =
         (el.getAttribute('aria-label') || '').trim() ||
         (!isPw ? (el.value || '').trim() : '') ||   // never expose a password field's value
         (el.textContent || '').trim() ||
         (el.getAttribute('placeholder') || '').trim() ||
         (el.getAttribute('name') || '').trim() ||
         (el.getAttribute('title') || '').trim();
+      // For a dropdown, expose its options so the brain can pick a valid value.
+      if (tag === 'select') {
+        const opts = Array.from(el.options || []).map((o: any) => (o.textContent || o.value || '').trim()).filter(Boolean).slice(0, 12);
+        if (opts.length) label = `${label ? label + ' ' : ''}[options: ${opts.join(' | ')}]`;
+      }
       out.push({
         index: i++,
         tag,
         type,
-        text: String(label).replace(/\s+/g, ' ').slice(0, 80),
+        text: String(label).replace(/\s+/g, ' ').slice(0, 140),
         x: Math.round(rect.x + rect.width / 2),
         y: Math.round(rect.y + rect.height / 2),
         isPassword: tag === 'input' && (type === 'password'),
       });
-      if (out.length >= 40) break;
+      if (out.length >= 50) break;
     }
     const snippet = (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 1200);
     return { elements: out, snippet };
@@ -183,6 +215,11 @@ function toExecutorActions(a: ReactAction, o: Observation): any[] | null {
     if (!el) return null;
     return [{ type: 'type', x: el.x, y: el.y, text: String(a.text ?? '') }];
   }
+  if (a.action === 'select') {
+    const el = o.elements.find(e => e.index === a.index);
+    if (!el) return null;
+    return [{ type: 'select', x: el.x, y: el.y, value: String(a.value ?? '') }];
+  }
   return null; // done / ask_user are terminal, not executor actions
 }
 
@@ -216,6 +253,13 @@ export async function runReactBrowserTask(params: {
   let repeat = 0;
 
   for (let n = 1; n <= maxSteps; n++) {
+    await settle(page); // wait for dynamic content to load
+    // Auto-dismiss a cookie/consent wall so it doesn't block the real task.
+    const dismissed = await dismissConsent(page);
+    if (dismissed) {
+      emitAgentStep(sessionId, { phase: 'act', step: n, action: `يتجاوز نافذة الموافقة («${dismissed}»)` });
+      await settle(page);
+    }
     const observation = await observePage(page);
     emitAgentStep(sessionId, { phase: 'observe', step: n, url: observation.url, title: observation.title, elementCount: observation.elements.length });
 

@@ -1100,6 +1100,43 @@ export async function executePlannedActions(params: {
           }
         }
 
+        if (name === 'select') {
+          const x = Number(a?.x);
+          const y = Number(a?.y);
+          const value = String(a?.value ?? a?.text ?? '').trim();
+          if (!Number.isFinite(x) || !Number.isFinite(y) || !value) {
+            results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: 'invalid_select' });
+            continue;
+          }
+          try {
+            const chosen = await page.evaluate((arg: { x: number; y: number; value: string }) => {
+              const at = document.elementFromPoint(arg.x, arg.y) as any;
+              const sel = (at && (at.tagName === 'SELECT' ? at : at.closest && at.closest('select'))) as HTMLSelectElement | null;
+              if (!sel) return null;
+              const norm = (s: any) => String(s || '').trim().toLowerCase();
+              const opts = Array.from(sel.options);
+              let opt = opts.find(o => norm(o.value) === norm(arg.value) || norm(o.textContent) === norm(arg.value))
+                || opts.find(o => norm(o.textContent).includes(norm(arg.value)) || norm(o.value).includes(norm(arg.value)));
+              if (!opt) return null;
+              sel.value = opt.value;
+              sel.dispatchEvent(new Event('input', { bubbles: true }));
+              sel.dispatchEvent(new Event('change', { bubbles: true }));
+              return opt.textContent || opt.value;
+            }, { x, y, value });
+            if (chosen == null) {
+              results.push({ stepId: sid, name, ok: false, reason: 'element_not_found', message: 'select_option_not_found' });
+              continue;
+            }
+            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { chosen } });
+            results.push({ stepId: sid, name, ok: true, message: String(chosen).slice(0, 80) });
+            try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+            continue;
+          } catch {
+            results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: 'select_failed' });
+            continue;
+          }
+        }
+
         if (name === 'thought') {
           const text = String(a?.text || '').trim();
           broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { thought: text } });

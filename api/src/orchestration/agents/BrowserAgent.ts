@@ -73,6 +73,7 @@ JSON object — no prose. Allowed actions:
 {"action":"goto","url":"https://..."}
 {"action":"click","index":N}
 {"action":"type","index":N,"text":"..."}
+{"action":"select","index":N,"value":"..."}   // choose an option in a dropdown (value must match one of its [options: ...])
 {"action":"key","key":"Enter"}
 {"action":"scroll","direction":"down"}
 {"action":"done","answer":"<short result for the user>"}
