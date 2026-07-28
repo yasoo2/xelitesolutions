@@ -279,9 +279,10 @@ export class AgentOrchestrator {
             // Deterministic build tool — run it directly so the weak-model tool-picker
             // can't downgrade a "build a page" request back into a chat answer.
             result = await executeTool('web_page_builder', node.input, executionContext);
-          } else if (typeof node.tool === 'string' && node.tool.startsWith('browser_') && node.tool !== 'browser_run') {
-            // Deterministic browser smart-tools — run the exact tool directly so the
-            // weak-model tool-picker can't downgrade them.
+          } else if (typeof node.tool === 'string' && ((node.tool.startsWith('browser_') && node.tool !== 'browser_run') || node.tool === 'google_account' || node.tool === 'user_browser')) {
+            // Deterministic tools (browser smart-tools, Google account, user's own
+            // browser) — run the exact tool directly so the weak-model tool-picker
+            // can't downgrade them or an agent mis-handle them as a browser task.
             result = await executeTool(node.tool, node.input, executionContext);
           } else if (agent) {
             result = await agent.execute(node.task, node.input, executionContext);
