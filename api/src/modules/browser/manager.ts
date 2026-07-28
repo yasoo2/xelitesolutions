@@ -39,6 +39,12 @@ export async function saveBrowserSession(sessionId: string): Promise<{ ok: boole
   if (!s) return { ok: false, error: 'no_active_session' };
   try {
     const storage = await s.context.storageState();
+    // Never persist an empty state — otherwise "logout then close" would recreate a
+    // meaningless state file and make hasSavedBrowserSession lie. Logout (which
+    // deletes the file) must stay logged out.
+    if (!storage.cookies?.length && !storage.origins?.length) {
+      return { ok: true, origins: 0, cookies: 0 };
+    }
     const plaintext = Buffer.from(JSON.stringify(storage), 'utf-8');
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', sessionKey(sid), iv);
@@ -84,6 +90,26 @@ export async function clearBrowserSession(sessionId: string): Promise<{ ok: bool
   try { const f = sessionStateFile(sid); if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
   try { const s = sessions.get(sid); if (s) await s.context.clearCookies(); } catch { /* ignore */ }
   return { ok: true };
+}
+
+/** Debounced AUTOMATIC save of a session's login state once navigation settles, so
+ *  any sign-in the user performs inside Joe's browser persists forever WITHOUT a
+ *  manual "save" step. This is what makes "log into the site once, stay logged in
+ *  across every later prompt" actually true. */
+function scheduleSessionSave(sessionId: string, delayMs = 2500) {
+  const sid = String(sessionId || '').trim();
+  const s = sessions.get(sid);
+  if (!s) return;
+  if (s.saveTimer) { try { clearTimeout(s.saveTimer); } catch { /* ignore */ } }
+  s.saveTimer = setTimeout(() => {
+    s.saveTimer = null;
+    void saveBrowserSession(sid).then(r => {
+      if (r.ok && (r.cookies || 0) > 0) {
+        try { console.log(`[BrowserManager] Auto-saved login state for ${sid} (${r.cookies} cookies)`); } catch { /* ignore */ }
+      }
+    }).catch(() => { /* non-fatal */ });
+  }, delayMs);
+  try { (s.saveTimer as any).unref?.(); } catch { /* ignore */ }
 }
 
 /* ============================================================
@@ -179,6 +205,7 @@ type SessionState = {
   captureLocked: boolean;
   viewport: { w: number; h: number };
   lastUsedAt: number;
+  saveTimer: NodeJS.Timeout | null; // debounced auto-save of login state
 };
 
 const sessions = new Map<string, SessionState>();
@@ -546,10 +573,14 @@ export async function createSession(sessionId: string) {
     captureLocked: false,
     viewport,
     lastUsedAt: Date.now(),
+    saveTimer: null,
   };
 
   page.on('framenavigated', (frame) => {
     if (frame !== page.mainFrame()) return;
+    // A top-level navigation just settled (often right after a login redirect):
+    // persist the login state automatically so the user stays signed in later.
+    try { scheduleSessionSave(sessionId); } catch { }
     try {
       broadcastStatus(sessionId, state, { workerStatus: 'idle' });
     } catch { }
@@ -687,6 +718,10 @@ export async function stopSession(sessionId: string) {
     try { clearInterval(s.streamTimer); } catch { }
     s.streamTimer = null;
   }
+  if (s.saveTimer) { try { clearTimeout(s.saveTimer); } catch { } s.saveTimer = null; }
+  // Capture the final login state before tearing the context down so the last
+  // sign-in of the session is never lost.
+  try { sessions.set(sid, s); await saveBrowserSession(sid); } catch { } finally { sessions.delete(sid); }
   try { await s.context.close(); } catch { }
   try { if (s.browser) await s.browser.close(); } catch { }
 }
