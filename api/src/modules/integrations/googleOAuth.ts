@@ -159,6 +159,35 @@ export async function handleCallback(code: string, userId: string): Promise<{ ok
   }
 }
 
+/** Exchange an auth code for tokens WITHOUT storing (used by unified login). */
+export async function exchangeCodeForTokens(code: string): Promise<(TokenRecord) | null> {
+  try {
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code, client_id: clientId(), client_secret: clientSecret(), redirect_uri: redirectUri(), grant_type: 'authorization_code' }).toString(),
+    });
+    const data: any = await res.json();
+    if (!res.ok || !data?.access_token) return null;
+    return { refresh_token: data.refresh_token, access_token: data.access_token, expiry: Date.now() + (Number(data.expires_in || 3600) * 1000), scope: data.scope };
+  } catch { return null; }
+}
+
+/** Fetch the Google profile for an access token (email/name/picture/sub). */
+export async function fetchUserInfo(accessToken: string): Promise<{ email?: string; name?: string; picture?: string; sub?: string } | null> {
+  try {
+    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!r.ok) return null;
+    return await r.json() as any;
+  } catch { return null; }
+}
+
+/** Persist tokens for a specific user id, preserving an existing refresh_token
+ *  if Google omitted it on this exchange. */
+export function saveTokensForUser(userId: string, rec: { refresh_token?: string; access_token?: string; expiry?: number; scope?: string; email?: string }) {
+  const existing = loadTokens(userId) || {};
+  saveTokens(userId, { ...existing, ...rec, refresh_token: rec.refresh_token || existing.refresh_token });
+}
+
 /** Return a valid access token for the user, refreshing it when expired. */
 export async function getAccessToken(userId: string): Promise<string | null> {
   let rec = loadTokens(userId);

@@ -274,9 +274,10 @@ const GoogleConnect: React.FC<{ t: (k: string, f: string) => string }> = ({ t })
     }, [load]);
 
     const connect = () => {
-        // Full-page navigation to the OAuth start (pass the token so the server can
-        // attribute the connection to this user even without a header).
-        window.location.href = `${API_URL}/oauth/google/start?token=${encodeURIComponent(token())}`;
+        // Reuse the ONE unified Google flow (identity + account scopes in a single
+        // consent). After consent it returns to /login#token=… which stores the
+        // session; the account tokens are stored server-side in the same step.
+        window.location.href = `${API_URL}/auth/google?returnTo=${encodeURIComponent(window.location.origin)}`;
     };
     const disconnect = async () => {
         setBusy(true);

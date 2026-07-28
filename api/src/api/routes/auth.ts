@@ -6,6 +6,7 @@ import { config } from '../../shared/config';
 import mongoose from 'mongoose';
 
 import { OAuth2Client } from 'google-auth-library';
+import { saveTokensForUser } from '../../modules/integrations/googleOAuth';
 
 const router = Router();
 
@@ -386,10 +387,17 @@ router.get('/google', (req: Request, res: Response) => {
     access_type: 'offline',
     response_type: 'code',
     prompt: 'consent',
-    scope: [
+    // ONE consent at login covers identity AND account access (Gmail/Calendar/
+    // Drive) — so there is no separate "connect" step later. Override the account
+    // scopes with GOOGLE_OAUTH_SCOPES if you want a lighter set.
+    scope: (String(process.env.GOOGLE_OAUTH_SCOPES || '').trim() || [
       'https://www.googleapis.com/auth/userinfo.profile',
       'https://www.googleapis.com/auth/userinfo.email',
-    ].join(' '),
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/drive.metadata.readonly',
+    ].join(' ')),
     state,
   };
 
@@ -484,6 +492,19 @@ router.get('/callback', async (req: Request, res: Response) => {
       user.picture = picture || user.picture;
       await user.save();
     }
+
+    // Persist the account tokens from this SAME consent so Joe can act in the
+    // user's Gmail/Calendar/Drive with no extra step (encrypted; refresh_token
+    // kept for long-lived access).
+    try {
+      saveTokensForUser(user._id.toString(), {
+        refresh_token: String((tokens as any).refresh_token || ''),
+        access_token: accessToken,
+        expiry: Number((tokens as any).expiry_date || 0) || (Date.now() + 3600 * 1000),
+        scope: String((tokens as any).scope || ''),
+        email: emailNormalized,
+      });
+    } catch { /* non-fatal: login still succeeds */ }
 
     const appToken = jwt.sign(
       {
