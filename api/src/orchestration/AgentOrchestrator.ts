@@ -335,6 +335,21 @@ export class AgentOrchestrator {
             continue;
           }
 
+          // Tools that report a "the user must do X" state — connect Google, install
+          // the browser extension, provide a 2FA code — are asking the USER to act.
+          // That is a legitimate answer to surface, NOT a system failure to "recover"
+          // from. Show the tool's own message instead of spawning a recovery loop.
+          const userActionableTool = typeof node.tool === 'string' &&
+            (node.tool === 'google_account' || node.tool === 'user_browser' || node.tool.startsWith('browser_'));
+          const toolMsg = (result as any)?.output?.message || (result as any)?.output?.summary;
+          if (userActionableTool && toolMsg) {
+            node.status = "completed";
+            node.result = toolMsg;
+            memory.record(node.id, node.task, String(toolMsg), "completed");
+            completedNodes.add(node.id);
+            continue;
+          }
+
           node.status = "failed";
           memory.record(node.id, node.task, result.error, "failed");
 
