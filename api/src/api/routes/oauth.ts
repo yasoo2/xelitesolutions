@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { authenticate } from '../middleware/auth';
 import { isGoogleOAuthConfigured, isConnected, getConnectedEmail, disconnect } from '../../modules/integrations/googleOAuth';
+import { config } from '../../shared/config';
 
 const router = Router();
 
@@ -17,7 +18,7 @@ function uid(req: Request): string {
       if (id) return id;
     } catch { /* fall through */ }
   }
-  return String(process.env.DEFAULT_USER_ID || 'local-user').trim();
+  return config.localUserId;
 }
 
 /** Connection status for the "Connect Google" card in Settings. */

@@ -34,9 +34,18 @@ const jwtSecret = (() => {
   throw new Error('JWT_SECRET must be set');
 })();
 
+// Canonical id for the single local user in auth-bypass (local single-user) mode.
+// Every subsystem that answers "who is the local user?" MUST converge on this exact
+// value. Otherwise Google OAuth tokens saved under one id are read under another
+// (google_token_unavailable), and the browser extension registers its socket under
+// one id while Joe's panel queries another ("not connected" despite a live socket).
+// Honors DEFAULT_USER_ID when set; the default matches the HTTP auth-bypass sub.
+const localUserId = (process.env.DEFAULT_USER_ID && process.env.DEFAULT_USER_ID.trim()) || '000000000000000000000001';
+
 export const config = {
   port: Number(process.env.PORT) || 5000,
   mongoUri,
   jwtSecret,
+  localUserId,
   allowedOrigins: (process.env.ALLOWED_ORIGINS?.split(',').map(s => s.trim()) || allowedOriginsDefault),
 };

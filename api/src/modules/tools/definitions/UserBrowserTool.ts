@@ -1,8 +1,9 @@
 import { ToolDefinition } from '../types';
 import { sendCommand, isExtensionConnected } from '../../extension/gateway';
+import { config } from '../../../shared/config';
 
 function ctxUser(context: any): string {
-  return String((context && (context.userId || context.auth?.sub)) || process.env.DEFAULT_USER_ID || 'local-user').trim();
+  return String((context && (context.userId || context.auth?.sub)) || config.localUserId).trim();
 }
 const isAr = (t: string) => /[؀-ۿ]/.test(String(t || ''));
 

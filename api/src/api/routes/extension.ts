@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
 import { sendCommand, isExtensionConnected } from '../../modules/extension/gateway';
+import { config } from '../../shared/config';
 
 const router = Router();
 
 function uid(req: Request): string {
-  return String((req as any).auth?.sub || (req as any).auth?.userId || process.env.DEFAULT_USER_ID || 'local-user').trim();
+  return String((req as any).auth?.sub || (req as any).auth?.userId || config.localUserId).trim();
 }
 
 /** Is the user's real browser (extension) connected? */

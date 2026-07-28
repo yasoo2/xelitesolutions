@@ -1,10 +1,11 @@
 import { ToolDefinition } from '../types';
 import { getAccessToken, isConnected, getConnectedEmail } from '../../integrations/googleOAuth';
+import { config } from '../../../shared/config';
 
 /** Resolve the acting user id from the run context (falls back to a local id;
  *  the token store also falls back to the last-connected account locally). */
 function ctxUser(context: any): string {
-  return String((context && (context.userId || context.auth?.sub)) || process.env.DEFAULT_USER_ID || 'local-user').trim();
+  return String((context && (context.userId || context.auth?.sub)) || config.localUserId).trim();
 }
 
 const isAr = (t: string) => /[؀-ۿ]/.test(String(t || ''));

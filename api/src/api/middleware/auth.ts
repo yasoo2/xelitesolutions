@@ -33,7 +33,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
   // FALLBACK: Only allow bypass in non-production environments
   if (isDev && process.env.ENABLE_AUTH_BYPASS === 'true') {
     console.warn('[AUTH] ⚠️ Auth bypass active (dev mode only). Do NOT use in production.');
-    (req as AuthenticatedRequest).auth = { sub: '000000000000000000000001', role: 'OWNER' };
+    (req as AuthenticatedRequest).auth = { sub: config.localUserId, role: 'OWNER' };
     return next();
   }
 
@@ -55,7 +55,7 @@ export function authenticateOptional(req: Request, res: Response, next: NextFunc
         // Invalid token - in dev mode with bypass, continue anyway
         if (isDev && process.env.ENABLE_AUTH_BYPASS === 'true') {
           console.warn('[AUTH] Invalid token provided, but auth bypass is active (dev mode)');
-          (req as AuthenticatedRequest).auth = { sub: '000000000000000000000001', role: 'OWNER' };
+          (req as AuthenticatedRequest).auth = { sub: config.localUserId, role: 'OWNER' };
           return next();
         }
         // In production or without bypass, reject invalid tokens
@@ -66,7 +66,7 @@ export function authenticateOptional(req: Request, res: Response, next: NextFunc
   
   // No token provided - allow in dev mode with bypass
   if (isDev && process.env.ENABLE_AUTH_BYPASS === 'true') {
-    (req as AuthenticatedRequest).auth = { sub: '000000000000000000000001', role: 'OWNER' };
+    (req as AuthenticatedRequest).auth = { sub: config.localUserId, role: 'OWNER' };
     return next();
   }
   

@@ -12,6 +12,7 @@
    ============================================================ */
 import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from 'http';
+import { config } from '../../shared/config';
 
 let wss: WebSocketServer | null = null;
 
@@ -60,7 +61,7 @@ export function attachExtensionWss(): WebSocketServer {
   if (wss) return wss;
   wss = new WebSocketServer({ noServer: true });
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-    const userId = String((req as any).auth?.sub || (req as any).auth?.userId || (req as any).__extUserId || 'local-user').trim();
+    const userId = String((req as any).auth?.sub || (req as any).auth?.userId || (req as any).__extUserId || config.localUserId).trim();
     addSocket(userId, ws);
     try { console.log(`[Extension] Browser connected for user=${userId} (total users=${sockets.size})`); } catch { }
     try { ws.send(JSON.stringify({ type: 'hello', ok: true })); } catch { }

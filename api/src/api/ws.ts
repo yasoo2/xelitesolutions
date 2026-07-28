@@ -263,6 +263,12 @@ export function attachWebSocket(server: Server) {
       } else if (!authBypass) {
         return reject(401, 'Unauthorized: Missing token');
       }
+      // In local single-user (bypass) mode with no token, pin the extension socket
+      // to the SAME canonical id the HTTP panel resolves to, so /api/extension/status
+      // and /action find this socket instead of reporting "not connected".
+      if (!(req as any).auth && authBypass) {
+        (req as any).auth = { sub: config.localUserId, role: 'OWNER' };
+      }
       if (!extensionWss) return reject(503, 'Service Unavailable');
       extensionWss.handleUpgrade(req, socket, head, (ws) => {
         console.log('[WS] Extension connection upgraded');
