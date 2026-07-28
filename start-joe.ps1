@@ -1,7 +1,7 @@
 ﻿# ============================================================
 # start-joe.ps1 — تشغيل Joe محلياً على المنفذ 5002 (ويندوز)
-# بلا مفتاح: يعمل على الذكاء المجاني (LLM7 / Pollinations)
-# يعيد التشغيل تلقائياً عند الانهيار
+# بلا مفتاح: يستخدم Ollama تلقائياً إن كان مُشغّلاً، وإلا الذكاء المجاني (LLM7 / Pollinations)
+# يثبّت متصفح Chromium تلقائياً أول مرّة، ويعيد التشغيل تلقائياً عند الانهيار
 # التشغيل:  انقر بزر الفأرة الأيمن على الملف -> "Run with PowerShell"
 #           أو من PowerShell:  ./start-joe.ps1
 # ============================================================
@@ -38,6 +38,28 @@ if (Test-Path $secretsFile) {
     Write-Host "[secrets] لا يوجد joe-secrets.ps1 (انسخ joe-secrets.example.ps1 واملأه لتفعيل Google)." -ForegroundColor DarkYellow
 }
 
+# --- دماغ الذكاء المحلي (Ollama) — يُكتشف تلقائياً إن كان يعمل ---
+# وكيل المتصفح يحتاج نموذجاً يقرّر خطواته. إن كان Ollama مُشغّلاً على جهازك، يستخدمه
+# جو تلقائياً (أسرع وأكثر خصوصية). وإلا يعمل على الذكاء المجاني عبر الإنترنت.
+if (-not $env:LOCAL_LLM_BASE_URL) {
+    try {
+        $tags = Invoke-RestMethod -Uri "http://localhost:11434/api/tags" -TimeoutSec 3 -ErrorAction Stop
+        $env:LOCAL_LLM_BASE_URL = "http://localhost:11434"
+        if (-not $env:LOCAL_LLM_MODEL) {
+            $preferred = @("qwen2.5-coder:7b", "qwen2.5-coder:latest", "qwen2.5:7b", "llama3.1", "llama3")
+            $available = @($tags.models | ForEach-Object { $_.name })
+            $pick = $null
+            foreach ($p in $preferred) { if ($available -contains $p) { $pick = $p; break } }
+            if (-not $pick -and $available.Count -gt 0) { $pick = $available[0] }
+            if ($pick) { $env:LOCAL_LLM_MODEL = $pick }
+        }
+        Write-Host "[brain] Ollama متصل — سيستخدمه جو (النموذج: $($env:LOCAL_LLM_MODEL))" -ForegroundColor Green
+    } catch {
+        Write-Host "[brain] Ollama غير مُشغّل — سيعمل جو على الذكاء المجاني عبر الإنترنت." -ForegroundColor DarkYellow
+        Write-Host "        (لتشغيل أقوى وأخصّ: ثبّت Ollama من https://ollama.com ثم شغّل: ollama pull qwen2.5-coder:7b)" -ForegroundColor DarkGray
+    }
+}
+
 $apiDir = "$PSScriptRoot\api"
 
 Write-Host "============================================" -ForegroundColor Cyan
@@ -65,6 +87,20 @@ if (-not (Test-Path "$apiDir\node_modules")) {
     }
 } else {
     Write-Host "`n[1/3] Dependencies already installed." -ForegroundColor Green
+}
+
+# [1b/3] تثبيت محرّك المتصفح (Chromium) الذي يستخدمه جو للتصفّح — مرّة واحدة فقط.
+# نعلّم بملف صغير حتى لا يُعاد التثبيت كل تشغيل. بدونه قد تظهر رسالة browser_launch_failed.
+$pwMarker = "$apiDir\.playwright-chromium-installed"
+if (-not (Test-Path $pwMarker)) {
+    Write-Host "`n[1b/3] Installing Joe's browser engine (Chromium) — first run only, قد يأخذ دقيقة..." -ForegroundColor Yellow
+    npx playwright install chromium
+    if ($LASTEXITCODE -eq 0) {
+        New-Item -ItemType File -Path $pwMarker -Force | Out-Null
+        Write-Host "[1b/3] Browser engine ready" -ForegroundColor Green
+    } else {
+        Write-Host "[!] تعذّر تثبيت Chromium الآن (قد يكون انقطاع إنترنت). سيُعاد المحاولة في التشغيل القادم." -ForegroundColor Red
+    }
 }
 
 # [2/3] بناء الـ API (تظهر الأخطاء إن وُجدت)
