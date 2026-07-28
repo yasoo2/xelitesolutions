@@ -160,6 +160,25 @@ Rules:
             };
         }
 
+        // [MY-BROWSER FAST-PATH] "... in my (real) browser" -> drive the user's OWN
+        // browser through the installed Joe extension (their logins, any site).
+        {
+            const g = intent.goal || '';
+            const myBrowser = /(في|بـ?|على)?\s*متصفّ?حي(\s*(الشخصي|الحقيقي))?|بمتصفّ?حي|my\s+(own\s+)?browser|in\s+my\s+browser|on\s+my\s+browser/i.test(g);
+            if (myBrowser) {
+                const urlM = g.match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);
+                const action = urlM ? 'open' : /(اقرأ|لخّ?ص|read|summar)/i.test(g) ? 'read' : /(لقطة|screenshot|صورة)/i.test(g) ? 'screenshot' : 'open';
+                const input: any = { action, request: intent.goal };
+                if (urlM) input.url = urlM[0].startsWith('http') ? urlM[0] : `https://${urlM[0]}`;
+                return {
+                    id: `mybrowser_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{ id: 'user_browser', description: `user_browser ${action}`, tool: 'user_browser', agent: 'General', input, dependsOn: [] }],
+                    metadata: { complexity: 'low', riskLevel: 'low' },
+                };
+            }
+        }
+
         // [GOOGLE ACCOUNT FAST-PATH] "read my email / calendar / drive" -> act in the
         // user's connected Google account via official APIs (needs OAuth connect first).
         {

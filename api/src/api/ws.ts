@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import { config } from '../shared/config';
 import { attachBrowserWss } from '../modules/browser/wsHub';
+import { attachExtensionWss } from '../modules/extension/gateway';
 import { startStreaming, stopStreaming } from '../modules/browser/manager';
 import { ServerConfigModel } from '../shared/models/ServerConfigModel';
 
@@ -114,6 +115,7 @@ export interface LiveEvent {
 export function attachWebSocket(server: Server) {
   liveWssRef = new WebSocketServer({ noServer: true });
   browserWssRef = new WebSocketServer({ noServer: true });
+  const extensionWss = attachExtensionWss();
   attachBrowserWss(browserWssRef, { onFirstClient: startStreaming, onLastClient: stopStreaming });
 
   liveWssRef.on('connection', (ws, req: IncomingMessage) => {
@@ -247,6 +249,24 @@ export function attachWebSocket(server: Server) {
       browserWssRef.handleUpgrade(req, socket, head, (ws) => {
         console.log('[WS] Browser connection upgraded');
         browserWssRef?.emit('connection', ws, req);
+      });
+      return;
+    }
+    if (url.pathname === '/ws/extension' || url.pathname === '/api/ws/extension') {
+      // The user's installed browser extension connecting to drive their real
+      // browser. Authenticated by the user's Joe JWT (token query param).
+      const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
+      const token = url.searchParams.get('token') || '';
+      if (token) {
+        try { (req as any).auth = jwt.verify(token, config.jwtSecret); }
+        catch (e: any) { if (!authBypass) return reject(401, 'Unauthorized: Invalid token'); }
+      } else if (!authBypass) {
+        return reject(401, 'Unauthorized: Missing token');
+      }
+      if (!extensionWss) return reject(503, 'Service Unavailable');
+      extensionWss.handleUpgrade(req, socket, head, (ws) => {
+        console.log('[WS] Extension connection upgraded');
+        extensionWss.emit('connection', ws, req);
       });
       return;
     }
