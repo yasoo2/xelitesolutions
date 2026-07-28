@@ -42,6 +42,11 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   // Live narration of the autonomous agent's observe→decide→act loop.
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [agentActive, setAgentActive] = useState(false);
+  // When the agent pauses for the user (missing credential / 2FA code), we collect
+  // the value here and resume the same task on the same live session.
+  const [pendingInput, setPendingInput] = useState<{ message: string; secretKey: string } | null>(null);
+  const [inputValue, setInputValue] = useState('');
+  const [resuming, setResuming] = useState(false);
 
   const boxesRef = useRef(boxes);
   const actionsRef = useRef(actions);
@@ -156,6 +161,26 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         signal,
       });
     } catch { }
+  };
+
+  // Send the user-provided credential / 2FA code and resume the paused task.
+  const submitResume = async () => {
+    const sid = String(sessionId || '').trim();
+    const val = inputValue.trim();
+    if (!sid || !pendingInput || !val || resuming) return;
+    const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
+    setResuming(true);
+    try {
+      await fetch(`${API_URL}/browser-agent/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ sessionId: sid, key: pendingInput.secretKey, value: val }),
+      });
+      // The agent will resume and stream new steps; clear the prompt now.
+      setPendingInput(null);
+      setInputValue('');
+    } catch { /* leave the prompt so the user can retry */ }
+    finally { setResuming(false); }
   };
 
   const syncQueueLen = () => {
@@ -385,6 +410,13 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
             const next = [...prev, { ts: m.ts || Date.now(), phase, step: Number(m.step || 0), text, ok: m.ok }];
             return next.slice(-40);
           });
+          // Pause for user input when the agent needs a credential / 2FA code; clear
+          // the prompt as soon as the agent starts moving again (it resumed).
+          if (phase === 'needs_user' && (m.secretKey || /بيانات|كود|رمز|2fa|otp/i.test(m.message || ''))) {
+            setPendingInput({ message: String(m.message || 'الوكيل يحتاج بيانات للمتابعة'), secretKey: String(m.secretKey || 'JOE_2FA_CODE') });
+          } else if (phase === 'observe' || phase === 'act' || phase === 'done') {
+            setPendingInput(null);
+          }
           return;
         }
         if (msg.type === 'final_report') {
@@ -497,6 +529,28 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
                 );
               })}
             </div>
+            {pendingInput ? (
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', padding: '10px', background: 'rgba(37,99,235,0.1)' }}>
+                <div style={{ marginBottom: 6, color: '#ffd479' }}>🙋 {pendingInput.message}</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    type={/PASSWORD/i.test(pendingInput.secretKey) ? 'password' : 'text'}
+                    value={inputValue}
+                    onChange={e => setInputValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') submitResume(); }}
+                    placeholder={/2FA|OTP|CODE/i.test(pendingInput.secretKey) ? 'أدخل رمز التحقّق' : /EMAIL/i.test(pendingInput.secretKey) ? 'أدخل البريد' : /PASSWORD/i.test(pendingInput.secretKey) ? 'أدخل كلمة المرور' : 'أدخل القيمة المطلوبة'}
+                    autoFocus
+                    style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(120,150,255,0.4)', background: '#0f1420', color: '#e8eef7', fontSize: 13 }}
+                  />
+                  <button
+                    onClick={submitResume}
+                    disabled={resuming || !inputValue.trim()}
+                    style={{ padding: '8px 12px', borderRadius: 8, border: 0, background: resuming ? '#475569' : '#2563eb', color: '#fff', cursor: resuming ? 'default' : 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}
+                  >{resuming ? '…' : 'إرسال ومتابعة'}</button>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 11, color: '#8ba0be' }}>🔒 يُرسَل بأمان ويُخزَّن مشفّراً — لا يظهر في السجلّ ولا في اللقطات.</div>
+              </div>
+            ) : null}
           </div>
         ) : null}
         <canvas

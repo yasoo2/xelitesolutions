@@ -25,9 +25,16 @@ import { broadcastBrowserEvent } from './wsHub';
 function emitAgentStep(sessionId: string, ev: {
   phase: 'observe' | 'decide' | 'act' | 'result' | 'done' | 'needs_user';
   step: number; url?: string; title?: string; elementCount?: number;
-  action?: string; reason?: string; ok?: boolean; note?: string; message?: string;
+  action?: string; reason?: string; ok?: boolean; note?: string; message?: string; secretKey?: string;
 }) {
   try { broadcastBrowserEvent(sessionId, { type: 'agent_step', ts: Date.now(), ...ev } as any); } catch { /* panel optional */ }
+}
+
+/** Remembers the last task run per session so a user "provide credentials / 2FA"
+ *  action can RESUME the exact same task on the same live session. */
+const lastTaskBySession = new Map<string, string>();
+export function getLastTaskForSession(sessionId: string): string | undefined {
+  return lastTaskBySession.get(String(sessionId || '').trim());
 }
 
 /** A short, human-readable, CREDENTIAL-SAFE description of an action (never the
@@ -74,7 +81,7 @@ export type ReactAction =
   | { action: 'key'; key: string; reason?: string }
   | { action: 'scroll'; direction?: 'up' | 'down'; reason?: string }
   | { action: 'done'; answer?: string; reason?: string }
-  | { action: 'ask_user'; message: string; reason?: string };
+  | { action: 'ask_user'; message: string; reason?: string; secretKey?: string };
 
 export interface ReactStep {
   n: number;
@@ -194,6 +201,8 @@ export async function runReactBrowserTask(params: {
   const maxSteps = Math.max(1, Math.min(30, params.maxSteps || 12));
   const steps: ReactStep[] = [];
 
+  lastTaskBySession.set(sessionId, task); // enable resume-after-user-input
+
   const session = await getBrowserSession(sessionId);
   const page = session.page;
 
@@ -226,8 +235,13 @@ export async function runReactBrowserTask(params: {
     }
     if (action.action === 'ask_user') {
       steps.push({ n, action, ok: true, url: observation.url });
-      emitAgentStep(sessionId, { phase: 'needs_user', step: n, message: action.message, url: observation.url });
-      return finish('needs_user', false, action.message || 'المهمة تحتاج تدخّلك.', undefined, observation.url);
+      // If the agent is stuck on a 2FA/OTP step, tell the panel which secret to collect.
+      const key = (action as any).secretKey
+        || (/2fa|otp|رمز|كود|تحقّ?ق|verification|one[- ]?time/i.test(action.message || '') ? 'JOE_2FA_CODE' : undefined);
+      emitAgentStep(sessionId, { phase: 'needs_user', step: n, message: action.message, url: observation.url, secretKey: key });
+      const out = finish('needs_user', false, action.message || 'المهمة تحتاج تدخّلك.', undefined, observation.url);
+      if (key) out.missingSecret = key;
+      return out;
     }
 
     // Loop guard: identical action + same URL repeated 3x => stuck.
@@ -258,7 +272,7 @@ export async function runReactBrowserTask(params: {
     const missing = firstMissingSecret(res);
     if (missing) {
       steps.push({ n, action, ok: false, note: `missing_secret:${missing}`, url: page.url() });
-      emitAgentStep(sessionId, { phase: 'needs_user', step: n, message: `يحتاج بيانات: ${missing}`, url: page.url() });
+      emitAgentStep(sessionId, { phase: 'needs_user', step: n, message: `يحتاج بيانات: ${missing}`, url: page.url(), secretKey: missing });
       const out = finish('needs_user', false,
         `النظام يحتاج بيانات تسجيل الدخول (${missing}) لإكمال المهمة. زوّدني بها مرّة واحدة لتُحفظ بأمان.`,
         undefined, page.url());

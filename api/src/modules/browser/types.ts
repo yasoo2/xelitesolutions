@@ -105,6 +105,7 @@ export type AgentStepEvent = {
   ok?: boolean;
   note?: string;
   message?: string;
+  secretKey?: string; // on needs_user: which secret the panel should collect (e.g. JOE_2FA_CODE)
 };
 
 export type BrowserWsEvent =

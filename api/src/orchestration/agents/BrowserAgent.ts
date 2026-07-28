@@ -19,7 +19,11 @@ export class BrowserAgent extends BaseAgent {
         console.log(`[BrowserAgent] ReAct web task: "${task}"`);
         const sessionId = input?.sessionId || context?.sessionId || 'default-browser-session';
         const userId = String(context?.userId || input?.userId || '').trim();
-        const startUrl = deriveStartUrl(task);
+        // On RESUME (after the user supplied credentials / a 2FA code) do NOT
+        // re-navigate to the start URL — continue from the live page where the
+        // agent paused. Otherwise start the task at a productive first page.
+        const resume = Boolean(input?.resume);
+        const startUrl = resume ? undefined : deriveStartUrl(task);
 
         try {
             const result = await runReactBrowserTask({
@@ -30,10 +34,15 @@ export class BrowserAgent extends BaseAgent {
                 maxSteps: Number(process.env.BROWSER_AGENT_MAX_STEPS || 12),
                 decide: makeLlmDecider(),
             });
+            // A pause for the user (2FA / missing credential) is NOT a failure — the
+            // node completed its attempt and is waiting for input. Report it as ok so
+            // the orchestrator surfaces it (and the live panel prompts) instead of
+            // trying to "recover" from a non-error.
+            const pausedForUser = result.status === 'needs_user';
             return {
-                ok: result.ok,
+                ok: result.ok || pausedForUser,
                 output: result,
-                error: result.ok ? undefined : result.summary,
+                error: (result.ok || pausedForUser) ? undefined : result.summary,
             };
         } catch (error: any) {
             return { ok: false, output: null, error: `Browser execution failed: ${error?.message || error}` };
@@ -72,7 +81,8 @@ JSON object — no prose. Allowed actions:
 Rules:
 - Enter a username/email with text "{{SECRET:JOE_LOGIN_EMAIL}}".
 - Enter a password with text "{{SECRET:JOE_LOGIN_PASSWORD}}". NEVER write a real password literally.
-- If a CAPTCHA or a 2FA / OTP step is reached, use ask_user.
+- For a 2FA / OTP / verification-code field, type into it with text "{{SECRET:JOE_2FA_CODE}}" (the system will pause and ask the user for the code, then resume).
+- If a CAPTCHA (image/puzzle) is reached, use ask_user (a text code cannot solve it).
 - When the goal is clearly achieved, use done with a concise answer.
 - Steps left: ${stepBudgetLeft}.`;
 
