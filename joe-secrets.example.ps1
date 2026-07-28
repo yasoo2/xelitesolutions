@@ -1,17 +1,11 @@
-# ============================================================
-# joe-secrets.example.ps1 — قالب أسرار جو
-# ------------------------------------------------------------
-# انسخ هذا الملف وسمِّه:  joe-secrets.ps1  (بجانب start-joe.ps1)
-# ثم ضع مفاتيحك الحقيقية بالأسفل. ملف joe-secrets.ps1 مُتجاهَل في .gitignore،
-# فلا يُرفع إلى GitHub ولا يُمسح عند git pull / git checkout — يبقى للأبد.
-#
-# بعد إنشائه، شغّل .\start-joe.ps1 كالمعتاد؛ سيُحمّل تلقائياً.
-# ============================================================
+# joe-secrets.example.ps1  ->  copy to  joe-secrets.ps1  and fill in your keys.
+# joe-secrets.ps1 is gitignored: never uploaded to GitHub, never wiped by git pull.
+# Keep the VALUES in plain ASCII (English/numbers). Then run .\start-joe.ps1.
 
-# --- Google (البريد / التقويم / Drive) ---
-$env:GOOGLE_CLIENT_ID = "ضع_الClient_ID_هنا.apps.googleusercontent.com"
-$env:GOOGLE_CLIENT_SECRET = "ضع_الClient_Secret_هنا"
+# --- Google (Gmail / Calendar / Drive) ---
+$env:GOOGLE_CLIENT_ID = "PASTE_CLIENT_ID_HERE.apps.googleusercontent.com"
+$env:GOOGLE_CLIENT_SECRET = "PASTE_CLIENT_SECRET_HERE"
 
-# --- أضف أي أسرار أخرى هنا لاحقاً (Microsoft، مزوّدات LLM، إلخ) ---
+# --- Add other secrets later if needed ---
 # $env:OPENAI_API_KEY = "..."
 # $env:GROQ_API_KEY = "..."
