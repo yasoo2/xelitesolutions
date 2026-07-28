@@ -187,7 +187,11 @@ Rules:
             const calList = /(تقويم|مواعيد|أجندة|اجندة|calendar|events?|اجتماعات)/i.test(g);
             const driveList = /(درايف|ملفاتي|drive|ملفات\s*جوجل)/i.test(g);
             const sendMail = /(أرسل|ارسل|ابعث|send)\s+(بريد|ايميل|إيميل|رسالة|mail|email)/i.test(g);
-            if (gmailRead || calList || driveList || sendMail) {
+            // Guard: "log in to https://mail.<site>" is a SITE login, not "read my
+            // Gmail" — the word "mail" inside the URL must not hijack it to the API.
+            const hasUrl = /https?:\/\/|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)\b/i.test(g);
+            const loginToSite = /(سجّ?ل|تسجيل)\s*(ال)?دخول|سجّ?ل\s*دخول|ادخل(ني)?|log\s*-?\s*in|log\s*in|sign\s*-?\s*in|signin/i.test(g);
+            if ((gmailRead || calList || driveList || sendMail) && !(hasUrl && loginToSite)) {
                 const action = sendMail ? 'gmail_send' : calList ? 'calendar_list' : driveList ? 'drive_list' : 'gmail_list';
                 const input: any = { action, request: intent.goal };
                 if (action === 'gmail_list') { const q = g.match(/(?:عن|من|بخصوص|about|from)\s+(.+)$/i); if (q) input.query = q[1].trim(); }
@@ -232,6 +236,37 @@ Rules:
                 }
             }
         } catch { /* consent module optional; never block planning */ }
+
+        // [BROWSER AGENT FAST-PATH] A request to LOG IN to a site, or to DO an
+        // interactive action on a site (fill/post/book/order/send/subscribe…), needs
+        // the closed-loop ReAct agent — not a one-shot search. Route it to the
+        // "Browser" agent via a browser_run node (the orchestrator sends browser_run
+        // nodes through the agent, which runs observe→decide→act until done or it
+        // needs the user for 2FA/CAPTCHA/credentials). Placed AFTER the my-browser and
+        // Google-account fast-paths so those keep priority, and after the consent gate.
+        {
+            const g = goalRaw;
+            const loginIntent = /(سجّ?ل|تسجيل)\s*(ال)?دخول|سجّ?ل\s*دخول|ادخل(ني)?\s*(إلى|الى|على)?\s*(حساب|موقع)|دخّ?لني\s*(إلى|الى|على)|log\s*-?\s*in|log\s*in|sign\s*-?\s*in|signin|log-in/i.test(g);
+            const actionVerb = /(املأ|عبّ?ئ|انشر|احجز|اطلب|أرسل|ارسل|اشترك|قدّ?م|علّ?ق|أضف|اضف|ادفع|اشترِ?ي?|صوّ?ت|احجز|سجّ?لني|fill\s+in|fill\s+out|submit|post|publish|book|order|subscribe|apply|comment|checkout|add\s+to\s+cart|purchase|\bbuy\b|reserve|register|sign\s*up)/i.test(g);
+            const siteRef = !!urlMatch || /(موقع|منصّ?ة|حساب|بوابة|لوحة\s*تحكم|site|website|portal|account|dashboard)/i.test(g);
+            const isReactTask = (loginIntent && (siteRef || !!urlMatch)) || (!!urlMatch && actionVerb);
+            if (isReactTask) {
+                console.log(`[PlanningEngine] browser-agent (ReAct) fast-path -> "${g.slice(0, 80)}"`);
+                return {
+                    id: `browser_agent_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'browser_task',
+                        description: intent.goal,                 // becomes node.task for the agent
+                        tool: 'browser_run',                      // excluded from direct-tool path -> runs the agent
+                        agent: 'Browser',
+                        input: { task: intent.goal, request: intent.goal },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'high', riskLevel: 'medium' },
+                };
+            }
+        }
 
         // [SEARCH HAS PRIORITY] A request with an explicit search verb ("ابحث عن X",
         // "search for X") is a SEARCH — even when it's wrapped in "افتح المتصفح و…".

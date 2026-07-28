@@ -540,10 +540,14 @@ export async function createSession(sessionId: string) {
 
   // In persistent-profile mode the profile IS the login state, so we reuse the
   // context that launchPersistentContext already opened (and its first page).
+  // Opt-in for users behind a TLS-inspecting corporate proxy (their proxy signs
+  // pages with a CA the bundled Chromium doesn't trust). Default OFF.
+  const ignoreHttpsErrors = (parseBool(process.env.BROWSER_IGNORE_HTTPS_ERRORS) ?? false);
   const context = persistentContext ?? await browser!.newContext({
     viewport: { width: viewport.w, height: viewport.h },
     locale: 'ar',
     userAgent: selectedUA,
+    ignoreHTTPSErrors: ignoreHttpsErrors,
     extraHTTPHeaders: {
       'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
     },
