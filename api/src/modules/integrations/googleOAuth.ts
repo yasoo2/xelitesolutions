@@ -109,6 +109,7 @@ export function isConnected(userId: string): boolean { return !!(loadTokens(user
 export function getConnectedEmail(userId: string): string | undefined { return loadTokens(userId)?.email || loadTokens(PRIMARY_KEY)?.email; }
 export function disconnect(userId: string): { ok: boolean } {
   try { const f = tokenFile(userId); if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
+  try { const f = tokenFile(PRIMARY_KEY); if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
   return { ok: true };
 }
 
@@ -208,10 +209,22 @@ export async function getAccessToken(userId: string): Promise<string | null> {
       }).toString(),
     });
     const data: any = await res.json();
-    if (!res.ok || !data?.access_token) return null;
+    if (!res.ok || !data?.access_token) {
+      try { console.warn(`[GoogleOAuth] refresh failed (${res.status}): ${data?.error || ''} ${data?.error_description || ''}`.trim()); } catch { }
+      // invalid_grant = the refresh token was revoked/expired -> force reconnect.
+      if (data?.error === 'invalid_grant') { try { clearTokensEverywhere(userId); } catch { } }
+      return null;
+    }
     rec.access_token = data.access_token;
     rec.expiry = Date.now() + (Number(data.expires_in || 3600) * 1000);
+    if (data.refresh_token) rec.refresh_token = data.refresh_token;
     saveTokens(userId, rec);
     return rec.access_token || null;
-  } catch { return null; }
+  } catch (e: any) { try { console.warn(`[GoogleOAuth] refresh error: ${e?.message || e}`); } catch { } return null; }
+}
+
+/** Remove tokens for a user AND the primary mirror (used on invalid_grant). */
+function clearTokensEverywhere(userId: string) {
+  try { const f = tokenFile(userId); if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
+  try { const f = tokenFile(PRIMARY_KEY); if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
 }
