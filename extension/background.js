@@ -8,6 +8,7 @@ let ws = null;
 let joeToken = '';
 let joeOrigin = '';
 let controlledTabId = null;
+let streamTimer = null;
 
 async function loadState() {
   const s = await chrome.storage.local.get(['joeToken', 'joeOrigin', 'controlledTabId']);
@@ -76,12 +77,68 @@ function waitForLoad(tabId, timeout) {
   });
 }
 
+// ---- Live streaming of the controlled tab into Joe's panel ----
+async function captureAndSend() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  try {
+    const tab = await getTargetTab();
+    if (!tab) return;
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 45 });
+    ws.send(JSON.stringify({ type: 'frame', dataUrl, url: tab.url, title: tab.title }));
+  } catch (e) { /* capture can fail on protected pages; ignore */ }
+}
+function startStream() {
+  if (streamTimer) return;
+  captureAndSend();
+  streamTimer = setInterval(captureAndSend, 800); // ~1.2 fps, light on CPU/quota
+}
+function stopStream() { if (streamTimer) { clearInterval(streamTimer); streamTimer = null; } }
+
 async function handleCommand(cmd, args) {
+  if (cmd === 'startStream') { startStream(); return { streaming: true }; }
+  if (cmd === 'stopStream') { stopStream(); return { streaming: false }; }
+  if (cmd === 'click_xy' || cmd === 'type_keys') {
+    const tab = await getTargetTab(); if (!tab) throw new Error('no_tab');
+    if (cmd === 'click_xy') {
+      const out = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, args: [Number(args.xRatio) || 0, Number(args.yRatio) || 0],
+        func: (xr, yr) => {
+          const x = Math.round(xr * window.innerWidth), y = Math.round(yr * window.innerHeight);
+          const el = document.elementFromPoint(x, y);
+          if (!el) return { clicked: false };
+          el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y }));
+          el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y }));
+          el.click && el.click();
+          if (/input|textarea|select/i.test(el.tagName)) el.focus();
+          return { clicked: true };
+        }
+      });
+      setTimeout(captureAndSend, 400);
+      return out && out[0] && out[0].result;
+    }
+    // type_keys: insert text into the focused element
+    const out = await chrome.scripting.executeScript({
+      target: { tabId: tab.id }, args: [String(args.text || '')],
+      func: (text) => {
+        const el = document.activeElement;
+        if (!el) return { typed: false };
+        if (text === '\n') { el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); const f = el.form; if (f && f.requestSubmit) f.requestSubmit(); return { typed: true, enter: true }; }
+        if (text === '\b') { if ('value' in el) el.value = String(el.value).slice(0, -1); }
+        else if ('value' in el) { el.value = (el.value || '') + text; }
+        else if (el.isContentEditable) { document.execCommand('insertText', false, text); }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return { typed: true };
+      }
+    });
+    setTimeout(captureAndSend, 200);
+    return out && out[0] && out[0].result;
+  }
   if (cmd === 'navigate') {
     let tab = await getTargetTab();
     if (!tab) { tab = await chrome.tabs.create({ url: args.url }); controlledTabId = tab.id; await chrome.storage.local.set({ controlledTabId }); }
     else { await chrome.tabs.update(tab.id, { url: args.url }); }
     await waitForLoad(tab.id);
+    startStream(); // show the result live in Joe's panel
     const info = await chrome.tabs.get(tab.id);
     return { url: info.url, title: info.title };
   }

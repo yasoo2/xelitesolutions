@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 
 import ModernBrowserStream from './ModernBrowserStream';
+import MyBrowserView from './MyBrowserView';
 import { API_URL } from '../config';
 
 interface EmbeddedBrowserProps {
@@ -36,6 +37,7 @@ export default function EmbeddedBrowser({
     const [isLoading, setIsLoading] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
     const [showUrlInput, setShowUrlInput] = useState(false);
+    const [showMine, setShowMine] = useState(false); // false = Joe's browser, true = user's real browser
     const inputRef = useRef<HTMLInputElement>(null);
 
     // Listen for session status from ModernBrowserStream
@@ -265,6 +267,13 @@ export default function EmbeddedBrowser({
 
                 {/* Extra actions */}
                 <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    <button
+                        onClick={() => setShowMine(v => !v)}
+                        title={showMine ? 'متصفح جو' : 'متصفحي الشخصي'}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 8, fontSize: 11, cursor: 'pointer', border: '1px solid var(--joe-border)', background: showMine ? '#1a73e8' : 'transparent', color: showMine ? '#fff' : 'var(--joe-text-secondary)', whiteSpace: 'nowrap' }}
+                    >
+                        {showMine ? '🧩 متصفحي' : 'متصفح جو'}
+                    </button>
                     <BrowserButton
                         icon={saveState === 'saved' ? Check : saveState === 'error' ? X : LogIn}
                         tooltip={saveState === 'saving' ? 'جارٍ الحفظ…' : saveState === 'saved' ? 'تم حفظ الجلسة' : saveState === 'error' ? 'فشل الحفظ' : 'احفظ تسجيل الدخول (تبقى مسجّلاً)'}
@@ -275,10 +284,9 @@ export default function EmbeddedBrowser({
                 </div>
             </div>
 
-            {/* Browser View */}
+            {/* Browser View — Joe's browser, or the user's own real browser (extension) */}
             <div style={{ flex: 1, overflow: 'hidden' }}>
-                <ModernBrowserStream sessionId={sessionId} showBoxes={true} />
-
+                {showMine ? <MyBrowserView /> : <ModernBrowserStream sessionId={sessionId} showBoxes={true} />}
             </div>
         </div>
     );

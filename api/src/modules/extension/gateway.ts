@@ -73,8 +73,16 @@ export function attachExtensionWss(): WebSocketServer {
         const p = pending.get(msg.id)!; pending.delete(msg.id); clearTimeout(p.timer);
         if (msg.ok === false) p.reject(new Error(String(msg.error || 'extension_error')));
         else p.resolve(msg.result !== undefined ? msg.result : msg);
+        return;
       }
-      // (Unsolicited events like page changes could be handled here later.)
+      // Live frame of the user's real browser -> forward to their Joe panel so it
+      // appears live INSIDE Joe (lazy require avoids a circular import with ws.ts).
+      if (msg && msg.type === 'frame' && msg.dataUrl) {
+        try {
+          const { broadcast } = require('../../api/ws');
+          broadcast({ type: 'user_browser_frame', targetUserId: userId, data: { userId, dataUrl: msg.dataUrl, url: msg.url || '', title: msg.title || '' } });
+        } catch { /* broadcast unavailable */ }
+      }
     });
 
     ws.on('close', () => { removeSocket(userId, ws); try { console.log(`[Extension] Browser disconnected for user=${userId}`); } catch { } });
