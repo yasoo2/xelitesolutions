@@ -121,8 +121,12 @@ Return ONLY a JSON object:
         // بين X و Y» is NOT hijacked to the browser).
         const weakWebVerb = /(افتح|انظر|صِ?ف|وصف|لخّ?ص|ترجم|انقر|استخرج|open\b|describe|summari|translate|click|extract)/i.test(probe);
         const webNoun = knownSite || /(متصفح|موقع|صفحة|رابط|الويب|browser|site|page|link|web)/i.test(probe);
-        // Unmistakable web request: a URL, a strong web verb, or a weak verb + web noun.
-        if (!(hasUrl || strongWebVerb || (weakWebVerb && webNoun))) return null;
+        // A page-interaction verb + a UI-element noun («اضغط على الزر», "click the
+        // button") is a continuation of the open page — unmistakably a browser task.
+        const interactUi = /(اضغط|انقر|اختر|اكتب|أدخل|مرّ?ر|انزل|عبّ?ئ|املأ|حدّ?د|click|press|scroll|select|type|fill)/i.test(probe)
+            && /(زر|الزر|حقل|الحقل|خانة|القائمة|قائمة|رابط|مربع|صندوق|التبويب|button|field|link|menu|dropdown|checkbox|tab|box|input)/i.test(probe);
+        // Unmistakable web request: URL, strong web verb, weak verb + noun, or UI interaction.
+        if (!(hasUrl || strongWebVerb || interactUi || (weakWebVerb && webNoun))) return null;
         return {
             goal: raw,
             complexity: 'medium',

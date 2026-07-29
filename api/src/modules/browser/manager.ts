@@ -210,6 +210,19 @@ type SessionState = {
 
 const sessions = new Map<string, SessionState>();
 
+/** True when a browser session is live on a REAL page (not blank/about:blank) —
+ *  i.e. the user is currently looking at a loaded site. Used by the planner to
+ *  route bare interaction verbs («اضغط على الزر») as a CONTINUATION of that page
+ *  instead of a fresh request or a text answer. Defaults to the panel session. */
+export function hasLiveBrowserPage(sessionId = 'panel-browser'): boolean {
+  const s = sessions.get(String(sessionId || '').trim());
+  if (!s) return false;
+  try {
+    const u = String(s.page.url() || '');
+    return !!u && u !== 'about:blank' && !u.startsWith('chrome://');
+  } catch { return false; }
+}
+
 function broadcastStatus(sessionId: string, s: SessionState, extra?: { workerStatus?: string; blockingReason?: string }) {
   const sid = String(sessionId || '').trim();
   if (!sid) return;

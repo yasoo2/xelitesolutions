@@ -204,7 +204,12 @@ Rules:
             // browse->email task (handled below), not a bare "read my Gmail". The word
             // "بريد/mail" here is the delivery channel, not the target — don't hijack it.
             const emailCompound = /[\w.+-]+@[\w-]+\.[\w.-]+/.test(probe) && /(أرسل|ارسل|ابعث|أبعث|send)/i.test(probe) && hasUrl;
-            if ((gmailRead || calList || driveList || sendMail) && !(hasUrl && loginToSite) && !emailCompound) {
+            // Guard: "type in the email FIELD" / "click the mail button" is a page
+            // interaction (the word «بريد/mail» names a form field, not the inbox) —
+            // let the continue-on-live-page path below handle it, not the Gmail API.
+            const pageInteraction = /(اضغط|انقر|اختر|عبّ?ئ|املأ|اكتب|حدّ?د|click|press|select|type|fill)/i.test(probe)
+                && /(زر|الزر|حقل|الحقل|خانة|القائمة|مربع|صندوق|button|field|menu|box|input)/i.test(probe);
+            if ((gmailRead || calList || driveList || sendMail) && !(hasUrl && loginToSite) && !emailCompound && !pageInteraction) {
                 const action = sendMail ? 'gmail_send' : calList ? 'calendar_list' : driveList ? 'drive_list' : 'gmail_list';
                 const input: any = { action, request: intent.goal };
                 if (action === 'gmail_list') { const q = g.match(/(?:عن|من|بخصوص|about|from)\s+(.+)$/i); if (q) input.query = q[1].trim(); }
@@ -249,6 +254,42 @@ Rules:
                 }
             }
         } catch { /* consent module optional; never block planning */ }
+
+        // [CONTINUE-ON-LIVE-PAGE FAST-PATH] A bare interaction verb with NO URL
+        // («اضغط على زر تسجيل الدخول», «اكتب في الحقل», «انزل تحت», «اختر من القائمة»,
+        // "click the login button", "scroll down") is a CONTINUATION of the page the
+        // user is already looking at — not a fresh request and definitely not a text
+        // answer. Route it to the ReAct agent, which (with no start URL) observes the
+        // CURRENT live page and acts on it. Fires when EITHER a UI-element noun is
+        // present (deterministic) OR a browser page is actually live right now. Guarded
+        // so «اكتب لي قصيدة» / «اشرح لي كذا» (no UI noun, verb used generally) never
+        // gets hijacked.
+        {
+            const g = goalRaw;
+            const interactVerb = /(اضغط|انقر|اختر|اكتب|أدخل|ادخل\s*في|مرّ?ر|انزل|اصعد|اسحب|عبّ?ئ|املأ|فعّ?ل|حدّ?د|ارجع|تابع|أكمل|اكمل|click|press|tap|scroll|select|choose|type|enter|fill|check|toggle|submit|go\s+back|continue)/i.test(probe);
+            const noUrl = !urlMatch;
+            const uiNoun = /(زر|الزر|زرّ|حقل|الحقل|خانة|القائمة|قائمة|رابط|الرابط|مربع|صندوق|الأيقونة|ايقونة|التبويب|علامة\s*التبويب|button|field|link|menu|dropdown|checkbox|icon|tab|box|input)/i.test(probe);
+            let pageLive = false;
+            try { const mgr = require('../../modules/browser/manager'); pageLive = !!(mgr.hasLiveBrowserPage && mgr.hasLiveBrowserPage()); } catch { /* optional */ }
+            if (interactVerb && noUrl && (uiNoun || pageLive)) {
+                console.log(`[PlanningEngine] continue-on-live-page -> browser_run (resume) "${g.slice(0, 60)}"`);
+                return {
+                    id: `browser_continue_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'browser_task',
+                        description: intent.goal,
+                        tool: 'browser_run',
+                        agent: 'Browser',
+                        // resume:true => the agent does NOT re-navigate; it acts on the
+                        // page currently open in the panel session.
+                        input: { task: intent.goal, request: intent.goal, resume: true },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
+        }
 
         // [BROWSER + EMAIL COMPOUND FAST-PATH] "browse/extract X, THEN email it to
         // someone@site" — browser extracts, then google_account/gmail_send consumes the

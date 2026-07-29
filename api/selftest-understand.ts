@@ -75,6 +75,20 @@ async function main() {
   const q8 = IntentParser.quickIntent('صف لي الفرق بين المتغيرات الثابتة والمتغيرة');
   check('"صف الفرق بين..." is NOT hijacked to browser', q8 === null, JSON.stringify(q8));
 
+  // ---- continue-on-live-page: the bug where «اضغط على الزر» got a TEXT answer ----
+  const p9 = await plan('اضغط على زر تسجيل الدخول');
+  check('bare "click the login button" -> browser_run (not a text answer)', p9.steps[0]?.tool === 'browser_run', p9.steps[0]?.tool);
+  check('continuation runs in resume mode (no re-navigation)', p9.steps[0]?.input?.resume === true);
+  const p10 = await plan('اكتب في حقل البريد الإلكتروني');
+  check('"type in the email field" -> browser_run', p10.steps[0]?.tool === 'browser_run', p10.steps[0]?.tool);
+  const p11 = await plan('انزل تحت واختر من القائمة');
+  check('"scroll down and pick from the menu" -> browser_run', p11.steps[0]?.tool === 'browser_run', p11.steps[0]?.tool);
+  // Guard: a general "write/click" with NO UI noun and no live page must NOT be hijacked.
+  const p12 = await plan('اكتب لي قصيدة عن الوطن');
+  check('"write me a poem" is NOT hijacked to the browser', p12.steps[0]?.tool !== 'browser_run', p12.steps[0]?.tool);
+  const q9 = IntentParser.quickIntent('اضغط على الزر الأزرق');
+  check('interaction+UI verb fires fast intent', !!q9 && q9.suggestedAgent === 'Browser');
+
   console.log(`\n${failures === 0 ? 'ALL GREEN' : failures + ' FAILURE(S)'}`);
   process.exit(failures === 0 ? 0 : 1);
 }
