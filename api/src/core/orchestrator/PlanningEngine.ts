@@ -269,9 +269,16 @@ Rules:
             const interactVerb = /(اضغط|انقر|اختر|اكتب|أدخل|ادخل\s*في|مرّ?ر|انزل|اصعد|اسحب|عبّ?ئ|املأ|فعّ?ل|حدّ?د|ارجع|تابع|أكمل|اكمل|click|press|tap|scroll|select|choose|type|enter|fill|check|toggle|submit|go\s+back|continue)/i.test(probe);
             const noUrl = !urlMatch;
             const uiNoun = /(زر|الزر|زرّ|حقل|الحقل|خانة|القائمة|قائمة|رابط|الرابط|مربع|صندوق|الأيقونة|ايقونة|التبويب|علامة\s*التبويب|button|field|link|menu|dropdown|checkbox|icon|tab|box|input)/i.test(probe);
+            // A navigation TARGET in the task (a known site, or an "open/go to <site>"
+            // phrase) means this is NOT a pure continuation of the current page — it must
+            // navigate first. Let the login / ReAct fast-paths below handle it (they
+            // derive a start URL). Without this guard, «ادخل على جيت هاب واضغط الزر…»
+            // was hijacked into resume-mode and never left the current page.
+            const hasNavTarget = /(جيت\s*هاب|github|يوتيوب|youtube|فيس\s*بوك|facebook|تويتر|twitter|انست[غق]رام|instagram|جيميل|gmail|لينكد\s*ان|linkedin|ريديت|reddit|ويكيبيديا|wikipedia|امازون|amazon|نتفليكس|netflix|واتساب|whatsapp|تيك\s*توك|tiktok)/i.test(probe)
+                || /((ادخل|روح|اذهب)\s*(على|الى|إلى|ل)\s*\S+|افتح\s+(موقع|صفحة|رابط|\S+\.\S+)|go\s*to\s+\S+|open\s+\S+\.\S+|visit\s+\S+)/i.test(probe);
             let pageLive = false;
             try { const mgr = require('../../modules/browser/manager'); pageLive = !!(mgr.hasLiveBrowserPage && mgr.hasLiveBrowserPage()); } catch { /* optional */ }
-            if (interactVerb && noUrl && (uiNoun || pageLive)) {
+            if (interactVerb && noUrl && !hasNavTarget && (uiNoun || pageLive)) {
                 console.log(`[PlanningEngine] continue-on-live-page -> browser_run (resume) "${g.slice(0, 60)}"`);
                 return {
                     id: `browser_continue_${Date.now()}`,
@@ -358,8 +365,12 @@ Rules:
             // blind one-shot browser_launch that just opens the URL and stops. Without
             // this, «افتح URL وصِف لي ما تراه» fell to the plain open fast-path.
             const describeIntent = /(صِ?ف|وصف|اوصف|أوصف|انظر|أنظر|شاهد|اطّ?لع|ماذا\s*(ترى|يوجد|فيها?)|ما\s*الذي\s*(تراه|فيها?)|ما\s*محتوى|أخبرني\s*(عن|بما)|اخبرني\s*(عن|بما)|describe|what\s*(do\s*you\s*)?see|what'?s\s*on|tell\s*me\s*(about|what))/i.test(probe);
-            const siteRef = !!urlMatch || /(موقع|منصّ?ة|حساب|بوابة|لوحة\s*تحكم|site|website|portal|account|dashboard)/i.test(probe);
-            const isReactTask = (loginIntent && (siteRef || !!urlMatch)) || (!!urlMatch && (actionVerb || describeIntent));
+            // A named well-known site counts as a site reference too, so «سجّل الدخول
+            // على جيت هاب» (no URL, no literal «موقع») still routes to the ReAct agent.
+            const knownSite = /(جيت\s*هاب|github|يوتيوب|youtube|فيس\s*بوك|facebook|تويتر|twitter|انست[غق]رام|instagram|جيميل|gmail|لينكد\s*ان|linkedin|ريديت|reddit|امازون|amazon|نتفليكس|netflix|واتساب|whatsapp|تيك\s*توك|tiktok)/i.test(probe);
+            const siteRef = !!urlMatch || knownSite || /(موقع|منصّ?ة|حساب|بوابة|لوحة\s*تحكم|site|website|portal|account|dashboard)/i.test(probe);
+            const hasTarget = !!urlMatch || knownSite;
+            const isReactTask = (loginIntent && siteRef) || (hasTarget && (actionVerb || describeIntent));
             if (isReactTask) {
                 console.log(`[PlanningEngine] browser-agent (ReAct) fast-path -> "${g.slice(0, 80)}"`);
                 return {

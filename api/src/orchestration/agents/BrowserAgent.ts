@@ -243,12 +243,37 @@ export function parseAction(text: string): ReactAction {
     return { action: 'ask_user', message: 'تعذّر فهم الخطوة التالية من النموذج. أعد صياغة الطلب بتفاصيل أوضح.' };
 }
 
+/** Resolve a well-known site named in words/transliteration (any language) to its
+ *  URL, so «ادخل على جيت هاب» / "go to youtube" actually navigates there. */
+export function knownSiteUrl(task: string): string | undefined {
+    const t = `${String(task || '')}\n${normalizeIntentText(task)}`.toLowerCase();
+    const sites: Array<[RegExp, string]> = [
+        [/جيت\s*هاب|github/i, 'https://github.com'],
+        [/يوتيوب|youtube/i, 'https://www.youtube.com'],
+        [/فيس\s*بوك|facebook/i, 'https://www.facebook.com'],
+        [/تويتر|twitter|\bx\.com\b/i, 'https://twitter.com'],
+        [/انست[غق]رام|instagram/i, 'https://www.instagram.com'],
+        [/لينكد\s*ان|linkedin/i, 'https://www.linkedin.com'],
+        [/ريديت|reddit/i, 'https://www.reddit.com'],
+        [/جيميل|gmail/i, 'https://mail.google.com'],
+        [/ويكيبيديا|wikipedia/i, 'https://www.wikipedia.org'],
+        [/امازون|amazon/i, 'https://www.amazon.com'],
+        [/نتفليكس|netflix/i, 'https://www.netflix.com'],
+        [/واتساب|whatsapp/i, 'https://web.whatsapp.com'],
+        [/تيك\s*توك|tiktok/i, 'https://www.tiktok.com'],
+    ];
+    for (const [re, u] of sites) if (re.test(t)) return u;
+    return undefined;
+}
+
 /** Give the loop a productive first page: an explicit URL if present, otherwise a
  *  web search for the request. The loop then reacts to whatever actually loads. */
 export function deriveStartUrl(task: string): string | undefined {
     const t = String(task || '');
     const url = t.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
     if (url) return url;
+    const site = knownSiteUrl(t);   // «ادخل على جيت هاب» -> https://github.com
+    if (site) return site;
     const tl = t.toLowerCase();
     const q = (t.match(/(?:عن|about|for|ابحث(?:\s+عن)?|search)\s+(.+)/i)?.[1] || t).trim();
     if (tl.includes('yahoo') || tl.includes('ياهو')) return `https://search.yahoo.com/search?p=${encodeURIComponent(q)}`;

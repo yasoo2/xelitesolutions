@@ -89,6 +89,18 @@ async function main() {
   const q9 = IntentParser.quickIntent('اضغط على الزر الأزرق');
   check('interaction+UI verb fires fast intent', !!q9 && q9.suggestedAgent === 'Browser');
 
+  // ---- navigation target must NAVIGATE, not resume on the current page ----
+  const { deriveStartUrl, knownSiteUrl } = await import('./src/orchestration/agents/BrowserAgent');
+  check('«جيت هاب» resolves to github.com', knownSiteUrl('ادخل على جيت هاب') === 'https://github.com', knownSiteUrl('ادخل على جيت هاب'));
+  check('«يوتيوب» resolves to youtube', knownSiteUrl('افتح يوتيوب') === 'https://www.youtube.com');
+  check('deriveStartUrl navigates to the named site', deriveStartUrl('ادخل على جيت هاب وسجل الدخول') === 'https://github.com');
+  const p13 = await plan('ادخل على جيت هاب واضغط على زر تسجيل الدخول ومن ثم انتظر مني الايميل والباسورد');
+  check('login-with-site is NOT resume-hijacked (navigates first)', p13.steps[0]?.input?.resume !== true, JSON.stringify({ tool: p13.steps[0]?.tool, resume: p13.steps[0]?.input?.resume }));
+  check('login-with-site routes to browser_run', p13.steps[0]?.tool === 'browser_run', p13.steps[0]?.tool);
+  // A PURE interaction (no site) still uses resume mode.
+  const p14 = await plan('اضغط على زر تسجيل الدخول');
+  check('pure interaction still resumes on current page', p14.steps[0]?.input?.resume === true);
+
   console.log(`\n${failures === 0 ? 'ALL GREEN' : failures + ' FAILURE(S)'}`);
   process.exit(failures === 0 ? 0 : 1);
 }
