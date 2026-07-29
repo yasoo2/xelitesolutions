@@ -95,12 +95,14 @@ export interface ReactStep {
 
 export interface ReactResult {
   ok: boolean;
-  status: 'done' | 'needs_user' | 'max_steps' | 'stuck' | 'error';
+  status: 'done' | 'needs_user' | 'max_steps' | 'stuck' | 'error' | 'unverified';
   summary: string;
   answer?: string;
   finalUrl?: string;
   steps: ReactStep[];
   missingSecret?: string;
+  verified?: boolean;                                  // did the goal check confirm success?
+  evidence?: { url: string; title: string; snippet: string }; // real final-page proof
 }
 
 /** A pluggable "brain": given the task + current observation + history, return the
@@ -112,6 +114,10 @@ export type Decider = (ctx: {
   history: ReactStep[];
   stepBudgetLeft: number;
 }) => Promise<ReactAction>;
+
+/** Optional completion check: given the task and the FINAL observed page, confirm
+ *  whether the goal is actually achieved — so the agent never claims a false success. */
+export type Verifier = (ctx: { task: string; observation: Observation }) => Promise<{ verified: boolean; note?: string }>;
 
 /** Best-effort: dismiss a cookie/consent overlay so it doesn't block everything.
  *  Clicks the first visible button whose text matches a common accept/close label.
@@ -231,6 +237,7 @@ export async function runReactBrowserTask(params: {
   startUrl?: string;
   maxSteps?: number;
   decide: Decider;
+  verify?: Verifier;   // optional: confirm the goal is really achieved before declaring success
 }): Promise<ReactResult> {
   const sessionId = String(params.sessionId || '').trim();
   const userId = String(params.userId || '').trim();
@@ -274,8 +281,37 @@ export async function runReactBrowserTask(params: {
     // Terminal decisions.
     if (action.action === 'done') {
       steps.push({ n, action, ok: true, url: observation.url });
-      emitAgentStep(sessionId, { phase: 'done', step: n, message: action.answer, url: observation.url });
-      return finish('done', true, 'أنجز الوكيل المهمة.', action.answer, observation.url);
+      // Re-observe the settled final page so success is judged on REAL evidence,
+      // never on the model's claim alone.
+      await settle(page);
+      const finalObs = await observePage(page);
+      const evidence = { url: finalObs.url, title: finalObs.title, snippet: (finalObs.textSnippet || '').slice(0, 300) };
+      if (params.verify) {
+        let v: { verified: boolean; note?: string };
+        try { v = await params.verify({ task, observation: finalObs }); }
+        catch (e: any) {
+          // Could not run the check — do NOT claim a verified success.
+          emitAgentStep(sessionId, { phase: 'done', step: n, message: action.answer, url: finalObs.url });
+          const out = finish('done', true, 'أنجز الوكيل المهمة (تعذّر إجراء تحقّق إضافي).', action.answer, finalObs.url);
+          out.evidence = evidence;
+          return out;
+        }
+        if (!v.verified) {
+          const honest = `⚠️ لم أستطع تأكيد اكتمال المهمة على الصفحة الحالية (${finalObs.url}).${v.note ? ' ' + v.note : ''} لن أدّعي نجاحاً غير مؤكّد.`;
+          emitAgentStep(sessionId, { phase: 'result', step: n, ok: false, note: 'تعذّر تأكيد اكتمال المهمة', url: finalObs.url });
+          const out = finish('unverified', false, honest, honest, finalObs.url);
+          out.verified = false; out.evidence = evidence;
+          return out;
+        }
+        emitAgentStep(sessionId, { phase: 'done', step: n, message: `✅ ${action.answer || 'المهمة'} (مُتحقَّق)`, url: finalObs.url });
+        const out = finish('done', true, 'أنجز الوكيل المهمة (مُتحقَّق من الصفحة).', action.answer, finalObs.url);
+        out.verified = true; out.evidence = evidence;
+        return out;
+      }
+      emitAgentStep(sessionId, { phase: 'done', step: n, message: action.answer, url: finalObs.url });
+      const out = finish('done', true, 'أنجز الوكيل المهمة.', action.answer, finalObs.url);
+      out.evidence = evidence;
+      return out;
     }
     if (action.action === 'ask_user') {
       steps.push({ n, action, ok: true, url: observation.url });

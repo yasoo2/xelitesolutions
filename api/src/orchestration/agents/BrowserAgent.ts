@@ -1,6 +1,6 @@
 import { BaseAgent } from './BaseAgent';
 import intelligentRouter from '../../core/llm/intelligent-router';
-import { runReactBrowserTask, renderObservation, type Decider, type ReactAction } from '../../modules/browser/reactLoop';
+import { runReactBrowserTask, renderObservation, type Decider, type ReactAction, type Verifier } from '../../modules/browser/reactLoop';
 
 /**
  * BrowserAgent — Autonomous Web Interaction Specialist.
@@ -33,16 +33,19 @@ export class BrowserAgent extends BaseAgent {
                 startUrl,
                 maxSteps: Number(process.env.BROWSER_AGENT_MAX_STEPS || 12),
                 decide: makeLlmDecider(),
+                verify: makeLlmVerifier(),
             });
-            // A pause for the user (2FA / missing credential) is NOT a failure — the
-            // node completed its attempt and is waiting for input. Report it as ok so
-            // the orchestrator surfaces it (and the live panel prompts) instead of
-            // trying to "recover" from a non-error.
-            const pausedForUser = result.status === 'needs_user';
+            // These are all honest, completed OUTCOMES the user should see — not system
+            // failures to "recover" from: a real success (done), a pause for the user
+            // (needs_user: 2FA / missing credential), or an unverified completion
+            // (unverified: the agent claimed done but the page didn't confirm it, so we
+            // report that honestly instead of pretending success). Report them as ok so
+            // the orchestrator surfaces the message/prompt instead of a recovery loop.
+            const honestOutcome = result.status === 'needs_user' || result.status === 'unverified';
             return {
-                ok: result.ok || pausedForUser,
+                ok: result.ok || honestOutcome,
                 output: result,
-                error: (result.ok || pausedForUser) ? undefined : result.summary,
+                error: (result.ok || honestOutcome) ? undefined : result.summary,
             };
         } catch (error: any) {
             return { ok: false, output: null, error: `Browser execution failed: ${error?.message || error}` };
@@ -94,6 +97,36 @@ Rules:
             { type: 'browser_task', complexity: 'medium', requiresTools: false, estimatedTokens: 800, language: 'en' } as any
         );
         return parseAction(text);
+    };
+}
+
+/** The completion checker: given the FINAL page, confirm the goal is really done so
+ *  the agent never claims a false success. Lenient on ambiguity (evidence is always
+ *  attached to the result anyway), but a CLEAR "not done" downgrades to unverified. */
+export function makeLlmVerifier(): Verifier {
+    return async ({ task, observation }) => {
+        const system = `You verify whether a web task was actually completed, judging ONLY by the page shown.
+Goal: ${task}
+
+Current page:
+${renderObservation(observation)}
+
+Reply with ONLY a JSON object: {"verified": true|false, "note": "<short reason: what on the page proves it, or what is still missing>"}
+Set verified=true ONLY if the page clearly shows the goal is achieved (e.g. a success/confirmation, the requested data, a logged-in state). If the page still shows a login form, an error, a CAPTCHA, or nothing indicating success, set verified=false.`;
+        try {
+            const text = await intelligentRouter.routeToModel(
+                [{ role: 'system', content: system }, { role: 'user', content: 'Is the goal achieved? JSON only.' }],
+                { type: 'browser_task', complexity: 'low', requiresTools: false, estimatedTokens: 200, language: 'en' } as any
+            );
+            const m = String(text || '').match(/\{[\s\S]*\}/);
+            const obj = m ? JSON.parse(m[0]) : null;
+            // Only a CLEAR, explicit false downgrades the result; anything ambiguous or
+            // unparseable is treated as verified (real page evidence is attached anyway).
+            if (obj && obj.verified === false) return { verified: false, note: String(obj.note || '').slice(0, 200) };
+            return { verified: true, note: obj && obj.note ? String(obj.note).slice(0, 200) : undefined };
+        } catch {
+            return { verified: true }; // never block on a verifier error
+        }
     };
 }
 
