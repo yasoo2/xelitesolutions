@@ -199,11 +199,20 @@ export class AgentOrchestrator {
       }
 
       for (const node of readyNodes) {
-        // [DECISION] Re-evaluate agent fit
-        const refinedAgentType = await this.selectOptimalAgent(node, memory);
-        if (refinedAgentType !== node.agent) {
-          broadcastThinkingDetail(memory.sessionId, `🔄 Shifted agent for "${node.task}" to ${refinedAgentType}`);
-          node.agent = refinedAgentType as AgentType;
+        // [DECISION] Re-evaluate agent fit — EXCEPT for a browser node the
+        // PlanningEngine pinned deterministically (tool browser_run + agent
+        // Browser). Re-classification uses keyword guesses and demoted
+        // «ادخل صفحة جيت هاب وسجّل الدخول» to the Dev agent (GitHub/repo read
+        // as a coding task), which then ran browser_run as a bare tool and
+        // failed with actions_or_instruction_required. The planner's explicit
+        // browser routing always wins.
+        const pinnedBrowserNode = node.tool === 'browser_run' && node.agent === 'Browser';
+        if (!pinnedBrowserNode) {
+          const refinedAgentType = await this.selectOptimalAgent(node, memory);
+          if (refinedAgentType !== node.agent) {
+            broadcastThinkingDetail(memory.sessionId, `🔄 Shifted agent for "${node.task}" to ${refinedAgentType}`);
+            node.agent = refinedAgentType as AgentType;
+          }
         }
 
         // Keep the tool consistent with the resolved agent (no repo task -> browser).
