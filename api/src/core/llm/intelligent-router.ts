@@ -1261,6 +1261,89 @@ Respond ONLY with a JSON object: { "name": "tool_name", "input": { } } or { "no_
     return null;
 }
 
+/**
+ * HONEST per-provider verification. Tests the SPECIFIC provider the user selected
+ * — never the whole free mesh — so a GREEN dot means THAT provider actually
+ * answered. A key-required provider with no key reports "needs a key" instead of
+ * borrowing another provider's success (which is what the old mesh-routed verify
+ * did, making every free provider look connected even when it wasn't).
+ */
+export async function verifyProviderDirect(
+    provider: string,
+    cfg: { apiKey?: string; baseUrl?: string; model?: string } = {}
+): Promise<{ ok: boolean; provider: string; detail: string }> {
+    const p = String(provider || '').trim().toLowerCase();
+    const probe = [{ role: 'user', content: 'Reply with the single word: OK' }] as any[];
+    const key = String(cfg.apiKey || '').trim();
+    const hasRealKey = !!key && !/^(free-mode|auto-mode|dummy)$/i.test(key);
+    const withTimeout = <T,>(pr: Promise<T>, ms = 20000) => Promise.race([
+        pr, new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+    ]);
+    const nonEmpty = (s: any) => !!(s && String(s).trim().length > 0);
+    const envKey = (...names: string[]) => names.map(n => (process.env[n] || '').trim()).find(Boolean) || '';
+
+    try {
+        // AUTO is the free mesh itself — testing the mesh is the honest meaning here.
+        if (p === 'auto') {
+            const ans = await withTimeout(routeToModel(probe, undefined, undefined, undefined, undefined, undefined, undefined,
+                { modelConfig: { provider: 'auto', apiKey: 'auto-mode' } }));
+            return { ok: nonEmpty(ans), provider, detail: nonEmpty(ans) ? 'mesh_ok' : 'mesh_empty' };
+        }
+
+        // A real user key → test THAT provider directly via the custom (non-mesh) route.
+        if (hasRealKey) {
+            const ans = await withTimeout(routeToModel(probe, undefined, undefined, undefined, undefined, undefined, undefined,
+                { modelConfig: { provider: p, apiKey: key, baseUrl: cfg.baseUrl, model: cfg.model } }));
+            return { ok: nonEmpty(ans), provider, detail: nonEmpty(ans) ? 'key_ok' : 'key_empty' };
+        }
+
+        // No user key: test the specific provider on its own (its env key, or keyless).
+        switch (p) {
+            case 'deepseek': {
+                const ans = await withTimeout(deepSeekProvider.chatComplete(probe as any));
+                return { ok: nonEmpty(ans), provider, detail: 'keyless_pollinations' };
+            }
+            case 'openrouter': {
+                const ans = await withTimeout(openRouterProvider.chatComplete(probe, cfg.model || 'moonshotai/kimi-k2:free'));
+                return { ok: nonEmpty(ans), provider, detail: 'keyless_free_model' };
+            }
+            case 'groq': {
+                if (!envKey('GROQ_API_KEY')) return { ok: false, provider, detail: 'no_key: ضع مفتاح gsk_ في الحقل بالأعلى، أو اضبط GROQ_API_KEY.' };
+                const ans = await withTimeout(groqProvider.chatComplete(probe, cfg.model || 'llama-3.3-70b-versatile'));
+                return { ok: nonEmpty(ans), provider, detail: 'env_key' };
+            }
+            case 'gemini':
+            case 'google': {
+                if (!envKey('GOOGLE_API_KEY', 'GEMINI_API_KEY')) return { ok: false, provider, detail: 'no_key: يحتاج GOOGLE_API_KEY.' };
+                const ans = await withTimeout(geminiProvider.chatComplete(probe as any, cfg.model || 'gemini-2.0-flash'));
+                return { ok: nonEmpty(ans), provider, detail: 'env_key' };
+            }
+            case 'cerebras': {
+                if (!envKey('CEREBRAS_API_KEY')) return { ok: false, provider, detail: 'no_key: يحتاج CEREBRAS_API_KEY (مجاني من cloud.cerebras.ai).' };
+                const ans = await withTimeout(cerebrasProvider.chatComplete(probe as any, cfg.model || 'llama-3.3-70b'));
+                return { ok: nonEmpty(ans), provider, detail: 'env_key' };
+            }
+            case 'mistral': {
+                if (!envKey('MISTRAL_API_KEY')) return { ok: false, provider, detail: 'no_key: يحتاج MISTRAL_API_KEY (مجاني من console.mistral.ai).' };
+                const ans = await withTimeout(mistralProvider.chatComplete(probe as any, cfg.model || 'mistral-small-latest'));
+                return { ok: nonEmpty(ans), provider, detail: 'env_key' };
+            }
+            case 'openai':
+            case 'anthropic':
+            case 'grok':
+                return { ok: false, provider, detail: 'no_key: مزوّد مدفوع — ضع مفتاحه في الحقل بالأعلى للتحقّق منه.' };
+            default: {
+                // Unknown provider name — fall back to an honest mesh probe.
+                const ans = await withTimeout(routeToModel(probe, undefined, undefined, undefined, undefined, undefined, undefined,
+                    { modelConfig: { provider: p, apiKey: 'free-mode' } }));
+                return { ok: nonEmpty(ans), provider, detail: 'mesh_fallback' };
+            }
+        }
+    } catch (e: any) {
+        return { ok: false, provider, detail: String(e?.message || e).slice(0, 160) };
+    }
+}
+
 export default {
     analyzeTask,
     advancedAnalyzeTask,
@@ -1268,5 +1351,6 @@ export default {
     routeToModel,
     generateActionPlan,
     suggestCorrection,
+    verifyProviderDirect,
     MODELS
 };

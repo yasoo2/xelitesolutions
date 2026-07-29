@@ -20,20 +20,17 @@ const router = Router();
 router.post('/verify', authenticateOptional as any, async (req: Request, res: Response) => {
     const { provider, apiKey, baseUrl, model } = req.body || {};
     try {
-        const { routeToModel } = require('../../core/llm/intelligent-router');
-        const context = { modelConfig: { provider, apiKey, baseUrl, model } };
-        const withTimeout = <T,>(p: Promise<T>, ms: number) => Promise.race([
-            p,
-            new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
-        ]);
-        const answer: string = await withTimeout(
-            routeToModel([{ role: 'user', content: 'Reply with the single word: OK' }],
-                undefined, undefined, undefined, undefined, undefined, undefined, context),
-            25000
-        );
-        const ok = !!(answer && String(answer).trim().length > 0);
-        if (!ok) return res.status(200).json({ ok: false, error: 'empty_response', provider });
-        return res.json({ ok: true, provider });
+        // HONEST verify: test the SPECIFIC provider, never the whole free mesh — so a
+        // green dot means THAT provider actually answered, and a key-required provider
+        // with no key is reported as "needs a key" instead of borrowing another
+        // provider's success (the old behaviour that made every free provider look
+        // connected even when it wasn't).
+        const { verifyProviderDirect } = require('../../core/llm/intelligent-router');
+        const result = await verifyProviderDirect(provider, { apiKey, baseUrl, model });
+        if (!result.ok) {
+            return res.status(200).json({ ok: false, error: result.detail || 'empty_response', provider });
+        }
+        return res.json({ ok: true, provider, detail: result.detail });
     } catch (e: any) {
         // 200 with ok:false so the UI can colour the button red (not a hard error).
         return res.status(200).json({ ok: false, error: e?.message || 'verify_failed', provider });
