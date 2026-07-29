@@ -18,7 +18,11 @@ export class BrowserAgent extends BaseAgent {
 
     async execute(task: string, input: any, context: any): Promise<{ ok: boolean; output: any; error?: string }> {
         console.log(`[BrowserAgent] ReAct web task: "${task}"`);
-        const sessionId = input?.sessionId || context?.sessionId || 'default-browser-session';
+        // CRITICAL: drive the SAME browser session the panel is watching
+        // ('panel-browser'). Using the chat session id here created a second,
+        // INVISIBLE browser — the user saw no pages, no agent steps and no live
+        // thinking, because all events were broadcast to a session nobody watches.
+        const sessionId = String(input?.sessionId || input?.browserSessionId || 'panel-browser');
         const userId = String(context?.userId || input?.userId || '').trim();
         // On RESUME (after the user supplied credentials / a 2FA code) do NOT
         // re-navigate to the start URL — continue from the live page where the
@@ -26,15 +30,26 @@ export class BrowserAgent extends BaseAgent {
         const resume = Boolean(input?.resume);
         const startUrl = resume ? undefined : deriveStartUrl(task);
 
+        // READ MODE: "describe / what do you see / read the page / answer from the
+        // page" is a QUESTION about a page, not a multi-step interaction. A weak
+        // local model in the full act-loop tends to wander (scroll/click) without
+        // ever declaring done — 12 slow steps, then a step-limit failure (exactly
+        // what happened in the user's live test). In read mode the agent navigates,
+        // observes ONCE, and answers from the real page content in a single model
+        // call (the vision fallback still covers unreadable pages).
+        const readTask = isReadTask(task);
+
         try {
             const result = await runReactBrowserTask({
                 sessionId,
                 userId,
                 task,
                 startUrl,
-                maxSteps: Number(process.env.BROWSER_AGENT_MAX_STEPS || 12),
-                decide: makeLlmDecider(),
-                verify: makeLlmVerifier(),
+                maxSteps: readTask ? 4 : Number(process.env.BROWSER_AGENT_MAX_STEPS || 12),
+                decide: readTask ? makeReadDecider() : makeLlmDecider(),
+                // A read answer is grounded in the observed page (evidence attached);
+                // the completion verifier is for interactive goals, skip it here.
+                verify: readTask ? undefined : makeLlmVerifier(),
                 vision: makeLlmVision(),   // undefined unless a vision model is configured
             });
             // These are all honest, completed OUTCOMES the user should see — not system
@@ -60,6 +75,50 @@ export class BrowserAgent extends BaseAgent {
         if (t.includes('search') || t.includes('بحث') || t.includes('افتح') || t.includes('login') || t.includes('تسجيل')) return 0.7;
         return 0.1;
     }
+}
+
+/** Is this task a QUESTION about a page (describe / read / what do you see /
+ *  summarise) rather than a multi-step interaction (login / fill / buy)? */
+export function isReadTask(task: string): boolean {
+    const t = String(task || '');
+    const readWords = /(صِ?ف|وصف|اوصف|أوصف|انظر|أنظر|شاهد|اطّ?لع|ماذا\s*(ترى|يوجد|فيها?)|ما\s*الذي\s*(تراه|فيها?)|ما\s*محتوى|أخبرني\s*(عن|بما)|اخبرني\s*(عن|بما)|اقرأ|لخّ?ص|ملخّ?ص|describe|what\s*(do\s*you\s*)?see|what'?s\s*on|tell\s*me\s*(about|what)|read|summari)/i.test(t);
+    // Interactive verbs override read words ("اقرأ ثم سجّل دخولي" is interactive).
+    const interactive = /(سجّ?ل|تسجيل|دخول|املأ|عبّ?ئ|انشر|احجز|اطلب|اشترك|ادفع|اشترِ?|log\s*-?\s*in|sign\s*-?\s*in|fill|submit|post|book|order|subscribe|checkout|buy|register)/i.test(t);
+    return readWords && !interactive;
+}
+
+/** One-shot reading brain: answer the user's question FROM the observed page in a
+ *  single model call (allowing at most one scroll if the fold is empty), instead of
+ *  wandering through the full act-loop. Streams its thinking like the act brain. */
+export function makeReadDecider(): Decider {
+    return async ({ task, observation, history, onThinking }) => {
+        const scrolled = history.some(h => h.action.action === 'scroll');
+        const thin = (observation.textSnippet || '').trim().length < 60;
+        if (thin && !scrolled) return { action: 'scroll', direction: 'down', reason: 'المحتوى الظاهر قليل — تمرير واحد ثم الإجابة' };
+
+        const system = `You are reading a REAL web page to answer the user's request.
+User's request: ${task}
+
+The current page:
+${renderObservation(observation)}
+
+Answer ONLY from what the page actually shows — do not invent anything. Answer in the
+user's language (Arabic if the request is Arabic). Reply with ONLY this JSON:
+{"action":"done","answer":"<your answer based on the page>"}`;
+
+        const text = await intelligentRouter.routeToModel(
+            [{ role: 'system', content: system }, { role: 'user', content: 'Answer now. JSON only.' }],
+            { type: 'browser_task', complexity: 'medium', requiresTools: false, estimatedTokens: 600, language: 'en' } as any,
+            undefined,
+            onThinking,
+        );
+        const parsed = parseAction(text);
+        // Whatever shape the model returns, a read task ends with an answer — never
+        // with more wandering. Fall back to the raw text as the answer.
+        if (parsed.action === 'done' && (parsed as any).answer) return parsed;
+        const raw = String(text || '').replace(/^[\s{"']*action[\s":]*done[\s",]*answer[\s":]*/i, '').trim();
+        return { action: 'done', answer: raw.slice(0, 1200) || 'لم أستطع قراءة محتوى مفيد من الصفحة.' };
+    };
 }
 
 /** The LLM "brain": turns the current observation into the next single action. */

@@ -402,7 +402,15 @@ export async function runReactBrowserTask(params: {
   }
 
   const finalUrl = (() => { try { return page.url(); } catch { return ''; } })();
-  return finish('max_steps', false, `بلغ الوكيل الحدّ الأقصى للخطوات (${maxSteps}) دون إعلان الانتهاء.`, undefined, finalUrl);
+  // Honest ending: attach what the final page ACTUALLY shows, so hitting the step
+  // limit still gives the user real information instead of a bare failure.
+  const out = finish('max_steps', false, `بلغ الوكيل الحدّ الأقصى للخطوات (${maxSteps}) دون إعلان الانتهاء.`, undefined, finalUrl);
+  try {
+    const finalObs = await observePage(page);
+    out.evidence = { url: finalObs.url, title: finalObs.title, snippet: (finalObs.textSnippet || '').slice(0, 300) };
+  } catch { /* evidence is best-effort */ }
+  emitAgentStep(sessionId, { phase: 'result', step: maxSteps, ok: false, note: 'توقّف عند حدّ الخطوات دون إتمام', url: finalUrl });
+  return out;
 
   function finish(status: ReactResult['status'], ok: boolean, summary: string, answer?: string, finalUrl?: string): ReactResult {
     return { ok, status, summary, answer, finalUrl, steps };
