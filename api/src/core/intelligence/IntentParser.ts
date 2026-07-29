@@ -110,10 +110,19 @@ Return ONLY a JSON object:
         if (!raw) return null;
         const probe = `${raw}\n${normalizeIntentText(raw)}`;
         const hasUrl = /https?:\/\/|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)\b/i.test(probe);
-        const webVerb = /(افتح|تصفّ?ح|ادخل|اذهب|انظر|صِ?ف|ابحث|سجّ?ل\s*(ال)?دخول|تسجيل\s*دخول|لخّ?ص|ترجم|انقر|استخرج|open|visit|go\s*to|browse|search|log\s*-?\s*in|sign\s*-?\s*in|describe|summari|translate|click|extract)/i.test(probe);
-        const webNoun = /(متصفح|موقع|صفحة|رابط|الويب|browser|site|page|link|web)/i.test(probe);
-        // Only unmistakable web requests: a URL, or a web verb together with a web noun.
-        if (!(hasUrl || (webVerb && webNoun))) return null;
+        // A well-known site named in words (dialect/transliteration) counts as a web
+        // target even without a URL — so «ادخل على جيت هاب» is web, not a code task.
+        const knownSite = /(جيت\s*هاب|github|يوتيوب|youtube|فيس\s*بوك|facebook|تويتر|twitter|\bx\.com\b|انست[غق]رام|instagram|جيميل|gmail|لينكد\s*ان|linkedin|ريديت|reddit|ويكيبيديا|wikipedia|قوقل|جوجل|google|امازون|amazon|نتفليكس|netflix|واتساب|whatsapp|تيك\s*توك|tiktok)/i.test(probe);
+        // STRONG web verbs are unambiguously about the web — they qualify ALONE
+        // (login/browse/search/visit). Without this, «سجّل الدخول الى حسابي» (no URL,
+        // no literal "موقع") fell to the slow LLM analysis.
+        const strongWebVerb = /(تصفّ?ح|سجّ?ل\s*(ال)?دخول|تسجيل\s*(ال)?دخول|ادخل\s*(على|الى|إلى|ل|حساب|موقع)|اذهب\s*(الى|إلى|ل)|ابحث|دوّ?ر\s*(لي\s*)?عن|open\s*(the\s*)?browser|browse\b|visit\b|go\s*to\b|log\s*-?\s*in|sign\s*-?\s*in|search\b)/i.test(probe);
+        // WEAK web verbs need a web noun or a known site to qualify (so «صف لي الفرق
+        // بين X و Y» is NOT hijacked to the browser).
+        const weakWebVerb = /(افتح|انظر|صِ?ف|وصف|لخّ?ص|ترجم|انقر|استخرج|open\b|describe|summari|translate|click|extract)/i.test(probe);
+        const webNoun = knownSite || /(متصفح|موقع|صفحة|رابط|الويب|browser|site|page|link|web)/i.test(probe);
+        // Unmistakable web request: a URL, a strong web verb, or a weak verb + web noun.
+        if (!(hasUrl || strongWebVerb || (weakWebVerb && webNoun))) return null;
         return {
             goal: raw,
             complexity: 'medium',

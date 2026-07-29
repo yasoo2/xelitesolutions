@@ -65,6 +65,15 @@ async function main() {
   check('ambiguous question still gets full analysis', q3 === null);
   const q4 = IntentParser.quickIntent('اشرح لي الفرق بين HTTP و HTTPS');
   check('general question not hijacked to browser', q4 === null);
+  // The exact live-test prompt that WRONGLY hit the slow ~50s analysis:
+  const q5 = IntentParser.quickIntent('ادخل على جيت هاب وسجل الدخول الى حسابي');
+  check('login-to-named-site fires fast intent (no URL, no "موقع")', !!q5 && q5.suggestedAgent === 'Browser');
+  const q6 = IntentParser.quickIntent('افتح يوتيوب');
+  check('open a known site (يوتيوب) fires fast intent', !!q6);
+  const q7 = IntentParser.quickIntent('سجل دخولي');
+  check('bare login verb fires fast intent', !!q7);
+  const q8 = IntentParser.quickIntent('صف لي الفرق بين المتغيرات الثابتة والمتغيرة');
+  check('"صف الفرق بين..." is NOT hijacked to browser', q8 === null, JSON.stringify(q8));
 
   console.log(`\n${failures === 0 ? 'ALL GREEN' : failures + ' FAILURE(S)'}`);
   process.exit(failures === 0 ? 0 : 1);
