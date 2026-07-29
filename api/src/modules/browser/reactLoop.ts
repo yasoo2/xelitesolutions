@@ -49,6 +49,20 @@ function chatPhase(chatSessionId: string | undefined, phase: 'analyzing' | 'synt
   if (!chatSessionId) return;
   try { require('../../api/ws').broadcastThinkingPhase(chatSessionId, phase, detail); } catch { /* chat optional */ }
 }
+/** Ask the user for a credential / 2FA code IN THE CHAT (not inside the browser
+ *  panel). Carries the browser session id so the chat can resume the exact live
+ *  page after the user answers. */
+function chatNeedsUser(chatSessionId: string | undefined, browserSessionId: string, message: string, secretKey: string, url?: string) {
+  if (!chatSessionId) return;
+  try {
+    require('../../api/ws').broadcastBrowserNeedsUser(chatSessionId, {
+      message: String(message || ''),
+      secretKey: String(secretKey || ''),
+      browserSessionId: String(browserSessionId || ''),
+      url: String(url || ''),
+    });
+  } catch { /* chat optional */ }
+}
 
 /** Remembers the last task run per session so a user "provide credentials / 2FA"
  *  action can RESUME the exact same task on the same live session. */
@@ -395,6 +409,7 @@ export async function runReactBrowserTask(params: {
         || (/2fa|otp|رمز|كود|تحقّ?ق|verification|one[- ]?time/i.test(action.message || '') ? 'JOE_2FA_CODE' : undefined);
       emitAgentStep(sessionId, { phase: 'needs_user', step: n, message: action.message, url: observation.url, secretKey: key });
       chatDetail(chatSid, `🙋 يحتاج تدخّلك: ${String(action.message || '').slice(0, 120)}`);
+      if (key) chatNeedsUser(chatSid, sessionId, action.message || 'الوكيل يحتاج بيانات للمتابعة', key, observation.url);
       chatPhase(chatSid, 'idle', '');
       const out = finish('needs_user', false, action.message || 'المهمة تحتاج تدخّلك.', undefined, observation.url);
       if (key) out.missingSecret = key;
@@ -430,6 +445,9 @@ export async function runReactBrowserTask(params: {
     if (missing) {
       steps.push({ n, action, ok: false, note: `missing_secret:${missing}`, url: page.url() });
       emitAgentStep(sessionId, { phase: 'needs_user', step: n, message: `يحتاج بيانات: ${missing}`, url: page.url(), secretKey: missing });
+      chatNeedsUser(chatSid, sessionId,
+        `النظام يحتاج بيانات تسجيل الدخول (${missing}) لإكمال المهمة. زوّدني بها مرّة واحدة لتُحفظ بأمان.`,
+        missing, page.url());
       const out = finish('needs_user', false,
         `النظام يحتاج بيانات تسجيل الدخول (${missing}) لإكمال المهمة. زوّدني بها مرّة واحدة لتُحفظ بأمان.`,
         undefined, page.url());

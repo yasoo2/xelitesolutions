@@ -41,12 +41,8 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     Array<{ ts: number; type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; actionId: string; actionType: string; summary?: string; reason?: string; error?: string }>
   >([]);
   // Agent narration (steps + live thinking) renders in JOE'S CHAT, not here —
-  // the browser view stays clean and only pauses for user input when needed.
-  // When the agent pauses for the user (missing credential / 2FA code), we collect
-  // the value here and resume the same task on the same live session.
-  const [pendingInput, setPendingInput] = useState<{ message: string; secretKey: string } | null>(null);
-  const [inputValue, setInputValue] = useState('');
-  const [resuming, setResuming] = useState(false);
+  // the browser view stays clean. When the agent pauses for the user (missing
+  // credential / 2FA code) the prompt now appears in JOE'S CHAT, not here.
 
   const boxesRef = useRef(boxes);
   const actionsRef = useRef(actions);
@@ -161,26 +157,6 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         signal,
       });
     } catch { }
-  };
-
-  // Send the user-provided credential / 2FA code and resume the paused task.
-  const submitResume = async () => {
-    const sid = String(sessionId || '').trim();
-    const val = inputValue.trim();
-    if (!sid || !pendingInput || !val || resuming) return;
-    const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
-    setResuming(true);
-    try {
-      await fetch(`${API_URL}/browser-agent/resume`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ sessionId: sid, key: pendingInput.secretKey, value: val }),
-      });
-      // The agent will resume and stream new steps; clear the prompt now.
-      setPendingInput(null);
-      setInputValue('');
-    } catch { /* leave the prompt so the user can retry */ }
-    finally { setResuming(false); }
   };
 
   const syncQueueLen = () => {
@@ -397,16 +373,10 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           return;
         }
         if (msg.type === 'agent_step') {
-          const m: any = msg;
-          const phase: AgentPhase = m.phase;
-          // Step narration lives in the CHAT; inside the browser we only handle
-          // the pause-for-input moments (credentials / 2FA), which must appear
-          // right where the user is watching the page.
-          if (phase === 'needs_user' && (m.secretKey || /بيانات|كود|رمز|2fa|otp/i.test(m.message || ''))) {
-            setPendingInput({ message: String(m.message || 'الوكيل يحتاج بيانات للمتابعة'), secretKey: String(m.secretKey || 'JOE_2FA_CODE') });
-          } else if (phase === 'observe' || phase === 'act' || phase === 'done') {
-            setPendingInput(null);
-          }
+          // Step narration AND the pause-for-input moments (credentials / 2FA) now
+          // live entirely in JOE'S CHAT (user preference): the email/password box
+          // appears in the chat screen, not as a popup over the page. Nothing to
+          // render inside the browser panel here.
           return;
         }
         if (msg.type === 'final_report') {
@@ -479,44 +449,8 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           stroke-linecap: round;
         }
       `}</style>
-        {/* Agent narration lives in Joe's CHAT (user preference) — inside the
-            browser we only surface the pause-for-input card (credentials / 2FA),
-            because that belongs next to the page being worked on. */}
-        {pendingInput ? (
-          <div
-            dir="rtl"
-            style={{
-              position: 'absolute', top: 10, insetInlineEnd: 10, zIndex: 7,
-              width: 320, maxWidth: '52%', display: 'flex', flexDirection: 'column',
-              background: 'rgba(12,14,20,0.9)', color: '#e8eef7', borderRadius: 12,
-              border: '1px solid rgba(120,150,255,0.28)', boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
-              backdropFilter: 'blur(6px)', fontSize: 12.5, overflow: 'hidden',
-            }}
-          >
-            {pendingInput ? (
-              <div style={{ padding: '10px', background: 'rgba(37,99,235,0.1)' }}>
-                <div style={{ marginBottom: 6, color: '#ffd479' }}>🙋 {pendingInput.message}</div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input
-                    type={/PASSWORD/i.test(pendingInput.secretKey) ? 'password' : 'text'}
-                    value={inputValue}
-                    onChange={e => setInputValue(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') submitResume(); }}
-                    placeholder={/2FA|OTP|CODE/i.test(pendingInput.secretKey) ? 'أدخل رمز التحقّق' : /EMAIL/i.test(pendingInput.secretKey) ? 'أدخل البريد' : /PASSWORD/i.test(pendingInput.secretKey) ? 'أدخل كلمة المرور' : 'أدخل القيمة المطلوبة'}
-                    autoFocus
-                    style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(120,150,255,0.4)', background: '#0f1420', color: '#e8eef7', fontSize: 13 }}
-                  />
-                  <button
-                    onClick={submitResume}
-                    disabled={resuming || !inputValue.trim()}
-                    style={{ padding: '8px 12px', borderRadius: 8, border: 0, background: resuming ? '#475569' : '#2563eb', color: '#fff', cursor: resuming ? 'default' : 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}
-                  >{resuming ? '…' : 'إرسال ومتابعة'}</button>
-                </div>
-                <div style={{ marginTop: 6, fontSize: 11, color: '#8ba0be' }}>🔒 يُرسَل بأمان ويُخزَّن مشفّراً — لا يظهر في السجلّ ولا في اللقطات.</div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        {/* Agent narration AND the pause-for-input card (credentials / 2FA) both
+            live in Joe's CHAT now (user preference) — nothing overlays the page. */}
         <canvas
           ref={canvasRef}
           tabIndex={0}

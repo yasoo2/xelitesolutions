@@ -38,9 +38,15 @@ router.post('/resume', authenticate as any, async (req: Request, res: Response) 
   if (!goal) return res.status(409).json({ ok: false, error: 'no_task_to_resume' });
 
   const userId = uid(req);
+  // The live browser runs under `sessionId`; the CHAT that must show the
+  // continuation is a DIFFERENT id. Mirror activity to the chat session the panel
+  // reported (falls back to the browser id when the panel didn't send one) so the
+  // chat visibly moves after the user submits credentials — the earlier bug was
+  // that resume mirrored to the browser session, which the chat filters out.
+  const chatSessionId = String(req.body?.chatSessionId || '').trim() || sessionId;
   try {
     const agent = new BrowserAgent();
-    const result = await agent.execute(goal, { sessionId, resume: true }, { userId, sessionId });
+    const result = await agent.execute(goal, { sessionId, resume: true }, { userId, sessionId: chatSessionId });
     return res.json({ ok: result.ok, data: result.output, error: result.error });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: String(e?.message || e) });

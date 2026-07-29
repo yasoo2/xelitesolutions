@@ -440,15 +440,44 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
 /**
  * Make API call to Groq (free Llama/Mixtral/Gemma models)
  */
+/** Rough token estimate (~4 chars/token) for deciding when a Groq request is at
+ *  risk of the free-tier 413 "request too large" limit. */
+function approxTokens(messages: any[]): number {
+    try {
+        let chars = 0;
+        for (const m of messages) chars += String(m?.content ?? '').length;
+        return Math.ceil(chars / 4);
+    } catch { return 0; }
+}
+
+/** Keep the system message + the most recent turns, dropping the long middle of
+ *  the history so a heavy browser-observation prompt fits inside Groq's limit.
+ *  Never invents content — it only DROPS older turns. */
+function trimMessagesForGroq(messages: any[], keepRecent = 4): any[] {
+    if (!Array.isArray(messages) || messages.length <= keepRecent + 1) return messages;
+    const system = messages.filter(m => m?.role === 'system');
+    const nonSystem = messages.filter(m => m?.role !== 'system');
+    const recent = nonSystem.slice(-keepRecent);
+    return [...system, ...recent];
+}
+
 async function callGroq(model: string, messages: any[], onPartial?: (delta: string) => void, tools?: any[]): Promise<string> {
     const GROQ_API_KEY = process.env.GROQ_API_KEY || 'gsk_placeholder';
 
     try {
         const stream = !!onPartial;
-        
-        // استخدم الحد الأقصى للموديل - Mixtral يدعم 32K!
-        const maxTokensForModel = model.includes('mixtral') ? 16000 : 8000;
-        
+
+        // Groq's FREE tier rejects a request when (input + max_tokens) exceeds the
+        // model's tokens-per-minute budget — HTTP 413 "request too large". The old
+        // max_tokens (8000) alone blew past a 6000 TPM model and 413'd the WHOLE
+        // call, which then fell back to the slow local CPU brain (the ~50s stalls
+        // the user saw on the browser-login task). Size the completion budget to
+        // fit UNDER the tier limit given the actual input, so it passes first try.
+        const desiredMax = model.includes('mixtral') ? 8000 : 4000;
+        const tierBudget = parseInt(String(process.env.GROQ_TPM_BUDGET || '5600').trim(), 10) || 5600;
+        const inputTokens = approxTokens(messages);
+        const maxTokensForModel = Math.max(512, Math.min(desiredMax, tierBudget - inputTokens));
+
         const body: any = {
             model,
             messages,
@@ -469,7 +498,7 @@ async function callGroq(model: string, messages: any[], onPartial?: (delta: stri
             body.tool_choice = "auto";
         }
 
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        let response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${GROQ_API_KEY}`,
@@ -478,8 +507,28 @@ async function callGroq(model: string, messages: any[], onPartial?: (delta: stri
             body: JSON.stringify(body)
         });
 
+        // 413 "request too large": retry ONCE with a trimmed prompt + smaller
+        // completion budget. This is what lets a heavy browser-login step keep
+        // using fast Groq instead of collapsing to the 50s local fallback.
+        if (response.status === 413) {
+            const errText = await response.text().catch(() => '');
+            console.warn(`[Groq] 413 request too large (~${inputTokens} input tokens, max_tokens=${maxTokensForModel}). Retrying trimmed. ${errText.slice(0, 200)}`);
+            const trimmed = trimMessagesForGroq(messages);
+            const retryMax = Math.max(512, Math.min(1500, tierBudget - approxTokens(trimmed)));
+            const retryBody = { ...body, messages: trimmed, max_tokens: retryMax };
+            response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${GROQ_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(retryBody)
+            });
+        }
+
         if (!response.ok) {
-            throw new Error(`Groq API error: ${response.status} `);
+            const errText = await response.text().catch(() => '');
+            throw new Error(`Groq API error: ${response.status}${errText ? ` — ${errText.slice(0, 160)}` : ''}`);
         }
 
         if (stream && response.body) {

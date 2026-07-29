@@ -604,7 +604,7 @@ const ChatBubble = forwardRef(
             </div>
           ) : null}
 
-          <div className="chat-bubble-content" dir="auto">
+          <div className="chat-bubble-content" dir="auto" style={{ unicodeBidi: 'plaintext' }}>
             {files.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                 {files.map((f: any, i: number) => (
@@ -628,15 +628,20 @@ const ChatBubble = forwardRef(
               <>
                 <ReactMarkdown
                   components={{
-                    h1: ({ ...props }) => <h1 {...props} />,
-                    h2: ({ ...props }) => <h2 {...props} />,
-                    h3: ({ ...props }) => <h3 {...props} />,
-                    ul: ({ ...props }) => <ul {...props} />,
-                    ol: ({ ...props }) => <ol {...props} />,
-                    li: ({ ...props }) => <li {...props} />,
-                    p: ({ ...props }) => <p {...props} />,
-                    blockquote: ({ ...props }) => <blockquote {...props} />,
-                    a: ({ ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                    // Per-block dir="auto": each paragraph/heading/list-item takes its
+                    // OWN base direction from its dominant script, so an Arabic reply
+                    // with a stray English word/number no longer scrambles word order.
+                    h1: ({ ...props }) => <h1 dir="auto" {...props} />,
+                    h2: ({ ...props }) => <h2 dir="auto" {...props} />,
+                    h3: ({ ...props }) => <h3 dir="auto" {...props} />,
+                    ul: ({ ...props }) => <ul dir="auto" {...props} />,
+                    ol: ({ ...props }) => <ol dir="auto" {...props} />,
+                    li: ({ ...props }) => <li dir="auto" {...props} />,
+                    p: ({ ...props }) => <p dir="auto" {...props} />,
+                    blockquote: ({ ...props }) => <blockquote dir="auto" {...props} />,
+                    // Isolate inline Latin runs (links) so they don't reorder the
+                    // surrounding Arabic sentence.
+                    a: ({ ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" style={{ unicodeBidi: 'isolate', ...(props as any).style }} />,
                     code({ className, children, ...props }: any) {
                       const { inline, ...rest } = props as any;
                       const match = /language-(\w+)/.exec(className || '');
@@ -645,7 +650,9 @@ const ChatBubble = forwardRef(
                           {String(children).replace(/\n$/, '')}
                         </SyntaxHighlighter>
                       ) : (
-                        <code className={className} {...rest}>
+                        // Inline code (usually English/identifiers) isolated from the
+                        // Arabic text flow so it stays put visually.
+                        <code className={className} style={{ unicodeBidi: 'isolate' }} {...rest}>
                           {children}
                         </code>
                       );
@@ -813,6 +820,11 @@ export default function CommandComposer({
 
   const [approval, setApproval] = useState<{ id: string; runId: string; risk: string; action: string } | null>(null);
   const [secretPrompt, setSecretPrompt] = useState<{ sessionId: string; runId?: string; provider?: string; key: string; label?: string; reason?: string } | null>(null);
+  // Browser agent paused for a credential / 2FA code. Shown as a card IN THE CHAT
+  // (not inside the browser panel) — on submit we resume the exact live browser.
+  const [browserCred, setBrowserCred] = useState<{ browserSessionId: string; chatSessionId: string; message: string; secretKey: string; url?: string } | null>(null);
+  const [browserCredValue, setBrowserCredValue] = useState('');
+  const [browserCredBusy, setBrowserCredBusy] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -850,7 +862,7 @@ export default function CommandComposer({
   const activeToolNameRef = useRef<string | null>(activeToolName);
   const statusRef = useRef<typeof status>(status);
   const draftTimerRef = useRef<number | null>(null);
-  const lastGateSigRef = useRef<{ approval?: string; secret?: string }>({});
+  const lastGateSigRef = useRef<{ approval?: string; secret?: string; browserCred?: string }>({});
   const lastTextDedupRef = useRef<{ sig: string; ts: number } | null>(null);
   const pendingBrowserRetryRef = useRef<{ url: string; sessionId: string } | null>(null);
   const lastAutoOpenedHrefRef = useRef<string>('');
@@ -1502,6 +1514,26 @@ export default function CommandComposer({
         }
       }
 
+      if (msg.type === 'browser_needs_user') {
+        const data = msg.data || {};
+        const browserSessionId = String(data?.browserSessionId || '').trim();
+        const secretKey = String(data?.secretKey || '').trim().toUpperCase();
+        if (browserSessionId && secretKey) {
+          const sig = `${browserSessionId}:${secretKey}`;
+          if (lastGateSigRef.current.browserCred !== sig) {
+            lastGateSigRef.current.browserCred = sig;
+            setBrowserCred({
+              browserSessionId,
+              chatSessionId: String(data?.sessionId || sessionId || '').trim(),
+              secretKey,
+              message: String(data?.message || 'الوكيل يحتاج بياناتك للمتابعة'),
+              url: typeof data?.url === 'string' ? data.url : undefined,
+            });
+            setBrowserCredValue('');
+          }
+        }
+      }
+
       if (msg.type === 'step_started') {
         const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
         const name = String(msg?.data?.name || '');
@@ -1668,6 +1700,7 @@ export default function CommandComposer({
       setActiveRunId(null);
       setApproval(null);
       setSecretPrompt(null);
+      setBrowserCred(null);
       lastGateSigRef.current = {};
       clearToolTimers();
       setStatus('idle');
@@ -1680,6 +1713,7 @@ export default function CommandComposer({
       setActiveRunId(null);
       setApproval(null);
       setSecretPrompt(null);
+      setBrowserCred(null);
       lastGateSigRef.current = {};
       clearToolTimers();
       setStatus('idle');
@@ -2577,6 +2611,47 @@ export default function CommandComposer({
     setApproval(null);
   }
 
+  // The browser agent paused for a credential / 2FA code. The user answered in
+  // the CHAT (not inside the browser panel). Store it and RESUME the same live
+  // browser — and mirror the continuation back into THIS chat session so the
+  // conversation visibly moves (chatSessionId carries the real chat id).
+  const submitBrowserCred = async () => {
+    if (!browserCred || browserCredBusy) return;
+    const val = String(browserCredValue || '').trim();
+    if (!val) return;
+    const bsid = String(browserCred.browserSessionId || '').trim();
+    const key = String(browserCred.secretKey || '').trim().toUpperCase();
+    if (!bsid || !key) return;
+
+    setBrowserCredBusy(true);
+    const isSecretLike = /PASSWORD|2FA|OTP|CODE|TOKEN|SECRET/i.test(key);
+    setEvents(prev => [
+      ...prev,
+      { type: 'user_input', data: isSecretLike ? t('secretSentMask', '🔐 [تم إرسال البيانات]') : val, id: Date.now().toString(), ts: Date.now(), seq: lastLiveSeqRef.current + 0.1 }
+    ]);
+
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API}/browser-agent/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        // browser session to resume + the chat session that launched it (from the
+        // event, falling back to the current one) so the reply lands in that chat.
+        body: JSON.stringify({ sessionId: bsid, chatSessionId: String(browserCred.chatSessionId || sessionId || '').trim(), key, value: val }),
+      });
+      if (res.status === 401) { handleUnauthorized(); return; }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue', 'تم الحفظ — يُكمل الوكيل المهمة الآن.')}`, ts: Date.now() }]);
+    } catch (e) {
+      setEvents(prev => [...prev, { type: 'error', data: `تعذّر متابعة المتصفح: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
+    } finally {
+      setBrowserCred(null);
+      setBrowserCredValue('');
+      setBrowserCredBusy(false);
+      lastGateSigRef.current.browserCred = undefined;
+    }
+  };
+
   // Verify a provider by actually testing it. GREEN dot on success, RED on
   // failure, pulsing while verifying. Applies to free providers too (the free
   // mesh is what gets tested).
@@ -2636,11 +2711,14 @@ export default function CommandComposer({
 
   const deleteProviderKey = (key: string) => {
     if (confirm('Are you sure you want to remove the API key?')) {
+      // A free provider (e.g. Groq) must fall BACK to free mode, not be left keyless
+      // and dead. Reset its key to the 'free-mode' placeholder so it keeps working.
+      const isFree = !!providers[key]?.isFree;
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], apiKey: '', isConnected: false }
+        [key]: { ...prev[key], apiKey: isFree ? 'free-mode' : '', isConnected: isFree, verified: false, lastError: undefined }
       }));
-      setActiveProvider('openai');
+      if (!isFree) setActiveProvider('openai');
     }
   };
 
@@ -3238,27 +3316,41 @@ export default function CommandComposer({
                     </div>
                   )}
 
-                  {/* Free Provider Info Box */}
-                  {providers[selectedProvider]?.isFree && selectedProvider !== 'auto' && selectedProvider !== 'openrouter' && (
+                  {/* Free Provider Info Box (Groq shows its OWN box below, since it
+                      is free BUT also accepts an optional personal gsk_ key). */}
+                  {providers[selectedProvider]?.isFree && selectedProvider !== 'auto' && selectedProvider !== 'openrouter' && selectedProvider !== 'groq' && (
                     <div className="info-box free">
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>✅ مزود مجاني — متصل تلقائياً</div>
                       <div>هذا المزود مجاني ولا يحتاج أي مفتاح API. يمكنك البدء بالمحادثة مباشرة.</div>
                     </div>
                   )}
 
-                  {/* API Key - Hide for all free providers */}
-                  {!providers[selectedProvider]?.isFree && (
+                  {/* Groq: free by default, with an OPTIONAL personal key for higher limits/speed. */}
+                  {selectedProvider === 'groq' && (
+                    <div className="info-box free">
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>⚡ Groq — مجاني، ويقبل مفتاحك الخاص (اختياري)</div>
+                      <div>يعمل مجاناً عبر الشبكة المجانية. ولمزيد من السرعة والحدود، ألصق مفتاحك الخاص <code style={{ unicodeBidi: 'isolate' }}>gsk_</code> بالأسفل ثم اضغط «Connect &amp; Activate» للتحقّق الحقيقي منه.</div>
+                      <div style={{ marginTop: 6, fontSize: 12 }}>احصل على مفتاح مجاني من <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', unicodeBidi: 'isolate' }}>console.groq.com/keys</a></div>
+                    </div>
+                  )}
+
+                  {/* API Key — shown for paid providers AND for Groq (optional key). */}
+                  {(!providers[selectedProvider]?.isFree || selectedProvider === 'groq') && (
                     <div style={{ marginBottom: 20 }}>
-                      <label className="section-label">API Key</label>
+                      <label className="section-label">API Key{selectedProvider === 'groq' ? ' (اختياري)' : ''}</label>
                       <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
                         <div style={{ position: 'relative', flex: 1 }}>
                           <input
                             type={showKey[selectedProvider] ? "text" : "password"}
                             className="api-key-input"
-                            value={providers[selectedProvider].apiKey}
+                            dir="ltr"
+                            value={/^(free-mode|auto-mode)$/.test(String(providers[selectedProvider].apiKey || '')) ? '' : providers[selectedProvider].apiKey}
                             onChange={(e) => {
                               const newKey = e.target.value;
-                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey, isConnected: false, verified: false, lastError: undefined } }));
+                              // Groq stays a free provider; an empty box means "use the free
+                              // mesh", a real gsk_ key routes to the user's own Groq account.
+                              const isGroq = selectedProvider === 'groq';
+                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey || (isGroq ? 'free-mode' : ''), isConnected: false, verified: false, lastError: undefined } }));
                               if (selectedProvider === 'openai' && newKey.trim().startsWith('sk-')) {
                                 fetch(`${API}/providers/openai/key`, {
                                   method: 'POST',
@@ -3267,7 +3359,7 @@ export default function CommandComposer({
                                 }).catch(err => console.error('Failed to send API key to server:', err));
                               }
                             }}
-                            placeholder={selectedProvider === 'openrouter' ? 'sk-or-...' : 'sk-...'}
+                            placeholder={selectedProvider === 'groq' ? 'gsk_... (اتركه فارغاً للوضع المجاني)' : selectedProvider === 'openrouter' ? 'sk-or-...' : 'sk-...'}
                           />
                           <button
                             onClick={() => setShowKey(prev => ({ ...prev, [selectedProvider]: !prev[selectedProvider] }))}
@@ -3493,6 +3585,72 @@ export default function CommandComposer({
                   style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}
                 >
                   Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {
+        // Browser agent paused for a credential / 2FA code — answered HERE in the
+        // chat (not inside the browser panel), then the same live browser resumes.
+        browserCred && (
+          <div className="modal" dir="rtl">
+            <div className="panel" style={{ width: 420, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <div style={{ padding: 10, borderRadius: 12, background: 'rgba(var(--accent-secondary-rgb), 0.1)', color: 'var(--accent-secondary)' }}>
+                  <Lock size={24} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>المتصفح يحتاج بياناتك للمتابعة</h3>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                    {/PASSWORD/i.test(browserCred.secretKey) ? 'كلمة المرور' : /EMAIL/i.test(browserCred.secretKey) ? 'البريد الإلكتروني' : /2FA|OTP|CODE/i.test(browserCred.secretKey) ? 'رمز التحقّق' : 'بيانات الدخول'}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, lineHeight: 1.6 }}>
+                  {browserCred.message}
+                </p>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={/PASSWORD/i.test(browserCred.secretKey) ? 'password' : 'text'}
+                    autoFocus
+                    dir={/EMAIL/i.test(browserCred.secretKey) ? 'ltr' : 'rtl'}
+                    value={browserCredValue}
+                    onChange={(e) => setBrowserCredValue(e.target.value)}
+                    placeholder={/2FA|OTP|CODE/i.test(browserCred.secretKey) ? 'أدخل رمز التحقّق' : /EMAIL/i.test(browserCred.secretKey) ? 'أدخل بريدك الإلكتروني' : /PASSWORD/i.test(browserCred.secretKey) ? 'أدخل كلمة المرور' : 'أدخل القيمة المطلوبة'}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !browserCredBusy) { void submitBrowserCred(); } }}
+                    style={{
+                      width: '100%', padding: '12px', paddingInlineStart: 40, borderRadius: 8,
+                      background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)',
+                      color: '#fff', outline: 'none', fontSize: 14,
+                    }}
+                  />
+                  <Key size={16} style={{ position: 'absolute', insetInlineStart: 12, top: 14, color: 'var(--text-secondary)' }} />
+                </div>
+                <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <ShieldCheck size={12} />
+                  <span>تُرسَل بأمان وتُخزَّن مشفّرة — لا تظهر في السجلّ ولا في اللقطات.</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-start', gap: 8 }}>
+                <button
+                  onClick={() => { void submitBrowserCred(); }}
+                  disabled={browserCredBusy || !browserCredValue.trim()}
+                  style={{ padding: '8px 18px', borderRadius: 6, border: 0, background: (browserCredBusy || !browserCredValue.trim()) ? '#475569' : 'var(--accent-secondary, #2563eb)', color: '#fff', cursor: (browserCredBusy || !browserCredValue.trim()) ? 'default' : 'pointer', fontWeight: 600 }}
+                >
+                  {browserCredBusy ? '… يُتابع' : 'إرسال ومتابعة'}
+                </button>
+                <button
+                  onClick={() => { setBrowserCred(null); setBrowserCredValue(''); lastGateSigRef.current.browserCred = undefined; }}
+                  disabled={browserCredBusy}
+                  style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: browserCredBusy ? 'default' : 'pointer' }}
+                >
+                  إلغاء
                 </button>
               </div>
             </div>

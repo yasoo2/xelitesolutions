@@ -352,3 +352,31 @@ export function broadcastThinkingDetail(sessionId: string, detail: string) {
     ts: Date.now()
   });
 }
+
+/**
+ * The browser agent paused and needs the user to supply a credential / 2FA code.
+ * Surface it in JOE'S CHAT (not inside the browser panel) so the user answers
+ * right where they are typing. `chatSessionId` routes it to the correct chat;
+ * `browserSessionId` tells the chat which live browser to resume afterwards.
+ */
+export function broadcastBrowserNeedsUser(
+  chatSessionId: string,
+  payload: { message: string; secretKey: string; browserSessionId: string; url?: string }
+) {
+  const chatSid = String(chatSessionId || '').trim();
+  if (!chatSid) return;
+  thinkingEventSeq += 1;
+  broadcast({
+    type: 'browser_needs_user',
+    data: {
+      message: String(payload.message || ''),
+      secretKey: String(payload.secretKey || ''),
+      browserSessionId: String(payload.browserSessionId || ''),
+      url: String(payload.url || ''),
+      sessionId: chatSid, // for resolveEventUserId + per-session chat filter
+    },
+    id: `bnu_${chatSid}_${payload.secretKey}_${thinkingEventSeq}`,
+    sessionId: chatSid,
+    ts: Date.now()
+  });
+}

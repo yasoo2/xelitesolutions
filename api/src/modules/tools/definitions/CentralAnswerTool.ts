@@ -57,7 +57,7 @@ Your goal is to build the extraordinary.`;
             : '';
 
         const systemPrompt = (isAr
-            ? `${baseSystemPrompt}\n\nCRITICAL INSTRUCTION: You MUST respond in **ARABIC** (اللغة العربية) ONLY. Use professional, technical Arabic terminology. Do NOT use English unless for code or specific technical terms that are better in English.`
+            ? `${baseSystemPrompt}\n\nCRITICAL INSTRUCTION: اكتب ردّك **بالعربية الفصحى بالكامل**. لا تخلط كلمات إنجليزية داخل الجملة العربية (هذا يُشوّش قراءة النص). عند الحاجة لمصطلح تقني، اكتب مقابله العربي، وإن لزم ضع الإنجليزي بين قوسين بعده — مثال: «الواجهة الأمامية (Frontend)». استثناء وحيد: أسماء الأوامر/الأكواد داخل علامات الكود.`
             : baseSystemPrompt) + memoryBlock;
 
         // Deterministic reply so a conversational turn NEVER fails into the
