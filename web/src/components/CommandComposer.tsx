@@ -912,7 +912,11 @@ export default function CommandComposer({
   }, []);
 
   const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>(initialProviderState.providers);
+  // activeProvider = the one ACTUALLY used at runtime (only changes after a
+  // successful Verify). selectedProvider = the one you're currently viewing/
+  // configuring in the panel (changing it does NOT switch the runtime provider).
   const [activeProvider, setActiveProvider] = useState(initialProviderState.activeProvider);
+  const [selectedProvider, setSelectedProvider] = useState(initialProviderState.activeProvider);
   const [showKey, setShowKey] = useState<{ [key: string]: boolean }>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
@@ -2569,8 +2573,9 @@ export default function CommandComposer({
   const checkConnection = async (key: string, opts?: { closeOnSuccess?: boolean }) => {
     const p = providers[key];
 
-    // Mark as active + verifying (clears any previous state).
-    setActiveProvider(key);
+    // Show it in the panel + start verifying — but do NOT make it the runtime
+    // provider yet. It becomes active ONLY if the verify below succeeds.
+    setSelectedProvider(key);
     setProviders(prev => ({ ...prev, [key]: { ...prev[key], isVerifying: true, isConnected: false, lastError: undefined } }));
 
     const token = localStorage.getItem('token');
@@ -2596,6 +2601,8 @@ export default function CommandComposer({
       const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
 
       if (data?.ok) {
+        // SUCCESS: only NOW does this provider become the active runtime provider.
+        setActiveProvider(key);
         setProviders(prev => ({
           ...prev,
           [key]: { ...prev[key], isVerifying: false, isConnected: true, lastError: undefined, apiKey: prev[key].apiKey || (prev[key].isFree ? 'free-mode' : prev[key].apiKey) },
@@ -3124,15 +3131,16 @@ export default function CommandComposer({
                   {Object.entries(providers).filter(([, p]) => p.isFree).map(([key, p]) => (
                     <button
                       key={key}
-                      className={`provider-item ${activeProvider === key ? 'active' : ''}`}
-                      onClick={() => checkConnection(key)}
-                      title={p.lastError ? `لا يعمل: ${p.lastError}` : p.isConnected ? 'يعمل' : ''}
+                      className={`provider-item ${selectedProvider === key ? 'active' : ''}`}
+                      onClick={() => setSelectedProvider(key)}
+                      title={p.lastError ? `لا يعمل: ${p.lastError}` : activeProvider === key ? 'قيد الاستخدام الآن' : 'اضغط للعرض، ثم Verify للتفعيل'}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.isConnected ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
                         {p.name.split(' ')[0]}
+                        {activeProvider === key && <span style={{ fontSize: 10, color: '#22c55e', marginInlineStart: 4 }}>● قيد الاستخدام</span>}
                       </span>
-                      {activeProvider === key && <ChevronRight size={14} />}
+                      {selectedProvider === key && <ChevronRight size={14} />}
                     </button>
                   ))}
                 </div>
@@ -3144,15 +3152,16 @@ export default function CommandComposer({
                   {Object.entries(providers).filter(([, p]) => !p.isFree).map(([key, p]) => (
                     <button
                       key={key}
-                      className={`provider-item ${activeProvider === key ? 'active' : ''}`}
-                      onClick={() => { setActiveProvider(key); if (p.apiKey) checkConnection(key); }}
-                      title={p.lastError ? `لا يعمل: ${p.lastError}` : p.isConnected ? 'يعمل' : ''}
+                      className={`provider-item ${selectedProvider === key ? 'active' : ''}`}
+                      onClick={() => setSelectedProvider(key)}
+                      title={p.lastError ? `لا يعمل: ${p.lastError}` : activeProvider === key ? 'قيد الاستخدام الآن' : 'اضغط للعرض، أدخل المفتاح، ثم Verify للتفعيل'}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.isConnected ? 'connected' : p.lastError ? 'failed' : (p.apiKey ? 'active' : 'disconnected')}`} />
                         {p.name.split(' ')[0]}
+                        {activeProvider === key && <span style={{ fontSize: 10, color: '#22c55e', marginInlineStart: 4 }}>● قيد الاستخدام</span>}
                       </span>
-                      {activeProvider === key && <ChevronRight size={14} />}
+                      {selectedProvider === key && <ChevronRight size={14} />}
                     </button>
                   ))}
                 </div>
@@ -3161,25 +3170,25 @@ export default function CommandComposer({
 
             {/* Right Content */}
             <div className="providers-right">
-              {providers[activeProvider] && (
+              {providers[selectedProvider] && (
                 <>
                   {/* OpenRouter Model Selection */}
-                  {activeProvider === 'openrouter' && (
+                  {selectedProvider === 'openrouter' && (
                     <div style={{ marginBottom: 20 }}>
                       <label className="section-label">اختر النموذج</label>
                       <select
                         className="model-select"
-                        value={providers[activeProvider].model || ''}
+                        value={providers[selectedProvider].model || ''}
                         onChange={(e) => {
                           const selectedModel = OPENROUTER_MODELS.find(m => m.id === e.target.value);
                           const isFreeModel = selectedModel?.free ?? true;
                           setProviders(prev => ({
                             ...prev,
-                            [activeProvider]: {
-                              ...prev[activeProvider],
+                            [selectedProvider]: {
+                              ...prev[selectedProvider],
                               model: e.target.value,
                               isFree: isFreeModel,
-                              isConnected: isFreeModel || !!prev[activeProvider].apiKey
+                              isConnected: isFreeModel || !!prev[selectedProvider].apiKey
                             }
                           }));
                         }}
@@ -3197,7 +3206,7 @@ export default function CommandComposer({
                       </select>
                       {/* Show selected model info */}
                       {(() => {
-                        const selected = OPENROUTER_MODELS.find(m => m.id === providers[activeProvider].model);
+                        const selected = OPENROUTER_MODELS.find(m => m.id === providers[selectedProvider].model);
                         if (!selected) return null;
                         return (
                           <div style={{
@@ -3218,7 +3227,7 @@ export default function CommandComposer({
                   )}
 
                   {/* Free Provider Info Box */}
-                  {providers[activeProvider]?.isFree && activeProvider !== 'auto' && activeProvider !== 'openrouter' && (
+                  {providers[selectedProvider]?.isFree && selectedProvider !== 'auto' && selectedProvider !== 'openrouter' && (
                     <div className="info-box free">
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>✅ مزود مجاني — متصل تلقائياً</div>
                       <div>هذا المزود مجاني ولا يحتاج أي مفتاح API. يمكنك البدء بالمحادثة مباشرة.</div>
@@ -3226,19 +3235,19 @@ export default function CommandComposer({
                   )}
 
                   {/* API Key - Hide for all free providers */}
-                  {!providers[activeProvider]?.isFree && (
+                  {!providers[selectedProvider]?.isFree && (
                     <div style={{ marginBottom: 20 }}>
                       <label className="section-label">API Key</label>
                       <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
                         <div style={{ position: 'relative', flex: 1 }}>
                           <input
-                            type={showKey[activeProvider] ? "text" : "password"}
+                            type={showKey[selectedProvider] ? "text" : "password"}
                             className="api-key-input"
-                            value={providers[activeProvider].apiKey}
+                            value={providers[selectedProvider].apiKey}
                             onChange={(e) => {
                               const newKey = e.target.value;
-                              setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], apiKey: newKey, isConnected: false } }));
-                              if (activeProvider === 'openai' && newKey.trim().startsWith('sk-')) {
+                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey, isConnected: false } }));
+                              if (selectedProvider === 'openai' && newKey.trim().startsWith('sk-')) {
                                 fetch(`${API}/providers/openai/key`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
@@ -3246,20 +3255,20 @@ export default function CommandComposer({
                                 }).catch(err => console.error('Failed to send API key to server:', err));
                               }
                             }}
-                            placeholder={activeProvider === 'openrouter' ? 'sk-or-...' : 'sk-...'}
+                            placeholder={selectedProvider === 'openrouter' ? 'sk-or-...' : 'sk-...'}
                           />
                           <button
-                            onClick={() => setShowKey(prev => ({ ...prev, [activeProvider]: !prev[activeProvider] }))}
+                            onClick={() => setShowKey(prev => ({ ...prev, [selectedProvider]: !prev[selectedProvider] }))}
                             style={{ position: 'absolute', right: 10, top: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
                           >
-                            {showKey[activeProvider] ? <EyeOff size={16} /> : <Eye size={16} />}
+                            {showKey[selectedProvider] ? <EyeOff size={16} /> : <Eye size={16} />}
                           </button>
                         </div>
                         <button
                           onClick={() => {
-                            deleteProviderKey(activeProvider);
+                            deleteProviderKey(selectedProvider);
                             // Clear API key on server for OpenAI
-                            if (activeProvider === 'openai') {
+                            if (selectedProvider === 'openai') {
                               fetch(`${API}/providers/clear`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' }
@@ -3275,7 +3284,7 @@ export default function CommandComposer({
                           <Trash2 size={18} />
                         </button>
                       </div>
-                      {activeProvider === 'openrouter' && (
+                      {selectedProvider === 'openrouter' && (
                         <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
                           احصل على API Key من <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)' }}>openrouter.ai/keys</a>
                         </div>
@@ -3284,7 +3293,7 @@ export default function CommandComposer({
                   )}
 
                   {/* Auto Provider Info */}
-                  {activeProvider === 'auto' && (
+                  {selectedProvider === 'auto' && (
                     <div className="info-box free">
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ الوضع التلقائي المجاني</div>
                       <div>يستخدم نماذج AI مجانية بذكاء. لا يحتاج أي مفتاح API. مناسب للمحادثات العامة والمهام البسيطة.</div>
@@ -3293,26 +3302,26 @@ export default function CommandComposer({
 
 
                   {/* Model ID - Hide for Auto and OpenRouter (which has dropdown) */}
-                  {activeProvider !== 'auto' && activeProvider !== 'openrouter' && (
-                    <div style={{ display: 'grid', gridTemplateColumns: activeProvider === 'grok' ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 20 }}>
+                  {selectedProvider !== 'auto' && selectedProvider !== 'openrouter' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: selectedProvider === 'grok' ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 20 }}>
                       <div>
                         <label className="section-label">Model ID</label>
                         <input
                           type="text"
                           className="api-key-input"
-                          value={providers[activeProvider].model || ''}
-                          onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], model: e.target.value } }))}
+                          value={providers[selectedProvider].model || ''}
+                          onChange={(e) => setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], model: e.target.value } }))}
                           placeholder="gpt-4o"
                         />
                       </div>
-                      {activeProvider === 'grok' && (
+                      {selectedProvider === 'grok' && (
                         <div>
                           <label className="section-label">Base URL</label>
                           <input
                             type="text"
                             className="api-key-input"
-                            value={providers[activeProvider].baseUrl || ''}
-                            onChange={(e) => setProviders(prev => ({ ...prev, [activeProvider]: { ...prev[activeProvider], baseUrl: e.target.value } }))}
+                            value={providers[selectedProvider].baseUrl || ''}
+                            onChange={(e) => setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], baseUrl: e.target.value } }))}
                             placeholder="https://api..."
                             style={{
                               width: '100%', padding: '10px 12px', borderRadius: 8,
@@ -3327,35 +3336,35 @@ export default function CommandComposer({
 
 
 
-                  {providers[activeProvider].lastError && (
+                  {providers[selectedProvider].lastError && (
                     <div style={{
                       padding: 12, borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)',
                       border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', fontSize: 13,
                       marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8
                     }}>
                       <XCircle size={16} />
-                      {providers[activeProvider].lastError}
+                      {providers[selectedProvider].lastError}
                     </div>
                   )}
 
 
                   <div style={{ display: 'flex', gap: 12, paddingTop: 20, borderTop: '1px solid var(--border-color)' }}>
                     <button
-                      onClick={() => checkConnection(activeProvider, { closeOnSuccess: true })}
-                      disabled={providers[activeProvider].isVerifying}
+                      onClick={() => checkConnection(selectedProvider, { closeOnSuccess: true })}
+                      disabled={providers[selectedProvider].isVerifying}
                       style={{
                         flex: 1, padding: '12px', borderRadius: 8, border: 'none',
-                        background: providers[activeProvider].isConnected ? '#22c55e' : providers[activeProvider].lastError ? '#ef4444' : 'var(--accent-primary)',
+                        background: providers[selectedProvider].isConnected ? '#22c55e' : providers[selectedProvider].lastError ? '#ef4444' : 'var(--accent-primary)',
                         color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        opacity: providers[activeProvider].isVerifying ? 0.7 : 1
+                        opacity: providers[selectedProvider].isVerifying ? 0.7 : 1
                       }}
                     >
-                      {providers[activeProvider].isVerifying ? (
+                      {providers[selectedProvider].isVerifying ? (
                         <>
                           <Loader2 size={18} className="spin" /> Verifying...
                         </>
-                      ) : providers[activeProvider].isConnected ? (
+                      ) : providers[selectedProvider].isConnected ? (
                         <>
                           <CheckCircle2 size={18} /> Verified & Active
                         </>
@@ -3370,17 +3379,17 @@ export default function CommandComposer({
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        handleDisconnect(activeProvider);
+                        handleDisconnect(selectedProvider);
                       }}
-                      disabled={!providers[activeProvider].isConnected}
+                      disabled={!providers[selectedProvider].isConnected}
                       title="Disconnect Provider"
                       style={{
                         padding: '12px 16px', borderRadius: 8, border: '1px solid var(--border-color)',
                         background: 'var(--bg-secondary)',
-                        color: providers[activeProvider].isConnected ? '#ef4444' : 'var(--text-muted)',
+                        color: providers[selectedProvider].isConnected ? '#ef4444' : 'var(--text-muted)',
                         fontSize: 14, fontWeight: 600, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        opacity: !providers[activeProvider].isConnected ? 0.5 : 1
+                        opacity: !providers[selectedProvider].isConnected ? 0.5 : 1
                       }}
                     >
                       <Power size={18} />
