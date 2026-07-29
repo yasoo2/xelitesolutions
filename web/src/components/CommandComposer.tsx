@@ -714,16 +714,18 @@ const OPENROUTER_MODELS = [
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   // Free-first: Joe relies primarily on FREE providers. "Auto" picks the best
   // available free provider automatically (see the router's free-first mesh).
-  auto: { name: 'Auto (مجاني)', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
+  auto: { name: 'Auto — تلقائي (المحلي + المجاني)', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
   gemini: { name: 'Google Gemini (مجاني)', apiKey: 'free-mode', isConnected: true, model: 'gemini-2.0-flash', isFree: true },
-  groq: { name: 'Groq (مجاني - الأسرع)', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', isFree: true },
+  // Groq (شركة Groq — مفتاحها يبدأ بـ gsk_). ضع مفتاح Groq هنا. النموذج مطابق للمفتاح.
+  groq: { name: 'Groq ⚡ (ضع مفتاح gsk_ هنا)', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', isFree: true },
   cerebras: { name: 'Cerebras (مجاني - فائق السرعة)', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.cerebras.ai/v1', model: 'llama-3.3-70b', isFree: true },
   openrouter: { name: 'OpenRouter (مجاني)', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free', isFree: true },
   mistral: { name: 'Mistral (مجاني)', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', isFree: true },
   deepseek: { name: 'DeepSeek (مجاني)', apiKey: 'free-mode', isConnected: true, model: 'deepseek-chat', isCustom: true, isFree: true },
-  openai: { name: 'OpenAI', apiKey: '', isConnected: false, model: 'gpt-4o' },
-  anthropic: { name: 'Anthropic', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
-  grok: { name: 'xAI (Grok)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
+  openai: { name: 'OpenAI (مفتاح مدفوع)', apiKey: '', isConnected: false, model: 'gpt-4o' },
+  anthropic: { name: 'Anthropic (مفتاح مدفوع)', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
+  // ⚠️ xAI Grok — شركة إيلون ماسك (x.ai)، مختلفة تماماً عن Groq. مفتاح gsk_ لا يعمل هنا.
+  grok: { name: 'xAI Grok (شركة أخرى — ليست Groq)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
 };
 export default function CommandComposer({
   sessionId,
