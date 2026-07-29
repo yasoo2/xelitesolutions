@@ -6,7 +6,7 @@ import path from 'path';
 
 export class BrowserVisionTool extends BaseTool {
     name = 'browser_vision';
-    description = 'Visit a website and take a screenshot (simulated vision).';
+    description = 'Open a URL in a real headless browser and capture an actual screenshot of the page (returns the saved image path).';
     version = '1.0.0';
     tags = ['browser', 'vision', 'screenshot'];
     inputSchema = {

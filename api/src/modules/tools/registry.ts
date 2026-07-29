@@ -36,8 +36,6 @@ import { ErrorRecoveryTool } from './definitions/ErrorRecoveryTool';
 import { PythonBuilderTool } from './definitions/PythonBuilderTool';
 import { LoggerTool } from './definitions/LoggerTool';
 import { AlertManagerTool } from './definitions/AlertManagerTool';
-import { RetryManagerTool } from './definitions/RetryManagerTool';
-import { FallbackTool } from './definitions/FallbackTool';
 import { JavaBuilderTool } from './definitions/JavaBuilderTool';
 import { GoBuilderTool } from './definitions/GoBuilderTool';
 import { JoeEngineeringReportTool } from './definitions/JoeEngineeringReportTool';
