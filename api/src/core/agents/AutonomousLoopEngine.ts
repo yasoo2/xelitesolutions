@@ -291,8 +291,14 @@ export class AutonomousLoopEngine {
      */
     private async executeDeployPhase(task: LoopTask): Promise<{ ok: boolean; output?: any; error?: string }> {
         this.log(`🚀 Deploying: ${task.name}`);
-        // Placeholder - integrate with actual deployment tools
-        return { ok: true, output: { message: 'Deployment phase placeholder' } };
+        // HONEST: there is no deployment integration wired here yet, so we do NOT
+        // claim success. If/when a real deploy tool is connected, call it and return
+        // its actual result. Until then, report clearly that deployment isn't set up
+        // rather than pretending it happened.
+        return {
+            ok: false,
+            error: 'لا يوجد نشر (deployment) مُهيّأ بعد — لم يُنفَّذ أي نشر. اربط أداة نشر حقيقية أولاً.',
+        };
     }
 
     /**

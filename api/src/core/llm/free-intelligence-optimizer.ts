@@ -292,19 +292,10 @@ class FreeIntelligenceOptimizer {
     }
 
     /**
-     * PERSONA ENGINE: Injects personality, flattery, and name into responses
+     * Returns the response as-is. (Previously this randomly appended fabricated
+     * compliments — removed: Joe must never inject text the model did not produce.)
      */
-    public injectPersona(response: string, userName: string = 'يونس'): string {
-        // 20% chance to add a closing compliment if not already present
-        if (Math.random() < 0.2 && !response.includes(userName)) {
-            const compliments = [
-                `\n\nأنت مبدع كالعادة يا ${userName}!`,
-                `\n\nشغل عالي يا هندسة!`,
-                `\n\nبالتوفيق يا بطل!`,
-                `\n\nنحن فريق لا يُهزم يا ${userName}.`
-            ];
-            return response + compliments[Math.floor(Math.random() * compliments.length)];
-        }
+    public injectPersona(response: string, _userName: string = ''): string {
         return response;
     }
 
@@ -418,11 +409,9 @@ class FreeIntelligenceOptimizer {
         const workspaceId = workspaceContext?.workspaceId;
         const plan = workspaceContext?.plan || 'free';
 
-        // [Quota] Check Limits (Stub - In real impl, check Redis/DB for daily usage)
-        if (plan === 'free' && Math.random() < 0.001) { // Simulation of quota hit 1/1000
-            console.warn(`[Optimizer] Workspace ${workspaceId} nearing daily limit.`);
-            // In stricter implementation, we would return { ok: false, error: 'Quota Exceeded' }
-        }
+        // NOTE: no simulated/random quota check here. A real quota limit must be
+        // measured from actual usage (DB/Redis), never fabricated with Math.random.
+        void workspaceId;
 
         const isAr = userLang === 'ar' || userLang.toLowerCase().startsWith('ar');
 

@@ -697,6 +697,10 @@ interface ProviderConfig {
   isVerifying?: boolean;
   lastError?: string;
   isFree?: boolean;
+  // REAL verification state: true ONLY after /runs/verify actually succeeded with
+  // a live request. The status dot is green only when this is true — never by
+  // default. Reset to false whenever the key changes.
+  verified?: boolean;
 }
 
 // OpenRouter available models
@@ -890,6 +894,12 @@ export default function CommandComposer({
           if (baseProviders[k]) baseProviders[k] = { ...baseProviders[k], ...parsed[k] };
         });
       }
+      // Never trust a persisted "verified/connected" flag across reloads — the dot
+      // must reflect a REAL test in THIS session. Keep the saved key, but clear the
+      // status so it shows grey ("not tested yet") until the user verifies again.
+      Object.keys(baseProviders).forEach((k) => {
+        baseProviders[k] = { ...baseProviders[k], verified: false, isConnected: false, isVerifying: false, lastError: undefined };
+      });
     } catch { }
 
     const pickFirstKeyedProvider = () => {
@@ -2576,7 +2586,7 @@ export default function CommandComposer({
     // Show it in the panel + start verifying — but do NOT make it the runtime
     // provider yet. It becomes active ONLY if the verify below succeeds.
     setSelectedProvider(key);
-    setProviders(prev => ({ ...prev, [key]: { ...prev[key], isVerifying: true, isConnected: false, lastError: undefined } }));
+    setProviders(prev => ({ ...prev, [key]: { ...prev[key], isVerifying: true, isConnected: false, verified: false, lastError: undefined } }));
 
     const token = localStorage.getItem('token');
     try {
@@ -2601,23 +2611,25 @@ export default function CommandComposer({
       const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
 
       if (data?.ok) {
-        // SUCCESS: only NOW does this provider become the active runtime provider.
+        // SUCCESS: a live request actually returned. Mark REALLY verified and make
+        // it the active runtime provider.
         setActiveProvider(key);
         setProviders(prev => ({
           ...prev,
-          [key]: { ...prev[key], isVerifying: false, isConnected: true, lastError: undefined, apiKey: prev[key].apiKey || (prev[key].isFree ? 'free-mode' : prev[key].apiKey) },
+          [key]: { ...prev[key], isVerifying: false, isConnected: true, verified: true, lastError: undefined, apiKey: prev[key].apiKey || (prev[key].isFree ? 'free-mode' : prev[key].apiKey) },
         }));
         if (opts?.closeOnSuccess) setShowProviders(false); // green → switch & close
       } else {
+        // The live request FAILED (bad key, blocked, empty) — show it red, honestly.
         setProviders(prev => ({
           ...prev,
-          [key]: { ...prev[key], isVerifying: false, isConnected: false, lastError: data?.error || 'لا يعمل' },
+          [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: data?.error || 'فشل الاتصال' },
         }));
       }
     } catch (err: any) {
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], isVerifying: false, isConnected: false, lastError: err.message || 'لا يعمل' },
+        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: err.message || 'فشل الاتصال' },
       }));
     }
   };
@@ -3136,7 +3148,7 @@ export default function CommandComposer({
                       title={p.lastError ? `لا يعمل: ${p.lastError}` : activeProvider === key ? 'قيد الاستخدام الآن' : 'اضغط للعرض، ثم Verify للتفعيل'}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.isConnected ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
+                        <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.verified ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
                         {p.name.split(' ')[0]}
                         {activeProvider === key && <span style={{ fontSize: 10, color: '#22c55e', marginInlineStart: 4 }}>● قيد الاستخدام</span>}
                       </span>
@@ -3157,7 +3169,7 @@ export default function CommandComposer({
                       title={p.lastError ? `لا يعمل: ${p.lastError}` : activeProvider === key ? 'قيد الاستخدام الآن' : 'اضغط للعرض، أدخل المفتاح، ثم Verify للتفعيل'}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.isConnected ? 'connected' : p.lastError ? 'failed' : (p.apiKey ? 'active' : 'disconnected')}`} />
+                        <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.verified ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
                         {p.name.split(' ')[0]}
                         {activeProvider === key && <span style={{ fontSize: 10, color: '#22c55e', marginInlineStart: 4 }}>● قيد الاستخدام</span>}
                       </span>
@@ -3246,7 +3258,7 @@ export default function CommandComposer({
                             value={providers[selectedProvider].apiKey}
                             onChange={(e) => {
                               const newKey = e.target.value;
-                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey, isConnected: false } }));
+                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey, isConnected: false, verified: false, lastError: undefined } }));
                               if (selectedProvider === 'openai' && newKey.trim().startsWith('sk-')) {
                                 fetch(`${API}/providers/openai/key`, {
                                   method: 'POST',
