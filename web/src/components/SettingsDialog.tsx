@@ -3,9 +3,10 @@ import { useTranslation } from 'react-i18next';
 import {
     Moon, Sun, Check, LogOut, X,
     Palette, Globe, Shield, ChevronLeft,
-    Monitor, Smartphone, Mail
+    Monitor, Smartphone, Mail, Activity
 } from 'lucide-react';
 import { API_URL } from '../config';
+import SystemStatusPanel from './SystemStatusPanel';
 
 interface SettingsDialogProps {
     isOpen: boolean;
@@ -26,7 +27,7 @@ const LANGUAGES = [
     { code: 'es', label: 'Español', flag: '🇪🇸' }
 ];
 
-type SettingsTab = 'appearance' | 'language' | 'account';
+type SettingsTab = 'status' | 'appearance' | 'language' | 'account';
 
 interface MenuItem {
     id: SettingsTab;
@@ -41,11 +42,19 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
     isOpen, onClose, theme, setTheme, lang, setLang, onLogout
 }) => {
     const { t } = useTranslation();
-    const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
+    const [activeTab, setActiveTab] = useState<SettingsTab>('status');
 
     if (!isOpen) return null;
 
     const menuItems: MenuItem[] = [
+        {
+            id: 'status',
+            icon: <Activity size={18} />,
+            labelKey: 'systemStatus',
+            labelFallback: 'حالة النظام',
+            descKey: 'systemStatusDesc',
+            descFallback: 'فحص حقيقي لكل الأنظمة'
+        },
         {
             id: 'appearance',
             icon: <Palette size={18} />,
@@ -76,6 +85,19 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
     const renderContent = () => {
         switch (activeTab) {
+            case 'status':
+                return (
+                    <div className="stg-content-section stg-fade-in">
+                        <div className="stg-content-header">
+                            <Activity size={22} />
+                            <div>
+                                <h3>{t('systemStatus', 'حالة النظام')}</h3>
+                                <p>{t('systemStatusDesc', 'فحص حقيقي مباشر لكل أنظمة جو')}</p>
+                            </div>
+                        </div>
+                        <SystemStatusPanel />
+                    </div>
+                );
             case 'appearance':
                 return (
                     <div className="stg-content-section stg-fade-in">

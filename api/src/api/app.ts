@@ -30,6 +30,7 @@ import browserRoutes from './routes/browser';
 import oauthRoutes from './routes/oauth';
 import extensionRoutes from './routes/extension';
 import browserAgentRoutes from './routes/browserAgent';
+import statusRoutes from './routes/status';
 import serverRoutes from './routes/servers';
 import workspacesRoutes from './routes/workspaces';
 import adminRoutes from './routes/admin';
@@ -203,6 +204,7 @@ export const createApp = () => {
   apiRouter.use('/oauth', oauthRoutes);
   apiRouter.use('/extension', extensionRoutes);
   apiRouter.use('/browser-agent', browserAgentRoutes);
+  apiRouter.use('/status', statusRoutes);
   apiRouter.use('/servers', authenticate, serverRoutes);
   apiRouter.use('/workspaces', workspacesRoutes);
   apiRouter.use('/admin/sentinel', sentinelRoutes);
