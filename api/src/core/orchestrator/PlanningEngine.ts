@@ -191,7 +191,11 @@ Rules:
             // Gmail" — the word "mail" inside the URL must not hijack it to the API.
             const hasUrl = /https?:\/\/|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)\b/i.test(g);
             const loginToSite = /(سجّ?ل|تسجيل)\s*(ال)?دخول|سجّ?ل\s*دخول|ادخل(ني)?|log\s*-?\s*in|log\s*in|sign\s*-?\s*in|signin/i.test(g);
-            if ((gmailRead || calList || driveList || sendMail) && !(hasUrl && loginToSite)) {
+            // Guard: "browse a site, THEN email the result to someone@x" is a compound
+            // browse->email task (handled below), not a bare "read my Gmail". The word
+            // "بريد/mail" here is the delivery channel, not the target — don't hijack it.
+            const emailCompound = /[\w.+-]+@[\w-]+\.[\w.-]+/.test(g) && /(أرسل|ارسل|ابعث|أبعث|send)/i.test(g) && hasUrl;
+            if ((gmailRead || calList || driveList || sendMail) && !(hasUrl && loginToSite) && !emailCompound) {
                 const action = sendMail ? 'gmail_send' : calList ? 'calendar_list' : driveList ? 'drive_list' : 'gmail_list';
                 const input: any = { action, request: intent.goal };
                 if (action === 'gmail_list') { const q = g.match(/(?:عن|من|بخصوص|about|from)\s+(.+)$/i); if (q) input.query = q[1].trim(); }
@@ -236,6 +240,29 @@ Rules:
                 }
             }
         } catch { /* consent module optional; never block planning */ }
+
+        // [BROWSER + EMAIL COMPOUND FAST-PATH] "browse/extract X, THEN email it to
+        // someone@site" — browser extracts, then google_account/gmail_send consumes the
+        // result via {{FROM:browse}}. If Google isn't connected, gmail_send answers
+        // honestly ("connect Google once"), it does not pretend to send.
+        {
+            const g = goalRaw;
+            const email = (g.match(/[\w.+-]+@[\w-]+\.[\w.-]+/) || [])[0];
+            const wantsSend = /(أرسل|ارسل|ابعث|أبعث|send|e-?mail|بريدياً)/i.test(g);
+            if (email && wantsSend && (!!urlMatch || looksBrowser)) {
+                const browsePart = (g.split(/\s*(?:ثم|وبعدها|بعد\s*ذلك|بعدها|و?أرسل|و?ارسل|و?ابعث|then\b|and\s+then\b)\s*/i)[0] || g).trim() || g;
+                console.log(`[PlanningEngine] browser+email compound -> browse then email ${email}`);
+                return {
+                    id: `browser_email_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [
+                        { id: 'browse', description: browsePart, tool: 'browser_run', agent: 'Browser', input: { task: browsePart, request: intent.goal }, dependsOn: [] },
+                        { id: 'send', description: `أرسل النتيجة بريداً إلى ${email}`, tool: 'google_account', agent: 'General', input: { action: 'gmail_send', to: email, subject: 'نتيجة من جو', body: '{{FROM:browse}}', request: intent.goal }, dependsOn: ['browse'] },
+                    ],
+                    metadata: { complexity: 'high', riskLevel: 'medium' },
+                };
+            }
+        }
 
         // [BROWSER + FILE COMPOUND FAST-PATH] "browse/extract X, THEN write/save it to
         // a file" is TWO tools in one request. Build a 2-node plan — browser extracts,

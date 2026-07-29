@@ -215,7 +215,13 @@ export class AgentOrchestrator {
         if (node.tool !== 'central_answer') {
           const isSmartBrowserTool = typeof node.tool === 'string'
             && node.tool.startsWith('browser_') && node.tool !== 'browser_run';
-          if (!isSmartBrowserTool) {
+          // Deterministic tools chosen by PlanningEngine (Google, the user's browser,
+          // file read/write, page builder) must NEVER be coerced to browser_run just
+          // because the agent got re-classified — that broke compound plans (e.g. the
+          // "send" node of a browse->email plan ran the browser instead of Gmail).
+          const DETERMINISTIC = ['google_account', 'user_browser', 'write_file', 'file_write', 'create_file', 'write_to_file', 'read_file', 'file_read', 'web_page_builder'];
+          const isProtected = isSmartBrowserTool || (typeof node.tool === 'string' && DETERMINISTIC.includes(node.tool));
+          if (!isProtected) {
             if (node.agent === 'Browser') { node.tool = 'browser_run'; }
             else if (node.tool === 'browser_run') { node.tool = 'shell_execute'; }
           }
