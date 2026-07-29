@@ -45,13 +45,21 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
     try {
         $tags = Invoke-RestMethod -Uri "http://localhost:11434/api/tags" -TimeoutSec 3 -ErrorAction Stop
         $env:LOCAL_LLM_BASE_URL = "http://localhost:11434"
+        # اختيار النموذج الافتراضي (يُستخدم كخيار احتياطي؛ جو يوزّع تلقائياً: نموذج صغير
+        # سريع للقرارات والمحادثة، و coder للبرمجة). على معالج لابتوب بلا كرت شاشة يكون
+        # نموذج 3B أسرع بمرّتين-ثلاث من 7B ولا يتجمّد — لذلك نفضّله أولاً هنا.
         if (-not $env:LOCAL_LLM_MODEL) {
-            $preferred = @("qwen2.5-coder:7b", "qwen2.5-coder:latest", "qwen2.5:7b", "llama3.1", "llama3")
+            $preferred = @("qwen2.5:3b", "llama3.2:3b", "qwen2.5:7b", "qwen2.5-coder:7b", "qwen2.5-coder:latest", "llama3.1", "llama3")
             $available = @($tags.models | ForEach-Object { $_.name })
             $pick = $null
             foreach ($p in $preferred) { if ($available -contains $p) { $pick = $p; break } }
             if (-not $pick -and $available.Count -gt 0) { $pick = $available[0] }
             if ($pick) { $env:LOCAL_LLM_MODEL = $pick }
+        }
+        # على جهاز ضعيف (بلا GPU) يُفضّل ألا تطول مهلة كل قرار حتى لا يبدو النظام متجمّداً؛
+        # نموذج 3B يردّ عادةً خلال ثوانٍ، فمهلة 60 ثانية كافية وتُبقي الوكيل متجاوباً.
+        if (-not $env:LOCAL_LLM_TIMEOUT -and ($env:LOCAL_LLM_MODEL -match ':3b|:1\.5b|:0\.5b|llama3\.2:3b')) {
+            $env:LOCAL_LLM_TIMEOUT = "60000"
         }
         # نموذج الرؤية (اختياري): إن ثبّت llava / moondream / llama3.2-vision يكتشفه جو
         # تلقائياً ويستخدمه حين لا تُقرأ الصفحة نصياً (canvas/صور). للتثبيت: ollama pull llava
@@ -67,7 +75,7 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
         Write-Host "[brain] Ollama متصل — سيستخدمه جو حصرياً (النموذج: $($env:LOCAL_LLM_MODEL))" -ForegroundColor Green
     } catch {
         Write-Host "[brain] Ollama غير مُشغّل — سيعمل جو على الذكاء المجاني عبر الإنترنت." -ForegroundColor DarkYellow
-        Write-Host "        (لتشغيل أقوى وأخصّ: ثبّت Ollama من https://ollama.com ثم شغّل: ollama pull qwen2.5-coder:7b)" -ForegroundColor DarkGray
+        Write-Host "        (لجهاز خفيف بلا كرت شاشة، الأسرع: ollama pull qwen2.5:3b — قرارات أسرع بلا تجمّد)" -ForegroundColor DarkGray
     }
 }
 
