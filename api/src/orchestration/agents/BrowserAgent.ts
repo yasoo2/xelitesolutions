@@ -1,6 +1,7 @@
 import { BaseAgent } from './BaseAgent';
 import intelligentRouter from '../../core/llm/intelligent-router';
-import { runReactBrowserTask, renderObservation, type Decider, type ReactAction, type Verifier } from '../../modules/browser/reactLoop';
+import { runReactBrowserTask, renderObservation, type Decider, type ReactAction, type Verifier, type Vision } from '../../modules/browser/reactLoop';
+import { LocalProvider } from '../../core/llm/providers/local';
 
 /**
  * BrowserAgent — Autonomous Web Interaction Specialist.
@@ -34,6 +35,7 @@ export class BrowserAgent extends BaseAgent {
                 maxSteps: Number(process.env.BROWSER_AGENT_MAX_STEPS || 12),
                 decide: makeLlmDecider(),
                 verify: makeLlmVerifier(),
+                vision: makeLlmVision(),   // undefined unless a vision model is configured
             });
             // These are all honest, completed OUTCOMES the user should see — not system
             // failures to "recover" from: a real success (done), a pause for the user
@@ -126,6 +128,39 @@ Set verified=true ONLY if the page clearly shows the goal is achieved (e.g. a su
             return { verified: true, note: obj && obj.note ? String(obj.note).slice(0, 200) : undefined };
         } catch {
             return { verified: true }; // never block on a verifier error
+        }
+    };
+}
+
+/** Vision fallback: only active when a local vision model is configured
+ *  (LOCAL_VISION_MODEL + LOCAL_LLM_BASE_URL, e.g. Ollama llava/moondream). Sends the
+ *  real screenshot to the vision model and asks for the next action by pixel. */
+export function makeLlmVision(): Vision | undefined {
+    const model = String(process.env.LOCAL_VISION_MODEL || '').trim();
+    const base = String(process.env.LOCAL_LLM_BASE_URL || '').trim();
+    if (!model || !base) return undefined;
+    const provider = new LocalProvider();
+    return async ({ task, screenshotBase64 }) => {
+        const system = `You are a browser agent that can SEE. You are given a screenshot of the current page.
+Goal: ${task}
+Decide the single next action by looking at the image. Reply with ONLY JSON:
+{"action":"click_at","x":<pixel>,"y":<pixel>}   // click a point you can see
+{"action":"scroll","direction":"down"}
+{"action":"done","answer":"<short result>"}
+{"action":"ask_user","message":"<what you need>"}
+Coordinates are pixels from the top-left of the screenshot.`;
+        const messages = [
+            { role: 'system', content: system },
+            { role: 'user', content: [
+                { type: 'text', text: 'What is the next action? JSON only.' },
+                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${screenshotBase64}` } },
+            ] },
+        ];
+        try {
+            const text = await provider.chatComplete(messages as any, model);
+            return parseAction(text);
+        } catch {
+            return { action: 'ask_user', message: 'تعذّرت الرؤية بالصورة (تحقّق من نموذج الرؤية).' };
         }
     };
 }

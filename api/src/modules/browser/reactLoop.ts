@@ -43,6 +43,7 @@ function describeAction(a: ReactAction, o?: Observation): string {
   switch (a.action) {
     case 'goto': return `يفتح ${a.url}`;
     case 'click': { const el = o?.elements.find(e => e.index === a.index); return `ينقر #${a.index}${el?.text ? ` «${el.text.slice(0, 30)}»` : ''}`; }
+    case 'click_at': return `ينقر (بالرؤية) عند ${Math.round(a.x)},${Math.round(a.y)}`;
     case 'type': {
       const el = o?.elements.find(e => e.index === a.index);
       const isSecret = /\{\{\s*SECRET\s*:/i.test(a.text || '');
@@ -78,12 +79,17 @@ export interface Observation {
 export type ReactAction =
   | { action: 'goto'; url: string; reason?: string }
   | { action: 'click'; index: number; reason?: string }
+  | { action: 'click_at'; x: number; y: number; reason?: string }   // click a pixel (used by vision)
   | { action: 'type'; index: number; text: string; reason?: string }
   | { action: 'select'; index: number; value: string; reason?: string }
   | { action: 'key'; key: string; reason?: string }
   | { action: 'scroll'; direction?: 'up' | 'down'; reason?: string }
   | { action: 'done'; answer?: string; reason?: string }
   | { action: 'ask_user'; message: string; reason?: string; secretKey?: string };
+
+/** A vision fallback: when the DOM gives the brain nothing to act on (canvas/image
+ *  pages), it sees a real screenshot and returns the next action (usually click_at). */
+export type Vision = (ctx: { task: string; screenshotBase64: string; observation: Observation; history: ReactStep[] }) => Promise<ReactAction>;
 
 export interface ReactStep {
   n: number;
@@ -216,6 +222,10 @@ function toExecutorActions(a: ReactAction, o: Observation): any[] | null {
     if (!el) return null;
     return [{ type: 'click_coordinates', x: el.x, y: el.y }, { type: 'wait', ms: 800 }];
   }
+  if (a.action === 'click_at') {
+    if (!Number.isFinite(a.x) || !Number.isFinite(a.y)) return null;
+    return [{ type: 'click_coordinates', x: Math.round(a.x), y: Math.round(a.y) }, { type: 'wait', ms: 800 }];
+  }
   if (a.action === 'type') {
     const el = o.elements.find(e => e.index === a.index);
     if (!el) return null;
@@ -238,6 +248,7 @@ export async function runReactBrowserTask(params: {
   maxSteps?: number;
   decide: Decider;
   verify?: Verifier;   // optional: confirm the goal is really achieved before declaring success
+  vision?: Vision;     // optional: decide from a screenshot when the DOM gives nothing
 }): Promise<ReactResult> {
   const sessionId = String(params.sessionId || '').trim();
   const userId = String(params.userId || '').trim();
@@ -271,10 +282,23 @@ export async function runReactBrowserTask(params: {
     emitAgentStep(sessionId, { phase: 'observe', step: n, url: observation.url, title: observation.title, elementCount: observation.elements.length });
 
     let action: ReactAction;
-    try {
-      action = await params.decide({ task, observation, history: steps, stepBudgetLeft: maxSteps - n });
-    } catch (e: any) {
-      return finish('error', false, `تعذّر اتخاذ القرار: ${String(e?.message || e)}`);
+    // VISION FALLBACK: when the DOM exposes nothing to act on (canvas/image/app pages)
+    // and a vision model is available, let the brain SEE a real screenshot and decide.
+    const domBlind = observation.elements.length === 0 && (observation.textSnippet || '').trim().length < 24;
+    if (params.vision && domBlind) {
+      try {
+        const shot = await page.screenshot({ type: 'jpeg', quality: 60 }).then((b: any) => b.toString('base64')).catch(() => '');
+        emitAgentStep(sessionId, { phase: 'observe', step: n, action: '👁️ رؤية بالصورة (الصفحة لا تُقرأ نصياً)', url: observation.url });
+        action = await params.vision({ task, screenshotBase64: shot, observation, history: steps });
+      } catch (e: any) {
+        action = { action: 'ask_user', message: 'تعذّرت الرؤية بالصورة على هذه الصفحة.' };
+      }
+    } else {
+      try {
+        action = await params.decide({ task, observation, history: steps, stepBudgetLeft: maxSteps - n });
+      } catch (e: any) {
+        return finish('error', false, `تعذّر اتخاذ القرار: ${String(e?.message || e)}`);
+      }
     }
     emitAgentStep(sessionId, { phase: 'decide', step: n, action: describeAction(action, observation), reason: (action as any).reason });
 

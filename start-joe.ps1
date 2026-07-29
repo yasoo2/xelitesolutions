@@ -53,6 +53,13 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
             if (-not $pick -and $available.Count -gt 0) { $pick = $available[0] }
             if ($pick) { $env:LOCAL_LLM_MODEL = $pick }
         }
+        # نموذج الرؤية (اختياري): إن ثبّت llava / moondream / llama3.2-vision يكتشفه جو
+        # تلقائياً ويستخدمه حين لا تُقرأ الصفحة نصياً (canvas/صور). للتثبيت: ollama pull llava
+        if (-not $env:LOCAL_VISION_MODEL) {
+            $available2 = @($tags.models | ForEach-Object { $_.name })
+            $visionPick = $available2 | Where-Object { $_ -match 'llava|moondream|vision|minicpm-v|bakllava' } | Select-Object -First 1
+            if ($visionPick) { $env:LOCAL_VISION_MODEL = $visionPick; Write-Host "[vision] نموذج رؤية متصل: $visionPick" -ForegroundColor Green }
+        }
         # استخدم Ollama حصرياً حتى لا يضيّع جو الوقت في مزوّدين مجّانيين فاشلين، مع مهلة
         # كافية لأول طلب (تحميل النموذج) ثم يبقى محمّلاً.
         if (-not $env:LOCAL_LLM_STRICT)  { $env:LOCAL_LLM_STRICT = "1" }
