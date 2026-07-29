@@ -2,6 +2,7 @@ import { BaseAgent } from './BaseAgent';
 import intelligentRouter from '../../core/llm/intelligent-router';
 import { runReactBrowserTask, renderObservation, type Decider, type ReactAction, type Verifier, type Vision } from '../../modules/browser/reactLoop';
 import { LocalProvider } from '../../core/llm/providers/local';
+import { normalizeIntentText } from '../../core/orchestrator/promptNormalizer';
 
 /**
  * BrowserAgent — Autonomous Web Interaction Specialist.
@@ -83,7 +84,10 @@ export class BrowserAgent extends BaseAgent {
 /** Is this task a QUESTION about a page (describe / read / what do you see /
  *  summarise) rather than a multi-step interaction (login / fill / buy)? */
 export function isReadTask(task: string): boolean {
-    const t = String(task || '');
+    // Probe the user's words PLUS the language-universal canonical form, so
+    // dialects («شوف الصفحة وقولي ايش فيها»), typos, and other languages
+    // ("ouvre la page et decris-la") are understood too.
+    const t = `${String(task || '')}\n${normalizeIntentText(task)}`;
     const readWords = /(صِ?ف|وصف|اوصف|أوصف|انظر|أنظر|شاهد|اطّ?لع|ماذا\s*(ترى|يوجد|فيها?)|ما\s*الذي\s*(تراه|فيها?)|ما\s*محتوى|أخبرني\s*(عن|بما)|اخبرني\s*(عن|بما)|اقرأ|لخّ?ص|ملخّ?ص|describe|what\s*(do\s*you\s*)?see|what'?s\s*on|tell\s*me\s*(about|what)|read|summari)/i.test(t);
     // Interactive verbs override read words ("اقرأ ثم سجّل دخولي" is interactive).
     const interactive = /(سجّ?ل|تسجيل|دخول|املأ|عبّ?ئ|انشر|احجز|اطلب|اشترك|ادفع|اشترِ?|log\s*-?\s*in|sign\s*-?\s*in|fill|submit|post|book|order|subscribe|checkout|buy|register)/i.test(t);

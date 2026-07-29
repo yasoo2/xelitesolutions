@@ -1,5 +1,6 @@
 import { StructuredIntent } from '../intelligence/IntentParser';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
+import { normalizeIntentText } from './promptNormalizer';
 
 export interface ExecutionStep {
     id: string;
@@ -129,21 +130,29 @@ Rules:
      */
     static async generatePlan(params: { intent: StructuredIntent, memory?: any }, traceId?: string, context?: any): Promise<ExecutionPlan> {
         const { intent, memory } = params;
-        const goalLower = String(intent.goal || '').toLowerCase();
+        // Language-universal understanding: `probe` = the user's original words PLUS
+        // a canonicalized companion (dialects, typos, and other languages mapped to
+        // the keywords the fast-paths know). ALL detection regexes test the probe;
+        // extraction (queries, filenames, emails) still reads the original goal so
+        // the user's own words are never mangled.
+        const goalNorm = normalizeIntentText(intent.goal || '');
+        const probe = goalNorm && goalNorm !== String(intent.goal || '').toLowerCase()
+            ? `${intent.goal || ''}\n${goalNorm}` : String(intent.goal || '');
+        const goalLower = probe.toLowerCase();
 
         // [BUILD FAST-PATH] "build/create a web page/site/app" -> ACTUALLY build it:
         // generate the code, write the file, and open it in the live preview. This is
         // deterministic (reliable even on weak free models) and makes Joe execute like
         // an engineering team instead of just replying with code text.
         const buildVerb = /\b(build|create|make|develop|design|generate|code|scaffold)\b/.test(goalLower)
-            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو)/.test(intent.goal || '');
+            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو)/.test(probe);
         const webNoun = /\b(page|site|website|web ?app|landing|portfolio|dashboard|form|store|shop|html|ui|interface)\b/.test(goalLower)
-            || /(صفحة|موقع|تطبيق|واجهة|متجر|لوحة|نموذج|بورتفوليو|معرض|هبوط)/.test(intent.goal || '');
+            || /(صفحة|موقع|تطبيق|واجهة|متجر|لوحة|نموذج|بورتفوليو|معرض|هبوط)/.test(probe);
         // Route follow-up edits (add button / change colour / ...) to the SAME page.
         const activeKey = String((context && context.sessionId) || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const hasActivePage = !!((global as any).joePages && (global as any).joePages[activeKey]);
         const editIntent = /\b(add|change|modify|update|edit|remove|bigger|smaller|colou?r|button|background|header|footer|font|title)\b/i.test(goalLower)
-            || /(أضف|اضف|غيّر|غير|عدّل|عدل|بدّل|بدل|اجعل|احذف|كبّر|صغّر|لون|زر|خلفية|حجم|عنوان|خط)/.test(intent.goal || '');
+            || /(أضف|اضف|غيّر|غير|عدّل|عدل|بدّل|بدل|اجعل|احذف|كبّر|صغّر|لون|زر|خلفية|حجم|عنوان|خط)/.test(probe);
         if ((buildVerb && webNoun) || (hasActivePage && editIntent)) {
             return {
                 id: `build_${Date.now()}`,
@@ -164,10 +173,10 @@ Rules:
         // browser through the installed Joe extension (their logins, any site).
         {
             const g = intent.goal || '';
-            const myBrowser = /(في|بـ?|على)?\s*متصفّ?حي(\s*(الشخصي|الحقيقي))?|بمتصفّ?حي|my\s+(own\s+)?browser|in\s+my\s+browser|on\s+my\s+browser/i.test(g);
+            const myBrowser = /(في|بـ?|على)?\s*متصفّ?حي(\s*(الشخصي|الحقيقي))?|بمتصفّ?حي|my\s+(own\s+)?browser|in\s+my\s+browser|on\s+my\s+browser/i.test(probe);
             if (myBrowser) {
                 const urlM = g.match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);
-                const action = urlM ? 'open' : /(اقرأ|لخّ?ص|read|summar)/i.test(g) ? 'read' : /(لقطة|screenshot|صورة)/i.test(g) ? 'screenshot' : 'open';
+                const action = urlM ? 'open' : /(اقرأ|لخّ?ص|read|summar)/i.test(probe) ? 'read' : /(لقطة|screenshot|صورة)/i.test(probe) ? 'screenshot' : 'open';
                 const input: any = { action, request: intent.goal };
                 if (urlM) input.url = urlM[0].startsWith('http') ? urlM[0] : `https://${urlM[0]}`;
                 return {
@@ -183,18 +192,18 @@ Rules:
         // user's connected Google account via official APIs (needs OAuth connect first).
         {
             const g = intent.goal || '';
-            const gmailRead = /(بريد|ايميل|إيميل|رسائل|جيميل|gmail|inbox|صندوق\s*الوارد|mail)/i.test(g);
-            const calList = /(تقويم|مواعيد|أجندة|اجندة|calendar|events?|اجتماعات)/i.test(g);
-            const driveList = /(درايف|ملفاتي|drive|ملفات\s*جوجل)/i.test(g);
-            const sendMail = /(أرسل|ارسل|ابعث|send)\s+(بريد|ايميل|إيميل|رسالة|mail|email)/i.test(g);
+            const gmailRead = /(بريد|ايميل|إيميل|رسائل|جيميل|gmail|inbox|صندوق\s*الوارد|mail)/i.test(probe);
+            const calList = /(تقويم|مواعيد|أجندة|اجندة|calendar|events?|اجتماعات)/i.test(probe);
+            const driveList = /(درايف|ملفاتي|drive|ملفات\s*جوجل)/i.test(probe);
+            const sendMail = /(أرسل|ارسل|ابعث|send)\s+(بريد|ايميل|إيميل|رسالة|mail|email)/i.test(probe);
             // Guard: "log in to https://mail.<site>" is a SITE login, not "read my
             // Gmail" — the word "mail" inside the URL must not hijack it to the API.
-            const hasUrl = /https?:\/\/|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)\b/i.test(g);
-            const loginToSite = /(سجّ?ل|تسجيل)\s*(ال)?دخول|سجّ?ل\s*دخول|ادخل(ني)?|log\s*-?\s*in|log\s*in|sign\s*-?\s*in|signin/i.test(g);
+            const hasUrl = /https?:\/\/|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)\b/i.test(probe);
+            const loginToSite = /(سجّ?ل|تسجيل)\s*(ال)?دخول|سجّ?ل\s*دخول|ادخل(ني)?|log\s*-?\s*in|log\s*in|sign\s*-?\s*in|signin/i.test(probe);
             // Guard: "browse a site, THEN email the result to someone@x" is a compound
             // browse->email task (handled below), not a bare "read my Gmail". The word
             // "بريد/mail" here is the delivery channel, not the target — don't hijack it.
-            const emailCompound = /[\w.+-]+@[\w-]+\.[\w.-]+/.test(g) && /(أرسل|ارسل|ابعث|أبعث|send)/i.test(g) && hasUrl;
+            const emailCompound = /[\w.+-]+@[\w-]+\.[\w.-]+/.test(probe) && /(أرسل|ارسل|ابعث|أبعث|send)/i.test(probe) && hasUrl;
             if ((gmailRead || calList || driveList || sendMail) && !(hasUrl && loginToSite) && !emailCompound) {
                 const action = sendMail ? 'gmail_send' : calList ? 'calendar_list' : driveList ? 'drive_list' : 'gmail_list';
                 const input: any = { action, request: intent.goal };
@@ -217,7 +226,7 @@ Rules:
         // keyword regexes. This is the primary path; the keyword fast-paths below
         // remain only as a deterministic fallback when the model is unavailable.
         const looksBrowser = !!urlMatch || String(intent.suggestedAgent || '') === 'Browser'
-            || /(متصفح|براوزر|موقع|صفحة|الويب|الإنترنت|الانترنت|ابحث|إبحث|بحث|جد|جِد|دوّ?ر|فتّ?ش|افتح|تصفّ?ح|عايِ?ن|لخّ?ص|حلّ?ل|دقّ?ق|افحص|انقر|اضغط|املأ|عبّ?ئ|ترجم|قارن|استخرج|browser|web|site|page|search|find|look\s*up|google|open|visit|go\s*to|summari|analy|audit|click|fill|translate|compare|extract|scrape|seo)/i.test(goalRaw);
+            || /(متصفح|براوزر|موقع|صفحة|الويب|الإنترنت|الانترنت|ابحث|إبحث|بحث|جد|جِد|دوّ?ر|فتّ?ش|افتح|تصفّ?ح|عايِ?ن|لخّ?ص|حلّ?ل|دقّ?ق|افحص|انقر|اضغط|املأ|عبّ?ئ|ترجم|قارن|استخرج|browser|web|site|page|search|find|look\s*up|google|open|visit|go\s*to|summari|analy|audit|click|fill|translate|compare|extract|scrape|seo)/i.test(probe);
 
         // [LOCAL BROWSER CONSENT GATE] When Joe is configured to drive the user's own
         // local Chrome profile (persistent mode), he must ASK permission once before
@@ -248,7 +257,7 @@ Rules:
         {
             const g = goalRaw;
             const email = (g.match(/[\w.+-]+@[\w-]+\.[\w.-]+/) || [])[0];
-            const wantsSend = /(أرسل|ارسل|ابعث|أبعث|send|e-?mail|بريدياً)/i.test(g);
+            const wantsSend = /(أرسل|ارسل|ابعث|أبعث|send|e-?mail|بريدياً)/i.test(probe);
             if (email && wantsSend && (!!urlMatch || looksBrowser)) {
                 const browsePart = (g.split(/\s*(?:ثم|وبعدها|بعد\s*ذلك|بعدها|و?أرسل|و?ارسل|و?ابعث|then\b|and\s+then\b)\s*/i)[0] || g).trim() || g;
                 console.log(`[PlanningEngine] browser+email compound -> browse then email ${email}`);
@@ -270,8 +279,8 @@ Rules:
         // browser chains with the other tools instead of the fast-path stopping early.
         {
             const g = goalRaw;
-            const wantsFile = /(اكتب|اكتبها|احفظ|احفظها|دوّ?ن|خزّ?ن|صدّ?ر|صدّ?رها|write|save|export|store)/i.test(g)
-                && (/(ملف|file)/i.test(g) || /\.(txt|md|csv|json|html|log)\b/i.test(g));
+            const wantsFile = /(اكتب|اكتبها|احفظ|احفظها|دوّ?ن|خزّ?ن|صدّ?ر|صدّ?رها|write|save|export|store)/i.test(probe)
+                && (/(ملف|file)/i.test(probe) || /\.(txt|md|csv|json|html|log)\b/i.test(probe));
             if ((!!urlMatch || looksBrowser) && wantsFile) {
                 const fnameMatch = g.match(/\b([\w\-]+\.(?:txt|md|csv|json|html|log))\b/i)
                     || g.match(/(?:ملف|file)\s+["']?([\w\-.]+)["']?/i);
@@ -300,15 +309,15 @@ Rules:
         // Google-account fast-paths so those keep priority, and after the consent gate.
         {
             const g = goalRaw;
-            const loginIntent = /(سجّ?ل|تسجيل)\s*(ال)?دخول|سجّ?ل\s*دخول|ادخل(ني)?\s*(إلى|الى|على)?\s*(حساب|موقع)|دخّ?لني\s*(إلى|الى|على)|log\s*-?\s*in|log\s*in|sign\s*-?\s*in|signin|log-in/i.test(g);
-            const actionVerb = /(املأ|عبّ?ئ|انشر|احجز|اطلب|أرسل|ارسل|اشترك|قدّ?م|علّ?ق|أضف|اضف|ادفع|اشترِ?ي?|صوّ?ت|احجز|سجّ?لني|fill\s+in|fill\s+out|submit|post|publish|book|order|subscribe|apply|comment|checkout|add\s+to\s+cart|purchase|\bbuy\b|reserve|register|sign\s*up)/i.test(g);
+            const loginIntent = /(سجّ?ل|تسجيل)\s*(ال)?دخول|سجّ?ل\s*دخول|ادخل(ني)?\s*(إلى|الى|على)?\s*(حساب|موقع)|دخّ?لني\s*(إلى|الى|على)|log\s*-?\s*in|log\s*in|sign\s*-?\s*in|signin|log-in/i.test(probe);
+            const actionVerb = /(املأ|عبّ?ئ|انشر|احجز|اطلب|أرسل|ارسل|اشترك|قدّ?م|علّ?ق|أضف|اضف|ادفع|اشترِ?ي?|صوّ?ت|احجز|سجّ?لني|fill\s+in|fill\s+out|submit|post|publish|book|order|subscribe|apply|comment|checkout|add\s+to\s+cart|purchase|\bbuy\b|reserve|register|sign\s*up)/i.test(probe);
             // "Look at the page and DESCRIBE what you see / what's on it / read it" is a
             // question ABOUT a live page — it needs the agent to actually observe (and,
             // when the page isn't readable as text, SEE via the vision model), not a
             // blind one-shot browser_launch that just opens the URL and stops. Without
             // this, «افتح URL وصِف لي ما تراه» fell to the plain open fast-path.
-            const describeIntent = /(صِ?ف|وصف|اوصف|أوصف|انظر|أنظر|شاهد|اطّ?لع|ماذا\s*(ترى|يوجد|فيها?)|ما\s*الذي\s*(تراه|فيها?)|ما\s*محتوى|أخبرني\s*(عن|بما)|اخبرني\s*(عن|بما)|describe|what\s*(do\s*you\s*)?see|what'?s\s*on|tell\s*me\s*(about|what))/i.test(g);
-            const siteRef = !!urlMatch || /(موقع|منصّ?ة|حساب|بوابة|لوحة\s*تحكم|site|website|portal|account|dashboard)/i.test(g);
+            const describeIntent = /(صِ?ف|وصف|اوصف|أوصف|انظر|أنظر|شاهد|اطّ?لع|ماذا\s*(ترى|يوجد|فيها?)|ما\s*الذي\s*(تراه|فيها?)|ما\s*محتوى|أخبرني\s*(عن|بما)|اخبرني\s*(عن|بما)|describe|what\s*(do\s*you\s*)?see|what'?s\s*on|tell\s*me\s*(about|what))/i.test(probe);
+            const siteRef = !!urlMatch || /(موقع|منصّ?ة|حساب|بوابة|لوحة\s*تحكم|site|website|portal|account|dashboard)/i.test(probe);
             const isReactTask = (loginIntent && (siteRef || !!urlMatch)) || (!!urlMatch && (actionVerb || describeIntent));
             if (isReactTask) {
                 console.log(`[PlanningEngine] browser-agent (ReAct) fast-path -> "${g.slice(0, 80)}"`);
@@ -334,8 +343,8 @@ Rules:
         // whole thing to a plain open, and it also corrupts names (نابلس->نبعلس). So
         // we resolve search deterministically FIRST, from the user's own words, and
         // send it to the VISIBLE search tool. Only when there's no explicit site URL.
-        if (looksBrowser && !urlMatch && PlanningEngine.hasSearchIntent(goalRaw)) {
-            const q = PlanningEngine.extractSearchQuery(goalRaw);
+        if (looksBrowser && !urlMatch && PlanningEngine.hasSearchIntent(probe)) {
+            const q = PlanningEngine.extractSearchQuery(goalRaw) || PlanningEngine.extractSearchQuery(goalNorm);
             if (q.length >= 2) {
                 console.log(`[PlanningEngine] search priority -> browser_search query="${q}"`);
                 return {
@@ -390,27 +399,27 @@ Rules:
             }
         }
 
-        const summarizeIntent = /(لخّ?ص|تلخيص|summari[sz]e|اقرأ\s*الصفحة|ما\s*مضمون)/i.test(goalRaw);
-        const auditIntent = /(دقّ?ق|تدقيق|افحص\s*الواجهة|audit|فحص\s*ui|راجع\s*التصميم|مشاكل\s*الواجهة|accessib)/i.test(goalRaw);
-        const extractIntent = /(استخرج|استخراج|extract|جدول|قائمة|csv|بيانات\s*الصفحة)/i.test(goalRaw);
-        const linksIntent = /(روابط\s*مكسور|مكسور|broken\s*links|فحص\s*الروابط|check\s*links)/i.test(goalRaw);
-        const perfIntent = /(أداء|السرعة|سرعة\s*الصفحة|performance|speed|زمن\s*التحميل)/i.test(goalRaw);
-        const seoIntent = /(seo|سيو|تحسين\s*محركات|meta\s*tags|الوسوم)/i.test(goalRaw);
-        const compareIntent = /(قارن|مقارنة|before\s*\/?\s*after|قبل\s*وبعد|قبل\/بعد)/i.test(goalRaw);
-        const consoleIntent = /(أخطاء|errors?|console|كونسول|جافا\s*سكربت|javascript|أعطال)/i.test(goalRaw);
-        const pdfIntent = /(pdf|احفظ.*صفحة|صدّ?ر.*صفحة|export\s*pdf|save\s*pdf)/i.test(goalRaw);
-        const readIntent = /(المقال|اقرأ\s*المقال|readab|article|نص\s*المقال|محتوى\s*نظيف)/i.test(goalRaw);
-        const contrastIntent = /(تباين|contrast|ألوان\s*الوصول|wcag)/i.test(goalRaw);
-        const a11yIntent = /(وصولية|accessib|a11y|aria|قارئ\s*الشاشة|لوحة\s*المفاتيح)/i.test(goalRaw);
-        const metaIntent = /(بيانات\s*وصفية|metadata|meta\s*tags|structured\s*data|json-?ld|الوسوم\s*الوصفية)/i.test(goalRaw);
-        const translateIntent = /(ترجم|ترجمة|translate|translation|بالعربية|to\s*(english|arabic|french))/i.test(goalRaw);
-        const responsiveIntent = /(تجاوب|responsive|الجوال|موبايل|mobile\s*view|أحجام\s*الشاشات|شاشات|breakpoints?)/i.test(goalRaw);
-        const findIntent = /(ابحث\s*عن|جد\s|find\s|أين\s*ورد|كم\s*مرة|highlight|ظلّل|علّم)/i.test(goalRaw);
-        const designIntent = /(نظام\s*التصميم|الألوان|ألوان\s*الصفحة|design\s*tokens?|palette|لوحة\s*ألوان|الخطوط\s*المستخدمة|typography)/i.test(goalRaw);
-        const clickIntent = /(انقر|اضغط|click|press|فعّل\s*الزر|اضغط\s*على)/i.test(goalRaw);
-        const fullshotIntent = /(لقطة\s*كاملة|screenshot\s*كامل|full\s*page|صورة\s*كاملة|كامل\s*الصفحة|طويلة)/i.test(goalRaw);
-        const agentIntent = /(تحليل\s*شامل|تقرير\s*شامل|حلّ?ل\s*الصفحة\s*بالكامل|وكيل\s*ذكي|smart\s*agent|full\s*analysis|analyze\s*(the\s*)?page|فحص\s*شامل|كل\s*شيء\s*عن\s*الصفحة)/i.test(goalRaw);
-        const autofixIntent = /(أصلح|اصلح|إصلاح\s*تلقائي|autofix|auto-?fix|صحّح\s*الصفحة|رقّع|عالج\s*المشاكل|fix\s*(the\s*)?(page|issues))/i.test(goalRaw);
+        const summarizeIntent = /(لخّ?ص|تلخيص|summari[sz]e|اقرأ\s*الصفحة|ما\s*مضمون)/i.test(probe);
+        const auditIntent = /(دقّ?ق|تدقيق|افحص\s*الواجهة|audit|فحص\s*ui|راجع\s*التصميم|مشاكل\s*الواجهة|accessib)/i.test(probe);
+        const extractIntent = /(استخرج|استخراج|extract|جدول|قائمة|csv|بيانات\s*الصفحة)/i.test(probe);
+        const linksIntent = /(روابط\s*مكسور|مكسور|broken\s*links|فحص\s*الروابط|check\s*links)/i.test(probe);
+        const perfIntent = /(أداء|السرعة|سرعة\s*الصفحة|performance|speed|زمن\s*التحميل)/i.test(probe);
+        const seoIntent = /(seo|سيو|تحسين\s*محركات|meta\s*tags|الوسوم)/i.test(probe);
+        const compareIntent = /(قارن|مقارنة|before\s*\/?\s*after|قبل\s*وبعد|قبل\/بعد)/i.test(probe);
+        const consoleIntent = /(أخطاء|errors?|console|كونسول|جافا\s*سكربت|javascript|أعطال)/i.test(probe);
+        const pdfIntent = /(pdf|احفظ.*صفحة|صدّ?ر.*صفحة|export\s*pdf|save\s*pdf)/i.test(probe);
+        const readIntent = /(المقال|اقرأ\s*المقال|readab|article|نص\s*المقال|محتوى\s*نظيف)/i.test(probe);
+        const contrastIntent = /(تباين|contrast|ألوان\s*الوصول|wcag)/i.test(probe);
+        const a11yIntent = /(وصولية|accessib|a11y|aria|قارئ\s*الشاشة|لوحة\s*المفاتيح)/i.test(probe);
+        const metaIntent = /(بيانات\s*وصفية|metadata|meta\s*tags|structured\s*data|json-?ld|الوسوم\s*الوصفية)/i.test(probe);
+        const translateIntent = /(ترجم|ترجمة|translate|translation|بالعربية|to\s*(english|arabic|french))/i.test(probe);
+        const responsiveIntent = /(تجاوب|responsive|الجوال|موبايل|mobile\s*view|أحجام\s*الشاشات|شاشات|breakpoints?)/i.test(probe);
+        const findIntent = /(ابحث\s*عن|جد\s|find\s|أين\s*ورد|كم\s*مرة|highlight|ظلّل|علّم)/i.test(probe);
+        const designIntent = /(نظام\s*التصميم|الألوان|ألوان\s*الصفحة|design\s*tokens?|palette|لوحة\s*ألوان|الخطوط\s*المستخدمة|typography)/i.test(probe);
+        const clickIntent = /(انقر|اضغط|click|press|فعّل\s*الزر|اضغط\s*على)/i.test(probe);
+        const fullshotIntent = /(لقطة\s*كاملة|screenshot\s*كامل|full\s*page|صورة\s*كاملة|كامل\s*الصفحة|طويلة)/i.test(probe);
+        const agentIntent = /(تحليل\s*شامل|تقرير\s*شامل|حلّ?ل\s*الصفحة\s*بالكامل|وكيل\s*ذكي|smart\s*agent|full\s*analysis|analyze\s*(the\s*)?page|فحص\s*شامل|كل\s*شيء\s*عن\s*الصفحة)/i.test(probe);
+        const autofixIntent = /(أصلح|اصلح|إصلاح\s*تلقائي|autofix|auto-?fix|صحّح\s*الصفحة|رقّع|عالج\s*المشاكل|fix\s*(the\s*)?(page|issues))/i.test(probe);
         if (urlMatch && (autofixIntent || agentIntent || summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent || readIntent || contrastIntent || a11yIntent || metaIntent || translateIntent || responsiveIntent || findIntent || designIntent || clickIntent || fullshotIntent)) {
             const tool = autofixIntent ? 'browser_autofix'
                 : agentIntent ? 'browser_smart_agent'
@@ -474,11 +483,11 @@ Rules:
         // NOTE: match the verb even with an attached "و" (and) prefix — e.g.
         // "افتح المتصفح وابحث عن X". The old (^|\s) anchor missed "وابحث", so the
         // request fell to the plain open-browser path and only showed Google.
-        const searchIntent = PlanningEngine.hasSearchIntent(goalRaw);
+        const searchIntent = PlanningEngine.hasSearchIntent(probe);
         if (searchIntent && !urlMatch) {
             // Extract the CLEAN topic from the user's own words (shared helper —
             // same logic used by the search-priority path above).
-            const query = PlanningEngine.extractSearchQuery(goalRaw);
+            const query = PlanningEngine.extractSearchQuery(goalRaw) || PlanningEngine.extractSearchQuery(goalNorm);
             if (query.length >= 2) {
                 // Route to browser_search: it opens the engine, moves the cursor to
                 // the search box, types the query LETTER-BY-LETTER in the live stream,
@@ -506,9 +515,9 @@ Rules:
         // returns malformed JSON and invents non-existent tools). Route it straight
         // to browser_open, which navigates the LIVE-streamed session so the user
         // actually watches the page load.
-        const openBrowserIntent = /(افتح|شغّ?ل|شغل|ادخل|روح|اذهب|استخدم|جرّ?ب|شوف|اعرض)\s*(لي\s*)?(ال)?(متصفح|براوزر|المتصفّح)|open\s*(the\s*)?browser|launch\s*browser|use\s*(the\s*)?browser|شغّ?ل\s*المتصفح/i.test(goalRaw);
-        const navigateIntent = /(اذهب\s*(إلى|الى|ل)|روح\s*(إلى|الى|ل)|افتح\s+(موقع|رابط|صفحة|الموقع)?|زر\s+(الموقع|الرابط)|ادخل\s+(موقع|على)|تصفّ?ح|عايِ?ن|افحص\s+الموقع|go\s*to|navigate\s*(to)?|visit|browse|open)\b/i.test(goalRaw);
-        const browserWord = /(متصفح|براوزر|browser|الويب\b|صفحة\s*الويب|الموقع|website|web\s*page)/i.test(goalRaw);
+        const openBrowserIntent = /(افتح|شغّ?ل|شغل|ادخل|روح|اذهب|استخدم|جرّ?ب|شوف|اعرض)\s*(لي\s*)?(ال)?(متصفح|براوزر|المتصفّح)|open\s*(the\s*)?browser|launch\s*browser|use\s*(the\s*)?browser|شغّ?ل\s*المتصفح/i.test(probe);
+        const navigateIntent = /(اذهب\s*(إلى|الى|ل)|روح\s*(إلى|الى|ل)|افتح\s+(موقع|رابط|صفحة|الموقع)?|زر\s+(الموقع|الرابط)|ادخل\s+(موقع|على)|تصفّ?ح|عايِ?ن|افحص\s+الموقع|go\s*to|navigate\s*(to)?|visit|browse|open)\b/i.test(probe);
+        const browserWord = /(متصفح|براوزر|browser|الويب\b|صفحة\s*الويب|الموقع|website|web\s*page)/i.test(probe);
         // Route to the live browser when: an explicit open/use-browser phrasing is
         // present; OR a URL is mentioned with any navigate/browser cue; OR the
         // intent analyser already decided this is a Browser task. Deterministic so
