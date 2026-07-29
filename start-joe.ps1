@@ -38,6 +38,17 @@ if (Test-Path $secretsFile) {
     Write-Host "[secrets] لا يوجد joe-secrets.ps1 (انسخ joe-secrets.example.ps1 واملأه لتفعيل Google)." -ForegroundColor DarkYellow
 }
 
+# --- دماغ Groq السحابي (مجاني وسريع، Llama 3.3 70B) ---
+# إن وضعت $env:GROQ_API_KEY في joe-secrets.ps1 يصبح Groq الدماغ الأساسي لجو: يُجرَّب
+# أولاً (خلال ثوانٍ) قبل أي نموذج محلي، فيعمل الوكيل بذكاء عالٍ رغم ضعف الجهاز. النموذج
+# المحلي (إن وُجد) يبقى احتياطاً عند انقطاع الإنترنت. لا نُجبر «المحلي الحصري» حينها.
+if ($env:GROQ_API_KEY -and $env:GROQ_API_KEY.Trim().StartsWith("gsk_")) {
+    Write-Host "[brain] Groq متصل — الدماغ الأساسي (Llama 3.3 70B، سريع وذكي). المحلي احتياطي." -ForegroundColor Green
+    $env:LOCAL_LLM_STRICT = "0"
+} elseif ($env:GROQ_API_KEY) {
+    Write-Host "[brain] تحذير: GROQ_API_KEY موجود لكنه لا يبدأ بـ gsk_ — تأكّد أنك نسخت المفتاح كاملاً." -ForegroundColor DarkYellow
+}
+
 # --- دماغ الذكاء المحلي (Ollama) — يُكتشف تلقائياً إن كان يعمل ---
 # وكيل المتصفح يحتاج نموذجاً يقرّر خطواته. إن كان Ollama مُشغّلاً على جهازك، يستخدمه
 # جو تلقائياً (أسرع وأكثر خصوصية). وإلا يعمل على الذكاء المجاني عبر الإنترنت.
