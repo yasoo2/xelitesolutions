@@ -64,7 +64,7 @@ export class BrowserAgent extends BaseAgent {
 
 /** The LLM "brain": turns the current observation into the next single action. */
 export function makeLlmDecider(): Decider {
-    return async ({ task, observation, history, stepBudgetLeft }) => {
+    return async ({ task, observation, history, stepBudgetLeft, onThinking }) => {
         const hist = history.slice(-6)
             .map(s => `- ${JSON.stringify(s.action)} => ${s.ok ? 'ok' : 'FAILED:' + (s.note || '')}`)
             .join('\n') || '(none yet)';
@@ -96,7 +96,9 @@ Rules:
 
         const text = await intelligentRouter.routeToModel(
             [{ role: 'system', content: system }, { role: 'user', content: user }],
-            { type: 'browser_task', complexity: 'medium', requiresTools: false, estimatedTokens: 800, language: 'en' } as any
+            { type: 'browser_task', complexity: 'medium', requiresTools: false, estimatedTokens: 800, language: 'en' } as any,
+            undefined,
+            onThinking,   // stream the model's tokens to the panel while it decides
         );
         return parseAction(text);
     };

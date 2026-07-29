@@ -32,7 +32,7 @@ export class LocalProvider {
         return !!this.baseUrl();
     }
 
-    async chatComplete(messages: any[], model?: string): Promise<string> {
+    async chatComplete(messages: any[], model?: string, onDelta?: (delta: string) => void): Promise<string> {
         const baseURL = this.baseUrl();
         if (!baseURL) throw new Error('LOCAL_LLM_BASE_URL not configured');
 
@@ -52,12 +52,38 @@ export class LocalProvider {
             maxRetries: 0,
         });
 
+        const mapped = messages.map(m => ({ role: m.role, content: m.content })) as any;
         // keep_alive: -1 tells Ollama to keep the model resident in RAM instead of
         // unloading it after ~5 min idle — so the SECOND and later requests skip the
         // slow cold-load. Harmless on non-Ollama OpenAI servers (ignored).
+
+        // STREAMING PATH: when a delta callback is given, stream tokens as the model
+        // produces them (Ollama/OpenAI-compatible `stream:true`) so the panel shows the
+        // agent "thinking" live. We still return the full accumulated text at the end,
+        // so callers that ignore onDelta behave exactly as before.
+        if (onDelta) {
+            try {
+                const stream = await client.chat.completions.create({
+                    model: model || this.model(),
+                    messages: mapped,
+                    keep_alive: -1,
+                    stream: true,
+                } as any, { timeout: timeoutMs }) as any;
+                let full = '';
+                for await (const chunk of stream) {
+                    const piece = chunk?.choices?.[0]?.delta?.content || '';
+                    if (piece) { full += piece; try { onDelta(piece); } catch { /* panel optional */ } }
+                }
+                if (full) return full;
+                // Empty stream (some servers don't stream): fall through to a normal call.
+            } catch {
+                // Streaming unsupported/failed — fall back to a single blocking call below.
+            }
+        }
+
         const completion = await client.chat.completions.create({
             model: model || this.model(),
-            messages: messages.map(m => ({ role: m.role, content: m.content })) as any,
+            messages: mapped,
             keep_alive: -1,
         } as any, { timeout: timeoutMs });
 

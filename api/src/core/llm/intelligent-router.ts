@@ -941,7 +941,8 @@ export async function routeToModel(
                 // installed coder model; chat gets the fast small model. Falls back
                 // to LOCAL_LLM_MODEL when detection hasn't run.
                 const localModel = pickLocalModel(taskAnalysis?.type);
-                const res = await localProvider.chatComplete(flatMessages, localModel);
+                // Pass onPartial so the local brain streams tokens live to the panel.
+                const res = await localProvider.chatComplete(flatMessages, localModel, onPartial);
                 if (!res || res.length < 2) throw new Error('Local response too short');
                 return res;
             }

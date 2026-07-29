@@ -15,7 +15,8 @@ type WsEvent =
   | { type: 'final_success'; ts: number; summary: string }
   | { type: 'final_failed'; ts: number; summary: string; reason: string }
   | { type: 'debug_snapshot'; ts: number; compiledPlanJson: any; actionsJson: any; actionCount: number; stopReason: string }
-  | { type: 'agent_step'; ts: number; phase: AgentPhase; step: number; url?: string; title?: string; elementCount?: number; action?: string; reason?: string; ok?: boolean; note?: string; message?: string };
+  | { type: 'agent_step'; ts: number; phase: AgentPhase; step: number; url?: string; title?: string; elementCount?: number; action?: string; reason?: string; ok?: boolean; note?: string; message?: string }
+  | { type: 'agent_thinking'; ts: number; step: number; delta: string; done?: boolean };
 
 type AgentPhase = 'observe' | 'decide' | 'act' | 'result' | 'done' | 'needs_user';
 type AgentStep = { ts: number; phase: AgentPhase; step: number; text: string; ok?: boolean };
@@ -42,6 +43,9 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   // Live narration of the autonomous agent's observe→decide→act loop.
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [agentActive, setAgentActive] = useState(false);
+  // Live token stream of the agent's current "thinking" (the model's words as it
+  // decides the next step). Cleared when the step's decision is finalised.
+  const [thinking, setThinking] = useState<{ step: number; text: string } | null>(null);
   // When the agent pauses for the user (missing credential / 2FA code), we collect
   // the value here and resume the same task on the same live session.
   const [pendingInput, setPendingInput] = useState<{ message: string; secretKey: string } | null>(null);
@@ -391,9 +395,26 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           setLastStep(`${msg.stepId}: ${msg.name}`);
           return;
         }
+        if (msg.type === 'agent_thinking') {
+          const m: any = msg;
+          const step = Number(m.step || 0);
+          if (m.done) {
+            // Decision finalised for this step — the clean `decide` line replaces the
+            // raw thinking ticker.
+            setThinking(cur => (cur && cur.step === step ? null : cur));
+          } else if (m.delta) {
+            setThinking(cur => (cur && cur.step === step
+              ? { step, text: (cur.text + String(m.delta)).slice(-600) }
+              : { step, text: String(m.delta).slice(-600) }));
+            setAgentActive(true);
+          }
+          return;
+        }
         if (msg.type === 'agent_step') {
           const m: any = msg;
           const phase: AgentPhase = m.phase;
+          // A finalised step supersedes any live thinking ticker.
+          if (phase === 'decide' || phase === 'act' || phase === 'done' || phase === 'needs_user') setThinking(null);
           const text = (() => {
             switch (phase) {
               case 'observe': return `يراقب الصفحة${m.title ? ` — ${String(m.title).slice(0, 40)}` : ''} (${m.elementCount ?? 0} عنصر)`;
@@ -514,7 +535,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
                 title="مسح"
               >مسح</button>
             </div>
-            <style>{`@keyframes joeAgentPulse{0%,100%{opacity:1}50%{opacity:0.35}}`}</style>
+            <style>{`@keyframes joeAgentPulse{0%,100%{opacity:1}50%{opacity:0.35}}@keyframes joeThinkBlink{0%,100%{opacity:1}50%{opacity:0}}`}</style>
             <div style={{ overflowY: 'auto', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {agentSteps.map((s, i) => {
                 const icon = s.phase === 'observe' ? '👁' : s.phase === 'decide' ? '🧠' : s.phase === 'act' ? '✋'
@@ -528,6 +549,16 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
                   </div>
                 );
               })}
+              {thinking && thinking.text ? (
+                <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', lineHeight: 1.5, color: '#a9c0ea' }}>
+                  <span style={{ flexShrink: 0 }}>🧠</span>
+                  <span style={{ flexShrink: 0, color: '#7f9bd6', fontVariantNumeric: 'tabular-nums' }}>#{thinking.step}</span>
+                  <span style={{ wordBreak: 'break-word', fontStyle: 'italic', opacity: 0.9 }}>
+                    {thinking.text}
+                    <span style={{ display: 'inline-block', width: 7, animation: 'joeThinkBlink 1s steps(2) infinite' }}>▌</span>
+                  </span>
+                </div>
+              ) : null}
             </div>
             {pendingInput ? (
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', padding: '10px', background: 'rgba(37,99,235,0.1)' }}>

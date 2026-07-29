@@ -108,6 +108,19 @@ export type AgentStepEvent = {
   secretKey?: string; // on needs_user: which secret the panel should collect (e.g. JOE_2FA_CODE)
 };
 
+/** Live token stream of the agent's "thinking" while it decides the next step —
+ *  the model's words arrive delta-by-delta so the panel shows it working in real
+ *  time (like a chat that types), instead of a frozen "deciding…" state. The delta
+ *  is credential-safe: the model emits {{SECRET:...}} placeholders, never real
+ *  secret values. */
+export type AgentThinkingEvent = {
+  type: 'agent_thinking';
+  ts: number;
+  step: number;
+  delta: string;   // incremental text chunk (append to what was shown before)
+  done?: boolean;  // true on the final chunk of this step's thinking
+};
+
 export type BrowserWsEvent =
   | StreamFrameEvent
   | CursorMoveEvent
@@ -119,7 +132,8 @@ export type BrowserWsEvent =
   | FinalReportEvent
   | FinalStatusEvent
   | DebugSnapshotEvent
-  | AgentStepEvent;
+  | AgentStepEvent
+  | AgentThinkingEvent;
 
 export type ElementType =
   | 'input'

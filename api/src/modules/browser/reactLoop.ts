@@ -30,6 +30,12 @@ function emitAgentStep(sessionId: string, ev: {
   try { broadcastBrowserEvent(sessionId, { type: 'agent_step', ts: Date.now(), ...ev } as any); } catch { /* panel optional */ }
 }
 
+/** Stream a chunk of the agent's live "thinking" to the panel (delta-by-delta). */
+function emitThinking(sessionId: string, step: number, delta: string, done = false) {
+  if (!delta && !done) return;
+  try { broadcastBrowserEvent(sessionId, { type: 'agent_thinking', ts: Date.now(), step, delta, done } as any); } catch { /* panel optional */ }
+}
+
 /** Remembers the last task run per session so a user "provide credentials / 2FA"
  *  action can RESUME the exact same task on the same live session. */
 const lastTaskBySession = new Map<string, string>();
@@ -119,6 +125,10 @@ export type Decider = (ctx: {
   observation: Observation;
   history: ReactStep[];
   stepBudgetLeft: number;
+  /** Optional: call with each token/chunk the model produces while deciding, so the
+   *  panel can stream the agent's "thinking" live. Safe to ignore (scripted deciders
+   *  don't stream). */
+  onThinking?: (delta: string) => void;
 }) => Promise<ReactAction>;
 
 /** Optional completion check: given the task and the FINAL observed page, confirm
@@ -295,7 +305,10 @@ export async function runReactBrowserTask(params: {
       }
     } else {
       try {
-        action = await params.decide({ task, observation, history: steps, stepBudgetLeft: maxSteps - n });
+        // Stream the model's thinking to the panel live, token by token.
+        const onThinking = (delta: string) => emitThinking(sessionId, n, delta);
+        action = await params.decide({ task, observation, history: steps, stepBudgetLeft: maxSteps - n, onThinking });
+        emitThinking(sessionId, n, '', true); // mark this step's thinking complete
       } catch (e: any) {
         return finish('error', false, `تعذّر اتخاذ القرار: ${String(e?.message || e)}`);
       }
