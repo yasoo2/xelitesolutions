@@ -53,12 +53,24 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
             if (-not $pick -and $available.Count -gt 0) { $pick = $available[0] }
             if ($pick) { $env:LOCAL_LLM_MODEL = $pick }
         }
-        Write-Host "[brain] Ollama متصل — سيستخدمه جو (النموذج: $($env:LOCAL_LLM_MODEL))" -ForegroundColor Green
+        # استخدم Ollama حصرياً حتى لا يضيّع جو الوقت في مزوّدين مجّانيين فاشلين، مع مهلة
+        # كافية لأول طلب (تحميل النموذج) ثم يبقى محمّلاً.
+        if (-not $env:LOCAL_LLM_STRICT)  { $env:LOCAL_LLM_STRICT = "1" }
+        if (-not $env:LOCAL_LLM_TIMEOUT) { $env:LOCAL_LLM_TIMEOUT = "90000" }
+        Write-Host "[brain] Ollama متصل — سيستخدمه جو حصرياً (النموذج: $($env:LOCAL_LLM_MODEL))" -ForegroundColor Green
     } catch {
         Write-Host "[brain] Ollama غير مُشغّل — سيعمل جو على الذكاء المجاني عبر الإنترنت." -ForegroundColor DarkYellow
         Write-Host "        (لتشغيل أقوى وأخصّ: ثبّت Ollama من https://ollama.com ثم شغّل: ollama pull qwen2.5-coder:7b)" -ForegroundColor DarkGray
     }
 }
+
+# --- ضمان المتصفح السريع ---
+# نُجبر إيقاف Chrome النظامي والملف الدائم لأنهما يفتحان Chrome كاملاً (بطيء وقد يتعارض).
+# متصفح جو الداخلي (Chromium الخفيف) أسرع وأكثر ثباتاً؛ و«متصفحك الشخصي» يأتي عبر الإضافة.
+# (يُطبَّق بعد تحميل الأسرار ليتجاوز أي إعداد بطيء قديم.)
+$env:USE_SYSTEM_CHROME = "0"
+$env:BROWSER_PERSISTENT_PROFILE = "0"
+$env:USE_USER_BROWSER_PROFILE = "0"
 
 $apiDir = "$PSScriptRoot\api"
 

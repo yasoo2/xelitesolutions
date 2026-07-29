@@ -36,12 +36,24 @@ async function gitExec(args: string[]) {
     });
 }
 
+// Short-lived cache for /git/status. The frontend polls it every second, and each
+// call runs FOUR git commands (slow on Windows / large repos), which was flooding the
+// server and slowing everything else. Serving a cached snapshot for a few seconds
+// removes that load with no visible difference to the user.
+let _statusCache: { at: number; data: any } | null = null;
+const STATUS_CACHE_MS = Number(process.env.GIT_STATUS_CACHE_MS || 5000);
+
 // GET /git/status
 router.get('/status', authenticate as any, async (req: Request, res: Response) => {
+    if (_statusCache && (Date.now() - _statusCache.at) < STATUS_CACHE_MS) {
+        return res.json(_statusCache.data);
+    }
     // Check if git initialized
     const check = await gitExec(['rev-parse', '--is-inside-work-tree']);
     if (!check.ok) {
-        return res.json({ initialized: false, files: [] });
+        const data = { initialized: false, files: [] };
+        _statusCache = { at: Date.now(), data };
+        return res.json(data);
     }
 
     // Get status
@@ -75,7 +87,9 @@ router.get('/status', authenticate as any, async (req: Request, res: Response) =
         }
     } catch { }
 
-    res.json({ initialized: true, branch, files, ahead, behind });
+    const data = { initialized: true, branch, files, ahead, behind };
+    _statusCache = { at: Date.now(), data };
+    res.json(data);
 });
 
 // GET /git/diff
