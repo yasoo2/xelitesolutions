@@ -302,8 +302,14 @@ Rules:
             const g = goalRaw;
             const loginIntent = /(سجّ?ل|تسجيل)\s*(ال)?دخول|سجّ?ل\s*دخول|ادخل(ني)?\s*(إلى|الى|على)?\s*(حساب|موقع)|دخّ?لني\s*(إلى|الى|على)|log\s*-?\s*in|log\s*in|sign\s*-?\s*in|signin|log-in/i.test(g);
             const actionVerb = /(املأ|عبّ?ئ|انشر|احجز|اطلب|أرسل|ارسل|اشترك|قدّ?م|علّ?ق|أضف|اضف|ادفع|اشترِ?ي?|صوّ?ت|احجز|سجّ?لني|fill\s+in|fill\s+out|submit|post|publish|book|order|subscribe|apply|comment|checkout|add\s+to\s+cart|purchase|\bbuy\b|reserve|register|sign\s*up)/i.test(g);
+            // "Look at the page and DESCRIBE what you see / what's on it / read it" is a
+            // question ABOUT a live page — it needs the agent to actually observe (and,
+            // when the page isn't readable as text, SEE via the vision model), not a
+            // blind one-shot browser_launch that just opens the URL and stops. Without
+            // this, «افتح URL وصِف لي ما تراه» fell to the plain open fast-path.
+            const describeIntent = /(صِ?ف|وصف|اوصف|أوصف|انظر|أنظر|شاهد|اطّ?لع|ماذا\s*(ترى|يوجد|فيها?)|ما\s*الذي\s*(تراه|فيها?)|ما\s*محتوى|أخبرني\s*(عن|بما)|اخبرني\s*(عن|بما)|describe|what\s*(do\s*you\s*)?see|what'?s\s*on|tell\s*me\s*(about|what))/i.test(g);
             const siteRef = !!urlMatch || /(موقع|منصّ?ة|حساب|بوابة|لوحة\s*تحكم|site|website|portal|account|dashboard)/i.test(g);
-            const isReactTask = (loginIntent && (siteRef || !!urlMatch)) || (!!urlMatch && actionVerb);
+            const isReactTask = (loginIntent && (siteRef || !!urlMatch)) || (!!urlMatch && (actionVerb || describeIntent));
             if (isReactTask) {
                 console.log(`[PlanningEngine] browser-agent (ReAct) fast-path -> "${g.slice(0, 80)}"`);
                 return {
