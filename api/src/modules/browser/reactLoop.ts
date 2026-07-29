@@ -36,6 +36,20 @@ function emitThinking(sessionId: string, step: number, delta: string, done = fal
   try { broadcastBrowserEvent(sessionId, { type: 'agent_thinking', ts: Date.now(), step, delta, done } as any); } catch { /* panel optional */ }
 }
 
+/** Mirror the agent's live activity into JOE'S CHAT (the main WS the chat listens
+ *  on) — tidy step lines via thinking_detail, and the green "thinking/cooking"
+ *  indicator via thinking_phase. Keyed by the CHAT session id (not the browser
+ *  session), because the chat filters events per session. Lazy-required to avoid
+ *  a static import cycle with the API layer. */
+function chatDetail(chatSessionId: string | undefined, text: string) {
+  if (!chatSessionId || !text) return;
+  try { require('../../api/ws').broadcastThinkingDetail(chatSessionId, text); } catch { /* chat optional */ }
+}
+function chatPhase(chatSessionId: string | undefined, phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle', detail?: string) {
+  if (!chatSessionId) return;
+  try { require('../../api/ws').broadcastThinkingPhase(chatSessionId, phase, detail); } catch { /* chat optional */ }
+}
+
 /** Remembers the last task run per session so a user "provide credentials / 2FA"
  *  action can RESUME the exact same task on the same live session. */
 const lastTaskBySession = new Map<string, string>();
@@ -259,15 +273,18 @@ export async function runReactBrowserTask(params: {
   decide: Decider;
   verify?: Verifier;   // optional: confirm the goal is really achieved before declaring success
   vision?: Vision;     // optional: decide from a screenshot when the DOM gives nothing
+  chatSessionId?: string; // optional: mirror live activity into this chat session (tidy lines + green indicator)
 }): Promise<ReactResult> {
   const sessionId = String(params.sessionId || '').trim();
   const userId = String(params.userId || '').trim();
+  const chatSid = String(params.chatSessionId || '').trim() || undefined;
   const task = String(params.task || '').trim();
   const maxSteps = Math.max(1, Math.min(30, params.maxSteps || 12));
   const steps: ReactStep[] = [];
 
   lastTaskBySession.set(sessionId, task); // enable resume-after-user-input
 
+  chatPhase(chatSid, 'executing', 'يفتح المتصفح ويبدأ المهمة…');
   const session = await getBrowserSession(sessionId);
   const page = session.page;
 
@@ -290,6 +307,7 @@ export async function runReactBrowserTask(params: {
     }
     const observation = await observePage(page);
     emitAgentStep(sessionId, { phase: 'observe', step: n, url: observation.url, title: observation.title, elementCount: observation.elements.length });
+    chatDetail(chatSid, `👁 يراقب الصفحة${observation.title ? `: ${observation.title.slice(0, 50)}` : ''} (${observation.elements.length} عنصر)`);
 
     let action: ReactAction;
     // VISION FALLBACK: when the DOM exposes nothing to act on (canvas/image/app pages)
@@ -305,15 +323,31 @@ export async function runReactBrowserTask(params: {
       }
     } else {
       try {
-        // Stream the model's thinking to the panel live, token by token.
-        const onThinking = (delta: string) => emitThinking(sessionId, n, delta);
+        // Stream the model's thinking live: token-by-token to the panel, and as a
+        // throttled updating status line to the CHAT (keeps the green indicator
+        // alive and shows the words as they are produced, without spamming lines).
+        let thinkBuf = '';
+        let lastChatFlush = 0;
+        const onThinking = (delta: string) => {
+          emitThinking(sessionId, n, delta);
+          thinkBuf += delta;
+          const now = Date.now();
+          if (now - lastChatFlush > 800) {
+            lastChatFlush = now;
+            chatPhase(chatSid, 'analyzing', `🧠 يفكّر: ${thinkBuf.slice(-140)}`);
+          }
+        };
+        chatPhase(chatSid, 'analyzing', 'يفكّر في الخطوة التالية…');
         action = await params.decide({ task, observation, history: steps, stepBudgetLeft: maxSteps - n, onThinking });
         emitThinking(sessionId, n, '', true); // mark this step's thinking complete
       } catch (e: any) {
+        chatPhase(chatSid, 'idle', '');
         return finish('error', false, `تعذّر اتخاذ القرار: ${String(e?.message || e)}`);
       }
     }
     emitAgentStep(sessionId, { phase: 'decide', step: n, action: describeAction(action, observation), reason: (action as any).reason });
+    chatDetail(chatSid, `🧠 قرّر: ${describeAction(action, observation)}`);
+    chatPhase(chatSid, 'executing', describeAction(action, observation));
 
     // Terminal decisions.
     if (action.action === 'done') {
@@ -341,11 +375,15 @@ export async function runReactBrowserTask(params: {
           return out;
         }
         emitAgentStep(sessionId, { phase: 'done', step: n, message: `✅ ${action.answer || 'المهمة'} (مُتحقَّق)`, url: finalObs.url });
+        chatDetail(chatSid, `✅ أنهى المهمة (مُتحقَّق من الصفحة)`);
+        chatPhase(chatSid, 'synthesizing', 'يصوغ الإجابة النهائية…');
         const out = finish('done', true, 'أنجز الوكيل المهمة (مُتحقَّق من الصفحة).', action.answer, finalObs.url);
         out.verified = true; out.evidence = evidence;
         return out;
       }
       emitAgentStep(sessionId, { phase: 'done', step: n, message: action.answer, url: finalObs.url });
+      chatDetail(chatSid, `✅ أنهى المهمة${action.answer ? `: ${String(action.answer).slice(0, 120)}` : ''}`);
+      chatPhase(chatSid, 'synthesizing', 'يصوغ الإجابة النهائية…');
       const out = finish('done', true, 'أنجز الوكيل المهمة.', action.answer, finalObs.url);
       out.evidence = evidence;
       return out;
@@ -356,6 +394,8 @@ export async function runReactBrowserTask(params: {
       const key = (action as any).secretKey
         || (/2fa|otp|رمز|كود|تحقّ?ق|verification|one[- ]?time/i.test(action.message || '') ? 'JOE_2FA_CODE' : undefined);
       emitAgentStep(sessionId, { phase: 'needs_user', step: n, message: action.message, url: observation.url, secretKey: key });
+      chatDetail(chatSid, `🙋 يحتاج تدخّلك: ${String(action.message || '').slice(0, 120)}`);
+      chatPhase(chatSid, 'idle', '');
       const out = finish('needs_user', false, action.message || 'المهمة تحتاج تدخّلك.', undefined, observation.url);
       if (key) out.missingSecret = key;
       return out;
@@ -410,6 +450,8 @@ export async function runReactBrowserTask(params: {
     out.evidence = { url: finalObs.url, title: finalObs.title, snippet: (finalObs.textSnippet || '').slice(0, 300) };
   } catch { /* evidence is best-effort */ }
   emitAgentStep(sessionId, { phase: 'result', step: maxSteps, ok: false, note: 'توقّف عند حدّ الخطوات دون إتمام', url: finalUrl });
+  chatDetail(chatSid, '⚠️ توقّف عند حدّ الخطوات دون إتمام المهمة');
+  chatPhase(chatSid, 'idle', '');
   return out;
 
   function finish(status: ReactResult['status'], ok: boolean, summary: string, answer?: string, finalUrl?: string): ReactResult {

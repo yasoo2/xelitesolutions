@@ -621,6 +621,13 @@ export async function createSession(sessionId: string) {
   return state;
 }
 
+// In-flight creations, keyed by session id. Without this, two concurrent calls
+// (e.g. the agent starting a task while the panel's WS client connects) BOTH miss
+// the sessions map and EACH launch a browser: the agent drives one instance while
+// the panel streams the other — the user watches a blank page while the agent
+// works invisibly. One creation per id; everyone else awaits the same promise.
+const pendingSessions = new Map<string, Promise<SessionState>>();
+
 export async function getBrowserSession(sessionId: string) {
   const sid = String(sessionId || '').trim();
   if (!sid) throw new Error('sessionId_required');
@@ -630,10 +637,20 @@ export async function getBrowserSession(sessionId: string) {
     ensureCleanupLoop();
     return existing;
   }
-  const created = await createSession(sid);
-  sessions.set(sid, created);
-  ensureCleanupLoop();
-  return created;
+  const inFlight = pendingSessions.get(sid);
+  if (inFlight) return inFlight;
+  const creation = (async () => {
+    try {
+      const created = await createSession(sid);
+      sessions.set(sid, created);
+      ensureCleanupLoop();
+      return created;
+    } finally {
+      pendingSessions.delete(sid);
+    }
+  })();
+  pendingSessions.set(sid, creation);
+  return creation;
 }
 
 export function setStreamMask(sessionId: string, maskLocators: Locator[]) {

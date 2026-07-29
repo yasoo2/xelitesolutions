@@ -51,6 +51,9 @@ export class BrowserAgent extends BaseAgent {
                 // the completion verifier is for interactive goals, skip it here.
                 verify: readTask ? undefined : makeLlmVerifier(),
                 vision: makeLlmVision(),   // undefined unless a vision model is configured
+                // Mirror live activity (tidy step lines + the green thinking
+                // indicator) into the CHAT session that launched this task.
+                chatSessionId: String(context?.sessionId || '').trim() || undefined,
             });
             // These are all honest, completed OUTCOMES the user should see — not system
             // failures to "recover" from: a real success (done), a pause for the user
