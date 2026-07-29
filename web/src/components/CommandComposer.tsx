@@ -887,14 +887,20 @@ export default function CommandComposer({
     } catch { }
   }, [systemInstructions]);
   const initialProviderState = useMemo(() => {
-    // Reorder providers: Auto first, then OpenRouter, then paid providers, then Joe (Free)
+    // Display order: Auto first, then the free providers (Groq/Gemini/Cerebras/
+    // Mistral/DeepSeek/OpenRouter), then the paid ones. IMPORTANT: every provider
+    // in DEFAULT_PROVIDERS must be listed here — the panel renders from this state,
+    // so a provider omitted here (Groq/Cerebras/Mistral used to be) never appears.
     const baseProviders: { [key: string]: ProviderConfig } = {
       auto: { ...DEFAULT_PROVIDERS.auto },
+      groq: { ...DEFAULT_PROVIDERS.groq },
+      gemini: { ...DEFAULT_PROVIDERS.gemini },
+      cerebras: { ...DEFAULT_PROVIDERS.cerebras },
+      mistral: { ...DEFAULT_PROVIDERS.mistral },
       deepseek: { ...DEFAULT_PROVIDERS.deepseek },
       openrouter: { ...DEFAULT_PROVIDERS.openrouter },
       openai: { ...DEFAULT_PROVIDERS.openai },
       anthropic: { ...DEFAULT_PROVIDERS.anthropic },
-      gemini: { ...DEFAULT_PROVIDERS.gemini },
       grok: { ...DEFAULT_PROVIDERS.grok },
     };
 
