@@ -539,6 +539,40 @@ async function callGroq(model: string, messages: any[], onPartial?: (delta: stri
 // FREE provider mesh for the rest of the process.
 const failedCustomRoutes = new Set<string>();
 
+// Remembers FREE-mesh providers that just failed or timed out, so we skip them for
+// a short cooldown instead of paying a full (often long) round-trip through a dead
+// gateway on EVERY request. Example: DuckAI returns 418 and Pollinations returns
+// empty right now — without this, each step wastes ~18s+6s hitting them again before
+// reaching the one that works. The cooldown is short (RECENT_FAIL_TTL_MS) so a
+// provider that recovers is retried soon, and Local (Auto) is NEVER skipped (the
+// local brain is the user's primary engine and may just be loading a cold model).
+const recentlyFailedProviders = new Map<string, number>(); // name -> retry-after epoch ms
+const RECENT_FAIL_TTL_MS = Math.max(
+    1000,
+    parseInt(String(process.env.PROVIDER_FAIL_COOLDOWN_MS || '').trim(), 10) || 60000
+);
+export function isProviderCoolingDown(name: string): boolean {
+    if (name === 'Local (Auto)') return false; // never skip the local brain
+    const until = recentlyFailedProviders.get(name);
+    if (!until) return false;
+    if (Date.now() >= until) { recentlyFailedProviders.delete(name); return false; }
+    return true;
+}
+export function markProviderFailed(name: string): void {
+    if (name === 'Local (Auto)') return;
+    recentlyFailedProviders.set(name, Date.now() + RECENT_FAIL_TTL_MS);
+}
+export function markProviderOk(name: string): void {
+    recentlyFailedProviders.delete(name);
+}
+/** Test/diagnostics only: order a provider list fresh-first, cooled-last (the exact
+ *  ordering the fallback mesh uses). */
+export function orderByCooldown<T extends { name: string }>(providers: T[]): T[] {
+    const fresh = providers.filter(p => !isProviderCoolingDown(p.name));
+    const cooled = providers.filter(p => isProviderCoolingDown(p.name));
+    return [...fresh, ...cooled];
+}
+
 export async function routeToModel(
     messages: any[],
     analysis?: TaskAnalysis,
@@ -1051,7 +1085,17 @@ export async function routeToModel(
     }
 
     // 2. The Chain of Steel (Fallback Mesh)
-    for (const p of meshProviders) {
+    // Move providers that are in cooldown (recently failed) to the END of the order
+    // rather than dropping them entirely — so if EVERY provider is cooling down we
+    // still try them (best-effort) instead of falling through to the error. Fresh
+    // providers are attempted first; cooled-down ones only as a last resort.
+    const orderedProviders = orderByCooldown(meshProviders);
+    const cooledNow = meshProviders.filter(p => isProviderCoolingDown(p.name));
+    if (cooledNow.length) {
+        console.info(`[IntelligentRouter] ⏭️  Deferring (cooldown): ${cooledNow.map(p => p.name).join(', ')}`);
+    }
+
+    for (const p of orderedProviders) {
         try {
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
 
@@ -1085,13 +1129,18 @@ export async function routeToModel(
 
             if (ans && ans.length > 2) {
                 console.info(`[IntelligentRouter] ✅ Success via ${p.name} `);
+                markProviderOk(p.name); // clear any prior cooldown — it works again
                 if (!cacheDisabled && !hasSensitive && ans.length > 20) {
                     await LLMCacheTool.saveToCache(cacheKeyPayload, ans, selectedModel.model);
                 }
                 return ans;
             }
+            // Empty/too-short answer counts as a soft failure — cool it down too so we
+            // don't keep waiting on a gateway that returns nothing useful.
+            markProviderFailed(p.name);
         } catch (e: any) {
             console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message} `);
+            markProviderFailed(p.name);
             lastError = e.message;
         }
     }
