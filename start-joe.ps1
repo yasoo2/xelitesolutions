@@ -83,7 +83,14 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
         # كافية لأول طلب (تحميل النموذج) ثم يبقى محمّلاً.
         if (-not $env:LOCAL_LLM_STRICT)  { $env:LOCAL_LLM_STRICT = "1" }
         if (-not $env:LOCAL_LLM_TIMEOUT) { $env:LOCAL_LLM_TIMEOUT = "90000" }
-        Write-Host "[brain] Ollama متصل — سيستخدمه جو حصرياً (النموذج: $($env:LOCAL_LLM_MODEL))" -ForegroundColor Green
+        if ($env:GROQ_API_KEY -and $env:GROQ_API_KEY.Trim().StartsWith("gsk_")) {
+            # Groq is the primary brain; Ollama is only the OFFLINE backup. Do NOT
+            # claim "exclusive local" here — that misled into thinking Joe runs on
+            # the slow local model when Groq (fast) is actually first.
+            Write-Host "[brain] Ollama جاهز كاحتياط للطوارئ فقط — Groq هو الأساسي (النموذج المحلي: $($env:LOCAL_LLM_MODEL))" -ForegroundColor DarkGray
+        } else {
+            Write-Host "[brain] Ollama متصل — سيستخدمه جو حصرياً (النموذج: $($env:LOCAL_LLM_MODEL))" -ForegroundColor Green
+        }
     } catch {
         Write-Host "[brain] Ollama غير مُشغّل — سيعمل جو على الذكاء المجاني عبر الإنترنت." -ForegroundColor DarkYellow
         Write-Host "        (لجهاز خفيف بلا كرت شاشة، الأسرع: ollama pull qwen2.5:3b — قرارات أسرع بلا تجمّد)" -ForegroundColor DarkGray

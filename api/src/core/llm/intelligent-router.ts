@@ -1135,6 +1135,22 @@ export async function routeToModel(
     }
 
     // 2. The Chain of Steel (Fallback Mesh)
+    // PRIMARY-BRAIN ORDERING: the mesh is built with Local (Auto) FIRST, which is
+    // right for an OFFLINE machine — but when a fast CLOUD brain is configured
+    // (Groq/Gemini/Cerebras/Mistral key present) the local CPU model is only the
+    // offline backup. Leaving it first makes a weak laptop grind through the slow
+    // local model (up to LOCAL_LLM_TIMEOUT, minutes) before ever reaching Groq —
+    // which is exactly why "Groq feels slow/fake": the system is really running
+    // Local, not Groq. So push Local to the END whenever a cloud brain exists.
+    const hasFastCloud = hasGroqKey || geminiProvider.isAvailable() || cerebrasProvider.isAvailable() || mistralProvider.isAvailable();
+    if (hasFastCloud) {
+        const localIdx = meshProviders.findIndex(p => p.name === 'Local (Auto)');
+        if (localIdx >= 0) {
+            const [local] = meshProviders.splice(localIdx, 1);
+            meshProviders.push(local); // offline backup, tried only after cloud/keyless
+        }
+    }
+
     // Move providers that are in cooldown (recently failed) to the END of the order
     // rather than dropping them entirely — so if EVERY provider is cooling down we
     // still try them (best-effort) instead of falling through to the error. Fresh
