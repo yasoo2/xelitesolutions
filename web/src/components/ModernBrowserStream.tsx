@@ -40,12 +40,8 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const [actions, setActions] = useState<
     Array<{ ts: number; type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; actionId: string; actionType: string; summary?: string; reason?: string; error?: string }>
   >([]);
-  // Live narration of the autonomous agent's observe→decide→act loop.
-  const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
-  const [agentActive, setAgentActive] = useState(false);
-  // Live token stream of the agent's current "thinking" (the model's words as it
-  // decides the next step). Cleared when the step's decision is finalised.
-  const [thinking, setThinking] = useState<{ step: number; text: string } | null>(null);
+  // Agent narration (steps + live thinking) renders in JOE'S CHAT, not here —
+  // the browser view stays clean and only pauses for user input when needed.
   // When the agent pauses for the user (missing credential / 2FA code), we collect
   // the value here and resume the same task on the same live session.
   const [pendingInput, setPendingInput] = useState<{ message: string; secretKey: string } | null>(null);
@@ -396,43 +392,16 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           return;
         }
         if (msg.type === 'agent_thinking') {
-          const m: any = msg;
-          const step = Number(m.step || 0);
-          if (m.done) {
-            // Decision finalised for this step — the clean `decide` line replaces the
-            // raw thinking ticker.
-            setThinking(cur => (cur && cur.step === step ? null : cur));
-          } else if (m.delta) {
-            setThinking(cur => (cur && cur.step === step
-              ? { step, text: (cur.text + String(m.delta)).slice(-600) }
-              : { step, text: String(m.delta).slice(-600) }));
-            setAgentActive(true);
-          }
+          // The live thinking stream renders in JOE'S CHAT (thin, tidy) — not
+          // inside the browser view. Ignored here by user preference.
           return;
         }
         if (msg.type === 'agent_step') {
           const m: any = msg;
           const phase: AgentPhase = m.phase;
-          // A finalised step supersedes any live thinking ticker.
-          if (phase === 'decide' || phase === 'act' || phase === 'done' || phase === 'needs_user') setThinking(null);
-          const text = (() => {
-            switch (phase) {
-              case 'observe': return `يراقب الصفحة${m.title ? ` — ${String(m.title).slice(0, 40)}` : ''} (${m.elementCount ?? 0} عنصر)`;
-              case 'decide': return `يقرّر: ${m.action || ''}${m.reason ? ` — ${m.reason}` : ''}`;
-              case 'act': return `ينفّذ: ${m.action || ''}`;
-              case 'result': return m.ok === false ? `فشلت الخطوة${m.note ? ` — ${m.note}` : ''}` : 'تمّت الخطوة';
-              case 'done': return `✅ أنهى المهمة${m.message ? ` — ${m.message}` : ''}`;
-              case 'needs_user': return `🙋 يحتاج تدخّلك${m.message ? ` — ${m.message}` : ''}`;
-              default: return String(m.action || m.message || phase);
-            }
-          })();
-          setAgentActive(phase !== 'done' && phase !== 'needs_user');
-          setAgentSteps(prev => {
-            const next = [...prev, { ts: m.ts || Date.now(), phase, step: Number(m.step || 0), text, ok: m.ok }];
-            return next.slice(-40);
-          });
-          // Pause for user input when the agent needs a credential / 2FA code; clear
-          // the prompt as soon as the agent starts moving again (it resumed).
+          // Step narration lives in the CHAT; inside the browser we only handle
+          // the pause-for-input moments (credentials / 2FA), which must appear
+          // right where the user is watching the page.
           if (phase === 'needs_user' && (m.secretKey || /بيانات|كود|رمز|2fa|otp/i.test(m.message || ''))) {
             setPendingInput({ message: String(m.message || 'الوكيل يحتاج بيانات للمتابعة'), secretKey: String(m.secretKey || 'JOE_2FA_CODE') });
           } else if (phase === 'observe' || phase === 'act' || phase === 'done') {
@@ -510,58 +479,22 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           stroke-linecap: round;
         }
       `}</style>
-        {agentSteps.length > 0 ? (
+        {/* Agent narration lives in Joe's CHAT (user preference) — inside the
+            browser we only surface the pause-for-input card (credentials / 2FA),
+            because that belongs next to the page being worked on. */}
+        {pendingInput ? (
           <div
             dir="rtl"
             style={{
               position: 'absolute', top: 10, insetInlineEnd: 10, zIndex: 7,
-              width: 300, maxWidth: '46%', maxHeight: '70%', display: 'flex', flexDirection: 'column',
-              background: 'rgba(12,14,20,0.86)', color: '#e8eef7', borderRadius: 12,
+              width: 320, maxWidth: '52%', display: 'flex', flexDirection: 'column',
+              background: 'rgba(12,14,20,0.9)', color: '#e8eef7', borderRadius: 12,
               border: '1px solid rgba(120,150,255,0.28)', boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
               backdropFilter: 'blur(6px)', fontSize: 12.5, overflow: 'hidden',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-              <span style={{
-                width: 8, height: 8, borderRadius: '50%',
-                background: agentActive ? '#22c55e' : '#64748b',
-                boxShadow: agentActive ? '0 0 8px #22c55e' : 'none',
-                animation: agentActive ? 'joeAgentPulse 1.1s ease-in-out infinite' : 'none',
-              }} />
-              <strong style={{ flex: 1, fontSize: 13 }}>🤖 خطوات الوكيل</strong>
-              <button
-                onClick={() => setAgentSteps([])}
-                style={{ background: 'transparent', border: 'none', color: '#9fb2cc', cursor: 'pointer', fontSize: 12 }}
-                title="مسح"
-              >مسح</button>
-            </div>
-            <style>{`@keyframes joeAgentPulse{0%,100%{opacity:1}50%{opacity:0.35}}@keyframes joeThinkBlink{0%,100%{opacity:1}50%{opacity:0}}`}</style>
-            <div style={{ overflowY: 'auto', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {agentSteps.map((s, i) => {
-                const icon = s.phase === 'observe' ? '👁' : s.phase === 'decide' ? '🧠' : s.phase === 'act' ? '✋'
-                  : s.phase === 'result' ? (s.ok === false ? '⚠️' : '✓') : s.phase === 'done' ? '✅' : '🙋';
-                const dim = s.phase === 'observe' || s.phase === 'result';
-                return (
-                  <div key={i} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', opacity: dim ? 0.72 : 1, lineHeight: 1.5 }}>
-                    <span style={{ flexShrink: 0 }}>{icon}</span>
-                    <span style={{ flexShrink: 0, color: '#7f9bd6', fontVariantNumeric: 'tabular-nums' }}>#{s.step}</span>
-                    <span style={{ wordBreak: 'break-word' }}>{s.text}</span>
-                  </div>
-                );
-              })}
-              {thinking && thinking.text ? (
-                <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', lineHeight: 1.5, color: '#a9c0ea' }}>
-                  <span style={{ flexShrink: 0 }}>🧠</span>
-                  <span style={{ flexShrink: 0, color: '#7f9bd6', fontVariantNumeric: 'tabular-nums' }}>#{thinking.step}</span>
-                  <span style={{ wordBreak: 'break-word', fontStyle: 'italic', opacity: 0.9 }}>
-                    {thinking.text}
-                    <span style={{ display: 'inline-block', width: 7, animation: 'joeThinkBlink 1s steps(2) infinite' }}>▌</span>
-                  </span>
-                </div>
-              ) : null}
-            </div>
             {pendingInput ? (
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', padding: '10px', background: 'rgba(37,99,235,0.1)' }}>
+              <div style={{ padding: '10px', background: 'rgba(37,99,235,0.1)' }}>
                 <div style={{ marginBottom: 6, color: '#ffd479' }}>🙋 {pendingInput.message}</div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <input
