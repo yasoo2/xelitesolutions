@@ -51,18 +51,14 @@ export class GitHubActionsTool implements ToolDefinition {
     const logs: string[] = [];
 
     try {
+      // Listing real workflow runs requires the GitHub API (auth + repo). This tool
+      // only GENERATES workflow files, so it must not fabricate run data — route the
+      // caller to the real GitHub integration instead of returning invented rows.
       if (action === 'list_runs') {
-        // Mock response for UI demo
         return {
-          ok: true,
-          output: {
-            runs: [
-              { id: 101, name: 'deploy-prod', status: 'completed', conclusion: 'success', head_branch: 'main', head_sha: '7c8d02d6', created_at: new Date().toISOString() },
-              { id: 102, name: 'test-suite', status: 'completed', conclusion: 'failure', head_branch: 'feat/ui', head_sha: '3394196a', created_at: new Date(Date.now() - 3600000).toISOString() },
-              { id: 103, name: 'build-docker', status: 'in_progress', conclusion: null, head_branch: 'main', head_sha: '21b24126', created_at: new Date(Date.now() - 60000).toISOString() }
-            ]
-          },
-          logs: ['Fetched mock runs']
+          ok: false,
+          error: 'github_actions does not list runs. Use the GitHub API / github_repo_manager for real run data.',
+          logs: ['list_runs is not supported by the workflow generator']
         };
       }
 

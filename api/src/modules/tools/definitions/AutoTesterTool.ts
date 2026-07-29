@@ -1,4 +1,6 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import fs from 'fs';
+import path from 'path';
 
 import { executeTool } from '../../services/ToolService';
 
@@ -84,7 +86,7 @@ export class AutoTesterTool implements ToolDefinition {
                     return this.runUnitTests(projectPath, logs, { sessionId, workspaceId });
 
                 case 'integration':
-                    return this.runIntegrationTests(projectPath, logs);
+                    return this.runIntegrationTests(projectPath, logs, { sessionId, workspaceId });
 
                 default:
                     throw new Error(`Unknown test type: ${testType}`);
@@ -172,16 +174,53 @@ export class AutoTesterTool implements ToolDefinition {
         };
     }
 
-    private async runIntegrationTests(projectPath: string, logs: string[]) {
+    private async runIntegrationTests(projectPath: string, logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
         logs.push('Running integration tests...');
 
-        // Placeholder for integration tests
+        // Run the project's REAL integration script if one exists. Never report a
+        // green "passed" for tests that did not run — an unconfigured suite is
+        // reported honestly as skipped (passed:false), so no pipeline treats a
+        // no-op as success.
+        const scriptNames = ['test:integration', 'test:e2e', 'integration', 'e2e', 'test:int'];
+        let scriptToRun: string | null = null;
+        try {
+            const pkgPath = path.join(projectPath, 'package.json');
+            if (fs.existsSync(pkgPath)) {
+                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+                const scripts = (pkg && typeof pkg.scripts === 'object') ? pkg.scripts : {};
+                scriptToRun = scriptNames.find(n => typeof scripts[n] === 'string' && scripts[n].trim()) || null;
+            }
+        } catch (e: any) {
+            logs.push(`Could not read package.json: ${e?.message || e}`);
+        }
+
+        if (!scriptToRun) {
+            logs.push('No integration test script found (looked for: ' + scriptNames.join(', ') + ').');
+            return {
+                ok: true,
+                output: {
+                    passed: false,
+                    skipped: true,
+                    errors: [],
+                    summary: 'No integration test script configured — add "test:integration" to package.json to enable.'
+                },
+                logs
+            };
+        }
+
+        logs.push(`Found integration script "${scriptToRun}" — executing.`);
+        const result = await executeTool('shell_execute', {
+            command: `npm run ${scriptToRun}`,
+            cwd: projectPath
+        }, ctx);
+
+        const passed = result.ok;
         return {
             ok: true,
             output: {
-                passed: true,
-                errors: [],
-                summary: 'Integration tests not yet implemented'
+                passed,
+                errors: passed ? [] : [{ type: 'integration', message: result.error || result.output || 'Integration tests failed' }],
+                summary: passed ? `Integration tests passed (${scriptToRun})` : `Integration tests failed (${scriptToRun})`
             },
             logs
         };
