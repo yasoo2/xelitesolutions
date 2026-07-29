@@ -726,7 +726,15 @@ export async function routeToModel(
         // Groq/Cerebras/Mistral "didn't connect"). Only a real, non-placeholder key
         // takes the custom route.
         const keyStr = String(cfgApiKey || '').trim();
-        const placeholderKey = !keyStr || keyStr === 'auto-mode' || keyStr === 'free-mode' || keyStr === 'free' || keyStr === 'dummy';
+        // A real API key is ASCII only. A key containing non-ASCII characters (e.g. an
+        // Arabic letter pasted by mistake) would crash header building
+        // ("Cannot convert argument to a ByteString"), so treat it as invalid and route
+        // through the free/local mesh instead of failing every request.
+        const nonAsciiKey = /[^\x00-\x7F]/.test(keyStr);
+        if (nonAsciiKey) {
+            console.warn('[IntelligentRouter] Ignoring custom API key: it contains non-ASCII characters (likely pasted wrong). Using FREE/Local providers.');
+        }
+        const placeholderKey = !keyStr || nonAsciiKey || keyStr === 'auto-mode' || keyStr === 'free-mode' || keyStr === 'free' || keyStr === 'dummy';
         const isAuto = !cfgProvider || cfgProvider === 'mock' || cfgProvider === 'auto' || cfgProvider === 'free' || cfgProvider === 'default' || placeholderKey;
         if (!isAuto) {
           const routeKey = `${cfgProvider}:${String(cfgApiKey || '').slice(0, 12)}:${cfgModel || ''}`;
@@ -1112,10 +1120,12 @@ export async function routeToModel(
         }
 
         // Standard text fallback
-        console.error(`[IntelligentRouter] CRITICAL: All LLM providers failed. Returning clean fallback response.`);
-        return "أهلاً بك! النظام متصل ويعمل بكامل أدواته المحلية (المتصفح، الملفات، الأوامر). يرجى توجيه أيا من الأوامر وسيقوم جو بتنفيذها مباشرة.";
+        console.error(`[IntelligentRouter] CRITICAL: All LLM providers failed. Returning honest error.`);
+        return "⚠️ تعذّر الوصول إلى محرّك الذكاء (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. "
+            + "الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، "
+            + "أو تحقّق من اتصال الإنترنت لاستخدام الذكاء المجّاني. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)";
     } catch (e: any) {
-        return "النظام جاهز ومتاح لاستقبال أوامرك وتنفيذها عبر الأدوات المتاحة.";
+        return "⚠️ تعذّر الوصول إلى محرّك الذكاء ولم يُنفَّذ الطلب. شغّل Ollama محلياً أو تحقّق من الإنترنت ثم أعد المحاولة.";
     }
 }
 
