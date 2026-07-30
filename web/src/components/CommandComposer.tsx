@@ -738,6 +738,25 @@ const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   // ⚠️ xAI Grok — شركة إيلون ماسك (x.ai)، مختلفة تماماً عن Groq. مفتاح gsk_ لا يعمل هنا.
   grok: { name: 'xAI Grok (شركة أخرى — ليست Groq)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
 };
+
+// Honest per-provider key info. `auto` is NOT listed — it is the pure keyless mesh.
+//  - 'keyless'  : works with NO key at all (DeepSeek via the Pollinations proxy).
+//  - 'optional' : keyless-capable but a personal key raises speed/limits (Groq).
+//  - 'required' : the FREE tier still needs a FREE key to work — the earlier UI
+//                 wrongly said "no key needed", which is why these felt "fake".
+//  - 'paid'     : needs a paid key.
+type KeyNeed = 'keyless' | 'optional' | 'required' | 'paid';
+const PROVIDER_KEY_INFO: Record<string, { need: KeyNeed; getUrl?: string; getLabel?: string; placeholder: string }> = {
+  groq: { need: 'optional', getUrl: 'https://console.groq.com/keys', getLabel: 'console.groq.com/keys', placeholder: 'gsk_... (اتركه فارغاً للوضع المجاني)' },
+  deepseek: { need: 'keyless', getUrl: 'https://platform.deepseek.com/api_keys', getLabel: 'platform.deepseek.com', placeholder: 'sk-... (اختياري)' },
+  gemini: { need: 'required', getUrl: 'https://aistudio.google.com/app/apikey', getLabel: 'aistudio.google.com/app/apikey', placeholder: 'AIza...' },
+  cerebras: { need: 'required', getUrl: 'https://cloud.cerebras.ai/', getLabel: 'cloud.cerebras.ai', placeholder: 'csk-...' },
+  mistral: { need: 'required', getUrl: 'https://console.mistral.ai/api-keys', getLabel: 'console.mistral.ai/api-keys', placeholder: 'مفتاح Mistral' },
+  openrouter: { need: 'required', getUrl: 'https://openrouter.ai/keys', getLabel: 'openrouter.ai/keys', placeholder: 'sk-or-...' },
+  openai: { need: 'paid', getUrl: 'https://platform.openai.com/api-keys', getLabel: 'platform.openai.com', placeholder: 'sk-...' },
+  anthropic: { need: 'paid', getUrl: 'https://console.anthropic.com/settings/keys', getLabel: 'console.anthropic.com', placeholder: 'sk-ant-...' },
+  grok: { need: 'paid', getUrl: 'https://console.x.ai/', getLabel: 'console.x.ai', placeholder: 'xai-...' },
+};
 export default function CommandComposer({
   sessionId,
   sessionKind = 'chat',
@@ -3322,28 +3341,44 @@ export default function CommandComposer({
                     </div>
                   )}
 
-                  {/* Free Provider Info Box (Groq shows its OWN box below, since it
-                      is free BUT also accepts an optional personal gsk_ key). */}
-                  {providers[selectedProvider]?.isFree && selectedProvider !== 'auto' && selectedProvider !== 'openrouter' && selectedProvider !== 'groq' && (
+                  {/* Auto is the pure keyless mesh — no key. */}
+                  {selectedProvider === 'auto' && (
                     <div className="info-box free">
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>✅ مزود مجاني — متصل تلقائياً</div>
-                      <div>هذا المزود مجاني ولا يحتاج أي مفتاح API. يمكنك البدء بالمحادثة مباشرة.</div>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ تلقائي — بلا مفتاح</div>
+                      <div>يختار أفضل مزوّد مجاني متاح تلقائياً (محلي + مجاني). لا يحتاج أي مفتاح.</div>
                     </div>
                   )}
 
-                  {/* Groq: free by default, with an OPTIONAL personal key for higher limits/speed. */}
-                  {selectedProvider === 'groq' && (
-                    <div className="info-box free">
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>⚡ Groq — مجاني، ويقبل مفتاحك الخاص (اختياري)</div>
-                      <div>يعمل مجاناً عبر الشبكة المجانية. ولمزيد من السرعة والحدود، ألصق مفتاحك الخاص <code style={{ unicodeBidi: 'isolate' }}>gsk_</code> بالأسفل ثم اضغط «Connect &amp; Activate» للتحقّق الحقيقي منه.</div>
-                      <div style={{ marginTop: 6, fontSize: 12 }}>احصل على مفتاح مجاني من <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', unicodeBidi: 'isolate' }}>console.groq.com/keys</a></div>
-                    </div>
-                  )}
+                  {/* Honest per-provider info box driven by PROVIDER_KEY_INFO. */}
+                  {selectedProvider !== 'auto' && PROVIDER_KEY_INFO[selectedProvider] && (() => {
+                    const info = PROVIDER_KEY_INFO[selectedProvider];
+                    const title = info.need === 'keyless' ? '🆓 مجاني بلا مفتاح — ويقبل مفتاحك (اختياري)'
+                      : info.need === 'optional' ? '⚡ مجاني — ويقبل مفتاحك الخاص (اختياري، لسرعة وحدود أعلى)'
+                        : info.need === 'required' ? '🔑 مجاني — لكنه يحتاج مفتاحاً مجانياً لتفعيله'
+                          : '💳 مزوّد مدفوع — يحتاج مفتاحه';
+                    const body = info.need === 'required'
+                      ? 'هذا المزوّد مجاني، لكنه يتطلّب مفتاح API مجانياً من موقعه. أنشئ مفتاحاً مجانياً، ألصقه بالأسفل، ثم اضغط «Connect & Activate» للتحقّق الحقيقي منه.'
+                      : info.need === 'paid'
+                        ? 'ألصق مفتاح المزوّد بالأسفل ثم اضغط «Connect & Activate» للتحقّق منه.'
+                        : 'يعمل مجاناً مباشرة. ولمزيد من السرعة والحدود يمكنك (اختياريّاً) لصق مفتاحك الخاص بالأسفل.';
+                    return (
+                      <div className="info-box free">
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>{title}</div>
+                        <div>{body}</div>
+                        {info.getUrl && (
+                          <div style={{ marginTop: 6, fontSize: 12 }}>احصل على مفتاح من <a href={info.getUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', unicodeBidi: 'isolate' }}>{info.getLabel || info.getUrl}</a></div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
-                  {/* API Key — shown for paid providers AND for Groq (optional key). */}
-                  {(!providers[selectedProvider]?.isFree || selectedProvider === 'groq') && (
+                  {/* API Key — shown for EVERY provider that accepts a key (all except Auto). */}
+                  {selectedProvider !== 'auto' && PROVIDER_KEY_INFO[selectedProvider] && (() => {
+                    const info = PROVIDER_KEY_INFO[selectedProvider];
+                    const keyOptional = info.need === 'keyless' || info.need === 'optional';
+                    return (
                     <div style={{ marginBottom: 20 }}>
-                      <label className="section-label">API Key{selectedProvider === 'groq' ? ' (اختياري)' : ''}</label>
+                      <label className="section-label">API Key{keyOptional ? ' (اختياري)' : ''}</label>
                       <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
                         <div style={{ position: 'relative', flex: 1 }}>
                           <input
@@ -3353,10 +3388,10 @@ export default function CommandComposer({
                             value={/^(free-mode|auto-mode)$/.test(String(providers[selectedProvider].apiKey || '')) ? '' : providers[selectedProvider].apiKey}
                             onChange={(e) => {
                               const newKey = e.target.value;
-                              // Groq stays a free provider; an empty box means "use the free
-                              // mesh", a real gsk_ key routes to the user's own Groq account.
-                              const isGroq = selectedProvider === 'groq';
-                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey || (isGroq ? 'free-mode' : ''), isConnected: false, verified: false, lastError: undefined } }));
+                              // Keyless/optional providers fall back to the free mesh when the
+                              // box is empty; required/paid providers stay empty until a key.
+                              const emptyVal = keyOptional ? 'free-mode' : '';
+                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey || emptyVal, isConnected: false, verified: false, lastError: undefined } }));
                               if (selectedProvider === 'openai' && newKey.trim().startsWith('sk-')) {
                                 fetch(`${API}/providers/openai/key`, {
                                   method: 'POST',
@@ -3365,7 +3400,7 @@ export default function CommandComposer({
                                 }).catch(err => console.error('Failed to send API key to server:', err));
                               }
                             }}
-                            placeholder={selectedProvider === 'groq' ? 'gsk_... (اتركه فارغاً للوضع المجاني)' : selectedProvider === 'openrouter' ? 'sk-or-...' : 'sk-...'}
+                            placeholder={info.placeholder}
                           />
                           <button
                             onClick={() => setShowKey(prev => ({ ...prev, [selectedProvider]: !prev[selectedProvider] }))}
@@ -3394,21 +3429,9 @@ export default function CommandComposer({
                           <Trash2 size={18} />
                         </button>
                       </div>
-                      {selectedProvider === 'openrouter' && (
-                        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-                          احصل على API Key من <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)' }}>openrouter.ai/keys</a>
-                        </div>
-                      )}
                     </div>
-                  )}
-
-                  {/* Auto Provider Info */}
-                  {selectedProvider === 'auto' && (
-                    <div className="info-box free">
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ الوضع التلقائي المجاني</div>
-                      <div>يستخدم نماذج AI مجانية بذكاء. لا يحتاج أي مفتاح API. مناسب للمحادثات العامة والمهام البسيطة.</div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
 
                   {/* Model ID - Hide for Auto and OpenRouter (which has dropdown) */}

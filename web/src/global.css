@@ -3213,6 +3213,29 @@ html.live-panel-open .events-content {
   line-height: 1.75;
 }
 
+/* BIDI: mixed Arabic + English/numbers must read correctly. `plaintext` makes
+   EACH block compute its base direction from its own content (like dir="auto")
+   and isolates embedded Latin/number runs, so a stray English word (e.g.
+   "XElite") no longer scrambles the surrounding Arabic sentence. Applied here in
+   CSS so it holds for every render path, not just the React markdown props. */
+.chat-bubble-content,
+.chat-bubble-content p,
+.chat-bubble-content li,
+.chat-bubble-content h1,
+.chat-bubble-content h2,
+.chat-bubble-content h3,
+.chat-bubble-content h4,
+.chat-bubble-content blockquote,
+.chat-bubble-content td,
+.chat-bubble-content th {
+  unicode-bidi: plaintext;
+}
+/* Keep inline Latin islands (code, links) from reordering the Arabic run. */
+.chat-bubble-content code,
+.chat-bubble-content a {
+  unicode-bidi: isolate;
+}
+
 .chat-bubble-content> :first-child {
   margin-top: 0;
 }

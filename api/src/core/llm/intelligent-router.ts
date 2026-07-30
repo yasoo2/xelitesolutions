@@ -1320,8 +1320,11 @@ export async function verifyProviderDirect(
                 return { ok: nonEmpty(ans), provider, detail: 'keyless_pollinations' };
             }
             case 'openrouter': {
+                // OpenRouter requires a (free) key even for its free models — the
+                // 'dummy' key 401s. Report that honestly instead of a bare failure.
+                if (!envKey('OPENROUTER_API_KEY')) return { ok: false, provider, detail: 'no_key: OpenRouter يحتاج مفتاحاً مجانياً من openrouter.ai/keys.' };
                 const ans = await withTimeout(openRouterProvider.chatComplete(probe, cfg.model || 'moonshotai/kimi-k2:free'));
-                return { ok: nonEmpty(ans), provider, detail: 'keyless_free_model' };
+                return { ok: nonEmpty(ans), provider, detail: 'env_key' };
             }
             case 'groq': {
                 if (!envKey('GROQ_API_KEY')) return { ok: false, provider, detail: 'no_key: ضع مفتاح gsk_ في الحقل بالأعلى، أو اضبط GROQ_API_KEY.' };
