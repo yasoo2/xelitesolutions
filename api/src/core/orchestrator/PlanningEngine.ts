@@ -376,7 +376,7 @@ Rules:
             // A named well-known site counts as a site reference too, so «سجّل الدخول
             // على جيت هاب» (no URL, no literal «موقع») still routes to the ReAct agent.
             // Content sites (Wikipedia) are included so «ادخل ويكيبيديا ولخّص عن X» routes here.
-            const knownSite = /(جيت\s*هاب|github|يوتيوب|youtube|فيس\s*بوك|facebook|تويتر|twitter|انست[غق]رام|instagram|جيميل|gmail|لينكد\s*ان|linkedin|ريديت|reddit|امازون|amazon|نتفليكس|netflix|واتساب|whatsapp|تيك\s*توك|tiktok|ويكيبيديا|wikipedia)/i.test(probe);
+            const knownSite = /(جيت\s*هاب|github|يوتيوب|youtube|فيس\s*بوك|facebook|تويتر|twitter|انست[غق]رام|instagram|جيميل|gmail|جوجل|قوقل|غوغل|google|لينكد\s*ان|linkedin|ريديت|reddit|امازون|amazon|نتفليكس|netflix|واتساب|whatsapp|تيك\s*توك|tiktok|ويكيبيديا|wikipedia)/i.test(probe);
             const siteRef = !!urlMatch || knownSite || /(موقع|منصّ?ة|حساب|بوابة|لوحة\s*تحكم|site|website|portal|account|dashboard)/i.test(probe);
             const hasTarget = !!urlMatch || knownSite;
             const isReactTask = (loginIntent && siteRef) || (hasTarget && (actionVerb || describeIntent));

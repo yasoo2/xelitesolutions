@@ -288,6 +288,7 @@ export function knownSiteUrl(task: string): string | undefined {
         [/لينكد\s*ان|linkedin/i, 'https://www.linkedin.com'],
         [/ريديت|reddit/i, 'https://www.reddit.com'],
         [/جيميل|gmail/i, 'https://mail.google.com'],
+        [/جوجل|قوقل|غوغل|google/i, 'https://www.google.com'],
         [/ويكيبيديا|wikipedia/i, 'https://www.wikipedia.org'],
         [/امازون|amazon/i, 'https://www.amazon.com'],
         [/نتفليكس|netflix/i, 'https://www.netflix.com'],
@@ -339,6 +340,14 @@ export function deriveStartUrl(task: string): string | undefined {
     if (url) return url;
 
     const tl = t.toLowerCase();
+
+    // LOGIN to Google → start on the actual sign-in page (the email field), not the
+    // Google home page. «ادخل جوجل وسجّل الدخول» used to just open google.com and
+    // stop; now the agent lands where it can enter the credentials.
+    const isLogin = /(سجّ?ل|تسجيل)\s*(ال)?دخول|سجّ?ل\s*دخول|دخّ?لني|log\s*-?\s*in|sign\s*-?\s*in|signin/i.test(t);
+    const namesGoogle = /(جوجل|قوقل|غوغل|google)/i.test(tl) && !/(جيميل|gmail)/i.test(tl);
+    if (isLogin && namesGoogle) return 'https://accounts.google.com/';
+
     const subject = extractSearchSubject(t);
     const hasSubject = subject.length >= 2;
 
