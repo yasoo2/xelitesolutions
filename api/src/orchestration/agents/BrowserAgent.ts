@@ -1,8 +1,30 @@
 import { BaseAgent } from './BaseAgent';
 import intelligentRouter from '../../core/llm/intelligent-router';
 import { runReactBrowserTask, renderObservation, type Decider, type ReactAction, type Verifier, type Vision } from '../../modules/browser/reactLoop';
+import { executePlannedActions } from '../../modules/browser/executor';
 import { LocalProvider } from '../../core/llm/providers/local';
 import { normalizeIntentText } from '../../core/orchestrator/promptNormalizer';
+
+/** Sites that BLOCK automated login (bot detection / CAPTCHA / 2FA). For a login
+ *  task to one of these, driving the credentials with the agent is slow AND gets
+ *  walled — the honest, fast, reliable path is: open the login page and let the
+ *  USER log in manually in the panel (saved forever). Returns the login page +
+ *  a display name, or null when it's not a bot-protected login. */
+function manualLoginHandoff(task: string): { url: string; name: string } | null {
+    const t = `${String(task || '')}\n${normalizeIntentText(task)}`.toLowerCase();
+    const isLogin = /(سجّ?ل|تسجيل)\s*(ال)?دخول|سجّ?ل\s*دخول|دخّ?لني|log\s*-?\s*in|sign\s*-?\s*in|signin/i.test(t);
+    if (!isLogin) return null;
+    const sites: Array<[RegExp, string, string]> = [
+        [/جيت\s*هاب|github/i, 'https://github.com/login', 'GitHub'],
+        [/جيميل|gmail|جوجل|قوقل|غوغل|google/i, 'https://accounts.google.com/', 'Google'],
+        [/فيس\s*بوك|facebook/i, 'https://www.facebook.com/login', 'Facebook'],
+        [/انست[غق]رام|instagram/i, 'https://www.instagram.com/accounts/login/', 'Instagram'],
+        [/تويتر|twitter|\bx\.com\b/i, 'https://twitter.com/i/flow/login', 'X (Twitter)'],
+        [/لينكد\s*ان|linkedin/i, 'https://www.linkedin.com/login', 'LinkedIn'],
+    ];
+    for (const [re, url, name] of sites) if (re.test(t)) return { url, name };
+    return null;
+}
 
 /**
  * BrowserAgent — Autonomous Web Interaction Specialist.
@@ -30,6 +52,21 @@ export class BrowserAgent extends BaseAgent {
         // agent paused. Otherwise start the task at a productive first page.
         const resume = Boolean(input?.resume);
         const startUrl = resume ? undefined : deriveStartUrl(task);
+
+        // BOT-PROTECTED LOGIN (GitHub/Google/…): don't run the slow, unreliable
+        // automated-credential loop that just gets CAPTCHA-walled. Open the login
+        // page and hand off to the user's MANUAL takeover (fast + saved forever).
+        if (!resume) {
+            const manual = manualLoginHandoff(task);
+            if (manual) {
+                try {
+                    await executePlannedActions({ userId, sessionId, actions: [{ type: 'goto', url: manual.url }, { type: 'wait', ms: 1200 }] as any });
+                } catch { /* navigation is best-effort */ }
+                const msg = `فتحتُ صفحة تسجيل الدخول (${manual.name}). هذه المواقع تحجب الدخول الآلي، فالأسرع والأوثق أن تسجّل دخولك بنفسك: في لوحة المتصفح اضغط زر «تحكّم وسجّل الدخول»، أدخل بياناتك (سيتجاوز CAPTCHA والتحقّق الثنائي)، ودخولك سيُحفَظ للأبد فلن تحتاج تكراره.`;
+                try { require('../../api/ws').broadcastThinkingDetail(String(context?.sessionId || '').trim(), `🔑 ${msg}`); } catch { /* chat optional */ }
+                return { ok: true, output: { status: 'done', ok: true, summary: msg, answer: msg, verified: true }, error: undefined };
+            }
+        }
 
         // READ MODE: "describe / what do you see / read the page / answer from the
         // page" is a QUESTION about a page, not a multi-step interaction. A weak
@@ -341,12 +378,21 @@ export function deriveStartUrl(task: string): string | undefined {
 
     const tl = t.toLowerCase();
 
-    // LOGIN to Google → start on the actual sign-in page (the email field), not the
-    // Google home page. «ادخل جوجل وسجّل الدخول» used to just open google.com and
-    // stop; now the agent lands where it can enter the credentials.
+    // LOGIN → start on the site's actual sign-in FORM, not its home page, so the
+    // agent doesn't waste slow multi-step LLM calls clicking "Sign in" first.
+    // «ادخل جيت هاب وسجّل الدخول» used to open github.com and wander; now it lands
+    // right on the login field.
     const isLogin = /(سجّ?ل|تسجيل)\s*(ال)?دخول|سجّ?ل\s*دخول|دخّ?لني|log\s*-?\s*in|sign\s*-?\s*in|signin/i.test(t);
-    const namesGoogle = /(جوجل|قوقل|غوغل|google)/i.test(tl) && !/(جيميل|gmail)/i.test(tl);
-    if (isLogin && namesGoogle) return 'https://accounts.google.com/';
+    if (isLogin) {
+        if (/(جوجل|قوقل|غوغل|google)/i.test(tl) && !/(جيميل|gmail)/i.test(tl)) return 'https://accounts.google.com/';
+        if (/(جيميل|gmail)/i.test(tl)) return 'https://accounts.google.com/';
+        if (/(جيت\s*هاب|github)/i.test(tl)) return 'https://github.com/login';
+        if (/(تويتر|twitter|\bx\.com\b)/i.test(tl)) return 'https://twitter.com/i/flow/login';
+        if (/(فيس\s*بوك|facebook)/i.test(tl)) return 'https://www.facebook.com/login';
+        if (/(انست[غق]رام|instagram)/i.test(tl)) return 'https://www.instagram.com/accounts/login/';
+        if (/(لينكد\s*ان|linkedin)/i.test(tl)) return 'https://www.linkedin.com/login';
+        if (/(ريديت|reddit)/i.test(tl)) return 'https://www.reddit.com/login/';
+    }
 
     const subject = extractSearchSubject(t);
     const hasSubject = subject.length >= 2;
