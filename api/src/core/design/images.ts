@@ -35,6 +35,53 @@ export interface ResolvedImage {
     /** Attribution, required by most open licences. */
     credit?: { creator: string; license: string; source: string };
     fromCache: boolean;
+    /** Intrinsic size, so the page can reserve the box and not jump while loading. */
+    width?: number;
+    height?: number;
+    bytes?: number;
+}
+
+/**
+ * Intrinsic dimensions straight from the file header (JPEG/PNG/GIF/WebP).
+ * Without width/height on an <img>, the browser reserves no space and the whole
+ * page jumps when each photo arrives — the layout shift is the most visible
+ * defect a generated page can have.
+ */
+export function imageSize(buf: Buffer): { width: number; height: number } | null {
+    try {
+        // PNG
+        if (buf.length > 24 && buf.readUInt32BE(0) === 0x89504e47) {
+            return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+        }
+        // GIF
+        if (buf.length > 10 && buf.toString('ascii', 0, 3) === 'GIF') {
+            return { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8) };
+        }
+        // WebP (VP8X / VP8 / VP8L)
+        if (buf.length > 30 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') {
+            const fmt = buf.toString('ascii', 12, 16);
+            if (fmt === 'VP8X') return { width: 1 + buf.readUIntLE(24, 3), height: 1 + buf.readUIntLE(27, 3) };
+            if (fmt === 'VP8 ') return { width: buf.readUInt16LE(26) & 0x3fff, height: buf.readUInt16LE(28) & 0x3fff };
+            if (fmt === 'VP8L') {
+                const b = buf.readUInt32LE(21);
+                return { width: (b & 0x3fff) + 1, height: ((b >> 14) & 0x3fff) + 1 };
+            }
+        }
+        // JPEG: walk the segments to the frame header
+        if (buf.length > 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+            let i = 2;
+            while (i < buf.length - 9) {
+                if (buf[i] !== 0xff) { i++; continue; }
+                const marker = buf[i + 1];
+                // SOF0..SOF15, skipping the non-frame markers in that range
+                if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+                    return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7) };
+                }
+                i += 2 + buf.readUInt16BE(i + 2);
+            }
+        }
+    } catch { /* an unreadable header just means no dimensions */ }
+    return null;
 }
 
 function imagesDir(artifactDir: string): string {
@@ -85,7 +132,8 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
     const cached = findCached(artifactDir, query);
     if (cached) return { query, src: cached, alt: query, fromCache: true };
 
-    const url = `${imageApi()}?q=${encodeURIComponent(query)}&page_size=3&mature=false&license_type=all-cc`;
+    // Ask for more candidates so a too-small or wrong-shaped one can be skipped.
+    const url = `${imageApi()}?q=${encodeURIComponent(query)}&page_size=8&mature=false&license_type=all-cc`;
     const data = await fetchJson(url, timeoutMs);
     const results: any[] = Array.isArray(data?.results) ? data.results : [];
     for (const r of results) {
@@ -100,6 +148,11 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
             if (!contentType.startsWith('image/')) continue;
             const buf = Buffer.from(await res.arrayBuffer());
             if (!buf.length || buf.length > 6_000_000) continue;
+            // A 200px thumbnail stretched across a hero looks worse than no photo
+            // at all, and a portrait crammed into a wide band looks broken. Judge
+            // the actual file, not the metadata, which is often missing.
+            const dim = imageSize(buf) || (r?.width && r?.height ? { width: Number(r.width), height: Number(r.height) } : null);
+            if (dim && dim.width < 600) continue;
             const dir = imagesDir(artifactDir);
             fs.mkdirSync(dir, { recursive: true });
             const name = cacheName(query) + extFor(contentType);
@@ -114,6 +167,9 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
                     source: String(r?.foreign_landing_url || r?.url || ''),
                 },
                 fromCache: false,
+                width: dim?.width,
+                height: dim?.height,
+                bytes: buf.length,
             };
         } catch { /* try the next result */ } finally { clearTimeout(t); }
     }
@@ -143,6 +199,67 @@ export interface ImageResolution {
     requested: number;
     real: number;
     credits: Array<{ creator: string; license: string; source: string }>;
+    /** Total weight of the photographs the page now carries. */
+    bytes: number;
+}
+
+/**
+ * Give every sourced <img> its intrinsic size and lazy loading.
+ *
+ * Without width/height the browser reserves no space and the page jumps as each
+ * photo lands; without loading="lazy" a page with nine photos downloads all nine
+ * before the visitor has scrolled. Both are applied only to tags Joe filled in,
+ * and only where the author did not already set them.
+ */
+function hardenImgTags(html: string, byLocalSrc: Map<string, ResolvedImage>): string {
+    return html.replace(/<img\b[^>]*>/gi, (tag) => {
+        const srcMatch = tag.match(/src\s*=\s*"([^"]+)"/i);
+        const src = srcMatch?.[1] || '';
+        const img = byLocalSrc.get(src);
+        if (!img) return tag;
+        let out = tag;
+        if (img.width && img.height && !/\bwidth\s*=/i.test(out) && !/\bheight\s*=/i.test(out)) {
+            out = out.replace(/<img\b/i, `<img width="${img.width}" height="${img.height}"`);
+        }
+        if (!/\bloading\s*=/i.test(out)) out = out.replace(/<img\b/i, '<img loading="lazy" decoding="async"');
+        // An empty alt on a content photograph is a real accessibility failure;
+        // fall back to the subject that was searched for.
+        if (!/\balt\s*=\s*"[^"]+"/i.test(out)) {
+            out = /\balt\s*=/i.test(out)
+                ? out.replace(/\balt\s*=\s*"[^"]*"/i, `alt="${escapeAttr(img.alt || img.query)}"`)
+                : out.replace(/<img\b/i, `<img alt="${escapeAttr(img.alt || img.query)}"`);
+        }
+        return out;
+    });
+}
+
+function escapeAttr(s: string): string {
+    return String(s).replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Creative-Commons images must be credited IN THE PAGE. Joe was reporting the
+ * credits to the chat only, which leaves the published page in breach of the
+ * licence — the one defect here that could actually cost the user something.
+ */
+export function creditsBlock(credits: ImageResolution['credits'], isAr: boolean): string {
+    if (!credits.length) return '';
+    const items = credits.map(c => {
+        const who = escapeAttr(c.creator || 'Unknown');
+        const lic = escapeAttr(c.license || 'CC');
+        return c.source
+            ? `<li><a href="${escapeAttr(c.source)}" target="_blank" rel="noopener noreferrer nofollow">${who}</a> — ${lic}</li>`
+            : `<li>${who} — ${lic}</li>`;
+    }).join('');
+    const title = isAr ? 'مصادر الصور' : 'Image credits';
+    const note = isAr
+        ? 'الصور مستخدمة بموجب رخص المشاع الإبداعي، ونُسبت لأصحابها.'
+        : 'Photographs used under Creative Commons licences, credited to their authors.';
+    return `\n<section class="joe-image-credits" aria-label="${escapeAttr(title)}" style="max-width:var(--maxw,1180px);margin:0 auto;padding:24px 16px;border-top:1px solid var(--border,rgba(0,0,0,.1));font-size:12px;line-height:1.7;color:var(--text-muted,#667)">
+  <strong style="display:block;margin-bottom:6px">${title}</strong>
+  <p style="margin:0 0 6px">${note}</p>
+  <ul style="margin:0;padding-inline-start:18px;list-style:disc">${items}</ul>
+</section>\n`;
 }
 
 /**
@@ -157,7 +274,7 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
         const q = m[1].trim();
         if (q && !queries.includes(q)) queries.push(q);
     }
-    if (!queries.length) return { html, requested: 0, real: 0, credits: [] };
+    if (!queries.length) return { html, requested: 0, real: 0, credits: [], bytes: 0 };
 
     const resolved = new Map<string, ResolvedImage>();
     // Sequential on purpose: a laptop on a home connection does better with one
@@ -168,7 +285,7 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     }
 
     const credits: ImageResolution['credits'] = [];
-    const out = String(html).replace(IMAGE_MARKER, (_full, rawQuery: string) => {
+    let out = String(html).replace(IMAGE_MARKER, (_full, rawQuery: string) => {
         const q = String(rawQuery).trim();
         const img = resolved.get(q);
         if (!img) return gradientPlaceholder(q, hue);
@@ -178,5 +295,12 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
         return img.src;
     });
 
-    return { html: out, requested: queries.length, real: resolved.size, credits };
+    const byLocalSrc = new Map<string, ResolvedImage>();
+    for (const img of resolved.values()) byLocalSrc.set(img.src, img);
+    out = hardenImgTags(out, byLocalSrc);
+
+    let bytes = 0;
+    for (const img of resolved.values()) bytes += img.bytes || 0;
+
+    return { html: out, requested: queries.length, real: resolved.size, credits, bytes };
 }

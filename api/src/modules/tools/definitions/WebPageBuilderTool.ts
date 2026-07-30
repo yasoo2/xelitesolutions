@@ -8,7 +8,7 @@ import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/qu
 import { workspaceService } from '../../services/WorkspaceService';
 import { buildPalette, paletteCss, designBrief } from '../../../core/design/design-system';
 import { detectPageKind, blueprintBrief, imageBudget } from '../../../core/design/blueprints';
-import { resolveImages } from '../../../core/design/images';
+import { resolveImages, creditsBlock } from '../../../core/design/images';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 const PORT = String(process.env.PORT || '5002');
@@ -136,6 +136,44 @@ ${prev!.html}`
         if (fence) html = fence[1].trim();
         const docIdx = html.search(/<!DOCTYPE html>|<html[\s>]/i);
         if (docIdx > 0) html = html.slice(docIdx);
+
+        // [TRUNCATION] A provider caps a single completion — Groq's free tier
+        // allows ~4000 tokens, about 12 KB of HTML, and less for Arabic. A page
+        // with a full set of sections is bigger than that, so the model stops
+        // mid-element. The QA pass then quietly closes the dangling tags and the
+        // run reports success: the user receives half a page and is told it is
+        // finished. Detect the cut and ask the model to CONTINUE from exactly
+        // where it stopped, stitching until the document closes.
+        let continuations = 0;
+        let stillTruncated = false;
+        if (html && !/<\/html\s*>/i.test(html)) {
+            while (!/<\/html\s*>/i.test(html) && continuations < 3) {
+                continuations++;
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                    ? `📝 الصفحة أطول من حدّ الرد الواحد — أُكمل الجزء ${continuations + 1}`
+                    : `📝 Page exceeds one response — writing part ${continuations + 1}`);
+                let part = '';
+                try {
+                    part = await routeToModel([
+                        { role: 'system', content: `You are continuing an HTML file that was cut off mid-generation. Output ONLY the raw HTML that comes NEXT — no markdown fences, no explanation, no repetition of what is already written, and do NOT start a new document. Continue from the exact character where the text below ends, and finish the document properly with </body></html>.\n\nSTYLE: keep using the same CSS custom properties and section rhythm already present.` },
+                        { role: 'user', content: `The file so far ends with:\n\n${html.slice(-2400)}\n\nContinue.` },
+                    ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                } catch (e: any) { logs.push(`continuation ${continuations} failed: ${e?.message || e}`); break; }
+
+                part = String(part || '').trim();
+                const pf = part.match(/```(?:html)?\s*([\s\S]*?)```/i);
+                if (pf) part = pf[1].trim();
+                // A model that restarts the document instead of continuing would
+                // duplicate the whole page — drop everything before its restart.
+                const restart = part.search(/<!DOCTYPE html>|<html[\s>]/i);
+                if (restart >= 0) part = part.slice(part.indexOf('>', restart) + 1);
+                if (!part) break;
+                html += (html.endsWith('\n') ? '' : '\n') + part;
+                logs.push(`continuation ${continuations}: +${part.length} bytes`);
+            }
+            stillTruncated = !/<\/html\s*>/i.test(html);
+            if (stillTruncated) logs.push('page still incomplete after continuations');
+        }
         let editFellBack = false;
         if (!/<html[\s>]/i.test(html)) {
             if (isEdit && prev) { html = prev.html; editFellBack = true; }
@@ -149,14 +187,23 @@ ${prev!.html}`
         // photograph, downloaded once and served from Joe so the page keeps its
         // images with no internet. No network -> a gradient in the page's own
         // palette, never a broken image and never a claim of a photo we lack.
-        let imgReal = 0, imgRequested = 0;
+        let imgReal = 0, imgRequested = 0, imgBytes = 0;
         let imgCredits: Array<{ creator: string; license: string; source: string }> = [];
         if (photos > 0 && /\{\{\s*IMAGE\s*:/i.test(html)) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `🖼️ أجلب صوراً حقيقية مرخّصة للصفحة` : `🖼️ Sourcing real licensed photographs`);
             try {
                 const r = await resolveImages(html, ARTIFACT_DIR, palette.hue, { max: Math.max(4, photos + 2) });
-                html = r.html; imgReal = r.real; imgRequested = r.requested; imgCredits = r.credits;
-                logs.push(`images: ${r.real}/${r.requested} real, rest gradient`);
+                html = r.html; imgReal = r.real; imgRequested = r.requested; imgCredits = r.credits; imgBytes = r.bytes;
+                // Creative-Commons licences require attribution IN THE PAGE, not in
+                // a chat message the visitor never sees. Without this the published
+                // page is in breach of the licence of every photo on it.
+                const credits = creditsBlock(r.credits, isAr);
+                if (credits) {
+                    html = /<\/body>/i.test(html)
+                        ? html.replace(/<\/body>/i, `${credits}</body>`)
+                        : html + credits;
+                }
+                logs.push(`images: ${r.real}/${r.requested} real, ${Math.round(r.bytes / 1024)} KB, rest gradient`);
             } catch (e: any) { logs.push(`image sourcing failed: ${e?.message || e}`); }
         }
 
@@ -293,9 +340,17 @@ ${prev!.html}`
             if (imgRequested) {
                 // Be exact about how many photos are real: claiming "images added"
                 // when the network was down would be a lie the user can see.
+                const kb = Math.round(imgBytes / 1024);
+                const heavy = kb > 1200;
                 parts.push(isAr
-                    ? `🖼️ الصور: ${imgReal} حقيقية مرخّصة من ${imgRequested}${imgReal < imgRequested ? ' (الباقي تدرّجات — تعذّر الجلب)' : ''}`
-                    : `🖼️ Photos: ${imgReal}/${imgRequested} real licensed${imgReal < imgRequested ? ' (rest are gradients — could not fetch)' : ''}`);
+                    ? `🖼️ الصور: ${imgReal} حقيقية مرخّصة من ${imgRequested} · ${kb} ك.ب${heavy ? ' ⚠️ ثقيلة — قد تبطئ التحميل' : ''}${imgReal < imgRequested ? ' (الباقي تدرّجات — تعذّر الجلب)' : ''}`
+                    : `🖼️ Photos: ${imgReal}/${imgRequested} real licensed · ${kb} KB${heavy ? ' ⚠️ heavy — may slow loading' : ''}${imgReal < imgRequested ? ' (rest are gradients — could not fetch)' : ''}`);
+            }
+            // Never report a half-written page as finished.
+            if (continuations > 0) {
+                parts.push(isAr
+                    ? `📝 الصفحة تجاوزت حدّ الرد الواحد — أكملتُها على ${continuations + 1} أجزاء${stillTruncated ? ' ⚠️ وما زالت ناقصة' : ''}`
+                    : `📝 Page exceeded one response — completed across ${continuations + 1} parts${stillTruncated ? ' ⚠️ still incomplete' : ''}`);
             }
             if (qaFixed.length) parts.push(isAr ? `🔧 تصحيحات الجودة: ${qaFixed.length}` : `🔧 QA fixes: ${qaFixed.length}`);
             parts.push(qaIssues.length
