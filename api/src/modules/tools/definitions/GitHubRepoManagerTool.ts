@@ -7,21 +7,21 @@ import https from 'https';
  */
 export class GitHubRepoManagerTool implements ToolDefinition {
     name = 'github_repo_manager';
-    version = '1.0.0';
-    description = 'Create and manage GitHub repositories, push code automatically';
-    tags = ['github', 'repository', 'git'];
+    version = '1.1.0';
+    description = 'Create, manage and ANALYZE GitHub repositories (analyze = real repo report: languages, file tree, README, latest commits)';
+    tags = ['github', 'repository', 'git', 'analysis'];
 
     inputSchema = {
         type: 'object' as const,
         properties: {
             action: {
                 type: 'string' as const,
-                enum: ['create', 'push', 'list', 'delete'],
+                enum: ['create', 'push', 'list', 'delete', 'analyze'],
                 description: 'Action to perform'
             },
             repoName: {
                 type: 'string' as const,
-                description: 'Repository name'
+                description: 'Repository name ("owner/repo" or bare name). For analyze, omit to use the workspace\'s connected repo.'
             },
             description: {
                 type: 'string' as const,
@@ -90,6 +90,9 @@ export class GitHubRepoManagerTool implements ToolDefinition {
 
                 case 'delete':
                     return await this.deleteRepo(repoName, githubToken, logs);
+
+                case 'analyze':
+                    return await this.analyzeRepo(repoName, githubToken, input, logs);
 
                 default:
                     throw new Error(`Unknown action: ${action}`);
@@ -191,6 +194,111 @@ export class GitHubRepoManagerTool implements ToolDefinition {
     private async getUsername(token: string): Promise<string> {
         const user = await this.githubRequest('GET', '/user', null, token);
         return user.login;
+    }
+
+    /** REAL repository analysis straight from the GitHub API (metadata, languages,
+     *  file tree, README, latest commits) + a best-effort LLM architectural summary.
+     *  When no repoName is given, resolves "the connected repo" from the workspace's
+     *  integrations.github.activeRepo. Raw facts are always returned even if the
+     *  LLM summary fails — nothing here is fabricated. */
+    private async analyzeRepo(repoName: string | undefined, token: string, input: any, logs: string[]) {
+        let fullName = String(repoName || '').trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '');
+        if (fullName && !fullName.includes('/')) {
+            fullName = `${await this.getUsername(token)}/${fullName}`;
+        }
+        if (!fullName) {
+            try {
+                const { workspaceService } = require('../../services/WorkspaceService');
+                const userId = String(input?.__userId || input?.userId || '');
+                const wsId = String(input?.__workspaceId || input?.workspaceId || '');
+                if (wsId && userId) {
+                    const ws = await workspaceService.getWorkspace(wsId, userId);
+                    fullName = String(ws?.integrations?.github?.activeRepo || '');
+                }
+                if (!fullName && userId) {
+                    const all = await workspaceService.getUserWorkspaces(userId);
+                    for (const w of (Array.isArray(all) ? all : [])) {
+                        const r = w?.integrations?.github?.activeRepo;
+                        if (r) { fullName = String(r); logs.push(`Resolved connected repo from workspace "${w?.name || w?._id}"`); break; }
+                    }
+                }
+            } catch (e: any) { logs.push(`Workspace lookup failed: ${e.message}`); }
+        }
+        if (!fullName) {
+            return { ok: false, error: 'لا يوجد ريبو محدّد للتحليل: مرّر repoName (مثل owner/repo) أو اربط ريبو في مساحة العمل أولاً.', logs };
+        }
+        logs.push(`Analyzing ${fullName} via GitHub API`);
+
+        const meta = await this.githubRequest('GET', `/repos/${fullName}`, null, token);
+        const defaultBranch = String(meta.default_branch || 'main');
+
+        let languages: Record<string, number> = {};
+        try { languages = await this.githubRequest('GET', `/repos/${fullName}/languages`, null, token); } catch (e: any) { logs.push(`languages fetch failed: ${e.message}`); }
+
+        let files: string[] = []; let fileCount = 0; let treeTruncated = false;
+        try {
+            const tree = await this.githubRequest('GET', `/repos/${fullName}/git/trees/${encodeURIComponent(defaultBranch)}?recursive=1`, null, token);
+            const blobs = (Array.isArray(tree?.tree) ? tree.tree : []).filter((e: any) => e.type === 'blob');
+            fileCount = blobs.length;
+            treeTruncated = !!tree?.truncated;
+            files = blobs.slice(0, 80).map((e: any) => e.path);
+        } catch (e: any) { logs.push(`tree fetch failed: ${e.message}`); }
+
+        let readme = '';
+        try {
+            const r = await this.githubRequest('GET', `/repos/${fullName}/readme`, null, token);
+            if (r?.content) readme = Buffer.from(String(r.content), 'base64').toString('utf-8').slice(0, 4000);
+        } catch { logs.push('No README found'); }
+
+        let commits: any[] = [];
+        try {
+            const cs = await this.githubRequest('GET', `/repos/${fullName}/commits?per_page=5`, null, token);
+            commits = (Array.isArray(cs) ? cs : []).map((c: any) => ({
+                sha: String(c.sha || '').slice(0, 7),
+                message: String(c.commit?.message || '').split('\n')[0],
+                author: c.commit?.author?.name,
+                date: c.commit?.author?.date,
+            }));
+        } catch (e: any) { logs.push(`commits fetch failed: ${e.message}`); }
+
+        const repo = {
+            fullName,
+            url: meta.html_url,
+            description: meta.description || '',
+            private: !!meta.private,
+            defaultBranch,
+            stars: meta.stargazers_count || 0,
+            forks: meta.forks_count || 0,
+            openIssues: meta.open_issues_count || 0,
+            createdAt: meta.created_at,
+            lastPush: meta.pushed_at,
+            languages,
+            fileCount: treeTruncated ? `${fileCount}+` : fileCount,
+            files,
+            latestCommits: commits,
+            readmeExcerpt: readme ? readme.slice(0, 1500) : '',
+        };
+
+        // Best-effort Arabic architectural summary over the REAL facts above.
+        let summary = '';
+        try {
+            const { routeToModel } = require('../../../core/llm/intelligent-router');
+            summary = await routeToModel([
+                { role: 'system', content: 'أنت مهندس برمجيات خبير. البيانات التالية حقيقية ومأخوذة مباشرة من GitHub API. حلّلها وقدّم تقريراً موجزاً بالعربية: نوع المشروع وهدفه، التقنيات واللغات، بنية الملفات، النشاط الأخير، وملاحظات/توصيات. لا تخترع معلومات غير موجودة في البيانات.' },
+                { role: 'user', content: `تحليل المستودع ${fullName}:\n${JSON.stringify({ ...repo, readmeExcerpt: readme }, null, 1).slice(0, 9000)}` },
+            ]);
+        } catch (e: any) { logs.push(`LLM summary failed (raw facts still returned): ${e.message}`); }
+
+        return {
+            ok: true,
+            output: {
+                success: true,
+                repo,
+                summary: summary || undefined,
+                message: `تم تحليل ${fullName} مباشرة من GitHub API${summary ? '' : ' (البيانات الخام فقط — تعذّر توليد الملخص)'}`,
+            },
+            logs,
+        };
     }
 
     private githubRequest(method: string, path: string, data: string | null, token: string): Promise<any> {

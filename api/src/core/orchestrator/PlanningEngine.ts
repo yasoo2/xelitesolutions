@@ -226,6 +226,33 @@ Rules:
             }
         }
 
+        // [REPO ANALYSIS FAST-PATH] «حلل الريبو المتصل / analyze the repo» is a
+        // GitHub-API task, NOT a browser or shell task. Before this path existed,
+        // the DAG planner produced blind shell nodes ("Connect to the repository"
+        // with no command) that failed, and recovery then hijacked the task into
+        // the browser. Route it straight to github_repo_manager(action:analyze),
+        // which reads the REAL repo (metadata/tree/README/commits) via the API and
+        // resolves the workspace's connected repo when none is named.
+        {
+            const repoNoun = /(الريبو|ريبو|مستودع|المستودع|ريبوزتوري|\brepo\b|repository)/i.test(probe);
+            const analyzeVerb = /(حلّ?ل|تحليل|افحص|فحص|قيّ?م|تقييم|قرأ|اقرأ|لخّ?ص|ملخص|analy[sz]e|analysis|inspect|review|summari)/i.test(probe);
+            if (repoNoun && analyzeVerb) {
+                // "github.com/owner/repo" first (so the domain never pollutes the
+                // name), then a bare "owner/repo".
+                const gh = (intent.goal || '').match(/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/i);
+                const named = gh ? gh : (intent.goal || '').match(/(?:^|\s)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)(?:\s|$)/);
+                const input: any = { action: 'analyze', request: intent.goal };
+                if (named) input.repoName = named[1].replace(/\.git$/i, '');
+                console.log(`[PlanningEngine] repo-analysis fast-path -> github_repo_manager(analyze) repo="${input.repoName || '(workspace connected repo)'}"`);
+                return {
+                    id: `repo_analyze_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{ id: 'repo_analyze', description: `تحليل المستودع ${input.repoName || 'المتصل'}`, tool: 'github_repo_manager', agent: 'General', input, dependsOn: [] }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
+        }
+
         // [BROWSER SMART TOOLS FAST-PATH] summarise / audit a URL reliably.
         const goalRaw = intent.goal || '';
         const urlMatch = goalRaw.match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);
@@ -282,7 +309,14 @@ Rules:
                 || /((ادخل|روح|اذهب)\s*(على|الى|إلى|ل)\s*\S+|افتح\s+(موقع|صفحة|رابط|\S+\.\S+)|go\s*to\s+\S+|open\s+\S+\.\S+|visit\s+\S+)/i.test(probe);
             let pageLive = false;
             try { const mgr = require('../../modules/browser/manager'); pageLive = !!(mgr.hasLiveBrowserPage && mgr.hasLiveBrowserPage()); } catch { /* optional */ }
-            if (interactVerb && noUrl && !hasNavTarget && (uiNoun || pageLive)) {
+            // Guard: orchestrator RECOVERY goals are prefixed "Fix and continue: <task>"
+            // — the word "continue" matched interactVerb, so every failed NON-browser
+            // node (e.g. a Dev shell step) got hijacked into browser resume-mode
+            // whenever a page happened to be live. Recovery goals may only take this
+            // path when the failed node itself was a Browser node.
+            const nonBrowserRecovery = /^fix and continue:/i.test(String(intent.goal || '').trim())
+                && String(intent.suggestedAgent || '') !== 'Browser';
+            if (interactVerb && noUrl && !hasNavTarget && !nonBrowserRecovery && (uiNoun || pageLive)) {
                 console.log(`[PlanningEngine] continue-on-live-page -> browser_run (resume) "${g.slice(0, 60)}"`);
                 return {
                     id: `browser_continue_${Date.now()}`,

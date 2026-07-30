@@ -29,7 +29,7 @@ async function testCoreLogic() {
   console.log('Model for Low Complexity:', modelLow.name);
   console.log('Model for High Complexity:', modelHigh.name);
   
-  if (modelHigh.model.includes('mixtral') || modelHigh.model.includes('llama-3.1-70b')) {
+  if (modelHigh.model.includes('llama-3.3-70b') || modelHigh.model.includes('llama-3.1-70b')) {
     console.log('✅ Model router selected appropriate high-tier model.');
   } else {
     console.warn('⚠️ Model router selected lower-tier model for high complexity.');

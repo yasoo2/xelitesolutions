@@ -1,7 +1,7 @@
 /**
  * Intelligent Model Router
  * Automatically selects the best AI model based on task type and complexity  
- * Supports: Llama 3.1 70B, Mixtral 8x7B, Gemma 2 9B (all via Groq - FREE!)
+ * Supports: Llama 3.3 70B, Llama 3.1 8B (all via Groq - FREE!)
  */
 
 import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider, openAIProvider, cerebrasProvider, mistralProvider, huggingfaceProvider, llm7Provider, duckAIProvider } from './providers/registry';
@@ -61,11 +61,15 @@ export function flattenMultimodalMessages(messages: any[]): any[] {
 // Available models configuration
 
 export const MODELS: Record<string, ModelConfig> = {
-    // Free tier - Always available
+    // Free tier - Always available.
+    // NOTE: Groq DECOMMISSIONED llama-3.1-70b-versatile, mixtral-8x7b-32768 and
+    // gemma2-9b-it — calling them returns a permanent 400, which sidelined Groq
+    // for whole sessions. The registry keys are kept (they're referenced across
+    // the router) but every entry now points at a model Groq actually serves.
     'llama-3.1-70b': {
-        name: 'Llama 3.1 70B',
+        name: 'Llama 3.3 70B',
         provider: 'groq',
-        model: 'llama-3.1-70b-versatile',
+        model: 'llama-3.3-70b-versatile',
         maxTokens: 8000,
         temperature: 0.7,
         cost: 'free',
@@ -83,9 +87,9 @@ export const MODELS: Record<string, ModelConfig> = {
     },
 
     'mixtral-8x7b': {
-        name: 'Mixtral 8x7B',
+        name: 'Llama 3.3 70B (long context)',
         provider: 'groq',
-        model: 'mixtral-8x7b-32768',
+        model: 'llama-3.3-70b-versatile',
         maxTokens: 32000,
         temperature: 0.7,
         cost: 'free',
@@ -93,9 +97,9 @@ export const MODELS: Record<string, ModelConfig> = {
     },
 
     'gemma-2-9b': {
-        name: 'Gemma 2 9B',
+        name: 'Llama 3.1 8B (code/math)',
         provider: 'groq',
-        model: 'gemma2-9b-it',
+        model: 'llama-3.1-8b-instant',
         maxTokens: 8000,
         temperature: 0.7,
         cost: 'free',
