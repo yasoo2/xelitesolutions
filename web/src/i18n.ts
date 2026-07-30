@@ -347,7 +347,9 @@ const resources = {
       yes: 'نعم',
       no: 'لا',
       none: 'لا يوجد',
-      error: 'فشل إرسال الأمر'
+      error: 'فشل إرسال الأمر',
+    
+      http_fetch: 'جلب رابط',
     }
   },
   fr: {
@@ -497,7 +499,30 @@ const resources = {
       yes: 'Oui',
       no: 'Non',
       none: 'Aucun',
-      error: 'Erreur lors de l\'envoi'
+      error: 'Erreur lors de l\'envoi',
+    
+      api_unreachable: 'Impossible de joindre le serveur API. Vérifiez qu\'il est démarré et accessible.',
+      approvalGateInstruction: 'Tapez « approve » pour continuer ou « deny » pour annuler.',
+      approvalGateOnlyHint: 'Veuillez taper uniquement « approve » ou « deny ».',
+      approvalGateTitle: 'Une approbation est requise avant de continuer.',
+      deleteAllConfirm: 'Voulez-vous vraiment supprimer toutes les sessions ? Cette action est irréversible.',
+      google_login: 'Compte Google',
+      httpBadGateway: 'Serveur temporairement indisponible (502 Bad Gateway).',
+      httpBadGatewayHint: 'Le service backend (API) est inaccessible derrière Nginx.',
+      httpRequestFailed: 'Échec de la requête (HTTP {{status}}).',
+      login_error_auth: 'Échec de l\'authentification',
+      login_error_missing: 'Veuillez saisir vos identifiants',
+      login_subtitle: 'Accédez à votre espace de travail',
+      secretGateInstruction: 'Collez le jeton ici et envoyez-le en un seul message.',
+      secretGatePrivacy: 'Le jeton ne sera pas affiché après l\'envoi.',
+      secretGateReason: 'Raison',
+      secretGateRequired: 'Requis',
+      secretGateTitle: 'Un jeton/une clé est requis pour continuer.',
+      secretSavedContinue: 'Jeton enregistré. Reprise de l\'exécution.',
+      secretSentMask: '🔐 [jeton envoyé]',
+      sessions: 'Sessions',
+      system: 'SYSTÈME',
+      you: 'Vous',
     }
   },
   de: {
@@ -647,7 +672,30 @@ const resources = {
       yes: 'Ja',
       no: 'Nein',
       none: 'Keine',
-      error: 'Fehler beim Senden'
+      error: 'Fehler beim Senden',
+    
+      api_unreachable: 'Der API-Server ist nicht erreichbar. Stellen Sie sicher, dass er läuft und erreichbar ist.',
+      approvalGateInstruction: 'Geben Sie „approve“ ein, um fortzufahren, oder „deny“, um abzubrechen.',
+      approvalGateOnlyHint: 'Bitte geben Sie nur „approve“ oder „deny“ ein.',
+      approvalGateTitle: 'Vor dem Fortfahren ist eine Genehmigung erforderlich.',
+      deleteAllConfirm: 'Möchten Sie wirklich alle Sitzungen löschen? Diese Aktion kann nicht rückgängig gemacht werden.',
+      google_login: 'Google-Konto',
+      httpBadGateway: 'Server vorübergehend nicht verfügbar (502 Bad Gateway).',
+      httpBadGatewayHint: 'Der Backend-Dienst (API) ist hinter Nginx nicht erreichbar.',
+      httpRequestFailed: 'Anfrage fehlgeschlagen (HTTP {{status}}).',
+      login_error_auth: 'Authentifizierung fehlgeschlagen',
+      login_error_missing: 'Bitte geben Sie Ihre Zugangsdaten ein',
+      login_subtitle: 'Zugriff auf Ihren Arbeitsbereich',
+      secretGateInstruction: 'Fügen Sie das Token hier ein und senden Sie es als eine einzige Nachricht.',
+      secretGatePrivacy: 'Das Token wird nach dem Senden nicht angezeigt.',
+      secretGateReason: 'Grund',
+      secretGateRequired: 'Erforderlich',
+      secretGateTitle: 'Zum Fortfahren wird ein Token/Schlüssel benötigt.',
+      secretSavedContinue: 'Token gespeichert. Ausführung wird fortgesetzt.',
+      secretSentMask: '🔐 [Token gesendet]',
+      sessions: 'Sitzungen',
+      system: 'SYSTEM',
+      you: 'Sie',
     }
   },
   ru: {
@@ -759,7 +807,68 @@ const resources = {
       showTechnicalDetails: 'Показать технические детали',
       hideTechnicalDetails: 'Скрыть технические детали',
       technicalDetailsHidden: 'Технические детали скрыты по умолчанию.',
-      error: 'Ошибка отправки'
+      error: 'Ошибка отправки',
+    
+      api_unreachable: 'Не удаётся связаться с API-сервером. Убедитесь, что он запущен и доступен.',
+      approvalGateInstruction: 'Введите «approve», чтобы продолжить, или «deny», чтобы отменить.',
+      approvalGateOnlyHint: 'Пожалуйста, введите только «approve» или «deny».',
+      approvalGateTitle: 'Перед продолжением требуется подтверждение.',
+      assistantLabel: 'Ассистент',
+      close: 'Закрыть',
+      deleteAllConfirm: 'Вы уверены, что хотите удалить все сессии? Это действие необратимо.',
+      errorEncountered: 'Произошла ошибка',
+      google_login: 'Аккаунт Google',
+      httpBadGateway: 'Сервер временно недоступен (502 Bad Gateway).',
+      httpBadGatewayHint: 'Серверная служба (API) недоступна за Nginx.',
+      httpRequestFailed: 'Запрос не выполнен (HTTP {{status}}).',
+      liveSteps: 'Шаги в реальном времени',
+      login_error_auth: 'Ошибка аутентификации',
+      login_error_missing: 'Пожалуйста, введите свои учётные данные',
+      login_subtitle: 'Доступ к вашему рабочему пространству',
+      no: 'Нет',
+      noThoughtsRecorded: 'Мысли не записаны.',
+      none: 'Нет',
+      processing: 'Обработка…',
+      secretGateInstruction: 'Вставьте токен сюда и отправьте одним сообщением.',
+      secretGatePrivacy: 'После отправки токен показан не будет.',
+      secretGateReason: 'Причина',
+      secretGateRequired: 'Требуется',
+      secretGateTitle: 'Для продолжения требуется токен/ключ.',
+      secretSavedContinue: 'Токен сохранён. Выполнение продолжается.',
+      secretSentMask: '🔐 [токен отправлен]',
+      sessions: 'Сессии',
+      system: 'СИСТЕМА',
+      systemLogs: 'Системные журналы',
+      systemReady: 'Система готова',
+      thoughts: 'Мысли',
+      toolCatalogAll: 'Все',
+      toolCatalogCounts: 'Всего: {{count}} • Рабочих: {{real}} • Неактивных: {{noop}}',
+      toolCatalogError: 'Не удалось загрузить инструменты.',
+      toolCatalogFilteredCount: 'Результатов: {{n}}',
+      toolCatalogInputSchema: 'Схема входных данных',
+      toolCatalogLoading: 'Загрузка инструментов…',
+      toolCatalogMockSupported: 'Поддерживается имитация',
+      toolCatalogNoResults: 'Подходящих инструментов нет.',
+      toolCatalogOutputSchema: 'Схема выходных данных',
+      toolCatalogPermissions: 'Разрешения',
+      toolCatalogRateLimit: 'Лимит/мин',
+      toolCatalogSearchPlaceholder: 'Поиск по названию/описанию/тегам…',
+      toolCatalogSelectHint: 'Выберите инструмент, чтобы увидеть подробности.',
+      toolCatalogSideEffects: 'Побочные эффекты',
+      toolCatalogTags: 'Теги',
+      toolCatalogTitle: 'Каталог инструментов',
+      toolCatalogToolsList: 'Инструменты',
+      toolCatalogVersion: 'Версия',
+      toolGroupDatabase: 'База данных',
+      toolGroupGit: 'Git',
+      toolGroupOther: 'Прочее',
+      toolGroupPayments: 'Платежи',
+      toolGroupSecurity: 'Безопасность',
+      toolGroupUI: 'Интерфейс',
+      waitingForActivity: 'Ожидание активности…',
+      waitingForInput: 'Ожидание ввода',
+      yes: 'Да',
+      you: 'Вы',
     }
   },
   es: {
@@ -876,7 +985,68 @@ const resources = {
       showTechnicalDetails: 'Mostrar detalles técnicos',
       hideTechnicalDetails: 'Ocultar detalles técnicos',
       technicalDetailsHidden: 'Los detalles técnicos están ocultos por defecto.',
-      error: 'Error al enviar'
+      error: 'Error al enviar',
+    
+      api_unreachable: 'No se puede contactar con el servidor API. Asegúrese de que esté en ejecución y accesible.',
+      approvalGateInstruction: 'Escriba «approve» para continuar o «deny» para cancelar.',
+      approvalGateOnlyHint: 'Escriba únicamente «approve» o «deny».',
+      approvalGateTitle: 'Se requiere aprobación antes de continuar.',
+      assistantLabel: 'Asistente',
+      close: 'Cerrar',
+      deleteAllConfirm: '¿Seguro que desea eliminar todas las sesiones? Esta acción no se puede deshacer.',
+      errorEncountered: 'Error encontrado',
+      google_login: 'Cuenta de Google',
+      httpBadGateway: 'Servidor temporalmente no disponible (502 Bad Gateway).',
+      httpBadGatewayHint: 'El servicio backend (API) es inaccesible detrás de Nginx.',
+      httpRequestFailed: 'La solicitud falló (HTTP {{status}}).',
+      liveSteps: 'Pasos en vivo',
+      login_error_auth: 'Error de autenticación',
+      login_error_missing: 'Introduzca sus credenciales',
+      login_subtitle: 'Acceda a su espacio de trabajo',
+      no: 'No',
+      noThoughtsRecorded: 'No hay pensamientos registrados.',
+      none: 'Ninguno',
+      processing: 'Procesando…',
+      secretGateInstruction: 'Pegue el token aquí y envíelo en un solo mensaje.',
+      secretGatePrivacy: 'El token no se mostrará después del envío.',
+      secretGateReason: 'Motivo',
+      secretGateRequired: 'Obligatorio',
+      secretGateTitle: 'Se requiere un token/clave para continuar.',
+      secretSavedContinue: 'Token guardado. Continuando la ejecución.',
+      secretSentMask: '🔐 [token enviado]',
+      sessions: 'Sesiones',
+      system: 'SISTEMA',
+      systemLogs: 'Registros del sistema',
+      systemReady: 'Sistema listo',
+      thoughts: 'Pensamientos',
+      toolCatalogAll: 'Todos',
+      toolCatalogCounts: 'Total: {{count}} • Reales: {{real}} • Inactivas: {{noop}}',
+      toolCatalogError: 'Error al cargar las herramientas.',
+      toolCatalogFilteredCount: '{{n}} resultados',
+      toolCatalogInputSchema: 'Esquema de entrada',
+      toolCatalogLoading: 'Cargando herramientas…',
+      toolCatalogMockSupported: 'Simulación admitida',
+      toolCatalogNoResults: 'No hay herramientas coincidentes.',
+      toolCatalogOutputSchema: 'Esquema de salida',
+      toolCatalogPermissions: 'Permisos',
+      toolCatalogRateLimit: 'Límite/min',
+      toolCatalogSearchPlaceholder: 'Buscar por nombre/descripción/etiquetas…',
+      toolCatalogSelectHint: 'Seleccione una herramienta para ver los detalles.',
+      toolCatalogSideEffects: 'Efectos secundarios',
+      toolCatalogTags: 'Etiquetas',
+      toolCatalogTitle: 'Catálogo de herramientas',
+      toolCatalogToolsList: 'Herramientas',
+      toolCatalogVersion: 'Versión',
+      toolGroupDatabase: 'Base de datos',
+      toolGroupGit: 'Git',
+      toolGroupOther: 'Otros',
+      toolGroupPayments: 'Pagos',
+      toolGroupSecurity: 'Seguridad',
+      toolGroupUI: 'Interfaz',
+      waitingForActivity: 'Esperando actividad…',
+      waitingForInput: 'Esperando entrada',
+      yes: 'Sí',
+      you: 'Usted',
     }
   }
 };
@@ -897,22 +1067,27 @@ i18n
     interpolation: { escapeValue: false }
   });
 
+export const RTL_LANGUAGES = ['ar', 'he', 'fa', 'ur'];
+
+/** Reflect the language on <html>: `lang` for the browser/screen readers, and a
+ *  `rtl` body class the stylesheet can hook into. The document direction stays
+ *  LTR by deliberate design (flipping the whole IDE chrome breaks the editor,
+ *  terminal and browser panes) — Arabic text still reads correctly because the
+ *  content areas use dir="auto"/unicode-bidi, which handles mixed text per
+ *  paragraph instead of mirroring the layout. */
+function applyLanguageToDocument(lng: string) {
+  if (typeof document === 'undefined') return;
+  const base = String(lng || 'en').split('-')[0];
+  document.documentElement.dir = 'ltr';
+  document.documentElement.lang = base;
+  document.body.classList.toggle('rtl', RTL_LANGUAGES.includes(base));
+}
+
 i18n.on('languageChanged', (lng) => {
-  if (typeof document !== 'undefined') {
-    // [WAKIL DESIGN CHOICE] Keep LTR layout even for Arabic to prevent UI flip.
-    document.documentElement.dir = 'ltr';
-    document.documentElement.lang = lng;
-    document.body.classList.remove('rtl');
-  }
+  applyLanguageToDocument(lng);
   localStorage.setItem('lang', lng);
 });
 
-// Initial direction set
-if (typeof document !== 'undefined') {
-  const currentLng = i18n.language;
-  document.documentElement.dir = 'ltr';
-  document.documentElement.lang = currentLng;
-  document.body.classList.remove('rtl');
-}
+applyLanguageToDocument(i18n.language);
 
 export default i18n;

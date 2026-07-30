@@ -8,6 +8,7 @@ import { SelfFixExecutionService } from './SelfFixExecutionService';
 import { executeTool } from './ToolService';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { longTermMemory } from '../../core/memory/long-term-memory';
+import { uiText } from '../../shared/utils/language';
 
 /**
  * AgentLoopService - Dynamic Runtime Gateway
@@ -21,11 +22,12 @@ export class AgentLoopService {
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    static async execute(goal: string, options: { sessionId?: string; userId?: string; traceId?: string; modelConfig?: any } = {}) {
+    static async execute(goal: string, options: { sessionId?: string; userId?: string; traceId?: string; modelConfig?: any; language?: string } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
         const traceId = options.traceId;
         const modelConfig = options.modelConfig;
+        const language = String(options.language || 'ar').trim().toLowerCase().split('-')[0] || 'ar';
 
         console.log(`[AgentLoopService] REAL-TIME Execution Request: ${goal} (traceId=${traceId})`);
         broadcastThinkingDetail(sessionId, "🧠 Activating Dynamic Agent Runtime...");
@@ -51,7 +53,7 @@ export class AgentLoopService {
         let memoryContext = '';
         try {
             memoryContext = await longTermMemory.getContextSummary(memUserId);
-            if (memoryContext) broadcastThinkingDetail(sessionId, `🗂️ استرجعتُ سياق مشروعك من الذاكرة`);
+            if (memoryContext) broadcastThinkingDetail(sessionId, uiText('recalledContext', language));
         } catch { /* non-fatal */ }
 
         try {
@@ -59,7 +61,7 @@ export class AgentLoopService {
                 id: runId,
                 traceId,
                 goal,
-                context: { userId, sessionId, modelConfig, memoryContext }
+                context: { userId, sessionId, modelConfig, memoryContext, language }
             });
 
             // [FIX] Surface the final answer to the chat UI.
@@ -71,8 +73,8 @@ export class AgentLoopService {
             // the frontend's session filter accepts it.
             const answerText = AgentLoopService.extractAnswer(result);
             const finalText = result.ok
-                ? (answerText || '✅ تم التنفيذ.')
-                : `⚠️ ${answerText || 'تعذّر إكمال الطلب.'}`;
+                ? (answerText || uiText('done', language))
+                : `⚠️ ${answerText || uiText('failed', language)}`;
             broadcast({ type: 'text', sessionId, data: { text: finalText, sessionId }, runId } as any);
             broadcast({ type: 'run_finished', runId, data: { runId, ok: result.ok, sessionId } } as any);
 
@@ -106,7 +108,7 @@ export class AgentLoopService {
         } catch (error: any) {
             console.error(`[AgentLoopService] Fatal runtime error:`, error);
             // Still tell the UI so it stops "thinking" and shows what went wrong.
-            broadcast({ type: 'text', sessionId, data: { text: `⚠️ ${error?.message || 'خطأ غير متوقع في التنفيذ'}`, sessionId }, runId } as any);
+            broadcast({ type: 'text', sessionId, data: { text: `⚠️ ${error?.message || uiText('unexpectedError', language)}`, sessionId }, runId } as any);
             broadcast({ type: 'run_finished', runId, data: { runId, ok: false, sessionId } } as any);
             if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {
                 await Run.findByIdAndUpdate(runId, { $set: { status: 'failed' } }).catch(() => {});

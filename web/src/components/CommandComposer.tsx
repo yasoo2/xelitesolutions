@@ -5,6 +5,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 import { useTranslation } from 'react-i18next';
+import i18next from 'i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -2447,7 +2448,11 @@ export default function CommandComposer({
         model: providerCfgToSend?.model,
         apiKey: providerCfgToSend?.apiKey,
         baseUrl: providerCfgToSend?.baseUrl,
-        workspaceId: workspaceId || undefined
+        workspaceId: workspaceId || undefined,
+        // The language chosen in the switcher. Without it the server had no idea
+        // which language to answer in and every reply came back Arabic, however
+        // the interface was set.
+        language: (i18next.language || 'ar').split('-')[0],
       };
       if (systemInstructions && systemInstructions.trim()) {
         payload.systemInstructions = systemInstructions.trim();

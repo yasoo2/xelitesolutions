@@ -43,7 +43,14 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
  * Legacy simulation logic has been decommissioned.
  */
 router.post('/start', authenticateOptional as any, async (req: Request, res: Response) => {
-    const { text, sessionId, userId: bodyUserId, provider, model, apiKey, baseUrl } = req.body || {};
+    const { text, sessionId, userId: bodyUserId, provider, model, apiKey, baseUrl, language } = req.body || {};
+    // The UI language the user picked. Everything Joe SAYS must follow it —
+    // previously nothing carried it here, so every reply came back in Arabic no
+    // matter which language the switcher was set to. Fall back to the browser's
+    // Accept-Language, then English.
+    const uiLanguage = String(language || '').trim().toLowerCase().split('-')[0]
+        || String(req.headers['accept-language'] || '').trim().toLowerCase().split(',')[0].split('-')[0]
+        || 'en';
     const userId = (req as any).auth?.sub || bodyUserId || 'anonymous';
     
     console.log(`[RunRoute] Unified execution requested for session: ${sessionId}`);
@@ -77,10 +84,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         
         // [ELITE FIX] Make execution non-blocking to prevent Nginx timeouts and frontend hang
         // The background process will handle its own errors and broadcast status via WS
-        AgentLoopService.execute(text, { 
-            sessionId, 
+        AgentLoopService.execute(text, {
+            sessionId,
             userId,
             traceId,
+            language: uiLanguage,
             modelConfig: {
                 provider,
                 model,

@@ -59,6 +59,29 @@ export function flattenMultimodalMessages(messages: any[]): any[] {
 }
 
 /**
+ * Make the model answer in the language the user picked in the UI.
+ *
+ * Applied HERE, in the single funnel every provider call passes through, rather
+ * than in each caller: dozens of prompts across the codebase are written in
+ * Arabic, so without this the answer came back Arabic whatever the switcher
+ * said. The directive is appended to the existing system message (or added as
+ * one) so each prompt keeps its own instructions.
+ */
+export function applyAnswerLanguage(messages: any[], language: any): any[] {
+    if (!language) return messages;   // nothing requested → leave the prompt untouched
+    let directive = '';
+    try { directive = require('../../shared/utils/language').languageDirective(language); } catch { return messages; }
+    if (!directive) return messages;
+    const out = messages.map(m => ({ ...m }));
+    const sysIndex = out.findIndex(m => m?.role === 'system' && typeof m.content === 'string');
+    if (sysIndex >= 0) {
+        out[sysIndex].content = `${out[sysIndex].content}\n\n[LANGUAGE] ${directive}`;
+        return out;
+    }
+    return [{ role: 'system', content: `[LANGUAGE] ${directive}` }, ...out];
+}
+
+/**
  * Guarantee every message carries a usable `content` before it reaches a provider.
  * - assistant messages holding tool_calls legitimately have no text: left alone.
  * - a non-string content (object/number) is stringified rather than dropped.
@@ -812,7 +835,10 @@ export async function routeToModel(
     // missing", which the fallback logic then mistook for a bad key and killed
     // the whole provider chain for the session. One malformed caller must never
     // be able to take the brain offline.
-    const flatMessages = sanitizeMessagesForApi(flattenMultimodalMessages(messages));
+    const flatMessages = applyAnswerLanguage(
+        sanitizeMessagesForApi(flattenMultimodalMessages(messages)),
+        context?.language,
+    );
 
     // Helper to extract thinking tokens and forward them, then clean output
     const extractAndForwardThoughts = (text: string): void => {
