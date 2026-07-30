@@ -313,6 +313,23 @@ body {
   border-color: rgba(239, 68, 68, 0.6) !important;
 }
 
+/* NOT YET TESTED is not a failure. Painting it red made every fresh load look
+   broken and pushed the user to open the panel and click Verify for nothing.
+   Red is now reserved for a verification that actually FAILED; an untested or
+   in-flight provider stays neutral. */
+.provider-btn.is-unknown,
+.provider-btn.is-verifying {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  background: transparent !important;
+}
+
+.provider-btn.is-unknown .provider-label,
+.provider-btn.is-unknown svg,
+.provider-btn.is-verifying .provider-label,
+.provider-btn.is-verifying svg {
+  color: var(--text-muted, rgba(255, 255, 255, 0.6)) !important;
+}
+
 /* Joe Avatar Styling (Theme-Aware) */
 .joe-avatar-icon {
   background: var(--brand-mark-yellow);

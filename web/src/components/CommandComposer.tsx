@@ -2753,14 +2753,21 @@ export default function CommandComposer({
   // fails, the button honestly stays red with the reason.
   const didAutoVerifyRef = useRef(false);
   useEffect(() => {
-    if (didAutoVerifyRef.current) return;
-    didAutoVerifyRef.current = true;
     const ap = String(activeProvider || '').trim();
-    if (ap) {
-      const timer = setTimeout(() => { void checkConnection(ap, { closeOnSuccess: false }); }, 600);
-      return () => clearTimeout(timer);
-    }
-  }, []); // once on mount
+    if (!ap || didAutoVerifyRef.current) return;
+    const timer = setTimeout(() => {
+      // The guard is claimed when the check actually FIRES, not when it is
+      // scheduled. Claiming it at schedule time meant that any mount whose
+      // cleanup ran before the 600ms elapsed (React StrictMode double-invokes
+      // effects, and the session bootstrap remounts this panel) cancelled the
+      // timer while the ref already said "done" — so the verification never
+      // happened and the button sat there untested until the user clicked it.
+      if (didAutoVerifyRef.current) return;
+      didAutoVerifyRef.current = true;
+      void checkConnection(ap, { closeOnSuccess: false });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [activeProvider]);
 
   const deleteProviderKey = (key: string) => {
     if (confirm('Are you sure you want to remove the API key?')) {
@@ -4027,7 +4034,14 @@ export default function CommandComposer({
 
                   return (
                     <button
-                      className={`provider-btn provider-${activeProvider} ${providers[activeProvider]?.isConnected ? 'is-connected' : 'is-disconnected'}`}
+                      className={`provider-btn provider-${activeProvider} ${(() => {
+                        const st = providers[activeProvider];
+                        if (st?.isConnected) return 'is-connected';
+                        if (st?.isVerifying) return 'is-verifying';
+                        // Red ONLY for a verification that really failed. Before any
+                        // test has run there is nothing to report — stay neutral.
+                        return st?.lastError ? 'is-disconnected' : 'is-unknown';
+                      })()}`}
                       onClick={() => setShowProviders(true)}
                       title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
                     >
