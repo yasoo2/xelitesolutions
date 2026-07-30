@@ -314,11 +314,13 @@ export function getChromiumLaunchOptions(): LaunchOptions {
     '--disable-renderer-backgrounding',
     '--use-gl=swiftshader',
     '--use-angle=swiftshader',
+    // Hide the automation flag so navigator.webdriver isn't true (bot-detection tell).
+    '--disable-blink-features=AutomationControlled',
   ];
   const noSandbox = parseBool(process.env.BROWSER_NO_SANDBOX) ?? parseBool(process.env.BROWSER_DISABLE_SANDBOX);
   if (noSandbox) args.push('--no-sandbox', '--disable-setuid-sandbox');
 
-  const opts: LaunchOptions = { headless, args };
+  const opts: LaunchOptions = { headless, args, ignoreDefaultArgs: ['--enable-automation'] };
   const exe = findChromiumExecutable();
   if (exe) opts.executablePath = exe;
   return opts;
@@ -484,9 +486,11 @@ export async function createSession(sessionId: string) {
         viewport: { width: viewport.w, height: viewport.h },
         locale: 'ar',
         acceptDownloads: true,
-        // Reduce the "controlled by automation" banner / first-run noise.
+        // Reduce the "controlled by automation" banner / first-run noise, and hide
+        // the automation flag that makes navigator.webdriver=true (what GitHub/Google
+        // detect to block the login as a "bot").
         ignoreDefaultArgs: ['--enable-automation'],
-        args: [...(base.args || []), '--no-first-run', '--no-default-browser-check'],
+        args: [...(base.args || []), '--no-first-run', '--no-default-browser-check', '--disable-blink-features=AutomationControlled'],
       };
       // Prefer the channel matching the detected real browser (chrome/msedge), else
       // USE_SYSTEM_CHROME picks installed Chrome. Falls back to bundled Chromium.
@@ -567,13 +571,55 @@ export async function createSession(sessionId: string) {
     ...(savedState ? { storageState: savedState } : {}),
   });
 
-  // Apply Stealth
+  // Apply Stealth (best-effort external plugin, if present)
   try {
     const { stealth } = require('playwright-stealth');
     await stealth(context);
   } catch (e) {
     if (process.env.BROWSER_DEBUG_LOG === 'true') { try { fs.appendFileSync(path.join(__dirname, '../stream_debug.log'), `[createSession] Stealth plugin failed: ${String(e)}\n`); } catch { } }
   }
+
+  // ANTI-BOT-DETECTION: hide the JS signals that flag this as an automated browser
+  // (navigator.webdriver, missing plugins/chrome object, headless permission quirks,
+  // generic WebGL vendor). Without this, GitHub/Google restrict the login as a "bot"
+  // even when the USER is driving it manually. This addresses the detectable-automation
+  // part; residential IP + human interaction cover the rest (data-centre IPs may still
+  // be flagged — that is the site's policy, not something to evade further).
+  try {
+    await context.addInitScript(() => {
+      try {
+        // 1) navigator.webdriver -> undefined (the #1 tell).
+        Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => undefined });
+        // 2) A realistic (non-empty) plugins + mimeTypes list.
+        const fakePlugin = (name: string, filename: string, desc: string) => ({ name, filename, description: desc, length: 1 });
+        const plugins = [
+          fakePlugin('PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
+          fakePlugin('Chrome PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
+          fakePlugin('Chromium PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
+        ];
+        Object.defineProperty(navigator, 'plugins', { get: () => plugins });
+        // 3) Languages consistent with the Accept-Language header.
+        Object.defineProperty(navigator, 'languages', { get: () => ['ar', 'en-US', 'en'] });
+        // 4) window.chrome present (headless Chromium lacks it).
+        if (!(window as any).chrome) (window as any).chrome = { runtime: {} };
+        // 5) Notification permission query shouldn't report the headless "denied/prompt" quirk.
+        const origQuery = (window.navigator as any).permissions?.query?.bind((window.navigator as any).permissions);
+        if (origQuery) {
+          (window.navigator as any).permissions.query = (p: any) =>
+            p && p.name === 'notifications'
+              ? Promise.resolve({ state: (Notification as any).permission })
+              : origQuery(p);
+        }
+        // 6) Generic WebGL vendor/renderer -> realistic values.
+        const getParam = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function (param: number) {
+          if (param === 37445) return 'Intel Inc.';                 // UNMASKED_VENDOR_WEBGL
+          if (param === 37446) return 'Intel Iris OpenGL Engine';   // UNMASKED_RENDERER_WEBGL
+          return getParam.call(this, param);
+        };
+      } catch { /* never break the page */ }
+    });
+  } catch { /* addInitScript unsupported -> non-fatal */ }
 
   context.setDefaultNavigationTimeout(cfg.navTimeoutMs);
   context.setDefaultTimeout(cfg.actionTimeoutMs);
