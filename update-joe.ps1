@@ -73,8 +73,12 @@ try {
         }
     }
 } catch {
-    # ويندوز قديم أو الأمر غير متاح — نرجع إلى netstat
-    $lines = netstat -ano | Select-String ":5002\s.*LISTENING"
+    # ويندوز قديم أو الأمر غير متاح — نرجع إلى netstat بهدوء (بلا رسائل خطأ مزعجة)
+    try {
+        $lines = @(netstat -ano 2>$null | Select-String ":5002\s.*LISTENING")
+    } catch {
+        $lines = @()
+    }
     foreach ($line in $lines) {
         $procId = ($line.ToString().Trim() -split '\s+')[-1]
         if ($procId -match '^\d+$' -and $procId -ne '0') {
@@ -99,4 +103,14 @@ Write-Host "`n[4/4] بناء جو وتشغيله..." -ForegroundColor Yellow
 Write-Host "      بعد ظهور رابط التشغيل، افتح المتصفح واضغط Ctrl+Shift+R" -ForegroundColor DarkGray
 Write-Host "      (تحديث قوي حتى لا يعرض المتصفح واجهة قديمة من ذاكرته)`n" -ForegroundColor DarkGray
 
-& "$PSScriptRoot\start-joe.ps1"
+# Join-Path بدل الشرطة المائلة اليدوية: يعمل على أي نظام، ويسمح باختبار السكربت.
+$startScript = Join-Path $PSScriptRoot "start-joe.ps1"
+if (-not (Test-Path $startScript)) {
+    # بلا هذا الفحص تظهر رسالة غامضة عن "module could not be loaded" لا تدل على السبب.
+    Write-Host "[X] لم أجد start-joe.ps1 بجوار هذا السكربت." -ForegroundColor Red
+    Write-Host "    تأكّد أنك تشغّل update-joe.ps1 من داخل مجلد المشروع." -ForegroundColor Yellow
+    Read-Host "اضغط Enter للخروج"
+    exit 1
+}
+
+& $startScript
