@@ -5,24 +5,29 @@ import { executePlannedActions } from '../../modules/browser/executor';
 import { LocalProvider } from '../../core/llm/providers/local';
 import { normalizeIntentText } from '../../core/orchestrator/promptNormalizer';
 
-/** Sites that BLOCK automated login (bot detection / CAPTCHA / 2FA). For a login
- *  task to one of these, driving the credentials with the agent is slow AND gets
- *  walled — the honest, fast, reliable path is: open the login page and let the
- *  USER log in manually in the panel (saved forever). Returns the login page +
- *  a display name, or null when it's not a bot-protected login. */
-function manualLoginHandoff(task: string): { url: string; name: string } | null {
+/** Sites that BLOCK automated login/signup (bot detection / CAPTCHA / 2FA).
+ *  For a login OR account-creation task on one of these, driving the form with
+ *  the agent is slow AND gets walled — the honest, fast, reliable path is: open
+ *  the right page and let the USER complete it manually in the panel (session
+ *  saved forever). Returns the page + display name + whether it's a signup,
+ *  or null when it's not a bot-protected login/signup. */
+function manualLoginHandoff(task: string): { url: string; name: string; signup: boolean } | null {
     const t = `${String(task || '')}\n${normalizeIntentText(task)}`.toLowerCase();
+    const isSignup = /(انشاء|إنشاء|ا?نشئ|أنشئ|اعمل|إعمل|افتح)\s*(لي\s*)?حساب|حساب\s*جديد|سجّ?ل\s*(لي\s*)?حساب|التسجيل\s*في|sign\s*-?\s*up|signup|create\s+(an?\s+)?(new\s+)?account|new\s+account|register/i.test(t);
     const isLogin = /(سجّ?ل|تسجيل)\s*(ال)?دخول|سجّ?ل\s*دخول|دخّ?لني|log\s*-?\s*in|sign\s*-?\s*in|signin/i.test(t);
-    if (!isLogin) return null;
-    const sites: Array<[RegExp, string, string]> = [
-        [/جيت\s*هاب|github/i, 'https://github.com/login', 'GitHub'],
-        [/جيميل|gmail|جوجل|قوقل|غوغل|google/i, 'https://accounts.google.com/', 'Google'],
-        [/فيس\s*بوك|facebook/i, 'https://www.facebook.com/login', 'Facebook'],
-        [/انست[غق]رام|instagram/i, 'https://www.instagram.com/accounts/login/', 'Instagram'],
-        [/تويتر|twitter|\bx\.com\b/i, 'https://twitter.com/i/flow/login', 'X (Twitter)'],
-        [/لينكد\s*ان|linkedin/i, 'https://www.linkedin.com/login', 'LinkedIn'],
+    if (!isLogin && !isSignup) return null;
+    // [site pattern, login URL, signup URL, display name]
+    const sites: Array<[RegExp, string, string, string]> = [
+        [/جيت\s*هاب|github/i, 'https://github.com/login', 'https://github.com/signup', 'GitHub'],
+        [/جيميل|gmail|جوجل|قوقل|غوغل|google/i, 'https://accounts.google.com/', 'https://accounts.google.com/signup', 'Google'],
+        [/فيس\s*بوك|facebook/i, 'https://www.facebook.com/login', 'https://www.facebook.com/r.php', 'Facebook'],
+        [/انست[غق]رام|instagram/i, 'https://www.instagram.com/accounts/login/', 'https://www.instagram.com/accounts/emailsignup/', 'Instagram'],
+        [/تويتر|twitter|\bx\.com\b/i, 'https://twitter.com/i/flow/login', 'https://twitter.com/i/flow/signup', 'X (Twitter)'],
+        [/لينكد\s*ان|linkedin/i, 'https://www.linkedin.com/login', 'https://www.linkedin.com/signup', 'LinkedIn'],
     ];
-    for (const [re, url, name] of sites) if (re.test(t)) return { url, name };
+    for (const [re, loginUrl, signupUrl, name] of sites) {
+        if (re.test(t)) return { url: isSignup ? signupUrl : loginUrl, name, signup: isSignup };
+    }
     return null;
 }
 
@@ -53,16 +58,19 @@ export class BrowserAgent extends BaseAgent {
         const resume = Boolean(input?.resume);
         const startUrl = resume ? undefined : deriveStartUrl(task);
 
-        // BOT-PROTECTED LOGIN (GitHub/Google/…): don't run the slow, unreliable
-        // automated-credential loop that just gets CAPTCHA-walled. Open the login
-        // page and hand off to the user's MANUAL takeover (fast + saved forever).
+        // BOT-PROTECTED LOGIN/SIGNUP (GitHub/Google/…): don't run the slow,
+        // unreliable automated-form loop that just gets CAPTCHA-walled. Open the
+        // right page and hand off to the user's MANUAL takeover (fast + saved
+        // forever).
         if (!resume) {
             const manual = manualLoginHandoff(task);
             if (manual) {
                 try {
                     await executePlannedActions({ userId, sessionId, actions: [{ type: 'goto', url: manual.url }, { type: 'wait', ms: 1200 }] as any });
                 } catch { /* navigation is best-effort */ }
-                const msg = `فتحتُ صفحة تسجيل الدخول (${manual.name}). هذه المواقع تحجب الدخول الآلي، فالأسرع والأوثق أن تسجّل دخولك بنفسك: في لوحة المتصفح اضغط زر «تحكّم وسجّل الدخول»، أدخل بياناتك (سيتجاوز CAPTCHA والتحقّق الثنائي)، ودخولك سيُحفَظ للأبد فلن تحتاج تكراره.`;
+                const msg = manual.signup
+                    ? `فتحتُ صفحة إنشاء حساب جديد (${manual.name}). هذه المواقع تحجب إنشاء الحسابات الآلي (CAPTCHA وتحقّق بشري)، فالأسرع والأوثق أن تُكمل التسجيل بنفسك: في لوحة المتصفح اضغط زر «تحكّم وسجّل الدخول»، املأ بيانات الحساب وحلّ التحقّق، وجلستك ستُحفَظ للأبد فلن تحتاج تكرارها.`
+                    : `فتحتُ صفحة تسجيل الدخول (${manual.name}). هذه المواقع تحجب الدخول الآلي، فالأسرع والأوثق أن تسجّل دخولك بنفسك: في لوحة المتصفح اضغط زر «تحكّم وسجّل الدخول»، أدخل بياناتك (سيتجاوز CAPTCHA والتحقّق الثنائي)، ودخولك سيُحفَظ للأبد فلن تحتاج تكراره.`;
                 try { require('../../api/ws').broadcastThinkingDetail(String(context?.sessionId || '').trim(), `🔑 ${msg}`); } catch { /* chat optional */ }
                 return { ok: true, output: { status: 'done', ok: true, summary: msg, answer: msg, verified: true }, error: undefined };
             }
