@@ -38,6 +38,12 @@ const SYNONYMS: Record<string, string> = {
     'انشيء': 'انشئ', 'انشاء': 'انشئ', 'انشا': 'انشئ', 'ننشئ': 'انشئ', 'تنشئ': 'انشئ',
     'ابنيلي': 'ابني', 'اصنعلي': 'اصنع', 'صمملي': 'صمم', 'اعمللي': 'اعمل',
     'بناء': 'ابن', 'تصميم': 'صمم', 'تطوير': 'طور', 'برمجة': 'اعمل',
+    // ---- Verbal nouns (masdar) -> the imperative the fast-paths match.
+    // «أضف» and «إضافة» are the same request; only the first was recognised.
+    'اضافة': 'اضف', 'تغيير': 'غير', 'تعديل': 'عدل', 'تبديل': 'بدل',
+    'تكبير': 'كبر', 'تصغير': 'صغر', 'تحسين': 'حسن', 'ازالة': 'احذف', 'حذف': 'احذف',
+    // ---- Broken plurals -> the singular the fast-paths match.
+    'الوان': 'لون', 'ازرار': 'زر', 'خطوط': 'خط', 'عناوين': 'عنوان', 'خلفيات': 'خلفية', 'احجام': 'حجم',
     'لوقن': 'تسجيل دخول', 'لوق ان': 'تسجيل دخول',
     // ---- French ----
     'ouvre': 'open', 'ouvrir': 'open', 'cherche': 'search', 'recherche': 'search',
@@ -162,6 +168,13 @@ export function normalizeIntentText(raw: string): string {
         let core = bare;
         if (/^و[؀-ۿ]/.test(core)) { prefix = 'و'; core = core.slice(1); }
         if (FOLDED_SYNONYMS[core]) return prefix + FOLDED_SYNONYMS[core];
+        // The definite article hides the word from the table: «الالوان» is «الوان».
+        // Peel it and retry once — matching is against intent keywords only, so a
+        // stray peel cannot invent an intent that isn't in the table.
+        if (/^ال[؀-ۿ]{2,}/.test(core)) {
+            const bare = core.slice(2);
+            if (FOLDED_SYNONYMS[bare]) return prefix + FOLDED_SYNONYMS[bare];
+        }
         // typo repair: exact-1 edit from a core keyword
         const minLen = /[؀-ۿ]/.test(core) ? 4 : 5;
         if (core.length >= minLen) {

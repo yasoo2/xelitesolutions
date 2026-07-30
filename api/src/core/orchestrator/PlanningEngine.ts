@@ -175,9 +175,25 @@ Rules:
         // Route follow-up edits (add button / change colour / ...) to the SAME page.
         const activeKey = String((context && context.sessionId) || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const hasActivePage = !!((global as any).joePages && (global as any).joePages[activeKey]);
-        const editIntent = /\b(add|change|modify|update|edit|remove|bigger|smaller|colou?r|button|background|header|footer|font|title)\b/i.test(goalLower)
-            || /(أضف|اضف|غيّر|غير|عدّل|عدل|بدّل|بدل|اجعل|احذف|كبّر|صغّر|لون|زر|خلفية|حجم|عنوان|خط)/.test(probe);
-        if ((buildVerb && webNoun) || (hasActivePage && editIntent)) {
+        // Arabic asks for an edit with a VERBAL NOUN at least as often as with a
+        // verb — «أضف» but also «إضافة», «غيّر» but also «تغيير» — and it pluralises
+        // the thing being changed («لون» -> «ألوان»). Matching only the imperative
+        // singular meant «اريد اضافة الوان جميله» missed the edit path entirely and
+        // the request was handed to the generic planner, which went off searching
+        // the web for colour palettes instead of touching the page.
+        const editIntent = /\b(add|change|modify|update|edit|remove|bigger|smaller|colou?r|button|background|header|footer|font|title|style|design|prettier|nicer)\b/i.test(goalLower)
+            || /(أضف|اضف|إضافة|اضافة|غيّر|غير|تغيير|عدّل|عدل|تعديل|بدّل|بدل|تبديل|اجعل|احذف|حذف|كبّر|كبر|تكبير|صغّر|صغر|تصغير|حسّن|حسن|تحسين|تنسيق|تجميل|جمّل)/.test(probe)
+            // Concrete page parts only. Generic words like «تصميم» or «شكل» appear in
+            // ordinary questions ("ما هو تصميم قاعدة البيانات؟") and would rebuild the
+            // page on a question — the verbs above already cover "improve the design".
+            || /(لون|ألوان|الوان|زر|أزرار|ازرار|خلفية|خلفيه|خلفيات|حجم|أحجام|عنوان|عناوين|خط|خطوط)/.test(probe);
+
+        // A recovery goal ("Fix and continue: <failed task>") must NEVER reach the
+        // page builder: rebuilding from the text of a failed step overwrote the
+        // user's finished page with a page about "Search for beautiful color
+        // palettes". Recovery repairs the failed step; it does not re-author the work.
+        const isRecoveryGoal = /^fix and continue:/i.test(String(intent.goal || '').trim());
+        if (!isRecoveryGoal && ((buildVerb && webNoun) || (hasActivePage && editIntent))) {
             return {
                 id: `build_${Date.now()}`,
                 goal: intent.goal,
