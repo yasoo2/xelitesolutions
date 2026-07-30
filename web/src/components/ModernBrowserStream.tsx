@@ -37,6 +37,12 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const [busy, setBusy] = useState(false);
   const [queueLen, setQueueLen] = useState(0);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // The user can log into ANY site by taking manual control of this live browser —
+  // clicks/keys below already forward to the real page, and the login persists
+  // forever (panel-browser session state). This bar surfaces that so they don't
+  // rely on Joe typing a password (which Google/banks block). Dismissible.
+  const [loginBarHidden, setLoginBarHidden] = useState<boolean>(() => { try { return localStorage.getItem('joe_login_bar_hidden') === '1'; } catch { return false; } });
+  const [manualMode, setManualMode] = useState(false);
   const [actions, setActions] = useState<
     Array<{ ts: number; type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; actionId: string; actionType: string; summary?: string; reason?: string; error?: string }>
   >([]);
@@ -422,6 +428,29 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
 
   return (
     <div style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#0b0b0b', display: 'flex', flexDirection: 'column' }}>
+      {!loginBarHidden && (
+        <div dir="rtl" style={{
+          display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
+          background: manualMode ? 'rgba(34,197,94,0.14)' : 'rgba(37,99,235,0.14)',
+          borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#e8eef7', fontSize: 12.5,
+        }}>
+          <span style={{ fontSize: 15 }}>🔑</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            {manualMode
+              ? 'أنت الآن تتحكّم بالمتصفح — انقر واكتب لتسجيل دخولك. يُحفَظ للأبد ولا يرى جو كلمة مرورك.'
+              : 'لتسجيل الدخول لأي موقع: تحكّم بالمتصفح يدوياً وسجّل دخولك (يتجاوز CAPTCHA والتحقّق الثنائي). يُحفَظ للأبد.'}
+          </span>
+          <button
+            onClick={() => { setManualMode(true); try { canvasRef.current?.focus(); } catch { } }}
+            style={{ padding: '5px 12px', borderRadius: 7, border: 0, background: manualMode ? '#16a34a' : '#2563eb', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}
+          >{manualMode ? '✓ التحكّم مُفعَّل' : 'تحكّم وسجّل الدخول'}</button>
+          <button
+            onClick={() => { setLoginBarHidden(true); try { localStorage.setItem('joe_login_bar_hidden', '1'); } catch { } }}
+            title="إخفاء (يمكن إظهاره من الإعدادات)"
+            style={{ padding: '5px 8px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#8ba0be', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
+          >إخفاء</button>
+        </div>
+      )}
       <div ref={rootRef} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', background: '#fff' }}>
         <style>{`
         .browser-cursor {
