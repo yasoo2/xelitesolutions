@@ -843,6 +843,9 @@ export default function CommandComposer({
   // (not inside the browser panel) — on submit we resume the exact live browser.
   const [browserCred, setBrowserCred] = useState<{ browserSessionId: string; chatSessionId: string; message: string; secretKey: string; url?: string } | null>(null);
   const [browserCredValue, setBrowserCredValue] = useState('');
+  // When the browser asks for the login EMAIL, we collect the PASSWORD in the same
+  // card (one prompt instead of two) — this holds that second field's value.
+  const [browserCredPassword, setBrowserCredPassword] = useState('');
   const [browserCredBusy, setBrowserCredBusy] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -1555,6 +1558,7 @@ export default function CommandComposer({
               url: typeof data?.url === 'string' ? data.url : undefined,
             });
             setBrowserCredValue('');
+            setBrowserCredPassword('');
           }
         }
       }
@@ -2648,11 +2652,17 @@ export default function CommandComposer({
     const key = String(browserCred.secretKey || '').trim().toUpperCase();
     if (!bsid || !key) return;
 
+    // On the login EMAIL prompt we also collect the PASSWORD in the same card, so
+    // the agent won't pause again — send it as an extra secret with the resume.
+    const isLoginEmail = /EMAIL/i.test(key) && !/2FA|OTP|CODE/i.test(key);
+    const pwd = String(browserCredPassword || '').trim();
+    const extraSecrets = (isLoginEmail && pwd) ? { JOE_LOGIN_PASSWORD: pwd } : undefined;
+
     setBrowserCredBusy(true);
     const isSecretLike = /PASSWORD|2FA|OTP|CODE|TOKEN|SECRET/i.test(key);
     setEvents(prev => [
       ...prev,
-      { type: 'user_input', data: isSecretLike ? t('secretSentMask', '🔐 [تم إرسال البيانات]') : val, id: Date.now().toString(), ts: Date.now(), seq: lastLiveSeqRef.current + 0.1 }
+      { type: 'user_input', data: (isSecretLike || extraSecrets) ? t('secretSentMask', '🔐 [تم إرسال البيانات]') : val, id: Date.now().toString(), ts: Date.now(), seq: lastLiveSeqRef.current + 0.1 }
     ]);
 
     const token = localStorage.getItem('token');
@@ -2662,7 +2672,8 @@ export default function CommandComposer({
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         // browser session to resume + the chat session that launched it (from the
         // event, falling back to the current one) so the reply lands in that chat.
-        body: JSON.stringify({ sessionId: bsid, chatSessionId: String(browserCred.chatSessionId || sessionId || '').trim(), key, value: val }),
+        // `secrets` carries the password entered alongside the email (one prompt).
+        body: JSON.stringify({ sessionId: bsid, chatSessionId: String(browserCred.chatSessionId || sessionId || '').trim(), key, value: val, ...(extraSecrets ? { secrets: extraSecrets } : {}) }),
       });
       if (res.status === 401) { handleUnauthorized(); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2672,6 +2683,7 @@ export default function CommandComposer({
     } finally {
       setBrowserCred(null);
       setBrowserCredValue('');
+      setBrowserCredPassword('');
       setBrowserCredBusy(false);
       lastGateSigRef.current.browserCred = undefined;
     }
@@ -3651,7 +3663,7 @@ export default function CommandComposer({
                     value={browserCredValue}
                     onChange={(e) => setBrowserCredValue(e.target.value)}
                     placeholder={/2FA|OTP|CODE/i.test(browserCred.secretKey) ? 'أدخل رمز التحقّق' : /EMAIL/i.test(browserCred.secretKey) ? 'أدخل بريدك الإلكتروني' : /PASSWORD/i.test(browserCred.secretKey) ? 'أدخل كلمة المرور' : 'أدخل القيمة المطلوبة'}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !browserCredBusy) { void submitBrowserCred(); } }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !browserCredBusy && !(/EMAIL/i.test(browserCred.secretKey) && !/2FA|OTP|CODE/i.test(browserCred.secretKey))) { void submitBrowserCred(); } }}
                     style={{
                       width: '100%', padding: '12px', paddingInlineStart: 40, borderRadius: 8,
                       background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)',
@@ -3660,6 +3672,26 @@ export default function CommandComposer({
                   />
                   <Key size={16} style={{ position: 'absolute', insetInlineStart: 12, top: 14, color: 'var(--text-secondary)' }} />
                 </div>
+                {/* On the login EMAIL prompt, collect the PASSWORD in the SAME card
+                    so the agent doesn't pause again to ask for it separately. */}
+                {(/EMAIL/i.test(browserCred.secretKey) && !/2FA|OTP|CODE/i.test(browserCred.secretKey)) && (
+                  <div style={{ position: 'relative', marginTop: 10 }}>
+                    <input
+                      type="password"
+                      dir="ltr"
+                      value={browserCredPassword}
+                      onChange={(e) => setBrowserCredPassword(e.target.value)}
+                      placeholder="أدخل كلمة المرور (تُرسَل مع البريد)"
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !browserCredBusy) { void submitBrowserCred(); } }}
+                      style={{
+                        width: '100%', padding: '12px', paddingInlineStart: 40, borderRadius: 8,
+                        background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)',
+                        color: '#fff', outline: 'none', fontSize: 14,
+                      }}
+                    />
+                    <Lock size={16} style={{ position: 'absolute', insetInlineStart: 12, top: 14, color: 'var(--text-secondary)' }} />
+                  </div>
+                )}
                 <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
                   <ShieldCheck size={12} />
                   <span>تُرسَل بأمان وتُخزَّن مشفّرة — لا تظهر في السجلّ ولا في اللقطات.</span>
@@ -3675,7 +3707,7 @@ export default function CommandComposer({
                   {browserCredBusy ? '… يُتابع' : 'إرسال ومتابعة'}
                 </button>
                 <button
-                  onClick={() => { setBrowserCred(null); setBrowserCredValue(''); lastGateSigRef.current.browserCred = undefined; }}
+                  onClick={() => { setBrowserCred(null); setBrowserCredValue(''); setBrowserCredPassword(''); lastGateSigRef.current.browserCred = undefined; }}
                   disabled={browserCredBusy}
                   style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: browserCredBusy ? 'default' : 'pointer' }}
                 >

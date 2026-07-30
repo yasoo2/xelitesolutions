@@ -32,6 +32,20 @@ router.post('/resume', authenticate as any, async (req: Request, res: Response) 
     return res.status(500).json({ ok: false, error: 'store_failed' });
   }
 
+  // Extra secrets supplied in the SAME prompt (e.g. the password entered together
+  // with the email) so the agent doesn't pause a second time — store them all now,
+  // BEFORE resuming, under the same live browser session.
+  const extra = req.body?.secrets;
+  if (extra && typeof extra === 'object') {
+    for (const [k, v] of Object.entries(extra)) {
+      const kk = String(k || '').trim().toUpperCase();
+      const vv = String((v as any) ?? '');
+      if (/^[A-Z0-9_]+$/.test(kk) && vv && kk !== key) {
+        try { setSessionSecret(sessionId, kk, vv); } catch { /* best-effort */ }
+      }
+    }
+  }
+
   // Resume the exact task the agent paused on (looked up per-session, so the panel
   // does not need to know the original prompt).
   const goal = String(req.body?.goal || '').trim() || getLastTaskForSession(sessionId) || '';
