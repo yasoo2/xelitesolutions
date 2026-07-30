@@ -72,6 +72,10 @@ export class PlanningEngine {
                 .replace(/\s+/g, ' ')
                 .trim();
         }
+        // A COMMA (or semicolon) starts a new clause too: «برج إيفل، افتح مقاله، مرّر…»
+        // must search for «برج إيفل» only, not the follow-up instructions. Cut there
+        // first (a search phrase rarely contains a comma).
+        query = query.split(/[،؛]|,\s/)[0].trim();
         // Compound requests ("ابحث عن X ومن ثم ابحث عن Y", "search X then Y") carry a
         // SECOND clause the greedy capture swallowed. Keep only the FIRST search term
         // by cutting at a clause boundary. Note: a bare "و" is NOT a boundary (so
@@ -364,10 +368,15 @@ Rules:
             // when the page isn't readable as text, SEE via the vision model), not a
             // blind one-shot browser_launch that just opens the URL and stops. Without
             // this, «افتح URL وصِف لي ما تراه» fell to the plain open fast-path.
-            const describeIntent = /(صِ?ف|وصف|اوصف|أوصف|انظر|أنظر|شاهد|اطّ?لع|ماذا\s*(ترى|يوجد|فيها?)|ما\s*الذي\s*(تراه|فيها?)|ما\s*محتوى|أخبرني\s*(عن|بما)|اخبرني\s*(عن|بما)|describe|what\s*(do\s*you\s*)?see|what'?s\s*on|tell\s*me\s*(about|what))/i.test(probe);
+            // Read/summarise a page is also a "look at the live page" task — «لخّص لي
+            // عن X من ويكيبيديا» must reach the ReAct read agent (which goes straight to
+            // the article and summarises), NOT the one-shot search that types the whole
+            // sentence into a search box.
+            const describeIntent = /(صِ?ف|وصف|اوصف|أوصف|انظر|أنظر|شاهد|اطّ?لع|اقرأ|لخّ?ص|ملخّ?ص|ماذا\s*(ترى|يوجد|فيها?)|ما\s*الذي\s*(تراه|فيها?)|ما\s*محتوى|من\s*هو|من\s*هي|ما\s*هو|ما\s*هي|أخبرني\s*(عن|بما)|اخبرني\s*(عن|بما)|describe|summari[sz]e|what\s*(do\s*you\s*)?see|what'?s\s*on|tell\s*me\s*(about|what)|who\s*is|what\s*is)/i.test(probe);
             // A named well-known site counts as a site reference too, so «سجّل الدخول
             // على جيت هاب» (no URL, no literal «موقع») still routes to the ReAct agent.
-            const knownSite = /(جيت\s*هاب|github|يوتيوب|youtube|فيس\s*بوك|facebook|تويتر|twitter|انست[غق]رام|instagram|جيميل|gmail|لينكد\s*ان|linkedin|ريديت|reddit|امازون|amazon|نتفليكس|netflix|واتساب|whatsapp|تيك\s*توك|tiktok)/i.test(probe);
+            // Content sites (Wikipedia) are included so «ادخل ويكيبيديا ولخّص عن X» routes here.
+            const knownSite = /(جيت\s*هاب|github|يوتيوب|youtube|فيس\s*بوك|facebook|تويتر|twitter|انست[غق]رام|instagram|جيميل|gmail|لينكد\s*ان|linkedin|ريديت|reddit|امازون|amazon|نتفليكس|netflix|واتساب|whatsapp|تيك\s*توك|tiktok|ويكيبيديا|wikipedia)/i.test(probe);
             const siteRef = !!urlMatch || knownSite || /(موقع|منصّ?ة|حساب|بوابة|لوحة\s*تحكم|site|website|portal|account|dashboard)/i.test(probe);
             const hasTarget = !!urlMatch || knownSite;
             const isReactTask = (loginIntent && siteRef) || (hasTarget && (actionVerb || describeIntent));

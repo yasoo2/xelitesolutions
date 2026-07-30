@@ -305,6 +305,9 @@ export function extractSearchSubject(task: string): string {
     // The topic usually follows «عن / حول / بخصوص / about / regarding / on».
     const after = t.match(/(?:عن|حول|بخصوص|about|regarding)\s+(.+)$/i)?.[1];
     let q = after || t;
+    // Take only the FIRST clause — a multi-step task like «… عن برج إيفل، افتح
+    // مقاله، مرّر للأسفل، ثم لخّص» must search for «برج إيفل», not the whole tail.
+    q = q.split(/[،؛,]|(?:\s(?:ثم|بعدها|بعد\s*ذلك|then|and\s+then)\s)/i)[0].trim();
     q = q
         .replace(/https?:\/\/\S+/gi, ' ')
         // leading question phrases: «من هو / ما هي / who is / what is»
