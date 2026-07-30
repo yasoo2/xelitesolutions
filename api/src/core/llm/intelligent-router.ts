@@ -58,6 +58,37 @@ export function flattenMultimodalMessages(messages: any[]): any[] {
     });
 }
 
+/**
+ * Guarantee every message carries a usable `content` before it reaches a provider.
+ * - assistant messages holding tool_calls legitimately have no text: left alone.
+ * - a non-string content (object/number) is stringified rather than dropped.
+ * - user/system messages that end up empty are removed; if that would empty the
+ *   whole conversation we keep a single explicit placeholder so the request is
+ *   still valid and the failure is visible in the answer instead of as a 400.
+ */
+export function sanitizeMessagesForApi(messages: any[]): any[] {
+    const src = Array.isArray(messages) ? messages : [];
+    const out: any[] = [];
+    for (const m of src) {
+        if (!m || typeof m !== 'object') continue;
+        if (Array.isArray(m.tool_calls) && m.tool_calls.length > 0) { out.push(m); continue; }
+        let content = m.content;
+        if (content === undefined || content === null) content = '';
+        else if (typeof content !== 'string' && !Array.isArray(content)) {
+            try { content = JSON.stringify(content); } catch { content = String(content); }
+        }
+        if (typeof content === 'string' && content.trim() === '') {
+            console.warn(`[IntelligentRouter] Dropping a "${m.role || 'unknown'}" message with empty content (caller bug) — the request stays valid.`);
+            continue;
+        }
+        out.push({ ...m, content });
+    }
+    if (out.length === 0) {
+        return [{ role: 'user', content: 'لم يصل أي محتوى قابل للمعالجة إلى النموذج (خطأ في الأداة المُستدعية).' }];
+    }
+    return out;
+}
+
 // Available models configuration
 
 export const MODELS: Record<string, ModelConfig> = {
@@ -774,8 +805,14 @@ export async function routeToModel(
         return "System is running and ready to handle tasks in Mock Mode!";
     }
 
-    // Flatten multimodal messages for text-only providers (and for analysis)
-    const flatMessages = flattenMultimodalMessages(messages);
+    // Flatten multimodal messages for text-only providers (and for analysis),
+    // then SANITIZE: a caller that built a message with a missing/undefined
+    // content (e.g. a tool invoked without its question) used to be sent to the
+    // provider as-is. Groq rejects that with 400 "'messages.N.content' is
+    // missing", which the fallback logic then mistook for a bad key and killed
+    // the whole provider chain for the session. One malformed caller must never
+    // be able to take the brain offline.
+    const flatMessages = sanitizeMessagesForApi(flattenMultimodalMessages(messages));
 
     // Helper to extract thinking tokens and forward them, then clean output
     const extractAndForwardThoughts = (text: string): void => {
@@ -888,9 +925,19 @@ export async function routeToModel(
                 console.error(`[IntelligentRouter] Direct custom provider routing failed: ${err.message}. Falling back to default routing.`);
                 const status = (err && (err.status || err.statusCode)) || 0;
                 const msg = String(err?.message || '');
-                if (status === 400 || status === 401 || status === 403 || /\b(400|401|403)\b|api[_ -]?key|invalid|unauthor|permission/i.test(msg)) {
+                // Only an AUTH/permission problem justifies disabling the route for
+                // the session. A 400 is a BAD REQUEST — usually our own malformed
+                // payload (a message missing `content`, a decommissioned model id) —
+                // and disabling Groq over it took the user's paid-quality brain
+                // offline for the whole session and turned the provider light red,
+                // with the free mesh (all dead that day) as the only fallback.
+                const authProblem = status === 401 || status === 403
+                    || /\b(401|403)\b|api[_ -]?key|unauthor|forbidden|invalid[_ -]?api|permission denied/i.test(msg);
+                if (authProblem) {
                     failedCustomRoutes.add(routeKey);
-                    console.warn(`[IntelligentRouter] Custom route ${cfgProvider}/${cfgModel} DISABLED for this session (auth/config error). Joe will use FREE providers only - fix or remove the key in the model settings.`);
+                    console.warn(`[IntelligentRouter] Custom route ${cfgProvider}/${cfgModel} DISABLED for this session (auth error). Joe will use FREE providers only - fix or remove the key in the model settings.`);
+                } else {
+                    console.warn(`[IntelligentRouter] Custom route ${cfgProvider}/${cfgModel} failed once (${status || 'no status'}) but the key looks fine — it stays enabled and will be retried.`);
                 }
             }
           }

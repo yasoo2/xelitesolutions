@@ -13,6 +13,18 @@ import { traceManager } from '../modules/services/TraceManager';
 import { executionFirewall } from './AgentExecutionFirewall';
 import intelligentRouter from '../core/llm/intelligent-router';
 
+/** Tools the PlanningEngine picks DETERMINISTICALLY. A node carrying one of
+ *  these already knows exactly what to run and with which input, so it must be
+ *  executed as-is — never re-decided by the weak-model tool-picker inside
+ *  JoeAgent, whose menu is a short hardcoded list. That re-decision is what
+ *  silently discarded `github_repo_manager(analyze)`: the picker could not even
+ *  see that tool, fell back to another one, and the repo was never analysed. */
+const DETERMINISTIC_TOOLS = [
+    'google_account', 'user_browser',
+    'write_file', 'file_write', 'create_file', 'write_to_file', 'read_file', 'file_read',
+    'web_page_builder', 'github_repo_manager',
+];
+
 /**
  * Modular Agent Platform - Core Intelligence Layer (REAL Agent Runtime)
  */
@@ -228,8 +240,7 @@ export class AgentOrchestrator {
           // file read/write, page builder) must NEVER be coerced to browser_run just
           // because the agent got re-classified — that broke compound plans (e.g. the
           // "send" node of a browse->email plan ran the browser instead of Gmail).
-          const DETERMINISTIC = ['google_account', 'user_browser', 'write_file', 'file_write', 'create_file', 'write_to_file', 'read_file', 'file_read', 'web_page_builder'];
-          const isProtected = isSmartBrowserTool || (typeof node.tool === 'string' && DETERMINISTIC.includes(node.tool));
+          const isProtected = isSmartBrowserTool || (typeof node.tool === 'string' && DETERMINISTIC_TOOLS.includes(node.tool));
           if (!isProtected) {
             if (node.agent === 'Browser') { node.tool = 'browser_run'; }
             else if (node.tool === 'browser_run') { node.tool = 'shell_execute'; }
@@ -299,7 +310,7 @@ export class AgentOrchestrator {
             // Deterministic build tool — run it directly so the weak-model tool-picker
             // can't downgrade a "build a page" request back into a chat answer.
             result = await executeTool('web_page_builder', nodeInput, executionContext);
-          } else if (typeof node.tool === 'string' && ((node.tool.startsWith('browser_') && node.tool !== 'browser_run') || node.tool === 'google_account' || node.tool === 'user_browser' || ['write_file', 'file_write', 'create_file', 'write_to_file', 'read_file', 'file_read'].includes(node.tool))) {
+          } else if (typeof node.tool === 'string' && ((node.tool.startsWith('browser_') && node.tool !== 'browser_run') || DETERMINISTIC_TOOLS.includes(node.tool))) {
             // Deterministic tools (browser smart-tools, Google account, user's own
             // browser, file read/write) — run the exact tool directly so the weak-model
             // tool-picker or a Dev agent can't mis-handle a node that already names its

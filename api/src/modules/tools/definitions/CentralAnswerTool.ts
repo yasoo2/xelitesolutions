@@ -39,9 +39,20 @@ export class CentralAnswerTool implements ToolDefinition {
     mockSupported = false;
 
     async execute(input: { question: string }, context?: any) {
-        const { question } = input;
+        const question = String(input?.question ?? '').trim();
         const lang = context?.language || 'en';
         const isAr = lang.startsWith('ar') || /[؟\u0600-\u06FF]/.test(question);
+        // Called with no question (a tool-picker that emitted empty args), this
+        // used to send a message with NO content to the provider — a 400 that
+        // cascaded into the entire provider chain being declared dead. Fail here,
+        // honestly and cheaply, before any model call.
+        if (!question) {
+            return {
+                ok: false,
+                error: isAr ? 'لم يصل أي سؤال إلى أداة الإجابة (استدعاء ناقص).' : 'central_answer was called without a question.',
+                logs: ['central_answer: empty question — refused before any model call'],
+            };
+        }
 
         const baseSystemPrompt = `You are **Joe**, the Elite AI Engine of **XElite Solutions**.
 You are a world-class specialist in **Web Development, App Architecture, and Complex System Engineering**.
