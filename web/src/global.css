@@ -4108,45 +4108,39 @@ html[data-theme="light"] .input-actions {
   border: 1px solid var(--border-color);
 }
 
+/* Modern, FLAT send button — no glow. Clean solid fill, gentle radius, subtle
+   depth only. (The old 30px accent-glow looked dated/garish.) */
 .send-btn {
-  height: 40px;
-  width: 40px;
-  border-radius: 14px;
-  border: 1px solid transparent;
+  height: 38px;
+  width: 38px;
+  border-radius: 11px;
+  border: none;
   background: var(--accent-primary);
-  color: #000000;
-  /* Force dark text on Yellow/Blue button */
+  color: #fff;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 10px 30px var(--accent-glow);
-}
-
-html[data-theme="light"] .send-btn {
-  color: #ffffff;
-  /* White text on Blue button */
+  box-shadow: none;
+  transition: background 0.15s ease, filter 0.15s ease, opacity 0.15s ease;
 }
 
 .send-btn.is-busy {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  box-shadow: 0 14px 40px rgba(239, 68, 68, 0.22);
+  background: #ef4444;
+  box-shadow: none;
 }
 
-.send-btn:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.05);
+.send-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 
 .send-btn:active:not(:disabled) {
-  transform: translateY(0);
-  filter: brightness(0.98);
+  filter: brightness(0.94);
 }
 
 .send-btn:disabled {
-  opacity: 0.55;
+  opacity: 0.4;
   cursor: not-allowed;
-  transform: none;
   box-shadow: none;
 }
 

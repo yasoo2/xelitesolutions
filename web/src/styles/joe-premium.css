@@ -597,22 +597,23 @@
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
+/* Modern, calm status — a subtle static border, NO infinite neon pulse (that
+   glowing pulse looked garish). Green = connected, muted = not connected. */
 .joe-chat-input-area .provider-btn.is-connected {
-    border-color: rgba(16, 185, 129, 0.5) !important;
-    animation: neonPulseGreen 2s infinite ease-in-out !important;
+    border-color: rgba(16, 185, 129, 0.55) !important;
+    animation: none !important;
 }
 
 .joe-chat-input-area .provider-btn.is-disconnected {
-    border-color: rgba(239, 68, 68, 0.5) !important;
-    animation: neonPulseRed 2s infinite ease-in-out !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+    animation: none !important;
 }
 
 .joe-chat-input-area .provider-btn svg,
 .joe-chat-input-area .provider-btn img {
     width: 18px !important;
     height: 18px !important;
-    filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.2));
-    transition: transform 0.3s ease !important;
+    transition: transform 0.2s ease !important;
 }
 
 .joe-chat-input-area .provider-btn:hover svg,
@@ -977,39 +978,43 @@
     color: #000;
 }
 
-/* Update inner send button in CommandComposer (which uses .send-btn class) */
+/* Send button — MODERN & FLAT: solid fill, no gradient, no glow, no scale-jump.
+   (The old gold gradient + green glow + scale-on-hover looked dated/garish.) */
 .joe-chat-input-area .send-btn {
     width: 38px !important;
     height: 38px !important;
     min-width: 38px !important;
-    border-radius: 10px !important;
-    background: linear-gradient(135deg, var(--joe-gold-primary) 0%, var(--joe-gold-dark) 100%) !important;
-    color: #000 !important;
-    border: 1px solid rgba(52, 196, 139, 0.4) !important;
+    border-radius: 11px !important;
+    background: var(--joe-gold-primary, #34c48b) !important;
+    color: #05130d !important;
+    border: none !important;
     opacity: 1 !important;
-    box-shadow: 0 2px 10px rgba(52, 196, 139, 0.2) !important;
-    transition: all 0.2s ease !important;
+    box-shadow: none !important;
+    transition: filter 0.15s ease, background 0.15s ease !important;
 }
 
 .joe-chat-input-area .send-btn:hover {
-    transform: scale(1.05) !important;
-    box-shadow: 0 6px 16px rgba(52, 196, 139, 0.3) !important;
-    background: linear-gradient(135deg, var(--joe-gold-light, #fbdf8a) 0%, var(--joe-gold-primary) 100%) !important;
-    border-color: var(--joe-gold-primary) !important;
-    color: #000 !important;
+    transform: none !important;
+    box-shadow: none !important;
+    filter: brightness(1.08) !important;
+    background: var(--joe-gold-primary, #34c48b) !important;
+}
+
+.joe-chat-input-area .send-btn:active:not(:disabled) {
+    filter: brightness(0.93) !important;
 }
 
 .joe-chat-input-area .send-btn svg {
     width: 18px !important;
     height: 18px !important;
-    color: #1a1a1a !important;
-    /* Dark icon on gold button */
+    color: #05130d !important;
 }
 
 .joe-chat-input-area .send-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.4 !important;
     cursor: not-allowed;
     transform: none;
+    box-shadow: none !important;
 }
 
 /* Button Thinking Pulse */
@@ -2558,29 +2563,14 @@
     transform: scale(1.1);
 }
 
-/* Auto Provider - Magic Purple Glow */
+/* Auto provider connected — calm subtle purple accent, no pulsing glow. */
 .joe-chat-input-area .provider-btn.provider-auto.is-connected {
     border-color: rgba(139, 92, 246, 0.5) !important;
-    animation: neonPulsePurple 2s infinite ease-in-out !important;
-}
-
-@keyframes neonPulsePurple {
-    0% {
-        box-shadow: 0 0 5px rgba(139, 92, 246, 0.4), 0 0 10px rgba(139, 92, 246, 0.2);
-    }
-
-    50% {
-        box-shadow: 0 0 15px rgba(139, 92, 246, 0.8), 0 0 25px rgba(139, 92, 246, 0.4);
-    }
-
-    100% {
-        box-shadow: 0 0 5px rgba(139, 92, 246, 0.4), 0 0 10px rgba(139, 92, 246, 0.2);
-    }
+    animation: none !important;
 }
 
 .joe-chat-input-area .provider-btn.provider-auto.is-connected svg {
     color: #a78bfa !important;
-    filter: drop-shadow(0 0 5px rgba(139, 92, 246, 0.5));
 }
 
 /* ========== Mobile Collapsible Panel Overrides ========== */

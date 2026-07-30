@@ -943,9 +943,10 @@ export default function CommandComposer({
     } catch { }
 
     const pickFirstKeyedProvider = () => {
-      // PRIORITY: Force Gemini by default to prevent "Empty Query" free-tier instant exits
-      console.log('[ProviderDebug] pickFirstKeyedProvider: Defaulting to gemini');
-      return 'gemini';
+      // Default to AUTO (the free-first mesh): it always works with no key and uses
+      // Groq under the hood when GROQ_API_KEY is set — so the provider button verifies
+      // GREEN on login instead of red (Gemini, which needs a key the user may not have).
+      return 'auto';
     };
 
     try {
