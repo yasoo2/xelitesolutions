@@ -288,6 +288,19 @@ export class WorkspaceService {
         return memberships.map(m => m.workspaceId);
     }
 
+    /** Every stored workspace, ignoring ownership. READ-ONLY lookup helper for the
+     *  local single-user mode, where an orchestrated tool run can arrive without a
+     *  usable user id and still needs to find the one repo the user connected.
+     *  Never use this to grant access — it answers "what exists", not "who may". */
+    async getAllWorkspacesForLookup(): Promise<any[]> {
+        if (!isDbConnected()) {
+            const out: any[] = [];
+            for (const list of mockWorkspacesByUserId.values()) out.push(...list);
+            return out;
+        }
+        return await Workspace.find({}).limit(200).lean() as any[];
+    }
+
     async addMember(adminUserId: string, workspaceId: string, targetEmail: string, role: 'ADMIN' | 'DEVELOPER' | 'VIEWER') {
         if (!isDbConnected()) {
             const uid = safeObjectIdHex(adminUserId);
@@ -347,6 +360,17 @@ export class WorkspaceService {
             if (!admin) throw new Error('Unauthorized');
 
             if (updates.name) ws.name = updates.name;
+            // activeRepo used to be handled ONLY in the database branch, so in local
+            // mode (PERSISTENCE_MODE=JSON / no Mongo) connecting a repository was
+            // silently discarded: the UI reported "repository connected" while the
+            // server kept nothing, and every later "analyse the connected repo" had
+            // no repo to find. Same behaviour as the DB branch now.
+            if (updates.activeRepo) {
+                if (!ws.integrations) ws.integrations = {} as any;
+                if (!ws.integrations.github) ws.integrations.github = { installationId: '', repositories: [] };
+                ws.integrations.github.activeRepo = updates.activeRepo;
+                ws.kind = 'github';
+            }
             if (updates.kind) ws.kind = updates.kind;
             if (updates.projectInitialized !== undefined) ws.projectInitialized = updates.projectInitialized;
             ws.updatedAt = new Date();

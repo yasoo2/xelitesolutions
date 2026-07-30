@@ -196,6 +196,68 @@ export class GitHubRepoManagerTool implements ToolDefinition {
         return user.login;
     }
 
+    /** Find the repo the user connected in the UI ("the connected repo").
+     *
+     *  ToolService does NOT forward the real workspace id: when a tool is called
+     *  from an orchestrated run it substitutes a synthetic `session-<id>`, so a
+     *  lookup by that id can never match and previously threw — and because all
+     *  the lookups shared one try/catch, that first throw skipped the fallbacks
+     *  entirely and the analysis died with "no repo specified" even though a repo
+     *  was plainly connected. Each source is now attempted independently and
+     *  logged, so a miss is diagnosable instead of silent. */
+    private async resolveConnectedRepo(input: any, logs: string[]): Promise<string> {
+        let svc: any;
+        try {
+            svc = require('../../services/WorkspaceService').workspaceService;
+        } catch (e: any) {
+            logs.push(`WorkspaceService unavailable: ${e.message}`);
+            return '';
+        }
+        const userId = String(input?.__userId || input?.userId || '').trim();
+        const rawWsId = String(input?.__workspaceId || input?.workspaceId || '').trim();
+        // A synthetic "session-…"/"default-workspace" id is not a workspace id.
+        const realWsId = /^[0-9a-fA-F]{24}$/.test(rawWsId) ? rawWsId : '';
+        if (rawWsId && !realWsId) logs.push(`Ignoring synthetic workspace id "${rawWsId}"`);
+
+        const pick = (ws: any): string => String(ws?.integrations?.github?.activeRepo || '').trim();
+
+        if (realWsId && userId) {
+            try {
+                const ws = await svc.getWorkspace(realWsId, userId);
+                const r = pick(ws);
+                if (r) { logs.push(`Connected repo from workspace ${realWsId}: ${r}`); return r; }
+            } catch (e: any) { logs.push(`getWorkspace(${realWsId}) failed: ${e.message}`); }
+        }
+
+        if (userId) {
+            try {
+                const all = await svc.getUserWorkspaces(userId);
+                for (const w of (Array.isArray(all) ? all : [])) {
+                    const r = pick(w);
+                    if (r) { logs.push(`Connected repo from workspace "${w?.name || w?._id}": ${r}`); return r; }
+                }
+                logs.push(`No connected repo in ${Array.isArray(all) ? all.length : 0} workspace(s) of user ${userId}`);
+            } catch (e: any) { logs.push(`getUserWorkspaces failed: ${e.message}`); }
+        } else {
+            logs.push('No userId reached the tool — cannot list workspaces.');
+        }
+
+        // Local single-user mode: the run may carry no usable user id at all, yet
+        // the machine has exactly one connected repo. Scan every stored workspace.
+        try {
+            if (typeof svc.getAllWorkspacesForLookup === 'function') {
+                const all = await svc.getAllWorkspacesForLookup();
+                for (const w of (Array.isArray(all) ? all : [])) {
+                    const r = pick(w);
+                    if (r) { logs.push(`Connected repo found by global scan: ${r}`); return r; }
+                }
+                logs.push('Global workspace scan found no connected repo.');
+            }
+        } catch (e: any) { logs.push(`Global workspace scan failed: ${e.message}`); }
+
+        return '';
+    }
+
     /** REAL repository analysis straight from the GitHub API (metadata, languages,
      *  file tree, README, latest commits) + a best-effort LLM architectural summary.
      *  When no repoName is given, resolves "the connected repo" from the workspace's
@@ -206,24 +268,7 @@ export class GitHubRepoManagerTool implements ToolDefinition {
         if (fullName && !fullName.includes('/')) {
             fullName = `${await this.getUsername(token)}/${fullName}`;
         }
-        if (!fullName) {
-            try {
-                const { workspaceService } = require('../../services/WorkspaceService');
-                const userId = String(input?.__userId || input?.userId || '');
-                const wsId = String(input?.__workspaceId || input?.workspaceId || '');
-                if (wsId && userId) {
-                    const ws = await workspaceService.getWorkspace(wsId, userId);
-                    fullName = String(ws?.integrations?.github?.activeRepo || '');
-                }
-                if (!fullName && userId) {
-                    const all = await workspaceService.getUserWorkspaces(userId);
-                    for (const w of (Array.isArray(all) ? all : [])) {
-                        const r = w?.integrations?.github?.activeRepo;
-                        if (r) { fullName = String(r); logs.push(`Resolved connected repo from workspace "${w?.name || w?._id}"`); break; }
-                    }
-                }
-            } catch (e: any) { logs.push(`Workspace lookup failed: ${e.message}`); }
-        }
+        if (!fullName) fullName = await this.resolveConnectedRepo(input, logs);
         if (!fullName) {
             return { ok: false, error: 'لا يوجد ريبو محدّد للتحليل: مرّر repoName (مثل owner/repo) أو اربط ريبو في مساحة العمل أولاً.', logs };
         }
