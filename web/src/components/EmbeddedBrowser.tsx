@@ -13,10 +13,7 @@ import {
     ExternalLink,
     Maximize2,
     Camera,
-    Search,
-    X,
-    LogIn,
-    Check
+    Search
 } from 'lucide-react';
 
 import ModernBrowserStream from './ModernBrowserStream';
@@ -38,7 +35,24 @@ export default function EmbeddedBrowser({
     const [isConnected, setIsConnected] = useState(false);
     const [showUrlInput, setShowUrlInput] = useState(false);
     const [showMine, setShowMine] = useState(false); // false = Joe's browser, true = user's real browser
+    // "My personal browser" only works through the Joe BROWSER EXTENSION. On a local
+    // setup with no extension it shows nothing, so we only surface the toggle when
+    // the extension is actually connected — otherwise it's confusing dead UI.
+    const [extConnected, setExtConnected] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const token = localStorage.getItem('token');
+                const r = await fetch(`${API_URL}/extension/status`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+                const st = await r.json().catch(() => ({ connected: false }));
+                if (alive) setExtConnected(!!st?.connected);
+            } catch { if (alive) setExtConnected(false); }
+        })();
+        return () => { alive = false; };
+    }, []);
 
     // Listen for session status from ModernBrowserStream
     useEffect(() => {
@@ -144,26 +158,9 @@ export default function EmbeddedBrowser({
         }
     };
 
-    // Save the current login/session so the user stays signed in on this site
-    // across future tasks (encrypted, no password stored).
-    const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-    const handleSaveLogin = useCallback(async () => {
-        setSaveState('saving');
-        try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/browser/session/save`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ sessionId }),
-            });
-            const data = await res.json().catch(() => ({ ok: false }));
-            setSaveState(data?.ok ? 'saved' : 'error');
-        } catch {
-            setSaveState('error');
-        } finally {
-            setTimeout(() => setSaveState('idle'), 2500);
-        }
-    }, [sessionId]);
+    // (Removed the manual "save login" button/handler: the browser session already
+    // auto-saves on every navigation, so the user stays signed in forever with no
+    // button to press — the manual one was redundant.)
 
     return (
         <div className="joe-browser-container" style={{
@@ -265,20 +262,20 @@ export default function EmbeddedBrowser({
                     )}
                 </div>
 
-                {/* Extra actions */}
+                {/* Extra actions. The "my personal browser" toggle appears ONLY when the
+                    Joe extension is connected (otherwise it shows nothing). The manual
+                    "save login" button was removed — the session already auto-saves on
+                    every navigation, so it stays logged in forever with no button. */}
                 <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                    <button
-                        onClick={() => setShowMine(v => !v)}
-                        title={showMine ? 'متصفح جو' : 'متصفحي الشخصي'}
-                        style={{ height: 28, padding: '0 10px', borderRadius: 8, fontSize: 11, cursor: 'pointer', border: '1px solid var(--joe-border)', background: showMine ? '#1a73e8' : 'transparent', color: showMine ? '#fff' : 'var(--joe-text-secondary)', whiteSpace: 'nowrap' }}
-                    >
-                        {showMine ? '🧩 متصفحي' : 'متصفح جو'}
-                    </button>
-                    <BrowserButton
-                        icon={saveState === 'saved' ? Check : saveState === 'error' ? X : LogIn}
-                        tooltip={saveState === 'saving' ? 'جارٍ الحفظ…' : saveState === 'saved' ? 'تم حفظ الجلسة' : saveState === 'error' ? 'فشل الحفظ' : 'احفظ تسجيل الدخول (تبقى مسجّلاً)'}
-                        onClick={handleSaveLogin}
-                    />
+                    {extConnected && (
+                        <button
+                            onClick={() => setShowMine(v => !v)}
+                            title={showMine ? 'متصفح جو' : 'متصفحي الشخصي'}
+                            style={{ height: 28, padding: '0 10px', borderRadius: 8, fontSize: 11, cursor: 'pointer', border: '1px solid var(--joe-border)', background: showMine ? '#1a73e8' : 'transparent', color: showMine ? '#fff' : 'var(--joe-text-secondary)', whiteSpace: 'nowrap' }}
+                        >
+                            {showMine ? '🧩 متصفحي' : 'متصفح جو'}
+                        </button>
+                    )}
                     <BrowserButton icon={Camera} tooltip="لقطة شاشة" onClick={handleScreenshot} />
                     <BrowserButton icon={ExternalLink} tooltip="فتح خارجياً" onClick={openExternal} disabled={!currentUrl} />
                 </div>
