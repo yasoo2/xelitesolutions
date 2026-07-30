@@ -12,45 +12,73 @@ type StatusData = {
   uptimeSeconds: number;
   persistence: { mode: string; mockDb: boolean };
   tools: { count: number };
-  ai: { mode: string; provider: string; model: string; reachable: boolean | null; ok: boolean; detail: string };
-  browser: { ok: boolean; engine: string | null; detail: string };
-  google: { configured: boolean; connected: boolean; email: string | null; ok: boolean; detail: string };
-  extension: { connected: boolean; totalUsers: number; ok: boolean; detail: string };
+  ai: { mode: string; provider: string; model: string; reachable: boolean | null; modelInstalled?: boolean | null; installedModels?: string[]; ok: boolean; code?: string; detail: string };
+  browser: { ok: boolean; engine: string | null; bundled?: boolean; code?: string; detail: string };
+  google: { configured: boolean; connected: boolean; email: string | null; ok: boolean; code?: string; detail: string };
+  extension: { connected: boolean; totalUsers: number; ok: boolean; code?: string; detail: string };
 };
 
 const dot: Record<Level, string> = { ok: '#22c55e', warn: '#f59e0b', error: '#ef4444' };
 
-function toRows(d: StatusData, t: (k: string) => string): Row[] {
+type TFn = (k: string, o?: any) => string;
+
+/** The server sends a machine code per subsystem; the wording belongs to the UI so
+ *  it follows the language the user picked. `detail` from the server is only the
+ *  fallback for a code this build does not know yet. */
+const DETAIL_KEYS: Record<string, string> = {
+  local_ok: 'sysAiLocalOk',
+  local_no_model: 'sysAiLocalNoModel',
+  local_down: 'sysAiLocalDown',
+  free: 'sysAiFree',
+  browser_ready: 'sysBrowserReady',
+  browser_missing: 'sysBrowserMissing',
+  google_not_configured: 'sysGoogleNotConfigured',
+  google_linked: 'sysGoogleLinked',
+  google_needs_link: 'sysGoogleNeedsLink',
+  ext_connected: 'sysExtConnected',
+  ext_disconnected: 'sysExtDisconnected',
+};
+
+function detailOf(t: TFn, code: string | undefined, fallback: string, params?: any): string {
+  const key = code ? DETAIL_KEYS[code] : undefined;
+  return key ? t(key, params) : fallback;
+}
+
+function toRows(d: StatusData, t: TFn): Row[] {
+  // A configured-but-missing local model is a real problem the user can fix
+  // (ollama pull), so it must not be painted green just because the server
+  // answered a ping.
+  const aiLevel: Level = d.ai.ok ? 'ok' : d.ai.code === 'local_no_model' ? 'warn' : 'error';
   return [
     {
       key: 'ai', icon: '🧠', title: t('sysAiEngine'),
-      value: d.ai.mode === 'local' ? `${d.ai.model} (${t('sysLocal')})` : d.ai.provider,
-      detail: d.ai.detail,
-      level: d.ai.ok ? 'ok' : 'error',
+      value: d.ai.mode === 'local' ? `${d.ai.model} (${t('sysLocal')})` : t('sysFreeProvider'),
+      detail: detailOf(t, d.ai.code, d.ai.detail, { model: d.ai.model }),
+      level: aiLevel,
     },
     {
       key: 'browser', icon: '🌐', title: t('sysBrowserEngine'),
-      value: d.browser.engine || t('sysNotInstalled'),
-      detail: d.browser.detail,
+      value: d.browser.engine ? `${d.browser.engine} (${t('sysBundled')})` : t('sysNotInstalled'),
+      detail: detailOf(t, d.browser.code, d.browser.detail),
       level: d.browser.ok ? 'ok' : 'error',
     },
     {
       key: 'google', icon: '📧', title: t('googleAccount'),
       value: d.google.connected ? (d.google.email || t('sysLinked')) : d.google.configured ? t('sysNotLinked') : t('sysNotConfigured'),
-      detail: d.google.detail,
+      detail: detailOf(t, d.google.code, d.google.detail),
       level: d.google.connected ? 'ok' : 'warn',
     },
     {
       key: 'extension', icon: '🧩', title: t('sysMyBrowserExt'),
       value: d.extension.connected ? t('sysConnected') : t('sysDisconnected'),
-      detail: d.extension.detail,
+      detail: detailOf(t, d.extension.code, d.extension.detail),
       level: d.extension.connected ? 'ok' : 'warn',
     },
   ];
 }
 
 export default function SystemStatusPanel() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [data, setData] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
@@ -74,7 +102,7 @@ export default function SystemStatusPanel() {
   const headLevel: Level = anyErr ? 'error' : allOk ? 'ok' : 'warn';
 
   return (
-    <div className="joe-status" dir="rtl">
+    <div className="joe-status" dir={i18n.language?.startsWith('ar') ? 'rtl' : 'ltr'}>
       <style>{`
         .joe-status { --bg:#ffffff; --panel:#f8fafc; --line:#e6ebf2; --text:#0f172a; --muted:#64748b; --shadow:0 10px 34px -18px rgba(15,23,42,.35);
           font-family: system-ui, 'Segoe UI', Tahoma, Arial; color:var(--text); }
@@ -134,12 +162,12 @@ export default function SystemStatusPanel() {
               ))}
             </div>
             <div className="foot">
-              <span>الأدوات: <b>{data.tools.count}</b></span>
-              <span>التخزين: <b>{data.persistence.mode}</b></span>
-              <span>مدّة التشغيل: <b>{Math.floor(data.uptimeSeconds / 60)}د {data.uptimeSeconds % 60}ث</b></span>
+              <span>{t('sysToolsLabel')}: <b>{data.tools.count}</b></span>
+              <span>{t('sysStorageLabel')}: <b>{data.persistence.mode}</b></span>
+              <span>{t('sysUptimeLabel')}: <b>{t('sysUptimeValue', { m: Math.floor(data.uptimeSeconds / 60), s: data.uptimeSeconds % 60 })}</b></span>
             </div>
           </>
-        ) : (!error ? <div className="empty">جارٍ الفحص…</div> : null)}
+        ) : (!error ? <div className="empty">{t('sysChecking')}</div> : null)}
       </div>
     </div>
   );
