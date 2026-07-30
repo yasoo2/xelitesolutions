@@ -12,6 +12,26 @@ export interface ExecutionStep {
     fallbackStrategy?: 'retry' | 'skip' | 'abort' | 'alternative';
 }
 
+/** Does this string actually look like a web address? Free classifier models
+ *  hallucinate the "url" field — they have returned plain Arabic words and even
+ *  tool names, which Chromium happily punycodes into a bogus host and then
+ *  blocks on for the full navigation timeout. A real target is either an
+ *  http(s):// URL or a bare ASCII host with a dot and a plausible TLD. */
+export function isLikelyUrl(value: string): boolean {
+    const v = String(value || '').trim();
+    if (!v || /\s/.test(v)) return false;
+    let host = v;
+    if (/^https?:\/\//i.test(v)) {
+        try { host = new URL(v).hostname; } catch { return false; }
+    } else {
+        host = v.split(/[/?#]/)[0];
+    }
+    if (host === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
+    // ASCII only: an Arabic "hostname" is always a hallucination here.
+    if (!/^[A-Za-z0-9.-]+$/.test(host)) return false;
+    return /^([A-Za-z0-9-]+\.)+[A-Za-z]{2,}$/.test(host);
+}
+
 export interface ExecutionPlan {
     id: string;
     goal: string;
@@ -472,6 +492,16 @@ Rules:
                         }
                     }
                     if (!url && urlMatch) url = urlMatch[0];
+                    // The classifier is a free LLM and DOES hallucinate the "url"
+                    // field: it returned the Arabic word «الريبو» (Chromium then
+                    // punycoded it to https://xn--mgbc0a5ewak/ and hung 30s) and
+                    // even the tool's own name. Only accept something that really
+                    // looks like a web address; otherwise drop it and let the
+                    // deterministic paths below decide.
+                    if (url && !isLikelyUrl(url)) {
+                        console.warn(`[PlanningEngine] AI browser router returned a non-URL target ("${url}") — ignoring it.`);
+                        url = '';
+                    }
                     const input: any = { url: url || '', request: intent.goal, question: c.query || intent.goal };
                     if (c.tool === 'browser_click' && c.text) input.text = c.text;
                     if (c.tool === 'browser_find_text') input.query = c.query || c.text || '';
