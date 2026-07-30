@@ -46,7 +46,10 @@ export class BrowserAgent extends BaseAgent {
                 userId,
                 task,
                 startUrl,
-                maxSteps: readTask ? 4 : Number(process.env.BROWSER_AGENT_MAX_STEPS || 12),
+                // Read tasks are usually 1-2 steps, but leave room for the search
+                // fallback (type → Enter → open result → read) when the subject
+                // isn't on the landing page.
+                maxSteps: readTask ? 6 : Number(process.env.BROWSER_AGENT_MAX_STEPS || 12),
                 decide: readTask ? makeReadDecider() : makeLlmDecider(),
                 // A read answer is grounded in the observed page (evidence attached);
                 // the completion verifier is for interactive goals, skip it here.
@@ -100,8 +103,37 @@ export function isReadTask(task: string): boolean {
 export function makeReadDecider(): Decider {
     return async ({ task, observation, history, onThinking }) => {
         const scrolled = history.some(h => h.action.action === 'scroll');
-        const thin = (observation.textSnippet || '').trim().length < 60;
-        if (thin && !scrolled) return { action: 'scroll', direction: 'down', reason: 'المحتوى الظاهر قليل — تمرير واحد ثم الإجابة' };
+        const typed = history.some(h => h.action.action === 'type');
+        const pressedEnter = history.some(h => h.action.action === 'key');
+        const clicked = history.some(h => h.action.action === 'click');
+        const subject = extractSearchSubject(task);
+        const snippet = (observation.textSnippet || '');
+        // Is the subject plausibly present on the page we're looking at?
+        const subjHead = subject.trim().slice(0, 14).toLowerCase();
+        const subjectOnPage = subjHead.length >= 2 && (snippet.toLowerCase().includes(subjHead) || (observation.title || '').toLowerCase().includes(subjHead));
+
+        // INTELLIGENT SEARCH (instead of giving up): if the subject is NOT on this
+        // page but the page has a search box, type the subject and run the search,
+        // then read the result — the exact behaviour the user expected on Wikipedia.
+        if (subject && !subjectOnPage) {
+            if (!typed) {
+                const box = observation.elements.find(e =>
+                    e.tag === 'input' && (e.type === 'search' || /search|بحث|ابحث|query|q$/i.test(`${e.type || ''} ${e.text || ''}`))
+                ) || observation.elements.find(e => e.tag === 'input' && (e.type === 'text' || !e.type) && !e.isPassword);
+                if (box) return { action: 'type', index: box.index, text: subject, reason: `يكتب «${subject}» في صندوق البحث` };
+            } else if (!pressedEnter) {
+                return { action: 'key', key: 'Enter', reason: 'يشغّل البحث' };
+            } else if (!clicked) {
+                // On a results list, open the most relevant link matching the subject.
+                const hit = observation.elements.find(e =>
+                    (e.tag === 'a' || e.type === 'link') && subjHead.length >= 2 && (e.text || '').toLowerCase().includes(subjHead)
+                );
+                if (hit) return { action: 'click', index: hit.index, reason: `يفتح نتيجة «${hit.text.slice(0, 30)}»` };
+            }
+        }
+
+        const thin = snippet.trim().length < 60;
+        if (thin && !scrolled && !typed) return { action: 'scroll', direction: 'down', reason: 'المحتوى الظاهر قليل — تمرير واحد ثم الإجابة' };
 
         const system = `You are reading a REAL web page to answer the user's request.
 User's request: ${task}
@@ -266,19 +298,66 @@ export function knownSiteUrl(task: string): string | undefined {
     return undefined;
 }
 
-/** Give the loop a productive first page: an explicit URL if present, otherwise a
- *  web search for the request. The loop then reacts to whatever actually loads. */
+/** Pull the SUBJECT the user wants (e.g. "صدام حسين" from "ادخل ويكيبيديا واعطيني
+ *  ملخص عن صدام حسين") so we can go straight to it instead of a bare homepage. */
+export function extractSearchSubject(task: string): string {
+    const t = String(task || '').trim();
+    // The topic usually follows «عن / حول / بخصوص / about / regarding / on».
+    const after = t.match(/(?:عن|حول|بخصوص|about|regarding)\s+(.+)$/i)?.[1];
+    let q = after || t;
+    q = q
+        .replace(/https?:\/\/\S+/gi, ' ')
+        // leading question phrases: «من هو / ما هي / who is / what is»
+        .replace(/(?:^|\s)(من\s*هو|من\s*هي|ما\s*هو|ما\s*هي|من\s*هم|who\s*is|what\s*is|what'?s)\s+/gi, ' ')
+        // command verbs
+        .replace(/(ادخل|اذهب|روح|افتح|زر|ابحث|بحث|اعطني|اعطيني|واعطني|واعطيني|اعرض|اقرأ|لخّ?ص|ملخّ?ص|go\s*to|open|visit|enter|search|find|give\s*me|read|summar\w*)/gi, ' ')
+        // site/scaffolding words + Arabic particles
+        .replace(/(موقع|website|site|صفحة|page|the|a|an|for)/gi, ' ')
+        // known site names (we don't want them inside the subject)
+        .replace(/(ويكيبيديا|wikipedia|يوتيوب|youtube|جوجل|google|ياهو|yahoo|جيت\s*هاب|github|ريديت|reddit)/gi, ' ')
+        .replace(/[«»"'،,]/g, ' ')
+        // standalone Arabic particles (whole-word) that survive as noise
+        .replace(/(?:^|\s)(على|الى|إلى|في|من|لي|و)(?=\s|$)/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    // Trim leading/trailing particles left at the edges.
+    q = q.replace(/^(?:على|الى|إلى|في|من|لي|و)\s+/g, '').replace(/\s+(?:على|الى|إلى|في|من|عن|لي|و)$/g, '').trim();
+    return q;
+}
+
+/** Give the loop a productive first page. Crucially: when the task names a SITE
+ *  *and* a SUBJECT, go straight to the subject on that site (a Wikipedia article,
+ *  a YouTube/Google search) — NOT the bare homepage. Landing on wikipedia.org's
+ *  home page with no subject is exactly why "summarise Saddam from Wikipedia"
+ *  found nothing and gave up. The loop then reacts to whatever actually loads. */
 export function deriveStartUrl(task: string): string | undefined {
     const t = String(task || '');
     const url = t.match(/https?:\/\/[^\s"'<>]+/i)?.[0];
     if (url) return url;
-    const site = knownSiteUrl(t);   // «ادخل على جيت هاب» -> https://github.com
-    if (site) return site;
+
     const tl = t.toLowerCase();
-    const q = (t.match(/(?:عن|about|for|ابحث(?:\s+عن)?|search)\s+(.+)/i)?.[1] || t).trim();
-    if (tl.includes('yahoo') || tl.includes('ياهو')) return `https://search.yahoo.com/search?p=${encodeURIComponent(q)}`;
-    if (tl.includes('wikipedia') || tl.includes('ويكيبيديا')) return `https://ar.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(q)}`;
-    // Only auto-search when the task reads like a lookup; login/site tasks let the brain goto.
-    if (/\b(search|find|بحث|ابحث)\b/i.test(t)) return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+    const subject = extractSearchSubject(t);
+    const hasSubject = subject.length >= 2;
+
+    // Wikipedia → the article itself (Arabic wiki for an Arabic user). Wikipedia
+    // resolves close titles / shows search suggestions if the title isn't exact.
+    if (/ويكيبيديا|wikipedia/i.test(tl)) {
+        return hasSubject
+            ? `https://ar.wikipedia.org/wiki/${encodeURIComponent(subject.replace(/\s+/g, '_'))}`
+            : 'https://ar.wikipedia.org';
+    }
+    // YouTube / Yahoo → their own search results for the subject.
+    if (/يوتيوب|youtube/i.test(tl) && hasSubject) return `https://www.youtube.com/results?search_query=${encodeURIComponent(subject)}`;
+    if ((tl.includes('yahoo') || tl.includes('ياهو')) && hasSubject) return `https://search.yahoo.com/search?p=${encodeURIComponent(subject)}`;
+
+    // Any other named site → its homepage (login/navigation tasks).
+    const site = knownSiteUrl(t);
+    if (site) return site;
+
+    // A generic lookup with no named site → Google the subject. (No \b around the
+    // Arabic alternatives — JS word boundaries are ASCII-only and would never match.)
+    if (hasSubject && /(?:\b(?:search|find)\b)|بحث|ابحث|ملخص|لخّ?ص|معلومات|من\s*هو|ما\s*هو|من\s*هي|ما\s*هي/i.test(t)) {
+        return `https://www.google.com/search?q=${encodeURIComponent(subject)}`;
+    }
     return undefined;
 }
