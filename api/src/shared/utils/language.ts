@@ -69,6 +69,16 @@ const UI: Record<string, Record<SupportedLanguage, string>> = {
     },
 };
 
+/**
+ * Localise a one-off string table that lives next to the code that needs it
+ * (tool reports, tool-specific errors). `ar` is required so there is always a
+ * value to fall back to; every other language degrades to it rather than to an
+ * empty string.
+ */
+export function pick(table: Partial<Record<SupportedLanguage, string>> & { ar: string }, language: any): string {
+    return table[normalizeLanguage(language)] ?? table.ar;
+}
+
 export function uiText(key: keyof typeof UI, language: any): string {
     const lang = normalizeLanguage(language);
     return UI[key]?.[lang] ?? UI[key]?.ar ?? '';

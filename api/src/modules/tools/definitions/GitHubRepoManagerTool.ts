@@ -1,5 +1,63 @@
 import { ToolDefinition } from '../types';
 import https from 'https';
+import { pick, languageDirective, languageName } from '../../../shared/utils/language';
+
+/**
+ * Everything in the analysis report the user reads. The report used to be written
+ * in hardcoded Arabic, so switching the interface language translated the buttons
+ * around it and left the report itself untouched.
+ */
+const MSG = {
+    unreachable: {
+        ar: 'تعذّر الوصول إلى GitHub (api.github.com) — يبدو أن هناك انقطاعاً مؤقتاً في الشبكة أو في DNS. تحقّق من اتصالك بالإنترنت ثم أعد المحاولة.',
+        en: 'Could not reach GitHub (api.github.com) — this looks like a temporary network or DNS outage. Check your connection and try again.',
+        fr: "Impossible de joindre GitHub (api.github.com) — panne temporaire de réseau ou de DNS, semble-t-il. Vérifiez votre connexion puis réessayez.",
+        de: 'GitHub (api.github.com) ist nicht erreichbar — offenbar eine vorübergehende Netzwerk- oder DNS-Störung. Prüfe deine Verbindung und versuche es erneut.',
+        ru: 'Не удалось подключиться к GitHub (api.github.com) — похоже на временный сбой сети или DNS. Проверьте подключение и повторите попытку.',
+        es: 'No se pudo conectar con GitHub (api.github.com) — parece una caída temporal de red o DNS. Comprueba tu conexión e inténtalo de nuevo.',
+    },
+    noRepo: {
+        ar: 'لا يوجد ريبو محدّد للتحليل: مرّر repoName (مثل owner/repo) أو اربط ريبو في مساحة العمل أولاً.',
+        en: 'No repository selected for analysis: pass repoName (e.g. owner/repo) or connect a repository to your workspace first.',
+        fr: "Aucun dépôt sélectionné pour l'analyse : indiquez repoName (ex. owner/repo) ou connectez d'abord un dépôt à votre espace de travail.",
+        de: 'Kein Repository für die Analyse ausgewählt: Gib repoName an (z. B. owner/repo) oder verbinde zuerst ein Repository mit deinem Workspace.',
+        ru: 'Репозиторий для анализа не выбран: передайте repoName (например, owner/repo) или сначала подключите репозиторий к рабочему пространству.',
+        es: 'No hay repositorio seleccionado para analizar: pasa repoName (p. ej. owner/repo) o conecta primero un repositorio a tu espacio de trabajo.',
+    },
+    title: { ar: 'تحليل المستودع', en: 'Repository analysis', fr: 'Analyse du dépôt', de: 'Repository-Analyse', ru: 'Анализ репозитория', es: 'Análisis del repositorio' },
+    description: { ar: 'الوصف', en: 'Description', fr: 'Description', de: 'Beschreibung', ru: 'Описание', es: 'Descripción' },
+    link: { ar: 'الرابط', en: 'Link', fr: 'Lien', de: 'Link', ru: 'Ссылка', es: 'Enlace' },
+    visibility: { ar: 'الخصوصية', en: 'Visibility', fr: 'Visibilité', de: 'Sichtbarkeit', ru: 'Видимость', es: 'Visibilidad' },
+    isPrivate: { ar: 'خاص', en: 'private', fr: 'privé', de: 'privat', ru: 'приватный', es: 'privado' },
+    isPublic: { ar: 'عام', en: 'public', fr: 'public', de: 'öffentlich', ru: 'публичный', es: 'público' },
+    defaultBranch: { ar: 'الفرع الافتراضي', en: 'Default branch', fr: 'Branche par défaut', de: 'Standard-Branch', ru: 'Ветка по умолчанию', es: 'Rama por defecto' },
+    files: { ar: 'عدد الملفات', en: 'Files', fr: 'Fichiers', de: 'Dateien', ru: 'Файлов', es: 'Archivos' },
+    stars: { ar: 'النجوم', en: 'Stars', fr: 'Étoiles', de: 'Sterne', ru: 'Звёзды', es: 'Estrellas' },
+    forks: { ar: 'النسخ', en: 'Forks', fr: 'Forks', de: 'Forks', ru: 'Форки', es: 'Forks' },
+    openIssues: { ar: 'المشاكل المفتوحة', en: 'Open issues', fr: 'Tickets ouverts', de: 'Offene Issues', ru: 'Открытые issues', es: 'Issues abiertos' },
+    createdAt: { ar: 'أُنشئ', en: 'Created', fr: 'Créé', de: 'Erstellt', ru: 'Создан', es: 'Creado' },
+    lastPush: { ar: 'آخر تحديث', en: 'Last push', fr: 'Dernier push', de: 'Letzter Push', ru: 'Последний push', es: 'Último push' },
+    languages: { ar: 'اللغات', en: 'Languages', fr: 'Langages', de: 'Sprachen', ru: 'Языки', es: 'Lenguajes' },
+    noLanguages: { ar: 'لم تُحدَّد لغات بعد', en: 'none detected yet', fr: 'aucun détecté pour le moment', de: 'noch keine erkannt', ru: 'пока не определены', es: 'ninguno detectado aún' },
+    topFiles: { ar: 'أبرز الملفات', en: 'Key files', fr: 'Fichiers principaux', de: 'Wichtige Dateien', ru: 'Основные файлы', es: 'Archivos principales' },
+    of: { ar: 'من', en: 'of', fr: 'sur', de: 'von', ru: 'из', es: 'de' },
+    latestCommits: { ar: 'آخر الكوميتات', en: 'Latest commits', fr: 'Derniers commits', de: 'Neueste Commits', ru: 'Последние коммиты', es: 'Últimos commits' },
+    unknownAuthor: { ar: 'مجهول', en: 'unknown', fr: 'inconnu', de: 'unbekannt', ru: 'неизвестно', es: 'desconocido' },
+    engineeringRead: { ar: 'القراءة الهندسية', en: 'Engineering read', fr: 'Lecture technique', de: 'Technische Einschätzung', ru: 'Инженерный разбор', es: 'Lectura de ingeniería' },
+    noSummary: {
+        ar: '_(تعذّر توليد القراءة الهندسية من النموذج الآن — كل البيانات أعلاه حقيقية ومأخوذة مباشرة من GitHub API.)_',
+        en: '_(The model could not produce the engineering read right now — every fact above is real and comes straight from the GitHub API.)_',
+        fr: "_(Le modèle n'a pas pu produire la lecture technique pour l'instant — toutes les données ci-dessus sont réelles et proviennent directement de l'API GitHub.)_",
+        de: '_(Das Modell konnte die technische Einschätzung gerade nicht erzeugen — alle Angaben oben sind echt und stammen direkt aus der GitHub-API.)_',
+        ru: '_(Модель сейчас не смогла подготовить инженерный разбор — все данные выше настоящие и получены напрямую из GitHub API.)_',
+        es: '_(El modelo no ha podido generar la lectura de ingeniería ahora mismo — todos los datos anteriores son reales y provienen directamente de la API de GitHub.)_',
+    },
+    analyzed: {
+        ar: 'تم تحليل $repo مباشرة من GitHub API', en: '$repo analyzed directly from the GitHub API',
+        fr: '$repo analysé directement via l\'API GitHub', de: '$repo direkt über die GitHub-API analysiert',
+        ru: '$repo проанализирован напрямую через GitHub API', es: '$repo analizado directamente desde la API de GitHub',
+    },
+} as const;
 
 /**
  * GitHubRepoManagerTool - GitHub repository management
@@ -102,7 +160,11 @@ export class GitHubRepoManagerTool implements ToolDefinition {
             logs.push(`Error: ${error.message}`);
             return {
                 ok: false,
-                error: error.message,
+                // A dead network is the one failure the user can actually fix, so it
+                // gets a sentence in their own language instead of a Node error code.
+                error: error?.code === 'GITHUB_UNREACHABLE'
+                    ? `${pick(MSG.unreachable, input?.__language)} (${error.attempts} × — ${error.cause})`
+                    : error.message,
                 logs
             };
         }
@@ -269,8 +331,9 @@ export class GitHubRepoManagerTool implements ToolDefinition {
             fullName = `${await this.getUsername(token)}/${fullName}`;
         }
         if (!fullName) fullName = await this.resolveConnectedRepo(input, logs);
+        const lang = input?.__language ?? input?.language;
         if (!fullName) {
-            return { ok: false, error: 'لا يوجد ريبو محدّد للتحليل: مرّر repoName (مثل owner/repo) أو اربط ريبو في مساحة العمل أولاً.', logs };
+            return { ok: false, error: pick(MSG.noRepo, lang), logs };
         }
         logs.push(`Analyzing ${fullName} via GitHub API`);
 
@@ -324,13 +387,20 @@ export class GitHubRepoManagerTool implements ToolDefinition {
             readmeExcerpt: readme ? readme.slice(0, 1500) : '',
         };
 
-        // Best-effort Arabic architectural summary over the REAL facts above.
+        // Best-effort architectural summary over the REAL facts above, written in
+        // whichever language the user picked in the interface.
         let summary = '';
         try {
             const { routeToModel } = require('../../../core/llm/intelligent-router');
             summary = await routeToModel([
-                { role: 'system', content: 'أنت مهندس برمجيات خبير. البيانات التالية حقيقية ومأخوذة مباشرة من GitHub API. حلّلها وقدّم تقريراً موجزاً بالعربية: نوع المشروع وهدفه، التقنيات واللغات، بنية الملفات، النشاط الأخير، وملاحظات/توصيات. لا تخترع معلومات غير موجودة في البيانات.' },
-                { role: 'user', content: `تحليل المستودع ${fullName}:\n${JSON.stringify({ ...repo, readmeExcerpt: readme }, null, 1).slice(0, 9000)}` },
+                {
+                    role: 'system',
+                    content: 'You are an expert software engineer. The data below is REAL, fetched directly from the GitHub API. ' +
+                        'Analyse it and write a concise report: what the project is and what it is for, its stack and languages, ' +
+                        'the file structure, recent activity, and observations/recommendations. Never invent anything that is not in the data. ' +
+                        languageDirective(lang),
+                },
+                { role: 'user', content: `Repository ${fullName} (answer in ${languageName(lang)}):\n${JSON.stringify({ ...repo, readmeExcerpt: readme }, null, 1).slice(0, 9000)}` },
             ]);
         } catch (e: any) { logs.push(`LLM summary failed (raw facts still returned): ${e.message}`); }
 
@@ -341,32 +411,34 @@ export class GitHubRepoManagerTool implements ToolDefinition {
             .sort((a: any, b: any) => b[1] - a[1])
             .map(([name, bytes]) => `${name} (${Math.round(Number(bytes) / 1024)} KB)`);
         const fmtDate = (d: any) => { try { return new Date(d).toISOString().slice(0, 10); } catch { return String(d || '—'); } };
+        const L = (k: keyof typeof MSG) => pick(MSG[k] as any, lang);
+        const listSep = String(lang || 'ar').startsWith('ar') ? '، ' : ', ';
         const lines: string[] = [];
-        lines.push(`## تحليل المستودع \`${fullName}\``);
+        lines.push(`## ${L('title')} \`${fullName}\``);
         lines.push('');
-        if (repo.description) lines.push(`**الوصف:** ${repo.description}`);
-        lines.push(`**الرابط:** ${repo.url}`);
-        lines.push(`**الخصوصية:** ${repo.private ? 'خاص' : 'عام'} · **الفرع الافتراضي:** ${repo.defaultBranch}`);
-        lines.push(`**عدد الملفات:** ${repo.fileCount} · **النجوم:** ${repo.stars} · **النسخ:** ${repo.forks} · **المشاكل المفتوحة:** ${repo.openIssues}`);
-        lines.push(`**أُنشئ:** ${fmtDate(repo.createdAt)} · **آخر تحديث:** ${fmtDate(repo.lastPush)}`);
-        lines.push(`**اللغات:** ${langList.length ? langList.join('، ') : 'لم تُحدَّد لغات بعد'}`);
+        if (repo.description) lines.push(`**${L('description')}:** ${repo.description}`);
+        lines.push(`**${L('link')}:** ${repo.url}`);
+        lines.push(`**${L('visibility')}:** ${repo.private ? L('isPrivate') : L('isPublic')} · **${L('defaultBranch')}:** ${repo.defaultBranch}`);
+        lines.push(`**${L('files')}:** ${repo.fileCount} · **${L('stars')}:** ${repo.stars} · **${L('forks')}:** ${repo.forks} · **${L('openIssues')}:** ${repo.openIssues}`);
+        lines.push(`**${L('createdAt')}:** ${fmtDate(repo.createdAt)} · **${L('lastPush')}:** ${fmtDate(repo.lastPush)}`);
+        lines.push(`**${L('languages')}:** ${langList.length ? langList.join(listSep) : L('noLanguages')}`);
         if (files.length) {
             lines.push('');
-            lines.push(`**أبرز الملفات (${Math.min(files.length, 15)} من ${repo.fileCount}):**`);
+            lines.push(`**${L('topFiles')} (${Math.min(files.length, 15)} ${L('of')} ${repo.fileCount}):**`);
             lines.push(files.slice(0, 15).map(f => `- \`${f}\``).join('\n'));
         }
         if (commits.length) {
             lines.push('');
-            lines.push('**آخر الكوميتات:**');
-            lines.push(commits.map(c => `- \`${c.sha}\` ${c.message} — ${c.author || 'مجهول'} (${fmtDate(c.date)})`).join('\n'));
+            lines.push(`**${L('latestCommits')}:**`);
+            lines.push(commits.map(c => `- \`${c.sha}\` ${c.message} — ${c.author || L('unknownAuthor')} (${fmtDate(c.date)})`).join('\n'));
         }
         if (summary && summary.trim()) {
             lines.push('');
-            lines.push('### القراءة الهندسية');
+            lines.push(`### ${L('engineeringRead')}`);
             lines.push(summary.trim());
         } else {
             lines.push('');
-            lines.push('_(تعذّر توليد القراءة الهندسية من النموذج الآن — كل البيانات أعلاه حقيقية ومأخوذة مباشرة من GitHub API.)_');
+            lines.push(L('noSummary'));
         }
         const report = lines.join('\n');
 
@@ -379,13 +451,53 @@ export class GitHubRepoManagerTool implements ToolDefinition {
                 // win and the whole report was thrown away.
                 answer: report,
                 summary: report,
-                message: `تم تحليل ${fullName} مباشرة من GitHub API`,
+                message: pick(MSG.analyzed, lang).replace('$repo', fullName),
             },
             logs,
         };
     }
 
-    private githubRequest(method: string, path: string, data: string | null, token: string): Promise<any> {
+    /**
+     * A DNS blip or a dropped socket is not a reason to fail a whole analysis.
+     * `getaddrinfo ENOTFOUND api.github.com` was reaching the user verbatim even
+     * though the very next call to GitHub succeeded. Retry the transient class of
+     * errors with backoff, and if the network really is down say so in a sentence
+     * the user can act on instead of leaking a Node error code.
+     */
+    private static readonly TRANSIENT_NET_CODES = new Set([
+        'ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', 'ENETUNREACH', 'EHOSTUNREACH',
+    ]);
+
+    private static isTransientNetworkError(e: any): boolean {
+        const code = String(e?.code || '');
+        if (GitHubRepoManagerTool.TRANSIENT_NET_CODES.has(code)) return true;
+        const msg = String(e?.message || '');
+        return /socket hang up|network timeout|request timed out|getaddrinfo/i.test(msg);
+    }
+
+    private async githubRequest(method: string, path: string, data: string | null, token: string): Promise<any> {
+        const delays = [400, 1200, 2500];
+        let lastError: any;
+        for (let attempt = 0; attempt <= delays.length; attempt++) {
+            try {
+                return await this.githubRequestOnce(method, path, data, token);
+            } catch (e: any) {
+                lastError = e;
+                // 4xx/5xx from GitHub itself is an answer, not a connectivity problem:
+                // retrying a 404 or a bad token only wastes the user's time.
+                if (!GitHubRepoManagerTool.isTransientNetworkError(e)) throw e;
+                if (attempt === delays.length) break;
+                await new Promise(r => setTimeout(r, delays[attempt]));
+            }
+        }
+        const unreachable: any = new Error(`GitHub unreachable after ${delays.length + 1} attempts: ${String(lastError?.code || lastError?.message || lastError)}`);
+        unreachable.code = 'GITHUB_UNREACHABLE';
+        unreachable.attempts = delays.length + 1;
+        unreachable.cause = String(lastError?.code || lastError?.message || lastError);
+        throw unreachable;
+    }
+
+    private githubRequestOnce(method: string, path: string, data: string | null, token: string): Promise<any> {
         return new Promise((resolve, reject) => {
             const options: any = {
                 hostname: 'api.github.com',
@@ -420,6 +532,12 @@ export class GitHubRepoManagerTool implements ToolDefinition {
             });
 
             req.on('error', reject);
+            // Without a timeout a half-open socket keeps the whole run hanging.
+            req.setTimeout(20000, () => {
+                const err: any = new Error('GitHub request timed out after 20s');
+                err.code = 'ETIMEDOUT';
+                req.destroy(err);
+            });
             if (data) req.write(data);
             req.end();
         });

@@ -175,6 +175,14 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     if (contextUserId && typeof (effectiveInput as any).__userId !== 'string') {
         (effectiveInput as any).__userId = contextUserId;
     }
+    // The UI language travels with the run, but tools only receive `input` — so
+    // pass it down the same way workspaceId/userId are passed. Without this a tool
+    // that writes its own report (the GitHub analysis, for one) has no way to know
+    // which language the user is reading in and falls back to hardcoded text.
+    if (typeof (effectiveInput as any).__language !== 'string') {
+        const lang = String(context?.language || (effectiveInput as any)?.language || '').trim();
+        if (lang) (effectiveInput as any).__language = lang;
+    }
 
     // Auto-assign default workspace if missing
     if (!contextWorkspaceId) {

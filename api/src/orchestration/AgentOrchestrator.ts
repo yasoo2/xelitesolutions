@@ -174,13 +174,18 @@ export class AgentOrchestrator {
     const completedNodes = new Set<string>();
     let iterations = 0;
     let stalledReplans = 0;
+    // The last REAL error a node produced. Every "the orchestrator gave up" exit
+    // below reports this instead of describing its own internal state — the user
+    // needs to read why the work failed, not how the scheduler noticed.
+    let lastNodeError: any = null;
     const maxIterations = Math.max(10, dag.nodes.length * 5);
+    const giveUp = (fallback: string) => ({ ok: false, result: lastNodeError || fallback });
 
     while (completedNodes.size < dag.nodes.length) {
       iterations++;
       if (iterations > maxIterations) {
         dag.status = "failed";
-        return { ok: false, result: "Execution stopped: orchestration iteration limit exceeded" };
+        return giveUp("Execution stopped: orchestration iteration limit exceeded");
       }
 
       console.log(`[AgentOrchestrator] Step Iteration. Completed: ${completedNodes.size}/${dag.nodes.length}`);
@@ -197,14 +202,14 @@ export class AgentOrchestrator {
         stalledReplans++;
         if (stalledReplans > 2) {
           dag.status = "failed";
-          return { ok: false, result: "Execution stopped: no ready nodes after recovery/replanning attempts" };
+          return giveUp("Execution stopped: no ready nodes after recovery/replanning attempts");
         }
         const newDag = await this.plan(dag.nodes[0]?.task || "continue goal", memory, traceId);
         const existingIds = new Set(dag.nodes.map(n => n.id));
         const uniqueNodes = newDag.nodes.filter(n => !existingIds.has(n.id));
         if (uniqueNodes.length === 0) {
           dag.status = "failed";
-          return { ok: false, result: "Execution stopped: replanning produced no new executable nodes" };
+          return giveUp("Execution stopped: replanning produced no new executable nodes");
         }
         dag.nodes = [...dag.nodes, ...uniqueNodes];
         continue;
@@ -383,6 +388,7 @@ export class AgentOrchestrator {
           }
 
           node.status = "failed";
+          lastNodeError = result.error || lastNodeError;
           memory.record(node.id, node.task, result.error, "failed");
 
           if (traceId) {
@@ -413,7 +419,26 @@ export class AgentOrchestrator {
               .filter(n => !existingIds.has(n.id))
               .map(n => ({ ...n, retryCount: currentRetryCount + 1 }));
             if (nodesWithRetry.length === 0) {
-              return { ok: false, result: "Recovery failed: no new recovery nodes were produced" };
+              // The planner builds deterministic node ids, so a recovery plan for a
+              // failed node usually comes back carrying that SAME id. Filtering it
+              // out left zero nodes and the user got the meaningless line "Recovery
+              // failed: no new recovery nodes were produced" instead of the actual
+              // failure (a DNS blip on api.github.com, in the reported case).
+              // A recovery plan that re-proposes the same step IS "run it again",
+              // which is exactly the right move for a transient error — so retry the
+              // node in place and let the retry ceiling above end it if it keeps
+              // failing, at which point the REAL error is what gets returned.
+              const proposesSameStep = recoveryResult.newNodes.some(n =>
+                n.id === node.id || (!!n.tool && n.tool === node.tool));
+              if (proposesSameStep) {
+                broadcastThinkingDetail(memory.sessionId, `🔁 Retrying "${node.task}" after a transient failure...`);
+                node.status = "pending";
+                node.retryCount = currentRetryCount + 1;
+                continue;
+              }
+              // Nothing usable came back: surface the real reason the node failed,
+              // never a description of the recovery machinery.
+              return { ok: false, result: result.error || "Fatal execution error" };
             }
             node.status = "pending";
             node.retryCount = currentRetryCount + 1;
