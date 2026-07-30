@@ -337,7 +337,7 @@ const ChatBubble = forwardRef(
       }
     };
 
-    const senderLabel = bubbleVariant === 'user' ? 'أنت' : bubbleVariant === 'system' ? 'النظام' : 'Joe';
+    const senderLabel = bubbleVariant === 'user' ? t('you') : bubbleVariant === 'system' ? t('system') : 'Joe';
     const SenderIcon = bubbleVariant === 'user' ? User : bubbleVariant === 'system' ? ShieldCheck : Bot;
     const showHeader = false; // ELITE REFINEMENT: Remove headers (Joe/You)
     const showAvatar = bubbleVariant !== 'user' || (bubbleVariant === 'user' && !!userPicture);
@@ -697,6 +697,11 @@ const ChatBubble = forwardRef(
 
 interface ProviderConfig {
   name: string;
+  // i18n keys: `nameKey` replaces the whole display name, `tagKey` is the short
+  // descriptor shown next to the brand ("free", "paid key", ...). Brands stay
+  // untranslated — only the descriptor around them changes with the language.
+  nameKey?: string;
+  tagKey?: string;
   apiKey: string;
   isConnected: boolean;
   baseUrl?: string;
@@ -712,32 +717,32 @@ interface ProviderConfig {
 }
 
 // OpenRouter available models
-const OPENROUTER_MODELS = [
-  { id: 'moonshotai/kimi-k2:free', name: 'Kimi K2', free: true, description: 'ممتاز للأدوات - مجاني' },
-  { id: 'meta-llama/llama-3-8b-instruct:free', name: 'Llama 3 8B', free: true, description: 'سريع وخفيف - مجاني' },
-  { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B', free: true, description: 'من Google - مجاني' },
-  { id: 'minimax/minimax-m2', name: 'MiniMax M2.1 ⭐', free: false, description: 'الأقوى للأدوات والمتصفح' },
-  { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', free: false, description: 'ذكي ورخيص جداً' },
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', free: false, description: 'سريع ودقيق' },
-  { id: 'openai/gpt-4o', name: 'GPT-4o', free: false, description: 'الأقوى من OpenAI' },
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', free: false, description: 'ممتاز للكود' },
+const OPENROUTER_MODELS: Array<{ id: string; name: string; free: boolean; descriptionKey: string }> = [
+  { id: 'moonshotai/kimi-k2:free', name: 'Kimi K2', free: true, descriptionKey: 'modelKimiDesc' },
+  { id: 'meta-llama/llama-3-8b-instruct:free', name: 'Llama 3 8B', free: true, descriptionKey: 'modelLlamaDesc' },
+  { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B', free: true, descriptionKey: 'modelGemmaDesc' },
+  { id: 'minimax/minimax-m2', name: 'MiniMax M2.1 ⭐', free: false, descriptionKey: 'modelMinimaxDesc' },
+  { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', free: false, descriptionKey: 'modelDeepseekDesc' },
+  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', free: false, descriptionKey: 'modelGpt4oMiniDesc' },
+  { id: 'openai/gpt-4o', name: 'GPT-4o', free: false, descriptionKey: 'modelGpt4oDesc' },
+  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', free: false, descriptionKey: 'modelSonnetDesc' },
 ];
 
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   // Free-first: Joe relies primarily on FREE providers. "Auto" picks the best
   // available free provider automatically (see the router's free-first mesh).
-  auto: { name: 'Auto — تلقائي (المحلي + المجاني)', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
-  gemini: { name: 'Google Gemini (مجاني)', apiKey: 'free-mode', isConnected: true, model: 'gemini-2.0-flash', isFree: true },
+  auto: { name: 'Auto', nameKey: 'provAuto', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
+  gemini: { name: 'Google Gemini', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, model: 'gemini-2.0-flash', isFree: true },
   // Groq (شركة Groq — مفتاحها يبدأ بـ gsk_). ضع مفتاح Groq هنا. النموذج مطابق للمفتاح.
-  groq: { name: 'Groq ⚡ (ضع مفتاح gsk_ هنا)', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', isFree: true },
-  cerebras: { name: 'Cerebras (مجاني - فائق السرعة)', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.cerebras.ai/v1', model: 'llama-3.3-70b', isFree: true },
-  openrouter: { name: 'OpenRouter (مجاني)', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free', isFree: true },
-  mistral: { name: 'Mistral (مجاني)', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', isFree: true },
-  deepseek: { name: 'DeepSeek (مجاني)', apiKey: 'free-mode', isConnected: true, model: 'deepseek-chat', isCustom: true, isFree: true },
-  openai: { name: 'OpenAI (مفتاح مدفوع)', apiKey: '', isConnected: false, model: 'gpt-4o' },
-  anthropic: { name: 'Anthropic (مفتاح مدفوع)', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
+  groq: { name: 'Groq ⚡', tagKey: 'provGroqHint', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', isFree: true },
+  cerebras: { name: 'Cerebras', tagKey: 'provUltraFast', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.cerebras.ai/v1', model: 'llama-3.3-70b', isFree: true },
+  openrouter: { name: 'OpenRouter', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free', isFree: true },
+  mistral: { name: 'Mistral', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', isFree: true },
+  deepseek: { name: 'DeepSeek', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, model: 'deepseek-chat', isCustom: true, isFree: true },
+  openai: { name: 'OpenAI', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'gpt-4o' },
+  anthropic: { name: 'Anthropic', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
   // ⚠️ xAI Grok — شركة إيلون ماسك (x.ai)، مختلفة تماماً عن Groq. مفتاح gsk_ لا يعمل هنا.
-  grok: { name: 'xAI Grok (شركة أخرى — ليست Groq)', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
+  grok: { name: 'xAI Grok', tagKey: 'provGrokNote', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
 };
 
 // Honest per-provider key info. `auto` is NOT listed — it is the pure keyless mesh.
@@ -747,12 +752,12 @@ const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
 //                 wrongly said "no key needed", which is why these felt "fake".
 //  - 'paid'     : needs a paid key.
 type KeyNeed = 'keyless' | 'optional' | 'required' | 'paid';
-const PROVIDER_KEY_INFO: Record<string, { need: KeyNeed; getUrl?: string; getLabel?: string; placeholder: string }> = {
-  groq: { need: 'optional', getUrl: 'https://console.groq.com/keys', getLabel: 'console.groq.com/keys', placeholder: 'gsk_... (اتركه فارغاً للوضع المجاني)' },
-  deepseek: { need: 'keyless', getUrl: 'https://platform.deepseek.com/api_keys', getLabel: 'platform.deepseek.com', placeholder: 'sk-... (اختياري)' },
+const PROVIDER_KEY_INFO: Record<string, { need: KeyNeed; getUrl?: string; getLabel?: string; placeholder?: string; placeholderKey?: string }> = {
+  groq: { need: 'optional', getUrl: 'https://console.groq.com/keys', getLabel: 'console.groq.com/keys', placeholderKey: 'keyPlaceholderGroq' },
+  deepseek: { need: 'keyless', getUrl: 'https://platform.deepseek.com/api_keys', getLabel: 'platform.deepseek.com', placeholderKey: 'keyPlaceholderOptional' },
   gemini: { need: 'required', getUrl: 'https://aistudio.google.com/app/apikey', getLabel: 'aistudio.google.com/app/apikey', placeholder: 'AIza...' },
   cerebras: { need: 'required', getUrl: 'https://cloud.cerebras.ai/', getLabel: 'cloud.cerebras.ai', placeholder: 'csk-...' },
-  mistral: { need: 'required', getUrl: 'https://console.mistral.ai/api-keys', getLabel: 'console.mistral.ai/api-keys', placeholder: 'مفتاح Mistral' },
+  mistral: { need: 'required', getUrl: 'https://console.mistral.ai/api-keys', getLabel: 'console.mistral.ai/api-keys', placeholderKey: 'keyPlaceholderMistral' },
   openrouter: { need: 'required', getUrl: 'https://openrouter.ai/keys', getLabel: 'openrouter.ai/keys', placeholder: 'sk-or-...' },
   openai: { need: 'paid', getUrl: 'https://platform.openai.com/api-keys', getLabel: 'platform.openai.com', placeholder: 'sk-...' },
   anthropic: { need: 'paid', getUrl: 'https://console.anthropic.com/settings/keys', getLabel: 'console.anthropic.com', placeholder: 'sk-ant-...' },
@@ -1307,7 +1312,7 @@ export default function CommandComposer({
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
-      alert('التعرف الصوتي غير مدعوم في هذا المتصفح. يرجى استخدام Chrome.');
+      alert(t('speechUnsupported'));
       return;
     }
     if (isListening) {
@@ -1556,7 +1561,7 @@ export default function CommandComposer({
               browserSessionId,
               chatSessionId: String(data?.sessionId || sessionId || '').trim(),
               secretKey,
-              message: String(data?.message || 'الوكيل يحتاج بياناتك للمتابعة'),
+              message: String(data?.message || t('agentNeedsCredentials')),
               url: typeof data?.url === 'string' ? data.url : undefined,
             });
             setBrowserCredValue('');
@@ -2076,7 +2081,7 @@ export default function CommandComposer({
       }, 'image/jpeg', 0.9);
     } catch (err: any) {
       console.error('Camera capture failed:', err);
-      alert(t('cameraError', 'لا يمكن الوصول للكاميرا. تأكد من منح الإذن.'));
+      alert(t('cameraError', 'Cannot access the camera. Make sure permission is granted.'));
     }
   }
 
@@ -2116,7 +2121,7 @@ export default function CommandComposer({
       console.error('Screen capture failed:', err);
       // User cancelled - don't show error
       if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
-        alert(t('screenError', 'فشل في التقاط الشاشة.'));
+        alert(t('screenError', 'Screen capture failed.'));
       }
     }
   }
@@ -2668,7 +2673,7 @@ export default function CommandComposer({
     const isSecretLike = /PASSWORD|2FA|OTP|CODE|TOKEN|SECRET/i.test(key);
     setEvents(prev => [
       ...prev,
-      { type: 'user_input', data: (isSecretLike || extraSecrets) ? t('secretSentMask', '🔐 [تم إرسال البيانات]') : val, id: Date.now().toString(), ts: Date.now(), seq: lastLiveSeqRef.current + 0.1 }
+      { type: 'user_input', data: (isSecretLike || extraSecrets) ? t('secretSentMask', '🔐 [token sent]') : val, id: Date.now().toString(), ts: Date.now(), seq: lastLiveSeqRef.current + 0.1 }
     ]);
 
     const token = localStorage.getItem('token');
@@ -2683,7 +2688,7 @@ export default function CommandComposer({
       });
       if (res.status === 401) { handleUnauthorized(); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue', 'تم الحفظ — يُكمل الوكيل المهمة الآن.')}`, ts: Date.now() }]);
+      setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue', 'Token saved. Continuing execution.')}`, ts: Date.now() }]);
     } catch (e) {
       setEvents(prev => [...prev, { type: 'error', data: `تعذّر متابعة المتصفح: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
     } finally {
@@ -3305,12 +3310,12 @@ export default function CommandComposer({
                       key={key}
                       className={`provider-item ${selectedProvider === key ? 'active' : ''}`}
                       onClick={() => setSelectedProvider(key)}
-                      title={p.lastError ? `لا يعمل: ${p.lastError}` : activeProvider === key ? 'قيد الاستخدام الآن' : 'اضغط للعرض، ثم Verify للتفعيل'}
+                      title={p.lastError ? t('providerNotWorking', { error: p.lastError }) : activeProvider === key ? t('providerInUse') : t('providerClickToView')}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.verified ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
-                        {p.name.split(' ')[0]}
-                        {activeProvider === key && <span style={{ fontSize: 10, color: '#22c55e', marginInlineStart: 4 }}>● قيد الاستخدام</span>}
+                        {p.nameKey ? t(p.nameKey) : p.name.split(' ')[0]}
+                        {activeProvider === key && <span style={{ fontSize: 10, color: '#22c55e', marginInlineStart: 4 }}>{t('providerInUseBadge')}</span>}
                       </span>
                       {selectedProvider === key && <ChevronRight size={14} />}
                     </button>
@@ -3330,8 +3335,8 @@ export default function CommandComposer({
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.verified ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
-                        {p.name.split(' ')[0]}
-                        {activeProvider === key && <span style={{ fontSize: 10, color: '#22c55e', marginInlineStart: 4 }}>● قيد الاستخدام</span>}
+                        {p.nameKey ? t(p.nameKey) : p.name.split(' ')[0]}
+                        {activeProvider === key && <span style={{ fontSize: 10, color: '#22c55e', marginInlineStart: 4 }}>{t('providerInUseBadge')}</span>}
                       </span>
                       {selectedProvider === key && <ChevronRight size={14} />}
                     </button>
@@ -3365,14 +3370,14 @@ export default function CommandComposer({
                           }));
                         }}
                       >
-                        <optgroup label="🆓 نماذج مجانية">
+                        <optgroup label={t('modelsFree')}>
                           {OPENROUTER_MODELS.filter(m => m.free).map(m => (
-                            <option key={m.id} value={m.id}>{m.name} - {m.description}</option>
+                            <option key={m.id} value={m.id}>{m.name} - {t(m.descriptionKey)}</option>
                           ))}
                         </optgroup>
-                        <optgroup label="💳 نماذج مدفوعة (تحتاج API Key)">
+                        <optgroup label={t('modelsPaid')}>
                           {OPENROUTER_MODELS.filter(m => !m.free).map(m => (
-                            <option key={m.id} value={m.id}>{m.name} - {m.description}</option>
+                            <option key={m.id} value={m.id}>{m.name} - {t(m.descriptionKey)}</option>
                           ))}
                         </optgroup>
                       </select>
@@ -3457,7 +3462,7 @@ export default function CommandComposer({
                                 }).catch(err => console.error('Failed to send API key to server:', err));
                               }
                             }}
-                            placeholder={info.placeholder}
+                            placeholder={info.placeholderKey ? t(info.placeholderKey) : info.placeholder}
                           />
                           <button
                             onClick={() => setShowKey(prev => ({ ...prev, [selectedProvider]: !prev[selectedProvider] }))}
@@ -3777,7 +3782,7 @@ export default function CommandComposer({
             <div className="drop-zone-overlay">
               <div className="drop-zone-content">
                 <Paperclip size={32} />
-                <span>{t('dropFilesHere', 'أفلت الملفات هنا')}</span>
+                <span>{t('dropFilesHere', 'Drop the files here')}</span>
               </div>
             </div>
           )}
@@ -3842,7 +3847,7 @@ export default function CommandComposer({
                     <div className="uploading-content">
                       <Loader2 size={16} className="spin uploading-spinner" />
                       <span className="uploading-text">
-                        {t('uploading', 'جاري الرفع')}
+                        {t('uploading', 'Uploading')}
                       </span>
                       <span className="uploading-progress">{uploadProgress}%</span>
                     </div>

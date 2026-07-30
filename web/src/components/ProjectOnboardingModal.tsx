@@ -53,13 +53,13 @@ const ProjectOnboardingModal: React.FC<Props> = ({ isOpen, onClose, onSelectLoca
                     <div className="onboarding-header">
                         <motion.div className="onboarding-badge" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                             <Sparkles size={12} />
-                            <span>{t('onboardingWelcome', 'أهلاً بك في JOE')}</span>
+                            <span>{t('onboardingWelcome', 'Welcome to JOE')}</span>
                         </motion.div>
                         <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 600, color: '#fff', letterSpacing: '-0.01em' }}>
-                            {t('onboardingTitle', 'تهيئة المشروع')}
+                            {t('onboardingTitle', 'Project setup')}
                         </h2>
                         <p style={{ marginTop: '8px', fontSize: '13px', color: 'var(--joe-text-secondary)', opacity: 0.7, maxWidth: '400px', marginInline: 'auto', lineHeight: '1.5' }}>
-                            {t('onboardingSubtitle', 'اختر بيئة العمل المناسبة للبدء في بناء تطبيقك.')}
+                            {t('onboardingSubtitle', 'Choose the workspace to start building your app.')}
                         </p>
                     </div>
 
@@ -77,10 +77,10 @@ const ProjectOnboardingModal: React.FC<Props> = ({ isOpen, onClose, onSelectLoca
                                 <Monitor size={24} />
                             </div>
                             <div className="onboarding-card-content">
-                                <h3 className="onboarding-card-title">{t('onboardingLocal', 'بيئة محلية')}</h3>
-                                <p className="onboarding-card-desc">{t('onboardingLocalDesc', 'البدء مباشرة على جهازك الحالي.')}</p>
+                                <h3 className="onboarding-card-title">{t('onboardingLocal', 'Local environment')}</h3>
+                                <p className="onboarding-card-desc">{t('onboardingLocalDesc', 'Start straight away on this machine.')}</p>
                             </div>
-                            <div className="onboarding-card-tag" style={{ color: '#3b82f6' }}>{t('onboardingFast', 'سريع')}</div>
+                            <div className="onboarding-card-tag" style={{ color: '#3b82f6' }}>{t('onboardingFast', 'Fast')}</div>
                             <ArrowUpRight size={16} style={{ opacity: 0.3 }} />
                         </motion.div>
 
@@ -97,10 +97,10 @@ const ProjectOnboardingModal: React.FC<Props> = ({ isOpen, onClose, onSelectLoca
                                 <Github size={24} />
                             </div>
                             <div className="onboarding-card-content">
-                                <h3 className="onboarding-card-title">{t('onboardingGitHub', 'مستودع GitHub')}</h3>
-                                <p className="onboarding-card-desc">{t('onboardingGitHubDesc', 'ربط المشروع بمستودع خارجي للمزامنة.')}</p>
+                                <h3 className="onboarding-card-title">{t('onboardingGitHub', 'GitHub repository')}</h3>
+                                <p className="onboarding-card-desc">{t('onboardingGitHubDesc', 'Link the project to an external repository for syncing.')}</p>
                             </div>
-                            <div className="onboarding-card-tag" style={{ color: 'var(--joe-gold-primary)' }}>{t('onboardingPro', 'احترافي')}</div>
+                            <div className="onboarding-card-tag" style={{ color: 'var(--joe-gold-primary)' }}>{t('onboardingPro', 'Professional')}</div>
                             <ArrowUpRight size={16} style={{ opacity: 0.3 }} />
                         </motion.div>
                     </div>
@@ -130,7 +130,7 @@ const ProjectOnboardingModal: React.FC<Props> = ({ isOpen, onClose, onSelectLoca
                                 opacity: 0.6
                             }}
                         >
-                            {t('onboardingSkip', 'تجهيز لاحقاً')}
+                            {t('onboardingSkip', 'Set up later')}
                         </button>
                     </div>
                 </motion.div>

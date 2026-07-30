@@ -51,33 +51,33 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
             id: 'status',
             icon: <Activity size={18} />,
             labelKey: 'systemStatus',
-            labelFallback: 'حالة النظام',
+            labelFallback: 'System status',
             descKey: 'systemStatusDesc',
-            descFallback: 'فحص حقيقي لكل الأنظمة'
+            descFallback: 'A real, live check of every Joe subsystem'
         },
         {
             id: 'appearance',
             icon: <Palette size={18} />,
             labelKey: 'appearance',
-            labelFallback: 'المظهر',
+            labelFallback: 'Appearance',
             descKey: 'appearanceDesc',
-            descFallback: 'الوضع النهاري والليلي'
+            descFallback: 'Light and dark mode'
         },
         {
             id: 'language',
             icon: <Globe size={18} />,
             labelKey: 'language',
-            labelFallback: 'اللغة',
+            labelFallback: 'Interface language',
             descKey: 'languageDesc',
-            descFallback: 'لغة واجهة المستخدم'
+            descFallback: 'Interface language'
         },
         {
             id: 'account',
             icon: <Shield size={18} />,
             labelKey: 'account',
-            labelFallback: 'الحساب',
+            labelFallback: 'Account & security',
             descKey: 'accountDesc',
-            descFallback: 'إدارة الجلسة والخروج'
+            descFallback: 'Manage your session and sign out'
         }
     ];
 
@@ -91,8 +91,8 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         <div className="stg-content-header">
                             <Activity size={22} />
                             <div>
-                                <h3>{t('systemStatus', 'حالة النظام')}</h3>
-                                <p>{t('systemStatusDesc', 'فحص حقيقي مباشر لكل أنظمة جو')}</p>
+                                <h3>{t('systemStatus', 'System status')}</h3>
+                                <p>{t('systemStatusDesc', 'A real, live check of every Joe subsystem')}</p>
                             </div>
                         </div>
                         <SystemStatusPanel />
@@ -104,8 +104,8 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         <div className="stg-content-header">
                             <Palette size={22} />
                             <div>
-                                <h3>{t('appearance', 'المظهر العام')}</h3>
-                                <p>{t('chooseTheme', 'اختر المظهر المناسب لك')}</p>
+                                <h3>{t('appearance', 'Appearance')}</h3>
+                                <p>{t('chooseTheme', 'Choose the theme that suits you')}</p>
                             </div>
                         </div>
                         <div className="stg-theme-cards">
@@ -125,7 +125,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                 </div>
                                 <div className="stg-theme-info">
                                     <Moon size={16} />
-                                    <span>{t('darkMode', 'الوضع الليلي')}</span>
+                                    <span>{t('darkMode', 'Dark mode')}</span>
                                     {theme === 'dark' && <Check size={14} className="stg-check" />}
                                 </div>
                             </button>
@@ -145,7 +145,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                 </div>
                                 <div className="stg-theme-info">
                                     <Sun size={16} />
-                                    <span>{t('lightMode', 'الوضع النهاري')}</span>
+                                    <span>{t('lightMode', 'Light mode')}</span>
                                     {theme === 'light' && <Check size={14} className="stg-check" />}
                                 </div>
                             </button>
@@ -153,10 +153,10 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         <div className="stg-option-row">
                             <div className="stg-option-label">
                                 <Monitor size={16} />
-                                <span>{t('currentTheme', 'المظهر الحالي')}</span>
+                                <span>{t('currentTheme', 'Current theme')}</span>
                             </div>
                             <div className="stg-option-value stg-badge">
-                                {theme === 'dark' ? '🌙 ' + t('darkMode', 'ليلي') : '☀️ ' + t('lightMode', 'نهاري')}
+                                {theme === 'dark' ? `🌙 ${t('themeNight', 'Dark')}` : `☀️ ${t('themeDay', 'Light')}`}
                             </div>
                         </div>
                     </div>
@@ -167,8 +167,8 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         <div className="stg-content-header">
                             <Globe size={22} />
                             <div>
-                                <h3>{t('language', 'لغة الواجهة')}</h3>
-                                <p>{t('chooseLang', 'اختر لغة واجهة المستخدم')}</p>
+                                <h3>{t('language', 'Interface language')}</h3>
+                                <p>{t('chooseLang', 'Choose the interface language')}</p>
                             </div>
                         </div>
                         <div className="stg-lang-list">
@@ -191,7 +191,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         <div className="stg-option-row">
                             <div className="stg-option-label">
                                 <Smartphone size={16} />
-                                <span>{t('currentLang', 'اللغة الحالية')}</span>
+                                <span>{t('currentLang', 'Current language')}</span>
                             </div>
                             <div className="stg-option-value stg-badge">
                                 {currentLang?.flag} {currentLang?.label}
@@ -205,8 +205,8 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         <div className="stg-content-header">
                             <Shield size={22} />
                             <div>
-                                <h3>{t('account', 'الحساب والأمان')}</h3>
-                                <p>{t('manageSession', 'إدارة جلستك الحالية')}</p>
+                                <h3>{t('account', 'Account & security')}</h3>
+                                <p>{t('manageSession', 'Manage your current session')}</p>
                             </div>
                         </div>
                         <div className="stg-account-section">
@@ -215,13 +215,13 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                 <div className="stg-danger-label">
                                     <LogOut size={16} />
                                     <div>
-                                        <span className="stg-danger-title">{t('logout', 'تسجيل الخروج')}</span>
-                                        <span className="stg-danger-desc">{t('logoutDesc', 'سيتم مسح جلستك الحالية وتوجيهك لصفحة الدخول')}</span>
+                                        <span className="stg-danger-title">{t('logout', 'Log out')}</span>
+                                        <span className="stg-danger-desc">{t('logoutDesc', 'Your current session will be cleared and you will be sent to the login page')}</span>
                                     </div>
                                 </div>
                                 <button className="stg-logout-btn" onClick={onLogout}>
                                     <LogOut size={16} />
-                                    <span>{t('logout', 'خروج')}</span>
+                                    <span>{t('logout', 'Log out')}</span>
                                 </button>
                             </div>
                         </div>
@@ -236,7 +236,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 {/* Sidebar */}
                 <div className="stg-sidebar">
                     <div className="stg-sidebar-header">
-                        <span className="stg-sidebar-title">{t('settings', 'الإعدادات')}</span>
+                        <span className="stg-sidebar-title">{t('settings', 'Settings')}</span>
                         <button className="stg-close-btn" onClick={onClose}>
                             <X size={16} />
                         </button>
@@ -314,18 +314,18 @@ const GoogleConnect: React.FC<{ t: (k: string, f: string) => string }> = ({ t })
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <Mail size={20} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600 }}>{t('googleAccount', 'حساب Google')}</div>
+                    <div style={{ fontWeight: 600 }}>{t('googleAccount', 'Google account')}</div>
                     <div style={{ fontSize: 12, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {!status.configured
-                            ? t('googleNotConfigured', 'لم تُضبط بيانات Google بعد (GOOGLE_CLIENT_ID/SECRET)')
+                            ? t('googleNotConfigured', 'Google credentials are not configured yet (GOOGLE_CLIENT_ID/SECRET)')
                             : status.connected
-                                ? `${t('connectedAs', 'متصل باسم')} ${status.email || ''}`
-                                : t('googleConnectDesc', 'اربط حسابك ليتصرّف جو في بريدك وتقويمك وملفاتك')}
+                                ? `${t('connectedAs', 'Connected as')} ${status.email || ''}`
+                                : t('googleConnectDesc', 'Connect your account so Joe can act on your mail, calendar and files')}
                     </div>
                 </div>
                 {status.configured && (status.connected
-                    ? <button className="stg-logout-btn" disabled={busy} onClick={disconnect} style={{ whiteSpace: 'nowrap' }}>{t('disconnect', 'فصل')}</button>
-                    : <button className="stg-logout-btn" onClick={connect} style={{ whiteSpace: 'nowrap', background: '#1a73e8', color: '#fff' }}>{t('connectGoogle', 'ربط Google')}</button>)}
+                    ? <button className="stg-logout-btn" disabled={busy} onClick={disconnect} style={{ whiteSpace: 'nowrap' }}>{t('disconnect', 'Disconnect')}</button>
+                    : <button className="stg-logout-btn" onClick={connect} style={{ whiteSpace: 'nowrap', background: '#1a73e8', color: '#fff' }}>{t('connectGoogle', 'Connect Google')}</button>)}
             </div>
         </div>
     );

@@ -72,10 +72,10 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                         </div>
                         <div>
                             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>
-                                {t('connectGitHub', 'ربط GitHub')}
+                                {t('connectGitHub', 'Connect GitHub')}
                             </h3>
                             <p style={{ margin: '4px 0 0', fontSize: '13px', opacity: 0.6 }}>
-                                {success ? t('selectRepoDesc', 'اختر المستودع للمزامنة') : t('connectGitHubDesc', 'اربط حسابك لإنشاء مشاريع احترافية')}
+                                {success ? t('selectRepoDesc', 'Choose the repository to sync') : t('connectGitHubDesc', 'Connect your account to build professional projects')}
                             </p>
                         </div>
                     </div>
@@ -89,7 +89,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                 <CheckCircle size={24} style={{ color: '#22c55e' }} />
                                 <div>
                                     <p style={{ fontWeight: 600, fontSize: '14px', margin: '0' }}>
-                                        {t('connectedAs', 'متصل كـ')}: {success.name || success.username}
+                                        {t('connectedAs', 'Connected as')}: {success.name || success.username}
                                     </p>
                                 </div>
                             </div>
@@ -101,7 +101,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                     </div>
                                 ) : repos.length === 0 ? (
                                     <div style={{ padding: '20px', textAlign: 'center', opacity: 0.5, fontSize: '13px' }}>
-                                        {t('noReposFound', 'لم يتم العثور على مستودعات')}
+                                        {t('noReposFound', 'No repositories found')}
                                     </div>
                                 ) : (
                                     repos.map(repo => (
@@ -128,7 +128,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                             </div>
                                             <div style={{ flex: 1 }}>
                                                 <div style={{ fontSize: '13px', fontWeight: 500 }}>{repo.name}</div>
-                                                <div style={{ fontSize: '11px', opacity: 0.5 }}>{repo.private ? '🔒 Private' : '🌐 Public'}</div>
+                                                <div style={{ fontSize: '11px', opacity: 0.5 }}>{repo.private ? `🔒 ${t('repoPrivate', 'Private')}` : `🌐 ${t('repoPublic', 'Public')}`}</div>
                                             </div>
                                         </div>
                                     ))
@@ -140,7 +140,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                             {/* Instructions */}
                             <div style={instructionsStyle}>
                                 <p style={{ margin: '0 0 8px', fontSize: '13px', opacity: 0.7 }}>
-                                    {t('tokenInstructions', 'أنشئ Personal Access Token من إعدادات GitHub:')}
+                                    {t('tokenInstructions', 'Create a Personal Access Token in your GitHub settings:')}
                                 </p>
                                 <a
                                     href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=Joe-AI-Agent"
@@ -149,7 +149,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                     style={linkStyle}
                                 >
                                     <ExternalLink size={14} />
-                                    {t('createToken', 'إنشاء Token جديد')}
+                                    {t('createToken', 'Create a new token')}
                                 </a>
                             </div>
 
@@ -203,7 +203,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                 {/* Footer */}
                 <div style={footerStyle}>
                     <button onClick={onClose} style={cancelBtnStyle}>
-                        {success ? t('cancel', 'إلغاء') : t('cancel', 'إلغاء')}
+                        {success ? t('cancel', 'Cancel') : t('cancel', 'Cancel')}
                     </button>
                     {success ? (
                         <button
@@ -214,7 +214,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                 opacity: !selectedRepoId ? 0.5 : 1
                             }}
                         >
-                            {t('confirmAndOpen', 'تأكيد وفتح')}
+                            {t('confirmAndOpen', 'Confirm and open')}
                         </button>
                     ) : (
                         <button
@@ -226,7 +226,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                             }}
                         >
                             {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : null}
-                            {loading ? t('connecting', 'جاري الربط...') : t('connect', 'ربط الحساب')}
+                            {loading ? t('connecting', 'Connecting...') : t('connect', 'Connect account')}
                         </button>
                     )}
                 </div>
