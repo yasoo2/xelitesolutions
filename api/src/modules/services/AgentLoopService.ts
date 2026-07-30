@@ -128,6 +128,11 @@ export class AgentLoopService {
                 if (typeof v.output === 'string') return v.output.trim();
                 if (typeof v.text === 'string') return v.text.trim();
                 if (typeof v.answer === 'string') return v.answer.trim();
+                // `summary` MUST be preferred over `message`: a tool's message is a
+                // one-line status ("analysis complete") while the summary is the
+                // actual content. Checking message first meant a successful repo
+                // analysis surfaced as "done" and the whole report was discarded.
+                if (typeof v.summary === 'string' && v.summary.trim()) return v.summary.trim();
                 if (typeof v.message === 'string') return v.message.trim();
                 try { return JSON.stringify(v); } catch { return String(v); }
             }

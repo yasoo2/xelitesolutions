@@ -334,13 +334,52 @@ export class GitHubRepoManagerTool implements ToolDefinition {
             ]);
         } catch (e: any) { logs.push(`LLM summary failed (raw facts still returned): ${e.message}`); }
 
+        // Build the READABLE report the user actually sees. The facts are printed
+        // from the API data itself, so a failed model call costs the commentary,
+        // never the report: the analysis is never an empty "done" line.
+        const langList = Object.entries(languages)
+            .sort((a: any, b: any) => b[1] - a[1])
+            .map(([name, bytes]) => `${name} (${Math.round(Number(bytes) / 1024)} KB)`);
+        const fmtDate = (d: any) => { try { return new Date(d).toISOString().slice(0, 10); } catch { return String(d || '—'); } };
+        const lines: string[] = [];
+        lines.push(`## تحليل المستودع \`${fullName}\``);
+        lines.push('');
+        if (repo.description) lines.push(`**الوصف:** ${repo.description}`);
+        lines.push(`**الرابط:** ${repo.url}`);
+        lines.push(`**الخصوصية:** ${repo.private ? 'خاص' : 'عام'} · **الفرع الافتراضي:** ${repo.defaultBranch}`);
+        lines.push(`**عدد الملفات:** ${repo.fileCount} · **النجوم:** ${repo.stars} · **النسخ:** ${repo.forks} · **المشاكل المفتوحة:** ${repo.openIssues}`);
+        lines.push(`**أُنشئ:** ${fmtDate(repo.createdAt)} · **آخر تحديث:** ${fmtDate(repo.lastPush)}`);
+        lines.push(`**اللغات:** ${langList.length ? langList.join('، ') : 'لم تُحدَّد لغات بعد'}`);
+        if (files.length) {
+            lines.push('');
+            lines.push(`**أبرز الملفات (${Math.min(files.length, 15)} من ${repo.fileCount}):**`);
+            lines.push(files.slice(0, 15).map(f => `- \`${f}\``).join('\n'));
+        }
+        if (commits.length) {
+            lines.push('');
+            lines.push('**آخر الكوميتات:**');
+            lines.push(commits.map(c => `- \`${c.sha}\` ${c.message} — ${c.author || 'مجهول'} (${fmtDate(c.date)})`).join('\n'));
+        }
+        if (summary && summary.trim()) {
+            lines.push('');
+            lines.push('### القراءة الهندسية');
+            lines.push(summary.trim());
+        } else {
+            lines.push('');
+            lines.push('_(تعذّر توليد القراءة الهندسية من النموذج الآن — كل البيانات أعلاه حقيقية ومأخوذة مباشرة من GitHub API.)_');
+        }
+        const report = lines.join('\n');
+
         return {
             ok: true,
             output: {
                 success: true,
                 repo,
-                summary: summary || undefined,
-                message: `تم تحليل ${fullName} مباشرة من GitHub API${summary ? '' : ' (البيانات الخام فقط — تعذّر توليد الملخص)'}`,
+                // `answer` is what the chat surfaces; the one-line `message` used to
+                // win and the whole report was thrown away.
+                answer: report,
+                summary: report,
+                message: `تم تحليل ${fullName} مباشرة من GitHub API`,
             },
             logs,
         };
