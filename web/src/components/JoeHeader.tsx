@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield } from 'lucide-react';
 import { resolveIdentity, nameFromEmail, initialsFrom, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
@@ -53,6 +54,10 @@ export default function JoeHeader({
     const photo = id.picture || userAvatar || '';
     const roleLabel = role ? t(ROLE_KEY[role as UserRole]) : '';
     const roleClass = role ? `role-${role.toLowerCase().replace('_', '-')}` : '';
+    // If the photo cannot be loaded (no cached copy yet and no internet) fall
+    // back to the initials rather than leaving a broken image in the header.
+    const [photoBroken, setPhotoBroken] = useState(false);
+    useEffect(() => { setPhotoBroken(false); }, [photo]);
 
     return (
         <header className="joe-header">
@@ -148,8 +153,14 @@ export default function JoeHeader({
                             {email && <span className="joe-user-email">{email}</span>}
                         </span>
                     </div>
-                    {photo ? (
-                        <img src={photo} alt={displayName} className="joe-avatar" referrerPolicy="no-referrer" />
+                    {photo && !photoBroken ? (
+                        <img
+                            src={photo}
+                            alt={displayName}
+                            className="joe-avatar"
+                            referrerPolicy="no-referrer"
+                            onError={() => setPhotoBroken(true)}
+                        />
                     ) : (
                         <div
                             className="joe-avatar-placeholder"

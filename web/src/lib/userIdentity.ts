@@ -85,6 +85,43 @@ function decodeJwt(token: string): any | null {
 
 const VALID_ROLES: UserRole[] = ['USER', 'ADMIN', 'OWNER', 'SUPER_ADMIN'];
 
+/** Where the Google profile photo/name are cached between loads. */
+const GOOGLE_PROFILE_KEY = 'joe-google-profile';
+
+export interface GoogleProfile { email?: string; name?: string; picture?: string }
+
+export function readGoogleProfile(): GoogleProfile | null {
+    try {
+        const raw = localStorage.getItem(GOOGLE_PROFILE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+}
+
+/**
+ * Pull the connected Google account's name and photo from the API and cache it.
+ * The photo URL points at Joe's own avatar endpoint, so it keeps rendering when
+ * there is no internet. Returns null when no account is connected.
+ */
+export async function loadGoogleProfile(apiUrl: string): Promise<GoogleProfile | null> {
+    try {
+        const token = localStorage.getItem('token');
+        const r = await fetch(`${apiUrl}/oauth/google/profile`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!r.ok) return null;
+        const data = await r.json();
+        if (!data?.connected) { try { localStorage.removeItem(GOOGLE_PROFILE_KEY); } catch { } return null; }
+        // The avatar route cannot read an Authorization header, so carry the token
+        // in the query string the way the OAuth start route already does.
+        const picture = data.picture
+            ? `${apiUrl}/oauth/google/avatar${token ? `?token=${encodeURIComponent(token)}` : ''}`
+            : '';
+        const profile: GoogleProfile = { email: data.email || '', name: data.name || '', picture };
+        try { localStorage.setItem(GOOGLE_PROFILE_KEY, JSON.stringify(profile)); } catch { }
+        return profile;
+    } catch { return null; }
+}
+
 export function resolveIdentity(): UserIdentity {
     let claims: any = null;
     let stored: any = null;
@@ -97,14 +134,18 @@ export function resolveIdentity(): UserIdentity {
         if (raw) stored = JSON.parse(raw);
     } catch { /* not JSON */ }
 
+    const google = readGoogleProfile();
+
     // The token is signed by the server, so it wins over anything cached locally.
-    const email = String(claims?.email || stored?.email || '').trim();
+    const email = String(claims?.email || stored?.email || google?.email || '').trim();
     const rawName = String(claims?.name || stored?.name || '').trim();
     const realName = rawName && !PLACEHOLDER_NAMES.has(rawName.toLowerCase()) ? rawName : '';
-    const name = realName || nameFromEmail(email);
+    // A connected Google account knows the person's real name — better than a
+    // name reconstructed from the email address.
+    const name = realName || String(google?.name || '').trim() || nameFromEmail(email);
     const rawRole = String(claims?.role || stored?.role || '').trim().toUpperCase();
     const role = (VALID_ROLES as string[]).includes(rawRole) ? (rawRole as UserRole) : '';
-    const picture = String(claims?.picture || stored?.picture || stored?.avatar || '').trim();
+    const picture = String(claims?.picture || stored?.picture || stored?.avatar || google?.picture || '').trim();
     const hue = hueFrom(email || name || 'joe');
 
     return {

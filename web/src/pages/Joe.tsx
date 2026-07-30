@@ -19,7 +19,8 @@ import ProjectOnboardingModal from '../components/ProjectOnboardingModal';
 import DepartmentStatusCard from '../components/DepartmentStatusCard';
 import { githubService, GitHubRepo, GitHubUser, GitHubCommit } from '../services/githubService';
 import { useTranslation } from 'react-i18next';
-import { resolveIdentity, isPrivileged } from '../lib/userIdentity';
+import { resolveIdentity, isPrivileged, loadGoogleProfile } from '../lib/userIdentity';
+import { API_URL } from '../config';
 
 interface Message {
     id: string;
@@ -650,6 +651,16 @@ export default function Joe() {
         const id = resolveIdentity();
         return { name: id.name, avatar: id.picture, email: id.email };
     })();
+
+    // Pull the connected Google account's real name and profile photo once per
+    // session. The result is cached, so the chip renders it immediately on the
+    // next load; `googleProfileTick` re-renders the header when it lands.
+    const [, setGoogleProfileTick] = useState(0);
+    useEffect(() => {
+        let alive = true;
+        loadGoogleProfile(API_URL).then(p => { if (alive && p) setGoogleProfileTick(n => n + 1); });
+        return () => { alive = false; };
+    }, []);
 
     // Theme toggle (triggers sync effect)
     const toggleTheme = useCallback(() => {

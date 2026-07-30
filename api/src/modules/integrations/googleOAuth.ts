@@ -77,7 +77,7 @@ function tokenFile(userId: string): string {
   const h = crypto.createHash('sha256').update(String(userId || 'default')).digest('hex').slice(0, 40);
   return path.join(TOKEN_DIR, `${h}.enc`);
 }
-type TokenRecord = { refresh_token?: string; access_token?: string; expiry?: number; scope?: string; email?: string };
+type TokenRecord = { refresh_token?: string; access_token?: string; expiry?: number; scope?: string; email?: string; name?: string; picture?: string };
 
 const PRIMARY_KEY = '__primary__'; // last-connected mirror, used only as a local fallback
 function writeEnc(userId: string, rec: TokenRecord) {
@@ -103,6 +103,13 @@ function loadTokens(userId: string): TokenRecord | null {
     const dec = Buffer.concat([decipher.update(blob.subarray(28)), decipher.final()]);
     return JSON.parse(dec.toString('utf-8'));
   } catch { return null; }
+}
+
+/** The connected account's identity as last stored (email, name, photo URL). */
+export function getConnectedProfile(userId: string): { email?: string; name?: string; picture?: string } | null {
+  const rec = loadTokens(userId) || loadTokens(PRIMARY_KEY);
+  if (!rec) return null;
+  return { email: rec.email, name: rec.name, picture: rec.picture };
 }
 
 export function isConnected(userId: string): boolean { return !!(loadTokens(userId)?.refresh_token || loadTokens(PRIMARY_KEY)?.refresh_token); }
@@ -151,7 +158,13 @@ export async function handleCallback(code: string, userId: string): Promise<{ ok
     // Fetch the account email so the UI can show which account is connected.
     try {
       const ui = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${data.access_token}` } });
-      const uinfo: any = await ui.json(); if (uinfo?.email) rec.email = uinfo.email;
+      const uinfo: any = await ui.json();
+      // Keep the whole identity, not just the address: the display name and the
+      // profile photo were fetched here and then thrown away, which is why the
+      // header could never show the user's real Google picture.
+      if (uinfo?.email) rec.email = uinfo.email;
+      if (uinfo?.name) rec.name = uinfo.name;
+      if (uinfo?.picture) rec.picture = uinfo.picture;
     } catch { /* non-fatal */ }
     saveTokens(userId, rec);
     return { ok: true, email: rec.email };
@@ -227,4 +240,68 @@ export async function getAccessToken(userId: string): Promise<string | null> {
 function clearTokensEverywhere(userId: string) {
   try { const f = tokenFile(userId); if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
   try { const f = tokenFile(PRIMARY_KEY); if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
+}
+
+/**
+ * Re-read the identity from Google and persist it.
+ *
+ * Accounts connected before name/picture were stored have only an email on
+ * disk, so a one-time refresh is what actually gets the user's photo. Called
+ * lazily by the profile route — never on a hot path.
+ */
+export async function refreshProfile(userId: string): Promise<{ email?: string; name?: string; picture?: string } | null> {
+  const accessToken = await getAccessToken(userId);
+  if (!accessToken) return null;
+  const info = await fetchUserInfo(accessToken);
+  if (!info) return null;
+  const existing = loadTokens(userId) || loadTokens(PRIMARY_KEY) || {};
+  const rec: TokenRecord = {
+    ...existing,
+    email: info.email || existing.email,
+    name: info.name || existing.name,
+    picture: info.picture || existing.picture,
+  };
+  saveTokens(userId, rec);
+  return { email: rec.email, name: rec.name, picture: rec.picture };
+}
+
+/* ---- Avatar bytes, cached on disk ------------------------------------------
+   Google serves the photo from lh3.googleusercontent.com, so an <img> pointing
+   straight at it shows nothing the moment Joe runs without internet — which is
+   how it normally runs. Fetch it once, keep the bytes next to the tokens, and
+   serve them from localhost afterwards. */
+
+function avatarFile(userId: string): string {
+  const h = crypto.createHash('sha256').update(String(userId || 'default')).digest('hex').slice(0, 40);
+  return path.join(TOKEN_DIR, `${h}.avatar.json`);
+}
+
+export function readCachedAvatar(userId: string): { contentType: string; buffer: Buffer } | null {
+  for (const id of [userId, PRIMARY_KEY]) {
+    try {
+      const f = avatarFile(id);
+      if (!fs.existsSync(f)) continue;
+      const rec = JSON.parse(fs.readFileSync(f, 'utf-8'));
+      if (rec?.b64) return { contentType: String(rec.contentType || 'image/jpeg'), buffer: Buffer.from(rec.b64, 'base64') };
+    } catch { /* try the next one */ }
+  }
+  return null;
+}
+
+/** Download the photo and cache it. Returns null when there is no photo or no network. */
+export async function cacheAvatar(userId: string, url: string): Promise<{ contentType: string; buffer: Buffer } | null> {
+  if (!url) return null;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const contentType = String(r.headers.get('content-type') || 'image/jpeg');
+    if (!contentType.startsWith('image/')) return null;
+    const buffer = Buffer.from(await r.arrayBuffer());
+    if (!buffer.length || buffer.length > 2_000_000) return null;
+    fs.mkdirSync(TOKEN_DIR, { recursive: true });
+    const rec = JSON.stringify({ contentType, url, b64: buffer.toString('base64'), at: Date.now() });
+    fs.writeFileSync(avatarFile(userId), rec);
+    if (userId !== PRIMARY_KEY) fs.writeFileSync(avatarFile(PRIMARY_KEY), rec);
+    return { contentType, buffer };
+  } catch { return null; }
 }

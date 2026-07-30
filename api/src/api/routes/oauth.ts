@@ -1,7 +1,10 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { authenticate } from '../middleware/auth';
-import { isGoogleOAuthConfigured, isConnected, getConnectedEmail, disconnect } from '../../modules/integrations/googleOAuth';
+import {
+  isGoogleOAuthConfigured, isConnected, getConnectedEmail, disconnect,
+  getConnectedProfile, refreshProfile, readCachedAvatar, cacheAvatar,
+} from '../../modules/integrations/googleOAuth';
 import { config } from '../../shared/config';
 
 const router = Router();
@@ -36,6 +39,57 @@ router.get('/google/start', (req: Request, res: Response) => {
   }
   const returnTo = String(req.query?.returnTo || process.env.APP_URL || `http://localhost:${process.env.PORT || 5002}`).trim();
   return res.redirect(`/api/auth/google?returnTo=${encodeURIComponent(returnTo)}`);
+});
+
+/**
+ * The connected account's identity — email, display name and profile photo.
+ *
+ * The photo was already being fetched from Google during the OAuth callback and
+ * then discarded, so the header had nothing to show. Accounts that were
+ * connected before it was stored are backfilled here with one lazy call.
+ */
+router.get('/google/profile', authenticate as any, async (req: Request, res: Response) => {
+  const userId = uid(req);
+  if (!isConnected(userId)) {
+    return res.json({ ok: true, connected: false, email: null, name: null, picture: null });
+  }
+  let profile = getConnectedProfile(userId) || {};
+  if (!profile.picture) {
+    const refreshed = await refreshProfile(userId);
+    if (refreshed) profile = refreshed;
+  }
+  // Warm the local copy so the photo keeps working offline.
+  if (profile.picture && !readCachedAvatar(userId)) {
+    await cacheAvatar(userId, profile.picture);
+  }
+  return res.json({
+    ok: true,
+    connected: true,
+    email: profile.email || null,
+    name: profile.name || null,
+    // The browser loads the photo from Joe itself, not from Google.
+    picture: profile.picture ? '/api/oauth/google/avatar' : null,
+    remotePicture: profile.picture || null,
+  });
+});
+
+/**
+ * The cached photo bytes. Served from localhost so the avatar still renders with
+ * no internet. No `authenticate` middleware: an <img> cannot send an
+ * Authorization header — the id is resolved from ?token= or the local user, the
+ * same way /google/start already does it.
+ */
+router.get('/google/avatar', async (req: Request, res: Response) => {
+  const userId = uid(req);
+  let avatar = readCachedAvatar(userId);
+  if (!avatar) {
+    const profile = getConnectedProfile(userId);
+    if (profile?.picture) avatar = await cacheAvatar(userId, profile.picture);
+  }
+  if (!avatar) return res.status(404).json({ ok: false, error: 'no_avatar' });
+  res.setHeader('Content-Type', avatar.contentType);
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  return res.end(avatar.buffer);
 });
 
 /** Disconnect (forget the stored tokens). */
