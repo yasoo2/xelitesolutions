@@ -32,6 +32,12 @@ const SYNONYMS: Record<string, string> = {
     'ايش': 'ماذا', 'وش': 'ماذا', 'شو': 'ماذا', 'ايه': 'ماذا', 'شنو': 'ماذا',
     'سو': 'اعمل', 'سوي': 'اعمل', 'سولي': 'اعمل', 'اسوي': 'اعمل',
     'عطني': 'اعطني', 'هات': 'اعطني', 'جيب': 'اعطني', 'جيبلي': 'اعطني',
+    // ---- "make/build" verbs: every spelling maps to the one the planner matches.
+    // (After folding, «انشئ» «انشيء» «أنشئ» all become «انشي»; «إنشاء» becomes
+    // «انشا» — both are listed so either reaches the build fast-path.)
+    'انشيء': 'انشئ', 'انشاء': 'انشئ', 'انشا': 'انشئ', 'ننشئ': 'انشئ', 'تنشئ': 'انشئ',
+    'ابنيلي': 'ابني', 'اصنعلي': 'اصنع', 'صمملي': 'صمم', 'اعمللي': 'اعمل',
+    'بناء': 'ابن', 'تصميم': 'صمم', 'تطوير': 'طور', 'برمجة': 'اعمل',
     'لوقن': 'تسجيل دخول', 'لوق ان': 'تسجيل دخول',
     // ---- French ----
     'ouvre': 'open', 'ouvrir': 'open', 'cherche': 'search', 'recherche': 'search',
@@ -80,6 +86,7 @@ const SYNONYMS: Record<string, string> = {
 const FUZZY_KEYWORDS = [
     // Arabic (≥4 letters)
     'افتح', 'ابحث', 'دخول', 'تسجيل', 'احفظ', 'ارسل', 'اكتب', 'ترجم', 'صفحة', 'متصفح', 'موقع', 'انظر',
+    'انشئ', 'اصنع', 'ابني', 'صمم', 'شركة', 'تطبيق', 'واجهة', 'مستودع', 'حلل',
     // Latin (≥5 letters)
     'search', 'login', 'visit', 'browse', 'describe', 'write', 'translate', 'summarize', 'website', 'google', 'browser',
 ];
@@ -90,6 +97,13 @@ function foldChars(s: string): string {
     let out = String(s || '').normalize('NFKC');
     out = out.replace(AR_DIACRITICS, '');
     out = out.replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي');
+    // Hamza carriers are the single biggest source of Arabic "same word, different
+    // spelling": «انشئ» / «انشيء» / «إنشاء» are one verb to a reader and three
+    // distinct strings to a regex. One of those spellings cost a user their whole
+    // request — the build fast-path missed and the request fell through to the
+    // generic planner. Fold them all to a bare carrier; keys are folded the same
+    // way, so both sides of every comparison agree.
+    out = out.replace(/ئ/g, 'ي').replace(/ؤ/g, 'و').replace(/ء/g, '').replace(/ة/g, 'ه');
     // Strip accents from Latin/Cyrillic (NFD splits the base letter from the mark).
     out = out.normalize('NFD').replace(/[̀-ͯ]/g, '').normalize('NFC');
     return out.toLowerCase();
@@ -120,6 +134,13 @@ const PHRASE_KEYS = Object.keys(FOLDED_SYNONYMS)
     .filter(k => k.includes(' ') || /[　-鿿぀-ヿ가-힯]/.test(k))
     .sort((a, b) => b.length - a.length);
 
+// Typo repair compares a FOLDED token against these, so the keywords have to be
+// folded too — otherwise a keyword that changes under folding (صفحة → صفحه) can
+// only ever be reached by accident, through the edit-distance slack. Each entry
+// keeps the original spelling as the value: that is what gets written into the
+// canonical text, and it is what the planner's regexes look for.
+const FOLDED_FUZZY: Array<[string, string]> = FUZZY_KEYWORDS.map(k => [foldChars(k), k]);
+
 /** Produce the canonicalized companion text for intent detection. */
 export function normalizeIntentText(raw: string): string {
     let text = foldChars(raw);
@@ -144,8 +165,12 @@ export function normalizeIntentText(raw: string): string {
         // typo repair: exact-1 edit from a core keyword
         const minLen = /[؀-ۿ]/.test(core) ? 4 : 5;
         if (core.length >= minLen) {
-            for (const kw of FUZZY_KEYWORDS) {
-                if (Math.abs(kw.length - core.length) <= 1 && levenshtein1(core, kw)) return prefix + kw;
+            for (const [folded, kw] of FOLDED_FUZZY) {
+                // Exact match AFTER folding: the user wrote the same word with a
+                // different (equally correct) spelling — «صفحه» for «صفحة». Restore
+                // the spelling the planner's regexes are written against.
+                if (core === folded) return prefix + kw;
+                if (Math.abs(folded.length - core.length) <= 1 && levenshtein1(core, folded)) return prefix + kw;
             }
         }
         return tok;

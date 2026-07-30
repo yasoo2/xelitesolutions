@@ -465,7 +465,19 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     try {
         const tDef = tools.find(t => t.name === effectiveName);
         if (!tDef) {
-            return { ok: false, error: 'unknown_tool', logs };
+            // A bare "unknown_tool" says nothing: it reaches the user as a dead end
+            // and the log never records WHICH name failed. Name it, and offer the
+            // closest registered tools so a mis-picked name is obvious at a glance.
+            const near = tools
+                .map(t => t.name)
+                .filter(n => n.includes(effectiveName) || effectiveName.includes(n) || n.split('_')[0] === effectiveName.split('_')[0])
+                .slice(0, 5);
+            logs.push(`unknown_tool: "${effectiveName}" is not registered${near.length ? ` (closest: ${near.join(', ')})` : ''}`);
+            return {
+                ok: false,
+                error: `unknown_tool: "${effectiveName}"${near.length ? ` — did you mean: ${near.join(', ')}?` : ''}`,
+                logs,
+            };
         }
 
         const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true' || executionFirewall.isSystemContext();
