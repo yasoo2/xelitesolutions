@@ -59,7 +59,13 @@ export class ExecutionEngine {
     private activeCount = 0;
     private readonly MAX_CONCURRENT = 15;
     private readonly MAX_QUEUE_SIZE = 100;
-    private readonly CACHE_TTL_MS = 5000;
+    // The UI polls read-only commands (git status for the file-tree decorations)
+    // every 10s. A 5s TTL ALWAYS expired before the next poll, so the cache never
+    // hit once and every poll re-ran a real `git status` (~240ms of shell work,
+    // forever, for an answer that hadn't changed). The TTL must outlive the poll
+    // interval to be worth anything; 15s keeps the data at most 5s staler than
+    // the polling already made it.
+    private readonly CACHE_TTL_MS = Math.max(1000, Number(process.env.EXEC_CACHE_TTL_MS) || 15000);
 
     constructor() {
         try {
@@ -118,10 +124,12 @@ export class ExecutionEngine {
             const key = this.generateCacheKey(request);
             const cached = this.cache.get(key);
             if (cached && Date.now() < cached.expires) {
-                logger.info(`[CACHE HIT] execution skipped id=${request.id || 'anon'} key=${key} cmd=${request.payload.command}`);
+                // debug, not info: this fires on every background poll and was
+                // drowning the real orchestration lines in the console.
+                logger.debug(`[CACHE HIT] execution skipped id=${request.id || 'anon'} key=${key} cmd=${request.payload.command}`);
                 return { ...cached.result, duration: 0 };
             }
-            logger.info(`[CACHE MISS] executing engine id=${request.id || 'anon'} key=${key} cmd=${request.payload.command}`);
+            logger.debug(`[CACHE MISS] executing engine id=${request.id || 'anon'} key=${key} cmd=${request.payload.command}`);
         }
 
         // 2. Concurrency Control (Queue)

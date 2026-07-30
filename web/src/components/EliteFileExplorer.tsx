@@ -708,12 +708,21 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
         };
     }, [tabs, activePath]);
 
-    // Periodic git status refresh (every 10 seconds)
+    // Periodic git status refresh (every 10 seconds). Skipped while the tab is
+    // hidden: a background tab kept firing a real `git status` on the server
+    // forever for decorations nobody could see. Refresh once on return so the
+    // tree is never stale when the user actually looks at it.
     useEffect(() => {
         const interval = setInterval(() => {
+            if (document.visibilityState === 'hidden') return;
             fetchGitStatus();
         }, 10000);
-        return () => clearInterval(interval);
+        const onVisible = () => { if (document.visibilityState === 'visible') fetchGitStatus(); };
+        document.addEventListener('visibilitychange', onVisible);
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', onVisible);
+        };
     }, []);
 
     // Pin/Unpin toggle
