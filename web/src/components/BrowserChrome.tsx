@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { API_URL } from '../config';
 import { ChevronLeft, ChevronRight, RotateCcw, Settings } from 'lucide-react';
 
@@ -10,6 +11,7 @@ type Props = {
 };
 
 export default function BrowserChrome({ sessionId, onToggleControl, onToggleBoxes, showBoxes }: Props) {
+    const { t } = useTranslation();
   const [url, setUrl] = useState('');
   const token = useMemo(() => {
     try {
@@ -47,7 +49,7 @@ export default function BrowserChrome({ sessionId, onToggleControl, onToggleBoxe
         <button onClick={() => call('/api/browser/nav/refresh', { sessionId })} style={{ width: 30, height: 30, borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)' }} aria-label="Refresh"><RotateCcw size={16} /></button>
       </div>
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { const raw = String(url || '').trim(); if (!raw) return; let u = raw; if (!/^[a-z]+:\/\//i.test(u)) u = `https://${u}`; call('/api/browser/nav/goto', { sessionId, url: u, allowCrossSite: true }); } }} placeholder="أدخل رابط..." style={{ flex: 1, height: 32, borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', padding: '0 10px', fontSize: 13 }} />
+        <input value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { const raw = String(url || '').trim(); if (!raw) return; let u = raw; if (!/^[a-z]+:\/\//i.test(u)) u = `https://${u}`; call('/api/browser/nav/goto', { sessionId, url: u, allowCrossSite: true }); } }} placeholder={t('urlPlaceholder')} style={{ flex: 1, height: 32, borderRadius: 10, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', padding: '0 10px', fontSize: 13 }} />
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button onClick={() => onToggleBoxes()} style={{ height: 30, padding: '0 10px', borderRadius: 10, border: '1px solid var(--border-color)', background: showBoxes ? 'rgba(239,68,68,0.22)' : 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', fontSize: 12 }}>المربعات</button>

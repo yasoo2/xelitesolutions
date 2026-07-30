@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -69,6 +70,7 @@ interface User {
 type Tab = 'dashboard' | 'deployments' | 'admins' | 'sentinel';
 
 export default function SystemManagement() {
+    const { t } = useTranslation();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<Tab>('dashboard');
     const [loading, setLoading] = useState(true);
@@ -1137,7 +1139,7 @@ export default function SystemManagement() {
                     </button>
                 </div>
                 <div className="mgmt-back-container">
-                    <button className="btn-back" onClick={() => navigate('/joe')} title="العودة إلى مساحة العمل">
+                    <button className="btn-back" onClick={() => navigate('/joe')} title={t('backToWorkspace')}>
                         <ArrowRight size={18} style={{ marginRight: 6 }} /> رجوع للخلف
                     </button>
                 </div>

@@ -90,7 +90,7 @@ function PanelToolbar({ filter, onFilterChange, onCopyAll, onClear, count, label
                 <Search size={13} style={{ color: 'var(--joe-text-muted)', flexShrink: 0 }} />
                 <input
                     type="text"
-                    placeholder={`بحث في ${label}...`}
+                    placeholder={t('searchIn', { label })}
                     value={filter}
                     onChange={e => onFilterChange(e.target.value)}
                     style={{

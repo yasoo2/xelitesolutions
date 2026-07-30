@@ -234,7 +234,7 @@ export default function EmbeddedBrowser({
                                 setShowUrlInput(false);
                                 setInputUrl(currentUrl);
                             }}
-                            placeholder="ادخل رابط أو ابحث..."
+                            placeholder={t('urlOrSearchPlaceholder')}
                             style={{
                                 flex: 1,
                                 background: 'transparent',

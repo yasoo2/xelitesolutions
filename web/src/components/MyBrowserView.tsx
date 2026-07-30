@@ -4,11 +4,13 @@
  * "my personal browser, inside Joe" experience for the online/extension path.
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Globe, RefreshCw } from 'lucide-react';
 import { SocketService } from '../services/socket';
 import { API_URL } from '../config';
 
 export default function MyBrowserView() {
+    const { t } = useTranslation();
     const [frame, setFrame] = useState<string>('');
     const [url, setUrl] = useState<string>('');
     const [connected, setConnected] = useState<boolean>(false);
@@ -82,7 +84,7 @@ export default function MyBrowserView() {
                     value={inputUrl}
                     onChange={(e) => setInputUrl(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') navigate(inputUrl); }}
-                    placeholder="متصفحك الشخصي — اكتب رابطاً أو ابحث…"
+                    placeholder={t('myBrowserPlaceholder')}
                     dir="ltr"
                     style={{ flex: 1, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '6px 10px', color: '#e6edf3', fontSize: 12, fontFamily: 'monospace' }}
                 />

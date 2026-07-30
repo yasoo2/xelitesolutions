@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
@@ -49,7 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 }}>
                     <AlertTriangle size={32} color="#ef4444" />
                     <div style={{ fontSize: 14, fontWeight: 600 }}>
-                        {this.props.fallbackTitle || 'تعذّر تحميل المكون'}
+                        {this.props.fallbackTitle || 'This component failed to load'}
                     </div>
                     {this.state.error && (
                         <div style={{

@@ -117,8 +117,8 @@ class AutoOpenManagerClass {
                 detailLower.includes('browser agent') ||
                 detailLower.includes('via browser') ||
                 detailLower.includes('using the browser') ||
-                detailLower.includes('متصفح') ||
-                detailLower.includes('فتح المتصفح')
+                detailLower.includes('browser') ||
+                detailLower.includes('Open the browser')
             ) {
                 this.triggerOpen('browser', event.data);
             }

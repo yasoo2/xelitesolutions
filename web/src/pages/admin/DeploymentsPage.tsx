@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -32,6 +33,7 @@ interface Container {
 }
 
 export default function DeploymentsPage() {
+    const { t } = useTranslation();
     const navigate = useNavigate();
     const [deployments, setDeployments] = useState<Deployment[]>([]);
     const [containers, setContainers] = useState<Container[]>([]);
@@ -344,7 +346,7 @@ export default function DeploymentsPage() {
                 <button
                     className="deploy-back-btn"
                     onClick={() => navigate('/joe')}
-                    title="العودة إلى جو"
+                    title={t('backToJoe')}
                 >
                     <span>JOE</span>
                     <ArrowRight size={16} />

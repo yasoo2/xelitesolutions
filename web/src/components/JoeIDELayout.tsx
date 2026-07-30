@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
+import { useTranslation } from 'react-i18next';
 import JoeHeader from './JoeHeader';
 import TodosPanel from './TodosPanel';
 import ChatPanel from './ChatPanel';
@@ -164,6 +165,7 @@ export default function JoeIDELayout({
     onCreateRepo,
     githubLoading = false
 }: JoeIDELayoutProps) {
+    const { t } = useTranslation();
 
     // Sidebar states
     const [sidebarView, setSidebarView] = useState<'explorer' | 'github'>('explorer');
@@ -534,7 +536,7 @@ export default function JoeIDELayout({
                 <button
                     className="joe-mobile-explorer-toggle"
                     onClick={toggleExplorer}
-                    title={isExplorerCollapsed ? "فتح مستكشف الملفات" : "إغلاق مستكشف الملفات"}
+                    title={isExplorerCollapsed ? t('openFileExplorer') : t('closeFileExplorer')}
                     style={{
                         display: 'flex',
                         position: 'fixed',

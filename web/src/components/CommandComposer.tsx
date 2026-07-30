@@ -3712,7 +3712,7 @@ export default function CommandComposer({
                     dir={/EMAIL/i.test(browserCred.secretKey) ? 'ltr' : 'rtl'}
                     value={browserCredValue}
                     onChange={(e) => setBrowserCredValue(e.target.value)}
-                    placeholder={/2FA|OTP|CODE/i.test(browserCred.secretKey) ? 'أدخل رمز التحقّق' : /EMAIL/i.test(browserCred.secretKey) ? 'أدخل بريدك الإلكتروني' : /PASSWORD/i.test(browserCred.secretKey) ? 'أدخل كلمة المرور' : 'أدخل القيمة المطلوبة'}
+                    placeholder={/2FA|OTP|CODE/i.test(browserCred.secretKey) ? t('enter2faCode') : /EMAIL/i.test(browserCred.secretKey) ? t('enterEmail') : /PASSWORD/i.test(browserCred.secretKey) ? t('enterPassword') : t('enterRequiredValue')}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !browserCredBusy && !(/EMAIL/i.test(browserCred.secretKey) && !/2FA|OTP|CODE/i.test(browserCred.secretKey))) { void submitBrowserCred(); } }}
                     style={{
                       width: '100%', padding: '12px', paddingInlineStart: 40, borderRadius: 8,
@@ -3731,7 +3731,7 @@ export default function CommandComposer({
                       dir="ltr"
                       value={browserCredPassword}
                       onChange={(e) => setBrowserCredPassword(e.target.value)}
-                      placeholder="أدخل كلمة المرور (تُرسَل مع البريد)"
+                      placeholder={t('passwordWithEmail')}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !browserCredBusy) { void submitBrowserCred(); } }}
                       style={{
                         width: '100%', padding: '12px', paddingInlineStart: 40, borderRadius: 8,
@@ -3754,7 +3754,7 @@ export default function CommandComposer({
                   disabled={browserCredBusy || !browserCredValue.trim()}
                   style={{ padding: '8px 18px', borderRadius: 6, border: 0, background: (browserCredBusy || !browserCredValue.trim()) ? '#475569' : 'var(--accent-secondary, #2563eb)', color: '#fff', cursor: (browserCredBusy || !browserCredValue.trim()) ? 'default' : 'pointer', fontWeight: 600 }}
                 >
-                  {browserCredBusy ? '… يُتابع' : 'إرسال ومتابعة'}
+                  {browserCredBusy ? t('sendingContinue') : t('sendAndContinue')}
                 </button>
                 <button
                   onClick={() => { setBrowserCred(null); setBrowserCredValue(''); setBrowserCredPassword(''); lastGateSigRef.current.browserCred = undefined; }}

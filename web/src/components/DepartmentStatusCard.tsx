@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 /**
  * DepartmentStatusCard — the live "engineering company" pipeline strip.
@@ -33,6 +34,7 @@ interface Props {
 }
 
 export const DepartmentStatusCard: React.FC<Props> = ({ status, isArabic }) => {
+    const { t } = useTranslation();
     if (!status || !Array.isArray(status.stages) || status.stages.length === 0) return null;
 
     const doneSet = new Set(status.done || []);
@@ -58,7 +60,7 @@ export const DepartmentStatusCard: React.FC<Props> = ({ status, isArabic }) => {
             }}
         >
             <span style={{ opacity: 0.75, fontWeight: 600, color: 'var(--joe-text-muted, #6b7280)' }}>
-                {isArabic ? 'الأقسام:' : 'Team:'}
+                {isArabic ? t('departments') : 'Team:'}
             </span>
             {status.stages.map((stage, i) => {
                 const isActive = stage.key === status.active;

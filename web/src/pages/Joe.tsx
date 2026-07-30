@@ -405,7 +405,7 @@ export default function Joe() {
             setMessages(prev => [...prev, {
                 id: `sys-${Date.now()}`,
                 role: 'assistant',
-                content: '✨ **مشروع محلي جديد جاهز!**\n\nلقد قمت بإعداد بيئة العمل المحلية بنجاح. يمكنك الآن البدء في بناء تطبيقك، إنشاء ملفات، أو طلب مساعدتي في أي مهمة برمجية.'
+                content: t('projectReadyMsg')
             }]);
         } catch {
             // Silently handle local project init errors
@@ -433,7 +433,7 @@ export default function Joe() {
                 setMessages(prev => [...prev, {
                     id: `sys-${Date.now()}`,
                     role: 'assistant',
-                    content: `🔗 **تم ربط مستودع GitHub بنجاح!**\n\nلقد قمت بربط المشروع بـ **${activeRepo.fullName}**. سأقوم الآن بمزامنة الملفات ومساعدتك في التطوير الاحترافي.`
+                    content: t('repoLinkedMsg', { repo: activeRepo.fullName })
                 }]);
             });
         }

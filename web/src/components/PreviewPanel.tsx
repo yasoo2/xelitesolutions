@@ -180,13 +180,13 @@ export default function PreviewPanel({
                     <div style={{ display: 'flex', gap: 2, background: 'rgba(0,0,0,0.2)', padding: 2, borderRadius: 6 }}>
                         <PreviewButton
                             icon={Eye}
-                            tooltip="وضع الويب"
+                            tooltip={t('previewWebMode')}
                             onClick={() => setMode('web')}
                             active={mode === 'web'}
                         />
                         <PreviewButton
                             icon={Code}
-                            tooltip="وضع الكود"
+                            tooltip={t('previewCodeMode')}
                             onClick={() => setMode('code')}
                             active={mode === 'code'}
                         />
@@ -219,7 +219,7 @@ export default function PreviewPanel({
                                     handleNavigate(inputUrl);
                                 }
                             }}
-                            placeholder={mode === 'web' ? "http://localhost:3000" : "لم يتم تحديد مسار الملف"}
+                            placeholder={mode === 'web' ? "http://localhost:3000" : t('previewNoFilePath')}
                             style={{
                                 flex: 1,
                                 background: 'transparent',
@@ -270,13 +270,13 @@ export default function PreviewPanel({
                             <>
                                 <PreviewButton
                                     icon={RefreshCw}
-                                    tooltip="تحديث"
+                                    tooltip={t('browserRefresh')}
                                     onClick={handleRefresh}
                                     spinning={isLoading}
                                 />
                                 <PreviewButton
                                     icon={ExternalLink}
-                                    tooltip="فتح خارجياً"
+                                    tooltip={t('browserOpenExternal')}
                                     onClick={openExternal}
                                     disabled={!previewUrl}
                                 />
@@ -409,8 +409,8 @@ export default function PreviewPanel({
                     ) : (
                         <EmptyState 
                             icon={Code} 
-                            title="لا يوجد كود للمعاينة" 
-                            subtitle="انتظر حتى يقوم النظام بإنشاء أو تعديل ملف" 
+                            title={t('previewNoCode')} 
+                            subtitle={t('previewWaitForFile')} 
                         />
                     )
                 ) : (
@@ -451,8 +451,8 @@ export default function PreviewPanel({
                         !buildProgress && (
                             <EmptyState 
                                 icon={Eye} 
-                                title="لا توجد معاينة" 
-                                subtitle="ادخل رابط أو انتظر حتى يتم إنشاء واجهة" 
+                                title={t('previewNone')} 
+                                subtitle={t('previewEnterUrlOrWait')} 
                             />
                         )
                     )

@@ -448,9 +448,9 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           >{manualMode ? t('browserManualActive') : t('browserTakeControl')}</button>
           <button
             onClick={() => { setLoginBarHidden(true); try { localStorage.setItem('joe_login_bar_hidden', '1'); } catch { } }}
-            title="إخفاء (يمكن إظهاره من الإعدادات)"
+            title={t('hideCanBeRestored')}
             style={{ padding: '5px 8px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#8ba0be', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
-          >إخفاء</button>
+          >{t('hide')}</button>
         </div>
       )}
       <div ref={rootRef} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', background: '#fff' }}>

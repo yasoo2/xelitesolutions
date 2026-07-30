@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SocketService } from '../services/socket';
 
 export interface TrackerTask {
@@ -10,6 +11,7 @@ export interface TrackerTask {
 }
 
 export default function TaskTracker() {
+    const { t } = useTranslation();
     const [tasks, setTasks] = useState<TrackerTask[]>([]);
     const [visible, setVisible] = useState(false);
     const [elapsedMs, setElapsedMs] = useState(0);
@@ -65,7 +67,7 @@ export default function TaskTracker() {
             <div className="task-tracker-header">
                 <div className="task-tracker-title">
                     <span className="task-tracker-icon">{allDone ? '✅' : '⚡'}</span>
-                    <span>{allDone ? 'اكتملت المهام' : 'جاري التنفيذ...'}</span>
+                    <span>{allDone ? t('tasksCompleted') : t('inProgress')}</span>
                 </div>
                 <div className="task-tracker-meta">
                     <span className="task-tracker-elapsed">{elapsed}</span>

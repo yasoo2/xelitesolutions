@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FilePlus, FolderPlus, GitBranch, RefreshCw, HardDrive } from 'lucide-react';
 import EliteFileExplorer from './EliteFileExplorer';
 
@@ -25,6 +26,7 @@ export default function FileExplorerPanel({
     activeRepo = null,
     githubUser = null
 }: FileExplorerPanelProps) {
+    const { t } = useTranslation();
     const [gitChangeCount, setGitChangeCount] = useState(0);
 
     // Listen for git change count from EliteFileExplorer
@@ -49,7 +51,7 @@ export default function FileExplorerPanel({
                                 (window as any)._triggerConnectWorkspace();
                             }
                         }}
-                        title="ربط مجلد محلي (Connect Local Folder)"
+                        title={t('connectLocalFolder')}
                         style={{ color: 'var(--accent-primary)' }}
                     >
                         <HardDrive size={16} />
