@@ -19,6 +19,7 @@ import ProjectOnboardingModal from '../components/ProjectOnboardingModal';
 import DepartmentStatusCard from '../components/DepartmentStatusCard';
 import { githubService, GitHubRepo, GitHubUser, GitHubCommit } from '../services/githubService';
 import { useTranslation } from 'react-i18next';
+import { resolveIdentity, isPrivileged } from '../lib/userIdentity';
 
 interface Message {
     id: string;
@@ -85,29 +86,21 @@ export default function Joe() {
         const storedUser = localStorage.getItem('user');
 
         let role: string | undefined = undefined;
-        let email: string | undefined = undefined;
 
         if (token) {
-            try {
-                const decoded: any = jwtDecode(token);
-                role = decoded.role;
-                email = decoded.email;
-            } catch { }
+            try { role = (jwtDecode(token) as any)?.role; } catch { }
+        }
+        if (!role && storedUser) {
+            try { role = JSON.parse(storedUser)?.role; } catch { }
         }
 
-        if (!email && storedUser) {
-            try {
-                const u = JSON.parse(storedUser);
-                email = u.email;
-            } catch { }
-        }
-
-        // Hard override for the owners
-        const ownerEmails = ['info.auraaluxury@gmail.com', 'younes.sowady2011@gmail.com'];
-        if (email && ownerEmails.includes(email.toLowerCase().trim())) {
-            role = 'SUPER_ADMIN';
-            localStorage.setItem('admin', 'true');
-        }
+        // Privilege follows the ROLE the signed token carries. It used to be
+        // overridden to SUPER_ADMIN for two email addresses hardcoded in the
+        // bundle, which meant the header could only ever display that one role —
+        // an owner was shown as a super admin. Keep the `admin` flag the older
+        // screens read, but derive it instead of hardcoding who gets it.
+        if (isPrivileged(role)) localStorage.setItem('admin', 'true');
+        else localStorage.removeItem('admin');
 
         setUserRole(role);
     }, [t, nav]);
@@ -639,23 +632,12 @@ export default function Joe() {
         i18n.changeLanguage(newLang);
     }, [i18n]);
 
-    // Get user info
+    // Who is signed in. Resolved from the signed token (falling back to the
+    // cached user object) rather than reading localStorage directly, so the name
+    // is the person's real name instead of the literal placeholder "User".
     const userInfo = (() => {
-        try {
-            const stored = localStorage.getItem('user');
-            if (stored) {
-                const u = JSON.parse(stored);
-                const fullName = u.name || u.email || 'User';
-                // Extract first name for a more personal touch
-                const firstName = fullName.split(' ')[0];
-                return {
-                    name: firstName,
-                    avatar: u.picture || u.avatar || '',
-                    email: u.email || ''
-                };
-            }
-        } catch { }
-        return { name: 'User', avatar: '', email: '' };
+        const id = resolveIdentity();
+        return { name: id.name, avatar: id.picture, email: id.email };
     })();
 
     // Theme toggle (triggers sync effect)

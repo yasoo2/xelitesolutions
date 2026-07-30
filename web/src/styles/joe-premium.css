@@ -255,6 +255,14 @@
     flex-direction: column;
     align-items: flex-end;
     text-align: right;
+    gap: 3px;
+    min-width: 0;
+}
+
+/* LTR languages read the chip left-aligned; only Arabic is right-aligned. */
+body:not(.rtl) .joe-user-info {
+    align-items: flex-start;
+    text-align: left;
 }
 
 .joe-welcome-text {
@@ -270,28 +278,104 @@
     font-weight: 600;
     color: var(--joe-text-primary);
     line-height: 1.2;
-    text-shadow: 0 0 10px rgba(52, 196, 139, 0.3);
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
+
+/* Second line: role badge + the address the user actually signed in with. */
+.joe-user-sub {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.joe-user-email {
+    font-size: 10.5px;
+    color: var(--joe-text-muted);
+    line-height: 1.2;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: ltr;
+    unicode-bidi: plaintext;
+}
+
+.joe-role-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    line-height: 1;
+    padding: 3px 7px;
+    border-radius: 999px;
+    white-space: nowrap;
+    border: 1px solid transparent;
+    /* Neutral default: an unrecognised role must not borrow another one's colour. */
+    color: var(--joe-text-muted);
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.25);
+}
+
+.joe-role-badge.role-user {
+    color: #7dd3fc;
+    background: rgba(56, 189, 248, 0.12);
+    border-color: rgba(56, 189, 248, 0.28);
+}
+
+.joe-role-badge.role-admin {
+    color: #a5b4fc;
+    background: rgba(129, 140, 248, 0.14);
+    border-color: rgba(129, 140, 248, 0.3);
+}
+
+.joe-role-badge.role-owner {
+    color: #fcd34d;
+    background: rgba(251, 191, 36, 0.14);
+    border-color: rgba(251, 191, 36, 0.32);
+}
+
+.joe-role-badge.role-super-admin {
+    color: #fda4af;
+    background: rgba(244, 63, 94, 0.14);
+    border-color: rgba(244, 63, 94, 0.32);
+}
+
+[data-theme="light"] .joe-role-badge.role-user { color: #0369a1; background: rgba(2, 132, 199, 0.1); border-color: rgba(2, 132, 199, 0.25); }
+[data-theme="light"] .joe-role-badge.role-admin { color: #4338ca; background: rgba(67, 56, 202, 0.1); border-color: rgba(67, 56, 202, 0.25); }
+[data-theme="light"] .joe-role-badge.role-owner { color: #a16207; background: rgba(161, 98, 7, 0.1); border-color: rgba(161, 98, 7, 0.25); }
+[data-theme="light"] .joe-role-badge.role-super-admin { color: #be123c; background: rgba(190, 18, 60, 0.1); border-color: rgba(190, 18, 60, 0.25); }
 
 .joe-avatar,
 .joe-avatar-placeholder {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    border: 2px solid var(--joe-gold-primary);
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    border: 1.5px solid rgba(255, 255, 255, 0.14);
     object-fit: cover;
     flex-shrink: 0;
-    box-shadow: 0 0 10px rgba(52, 196, 139, 0.2);
+    box-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.55);
 }
 
+[data-theme="light"] .joe-avatar,
+[data-theme="light"] .joe-avatar-placeholder {
+    border-color: rgba(15, 23, 42, 0.12);
+}
+
+/* Initials avatar, drawn locally. The inline gradient is derived from the
+   user's email so the same person always gets the same colour. */
 .joe-avatar-placeholder {
-    background: linear-gradient(135deg, var(--joe-gold-primary), var(--joe-gold-dark));
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--joe-bg-primary);
+    color: #ffffff;
     font-weight: 700;
     font-size: 14px;
+    letter-spacing: 0.5px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+    user-select: none;
 }
 
 .joe-header-divider {

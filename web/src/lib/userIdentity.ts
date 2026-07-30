@@ -1,0 +1,128 @@
+/**
+ * Who is signed in — derived from the signed JWT first, localStorage second.
+ *
+ * The header used to show the literal string "User" (the placeholder `name`
+ * claim) next to an avatar fetched from ui-avatars.com — an external request
+ * that leaks the user's name to a third party and simply fails when Joe runs
+ * offline, which is how it is normally run. What the user saw was a broken
+ * image and a generic word.
+ *
+ * Everything here is computed locally from the email the user actually signed
+ * in with. Nothing is fetched, and nothing is invented: when there is no email
+ * to derive from, the caller gets empty strings rather than a plausible-looking
+ * placeholder.
+ */
+
+export type UserRole = 'USER' | 'ADMIN' | 'OWNER' | 'SUPER_ADMIN';
+
+export interface UserIdentity {
+    email: string;
+    /** Full display name: the `name` claim when it is real, otherwise derived from the email. */
+    name: string;
+    /** Two letters for the avatar, e.g. "YS". Empty when there is no identity. */
+    initials: string;
+    role: UserRole | '';
+    /** A real profile picture URL if one was provided (Google sign-in). Never a generated one. */
+    picture: string;
+    /** Deterministic avatar colours derived from the email — stable across sessions. */
+    color: string;
+    colorSoft: string;
+}
+
+/** Placeholder names that carry no information and must not be shown as a name. */
+const PLACEHOLDER_NAMES = new Set(['user', 'users', 'admin', 'anonymous', 'unknown', 'n/a', 'مستخدم']);
+
+/**
+ * "younes.sowady2011@gmail.com" -> "Younes Sowady".
+ * Separators become spaces, the +tag is dropped, and trailing digits (which are
+ * almost always a uniqueness suffix rather than part of a name) are trimmed.
+ */
+export function nameFromEmail(email: string): string {
+    const local = String(email || '').split('@')[0].split('+')[0];
+    if (!local) return '';
+    const words = local
+        .split(/[._\-\s]+/)
+        .map(w => w.replace(/\d+$/, '').trim())
+        .filter(Boolean)
+        .map(w => w.charAt(0).toLocaleUpperCase() + w.slice(1));
+    return words.join(' ').trim();
+}
+
+/** First letters of the first two words — works for Arabic and Latin alike. */
+export function initialsFrom(name: string, email: string): string {
+    const source = (name || nameFromEmail(email) || '').trim();
+    if (!source) return '';
+    const words = source.split(/\s+/).filter(Boolean);
+    const letters = words.slice(0, 2).map(w => Array.from(w)[0] || '').join('');
+    return letters.toLocaleUpperCase();
+}
+
+/** Stable hue from the email, so the same person always gets the same avatar. */
+function hueFrom(seed: string): number {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+    return Math.abs(hash) % 360;
+}
+
+function decodeJwt(token: string): any | null {
+    try {
+        const part = token.split('.')[1];
+        if (!part) return null;
+        const json = decodeURIComponent(
+            atob(part.replace(/-/g, '+').replace(/_/g, '/'))
+                .split('')
+                .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+                .join('')
+        );
+        return JSON.parse(json);
+    } catch { return null; }
+}
+
+const VALID_ROLES: UserRole[] = ['USER', 'ADMIN', 'OWNER', 'SUPER_ADMIN'];
+
+export function resolveIdentity(): UserIdentity {
+    let claims: any = null;
+    let stored: any = null;
+    try {
+        const token = localStorage.getItem('token');
+        if (token) claims = decodeJwt(token);
+    } catch { /* storage unavailable */ }
+    try {
+        const raw = localStorage.getItem('user');
+        if (raw) stored = JSON.parse(raw);
+    } catch { /* not JSON */ }
+
+    // The token is signed by the server, so it wins over anything cached locally.
+    const email = String(claims?.email || stored?.email || '').trim();
+    const rawName = String(claims?.name || stored?.name || '').trim();
+    const realName = rawName && !PLACEHOLDER_NAMES.has(rawName.toLowerCase()) ? rawName : '';
+    const name = realName || nameFromEmail(email);
+    const rawRole = String(claims?.role || stored?.role || '').trim().toUpperCase();
+    const role = (VALID_ROLES as string[]).includes(rawRole) ? (rawRole as UserRole) : '';
+    const picture = String(claims?.picture || stored?.picture || stored?.avatar || '').trim();
+    const hue = hueFrom(email || name || 'joe');
+
+    return {
+        email,
+        name,
+        initials: initialsFrom(name, email),
+        role,
+        picture,
+        color: `hsl(${hue}, 62%, 48%)`,
+        colorSoft: `hsl(${hue}, 62%, 62%)`,
+    };
+}
+
+/** Role -> i18n key. Kept here so every surface labels a role the same way. */
+export const ROLE_KEY: Record<UserRole, string> = {
+    USER: 'roleUser',
+    ADMIN: 'roleAdmin',
+    OWNER: 'roleOwner',
+    SUPER_ADMIN: 'roleSuperAdmin',
+};
+
+/** Roles allowed into system management / deployments. */
+export function isPrivileged(role: string | undefined): boolean {
+    const r = String(role || '').toUpperCase();
+    return r === 'SUPER_ADMIN' || r === 'OWNER' || r === 'ADMIN';
+}

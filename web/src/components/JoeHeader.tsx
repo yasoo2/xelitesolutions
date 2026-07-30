@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield } from 'lucide-react';
+import { resolveIdentity, nameFromEmail, initialsFrom, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
 
 interface JoeHeaderProps {
     userAvatar?: string;
@@ -39,18 +40,19 @@ export default function JoeHeader({
     isWorkspaceCollapsed
 }: JoeHeaderProps) {
     const { t } = useTranslation();
-    // Generate avatar color from name/email
-    const getAvatarColor = (str: string) => {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            hash = str.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        const h = Math.abs(hash % 360);
-        return `hsl(${h}, 70%, 45%)`;
-    };
 
-    const displayName = userName || (userEmail ? userEmail.split('@')[0] : 'User');
-    const displayAvatar = userAvatar || (userEmail ? `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=f0c14b&color=0a0c10&bold=true` : null);
+    // Identity comes from the signed token; the props are only a fallback for
+    // callers that already resolved it. The avatar is drawn locally from the
+    // user's initials — the old code fetched it from ui-avatars.com, which sent
+    // the user's name to a third party and rendered a broken image offline.
+    const id = resolveIdentity();
+    const email = id.email || userEmail || '';
+    const displayName = id.name || userName || nameFromEmail(email);
+    const initials = id.initials || initialsFrom(displayName, email);
+    const role = (id.role || String(userRole || '').toUpperCase()) as UserRole | '';
+    const photo = id.picture || userAvatar || '';
+    const roleLabel = role ? t(ROLE_KEY[role as UserRole]) : '';
+    const roleClass = role ? `role-${role.toLowerCase().replace('_', '-')}` : '';
 
     return (
         <header className="joe-header">
@@ -106,11 +108,9 @@ export default function JoeHeader({
                         </button>
                     )}
                     {(() => {
-                        const email = userEmail?.toLowerCase().trim() || '';
-                        const isAdmin = userRole === 'SUPER_ADMIN' ||
-                            email === 'info.auraaluxury@gmail.com' ||
-                            email === 'younes.sowady2011@gmail.com' ||
-                            localStorage.getItem('admin') === 'true';
+                        // Gate on the ROLE carried by the signed token, not on a
+                        // list of email addresses hardcoded in the bundle.
+                        const isAdmin = isPrivileged(role) || localStorage.getItem('admin') === 'true';
 
                         if (isAdmin) {
                             return (
@@ -140,16 +140,23 @@ export default function JoeHeader({
 
                 <div className="joe-header-divider"></div>
 
-                <div className="joe-user-profile">
+                <div className="joe-user-profile" title={email || undefined}>
                     <div className="joe-user-info hide-mobile">
-                        <span className="joe-welcome-text">أهلاً بك،</span>
-                        <span className="joe-user-name">{displayName}</span>
+                        <span className="joe-user-name">{displayName || t('sysNotLinked')}</span>
+                        <span className="joe-user-sub">
+                            {roleLabel && <span className={`joe-role-badge ${roleClass}`}>{roleLabel}</span>}
+                            {email && <span className="joe-user-email">{email}</span>}
+                        </span>
                     </div>
-                    {displayAvatar ? (
-                        <img src={displayAvatar} alt={displayName} className="joe-avatar" />
+                    {photo ? (
+                        <img src={photo} alt={displayName} className="joe-avatar" referrerPolicy="no-referrer" />
                     ) : (
-                        <div className="joe-avatar-placeholder" style={{ background: getAvatarColor(displayName) }}>
-                            {displayName.charAt(0).toUpperCase()}
+                        <div
+                            className="joe-avatar-placeholder"
+                            aria-label={displayName}
+                            style={{ background: `linear-gradient(135deg, ${id.color}, ${id.colorSoft})` }}
+                        >
+                            {initials || '—'}
                         </div>
                     )}
                 </div>
