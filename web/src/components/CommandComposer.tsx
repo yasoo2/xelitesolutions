@@ -2693,12 +2693,16 @@ export default function CommandComposer({
   // Verify a provider by actually testing it. GREEN dot on success, RED on
   // failure, pulsing while verifying. Applies to free providers too (the free
   // mesh is what gets tested).
-  const checkConnection = async (key: string, opts?: { closeOnSuccess?: boolean }) => {
+  // Returns TRUE when the provider really answered. `background` is used by the
+  // startup auto-check: it must not steal the panel selection, and a failure on
+  // an early attempt (API still booting) must not paint the button red before
+  // the retries are exhausted.
+  const checkConnection = async (key: string, opts?: { closeOnSuccess?: boolean; background?: boolean }): Promise<boolean> => {
     const p = providers[key];
 
     // Show it in the panel + start verifying — but do NOT make it the runtime
     // provider yet. It becomes active ONLY if the verify below succeeds.
-    setSelectedProvider(key);
+    if (!opts?.background) setSelectedProvider(key);
     setProviders(prev => ({ ...prev, [key]: { ...prev[key], isVerifying: true, isConnected: false, verified: false, lastError: undefined } }));
 
     const token = localStorage.getItem('token');
@@ -2732,18 +2736,20 @@ export default function CommandComposer({
           [key]: { ...prev[key], isVerifying: false, isConnected: true, verified: true, lastError: undefined, apiKey: prev[key].apiKey || (prev[key].isFree ? 'free-mode' : prev[key].apiKey) },
         }));
         if (opts?.closeOnSuccess) setShowProviders(false); // green → switch & close
-      } else {
-        // The live request FAILED (bad key, blocked, empty) — show it red, honestly.
-        setProviders(prev => ({
-          ...prev,
-          [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: data?.error || 'فشل الاتصال' },
-        }));
+        return true;
       }
+      // The live request FAILED (bad key, blocked, empty) — show it red, honestly.
+      setProviders(prev => ({
+        ...prev,
+        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background ? undefined : (data?.error || 'فشل الاتصال') },
+      }));
+      return false;
     } catch (err: any) {
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: err.message || 'فشل الاتصال' },
+        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background ? undefined : (err.message || 'فشل الاتصال') },
       }));
+      return false;
     }
   };
 
@@ -2755,18 +2761,29 @@ export default function CommandComposer({
   useEffect(() => {
     const ap = String(activeProvider || '').trim();
     if (!ap || didAutoVerifyRef.current) return;
-    const timer = setTimeout(() => {
-      // The guard is claimed when the check actually FIRES, not when it is
-      // scheduled. Claiming it at schedule time meant that any mount whose
-      // cleanup ran before the 600ms elapsed (React StrictMode double-invokes
-      // effects, and the session bootstrap remounts this panel) cancelled the
-      // timer while the ref already said "done" — so the verification never
-      // happened and the button sat there untested until the user clicked it.
-      if (didAutoVerifyRef.current) return;
-      didAutoVerifyRef.current = true;
-      void checkConnection(ap, { closeOnSuccess: false });
-    }, 600);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+    // Joe must open READY: the provider verifies itself the moment the panel
+    // appears, with no click. The first attempt is immediate (the check itself
+    // answers in ~200ms) and it retries a few times because the API is often
+    // still booting when the browser opens right after start-joe — a single
+    // early attempt would fail and leave the button looking dead. Failures are
+    // kept silent until the last try, so no red flash while it settles.
+    const attempts = [0, 800, 2000, 4000];
+    (async () => {
+      for (let i = 0; i < attempts.length; i++) {
+        if (attempts[i] > 0) await sleep(attempts[i]);
+        // The guard is claimed on SUCCESS, never at schedule time: claiming it
+        // early let a StrictMode/remount cleanup cancel the only attempt while
+        // the ref already read "done", so the check never ran at all.
+        if (cancelled || didAutoVerifyRef.current) return;
+        const isLast = i === attempts.length - 1;
+        const ok = await checkConnection(ap, { closeOnSuccess: false, background: !isLast });
+        if (cancelled) return;
+        if (ok) { didAutoVerifyRef.current = true; return; }
+      }
+    })();
+    return () => { cancelled = true; };
   }, [activeProvider]);
 
   const deleteProviderKey = (key: string) => {
