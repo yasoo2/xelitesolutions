@@ -57,11 +57,16 @@ export function initialsFrom(name: string, email: string): string {
     return letters.toLocaleUpperCase();
 }
 
-/** Stable hue from the email, so the same person always gets the same avatar. */
+/**
+ * Stable hue from the email, so the same person always gets the same avatar.
+ * Constrained to the cool range (cyan → blue → indigo): a free 0-360 hue landed
+ * on purple and red badges next to a blue-and-white interface. Different people
+ * still get visibly different avatars, all of them within the palette.
+ */
 function hueFrom(seed: string): number {
     let hash = 0;
     for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-    return Math.abs(hash) % 360;
+    return 190 + (Math.abs(hash) % 66); // 190..255
 }
 
 function decodeJwt(token: string): any | null {

@@ -64,45 +64,51 @@ html {
   text-rendering: optimizeLegibility;
 }
 
+/* Light theme — white and blue.
+   The light mode used to be warm off-white with the dark mode's emerald accent,
+   which read as a dimmed version of the dark theme rather than a light theme of
+   its own. Surfaces are now white, the canvas is a barely-tinted blue-white, and
+   every accent is a shade of blue. Text is deep navy rather than black so the
+   whole page stays in one colour family. */
 html[data-theme="light"] {
-  /* Premium Sky Blue Theme Accents */
-  --accent-primary: #1f9d6b;
-  /* Sky Blue 500 */
-  --accent-secondary: #0c4a6e;
-  /* Sky Blue 900 */
-  --accent-primary-rgb: 31, 157, 107;
-  --accent-secondary-rgb: 12, 74, 110;
-  --accent-rgb: 31, 157, 107;
-  --accent-glow: rgba(31, 157, 107, 0.2);
-  --brand-mark-yellow: #1f9d6b;
-  --brand-mark-yellow-rgb: 31, 157, 107;
+  --accent-primary: #2563eb;
+  /* Blue 600 — 4.9:1 on white, safe for text and icons */
+  --accent-secondary: #1e3a8a;
+  /* Blue 900 */
+  --accent-primary-rgb: 37, 99, 235;
+  --accent-secondary-rgb: 30, 58, 138;
+  --accent-rgb: 37, 99, 235;
+  --accent-glow: rgba(37, 99, 235, 0.18);
+  --brand-mark-yellow: #2563eb;
+  --brand-mark-yellow-rgb: 37, 99, 235;
 
-  --bg-dark: #f6f6f4;
-  /* Warm off-white */
+  --bg-dark: #f2f7fd;
+  /* Blue-white canvas */
   --bg-card: #ffffff;
-  --bg-secondary: #efefec;
-  --bg-input: #eeeeeb;
-  --bg-hover: rgba(31, 157, 107, 0.08);
+  --bg-secondary: #e9f1fb;
+  --bg-input: #f5f9fe;
+  --bg-hover: rgba(37, 99, 235, 0.07);
 
-  --text-primary: #1c1c1a;
-  --text-secondary: #55564f;
-  --text-muted: #8a8b84;
+  --text-primary: #0f1e33;
+  /* Deep navy, not black */
+  --text-secondary: #47566b;
+  --text-muted: #7d8ea6;
 
-  --border-color: rgba(0, 0, 0, 0.08);
-  --border-light: rgba(0, 0, 0, 0.05);
+  --border-color: rgba(15, 40, 80, 0.10);
+  --border-light: rgba(15, 40, 80, 0.06);
 
-  --shadow-md: 0 10px 30px -5px rgba(31, 157, 107, 0.1);
-  --shadow-xl: 0 25px 50px -10px rgba(31, 157, 107, 0.15);
+  --shadow-md: 0 10px 30px -8px rgba(30, 58, 138, 0.16);
+  --shadow-xl: 0 25px 50px -12px rgba(30, 58, 138, 0.22);
 
-  /* Brand Identity Tokens (Light Mode — Emerald) */
-  --brand-gradient: linear-gradient(135deg, #17825a 0%, #34c48b 100%);
-  --brand-text-gradient: linear-gradient(135deg, #0f6647 0%, #1f9d6b 50%, #17825a 100%);
+  /* Brand Identity Tokens (Light Mode — Blue) */
+  --brand-gradient: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
+  --brand-text-gradient: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #1d4ed8 100%);
   --brand-text-shadow:
-    0 1px 0 rgba(31, 157, 107, 0.1),
-    0 0 20px rgba(31, 157, 107, 0.1);
-  --brand-badge-bg: rgba(31, 157, 107, 0.05);
-  --brand-badge-text: #1f9d6b;
-  --brand-badge-border: rgba(31, 157, 107, 0.2);
+    0 1px 0 rgba(37, 99, 235, 0.10),
+    0 0 20px rgba(37, 99, 235, 0.12);
+  --brand-badge-bg: rgba(37, 99, 235, 0.06);
+  --brand-badge-text: #1d4ed8;
+  --brand-badge-border: rgba(37, 99, 235, 0.2);
 }
 
 .spin {

@@ -61,7 +61,17 @@ export default function Joe() {
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems'>('terminal');
-    const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+    // The theme was hardcoded to 'dark' on every mount, so switching to light
+    // lasted exactly until the next reload. Remember the choice, and fall back to
+    // the operating system's preference the first time.
+    const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+        try {
+            const saved = localStorage.getItem('joe-theme');
+            if (saved === 'light' || saved === 'dark') return saved;
+            if (window.matchMedia?.('(prefers-color-scheme: light)').matches) return 'light';
+        } catch { /* storage unavailable */ }
+        return 'dark';
+    });
     const [isConnected, setIsConnected] = useState(true);
     const [browserSessionId, setBrowserSessionId] = useState<string | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -626,6 +636,7 @@ export default function Joe() {
     // Theme synchronization
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', theme);
+        try { localStorage.setItem('joe-theme', theme); } catch { /* storage unavailable */ }
     }, [theme]);
 
     const handleLangChange = useCallback((newLang: string) => {

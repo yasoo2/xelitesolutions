@@ -1497,42 +1497,65 @@ body:not(.rtl) .joe-user-info {
 }
 
 /* ========== Light Theme Override ========== */
+/* The light tokens were scoped to .joe-ide-layout only, so every modal and
+   overlay rendered outside that subtree kept the DARK values — which is why the
+   onboarding dialog stayed black-on-black with the theme set to light. Declare
+   them on the root as well; the layout selector stays for specificity. */
+[data-theme="light"],
 [data-theme="light"] .joe-ide-layout {
-    /* Calm Light — warm off-white with the same emerald accent (coherent brand) */
-    --joe-bg-primary: #f6f6f4;
+    /* Tinted fill for cards/chips that used rgba(255,255,255,.02) — a white
+       veil over white is invisible, so light mode gets a faint blue wash. */
+    --joe-surface-subtle: rgba(37, 99, 235, 0.045);
+    --joe-scrim: rgba(15, 40, 80, 0.32);
+    /* White & blue. Panels are pure white and lift off a barely-tinted blue
+       canvas; every accent below is a shade of blue rather than the dark
+       theme's emerald, so light mode reads as its own design instead of a
+       washed-out copy of the dark one. The variables keep their historical
+       "gold" names — they are the accent slots the whole stylesheet already
+       references, and renaming them would touch a thousand call sites. */
+    --joe-bg-primary: #f2f7fd;
     --joe-bg-secondary: #ffffff;
     --joe-bg-panel: #ffffff;
     --joe-bg-card: #ffffff;
-    --joe-bg-hover: rgba(31, 157, 107, 0.08);
+    --joe-bg-hover: rgba(37, 99, 235, 0.07);
 
-    /* Emerald accent tuned darker for contrast on light ground */
-    --joe-gold-primary: #1f9d6b;
-    --joe-gold-secondary: #17825a;
-    --joe-gold-dark: #0f6647;
-    --joe-gold-glow: rgba(31, 157, 107, 0.25);
-    --joe-gold-subtle: rgba(31, 157, 107, 0.10);
-    --joe-gold-border: rgba(31, 157, 107, 0.22);
+    /* Blue accent, dark enough to stay readable on white */
+    --joe-gold-primary: #2563eb;
+    --joe-gold-secondary: #1d4ed8;
+    --joe-gold-dark: #1e3a8a;
+    --joe-gold-glow: rgba(37, 99, 235, 0.22);
+    --joe-gold-subtle: rgba(37, 99, 235, 0.09);
+    --joe-gold-border: rgba(37, 99, 235, 0.20);
 
-    --joe-text-primary: #1c1c1a;
-    --joe-text-secondary: #55564f;
-    --joe-text-muted: #8a8b84;
-    --joe-text-gold: #17825a;
+    --joe-text-primary: #0f1e33;
+    --joe-text-secondary: #47566b;
+    --joe-text-muted: #7d8ea6;
+    --joe-text-gold: #1d4ed8;
 
-    --joe-border: rgba(0, 0, 0, 0.08);
-    --joe-border-strong: rgba(0, 0, 0, 0.14);
-    --joe-border-glow: 0 0 15px rgba(31, 157, 107, 0.10);
+    --joe-blue-primary: #2563eb;
+    --joe-blue-secondary: #1d4ed8;
+    --joe-blue-glow: rgba(37, 99, 235, 0.2);
 
-    --joe-shadow-gold: 0 0 20px rgba(31, 157, 107, 0.12);
+    /* Borders carry a navy tint instead of neutral black — pure black hairlines
+       on white are what made the panels look grey. */
+    --joe-border: rgba(15, 40, 80, 0.10);
+    --joe-border-strong: rgba(15, 40, 80, 0.17);
+    --joe-border-glow: 0 0 15px rgba(37, 99, 235, 0.10);
 
-    /* Light Mode Bubble Colors (Calm) */
-    --joe-msg-bg: rgba(246, 246, 244, 0.9);
+    --joe-shadow-sm: 0 2px 8px rgba(30, 58, 138, 0.07);
+    --joe-shadow-md: 0 6px 20px -6px rgba(30, 58, 138, 0.14);
+    --joe-shadow-lg: 0 16px 40px -12px rgba(30, 58, 138, 0.20);
+    --joe-shadow-gold: 0 0 20px rgba(37, 99, 235, 0.14);
+
+    /* Message bubbles */
+    --joe-msg-bg: #f2f7fd;
     --joe-msg-ai-bg: #ffffff;
-    --joe-msg-user-bg: rgba(31, 157, 107, 0.10);
-    --joe-msg-text: #1c1c1a;
+    --joe-msg-user-bg: rgba(37, 99, 235, 0.09);
+    --joe-msg-text: #0f1e33;
 
     --joe-thinking-bg: #ffffff;
-    --joe-thinking-border: rgba(0, 0, 0, 0.10);
-    --joe-thinking-text: #55564f;
+    --joe-thinking-border: rgba(15, 40, 80, 0.10);
+    --joe-thinking-text: #47566b;
 }
 
 /* Visibility Fixes for Light Mode Chat Input */
@@ -1559,7 +1582,7 @@ body:not(.rtl) .joe-user-info {
     background: linear-gradient(135deg, var(--joe-gold-primary) 0%, var(--joe-gold-dark) 100%) !important;
     color: #ffffff !important;
     border: 1px solid var(--joe-gold-primary) !important;
-    box-shadow: 0 2px 10px rgba(31, 157, 107, 0.2) !important;
+    box-shadow: 0 2px 10px rgba(37, 99, 235, 0.2) !important;
 }
 
 [data-theme="light"] .joe-chat-input-area .send-btn svg {
@@ -1590,7 +1613,7 @@ body:not(.rtl) .joe-user-info {
 [data-theme="light"] .settings-dialog {
     background: #ffffff !important;
     border-color: var(--joe-gold-primary) !important;
-    box-shadow: 0 20px 60px rgba(31, 157, 107, 0.1) !important;
+    box-shadow: 0 20px 60px rgba(37, 99, 235, 0.1) !important;
 }
 
 [data-theme="light"] .providers-modal h3,
@@ -1615,7 +1638,7 @@ body:not(.rtl) .joe-user-info {
 
 /* AI Thinking Pulse */
 [data-theme="light"] .btn-thinking-pulse {
-    background: rgba(31, 157, 107, 0.3) !important;
+    background: rgba(37, 99, 235, 0.3) !important;
 }
 
 /* ========== Responsive - Large Desktop ========== */
@@ -2473,30 +2496,30 @@ body:not(.rtl) .joe-user-info {
 /* --- Light Mode Overrides --- */
 [data-theme="light"] .stg-panel {
     background: #ffffff;
-    border-color: rgba(31, 157, 107, 0.2);
-    box-shadow: 0 0 60px rgba(31, 157, 107, 0.06), 0 30px 80px rgba(0, 0, 0, 0.15);
+    border-color: rgba(37, 99, 235, 0.2);
+    box-shadow: 0 0 60px rgba(37, 99, 235, 0.06), 0 30px 80px rgba(0, 0, 0, 0.15);
 }
 
 [data-theme="light"] .stg-sidebar {
     background: #f8fafc;
-    border-left-color: rgba(31, 157, 107, 0.1);
+    border-left-color: rgba(37, 99, 235, 0.1);
 }
 
 [data-theme="light"] .stg-nav-item.active {
-    background: rgba(31, 157, 107, 0.08);
+    background: rgba(37, 99, 235, 0.08);
     box-shadow: inset 3px 0 0 var(--joe-gold-primary);
 }
 
 [data-theme="light"] .stg-nav-icon {
-    background: rgba(31, 157, 107, 0.05);
+    background: rgba(37, 99, 235, 0.05);
 }
 
 [data-theme="light"] .stg-nav-item.active .stg-nav-icon {
-    background: rgba(31, 157, 107, 0.12);
+    background: rgba(37, 99, 235, 0.12);
 }
 
 [data-theme="light"] .stg-theme-card {
-    border-color: rgba(31, 157, 107, 0.1);
+    border-color: rgba(37, 99, 235, 0.1);
 }
 
 [data-theme="light"] .stg-theme-card.active {
@@ -2504,17 +2527,17 @@ body:not(.rtl) .joe-user-info {
 }
 
 [data-theme="light"] .stg-lang-item:hover {
-    background: rgba(31, 157, 107, 0.04);
+    background: rgba(37, 99, 235, 0.04);
 }
 
 [data-theme="light"] .stg-option-row {
-    background: rgba(31, 157, 107, 0.03);
-    border-color: rgba(31, 157, 107, 0.08);
+    background: rgba(37, 99, 235, 0.03);
+    border-color: rgba(37, 99, 235, 0.08);
 }
 
 [data-theme="light"] .stg-badge {
-    background: rgba(31, 157, 107, 0.06);
-    border-color: rgba(31, 157, 107, 0.12);
+    background: rgba(37, 99, 235, 0.06);
+    border-color: rgba(37, 99, 235, 0.12);
 }
 
 [data-theme="light"] .stg-danger-zone {
@@ -2738,9 +2761,9 @@ body:not(.rtl) .joe-user-info {
 
 .onboarding-modal {
     width: 520px;
-    border: 1px solid rgba(52, 196, 139, 0.25);
-    background: #0f1117;
-    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--joe-gold-border);
+    background: var(--joe-bg-panel);
+    box-shadow: var(--joe-shadow-lg);
     border-radius: 12px;
     /* Sharper, more technical corners */
 }
@@ -2755,8 +2778,8 @@ body:not(.rtl) .joe-user-info {
     align-items: center;
     gap: 8px;
     padding: 6px 14px;
-    background: rgba(52, 196, 139, 0.08);
-    border: 1px solid rgba(52, 196, 139, 0.2);
+    background: var(--joe-gold-subtle);
+    border: 1px solid var(--joe-gold-border);
     border-radius: 4px;
     color: var(--joe-gold-primary);
     font-size: 10px;
@@ -2771,8 +2794,8 @@ body:not(.rtl) .joe-user-info {
     align-items: center;
     gap: 16px;
     padding: 18px 20px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--joe-surface-subtle, rgba(255, 255, 255, 0.02));
+    border: 1px solid var(--joe-border);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -2782,9 +2805,9 @@ body:not(.rtl) .joe-user-info {
 
 .onboarding-option-card:hover {
     transform: translateY(-2px);
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(52, 196, 139, 0.3);
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    background: var(--joe-bg-hover);
+    border-color: var(--joe-gold-border);
+    box-shadow: var(--joe-shadow-md);
 }
 
 .onboarding-card-icon {
@@ -2795,8 +2818,8 @@ body:not(.rtl) .joe-user-info {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--joe-surface-subtle, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--joe-border);
 }
 
 .onboarding-card-title {
@@ -2822,7 +2845,7 @@ body:not(.rtl) .joe-user-info {
     border-radius: 4px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--joe-surface-subtle, rgba(255, 255, 255, 0.05));
     margin-left: auto;
 }
 
@@ -3193,4 +3216,11 @@ body:not(.rtl) .joe-user-info {
     .joe-chat-header { padding: 10px 12px; }
     .joe-chat-title span { font-size: 12px; }
     .joe-department-card { font-size: 11px; }
+}
+
+/* ========== Light Theme: overlays rendered outside .joe-ide-layout ==========
+   A near-black scrim over a white page is jarring and hides the fact that the
+   dialog underneath is light. Use a navy-tinted veil instead. */
+[data-theme="light"] .dialog-overlay {
+    background: var(--joe-scrim, rgba(15, 40, 80, 0.32)) !important;
 }

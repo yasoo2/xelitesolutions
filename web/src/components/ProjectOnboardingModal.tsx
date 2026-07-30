@@ -40,7 +40,9 @@ const ProjectOnboardingModal: React.FC<Props> = ({ isOpen, onClose, onSelectLoca
 
     return (
         <AnimatePresence>
-            <div className="dialog-overlay" onClick={onClose} style={{ backdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.85)' }}>
+            {/* The scrim is a token so light mode gets a navy veil instead of a
+                near-black one; the inline background here used to win over it. */}
+            <div className="dialog-overlay" onClick={onClose} style={{ backdropFilter: 'blur(12px)' }}>
                 <motion.div
                     className="dialog-box onboarding-modal"
                     onClick={(e) => e.stopPropagation()}
@@ -55,7 +57,7 @@ const ProjectOnboardingModal: React.FC<Props> = ({ isOpen, onClose, onSelectLoca
                             <Sparkles size={12} />
                             <span>{t('onboardingWelcome', 'Welcome to JOE')}</span>
                         </motion.div>
-                        <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 600, color: '#fff', letterSpacing: '-0.01em' }}>
+                        <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 600, color: 'var(--joe-text-primary)', letterSpacing: '-0.01em' }}>
                             {t('onboardingTitle', 'Project setup')}
                         </h2>
                         <p style={{ marginTop: '8px', fontSize: '13px', color: 'var(--joe-text-secondary)', opacity: 0.7, maxWidth: '400px', marginInline: 'auto', lineHeight: '1.5' }}>
