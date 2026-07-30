@@ -152,6 +152,26 @@ const revivedTools: (ToolDefinition | null)[] = [
   safeNew('kubernetes_ops', () => new KubernetesOpsTool()),
   safeNew('docker_swarm_ops', () => new DockerSwarmOpsTool()),
   safeNew('git_ops', () => new GitOpsTool()),
+  // GitHub: these three were imported at the top of this file but NEVER
+  // registered, so every call to them died with "unknown_tool" — dead code
+  // pretending to be a capability. github_repo_manager is what the repo-analysis
+  // fast-path routes to.
+  safeNew('github_repo_manager', () => new GitHubRepoManagerTool()),
+  safeNew('github_pr', () => new GitHubPRTool()),
+  safeNew('github_actions', () => new GitHubActionsTool()),
+  // Same story: imported here, never registered, therefore unreachable. Each was
+  // verified to instantiate and expose a real execute() before being wired in.
+  safeNew('alert_manager', () => new AlertManagerTool()),
+  safeNew('cache_manager', () => new CacheManagerTool()),
+  safeNew('go_builder', () => new GoBuilderTool()),
+  safeNew('java_builder', () => new JavaBuilderTool()),
+  safeNew('llm_cache', () => new LLMCacheTool()),
+  safeNew('logger', () => new LoggerTool()),
+  safeNew('monitoring', () => new MonitoringTool()),
+  safeNew('project_state_manager', () => new ProjectStateManagerTool()),
+  safeNew('python_builder', () => new PythonBuilderTool()),
+  safeNew('request_analyzer', () => new RequestAnalyzerTool()),
+  safeNew('template_manager', () => new TemplateManagerTool()),
   safeNew('deploy_project', () => new DeployProjectTool()),
   safeNew('archive_files', () => new ArchiveFilesTool()),
   safeNew('execute_python', () => new PythonExecutionTool()),
