@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { API_URL } from '../config';
 
 /* An honest, elegant system self-check. Every row reflects a real probe from
@@ -19,29 +20,29 @@ type StatusData = {
 
 const dot: Record<Level, string> = { ok: '#22c55e', warn: '#f59e0b', error: '#ef4444' };
 
-function toRows(d: StatusData): Row[] {
+function toRows(d: StatusData, t: (k: string) => string): Row[] {
   return [
     {
-      key: 'ai', icon: '🧠', title: 'محرّك الذكاء',
-      value: d.ai.mode === 'local' ? `${d.ai.model} (محلّي)` : d.ai.provider,
+      key: 'ai', icon: '🧠', title: t('sysAiEngine'),
+      value: d.ai.mode === 'local' ? `${d.ai.model} (${t('sysLocal')})` : d.ai.provider,
       detail: d.ai.detail,
       level: d.ai.ok ? 'ok' : 'error',
     },
     {
-      key: 'browser', icon: '🌐', title: 'محرّك المتصفح',
-      value: d.browser.engine || 'غير مثبّت',
+      key: 'browser', icon: '🌐', title: t('sysBrowserEngine'),
+      value: d.browser.engine || t('sysNotInstalled'),
       detail: d.browser.detail,
       level: d.browser.ok ? 'ok' : 'error',
     },
     {
-      key: 'google', icon: '📧', title: 'حساب Google',
-      value: d.google.connected ? (d.google.email || 'مربوط') : d.google.configured ? 'غير مربوط' : 'غير مُعدّ',
+      key: 'google', icon: '📧', title: t('googleAccount'),
+      value: d.google.connected ? (d.google.email || t('sysLinked')) : d.google.configured ? t('sysNotLinked') : t('sysNotConfigured'),
       detail: d.google.detail,
       level: d.google.connected ? 'ok' : 'warn',
     },
     {
-      key: 'extension', icon: '🧩', title: 'متصفحك الشخصي (إضافة)',
-      value: d.extension.connected ? 'متصل' : 'غير متصل',
+      key: 'extension', icon: '🧩', title: t('sysMyBrowserExt'),
+      value: d.extension.connected ? t('sysConnected') : t('sysDisconnected'),
       detail: d.extension.detail,
       level: d.extension.connected ? 'ok' : 'warn',
     },
@@ -49,6 +50,7 @@ function toRows(d: StatusData): Row[] {
 }
 
 export default function SystemStatusPanel() {
+  const { t } = useTranslation();
   const [data, setData] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
@@ -60,13 +62,13 @@ export default function SystemStatusPanel() {
       const r = await fetch(`${API_URL}/status`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setData(await r.json());
-    } catch (e: any) { setError('تعذّر جلب حالة النظام'); }
+    } catch (e: any) { setError(t('sysFetchFailed')); }
     finally { setLoading(false); }
-  }, []);
+  }, [t]);
 
-  useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { load(); const id = setInterval(load, 15000); return () => clearInterval(id); }, [load]);
 
-  const rows = data ? toRows(data) : [];
+  const rows = data ? toRows(data, t) : [];
   const allOk = rows.every(r => r.level === 'ok');
   const anyErr = rows.some(r => r.level === 'error');
   const headLevel: Level = anyErr ? 'error' : allOk ? 'ok' : 'warn';
@@ -106,10 +108,10 @@ export default function SystemStatusPanel() {
         <div className="head">
           <span className="badge" />
           <div style={{ flex: 1 }}>
-            <h3>حالة النظام</h3>
-            <div className="sub">{data ? (allOk ? 'كل الأنظمة الأساسية تعمل' : anyErr ? 'يوجد نظام يحتاج انتباهك' : 'جاهز — بعض الإضافات اختيارية غير مُفعّلة') : 'جارٍ الفحص…'}</div>
+            <h3>{t('systemStatus')}</h3>
+            <div className="sub">{data ? (allOk ? t('sysAllOk') : anyErr ? t('sysNeedsAttention') : t('sysReadyOptional')) : t('sysChecking')}</div>
           </div>
-          <button className="refresh" onClick={load} disabled={loading}>{loading ? '…' : '↻ تحديث'}</button>
+          <button className="refresh" onClick={load} disabled={loading}>{loading ? '…' : `↻ ${t('browserRefresh')}`}</button>
         </div>
 
         {error && !data ? <div className="empty">{error}</div> : null}

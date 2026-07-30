@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useState, useRef, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     Globe, Terminal as TerminalIcon, Eye, Loader, Maximize2,
     ChevronDown, ChevronUp, FileOutput, AlertTriangle,
@@ -32,6 +33,7 @@ interface WorkspacePanelProps {
 
 // ─── Inline Copy Button ────────────────────────────────────────────
 function CopyBtn({ text }: { text: string }) {
+    const { t } = useTranslation();
     const [copied, setCopied] = useState(false);
     const handleCopy = useCallback(async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -45,7 +47,7 @@ function CopyBtn({ text }: { text: string }) {
     return (
         <button
             onClick={handleCopy}
-            title="نسخ"
+            title={t('copy')}
             style={{
                 background: 'none', border: 'none', cursor: 'pointer', padding: 2,
                 color: copied ? 'var(--joe-gold-primary, #2ba179)' : 'var(--joe-text-muted, #888)',
@@ -64,6 +66,7 @@ function CopyBtn({ text }: { text: string }) {
 function PanelToolbar({ filter, onFilterChange, onCopyAll, onClear, count, label }:
     { filter: string; onFilterChange: (v: string) => void; onCopyAll: () => void; onClear: () => void; count: number; label: string }) {
 
+    const { t } = useTranslation();
     const [copied, setCopied] = useState(false);
     const handleCopyAll = () => {
         onCopyAll();
@@ -106,7 +109,7 @@ function PanelToolbar({ filter, onFilterChange, onCopyAll, onClear, count, label
             </span>
 
             {/* Copy All */}
-            <button onClick={handleCopyAll} title="نسخ الكل" style={{
+            <button onClick={handleCopyAll} title={t('copyAll')} style={{
                 background: 'none', border: 'none', cursor: 'pointer',
                 color: copied ? 'var(--joe-gold-primary, #2ba179)' : 'var(--joe-text-muted)',
                 padding: 4, display: 'flex', alignItems: 'center', borderRadius: 4,
@@ -116,7 +119,7 @@ function PanelToolbar({ filter, onFilterChange, onCopyAll, onClear, count, label
             </button>
 
             {/* Clear */}
-            <button onClick={onClear} title="مسح الكل" style={{
+            <button onClick={onClear} title={t('clearAll')} style={{
                 background: 'none', border: 'none', cursor: 'pointer',
                 color: 'var(--joe-text-muted)', padding: 4, display: 'flex',
                 alignItems: 'center', borderRadius: 4,
@@ -129,6 +132,7 @@ function PanelToolbar({ filter, onFilterChange, onCopyAll, onClear, count, label
 
 // ─── Enhanced Logs Panel ───────────────────────────────────────────
 function EnhancedLogsPanel({ logs }: { logs: string[] }) {
+    const { t } = useTranslation();
     const [filter, setFilter] = useState('');
     const [clearIndex, setClearIndex] = useState(0);
     const [autoScroll, setAutoScroll] = useState(true);
@@ -166,7 +170,7 @@ function EnhancedLogsPanel({ logs }: { logs: string[] }) {
                 onCopyAll={handleCopyAll}
                 onClear={() => setClearIndex(logs.length)}
                 count={filtered.length}
-                label="سجل"
+                label={t('logLabel')}
             />
 
             <div
@@ -212,7 +216,7 @@ function EnhancedLogsPanel({ logs }: { logs: string[] }) {
             }}>
                 <button
                     onClick={() => setAutoScroll(!autoScroll)}
-                    title={autoScroll ? 'إيقاف التمرير التلقائي' : 'تفعيل التمرير التلقائي'}
+                    title={autoScroll ? t('autoScrollOff') : t('autoScrollOn')}
                     style={{
                         background: autoScroll ? 'var(--joe-gold-primary, #2ba179)' : 'transparent',
                         border: autoScroll ? 'none' : '1px solid var(--joe-text-muted)',
@@ -232,6 +236,7 @@ function EnhancedLogsPanel({ logs }: { logs: string[] }) {
 
 // ─── Enhanced Problems Panel ───────────────────────────────────────
 function EnhancedProblemsPanel({ problems }: { problems: any[] }) {
+    const { t } = useTranslation();
     const [filter, setFilter] = useState('');
     const [clearIndex, setClearIndex] = useState(0);
 
@@ -265,7 +270,7 @@ function EnhancedProblemsPanel({ problems }: { problems: any[] }) {
                 onCopyAll={handleCopyAll}
                 onClear={() => setClearIndex(problems.length)}
                 count={filtered.length}
-                label="مشكلة"
+                label={t('problemLabel')}
             />
 
             <div style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}>
@@ -339,6 +344,7 @@ export default function WorkspacePanel({
     mobileCollapsed,
     onMobileToggle
 }: WorkspacePanelProps) {
+    const { t } = useTranslation();
     const [internalCollapsed, setInternalCollapsed] = useState(false);
     const [internalTab, setInternalTab] = useState<WorkspaceTab>('browser');
 
@@ -445,7 +451,7 @@ export default function WorkspacePanel({
             <div className="joe-workspace-content">
                 {/* Browser Tab */}
                 {activeTab === 'browser' && (
-                    <ErrorBoundary fallbackTitle="تعذّر تحميل المتصفح">
+                    <ErrorBoundary fallbackTitle={t('loadBrowserFailed')}>
                         <Suspense fallback={<LoadingFallback />}>
                             <EmbeddedBrowser sessionId={browserSessionId || 'panel-browser'} />
                         </Suspense>
@@ -454,7 +460,7 @@ export default function WorkspacePanel({
 
                 {/* Terminal Tab */}
                 {activeTab === 'terminal' && (
-                    <ErrorBoundary fallbackTitle="تعذّر تحميل الطرفية (Terminal)">
+                    <ErrorBoundary fallbackTitle={t('loadTerminalFailed')}>
                         <Suspense fallback={<LoadingFallback />}>
                             <EnterpriseTerminalPanel terminalId={terminalId} workspaceId={workspaceId} isEmbedded={true} />
                         </Suspense>
@@ -463,7 +469,7 @@ export default function WorkspacePanel({
 
                 {/* Preview Tab - Always mounted so event listeners stay active */}
                 <div style={{ display: activeTab === 'preview' ? 'contents' : 'none' }}>
-                    <ErrorBoundary fallbackTitle="تعذّر تحميل المعاينة">
+                    <ErrorBoundary fallbackTitle={t('loadPreviewFailed')}>
                         <Suspense fallback={<LoadingFallback />}>
                             <PreviewPanel url={previewUrl} />
                         </Suspense>

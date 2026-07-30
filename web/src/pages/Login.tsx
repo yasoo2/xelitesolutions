@@ -89,11 +89,11 @@ export default function Login() {
         if (err) {
             const msg =
                 err === 'google_client_id_missing'
-                    ? 'Google OAuth غير مضبوط: client_id مفقود.'
+                    ? t('googleNoClientId')
                     : err === 'google_client_secret_missing'
-                        ? 'Google OAuth غير مضبوط: client_secret مفقود.'
+                        ? t('googleNoClientSecret')
                         : err === 'access_denied'
-                            ? 'تم إلغاء تسجيل الدخول عبر Google.'
+                            ? t('googleCancelled')
                             : `Google OAuth error: ${err}`;
             setError(msg);
             window.location.hash = '';
@@ -135,10 +135,10 @@ export default function Login() {
             if (!res.ok) {
                 const serverError = String(data?.error || '').trim();
                 if (res.status === 401) {
-                    throw new Error(i18n.language?.startsWith('ar') ? 'بيانات الدخول غير صحيحة أو الحساب غير موجود.' : 'Invalid credentials.');
+                    throw new Error(i18n.language?.startsWith('ar') ? t('badCredentials') : 'Invalid credentials.');
                 }
                 if (res.status === 403 && /registration is currently closed/i.test(serverError)) {
-                    throw new Error(i18n.language?.startsWith('ar') ? 'التسجيل مغلق حالياً.' : 'Registration is currently closed.');
+                    throw new Error(i18n.language?.startsWith('ar') ? t('registrationClosed') : 'Registration is currently closed.');
                 }
                 throw new Error(serverError || t('httpRequestFailed', { status: res.status }));
             }
@@ -185,7 +185,7 @@ export default function Login() {
                 localStorage.setItem('token', data.token);
                 nav('/joe');
             } else {
-                throw new Error(i18n.language?.startsWith('ar') ? 'تعذر إنشاء حساب زائر، يرجى المحاولة لاحقاً.' : 'Failed to create guest session. Please try again later.');
+                throw new Error(i18n.language?.startsWith('ar') ? t('guestCreateFailed') : 'Failed to create guest session. Please try again later.');
             }
         } catch (err: any) {
             setError(err?.message || 'Guest login failed');
@@ -391,10 +391,10 @@ export default function Login() {
                         if (googleState?.ready === false) {
                             setError(
                                 googleState.secretConfigured === false
-                                    ? 'Google OAuth غير مضبوط على الخادم: السر (Client Secret) مفقود.'
+                                    ? t('googleNoClientSecret')
                                     : googleState.clientIdAvailable === false
-                                        ? 'Google OAuth غير مضبوط: معرف العميل (Client ID) مفقود.'
-                                        : 'تكوين Google OAuth غير مكتمل على الخادم.'
+                                        ? t('googleNoClientId')
+                                        : t('googleIncomplete')
                             );
                             return;
                         }
@@ -438,7 +438,7 @@ export default function Login() {
                     }}
                 >
                     <LogIn size={18} />
-                    <span>{i18n.language?.startsWith('ar') ? 'دخول كضيف' : 'Continue as Guest'}</span>
+                    <span>{i18n.language?.startsWith('ar') ? t('guestLogin') : 'Continue as Guest'}</span>
                 </motion.button>
             </motion.div>
 
