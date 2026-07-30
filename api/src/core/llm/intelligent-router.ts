@@ -1116,12 +1116,17 @@ export async function routeToModel(
     let lastError = '';
 
     // 1. Try Selected Model First (Happy Path)
+    // Skip Groq here when it's cooling down (e.g. it just hit a 429 rate limit) —
+    // otherwise EVERY request re-hammers Groq, eats a 429, and only then falls back,
+    // which is the repeated "Groq 429 → LLM7" storm the user saw. When cooled down we
+    // go straight to the mesh (which also defers Groq) until the limit resets.
     try {
-        if (selectedModel.provider === 'groq' && hasGroqKey) {
+        if (selectedModel.provider === 'groq' && hasGroqKey && !isProviderCoolingDown('Groq (Free)')) {
             // Groq is fast, but let's give it 15s
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
             const rawAns = await Promise.race([callGroq(selectedModel.model, effectiveMessages, onPartial, tools), timeoutPromise]) as string;
             const ans = cleanOutput(rawAns);
+            markProviderOk('Groq (Free)'); // it worked — clear any cooldown
             if (!cacheDisabled && !hasSensitive && ans && ans.length > 20) {
                 await LLMCacheTool.saveToCache(cacheKeyPayload, ans, selectedModel.model);
             }
@@ -1131,6 +1136,9 @@ export async function routeToModel(
         // If not Groq or Groq fails, fall through to the Chain of Steel
     } catch (e: any) {
         console.warn(`[IntelligentRouter] Primary choice ${selectedModel.name} failed: ${e.message} `);
+        // A 429 (rate limit) or 413 means Groq is temporarily unusable — cool it down
+        // so neither the happy path nor the mesh keeps hammering it this minute.
+        if (/\b(429|rate limit|413)\b/i.test(String(e?.message || ''))) markProviderFailed('Groq (Free)');
         lastError = e.message;
     }
 
