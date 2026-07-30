@@ -6,6 +6,9 @@ import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
 import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
 import { workspaceService } from '../../services/WorkspaceService';
+import { buildPalette, paletteCss, designBrief } from '../../../core/design/design-system';
+import { detectPageKind, blueprintBrief, imageBudget } from '../../../core/design/blueprints';
+import { resolveImages } from '../../../core/design/images';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 const PORT = String(process.env.PORT || '5002');
@@ -53,7 +56,9 @@ export class WebPageBuilderTool implements ToolDefinition {
 
         // Per-session page memory: follow-up requests EDIT the current page instead
         // of regenerating a brand new one from scratch.
-        const store: Record<string, { filename: string; html: string; multiFile?: boolean }> =
+        // The palette and page kind are remembered with the page: a follow-up edit
+        // must not re-roll the colours or re-decide what the page is.
+        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any }> =
             (global as any).joePages || ((global as any).joePages = {});
         const prev = store[sessionKey];
         const wantsNew = /(new page|from scratch|صفحة جديدة|من الصفر|ابدأ من جديد)/i.test(request);
@@ -74,16 +79,38 @@ export class WebPageBuilderTool implements ToolDefinition {
                 : (isAr ? `💻 المطوّر: أبني الصفحة — ${request}` : `💻 Developer: building the page — ${request}`));
         }
 
+        // [DESIGN SYSTEM] The look is decided BEFORE the model writes anything:
+        // a harmonious palette whose contrast is correct by construction, real
+        // type/space scales, and the section blueprint for THIS kind of page.
+        // The old brief was one line ("modern, beautiful, responsive"), which is
+        // why every page came out looking like a different prototype.
+        const palette = isEdit && (prev as any)?.palette ? (prev as any).palette : buildPalette(request);
+        const kind = isEdit && (prev as any)?.kind ? (prev as any).kind : detectPageKind(request);
+        const photos = imageBudget(kind);
+
         const baseRules = `STRICT RULES:
 - Output ONLY raw HTML for ONE complete self-contained file. No explanations, no markdown fences.
 - ALL CSS in a <style> tag and ALL JS in a <script> tag (single file).
-- Modern, beautiful, fully responsive. Use inline SVG / CSS gradients / emoji for graphics (never external image hosts / placeholder.com).
-${isAr ? '- Arabic page: <html lang="ar" dir="rtl"> with Arabic text.' : ''}`;
+- Fully responsive, mobile-first. Icons: inline SVG (never an icon font, never a CDN).
+${photos > 0
+                ? `- PHOTOGRAPHS: wherever a real photo belongs, write src="{{IMAGE:short english subject}}" —
+  e.g. src="{{IMAGE:barista pouring latte art}}". Joe replaces each marker with a real licensed
+  photograph. Use about ${photos} of them, each with a DIFFERENT and specific subject, and always
+  a real alt attribute. Never link an external image URL yourself.`
+                : `- This page type needs no photographs: use inline SVG, gradients and type instead.`}
+${isAr ? '- Arabic page: <html lang="ar" dir="rtl"> with natural Arabic copy (not translated-sounding).' : ''}
+
+${designBrief(palette)}
+
+TOKEN BLOCK — paste verbatim at the very top of your <style>:
+${paletteCss(palette)}
+
+${blueprintBrief(kind)}`;
 
         const systemPrompt = isEdit
-            ? `You are an elite front-end engineer. MODIFY the existing HTML page: apply EXACTLY the change requested and keep everything else intact. Return the COMPLETE updated HTML file.
+            ? `You are an elite front-end engineer. MODIFY the existing HTML page: apply EXACTLY the change requested and keep everything else intact — same design system, same tokens, same sections unless the change asks otherwise. Return the COMPLETE updated HTML file.
 ${baseRules}`
-            : `You are an elite front-end engineer at XElite Solutions. Build a COMPLETE single self-contained HTML file for the request.
+            : `You are an award-winning front-end designer and engineer. Build a COMPLETE single self-contained HTML file that would pass as the work of a professional studio: considered typography, real content, genuine interaction — not a wireframe.
 ${baseRules}`;
 
         const userContent = isEdit
@@ -117,6 +144,21 @@ ${prev!.html}`
         // Detect a no-op edit: the model returned HTML identical to the current page
         // (weak models sometimes echo it back). We must NOT claim we changed it.
         const editNoOp = isEdit && !!prev && (editFellBack || html.trim() === prev.html.trim());
+
+        // [PHOTOGRAPHS] Turn every {{IMAGE:subject}} marker into a real licensed
+        // photograph, downloaded once and served from Joe so the page keeps its
+        // images with no internet. No network -> a gradient in the page's own
+        // palette, never a broken image and never a claim of a photo we lack.
+        let imgReal = 0, imgRequested = 0;
+        let imgCredits: Array<{ creator: string; license: string; source: string }> = [];
+        if (photos > 0 && /\{\{\s*IMAGE\s*:/i.test(html)) {
+            if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `🖼️ أجلب صوراً حقيقية مرخّصة للصفحة` : `🖼️ Sourcing real licensed photographs`);
+            try {
+                const r = await resolveImages(html, ARTIFACT_DIR, palette.hue, { max: Math.max(4, photos + 2) });
+                html = r.html; imgReal = r.real; imgRequested = r.requested; imgCredits = r.credits;
+                logs.push(`images: ${r.real}/${r.requested} real, rest gradient`);
+            } catch (e: any) { logs.push(`image sourcing failed: ${e?.message || e}`); }
+        }
 
         // [REVIVED weak-model-enhancer] Self-correction pass: strip leftover
         // TODO/placeholder comments the weak local model sometimes emits.
@@ -172,7 +214,7 @@ ${prev!.html}`
         } catch (e: any) {
             return { ok: false, error: `write_failed: ${e?.message || e}`, logs };
         }
-        store[sessionKey] = { filename, html, multiFile: isMultiFile };
+        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind };
         logs.push(`web_page_builder: ${isEdit ? 'edited' : 'wrote'} ${filename} (${html.length} bytes)${projectFiles.length ? ` + ${projectFiles.length} project files` : ''} in ${ARTIFACT_DIR}`);
 
         // [BROWSABLE OUTPUT] Mirror the generated file(s) into the active workspace
@@ -243,10 +285,26 @@ ${prev!.html}`
         // Compose the QA summary line for the chat reply.
         const qaSummary = (() => {
             const parts: string[] = [];
+            // Say what was DECIDED, not just what was checked — the palette and the
+            // page type are choices the user should be able to argue with.
+            parts.push(isAr
+                ? `🎨 نظام التصميم: ${kind} · لوحة ${palette.scheme === 'analogous' ? 'متجانسة' : 'متكاملة'} حول ${palette.primary} (تباين AA مضمون)`
+                : `🎨 Design system: ${kind} · ${palette.scheme} palette around ${palette.primary} (AA contrast by construction)`);
+            if (imgRequested) {
+                // Be exact about how many photos are real: claiming "images added"
+                // when the network was down would be a lie the user can see.
+                parts.push(isAr
+                    ? `🖼️ الصور: ${imgReal} حقيقية مرخّصة من ${imgRequested}${imgReal < imgRequested ? ' (الباقي تدرّجات — تعذّر الجلب)' : ''}`
+                    : `🖼️ Photos: ${imgReal}/${imgRequested} real licensed${imgReal < imgRequested ? ' (rest are gradients — could not fetch)' : ''}`);
+            }
             if (qaFixed.length) parts.push(isAr ? `🔧 تصحيحات الجودة: ${qaFixed.length}` : `🔧 QA fixes: ${qaFixed.length}`);
             parts.push(qaIssues.length
                 ? (isAr ? `📋 ملاحظات: ${qaIssues.join('، ')}` : `📋 Notes: ${qaIssues.join(', ')}`)
                 : (isAr ? '📋 مراجعة الجودة: نجحت' : '📋 QA review: passed'));
+            if (imgCredits.length) {
+                parts.push((isAr ? '📄 مصادر الصور: ' : '📄 Image credits: ')
+                    + imgCredits.slice(0, 6).map(c => `${c.creator} (${c.license})`).join('، '));
+            }
             return parts.join('\n') + qaBrowserLine;
         })();
 
