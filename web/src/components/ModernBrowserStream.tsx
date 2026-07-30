@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { API_URL, WS_URL } from '../config';
 import { isValidToken } from '../utils/auth';
 
@@ -24,6 +25,7 @@ type AgentStep = { ts: number; phase: AgentPhase; step: number; text: string; ok
 type Props = { sessionId: string; showBoxes?: boolean };
 
 export default function ModernBrowserStream({ sessionId, showBoxes = true }: Props) {
+  const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cursorElRef = useRef<HTMLDivElement>(null);
@@ -437,13 +439,13 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           <span style={{ fontSize: 15 }}>🔑</span>
           <span style={{ flex: 1, minWidth: 0 }}>
             {manualMode
-              ? 'أنت الآن تتحكّم بالمتصفح — انقر واكتب لتسجيل دخولك. يُحفَظ للأبد ولا يرى جو كلمة مرورك.'
-              : 'لتسجيل الدخول لأي موقع: تحكّم بالمتصفح يدوياً وسجّل دخولك (يتجاوز CAPTCHA والتحقّق الثنائي). يُحفَظ للأبد.'}
+              ? t('browserManualHintOn')
+              : t('browserManualHintOff')}
           </span>
           <button
             onClick={() => { setManualMode(true); try { canvasRef.current?.focus(); } catch { } }}
             style={{ padding: '5px 12px', borderRadius: 7, border: 0, background: manualMode ? '#16a34a' : '#2563eb', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}
-          >{manualMode ? '✓ التحكّم مُفعَّل' : 'تحكّم وسجّل الدخول'}</button>
+          >{manualMode ? t('browserManualActive') : t('browserTakeControl')}</button>
           <button
             onClick={() => { setLoginBarHidden(true); try { localStorage.setItem('joe_login_bar_hidden', '1'); } catch { } }}
             title="إخفاء (يمكن إظهاره من الإعدادات)"
@@ -613,7 +615,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
                   cursor: 'pointer',
                 }}
               >
-                {detailsOpen ? 'إخفاء السجل' : 'عرض السجل'}
+                {detailsOpen ? t('browserHideLog') : t('browserShowLog')}
               </button>
             ) : null}
           </div>

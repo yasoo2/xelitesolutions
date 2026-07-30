@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield } from 'lucide-react';
 
 interface JoeHeaderProps {
@@ -37,6 +38,7 @@ export default function JoeHeader({
     isExplorerCollapsed,
     isWorkspaceCollapsed
 }: JoeHeaderProps) {
+    const { t } = useTranslation();
     // Generate avatar color from name/email
     const getAvatarColor = (str: string) => {
         let hash = 0;
@@ -78,7 +80,7 @@ export default function JoeHeader({
                     <button
                         className={`joe-header-btn sidebar-toggle ${isWorkspaceCollapsed ? 'inactive' : 'active'}`}
                         onClick={onToggleWorkspace}
-                        title="إظهار/إخفاء مساحة العمل (المعاينة والطرفية)"
+                        title={t('toggleWorkspace')}
                     >
                         <Columns2 size={18} />
                     </button>
@@ -91,15 +93,15 @@ export default function JoeHeader({
                     </button>
                     <div className="joe-action-spacer" style={{ width: '8px' }}></div>
                     {onThemeToggle && (
-                        <button className="joe-header-btn" onClick={onThemeToggle} title="تبديل المظهر">
+                        <button className="joe-header-btn" onClick={onThemeToggle} title={t('toggleTheme')}>
                             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
                     )}
-                    <button className="joe-header-btn" onClick={onSettingsClick} title="الإعدادات">
+                    <button className="joe-header-btn" onClick={onSettingsClick} title={t('settings')}>
                         <Settings size={18} />
                     </button>
                     {onNewProject && (
-                        <button className="joe-header-btn" onClick={onNewProject} title="مشروع جديد" style={{ color: 'var(--joe-gold-primary)' }}>
+                        <button className="joe-header-btn" onClick={onNewProject} title={t('newProject')} style={{ color: 'var(--joe-gold-primary)' }}>
                             <Plus size={18} />
                         </button>
                     )}

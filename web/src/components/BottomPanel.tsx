@@ -5,6 +5,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import {
     AlertTriangle,
     Terminal,
@@ -24,19 +25,19 @@ export type PanelTab = 'problems' | 'output' | 'terminal' | 'browser' | 'preview
 
 interface TabConfig {
     id: PanelTab;
-    label: string;
-    labelAr: string;
+
+    labelKey: string;
     icon: React.ElementType;
     badge?: number;
 }
 
 const TABS: TabConfig[] = [
-    { id: 'problems', label: 'Problems', labelAr: 'المشاكل', icon: AlertTriangle },
-    { id: 'output', label: 'Output', labelAr: 'المخرجات', icon: FileOutput },
-    { id: 'terminal', label: 'Terminal', labelAr: 'الطرفية', icon: Terminal },
-    { id: 'browser', label: 'Browser', labelAr: 'المتصفح', icon: Globe },
-    { id: 'preview', label: 'Preview', labelAr: 'المعاينة', icon: Eye },
-    { id: 'ports', label: 'Ports', labelAr: 'المنافذ', icon: Plug },
+    { id: 'problems', labelKey: 'panelProblems', icon: AlertTriangle },
+    { id: 'output', labelKey: 'panelOutput', icon: FileOutput },
+    { id: 'terminal', labelKey: 'panelTerminal', icon: Terminal },
+    { id: 'browser', labelKey: 'panelBrowser', icon: Globe },
+    { id: 'preview', labelKey: 'panelPreview', icon: Eye },
+    { id: 'ports', labelKey: 'panelPorts', icon: Plug },
 ];
 
 interface BottomPanelProps {
@@ -64,6 +65,7 @@ export default function BottomPanel({
     isMaximized = false,
     onMaximize
 }: BottomPanelProps) {
+    const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
     const dragStartY = useRef(0);
@@ -189,7 +191,7 @@ export default function BottomPanel({
                                 }}
                             >
                                 <Icon size={14} />
-                                <span className="hide-mobile">{tab.labelAr}</span>
+                                <span className="hide-mobile">{t(tab.labelKey)}</span>
                                 {badge !== undefined && badge > 0 && (
                                     <span
                                         style={{
@@ -226,7 +228,7 @@ export default function BottomPanel({
                                 alignItems: 'center',
                                 justifyContent: 'center',
                             }}
-                            title={isMaximized ? 'تصغير' : 'تكبير'}
+                            title={isMaximized ? t('minimize') : t('maximize')}
                         >
                             {isMaximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                         </button>
@@ -243,7 +245,7 @@ export default function BottomPanel({
                             alignItems: 'center',
                             justifyContent: 'center',
                         }}
-                        title={isOpen ? 'إغلاق' : 'فتح'}
+                        title={isOpen ? t('closePanel') : t('openPanel')}
                     >
                         {isOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                     </button>

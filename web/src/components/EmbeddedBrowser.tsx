@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     Globe,
     RefreshCw,
@@ -29,6 +30,7 @@ export default function EmbeddedBrowser({
     sessionId = 'panel-browser',
     onReady
 }: EmbeddedBrowserProps) {
+    const { t } = useTranslation();
     const [currentUrl, setCurrentUrl] = useState('');
     const [inputUrl, setInputUrl] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -181,15 +183,15 @@ export default function EmbeddedBrowser({
             }}>
                 {/* Navigation buttons */}
                 <div style={{ display: 'flex', gap: 2 }}>
-                    <BrowserButton icon={ArrowRight} tooltip="رجوع" onClick={handleBack} />
-                    <BrowserButton icon={ArrowLeft} tooltip="تقدم" onClick={handleForward} />
+                    <BrowserButton icon={ArrowRight} tooltip={t('browserBack')} onClick={handleBack} />
+                    <BrowserButton icon={ArrowLeft} tooltip={t('browserForward')} onClick={handleForward} />
                     <BrowserButton
                         icon={isLoading ? RefreshCw : RefreshCw}
-                        tooltip="تحديث"
+                        tooltip={t('browserRefresh')}
                         onClick={handleRefresh}
                         spinning={isLoading}
                     />
-                    <BrowserButton icon={Home} tooltip="الرئيسية" onClick={handleHome} />
+                    <BrowserButton icon={Home} tooltip={t('browserHome')} onClick={handleHome} />
                 </div>
 
                 {/* URL Bar */}
@@ -256,7 +258,7 @@ export default function EmbeddedBrowser({
                                 fontFamily: 'monospace',
                                 direction: 'ltr',
                             }}>
-                                {currentUrl || 'لا يوجد صفحة محملة'}
+                                {currentUrl || t('browserNoPageLoaded')}
                             </span>
                         </>
                     )}
@@ -270,14 +272,14 @@ export default function EmbeddedBrowser({
                     {extConnected && (
                         <button
                             onClick={() => setShowMine(v => !v)}
-                            title={showMine ? 'متصفح جو' : 'متصفحي الشخصي'}
+                            title={showMine ? t('browserJoeBrowser') : t('browserMyBrowser')}
                             style={{ height: 28, padding: '0 10px', borderRadius: 8, fontSize: 11, cursor: 'pointer', border: '1px solid var(--joe-border)', background: showMine ? '#1a73e8' : 'transparent', color: showMine ? '#fff' : 'var(--joe-text-secondary)', whiteSpace: 'nowrap' }}
                         >
-                            {showMine ? '🧩 متصفحي' : 'متصفح جو'}
+                            {showMine ? `🧩 ${t('browserMyBrowser')}` : t('browserJoeBrowser')}
                         </button>
                     )}
-                    <BrowserButton icon={Camera} tooltip="لقطة شاشة" onClick={handleScreenshot} />
-                    <BrowserButton icon={ExternalLink} tooltip="فتح خارجياً" onClick={openExternal} disabled={!currentUrl} />
+                    <BrowserButton icon={Camera} tooltip={t('browserScreenshot')} onClick={handleScreenshot} />
+                    <BrowserButton icon={ExternalLink} tooltip={t('browserOpenExternal')} onClick={openExternal} disabled={!currentUrl} />
                 </div>
             </div>
 

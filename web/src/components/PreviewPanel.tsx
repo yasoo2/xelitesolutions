@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     Eye,
     RefreshCw,
@@ -23,15 +24,15 @@ type PreviewMode = 'web' | 'code';
 interface DeviceConfig {
     type: DeviceType;
     icon: React.ElementType;
-    label: string;
+    labelKey: string;
     width: number | '100%';
     height?: number;
 }
 
 const DEVICES: DeviceConfig[] = [
-    { type: 'desktop', icon: Monitor, label: 'سطح المكتب', width: '100%' },
-    { type: 'tablet', icon: Tablet, label: 'تابلت', width: 768 },
-    { type: 'mobile', icon: Smartphone, label: 'موبايل', width: 375 },
+    { type: 'desktop', icon: Monitor, labelKey: 'viewportDesktop', width: '100%' },
+    { type: 'tablet', icon: Tablet, labelKey: 'viewportTablet', width: 768 },
+    { type: 'mobile', icon: Smartphone, labelKey: 'viewportMobile', width: 375 },
 ];
 
 interface PreviewPanelProps {
@@ -43,6 +44,7 @@ export default function PreviewPanel({
     url: initialUrl,
     onReady
 }: PreviewPanelProps) {
+    const { t } = useTranslation();
     const [mode, setMode] = useState<PreviewMode>('web');
     const [previewUrl, setPreviewUrl] = useState(initialUrl || '');
     const [inputUrl, setInputUrl] = useState(initialUrl || '');
@@ -240,7 +242,7 @@ export default function PreviewPanel({
                                 <PreviewButton
                                     key={d.type}
                                     icon={d.icon}
-                                    tooltip={d.label}
+                                    tooltip={t(d.labelKey)}
                                     onClick={() => setDevice(d.type)}
                                     active={device === d.type}
                                 />
@@ -348,11 +350,11 @@ export default function PreviewPanel({
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: 18, fontWeight: 700 }}>
-                                    {buildProgress.phase === 'scaffolding' ? '🏗️ جارٍ تجهيز الهيكل...' :
-                                        buildProgress.phase === 'dependencies' ? '📦 تركيب المكتبات...' :
-                                            buildProgress.phase === 'building' ? '🛡️ جودة الكود والبناء...' :
-                                                buildProgress.phase === 'preview' ? '🌐 تشغيل المعاينة...' :
-                                                    '✨ جاري الانتهاء...'}
+                                    {buildProgress.phase === 'scaffolding' ? t('buildScaffolding') :
+                                        buildProgress.phase === 'dependencies' ? t('buildInstalling') :
+                                            buildProgress.phase === 'building' ? t('buildQuality') :
+                                                buildProgress.phase === 'preview' ? t('buildStartingPreview') :
+                                                    t('buildFinishing')}
                                 </h3>
                                 <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 14 }}>
                                     {buildProgress.message}
@@ -434,7 +436,7 @@ export default function PreviewPanel({
                                 }}
                                 onError={() => {
                                     setIsLoading(false);
-                                    setError('فشل تحميل الصفحة');
+                                    setError(t('previewLoadFailed'));
                                 }}
                                 style={{
                                     width: '100%',

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 /**
  * ArtifactCard — an elegant card for a file/site Joe generated (Claude-artifacts
@@ -23,10 +24,11 @@ const iconFor = (name = '') => {
     return '📄';
 };
 
-export const ArtifactCard: React.FC<{ meta: ArtifactMeta; isArabic?: boolean }> = ({ meta, isArabic = true }) => {
+export const ArtifactCard: React.FC<{ meta: ArtifactMeta; isArabic?: boolean }> = ({ meta }) => {
+    const { t } = useTranslation();
     const url = meta.previewUrl || meta.url || '';
     const files = (meta.files && meta.files.length ? meta.files : (meta.filename ? [meta.filename] : []));
-    const title = meta.filename || files[0] || (isArabic ? 'ملف' : 'file');
+    const title = meta.filename || files[0] || t('artifactFile');
 
     const openPreview = () => {
         if (!url) return;
@@ -35,7 +37,7 @@ export const ArtifactCard: React.FC<{ meta: ArtifactMeta; isArabic?: boolean }> 
 
     return (
         <div
-            dir={isArabic ? 'rtl' : 'ltr'}
+            dir="auto"
             style={{
                 border: '1px solid var(--joe-border, rgba(52,196,139,0.3))',
                 borderRadius: 14,
@@ -54,8 +56,8 @@ export const ArtifactCard: React.FC<{ meta: ArtifactMeta; isArabic?: boolean }> 
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--joe-text-primary, #eceef0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
                     <div style={{ fontSize: 11.5, color: 'var(--joe-text-muted, #6e7178)' }}>
-                        {meta.kind === 'web' ? (isArabic ? 'صفحة ويب' : 'Web page') : (isArabic ? 'ملف' : 'File')}
-                        {files.length > 1 ? ` · ${files.length} ${isArabic ? 'ملفات' : 'files'}` : ''}
+                        {meta.kind === 'web' ? t('artifactWebPage') : t('artifactFile')}
+                        {files.length > 1 ? ` · ${files.length} ${t('artifactFiles')}` : ''}
                     </div>
                 </div>
                 <span style={{
@@ -86,13 +88,13 @@ export const ArtifactCard: React.FC<{ meta: ArtifactMeta; isArabic?: boolean }> 
                         color: '#08130d', background: 'linear-gradient(135deg, var(--joe-gold-primary, #34c48b), var(--joe-gold-dark, #1f7d5c))',
                         border: 'none', borderRadius: 9, padding: '8px 13px',
                     }}
-                >👁 {isArabic ? 'فتح في المعاينة' : 'Open preview'}</button>
+                >👁 {t('artifactOpenInPreview')}</button>
                 {url && (
                     <a href={url} target="_blank" rel="noreferrer"
                         style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none',
                             fontSize: 12.5, fontWeight: 600, color: 'var(--joe-text-secondary, #a2a5ad)',
                             border: '1px solid var(--joe-border)', borderRadius: 9, padding: '8px 13px' }}
-                    >⤓ {isArabic ? 'الكود/الملف' : 'View file'}</a>
+                    >⤓ {t('artifactCodeOrFile')}</a>
                 )}
             </div>
         </div>

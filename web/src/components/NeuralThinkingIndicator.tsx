@@ -7,6 +7,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { SocketService } from '../services/socket';
+import { useTranslation } from 'react-i18next';
 
 interface NeuralThinkingIndicatorProps {
   phase?: 'analyzing' | 'synthesizing' | 'executing' | 'idle';
@@ -15,14 +16,18 @@ interface NeuralThinkingIndicatorProps {
   sessionId?: string;
 }
 
-const phaseLabels: Record<string, { text: string; textAr: string; color: string }> = {
-  analyzing: { text: 'Analyzing', textAr: 'جو يفكّر', color: '#34c48b' },
-  synthesizing: { text: 'Planning', textAr: 'جو يخطّط', color: '#3bb2f6' },
-  executing: { text: 'Executing', textAr: 'جو ينفّذ', color: '#f0a83b' },
-  idle: { text: '', textAr: 'جو يفكّر', color: '#34c48b' },
+// The label is resolved through i18n at render time. It used to be a hardcoded
+// { text, textAr } pair of which only the Arabic half was ever rendered, so this
+// indicator stayed Arabic in every language.
+const phaseLabels: Record<string, { key: string; color: string }> = {
+  analyzing: { key: 'thinkingAnalyzing', color: '#34c48b' },
+  synthesizing: { key: 'thinkingPlanning', color: '#3bb2f6' },
+  executing: { key: 'thinkingExecuting', color: '#f0a83b' },
+  idle: { key: 'thinkingAnalyzing', color: '#34c48b' },
 };
 
 export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, variant = 'inline', sessionId }: NeuralThinkingIndicatorProps) {
+  const { t } = useTranslation();
   const [currentPhase, setCurrentPhase] = useState(phase);
   const [status, setStatus] = useState('');
   const [details, setDetails] = useState<string[]>([]);
@@ -59,7 +64,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
   const hasLog = details.length > 0;
 
   return (
-    <div className={`neural-card ${variant} ${hasLog ? 'has-log' : ''}`} dir="rtl">
+    <div className={`neural-card ${variant} ${hasLog ? 'has-log' : ''}`} dir="auto">
       <style>{`
         .neural-card {
           --nc: ${current.color};
@@ -131,7 +136,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
       <div className="neural-head">
         <span className="nc-orb"><span className="core" /></span>
         <span className="nc-label">
-          {status || current.textAr}
+          {status || t(current.key)}
           <span className="nc-dots"><i>.</i><i>.</i><i>.</i></span>
         </span>
       </div>
