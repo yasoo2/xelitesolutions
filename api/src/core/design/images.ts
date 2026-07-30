@@ -106,6 +106,22 @@ function findCached(artifactDir: string, query: string, variant = 0): string | n
     return null;
 }
 
+/** Words too common to prove anything about a photo's subject. */
+const STOPWORDS = new Set(['the','a','an','of','in','on','at','and','or','with','for','to','by',
+    'photo','image','picture','close','up','view','shot','background','people','person']);
+
+/** Does the candidate's own title/tags mention what we searched for? */
+export function isRelevant(query: string, result: any): boolean {
+    const terms = String(query || '').toLowerCase().split(/[^a-z0-9]+/)
+        .filter(w => w.length > 2 && !STOPWORDS.has(w));
+    if (!terms.length) return true;                 // nothing to check against
+    const tags = Array.isArray(result?.tags) ? result.tags.map((t: any) => String(t?.name ?? t)) : [];
+    const hay = [result?.title, result?.description, ...tags].join(' ').toLowerCase();
+    if (!hay.trim()) return true;                   // no metadata: don't punish it
+    // One shared term is enough — demanding all of them rejects almost everything.
+    return terms.some(t => hay.includes(t));
+}
+
 function extFor(contentType: string): string {
     const t = contentType.toLowerCase();
     if (t.includes('png')) return '.png';
@@ -151,6 +167,12 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
     for (const r of results) {
         const src = String(r?.url || r?.thumbnail || '').trim();
         if (!src) continue;
+        // RELEVANCE. Keyword search returns whatever it likes: a build for a
+        // software consultancy came back with a photo credited to "7th Army
+        // Training Command" — a military exercise on a consulting page. Require
+        // the result's own metadata to share a meaningful word with the subject
+        // that was asked for, so an unrelated hit is skipped rather than shipped.
+        if (!isRelevant(query, r)) continue;
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), timeoutMs);
         try {

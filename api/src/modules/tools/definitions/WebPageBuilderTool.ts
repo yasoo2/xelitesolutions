@@ -6,7 +6,7 @@ import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
 import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
 import { workspaceService } from '../../services/WorkspaceService';
-import { buildPalette, paletteCss, designBrief } from '../../../core/design/design-system';
+import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript } from '../../../core/design/design-system';
 import { detectPageKind, blueprintBrief, imageBudget } from '../../../core/design/blueprints';
 import { resolveImages, creditsBlock } from '../../../core/design/images';
 
@@ -182,6 +182,22 @@ ${prev!.html}`
         // Detect a no-op edit: the model returned HTML identical to the current page
         // (weak models sometimes echo it back). We must NOT claim we changed it.
         const editNoOp = isEdit && !!prev && (editFellBack || html.trim() === prev.html.trim());
+
+        // [UI KIT] Inject the component layer as a BASE stylesheet — buttons,
+        // fields, nav spacing, card hover, focus rings and scroll-reveal motion.
+        // The brief asked for all of it and the model shipped a page with zero
+        // transitions, zero :hover, zero :focus and no rule for `button` at all.
+        // Placed right after <style> so anything the model DID write still wins.
+        if (/<style[^>]*>/i.test(html)) {
+            html = html.replace(/<style([^>]*)>/i, `<style$1>\n${uiKitCss()}\n`);
+        } else if (/<\/head>/i.test(html)) {
+            html = html.replace(/<\/head>/i, `<style>\n${uiKitCss()}\n</style>\n</head>`);
+        }
+        if (!/data-reveal/.test(html)) {
+            html = /<\/body>/i.test(html)
+                ? html.replace(/<\/body>/i, `${uiKitScript()}\n</body>`)
+                : html + uiKitScript();
+        }
 
         // [PHOTOGRAPHS] Turn every {{IMAGE:subject}} marker into a real licensed
         // photograph, downloaded once and served from Joe so the page keeps its

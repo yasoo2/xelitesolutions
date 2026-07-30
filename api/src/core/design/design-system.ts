@@ -218,3 +218,106 @@ export function designBrief(p: Palette): string {
   (header/nav/main/section/footer), aria-labels on icon-only buttons.
 - Dark mode ships with the page via the token block — do not add a second colour scheme.`;
 }
+
+/**
+ * The component layer — buttons, fields, cards, navigation, motion.
+ *
+ * The brief asked for hover transitions, focus rings and one gentle entrance
+ * animation. A measured build contained ZERO transitions, ZERO :hover, ZERO
+ * @keyframes, ZERO :focus and not a single rule for `button` — while the page
+ * had a submit button sitting there in browser-default grey. That is what "the
+ * design is primitive and the buttons are ugly" means in code.
+ *
+ * A weak model ignores instructions it finds tedious, so this ships as CSS.
+ * It is injected as a BASE layer, immediately after <style>, which means any
+ * rule the model does write still wins — this only fills what it left bare.
+ */
+export function uiKitCss(): string {
+    return `/* Joe UI kit — base layer (the page's own rules override these) */
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  font-family:'Segoe UI','Noto Sans Arabic','Helvetica Neue',system-ui,-apple-system,sans-serif}
+img,svg,video,iframe{max-width:100%;height:auto}
+h1,h2,h3,h4{line-height:1.2;letter-spacing:-.01em;margin:0 0 var(--space-4,16px)}
+p{line-height:1.75}
+section{scroll-margin-top:80px}
+
+/* Buttons: a real control, not the browser default */
+button,.btn,a.btn,[type=submit],[type=button],input[type=submit]{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:12px 22px;border-radius:var(--radius-pill,999px);border:1px solid transparent;
+  background:var(--brand,#2563eb);color:var(--on-brand,#fff);
+  font:inherit;font-weight:650;font-size:var(--step-0,1rem);line-height:1;
+  cursor:pointer;text-decoration:none;white-space:nowrap;
+  box-shadow:var(--shadow-sm,0 1px 2px rgba(0,0,0,.08));
+  transition:transform .18s cubic-bezier(.2,.8,.3,1),box-shadow .18s ease,background-color .18s ease,filter .18s ease}
+button:hover,.btn:hover,a.btn:hover,[type=submit]:hover,[type=button]:hover{
+  transform:translateY(-2px);box-shadow:var(--shadow-md,0 8px 24px -8px rgba(0,0,0,.25));filter:saturate(1.08)}
+button:active,.btn:active,a.btn:active,[type=submit]:active{transform:translateY(0) scale(.985)}
+.btn-ghost,button.ghost,a.ghost{background:transparent;color:var(--brand,#2563eb);border-color:var(--border,rgba(0,0,0,.15))}
+.btn-ghost:hover,button.ghost:hover,a.ghost:hover{background:var(--brand-light,rgba(37,99,235,.08))}
+:focus-visible{outline:3px solid var(--accent,#2563eb);outline-offset:3px;border-radius:6px}
+
+/* Navigation: links need room to breathe and a state on hover */
+nav{display:flex;align-items:center;gap:clamp(14px,2.2vw,30px);flex-wrap:wrap}
+nav a{position:relative;text-decoration:none;font-weight:600;padding:6px 2px;
+  transition:opacity .18s ease,color .18s ease}
+nav a:hover{opacity:.82}
+nav a:not(.btn)::after{content:"";position:absolute;inset-inline-start:0;bottom:0;height:2px;width:0;
+  background:currentColor;transition:width .22s cubic-bezier(.2,.8,.3,1)}
+nav a:not(.btn):hover::after{width:100%}
+
+/* Fields */
+input,textarea,select{width:100%;padding:12px 14px;font:inherit;
+  color:var(--text,#0f1e33);background:var(--surface,#fff);
+  border:1px solid var(--border,rgba(0,0,0,.15));border-radius:var(--radius,12px);
+  transition:border-color .18s ease,box-shadow .18s ease}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand,#2563eb);
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--brand,#2563eb) 18%,transparent)}
+textarea{min-height:130px;resize:vertical}
+form{display:flex;flex-direction:column;gap:var(--space-3,12px)}
+form button,form [type=submit]{align-self:flex-start}
+
+/* Cards lift on hover — the single cheapest cue that a page is alive */
+.card,.service,.step,.result,.price,.testimonial,.feature,.product{
+  transition:transform .22s cubic-bezier(.2,.8,.3,1),box-shadow .22s ease,border-color .22s ease}
+.card:hover,.service:hover,.step:hover,.result:hover,.price:hover,.testimonial:hover,.feature:hover,.product:hover{
+  transform:translateY(-4px);box-shadow:var(--shadow-lg,0 24px 60px -16px rgba(0,0,0,.25));
+  border-color:color-mix(in srgb,var(--brand,#2563eb) 35%,transparent)}
+
+/* Photographs sit in a framed, correctly-cropped box instead of at raw size */
+section img:not([class*=icon]):not([class*=logo]){
+  border-radius:var(--radius-lg,20px);object-fit:cover;display:block}
+
+/* Entrance motion — opt-out honoured */
+[data-reveal]{opacity:0;transform:translateY(18px);
+  transition:opacity .6s cubic-bezier(.2,.8,.3,1),transform .6s cubic-bezier(.2,.8,.3,1)}
+[data-reveal].is-visible{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  [data-reveal]{opacity:1;transform:none}
+}`;
+}
+
+/** The scroll-reveal behaviour the CSS above depends on. */
+export function uiKitScript(): string {
+    return `<script>
+(function(){
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var targets = document.querySelectorAll('section > *, main > section, .card, .service, .step, .result, .price, .testimonial');
+  if (reduce || !('IntersectionObserver' in window)) { return; }
+  targets.forEach(function(el){ el.setAttribute('data-reveal',''); });
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if (e.isIntersecting) { e.target.classList.add('is-visible'); io.unobserve(e.target); } });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.05 });
+  targets.forEach(function(el){ io.observe(el); });
+  // A sticky header reads as flat until it separates from the content under it.
+  var head = document.querySelector('header');
+  if (head && getComputedStyle(head).position === 'sticky') {
+    var onScroll = function(){ head.style.boxShadow = window.scrollY > 8 ? 'var(--shadow-md, 0 8px 24px -8px rgba(0,0,0,.25))' : 'none'; };
+    window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+  }
+})();
+</script>`;
+}

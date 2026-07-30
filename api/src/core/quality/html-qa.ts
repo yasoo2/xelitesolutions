@@ -92,7 +92,11 @@ export function reviewHtml(rawHtml: string, isArabic = false): HtmlReview {
 
         // 6c. Multi-column grids with no breakpoint stay multi-column on a
         //     phone. Collapse every such grid under 768px.
-        if (!/@media/i.test(styleBlock)) {
+        // Look for a WIDTH breakpoint specifically. Testing for any @media was
+        // wrong the moment the UI kit started shipping a prefers-reduced-motion
+        // block: the page then "had media queries" and the grids were left at
+        // three columns on a phone — the safety net silently disarmed itself.
+        if (!/@media[^{]*\(\s*(max|min)-width/i.test(styleBlock)) {
             const gridSelectors: string[] = [];
             const ruleRe = /([^{}]+)\{([^}]*)\}/g;
             let m: RegExpExecArray | null;
