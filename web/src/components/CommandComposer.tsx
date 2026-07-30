@@ -2746,6 +2746,21 @@ export default function CommandComposer({
     }
   };
 
+  // Auto-verify the active provider ONCE on load, in the background, so its button
+  // shows green/active immediately WITHOUT the user opening the panel and clicking
+  // Verify each session. This is a REAL verification call (not a fake green): if it
+  // fails, the button honestly stays red with the reason.
+  const didAutoVerifyRef = useRef(false);
+  useEffect(() => {
+    if (didAutoVerifyRef.current) return;
+    didAutoVerifyRef.current = true;
+    const ap = String(activeProvider || '').trim();
+    if (ap) {
+      const timer = setTimeout(() => { void checkConnection(ap, { closeOnSuccess: false }); }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, []); // once on mount
+
   const deleteProviderKey = (key: string) => {
     if (confirm('Are you sure you want to remove the API key?')) {
       // A free provider (e.g. Groq) must fall BACK to free mode, not be left keyless

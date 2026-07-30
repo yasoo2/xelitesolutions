@@ -515,18 +515,8 @@ export default function JoeIDELayout({
                     <div className="joe-files-drawer-backdrop" onClick={toggleExplorer} aria-hidden="true" />
                 )}
 
-                {/* Always-visible gold edge tab to open/close the drawer (desktop) */}
-                {!isMobile && (
-                    <button
-                        className={`joe-files-edge-tab ${isExplorerCollapsed ? '' : 'open'}`}
-                        onClick={toggleExplorer}
-                        title={isExplorerCollapsed ? 'فتح مستكشف الملفات' : 'إغلاق مستكشف الملفات'}
-                        aria-label="toggle file explorer"
-                    >
-                        <FolderOpen size={16} />
-                        <span className="joe-files-edge-tab-label">الملفات</span>
-                    </button>
-                )}
+                {/* (Removed the floating gold edge tab that overlapped the browser —
+                    the file explorer is opened from the header's Files button instead.) */}
             </div>
 
             {/* Sessions Bar */}
