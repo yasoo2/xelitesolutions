@@ -109,6 +109,58 @@ export class PlanningEngine {
     }
 
     /**
+     * Semantic REQUEST router — what the user actually wants, in any phrasing.
+     *
+     * The fast-paths below are keyword matches, which is precisely the wrong
+     * instrument for natural language: «أضف» matched and «إضافة» did not, so one
+     * spelling of one request edited the page and the other went off searching the
+     * web. Every miss was answered by lengthening a regex, which only ever fixes
+     * the phrasings someone already complained about.
+     *
+     * This asks the model instead. It runs ONLY when every deterministic path has
+     * missed, so the fast, offline-safe routes still win and cost nothing; and it
+     * returns null on timeout, junk, or an unknown label, leaving the previous
+     * behaviour exactly as it was. Whitelisted output only — the model chooses
+     * among capabilities Joe has, it does not invent one.
+     */
+    static async classifyRequestIntent(
+        goal: string,
+        opts: { hasActivePage: boolean },
+        context?: any
+    ): Promise<{ intent: string; repo: string } | null> {
+        const sys = `You route a software agent's requests. Read the user's request in ANY language, dialect or spelling and pick the single capability that fulfils it. Output ONLY one compact JSON object, no markdown, no prose:
+{"intent":"build_page|edit_page|analyze_repo|answer|other","repo":""}
+Definitions:
+- build_page: the user wants a NEW web page / site / landing page / UI built.
+- edit_page: the user wants the page that was JUST built changed — colours, styling, text, layout, adding or removing an element. ${opts.hasActivePage ? 'A page IS currently open in this session.' : 'No page is open in this session, so edit_page is almost certainly wrong.'}
+- analyze_repo: the user wants a GitHub repository/codebase analysed, reviewed or described. Put "owner/repo" in "repo" only if they named one.
+- answer: the user is asking a question, chatting, or wants an explanation — no artefact to produce.
+- other: anything else (running commands, files, browsing the web, email, deployment...).
+Rules:
+- Judge INTENT, not vocabulary. Verbal nouns, plurals, dialects and misspellings all count.
+- A question ABOUT design or about a repo is "answer", not a build or an analysis.
+- When genuinely unsure, output "other".`;
+        let raw = '';
+        try {
+            raw = await Promise.race([
+                routeToModel([{ role: 'system', content: sys }, { role: 'user', content: `Request: ${goal}` }], undefined, undefined, undefined, undefined, undefined, undefined, context),
+                new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000)),
+            ]);
+        } catch { return null; }
+        const m = raw && raw.match(/\{[\s\S]*\}/);
+        if (!m) return null;
+        let obj: any;
+        try { obj = JSON.parse(m[0]); } catch { return null; }
+        const intent = String(obj?.intent || '').toLowerCase().trim();
+        const allowed = ['build_page', 'edit_page', 'analyze_repo', 'answer', 'other'];
+        if (!allowed.includes(intent) || intent === 'other') return null;
+        // Never let the router claim an edit when there is nothing to edit.
+        if (intent === 'edit_page' && !opts.hasActivePage) return null;
+        const repo = String(obj?.repo || '').trim();
+        return { intent, repo: /^[\w.-]+\/[\w.-]+$/.test(repo) ? repo : '' };
+    }
+
+    /**
      * Semantic browser-intent router. Uses the model to understand the request in
      * ANY language/phrasing and return {action, url, query, text, lang}. Robust:
      * strict JSON, whitelist-validated, times out, returns null on any failure so
@@ -679,6 +731,63 @@ Rules:
                 }],
                 metadata: { complexity: 'low', riskLevel: 'low' }
             };
+        }
+
+        // [SEMANTIC ROUTER] Every keyword path above has missed. Rather than hand
+        // the request to the generic DAG planner — which is what produced six
+        // English steps and a web search when the user asked for nicer colours —
+        // ask the model what was actually meant. Deterministic paths already had
+        // their chance, so this costs nothing on the requests they handle.
+        if (!isRecoveryGoal && String(intent.goal || '').trim().length >= 6) {
+            const routed = await PlanningEngine.classifyRequestIntent(intent.goal, { hasActivePage }, context);
+            if (routed) {
+                console.log(`[PlanningEngine] semantic router -> ${routed.intent}${routed.repo ? ` (${routed.repo})` : ''}`);
+                if (routed.intent === 'build_page' || routed.intent === 'edit_page') {
+                    return {
+                        id: `build_${Date.now()}`,
+                        goal: intent.goal,
+                        steps: [{
+                            id: 'build_page',
+                            description: `Building: ${intent.goal}`,
+                            tool: 'web_page_builder',
+                            agent: 'Dev',
+                            input: { request: intent.goal },
+                            dependsOn: []
+                        }],
+                        metadata: { complexity: 'medium', riskLevel: 'low' }
+                    };
+                }
+                if (routed.intent === 'analyze_repo') {
+                    return {
+                        id: `repo_${Date.now()}`,
+                        goal: intent.goal,
+                        steps: [{
+                            id: 'repo_analyze',
+                            description: routed.repo ? `تحليل المستودع ${routed.repo}` : 'تحليل المستودع المتصل',
+                            tool: 'github_repo_manager',
+                            agent: 'General',
+                            input: { action: 'analyze', ...(routed.repo ? { repoName: routed.repo } : {}) },
+                            dependsOn: []
+                        }],
+                        metadata: { complexity: 'medium', riskLevel: 'low' }
+                    };
+                }
+                if (routed.intent === 'answer') {
+                    return {
+                        id: `chat_${Date.now()}`,
+                        goal: intent.goal,
+                        steps: [{
+                            id: 'direct_response',
+                            description: `Answering: ${intent.goal}`,
+                            tool: 'central_answer',
+                            agent: 'General',
+                            input: { question: intent.goal },
+                            dependsOn: []
+                        }],
+                        metadata: { complexity: 'low', riskLevel: 'low' }
+                    };
+                }
+            }
         }
 
         // [ELITE FAST-PATH] Direct answer for general questions or chat
