@@ -60,6 +60,90 @@ export function reviewHtml(rawHtml: string, isArabic = false): HtmlReview {
         fixed.push('set RTL direction for Arabic page');
     }
 
+    /* ------------------------------------------------------------------
+       6. LAYOUT SAFETY NET.
+
+       The design brief tells the model to constrain images, collapse grids
+       on mobile and put --on-brand text on branded surfaces. A weak model
+       ignores all three, and the result is not "slightly off" — it is
+       unusable: a measured build overflowed 1406px horizontally on desktop
+       and 2456px on a phone, where the page rendered as an empty screen
+       because every column stayed at its desktop width. Instructions are
+       not enforcement, so the fixes below are applied to the CSS itself.
+       ------------------------------------------------------------------ */
+
+    // 6a. No DOCTYPE means QUIRKS MODE — the browser falls back to a 1990s box
+    //     model and half the layout maths silently changes meaning.
+    if (/<html[\s>]/i.test(html) && !/<!DOCTYPE\s+html/i.test(html)) {
+        html = html.replace(/(<html[\s>])/i, '<!DOCTYPE html>\n$1');
+        fixed.push('added missing <!DOCTYPE html> (page was rendering in quirks mode)');
+    }
+
+    if (/<\/style>/i.test(html)) {
+        const styleBlock = (html.match(/<style[^>]*>([\s\S]*?)<\/style>/i) || [, ''])[1];
+        const extra: string[] = [];
+
+        // 6b. An unconstrained <img> renders at its intrinsic size — a 2048px
+        //     photo in a 1440px viewport pushes the whole document sideways.
+        if (!/img\s*[,{][^}]*max-width/i.test(styleBlock)) {
+            extra.push('*,*::before,*::after{box-sizing:border-box}img,svg,video,iframe{max-width:100%;height:auto}body{overflow-x:hidden}');
+            fixed.push('constrained media to the viewport (images were overflowing the page)');
+        }
+
+        // 6c. Multi-column grids with no breakpoint stay multi-column on a
+        //     phone. Collapse every such grid under 768px.
+        if (!/@media/i.test(styleBlock)) {
+            const gridSelectors: string[] = [];
+            const ruleRe = /([^{}]+)\{([^}]*)\}/g;
+            let m: RegExpExecArray | null;
+            while ((m = ruleRe.exec(styleBlock))) {
+                const sel = m[1].trim(), body = m[2];
+                if (/grid-template-columns\s*:\s*repeat\(\s*([2-9]|1[0-9])/i.test(body) && sel && !sel.startsWith('@')) {
+                    gridSelectors.push(sel);
+                }
+            }
+            if (gridSelectors.length) {
+                extra.push(`@media(max-width:768px){${gridSelectors.join(',')}{grid-template-columns:1fr!important}}`);
+                fixed.push(`collapsed ${gridSelectors.length} grid(s) to one column on mobile (no breakpoint existed)`);
+            }
+        }
+
+        // 6d. Text on a branded background must use the colour the palette
+        //     guarantees against it. A measured page put --text (#252f41) on
+        //     --brand (#316ed8): 2.79:1, far below the 4.5:1 minimum.
+        let recolored = 0;
+        const withColor = styleBlock.replace(/([^{}]+)\{([^}]*)\}/g, (full, sel, body) => {
+            const brandBg = /background(-color|-image)?\s*:[^;]*var\(\s*--brand(-dark)?\s*\)/i.test(body);
+            if (brandBg && !/(^|;)\s*color\s*:/i.test(body)) {
+                recolored++;
+                return `${sel}{${body.trim().replace(/;?$/, ';')}color:var(--on-brand);}`;
+            }
+            return full;
+        });
+        if (recolored) {
+            html = html.replace(styleBlock, withColor);
+            fixed.push(`set readable text colour on ${recolored} branded surface(s)`);
+        }
+
+        if (extra.length) {
+            html = html.replace(/<\/style>/i, `\n/* Joe layout safety net */\n${extra.join('\n')}\n</style>`);
+        }
+    }
+
+    // 6e. A field with only a placeholder is invisible to a screen reader once
+    //     the user starts typing. Give it an accessible name.
+    if (/<(input|textarea|select)\b/i.test(html) && !/<label\b/i.test(html)) {
+        let named = 0;
+        html = html.replace(/<(input|textarea|select)\b([^>]*)>/gi, (full, tag, attrs) => {
+            if (/aria-label\s*=/i.test(attrs) || /type\s*=\s*["'](hidden|submit|button)["']/i.test(attrs)) return full;
+            const ph = (attrs.match(/placeholder\s*=\s*"([^"]+)"/i) || [])[1];
+            if (!ph) return full;
+            named++;
+            return `<${tag}${attrs} aria-label="${ph}">`;
+        });
+        if (named) fixed.push(`labelled ${named} unlabelled form field(s)`);
+    }
+
     // --- Remaining (non-auto-fixable) issues lower the score but don't block ---
     if (/\b(TODO|FIXME|placeholder text|lorem ipsum|your text here|اكتب هنا|النص هنا)\b/i.test(html)) {
         issues.push('contains placeholder/TODO text that should be replaced with real content');

@@ -88,14 +88,15 @@ function imagesDir(artifactDir: string): string {
     return path.join(artifactDir, 'images');
 }
 
-function cacheName(query: string): string {
-    return crypto.createHash('sha256').update(query.toLowerCase().trim()).digest('hex').slice(0, 32);
+function cacheName(query: string, variant = 0): string {
+    const key = variant ? `${query.toLowerCase().trim()}#${variant}` : query.toLowerCase().trim();
+    return crypto.createHash('sha256').update(key).digest('hex').slice(0, 32);
 }
 
 /** An existing cached file for this query, if any. */
-function findCached(artifactDir: string, query: string): string | null {
+function findCached(artifactDir: string, query: string, variant = 0): string | null {
     const dir = imagesDir(artifactDir);
-    const base = cacheName(query);
+    const base = cacheName(query, variant);
     try {
         for (const ext of ['.jpg', '.jpeg', '.png', '.webp', '.gif']) {
             const f = path.join(dir, base + ext);
@@ -128,14 +129,25 @@ async function fetchJson(url: string, timeoutMs: number): Promise<any | null> {
  * unavailable or nothing suitable was found — the caller falls back to a
  * gradient rather than leaving a hole.
  */
-export async function sourceImage(artifactDir: string, query: string, timeoutMs = 9000): Promise<ResolvedImage | null> {
-    const cached = findCached(artifactDir, query);
+export async function sourceImage(artifactDir: string, query: string, timeoutMs = 9000, variant = 0): Promise<ResolvedImage | null> {
+    const cached = findCached(artifactDir, query, variant);
     if (cached) return { query, src: cached, alt: query, fromCache: true };
 
     // Ask for more candidates so a too-small or wrong-shaped one can be skipped.
-    const url = `${imageApi()}?q=${encodeURIComponent(query)}&page_size=8&mature=false&license_type=all-cc`;
+    //
+    // license_type=commercial,modification, NOT all-cc. A real build returned
+    // BY-NC and BY-NC-ND photos for a company website: NC forbids commercial
+    // use — which a business site is — and ND forbids the cropping and resizing
+    // any layout does. Joe was handing the user a licence breach with a tidy
+    // credits line underneath it. Only licences that permit commercial use and
+    // modification (CC0, BY, BY-SA) are eligible now.
+    const url = `${imageApi()}?q=${encodeURIComponent(query)}&page_size=8&mature=false&license_type=commercial,modification`;
     const data = await fetchJson(url, timeoutMs);
     const results: any[] = Array.isArray(data?.results) ? data.results : [];
+    // A subject the model asked for twice must not come back as the same photo
+    // in both places — a build shipped the identical portrait as two different
+    // customers' testimonials. Skip the candidates already used for this subject.
+    let skip = variant;
     for (const r of results) {
         const src = String(r?.url || r?.thumbnail || '').trim();
         if (!src) continue;
@@ -153,9 +165,10 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
             // the actual file, not the metadata, which is often missing.
             const dim = imageSize(buf) || (r?.width && r?.height ? { width: Number(r.width), height: Number(r.height) } : null);
             if (dim && dim.width < 600) continue;
+            if (skip > 0) { skip--; continue; }
             const dir = imagesDir(artifactDir);
             fs.mkdirSync(dir, { recursive: true });
-            const name = cacheName(query) + extFor(contentType);
+            const name = cacheName(query, variant) + extFor(contentType);
             fs.writeFileSync(path.join(dir, name), buf);
             return {
                 query,
@@ -276,18 +289,35 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     }
     if (!queries.length) return { html, requested: 0, real: 0, credits: [], bytes: 0 };
 
+    // How many times each subject appears — a repeat needs its own photo.
+    const occurrences = new Map<string, number>();
+    for (const m of String(html).matchAll(IMAGE_MARKER)) {
+        const q = m[1].trim();
+        occurrences.set(q, (occurrences.get(q) || 0) + 1);
+    }
+
+    // key = `${query}#${variant}`
     const resolved = new Map<string, ResolvedImage>();
+    let fetched = 0;
     // Sequential on purpose: a laptop on a home connection does better with one
     // request at a time than with a dozen competing ones.
-    for (const q of queries.slice(0, max)) {
-        const img = await sourceImage(artifactDir, q, opts?.timeoutMs ?? 9000);
-        if (img) resolved.set(q, img);
+    for (const q of queries) {
+        const times = Math.min(occurrences.get(q) || 1, 4);
+        for (let v = 0; v < times && fetched < max; v++) {
+            const img = await sourceImage(artifactDir, q, opts?.timeoutMs ?? 9000, v);
+            fetched++;
+            if (img) resolved.set(`${q}#${v}`, img);
+        }
     }
 
     const credits: ImageResolution['credits'] = [];
+    const seen = new Map<string, number>();
     let out = String(html).replace(IMAGE_MARKER, (_full, rawQuery: string) => {
         const q = String(rawQuery).trim();
-        const img = resolved.get(q);
+        const v = seen.get(q) || 0;
+        seen.set(q, v + 1);
+        // Fall back to the first variant when a later one could not be sourced.
+        const img = resolved.get(`${q}#${v}`) || resolved.get(`${q}#0`);
         if (!img) return gradientPlaceholder(q, hue);
         if (img.credit && img.credit.license && !credits.some(c => c.source === img.credit!.source)) {
             credits.push(img.credit);
@@ -302,5 +332,9 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     let bytes = 0;
     for (const img of resolved.values()) bytes += img.bytes || 0;
 
-    return { html: out, requested: queries.length, real: resolved.size, credits, bytes };
+    // Count OCCURRENCES on both sides: a subject used twice is two photos to
+    // source, so reporting "2 of 1" was arithmetic the user would rightly query.
+    let requested = 0;
+    for (const [, n] of occurrences) requested += Math.min(n, 4);
+    return { html: out, requested: Math.min(requested, max), real: resolved.size, credits, bytes };
 }
