@@ -40,6 +40,7 @@ import { themeCss, lightOverrideCss, revealCss } from '../../core/design/theme';
 import {
     uiKitCss, buildPalette, paletteCss, darkTokenBlock, lightTokenBlock,
 } from '../../core/design/design-system';
+import { auditVisually } from '../../core/quality/visual-audit';
 
 const OUT = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-layouts-'));
 const ARCHETYPES: Archetype[] = ['split', 'centered', 'bento', 'editorial', 'showcase', 'overlap', 'contrast'];
@@ -154,7 +155,21 @@ const CONTRAST_PROBE = `(function () {
   function behind(el) {
     for (var n = el; n && n !== document.documentElement; n = n.parentElement) {
       var cs = getComputedStyle(n);
-      if (cs.backgroundImage && cs.backgroundImage !== 'none') return null;
+      if (cs.backgroundImage && cs.backgroundImage !== 'none') {
+        /* A photograph is unknowable. A COLOUR gradient is not: its darkest stop
+           is the worst case a reader can land on, which is what the shipping
+           audit compares against — and skipping it here is how this probe missed
+           a ghost button sitting at 1.6:1 on a brand gradient across six of the
+           seven compositions. An instrument that skips is not neutral; it is
+           quietly reporting a pass. */
+        if (cs.backgroundImage.indexOf('url(') >= 0) return null;
+        var stops = cs.backgroundImage.match(/rgba?\([^)]+\)|color\(\s*srgb[^)]+\)/gi) || [];
+        var solid = [];
+        for (var k = 0; k < stops.length; k++) { var c = toRgb(stops[k]); if (c) solid.push(c); }
+        if (!solid.length) return null;
+        solid.sort(function (a, b) { return lum(a) - lum(b); });
+        return solid[0];
+      }
       /* A ::before or ::after carrying a background is painted BETWEEN this text
          and the colour the walk is about to find. The showcase hero does exactly
          this — a photograph in an absolutely positioned child and a dark scrim in
@@ -217,6 +232,7 @@ async function main() {
     const checks: Check[] = [];
     const add = (name: string, pass: boolean, got: unknown = '') => checks.push({ name, pass, got });
     let unmeasured = 0;
+    let joeUnmeasured = 0;
 
     const viewports = [
         { label: 'desktop', width: 1280, height: 900 },
@@ -274,6 +290,37 @@ async function main() {
     }
     await browser.close();
 
+    /**
+     * JOE'S OWN AUDIT, ON THE SAME PAGES.
+     *
+     * The probe above is an independent instrument written for this file. The
+     * audit is the one that actually ships and whose findings drive the repair
+     * loop. Running both over identical pages is the only way to notice the
+     * audit drifting — and it is how the false CRITICAL on every showcase page
+     * was found: the audit walked up for a background colour, sailed past a
+     * photograph held in an absolutely positioned child and a scrim in ::after,
+     * reached the white body, and reported white-on-photograph as 1.05:1.
+     *
+     * Two instruments that disagree mean one of them is wrong. Neither is
+     * allowed to be the one that ships.
+     */
+    for (const a of ARCHETYPES) {
+        const url = 'file://' + path.join(OUT, `${a}.html`);
+        try {
+            const v = await auditVisually(url, { screenshotDir: OUT, name: `audit-${a}` });
+            if (!v.ran) { add(`${a}: Joe's audit ran`, false, v.skipped); continue; }
+            const contrast = v.findings.filter(f => f.code === 'contrast');
+            add(`${a}: Joe's audit reports no contrast failure either`,
+                contrast.length === 0, contrast.map(f => f.en));
+            add(`${a}: Joe's audit finds nothing critical`,
+                !v.findings.some(f => f.severity === 'critical'),
+                v.findings.filter(f => f.severity === 'critical').map(f => f.en));
+            joeUnmeasured += Number(v.metrics?.contrastUnmeasurable) || 0;
+        } catch (e: any) {
+            add(`${a}: Joe's audit ran`, false, String(e?.message || e));
+        }
+    }
+
     let failed = 0;
     for (const c of checks) {
         if (c.pass) continue;
@@ -283,7 +330,8 @@ async function main() {
     console.log(`\n${checks.length - failed}/${checks.length} passed across ${ARCHETYPES.length} archetypes.`);
     // Said out loud, because "0 failures" over a set that silently skipped half
     // the page is the kind of green that hides everything.
-    console.log(`${unmeasured} text node(s) sat on a gradient or a photograph and could not be measured.`);
+    console.log(`${unmeasured} text node(s) sat on a gradient or a photograph and could not be measured here,`);
+    console.log(`${joeUnmeasured} likewise in Joe's own audit — both instruments say so rather than guessing.`);
     console.log(`Screenshots in ${OUT}`);
     process.exit(failed ? 1 : 0);
 }

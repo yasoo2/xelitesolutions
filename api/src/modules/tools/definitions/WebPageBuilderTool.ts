@@ -1135,7 +1135,8 @@ the WORDS, not the structure.`;
             if (audit.ran) {
                 visualFindings = audit.findings;
                 visualScore = audit.score;
-                logs.push(`visual audit: ${audit.score}/100, ${audit.findings.length} finding(s)`);
+                logs.push(`visual audit: ${audit.score}/100, ${audit.findings.length} finding(s)`
+                    + (audit.metrics?.contrastUnmeasurable ? ` (${audit.metrics.contrastUnmeasurable} text node(s) on a photograph — contrast not measurable there)` : ''));
                 const brief = visualRepairBrief(audit.findings);
                 // A whole-page repair asks the model to return the whole page. On a
                 // document this size the reply is truncated by the provider before
@@ -1753,7 +1754,8 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                     continue;
                 }
                 auditedPages++;
-                logs.push(`audit ${file}: visual ${v.score}/100, behaviour ${b.score}/100, ${b.metrics.dead || 0} dead control(s)`);
+                logs.push(`audit ${file}: visual ${v.score}/100, behaviour ${b.score}/100, ${b.metrics.dead || 0} dead control(s)`
+                    + (v.metrics?.contrastUnmeasurable ? ` (${v.metrics.contrastUnmeasurable} on a photograph)` : ''));
 
                 // Repair the behaviour, page by page and section by section —
                 // the same machinery, and the same rule: keep it only if the

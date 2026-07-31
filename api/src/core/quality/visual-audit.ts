@@ -44,9 +44,25 @@ function collector() {
     const de = document.documentElement;
     const vw = window.innerWidth;
 
+    /**
+     * A computed colour, in 0-255 channels.
+     *
+     * `color(srgb …)` has to be handled separately and NOT with the same
+     * arithmetic: its channels are 0-1, so reading them as 0-255 turns white
+     * into black and every contrast number after that is fiction. Chromium
+     * resolves `color-mix()` to that form, and this kit uses color-mix
+     * everywhere — ledes, badges, tinted borders — so this is the common case,
+     * not an exotic one. Anything still unrecognised returns alpha 0, which
+     * means "keep looking", never a guessed colour.
+     */
     const parse = (c: string): [number, number, number, number] => {
+        const srgb = c.match(/color\(\s*srgb\s+([^)]+)\)/i);
+        if (srgb) {
+            const p = srgb[1].replace('/', ' ').split(/\s+/).filter(Boolean).map(parseFloat);
+            return [(p[0] || 0) * 255, (p[1] || 0) * 255, (p[2] || 0) * 255, p[3] === undefined ? 1 : p[3]];
+        }
         const m = c.match(/rgba?\(([^)]+)\)/); if (!m) return [0, 0, 0, 0];
-        const p = m[1].split(',').map(s => parseFloat(s));
+        const p = m[1].replace('/', ' ').split(/[,\s]+/).filter(Boolean).map(s => parseFloat(s));
         return [p[0] || 0, p[1] || 0, p[2] || 0, p[3] === undefined ? 1 : p[3]];
     };
     const lum = (r: number, g: number, b: number) => {
@@ -57,17 +73,65 @@ function collector() {
         const L1 = lum(f[0], f[1], f[2]), L2 = lum(b[0], b[1], b[2]);
         return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
     };
-    const effBg = (el: Element): number[] => {
+    /**
+     * What is actually painted behind this element — or null when the honest
+     * answer is "a photograph", and no number would mean anything.
+     *
+     * Returning white in that case is what this function used to do, and it is
+     * how the audit reported a CRITICAL contrast failure on every single
+     * showcase page — stores and restaurants, the two most common kinds Joe
+     * builds. The showcase hero puts its photograph in an absolutely positioned
+     * child and its dark scrim in ::after; neither is an ancestor background, so
+     * the walk sailed past both, reached the white body, and called white text
+     * over a dark photograph 1.05:1. A false critical is not a harmless one — it
+     * drives the repair loop, which sends a correct page back to the model to
+     * have its contrast "fixed".
+     *
+     * A gradient IS measurable, conservatively: its darkest stop is the worst
+     * case a reader can land on, so that is what is compared against.
+     */
+    const covers = (rect: DOMRect, w: string, h: string) => {
+        const pw = parseFloat(w), ph = parseFloat(h);
+        // Unparseable means "cannot tell" — treated as covering, because
+        // guessing that it does NOT cover is what produced the false criticals.
+        if (!isFinite(pw) || !isFinite(ph)) return true;
+        return pw >= rect.width * 0.9 && ph >= rect.height * 0.9;
+    };
+    const effBg = (el: Element): number[] | null => {
         let n: Element | null = el;
         while (n) {
             const st = getComputedStyle(n);
+            const box = n.getBoundingClientRect();
+
+            // A ::before/::after with a background is painted between this text
+            // and anything the walk would find above it.
+            for (const which of ['::before', '::after']) {
+                const pe = getComputedStyle(n, which);
+                if (!pe || pe.content === 'none') continue;
+                const hasPaint = (pe.backgroundImage && pe.backgroundImage !== 'none') || parse(pe.backgroundColor)[3] > 0.1;
+                if (hasPaint && covers(box, pe.width, pe.height)) return null;
+            }
+            // …and so is an absolutely positioned child that covers the box,
+            // which is exactly how a full-bleed hero photograph is written.
+            for (const child of Array.from(n.children)) {
+                const cs = getComputedStyle(child);
+                if (cs.position !== 'absolute' && cs.position !== 'fixed') continue;
+                if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+                const cb = child.getBoundingClientRect();
+                if (cb.width < box.width * 0.9 || cb.height < box.height * 0.9) continue;
+                if (child.querySelector('img,picture,video') || (cs.backgroundImage && cs.backgroundImage !== 'none')) return null;
+            }
+
             const bg = parse(st.backgroundColor);
             if (bg[3] > 0.1) return bg;
             // A gradient hides the real colour; sample its darkest declared stop.
             const bi = st.backgroundImage;
-            if (bi && bi !== 'none' && bi.includes('rgb')) {
-                const stops = [...bi.matchAll(/rgba?\([^)]+\)/g)].map(m => parse(m[0]));
-                if (stops.length) return stops.sort((a, b) => lum(a[0], a[1], a[2]) - lum(b[0], b[1], b[2]))[0];
+            if (bi && bi !== 'none') {
+                if (/url\(/i.test(bi)) return null;                 // a photograph: unknowable
+                const stops = [...bi.matchAll(/rgba?\([^)]+\)|color\(\s*srgb[^)]+\)/gi)].map(m => parse(m[0]));
+                const opaque = stops.filter(c => c[3] > 0.1);
+                if (opaque.length) return opaque.sort((a, b) => lum(a[0], a[1], a[2]) - lum(b[0], b[1], b[2]))[0];
+                return null;                                         // a gradient we cannot read
             }
             n = n.parentElement;
         }
@@ -98,6 +162,8 @@ function collector() {
     const wideElements: string[] = [];
     // ---- contrast
     const contrastFails: Array<{ text: string; ratio: number; need: number }> = [];
+    // Text sitting on a photograph, counted rather than guessed at.
+    let unmeasurable = 0;
     // ---- tap targets
     const smallTargets: string[] = [];
     // ---- image distortion
@@ -124,7 +190,9 @@ function collector() {
         const st = getComputedStyle(el);
         const fg = parse(st.color);
         if (fg[3] === 0) continue;
-        const r = ratio(fg, effBg(el));
+        const bg = effBg(el);
+        if (!bg) { unmeasurable++; continue; }   // on a photograph — say so, do not invent a number
+        const r = ratio(fg, bg);
         const size = parseFloat(st.fontSize) || 16;
         const bold = (parseInt(st.fontWeight) || 400) >= 700;
         const need = (size >= 24 || (size >= 18.66 && bold)) ? 3 : 4.5;
@@ -285,7 +353,7 @@ function collector() {
     };
 
     return {
-        overflow, wideElements, contrastFails, smallTargets, distorted,
+        overflow, wideElements, contrastFails, contrastUnmeasurable: unmeasurable, smallTargets, distorted,
         imgTotal, imgNoDims, textChecked: checked,
         density: sample(),
         scrollHeight: de.scrollHeight,
@@ -648,7 +716,21 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
     findings.push(...deduped);
 
     const penalty = findings.reduce((n, f) => n + (f.severity === 'critical' ? 30 : f.severity === 'major' ? 14 : 5), 0);
-    return { ran: true, score: Math.max(0, 100 - penalty), findings, screenshots, metrics: { ...metrics, transfer } };
+    /**
+     * Say how much of the page could NOT be measured.
+     *
+     * "0 contrast findings" over a page where half the text sits on a
+     * photograph is a green that means nothing, and this audit's whole value is
+     * that its numbers are real. The count travels with the result so the build
+     * log can state it rather than imply a clean sweep.
+     */
+    const unmeasured = Object.values(metrics)
+        .reduce((n: number, m: any) => n + (Number(m?.contrastUnmeasurable) || 0), 0);
+
+    return {
+        ran: true, score: Math.max(0, 100 - penalty), findings, screenshots,
+        metrics: { ...metrics, transfer, contrastUnmeasurable: unmeasured },
+    };
 }
 
 /** The findings, as a repair instruction the model can act on. */

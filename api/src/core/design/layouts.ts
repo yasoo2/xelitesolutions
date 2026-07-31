@@ -148,6 +148,12 @@ export function layoutCss(a: Archetype): string {
   padding-block:clamp(40px,6vw,90px)}
 .band .lede,.band .eyebrow,.band .stat span,.band .stat-label{color:color-mix(in srgb,var(--on-brand) 82%,transparent)}
 .band .stat b,.band .stat-value{color:var(--on-brand)}
+/* A ghost button is the brand colour as text. On a BRAND gradient that is the
+   brand on itself — measured by Joe's own audit at 1.6:1 on six of the seven
+   compositions, because a band tinted its prose and left its buttons alone. */
+.band .btn-ghost{color:var(--on-brand);border-color:color-mix(in srgb,var(--on-brand) 45%,transparent)}
+.band .btn-ghost:hover{color:var(--on-brand);border-color:var(--on-brand);
+  background:color-mix(in srgb,var(--on-brand) 14%,transparent)}
 
 /* Depth without noise: a soft aura behind the opening section */
 .aura{position:relative;isolation:isolate;overflow:hidden}

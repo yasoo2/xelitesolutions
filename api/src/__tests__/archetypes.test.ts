@@ -122,10 +122,19 @@ describe('the inverted composition inverts its controls too', () => {
     });
 });
 
-describe('a band never keeps light-mode figures on a brand gradient', () => {
-    // The common layer tinted a band's lede and eyebrow and forgot the numbers,
-    // so .stat span kept --text-muted — a mid grey — on a saturated gradient.
-    it.each(ALL)('%s carries the rule', a => {
+describe('a band recolours everything on it, not just its prose', () => {
+    /**
+     * A band is a brand gradient. Everything on it that keeps a light-page
+     * colour is the brand on itself. The common layer tinted the lede and the
+     * eyebrow and stopped there — Joe's own audit measured the ghost button at
+     * 1.6:1 on six of the seven compositions once both instruments were pointed
+     * at the same fixtures.
+     */
+    it.each(ALL)('%s recolours the ghost button on a band', a => {
+        expect(layoutCss(a)).toMatch(/\.band \.btn-ghost\{[^}]*color:var\(--(on-brand|bg)\)/);
+    });
+
+    it.each(ALL)('%s recolours the figures on a band', a => {
         expect(layoutCss(a)).toMatch(/\.band [^{]*\.stat span/);
     });
 });
