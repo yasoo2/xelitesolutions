@@ -12,6 +12,7 @@ import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirst
 import { findReferenceUrl, extractReference, paletteFromReference, referenceBrief, referenceOverridesCss, referenceSummary } from '../../../core/design/reference';
 import { detectPageKind, blueprintBrief, imageBudget, blueprintSections, kindLabel } from '../../../core/design/blueprints';
 import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteSectionwise, type WrittenSection } from '../../../core/design/section-writer';
+import { splitIntoSections, targetSections, extractEditedSection, spliceSections, sectionEditPrompt, type PageSection } from '../../../core/design/section-editor';
 import { resolveImages, creditsBlock, availableSources } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
@@ -19,6 +20,15 @@ import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, pri
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 const PORT = String(process.env.PORT || '5002');
+
+/**
+ * Above this size, a repair that must return the WHOLE page cannot complete:
+ * one completion is capped near 12 KB of HTML and the reply is truncated before
+ * it finishes. Findings are reported honestly instead of a call being spent on
+ * a result that will be rejected. Roughly two completions' worth, to leave a
+ * margin for pages that compress well.
+ */
+const REPAIR_SIZE_LIMIT = Number(process.env.JOE_REPAIR_SIZE_LIMIT || 24000);
 
 /**
  * WebPageBuilderTool - turns a "build me a page/site" request into REAL work:
@@ -180,6 +190,46 @@ ${prev!.html}`
         const sectionwise = !isEdit && !isMultiFile && shouldWriteSectionwise(blueprint);
         let html = '';
         let sectionReport: { written: number; total: number; failed: string[] } | null = null;
+        let editedSections: string[] = [];
+
+        // [TARGETED EDIT] A follow-up edit used to send the WHOLE document and ask
+        // for the whole thing back. That breaks the moment a page is a real page:
+        // 25 KB does not fit in one completion, the reply comes back truncated,
+        // the builder restores the previous version — and the user is told the
+        // edit was applied when nothing changed. The request almost always names
+        // one section, so only that section makes the round trip.
+        if (isEdit && prev && prev.html.length > 8000) {
+            const existing = splitIntoSections(prev.html);
+            const targets = targetSections(request, existing);
+            if (targets.length) {
+                const design = `${designBrief(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}`;
+                let working = prev.html;
+                const applied: Array<{ section: PageSection; html: string }> = [];
+                for (const section of targets) {
+                    if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                        ? `✏️ أعدّل قسم «${section.headings[0] || section.id}» فقط بدل الصفحة كاملة`
+                        : `✏️ Editing only the "${section.headings[0] || section.id}" section, not the whole page`);
+                    let raw = '';
+                    try {
+                        raw = await routeToModel([
+                            { role: 'system', content: sectionEditPrompt({ request, section, isArabic: isAr, designBrief: design }) },
+                            { role: 'user', content: section.html },
+                        ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                    } catch (e: any) { logs.push(`section edit ${section.id} failed: ${e?.message || e}`); continue; }
+                    const got = extractEditedSection(raw, section);
+                    if (got.ok) { applied.push({ section, html: got.html }); editedSections.push(section.headings[0] || section.id); }
+                    logs.push(`section edit ${section.id || section.tag}: ${got.ok ? `${got.html.length} bytes` : `rejected — ${got.reason}`}`);
+                }
+                if (applied.length) {
+                    working = spliceSections(prev.html, applied);
+                    // The splice cannot lose the document — but check, because
+                    // silently shipping a broken page is the failure this exists
+                    // to prevent.
+                    if (/<\/html\s*>/i.test(working) && working.length > prev.html.length * 0.6) html = working;
+                    else logs.push('targeted edit discarded: the spliced document did not look intact');
+                }
+            }
+        }
 
         if (sectionwise) {
             const plans = planSections(blueprint);
@@ -523,6 +573,9 @@ ${prev!.html}`
         // page out. Joe now opens his own work and measures it, then repairs what
         // the numbers say is wrong. Runs after the preview is already showing, so
         // the user never waits on it.
+        // Set when a page is too big for a whole-page repair round trip; the user
+        // is told the findings stand rather than left to assume they were fixed.
+        let repairSkipped = false;
         let visualFindings: VisualFinding[] = [];
         let visualScore = -1;
         let visualRepairs = 0;
@@ -533,7 +586,14 @@ ${prev!.html}`
                 visualScore = audit.score;
                 logs.push(`visual audit: ${audit.score}/100, ${audit.findings.length} finding(s)`);
                 const brief = visualRepairBrief(audit.findings);
-                if (brief) {
+                // A whole-page repair asks the model to return the whole page. On a
+                // document this size the reply is truncated by the provider before
+                // it ever finishes, the result is rejected, and the call was spent
+                // for nothing. Report the findings instead of pretending to fix.
+                if (brief && html.length > REPAIR_SIZE_LIMIT) {
+                    repairSkipped = true;
+                    logs.push(`visual repair skipped: page is ${Math.round(html.length / 1024)} KB, larger than one completion`);
+                } else if (brief) {
                     if (sessionId) broadcastThinkingDetail(sessionId, isAr
                         ? `👁️ راجعتُ الصفحة في متصفح حقيقي: ${audit.findings.length} ملاحظة — أُصلحها`
                         : `👁️ Measured the page in a real browser: ${audit.findings.length} finding(s) — repairing`);
@@ -584,7 +644,10 @@ ${prev!.html}`
                 behaviourScore = b.score;
                 logs.push(`behaviour audit: ${b.score}/100, ${b.metrics.dead}/${b.metrics.pressed} dead control(s), ${b.metrics.deadAnchors} dead anchor(s)`);
                 const brief = behaviourRepairBrief(b.findings, b.controls);
-                if (brief) {
+                if (brief && html.length > REPAIR_SIZE_LIMIT) {
+                    repairSkipped = true;
+                    logs.push(`behaviour repair skipped: page is ${Math.round(html.length / 1024)} KB, larger than one completion`);
+                } else if (brief) {
                     if (sessionId) broadcastThinkingDetail(sessionId, isAr
                         ? `🖱️ ضغطتُ عناصر الصفحة فعليًا: ${b.metrics.dead} منها لا تستجيب — أُصلحها`
                         : `🖱️ Actually clicked the page's controls: ${b.metrics.dead} do nothing — repairing`);
@@ -650,6 +713,11 @@ ${prev!.html}`
                 ? `🎨 نظام التصميم: ${kind} · تخطيط ${archetype} · خطوط ${typePair.note} · لوحة ${palette.scheme === 'analogous' ? 'متجانسة' : 'متكاملة'} حول ${palette.primary} (تباين AA مضمون)`
                 : `🎨 Design system: ${kind} · ${archetype} layout · ${typePair.note} type · ${palette.scheme} palette around ${palette.primary} (AA contrast by construction)`);
             if (referenceNote) parts.push(referenceNote);
+            if (editedSections.length) {
+                parts.push(isAr
+                    ? `✏️ عدّلتُ القسم المقصود فقط: ${editedSections.join('، ')} — بقية الصفحة لم تُمَسّ`
+                    : `✏️ Edited only the section you meant: ${editedSections.join(', ')} — the rest of the page was untouched`);
+            }
             if (sectionReport) {
                 // Say how the page was written and, honestly, what did not arrive.
                 parts.push(isAr
@@ -697,6 +765,11 @@ ${prev!.html}`
                     : `🖱️ Behaviour audit (controls really clicked): ${behaviourScore}/100${behaviourRepairs > 0 ? ` (repaired ${behaviourRepairs})` : ''}`);
                 const shown = behaviourFindings.filter(f => f.severity !== 'minor').slice(0, 4);
                 if (shown.length) parts.push(shown.map(f => `   • ${isAr ? f.ar : f.en}`).join('\n'));
+            }
+            if (repairSkipped) {
+                parts.push(isAr
+                    ? `ℹ️ الصفحة أكبر من أن تُعاد كاملة في ردّ واحد، فلم أُشغّل الإصلاح التلقائي — الملاحظات أعلاه قائمة. اطلب تعديل قسم بعينه وسأصلحه مباشرة.`
+                    : `ℹ️ The page is larger than one completion can return, so the automatic repair did not run — the findings above still stand. Ask for a specific section and I will fix it directly.`);
             }
             if (contentRepairs) parts.push(isAr ? `✍️ إصلاحات المحتوى: ${contentRepairs}` : `✍️ Content repairs: ${contentRepairs}`);
             // Never let a content failure pass silently: if the model could not fix
