@@ -31,7 +31,8 @@ import os from 'os';
 import path from 'path';
 
 import {
-    layoutCss, primitivesCss, iconSprite, typographyCss, pickTypePair, type Archetype,
+    layoutCss, primitivesCss, iconSprite, typographyCss, pickTypePair, surfacePairingCss,
+    ownedSurfaces, type Archetype,
 } from '../../core/design/layouts';
 import { chromeCss } from '../../core/design/chrome';
 import { siteNav, siteNavCss } from '../../core/design/site-plan';
@@ -42,6 +43,7 @@ import {
     uiKitCss, buildPalette, paletteCss, darkTokenBlock, lightTokenBlock,
 } from '../../core/design/design-system';
 import { auditVisually } from '../../core/quality/visual-audit';
+import { reviewHtml } from '../../core/quality/html-qa';
 
 const OUT = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-layouts-'));
 const ARCHETYPES: Archetype[] = ['split', 'centered', 'bento', 'editorial', 'showcase', 'overlap', 'contrast'];
@@ -131,9 +133,24 @@ ${lightOverrideCss(lightTokenBlock(palette))}
 ${revealCss()}
 ${bidiCss()}
 ${primitivesCss()}
-${paletteCss(palette)}</style></head>
+${paletteCss(palette)}
+/* THE MODEL'S OWN STYLESHEET comes last, because the base layer is injected at
+   the top of the block so anything it wrote still wins. These two rules are what
+   a weak model actually writes, and they are what took a contrast hero to
+   1.0:1 — white text on a white gradient, a blank screen — and any composition's
+   band to 1.04:1. Rendering the archetypes without them was rendering a page
+   nobody ships. */
+${MODEL_OVERRIDES}
+${surfacePairingCss(a)}</style></head>
 <body>${iconSprite()}${bodyFor(a)}</body></html>`;
 }
+
+/** What a weak model writes over Joe's own surfaces, verbatim in shape. */
+const MODEL_OVERRIDES = `
+.hero{background:linear-gradient(135deg,#f8fafc,#eef2ff)}
+.band{background:#f1f5f9}
+section.band{padding-block:72px}
+`.trim();
 
 /**
  * Contrast of every visible text node against what is ACTUALLY painted behind
@@ -271,7 +288,11 @@ const CONTRAST_PROBE = `(function () {
 interface Check { name: string; pass: boolean; got: unknown }
 
 async function main() {
-    for (const a of ARCHETYPES) fs.writeFileSync(path.join(OUT, `${a}.html`), pageFor(a), 'utf-8');
+    // Through Joe's own HTML repair first — a built page never reaches a browser
+    // without it, so measuring the raw composition measures a page nobody ships.
+    for (const a of ARCHETYPES) {
+        fs.writeFileSync(path.join(OUT, `${a}.html`), reviewHtml(pageFor(a), true, { ownedSurfaces: ownedSurfaces(a) }).html, 'utf-8');
+    }
 
     let chromium: any;
     try { ({ chromium } = require('playwright-core')); }

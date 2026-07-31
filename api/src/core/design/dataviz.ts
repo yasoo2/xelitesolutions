@@ -432,7 +432,7 @@ export function chartRuntime(isArabic: boolean): string {
 export function chartCss(): string {
     return `
 /* Charts */
-[data-chart]{display:block;margin:0;background:var(--surface);border:1px solid var(--border);
+[data-chart]{display:block;margin:0;background:var(--surface);color:var(--text);border:1px solid var(--border);
   border-radius:var(--radius);padding:var(--space-4)}
 [data-chart] figcaption{font-weight:700;font-size:var(--step-0);margin-block-end:var(--space-3);color:var(--text)}
 [data-chart="spark"]{border:0;background:none;padding:0;max-width:140px}

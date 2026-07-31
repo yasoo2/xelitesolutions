@@ -20,9 +20,12 @@
  * it. This file covers what is true without a browser.
  */
 
-import { pickArchetype, layoutCss, layoutBrief, pickTypePair, type Archetype } from '../core/design/layouts';
+import {
+    pickArchetype, layoutCss, layoutBrief, pickTypePair, ownedSurfaces, type Archetype,
+} from '../core/design/layouts';
 import { paletteForHue, paletteCss, darkTokenBlock, lightTokenBlock, darkFirstCss, contrastRatio } from '../core/design/design-system';
 import { siteNavCss } from '../core/design/site-plan';
+import { reviewHtml } from '../core/quality/html-qa';
 
 const ALL: Archetype[] = ['split', 'centered', 'bento', 'editorial', 'showcase', 'overlap', 'contrast'];
 
@@ -196,5 +199,78 @@ describe('a tinted surface is picked as a PAIR, never half at a time', () => {
         // right there in one, and asserting against prose is not a check.
         const declarations = siteNavCss().replace(/\/\*[\s\S]*?\*\//g, '');
         expect(declarations).not.toMatch(/--brand-dark/);
+    });
+});
+
+describe('a background and its text colour are one decision', () => {
+    /**
+     * The design brief says never to hardcode a colour and a weak model does it
+     * anyway — `.hero{background:linear-gradient(135deg,#f8fafc,#eef2ff)}` is the
+     * shape it writes. That background is FIXED while every text token follows
+     * the colour scheme, so the page reads in light mode and goes blank the
+     * moment the visitor flips to dark. Measured in a browser across all seven
+     * compositions: 1.02:1 on the heading, 1.73:1 on the lede, 2.96:1 on the
+     * ghost button — and 1.0:1, literally white on white, when the composition
+     * was the inverted one.
+     *
+     * The defect existed before the dark-mode switch; the switch is what made it
+     * reachable.
+     */
+    it('re-pairs a surface the model painted with a literal colour', () => {
+        const r = reviewHtml(
+            `<!DOCTYPE html><html><head><style>
+             .hero{background:linear-gradient(135deg,#f8fafc,#eef2ff)}
+             </style></head><body><section class="hero"><h1>x</h1></section></body></html>`,
+            true, { ownedSurfaces: ownedSurfaces('split') });
+        expect(r.html).toContain('Joe surface re-pairing');
+        expect(r.html).toMatch(/\.hero h1[^{]*\{color:#0f172a\}|\.hero h1[^,]*,/);
+    });
+
+    it('picks the ink from the background that is actually there', () => {
+        const dark = reviewHtml(
+            `<html><head><style>.cta{background:#111827}</style></head><body><div class="cta">x</div></body></html>`,
+            true, { ownedSurfaces: [] });
+        expect(dark.html).toMatch(/\.cta\{color:#ffffff\}/);
+    });
+
+    it('leaves a TOKEN background alone — those already flip correctly', () => {
+        const r = reviewHtml(
+            `<html><head><style>.hero{background:var(--bg)}</style></head><body><div class="hero">x</div></body></html>`,
+            true, { ownedSurfaces: [] });
+        expect(r.html).not.toContain('Joe surface re-pairing');
+    });
+
+    it('never touches a surface the pairing layer owns', () => {
+        // Two repairs describing different backgrounds is worse than either
+        // alone: it measured ten nodes at 2.31:1 on a band.
+        const r = reviewHtml(
+            `<html><head><style>.band{background:#f1f5f9}</style></head><body><div class="band">x</div></body></html>`,
+            true, { ownedSurfaces: ownedSurfaces('split') });
+        expect(r.html).not.toContain('Joe surface re-pairing');
+    });
+
+    it('stops at a nested surface that paints its own background', () => {
+        // The overlap hero holds a .hero-panel on var(--surface); painting
+        // through it put dark ink on a dark panel in dark mode, at 1.06:1.
+        const r = reviewHtml(
+            `<html><head><style>.hero{background:#f8fafc}</style></head><body><div class="hero">x</div></body></html>`,
+            true, { ownedSurfaces: [] });
+        expect(r.html).toMatch(/:not\(:is\([^)]*\.hero-panel[^)]*\) \*\)/);
+    });
+
+    it('every kit surface that paints a background states its text colour', () => {
+        // A background without a colour beside it is the whole defect class.
+        // Only rules that actually PAINT count — `.hero-panel` also has a
+        // geometry-only rule inside a media query, and demanding a colour there
+        // would be demanding a declaration that means nothing.
+        let checked = 0;
+        for (const a of ALL) {
+            for (const m of layoutCss(a).matchAll(/\.(?:card|hero-panel)\{([^}]*)\}/g)) {
+                if (!/background\s*:/.test(m[1])) continue;
+                checked++;
+                expect(m[1]).toMatch(/color:/);
+            }
+        }
+        expect(checked).toBeGreaterThan(0);   // the loop must have found something
     });
 });

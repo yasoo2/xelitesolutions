@@ -26,7 +26,7 @@ import { widgetBrief, widgetRuntime, widgetCss, usesWidgets } from '../../../cor
 import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPlaceholder } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
-import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite } from '../../../core/design/layouts';
+import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, surfacePairingCss, ownedSurfaces } from '../../../core/design/layouts';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 const PORT = String(process.env.PORT || '5002');
@@ -816,6 +816,21 @@ the WORDS, not the structure.`;
             if (last >= 0) html = html.slice(0, last) + flip + html.slice(last);
             else if (/<\/head>/i.test(html)) html = html.replace(/<\/head>/i, `<style>${flip}</style>\n</head>`);
         }
+        /**
+         * The surfaces Joe INVERTS, re-stated after the model's stylesheet.
+         *
+         * Same exception, same reason as the dark flip above: a background and
+         * the text colour on it are one decision, and the base layer loses to
+         * the model by design. A model hero gradient under `contrast` measured
+         * 1.0:1 in a browser — white on white, a blank screen — and a repainted
+         * `.band` measured 1.04:1 on any composition at all.
+         */
+        {
+            const pairing = `\n${surfacePairingCss(archetype)}\n`;
+            const last = html.lastIndexOf('</style>');
+            if (last >= 0) html = html.slice(0, last) + pairing + html.slice(last);
+            else if (/<\/head>/i.test(html)) html = html.replace(/<\/head>/i, `<style>${pairing}</style>\n</head>`);
+        }
         // The drawn icon set, once per document, before anything can reference it.
         if (!/id="i-check"/.test(html)) {
             html = /<body[^>]*>/i.test(html)
@@ -947,7 +962,7 @@ the WORDS, not the structure.`;
         let qaFixed: string[] = [];
         if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `🔎 مراجع الجودة (QA): أفحص الصفحة وأصحّح المشاكل` : `🔎 QA Reviewer: checking the page & fixing issues`);
         try {
-            const review = reviewHtml(html, isAr);
+            const review = reviewHtml(html, isAr, { ownedSurfaces: ownedSurfaces(archetype) });
             html = review.html;
             qaIssues = review.issues;
             qaFixed = review.fixed;
@@ -1650,6 +1665,16 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
             // The one navigation, injected after <body> so it is identical on
             // every page and always points at files that will exist.
             pageHtml = pageHtml.replace(/(<body[^>]*>)/i, `$1\n${siteNav(sitePlan.pages, page.file, brand, { withCart: siteHasCart, isArabic: isAr, hue: palette.hue })}`);
+            /**
+             * The inverted surfaces, re-stated after the model's own stylesheet
+             * — every page of the site, for the same reason a single page gets
+             * it: a repainted `.band` keeps white text and goes blank.
+             */
+            {
+                const pairing = `\n${surfacePairingCss(archetype)}\n`;
+                const last = pageHtml.lastIndexOf('</style>');
+                if (last >= 0) pageHtml = pageHtml.slice(0, last) + pairing + pageHtml.slice(last);
+            }
             // The switch goes into the shared header, so it is in the same place
             // on every page of the site and the choice carries across the click.
             if (!darkFirst) pageHtml = ensureThemeToggle(pageHtml, isAr).html;
@@ -1713,7 +1738,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
             if (anchors.fixed) { out = anchors.html; logs.push(`${file}: repaired ${anchors.fixed} dead link(s)`); }
             if (isAr) out = isolateLatinRuns(out);
 
-            out = reviewHtml(out, isAr).html;
+            out = reviewHtml(out, isAr, { ownedSurfaces: ownedSurfaces(archetype) }).html;
             written.set(file, out);
             fs.writeFileSync(path.join(outDir, file), out, 'utf-8');
         }

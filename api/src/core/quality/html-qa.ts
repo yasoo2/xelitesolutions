@@ -44,7 +44,23 @@ export function maskNonMarkup(html: string): string {
 }
 
 /** Deterministic review + safe auto-fix. Never throws. */
-export function reviewHtml(rawHtml: string, isArabic = false): HtmlReview {
+export function reviewHtml(
+    rawHtml: string,
+    isArabic = false,
+    opts: {
+        /**
+         * Selectors whose background AND text colour Joe re-states after the
+         * model's stylesheet, via `surfacePairingCss`.
+         *
+         * They must be left alone here. Re-colouring them from the colour the
+         * MODEL wrote means the two repairs describe different backgrounds, and
+         * two repairs fighting is worse than either alone: measured, ten nodes
+         * at 2.31:1 on a band that was not the colour this pass believed, and a
+         * deliberately inverted hero back at 1.33:1.
+         */
+        ownedSurfaces?: string[];
+    } = {},
+): HtmlReview {
     let html = String(rawHtml || '');
     const issues: string[] = [];
     const fixed: string[] = [];
@@ -166,11 +182,68 @@ export function reviewHtml(rawHtml: string, isArabic = false): HtmlReview {
             );
             return /var\(\s*--brand(-dark)?\s*\)/i.test(withoutMinorMixes);
         };
+        /**
+         * A BACKGROUND THAT DOES NOT FOLLOW THE SCHEME MUST CARRY TEXT THAT DOES
+         * NOT EITHER.
+         *
+         * The design brief says never to hardcode a colour, and a weak model
+         * hardcodes one anyway — `.hero{background:linear-gradient(135deg,#f8fafc,#eef2ff)}`
+         * is the shape it writes. That background is FIXED while --text follows
+         * the colour scheme, so the page is fine in light mode and, the moment
+         * the visitor's system or the new dark-mode switch flips, it is a
+         * near-white heading on a near-white gradient. Measured across all seven
+         * compositions: 1.02:1 on the heading, 1.73:1 on the lede, 2.96:1 on the
+         * ghost button. That is a blank screen, and it is only reachable now
+         * because the dark mode is finally reachable.
+         *
+         * A literal colour can be measured, so the text colour is COMPUTED from
+         * it and pinned literally too. Backgrounds written in tokens are left
+         * alone — those already flip correctly, and that is the whole point of
+         * using them.
+         */
+        const literalBg = (body: string): string | null => {
+            const decl = (body.match(/background(?:-color|-image)?\s*:([^;]*)/i) || [])[1];
+            if (!decl || /var\(|currentcolor|transparent|inherit|none/i.test(decl)) return null;
+            const stops = decl.match(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi);
+            if (!stops || !stops.length) return null;
+            // A gradient is judged by its LIGHTEST stop: that is where light text
+            // fails first, and the whole point is to survive the worst case.
+            let lightest: { css: string; l: number } | null = null;
+            for (const c of stops) {
+                const rgb = readColor(c);
+                if (!rgb) return null;                       // one stop we cannot read: do not guess
+                if (rgb[3] < 0.9) return null;               // translucent: the layer under it decides
+                const l = relLum(rgb);
+                if (!lightest || l > lightest.l) lightest = { css: c, l };
+            }
+            return lightest ? lightest.css : null;
+        };
+
         const withColor = styleBlock.replace(/([^{}]+)\{([^}]*)\}/g, (full, sel, body) => {
-            const brandBg = brandIsTheSurface(body);
-            if (brandBg && !/(^|;)\s*color\s*:/i.test(body)) {
+            if (/(^|;)\s*color\s*:/i.test(body)) return full;      // the pair is already stated
+            if (/^\s*(@|:root\b)/.test(sel)) return full;          // at-rules and the token block
+
+            if (brandIsTheSurface(body)) {
                 recolored++;
                 return `${sel}{${body.trim().replace(/;?$/, ';')}color:var(--on-brand);}`;
+            }
+            const bg = literalBg(body);
+            /**
+             * The selector capture is everything since the previous `}`, so it
+             * carries the comment and the blank lines above the rule with it.
+             * A real stylesheet is full of both, and `isStructuralSelector`
+             * rejects anything containing whitespace — so this repair fired on
+             * a bare test fixture and on almost nothing a model actually writes.
+             */
+            const cleanSel = String(sel).replace(/\/\*[\s\S]*?\*\//g, '').trim();
+            if (bg && isStructuralSelector(cleanSel, opts.ownedSurfaces || ['.band'])) {
+                // A CONTAINER, not just its own text. `.lede`, `.eyebrow` and
+                // `.btn-ghost` each carry a colour of their own that follows the
+                // scheme, so pinning only the container leaves them behind:
+                // measured on this exact case, the heading went readable and the
+                // lede stayed at 1.73:1 and the ghost button at 2.96:1.
+                extra.push(pairSurface(cleanSel, readColor(bg)!));
+                recolored++;
             }
             return full;
         });
@@ -512,4 +585,97 @@ export async function browserSmokeTest(url: string, filename: string): Promise<B
     } catch (e: any) {
         return { ok: true, consoleErrors: [], pageErrors: [], skipped: `browser unavailable: ${e?.message || e}` };
     }
+}
+
+
+/* ---------- colour, for the pairing repair above ----------------------------- */
+
+/** [r,g,b,a] from a hex or rgb() literal, or null when it is neither. */
+function readColor(css: string): [number, number, number, number] | null {
+    const s = String(css).trim();
+    const hex = s.match(/^#([0-9a-f]{3,8})$/i);
+    if (hex) {
+        let h = hex[1];
+        if (h.length === 3 || h.length === 4) h = h.split('').map(c => c + c).join('');
+        if (h.length !== 6 && h.length !== 8) return null;
+        const n = (i: number) => parseInt(h.slice(i, i + 2), 16);
+        return [n(0), n(2), n(4), h.length === 8 ? n(6) / 255 : 1];
+    }
+    const rgb = s.match(/^rgba?\(([^)]+)\)$/i);
+    if (rgb) {
+        const p = rgb[1].replace('/', ' ').split(/[,\s]+/).filter(Boolean).map(parseFloat);
+        if (p.length < 3 || p.some(v => !isFinite(v))) return null;
+        return [p[0], p[1], p[2], p[3] === undefined ? 1 : p[3]];
+    }
+    return null;
+}
+
+/** WCAG relative luminance, 0-1. */
+function relLum(rgb: [number, number, number, number]): number {
+    const a = [rgb[0], rgb[1], rgb[2]].map(v => {
+        v /= 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+}
+
+/**
+ * Is this a selector whose subtree Joe may safely re-colour?
+ *
+ * A single class or element — `.hero`, `.band`, `section.cta`, `header`. Not a
+ * descendant selector, not a pseudo, not a list: re-pairing the subtree of
+ * something like `.card:hover p` is meaningless, and doing it for a comma list
+ * would multiply out into rules nobody can read.
+ */
+function isStructuralSelector(sel: string, owned: string[]): boolean {
+    const s = String(sel).trim();
+    if (!s || /[,>+~:]|\s/.test(s)) return false;
+    // Ownership is stated by the caller, not raced for. See `ownedSurfaces`.
+    for (const cls of owned) {
+        const bare = cls.replace(/^\./, '');
+        if (new RegExp(`(^|\\.)${bare}$`).test(s)) return false;
+    }
+    return /^(?:[a-z][a-z0-9]*)?(?:\.[A-Za-z_][\w-]*)*$/.test(s) && /[a-z.]/i.test(s);
+}
+
+/**
+ * Re-pair a surface the model painted with a LITERAL colour.
+ *
+ * The design brief says never to hardcode a colour and a weak model does it
+ * anyway. That background is then FIXED while every text token follows the
+ * colour scheme, so the page reads correctly in light mode and goes blank the
+ * moment the visitor flips to dark — 1.02:1 on the heading, measured across all
+ * seven compositions. The defect only became reachable when the dark-mode
+ * switch did.
+ *
+ * The ink is computed from the background that is actually there, so a dark
+ * hardcoded panel gets light text by the same rule. Every descendant that
+ * carries its own colour is named, because those are exactly the ones a single
+ * `color` on the container cannot reach.
+ */
+function pairSurface(sel: string, bg: [number, number, number, number]): string {
+    const dark = relLum(bg) <= 0.42;
+    const ink = dark ? '#ffffff' : '#0f172a';
+    // Secondary text: enough separation to read as secondary, still ≥4.5:1.
+    const muted = dark ? 'rgba(255,255,255,.78)' : 'rgba(15,23,42,.72)';
+    const line = dark ? 'rgba(255,255,255,.42)' : 'rgba(15,23,42,.32)';
+
+    /**
+     * STOP AT A NESTED SURFACE.
+     *
+     * A card or a panel inside this one paints its own background from the
+     * TOKENS, so it already flips with the scheme and needs nothing from here.
+     * Painting through it is actively wrong: the overlap hero holds a
+     * `.hero-panel` on `var(--surface)`, and re-colouring its text for the
+     * hero's fixed light gradient put dark ink on a dark panel in dark mode —
+     * measured at 1.06:1, a defect created by the repair meant to prevent it.
+     */
+    const nested = ':is(.card,.hero-panel,.panel,.tile,.band,.modal,.dropdown,.surface)';
+    const not = `:not(${nested} *)`;
+    const each = (parts: string[]) => parts.map(x => `${sel} ${x}${not}`).join(',');
+    return `/* Joe surface re-pairing: ${sel} carries a fixed background, so its text is fixed too */
+${sel}{color:${ink}}
+${each(['h1', 'h2', 'h3', 'h4', 'p', 'li', 'strong'])}{color:${ink}}
+${each(['.lede', '.eyebrow', '.stat span', 'figcaption', 'small'])}{color:${muted}}
+${sel} .btn-ghost${not}{color:${ink};border-color:${line}}`;
 }

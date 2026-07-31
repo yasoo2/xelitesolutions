@@ -135,7 +135,7 @@ export function layoutCss(a: Archetype): string {
 .grid-4{grid-template-columns:1fr}
 @media(min-width:640px){.grid-2{grid-template-columns:repeat(2,1fr)}.grid-4{grid-template-columns:repeat(2,1fr)}}
 @media(min-width:960px){.grid-3{grid-template-columns:repeat(3,1fr)}.grid-4{grid-template-columns:repeat(4,1fr)}}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+.card{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-lg);
   padding:clamp(20px,2.4vw,30px);box-shadow:var(--shadow-sm)}
 .card-media{margin:calc(-1 * clamp(20px,2.4vw,30px));margin-bottom:20px;overflow:hidden;
   border-radius:var(--radius-lg) var(--radius-lg) 0 0}
@@ -247,7 +247,7 @@ export function layoutCss(a: Archetype): string {
 .hero{padding-block:clamp(40px,5vw,72px) 0}
 .hero h1{font-size:var(--step-5);letter-spacing:-.035em;margin-bottom:var(--space-4)}
 .hero-media img{width:100%;border-radius:var(--radius-lg);box-shadow:var(--shadow-lg)}
-.hero-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+.hero-panel{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-lg);
   padding:clamp(24px,3vw,42px);box-shadow:var(--shadow-lg);margin-top:var(--space-6)}
 @media(min-width:900px){
   .hero-panel{margin-top:clamp(-140px,-9vw,-64px);margin-inline-end:auto;width:min(560px,66%);
@@ -357,6 +357,59 @@ strong{font-weight:700}
 }
 
 /** What the model is told about the composition it must build into. */
+/**
+ * The surfaces Joe INVERTS, re-stated after the model's own stylesheet.
+ *
+ * The base layer is injected at the top of the style block on purpose, so
+ * anything the model wrote still wins. That is right for almost everything and
+ * catastrophic for the two surfaces whose background and text colour are a
+ * SINGLE decision:
+ *
+ *   `.band` is a full-bleed contrasting block — a brand gradient carrying
+ *   var(--on-brand), which is white. A model that writes `.band{background:#f1f5f9}`
+ *   keeps the white text and every word on that band disappears. Measured in a
+ *   browser: 1.04:1. It is not archetype-specific; it is every page with a band
+ *   on it, which is every page the layout brief asks for one.
+ *
+ *   `.hero` in the `contrast` composition is the same shape of problem, and
+ *   worse, because inversion IS that composition. A model hero gradient over it
+ *   measured 1.0:1 — literally white on white, a blank screen.
+ *
+ * So these are re-stated last, at doubled-class specificity so a plausible
+ * `section.band` cannot outrank them. This is the same exception `darkFirstCss`
+ * already makes and it is made for the same reason: invisible text is never a
+ * creative choice, and a class the kit defines has to keep meaning what the kit
+ * says it means. A model that wants a differently coloured block has every
+ * other selector in the document to do it with.
+ */
+export function ownedSurfaces(a: Archetype): string[] {
+    // `.band` always: a contrasting block whose contrast has been painted out is
+    // not a band. `.hero` only where the composition IS the inversion.
+    return a === 'contrast' ? ['.band', '.hero'] : ['.band'];
+}
+
+export function surfacePairingCss(a: Archetype): string {
+    const inverted = a === 'contrast';
+    const band = inverted
+        ? 'background:var(--text);color:var(--bg)'
+        : 'background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:var(--on-brand)';
+    /**
+     * The hero rules carry DOUBLED specificity on every descendant, not only on
+     * the container. When a model hardcodes a hero background, the HTML repair
+     * re-pairs that surface's subtree — `.hero h1`, `.hero .lede` and so on — and
+     * those rules would otherwise outrank plain inheritance from `.hero.hero`,
+     * painting dark text back onto this deliberately dark hero.
+     */
+    const heroBlock = inverted ? `
+.hero.hero{background:var(--text);color:var(--bg)}
+.hero.hero h1,.hero.hero h2,.hero.hero h3,.hero.hero p,.hero.hero li{color:var(--bg)}
+.hero.hero .lede,.hero.hero .eyebrow{color:color-mix(in srgb,var(--bg) 82%,var(--text))}
+.hero.hero .btn-ghost{color:var(--bg);border-color:color-mix(in srgb,var(--bg) 45%,transparent)}` : '';
+
+    return `/* Joe surface pairing — a background and its text colour are one decision */
+.band.band{${band}}${heroBlock}`.trim();
+}
+
 export function layoutBrief(a: Archetype, t: TypePair): string {
     const shape: Record<Archetype, string> = {
         split: 'The hero is SPLIT: copy on one side, a photograph on the other. Use <section class="hero aura"><div class="wrap hero-split"><div>…copy…</div><div class="hero-media"><img …></div></div></section>. Feature sections use .feature-row, which alternates image side automatically.',
@@ -421,7 +474,7 @@ export function primitivesCss(): string {
 .ruled li .icon{color:var(--brand);margin-top:.15em}
 
 /* Accordion that needs no JavaScript */
-details.faq{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);
+details.faq{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);
   padding:0 18px;margin-bottom:10px}
 details.faq summary{cursor:pointer;padding:16px 0;font-weight:650;list-style:none;
   display:flex;justify-content:space-between;align-items:center;gap:12px}

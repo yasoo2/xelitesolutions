@@ -106,7 +106,7 @@ export function chromeCss(): string {
 .has-menu > [aria-expanded="true"] .caret{transform:rotate(90deg)}
 .dropdown{position:absolute;inset-inline-start:0;top:calc(100% + 10px);min-width:220px;
   display:grid;gap:2px;padding:8px;margin:0;list-style:none;
-  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);
   box-shadow:var(--shadow-lg);opacity:0;visibility:hidden;transform:translateY(-6px);
   transition:opacity .18s ease,transform .18s ease,visibility .18s}
 .has-menu > [aria-expanded="true"] + .dropdown{opacity:1;visibility:visible;transform:none}
