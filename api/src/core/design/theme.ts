@@ -237,11 +237,59 @@ export function revealRuntime(): string {
  *
  * Beside the other actions, before the sign-in button, which is where every site
  * that has one puts it.
+ *
+ * TWO THINGS HERE WERE WRONG AND SHIPPED, and both are the same mistake this
+ * codebase keeps making: a check that matches the wrong thing.
+ *
+ *   1. The duplicate guard was `/data-theme-toggle/` over the WHOLE document —
+ *      and `themeRuntime` contains `querySelectorAll('[data-theme-toggle]')`.
+ *      By the time this ran, the runtime was already in the page, so the guard
+ *      matched its own selector string and declined every single time. Measured
+ *      on the pages Joe actually built: the stylesheet shipped, the runtime
+ *      shipped, and the button never did — every site page carried an EMPTY
+ *      `<div class="nav-actions"></div>`. The feature was inert and the tests
+ *      were green, because they exercised a bare header fragment that had no
+ *      runtime in it.
+ *   2. It anchored only on `.nav-actions`. A model that writes a header without
+ *      one — a restaurant page did exactly that — got no toggle at all. The
+ *      same fallback chain `ensureHeaderControls` already uses fixes it.
  */
 export function ensureThemeToggle(html: string, isArabic: boolean): { html: string; added: boolean } {
     const src = String(html || '');
-    if (/data-theme-toggle/i.test(src)) return { html: src, added: false };
-    const anchor = src.match(/<div\b[^>]*class="[^"]*\bnav-actions\b[^"]*"[^>]*>/i);
+    // Look for a real ELEMENT, in markup with script and style contents blanked
+    // out. A selector inside a string is not a button.
+    if (hasToggleElement(src)) return { html: src, added: false };
+
+    const markup = maskScripts(src);
+    const anchor =
+        markup.match(/<div\b[^>]*class="[^"]*\bnav-actions\b[^"]*"[^>]*>/i)
+        || markup.match(/<nav\b[^>]*class="[^"]*\bsite-nav\b[^"]*"[^>]*>/i)
+        || markup.match(/<nav\b[^>]*>/i);
     if (!anchor) return { html: src, added: false };
-    return { html: src.replace(anchor[0], `${anchor[0]}\n      ${themeToggleHtml(isArabic)}`), added: true };
+
+    // The mask is character-for-character, so an index into it is an index into
+    // the original — the replacement lands in the real document.
+    const at = anchor.index! + anchor[0].length;
+    return {
+        html: `${src.slice(0, at)}\n      ${themeToggleHtml(isArabic)}${src.slice(at)}`,
+        added: true,
+    };
+}
+
+/** Is there an actual toggle BUTTON in the markup? */
+export function hasToggleElement(html: string): boolean {
+    return /<button\b[^>]*\bdata-theme-toggle\b/i.test(maskScripts(String(html || '')));
+}
+
+/**
+ * Blank the contents of every script and style, character for character.
+ *
+ * Length is preserved so offsets into the mask are offsets into the original.
+ * Anything else — slicing the blocks out — would shift every index after the
+ * first script and insert the button in the wrong place.
+ */
+function maskScripts(html: string): string {
+    return html.replace(/<(script|style)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi,
+        (full, tag, body) => full.slice(0, full.length - body.length - `</${tag}>`.length)
+            + ' '.repeat(body.length) + `</${tag}>`);
 }

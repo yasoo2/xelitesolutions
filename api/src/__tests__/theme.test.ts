@@ -14,7 +14,7 @@
 
 import {
     themeCss, lightOverrideCss, revealCss, themeToggleHtml,
-    themeRuntime, revealRuntime, ensureThemeToggle,
+    themeRuntime, revealRuntime, ensureThemeToggle, hasToggleElement,
 } from '../core/design/theme';
 import {
     paletteForHue, darkTokenBlock, lightTokenBlock, paletteCss, contrastRatio, darkFirstCss,
@@ -167,8 +167,18 @@ describe('ensureThemeToggle', () => {
         expect(twice.html).toBe(once);
     });
 
-    it('leaves a header with no actions container alone rather than guessing', () => {
+    it('falls back to the nav when there is no actions container', () => {
+        // This used to assert `added === false`, which is what the code did and
+        // was the wrong thing to want: a restaurant page Joe built had exactly
+        // this header and shipped with no dark-mode switch at all. Declining is
+        // only right when there is nowhere sensible to put it.
         const r = ensureThemeToggle('<header><nav><a href="a.html">A</a></nav></header>', true);
+        expect(r.added).toBe(true);
+        expect(r.html).toMatch(/<nav[^>]*>\s*<button[^>]*data-theme-toggle/i);
+    });
+
+    it('declines when the page has no header and no nav at all', () => {
+        const r = ensureThemeToggle('<main><p>نص</p></main>', true);
         expect(r.added).toBe(false);
     });
 });
@@ -210,5 +220,65 @@ describe('the tinted surface is only ever safe as a PAIR', () => {
         const df = darkFirstCss(p);
         expect(df).toContain(`--tint:${p.darkTint}`);
         expect(df).toContain(`--on-tint:${p.onDarkTint}`);
+    });
+});
+
+describe('the toggle reaches a WHOLE page, not just a header fragment', () => {
+    /**
+     * This is the test that was missing, and its absence shipped a dead feature.
+     *
+     * Every case above handed `ensureThemeToggle` a bare header. A real page has
+     * the RUNTIME in it by the time this runs — and the runtime contains
+     * `querySelectorAll('[data-theme-toggle]')`. The duplicate guard was a plain
+     * search for that attribute across the whole document, so it matched its own
+     * selector string and declined every time. Measured on the pages Joe had
+     * actually built: the stylesheet was there, the runtime was there, and every
+     * site page carried an empty `<div class="nav-actions"></div>`.
+     *
+     * A fixture that does not look like the thing being fixed proves nothing.
+     */
+    const fullPage = (header: string) =>
+        `<!DOCTYPE html><html lang="ar" dir="rtl"><head><style>.a{}</style></head>`
+        + `<body>${header}<main><section><h1>عنوان</h1></section></main>`
+        + `${themeRuntime(true)}${revealRuntime()}</body></html>`;
+
+    it('adds the button even though the runtime mentions the selector', () => {
+        const page = fullPage('<header><div class="nav-actions"><a class="btn">دخول</a></div></header>');
+        expect(/<button[^>]*data-theme-toggle/i.test(page)).toBe(false);   // not there yet
+        const r = ensureThemeToggle(page, true);
+        expect(r.added).toBe(true);
+        expect(r.html).toMatch(/<button[^>]*data-theme-toggle/i);
+    });
+
+    it('still adds only ONE when run twice', () => {
+        const once = ensureThemeToggle(fullPage('<header><div class="nav-actions"></div></header>'), true).html;
+        const twice = ensureThemeToggle(once, true);
+        expect(twice.added).toBe(false);
+        expect((twice.html.match(/<button[^>]*data-theme-toggle/gi) || []).length).toBe(1);
+    });
+
+    it('falls back to the nav when the header has no actions container', () => {
+        // A restaurant page Joe built had exactly this header and got no toggle.
+        const page = fullPage('<header class="site-header"><nav class="site-nav"><a href="#a">القائمة</a></nav></header>');
+        const r = ensureThemeToggle(page, true);
+        expect(r.added).toBe(true);
+        expect(r.html).toMatch(/<nav[^>]*class="[^"]*site-nav[^"]*"[^>]*>\s*<button[^>]*data-theme-toggle/i);
+    });
+
+    it('puts the button in the HEADER, not inside a script', () => {
+        const page = fullPage('<header><div class="nav-actions"></div></header>');
+        const out = ensureThemeToggle(page, true).html;
+        const btn = out.search(/<button[^>]*data-theme-toggle/i);
+        const script = out.indexOf('<script>');
+        expect(btn).toBeGreaterThan(-1);
+        expect(btn).toBeLessThan(script);
+        // And the runtime must survive intact — a mask that shifted offsets
+        // would have spliced the button into the middle of the JavaScript.
+        expect(out).toContain("localStorage.setItem(KEY, next ? 'dark' : 'light')");
+    });
+
+    it('does not mistake a selector in a script for a button', () => {
+        expect(hasToggleElement(`<body><script>x('[data-theme-toggle]')</script></body>`)).toBe(false);
+        expect(hasToggleElement(`<body><button data-theme-toggle></button></body>`)).toBe(true);
     });
 });
