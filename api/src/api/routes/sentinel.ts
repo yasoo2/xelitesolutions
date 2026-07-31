@@ -4,6 +4,8 @@ import { SentinelAuditLogModel } from '../../shared/models/SentinelAuditLog';
 import { SentinelIncidentModel } from '../../shared/models/SentinelIncident';
 import { SentinelAuditService } from '../../modules/sentinel/services/SentinelAuditService';
 import { SentinelPolicyEngine } from '../../modules/sentinel/services/SentinelPolicyEngine';
+import { SentinelPolicyModel } from '../../shared/models/SentinelPolicy';
+import { validatePolicy, evaluatePolicies } from '../../modules/sentinel/services/SentinelPolicyEvaluator';
 
 const router = Router();
 
@@ -117,6 +119,115 @@ router.post('/actions/execute', authenticate, requireSuperAdmin, (req, res) => {
         res.status(200).json({ success: true, message: 'Action queued for next agent ping', actionId: action.id });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/* ============================================================================
+   6. Policies — the collection the engine now actually evaluates.
+   ============================================================================ */
+
+/** List the configured policies, with the engine's current view of them. */
+router.get('/policies', authenticate, requireSuperAdmin, async (_req, res) => {
+    try {
+        const policies = await SentinelPolicyModel.find().sort({ createdAt: -1 }).lean();
+        res.status(200).json({
+            success: true,
+            data: policies,
+            // If the engine could not read the collection on its last pass, say
+            // so here rather than showing a list the engine is not using.
+            engineLoadError: SentinelPolicyEngine.policyLoadError || undefined,
+        });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+/**
+ * Try a policy against a payload without saving it.
+ *
+ * A security rule that is written blind and armed immediately is how an
+ * operator disables their own monitoring by accident.
+ */
+router.post('/policies/test', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const { policy, telemetry } = req.body || {};
+        const shape = validatePolicy(policy || {});
+        if (!shape.ok) return res.status(400).json({ success: false, error: shape.reason });
+        const result = evaluatePolicies([{ ...policy, isActive: true }], telemetry || {});
+        res.status(200).json({
+            success: true,
+            matched: result.matches.length > 0,
+            evidence: result.matches[0]?.evidence || {},
+            invalid: result.invalid,
+        });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+/** Create a policy. Refused unless it is one the evaluator can actually run. */
+router.post('/policies', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const body = req.body || {};
+        const shape = validatePolicy(body);
+        if (!shape.ok) return res.status(400).json({ success: false, error: shape.reason });
+        // An action with nowhere to read its target from can never be carried
+        // out; storing it would create a rule that looks armed and is not.
+        if (body.autoResponse && !body.autoResponseTargetField) {
+            return res.status(400).json({
+                success: false,
+                error: 'autoResponse needs autoResponseTargetField — where in the telemetry to read the target from, e.g. "users[].ip"',
+            });
+        }
+        const created = await SentinelPolicyModel.create(body);
+        SentinelPolicyEngine.invalidatePolicyCache();
+        await SentinelAuditService.logAction(
+            (req as any).auth?.sub || 'system', 'POLICY_CREATED', `Policy:${created.name}`, 'success',
+        ).catch(() => { });
+        res.status(201).json({ success: true, data: created });
+    } catch (err: any) {
+        const conflict = /duplicate key/i.test(String(err?.message));
+        res.status(conflict ? 409 : 500).json({ success: false, error: conflict ? 'a policy with that name already exists' : err.message });
+    }
+});
+
+/** Update a policy. Same validation — an unrunnable edit is refused. */
+router.patch('/policies/:id', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const existing = await SentinelPolicyModel.findById(req.params.id);
+        if (!existing) return res.status(404).json({ success: false, error: 'Policy not found' });
+
+        const merged = { ...existing.toObject(), ...(req.body || {}) };
+        const shape = validatePolicy(merged as any);
+        if (!shape.ok) return res.status(400).json({ success: false, error: shape.reason });
+        if (merged.autoResponse && !merged.autoResponseTargetField) {
+            return res.status(400).json({ success: false, error: 'autoResponse needs autoResponseTargetField' });
+        }
+
+        Object.assign(existing, req.body || {});
+        await existing.save();
+        SentinelPolicyEngine.invalidatePolicyCache();
+        await SentinelAuditService.logAction(
+            (req as any).auth?.sub || 'system', 'POLICY_UPDATED', `Policy:${existing.name}`, 'success',
+        ).catch(() => { });
+        res.status(200).json({ success: true, data: existing });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+/** Delete a policy. Recorded in the audit chain like any other disarming. */
+router.delete('/policies/:id', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const deleted = await SentinelPolicyModel.findByIdAndDelete(req.params.id);
+        if (!deleted) return res.status(404).json({ success: false, error: 'Policy not found' });
+        SentinelPolicyEngine.invalidatePolicyCache();
+        await SentinelAuditService.logAction(
+            (req as any).auth?.sub || 'system', 'POLICY_DELETED', `Policy:${deleted.name}`, 'success',
+        ).catch(() => { });
+        res.status(200).json({ success: true });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 

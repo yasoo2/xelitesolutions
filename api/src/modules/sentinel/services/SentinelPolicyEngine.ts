@@ -1,6 +1,8 @@
 import { SentinelIncidentService } from './SentinelIncidentService';
 import { SentinelActionRunner } from './SentinelActionRunner';
 import { SentinelAuditService } from './SentinelAuditService';
+import { SentinelPolicyModel } from '../../../shared/models/SentinelPolicy';
+import { evaluatePolicies, readPath, type PolicyLike } from './SentinelPolicyEvaluator';
 
 export interface TelemetryPayload {
     serverId: string;
@@ -46,15 +48,58 @@ export class SentinelPolicyEngine {
         return actions;
     }
 
+    /* ---------- operator-configured policies -------------------------------- */
+
+    /** Cached active policies, so a telemetry ping does not hit the database. */
+    private static policyCache: { at: number; policies: PolicyLike[] } | null = null;
+    /** Why the last load failed, if it did. Surfaced, never swallowed. */
+    static policyLoadError = '';
+    private static readonly POLICY_TTL_MS = 30_000;
+
+    /** Drop the cache so an edit takes effect on the next ping, not in 30s. */
+    static invalidatePolicyCache(): void {
+        this.policyCache = null;
+    }
+
     /**
-     * Evaluates incoming telemetry against the fixed risk rules below.
+     * The active policies, from cache or the database.
      *
-     * It does NOT read the SentinelPolicy collection: this used to claim it
-     * evaluated "dynamic Policies" while importing the model and never querying
-     * it, so a policy an operator had configured had no effect whatsoever. The
-     * claim is removed rather than left standing; wiring the collection in is a
-     * separate piece of work, and until then nobody should believe otherwise.
-     * Computes a total Risk Score and dispatches incidents.
+     * A database that cannot be reached does NOT quietly become "no policies":
+     * that would silently disarm every rule an operator configured. The reason
+     * is recorded on policyLoadError and the last good cache is reused if there
+     * is one.
+     */
+    private static async loadPolicies(): Promise<PolicyLike[]> {
+        const now = Date.now();
+        if (this.policyCache && now - this.policyCache.at < this.POLICY_TTL_MS) {
+            return this.policyCache.policies;
+        }
+        try {
+            const docs = await SentinelPolicyModel.find({ isActive: true }).lean();
+            const policies: PolicyLike[] = docs.map((d: any) => ({
+                name: d.name, weight: d.weight, conditions: d.conditions,
+                severity: d.severity, autoResponse: d.autoResponse,
+                autoResponseTargetField: d.autoResponseTargetField, isActive: true,
+            })) as any;
+            this.policyCache = { at: now, policies };
+            this.policyLoadError = '';
+            return policies;
+        } catch (e: any) {
+            this.policyLoadError = String(e?.message || e);
+            console.error(`[Sentinel] could not load policies: ${this.policyLoadError}`);
+            // Better a stale rule set than a silently empty one.
+            return this.policyCache?.policies || [];
+        }
+    }
+
+    /**
+     * Evaluates incoming telemetry against the fixed risk rules below AND the
+     * policies an operator has configured in the SentinelPolicy collection.
+     *
+     * The collection used to be imported and never queried, so a configured
+     * policy had no effect whatsoever while the docstring claimed otherwise.
+     * Policies are data, never code: see SentinelPolicyEvaluator for the
+     * condition language and the reasons it refuses to be anything larger.
      */
     static async evaluate(payload: TelemetryPayload) {
         // Cache the live state
@@ -74,7 +119,7 @@ export class SentinelPolicyEngine {
             if (unauthorized.length > 0) {
                 totalRiskScore += 70;
                 triggeredRules.push('rule_unauthorized_ssh_user');
-                actionRecommendations.add('KILL_PROCESS'); // Kill all procs for user or Block IP
+                actionRecommendations.add(this.canonicalAction('KILL_PROCESS'));
                 maxSeverity = 'high';
                 evidenceCollector['unauthorized_users'] = unauthorized;
             }
@@ -84,7 +129,7 @@ export class SentinelPolicyEngine {
         if (payload.processes && payload.processes.suspiciousFound && payload.processes.suspiciousFound.length > 0) {
             totalRiskScore += 80;
             triggeredRules.push('rule_process_suspicious_binary');
-            actionRecommendations.add('KILL_PROCESS');
+            actionRecommendations.add(this.canonicalAction('KILL_PROCESS'));
             maxSeverity = 'critical';
             evidenceCollector['suspicious_processes'] = payload.processes.suspiciousFound;
         }
@@ -106,6 +151,40 @@ export class SentinelPolicyEngine {
             evidenceCollector['fim_changes'] = payload.fim.changesDetected;
         }
 
+        // 4. Operator-configured policies, evaluated against the same payload.
+        //    Their targets are resolved from the policy's own field path rather
+        //    than the fixed evidence keys, so a rule can act on anything it can
+        //    name in the telemetry.
+        const policyTargets: Record<string, string> = {};
+        const RANK = ['info', 'low', 'medium', 'high', 'critical'];
+        const { matches, invalid } = evaluatePolicies(await this.loadPolicies(), payload);
+
+        for (const m of matches) {
+            totalRiskScore += m.weight;
+            triggeredRules.push(`policy:${m.name}`);
+            if (RANK.indexOf(m.severity) > RANK.indexOf(maxSeverity)) maxSeverity = m.severity;
+            for (const [k, v] of Object.entries(m.evidence)) evidenceCollector[`policy.${m.name}.${k}`] = v;
+
+            if (m.autoResponse) {
+                // The fixed rules speak KILL_PROCESS and a policy speaks
+                // kill_process_tree; without canonicalising, one threat queues
+                // the same containment twice under two names.
+                const canonical = this.canonicalAction(m.autoResponse);
+                actionRecommendations.add(canonical);
+                const target = this.policyTarget(payload, m);
+                if (target) policyTargets[canonical] = target;
+            }
+        }
+        // A policy that cannot be evaluated is an operator-visible fault, not a
+        // silent no-op: it goes into the audit chain so somebody can fix it.
+        for (const bad of invalid) {
+            evidenceCollector[`policy_invalid.${bad.name}`] = bad.reason;
+            await SentinelAuditService.logAction('system', 'POLICY_INVALID', `Policy:${bad.name}`, bad.reason).catch(() => { });
+        }
+        if (this.policyLoadError) {
+            evidenceCollector['policy_load_error'] = this.policyLoadError;
+        }
+
         // Threshold evaluation
         if (totalRiskScore > 0 && triggeredRules.length > 0) {
             const incident = await SentinelIncidentService.triggerIncident(
@@ -118,10 +197,40 @@ export class SentinelPolicyEngine {
             );
 
             for (const action of actionRecommendations) {
-                await this.interdict(incident, serverId, action, evidenceCollector);
+                await this.interdict(incident, serverId, action, evidenceCollector, policyTargets[action]);
             }
         }
 
+    }
+
+    /**
+     * What a matched policy's automatic action should be aimed at.
+     *
+     * The target has to come from the element that MATCHED. Reading the target
+     * field across the whole array blocks whichever address happens to be first:
+     * a rule that matched `users[].from == 'tor-exit'` on an intruder resolved
+     * `users[].ip` to root's address and would have blocked the administrator.
+     */
+    static policyTarget(payload: any, m: { autoResponseTargetField?: string; matchedIndices?: Record<string, number[]> }): string {
+        const field = m.autoResponseTargetField;
+        if (!field) return '';
+        const value = readPath(payload, String(field));
+
+        if (Array.isArray(value) && field.includes('[]')) {
+            const root = field.slice(0, field.indexOf('[]'));
+            const matched = m.matchedIndices?.[root];
+            // Only narrow when the target shares the array the match came from.
+            // A rule matching on `processes` cannot index into `users`.
+            const candidates = matched?.length ? matched.map(i => value[i]) : value;
+            return this.firstScalar(candidates);
+        }
+        return this.firstScalar(value);
+    }
+
+    /** The first usable scalar out of a path result, or ''. */
+    private static firstScalar(v: any): string {
+        const one = Array.isArray(v) ? v.find(x => x !== undefined && x !== null) : v;
+        return one === undefined || one === null || typeof one === 'object' ? '' : String(one);
     }
 
     /**
@@ -144,15 +253,24 @@ export class SentinelPolicyEngine {
      * status, and appends to the chain-hashed audit log. The automatic path now
      * uses it instead of a second, worse copy.
      */
-    private static async interdict(incident: any, serverId: string, action: string, evidence: any): Promise<void> {
-        // The engine's vocabulary is not the runner's playbook vocabulary.
+    private static async interdict(
+        incident: any, serverId: string, action: string, evidence: any, policyTarget?: string,
+    ): Promise<void> {
+        // Two vocabularies reach here: the fixed rules speak KILL_PROCESS, and a
+        // configured policy speaks the runner's own playbook name (block_ip).
+        // Both must resolve, and an action outside the playbook must not.
         const PLAYBOOK: Record<string, string> = {
             KILL_PROCESS: 'kill_process_tree',
             BLOCK_IP: 'block_ip',
             QUARANTINE_FILE: 'quarantine_file',
+            kill_process_tree: 'kill_process_tree',
+            block_ip: 'block_ip',
+            quarantine_file: 'quarantine_file',
         };
         const playbook = PLAYBOOK[action];
-        const target = this.targetFor(action, evidence);
+        // A policy names where its own target lives; the fixed rules read the
+        // evidence keys they populated themselves.
+        const target = policyTarget || this.targetFor(action, evidence);
 
         // An action with no real target is not performed. The previous code sent
         // the literal string "system" as the thing to kill or block, which can
@@ -191,20 +309,31 @@ export class SentinelPolicyEngine {
         }
     }
 
+    /** Both vocabularies reduced to the runner's playbook name, or '' if it is
+     *  not a playbook action at all. */
+    static canonicalAction(action: string): string {
+        const PLAYBOOK: Record<string, string> = {
+            KILL_PROCESS: 'kill_process_tree', kill_process_tree: 'kill_process_tree',
+            BLOCK_IP: 'block_ip', block_ip: 'block_ip',
+            QUARANTINE_FILE: 'quarantine_file', quarantine_file: 'quarantine_file',
+        };
+        return PLAYBOOK[action] || '';
+    }
+
     /** The concrete thing an action applies to, taken from the evidence, or ''. */
-    private static targetFor(action: string, evidence: any): string {
-        if (action === 'KILL_PROCESS') {
+    static targetFor(action: string, evidence: any): string {
+        if (action === 'KILL_PROCESS' || action === 'kill_process_tree') {
             const pid = evidence?.['suspicious_processes']?.[0]?.pid;
             return pid ? String(pid) : '';
         }
-        if (action === 'BLOCK_IP') {
+        if (action === 'BLOCK_IP' || action === 'block_ip') {
             // An unauthorised SSH session carries the address it came from; the
             // field name differs between agent versions, so accept any of them.
             const u = evidence?.['unauthorized_users']?.[0] || {};
             const ip = u.ip || u.from || u.host || u.source || u.remoteAddress;
             return typeof ip === 'string' && /^[0-9a-fA-F:.]+$/.test(ip) ? ip : '';
         }
-        if (action === 'QUARANTINE_FILE') {
+        if (action === 'QUARANTINE_FILE' || action === 'quarantine_file') {
             const p = evidence?.['fim_changes']?.[0]?.path;
             return typeof p === 'string' ? p : '';
         }
