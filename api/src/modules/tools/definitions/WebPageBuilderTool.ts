@@ -1345,7 +1345,7 @@ ${prev!.html}`
         palette: any; archetype: any; typePair: any; reference: any;
         imageBrief: any; photos: number; context: any; sessionId: any; logs: string[];
     }): Promise<{ entry: string; entryHtml: string; dir: string; pages: any[]; result: any } | null> {
-        const { sitePlan, request, isAr, palette, archetype, typePair, reference, imageBrief, context, sessionId, logs } = opts;
+        const { sitePlan, request, isAr, kind, palette, archetype, typePair, reference, imageBrief, context, sessionId, logs } = opts;
         const dir = `site-${String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
         const outDir = path.join(ARTIFACT_DIR, dir);
         fs.mkdirSync(outDir, { recursive: true });
@@ -1509,10 +1509,86 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
             broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any);
         } catch { /* preview is a courtesy; the files are written either way */ }
 
+        /**
+         * A SITE IS MEASURED, LIKE A PAGE IS.
+         *
+         * `buildSite` returns before the audit block that every single page goes
+         * through, so a site was the one thing Joe shipped without ever opening
+         * it: no browser, no contrast check, no pressing the controls. The
+         * end-to-end harness had been printing "Joe's own audits did not run" on
+         * every site build, which is how this was found and why it was reported
+         * rather than left implicit.
+         *
+         * Every page is opened and measured. Each one is repaired the same way a
+         * single page is — section by section, keeping the repair only when a
+         * second measurement agrees it is better. What still fails is named per
+         * page rather than averaged into a number that hides which page is bad.
+         */
+        const auditNotes: string[] = [];
+        let auditedPages = 0;
+        for (const [file] of Array.from(written)) {
+            const pageUrl = `http://localhost:${PORT}/artifacts/${dir}/${file}?v=${Date.now()}`;
+            try {
+                const v = await auditVisually(pageUrl, { screenshotDir: ARTIFACT_DIR, name: `audit-${dir}-${file.replace(/\W+/g, '-')}` });
+                const b = await auditBehaviour(pageUrl, { kind });
+                if (!v.ran && !b.ran) {
+                    logs.push(`audit ${file}: did not run (${v.skipped || b.skipped || 'unknown'})`);
+                    continue;
+                }
+                auditedPages++;
+                logs.push(`audit ${file}: visual ${v.score}/100, behaviour ${b.score}/100, ${b.metrics.dead || 0} dead control(s)`);
+
+                // Repair the behaviour, page by page and section by section —
+                // the same machinery, and the same rule: keep it only if the
+                // browser agrees it improved.
+                const brief = behaviourRepairBrief(b.findings, b.controls);
+                const probes = b.controls.filter(c => !c.worked && c.label).map(c => String(c.label));
+                if (brief && probes.length) {
+                    const before = written.get(file)!;
+                    const repairDesign = `${designBrief(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}`;
+                    const scoped = await this.repairSections({
+                        html: before, filename: path.join(dir, file), probes, brief,
+                        design: repairDesign, isAr, sessionId, context,
+                        note: isAr ? `🖱️ أصلح الأزرار المعطّلة في ${file}` : `🖱️ Repairing dead controls in ${file}`,
+                    });
+                    if (scoped) {
+                        const after = await auditBehaviour(pageUrl, { kind });
+                        const kept = after.ran && after.metrics.pressed >= Math.floor((b.metrics.pressed || 0) * 0.8);
+                        if (after.ran && after.score > b.score && kept) {
+                            written.set(file, scoped);
+                            logs.push(`audit ${file}: behaviour ${b.score} → ${after.score} after repair`);
+                        } else {
+                            fs.writeFileSync(path.join(outDir, file), before, 'utf-8');
+                            logs.push(`audit ${file}: repair did not improve the score — reverted`);
+                        }
+                    }
+                }
+
+                const worst = [...v.findings, ...b.findings]
+                    .filter(f => f.severity === 'critical' || f.severity === 'major')
+                    .slice(0, 2)
+                    .map(f => (isAr ? f.ar : f.en));
+                if (worst.length) auditNotes.push(`${file}: ${worst.join(' · ')}`);
+            } catch (e: any) {
+                logs.push(`audit ${file} failed: ${e?.message || e}`);
+            }
+        }
+
         const lines: string[] = [];
         lines.push(isAr
             ? `🏗️ بُني موقع من ${written.size} صفحات مترابطة: ${sitePlan.pages.filter(p => written.has(p.file)).map(p => p.title).join(' · ')}`
             : `🏗️ Built a ${written.size}-page linked site: ${sitePlan.pages.filter(p => written.has(p.file)).map(p => p.title).join(' · ')}`);
+        if (auditedPages) {
+            lines.push(isAr
+                ? `👁️ فُحصت ${auditedPages} صفحة في متصفح حقيقي${auditNotes.length ? '' : ' — بلا ملاحظات'}`
+                : `👁️ Measured ${auditedPages} page(s) in a real browser${auditNotes.length ? '' : ' — nothing found'}`);
+            for (const n of auditNotes.slice(0, 4)) lines.push(`   • ${n}`);
+        } else {
+            // Silence here would read as "the site was checked and is fine".
+            lines.push(isAr
+                ? `⚠️ لم يعمل الفحص الآلي على صفحات الموقع — لم أقِسها، ولا أدّعي أنها سليمة.`
+                : `⚠️ The automatic checks did not run on this site's pages — they were not measured, and I am not claiming they are fine.`);
+        }
         const dropped = sitePlan.pages.filter(p => !written.has(p.file));
         if (dropped.length) {
             lines.push(isAr

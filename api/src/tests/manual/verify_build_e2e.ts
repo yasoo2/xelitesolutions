@@ -468,7 +468,10 @@ async function main() {
         const maj = findings.filter(f => f.severity === 'major').length;
         totalCritical += crit; totalMajor += maj;
 
-        const auditLog = (res.logs || []).filter((l: string) => /visual audit|behaviour audit/.test(l));
+        // A site logs its audits per page ("audit about.html: visual 95/100, …"),
+        // a single page logs them once. Matching only the single-page wording
+        // reported a fully audited site as unaudited.
+        const auditLog = (res.logs || []).filter((l: string) => /visual audit|behaviour audit|^audit \S+:/.test(l));
         const auditsRan = auditLog.some((l: string) => !/skipped/.test(l));
         if (!auditsRan) {
             console.log(`  ! [minor] Joe's own audits did not run: ${(auditLog[0] || 'no audit log line').slice(0, 90)}`);
