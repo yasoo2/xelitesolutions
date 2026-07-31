@@ -573,3 +573,43 @@ describe('the header controls come from ONE list', () => {
         }
     });
 });
+
+describe('a Latin run keeps the punctuation that holds it together', () => {
+    /**
+     * «استخدم العربية والإنجليزية والإنجليزية لم يرتبها من اليسار لليمين» — the
+     * complaint that produced `isolateLatinRuns` in the first place. The
+     * function worked and its connector class was incomplete: it had no `@` and
+     * no `:`, so an email address became two separate isolates with a bare `@`
+     * between them. A bare `@` is a NEUTRAL character, which the bidi algorithm
+     * lays out with the surrounding Arabic — so the address rendered backwards,
+     * example.com@info, and the URL broke at its `://`.
+     *
+     * Isolating half of something is worse than not isolating it: the halves are
+     * each laid out correctly and then placed in the wrong order.
+     */
+    it.each([
+        ['an email', 'تواصل عبر info@example.com اليوم', 'info@example.com'],
+        ['a URL', 'الموقع https://xelitesolutions.com متاح', 'https://xelitesolutions.com'],
+        ['a handle', 'حسابنا @xelite على المنصة', '@xelite'],
+        ['a filename', 'الملف my_file-v2.tar.gz جاهز', 'my_file-v2.tar.gz'],
+        ['a version', 'نستخدم Node.js في الخادم', 'Node.js'],
+    ])('isolates %s as ONE run', (_what, prose, whole) => {
+        const out = isolateLatinRuns(`<p>${prose}</p>`);
+        expect(out).toContain(`<bdi>${whole}</bdi>`);
+    });
+
+    it('leaves the Arabic sentence its own full stop', () => {
+        // "AWS." — the period ends the ARABIC sentence and belongs outside the
+        // isolate, or it migrates to the wrong end of the line.
+        expect(isolateLatinRuns('<p>ننشر على AWS. ثم نراقب.</p>'))
+            .toContain('<bdi>AWS</bdi>.');
+    });
+
+    it('still refuses to touch anything that is not prose', () => {
+        const src = '<p>نص عربي</p><script>var url = "https://x.com/a";</script>'
+            + '<style>.a{background:url(https://x.com/b.png)}</style>';
+        const out = isolateLatinRuns(src);
+        expect(out).toContain('var url = "https://x.com/a"');
+        expect(out).toContain('url(https://x.com/b.png)');
+    });
+});

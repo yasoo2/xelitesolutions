@@ -130,7 +130,26 @@ const SKIP_BLOCKS = /<(script|style|template|svg|noscript|bdi|code|pre|kbd|samp|
  * digits, dots and version punctuation belong to it. Single letters are left
  * alone — an initial in an Arabic name is not a direction change worth marking.
  */
-const LATIN_RUN = /[A-Za-z][A-Za-z0-9]*(?:[.'&\-+/][A-Za-z0-9]+)*(?:\s+[A-Za-z][A-Za-z0-9]*(?:[.'&\-+/][A-Za-z0-9]+)*)*/g;
+/**
+ * A Latin run, INCLUDING the punctuation that holds it together.
+ *
+ * The connector class matters more than it looks. It used to omit `@` and `:`,
+ * so «تواصل عبر info@example.com» came out as two separate isolates with a bare
+ * `@` between them — and a bare `@` is a neutral character, which the bidi
+ * algorithm lays out with the surrounding ARABIC. The address rendered
+ * backwards: example.com@info. Same for a URL, which broke at its `://`.
+ *
+ * Consecutive connectors are allowed for exactly that reason (`://` is two).
+ * A connector still has to be followed by an alphanumeric, so a sentence-ending
+ * full stop after «AWS.» stays outside the isolate where it belongs.
+ */
+const CONNECT = "[.'&\\-+/@_:~?=#]+";
+/* A leading `@` belongs to the handle, and only `@` does: a leading full stop
+   or dash would swallow the Arabic sentence's own punctuation. Left outside,
+   the bare `@` is neutral and lays out with the Arabic, so «@xelite» reads
+   «xelite@». */
+const WORD = `@?[A-Za-z][A-Za-z0-9]*(?:${CONNECT}[A-Za-z0-9]+)*`;
+const LATIN_RUN = new RegExp(`${WORD}(?:\\s+${WORD})*`, 'g');
 
 /**
  * Wrap Latin runs that sit inside Arabic prose in <bdi>.
