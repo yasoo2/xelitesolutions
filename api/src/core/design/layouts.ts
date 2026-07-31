@@ -64,7 +64,12 @@ export function layoutCss(a: Archetype): string {
 .eyebrow{display:inline-block;font-size:var(--step--1);font-weight:700;letter-spacing:.12em;
   text-transform:uppercase;color:var(--brand);margin-bottom:12px}
 .lede{font-size:var(--step-1);color:var(--text-muted);max-width:60ch}
-.grid{display:grid;gap:clamp(16px,2.2vw,28px)}
+/* display:grid lives on EVERY grid class, not only on .grid.
+   The brief reads "….grid.grid-2 / .grid-3 / .grid-4", so a model writes
+   <div class="grid-3"> — which set grid-template-columns on an element that was
+   never display:grid, and every card grid on every page Joe has built rendered
+   as one column at every width. Found by screenshotting a dashboard. */
+.grid,.grid-2,.grid-3,.grid-4{display:grid;gap:clamp(16px,2.2vw,28px)}
 .grid-2{grid-template-columns:1fr}
 .grid-3{grid-template-columns:1fr}
 .grid-4{grid-template-columns:1fr}
@@ -219,7 +224,8 @@ ${shape[a]}
 - Every section: <section class="section"><div class="wrap">…</div></section>. Never set your own
   max-width or page padding; .wrap and .section already carry the rhythm and the breakpoints.
 - Section openings use .section-head with an .eyebrow label above the heading and a .lede under it.
-- Card grids: .grid.grid-2 / .grid-3 / .grid-4 with .card children — these already collapse on mobile.
+- Card grids: .grid-2, .grid-3 or .grid-4 with .card children — each is a complete
+  grid on its own and already collapses to one column on mobile.
 - Break the rhythm at least once with a full-bleed <section class="band">, and use .stat for figures
   and .badge for small labels.
 - Typography is set for you (${t.note}); use the heading levels, never hardcode a font-family.`;
