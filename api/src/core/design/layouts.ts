@@ -100,7 +100,7 @@ export function layoutCss(a: Archetype): string {
 .stat b{font-size:var(--step-4);line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .stat span{color:var(--text-muted);font-size:var(--step--1)}
 .badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:var(--radius-pill);
-  background:var(--brand-light);color:var(--brand-dark);font-size:var(--step--1);font-weight:700}
+  background:var(--tint);color:var(--on-tint);font-size:var(--step--1);font-weight:700}
 `;
 
     const perArchetype: Record<Archetype, string> = {
@@ -246,7 +246,7 @@ export function primitivesCss(): string {
 .icon{width:1.25em;height:1.25em;flex:none;stroke:currentColor;fill:none;stroke-width:1.75;
   stroke-linecap:round;stroke-linejoin:round;vertical-align:-.2em}
 .icon-box{display:grid;place-items:center;width:52px;height:52px;border-radius:16px;flex:none;
-  background:var(--brand-light);color:var(--brand-dark)}
+  background:var(--tint);color:var(--on-tint)}
 .icon-box .icon{width:24px;height:24px}
 
 /* Shaped section edges — the cheapest way to stop a page reading as stacked boxes */

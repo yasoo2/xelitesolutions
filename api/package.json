@@ -32,7 +32,8 @@
     "verify:chrome": "ts-node --transpile-only src/tests/manual/verify_page_chrome.ts",
     "verify:split": "ts-node --transpile-only src/tests/manual/verify_split_project.ts",
     "verify:e2e": "ts-node --transpile-only src/tests/manual/verify_build_e2e.ts",
-    "verify:narration": "ts-node --transpile-only src/tests/manual/verify_narration.ts"
+    "verify:narration": "ts-node --transpile-only src/tests/manual/verify_narration.ts",
+    "verify:theme": "ts-node --transpile-only src/tests/manual/verify_theme.ts"
   },
   "keywords": [],
   "author": "",

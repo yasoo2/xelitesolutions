@@ -8,12 +8,13 @@ import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/qu
 import { auditVisually, visualRepairBrief, type VisualFinding } from '../../../core/quality/visual-audit';
 import { auditBehaviour, behaviourRepairBrief, type BehaviourFinding } from '../../../core/quality/behaviour-audit';
 import { workspaceService } from '../../services/WorkspaceService';
-import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirstCss } from '../../../core/design/design-system';
+import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirstCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { findReferenceUrl, extractReference, paletteFromReference, referenceBrief, referenceOverridesCss, referenceSummary } from '../../../core/design/reference';
 import { detectPageKind, blueprintBrief, imageBudget, blueprintSections, kindLabel } from '../../../core/design/blueprints';
 import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteSectionwise, type WrittenSection } from '../../../core/design/section-writer';
 import { brandFrom, pageTitle } from '../../../core/design/page-head';
 import { ensureLogo, logoCss } from '../../../core/design/logo';
+import { themeCss, lightOverrideCss, revealCss, themeRuntime, revealRuntime, ensureThemeToggle } from '../../../core/design/theme';
 import { chromeBrief, chromeCss, chromeRuntime, authCss, authRuntime, ensureHeaderControls, wireAuthControls, repairDeadAnchors } from '../../../core/design/chrome';
 import { wrongLanguage, languageRetryNote, isolateLatinRuns, bidiCss } from '../../../core/design/language';
 import { splitIntoSections, targetSections, sectionsForFindings, extractEditedSection, spliceSections, sectionEditPrompt, type PageSection } from '../../../core/design/section-editor';
@@ -148,6 +149,25 @@ export class WebPageBuilderTool implements ToolDefinition {
         // every page came out as the same stack of centred boxes with Arial on it.
         const archetype = (isEdit && (prev as any)?.archetype) || pickArchetype(kind, request);
         const typePair = (isEdit && (prev as any)?.typePair) || pickTypePair(request);
+
+        /**
+         * THE THEME LAYER, decided once.
+         *
+         * A page built against a dark style reference is dark unconditionally —
+         * `darkFirstCss` overwrites the light tokens outright — so a light
+         * choice there would set an attribute and change nothing on screen. A
+         * control that does nothing when pressed is the exact defect this
+         * codebase keeps finding and removing, so that page gets the reveal and
+         * no toggle at all. Every other page gets both directions of the switch:
+         * dark tokens on `[data-theme="dark"]` AND light tokens on
+         * `[data-theme="light"]`, because the media query the palette already
+         * emits cannot be beaten by a button in either direction on its own.
+         */
+        const darkFirst = reference?.mood === 'dark';
+        const themeLayer = darkFirst
+            ? revealCss()
+            : `${themeCss(darkTokenBlock(palette))}\n${lightOverrideCss(lightTokenBlock(palette))}\n${revealCss()}`;
+        const themeScript = darkFirst ? revealRuntime() : `${themeRuntime(isAr)}\n${revealRuntime()}`;
 
         const baseRules = `STRICT RULES:
 - Output ONLY raw HTML for ONE complete self-contained file. No explanations, no markdown fences.
@@ -441,6 +461,44 @@ ${prev!.html}`
                     }
                 }
 
+                /**
+                 * A FAILED SECTION IS A HOLE IN THE PAGE — ask once more.
+                 *
+                 * A build the user ran came back «10/11 أقسام ⚠️ تعذّر:
+                 * faq-as-accessible»: one section returned nothing usable and
+                 * the page simply shipped without it. A section fails for
+                 * ordinary, transient reasons — a truncated reply, a fence that
+                 * swallowed the markup, a momentary refusal — and the cheapest
+                 * correct answer is to ask again. Only once: a second failure is
+                 * a signal, not noise, and it is reported rather than retried
+                 * into the ground.
+                 */
+                if (!got.ok) {
+                    logs.push(`section ${plan.index} (${plan.id}): ${got.reason} — asking once more`);
+                    if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                        ? `↻ القسم ${plan.index} لم يعد صالحًا (${got.reason}) — أطلبه مرة أخرى`
+                        : `↻ Section ${plan.index} came back unusable (${got.reason}) — asking again`);
+                    try {
+                        const again = await routeToModel([
+                            {
+                                role: 'system', content: `${sectionPrompt({
+                                    plan, total: plans.length, kindLabel: kindLabel(kind), request, isArabic: isAr,
+                                    designBrief: design, written: titles, photosLeft: share,
+                                    imageSubjects: imageBrief.suggestions,
+                                })}\n\nYOUR PREVIOUS ANSWER WAS UNUSABLE: ${got.reason}. Return ONLY the
+<section class="section" id="${plan.id}"> … </section> element, nothing before or after it.` },
+                            { role: 'user', content: `Write section ${plan.index}: ${plan.spec}` },
+                        ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                        const second = extractSection(again, plan.id);
+                        if (second.ok) {
+                            got = second;
+                            logs.push(`section ${plan.index} (${plan.id}): recovered on the second ask`);
+                        }
+                    } catch (e: any) {
+                        logs.push(`section ${plan.index} (${plan.id}): retry failed — ${String(e?.message || e).slice(0, 80)}`);
+                    }
+                }
+
                 written.push({ ...plan, ...got });
                 if (got.ok) {
                     titles.push(plan.spec.split(':')[0]);
@@ -462,10 +520,10 @@ ${prev!.html}`
                     title: pageTitle({ request, isArabic: isAr, kindLabel: kind }),
                     isArabic: isAr,
                     tokenCss: paletteCss(palette),
-                    baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${bidiCss()}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                    baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                     sections: written,
                     sprite: iconSprite(),
-                    script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}`,
+                    script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}\n${themeScript}`,
                 });
                 logs.push(`section-wise build: ${ok.length}/${plans.length} sections, ${html.length} bytes`);
             } else {
@@ -611,6 +669,20 @@ ${prev!.html}`
                 }
             }
 
+            /**
+             * The dark-mode switch.
+             *
+             * The palette has shipped a full dark scheme on every page since the
+             * design system was written, reachable only by changing the whole
+             * operating system. The tokens were there; the switch was not.
+             * Skipped on a dark-first page, where pressing it could not change
+             * anything.
+             */
+            if (!darkFirst) {
+                const tt = ensureThemeToggle(html, isAr);
+                if (tt.added) { html = tt.html; logs.push('content: added the dark-mode switch to the header'); }
+            }
+
             if (requirements.buttons.length) {
                 const ctl = ensureHeaderControls(html, { wanted: requirements.buttons, isArabic: isAr });
                 if (ctl.added.length) {
@@ -648,6 +720,49 @@ ${prev!.html}`
             }
 
             contentIssues = verifyContent(html, requirements);
+
+            /**
+             * A finding that NAMES its sections is repaired section by section.
+             *
+             * The whole-page content repair below sends the entire document, so
+             * on any real page it is either truncated or refused — which is why
+             * «قسم فيه بطاقات بنفس النص» was reported on build after build and
+             * fixed on none. The filler check now says WHICH sections and quotes
+             * the sentence they share, and that is enough to go straight at them.
+             */
+            const scopedIssues = contentIssues.filter(i => i.repairable && i.sections?.length);
+            if (scopedIssues.length && html.length > REPAIR_SIZE_LIMIT) {
+                const probes = scopedIssues.flatMap(i => i.sections!);
+                const brief = `A REAL BROWSER read this page. These are measurements, not opinions:
+${scopedIssues.map((i, n) => `${n + 1}. ${i.en}`).join('\n')}
+
+Rewrite the section so every card says something DIFFERENT and specific to this
+business — a different service, a different benefit, a different number. Do not
+reword the same sentence three times; that is the defect. Keep the markup, the
+classes and the design tokens exactly as they are, and keep every card: replace
+the WORDS, not the structure.`;
+                const repairDesign = `${designBrief(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}`;
+                const scoped = await this.repairSections({
+                    html, probes, brief, design: repairDesign, isAr, sessionId, context,
+                    note: isAr ? `✍️ أُعيد كتابة الأقسام ذات المحتوى المكرّر` : `✍️ Rewriting the sections with repeated copy`,
+                });
+                if (scoped) {
+                    const after = verifyContent(scoped, requirements);
+                    // Kept only if it actually removed findings — the same rule
+                    // every other repair in this file follows.
+                    if (after.length < contentIssues.length) {
+                        html = scoped;
+                        contentRepairs += contentIssues.length - after.length;
+                        contentIssues = after;
+                        logs.push(`content (section-scoped): ${contentIssues.length} issue(s) left`);
+                    } else {
+                        // Nothing was written yet at this stage, so dropping the
+                        // result IS the revert.
+                        logs.push('content (section-scoped) repair did not reduce the findings — discarded');
+                    }
+                }
+            }
+
             if (contentIssues.some(i => i.repairable)) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? `🔍 مراجع المحتوى: ${contentIssues.length} ملاحظة — أُعيدها للمطوّر`
@@ -682,7 +797,7 @@ ${prev!.html}`
         // The brief asked for all of it and the model shipped a page with zero
         // transitions, zero :hover, zero :focus and no rule for `button` at all.
         // Placed right after <style> so anything the model DID write still wins.
-        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}${needsCharts(kind) ? `\n${chartCss()}` : ''}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
+        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}${needsCharts(kind) ? `\n${chartCss()}` : ''}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
         // A section-wise build already carries the base layer — assembled by Joe,
         // not by the model — so injecting it again would duplicate ~10 KB of CSS.
         if (!/Joe UI kit — base layer/.test(html)) {
@@ -727,6 +842,14 @@ ${prev!.html}`
         if (/data-auth=/i.test(html) && !/Joe sign-in/.test(html)) {
             const ar = authRuntime(isAr);
             html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${ar}\n</body>`) : html + ar;
+        }
+
+        // [THEME] Same reason as the chrome runtime above: a page written in ONE
+        // pass gets the toggle's stylesheet from the base layer and none of the
+        // code that drives it, so the button renders and does nothing. The
+        // stylesheet and the code that drives it must travel together.
+        if (!/Joe reveal —/.test(html)) {
+            html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${themeScript}\n</body>`) : html + themeScript;
         }
 
         // [CART] A store's cart is Joe's runtime, not the model's: a cart held in
@@ -1381,7 +1504,14 @@ ${prev!.html}`
      * CALLER re-measures: an edit that does not improve the score is reverted.
      */
     private async repairSections(opts: {
-        html: string; filename: string; probes: string[]; brief: string; design: string;
+        html: string;
+        /**
+         * Where to write the result, when there is a file yet. The content stage
+         * runs BEFORE the page has a filename, so it passes none and takes the
+         * html back to write later.
+         */
+        filename?: string;
+        probes: string[]; brief: string; design: string;
         isAr: boolean; sessionId: any; context: any; note: string;
     }): Promise<string | null> {
         const { html, filename, probes, brief, design, isAr, sessionId, context, note } = opts;
@@ -1410,7 +1540,7 @@ ${prev!.html}`
         if (!edits.length) return null;
 
         const out = spliceSections(html, edits);
-        fs.writeFileSync(path.join(ARTIFACT_DIR, filename), out, 'utf-8');
+        if (filename) fs.writeFileSync(path.join(ARTIFACT_DIR, filename), out, 'utf-8');
         return out;
     }
 
@@ -1434,6 +1564,16 @@ ${prev!.html}`
         // A cart belongs to the SITE, not to one page: if any page sells, every
         // page needs the runtime and the badge.
         const siteHasCart = sitePlan.pages.some(p => needsCart(p.kind));
+
+        // Same decision as the single-page path, restated here because a site is
+        // built by its own function: a dark-first page gets the reveal and no
+        // toggle, everything else gets both directions of the switch.
+        const darkFirst = reference?.mood === 'dark';
+        const themeLayer = darkFirst
+            ? revealCss()
+            : `${themeCss(darkTokenBlock(palette))}\n${lightOverrideCss(lightTokenBlock(palette))}\n${revealCss()}`;
+        const themeScript = darkFirst ? revealRuntime() : `${themeRuntime(isAr)}\n${revealRuntime()}`;
+
         const written = new Map<string, string>();
         const perPage: Array<{ file: string; sections: number; total: number }> = [];
 
@@ -1501,14 +1641,17 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 title: pageTitle({ request, isArabic: isAr, kindLabel: page.kind, pageName: page.title, brand }),
                 isArabic: isAr,
                 tokenCss: paletteCss(palette),
-                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                 sections,
                 sprite: iconSprite(),
-                script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}`,
+                script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}\n${themeScript}`,
             });
             // The one navigation, injected after <body> so it is identical on
             // every page and always points at files that will exist.
-            pageHtml = pageHtml.replace(/(<body[^>]*>)/i, `$1\n${siteNav(sitePlan.pages, page.file, brand, { withCart: siteHasCart, isArabic: isAr })}`);
+            pageHtml = pageHtml.replace(/(<body[^>]*>)/i, `$1\n${siteNav(sitePlan.pages, page.file, brand, { withCart: siteHasCart, isArabic: isAr, hue: palette.hue })}`);
+            // The switch goes into the shared header, so it is in the same place
+            // on every page of the site and the choice carries across the click.
+            if (!darkFirst) pageHtml = ensureThemeToggle(pageHtml, isAr).html;
             // Every page of a store carries the cart runtime, so the basket
             // survives the click from products.html to index.html. Shipping it
             // only on the page with products is how a cart appears to work and

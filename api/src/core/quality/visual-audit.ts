@@ -403,11 +403,25 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
                 };
             }
             await page.waitForTimeout(600);
-            // Scroll through so lazy images and reveal animations settle.
-            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => { });
-            await page.waitForTimeout(500);
-            await page.evaluate(() => window.scrollTo(0, 0)).catch(() => { });
-            await page.waitForTimeout(300);
+            /**
+             * Scroll through so lazy images and reveal animations settle.
+             *
+             * `behavior:'instant'` is not a detail. Every page Joe builds ships
+             * `html{scroll-behavior:smooth}`, which turns this line into an
+             * ANIMATION — on a tall page it is still travelling when the wait
+             * expires, so the sections it never reached are measured while they
+             * are still mid-reveal and reported as invisible content. Measured:
+             * a six-section page left two sections below 100% opacity after a
+             * 1200 ms wait. The audit must move the viewport, not animate it.
+             */
+            await page.evaluate(() => {
+                window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' as ScrollBehavior });
+            }).catch(() => { });
+            await page.waitForTimeout(900);
+            await page.evaluate(() => {
+                window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+            }).catch(() => { });
+            await page.waitForTimeout(400);
 
             const m = await page.evaluate(collector);
             metrics[vp.label] = m;

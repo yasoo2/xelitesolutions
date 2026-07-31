@@ -18,6 +18,7 @@
  */
 
 import type { PageKind } from './blueprints';
+import { logoLockup } from './logo';
 
 export interface PageSpec {
     /** Output filename, e.g. 'products.html'. The entry page is index.html. */
@@ -141,7 +142,12 @@ export function planSite(kind: PageKind, request: string, isArabic: boolean): Si
  * first place. `aria-current` marks the page you are on, which is both correct
  * markup and the hook the stylesheet uses.
  */
-export function siteNav(pages: PageSpec[], currentFile: string, brand: string, opts?: { withCart?: boolean; isArabic?: boolean }): string {
+export function siteNav(
+    pages: PageSpec[],
+    currentFile: string,
+    brand: string,
+    opts?: { withCart?: boolean; isArabic?: boolean; hue?: number },
+): string {
     const links = pages.map(p => {
         const active = p.file === currentFile;
         return `<a href="${p.file}"${active ? ' aria-current="page"' : ''}>${escapeHtml(p.title)}</a>`;
@@ -156,12 +162,26 @@ export function siteNav(pages: PageSpec[], currentFile: string, brand: string, o
         + `<svg width="18" height="18" aria-hidden="true"><use href="#i-cart"/></svg> <span data-cart-count data-count="0">0</span></button>`
         : '';
 
+    /**
+     * The mark, not the name in bold.
+     *
+     * A single page gets one from `ensureLogo`, which runs on the model's own
+     * header. THIS header is Joe's, written here, so it was the one place a
+     * multi-page site could never receive a wordmark — every page of every site
+     * carried the company name as plain text while a one-page build got a mark.
+     * Drawn from the same palette hue the page uses, so it belongs to the page.
+     */
+    const brandLink = typeof opts?.hue === 'number'
+        ? logoLockup({ brand, hue: opts.hue, isArabic: opts.isArabic !== false })
+        : `<a href="index.html" class="brand" style="font-weight:800;font-size:var(--step-1);text-decoration:none;color:var(--text)">${escapeHtml(brand)}</a>`;
+
     return `<header class="site-header">
   <div class="wrap" style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-6)">
-    <a href="index.html" class="brand" style="font-weight:800;font-size:var(--step-1);text-decoration:none;color:var(--text)">${escapeHtml(brand)}</a>
+    ${brandLink}
     <nav aria-label="${escapeHtml(opts?.isArabic === false ? 'Main navigation' : 'التنقل الرئيسي')}">
-      ${links}${cart}
+      ${links}
     </nav>
+    <div class="nav-actions">${cart}</div>
   </div>
 </header>`;
 }

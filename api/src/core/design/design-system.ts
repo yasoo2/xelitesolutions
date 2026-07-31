@@ -36,6 +36,11 @@ export interface Palette {
     text: string;
     textMuted: string;
     border: string;
+    /** A brand-tinted surface and text guaranteed readable on it — always a pair. */
+    tint: string;
+    onTint: string;
+    darkTint: string;
+    onDarkTint: string;
     /** Dark-mode counterparts, so every page ships with both. */
     darkBg: string;
     darkSurface: string;
@@ -174,8 +179,27 @@ export function paletteForHue(hue: number): Palette {
     const darkText = fitContrast(hue, 12, 96, darkSurface, 12, 1);
     const darkTextMuted = fitContrast(hue, 12, 74, darkSurface, 4.5, 1);
 
+    /**
+     * A BRAND-TINTED SURFACE AND THE TEXT THAT SITS ON IT — as a pair.
+     *
+     * Seven rules across the kit paired `background:var(--brand-light)` with
+     * `color:var(--brand-dark)`. Both are LIGHT-MODE colours and neither was in
+     * the dark token block, so in dark mode every dropdown row, nav hover, badge
+     * and pill on the page was a near-white patch — which a render made obvious
+     * and no amount of reading the CSS ever would. Flipping --brand-light alone
+     * (which darkFirstCss does) is worse, not better: it makes the tile dark and
+     * leaves the deep-blue text on it, which is genuinely unreadable.
+     *
+     * A tinted surface is only ever safe as a PAIR, so it is defined as one and
+     * both halves flip together.
+     */
+    const tint = primaryLight;
+    const darkTint = hslCss(hue, 40, 22);
+
     return {
         hue, scheme, primary, primaryDark, primaryLight,
+        tint, onTint: fitContrast(hue, 70, 34, tint, 4.5, -1),
+        darkTint, onDarkTint: fitContrast(hue, 70, 72, darkTint, 4.5, 1),
         secondary: fitContrast(secondaryHue, 62, 48, white, 4.5, -1),
         accent: fitContrast(accentHue, 70, 46, white, 4.5, -1),
         onPrimary: white,
@@ -191,6 +215,7 @@ export function paletteCss(p: Palette): string {
     return `:root{
   --brand:${p.primary}; --brand-dark:${p.primaryDark}; --brand-light:${p.primaryLight};
   --secondary:${p.secondary}; --accent:${p.accent}; --on-brand:${p.onPrimary};
+  --tint:${p.tint}; --on-tint:${p.onTint};
   --bg:${p.bg}; --surface:${p.surface}; --text:${p.text}; --text-muted:${p.textMuted}; --border:${p.border};
   --radius:14px; --radius-lg:22px; --radius-pill:999px;
   --shadow-sm:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.08);
@@ -207,12 +232,36 @@ export function paletteCss(p: Palette): string {
   --step-5:clamp(2.49rem,2rem + 2.4vw,4rem);
   --maxw:1180px;
 }
-@media (prefers-color-scheme:dark){:root{
+@media (prefers-color-scheme:dark){:root{${darkTokenBlock(p)}}}`;
+}
+
+/**
+ * The tokens the dark scheme overrides, and the light values of those same
+ * tokens — one pair, one list, so they cannot diverge.
+ *
+ * Both are needed because a theme SWITCH has to state each direction: the
+ * media query alone cannot be beaten by a button, and a button that only
+ * knows how to go dark leaves a dark-system visitor unable to come back.
+ */
+export function darkTokenBlock(p: Palette): string {
+    return `
   --bg:${p.darkBg}; --surface:${p.darkSurface}; --text:${p.darkText};
   --text-muted:${p.darkTextMuted}; --border:${p.darkBorder};
+  --tint:${p.darkTint}; --on-tint:${p.onDarkTint};
   --shadow-sm:0 1px 2px rgba(0,0,0,.4); --shadow-md:0 8px 24px -8px rgba(0,0,0,.55);
   --shadow-lg:0 24px 60px -16px rgba(0,0,0,.65);
-}}`;
+`;
+}
+
+export function lightTokenBlock(p: Palette): string {
+    return `
+  --bg:${p.bg}; --surface:${p.surface}; --text:${p.text};
+  --text-muted:${p.textMuted}; --border:${p.border};
+  --tint:${p.tint}; --on-tint:${p.onTint};
+  --shadow-sm:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.08);
+  --shadow-md:0 8px 24px -8px rgba(15,23,42,.18);
+  --shadow-lg:0 24px 60px -16px rgba(15,23,42,.24);
+`;
 }
 
 /**
@@ -233,7 +282,7 @@ export function darkFirstCss(p: Palette): string {
 :root,:root:where(*){
   --bg:${p.darkBg}; --surface:${p.darkSurface}; --text:${p.darkText};
   --text-muted:${p.darkTextMuted}; --border:${p.darkBorder};
-  --brand-light:${hslCss(p.hue, 40, 22)};
+  --tint:${p.darkTint}; --on-tint:${p.onDarkTint};
   --shadow-sm:0 1px 2px rgba(0,0,0,.5); --shadow-md:0 10px 30px -8px rgba(0,0,0,.6);
   --shadow-lg:0 28px 70px -16px rgba(0,0,0,.72);
   color-scheme:dark;
@@ -241,7 +290,7 @@ export function darkFirstCss(p: Palette): string {
 @media (prefers-color-scheme:light){:root{
   --bg:${p.darkBg}; --surface:${p.darkSurface}; --text:${p.darkText};
   --text-muted:${p.darkTextMuted}; --border:${p.darkBorder};
-  --brand-light:${hslCss(p.hue, 40, 22)};
+  --tint:${p.darkTint}; --on-tint:${p.onDarkTint};
   color-scheme:dark;
 }}
 body{background:var(--bg);color:var(--text)}`;
@@ -292,6 +341,15 @@ export function uiKitCss(): string {
    on this line. */
 [hidden]{display:none!important}
 html{scroll-behavior:smooth}
+/* THE PAGE MUST PAINT ITSELF FROM THE TOKENS.
+   This line was missing and nothing noticed for months, because the model
+   usually writes the same rule itself and the page looked right. When it did
+   not, the whole dark scheme was inert: --bg and --text flipped and
+   the body kept the browser's white, so the dark text token — a near-white —
+   was painted on white and the page went blank. Measured in a browser the
+   moment a theme switch was put on the page and pressed: the background did not
+   change at all. Base layer, so anything the model DID write still wins. */
+body{background:var(--bg);color:var(--text)}
 body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
   font-family:'Segoe UI','Noto Sans Arabic','Helvetica Neue',system-ui,-apple-system,sans-serif}
 img,svg,video,iframe{max-width:100%;height:auto}

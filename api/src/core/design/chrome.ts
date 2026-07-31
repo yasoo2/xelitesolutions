@@ -111,7 +111,7 @@ export function chromeCss(): string {
   transition:opacity .18s ease,transform .18s ease,visibility .18s}
 .has-menu > [aria-expanded="true"] + .dropdown{opacity:1;visibility:visible;transform:none}
 .dropdown a{display:block;padding:10px 12px;border-radius:10px;font-weight:500;white-space:normal}
-.dropdown a:hover,.dropdown a:focus-visible{background:var(--brand-light);color:var(--brand-dark)}
+.dropdown a:hover,.dropdown a:focus-visible{background:var(--tint);color:var(--on-tint)}
 
 /* ---------- mobile ---------------------------------------------------------- */
 /* z-index above the drawer, because the drawer is a CHILD of the header: inside
@@ -121,7 +121,7 @@ export function chromeCss(): string {
    and doubles as the close button — its label already switches. */
 .nav-toggle{display:none;position:relative;z-index:46;background:none;border:1px solid var(--border);
   color:var(--text);border-radius:12px;padding:9px;box-shadow:none}
-.nav-toggle:hover{background:var(--brand-light);transform:none}
+.nav-toggle:hover{background:var(--tint);color:var(--on-tint);transform:none}
 .nav-backdrop{position:fixed;inset:0;z-index:40;background:rgba(8,12,20,.45);
   opacity:0;visibility:hidden;transition:opacity .2s ease,visibility .2s}
 .nav-backdrop[data-open]{opacity:1;visibility:visible}
@@ -150,7 +150,7 @@ export function chromeCss(): string {
   .site-nav[data-open]{transform:none;visibility:visible}
   .nav-links{flex-direction:column;align-items:stretch;gap:2px}
   .nav-links a,.nav-links .nav-link{padding:13px 10px;border-radius:12px;width:100%;justify-content:space-between}
-  .nav-links a:hover,.nav-links .nav-link:hover{background:var(--brand-light)}
+  .nav-links a:hover,.nav-links .nav-link:hover{background:var(--tint);color:var(--on-tint)}
   /* On a phone the dropdown is a disclosure in the flow, not an overlay. */
   .dropdown{position:static;opacity:1;visibility:visible;transform:none;box-shadow:none;
     border:0;border-inline-start:2px solid var(--border);border-radius:0;
@@ -379,7 +379,7 @@ export function authCss(): string {
   font-size:26px;line-height:1;color:var(--text-muted);cursor:pointer;padding:2px 8px;box-shadow:none}
 .joe-auth-close:hover{color:var(--text);transform:none}
 .joe-auth-note{margin-top:16px;padding:12px 14px;border-radius:var(--radius);
-  background:var(--brand-light);color:var(--brand-dark);font-size:var(--step--1);line-height:1.6}
+  background:var(--tint);color:var(--on-tint);font-size:var(--step--1);line-height:1.6}
 .joe-auth-note[hidden]{display:none}
 `.trim();
 }

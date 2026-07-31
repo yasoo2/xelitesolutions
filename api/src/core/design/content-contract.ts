@@ -28,6 +28,15 @@ export interface ContentIssue {
     en: string;
     /** Can the model plausibly fix this if asked directly? */
     repairable: boolean;
+    /**
+     * The section ids this is about, when the check can say.
+     *
+     * A finding that names its sections can be repaired section by section on a
+     * page too large for a whole-page pass — which is every real page. A finding
+     * that only counts cannot be repaired at all, which is why some were
+     * detected on every build and fixed on none.
+     */
+    sections?: string[];
 }
 
 export interface Requirements {
@@ -196,24 +205,39 @@ export function verifyContent(html: string, req: Requirements): ContentIssue[] {
     // 4. Near-identical sibling cards — the "same sentence, one word swapped"
     //    pattern that makes a page read as filler.
     const sections = page.match(/<section\b[\s\S]*?<\/section>/gi) || [];
-    let dupSections = 0;
+    /**
+     * WHICH sections, not how many.
+     *
+     * This used to count them and report a number. A number cannot be repaired:
+     * the whole-page repair is skipped on any real page, so «قسم فيه بطاقات بنفس
+     * النص» was detected on every build and fixed on none. Naming the section
+     * ids — and the sentence they share — lets the section-scoped repair go
+     * straight at them, and lets the model be told exactly what to replace.
+     */
+    const dupIds: string[] = [];
+    let dupExample = '';
     for (const sec of sections) {
         const cards = cardTexts(sec);
         if (cards.length < 2) continue;
         let dup = false;
         for (let i = 0; i < cards.length && !dup; i++) {
             for (let j = i + 1; j < cards.length; j++) {
-                if (similarity(cards[i], cards[j]) >= 0.7) { dup = true; break; }
+                if (similarity(cards[i], cards[j]) >= 0.7) {
+                    dup = true;
+                    if (!dupExample) dupExample = cards[i].slice(0, 70);
+                    break;
+                }
             }
         }
-        if (dup) dupSections++;
+        if (dup) dupIds.push((sec.match(/\bid\s*=\s*["']([^"']+)["']/) || [, ''])[1] || 'section');
     }
-    if (dupSections) {
+    if (dupIds.length) {
         issues.push({
             code: 'duplicated_copy',
-            ar: `${dupSections} قسم فيه بطاقات بنفس النص تقريباً — محتوى حشو لا محتوى حقيقي`,
-            en: `${dupSections} section(s) repeat the same text across cards — filler, not real content`,
+            ar: `${dupIds.length} قسم فيه بطاقات بنفس النص تقريباً — محتوى حشو لا محتوى حقيقي${dupExample ? ` («${dupExample}»)` : ''}`,
+            en: `${dupIds.length} section(s) repeat the same text across cards — filler, not real content${dupExample ? ` ("${dupExample}")` : ''}`,
             repairable: true,
+            sections: dupIds,
         });
     }
 
