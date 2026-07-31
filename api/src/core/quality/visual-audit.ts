@@ -143,6 +143,119 @@ function collector() {
         }
     }
 
+    // ---- RTL: an Arabic page laid out with left/right instead of start/end
+    //
+    // The user builds Arabic pages. A stylesheet written with margin-left,
+    // padding-right, text-align:left or float:left looks correct while it is
+    // being written in a left-to-right editor and comes out mirrored in the
+    // browser — the icon on the wrong side of the button, the section indented
+    // away from the text. The browser knows which it is; ask it.
+    const htmlLang = (de.getAttribute('lang') || '').toLowerCase();
+    const htmlDir = (de.getAttribute('dir') || getComputedStyle(de).direction || '').toLowerCase();
+    const bodyText = (document.body.innerText || '');
+    const arabicChars = (bodyText.match(/[؀-ۿ]/g) || []).length;
+    const isArabicPage = arabicChars > Math.max(40, bodyText.replace(/\s/g, '').length * 0.25);
+    const rtlOffenders: string[] = [];
+    let physicalProps = 0;
+    if (isArabicPage) {
+        // Read the DECLARATIONS, not the computed values. `padding-inline-start:
+        // 18px` computes to padding-right in Arabic and looks exactly like a
+        // hardcoded `padding-right` from the outside — a computed-style check
+        // flags correct logical CSS as a bug. The source text says which it is.
+        const PHYSICAL = /(^|[;{\s])(margin|padding|border)-(left|right)\s*:|(^|[;{\s])float\s*:\s*(left|right)|(^|[;{\s])text-align\s*:\s*(left|right)|(^|[;{\s])(left|right)\s*:\s*[-0-9]/gi;
+        for (const sheet of Array.from(document.styleSheets)) {
+            let rules: any[] = [];
+            try { rules = Array.from((sheet as CSSStyleSheet).cssRules || []); } catch { continue; }
+            const walk = (list: any[]) => {
+                for (const rule of list) {
+                    // A plain style rule now ALSO exposes an (empty) cssRules list
+                    // because of CSS nesting, so "has cssRules" is not "is a group".
+                    // Testing truthiness there made every rule look like a wrapper
+                    // and the whole scan silently counted nothing.
+                    if (rule.cssRules && rule.cssRules.length) walk(Array.from(rule.cssRules));
+                    if (!rule.style) continue;
+                    // Own declarations only — a parent's cssText contains its
+                    // children and would count them twice.
+                    const hits = String(rule.style.cssText || '').match(PHYSICAL);
+                    if (!hits) continue;
+                    physicalProps += hits.length;
+                    if (rtlOffenders.length < 6) {
+                        rtlOffenders.push(`${String(rule.selectorText || '?').slice(0, 48)} { ${hits.map(h => h.trim()).join(' ')} }`);
+                    }
+                }
+            };
+            walk(rules);
+        }
+    }
+
+    // ---- accessibility beyond contrast
+    //
+    // Contrast was checked above; these are the failures a screen reader hits.
+    const headings = (Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6')) as HTMLElement[])
+        .filter(visible).map(h => Number(h.tagName[1]));
+    let headingJumps = 0;
+    for (let i = 1; i < headings.length; i++) if (headings[i] - headings[i - 1] > 1) headingJumps++;
+    const h1Count = headings.filter(n => n === 1).length;
+
+    let unlabelledFields = 0;
+    for (const f of Array.from(document.querySelectorAll('input,textarea,select')) as HTMLElement[]) {
+        const t = (f as HTMLInputElement).type;
+        if (t === 'hidden' || t === 'submit' || t === 'button') continue;
+        const id = f.getAttribute('id');
+        const labelled = (id && document.querySelector(`label[for="${CSS.escape(id)}"]`)) ||
+            f.closest('label') || f.getAttribute('aria-label') || f.getAttribute('aria-labelledby');
+        if (!labelled) unlabelledFields++;
+    }
+
+    let iconOnlyUnnamed = 0;
+    for (const b of Array.from(document.querySelectorAll('button,a,[role=button]')) as HTMLElement[]) {
+        if (!visible(b)) continue;
+        const text = (b.innerText || '').trim();
+        if (text.length > 0) continue;
+        if (b.getAttribute('aria-label') || b.getAttribute('title')) continue;
+        // An <img alt> or an <svg><title> also names it.
+        if (b.querySelector('img[alt]:not([alt=""])') || b.querySelector('svg title')) continue;
+        iconOnlyUnnamed++;
+    }
+
+    let imgNoAlt = 0;
+    for (const img of Array.from(document.querySelectorAll('img')) as HTMLImageElement[]) {
+        if (!img.hasAttribute('alt')) imgNoAlt++;
+    }
+
+    const landmarks = {
+        header: !!document.querySelector('header,[role=banner]'),
+        nav: !!document.querySelector('nav,[role=navigation]'),
+        main: !!document.querySelector('main,[role=main]'),
+        footer: !!document.querySelector('footer,[role=contentinfo]'),
+    };
+    const missingLandmarks = Object.entries(landmarks).filter(([, v]) => !v).map(([k]) => k);
+
+    // Is there ANY visible focus indicator?
+    //
+    // Not from computed style: a browser draws its focus ring only while an
+    // element IS focused, so every element on every page reports outline:none at
+    // rest and the check would fail even the pages that are correct. The question
+    // is whether the stylesheet KILLS the ring without putting one back, and that
+    // is a question about the source.
+    let outlineKilled = 0, focusRules = 0;
+    for (const sheet of Array.from(document.styleSheets)) {
+        let rules: any[] = [];
+        try { rules = Array.from((sheet as CSSStyleSheet).cssRules || []); } catch { continue; }
+        const scan = (list: any[]) => {
+            for (const rule of list) {
+                if (rule.cssRules && rule.cssRules.length) scan(Array.from(rule.cssRules));
+                if (!rule.style) continue;
+                const sel = String(rule.selectorText || '');
+                const decl = String(rule.style.cssText || '');
+                if (/outline\s*:\s*(none|0)/i.test(decl)) outlineKilled++;
+                if (/:focus/.test(sel) && /(outline|box-shadow|border)\s*:/i.test(decl) && !/outline\s*:\s*(none|0)/i.test(decl)) focusRules++;
+            }
+        };
+        scan(rules);
+    }
+    const focusSuppressed = outlineKilled > 0 && focusRules === 0 ? outlineKilled : 0;
+
     // Whitespace balance: how much of the first screen is empty background.
     const sample = () => {
         let filled = 0, cells = 0;
@@ -163,6 +276,11 @@ function collector() {
         scrollHeight: de.scrollHeight,
         sections: document.querySelectorAll('section').length,
         quirks: document.compatMode !== 'CSS1Compat',
+        // RTL
+        isArabicPage, htmlLang, htmlDir, rtlOffenders, physicalProps,
+        // accessibility
+        headingJumps, h1Count, unlabelledFields, iconOnlyUnnamed, imgNoAlt,
+        missingLandmarks, focusSuppressed, outlineKilled, focusRules,
     };
 }
 
@@ -297,6 +415,103 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
     }
     if (consoleErrors.length) {
         findings.push({ code: 'js_errors', severity: 'major', ar: `أخطاء JavaScript: ${consoleErrors[0]}`, en: `JavaScript errors: ${consoleErrors[0]}` });
+    }
+
+    // ---- RTL ---------------------------------------------------------------
+    // Judged once, on the desktop pass: direction does not change with width.
+    const d = metrics.desktop;
+    if (d?.isArabicPage) {
+        if (d.htmlDir !== 'rtl') {
+            findings.push({
+                code: 'rtl_missing', severity: 'critical',
+                ar: 'الصفحة عربية لكن الاتجاه ليس rtl — كل السطور والأعمدة معكوسة',
+                en: 'The page is in Arabic but its direction is not rtl — every line and column is mirrored',
+                hint: 'set <html lang="ar" dir="rtl">',
+            });
+        }
+        if (!/^ar/.test(String(d.htmlLang || ''))) {
+            findings.push({
+                code: 'lang_missing', severity: 'minor',
+                ar: 'الصفحة عربية بلا lang="ar" — قارئ الشاشة سينطقها بلغة أخرى',
+                en: 'Arabic page without lang="ar" — a screen reader will pronounce it in the wrong language',
+                hint: 'set lang="ar" on <html>',
+            });
+        }
+        if (d.physicalProps >= 4) {
+            findings.push({
+                code: 'rtl_physical', severity: 'major',
+                ar: `${d.physicalProps} عنصر يستخدم يمين/يسار فيزيائيًا بدل start/end — يظهر معكوسًا في العربية: ${(d.rtlOffenders || [])[0] || ''}`,
+                en: `${d.physicalProps} element(s) use physical left/right instead of start/end, so they mirror wrongly in Arabic: ${(d.rtlOffenders || [])[0] || ''}`,
+                hint: 'use margin-inline-start/end, padding-inline-*, text-align:start, and inset-inline instead of left/right',
+            });
+        }
+    }
+
+    // ---- accessibility beyond contrast -------------------------------------
+    if (d) {
+        if (d.h1Count === 0) {
+            findings.push({
+                code: 'no_h1', severity: 'major',
+                ar: 'لا يوجد عنوان h1 في الصفحة — لا يعرف قارئ الشاشة عمّا تتحدث',
+                en: 'The page has no h1 — nothing states what it is about',
+                hint: 'the hero headline should be the single <h1>',
+            });
+        } else if (d.h1Count > 1) {
+            findings.push({
+                code: 'many_h1', severity: 'minor',
+                ar: `${d.h1Count} عناوين h1 — يجب أن يكون واحدًا فقط`,
+                en: `${d.h1Count} h1 headings — there should be exactly one`,
+                hint: 'demote the extras to h2',
+            });
+        }
+        if (d.headingJumps > 0) {
+            findings.push({
+                code: 'heading_order', severity: 'minor',
+                ar: `${d.headingJumps} قفزة في ترتيب العناوين (h2 ثم h4 مثلًا)`,
+                en: `${d.headingJumps} skipped heading level(s) (h2 straight to h4)`,
+                hint: 'headings must descend one level at a time',
+            });
+        }
+        if (d.unlabelledFields > 0) {
+            findings.push({
+                code: 'unlabelled_fields', severity: 'major',
+                ar: `${d.unlabelledFields} حقل إدخال بلا تسمية — placeholder ليس تسمية`,
+                en: `${d.unlabelledFields} form field(s) with no label — a placeholder is not a label`,
+                hint: 'add <label for="id"> or aria-label to every input',
+            });
+        }
+        if (d.iconOnlyUnnamed > 0) {
+            findings.push({
+                code: 'unnamed_icon_buttons', severity: 'major',
+                ar: `${d.iconOnlyUnnamed} زر بأيقونة فقط بلا اسم — قارئ الشاشة يقول «زر» فحسب`,
+                en: `${d.iconOnlyUnnamed} icon-only control(s) with no accessible name — a screen reader announces only "button"`,
+                hint: 'add aria-label to every icon-only button and link',
+            });
+        }
+        if (d.imgNoAlt > 0) {
+            findings.push({
+                code: 'img_no_alt', severity: 'major',
+                ar: `${d.imgNoAlt} صورة بلا سمة alt`,
+                en: `${d.imgNoAlt} image(s) with no alt attribute`,
+                hint: 'describe the photo, or alt="" if it is purely decorative',
+            });
+        }
+        if ((d.missingLandmarks || []).length >= 2) {
+            findings.push({
+                code: 'landmarks', severity: 'minor',
+                ar: `معالم الصفحة ناقصة: ${d.missingLandmarks.join('، ')}`,
+                en: `Missing page landmarks: ${d.missingLandmarks.join(', ')}`,
+                hint: 'wrap the page in header/nav/main/footer',
+            });
+        }
+        if (d.focusSuppressed > 0) {
+            findings.push({
+                code: 'focus_suppressed', severity: 'major',
+                ar: 'لا يوجد مؤشر تركيز ظاهر — الصفحة غير قابلة للاستخدام بلوحة المفاتيح',
+                en: 'No visible focus indicator anywhere — the page cannot be used with a keyboard',
+                hint: 'never outline:none without a :focus-visible replacement',
+            });
+        }
     }
 
     // The same defect measured at two viewport widths is one defect. Keep the
