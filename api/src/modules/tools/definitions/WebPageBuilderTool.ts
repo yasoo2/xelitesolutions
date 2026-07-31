@@ -9,6 +9,7 @@ import { workspaceService } from '../../services/WorkspaceService';
 import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript } from '../../../core/design/design-system';
 import { detectPageKind, blueprintBrief, imageBudget } from '../../../core/design/blueprints';
 import { resolveImages, creditsBlock } from '../../../core/design/images';
+import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 const PORT = String(process.env.PORT || '5002');
@@ -182,6 +183,52 @@ ${prev!.html}`
         // Detect a no-op edit: the model returned HTML identical to the current page
         // (weak models sometimes echo it back). We must NOT claim we changed it.
         const editNoOp = isEdit && !!prev && (editFellBack || html.trim() === prev.html.trim());
+
+        // [CONTENT CONTRACT] The design stopped depending on the model's goodwill
+        // once the rules were applied to the CSS. Content had no such check, and
+        // shipped a pricing section with no prices, testimonials with no names,
+        // three cards carrying one sentence with a word swapped, and two buttons
+        // the user named that were never built. Content cannot be manufactured
+        // here — inventing a price would be fabrication — so it is VERIFIED, the
+        // mechanical parts are repaired, and the rest goes back to the model as a
+        // precise list, exactly like compiler errors.
+        const requirements = extractRequirements(request);
+        let contentIssues: ContentIssue[] = [];
+        let contentRepairs = 0;
+        {
+            const nav = wireNavigation(html);
+            html = nav.html;
+            for (const f of nav.fixed) logs.push(`content: ${f}`);
+
+            contentIssues = verifyContent(html, requirements);
+            if (contentIssues.some(i => i.repairable)) {
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                    ? `🔍 مراجع المحتوى: ${contentIssues.length} ملاحظة — أُعيدها للمطوّر`
+                    : `🔍 Content reviewer: ${contentIssues.length} issue(s) — sending back for repair`);
+                try {
+                    const repaired = await routeToModel([
+                        { role: 'system', content: repairBrief(contentIssues, isAr) },
+                        { role: 'user', content: html },
+                    ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                    let fixedHtml = String(repaired || '').trim();
+                    const rf = fixedHtml.match(/```(?:html)?\s*([\s\S]*?)```/i);
+                    if (rf) fixedHtml = rf[1].trim();
+                    const di = fixedHtml.search(/<!DOCTYPE html>|<html[\s>]/i);
+                    if (di > 0) fixedHtml = fixedHtml.slice(di);
+                    // Only accept a repair that is still a complete document and did
+                    // not shrink the page — a truncated "fix" is worse than the fault.
+                    if (/<\/html\s*>/i.test(fixedHtml) && fixedHtml.length > html.length * 0.7) {
+                        const after = verifyContent(fixedHtml, requirements);
+                        if (after.length < contentIssues.length) {
+                            contentRepairs = contentIssues.length - after.length;
+                            html = fixedHtml;
+                            contentIssues = after;
+                            logs.push(`content: repaired ${contentRepairs} issue(s)`);
+                        } else { logs.push('content: repair did not improve the page, kept the original'); }
+                    } else { logs.push('content: repair returned an incomplete page, kept the original'); }
+                } catch (e: any) { logs.push(`content repair failed: ${e?.message || e}`); }
+            }
+        }
 
         // [UI KIT] Inject the component layer as a BASE stylesheet — buttons,
         // fields, nav spacing, card hover, focus rings and scroll-reveal motion.
@@ -367,6 +414,13 @@ ${prev!.html}`
                 parts.push(isAr
                     ? `📝 الصفحة تجاوزت حدّ الرد الواحد — أكملتُها على ${continuations + 1} أجزاء${stillTruncated ? ' ⚠️ وما زالت ناقصة' : ''}`
                     : `📝 Page exceeded one response — completed across ${continuations + 1} parts${stillTruncated ? ' ⚠️ still incomplete' : ''}`);
+            }
+            if (contentRepairs) parts.push(isAr ? `✍️ إصلاحات المحتوى: ${contentRepairs}` : `✍️ Content repairs: ${contentRepairs}`);
+            // Never let a content failure pass silently: if the model could not fix
+            // it, the user is told exactly what is still wrong.
+            if (contentIssues.length) {
+                parts.push((isAr ? '⚠️ ملاحظات على المحتوى:\n' : '⚠️ Content notes:\n')
+                    + contentIssues.map(i => `   • ${isAr ? i.ar : i.en}`).join('\n'));
             }
             if (qaFixed.length) parts.push(isAr ? `🔧 تصحيحات الجودة: ${qaFixed.length}` : `🔧 QA fixes: ${qaFixed.length}`);
             parts.push(qaIssues.length
