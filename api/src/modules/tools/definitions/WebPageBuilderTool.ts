@@ -6,6 +6,7 @@ import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
 import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
 import { auditVisually, visualRepairBrief, type VisualFinding } from '../../../core/quality/visual-audit';
+import { auditBehaviour, behaviourRepairBrief, type BehaviourFinding } from '../../../core/quality/behaviour-audit';
 import { workspaceService } from '../../services/WorkspaceService';
 import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirstCss } from '../../../core/design/design-system';
 import { findReferenceUrl, extractReference, paletteFromReference, referenceBrief, referenceOverridesCss, referenceSummary } from '../../../core/design/reference';
@@ -493,6 +494,59 @@ ${prev!.html}`
             } else if (audit.skipped) { logs.push(`visual audit skipped: ${audit.skipped}`); }
         } catch (e: any) { logs.push(`visual audit error: ${e?.message || e}`); }
 
+        // [BEHAVIOUR AUDIT] The visual audit measures how the page LOOKS, and a
+        // dead button looks perfect. The blueprint promises a cart that counts, an
+        // accordion that opens and a form that does not reload the page — nothing
+        // ever pressed one. This does: it clicks every control a visitor would try
+        // and reports which ones changed nothing.
+        let behaviourFindings: BehaviourFinding[] = [];
+        let behaviourScore = -1;
+        let behaviourRepairs = 0;
+        try {
+            const b = await auditBehaviour(url, { kind });
+            if (b.ran) {
+                behaviourFindings = b.findings;
+                behaviourScore = b.score;
+                logs.push(`behaviour audit: ${b.score}/100, ${b.metrics.dead}/${b.metrics.pressed} dead control(s), ${b.metrics.deadAnchors} dead anchor(s)`);
+                const brief = behaviourRepairBrief(b.findings, b.controls);
+                if (brief) {
+                    if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                        ? `🖱️ ضغطتُ عناصر الصفحة فعليًا: ${b.metrics.dead} منها لا تستجيب — أُصلحها`
+                        : `🖱️ Actually clicked the page's controls: ${b.metrics.dead} do nothing — repairing`);
+                    try {
+                        const fixed = await routeToModel([
+                            { role: 'system', content: brief },
+                            { role: 'user', content: html },
+                        ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                        let out = String(fixed || '').trim();
+                        const f3 = out.match(/```(?:html)?\s*([\s\S]*?)```/i);
+                        if (f3) out = f3[1].trim();
+                        const d3 = out.search(/<!DOCTYPE html>|<html[\s>]/i);
+                        if (d3 > 0) out = out.slice(d3);
+                        if (/<\/html\s*>/i.test(out) && out.length > html.length * 0.7) {
+                            fs.writeFileSync(path.join(ARTIFACT_DIR, filename), out, 'utf-8');
+                            const after = await auditBehaviour(url, { kind });
+                            // A "fix" that deletes the buttons scores well on dead
+                            // controls, so the count of controls must not fall.
+                            const keptControls = after.ran && after.metrics.pressed >= Math.floor(b.metrics.pressed * 0.8);
+                            if (after.ran && after.score > b.score && keptControls) {
+                                behaviourRepairs = b.findings.length - after.findings.length;
+                                behaviourFindings = after.findings;
+                                behaviourScore = after.score;
+                                html = out;
+                                store[sessionKey] = { ...(store[sessionKey] || {} as any), html };
+                                broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any);
+                                logs.push(`behaviour repair accepted: ${b.score} -> ${after.score}`);
+                            } else {
+                                fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+                                logs.push(`behaviour repair rejected (${after.ran ? `${b.score} -> ${after.score}, controls ${b.metrics.pressed} -> ${after.metrics.pressed}` : 're-audit failed'})`);
+                            }
+                        }
+                    } catch (e: any) { logs.push(`behaviour repair failed: ${e?.message || e}`); }
+                }
+            } else if (b.skipped) { logs.push(`behaviour audit skipped: ${b.skipped}`); }
+        } catch (e: any) { logs.push(`behaviour audit error: ${e?.message || e}`); }
+
         // [QA department — optional real browser test] Off by default (heavy on a
         // CPU laptop). When JOE_QA_BROWSER_TEST=1, actually open the page in the
         // headless browser, capture console/page errors and a screenshot.
@@ -554,6 +608,13 @@ ${prev!.html}`
                     ? `👁️ الفحص البصري: ${visualScore}/100${visualRepairs > 0 ? ` (أصلحتُ ${visualRepairs})` : ''}`
                     : `👁️ Visual audit: ${visualScore}/100${visualRepairs > 0 ? ` (repaired ${visualRepairs})` : ''}`);
                 const shown = visualFindings.filter(f => f.severity !== 'minor').slice(0, 4);
+                if (shown.length) parts.push(shown.map(f => `   • ${isAr ? f.ar : f.en}`).join('\n'));
+            }
+            if (behaviourScore >= 0) {
+                parts.push(isAr
+                    ? `🖱️ فحص التفاعل (ضغط حقيقي على العناصر): ${behaviourScore}/100${behaviourRepairs > 0 ? ` (أصلحتُ ${behaviourRepairs})` : ''}`
+                    : `🖱️ Behaviour audit (controls really clicked): ${behaviourScore}/100${behaviourRepairs > 0 ? ` (repaired ${behaviourRepairs})` : ''}`);
+                const shown = behaviourFindings.filter(f => f.severity !== 'minor').slice(0, 4);
                 if (shown.length) parts.push(shown.map(f => `   • ${isAr ? f.ar : f.en}`).join('\n'));
             }
             if (contentRepairs) parts.push(isAr ? `✍️ إصلاحات المحتوى: ${contentRepairs}` : `✍️ Content repairs: ${contentRepairs}`);
