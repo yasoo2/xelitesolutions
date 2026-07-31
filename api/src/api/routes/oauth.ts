@@ -94,7 +94,10 @@ router.get('/google/avatar', async (req: Request, res: Response) => {
 
 /** Disconnect (forget the stored tokens). */
 router.post('/google/disconnect', authenticate as any, (req: Request, res: Response) => {
-  return res.json(disconnect(uid(req)));
+  const result = disconnect(uid(req));
+  // A disconnect that did not actually remove the token must not answer 200:
+  // the client would show "disconnected" while the refresh token is still there.
+  return res.status(result.ok ? 200 : 500).json(result);
 });
 
 export default router;

@@ -114,9 +114,36 @@ export function getConnectedProfile(userId: string): { email?: string; name?: st
 
 export function isConnected(userId: string): boolean { return !!(loadTokens(userId)?.refresh_token || loadTokens(PRIMARY_KEY)?.refresh_token); }
 export function getConnectedEmail(userId: string): string | undefined { return loadTokens(userId)?.email || loadTokens(PRIMARY_KEY)?.email; }
-export function disconnect(userId: string): { ok: boolean } {
-  try { const f = tokenFile(userId); if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
-  try { const f = tokenFile(PRIMARY_KEY); if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
+/**
+ * Forget the user's Google tokens.
+ *
+ * This returned `{ ok: true }` unconditionally, with both unlink calls wrapped
+ * in `catch { /* ignore *​/ }`. If a file was locked or the disk was read-only,
+ * the refresh token stayed on disk and the user was told their Google account
+ * had been disconnected. That is the one claim in this module that must never be
+ * made on faith, so the result is now verified by re-reading the filesystem.
+ */
+export function disconnect(userId: string): { ok: boolean; error?: string; remaining?: string[] } {
+  const errors: string[] = [];
+  const remaining: string[] = [];
+  for (const key of [userId, PRIMARY_KEY]) {
+    const f = tokenFile(key);
+    try {
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+    } catch (e: any) {
+      errors.push(`${f}: ${e?.message || e}`);
+    }
+    // Trust the filesystem, not the absence of a thrown error.
+    try { if (fs.existsSync(f)) remaining.push(f); } catch { remaining.push(f); }
+  }
+  if (remaining.length) {
+    console.error(`[GoogleOAuth] disconnect FAILED, tokens still on disk: ${remaining.join(', ')}`);
+    return {
+      ok: false,
+      error: errors.join('; ') || 'the token file still exists after deletion',
+      remaining,
+    };
+  }
   return { ok: true };
 }
 

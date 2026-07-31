@@ -121,9 +121,13 @@ router.post('/stop', authenticate as any, async (req: Request, res: Response) =>
     if (!sid) return res.status(400).json({ error: 'sessionId required' });
     const access = await ensureBrowserSessionAccess(req, res, sid);
     if (!access.ok) return res.status(access.status).json(access.body);
+    // A session that refused to stop is still running and still holding its
+    // browser process; reporting ok:true left the user believing it was closed.
     try {
       await stopSession(sid);
-    } catch { }
+    } catch (e: any) {
+      return res.status(500).json({ ok: false, error: 'browser_stop_failed', detail: String(e?.message || e) });
+    }
     return res.json({ ok: true });
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'browser_stop_failed' });
@@ -173,8 +177,14 @@ router.post('/nav/refresh', authenticate as any, async (req: Request, res: Respo
     const access = await ensureBrowserSessionAccess(req, res, sid);
     if (!access.ok) return res.status(access.status).json(access.body);
     const s = await getBrowserSession(sid);
-    try { await s.page.reload({ waitUntil: 'domcontentloaded' }); } catch { }
-    return res.json({ ok: true });
+    // A reload that threw used to return ok:true, so the panel showed a refresh
+    // that never happened and the page it displayed was the stale one.
+    try {
+      await s.page.reload({ waitUntil: 'domcontentloaded' });
+    } catch (e: any) {
+      return res.status(502).json({ ok: false, error: 'nav_refresh_failed', detail: String(e?.message || e), url: s.page.url() });
+    }
+    return res.json({ ok: true, url: s.page.url() });
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'nav_refresh_failed' });
   }
@@ -191,7 +201,17 @@ router.post('/nav/goto', authenticate as any, async (req: Request, res: Response
     const s = await getBrowserSession(sid);
     let u = raw;
     if (!/^[a-z]+:\/\//i.test(u)) u = `https://${u}`;
-    try { await s.page.goto(u, { waitUntil: 'domcontentloaded' }); } catch { }
+    // Worse than the reload case: a failed navigation returned ok:true together
+    // with s.page.url() — the address it was ALREADY on — so the client showed a
+    // successful navigation to a page it had never left.
+    try {
+      await s.page.goto(u, { waitUntil: 'domcontentloaded' });
+    } catch (e: any) {
+      return res.status(502).json({
+        ok: false, error: 'nav_goto_failed', requested: u,
+        detail: String(e?.message || e), url: s.page.url(),
+      });
+    }
     return res.json({ ok: true, url: s.page.url() });
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'nav_goto_failed' });
