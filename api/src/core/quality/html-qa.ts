@@ -136,16 +136,99 @@ export function reviewHtml(rawHtml: string, isArabic = false): HtmlReview {
 
     // 6e. A field with only a placeholder is invisible to a screen reader once
     //     the user starts typing. Give it an accessible name.
-    if (/<(input|textarea|select)\b/i.test(html) && !/<label\b/i.test(html)) {
+    //
+    //     Applied field by field. The first version skipped the whole page when
+    //     ANY <label> existed, so a form with one label and five bare inputs was
+    //     left entirely alone — the common case, not the rare one.
+    if (/<(input|textarea|select)\b/i.test(html)) {
+        const labelledIds = new Set(
+            [...html.matchAll(/<label\b[^>]*\bfor\s*=\s*["']([^"']+)["']/gi)].map(m => m[1]),
+        );
         let named = 0;
         html = html.replace(/<(input|textarea|select)\b([^>]*)>/gi, (full, tag, attrs) => {
-            if (/aria-label\s*=/i.test(attrs) || /type\s*=\s*["'](hidden|submit|button)["']/i.test(attrs)) return full;
-            const ph = (attrs.match(/placeholder\s*=\s*"([^"]+)"/i) || [])[1];
+            if (/aria-label(ledby)?\s*=/i.test(attrs) || /type\s*=\s*["'](hidden|submit|button)["']/i.test(attrs)) return full;
+            const id = (attrs.match(/\bid\s*=\s*["']([^"']+)["']/i) || [])[1];
+            if (id && labelledIds.has(id)) return full;
+            const ph = (attrs.match(/placeholder\s*=\s*["']([^"']+)["']/i) || [])[1];
             if (!ph) return full;
             named++;
             return `<${tag}${attrs} aria-label="${ph}">`;
         });
         if (named) fixed.push(`labelled ${named} unlabelled form field(s)`);
+    }
+
+    /* ------------------------------------------------------------------
+       7. ACCESSIBILITY SAFETY NET.
+
+       These are the failures the browser audit reports over and over. Each
+       one costs a whole extra LLM round to repair on a CPU-only laptop, and
+       each has exactly one correct deterministic answer — so it is applied
+       here instead of being asked for.
+       ------------------------------------------------------------------ */
+
+    // 7a. Exactly one <h1>. Several is a common model habit and the extras are
+    //     always section titles, which is what h2 is for.
+    const h1s = [...html.matchAll(/<h1\b/gi)];
+    if (h1s.length > 1) {
+        let seenFirst = false;
+        html = html
+            .replace(/<h1\b/gi, () => { if (!seenFirst) { seenFirst = true; return '<h1'; } return '<h2'; })
+            .replace(/<\/h1\s*>/gi, (() => { let n = 0; return () => (n++ === 0 ? '</h1>' : '</h2>'); })());
+        fixed.push(`demoted ${h1s.length - 1} extra <h1> to <h2>`);
+    }
+
+    // 7b. An icon-only control announces itself as "button" and nothing else.
+    //     The icon it draws already says what it is — Joe's sprite ids are
+    //     literally the word (#i-cart, #i-mail), so the name is right there.
+    const ICON_NAMES: Record<string, string> = {
+        check: 'تم', arrow: 'التالي', star: 'تقييم', shield: 'أمان', spark: 'مميّز',
+        users: 'الفريق', code: 'الكود', chart: 'الإحصاءات', mail: 'البريد', phone: 'اتصال',
+        pin: 'الموقع', clock: 'المواعيد', cart: 'السلة', menu: 'القائمة', close: 'إغلاق',
+    };
+    const ICON_NAMES_EN: Record<string, string> = {
+        check: 'Done', arrow: 'Next', star: 'Rating', shield: 'Security', spark: 'Featured',
+        users: 'Team', code: 'Code', chart: 'Statistics', mail: 'Email', phone: 'Call',
+        pin: 'Location', clock: 'Hours', cart: 'Cart', menu: 'Menu', close: 'Close',
+    };
+    let namedButtons = 0;
+    html = html.replace(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi, (full, tag, attrs, inner) => {
+        if (/aria-label(ledby)?\s*=|title\s*=/i.test(attrs)) return full;
+        // Any real text inside means it already has a name.
+        if (inner.replace(/<[^>]*>/g, '').trim().length > 0) return full;
+        if (/<svg[^>]*>[\s\S]*?<title\b/i.test(inner)) return full;
+        if (/<img\b[^>]*\balt\s*=\s*["'][^"']+["']/i.test(inner)) return full;
+        const icon = (inner.match(/href\s*=\s*["']#i-([a-z]+)["']/i) || [])[1];
+        const label = icon ? (isArabic ? ICON_NAMES[icon] : ICON_NAMES_EN[icon]) : '';
+        if (!label) return full;
+        namedButtons++;
+        return `<${tag}${attrs} aria-label="${label}">${inner}</${tag}>`;
+    });
+    if (namedButtons) fixed.push(`named ${namedButtons} icon-only control(s)`);
+
+    // 7c. An <img> with no alt attribute at all makes a screen reader read the
+    //     file name aloud. A decorative image wants alt=""; a content image
+    //     wants a description, and the nearest caption is the honest one.
+    let altAdded = 0;
+    html = html.replace(/<img\b([^>]*)>/gi, (full, attrs) => {
+        if (/\balt\s*=/i.test(attrs)) return full;
+        altAdded++;
+        const t = (attrs.match(/\btitle\s*=\s*["']([^"']+)["']/i) || [])[1];
+        return `<img${attrs} alt="${t ? t.replace(/"/g, '&quot;') : ''}">`;
+    });
+    if (altAdded) fixed.push(`added a missing alt attribute to ${altAdded} image(s)`);
+
+    // 7d. <main> is the landmark that lets a screen-reader user skip the header.
+    //     Safe to add only when the document has one header and one footer and
+    //     everything between them is the content — which is the shape every
+    //     blueprint produces.
+    if (/<body[\s>]/i.test(html) && !/<main[\s>]|role=["']main["']/i.test(html)) {
+        const headerEnd = html.search(/<\/header\s*>/i);
+        const footerStart = html.search(/<footer[\s>]/i);
+        if (headerEnd > 0 && footerStart > headerEnd) {
+            const after = headerEnd + (html.match(/<\/header\s*>/i) || [''])[0].length;
+            html = html.slice(0, after) + '\n<main>' + html.slice(after, footerStart) + '</main>\n' + html.slice(footerStart);
+            fixed.push('wrapped the page content in <main>');
+        }
     }
 
     // --- Remaining (non-auto-fixable) issues lower the score but don't block ---
