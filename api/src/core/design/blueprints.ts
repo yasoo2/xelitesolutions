@@ -153,3 +153,12 @@ work in the page's own JavaScript.`;
 export function imageBudget(kind: PageKind): number {
     return IMAGE_BUDGET[kind];
 }
+
+/** The sections themselves, for writing the page one section at a time. */
+export function blueprintSections(kind: PageKind): string[] {
+    return BLUEPRINTS[kind].slice();
+}
+
+export function kindLabel(kind: PageKind): string {
+    return KIND_LABEL[kind];
+}

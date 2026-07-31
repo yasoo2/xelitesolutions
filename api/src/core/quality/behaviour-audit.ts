@@ -53,7 +53,11 @@ function findControls(limit: number) {
     };
     const label = (el: Element) => {
         const t = ((el as HTMLElement).innerText || '').trim().replace(/\s+/g, ' ').slice(0, 48);
-        return t || el.getAttribute('aria-label') || el.getAttribute('title') || el.tagName.toLowerCase();
+        const aria = el.getAttribute('aria-label') || el.getAttribute('title') || '';
+        // A cart button whose only text is its badge reads as "0" in the report,
+        // which tells the user nothing. Its accessible name is the real name.
+        if (aria && (t.length < 3 || /^\d+$/.test(t))) return aria;
+        return t || aria || el.tagName.toLowerCase();
     };
 
     const out: Array<{ sel: string; kind: string; label: string; href?: string }> = [];
@@ -201,7 +205,6 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
 
         for (const c of list) {
             if (c.kind === 'anchor') continue;                       // handled above
-            const before = await page.evaluate(snapshot).catch(() => null);
             let effect = '';
             try {
                 const el = await page.$(c.sel);
@@ -219,6 +222,11 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
                     if (blocked) { controls.push({ label: c.label, kind: 'submit', worked: true, effect: 'validation' }); continue; }
                 }
                 await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => { });
+                // Snapshot AFTER scrolling into view. Taken before, the audit's own
+                // scroll is indistinguishable from the click's effect, and a cart
+                // button that really did increment its badge was reported as
+                // "scroll" — a true measurement of the wrong thing.
+                const before = await page.evaluate(snapshot).catch(() => null);
                 // force:true so an overlay does not turn "covered" into "broken".
                 await el.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
                 await page.waitForTimeout(SETTLE_MS);

@@ -10,7 +10,8 @@ import { auditBehaviour, behaviourRepairBrief, type BehaviourFinding } from '../
 import { workspaceService } from '../../services/WorkspaceService';
 import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirstCss } from '../../../core/design/design-system';
 import { findReferenceUrl, extractReference, paletteFromReference, referenceBrief, referenceOverridesCss, referenceSummary } from '../../../core/design/reference';
-import { detectPageKind, blueprintBrief, imageBudget } from '../../../core/design/blueprints';
+import { detectPageKind, blueprintBrief, imageBudget, blueprintSections, kindLabel } from '../../../core/design/blueprints';
+import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteSectionwise, type WrittenSection } from '../../../core/design/section-writer';
 import { resolveImages, creditsBlock, availableSources } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
@@ -169,9 +170,79 @@ CURRENT HTML (modify this and return the FULL updated file):
 ${prev!.html}`
             : request;
 
+        // [SECTION-WISE] A full store page is 25-40 KB of HTML and one completion
+        // is capped near 12 KB, so a long page CANNOT be written in one breath —
+        // it was being stitched from blind "continue" prompts that no longer see
+        // the design system, which is why the second half of every long page came
+        // out weaker than the first. Long pages are now written one section at a
+        // time, each with the whole design system in front of it.
+        const blueprint = blueprintSections(kind);
+        const sectionwise = !isEdit && !isMultiFile && shouldWriteSectionwise(blueprint);
         let html = '';
+        let sectionReport: { written: number; total: number; failed: string[] } | null = null;
+
+        if (sectionwise) {
+            const plans = planSections(blueprint);
+            const design = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}${reference ? `\n\n${referenceBrief(reference)}` : ''}`;
+            const written: WrittenSection[] = [];
+            const titles: string[] = [];
+            let photosLeft = photos;
+
+            for (const plan of plans) {
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                    ? `✍️ أكتب القسم ${plan.index}/${plans.length}: ${plan.spec.split(':')[0]}`
+                    : `✍️ Writing section ${plan.index}/${plans.length}: ${plan.spec.split(':')[0]}`);
+                // Spread the photo budget over the sections that are still to come.
+                const share = Math.max(0, Math.ceil(photosLeft / Math.max(1, plans.length - plan.index + 1)));
+                let raw = '';
+                try {
+                    raw = await routeToModel([
+                        {
+                            role: 'system', content: sectionPrompt({
+                                plan, total: plans.length, kindLabel: kindLabel(kind), request, isArabic: isAr,
+                                designBrief: design, written: titles, photosLeft: share,
+                                imageSubjects: imageBrief.suggestions,
+                            }),
+                        },
+                        { role: 'user', content: `Write section ${plan.index}: ${plan.spec}` },
+                    ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                } catch (e: any) {
+                    written.push({ ...plan, html: '', ok: false, reason: String(e?.message || e).slice(0, 90) });
+                    continue;
+                }
+                const got = extractSection(raw, plan.id);
+                written.push({ ...plan, ...got });
+                if (got.ok) {
+                    titles.push(plan.spec.split(':')[0]);
+                    photosLeft = Math.max(0, photosLeft - (got.html.match(/\{\{\s*IMAGE\s*:/gi) || []).length);
+                }
+                logs.push(`section ${plan.index} (${plan.id}): ${got.ok ? `${got.html.length} bytes` : `failed — ${got.reason}`}`);
+            }
+
+            const ok = written.filter(s => s.ok);
+            sectionReport = { written: ok.length, total: plans.length, failed: written.filter(s => !s.ok).map(s => s.id) };
+            // If almost nothing came back, the section-wise path is not working
+            // for this model right now — fall back to the single-shot build
+            // rather than hand the user a page with two sections in it.
+            if (ok.length >= Math.max(3, Math.ceil(plans.length * 0.6))) {
+                html = assemblePage({
+                    title: request.slice(0, 60),
+                    isArabic: isAr,
+                    tokenCss: paletteCss(palette),
+                    baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                    sections: written,
+                    sprite: iconSprite(),
+                    script: uiKitScript(),
+                });
+                logs.push(`section-wise build: ${ok.length}/${plans.length} sections, ${html.length} bytes`);
+            } else {
+                logs.push(`section-wise build produced only ${ok.length}/${plans.length} sections — falling back to a single pass`);
+                sectionReport = null;
+            }
+        }
+
         try {
-            html = await routeToModel(
+            if (!html) html = await routeToModel(
                 [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
                 undefined, undefined, undefined, undefined, undefined, undefined, context
             );
@@ -284,10 +355,14 @@ ${prev!.html}`
         // transitions, zero :hover, zero :focus and no rule for `button` at all.
         // Placed right after <style> so anything the model DID write still wins.
         const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
-        if (/<style[^>]*>/i.test(html)) {
-            html = html.replace(/<style([^>]*)>/i, `<style$1>\n${baseLayer}\n`);
-        } else if (/<\/head>/i.test(html)) {
-            html = html.replace(/<\/head>/i, `<style>\n${baseLayer}\n</style>\n</head>`);
+        // A section-wise build already carries the base layer — assembled by Joe,
+        // not by the model — so injecting it again would duplicate ~10 KB of CSS.
+        if (!/Joe UI kit — base layer/.test(html)) {
+            if (/<style[^>]*>/i.test(html)) {
+                html = html.replace(/<style([^>]*)>/i, `<style$1>\n${baseLayer}\n`);
+            } else if (/<\/head>/i.test(html)) {
+                html = html.replace(/<\/head>/i, `<style>\n${baseLayer}\n</style>\n</head>`);
+            }
         }
         // A dark reference means a dark page. This is the one layer that must sit
         // ON TOP of the model's own token block, so it goes into the LAST
@@ -575,6 +650,12 @@ ${prev!.html}`
                 ? `🎨 نظام التصميم: ${kind} · تخطيط ${archetype} · خطوط ${typePair.note} · لوحة ${palette.scheme === 'analogous' ? 'متجانسة' : 'متكاملة'} حول ${palette.primary} (تباين AA مضمون)`
                 : `🎨 Design system: ${kind} · ${archetype} layout · ${typePair.note} type · ${palette.scheme} palette around ${palette.primary} (AA contrast by construction)`);
             if (referenceNote) parts.push(referenceNote);
+            if (sectionReport) {
+                // Say how the page was written and, honestly, what did not arrive.
+                parts.push(isAr
+                    ? `🧱 كُتبت الصفحة قسمًا بقسم: ${sectionReport.written}/${sectionReport.total} أقسام${sectionReport.failed.length ? ` ⚠️ تعذّر: ${sectionReport.failed.join('، ')}` : ''}`
+                    : `🧱 Written section by section: ${sectionReport.written}/${sectionReport.total} sections${sectionReport.failed.length ? ` ⚠️ missing: ${sectionReport.failed.join(', ')}` : ''}`);
+            }
             if (imgRequested) {
                 // Be exact about how many photos are real: claiming "images added"
                 // when the network was down would be a lie the user can see.
