@@ -15,6 +15,7 @@ import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteS
 import { splitIntoSections, targetSections, extractEditedSection, spliceSections, sectionEditPrompt, type PageSection } from '../../../core/design/section-editor';
 import { planSite, siteNav, siteNavCss, verifyInternalLinks, targetPage, type SitePlan } from '../../../core/design/site-plan';
 import { cartBrief, cartRuntime, cartCss, needsCart } from '../../../core/design/commerce';
+import { formBrief, formRuntime, formCss } from '../../../core/design/forms';
 import { resolveImages, creditsBlock, availableSources } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
@@ -167,7 +168,7 @@ ${blueprintBrief(kind)}
 
 ${layoutBrief(archetype, typePair)}
 
-${primitivesBrief()}${needsCart(kind) ? `\n\n${cartBrief()}` : ''}${reference ? `\n\n${referenceBrief(reference)}` : ''}`;
+${primitivesBrief()}\n\n${formBrief()}${needsCart(kind) ? `\n\n${cartBrief()}` : ''}${reference ? `\n\n${referenceBrief(reference)}` : ''}`;
 
         const systemPrompt = isEdit
             ? `You are an elite front-end engineer. MODIFY the existing HTML page: apply EXACTLY the change requested and keep everything else intact — same design system, same tokens, same sections unless the change asks otherwise. Return the COMPLETE updated HTML file.
@@ -461,7 +462,7 @@ ${prev!.html}`
         // The brief asked for all of it and the model shipped a page with zero
         // transitions, zero :hover, zero :focus and no rule for `button` at all.
         // Placed right after <style> so anything the model DID write still wins.
-        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
+        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}\n${formCss()}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
         // A section-wise build already carries the base layer — assembled by Joe,
         // not by the model — so injecting it again would duplicate ~10 KB of CSS.
         if (!/Joe UI kit — base layer/.test(html)) {
@@ -495,6 +496,15 @@ ${prev!.html}`
         // [CART] A store's cart is Joe's runtime, not the model's: a cart held in
         // a page variable is emptied the moment the visitor clicks to another
         // page, which is exactly what a multi-page store does.
+        // Forms get the same treatment: the content contract could DETECT a form
+        // that only console.logs, but detection is not enforcement and the
+        // repair went back to the model that wrote the problem.
+        if (/<form\b/i.test(html) && !/Joe forms/.test(html)) {
+            if (!/data-joe-form/i.test(html)) html = html.replace(/<form\b/i, '<form data-joe-form');
+            const fr = formRuntime(isAr);
+            html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${fr}\n</body>`) : html + fr;
+        }
+
         if (needsCart(kind) && !/joe-cart/.test(html)) {
             const rt = cartRuntime(isAr);
             html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${rt}\n</body>`) : html + rt;
@@ -971,7 +981,7 @@ ${prev!.html}`
                 // the model has never heard of.
                 .filter(p => !/header/i.test(p.id));
 
-            const design = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}${needsCart(page.kind) ? `\n\n${cartBrief()}` : ''}${reference ? `\n\n${referenceBrief(reference)}` : ''}
+            const design = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}\n\n${formBrief()}${needsCart(page.kind) ? `\n\n${cartBrief()}` : ''}${reference ? `\n\n${referenceBrief(reference)}` : ''}
 THIS PAGE: "${page.title}" — ${page.purpose}
 It is one page of a ${sitePlan.pages.length}-page site (${sitePlan.pages.map(p => p.title).join(' · ')}).
 Do NOT write a site header or navigation; the site already has one. Link to another page with
@@ -1023,7 +1033,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 title: `${page.title} — ${brand}`,
                 isArabic: isAr,
                 tokenCss: paletteCss(palette),
-                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}\n${formCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                 sections,
                 sprite: iconSprite(),
                 script: uiKitScript(),
@@ -1038,6 +1048,11 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
             if (siteHasCart) {
                 const rt = cartRuntime(isAr);
                 pageHtml = /<\/body>/i.test(pageHtml) ? pageHtml.replace(/<\/body>/i, `${rt}\n</body>`) : pageHtml + rt;
+            }
+            if (/<form\b/i.test(pageHtml)) {
+                if (!/data-joe-form/i.test(pageHtml)) pageHtml = pageHtml.replace(/<form\b/i, '<form data-joe-form');
+                const fr = formRuntime(isAr);
+                pageHtml = /<\/body>/i.test(pageHtml) ? pageHtml.replace(/<\/body>/i, `${fr}\n</body>`) : pageHtml + fr;
             }
             written.set(page.file, pageHtml);
             logs.push(`page ${page.file}: ${ok.length}/${plans.length} sections, ${pageHtml.length} bytes`);
