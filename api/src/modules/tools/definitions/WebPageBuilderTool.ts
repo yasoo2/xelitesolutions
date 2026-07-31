@@ -12,7 +12,7 @@ import { detectPageKind, blueprintBrief, imageBudget } from '../../../core/desig
 import { resolveImages, creditsBlock } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
-import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss } from '../../../core/design/layouts';
+import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite } from '../../../core/design/layouts';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 const PORT = String(process.env.PORT || '5002');
@@ -122,7 +122,9 @@ ${paletteCss(palette)}
 
 ${blueprintBrief(kind)}
 
-${layoutBrief(archetype, typePair)}`;
+${layoutBrief(archetype, typePair)}
+
+${primitivesBrief()}`;
 
         const systemPrompt = isEdit
             ? `You are an elite front-end engineer. MODIFY the existing HTML page: apply EXACTLY the change requested and keep everything else intact — same design system, same tokens, same sections unless the change asks otherwise. Return the COMPLETE updated HTML file.
@@ -251,11 +253,17 @@ ${prev!.html}`
         // The brief asked for all of it and the model shipped a page with zero
         // transitions, zero :hover, zero :focus and no rule for `button` at all.
         // Placed right after <style> so anything the model DID write still wins.
-        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}`;
+        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}`;
         if (/<style[^>]*>/i.test(html)) {
             html = html.replace(/<style([^>]*)>/i, `<style$1>\n${baseLayer}\n`);
         } else if (/<\/head>/i.test(html)) {
             html = html.replace(/<\/head>/i, `<style>\n${baseLayer}\n</style>\n</head>`);
+        }
+        // The drawn icon set, once per document, before anything can reference it.
+        if (!/id="i-check"/.test(html)) {
+            html = /<body[^>]*>/i.test(html)
+                ? html.replace(/(<body[^>]*>)/i, `$1\n${iconSprite()}`)
+                : iconSprite() + html;
         }
         if (!/data-reveal/.test(html)) {
             html = /<\/body>/i.test(html)

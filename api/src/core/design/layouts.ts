@@ -224,3 +224,113 @@ ${shape[a]}
   and .badge for small labels.
 - Typography is set for you (${t.note}); use the heading levels, never hardcode a font-family.`;
 }
+
+/**
+ * The visual primitives a designer reaches for and a model never writes.
+ *
+ * The gap between "a page" and "a designed page" is rarely the layout — it is
+ * the small stuff: an icon that is actually drawn rather than an emoji, a
+ * section that ends with a shaped edge instead of a hard line, a card that has
+ * a tinted corner, a number that reads as data. None of it appeared in any
+ * generated page because none of it is worth a model's tokens. It ships here.
+ */
+export function primitivesCss(): string {
+    return `
+/* Icons: a real drawn mark, sized by its context */
+.icon{width:1.25em;height:1.25em;flex:none;stroke:currentColor;fill:none;stroke-width:1.75;
+  stroke-linecap:round;stroke-linejoin:round;vertical-align:-.2em}
+.icon-box{display:grid;place-items:center;width:52px;height:52px;border-radius:16px;flex:none;
+  background:var(--brand-light);color:var(--brand-dark)}
+.icon-box .icon{width:24px;height:24px}
+
+/* Shaped section edges — the cheapest way to stop a page reading as stacked boxes */
+.edge-top{position:relative}
+.edge-top::before{content:"";position:absolute;top:-1px;left:0;right:0;height:44px;
+  background:inherit;clip-path:polygon(0 100%,100% 0,100% 100%)}
+.tint{position:relative;overflow:hidden}
+.tint::after{content:"";position:absolute;inset-inline-end:-60px;top:-60px;width:220px;height:220px;
+  border-radius:50%;background:color-mix(in srgb,var(--brand) 12%,transparent);pointer-events:none}
+
+/* Glass surface for overlays sitting on a photograph */
+.glass{background:color-mix(in srgb,var(--surface) 72%,transparent);
+  backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4);
+  border:1px solid color-mix(in srgb,var(--surface) 40%,transparent)}
+
+/* A quiet ruled list for features and specs */
+.ruled{list-style:none;padding:0;margin:0}
+.ruled li{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--border)}
+.ruled li:last-child{border-bottom:0}
+.ruled li .icon{color:var(--brand);margin-top:.15em}
+
+/* Accordion that needs no JavaScript */
+details.faq{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);
+  padding:0 18px;margin-bottom:10px}
+details.faq summary{cursor:pointer;padding:16px 0;font-weight:650;list-style:none;
+  display:flex;justify-content:space-between;align-items:center;gap:12px}
+details.faq summary::-webkit-details-marker{display:none}
+details.faq summary::after{content:"+";font-size:1.3em;color:var(--brand);transition:transform .2s ease}
+details.faq[open] summary::after{transform:rotate(45deg)}
+details.faq > *:not(summary){padding-bottom:18px;color:var(--text-muted)}
+
+/* Timeline / numbered steps that look composed rather than listed */
+.steps{counter-reset:step;display:grid;gap:clamp(18px,2.4vw,30px)}
+.steps > *{counter-increment:step;position:relative;padding-inline-start:64px}
+.steps > *::before{content:counter(step);position:absolute;inset-inline-start:0;top:0;
+  width:44px;height:44px;display:grid;place-items:center;border-radius:50%;
+  background:var(--brand);color:var(--on-brand);font-weight:700;font-size:var(--step-0)}
+
+/* Tables that are readable on a phone */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius)}
+table{width:100%;border-collapse:collapse;font-size:var(--step-0)}
+th,td{padding:12px 14px;text-align:start;border-bottom:1px solid var(--border)}
+th{background:color-mix(in srgb,var(--brand) 6%,transparent);font-weight:650}
+tr:last-child td{border-bottom:0}
+
+/* Empty and loading states, so an app surface is never a blank rectangle */
+.empty-state{display:grid;place-items:center;gap:10px;padding:48px 20px;text-align:center;color:var(--text-muted)}
+.skeleton{background:linear-gradient(90deg,var(--border),color-mix(in srgb,var(--border) 40%,transparent),var(--border));
+  background-size:200% 100%;animation:joe-shimmer 1.3s linear infinite;border-radius:8px;min-height:14px}
+@keyframes joe-shimmer{to{background-position:-200% 0}}
+
+/* Footer that reads as a footer */
+footer{background:color-mix(in srgb,var(--text) 4%,var(--surface));border-top:1px solid var(--border);
+  padding-block:clamp(32px,4vw,64px);margin-top:clamp(40px,6vw,90px)}
+footer a{color:var(--text-muted);text-decoration:none}
+footer a:hover{color:var(--brand)}`;
+}
+
+/** A drawn icon set — an emoji is not an icon, and a CDN is not an option. */
+export function iconSprite(): string {
+    const paths: Record<string, string> = {
+        check: '<polyline points="20 6 9 17 4 12"/>',
+        arrow: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
+        star: '<polygon points="12 2 15.1 8.6 22 9.6 17 14.5 18.2 21.5 12 18.2 5.8 21.5 7 14.5 2 9.6 8.9 8.6"/>',
+        shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+        spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/>',
+        users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>',
+        code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+        chart: '<line x1="4" y1="20" x2="4" y2="10"/><line x1="10" y1="20" x2="10" y2="4"/><line x1="16" y1="20" x2="16" y2="14"/><line x1="22" y1="20" x2="22" y2="8"/>',
+        mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="22 6 12 13 2 6"/>',
+        phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2 4.2 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.1a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>',
+        pin: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+        clock: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>',
+        cart: '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>',
+        menu: '<line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>',
+        close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    };
+    const symbols = Object.entries(paths)
+        .map(([id, d]) => `<symbol id="i-${id}" viewBox="0 0 24 24">${d}</symbol>`).join('');
+    return `<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">${symbols}</svg>`;
+}
+
+/** How the model is told to use the primitives. */
+export function primitivesBrief(): string {
+    return `COMPONENTS available to you (already styled — use them, do not re-invent):
+- Icons: <svg class="icon"><use href="#i-NAME"/></svg> where NAME is one of
+  check arrow star shield spark users code chart mail phone pin clock cart menu close.
+  Wrap a feature icon in <span class="icon-box">…</span>. Never use an emoji as an icon.
+- .ruled for feature/spec lists, .steps for numbered how-it-works, details.faq for FAQ
+  (no JavaScript needed), .table-wrap around any <table>, .stat for figures, .badge for labels.
+- .glass for a panel over a photograph, .tint for a card with a coloured corner,
+  .empty-state and .skeleton for app surfaces.`;
+}
