@@ -11,6 +11,22 @@ process.env.PERSISTENCE_MODE = 'JSON';
 process.env.MOCK_DB = 'true';
 process.env.NODE_ENV = 'test';
 
+/**
+ * Importing the router pulls in every LLM provider, and each one announces at
+ * construction that it has no API key. That is correct behaviour and expected
+ * here, but a run that prints warnings trains everyone to ignore the output —
+ * so exactly those lines are dropped and nothing else is. A real warning from
+ * code under test still reaches the console.
+ */
+const EXPECTED_AT_IMPORT = /^\[[A-Za-z]+\].*(No (valid )?API key|Provider initialized|not configured)/;
+for (const level of ['warn', 'info', 'log'] as const) {
+    const real = console[level].bind(console);
+    console[level] = (...args: any[]) => {
+        if (typeof args[0] === 'string' && EXPECTED_AT_IMPORT.test(args[0])) return;
+        real(...args);
+    };
+}
+
 // A unit test that reaches the network is a broken unit test. Fail loudly
 // instead of hanging or, worse, quietly depending on somebody's connection.
 const realFetch = global.fetch;
