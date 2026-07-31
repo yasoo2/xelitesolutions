@@ -10,7 +10,7 @@ import { workspaceService } from '../../services/WorkspaceService';
 import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirstCss } from '../../../core/design/design-system';
 import { findReferenceUrl, extractReference, paletteFromReference, referenceBrief, referenceOverridesCss, referenceSummary } from '../../../core/design/reference';
 import { detectPageKind, blueprintBrief, imageBudget } from '../../../core/design/blueprints';
-import { resolveImages, creditsBlock } from '../../../core/design/images';
+import { resolveImages, creditsBlock, availableSources } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
 import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite } from '../../../core/design/layouts';
@@ -315,11 +315,14 @@ ${prev!.html}`
         // palette, never a broken image and never a claim of a photo we lack.
         let imgReal = 0, imgRequested = 0, imgBytes = 0;
         let imgCredits: Array<{ creator: string; license: string; source: string }> = [];
+        let imgSources: Record<string, number> = {};
+        let imgSourceErrors: string[] = [];
         if (photos > 0 && /\{\{\s*IMAGE\s*:/i.test(html)) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `🖼️ أجلب صوراً حقيقية مرخّصة للصفحة` : `🖼️ Sourcing real licensed photographs`);
             try {
                 const r = await resolveImages(html, ARTIFACT_DIR, palette.hue, { max: Math.max(4, photos + 2), brief: imageBrief });
                 html = r.html; imgReal = r.real; imgRequested = r.requested; imgCredits = r.credits; imgBytes = r.bytes;
+                imgSources = r.sources; imgSourceErrors = r.sourceErrors;
                 // Creative-Commons licences require attribution IN THE PAGE, not in
                 // a chat message the visitor never sees. Without this the published
                 // page is in breach of the licence of every photo on it.
@@ -329,7 +332,9 @@ ${prev!.html}`
                         ? html.replace(/<\/body>/i, `${credits}</body>`)
                         : html + credits;
                 }
-                logs.push(`images: ${r.real}/${r.requested} real, ${Math.round(r.bytes / 1024)} KB, rest gradient`);
+                logs.push(`images: ${r.real}/${r.requested} real, ${Math.round(r.bytes / 1024)} KB, rest gradient`
+                    + ` [${Object.entries(r.sources).map(([k, v]) => `${k}×${v}`).join(', ') || 'none'}]`
+                    + (r.sourceErrors.length ? ` (${r.sourceErrors.join('; ')})` : ''));
             } catch (e: any) { logs.push(`image sourcing failed: ${e?.message || e}`); }
         }
 
@@ -521,9 +526,22 @@ ${prev!.html}`
                 // when the network was down would be a lie the user can see.
                 const kb = Math.round(imgBytes / 1024);
                 const heavy = kb > 1200;
+                // Which archive actually supplied them, and — when one failed —
+                // exactly what it said. A missing photo with no reason reads as a
+                // bug in Joe rather than a search that came back empty.
+                const from = Object.entries(imgSources).map(([k, v]) => `${k}×${v}`).join('، ');
+                const why = imgSourceErrors.length ? ` — ${imgSourceErrors.join(' · ')}` : '';
                 parts.push(isAr
-                    ? `🖼️ الصور: ${imgReal} حقيقية مرخّصة من ${imgRequested} · ${kb} ك.ب${heavy ? ' ⚠️ ثقيلة — قد تبطئ التحميل' : ''}${imgReal < imgRequested ? ' (الباقي تدرّجات — تعذّر الجلب)' : ''}`
-                    : `🖼️ Photos: ${imgReal}/${imgRequested} real licensed · ${kb} KB${heavy ? ' ⚠️ heavy — may slow loading' : ''}${imgReal < imgRequested ? ' (rest are gradients — could not fetch)' : ''}`);
+                    ? `🖼️ الصور: ${imgReal} حقيقية مرخّصة من ${imgRequested} · ${kb} ك.ب${heavy ? ' ⚠️ ثقيلة — قد تبطئ التحميل' : ''}${from ? ` · المصادر: ${from}` : ''}${imgReal < imgRequested ? ` (الباقي تدرّجات${why})` : ''}`
+                    : `🖼️ Photos: ${imgReal}/${imgRequested} real licensed · ${kb} KB${heavy ? ' ⚠️ heavy — may slow loading' : ''}${from ? ` · sources: ${from}` : ''}${imgReal < imgRequested ? ` (rest are gradients${why})` : ''}`);
+                // Two more archives exist and are switched off only because they
+                // need a free key. Say so once, instead of quietly using fewer.
+                const dormant = availableSources().dormant;
+                if (imgReal < imgRequested && dormant.length) {
+                    parts.push(isAr
+                        ? `💡 مصادر إضافية متاحة لو أضفت مفتاحًا مجانيًا: ${dormant.map(d => `${d.name} (${d.needs})`).join('، ')}`
+                        : `💡 More archives available with a free key: ${dormant.map(d => `${d.name} (${d.needs})`).join(', ')}`);
+                }
             }
             // Never report a half-written page as finished.
             if (continuations > 0) {

@@ -7,10 +7,11 @@
  * a prototype rather than a site.
  *
  * The model now writes {{IMAGE:a subject}} wherever a photograph belongs. Those
- * markers are resolved here: searched on Openverse (openly-licensed images, no
- * API key), downloaded once, cached on disk, and served from Joe itself. Pages
- * therefore keep working with no internet after the first build — the same
- * reason the Google avatar is cached rather than hot-linked.
+ * markers are resolved here: every archive in photo-sources.ts is asked at once,
+ * their answers compete in one ranked pool, and the winner is downloaded once,
+ * cached on disk, and served from Joe itself. Pages therefore keep working with
+ * no internet after the first build — the same reason the Google avatar is
+ * cached rather than hot-linked.
  *
  * If the network is unavailable the marker degrades to a tasteful gradient
  * placeholder. It never leaves a broken image, and it never silently claims a
@@ -21,12 +22,13 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { parseSlot, scoreCandidate, SLOTS, buildImageBrief, groundSubject, type ImageSlot, type ImageBrief } from './image-brief';
+import { searchAllSources, availableSources, type SourceOutcome } from './photo-sources';
 
-/** Read at call time, not at import time: an env var set after this module is
- *  loaded (tests, a redeploy that swaps the source) must still take effect. */
-function imageApi(): string {
-    return String(process.env.JOE_IMAGE_API || 'https://api.openverse.org/v1/images/');
-}
+/** What the archives said the last time one was asked — reported to the user so
+ *  "no photo" is always accompanied by the reason there is no photo. */
+let lastSourceOutcomes: SourceOutcome[] = [];
+export function takeSourceOutcomes(): SourceOutcome[] { const o = lastSourceOutcomes; lastSourceOutcomes = []; return o; }
+export { availableSources };
 
 export interface ResolvedImage {
     query: string;
@@ -38,6 +40,8 @@ export interface ResolvedImage {
     fromCache: boolean;
     /** Where on the page this photo belongs. */
     slot?: ImageSlot;
+    /** Which archive it actually came from. */
+    provider?: string;
     /** Intrinsic size, so the page can reserve the box and not jump while loading. */
     width?: number;
     height?: number;
@@ -133,16 +137,6 @@ function extFor(contentType: string): string {
     return '.jpg';
 }
 
-async function fetchJson(url: string, timeoutMs: number): Promise<any | null> {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-        const r = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Joe-AI-Agent' } });
-        if (!r.ok) return null;
-        return await r.json();
-    } catch { return null; } finally { clearTimeout(t); }
-}
-
 /**
  * Search + download one photograph for `query`. Returns null when the network is
  * unavailable or nothing suitable was found — the caller falls back to a
@@ -152,36 +146,37 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
     const cached = findCached(artifactDir, query, variant);
     if (cached) return { query, src: cached, alt: query, fromCache: true, slot };
 
-    // Ask for more candidates so a too-small or wrong-shaped one can be skipped.
+    // EVERY archive is asked, in parallel, and their answers compete in one pool.
+    // A single archive is a single archive's worth of luck: a subject Openverse is
+    // thin on left a gradient in the page even though Wikimedia had the picture.
     //
-    // license_type=commercial,modification, NOT all-cc. A real build returned
-    // BY-NC and BY-NC-ND photos for a company website: NC forbids commercial
-    // use — which a business site is — and ND forbids the cropping and resizing
-    // any layout does. Joe was handing the user a licence breach with a tidy
-    // credits line underneath it. Only licences that permit commercial use and
-    // modification (CC0, BY, BY-SA) are eligible now.
-    const url = `${imageApi()}?q=${encodeURIComponent(query)}&page_size=8&mature=false&license_type=commercial,modification`;
-    const data = await fetchJson(url, timeoutMs);
-    const results: any[] = Array.isArray(data?.results) ? data.results : [];
+    // Licences that forbid commercial use or modification are excluded at the
+    // source. A real build returned BY-NC and BY-NC-ND photos for a company
+    // website: NC forbids commercial use — which a business site is — and ND
+    // forbids the cropping any layout does. Joe was handing the user a licence
+    // breach with a tidy credits line underneath it.
+    const { candidates, outcomes } = await searchAllSources(query, timeoutMs);
+    lastSourceOutcomes = outcomes;
     // A subject the model asked for twice must not come back as the same photo
     // in both places — a build shipped the identical portrait as two different
     // customers' testimonials. Skip the candidates already used for this subject.
     // Rank before downloading: metadata alone tells us relevance and, when the
     // archive reports them, the dimensions. Taking the first acceptable hit is
     // what put a portrait in a wide card and a military photo on a tech page.
-    const ranked = results
-        .map(r => ({
-            r,
-            score: scoreCandidate(query, slot, r,
-                r?.width && r?.height ? { width: Number(r.width), height: Number(r.height) } : null),
+    const ranked = candidates
+        .map(c => ({
+            c,
+            score: scoreCandidate(query, slot, { title: c.title, description: c.description, tags: c.tags },
+                c.width && c.height ? { width: c.width, height: c.height } : null),
         }))
         .filter(x => x.score > 25)
         .sort((a, b) => b.score - a.score)
-        .map(x => x.r);
+        .map(x => x.c);
 
     let skip = variant;
-    for (const r of ranked) {
-        const src = String(r?.url || r?.thumbnail || '').trim();
+    for (const c of ranked) {
+        const r = { title: c.title, description: c.description, tags: c.tags };
+        const src = c.url.trim();
         if (!src) continue;
         // RELEVANCE. Keyword search returns whatever it likes: a build for a
         // software consultancy came back with a photo credited to "7th Army
@@ -201,7 +196,7 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
             // A 200px thumbnail stretched across a hero looks worse than no photo
             // at all, and a portrait crammed into a wide band looks broken. Judge
             // the actual file, not the metadata, which is often missing.
-            const dim = imageSize(buf) || (r?.width && r?.height ? { width: Number(r.width), height: Number(r.height) } : null);
+            const dim = imageSize(buf) || (c.width && c.height ? { width: c.width, height: c.height } : null);
             const spec = SLOTS[slot];
             // Judged against what this position actually needs, not one global
             // minimum: an avatar can be 400px, a hero cannot.
@@ -214,14 +209,15 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
             return {
                 query,
                 src: `/artifacts/images/${name}`,
-                alt: String(r?.title || query).slice(0, 120),
+                alt: (c.title || query).slice(0, 120),
                 credit: {
-                    creator: String(r?.creator || 'Unknown'),
-                    license: String(r?.license || '').toUpperCase(),
-                    source: String(r?.foreign_landing_url || r?.url || ''),
+                    creator: c.creator || 'Unknown',
+                    license: c.license || '',
+                    source: c.landing || c.url,
                 },
                 fromCache: false,
                 slot,
+                provider: c.provider,
                 width: dim?.width,
                 height: dim?.height,
                 bytes: buf.length,
@@ -256,6 +252,9 @@ export interface ImageResolution {
     credits: Array<{ creator: string; license: string; source: string }>;
     /** Total weight of the photographs the page now carries. */
     bytes: number;
+    /** Which archive each photo came from, and why any of them failed. */
+    sources: Record<string, number>;
+    sourceErrors: string[];
 }
 
 /**
@@ -343,7 +342,7 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     }
     const queries: string[] = [];
     for (const p of parsed) if (!queries.includes(p.key)) queries.push(p.key);
-    if (!queries.length) return { html, requested: 0, real: 0, credits: [], bytes: 0 };
+    if (!queries.length) return { html, requested: 0, real: 0, credits: [], bytes: 0, sources: {}, sourceErrors: [] };
 
     // How many times each subject appears — a repeat needs its own photo.
     const occurrences = new Map<string, number>();
@@ -357,11 +356,16 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     let fetched = 0;
     // Sequential on purpose: a laptop on a home connection does better with one
     // request at a time than with a dozen competing ones.
+    const failures = new Map<string, string>();
     for (const q of queries) {
         const times = Math.min(occurrences.get(q) || 1, 4);
         for (let v = 0; v < times && fetched < max; v++) {
             const img = await sourceImage(artifactDir, subjectOf.get(q)!, opts?.timeoutMs ?? 9000, v, slotOf.get(q));
             fetched++;
+            // Keep the reason an archive gave. "No photo" with no explanation is
+            // the kind of silence that reads as a bug in Joe rather than a search
+            // that came back empty.
+            for (const o of takeSourceOutcomes()) if (!o.ok && o.reason) failures.set(o.provider, o.reason);
             if (img) resolved.set(`${q}#${v}`, img);
         }
     }
@@ -395,5 +399,15 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     // source, so reporting "2 of 1" was arithmetic the user would rightly query.
     let requested = 0;
     for (const [, n] of occurrences) requested += Math.min(n, 4);
-    return { html: out, requested: Math.min(requested, max), real: resolved.size, credits, bytes };
+
+    const sources: Record<string, number> = {};
+    for (const img of resolved.values()) {
+        const p = img.provider || (img.fromCache ? 'cache' : 'unknown');
+        sources[p] = (sources[p] || 0) + 1;
+    }
+    return {
+        html: out, requested: Math.min(requested, max), real: resolved.size, credits, bytes,
+        sources,
+        sourceErrors: Array.from(failures, ([p, r]) => `${p}: ${r}`),
+    };
 }
