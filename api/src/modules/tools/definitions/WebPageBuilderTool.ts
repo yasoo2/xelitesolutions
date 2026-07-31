@@ -13,6 +13,7 @@ import { findReferenceUrl, extractReference, paletteFromReference, referenceBrie
 import { detectPageKind, blueprintBrief, imageBudget, blueprintSections, kindLabel } from '../../../core/design/blueprints';
 import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteSectionwise, type WrittenSection } from '../../../core/design/section-writer';
 import { splitIntoSections, targetSections, extractEditedSection, spliceSections, sectionEditPrompt, type PageSection } from '../../../core/design/section-editor';
+import { planSite, siteNav, siteNavCss, verifyInternalLinks, type SitePlan } from '../../../core/design/site-plan';
 import { resolveImages, creditsBlock, availableSources } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
@@ -191,6 +192,31 @@ ${prev!.html}`
         let html = '';
         let sectionReport: { written: number; total: number; failed: string[] } | null = null;
         let editedSections: string[] = [];
+
+        // [SITE] Everything above builds ONE file. A store's header says
+        // «المنتجات · من نحن · تواصل» and every one of those links used to go
+        // nowhere, because the pages behind them were never written. When the
+        // request asks for a site, the pages are planned, each is written with
+        // the same machinery, they share one real navigation, and the links
+        // between them are verified against the files that actually exist.
+        const sitePlan = isEdit ? null : planSite(kind, request, isAr);
+        if (sitePlan?.multiPage) {
+            const built = await this.buildSite({
+                sitePlan, request, isAr, kind, palette, archetype, typePair, reference,
+                imageBrief, photos, context, sessionId, logs,
+            });
+            if (built) {
+                // The site is written, previewed and reported by buildSite; the
+                // single-page pipeline below has nothing left to do.
+                store[sessionKey] = {
+                    ...(store[sessionKey] || {} as any),
+                    filename: built.entry, html: built.entryHtml,
+                    palette, kind, archetype, typePair, reference,
+                };
+                return built.result;
+            }
+            logs.push('site build did not produce enough pages — falling back to a single page');
+        }
 
         // [TARGETED EDIT] A follow-up edit used to send the WHOLE document and ask
         // for the whole thing back. That breaks the moment a page is a real page:
@@ -834,5 +860,185 @@ ${prev!.html}`
             : `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}\n\n${qaSummary}\n\nAsk for any further change (e.g. "add a button" / "change the color") and it updates live.\n\nFull code:\n${codeBlock}`;
 
         return { ok: true, output: { message, url, previewUrl: url, path: filename }, logs };
+    }
+
+    /**
+     * Build every page of a planned site.
+     *
+     * Each page goes through the same section-wise writer as a single page, so
+     * nothing here is a second, weaker implementation. What this adds is the
+     * part a model cannot do: one navigation shared across files it has never
+     * seen, and a check that the links between them land.
+     *
+     * Returns null when too few pages survived — a site with two of its four
+     * pages missing is worse than the single page it replaced, so the caller
+     * falls back rather than shipping a half-site.
+     */
+    private async buildSite(opts: {
+        sitePlan: SitePlan; request: string; isAr: boolean; kind: any;
+        palette: any; archetype: any; typePair: any; reference: any;
+        imageBrief: any; photos: number; context: any; sessionId: any; logs: string[];
+    }): Promise<{ entry: string; entryHtml: string; result: any } | null> {
+        const { sitePlan, request, isAr, palette, archetype, typePair, reference, imageBrief, context, sessionId, logs } = opts;
+        const dir = `site-${String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const outDir = path.join(ARTIFACT_DIR, dir);
+        fs.mkdirSync(outDir, { recursive: true });
+
+        // The brand name the header carries on every page — taken from the
+        // request rather than invented per page, so it does not drift.
+        const brand = (request.match(/[«"']([^«»"']{2,40})[»"']/) || [])[1]
+            || (isAr ? 'موقعنا' : 'Our Site');
+
+        const written = new Map<string, string>();
+        const perPage: Array<{ file: string; sections: number; total: number }> = [];
+
+        for (const page of sitePlan.pages) {
+            if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                ? `📄 أبني صفحة «${page.title}» (${written.size + 1}/${sitePlan.pages.length})`
+                : `📄 Building the "${page.title}" page (${written.size + 1}/${sitePlan.pages.length})`);
+
+            const pageBlueprint = blueprintSections(page.kind);
+            const pagePhotos = imageBudget(page.kind);
+            const plans = planSections(pageBlueprint)
+                // The header is Joe's, not the model's: it has to link to files
+                // the model has never heard of.
+                .filter(p => !/header/i.test(p.id));
+
+            const design = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}${reference ? `\n\n${referenceBrief(reference)}` : ''}
+THIS PAGE: "${page.title}" — ${page.purpose}
+It is one page of a ${sitePlan.pages.length}-page site (${sitePlan.pages.map(p => p.title).join(' · ')}).
+Do NOT write a site header or navigation; the site already has one. Link to another page with
+its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls for it.`;
+
+            const sections: WrittenSection[] = [];
+            const titles: string[] = [];
+            let photosLeft = pagePhotos;
+
+            for (const plan of plans) {
+                const share = Math.max(0, Math.ceil(photosLeft / Math.max(1, plans.length - plans.indexOf(plan))));
+                let raw = '';
+                try {
+                    raw = await routeToModel([
+                        {
+                            role: 'system', content: sectionPrompt({
+                                plan, total: plans.length, kindLabel: kindLabel(page.kind),
+                                request: `${request} — ${page.purpose}`, isArabic: isAr,
+                                designBrief: design, written: titles, photosLeft: share,
+                                imageSubjects: imageBrief.suggestions,
+                            }),
+                        },
+                        { role: 'user', content: `Write section ${plan.index}: ${plan.spec}` },
+                    ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                } catch (e: any) {
+                    sections.push({ ...plan, html: '', ok: false, reason: String(e?.message || e).slice(0, 90) });
+                    continue;
+                }
+                if (isProviderFailure(raw)) {
+                    logs.push(`site build aborted on ${page.file}: no LLM provider answered`);
+                    return null;
+                }
+                const got = extractSection(raw, plan.id);
+                sections.push({ ...plan, ...got });
+                if (got.ok) {
+                    titles.push(plan.spec.split(':')[0]);
+                    photosLeft = Math.max(0, photosLeft - (got.html.match(/\{\{\s*IMAGE\s*:/gi) || []).length);
+                }
+            }
+
+            const ok = sections.filter(s => s.ok);
+            perPage.push({ file: page.file, sections: ok.length, total: plans.length });
+            if (ok.length < Math.max(2, Math.ceil(plans.length * 0.5))) {
+                logs.push(`page ${page.file}: only ${ok.length}/${plans.length} sections — page dropped`);
+                continue;
+            }
+
+            let pageHtml = assemblePage({
+                title: `${page.title} — ${brand}`,
+                isArabic: isAr,
+                tokenCss: paletteCss(palette),
+                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}\n${siteNavCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                sections,
+                sprite: iconSprite(),
+                script: uiKitScript(),
+            });
+            // The one navigation, injected after <body> so it is identical on
+            // every page and always points at files that will exist.
+            pageHtml = pageHtml.replace(/(<body[^>]*>)/i, `$1\n${siteNav(sitePlan.pages, page.file, brand)}`);
+            written.set(page.file, pageHtml);
+            logs.push(`page ${page.file}: ${ok.length}/${plans.length} sections, ${pageHtml.length} bytes`);
+        }
+
+        if (!written.has('index.html') || written.size < 2) {
+            return null;   // not a site; let the caller build one good page instead
+        }
+
+        // Photographs, QA and the link check — per page, with the same passes a
+        // single page gets.
+        let imgReal = 0, imgRequested = 0, imgBytes = 0;
+        const credits: Array<{ creator: string; license: string; source: string }> = [];
+        for (const [file, raw] of Array.from(written)) {
+            let out = raw;
+            if (/\{\{\s*IMAGE\s*:/i.test(out)) {
+                try {
+                    const r = await resolveImages(out, ARTIFACT_DIR, palette.hue, { max: 8, brief: imageBrief });
+                    out = r.html; imgReal += r.real; imgRequested += r.requested; imgBytes += r.bytes;
+                    for (const c of r.credits) if (!credits.some(x => x.source === c.source)) credits.push(c);
+                    const block = creditsBlock(r.credits, isAr);
+                    if (block) out = /<\/body>/i.test(out) ? out.replace(/<\/body>/i, `${block}</body>`) : out + block;
+                } catch (e: any) { logs.push(`images on ${file} failed: ${e?.message || e}`); }
+            }
+            out = reviewHtml(out, isAr).html;
+            written.set(file, out);
+            fs.writeFileSync(path.join(outDir, file), out, 'utf-8');
+        }
+
+        // Does the site actually hold together? Asked, not assumed.
+        const links = verifyInternalLinks(written);
+        logs.push(`site links: ${links.checked} checked, ${links.dead.length} dead`);
+
+        const url = `http://localhost:${PORT}/artifacts/${dir}/index.html?v=${Date.now()}`;
+        try {
+            broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any);
+        } catch { /* preview is a courtesy; the files are written either way */ }
+
+        const lines: string[] = [];
+        lines.push(isAr
+            ? `🏗️ بُني موقع من ${written.size} صفحات مترابطة: ${sitePlan.pages.filter(p => written.has(p.file)).map(p => p.title).join(' · ')}`
+            : `🏗️ Built a ${written.size}-page linked site: ${sitePlan.pages.filter(p => written.has(p.file)).map(p => p.title).join(' · ')}`);
+        const dropped = sitePlan.pages.filter(p => !written.has(p.file));
+        if (dropped.length) {
+            lines.push(isAr
+                ? `⚠️ لم تكتمل: ${dropped.map(p => p.title).join('، ')} — لم تُكتب أقسامها بالقدر الكافي`
+                : `⚠️ Not completed: ${dropped.map(p => p.title).join(', ')} — too few sections came back`);
+        }
+        lines.push(isAr
+            ? `🔗 الروابط الداخلية: ${links.checked} فُحصت${links.dead.length ? ` · ⚠️ ${links.dead.length} ميتة: ${links.dead.slice(0, 3).map(d => `${d.from}→${d.href}`).join('، ')}` : ' · كلها تصل ✅'}`
+            : `🔗 Internal links: ${links.checked} checked${links.dead.length ? ` · ⚠️ ${links.dead.length} dead: ${links.dead.slice(0, 3).map(d => `${d.from}→${d.href}`).join(', ')}` : ' · all resolve ✅'}`);
+        if (imgRequested) {
+            lines.push(isAr
+                ? `🖼️ الصور: ${imgReal} حقيقية من ${imgRequested} · ${Math.round(imgBytes / 1024)} ك.ب`
+                : `🖼️ Photos: ${imgReal}/${imgRequested} real · ${Math.round(imgBytes / 1024)} KB`);
+        }
+        if (credits.length) {
+            lines.push((isAr ? '📄 مصادر الصور: ' : '📄 Image credits: ')
+                + credits.slice(0, 6).map(c => `${c.creator} (${c.license})`).join('، '));
+        }
+
+        const artifact = '```joe-artifact\n' + JSON.stringify({
+            kind: 'web', filename: 'index.html', url, previewUrl: url,
+            files: Array.from(written.keys()),
+        }) + '\n```';
+
+        const message = (isAr ? '✅ تم بناء الموقع وعُرض في المعاينة.' : '✅ Site built and shown in Preview.')
+            + `\n\n${artifact}\n\n${lines.join('\n')}\n\n`
+            + (isAr
+                ? 'اطلب تعديل صفحة بعينها (مثل: «عدّل صفحة المنتجات») وسأعدّلها وحدها.'
+                : 'Ask for a change to one page (e.g. "edit the products page") and only that page is touched.');
+
+        return {
+            entry: `${dir}/index.html`,
+            entryHtml: written.get('index.html')!,
+            result: { ok: true, output: { message, url, previewUrl: url, path: `${dir}/index.html`, files: Array.from(written.keys()) }, logs },
+        };
     }
 }
