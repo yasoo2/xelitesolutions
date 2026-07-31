@@ -13,7 +13,16 @@ export interface ResolvePathOptions {
  */
 export function resolveToolPath(p: string, options: ResolvePathOptions = {}) {
     const val = String(p ?? '').trim();
-    if (path.isAbsolute(val)) return val;
+    // An absolute path used to be returned UNCHECKED, which meant the containment
+    // test at the bottom of this function — the one every tool relies on — was
+    // skipped entirely whenever a path happened to start with a slash. A relative
+    // "../../../../etc/passwd" was refused while an absolute "/etc/passwd" was
+    // handed straight back and written to. Proven, not theorised: ai_write_file
+    // created /etc/joe-owned.txt during testing.
+    //
+    // Absolute paths now go through exactly the same containment rule as
+    // relative ones — inside the workspace, the project, the builds directory or
+    // the external root is allowed; anything else throws.
 
     // Use active workspace root if available
     const activeRoot = workspaceService.getActiveRoot(options.workspaceId);
@@ -62,10 +71,16 @@ export function resolveToolPath(p: string, options: ResolvePathOptions = {}) {
     const resolvedProjectRoot = path.resolve(projectRoot);
     const resolvedExternalRoot = path.resolve(workspaceService.externalRoot);
 
-    if (resolvedAbs.startsWith(resolvedRoot) ||
-        resolvedAbs.startsWith(resolvedBuildsDir) ||
-        resolvedAbs.startsWith(resolvedProjectRoot) ||
-        resolvedAbs.startsWith(resolvedExternalRoot)) {
+    // startsWith on its own lets a SIBLING through: a root of "/srv/joe" would
+    // accept "/srv/joe-backup/anything" because the string matches. Compare on a
+    // path boundary instead.
+    const within = (child: string, parent: string) =>
+        child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
+
+    if (within(resolvedAbs, resolvedRoot) ||
+        within(resolvedAbs, resolvedBuildsDir) ||
+        within(resolvedAbs, resolvedProjectRoot) ||
+        within(resolvedAbs, resolvedExternalRoot)) {
         return resolvedAbs;
     }
 

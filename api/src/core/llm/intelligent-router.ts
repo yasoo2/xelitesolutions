@@ -680,6 +680,23 @@ export function orderByCooldown<T extends { name: string }>(providers: T[]): T[]
     return [...fresh, ...cooled];
 }
 
+/**
+ * When no provider answers, routeToModel returns an apology STRING rather than
+ * throwing — which is right for a chat reply, and wrong for every caller that
+ * treats the return value as content. During testing, ai_write_file wrote this
+ * very apology into a source file as its contents, and the page builder would
+ * have wrapped it in <html> and shipped it as a website.
+ *
+ * The message therefore carries a stable prefix, and any caller that is about to
+ * WRITE the result — to a file, a page, a commit — must check for it first.
+ */
+export const PROVIDER_FAILURE_PREFIX = '⚠️ تعذّر الوصول إلى محرّك الذكاء';
+
+/** Is this "model output" actually the router's no-provider notice? */
+export function isProviderFailure(text: any): boolean {
+    return typeof text === 'string' && text.trimStart().startsWith(PROVIDER_FAILURE_PREFIX);
+}
+
 export async function routeToModel(
     messages: any[],
     analysis?: TaskAnalysis,
@@ -1321,11 +1338,11 @@ export async function routeToModel(
 
         // Standard text fallback
         console.error(`[IntelligentRouter] CRITICAL: All LLM providers failed. Returning honest error.`);
-        return "⚠️ تعذّر الوصول إلى محرّك الذكاء (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. "
+        return PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. "
             + "الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، "
             + "أو تحقّق من اتصال الإنترنت لاستخدام الذكاء المجّاني. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)";
     } catch (e: any) {
-        return "⚠️ تعذّر الوصول إلى محرّك الذكاء ولم يُنفَّذ الطلب. شغّل Ollama محلياً أو تحقّق من الإنترنت ثم أعد المحاولة.";
+        return PROVIDER_FAILURE_PREFIX + " ولم يُنفَّذ الطلب. شغّل Ollama محلياً أو تحقّق من الإنترنت ثم أعد المحاولة.";
     }
 }
 

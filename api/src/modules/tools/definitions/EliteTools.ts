@@ -1,15 +1,25 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import { resolveToolPath } from '../utils';
+import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import path from 'path';
 
-// Helper to get LLM function lazily to avoid circular dependency
+// Helper to get LLM function lazily to avoid circular dependency.
+//
+// It used to answer a load failure with `async () => "Error: LLM not available"`
+// — a stand-in function that returns an error message SHAPED LIKE AN ANSWER.
+// Every caller here treats the return value as model output, so the string was
+// JSON.parsed as a score, or (in AIWriteFileTool) written into the user's file
+// as its contents. A tool that cannot reach the model must fail, not answer.
 const getLLM = () => {
+    let mod: any;
     try {
-        const mod = require('../../../core/llm');
-        return mod.callLLM || mod.default?.callLLM;
+        mod = require('../../../core/llm');
     } catch (e: any) {
-        console.error(`[EliteTools] LLM Load Error: ${e.message} (Path: ../../../core/llm)`);
-        return async () => `Error: LLM not available (${e.message})`;
+        throw new Error(`LLM module unavailable: ${e.message}`);
     }
+    const fn = mod.callLLM || mod.default?.callLLM;
+    if (typeof fn !== 'function') throw new Error('LLM module exports no callLLM function');
+    return fn;
 };
 
 /**
@@ -287,7 +297,7 @@ export class AIWriteFileTool implements ToolDefinition {
     auditFields = ['path'];
     mockSupported = false;
 
-    async execute(input: { path: string; description: string; context?: string }) {
+    async execute(input: { path: string; description: string; context?: string }, context?: any) {
         const filePath = input.path;
         const prompt = `Write the full content for the file at "${filePath}".
         Goal: ${input.description}
@@ -305,20 +315,33 @@ export class AIWriteFileTool implements ToolDefinition {
             const response = await callLLM(prompt, [{ role: 'system', content: 'You are an elite software architect. Output raw file content only. No markdown.' }]);
 
             // Clean markdown blocks if LLM ignored instructions
-            let cleanContent = response.trim();
+            let cleanContent = String(response ?? '').trim();
             if (cleanContent.startsWith('```')) {
                 cleanContent = cleanContent.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '');
             }
+            // An empty completion is a failed generation. Writing it would replace
+            // an existing file with nothing and report success.
+            if (!cleanContent) {
+                return { ok: false, error: 'the model returned no content, so nothing was written', logs: [] };
+            }
+            // When no provider answers, the router hands back an apology instead
+            // of throwing. Writing that apology into the file as its contents is
+            // exactly what happened in testing.
+            if (isProviderFailure(cleanContent)) {
+                return { ok: false, error: cleanContent, logs: ['no LLM provider answered; nothing was written'] };
+            }
 
             const fs = require('fs');
-            const { workspaceService } = require('../../services/WorkspaceService');
-            const root = workspaceService.getActiveRoot();
-            const absPath = path.isAbsolute(filePath) ? filePath : path.resolve(root, filePath);
+            // resolveToolPath keeps the write inside the workspace and throws on
+            // escape. The previous `path.isAbsolute(filePath) ? filePath : ...`
+            // meant any absolute path the model produced was written verbatim,
+            // anywhere on the machine.
+            const absPath = resolveToolPath(filePath, { workspaceId: context?.workspaceId });
 
             fs.mkdirSync(path.dirname(absPath), { recursive: true });
             fs.writeFileSync(absPath, cleanContent);
 
-            return { ok: true, output: { path: filePath, size: cleanContent.length }, logs: [`AI generated file: ${filePath}`] };
+            return { ok: true, output: { path: absPath, size: cleanContent.length }, logs: [`AI generated file: ${absPath}`] };
         } catch (e: any) {
             return { ok: false, error: e.message, logs: [] };
         }

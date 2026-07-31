@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { ToolDefinition } from '../types';
-import { routeToModel } from '../../../core/llm/intelligent-router';
+import { routeToModel, isProviderFailure } from '../../../core/llm/intelligent-router';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
 import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
@@ -302,6 +302,12 @@ ${prev!.html}`
 
         // Extract clean HTML from whatever the model returned.
         html = String(html || '').trim();
+        // With no provider reachable the router returns an apology string, not
+        // markup. Without this the apology falls through to the "wrap it in a
+        // document" branch below and Joe writes it out as the user's website.
+        if (isProviderFailure(html)) {
+            return { ok: false, error: html, logs: [...logs, 'no LLM provider answered; the page was not written'] };
+        }
         const fence = html.match(/```(?:html)?\s*([\s\S]*?)```/i);
         if (fence) html = fence[1].trim();
         const docIdx = html.search(/<!DOCTYPE html>|<html[\s>]/i);

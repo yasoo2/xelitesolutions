@@ -1,5 +1,27 @@
 # 🔄 تحسينات إضافية: جو - مهندس برمجيات يعمل دون توقف
 
+> **حالة هذا المستند: مقترح مُنفَّذ ثم مسحوب — لا تعتمد عليه كوصف للنظام الحالي.**
+>
+> كُتبت الأنظمة السبعة أدناه فعلًا في `api/src/system/enhancements/` وما حولها، لكنها
+> لم تُوصَل بالنظام قط: لم يستورد أحدٌ ملف `enhancements/index.ts`، فلم تُستدعَ
+> `initializeEnhancements()` ولو مرة واحدة. ومع ذلك كانت تطبع
+> «Smart Context Management: Active» وستة أسطر مثلها لو شُغّلت.
+>
+> وعند مراجعتها تبيّن أن كل واحد منها يكرّر نظامًا يعمل بالفعل:
+>
+> | النظام المقترح | البديل الحيّ الذي يعمل اليوم |
+> |---|---|
+> | Smart Context Manager | حساب الميزانية والتقليم في `intelligent-router` (`approxTokens` + `trimMessagesForGroq` + سقف TPM) |
+> | Intelligent Retry | `AgentOrchestrator` (retryCount/maxRetries + حلقة التعافي) و`ToolService` |
+> | Progress Persistence | `AutonomousLoopEngine` (checkpointPath/checkpoints) و`ProjectStateManagerTool` |
+> | Autonomous Decision Maker | `AutonomousLoopEngine` عبر `JoeAgent` |
+> | Realtime Validator | `selfCorrectionSystem.checkCodeQuality` و`html-qa` و`content-contract` |
+> | Multi-Model Fallback | شبكة المزوّدات في `intelligent-router` (تبريد، ترتيب، تجاوز) |
+> | Health Monitor | مسار `/api/status` الذي يقيس نفس الأشياء عند الطلب |
+>
+> لذلك حُذف الكود بدل وصله: تشغيله كان سيعني نظامَي إعادة محاولة ونظامَي checkpoint
+> يتنافسان. المستند باقٍ كسجل للفكرة، والتاريخ محفوظ في git.
+
 ## 📋 نظرة عامة
 
 بعد تحليل النظام الحالي، وجدت أن جو يمتلك بالفعل **أساسيات قوية** للعمل المستمر:
