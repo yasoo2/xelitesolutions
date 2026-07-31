@@ -5,6 +5,7 @@ import { routeToModel } from '../../../core/llm/intelligent-router';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
 import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
+import { auditVisually, visualRepairBrief, type VisualFinding } from '../../../core/quality/visual-audit';
 import { workspaceService } from '../../services/WorkspaceService';
 import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript } from '../../../core/design/design-system';
 import { detectPageKind, blueprintBrief, imageBudget } from '../../../core/design/blueprints';
@@ -389,6 +390,58 @@ ${prev!.html}`
         } catch { /* non-fatal */ }
         if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `✅ تم تحديث الصفحة في المعاينة` : `✅ Page updated in Preview`);
 
+        // [VISUAL AUDIT] Everything above reasons about HTML as text. The defects
+        // the user actually saw — a page scrolling 2456px sideways, a phone screen
+        // rendering empty, text at 2.79:1 — only exist once a browser has laid the
+        // page out. Joe now opens his own work and measures it, then repairs what
+        // the numbers say is wrong. Runs after the preview is already showing, so
+        // the user never waits on it.
+        let visualFindings: VisualFinding[] = [];
+        let visualScore = -1;
+        let visualRepairs = 0;
+        try {
+            const audit = await auditVisually(url, { screenshotDir: ARTIFACT_DIR, name: `audit-${sessionKey}` });
+            if (audit.ran) {
+                visualFindings = audit.findings;
+                visualScore = audit.score;
+                logs.push(`visual audit: ${audit.score}/100, ${audit.findings.length} finding(s)`);
+                const brief = visualRepairBrief(audit.findings);
+                if (brief) {
+                    if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                        ? `👁️ راجعتُ الصفحة في متصفح حقيقي: ${audit.findings.length} ملاحظة — أُصلحها`
+                        : `👁️ Measured the page in a real browser: ${audit.findings.length} finding(s) — repairing`);
+                    try {
+                        const fixed = await routeToModel([
+                            { role: 'system', content: brief },
+                            { role: 'user', content: html },
+                        ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                        let out = String(fixed || '').trim();
+                        const f2 = out.match(/```(?:html)?\s*([\s\S]*?)```/i);
+                        if (f2) out = f2[1].trim();
+                        const d2 = out.search(/<!DOCTYPE html>|<html[\s>]/i);
+                        if (d2 > 0) out = out.slice(d2);
+                        if (/<\/html\s*>/i.test(out) && out.length > html.length * 0.7) {
+                            fs.writeFileSync(path.join(ARTIFACT_DIR, filename), out, 'utf-8');
+                            const after = await auditVisually(url, { screenshotDir: ARTIFACT_DIR, name: `audit-${sessionKey}` });
+                            // Only keep a repair the browser agrees is better.
+                            if (after.ran && after.score > audit.score) {
+                                visualRepairs = audit.findings.length - after.findings.length;
+                                visualFindings = after.findings;
+                                visualScore = after.score;
+                                html = out;
+                                store[sessionKey] = { ...(store[sessionKey] || {} as any), html };
+                                broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any);
+                                logs.push(`visual repair accepted: ${audit.score} -> ${after.score}`);
+                            } else {
+                                fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+                                logs.push('visual repair rejected (did not improve the measurements)');
+                            }
+                        }
+                    } catch (e: any) { logs.push(`visual repair failed: ${e?.message || e}`); }
+                }
+            } else if (audit.skipped) { logs.push(`visual audit skipped: ${audit.skipped}`); }
+        } catch (e: any) { logs.push(`visual audit error: ${e?.message || e}`); }
+
         // [QA department — optional real browser test] Off by default (heavy on a
         // CPU laptop). When JOE_QA_BROWSER_TEST=1, actually open the page in the
         // headless browser, capture console/page errors and a screenshot.
@@ -430,6 +483,13 @@ ${prev!.html}`
                 parts.push(isAr
                     ? `📝 الصفحة تجاوزت حدّ الرد الواحد — أكملتُها على ${continuations + 1} أجزاء${stillTruncated ? ' ⚠️ وما زالت ناقصة' : ''}`
                     : `📝 Page exceeded one response — completed across ${continuations + 1} parts${stillTruncated ? ' ⚠️ still incomplete' : ''}`);
+            }
+            if (visualScore >= 0) {
+                parts.push(isAr
+                    ? `👁️ الفحص البصري: ${visualScore}/100${visualRepairs > 0 ? ` (أصلحتُ ${visualRepairs})` : ''}`
+                    : `👁️ Visual audit: ${visualScore}/100${visualRepairs > 0 ? ` (repaired ${visualRepairs})` : ''}`);
+                const shown = visualFindings.filter(f => f.severity !== 'minor').slice(0, 4);
+                if (shown.length) parts.push(shown.map(f => `   • ${isAr ? f.ar : f.en}`).join('\n'));
             }
             if (contentRepairs) parts.push(isAr ? `✍️ إصلاحات المحتوى: ${contentRepairs}` : `✍️ Content repairs: ${contentRepairs}`);
             // Never let a content failure pass silently: if the model could not fix
