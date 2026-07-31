@@ -251,7 +251,11 @@ export function primitivesCss(): string {
 
 /* Shaped section edges — the cheapest way to stop a page reading as stacked boxes */
 .edge-top{position:relative}
-.edge-top::before{content:"";position:absolute;top:-1px;left:0;right:0;height:44px;
+/* inset-inline, not left/right. Joe's OWN audit reported this one on a page it
+   had just built — ".edge-top::before { left: 0 right: 0 }" — and it was right:
+   the kit was telling the model to use logical properties while breaking the
+   rule itself. A shaped edge anchored physically is mirrored wrongly in RTL. */
+.edge-top::before{content:"";position:absolute;top:-1px;inset-inline:0;height:44px;
   background:inherit;clip-path:polygon(0 100%,100% 0,100% 100%)}
 .tint{position:relative;overflow:hidden}
 .tint::after{content:"";position:absolute;inset-inline-end:-60px;top:-60px;width:220px;height:220px;

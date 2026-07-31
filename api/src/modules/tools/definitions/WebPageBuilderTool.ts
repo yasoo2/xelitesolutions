@@ -13,6 +13,7 @@ import { findReferenceUrl, extractReference, paletteFromReference, referenceBrie
 import { detectPageKind, blueprintBrief, imageBudget, blueprintSections, kindLabel } from '../../../core/design/blueprints';
 import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteSectionwise, type WrittenSection } from '../../../core/design/section-writer';
 import { brandFrom, pageTitle } from '../../../core/design/page-head';
+import { ensureLogo, logoCss } from '../../../core/design/logo';
 import { chromeBrief, chromeCss, chromeRuntime, authCss, authRuntime, ensureHeaderControls, wireAuthControls, repairDeadAnchors } from '../../../core/design/chrome';
 import { wrongLanguage, languageRetryNote, isolateLatinRuns, bidiCss } from '../../../core/design/language';
 import { splitIntoSections, targetSections, sectionsForFindings, extractEditedSection, spliceSections, sectionEditPrompt, type PageSection } from '../../../core/design/section-editor';
@@ -21,7 +22,7 @@ import { cartBrief, cartRuntime, cartCss, needsCart } from '../../../core/design
 import { formBrief, formRuntime, formCss } from '../../../core/design/forms';
 import { chartBrief, chartRuntime, chartCss, needsCharts } from '../../../core/design/dataviz';
 import { widgetBrief, widgetRuntime, widgetCss, usesWidgets } from '../../../core/design/widgets';
-import { resolveImages, creditsBlock, availableSources } from '../../../core/design/images';
+import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPlaceholder } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
 import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite } from '../../../core/design/layouts';
@@ -461,7 +462,7 @@ ${prev!.html}`
                     title: pageTitle({ request, isArabic: isAr, kindLabel: kind }),
                     isArabic: isAr,
                     tokenCss: paletteCss(palette),
-                    baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${bidiCss()}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                    baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${bidiCss()}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                     sections: written,
                     sprite: iconSprite(),
                     script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}`,
@@ -595,6 +596,21 @@ ${prev!.html}`
             // غير موجود في الصفحة» in its report and shipped without the button.
             // Joe owns the header markup, so the control is simply added: no
             // model call, nothing that can fail, nothing to verify afterwards.
+            /**
+             * The corner of the page carries a mark, not the name in bold.
+             * «لم يصمم لوجو لاسم الشركة وأن يضعها في زاوية الموقع» — drawn from
+             * the brand name and the palette rather than asked for, because a
+             * model asked for a logo returns a description of one or an <img>
+             * pointing at a URL that does not exist.
+             */
+            {
+                const brandName = brandFrom(request, isAr);
+                if (brandName) {
+                    const withLogo = ensureLogo(html, { brand: brandName, hue: palette.hue, isArabic: isAr });
+                    if (withLogo.added) { html = withLogo.html; logs.push(`content: drew a wordmark for "${brandName}"`); }
+                }
+            }
+
             if (requirements.buttons.length) {
                 const ctl = ensureHeaderControls(html, { wanted: requirements.buttons, isArabic: isAr });
                 if (ctl.added.length) {
@@ -666,7 +682,7 @@ ${prev!.html}`
         // The brief asked for all of it and the model shipped a page with zero
         // transitions, zero :hover, zero :focus and no rule for `button` at all.
         // Placed right after <style> so anything the model DID write still wins.
-        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}${needsCharts(kind) ? `\n${chartCss()}` : ''}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
+        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}${needsCharts(kind) ? `\n${chartCss()}` : ''}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
         // A section-wise build already carries the base layer — assembled by Joe,
         // not by the model — so injecting it again would duplicate ~10 KB of CSS.
         if (!/Joe UI kit — base layer/.test(html)) {
@@ -771,6 +787,27 @@ ${prev!.html}`
                     + ` [${Object.entries(r.sources).map(([k, v]) => `${k}×${v}`).join(', ') || 'none'}]`
                     + (r.sourceErrors.length ? ` (${r.sourceErrors.join('; ')})` : ''));
             } catch (e: any) { logs.push(`image sourcing failed: ${e?.message || e}`); }
+        }
+
+        /**
+         * NO MARKER EVER REACHES THE BROWSER.
+         *
+         * Everything above can fail — no network, an archive down, an exception
+         * mid-resolve — and each failure left `{{IMAGE:hero|…}}` sitting in a src
+         * attribute. A page with a literal marker in it is not a page with a
+         * missing photo; it is a page that 404s and looks broken. That is what
+         * the user saw: no images at all, and six 404s reported in the console
+         * as JavaScript errors. The designed gradient is on-palette and always
+         * available, so there is no case where the marker is the better outcome.
+         */
+        if (/\{\{\s*IMAGE\s*:/i.test(html)) {
+            let swept = 0;
+            html = html.replace(IMAGE_MARKER, (_full: string, rawQuery: string) => {
+                swept++;
+                const subject = String(rawQuery || '').split('|').pop() || 'image';
+                return gradientPlaceholder(subject.trim(), palette.hue);
+            });
+            logs.push(`images: ${swept} unresolved marker(s) replaced with the page gradient — each would have 404'd`);
         }
 
         // [REVIVED weak-model-enhancer] Self-correction pass: strip leftover
@@ -982,8 +1019,45 @@ ${prev!.html}`
                 // it ever finishes, the result is rejected, and the call was spent
                 // for nothing. Report the findings instead of pretending to fix.
                 if (brief && html.length > REPAIR_SIZE_LIMIT) {
-                    repairSkipped = true;
-                    logs.push(`visual repair skipped: page is ${Math.round(html.length / 1024)} KB, larger than one completion`);
+                    /**
+                     * Too big to return whole — but the findings NAME the text
+                     * they are about. A real report read «أسوأها 1:1 (المطلوب
+                     * 4.5) في «93»»: the offending element is quoted right
+                     * there, and a quoted fragment locates the section holding
+                     * it exactly the way a dead control's label does.
+                     *
+                     * This branch used to stop at "skipped", so a page scoring
+                     * 27/100 shipped at 27/100 while the behaviour branch beside
+                     * it repaired itself. Same machinery, same rule: keep the
+                     * repair only if a second measurement agrees.
+                     */
+                    const probes = audit.findings
+                        .flatMap(f => [...String(isAr ? f.ar : f.en).matchAll(/[«"']([^«»"']{2,60})[»"']/g)].map(m => m[1]))
+                        .filter(p => p.trim().length >= 2);
+                    const repairDesign = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}`;
+                    const scoped = probes.length ? await this.repairSections({
+                        html, filename, probes, brief, design: repairDesign, isAr, sessionId, context,
+                        note: isAr
+                            ? `👁️ الصفحة كبيرة، فأصلح الأقسام التي فيها الملاحظات`
+                            : `👁️ Page is large — repairing only the sections the findings name`,
+                    }) : null;
+                    if (scoped) {
+                        const after = await auditVisually(url, { screenshotDir: ARTIFACT_DIR, name: `audit-${sessionKey}` });
+                        if (after.ran && after.score > audit.score) {
+                            visualRepairs = audit.findings.length - after.findings.length;
+                            visualFindings = after.findings;
+                            visualScore = after.score;
+                            html = scoped;
+                            logs.push(`visual repair (section-scoped): ${audit.score} → ${after.score}`);
+                        } else {
+                            fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+                            repairSkipped = true;
+                            logs.push('visual repair (section-scoped) did not improve the score — reverted');
+                        }
+                    } else {
+                        repairSkipped = true;
+                        logs.push(`visual repair skipped: page is ${Math.round(html.length / 1024)} KB and the findings could not be traced to specific sections`);
+                    }
                 } else if (brief) {
                     if (sessionId) broadcastThinkingDetail(sessionId, isAr
                         ? `👁️ راجعتُ الصفحة في متصفح حقيقي: ${audit.findings.length} ملاحظة — أُصلحها`
@@ -1427,7 +1501,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 title: pageTitle({ request, isArabic: isAr, kindLabel: page.kind, pageName: page.title, brand }),
                 isArabic: isAr,
                 tokenCss: paletteCss(palette),
-                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                 sections,
                 sprite: iconSprite(),
                 script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}`,
