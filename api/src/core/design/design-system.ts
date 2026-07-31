@@ -12,6 +12,14 @@
  * The model then fills in content within that system instead of inventing one.
  */
 
+import { normalizeIntentText } from '../orchestrator/promptNormalizer';
+
+/** The user's words plus their canonical form — one Arabic spelling must not
+ *  decide the design. */
+function probeOf(request: string): string {
+    try { return `${request || ''}\n${normalizeIntentText(request || '')}`; } catch { return String(request || ''); }
+}
+
 export interface Palette {
     /** Brand hue, 0-359. */
     hue: number;
@@ -123,7 +131,7 @@ function hashHue(text: string): number {
 }
 
 export function pickHue(request: string): number {
-    const r = String(request || '');
+    const r = probeOf(request);
     for (const [re, hue] of NAMED_HUES) if (re.test(r)) return hue;
     for (const [re, hue] of SECTOR_HUES) if (re.test(r)) return hue;
     // Nothing named: stable per request, so re-running the same brief keeps the

@@ -8,6 +8,8 @@
  * turns "a page" into "a store".
  */
 
+import { normalizeIntentText } from '../orchestrator/promptNormalizer';
+
 export type PageKind =
     | 'store' | 'landing' | 'portfolio' | 'restaurant' | 'dashboard'
     | 'blog' | 'app' | 'event' | 'docs' | 'generic';
@@ -28,7 +30,13 @@ const DETECTORS: Array<[PageKind, RegExp]> = [
 ];
 
 export function detectPageKind(request: string, probe?: string): PageKind {
-    const text = `${request || ''}\n${probe || ''}`;
+    // Normalise first. «لشركه» is «لشركة» to any reader and to nobody's regex —
+    // the same Arabic spelling gap that sent a build request to the generic
+    // planner once already. The canonical companion is tested alongside the
+    // user's own words, never instead of them.
+    let canonical = '';
+    try { canonical = normalizeIntentText(request || ''); } catch { /* optional */ }
+    const text = `${request || ''}\n${canonical}\n${probe || ''}`;
     for (const [kind, re] of DETECTORS) if (re.test(text)) return kind;
     return 'generic';
 }

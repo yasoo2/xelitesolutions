@@ -10,6 +10,8 @@ import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript } from '..
 import { detectPageKind, blueprintBrief, imageBudget } from '../../../core/design/blueprints';
 import { resolveImages, creditsBlock } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
+import { buildImageBrief } from '../../../core/design/image-brief';
+import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss } from '../../../core/design/layouts';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 const PORT = String(process.env.PORT || '5002');
@@ -59,7 +61,7 @@ export class WebPageBuilderTool implements ToolDefinition {
         // of regenerating a brand new one from scratch.
         // The palette and page kind are remembered with the page: a follow-up edit
         // must not re-roll the colours or re-decide what the page is.
-        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any }> =
+        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any }> =
             (global as any).joePages || ((global as any).joePages = {});
         const prev = store[sessionKey];
         const wantsNew = /(new page|from scratch|صفحة جديدة|من الصفر|ابدأ من جديد)/i.test(request);
@@ -88,16 +90,27 @@ export class WebPageBuilderTool implements ToolDefinition {
         const palette = isEdit && (prev as any)?.palette ? (prev as any).palette : buildPalette(request);
         const kind = isEdit && (prev as any)?.kind ? (prev as any).kind : detectPageKind(request);
         const photos = imageBudget(kind);
+        // The vocabulary of THIS business, so a photo search has something
+        // specific to match against instead of "business people".
+        const imageBrief = buildImageBrief(request);
+        // Composition and type pairing are DECISIONS, made here. Left to the model
+        // every page came out as the same stack of centred boxes with Arial on it.
+        const archetype = (isEdit && (prev as any)?.archetype) || pickArchetype(kind, request);
+        const typePair = (isEdit && (prev as any)?.typePair) || pickTypePair(request);
 
         const baseRules = `STRICT RULES:
 - Output ONLY raw HTML for ONE complete self-contained file. No explanations, no markdown fences.
 - ALL CSS in a <style> tag and ALL JS in a <script> tag (single file).
 - Fully responsive, mobile-first. Icons: inline SVG (never an icon font, never a CDN).
 ${photos > 0
-                ? `- PHOTOGRAPHS: wherever a real photo belongs, write src="{{IMAGE:short english subject}}" —
-  e.g. src="{{IMAGE:barista pouring latte art}}". Joe replaces each marker with a real licensed
-  photograph. Use about ${photos} of them, each with a DIFFERENT and specific subject, and always
-  a real alt attribute. Never link an external image URL yourself.`
+                ? `- PHOTOGRAPHS: write src="{{IMAGE:slot|specific english subject}}" wherever a real photo belongs.
+  slot is one of: hero, banner, card, gallery, thumb, avatar — it tells Joe what SHAPE to fetch and
+  how to crop it. e.g. src="{{IMAGE:hero|software developers pair programming}}",
+  src="{{IMAGE:avatar|smiling professional woman portrait}}".
+  Use about ${photos} of them, each with a DIFFERENT subject, and always a real alt attribute.
+  The subject must name something THIS business actually does — "business people" or "office" are
+  useless to a photo archive and will be replaced. Never link an external image URL yourself.${imageBrief.suggestions.length
+                    ? `\n  Subjects that fit this brief: ${imageBrief.suggestions.slice(0, 8).join('; ')}.` : ''}`
                 : `- This page type needs no photographs: use inline SVG, gradients and type instead.`}
 ${isAr ? '- Arabic page: <html lang="ar" dir="rtl"> with natural Arabic copy (not translated-sounding).' : ''}
 
@@ -106,7 +119,9 @@ ${designBrief(palette)}
 TOKEN BLOCK — paste verbatim at the very top of your <style>:
 ${paletteCss(palette)}
 
-${blueprintBrief(kind)}`;
+${blueprintBrief(kind)}
+
+${layoutBrief(archetype, typePair)}`;
 
         const systemPrompt = isEdit
             ? `You are an elite front-end engineer. MODIFY the existing HTML page: apply EXACTLY the change requested and keep everything else intact — same design system, same tokens, same sections unless the change asks otherwise. Return the COMPLETE updated HTML file.
@@ -235,10 +250,11 @@ ${prev!.html}`
         // The brief asked for all of it and the model shipped a page with zero
         // transitions, zero :hover, zero :focus and no rule for `button` at all.
         // Placed right after <style> so anything the model DID write still wins.
+        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}`;
         if (/<style[^>]*>/i.test(html)) {
-            html = html.replace(/<style([^>]*)>/i, `<style$1>\n${uiKitCss()}\n`);
+            html = html.replace(/<style([^>]*)>/i, `<style$1>\n${baseLayer}\n`);
         } else if (/<\/head>/i.test(html)) {
-            html = html.replace(/<\/head>/i, `<style>\n${uiKitCss()}\n</style>\n</head>`);
+            html = html.replace(/<\/head>/i, `<style>\n${baseLayer}\n</style>\n</head>`);
         }
         if (!/data-reveal/.test(html)) {
             html = /<\/body>/i.test(html)
@@ -255,7 +271,7 @@ ${prev!.html}`
         if (photos > 0 && /\{\{\s*IMAGE\s*:/i.test(html)) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `🖼️ أجلب صوراً حقيقية مرخّصة للصفحة` : `🖼️ Sourcing real licensed photographs`);
             try {
-                const r = await resolveImages(html, ARTIFACT_DIR, palette.hue, { max: Math.max(4, photos + 2) });
+                const r = await resolveImages(html, ARTIFACT_DIR, palette.hue, { max: Math.max(4, photos + 2), brief: imageBrief });
                 html = r.html; imgReal = r.real; imgRequested = r.requested; imgCredits = r.credits; imgBytes = r.bytes;
                 // Creative-Commons licences require attribution IN THE PAGE, not in
                 // a chat message the visitor never sees. Without this the published
@@ -324,7 +340,7 @@ ${prev!.html}`
         } catch (e: any) {
             return { ok: false, error: `write_failed: ${e?.message || e}`, logs };
         }
-        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind };
+        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair };
         logs.push(`web_page_builder: ${isEdit ? 'edited' : 'wrote'} ${filename} (${html.length} bytes)${projectFiles.length ? ` + ${projectFiles.length} project files` : ''} in ${ARTIFACT_DIR}`);
 
         // [BROWSABLE OUTPUT] Mirror the generated file(s) into the active workspace
@@ -398,8 +414,8 @@ ${prev!.html}`
             // Say what was DECIDED, not just what was checked — the palette and the
             // page type are choices the user should be able to argue with.
             parts.push(isAr
-                ? `🎨 نظام التصميم: ${kind} · لوحة ${palette.scheme === 'analogous' ? 'متجانسة' : 'متكاملة'} حول ${palette.primary} (تباين AA مضمون)`
-                : `🎨 Design system: ${kind} · ${palette.scheme} palette around ${palette.primary} (AA contrast by construction)`);
+                ? `🎨 نظام التصميم: ${kind} · تخطيط ${archetype} · خطوط ${typePair.note} · لوحة ${palette.scheme === 'analogous' ? 'متجانسة' : 'متكاملة'} حول ${palette.primary} (تباين AA مضمون)`
+                : `🎨 Design system: ${kind} · ${archetype} layout · ${typePair.note} type · ${palette.scheme} palette around ${palette.primary} (AA contrast by construction)`);
             if (imgRequested) {
                 // Be exact about how many photos are real: claiming "images added"
                 // when the network was down would be a lie the user can see.

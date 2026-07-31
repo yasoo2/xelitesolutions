@@ -20,6 +20,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { parseSlot, scoreCandidate, SLOTS, buildImageBrief, groundSubject, type ImageSlot, type ImageBrief } from './image-brief';
 
 /** Read at call time, not at import time: an env var set after this module is
  *  loaded (tests, a redeploy that swaps the source) must still take effect. */
@@ -35,6 +36,8 @@ export interface ResolvedImage {
     /** Attribution, required by most open licences. */
     credit?: { creator: string; license: string; source: string };
     fromCache: boolean;
+    /** Where on the page this photo belongs. */
+    slot?: ImageSlot;
     /** Intrinsic size, so the page can reserve the box and not jump while loading. */
     width?: number;
     height?: number;
@@ -145,9 +148,9 @@ async function fetchJson(url: string, timeoutMs: number): Promise<any | null> {
  * unavailable or nothing suitable was found — the caller falls back to a
  * gradient rather than leaving a hole.
  */
-export async function sourceImage(artifactDir: string, query: string, timeoutMs = 9000, variant = 0): Promise<ResolvedImage | null> {
+export async function sourceImage(artifactDir: string, query: string, timeoutMs = 9000, variant = 0, slot: ImageSlot = 'card'): Promise<ResolvedImage | null> {
     const cached = findCached(artifactDir, query, variant);
-    if (cached) return { query, src: cached, alt: query, fromCache: true };
+    if (cached) return { query, src: cached, alt: query, fromCache: true, slot };
 
     // Ask for more candidates so a too-small or wrong-shaped one can be skipped.
     //
@@ -163,8 +166,21 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
     // A subject the model asked for twice must not come back as the same photo
     // in both places — a build shipped the identical portrait as two different
     // customers' testimonials. Skip the candidates already used for this subject.
+    // Rank before downloading: metadata alone tells us relevance and, when the
+    // archive reports them, the dimensions. Taking the first acceptable hit is
+    // what put a portrait in a wide card and a military photo on a tech page.
+    const ranked = results
+        .map(r => ({
+            r,
+            score: scoreCandidate(query, slot, r,
+                r?.width && r?.height ? { width: Number(r.width), height: Number(r.height) } : null),
+        }))
+        .filter(x => x.score > 25)
+        .sort((a, b) => b.score - a.score)
+        .map(x => x.r);
+
     let skip = variant;
-    for (const r of results) {
+    for (const r of ranked) {
         const src = String(r?.url || r?.thumbnail || '').trim();
         if (!src) continue;
         // RELEVANCE. Keyword search returns whatever it likes: a build for a
@@ -186,7 +202,10 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
             // at all, and a portrait crammed into a wide band looks broken. Judge
             // the actual file, not the metadata, which is often missing.
             const dim = imageSize(buf) || (r?.width && r?.height ? { width: Number(r.width), height: Number(r.height) } : null);
-            if (dim && dim.width < 600) continue;
+            const spec = SLOTS[slot];
+            // Judged against what this position actually needs, not one global
+            // minimum: an avatar can be 400px, a hero cannot.
+            if (dim && dim.width < Math.min(600, spec.minWidth)) continue;
             if (skip > 0) { skip--; continue; }
             const dir = imagesDir(artifactDir);
             fs.mkdirSync(dir, { recursive: true });
@@ -202,6 +221,7 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
                     source: String(r?.foreign_landing_url || r?.url || ''),
                 },
                 fromCache: false,
+                slot,
                 width: dim?.width,
                 height: dim?.height,
                 bytes: buf.length,
@@ -227,7 +247,7 @@ function escapeXml(s: string): string {
     return String(s).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c] as string));
 }
 
-export const IMAGE_MARKER = /\{\{\s*IMAGE\s*:\s*([^}]{2,80}?)\s*\}\}/g;
+export const IMAGE_MARKER = /\{\{\s*IMAGE\s*:\s*([^}]{2,110}?)\s*\}\}/g;
 
 export interface ImageResolution {
     html: string;
@@ -257,6 +277,11 @@ function hardenImgTags(html: string, byLocalSrc: Map<string, ResolvedImage>): st
             out = out.replace(/<img\b/i, `<img width="${img.width}" height="${img.height}"`);
         }
         if (!/\bloading\s*=/i.test(out)) out = out.replace(/<img\b/i, '<img loading="lazy" decoding="async"');
+        // Give the photo the shape its position needs. Without this a portrait
+        // dropped into a wide card stretches the whole row.
+        if (img.slot && SLOTS[img.slot] && !/\bstyle\s*=/i.test(out)) {
+            out = out.replace(/<img\b/i, `<img style="${SLOTS[img.slot].css}"`);
+        }
         // An empty alt on a content photograph is a real accessibility failure;
         // fall back to the subject that was searched for.
         if (!/\balt\s*=\s*"[^"]+"/i.test(out)) {
@@ -302,21 +327,30 @@ export function creditsBlock(credits: ImageResolution['credits'], isAr: boolean)
  * once and reused, and the whole pass is bounded so a slow network cannot hold a
  * build hostage.
  */
-export async function resolveImages(html: string, artifactDir: string, hue: number, opts?: { max?: number; timeoutMs?: number }): Promise<ImageResolution> {
+export async function resolveImages(html: string, artifactDir: string, hue: number, opts?: { max?: number; timeoutMs?: number; brief?: ImageBrief }): Promise<ImageResolution> {
     const max = opts?.max ?? 12;
-    const queries: string[] = [];
+    const brief = opts?.brief;
+    // Each marker carries its position and its subject. A generic subject is
+    // replaced with one grounded in what this business actually does — "business
+    // people" finds nothing about a consultancy, "business consultant strategy
+    // meeting" does.
+    const parsed: Array<{ key: string; slot: ImageSlot; subject: string }> = [];
+    let gi = 0;
     for (const m of String(html).matchAll(IMAGE_MARKER)) {
-        const q = m[1].trim();
-        if (q && !queries.includes(q)) queries.push(q);
+        const { slot, subject } = parseSlot(m[1]);
+        const grounded = brief ? groundSubject(subject, brief, gi++) : subject;
+        parsed.push({ key: `${slot}|${grounded}`, slot, subject: grounded });
     }
+    const queries: string[] = [];
+    for (const p of parsed) if (!queries.includes(p.key)) queries.push(p.key);
     if (!queries.length) return { html, requested: 0, real: 0, credits: [], bytes: 0 };
 
     // How many times each subject appears — a repeat needs its own photo.
     const occurrences = new Map<string, number>();
-    for (const m of String(html).matchAll(IMAGE_MARKER)) {
-        const q = m[1].trim();
-        occurrences.set(q, (occurrences.get(q) || 0) + 1);
-    }
+    for (const p of parsed) occurrences.set(p.key, (occurrences.get(p.key) || 0) + 1);
+    const slotOf = new Map<string, ImageSlot>();
+    const subjectOf = new Map<string, string>();
+    for (const p of parsed) { slotOf.set(p.key, p.slot); subjectOf.set(p.key, p.subject); }
 
     // key = `${query}#${variant}`
     const resolved = new Map<string, ResolvedImage>();
@@ -326,7 +360,7 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     for (const q of queries) {
         const times = Math.min(occurrences.get(q) || 1, 4);
         for (let v = 0; v < times && fetched < max; v++) {
-            const img = await sourceImage(artifactDir, q, opts?.timeoutMs ?? 9000, v);
+            const img = await sourceImage(artifactDir, subjectOf.get(q)!, opts?.timeoutMs ?? 9000, v, slotOf.get(q));
             fetched++;
             if (img) resolved.set(`${q}#${v}`, img);
         }
@@ -334,13 +368,16 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
 
     const credits: ImageResolution['credits'] = [];
     const seen = new Map<string, number>();
+    let mi = 0;
     let out = String(html).replace(IMAGE_MARKER, (_full, rawQuery: string) => {
-        const q = String(rawQuery).trim();
+        const { slot, subject } = parseSlot(rawQuery);
+        const grounded = brief ? groundSubject(subject, brief, mi++) : subject;
+        const q = `${slot}|${grounded}`;
         const v = seen.get(q) || 0;
         seen.set(q, v + 1);
         // Fall back to the first variant when a later one could not be sourced.
         const img = resolved.get(`${q}#${v}`) || resolved.get(`${q}#0`);
-        if (!img) return gradientPlaceholder(q, hue);
+        if (!img) return gradientPlaceholder(grounded, hue);
         if (img.credit && img.credit.license && !credits.some(c => c.source === img.credit!.source)) {
             credits.push(img.credit);
         }
