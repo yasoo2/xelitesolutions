@@ -17,7 +17,7 @@
  */
 
 import path from 'path';
-import { resolveToolPath } from '../modules/tools/utils';
+import { resolveToolPath, isWithinRoot } from '../modules/tools/utils';
 
 /** Where the resolver anchors relative paths, discovered from the resolver itself. */
 const anchor = path.dirname(resolveToolPath('probe-anchor.txt'));
@@ -90,5 +90,50 @@ describe('resolveToolPath containment', () => {
     it('handles empty and whitespace input without throwing something unexpected', () => {
         expect(path.isAbsolute(resolveToolPath(''))).toBe(true);
         expect(path.isAbsolute(resolveToolPath('   '))).toBe(true);
+    });
+});
+
+describe('the containment rule on a case-insensitive filesystem', () => {
+    /**
+     * This suite runs on Linux, and the user runs Joe on Windows. `path.resolve`
+     * keeps whatever case it was given, so a workspace at "C:\Users\home\..."
+     * and a model-written "c:\users\home\..." are ONE directory that an exact
+     * compare calls an escape. That is a false refusal on the platform this is
+     * actually deployed to.
+     *
+     * `process.platform` is what the rule branches on, so it is what these
+     * switch — the rule itself is real, and both branches of it are exercised.
+     */
+    const withPlatform = (value: string, fn: () => void) => {
+        const original = Object.getOwnPropertyDescriptor(process, 'platform')!;
+        Object.defineProperty(process, 'platform', { value, configurable: true });
+        try { fn(); } finally { Object.defineProperty(process, 'platform', original); }
+    };
+
+    it('accepts a path that differs only in case when running on Windows', () => {
+        withPlatform('win32', () => {
+            expect(isWithinRoot('/srv/joe/site/index.html', '/srv/Joe')).toBe(true);
+            expect(isWithinRoot('/SRV/JOE', '/srv/joe')).toBe(true);
+        });
+    });
+
+    it('still refuses a sibling prefix on Windows — folding case is not loosening the boundary', () => {
+        withPlatform('win32', () => {
+            expect(isWithinRoot('/srv/joe-backup/payload.txt', '/srv/Joe')).toBe(false);
+            expect(isWithinRoot('/srv/JOE-EVIL/x', '/srv/joe')).toBe(false);
+        });
+    });
+
+    it('keeps the exact comparison on Linux, where two cases are two files', () => {
+        withPlatform('linux', () => {
+            expect(isWithinRoot('/srv/joe/site', '/srv/Joe')).toBe(false);
+            expect(isWithinRoot('/srv/joe/site', '/srv/joe')).toBe(true);
+        });
+    });
+
+    it('treats the root itself as inside on both platforms', () => {
+        for (const p of ['win32', 'linux']) {
+            withPlatform(p, () => expect(isWithinRoot('/srv/joe', '/srv/joe')).toBe(true));
+        }
     });
 });

@@ -8,6 +8,29 @@ export interface ResolvePathOptions {
 }
 
 /**
+ * Is `child` the same directory as `parent`, or inside it?
+ *
+ * Exported so the rule can be tested directly on both platforms. Two things it
+ * must get right, and each was wrong at some point:
+ *
+ *   - The comparison happens on a path BOUNDARY. Plain `startsWith` admits a
+ *     sibling that merely shares a prefix — a parent of "/srv/joe" accepting
+ *     "/srv/joe-backup/anything".
+ *   - On Windows it ignores case, because the filesystem does. `path.resolve`
+ *     preserves whatever case it was handed, so "C:\Users\home\..." and
+ *     "c:\users\home\..." are one directory that a case-sensitive compare calls
+ *     an escape — a false refusal of a legitimate write, and on Windows that is
+ *     the common case rather than the edge one. Linux keeps the exact compare:
+ *     there, two paths differing in case really are two different files.
+ */
+export function isWithinRoot(child: string, parent: string): boolean {
+    const fold = (s: string) => (process.platform === 'win32' ? s.toLowerCase() : s);
+    const c = fold(child);
+    const p = fold(parent);
+    return c === p || c.startsWith(p.endsWith(path.sep) ? p : p + path.sep);
+}
+
+/**
  * Standard tool path resolver that anchors all relative paths to the project root
  * or a sandboxed build directory. Handles /api/ subdirectory execution gracefully.
  */
@@ -74,13 +97,18 @@ export function resolveToolPath(p: string, options: ResolvePathOptions = {}) {
     // startsWith on its own lets a SIBLING through: a root of "/srv/joe" would
     // accept "/srv/joe-backup/anything" because the string matches. Compare on a
     // path boundary instead.
-    const within = (child: string, parent: string) =>
-        child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
-
-    if (within(resolvedAbs, resolvedRoot) ||
-        within(resolvedAbs, resolvedBuildsDir) ||
-        within(resolvedAbs, resolvedProjectRoot) ||
-        within(resolvedAbs, resolvedExternalRoot)) {
+    //
+    // On Windows the comparison must also ignore case, because the filesystem
+    // does. path.resolve preserves whatever case it was handed — so a workspace
+    // at "C:\Users\home\..." and a model-written "c:\users\home\..." are the
+    // SAME directory that a case-sensitive compare calls an escape. That is a
+    // false refusal of a legitimate write, and on a Windows machine it is the
+    // common case, not the edge one. Linux keeps the exact comparison: there,
+    // two paths differing in case really are two different files.
+    if (isWithinRoot(resolvedAbs, resolvedRoot) ||
+        isWithinRoot(resolvedAbs, resolvedBuildsDir) ||
+        isWithinRoot(resolvedAbs, resolvedProjectRoot) ||
+        isWithinRoot(resolvedAbs, resolvedExternalRoot)) {
         return resolvedAbs;
     }
 
