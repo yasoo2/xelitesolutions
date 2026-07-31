@@ -283,8 +283,69 @@ async function measure(browser: any, url: string): Promise<{ findings: Finding[]
     if (phone.canDrag > 0) findings.push({ severity: 'major', text: `page can be dragged ${phone.canDrag}px sideways on a phone` });
     if ((phone.cols as number[]).some((c: number) => c > 1)) findings.push({ severity: 'major', text: `grid stayed at ${Math.max(...phone.cols)} columns on a 390px phone` });
 
+    /* ---------- press things, the way a visitor does --------------------- */
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForTimeout(300);
+
+    // A control that does nothing when clicked is the defect the behaviour
+    // audit exists for, and the one a static check can never see.
+    // Deduplicated: the selectors below overlap (.nav-toggle is a button, a.btn
+    // matches twice), and counting one element twice reported it dead twice.
+    // querySelectorAll already returns each element once however many parts of
+    // the selector it matches, so one combined selector is the dedup.
+    const controls = await page.$$('button:not([hidden]), a.btn, [data-add-to-cart], [data-filter]');
+    let pressed = 0, dead = 0;
+    const deadLabels: string[] = [];
+    for (const el of controls.slice(0, 14)) {
+        const label = (await el.evaluate((n: any) => (n.innerText || n.getAttribute('aria-label') || '').trim().slice(0, 24))) || '?';
+        // Park the pointer away from the page first. Playwright hovers before it
+        // clicks, and a hover OPENS the dropdown — so "before" was already the
+        // opened state and the click that opened it read as doing nothing.
+        await page.mouse.move(4, 700);
+        await page.waitForTimeout(80);
+        const before = await page.evaluate(() => ({
+            html: document.body.innerHTML.length,
+            open: document.querySelectorAll('[data-open],[aria-expanded="true"],[open]').length,
+            url: location.hash,
+            scroll: Math.round(window.scrollY),
+        }));
+        try { await el.click({ timeout: 800 }); } catch { continue; }
+        pressed++;
+        await page.waitForTimeout(220);
+        const after = await page.evaluate(() => ({
+            html: document.body.innerHTML.length,
+            open: document.querySelectorAll('[data-open],[aria-expanded="true"],[open]').length,
+            url: location.hash,
+            scroll: Math.round(window.scrollY),
+        }));
+        // Scrolling counts: an in-page link that actually lands somewhere is
+        // doing its job even though nothing else changed.
+        if (before.html === after.html && before.open === after.open
+            && before.url === after.url && Math.abs(before.scroll - after.scroll) < 8) {
+            dead++; deadLabels.push(label);
+        }
+        // Put the page back so the next control starts from a clean state.
+        await page.keyboard.press('Escape').catch(() => { });
+        await page.waitForTimeout(120);
+    }
+    if (pressed && dead / pressed > 0.34) {
+        findings.push({ severity: 'major', text: `${dead}/${pressed} controls did nothing when clicked: ${deadLabels.slice(0, 4).join(', ')}` });
+    }
+
+    // Every form must refuse to submit empty and say why, in the page's language.
+    const forms = await page.$$('form');
+    for (const f of forms.slice(0, 2)) {
+        const submit = await f.$('[type=submit], button');
+        if (!submit) continue;
+        try { await submit.click({ timeout: 800 }); } catch { continue; }
+        await page.waitForTimeout(260);
+        const said = await page.evaluate(() =>
+            !!document.querySelector('[data-form-status], .joe-field-error, [aria-invalid="true"]'));
+        if (!said) findings.push({ severity: 'major', text: 'a form submitted empty without showing an error' });
+    }
+
     await page.close();
-    return { findings, facts: { ...facts, phone } };
+    return { findings, facts: { ...facts, phone, pressed, dead } };
 }
 
 /* ---------- the run ---------------------------------------------------------- */

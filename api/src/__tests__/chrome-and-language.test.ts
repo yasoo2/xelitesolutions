@@ -16,7 +16,8 @@ import {
     visibleText, scriptMix, wrongLanguage, languageRetryNote, isolateLatinRuns, bidiCss,
 } from '../core/design/language';
 import {
-    chromeBrief, chromeCss, chromeRuntime, ensureHeaderControls, repairDeadAnchors,
+    chromeBrief, chromeCss, chromeRuntime, authCss, authRuntime,
+    ensureHeaderControls, wireAuthControls, repairDeadAnchors,
 } from '../core/design/chrome';
 import { uiKitCss } from '../core/design/design-system';
 
@@ -323,11 +324,31 @@ describe('a link that goes nowhere is repaired or stops pretending to be a link'
         expect(got.html).toContain('<a href="#contact">اتصل بنا</a>');
     });
 
-    it('does nothing to a page that has no dead links', () => {
-        const clean = '<main><a href="/about">About</a><a href="#top">Top</a></main>';
+    it('does nothing to a page whose links all land somewhere', () => {
+        const clean = '<main id="top"><a href="/about">About</a><a href="#top">Top</a></main>';
         const got = repairDeadAnchors(clean, { isArabic: false });
         expect(got.html).toBe(clean);
         expect(got.fixed).toBe(0);
+    });
+
+    it('treats #anchor-that-does-not-exist as dead, because it is', () => {
+        // Joe was inserting `<a href="#login">` for the login button the user
+        // asked for, and nothing on the page carried that id. Measured in a
+        // browser: three of them, all reported as controls that do nothing. A
+        // dead link that looks deliberate is still a dead link.
+        const page = '<main><section id="contact"><h2>اتصل بنا</h2></section>'
+            + '<a href="#login">تسجيل الدخول</a><a href="#contact">اتصل بنا</a></main>';
+        const got = repairDeadAnchors(page, { isArabic: true });
+
+        expect(got.html).not.toContain('href="#login"');
+        expect(got.fixed).toBe(1);
+        // The one that lands is untouched.
+        expect(got.html).toContain('<a href="#contact">اتصل بنا</a>');
+    });
+
+    it('keeps an off-page link alone — it is not this page\'s business', () => {
+        const page = '<main><a href="/login">Sign in</a><a href="https://x.test/a">External</a></main>';
+        expect(repairDeadAnchors(page).html).toBe(page);
     });
 });
 
@@ -387,5 +408,97 @@ describe('a secondary button must not render as a second primary one', () => {
 
     it('drops the filled button\'s shadow too, or the outline still reads as raised', () => {
         expect(uiKitCss()).toMatch(/a\.btn-ghost[^{]*\{[^}]*box-shadow:none/);
+    });
+});
+
+describe('the sign-in panel — a control that works and tells the truth', () => {
+    const rt = authRuntime(true);
+    const css = authCss();
+
+    it('never claims a sign-in succeeded, because there is no server', () => {
+        // The alternative — flashing "welcome back" — is the exact kind of
+        // simulated behaviour this codebase refuses everywhere else.
+        expect(rt).toContain('T.noBackend');
+        expect(rt).toMatch(/لا يوجد خادم حسابات موصول/);
+        expect(authRuntime(false)).toMatch(/No account service is connected/);
+        expect(rt).not.toMatch(/مرحبا بعودتك|welcome back|تم تسجيل الدخول بنجاح/i);
+    });
+
+    it('says what to change to make it real', () => {
+        expect(rt).toMatch(/api\/login/);
+    });
+
+    it('validates for real rather than accepting anything', () => {
+        expect(rt).toContain('el.checkValidity()');
+        expect(rt).toContain("setAttribute('aria-invalid'");
+        // novalidate hands the reporting to us; the constraints are unchanged.
+        expect(rt).toContain('novalidate');
+        expect(rt).toContain('type="email" required');
+        expect(rt).toContain('minlength="6"');
+    });
+
+    it('shows only the button that makes sense right now', () => {
+        expect(rt).toContain('function reflect()');
+        expect(rt).toContain(`querySelectorAll('[data-auth="login"]')`);
+        expect(rt).toContain(`querySelectorAll('[data-auth="logout"]')`);
+    });
+
+    it('sends nothing anywhere', () => {
+        expect(rt.startsWith('<script>')).toBe(true);
+        expect(rt).not.toMatch(/\bfetch\s*\(|XMLHttpRequest|navigator\.sendBeacon/);
+        expect(rt).not.toMatch(/https?:\/\//);
+    });
+
+    it('is a real dialog a keyboard can leave', () => {
+        expect(rt).toContain(`role="dialog"`);
+        expect(rt).toContain('aria-modal="true"');
+        expect(rt).toContain("e.key === 'Escape'");
+    });
+
+    it('has balanced braces in its stylesheet', () => {
+        expect((css.match(/\{/g) || []).length).toBe((css.match(/\}/g) || []).length);
+    });
+});
+
+describe('the hidden attribute actually hides', () => {
+    it('is forced in the kit, because a class beats the user-agent rule', () => {
+        // `.btn{display:inline-flex}` out-specifies the UA's `[hidden]`, so every
+        // button the runtime hid stayed visible. Measured in a browser: the
+        // sign-out button showed before anyone had signed in, and sign-in stayed
+        // visible after. Anything that hides by attribute depends on this line.
+        expect(uiKitCss()).toContain('[hidden]{display:none!important}');
+    });
+});
+
+describe('a sign-in link the model wrote is wired, not deleted', () => {
+    it('turns an href="#login" anchor into the control that opens the panel', () => {
+        const got = wireAuthControls('<nav><a class="btn btn-ghost" href="#login">تسجيل الدخول</a></nav>');
+        expect(got.wired).toBe(1);
+        expect(got.html).toContain('data-auth="login"');
+        expect(got.html).toContain('<button type="button"');
+        expect(got.html).toContain('class="btn btn-ghost"');
+        expect(got.html).not.toContain('href="#login"');
+    });
+
+    it.each([
+        ['تسجيل الخروج', 'logout'],
+        ['Sign out', 'logout'],
+        ['Log in', 'login'],
+        ['دخول', 'login'],
+    ])('recognises "%s" as %s', (label, action) => {
+        const got = wireAuthControls(`<a href="#">${label}</a>`);
+        expect(got.html).toContain(`data-auth="${action}"`);
+    });
+
+    it('leaves a link to a REAL login page alone — that is a deliberate choice', () => {
+        const src = '<a class="btn" href="/login">تسجيل الدخول</a>';
+        expect(wireAuthControls(src).html).toBe(src);
+        const ext = '<a href="https://accounts.example.test/signin">Sign in</a>';
+        expect(wireAuthControls(ext).html).toBe(ext);
+    });
+
+    it('leaves ordinary links alone', () => {
+        const src = '<a href="#contact">اتصل بنا</a><a href="#">الأسعار</a>';
+        expect(wireAuthControls(src).wired).toBe(0);
     });
 });

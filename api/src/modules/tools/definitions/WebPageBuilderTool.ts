@@ -13,7 +13,7 @@ import { findReferenceUrl, extractReference, paletteFromReference, referenceBrie
 import { detectPageKind, blueprintBrief, imageBudget, blueprintSections, kindLabel } from '../../../core/design/blueprints';
 import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteSectionwise, type WrittenSection } from '../../../core/design/section-writer';
 import { brandFrom, pageTitle } from '../../../core/design/page-head';
-import { chromeBrief, chromeCss, chromeRuntime, ensureHeaderControls, repairDeadAnchors } from '../../../core/design/chrome';
+import { chromeBrief, chromeCss, chromeRuntime, authCss, authRuntime, ensureHeaderControls, wireAuthControls, repairDeadAnchors } from '../../../core/design/chrome';
 import { wrongLanguage, languageRetryNote, isolateLatinRuns, bidiCss } from '../../../core/design/language';
 import { splitIntoSections, targetSections, sectionsForFindings, extractEditedSection, spliceSections, sectionEditPrompt, type PageSection } from '../../../core/design/section-editor';
 import { planSite, siteNav, siteNavCss, verifyInternalLinks, targetPage, type SitePlan } from '../../../core/design/site-plan';
@@ -389,10 +389,10 @@ ${prev!.html}`
                     title: pageTitle({ request, isArabic: isAr, kindLabel: kind }),
                     isArabic: isAr,
                     tokenCss: paletteCss(palette),
-                    baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${bidiCss()}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                    baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${bidiCss()}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                     sections: written,
                     sprite: iconSprite(),
-                    script: `${uiKitScript()}\n${chromeRuntime(isAr)}`,
+                    script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}`,
                 });
                 logs.push(`section-wise build: ${ok.length}/${plans.length} sections, ${html.length} bytes`);
             } else {
@@ -498,6 +498,16 @@ ${prev!.html}`
                 }
             }
 
+            // A sign-in link the model wrote points at nothing, and the repair
+            // below would demote it to a <span> — honest, and it deletes the
+            // button the user asked for. Joe ships a real panel, so wire it to
+            // that instead. Must run BEFORE the dead-anchor repair.
+            const authWired = wireAuthControls(html);
+            if (authWired.wired) {
+                html = authWired.html;
+                logs.push(`content: wired ${authWired.wired} sign-in/out control(s) to the auth panel`);
+            }
+
             // A link with href="#" is the model's placeholder for "a link belongs
             // here". The browser audit reports each as a dead anchor; the shipped
             // page had two, reported and unfixed.
@@ -551,7 +561,7 @@ ${prev!.html}`
         // The brief asked for all of it and the model shipped a page with zero
         // transitions, zero :hover, zero :focus and no rule for `button` at all.
         // Placed right after <style> so anything the model DID write still wins.
-        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}${needsCharts(kind) ? `\n${chartCss()}` : ''}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
+        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}${needsCharts(kind) ? `\n${chartCss()}` : ''}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
         // A section-wise build already carries the base layer — assembled by Joe,
         // not by the model — so injecting it again would duplicate ~10 KB of CSS.
         if (!/Joe UI kit — base layer/.test(html)) {
@@ -580,6 +590,22 @@ ${prev!.html}`
             html = /<\/body>/i.test(html)
                 ? html.replace(/<\/body>/i, `${uiKitScript()}\n</body>`)
                 : html + uiKitScript();
+        }
+
+        // [CHROME] The section-wise build gets these from assemblePage; a page
+        // written in ONE pass — which is what a short blueprint falls back to —
+        // was getting the header STYLESHEET and none of the header BEHAVIOUR.
+        // Measured end to end: the portfolio page's dropdown was the only
+        // control on it, and pressing it did nothing, because no runtime was
+        // ever listening. The CSS and the code that drives it must travel
+        // together or the page looks right and is dead.
+        if (/<header\b|class="[^"]*site-header/i.test(html) && !/Joe page chrome/.test(html)) {
+            const cr = chromeRuntime(isAr);
+            html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${cr}\n</body>`) : html + cr;
+        }
+        if (/data-auth=/i.test(html) && !/Joe sign-in/.test(html)) {
+            const ar = authRuntime(isAr);
+            html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${ar}\n</body>`) : html + ar;
         }
 
         // [CART] A store's cart is Joe's runtime, not the model's: a cart held in
@@ -661,6 +687,37 @@ ${prev!.html}`
             qaIssues = review.issues;
             qaFixed = review.fixed;
         } catch { /* non-fatal */ }
+
+        /**
+         * The <title> is Joe's, on EVERY path.
+         *
+         * The section-wise build composes it, but the single-shot path and the
+         * edit path keep whatever the model put in its <head> — measured end to
+         * end, a portfolio build shipped `<title>ص</title>`, the model's own
+         * one-character placeholder, because that page kind has a short
+         * blueprint and falls to the single pass. A title is the browser tab,
+         * the bookmark and the search result; it is not a detail to leave to
+         * whatever came back.
+         *
+         * An edit keeps the title the page already had, unless it is one of
+         * these obvious non-titles — the user may have asked for a specific one.
+         */
+        try {
+            const current = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [, ''])[1].trim();
+            const junk = !current
+                || current.length < 4
+                || /^(document|untitled|page|صفحة|my page|title|x)$/i.test(current)
+                || current.startsWith(request.slice(0, 20));
+            if (!isEdit || junk) {
+                const want = pageTitle({ request, isArabic: isAr, kindLabel: kind }).replace(/[<>&"]/g, '');
+                if (want && want !== current) {
+                    html = /<title[^>]*>[\s\S]*?<\/title>/i.test(html)
+                        ? html.replace(/<title[^>]*>[\s\S]*?<\/title>/i, `<title>${want}</title>`)
+                        : html.replace(/<\/head>/i, `<title>${want}</title>\n</head>`);
+                    if (current) qaFixed.push(`replaced the page title (was "${current.slice(0, 40)}")`);
+                }
+            }
+        } catch { /* a title is not worth failing a build over */ }
 
         // The combined self-contained HTML is always the source of truth for edits.
         // Stable filename per session so the preview URL stays consistent across edits.
@@ -1253,10 +1310,10 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 title: pageTitle({ request, isArabic: isAr, kindLabel: page.kind, pageName: page.title, brand }),
                 isArabic: isAr,
                 tokenCss: paletteCss(palette),
-                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                 sections,
                 sprite: iconSprite(),
-                script: `${uiKitScript()}\n${chromeRuntime(isAr)}`,
+                script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}`,
             });
             // The one navigation, injected after <body> so it is identical on
             // every page and always points at files that will exist.

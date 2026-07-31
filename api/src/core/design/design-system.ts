@@ -284,6 +284,13 @@ export function designBrief(p: Palette): string {
 export function uiKitCss(): string {
     return `/* Joe UI kit — base layer (the page's own rules override these) */
 *,*::before,*::after{box-sizing:border-box}
+/* The hidden ATTRIBUTE is display:none in the user-agent stylesheet, which any
+   author rule with a class beats. .btn{display:inline-flex} therefore un-hid
+   every button the runtime tried to hide — measured in a browser: the sign-out
+   button was visible before anyone had signed in, and the sign-in button stayed
+   visible after. Anything that hides an element by attribute in this kit depends
+   on this line. */
+[hidden]{display:none!important}
 html{scroll-behavior:smooth}
 body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
   font-family:'Segoe UI','Noto Sans Arabic','Helvetica Neue',system-ui,-apple-system,sans-serif}

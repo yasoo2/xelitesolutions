@@ -343,6 +343,166 @@ export function chromeRuntime(isArabic: boolean): string {
 </script>`;
 }
 
+/**
+ * The sign-in panel.
+ *
+ * The user asked for a login button and a logout button. Joe was inserting
+ * `<a href="#login">` — and nothing on the page carried that id, so all three
+ * copies were dead links, which is exactly what the browser press-test reported.
+ *
+ * A brochure page has no server to sign in to, and that is not a reason to ship
+ * a button that does nothing. It is a reason to be honest about it: the panel
+ * opens, the fields validate for real, and on submit it says plainly that no
+ * account service is connected yet and what to change to connect one. That is
+ * the same contract the contact form already keeps — a control that works and
+ * tells the truth beats a control that pretends.
+ *
+ * Signed-in state is remembered in localStorage so "sign out" has something to
+ * do, and the header swaps which button it shows. Nothing is sent anywhere.
+ */
+export function authCss(): string {
+    return `
+.joe-auth[hidden]{display:none}
+.joe-auth{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:20px}
+.joe-auth::before{content:"";position:absolute;inset:0;background:rgba(8,12,20,.5)}
+.joe-auth-card{position:relative;width:min(100%,410px);background:var(--surface);color:var(--text);
+  border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);
+  padding:clamp(22px,3vw,32px)}
+.joe-auth-card h2{margin:0 0 4px;font-size:var(--step-2)}
+.joe-auth-card p.sub{margin:0 0 18px;color:var(--text-muted);font-size:var(--step--1)}
+.joe-auth-card label{display:block;font-weight:600;font-size:var(--step--1);margin-bottom:6px}
+.joe-auth-card .field{margin-bottom:14px}
+.joe-auth-card .row-end{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+.joe-auth-close{position:absolute;inset-inline-end:12px;top:12px;background:none;border:0;
+  font-size:26px;line-height:1;color:var(--text-muted);cursor:pointer;padding:2px 8px;box-shadow:none}
+.joe-auth-close:hover{color:var(--text);transform:none}
+.joe-auth-note{margin-top:16px;padding:12px 14px;border-radius:var(--radius);
+  background:var(--brand-light);color:var(--brand-dark);font-size:var(--step--1);line-height:1.6}
+.joe-auth-note[hidden]{display:none}
+`.trim();
+}
+
+export function authRuntime(isArabic: boolean): string {
+    const T = isArabic ? {
+        title: 'تسجيل الدخول', sub: 'أدخل بريدك وكلمة المرور.',
+        email: 'البريد الإلكتروني', pass: 'كلمة المرور',
+        submit: 'دخول', cancel: 'إلغاء', close: 'إغلاق',
+        noBackend: 'لا يوجد خادم حسابات موصول بهذه الصفحة بعد، فلم تُرسَل بياناتك إلى أي جهة ولم يُنشأ أي حساب. اربط خدمة مصادقة (مثل مسار /api/login في خادمك) لتفعيل هذا الزر فعليًا.',
+        signedIn: 'أنت مسجّل الدخول محليًا في هذا المتصفح فقط.',
+        signedOut: 'تم تسجيل الخروج.',
+    } : {
+        title: 'Sign in', sub: 'Enter your email and password.',
+        email: 'Email', pass: 'Password',
+        submit: 'Sign in', cancel: 'Cancel', close: 'Close',
+        noBackend: 'No account service is connected to this page yet, so nothing was sent anywhere and no account was created. Point this at a real endpoint (e.g. /api/login on your server) to make this button do something.',
+        signedIn: 'You are signed in locally, in this browser only.',
+        signedOut: 'Signed out.',
+    };
+    return `<script>
+/* Joe sign-in — a real panel, real validation, and an honest ending. */
+(function () {
+  'use strict';
+  var T = ${JSON.stringify(T)};
+  var KEY = 'joe-signed-in';
+  var panel = null;
+
+  function build() {
+    if (panel) return panel;
+    panel = document.createElement('div');
+    panel.className = 'joe-auth';
+    panel.hidden = true;
+    panel.innerHTML =
+      '<div class="joe-auth-card" role="dialog" aria-modal="true" aria-labelledby="joe-auth-h">' +
+        '<button type="button" class="joe-auth-close" aria-label="' + T.close + '">&times;</button>' +
+        '<h2 id="joe-auth-h">' + T.title + '</h2>' +
+        '<p class="sub">' + T.sub + '</p>' +
+        '<form novalidate>' +
+          '<div class="field"><label for="joe-auth-email">' + T.email + '</label>' +
+            '<input id="joe-auth-email" name="email" type="email" required autocomplete="email"></div>' +
+          '<div class="field"><label for="joe-auth-pass">' + T.pass + '</label>' +
+            '<input id="joe-auth-pass" name="password" type="password" required minlength="6" autocomplete="current-password"></div>' +
+          '<div class="row-end"><button type="button" class="btn btn-ghost" data-auth-cancel>' + T.cancel + '</button>' +
+            '<button type="submit" class="btn">' + T.submit + '</button></div>' +
+        '</form>' +
+        '<p class="joe-auth-note" role="status" hidden></p>' +
+      '</div>';
+    document.body.appendChild(panel);
+
+    var form = panel.querySelector('form');
+    var note = panel.querySelector('.joe-auth-note');
+    panel.querySelector('.joe-auth-close').addEventListener('click', close);
+    panel.querySelector('[data-auth-cancel]').addEventListener('click', close);
+    panel.addEventListener('click', function (e) { if (e.target === panel) close(); });
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      /* Real validation. novalidate hands the reporting to us so the message is
+         one a screen reader can reach, but checkValidity applies exactly the
+         same constraints — nothing is loosened. */
+      var bad = null;
+      Array.prototype.forEach.call(form.elements, function (el) {
+        if (!el.name || typeof el.checkValidity !== 'function') return;
+        var ok = el.checkValidity();
+        el.setAttribute('aria-invalid', ok ? 'false' : 'true');
+        if (!ok && !bad) bad = el;
+      });
+      if (bad) { bad.focus(); return; }
+      /* There is no server. Say so, rather than flashing a fake success. */
+      note.hidden = false;
+      note.textContent = T.noBackend;
+      try { localStorage.setItem(KEY, '1'); } catch (err) { }
+      reflect();
+    });
+    return panel;
+  }
+
+  function open() {
+    build();
+    panel.hidden = false;
+    document.documentElement.style.overflow = 'hidden';
+    var f = panel.querySelector('input');
+    if (f) f.focus();
+  }
+  function close() {
+    if (!panel) return;
+    panel.hidden = true;
+    document.documentElement.style.overflow = '';
+  }
+  function signedIn() { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } }
+
+  /* Only one of the two buttons makes sense at a time. */
+  function reflect() {
+    var inNow = signedIn();
+    Array.prototype.forEach.call(document.querySelectorAll('[data-auth="login"]'), function (b) { b.hidden = inNow; });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-auth="logout"]'), function (b) { b.hidden = !inNow; });
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('[data-auth]') : null;
+    if (!btn) return;
+    e.preventDefault();
+    var what = btn.getAttribute('data-auth');
+    if (what === 'login') { open(); return; }
+    if (what === 'logout') {
+      try { localStorage.removeItem(KEY); } catch (err) { }
+      reflect();
+      var say = document.createElement('p');
+      say.className = 'joe-auth-note';
+      say.setAttribute('role', 'status');
+      say.textContent = T.signedOut;
+      say.style.position = 'fixed'; say.style.insetInlineEnd = '16px'; say.style.top = '80px'; say.style.zIndex = '90';
+      document.body.appendChild(say);
+      setTimeout(function () { say.remove(); }, 3000);
+    }
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', reflect);
+  else reflect();
+})();
+</script>`;
+}
+
 /* ---------- the controls the user asked for ---------------------------------- */
 
 interface ControlSpec {
@@ -357,8 +517,11 @@ interface ControlSpec {
 }
 
 const AUTH_CONTROLS: ControlSpec[] = [
-    { ar: 'تسجيل الدخول', en: 'Sign in', match: /(تسجيل\s*(ال)?دخول|دخول|log\s?in|sign\s?in)/i, href: '#login', ghost: true },
-    { ar: 'تسجيل الخروج', en: 'Sign out', match: /(تسجيل\s*(ال)?خروج|خروج|log\s?out|sign\s?out)/i, href: '#logout', ghost: true },
+    // These carry data-auth rather than an href. A static page has nothing at
+    // "#login" to land on — measured, Joe was inserting three links to an id
+    // that did not exist — and the runtime below gives them real behaviour.
+    { ar: 'تسجيل الدخول', en: 'Sign in', match: /(تسجيل\s*(ال)?دخول|دخول|log\s?in|sign\s?in)/i, href: '', ghost: true },
+    { ar: 'تسجيل الخروج', en: 'Sign out', match: /(تسجيل\s*(ال)?خروج|خروج|log\s?out|sign\s?out)/i, href: '', ghost: true },
     { ar: 'من نحن', en: 'About', match: /(من\s*نحن|عن\s*(الشركة|نا)|about)/i, href: '#about', ghost: true },
     { ar: 'اتصل بنا', en: 'Contact', match: /(ات[صّ]ل\s*بنا|تواصل\s*معنا|contact)/i, href: '#contact', ghost: false },
 ];
@@ -399,13 +562,54 @@ export function ensureHeaderControls(
         if (!spec) continue;
         if (clickables.some(c => spec.match.test(visible(c)))) continue;
         const label = isArabic ? spec.ar : spec.en;
-        toAdd.push(`<a class="btn${spec.ghost ? ' btn-ghost' : ''}" href="${spec.href}">${label}</a>`);
+        const action = spec.ar === 'تسجيل الدخول' ? 'login' : spec.ar === 'تسجيل الخروج' ? 'logout' : '';
+        toAdd.push(action
+            ? `<button type="button" class="btn${spec.ghost ? ' btn-ghost' : ''}" data-auth="${action}">${label}</button>`
+            : `<a class="btn${spec.ghost ? ' btn-ghost' : ''}" href="${spec.href}">${label}</a>`);
         added.push(label);
     }
     if (!toAdd.length) return { html: out, added };
 
     out = out.replace(anchor[0], `${anchor[0]}\n      ${toAdd.join('\n      ')}`);
     return { html: out, added };
+}
+
+/**
+ * Wire up whatever the model called a sign-in or sign-out control.
+ *
+ * A model writes `<a class="btn" href="#login">تسجيل الدخول</a>`, which points
+ * at nothing. The dead-anchor repair below would then demote it to a <span> —
+ * technically honest, and it silently deletes the button the user asked for.
+ *
+ * Since Joe ships a real sign-in panel, the better answer is available: turn it
+ * into the control that opens it. Runs BEFORE the dead-anchor repair so an auth
+ * link is wired rather than demoted.
+ */
+export function wireAuthControls(html: string): { html: string; wired: number } {
+    const LOGIN = /(تسجيل\s*(ال)?دخول|^\s*دخول\s*$|log\s?in|sign\s?in|signin)/i;
+    const LOGOUT = /(تسجيل\s*(ال)?خروج|^\s*خروج\s*$|log\s?out|sign\s?out|signout)/i;
+    let wired = 0;
+
+    const out = String(html || '').replace(
+        /<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi,
+        (whole, attrs: string, inner: string) => {
+            const label = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            const href = (attrs.match(/href\s*=\s*["']([^"']*)["']/i) || [, ''])[1];
+            // Only in-page or empty destinations. A link to a real /login page
+            // is someone's deliberate choice and is left alone.
+            if (href && !/^#/.test(href)) return whole;
+            if (/data-auth\s*=/.test(attrs)) return whole;
+            const action = LOGIN.test(label) || /#login/i.test(href) ? 'login'
+                : LOGOUT.test(label) || /#logout/i.test(href) ? 'logout' : '';
+            if (!action) return whole;
+            wired++;
+            const keep = attrs
+                .replace(/\s*href\s*=\s*["'][^"']*["']/i, '')
+                .replace(/\s+/g, ' ').trim();
+            return `<button type="button" ${keep ? keep + ' ' : ''}data-auth="${action}">${inner}</button>`;
+        },
+    );
+    return { html: out, wired };
 }
 
 /**
@@ -443,8 +647,25 @@ export function repairDeadAnchors(html: string, opts?: { isArabic?: boolean }): 
         if (words.length) targets.push({ id, words });
     }
 
+    /**
+     * Every id the document actually has. An anchor pointing at `#login` when
+     * nothing on the page carries that id is exactly as dead as `href="#"` — it
+     * just looks intentional. Measured end to end: three `href="#login"` links
+     * and no `id="login"` anywhere, and the browser press-test reported all
+     * three as controls that do nothing.
+     */
+    const existingIds = new Set([...src.matchAll(/\bid\s*=\s*["']([^"']+)["']/g)].map(m => m[1]));
+
     let fixed = 0;
-    const out = src.replace(/<a\b([^>]*?)href\s*=\s*["']#["']([^>]*)>([\s\S]*?)<\/a\s*>/gi,
+    let src2 = src.replace(/<a\b([^>]*?)href\s*=\s*["']#([A-Za-z][\w:.-]*)["']([^>]*)>/gi,
+        (whole, before: string, id: string, after: string) => {
+            if (existingIds.has(id)) return whole;
+            // Rewriting it to "#" hands it to the repair below, which either
+            // finds a real destination from the link's own text or demotes it.
+            return `<a${before}href="#"${after}>`;
+        });
+
+    const out = src2.replace(/<a\b([^>]*?)href\s*=\s*["']#["']([^>]*)>([\s\S]*?)<\/a\s*>/gi,
         (whole, before: string, after: string, inner: string) => {
             const label = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
             if (!label) return whole;

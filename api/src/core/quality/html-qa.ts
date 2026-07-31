@@ -281,6 +281,55 @@ export function reviewHtml(rawHtml: string, isArabic = false): HtmlReview {
     });
     if (altAdded) fixed.push(`added a missing alt attribute to ${altAdded} image(s)`);
 
+    // 7c-bis. ONE site header, not three.
+    //
+    //     A page is written section by section, and more than one section can
+    //     legitimately think it is the top of the page — the blueprint names a
+    //     header, and a hero or a nav section produces one too. Measured end to
+    //     end: a landing build came back with THREE <header> elements, each
+    //     sticky, each with its own hamburger and its own dropdown, stacked one
+    //     under another. The nav-toggle appeared three times, so two of the
+    //     three could never be the one a visitor pressed.
+    //
+    //     The first is kept and the rest become plain sections: their content is
+    //     still someone's work and deleting it would lose copy the user asked
+    //     for, but only one element may claim the banner landmark.
+    {
+        const mask = maskNonMarkup(html);
+        const opens = [...mask.matchAll(/<header\b[^>]*>/gi)];
+        if (opens.length > 1) {
+            let demoted = 0;
+            // Later ones first, so each splice leaves the earlier offsets valid.
+            for (let i = opens.length - 1; i >= 1; i--) {
+                const openTag = opens[i];
+                const at = openTag.index!;
+                const closeAt = mask.indexOf('</header', at);
+                if (closeAt < 0) continue;
+                const closeEnd = mask.indexOf('>', closeAt);
+                if (closeEnd < 0) continue;
+                // Its NAVIGATION goes with it. The chrome runtime binds to the
+                // first site header only, so a demoted copy keeps a hamburger
+                // and a dropdown that nothing is listening to — measured, its
+                // trigger was reported as a control that does nothing. A second
+                // copy of the site nav is duplicate chrome, not content.
+                let inner = html.slice(at + openTag[0].length, closeAt)
+                    .replace(/<button\b[^>]*class="[^"]*\bnav-toggle\b[^"]*"[^>]*>[\s\S]*?<\/button\s*>/gi, '')
+                    .replace(/<nav\b[^>]*>[\s\S]*?<\/nav\s*>/gi, '');
+                const newOpen = openTag[0]
+                    .replace(/^<header/i, '<section')
+                    .replace(/\bsite-header\b/g, 'was-header')
+                    .replace(/\sdata-joe-header\b/gi, '');
+                // Nothing but chrome? Then there is nothing to keep.
+                const keeps = inner.replace(/<[^>]+>/g, '').trim().length > 0 || /<img|<svg/i.test(inner);
+                html = html.slice(0, at)
+                    + (keeps ? newOpen + inner + '</section>' : '')
+                    + html.slice(closeEnd + 1);
+                demoted++;
+            }
+            if (demoted) fixed.push(`kept one site header and turned ${demoted} duplicate(s) into sections`);
+        }
+    }
+
     // 7d. <main> is the landmark that lets a screen-reader user skip the header.
     //     Safe to add only when the document has one header and one footer and
     //     everything between them is the content — which is the shape every
