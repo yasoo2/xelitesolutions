@@ -326,11 +326,31 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
                 // A browser asks for /favicon.ico on every page and logs a 404 when
                 // there is none. Reporting that as "JavaScript errors" would fail
                 // every single page for something that is not a defect.
-                if (/favicon\.ico/i.test(t)) return;
+                //
+                // The message text alone is not enough: Chrome logs it as the bare
+                // "Failed to load resource: the server responded with a status of
+                // 404" with the URL only in the message's LOCATION. Filtering on the
+                // text was letting the favicon fail every audited page by 30 points.
+                const where = (() => { try { return String(m.location()?.url || ''); } catch { return ''; } })();
+                if (/favicon\.ico/i.test(t) || /favicon\.ico/i.test(where)) return;
                 consoleErrors.push(t.slice(0, 160));
             });
             page.on('pageerror', (e: any) => { if (consoleErrors.length < 5) consoleErrors.push(String(e?.message || e).slice(0, 160)); });
-            await page.goto(fileUrl, { waitUntil: 'networkidle', timeout: 20000 }).catch(() => { });
+            // A failed navigation used to be swallowed, and the audit then measured
+            // the BROWSER'S OWN ERROR PAGE — which has two images with no alt and a
+            // "Details" button — and reported a score for it as if it were the
+            // user's page. Refusing to audit is honest; scoring an error page is not.
+            let resp: any = null, navError = '';
+            try { resp = await page.goto(fileUrl, { waitUntil: 'networkidle', timeout: 20000 }); }
+            catch (e: any) { navError = String(e?.message || e).split('\n')[0].slice(0, 120); }
+            if (navError || !resp || !resp.ok()) {
+                try { await page.close(); } catch { }
+                try { await browser.close(); } catch { }
+                return {
+                    ...empty,
+                    skipped: `could not load ${fileUrl} — ${navError || (resp ? `HTTP ${resp.status()}` : 'no response')}`,
+                };
+            }
             await page.waitForTimeout(600);
             // Scroll through so lazy images and reveal animations settle.
             await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => { });

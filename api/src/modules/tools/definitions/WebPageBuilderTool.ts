@@ -576,6 +576,9 @@ ${prev!.html}`
         // Set when a page is too big for a whole-page repair round trip; the user
         // is told the findings stand rather than left to assume they were fixed.
         let repairSkipped = false;
+        // Reasons an audit did not run at all. Silence here would read as "the
+        // page was checked and is fine" — it was not checked.
+        const auditSkipped: string[] = [];
         let visualFindings: VisualFinding[] = [];
         let visualScore = -1;
         let visualRepairs = 0;
@@ -626,7 +629,7 @@ ${prev!.html}`
                         }
                     } catch (e: any) { logs.push(`visual repair failed: ${e?.message || e}`); }
                 }
-            } else if (audit.skipped) { logs.push(`visual audit skipped: ${audit.skipped}`); }
+            } else if (audit.skipped) { auditSkipped.push(audit.skipped); logs.push(`visual audit skipped: ${audit.skipped}`); }
         } catch (e: any) { logs.push(`visual audit error: ${e?.message || e}`); }
 
         // [BEHAVIOUR AUDIT] The visual audit measures how the page LOOKS, and a
@@ -682,7 +685,7 @@ ${prev!.html}`
                         }
                     } catch (e: any) { logs.push(`behaviour repair failed: ${e?.message || e}`); }
                 }
-            } else if (b.skipped) { logs.push(`behaviour audit skipped: ${b.skipped}`); }
+            } else if (b.skipped) { auditSkipped.push(b.skipped); logs.push(`behaviour audit skipped: ${b.skipped}`); }
         } catch (e: any) { logs.push(`behaviour audit error: ${e?.message || e}`); }
 
         // [QA department — optional real browser test] Off by default (heavy on a
@@ -765,6 +768,11 @@ ${prev!.html}`
                     : `🖱️ Behaviour audit (controls really clicked): ${behaviourScore}/100${behaviourRepairs > 0 ? ` (repaired ${behaviourRepairs})` : ''}`);
                 const shown = behaviourFindings.filter(f => f.severity !== 'minor').slice(0, 4);
                 if (shown.length) parts.push(shown.map(f => `   • ${isAr ? f.ar : f.en}`).join('\n'));
+            }
+            if (auditSkipped.length) {
+                parts.push(isAr
+                    ? `⚠️ لم يعمل الفحص الآلي: ${auditSkipped[0]} — لم أقس هذه الصفحة، ولا أدّعي أنها سليمة.`
+                    : `⚠️ The automatic checks did not run: ${auditSkipped[0]} — this page was not measured, and I am not claiming it is fine.`);
             }
             if (repairSkipped) {
                 parts.push(isAr

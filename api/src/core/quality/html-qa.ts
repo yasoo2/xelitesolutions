@@ -177,6 +177,20 @@ export function reviewHtml(rawHtml: string, isArabic = false): HtmlReview {
         fixed.push(`demoted ${h1s.length - 1} extra <h1> to <h2>`);
     }
 
+    // 7a-bis. No <h1> at all. Every page needs one statement of what it is, and
+    //     when a page is written section by section each section reaches for h2 —
+    //     nobody writes the page's title because nobody is writing "the page".
+    //     The first heading in the document is that title; promote it.
+    if (!/<h1\b/i.test(html) && /<h2\b/i.test(html)) {
+        let done = false;
+        html = html.replace(/<h2\b([^>]*)>([\s\S]*?)<\/h2\s*>/i, (full, attrs, inner) => {
+            if (done) return full;
+            done = true;
+            return `<h1${attrs}>${inner}</h1>`;
+        });
+        if (done) fixed.push('promoted the first heading to <h1> (the page had none)');
+    }
+
     // 7b. An icon-only control announces itself as "button" and nothing else.
     //     The icon it draws already says what it is — Joe's sprite ids are
     //     literally the word (#i-cart, #i-mail), so the name is right there.

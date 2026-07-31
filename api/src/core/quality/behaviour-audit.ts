@@ -174,12 +174,26 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
         page.on('console', (m: any) => {
             if (m.type() !== 'error' || jsErrors.length >= 6) return;
             const t = String(m.text());
-            if (/favicon\.ico/i.test(t)) return;
+            // Chrome reports a missing favicon as a bare "Failed to load resource"
+            // with the URL only in the message's location, so the text alone does
+            // not identify it — and it was costing every page a critical finding.
+            const where = (() => { try { return String(m.location()?.url || ''); } catch { return ''; } })();
+            if (/favicon\.ico/i.test(t) || /favicon\.ico/i.test(where)) return;
             jsErrors.push(t.slice(0, 140));
         });
         // A page that pops a confirm() on click would hang the audit forever.
         page.on('dialog', (d: any) => d.dismiss().catch(() => { }));
-        await page.goto(fileUrl, { waitUntil: 'networkidle', timeout: 20000 }).catch(() => { });
+        // Same rule as the visual audit: a navigation that failed leaves the
+        // browser's own error page on screen, and clicking ITS buttons and
+        // reporting a score would be a measurement of nothing.
+        let resp: any = null, navError = '';
+        try { resp = await page.goto(fileUrl, { waitUntil: 'networkidle', timeout: 20000 }); }
+        catch (e: any) { navError = String(e?.message || e).split('\n')[0].slice(0, 120); }
+        if (navError || !resp || !resp.ok()) {
+            try { await page.close(); } catch { }
+            try { await browser.close(); } catch { }
+            return { ...empty, skipped: `could not load ${fileUrl} — ${navError || (resp ? `HTTP ${resp.status()}` : 'no response')}` };
+        }
         await page.waitForTimeout(500);
 
         const list: Array<{ sel: string; kind: string; label: string; href?: string }> =
