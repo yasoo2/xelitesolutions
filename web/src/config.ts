@@ -3,11 +3,6 @@ function cleanUrl(raw: unknown) {
   return v.replace(/^[\s"'`]+/, '').replace(/[\s"'`]+$/, '').replace(/\/+$/, '');
 }
 
-function cleanFlag(raw: unknown) {
-  const v = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
-  return v;
-}
-
 function inferApiUrl() {
   const hostname = window.location.hostname;
   const isLocal =
@@ -48,7 +43,6 @@ const runtimeConfig: any = (window as any).JOE_CONFIG || {};
 
 const apiEnvRaw = cleanUrl(runtimeConfig.API_URL || (import.meta as any).env?.VITE_API_URL);
 const wsEnvRaw = cleanUrl(runtimeConfig.WS_URL || (import.meta as any).env?.VITE_WS_URL);
-const chromeFlagRaw = cleanFlag(runtimeConfig.FEATURE_BROWSER_CHROME || (import.meta as any).env?.VITE_FEATURE_BROWSER_CHROME);
 const googleClientIdRaw = cleanUrl(runtimeConfig.GOOGLE_CLIENT_ID || (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID);
 
 const hostname = window.location.hostname;
@@ -73,42 +67,12 @@ const API_URL = '/api';
 const WS_URL = inferWsUrl(API_URL);
 console.log('[JOE] Final Config:', { API_URL, WS_URL });
 const GOOGLE_CLIENT_ID = googleClientIdRaw;
-const readQueryChrome = () => {
-  try {
-    return new URLSearchParams(window.location.search).get('chrome') || '';
-  } catch {
-    return '';
-  }
-};
-const readStoredChrome = () => {
-  try {
-    return localStorage.getItem('FEATURE_BROWSER_CHROME') || '';
-  } catch {
-    return '';
-  }
-};
 
-const queryChrome = readQueryChrome();
-const storedChrome = readStoredChrome();
-const FEATURE_BROWSER_CHROME =
-  chromeFlagRaw === '1' ||
-  chromeFlagRaw === 'true' ||
-  queryChrome === '1' ||
-  queryChrome.toLowerCase() === 'true' ||
-  storedChrome === '1' ||
-  storedChrome.toLowerCase() === 'true';
+// FEATURE_BROWSER_CHROME and getBrowserChromeEnabled() were removed with the
+// BrowserChrome component they gated. The flag could be set three ways — build
+// env, a ?chrome=1 query parameter and a localStorage key — and read by nothing
+// at all: no component ever consulted it, and BrowserChrome.tsx was never
+// mounted. A switch that turns nothing on is worse than no switch, because
+// somebody eventually flips it and reports that it does not work.
 
-function getBrowserChromeEnabled() {
-  const q = readQueryChrome();
-  const s = readStoredChrome();
-  return (
-    chromeFlagRaw === '1' ||
-    chromeFlagRaw === 'true' ||
-    q === '1' ||
-    q.toLowerCase() === 'true' ||
-    s === '1' ||
-    s.toLowerCase() === 'true'
-  );
-}
-
-export { API_URL, WS_URL, FEATURE_BROWSER_CHROME, GOOGLE_CLIENT_ID, getBrowserChromeEnabled };
+export { API_URL, WS_URL, GOOGLE_CLIENT_ID };
