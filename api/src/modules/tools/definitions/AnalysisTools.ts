@@ -4,22 +4,42 @@ import { ToolPermission } from '../types';
 import path from 'path';
 import fs from 'fs';
 import { Analyst } from '../../../system/Analyst';
+import { resolveToolPath as sharedResolveToolPath } from '../utils';
 import { routeToModel } from '../../../core/llm/intelligent-router';
 // import { OpenAI } from 'openai'; // Peer dep, or import dynamic? Copy logic from registry
 
-// Helper reuse
-function repoRoot() {
-    const cwd = process.cwd();
-    return path.basename(cwd) === 'api' ? path.resolve(cwd, '..') : cwd;
-}
-function resolveToolPath(p: string) {
-    const root = repoRoot();
+/**
+ * Anchor and contain an analysis path.
+ *
+ * This file, too, had a private resolver of this name, and it was the weakest of
+ * the four: `if (path.isAbsolute(val)) return val;` returned anything absolute
+ * untouched, and the relative branch had NO containment check at all — it just
+ * resolved and handed the path back.
+ *
+ * "Read-only" does not make that harmless. analyze_codebase walks the directory
+ * it is given and sends what it finds to a model, so an unchecked path is a way
+ * to read /root/.ssh and then post it to a provider.
+ *
+ * Resolution keeps the old convenience — a path that exists relative to the
+ * process cwd wins, which is how the repo gets analysed from inside `api/` —
+ * but the answer now goes through the one shared containment rule either way.
+ */
+function resolveToolPath(p: string, workspaceId?: string) {
     const val = String(p ?? '').trim();
-    if (!val || val === '.') return root;
-    if (path.isAbsolute(val)) return val;
-    const fromCwd = path.resolve(process.cwd(), val);
-    if (fs.existsSync(fromCwd)) return fromCwd;
-    return path.resolve(root, val);
+    if (!val || val === '.') return sharedResolveToolPath('', { workspaceId });
+
+    if (!path.isAbsolute(val)) {
+        const fromCwd = path.resolve(process.cwd(), val);
+        if (fs.existsSync(fromCwd)) return sharedResolveToolPath(fromCwd, { workspaceId });
+    }
+    return sharedResolveToolPath(val, { workspaceId });
+}
+
+/** The resolver throws on an escape; a tool must refuse, not crash. */
+type SafePath = { ok: true; path: string } | { ok: false; error: string };
+function safePath(p: string, workspaceId?: string): SafePath {
+    try { return { ok: true, path: resolveToolPath(p, workspaceId) }; }
+    catch (e: any) { return { ok: false, error: String(e?.message || e) }; }
 }
 
 export class AnalyzeProjectTool extends BaseTool {
@@ -31,8 +51,13 @@ export class AnalyzeProjectTool extends BaseTool {
     outputSchema = { type: 'object' as const, properties: { summary: { type: 'string' } } };
     permissions: ToolPermission[] = ['read'];
     sideEffects: ToolPermission[] = [];
-    async execute(input: any) {
-        const root = String(input?.path || process.cwd()).trim();
+    async execute(input: any, context?: any) {
+        // This used to pass `input.path` straight to the Analyst, with no
+        // resolution and no containment — the only one of the three that did not
+        // even go through the (broken) local resolver.
+        const resolved = safePath(String(input?.path || '.'), context?.workspaceId);
+        if (!resolved.ok) return { ok: false, error: resolved.error, logs: [] };
+        const root = resolved.path;
         try {
             const result = Analyst.analyze(root);
             return { ok: true, output: result, logs: [`analyst.analyze.success=${root}`] };
@@ -52,7 +77,7 @@ export class AnalyzeCodebaseTool extends BaseTool {
     permissions: ToolPermission[] = ['read', 'internet']; // LLM access
     sideEffects: ToolPermission[] = [];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const p = String(input?.path || '.').trim();
         const logs: string[] = [];
 
@@ -69,7 +94,9 @@ export class AnalyzeCodebaseTool extends BaseTool {
             };
         }
 
-        const root = resolveToolPath(p);
+        const resolved = safePath(p, context?.workspaceId);
+        if (!resolved.ok) return { ok: false, error: resolved.error, logs };
+        const root = resolved.path;
         if (!fs.existsSync(root)) return { ok: false, error: 'Path not found', logs };
 
         logs.push(`analyze.root=${root}`);
@@ -161,10 +188,12 @@ export class ProjectDetectTool extends BaseTool {
     sideEffects: ToolPermission[] = [];
     rateLimitPerMinute = 30;
 
-    async execute(input: any) {
-        const root = resolveToolPath(String(input?.path || '.'));
-        const maxDepth = Number.isFinite(input?.maxDepth) ? Math.max(1, Math.min(10, Number(input.maxDepth))) : 4;
+    async execute(input: any, context?: any) {
         const logs: string[] = [];
+        const resolved = safePath(String(input?.path || '.'), context?.workspaceId);
+        if (!resolved.ok) return { ok: false, error: resolved.error, logs };
+        const root = resolved.path;
+        const maxDepth = Number.isFinite(input?.maxDepth) ? Math.max(1, Math.min(10, Number(input.maxDepth))) : 4;
 
         if (!fs.existsSync(root)) return { ok: false, error: 'Path not found', logs };
 

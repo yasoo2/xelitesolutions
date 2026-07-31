@@ -49,6 +49,23 @@ export function formatToolError(err: any): string {
     }
 }
 
+/**
+ * Contain a path an alias is about to rewrite.
+ *
+ * This service renames the model's tool call (`file_write` → `write_file`) and
+ * rewrites its path argument to an absolute one, so it is a containment boundary
+ * whether or not it was designed as one — and it had its own hand-rolled check,
+ * with its own holes. There is one rule now, shared with every tool.
+ */
+function containPath(p: string, workspaceId?: string): { ok: true; path: string } | { ok: false; error: string } {
+    try {
+        const { resolveToolPath } = require('../tools/utils');
+        return { ok: true, path: resolveToolPath(p, { workspaceId }) };
+    } catch (e: any) {
+        return { ok: false, error: String(e?.message || e) };
+    }
+}
+
 function rateLimitBucketKey(name: string, input: any) {
     if (name === 'browser_run' || name === 'browser_open' || name === 'visual_qa') {
         return `${name}:${input?.sessionId || 'global'} `;
@@ -265,29 +282,25 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         effectiveName = name === 'ai_write_file' ? 'ai_write_file' : 'write_file';
         const fp = String((effectiveInput as any)?.path ?? (effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? '');
         if (fp) {
-            const { workspaceService } = require('./WorkspaceService');
-            // CRITICAL: Strictly use contextWorkspaceId to resolve root. Never fallback to process.cwd() inside ToolService.
-            const root = workspaceService.getActiveRoot(contextWorkspaceId);
-            
-            // Resolve path safely relative to the workspace root
-            const abs = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
+            // The gate here was `abs.startsWith(root)`, which admits a SIBLING
+            // that merely shares a prefix — a root of "/srv/joe" accepted
+            // "/srv/joe-backup/anything" because the characters matched. It also
+            // created the destination directory BEFORE deciding, so a refused
+            // write still left attacker-chosen directories on disk.
+            //
+            // Both are gone: one containment rule, applied before anything is
+            // created.
+            const abs = containPath(fp, contextWorkspaceId);
+            if (!abs.ok) return { ok: false, error: abs.error, logs };
 
-            // Ensure the directory exists before attempting to write
-            try { 
-                const dir = path.dirname(abs);
-                if (!fs.existsSync(dir)) {
-                    fs.mkdirSync(dir, { recursive: true }); 
-                }
+            try {
+                const dir = path.dirname(abs.path);
+                if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             } catch { }
 
-            // Security Gate: Ensure the path is within the resolved workspace root
-            if (abs.startsWith(root)) {
-                (effectiveInput as any).path = abs;
-                (effectiveInput as any).filename = abs;
-                delete (effectiveInput as any).filePath;
-            } else {
-                return { ok: false, error: 'path_outside_workspace: ' + abs, logs };
-            }
+            (effectiveInput as any).path = abs.path;
+            (effectiveInput as any).filename = abs.path;
+            delete (effectiveInput as any).filePath;
         }
     }
 
@@ -295,34 +308,22 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         effectiveName = 'file_edit';
         const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
         if (fp) {
-            const { workspaceService } = require('./WorkspaceService');
-            const root = workspaceService.getActiveRoot(contextWorkspaceId);
-            const abs = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
-            
-            if (abs.startsWith(root)) {
-                (effectiveInput as any).path = abs;
-                delete (effectiveInput as any).filePath;
-                delete (effectiveInput as any).filename;
-            } else {
-                return { ok: false, error: 'path_outside_workspace: ' + abs, logs };
-            }
+            const abs = containPath(fp, contextWorkspaceId);
+            if (!abs.ok) return { ok: false, error: abs.error, logs };
+            (effectiveInput as any).path = abs.path;
+            delete (effectiveInput as any).filePath;
+            delete (effectiveInput as any).filename;
         }
     }
     if (name === 'file_read' || name === 'read_file' || name === 'view_file' || name === 'get_file') {
         effectiveName = 'read_file';
         const fp = String((effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? (effectiveInput as any)?.path ?? '');
         if (fp) {
-            const { workspaceService } = require('./WorkspaceService');
-            const root = workspaceService.getActiveRoot(contextWorkspaceId);
-            const abs = path.isAbsolute(fp) ? fp : path.resolve(root, fp);
-
-            if (abs.startsWith(root)) {
-                (effectiveInput as any).path = abs;
-                delete (effectiveInput as any).filePath;
-                delete (effectiveInput as any).filename;
-            } else {
-                return { ok: false, error: 'path_outside_workspace: ' + abs, logs };
-            }
+            const abs = containPath(fp, contextWorkspaceId);
+            if (!abs.ok) return { ok: false, error: abs.error, logs };
+            (effectiveInput as any).path = abs.path;
+            delete (effectiveInput as any).filePath;
+            delete (effectiveInput as any).filename;
         }
     }
     if (name === 'audit' || name === 'dependency_scan' || name === 'security_audit') {

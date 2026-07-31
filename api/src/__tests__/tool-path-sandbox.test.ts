@@ -8,7 +8,12 @@
  * "/etc/passwd" was handed straight back — and ai_write_file used it to create
  * /etc/joe-owned.txt during a manual run.
  *
- * Seven tool files depend on this function. If it ever regresses, these fail.
+ * The header used to say "seven tool files depend on this function", which was
+ * true and beside the point: SystemTools.ts, AnalysisTools.ts and ToolService.ts
+ * each carried their OWN resolver of the same name, and all three had holes of
+ * their own — so fixing this one left write_file, ls, file_edit, grep_search and
+ * analyze_codebase still open. They were deleted and now call this. It is the
+ * only containment rule in the system; if it regresses, everything fails.
  */
 
 import path from 'path';

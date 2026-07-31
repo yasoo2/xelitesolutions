@@ -4,6 +4,7 @@ import { ToolPermission } from '../types';
 import path from 'path';
 import fs from 'fs';
 import { workspaceService } from '../../services/WorkspaceService';
+import { resolveToolPath as sharedResolveToolPath } from '../utils';
 import { commandRouter } from '../../terminal/command-router';
 import { broadcast } from '../../../api/ws';
 import { handleShellCommand } from '../handlers';
@@ -30,28 +31,36 @@ function getWorkspaceRoot(workspaceId?: string) {
     return cwd;
 }
 
-function resolveToolPath(p: string, workspaceId?: string) {
-    const val = String(p ?? '').trim();
-    if (!val) return getWorkspaceRoot(workspaceId); // Empty path = workspace root
-    if (path.isAbsolute(val)) return val;
+/**
+ * Anchor and contain a tool path.
+ *
+ * This file used to carry its OWN resolver of this name, and it had the hole the
+ * shared one had already been fixed for:
+ *
+ *     if (path.isAbsolute(val)) return val;   // ← containment check skipped
+ *
+ * write_file, file_edit, ls, grep_search and the shell's working directory all
+ * ran through it, so any absolute path the model produced was used verbatim.
+ * Proven, not theorised: a test drove write_file and it created
+ * /etc/joe-owned-write-file.txt. Its relative branch also compared with
+ * `startsWith`, which admits a sibling directory that merely shares a prefix.
+ *
+ * There is one resolver now. Four copies of a security check meant four chances
+ * to get it wrong, and three of them were wrong.
+ */
+const resolveToolPath = (p: string, workspaceId?: string) =>
+    sharedResolveToolPath(p, { workspaceId });
 
-    let root: string;
-    try {
-        root = workspaceService.getActiveRoot(workspaceId) || getWorkspaceRoot(workspaceId);
-    } catch {
-        root = getWorkspaceRoot(workspaceId);
-    }
-
-    const abs = path.resolve(root, val);
-    const projectRoot = path.join(process.cwd(), path.basename(process.cwd()) === 'api' ? '..' : '.');
-    const buildsDir = path.resolve(projectRoot, 'data/builds');
-    const externalRoot = workspaceService.externalRoot;
-
-    if (abs.startsWith(root) || abs.startsWith(buildsDir) || abs.startsWith(externalRoot)) {
-        return abs;
-    }
-
-    throw new Error('path_outside_workspace: ' + abs);
+/**
+ * The resolver throws on an escape. Every caller here has to turn that into a
+ * refused tool result instead of an exception, because an exception escaping
+ * `execute` is reported to the agent as a crash rather than as "not allowed" —
+ * and an agent that reads a crash retries, while one that reads a refusal stops.
+ */
+type SafePath = { ok: true; path: string } | { ok: false; error: string };
+function safePath(p: string, workspaceId?: string): SafePath {
+    try { return { ok: true, path: resolveToolPath(p, workspaceId) }; }
+    catch (e: any) { return { ok: false, error: String(e?.message || e) }; }
 }
 
 function splitCommandLine(raw: string) {
@@ -139,7 +148,9 @@ export class FileEditTool extends BaseTool {
         const filename = String(input?.filename ?? input?.path ?? '');
         const find = String(input?.find ?? '');
         const replace = String(input?.replace ?? '');
-        const full = resolveToolPath(filename, context?.workspaceId);
+        const resolved = safePath(filename, context?.workspaceId);
+        if (!resolved.ok) return { ok: false, error: resolved.error, logs };
+        const full = resolved.path;
 
         if (!fs.existsSync(full)) {
             console.error(`[file_edit] File not found. input.filename: ${filename}, resolved full path: ${full}`);
@@ -199,7 +210,12 @@ export class WriteFileTool extends BaseTool {
         const rawPath = String(input?.filename || input?.path || '').trim();
         const content = String(input?.content ?? '');
         if (!rawPath) return { ok: false, error: 'filename or path is required', logs: [] };
-        const full = resolveToolPath(rawPath, context?.workspaceId);
+        // Containment is decided BEFORE the directory is created. Creating it
+        // first left attacker-chosen directories across the filesystem even when
+        // the write itself was correctly refused.
+        const resolved = safePath(rawPath, context?.workspaceId);
+        if (!resolved.ok) return { ok: false, error: resolved.error, logs };
+        const full = resolved.path;
 
         const dir = path.dirname(full);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -249,7 +265,11 @@ export class LsTool extends BaseTool {
         const logs: string[] = [];
         const p = String(input?.path ?? '.');
         const includeHidden = Boolean(input?.includeHidden);
-        const full = resolveToolPath(p, context?.workspaceId);
+        // A directory listing is not a harmless read: it is how a path to
+        // something worth taking gets found.
+        const resolved = safePath(p, context?.workspaceId);
+        if (!resolved.ok) return { ok: false, error: resolved.error, logs };
+        const full = resolved.path;
 
         try {
             const names = fs.readdirSync(full, { withFileTypes: true })
@@ -291,7 +311,9 @@ export class GrepSearchTool extends BaseTool {
         const searchPath = String(input?.path ?? '.');
         const include = String(input?.include ?? '');
         const exclude = String(input?.exclude ?? '');
-        const workDir = resolveToolPath(searchPath, context?.workspaceId);
+        const resolvedDir = safePath(searchPath, context?.workspaceId);
+        if (!resolvedDir.ok) return { ok: false, error: resolvedDir.error, logs };
+        const workDir = resolvedDir.path;
 
         try {
             const hasGnuGrepRes = await executionEngine.execute({
@@ -437,12 +459,19 @@ export class ScaffoldProjectTool extends BaseTool {
         const logs: string[] = [];
         const structure = input?.structure || {};
         const baseDir = String(input?.baseDir || input?.name || '.');
-        const resolvedBase = resolveToolPath(baseDir, context?.workspaceId);
+        const resolvedBaseDir = safePath(baseDir, context?.workspaceId);
+        if (!resolvedBaseDir.ok) return { ok: false, error: resolvedBaseDir.error, logs };
+        const resolvedBase = resolvedBaseDir.path;
         const created: string[] = [];
         const errors: string[] = [];
 
         for (const [relativePath, content] of Object.entries(structure)) {
-            const fullPath = path.join(resolvedBase, relativePath);
+            // Containing only the base is not enough — every key of `structure`
+            // is a path fragment the model chose, and one of them being
+            // "../../../.ssh/authorized_keys" escapes a base that is itself fine.
+            const entry = safePath(path.join(resolvedBase, relativePath), context?.workspaceId);
+            if (!entry.ok) { errors.push(`${relativePath}: ${entry.error}`); continue; }
+            const fullPath = entry.path;
             try {
                 if (content === null) {
                     if (!fs.existsSync(fullPath)) {
@@ -526,7 +555,15 @@ export class ShellExecuteTool extends BaseTool {
             } catch { }
         }
 
-        const workDir = cwdInput ? resolveToolPath(cwdInput, context?.workspaceId) : root;
+        // The persisted shell state is a path from a previous run, so it is
+        // validated on the way back in — a cwd that was allowed once, or was
+        // written into the state file by something else, is not trusted now.
+        let workDir = root;
+        if (cwdInput) {
+            const resolvedCwd = safePath(cwdInput, context?.workspaceId);
+            if (!resolvedCwd.ok) return { ok: false, error: resolvedCwd.error, logs };
+            workDir = resolvedCwd.path;
+        }
 
         try {
             if (background) {
