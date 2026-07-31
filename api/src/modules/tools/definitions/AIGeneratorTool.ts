@@ -1,16 +1,27 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import { resolveToolPath } from '../utils';
+import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import fs from 'fs';
 import path from 'path';
 
-// Helper to get LLM function lazily to avoid circular dependency
+/**
+ * Lazily resolve the LLM to avoid a circular import.
+ *
+ * This used to answer a load failure with
+ * `async () => "Error: LLM not available in Elite Tools context"` — a stand-in
+ * that returns an error message SHAPED LIKE AN ANSWER. The caller writes the
+ * return value to disk, so the error text became the file's contents.
+ */
 const getLLM = () => {
+    let mod: any;
     try {
-        // Correct path to core/llm
-        const mod = require('../../../core/llm');
-        return mod.callLLM || mod.default?.callLLM;
-    } catch (e) {
-        return async () => "Error: LLM not available in Elite Tools context";
+        mod = require('../../../core/llm');
+    } catch (e: any) {
+        throw new Error(`LLM module unavailable: ${e?.message || e}`);
     }
+    const fn = mod.callLLM || mod.default?.callLLM;
+    if (typeof fn !== 'function') throw new Error('LLM module exports no callLLM function');
+    return fn;
 };
 
 /**
@@ -61,8 +72,10 @@ export class AIGeneratorTool implements ToolDefinition {
     }, context?: any) {
         const logs: string[] = [];
         const filePath = input.path;
-        const callLLM = getLLM();
         const contextWorkspaceId = context?.workspaceId;
+        let callLLM: any;
+        try { callLLM = getLLM(); }
+        catch (e: any) { return { ok: false, error: String(e?.message || e), logs }; }
 
         const isRepair = input.context?.includes('repairTicket') || input.context?.includes('buildContext');
         const systemPrompt = `You are an ELITE Software Engineer and UI/UX Designer. 
@@ -108,21 +121,32 @@ IMPORTANT: Provide the FULL, production-ready content of the file. No generic de
         try {
             const content = await callLLM(userPrompt, [{ role: 'system', content: systemPrompt }]);
 
-            // Resolve absolute path
-            const { workspaceService } = require('../../services/WorkspaceService');
-            const root = workspaceService.getActiveRoot(contextWorkspaceId);
-            const absPath = path.isAbsolute(filePath) ? filePath : path.resolve(root, filePath);
-
-            // Ensure directory exists
-            fs.mkdirSync(path.dirname(absPath), { recursive: true });
+            // When no provider answers, the router returns an apology STRING
+            // rather than throwing. Writing it would put "تعذّر الوصول إلى محرّك
+            // الذكاء" into the user's source file as its contents.
+            if (isProviderFailure(content)) {
+                return { ok: false, error: String(content), logs: [...logs, 'no LLM provider answered; nothing was written'] };
+            }
 
             // Clean content (remove potential LLM-added backticks if any)
-            let finalContent = content.trim();
+            let finalContent = String(content ?? '').trim();
             if (finalContent.startsWith('```') && finalContent.endsWith('```')) {
                 const lines = finalContent.split('\n');
                 finalContent = lines.slice(1, -1).join('\n').trim();
             }
+            // An empty completion is a failed generation. Writing it would
+            // replace an existing file with nothing and report success.
+            if (!finalContent) {
+                return { ok: false, error: 'the model returned no content, so nothing was written', logs };
+            }
 
+            // resolveToolPath keeps the write inside the workspace and throws on
+            // escape. `path.isAbsolute(p) ? p : resolve(root, p)` meant any
+            // absolute path the model produced was written verbatim, anywhere on
+            // the machine — proven, not theorised: the same pattern in the
+            // unreachable twin of this tool created /etc/joe-owned.txt in a test.
+            const absPath = resolveToolPath(filePath, { workspaceId: contextWorkspaceId });
+            fs.mkdirSync(path.dirname(absPath), { recursive: true });
             fs.writeFileSync(absPath, finalContent, 'utf-8');
 
             const stats = fs.statSync(absPath);

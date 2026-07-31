@@ -273,77 +273,17 @@ export class SelfConfidenceTool implements ToolDefinition {
     }
 }
 
-// 9. AI-Enhanced File Writer
-export class AIWriteFileTool implements ToolDefinition {
-    name = 'ai_write_file';
-    version = '1.0.0';
-    tags = ['write', 'generate', 'code', 'elite'];
-    description = 'Generate full file content using AI based on a description.';
-
-    inputSchema: any = {
-        type: 'object',
-        properties: {
-            path: { type: 'string', description: 'Target file path' },
-            description: { type: 'string', description: 'Detailed description of what the file should contain' },
-            context: { type: 'string', description: 'Optional project context or requirements' }
-        },
-        required: ['path', 'description']
-    };
-    outputSchema: any = { type: 'object', properties: { path: { type: 'string' }, size: { type: 'number' } } };
-
-    permissions: ToolPermission[] = ['write'];
-    sideEffects: ToolPermission[] = ['write'];
-    rateLimitPerMinute = 10;
-    auditFields = ['path'];
-    mockSupported = false;
-
-    async execute(input: { path: string; description: string; context?: string }, context?: any) {
-        const filePath = input.path;
-        const prompt = `Write the full content for the file at "${filePath}".
-        Goal: ${input.description}
-        Context: ${input.context || 'Create a production-ready, high-quality, and visually stunning implementation.'}
-        
-        Rules:
-        - Return ONLY the file content.
-        - No markdown wrapping (no \`\`\` code blocks).
-        - Substantial code, no placeholders.
-        - If it's a web file, use modern aesthetics (glassmorphism if appropriate).
-        - Ensure all imports work or are standard.`;
-
-        try {
-            const callLLM = getLLM();
-            const response = await callLLM(prompt, [{ role: 'system', content: 'You are an elite software architect. Output raw file content only. No markdown.' }]);
-
-            // Clean markdown blocks if LLM ignored instructions
-            let cleanContent = String(response ?? '').trim();
-            if (cleanContent.startsWith('```')) {
-                cleanContent = cleanContent.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '');
-            }
-            // An empty completion is a failed generation. Writing it would replace
-            // an existing file with nothing and report success.
-            if (!cleanContent) {
-                return { ok: false, error: 'the model returned no content, so nothing was written', logs: [] };
-            }
-            // When no provider answers, the router hands back an apology instead
-            // of throwing. Writing that apology into the file as its contents is
-            // exactly what happened in testing.
-            if (isProviderFailure(cleanContent)) {
-                return { ok: false, error: cleanContent, logs: ['no LLM provider answered; nothing was written'] };
-            }
-
-            const fs = require('fs');
-            // resolveToolPath keeps the write inside the workspace and throws on
-            // escape. The previous `path.isAbsolute(filePath) ? filePath : ...`
-            // meant any absolute path the model produced was written verbatim,
-            // anywhere on the machine.
-            const absPath = resolveToolPath(filePath, { workspaceId: context?.workspaceId });
-
-            fs.mkdirSync(path.dirname(absPath), { recursive: true });
-            fs.writeFileSync(absPath, cleanContent);
-
-            return { ok: true, output: { path: absPath, size: cleanContent.length }, logs: [`AI generated file: ${absPath}`] };
-        } catch (e: any) {
-            return { ok: false, error: e.message, logs: [] };
-        }
-    }
-}
+/*
+ * There was a ninth tool here — AIWriteFileTool, also named 'ai_write_file'.
+ *
+ * It was registered during this session on the belief that the capability was
+ * dark. Booting the server disproved that: the registry logged
+ * "Duplicate tool name skipped: ai_write_file", because AIGeneratorTool already
+ * owns that name and is registered ahead of it. The class was a second, never-
+ * reachable implementation of a tool the agent already had.
+ *
+ * Both copies carried the same two defects — an absolute path written without
+ * the workspace guard, and a provider failure written into the file as its
+ * contents. Those are fixed in AIGeneratorTool, which is the one that runs.
+ * This copy is deleted rather than kept as a twin that can drift.
+ */

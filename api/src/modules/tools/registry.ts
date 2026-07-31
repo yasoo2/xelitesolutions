@@ -253,9 +253,6 @@ const baseTools: ToolDefinition[] = [
   new EliteTools.AmbiguityResolverTool(),
   new EliteTools.MultiAgentDebateTool(),
   new EliteTools.SelfConfidenceTool(),
-  // Was defined and fully implemented but never listed here, so the tool
-  // simply did not exist as far as the agent was concerned.
-  new EliteTools.AIWriteFileTool(),
 
   createTool(ProjectPlannerTool),
   createTool(PhaseExecutorTool),
