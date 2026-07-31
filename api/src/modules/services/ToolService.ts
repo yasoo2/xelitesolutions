@@ -457,10 +457,25 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         else if (effectiveName === 'write_file' || effectiveName === 'file_edit') status = 'جاري كتابة الكود...';
         else if (effectiveName === 'read_file' || effectiveName === 'inspect_directory') status = 'جاري مراجعة الملفات...';
         else if (effectiveName === 'analyze_codebase') status = 'جاري تحليل بنية المشروع...';
+        else if (effectiveName === 'web_page_builder') status = 'جاري تصميم الصفحة وبناؤها...';
 
-        if (status) {
-            broadcastThinkingPhase(contextSessionId, 'executing', status);
+        /**
+         * EVERY tool announces itself, not eight of them.
+         *
+         * `status` was set from a hardcoded list of eight names, and
+         * `web_page_builder` — the single most common thing Joe does — was not
+         * on it. So building a page broadcast no phase at all, the frontend's
+         * phase never left 'idle', and the live thinking panel had nothing to
+         * turn on for. The user's words: «التفكير العصبي الحي لا يعمل».
+         *
+         * A tool with no bespoke sentence gets a truthful generic one built from
+         * its own name rather than being invisible.
+         */
+        if (!status) {
+            const pretty = String(effectiveName || '').replace(/[_-]+/g, ' ').trim();
+            status = pretty ? `جاري تنفيذ: ${pretty}…` : 'جاري التنفيذ…';
         }
+        broadcastThinkingPhase(contextSessionId, 'executing', status);
     }
 
     try {

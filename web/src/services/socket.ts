@@ -268,7 +268,11 @@ async function connect() {
       }
 
       // Auto phase management based on events
-      if (msgType === 'step_started') {
+      if (msgType === 'step_started' || msgType === 'user_input') {
+        // `step_started` is emitted only for BROWSER nodes, so a page build —
+        // the commonest run there is — never entered quiet mode and none of the
+        // transitions below could fire. `user_input` is broadcast at the start
+        // of every run, whatever it turns out to be.
         if (!quietMode) {
           quietMode = true;
           emitPhase('analyzing');
@@ -277,7 +281,11 @@ async function connect() {
         if (quietMode) {
           emitPhase('synthesizing');
         }
-      } else if (msgType === 'tool_start') {
+      } else if (msgType === 'tool_start' || msgType === 'tool_started') {
+        // BOTH names. The backend emits `tool_started`; this listened only for
+        // `tool_start`, so it never matched once — the phase never reached
+        // 'executing' and the live thinking panel had nothing to turn on for.
+        // A silent name mismatch between two halves of the same feature.
         if (quietMode) {
           emitPhase('executing');
         }
