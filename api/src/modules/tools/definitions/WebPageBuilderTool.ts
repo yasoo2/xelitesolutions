@@ -195,7 +195,12 @@ ${prev!.html}`
         // out weaker than the first. Long pages are now written one section at a
         // time, each with the whole design system in front of it.
         const blueprint = blueprintSections(kind);
-        const sectionwise = !isEdit && !isMultiFile && shouldWriteSectionwise(blueprint);
+        // `!isMultiFile` used to be part of this condition, which meant asking
+        // for a proper multi-file project silently gave up the path that writes
+        // the page WELL — the two were coupled for no reason. Splitting is a
+        // transform applied to the finished document at write time, so how the
+        // document was produced no longer has anything to do with it.
+        const sectionwise = !isEdit && shouldWriteSectionwise(blueprint);
         let html = '';
         let sectionReport: { written: number; total: number; failed: string[] } | null = null;
         let editedSections: string[] = [];
@@ -679,7 +684,25 @@ ${prev!.html}`
             // and is the source of truth for future edits).
             fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
 
-            const split = isMultiFile ? splitHtmlProject(html) : null;
+            /**
+             * Split into real files ALWAYS, not only when a project was asked for.
+             *
+             * Everything went into one artifact blob, so the file tree stayed
+             * empty and the user's report was «لم يعمل ملفات في قائمة الملفات».
+             * `isMultiFile` also gated the section-wise build (`sectionwise =
+             * !isEdit && !isMultiFile && …`), so asking for separate files meant
+             * giving up the path that writes the page well — the two were
+             * needlessly coupled.
+             *
+             * They are not any more. The page is still WRITTEN section by
+             * section into one document, and split at write time, which is a
+             * pure transform of finished HTML: styles to styles.css, inline
+             * scripts to script.js in document order, both re-linked. Moving the
+             * scripts to the end of the body is safer than where they were —
+             * every element they query is guaranteed to exist by then — and each
+             * one is already wrapped in its own scope.
+             */
+            const split = splitHtmlProject(html);
             if (split && split.multiFile) {
                 const dir = `joe-${sessionKey}`;
                 const abs = path.join(ARTIFACT_DIR, dir);
@@ -1048,14 +1071,19 @@ ${prev!.html}`
             previewUrl: base,
             files: isProject ? projectFiles.map(f => f.name) : [filename],
         }) + '\n```';
-        // Reply code: for a project, show each file; otherwise the single HTML file.
-        const codeBlock = isProject
-            ? [
-                '**index.html**\n```html\n' + projIndex + '\n```',
-                projCss ? '**styles.css**\n```css\n' + projCss + '\n```' : '',
-                projJs ? '**script.js**\n```js\n' + projJs + '\n```' : '',
-              ].filter(Boolean).join('\n\n')
-            : '```html\n' + html + '\n```';
+        /**
+         * The chat reply lists the files; it does not paste them.
+         *
+         * A 45 KB page dumped into the conversation is what the user described
+         * as «كتب الكود في الدردشة بطريقة غير مرتبة». The page is already on
+         * disk, already open in the preview and already in the file tree — three
+         * places it can be read properly, with syntax highlighting and a
+         * scrollbar. Repeating it as one unbroken block adds nothing and buries
+         * the quality report above it.
+         */
+        const fileList = (isProject ? projectFiles : [{ name: filename, bytes: html.length }])
+            .map(f => `  • ${f.name} — ${Math.max(1, Math.round(f.bytes / 1024))} KB`)
+            .join('\n');
         const verb = editNoOp
             ? (isAr ? '⚠️ لم أستطع تطبيق التعديل تلقائياً (النموذج لم يُرجع تغييراً). أعد صياغة الطلب أو حاول مجدداً' : '⚠️ Could not apply the change automatically (the model returned no change). Rephrase or try again')
             : isEdit ? (isAr ? 'تم تعديل المشروع' : 'Updated the project') : (isAr ? (isProject ? 'تم بناء المشروع' : 'تم بناء الصفحة') : (isProject ? 'Built the project' : 'Built the page'));
@@ -1065,8 +1093,8 @@ ${prev!.html}`
         const okPrefix = editNoOp ? '' : '✅ ';
         const shownTail = editNoOp ? '' : (isAr ? ' وعُرض في المعاينة.' : ' and shown in Preview.');
         const message = isAr
-            ? `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}\n\n${qaSummary}\n\nاطلب أي تعديل آخر (مثل: «أضف زر» أو «غيّر اللون») وسيظهر مباشرة في المعاينة.\n\nالكود الكامل:\n${codeBlock}`
-            : `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}\n\n${qaSummary}\n\nAsk for any further change (e.g. "add a button" / "change the color") and it updates live.\n\nFull code:\n${codeBlock}`;
+            ? `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}\n\n${qaSummary}\n\n${fileList}\n\nاطلب أي تعديل آخر (مثل: «أضف زر» أو «غيّر اللون») وسيظهر مباشرة في المعاينة.`
+            : `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}\n\n${qaSummary}\n\n${fileList}\n\nAsk for any further change (e.g. "add a button" / "change the color") and it updates live.`;
 
         return { ok: true, output: { message, url, previewUrl: url, path: filename }, logs };
     }

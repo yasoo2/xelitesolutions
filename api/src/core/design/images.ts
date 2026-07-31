@@ -117,16 +117,63 @@ function findCached(artifactDir: string, query: string, variant = 0): string | n
 const STOPWORDS = new Set(['the','a','an','of','in','on','at','and','or','with','for','to','by',
     'photo','image','picture','close','up','view','shot','background','people','person']);
 
-/** Does the candidate's own title/tags mention what we searched for? */
-export function isRelevant(query: string, result: any): boolean {
-    const terms = String(query || '').toLowerCase().split(/[^a-z0-9]+/)
-        .filter(w => w.length > 2 && !STOPWORDS.has(w));
-    if (!terms.length) return true;                 // nothing to check against
+/** Normalise a word so "developers" and "developer" are the same evidence. */
+function fold(w: string): string {
+    return w.endsWith('ies') && w.length > 4 ? w.slice(0, -3) + 'y'
+        : w.endsWith('es') && w.length > 4 ? w.slice(0, -2)
+            : w.endsWith('s') && w.length > 3 ? w.slice(0, -1)
+                : w;
+}
+
+const words = (s: string): string[] =>
+    String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map(fold);
+
+/**
+ * How much of what we asked for does this candidate's own metadata support?
+ *
+ * Returns the share of the subject's meaningful terms that appear in the
+ * candidate's title, description or tags, plus which ones matched.
+ */
+export function relevanceOf(query: string, result: any): { share: number; matched: string[]; terms: string[] } {
+    const terms = [...new Set(words(query).filter(w => w.length > 2 && !STOPWORDS.has(w)))];
     const tags = Array.isArray(result?.tags) ? result.tags.map((t: any) => String(t?.name ?? t)) : [];
-    const hay = [result?.title, result?.description, ...tags].join(' ').toLowerCase();
-    if (!hay.trim()) return true;                   // no metadata: don't punish it
-    // One shared term is enough — demanding all of them rejects almost everything.
-    return terms.some(t => hay.includes(t));
+    // A SET OF WORDS, not one long string. `hay.includes('slot')` matched
+    // "Christiansborg Slot", and `includes('port')` matched "ports" and
+    // "Portas" — substring matching is how a castle in Copenhagen became the
+    // illustration for a software consultancy.
+    const hay = new Set(words([result?.title, result?.description, ...tags].join(' ')));
+    const matched = terms.filter(t => hay.has(t));
+    return { share: terms.length ? matched.length / terms.length : 0, matched, terms };
+}
+
+/**
+ * Is this candidate actually a photograph of what was asked for?
+ *
+ * The old rule was "one shared term is enough". On Wikimedia Commons a file
+ * carries a long list of categories, so one incidental shared word is nearly
+ * free — and all three photographs on a page Joe shipped for a software
+ * consultancy got in that way:
+ *
+ *   «Christiansborg Slot, Copenhagen»   — a castle, for "software developer",
+ *                                          on the strength of a "Software" category
+ *   «Sony Playstation 2 … Memory Card»  — a games console, for "team meeting office",
+ *                                          on "Office equipment"
+ *   «Founder June 2025»                 — for "business consultant", on "Business people"
+ *
+ * Each was one word out of two or three, from a category that says nothing
+ * about the picture. So: whole words rather than substrings, and for a subject
+ * of more than one term, TWO of them must be supported. One word is a
+ * coincidence; two is a subject.
+ *
+ * A candidate with no metadata at all is now refused rather than waved through.
+ * It cannot be shown to be relevant, and the fallback — the page's own gradient,
+ * which is designed and on-palette — is better than a photograph of an unknown
+ * thing.
+ */
+export function isRelevant(query: string, result: any): boolean {
+    const { matched, terms } = relevanceOf(query, result);
+    if (!terms.length) return true;                 // nothing to check against
+    return terms.length === 1 ? matched.length === 1 : matched.length >= 2;
 }
 
 function extFor(contentType: string): string {
@@ -167,7 +214,12 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
     // Rank before downloading: metadata alone tells us relevance and, when the
     // archive reports them, the dimensions. Taking the first acceptable hit is
     // what put a portrait in a wide card and a military photo on a tech page.
+    // Relevance GATES the ranking, it does not merely contribute to it. Shape
+    // and resolution alone scored an irrelevant photo 27-37 against a floor of
+    // 25, so a well-proportioned picture of the wrong thing outranked having no
+    // picture at all — measured against the three that actually shipped.
     const ranked = candidates
+        .filter(c => isRelevant(query, { title: c.title, description: c.description, tags: c.tags }))
         .map(c => ({
             c,
             score: scoreCandidate(query, slot, { title: c.title, description: c.description, tags: c.tags },

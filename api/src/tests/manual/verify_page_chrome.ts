@@ -35,7 +35,7 @@ import { layoutCss, primitivesCss, iconSprite } from '../../core/design/layouts'
 const OUT = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-chrome-'));
 
 function buildPage(): string {
-    const palette = buildPalette('xelitesolutions consulting', 'landing');
+    const palette = buildPalette('xelitesolutions consulting');
     const body = isolateLatinRuns(`
 <header class="site-header" data-joe-header><div class="wrap header-inner">
   <a class="brand" href="index.html">إكس إيليت</a>
