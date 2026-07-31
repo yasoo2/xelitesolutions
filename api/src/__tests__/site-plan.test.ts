@@ -7,7 +7,7 @@
  * and the check that the links between Joe's own pages actually resolve.
  */
 
-import { planSite, siteNav, siteNavCss, verifyInternalLinks } from '../core/design/site-plan';
+import { planSite, siteNav, siteNavCss, verifyInternalLinks, targetPage } from '../core/design/site-plan';
 
 describe('planSite decides, and says why', () => {
     it.each([
@@ -127,5 +127,36 @@ describe('verifyInternalLinks', () => {
             ['products.html', ''], ['about.html', ''],
         ]);
         expect(verifyInternalLinks(files).dead).toEqual([]);
+    });
+});
+
+describe('targetPage picks which page a follow-up is about', () => {
+    const pages = planSite('store', 'موقع كامل لمتجر', true).pages;
+    const file = (req: string) => targetPage(req, pages)?.file ?? null;
+
+    it.each([
+        ['عدّل صفحة المنتجات', 'products.html'],
+        ['غيّر النص في «من نحن»', 'about.html'],
+        ['أضف خريطة في صفحة التواصل', 'contact.html'],
+        ['حسّن الصفحة الرئيسية', 'index.html'],
+        ['edit products.html', 'products.html'],
+        ['change the contact page', 'contact.html'],
+    ])('%s -> %s', (req, expected) => expect(file(req as string)).toBe(expected));
+
+    it.each([
+        'اجعل الخط أكبر',
+        'غيّر ألوان الموقع',
+        'حسّن التصميم',
+    ])('returns null for %s, so the caller uses the entry page instead of guessing', (req) => {
+        expect(targetPage(req, pages)).toBeNull();
+    });
+
+    it('refuses to choose when two pages match equally', () => {
+        expect(targetPage('عدّل من نحن وتواصل معنا', pages)).toBeNull();
+    });
+
+    it('does not match a page that is not in this site', () => {
+        const small = planSite('blog', 'موقع كامل لمدونة', true).pages;
+        expect(targetPage('عدّل صفحة المنتجات', small)).toBeNull();
     });
 });

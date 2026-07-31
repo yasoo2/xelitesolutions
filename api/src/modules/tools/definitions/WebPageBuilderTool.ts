@@ -13,7 +13,7 @@ import { findReferenceUrl, extractReference, paletteFromReference, referenceBrie
 import { detectPageKind, blueprintBrief, imageBudget, blueprintSections, kindLabel } from '../../../core/design/blueprints';
 import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteSectionwise, type WrittenSection } from '../../../core/design/section-writer';
 import { splitIntoSections, targetSections, extractEditedSection, spliceSections, sectionEditPrompt, type PageSection } from '../../../core/design/section-editor';
-import { planSite, siteNav, siteNavCss, verifyInternalLinks, type SitePlan } from '../../../core/design/site-plan';
+import { planSite, siteNav, siteNavCss, verifyInternalLinks, targetPage, type SitePlan } from '../../../core/design/site-plan';
 import { resolveImages, creditsBlock, availableSources } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
@@ -76,7 +76,7 @@ export class WebPageBuilderTool implements ToolDefinition {
         // of regenerating a brand new one from scratch.
         // The palette and page kind are remembered with the page: a follow-up edit
         // must not re-roll the colours or re-decide what the page is.
-        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any; reference?: any }> =
+        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any; reference?: any; site?: { dir: string; pages: any[] } }> =
             (global as any).joePages || ((global as any).joePages = {});
         const prev = store[sessionKey];
         const wantsNew = /(new page|from scratch|صفحة جديدة|من الصفر|ابدأ من جديد)/i.test(request);
@@ -212,6 +212,7 @@ ${prev!.html}`
                     ...(store[sessionKey] || {} as any),
                     filename: built.entry, html: built.entryHtml,
                     palette, kind, archetype, typePair, reference,
+                    site: { dir: built.dir, pages: built.pages },
                 };
                 return built.result;
             }
@@ -224,12 +225,35 @@ ${prev!.html}`
         // the builder restores the previous version — and the user is told the
         // edit was applied when nothing changed. The request almost always names
         // one section, so only that section makes the round trip.
-        if (isEdit && prev && prev.html.length > 8000) {
-            const existing = splitIntoSections(prev.html);
+        // [SITE EDIT] On a site, a follow-up has to pick the PAGE first. Without
+        // this, «عدّل صفحة المنتجات» would edit whatever the entry page happens
+        // to contain and report success — the same class of failure the targeted
+        // section edit was built to end, one level up.
+        let siteEditFile = '';
+        let siteEditHtml = '';
+        if (isEdit && prev?.site?.pages?.length) {
+            const page = targetPage(request, prev.site.pages as any);
+            const file = page?.file || 'index.html';
+            const abs = path.join(ARTIFACT_DIR, prev.site.dir, file);
+            try {
+                siteEditHtml = fs.readFileSync(abs, 'utf-8');
+                siteEditFile = file;
+                logs.push(`site edit: targeting ${file}${page ? '' : ' (no page named — using the entry page)'}`);
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                    ? `📄 أعدّل صفحة «${page?.title || 'الرئيسية'}» من الموقع`
+                    : `📄 Editing the "${page?.title || 'Home'}" page of the site`);
+            } catch (e: any) {
+                logs.push(`site edit: could not read ${file} — ${e?.message || e}`);
+            }
+        }
+
+        const editBase = siteEditHtml || prev?.html || '';
+        if (isEdit && prev && editBase.length > 8000) {
+            const existing = splitIntoSections(editBase);
             const targets = targetSections(request, existing);
             if (targets.length) {
                 const design = `${designBrief(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}`;
-                let working = prev.html;
+                let working = editBase;
                 const applied: Array<{ section: PageSection; html: string }> = [];
                 for (const section of targets) {
                     if (sessionId) broadcastThinkingDetail(sessionId, isAr
@@ -247,11 +271,11 @@ ${prev!.html}`
                     logs.push(`section edit ${section.id || section.tag}: ${got.ok ? `${got.html.length} bytes` : `rejected — ${got.reason}`}`);
                 }
                 if (applied.length) {
-                    working = spliceSections(prev.html, applied);
+                    working = spliceSections(editBase, applied);
                     // The splice cannot lose the document — but check, because
                     // silently shipping a broken page is the failure this exists
                     // to prevent.
-                    if (/<\/html\s*>/i.test(working) && working.length > prev.html.length * 0.6) html = working;
+                    if (/<\/html\s*>/i.test(working) && working.length > editBase.length * 0.6) html = working;
                     else logs.push('targeted edit discarded: the spliced document did not look intact');
                 }
             }
@@ -518,9 +542,14 @@ ${prev!.html}`
 
         // The combined self-contained HTML is always the source of truth for edits.
         // Stable filename per session so the preview URL stays consistent across edits.
-        const filename = (prev?.filename && /\.html?$/i.test(prev.filename))
-            ? prev.filename
-            : `joe-${sessionKey}.html`;
+        // A site edit writes back into the site folder, under the name of the
+        // page that was edited. Writing it to the flat artifact path instead
+        // would leave the site untouched while reporting the edit as applied.
+        const filename = siteEditFile && prev?.site
+            ? path.join(prev.site.dir, siteEditFile)
+            : (prev?.filename && /\.html?$/i.test(prev.filename))
+                ? prev.filename
+                : `joe-${sessionKey}.html`;
 
         // Multi-file mode: split into a real index.html + styles.css + script.js
         // project inside a per-session folder, and preview that folder's index.html.
@@ -528,7 +557,7 @@ ${prev!.html}`
         const projectFiles: Array<{ name: string; bytes: number }> = [];
         let projIndex = '', projCss = '', projJs = '';
         try {
-            fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+            fs.mkdirSync(path.dirname(path.join(ARTIFACT_DIR, filename)), { recursive: true });
             // Always write the combined file too (keeps single-file preview working
             // and is the source of truth for future edits).
             fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
@@ -544,13 +573,38 @@ ${prev!.html}`
                 if (split.css) { fs.writeFileSync(path.join(abs, 'styles.css'), split.css, 'utf-8'); projectFiles.push({ name: 'styles.css', bytes: split.css.length }); projCss = split.css; }
                 if (split.js) { fs.writeFileSync(path.join(abs, 'script.js'), split.js, 'utf-8'); projectFiles.push({ name: 'script.js', bytes: split.js.length }); projJs = split.js; }
                 base = `http://localhost:${PORT}/artifacts/${dir}/index.html`;
+            } else if (siteEditFile && prev?.site) {
+                // Preview the page that changed, inside the site it belongs to.
+                base = `http://localhost:${PORT}/artifacts/${prev.site.dir}/${siteEditFile}`;
             } else {
                 base = `http://localhost:${PORT}/artifacts/${filename}`;
             }
         } catch (e: any) {
             return { ok: false, error: `write_failed: ${e?.message || e}`, logs };
         }
-        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair, reference };
+        // `site` must survive an edit — dropping it would turn the next follow-up
+        // back into a single-page edit against the wrong file.
+        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair, reference, site: prev?.site };
+
+        // An edit can introduce a link to a page that does not exist. On a site
+        // that is checkable, so it is checked rather than left for the user.
+        let siteLinkNote = '';
+        if (siteEditFile && prev?.site) {
+            try {
+                const dirAbs = path.join(ARTIFACT_DIR, prev.site.dir);
+                const files = new Map<string, string>();
+                for (const f of fs.readdirSync(dirAbs)) {
+                    if (f.endsWith('.html')) files.set(f, fs.readFileSync(path.join(dirAbs, f), 'utf-8'));
+                }
+                const links = verifyInternalLinks(files);
+                logs.push(`site links after edit: ${links.checked} checked, ${links.dead.length} dead`);
+                if (links.dead.length) {
+                    siteLinkNote = isAr
+                        ? `\n🔗 ⚠️ ${links.dead.length} رابط داخلي لا يصل بعد التعديل: ${links.dead.slice(0, 3).map(d => `${d.from}→${d.href}`).join('، ')}`
+                        : `\n🔗 ⚠️ ${links.dead.length} internal link(s) no longer resolve: ${links.dead.slice(0, 3).map(d => `${d.from}→${d.href}`).join(', ')}`;
+                }
+            } catch (e: any) { logs.push(`site link check failed: ${e?.message || e}`); }
+        }
         logs.push(`web_page_builder: ${isEdit ? 'edited' : 'wrote'} ${filename} (${html.length} bytes)${projectFiles.length ? ` + ${projectFiles.length} project files` : ''} in ${ARTIFACT_DIR}`);
 
         // [BROWSABLE OUTPUT] Mirror the generated file(s) into the active workspace
@@ -748,6 +802,7 @@ ${prev!.html}`
                 ? `🎨 نظام التصميم: ${kind} · تخطيط ${archetype} · خطوط ${typePair.note} · لوحة ${palette.scheme === 'analogous' ? 'متجانسة' : 'متكاملة'} حول ${palette.primary} (تباين AA مضمون)`
                 : `🎨 Design system: ${kind} · ${archetype} layout · ${typePair.note} type · ${palette.scheme} palette around ${palette.primary} (AA contrast by construction)`);
             if (referenceNote) parts.push(referenceNote);
+            if (siteLinkNote) parts.push(siteLinkNote.trim());
             if (editedSections.length) {
                 parts.push(isAr
                     ? `✏️ عدّلتُ القسم المقصود فقط: ${editedSections.join('، ')} — بقية الصفحة لم تُمَسّ`
@@ -878,7 +933,7 @@ ${prev!.html}`
         sitePlan: SitePlan; request: string; isAr: boolean; kind: any;
         palette: any; archetype: any; typePair: any; reference: any;
         imageBrief: any; photos: number; context: any; sessionId: any; logs: string[];
-    }): Promise<{ entry: string; entryHtml: string; result: any } | null> {
+    }): Promise<{ entry: string; entryHtml: string; dir: string; pages: any[]; result: any } | null> {
         const { sitePlan, request, isAr, palette, archetype, typePair, reference, imageBrief, context, sessionId, logs } = opts;
         const dir = `site-${String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
         const outDir = path.join(ARTIFACT_DIR, dir);
@@ -1038,6 +1093,8 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
         return {
             entry: `${dir}/index.html`,
             entryHtml: written.get('index.html')!,
+            dir,
+            pages: sitePlan.pages.filter(p => written.has(p.file)),
             result: { ok: true, output: { message, url, previewUrl: url, path: `${dir}/index.html`, files: Array.from(written.keys()) }, logs },
         };
     }

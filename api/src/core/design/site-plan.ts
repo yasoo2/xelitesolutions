@@ -150,6 +150,48 @@ function escapeHtml(s: string): string {
     return String(s ?? '').replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c] as string));
 }
 
+/* ---------- which page does a follow-up mean? -------------------------------- */
+
+/** What a user calls each page, beyond its own title. */
+const PAGE_WORDS: Array<[RegExp, RegExp]> = [
+    [/^index\.html$/i, /الرئيسية|الصفحة الأولى|الواجهة|home ?page|the home|landing/i],
+    [/^products?\.html$/i, /المنتجات|منتجات|الكتالوج|البضائع|products?|catalog/i],
+    [/^menu\.html$/i, /المنيو|قائمة الطعام|الأطباق|menu|dishes/i],
+    [/^reservations?\.html$/i, /الحجز|الحجوزات|حجز طاولة|reservations?|booking/i],
+    [/^about\.html$/i, /من نحن|عنّا|عنا|نبذة|من ?نحن|about/i],
+    [/^contact\.html$/i, /تواصل|اتصل|التواصل|contact/i],
+    [/^services?\.html$/i, /الخدمات|خدماتنا|services?/i],
+    [/^work\.html$/i, /الأعمال|اعمال|المشاريع|portfolio|work|projects/i],
+    [/^archive\.html$/i, /الأرشيف|المقالات|archive|posts/i],
+];
+
+/**
+ * The page a follow-up edit is about, or null.
+ *
+ * Conservative on purpose, exactly like section targeting: editing a page the
+ * user did not mention is worse than asking the whole site. A request that names
+ * no page returns null and the caller edits the entry page, which is what
+ * «غيّر اللون» means on a site.
+ */
+export function targetPage(request: string, pages: PageSpec[]): PageSpec | null {
+    const r = String(request || '');
+    const scored = pages.map(p => {
+        let score = 0;
+        if (p.title && r.includes(p.title)) score += 60;
+        if (r.includes(p.file)) score += 60;
+        for (const [fileRe, wordRe] of PAGE_WORDS) {
+            if (fileRe.test(p.file) && wordRe.test(r)) score += 40;
+        }
+        return { p, score };
+    }).filter(x => x.score >= 40).sort((a, b) => b.score - a.score);
+
+    if (!scored.length) return null;
+    // Two pages matching equally means the request is ambiguous, not that we
+    // should pick one — «عدّل من نحن وتواصل» is a whole-site edit.
+    if (scored.length > 1 && scored[1].score >= scored[0].score) return null;
+    return scored[0].p;
+}
+
 /* ---------- did the links actually land? ------------------------------------- */
 
 export interface LinkReport {
