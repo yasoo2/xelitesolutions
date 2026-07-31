@@ -110,7 +110,21 @@ function cardTexts(sectionHtml: string): string[] {
     return out;
 }
 
-const MONEY = /(\d[\d.,]*)\s*(ر\.?س|ريال|درهم|د\.?إ|جنيه|دينار|\$|usd|sar|aed|egp|eur|€|£)|[$€£]\s*\d/i;
+/**
+ * A price, in any of the digit systems an Arabic page actually uses.
+ *
+ * `\d` matches ASCII 0-9 ONLY. A perfectly good Arabic pricing section written
+ * «٢٩٩ ر.س» therefore looked like a section with no prices in it, and Joe told
+ * the user their pricing was empty and asked the model to "repair" a page that
+ * was already right. Arabic-Indic (٠-٩) and Eastern Arabic-Indic (۰-۹) digits
+ * count as digits here.
+ */
+const DIGIT = '[0-9\\u0660-\\u0669\\u06F0-\\u06F9]';
+const MONEY = new RegExp(
+    `(${DIGIT}[${DIGIT.slice(1, -1)}.,\\u066B\\u066C]*)\\s*(ر\\.?س|ريال|درهم|د\\.?إ|جنيه|دينار|\\$|usd|sar|aed|egp|eur|€|£)`
+    + `|[$€£]\\s*${DIGIT}`,
+    'i',
+);
 const PLACEHOLDER_CONTACT = /(example\.(com|org)|test@|your-?email|0123456789|123-?456-?7890|\+1 ?234)/i;
 const LOREM = /(lorem ipsum|dolor sit amet|اكتب هنا|النص هنا|your text here|placeholder)/i;
 

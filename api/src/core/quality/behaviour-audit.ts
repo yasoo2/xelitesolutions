@@ -118,7 +118,10 @@ function snapshot() {
         scroll: Math.round(window.scrollY),
         url: location.href,
         // Digits are how a cart badge, a counter and a total announce themselves.
-        digits: hash((text.match(/\d+/g) || []).join(',')),
+        // Arabic-Indic digits too: a cart badge on an Arabic page counts
+        // «٠ ١ ٢», and `\d` does not match any of them — the click would have
+        // looked like it changed nothing.
+        digits: hash((text.match(/[0-9٠-٩۰-۹]+/g) || []).join(',')),
     };
 }
 
