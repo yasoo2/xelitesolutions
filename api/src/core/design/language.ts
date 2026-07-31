@@ -118,7 +118,12 @@ button label must be written in English. Rewrite the section now, in English.`;
 /* ---------- bidirectional isolation ------------------------------------------ */
 
 /** Inside these, text is not prose and must not be touched. */
-const SKIP_BLOCKS = /<(script|style|template|svg|noscript|bdi|code|pre|kbd|samp)\b[\s\S]*?<\/\1\s*>/gi;
+/**
+ * `title` and `option` are in this list because their content is TEXT, not
+ * markup: a browser shows `<bdi>` inside them literally. Measured end to end —
+ * a site's tab read «<bdi>xelitesolutions</bdi> — الرئيسية».
+ */
+const SKIP_BLOCKS = /<(script|style|template|svg|noscript|bdi|code|pre|kbd|samp|title|option|textarea)\b[\s\S]*?<\/\1\s*>/gi;
 
 /**
  * A run worth isolating: at least two Latin letters, plus whatever trailing

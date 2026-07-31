@@ -39,11 +39,18 @@ export interface SitePlan {
 
 /* ---------- does the user actually want a site? ------------------------------ */
 
+/**
+ * Written to survive real Arabic. The accusative alif — «موقعًا كاملًا» — is what
+ * a fluent speaker writes and it defeats a pattern spelled «موقع كامل»; the
+ * normaliser in planSite strips the tanween but the alif itself is part of the
+ * word. `ا?` after each stem is the difference between reading the request and
+ * ignoring it.
+ */
 const WANTS_SITE =
-    /(موقع (كامل|متكامل|من عدة صفحات|متعدد)|عدة صفحات|صفحات متعددة|كل الصفحات|متجر كامل|موقع كامل|multi[- ]page|several pages|multiple pages|full (web)?site|whole site|complete site)/i;
+    /(موقعا?\s+(كاملا?|متكاملا?|من عدة صفحات|متعددا?)|عدة صفحات|صفحات متعددة|متعدد الصفحات|كل الصفحات|متجرا?\s+كاملا?|multi[- ]page|several pages|multiple pages|full (web)?site|whole site|complete site)/i;
 
 const WANTS_SINGLE =
-    /(صفحة واحدة|صفحة فقط|single page|one page|landing only|onepager|one-pager)/i;
+    /(صفحة واحدة|صفحة فقط|صفحه واحده|single page|one page|landing only|onepager|one-pager)/i;
 
 /** Pages worth building for each kind, entry page first. */
 const SITE_SHAPES: Partial<Record<PageKind, PageSpec[]>> = {
@@ -99,8 +106,23 @@ export function planSite(kind: PageKind, request: string, isArabic: boolean): Si
         reason,
     });
 
-    if (WANTS_SINGLE.test(request)) return single('the request asked for a single page');
-    if (!WANTS_SITE.test(request)) return single('single page (ask for «موقع كامل» or «عدة صفحات» to get a linked site)');
+    /**
+     * Read the request with its Arabic case endings removed.
+     *
+     * A user writing natural Arabic says «ابني موقعًا كاملًا متعدد الصفحات» —
+     * with tanween on both words. `موقع كامل` does not match that, so the whole
+     * multi-page path was unreachable to anyone writing properly: measured, a
+     * request that explicitly said «موقعًا كاملًا متعدد الصفحات مع صفحة من نحن
+     * وصفحة خدمات وصفحة اتصل بنا» produced ONE page. Diacritics, tatweel and the
+     * ة/ه and أ/إ/ا variants are all noise for an intent test.
+     */
+    const probe = String(request || '')
+        .replace(/[\u064B-\u0652\u0670\u0640]/g, '')
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/ى/g, 'ي');
+
+    if (WANTS_SINGLE.test(probe)) return single('the request asked for a single page');
+    if (!WANTS_SITE.test(probe)) return single('single page (ask for «موقع كامل» or «عدة صفحات» to get a linked site)');
 
     const shape = SITE_SHAPES[kind];
     if (!shape) return single(`a ${kind} is a single page by nature`);
@@ -149,9 +171,18 @@ export function siteNavCss(): string {
     return `
 /* Site navigation (shared across pages) */
 .site-header nav{display:flex;gap:var(--space-4);flex-wrap:wrap}
-.site-header nav a{color:var(--text-muted);text-decoration:none;padding:var(--space-2) var(--space-3);border-radius:var(--radius);transition:color .18s ease,background .18s ease}
-.site-header nav a:hover{color:var(--text);background:color-mix(in srgb,var(--brand) 10%,transparent)}
-.site-header nav a[aria-current="page"]{color:var(--brand);font-weight:700;background:color-mix(in srgb,var(--brand) 12%,transparent)}
+/* --text is fitted to 12:1 on the surface; --text-muted only to 4.5:1, and the
+   site header is a TINTED surface, not the plain one — measured in a browser at
+   4.12:1, below AA, on every page of every site Joe builds. Nav links are the
+   primary way around a site; they take the colour that has headroom. */
+.site-header nav a{color:var(--text);text-decoration:none;padding:var(--space-2) var(--space-3);border-radius:var(--radius);transition:color .18s ease,background .18s ease}
+.site-header nav a:hover{color:var(--brand-dark);background:color-mix(in srgb,var(--brand) 10%,transparent)}
+/* --brand-dark, not --brand. --brand is fitted to 4.5:1 against WHITE; the
+   current-page link sits on a 12% brand tint, and measured in a browser it came
+   out at 4.12:1 — below AA — on every page of a site whose hue happened to land
+   there. --brand-dark is fitted to 7:1, which leaves headroom on a tint at any
+   hue. Hue-dependent contrast is exactly what only measurement catches. */
+.site-header nav a[aria-current="page"]{color:var(--brand-dark);font-weight:700;background:color-mix(in srgb,var(--brand) 12%,transparent)}
 @media (max-width:640px){.site-header .wrap{flex-direction:column;align-items:flex-start}}`;
 }
 

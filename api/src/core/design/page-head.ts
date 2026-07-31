@@ -47,10 +47,16 @@ function trimBrand(raw: string): string {
     s = s.replace(LEAD_NOISE, '').trim();
     const words = s.split(/\s+/);
     const out: string[] = [];
+    const isLatin = (w: string) => /^[A-Za-z0-9._'&-]+$/.test(w);
     for (const w of words) {
         const bare = w.replace(/[«»"'.,،؛;:!؟?()]/g, '');
         if (!bare) break;
         if (out.length && STOP_WORDS.some(sw => bare.toLowerCase().startsWith(sw) && bare.length <= sw.length + 2)) break;
+        // A NAME DOES NOT CHANGE SCRIPT MIDWAY. «اسمها xelitesolutions مع صفحة
+        // من نحن» gave the brand as "xelitesolutions مع صفحة" and put it in the
+        // page title, because the walk just kept taking words. A Latin brand
+        // followed by an Arabic word is the sentence resuming, not more name.
+        if (out.length && isLatin(out[out.length - 1]) !== isLatin(bare)) break;
         out.push(bare);
         // A brand is a name, not a clause.
         if (out.length >= 4) break;

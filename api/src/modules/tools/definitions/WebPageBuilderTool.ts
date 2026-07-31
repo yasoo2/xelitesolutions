@@ -1479,6 +1479,22 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                     if (block) out = /<\/body>/i.test(out) ? out.replace(/<\/body>/i, `${block}</body>`) : out + block;
                 } catch (e: any) { logs.push(`images on ${file} failed: ${e?.message || e}`); }
             }
+            /**
+             * The same content passes a single page gets.
+             *
+             * This loop ran reviewHtml and nothing else, so every page of every
+             * site skipped the dead-link repair, the auth wiring and the
+             * bidirectional isolation. Measured end to end on a four-page store:
+             * one href="#" on the entry page and THREE on each of the other
+             * three — twelve dead links Joe would have reported on a single page
+             * and silently shipped in a site.
+             */
+            const wired = wireAuthControls(out);
+            if (wired.wired) out = wired.html;
+            const anchors = repairDeadAnchors(out);
+            if (anchors.fixed) { out = anchors.html; logs.push(`${file}: repaired ${anchors.fixed} dead link(s)`); }
+            if (isAr) out = isolateLatinRuns(out);
+
             out = reviewHtml(out, isAr).html;
             written.set(file, out);
             fs.writeFileSync(path.join(outDir, file), out, 'utf-8');

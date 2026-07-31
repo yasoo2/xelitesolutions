@@ -395,6 +395,12 @@ async function measure(browser: any, url: string): Promise<{ findings: Finding[]
 
 /* ---------- the run ---------------------------------------------------------- */
 
+/** Requests that ask for a linked SITE rather than one page. */
+const SITE_REQUESTS: Record<string, string> = {
+    'site-store': 'ابني متجرًا إلكترونيًا كاملًا من عدة صفحات اسمه «نجمة الشرق» لبيع العطور، مع صفحة منتجات وصفحة عن المتجر وصفحة تواصل وسلة شراء',
+    'site-landing': 'ابني موقعًا كاملًا متعدد الصفحات لشركة استشارات اسمها xelitesolutions مع صفحة من نحن وصفحة خدمات وصفحة اتصل بنا',
+};
+
 const REQUESTS: Record<string, string> = {
     landing: 'ابني صفحة ويب لشركه تكنلوجية اسمها xelitesolutions وهي شركة مختصة بالاستشارات البرمجية والخدماتية ومساعده الشركات الناشئة، ويجب ان يحتوي على زر تسجيل دخول وزر تسجيل خروج وزر من نحن وزر اتصل بنا وصور تجسد وظيفه الشركة',
     store: 'ابني متجرًا إلكترونيًا اسمه «نجمة الشرق» لبيع العطور الفاخرة مع سلة شراء وصفحة منتجات وأسعار بالريال',
@@ -405,7 +411,7 @@ const REQUESTS: Record<string, string> = {
 
 async function main() {
     const only = process.argv.slice(2).filter(a => !a.startsWith('-'));
-    const kinds = only.length ? only : Object.keys(REQUESTS);
+    const kinds = only.length ? only : [...Object.keys(REQUESTS), ...Object.keys(SITE_REQUESTS)];
 
     const artifactDirEnv = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
     fs.mkdirSync(artifactDirEnv, { recursive: true });
@@ -424,7 +430,7 @@ async function main() {
 
     let totalCritical = 0, totalMajor = 0;
     for (const kind of kinds) {
-        const request = REQUESTS[kind];
+        const request = REQUESTS[kind] || SITE_REQUESTS[kind];
         if (!request) { console.log(`? unknown kind "${kind}"`); continue; }
         console.log(`\n══ ${kind} ${'═'.repeat(Math.max(0, 60 - kind.length))}`);
 
@@ -446,10 +452,15 @@ async function main() {
         const file = String(res.output?.path || '');
         const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
         // Prefer the split project, which is what the preview now serves.
+        // A SITE is written to its own directory; the split single-page project
+        // sits beside it. Measuring the wrong one reports a site as one page.
+        const siteDir = path.join(artifactDir, `site-e2e-${kind}`);
         const projDir = path.join(artifactDir, `joe-e2e-${kind}`);
-        const target = fs.existsSync(path.join(projDir, 'index.html'))
-            ? path.join(projDir, 'index.html')
-            : path.join(artifactDir, file);
+        const target = fs.existsSync(path.join(siteDir, 'index.html'))
+            ? path.join(siteDir, 'index.html')
+            : fs.existsSync(path.join(projDir, 'index.html'))
+                ? path.join(projDir, 'index.html')
+                : path.join(artifactDir, file);
         if (!fs.existsSync(target)) { console.log(`✗ no artifact on disk at ${target}`); totalCritical++; continue; }
 
         const { findings, facts } = await measure(browser, 'file://' + target);
@@ -471,6 +482,36 @@ async function main() {
         console.log(`  lang=${facts.lang} dir=${facts.dir} sections=${facts.sections} arabic=${Math.round((facts.arabicShare as number) * 100)}% bdi=${facts.bdi}`);
         if (!findings.length) console.log('  ✓ nothing found');
         for (const f of findings) console.log(`  ${f.severity === 'critical' ? '✗' : '!'} [${f.severity}] ${f.text}`);
+
+        /* ---------- a SITE is more than its entry page --------------------- */
+        // Its promise is that the pages LINK to each other. A nav pointing at a
+        // file that was never written is the defect this has to catch, and it
+        // cannot be seen from one page.
+        const dir = path.dirname(target);
+        const siteFiles = fs.readdirSync(dir).filter(f => f.endsWith('.html'));
+        if (siteFiles.length > 1) {
+            console.log(`  site: ${siteFiles.length} pages — ${siteFiles.join(', ')}`);
+            const broken: string[] = [];
+            for (const f of siteFiles) {
+                const html = fs.readFileSync(path.join(dir, f), 'utf-8');
+                for (const m of html.matchAll(/<a\b[^>]*href\s*=\s*["']([^"'#][^"']*\.html)["']/gi)) {
+                    if (!fs.existsSync(path.join(dir, m[1]))) broken.push(`${f} → ${m[1]}`);
+                }
+            }
+            if (broken.length) {
+                console.log(`  ! [major] ${broken.length} link(s) to a page that was never written: ${broken.slice(0, 3).join('; ')}`);
+                totalMajor++;
+            }
+            // Every page must be as sound as the entry page.
+            for (const f of siteFiles.filter(x => x !== path.basename(target)).slice(0, 4)) {
+                const m = await measure(browser, 'file://' + path.join(dir, f));
+                const c = m.findings.filter(x => x.severity === 'critical').length;
+                const j = m.findings.filter(x => x.severity === 'major').length;
+                totalCritical += c; totalMajor += j;
+                if (!m.findings.length) console.log(`  ✓ ${f} clean`);
+                for (const x of m.findings) console.log(`  ${x.severity === 'critical' ? '✗' : '!'} [${f}][${x.severity}] ${x.text}`);
+            }
+        }
 
         /* ---------- the EDIT path, on the page just built ------------------ */
         // Half of real use is "now change this". It shares a tool with the build
