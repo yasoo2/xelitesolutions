@@ -13,6 +13,8 @@ import { findReferenceUrl, extractReference, paletteFromReference, referenceBrie
 import { detectPageKind, blueprintBrief, imageBudget, blueprintSections, kindLabel } from '../../../core/design/blueprints';
 import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteSectionwise, type WrittenSection } from '../../../core/design/section-writer';
 import { brandFrom, pageTitle } from '../../../core/design/page-head';
+import { chromeBrief, chromeCss, chromeRuntime, ensureHeaderControls, repairDeadAnchors } from '../../../core/design/chrome';
+import { wrongLanguage, languageRetryNote, isolateLatinRuns, bidiCss } from '../../../core/design/language';
 import { splitIntoSections, targetSections, sectionsForFindings, extractEditedSection, spliceSections, sectionEditPrompt, type PageSection } from '../../../core/design/section-editor';
 import { planSite, siteNav, siteNavCss, verifyInternalLinks, targetPage, type SitePlan } from '../../../core/design/site-plan';
 import { cartBrief, cartRuntime, cartCss, needsCart } from '../../../core/design/commerce';
@@ -286,9 +288,13 @@ ${prev!.html}`
             }
         }
 
+        // Sections that came back in the wrong language and did not improve on a
+        // retry. Reported rather than hidden: a page half in English when Arabic
+        // was asked for is a defect the user must be told about.
+        const languageFailures: string[] = [];
         if (sectionwise) {
             const plans = planSections(blueprint);
-            const design = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}${reference ? `\n\n${referenceBrief(reference)}` : ''}`;
+            const design = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${chromeBrief({ isArabic: isAr, withAuth: /دخول|خروج|login|logout|sign\s?in|sign\s?up|حساب/i.test(request) })}\n\n${primitivesBrief()}${reference ? `\n\n${referenceBrief(reference)}` : ''}`;
             const written: WrittenSection[] = [];
             const titles: string[] = [];
             let photosLeft = photos;
@@ -315,7 +321,48 @@ ${prev!.html}`
                     written.push({ ...plan, html: '', ok: false, reason: String(e?.message || e).slice(0, 90) });
                     continue;
                 }
-                const got = extractSection(raw, plan.id);
+                let got = extractSection(raw, plan.id);
+
+                // The prompt asks for the page's language. A build the user ran
+                // came back entirely in English — "Transform Your Business",
+                // "Sign up" — on a page correctly marked dir="rtl", because an
+                // instruction in a prompt is not enforcement. The language of a
+                // returned section is measurable, so it is measured, and a
+                // section in the wrong language is asked for once more with the
+                // instruction made impossible to miss.
+                if (got.ok) {
+                    const lang = wrongLanguage(got.html, isAr);
+                    if (lang.wrong) {
+                        logs.push(`section ${plan.index} (${plan.id}): ${lang.reason} — asking again`);
+                        if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                            ? `🈯 القسم ${plan.index} عاد بالإنجليزية — أطلبه بالعربية`
+                            : `🈯 Section ${plan.index} came back in the wrong language — asking again`);
+                        try {
+                            const retry = await routeToModel([
+                                {
+                                    role: 'system', content: `${sectionPrompt({
+                                        plan, total: plans.length, kindLabel: kindLabel(kind), request, isArabic: isAr,
+                                        designBrief: design, written: titles, photosLeft: share,
+                                        imageSubjects: imageBrief.suggestions,
+                                    })}\n\n${languageRetryNote(isAr)}`,
+                                },
+                                { role: 'user', content: `Write section ${plan.index}: ${plan.spec}` },
+                            ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                            const second = extractSection(retry, plan.id);
+                            // Keep the retry only if it is genuinely better on the
+                            // measure that triggered it. A second English answer
+                            // is not an improvement, and neither is a stub.
+                            if (second.ok && !wrongLanguage(second.html, isAr).wrong
+                                && second.html.length > got.html.length * 0.5) {
+                                got = second;
+                                logs.push(`section ${plan.index} (${plan.id}): rewritten in the requested language`);
+                            } else {
+                                languageFailures.push(plan.spec.split(':')[0]);
+                            }
+                        } catch { languageFailures.push(plan.spec.split(':')[0]); }
+                    }
+                }
+
                 written.push({ ...plan, ...got });
                 if (got.ok) {
                     titles.push(plan.spec.split(':')[0]);
@@ -337,10 +384,10 @@ ${prev!.html}`
                     title: pageTitle({ request, isArabic: isAr, kindLabel: kind }),
                     isArabic: isAr,
                     tokenCss: paletteCss(palette),
-                    baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                    baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${bidiCss()}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                     sections: written,
                     sprite: iconSprite(),
-                    script: uiKitScript(),
+                    script: `${uiKitScript()}\n${chromeRuntime(isAr)}`,
                 });
                 logs.push(`section-wise build: ${ok.length}/${plans.length} sections, ${html.length} bytes`);
             } else {
@@ -433,6 +480,37 @@ ${prev!.html}`
             html = nav.html;
             for (const f of nav.fixed) logs.push(`content: ${f}`);
 
+            // Controls the user NAMED. The check below already notices when one
+            // is missing — a shipped page carried «الزر المطلوب «تسجيل الخروج»
+            // غير موجود في الصفحة» in its report and shipped without the button.
+            // Joe owns the header markup, so the control is simply added: no
+            // model call, nothing that can fail, nothing to verify afterwards.
+            if (requirements.buttons.length) {
+                const ctl = ensureHeaderControls(html, { wanted: requirements.buttons, isArabic: isAr });
+                if (ctl.added.length) {
+                    html = ctl.html;
+                    logs.push(`content: added the requested control(s) ${ctl.added.join(', ')} to the header`);
+                }
+            }
+
+            // A link with href="#" is the model's placeholder for "a link belongs
+            // here". The browser audit reports each as a dead anchor; the shipped
+            // page had two, reported and unfixed.
+            const anchors = repairDeadAnchors(html);
+            if (anchors.fixed) {
+                html = anchors.html;
+                logs.push(`content: repaired ${anchors.fixed} link(s) that pointed nowhere`);
+            }
+
+            // Latin runs inside Arabic prose: <bdi> per run, so the brackets and
+            // full stops around a brand name stop migrating. Deterministic, and
+            // a no-op on a page that has no direction change in it.
+            if (isAr) {
+                const before = html;
+                html = isolateLatinRuns(html);
+                if (html !== before) logs.push('content: isolated Latin runs inside the Arabic text');
+            }
+
             contentIssues = verifyContent(html, requirements);
             if (contentIssues.some(i => i.repairable)) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
@@ -468,7 +546,7 @@ ${prev!.html}`
         // The brief asked for all of it and the model shipped a page with zero
         // transitions, zero :hover, zero :focus and no rule for `button` at all.
         // Placed right after <style> so anything the model DID write still wins.
-        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}${needsCharts(kind) ? `\n${chartCss()}` : ''}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
+        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}${needsCharts(kind) ? `\n${chartCss()}` : ''}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
         // A section-wise build already carries the base layer — assembled by Joe,
         // not by the model — so injecting it again would duplicate ~10 KB of CSS.
         if (!/Joe UI kit — base layer/.test(html)) {
@@ -936,6 +1014,13 @@ ${prev!.html}`
                     : `ℹ️ The page is larger than one completion can return, so the automatic repair did not run — the findings above still stand. Ask for a specific section and I will fix it directly.`);
             }
             if (contentRepairs) parts.push(isAr ? `✍️ إصلاحات المحتوى: ${contentRepairs}` : `✍️ Content repairs: ${contentRepairs}`);
+            // A page half in English when Arabic was asked for is a defect, and
+            // one the user can see at a glance — so it is named, not buried.
+            if (languageFailures.length) {
+                parts.push(isAr
+                    ? `⚠️ ${languageFailures.length} قسم عاد بالإنجليزية ولم يتحسّن بعد إعادة الطلب (${languageFailures.slice(0, 3).join('، ')}) — النموذج الحالي ضعيف في العربية. اطلب إعادة كتابة القسم وسأصلحه.`
+                    : `⚠️ ${languageFailures.length} section(s) came back in the wrong language and did not improve on a retry (${languageFailures.slice(0, 3).join(', ')}).`);
+            }
             // Never let a content failure pass silently: if the model could not fix
             // it, the user is told exactly what is still wrong.
             if (contentIssues.length) {
@@ -1140,10 +1225,10 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 title: pageTitle({ request, isArabic: isAr, kindLabel: page.kind, pageName: page.title, brand }),
                 isArabic: isAr,
                 tokenCss: paletteCss(palette),
-                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                 sections,
                 sprite: iconSprite(),
-                script: uiKitScript(),
+                script: `${uiKitScript()}\n${chromeRuntime(isAr)}`,
             });
             // The one navigation, injected after <body> so it is identical on
             // every page and always points at files that will exist.

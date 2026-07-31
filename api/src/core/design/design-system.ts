@@ -304,8 +304,18 @@ button,.btn,a.btn,[type=submit],[type=button],input[type=submit]{
 button:hover,.btn:hover,a.btn:hover,[type=submit]:hover,[type=button]:hover{
   transform:translateY(-2px);box-shadow:var(--shadow-md,0 8px 24px -8px rgba(0,0,0,.25));filter:saturate(1.08)}
 button:active,.btn:active,a.btn:active,[type=submit]:active{transform:translateY(0) scale(.985)}
-.btn-ghost,button.ghost,a.ghost{background:transparent;color:var(--brand,#2563eb);border-color:var(--border,rgba(0,0,0,.15))}
-.btn-ghost:hover,button.ghost:hover,a.ghost:hover{background:var(--brand-light,rgba(37,99,235,.08))}
+/* a.btn-ghost, not .btn-ghost. The filled rule above is written as a.btn,
+   which is one element more specific than a bare .btn-ghost — so EVERY
+   secondary button on every page Joe has built rendered as a solid primary
+   button. Seen in a screenshot: "تسجيل الدخول" and "ابدأ الآن" sat side by side
+   in the header as two identical filled buttons, and the page had no visual
+   hierarchy at all. The selectors now match the specificity of what they
+   override. */
+a.btn-ghost,button.btn-ghost,.btn.btn-ghost,button.ghost,a.ghost{
+  background:transparent;color:var(--brand,#2563eb);border-color:var(--border,rgba(0,0,0,.15));
+  box-shadow:none}
+a.btn-ghost:hover,button.btn-ghost:hover,.btn.btn-ghost:hover,button.ghost:hover,a.ghost:hover{
+  background:var(--brand-light,rgba(37,99,235,.08));border-color:var(--brand,#2563eb)}
 :focus-visible{outline:3px solid var(--accent,#2563eb);outline-offset:3px;border-radius:6px}
 
 /* Navigation: links need room to breathe and a state on hover */
