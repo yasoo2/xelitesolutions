@@ -2,6 +2,8 @@ import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { executeTool } from '../modules/services/ToolService';
 import { broadcastThinkingDetail, broadcast } from '../api/ws';
+import { narrate, narrationEnabled } from '../core/agents/narrator';
+import { routeToModel } from '../core/llm/intelligent-router';
 import { emitDepartment } from './departments';
 import { randomUUID } from 'crypto';
 import { BaseAgent } from './agents/BaseAgent';
@@ -104,7 +106,7 @@ export class AgentOrchestrator {
     // 2. Adaptive Coordination Execution (Developer department)
     emitDepartment(goal.id, 'developer');
     const result = await executionFirewall.runInContext(goal.traceId, () => {
-        return this.coordinate(dag, runtimeMemory, goal.context, goal.traceId);
+        return this.coordinate(dag, runtimeMemory, goal.context, goal.traceId, goal.goal);
     });
 
     // [Departments] QA reviews the outcome, then it's delivered.
@@ -168,7 +170,9 @@ export class AgentOrchestrator {
     dag: AgentDAG,
     memory: ExecutionMemory,
     goalContext?: Record<string, any>,
-    traceId?: string
+    traceId?: string,
+    /** The user's request, verbatim — what the narration is about. */
+    goalText?: string,
   ): Promise<{ ok: boolean; result: any }> {
     dag.status = "running";
     const completedNodes = new Set<string>();
@@ -178,6 +182,13 @@ export class AgentOrchestrator {
     // below reports this instead of describing its own internal state — the user
     // needs to read why the work failed, not how the scheduler noticed.
     let lastNodeError: any = null;
+    /**
+     * The step that finished last, and how it went — the only thing that makes
+     * the narration below narration rather than decoration. A line that could
+     * have been written before the step ran says nothing about the run.
+     */
+    let lastDone: { task: string; ok: boolean; summary?: string } | undefined;
+    let stepNo = 0;
     const maxIterations = Math.max(10, dag.nodes.length * 5);
     const giveUp = (fallback: string) => ({ ok: false, result: lastNodeError || fallback });
 
@@ -255,7 +266,41 @@ export class AgentOrchestrator {
         node.status = "running";
         const startTime = Date.now();
         console.log(`[AgentOrchestrator] Executing node: ${node.id} (${node.task})`);
-        broadcastThinkingDetail(memory.sessionId, `🚀 Running: ${node.task} via ${node.agent} Agent`);
+        /**
+         * THE AGENT SAYS, IN ITS OWN WORDS, WHAT IT IS DOING.
+         *
+         * This line used to be `🚀 Running: ${node.task} via ${node.agent}` — a
+         * template filled in from the plan, displayed under the heading
+         * "التفكير العصبي". It could have been written before the run started,
+         * which is what made it a simulated tool wearing a real one's name.
+         *
+         * Now the model is shown what just finished, INCLUDING whether it
+         * worked, and asked for one sentence. When it does not answer, or
+         * answers badly, nothing is shown — there is deliberately no fallback
+         * sentence, because a canned line under that heading is the exact fake
+         * this replaces. The step never waits on it beyond the timeout and
+         * never fails because of it.
+         */
+        stepNo++;
+        if (narrationEnabled()) {
+            const line = await narrate(
+                {
+                    goal: goalText || node.task,
+                    done: lastDone,
+                    next: { task: node.task, tool: node.tool },
+                    index: stepNo,
+                    total: dag.nodes.length,
+                    isArabic: /[ؠ-ٟٮ-ۓۺ-ۿ]/.test(String(goalText || '')),
+                },
+                (prompt) => routeToModel(
+                    [{ role: 'user', content: prompt }],
+                    undefined, undefined, undefined, undefined, undefined, undefined,
+                    { modelConfig: goalContext?.modelConfig },
+                ),
+            );
+            if (line.text) broadcastThinkingDetail(memory.sessionId, line.text);
+            else console.log(`[Narrator] no line for ${node.id} (${line.reject || 'rejected'})`);
+        }
 
         const isBrowserNode = node.agent === 'Browser' || node.tool === 'browser_run';
         if (isBrowserNode) {
@@ -331,6 +376,7 @@ export class AgentOrchestrator {
         }
         
         if (result.ok) {
+          lastDone = { task: node.task, ok: true, summary: undefined };
           node.status = "completed";
           const cleanOutput = this.sanitizeOutput(result.output);
           node.result = cleanOutput;
