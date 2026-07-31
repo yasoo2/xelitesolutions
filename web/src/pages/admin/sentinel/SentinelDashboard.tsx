@@ -8,32 +8,85 @@ import { API_URL } from '../../../config';
 
 type SentinelTab = 'overview' | 'health' | 'incidents' | 'policies' | 'audit' | 'forensics';
 
+/**
+ * Nothing on this panel may be invented.
+ *
+ * "Blocked IPs" used to start at `Math.floor(Math.random() * 5)` and then settle
+ * on a hardcoded `3`, so a security console reported containments that had never
+ * happened. The fetch failure was swallowed by an empty catch, which meant a
+ * dashboard that could not reach the API at all showed four zeros and the words
+ * "System is Secure" — the most dangerous thing a security screen can say when
+ * it knows nothing.
+ *
+ * Every number below now comes from the API, and a number that could not be
+ * loaded is shown as "—", never as zero.
+ */
+type Stats = {
+    critical: number; high: number; medium: number; open: number;
+    servers: number;
+    /** null = not known yet, or the audit trail could not be read. */
+    blocked: number | null;
+};
+
+const UNKNOWN: Stats = { critical: 0, high: 0, medium: 0, open: 0, servers: 0, blocked: null };
+
 export default function SentinelDashboard() {
     const [activeTab, setActiveTab] = useState<SentinelTab>('overview');
-    const [stats, setStats] = useState({ critical: 0, high: 0, medium: 0, open: 0, servers: 1, blocked: Math.floor(Math.random() * 5) });
+    const [stats, setStats] = useState<Stats>(UNKNOWN);
+    const [loaded, setLoaded] = useState(false);
+    const [loadError, setLoadError] = useState('');
 
     useEffect(() => {
+        const auth = { Authorization: `Bearer ${localStorage.getItem('token')}` };
         const fetchStats = async () => {
             try {
-                const res = await fetch(`${API_URL}/admin/sentinel/incidents`, {
-                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-                });
+                const res = await fetch(`${API_URL}/admin/sentinel/incidents`, { headers: auth });
+                if (!res.ok) throw new Error(`incidents: HTTP ${res.status}`);
                 const data = await res.json();
-                if (data.success && data.data) {
-                    const incidents: any[] = data.data;
-                    setStats({
-                        critical: incidents.filter(i => i.severity === 'critical' && i.status === 'open').length,
-                        high: incidents.filter(i => i.severity === 'high' && i.status === 'open').length,
-                        medium: incidents.filter(i => i.severity === 'medium' && i.status === 'open').length,
-                        open: incidents.filter(i => i.status === 'open').length,
-                        servers: new Set(incidents.map(i => i.serverId?._id)).size || 1,
-                        blocked: 3 // Mock blocked IPs count for now
-                    });
-                }
-            } catch (e) {}
+                if (!data.success || !Array.isArray(data.data)) throw new Error(data.error || 'incidents: malformed response');
+                const incidents: any[] = data.data;
+
+                // The real number of blocked addresses: distinct targets in the
+                // chain-hashed audit log whose BLOCK_IP run actually succeeded.
+                // A withheld (shadow-mode), skipped or failed block is not a block.
+                let blocked: number | null = null;
+                try {
+                    const aRes = await fetch(`${API_URL}/admin/sentinel/audit`, { headers: auth });
+                    if (aRes.ok) {
+                        const aData = await aRes.json();
+                        if (aData.success && Array.isArray(aData.data)) {
+                            const targets = new Set(
+                                aData.data
+                                    .filter((l: any) => String(l.action || '').toUpperCase() === 'BLOCK_IP'
+                                        && /^success$/i.test(String(l.result || '')))
+                                    .map((l: any) => String(l.resource || '')),
+                            );
+                            blocked = targets.size;
+                        }
+                    }
+                } catch { /* leave blocked as null — "—", not a guess */ }
+
+                setStats({
+                    critical: incidents.filter(i => i.severity === 'critical' && i.status === 'open').length,
+                    high: incidents.filter(i => i.severity === 'high' && i.status === 'open').length,
+                    medium: incidents.filter(i => i.severity === 'medium' && i.status === 'open').length,
+                    open: incidents.filter(i => i.status === 'open').length,
+                    servers: new Set(incidents.filter(i => i.status === 'open').map(i => i.serverId?._id)).size,
+                    blocked,
+                });
+                setLoaded(true);
+                setLoadError('');
+            } catch (e: any) {
+                // Say so. A security console that cannot read its own data must
+                // not render as a clean bill of health.
+                setLoaded(false);
+                setLoadError(String(e?.message || e));
+            }
         };
         fetchStats();
     }, []);
+
+    const num = (v: number | null) => (loaded && v !== null ? String(v) : '—');
 
     return (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="tab-pane">
@@ -131,27 +184,38 @@ export default function SentinelDashboard() {
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
                                     <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
                                         <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>Open Incidents</h4>
-                                        <h1 style={{ margin: '8px 0 0', color: stats.open > 0 ? '#f97316' : '#10b981' }}>{stats.open}</h1>
+                                        <h1 style={{ margin: '8px 0 0', color: !loaded ? 'var(--text-secondary)' : stats.open > 0 ? '#f97316' : '#10b981' }}>{num(stats.open)}</h1>
                                     </div>
                                     <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
                                         <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>Critical Threats</h4>
-                                        <h1 style={{ margin: '8px 0 0', color: stats.critical > 0 ? '#ef4444' : 'var(--text-primary)' }}>{stats.critical}</h1>
+                                        <h1 style={{ margin: '8px 0 0', color: !loaded ? 'var(--text-secondary)' : stats.critical > 0 ? '#ef4444' : 'var(--text-primary)' }}>{num(stats.critical)}</h1>
                                     </div>
                                     <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
                                         <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>Risky Servers</h4>
-                                        <h1 style={{ margin: '8px 0 0', color: stats.open > 0 ? '#f97316' : 'var(--text-primary)' }}>{stats.servers}</h1>
+                                        <h1 style={{ margin: '8px 0 0', color: !loaded ? 'var(--text-secondary)' : stats.open > 0 ? '#f97316' : 'var(--text-primary)' }}>{num(stats.servers)}</h1>
                                     </div>
                                     <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
                                         <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>Blocked IPs</h4>
-                                        <h1 style={{ margin: '8px 0 0', color: '#3b82f6' }}>{stats.blocked}</h1>
+                                        <h1 style={{ margin: '8px 0 0', color: stats.blocked === null ? 'var(--text-secondary)' : '#3b82f6' }}>{num(stats.blocked)}</h1>
+                                        {loaded && stats.blocked === null && (
+                                            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>audit trail unreadable</p>
+                                        )}
                                     </div>
                                 </div>
-                                
-                                {stats.open === 0 && (
+
+                                {loadError && (
+                                    <div className="empty-block" style={{ borderColor: '#ef4444' }}>
+                                        <AlertTriangle size={48} style={{ opacity: 0.35, margin: '0 auto 16px', color: '#ef4444' }} />
+                                        <h3>Security status unknown</h3>
+                                        <p>Could not read Sentinel data: {loadError}. These figures are not a clean bill of health — nothing was checked.</p>
+                                    </div>
+                                )}
+
+                                {loaded && stats.open === 0 && (
                                     <div className="empty-block">
                                         <ShieldCheck size={48} style={{ opacity: 0.2, margin: '0 auto 16px' }} />
-                                        <h3>System is Secure</h3>
-                                        <p>Global Fleet Status is Nominal.</p>
+                                        <h3>No open incidents</h3>
+                                        <p>Sentinel reports no unresolved incidents across the monitored fleet.</p>
                                     </div>
                                 )}
                             </motion.div>

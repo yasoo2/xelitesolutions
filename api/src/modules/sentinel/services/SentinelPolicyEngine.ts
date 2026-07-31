@@ -1,7 +1,6 @@
 import { SentinelIncidentService } from './SentinelIncidentService';
-import { SentinelPolicyModel } from '../../../shared/models/SentinelPolicy';
-import { Types } from 'mongoose';
-import { SentinelActionService } from './SentinelActionService';
+import { SentinelActionRunner } from './SentinelActionRunner';
+import { SentinelAuditService } from './SentinelAuditService';
 
 export interface TelemetryPayload {
     serverId: string;
@@ -48,7 +47,13 @@ export class SentinelPolicyEngine {
     }
 
     /**
-     * Evaluates incoming telemetry against Risk Thresholds and dynamic Policies.
+     * Evaluates incoming telemetry against the fixed risk rules below.
+     *
+     * It does NOT read the SentinelPolicy collection: this used to claim it
+     * evaluated "dynamic Policies" while importing the model and never querying
+     * it, so a policy an operator had configured had no effect whatsoever. The
+     * claim is removed rather than left standing; wiring the collection in is a
+     * separate piece of work, and until then nobody should believe otherwise.
      * Computes a total Risk Score and dispatches incidents.
      */
     static async evaluate(payload: TelemetryPayload) {
@@ -103,7 +108,7 @@ export class SentinelPolicyEngine {
 
         // Threshold evaluation
         if (totalRiskScore > 0 && triggeredRules.length > 0) {
-            await SentinelIncidentService.triggerIncident(
+            const incident = await SentinelIncidentService.triggerIncident(
                 serverId,
                 `Sentinel Alert: Score ${totalRiskScore}`,
                 maxSeverity,
@@ -112,18 +117,97 @@ export class SentinelPolicyEngine {
                 Array.from(actionRecommendations)
             );
 
-            // Active Interdiction: Execute actions if not in shadow mode
             for (const action of actionRecommendations) {
-                // If the action targets a specific process or IP, we need to extract from evidence
-                // For this evolution, we'll try to find targets in the evidence collector
-                let target = 'system';
-                if (action === 'KILL_PROCESS' && evidenceCollector['suspicious_processes']) {
-                    target = evidenceCollector['suspicious_processes'][0]?.pid || 'unknown';
-                }
-
-                await SentinelActionService.executeIntervention(payload.serverId, action, target);
+                await this.interdict(incident, serverId, action, evidenceCollector);
             }
         }
-        
+
+    }
+
+    /**
+     * Carry out one automatic interdiction — for real, on the machine it was
+     * meant for, and recorded truthfully.
+     *
+     * What this replaces was broken in three separate ways, all of which made
+     * the audit trail a work of fiction:
+     *   - it ran `iptables`/`kill` through the LOCAL shell and ignored the
+     *     serverId it was handed, so an interdiction meant for a monitored
+     *     server was attempted on Joe's own machine;
+     *   - on Windows — the platform this install actually runs on — the command
+     *     does not exist, the failure was logged and then DISCARDED, and the
+     *     caller carried on as if the threat had been contained;
+     *   - nothing was written to the audit chain either way, so there was no
+     *     record of whether a containment had happened at all.
+     *
+     * SentinelActionRunner already does this properly: it opens an SSH session
+     * to the server the incident belongs to, records a run with its real exit
+     * status, and appends to the chain-hashed audit log. The automatic path now
+     * uses it instead of a second, worse copy.
+     */
+    private static async interdict(incident: any, serverId: string, action: string, evidence: any): Promise<void> {
+        // The engine's vocabulary is not the runner's playbook vocabulary.
+        const PLAYBOOK: Record<string, string> = {
+            KILL_PROCESS: 'kill_process_tree',
+            BLOCK_IP: 'block_ip',
+            QUARANTINE_FILE: 'quarantine_file',
+        };
+        const playbook = PLAYBOOK[action];
+        const target = this.targetFor(action, evidence);
+
+        // An action with no real target is not performed. The previous code sent
+        // the literal string "system" as the thing to kill or block, which can
+        // only ever fail — and failed silently.
+        if (!playbook || !target) {
+            await SentinelAuditService.logAction(
+                'system',
+                `${action}_SKIPPED`,
+                `Server:${serverId}`,
+                playbook ? 'NO_TARGET_IN_EVIDENCE' : 'NO_PLAYBOOK_FOR_ACTION',
+            ).catch(() => { });
+            return;
+        }
+
+        const shadowMode = process.env.SENTINEL_SHADOW_MODE !== 'false';
+        if (shadowMode) {
+            // Shadow mode is a real state, not a no-op: record that containment
+            // was WITHHELD, so nobody reads the quiet log as "nothing happened".
+            await SentinelAuditService.logAction(
+                'system', `${action}_WITHHELD`, `${target}@Server:${serverId}`, 'SHADOW_MODE',
+            ).catch(() => { });
+            return;
+        }
+
+        try {
+            // executeAction writes its own run record and audit entry with the
+            // command's real exit status, and throws when it could not run.
+            await SentinelActionRunner.executeAction(
+                String(incident?._id || ''), serverId, playbook, { target }, false, 'system',
+            );
+        } catch (e: any) {
+            await SentinelAuditService.logAction(
+                'system', `${action}_FAILED`, `${target}@Server:${serverId}`,
+                String(e?.message || e).slice(0, 300),
+            ).catch(() => { });
+        }
+    }
+
+    /** The concrete thing an action applies to, taken from the evidence, or ''. */
+    private static targetFor(action: string, evidence: any): string {
+        if (action === 'KILL_PROCESS') {
+            const pid = evidence?.['suspicious_processes']?.[0]?.pid;
+            return pid ? String(pid) : '';
+        }
+        if (action === 'BLOCK_IP') {
+            // An unauthorised SSH session carries the address it came from; the
+            // field name differs between agent versions, so accept any of them.
+            const u = evidence?.['unauthorized_users']?.[0] || {};
+            const ip = u.ip || u.from || u.host || u.source || u.remoteAddress;
+            return typeof ip === 'string' && /^[0-9a-fA-F:.]+$/.test(ip) ? ip : '';
+        }
+        if (action === 'QUARANTINE_FILE') {
+            const p = evidence?.['fim_changes']?.[0]?.path;
+            return typeof p === 'string' ? p : '';
+        }
+        return '';
     }
 }

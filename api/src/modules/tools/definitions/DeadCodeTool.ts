@@ -92,17 +92,41 @@ export class DeadCodeTool extends BaseTool {
                     issues.push(...exportIssues);
                 }
                 summary.totalIssues = issues.length;
-            } catch {
-                return { ok: true, output: { raw: result.output, stderr: result.error, issues: [], summary: { totalIssues: 0, parseError: true } }, logs };
+            } catch (parseErr: any) {
+                // A scan that could not be READ is a scan that did not happen.
+                //
+                // This used to return ok:true with totalIssues:0, so a machine
+                // where knip is not installed — or any run whose output was not
+                // JSON — reported "no dead code found" and the caller repeated it
+                // as fact. The dead-code detector was itself the most misleading
+                // thing in the codebase.
+                const raw = `${result.output || ''}\n${result.error || ''}`;
+                const notInstalled = /could not determine executable|not found|ERR_MODULE_NOT_FOUND|command not found|npm ERR! 404/i.test(raw);
+                logs.push(`dead_code.parse_failed=${String(parseErr?.message || parseErr).slice(0, 120)}`);
+                return {
+                    ok: false,
+                    error: notInstalled
+                        ? 'knip is not installed, so nothing was scanned. Install it first: npm i -D knip'
+                        : `knip produced output that is not JSON, so nothing was scanned: ${raw.trim().slice(0, 300) || '(empty output)'}`,
+                    output: { scanned: false, raw: result.output, stderr: result.error },
+                    logs,
+                };
             }
 
             const recommendations: string[] = [];
             if (summary.unusedDependencies > 0) recommendations.push(`🧹 Found ${summary.unusedDependencies} unused dependencies.`);
             if (summary.unusedFiles > 0) recommendations.push(`📁 Found ${summary.unusedFiles} unused files.`);
             if (summary.unusedExports > 0) recommendations.push(`📤 Found ${summary.unusedExports} unused exports.`);
-            if (summary.totalIssues === 0) recommendations.push(`✅ Codebase is clean!`);
+            // "Clean" is a claim about what was examined, not about the codebase.
+            // A --include filter narrows the scan, and saying the whole codebase
+            // is clean after looking at dependencies only would be false.
+            if (summary.totalIssues === 0) {
+                recommendations.push(mode === 'scan'
+                    ? '✅ knip reported no unused files, dependencies or exports.'
+                    : `✅ knip reported nothing unused within the "${mode}" scope (other scopes were not scanned).`);
+            }
 
-            return { ok: true, output: { issues: issues.slice(0, 50), summary, recommendations, truncated: issues.length > 50 }, logs };
+            return { ok: true, output: { scanned: true, scope: mode, issues: issues.slice(0, 50), summary, recommendations, truncated: issues.length > 50 }, logs };
         } catch (e: any) {
             logs.push(`dead_code.error=${e.message}`);
             return { ok: false, error: e.message, logs };
