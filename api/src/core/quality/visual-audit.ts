@@ -198,6 +198,10 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
     try {
         for (const vp of VIEWPORTS) {
             const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
+            // collector() is serialised into the page; a bundler that keeps function
+            // names wraps it in a `__name(...)` helper the browser has never heard
+            // of. The identity shim keeps the audit working whatever compiled it.
+            await page.addInitScript('globalThis.__name = globalThis.__name || (function (f) { return f; });').catch(() => { });
             page.on('console', (m: any) => {
                 if (m.type() !== 'error' || consoleErrors.length >= 5) return;
                 const t = String(m.text());

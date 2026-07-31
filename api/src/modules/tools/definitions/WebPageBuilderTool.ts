@@ -7,7 +7,8 @@ import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
 import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
 import { auditVisually, visualRepairBrief, type VisualFinding } from '../../../core/quality/visual-audit';
 import { workspaceService } from '../../services/WorkspaceService';
-import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript } from '../../../core/design/design-system';
+import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirstCss } from '../../../core/design/design-system';
+import { findReferenceUrl, extractReference, paletteFromReference, referenceBrief, referenceOverridesCss, referenceSummary } from '../../../core/design/reference';
 import { detectPageKind, blueprintBrief, imageBudget } from '../../../core/design/blueprints';
 import { resolveImages, creditsBlock } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
@@ -62,7 +63,7 @@ export class WebPageBuilderTool implements ToolDefinition {
         // of regenerating a brand new one from scratch.
         // The palette and page kind are remembered with the page: a follow-up edit
         // must not re-roll the colours or re-decide what the page is.
-        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any }> =
+        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any; reference?: any }> =
             (global as any).joePages || ((global as any).joePages = {});
         const prev = store[sessionKey];
         const wantsNew = /(new page|from scratch|صفحة جديدة|من الصفر|ابدأ من جديد)/i.test(request);
@@ -88,7 +89,35 @@ export class WebPageBuilderTool implements ToolDefinition {
         // type/space scales, and the section blueprint for THIS kind of page.
         // The old brief was one line ("modern, beautiful, responsive"), which is
         // why every page came out looking like a different prototype.
-        const palette = isEdit && (prev as any)?.palette ? (prev as any).palette : buildPalette(request);
+        // [STYLE REFERENCE] «اجعله بأسلوب موقع …» — if the user pointed at a site,
+        // read that site in a real browser and let it decide the identity. Joe has
+        // owned this measurement for a long time; nothing ever called it while
+        // building, so the reference was silently ignored. Failures are reported,
+        // never faked: an unreachable site falls back to Joe's own palette and the
+        // summary says so.
+        const referenceUrl = isEdit && (prev as any)?.reference?.url && !findReferenceUrl(request)
+            ? null                                   // a follow-up edit keeps the style already borrowed
+            : findReferenceUrl(request);
+        let reference: any = isEdit ? (prev as any)?.reference : undefined;
+        let referenceNote = '';
+        if (referenceUrl) {
+            if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                ? `🎨 أقرأ أسلوب ${referenceUrl} من الموقع الحيّ`
+                : `🎨 Reading the live design system of ${referenceUrl}`);
+            const res = await extractReference(referenceUrl);
+            logs.push(`reference ${referenceUrl}: ${res.ok ? 'read' : `failed — ${res.reason}`}`);
+            if (res.ok && res.tokens) reference = res.tokens;
+            referenceNote = referenceSummary(referenceUrl, res, false);   // fixed up below once we know
+            if (!res.ok) reference = undefined;
+        }
+
+        const ownPalette = isEdit && (prev as any)?.palette ? (prev as any).palette : buildPalette(request);
+        let palette = ownPalette;
+        if (reference && !(isEdit && (prev as any)?.palette && !referenceUrl)) {
+            const r = paletteFromReference(reference, ownPalette);
+            palette = r.palette;
+            if (referenceUrl) referenceNote = referenceSummary(referenceUrl, { ok: true, tokens: reference }, r.borrowed);
+        }
         const kind = isEdit && (prev as any)?.kind ? (prev as any).kind : detectPageKind(request);
         const photos = imageBudget(kind);
         // The vocabulary of THIS business, so a photo search has something
@@ -124,7 +153,7 @@ ${blueprintBrief(kind)}
 
 ${layoutBrief(archetype, typePair)}
 
-${primitivesBrief()}`;
+${primitivesBrief()}${reference ? `\n\n${referenceBrief(reference)}` : ''}`;
 
         const systemPrompt = isEdit
             ? `You are an elite front-end engineer. MODIFY the existing HTML page: apply EXACTLY the change requested and keep everything else intact — same design system, same tokens, same sections unless the change asks otherwise. Return the COMPLETE updated HTML file.
@@ -253,11 +282,20 @@ ${prev!.html}`
         // The brief asked for all of it and the model shipped a page with zero
         // transitions, zero :hover, zero :focus and no rule for `button` at all.
         // Placed right after <style> so anything the model DID write still wins.
-        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}`;
+        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
         if (/<style[^>]*>/i.test(html)) {
             html = html.replace(/<style([^>]*)>/i, `<style$1>\n${baseLayer}\n`);
         } else if (/<\/head>/i.test(html)) {
             html = html.replace(/<\/head>/i, `<style>\n${baseLayer}\n</style>\n</head>`);
+        }
+        // A dark reference means a dark page. This is the one layer that must sit
+        // ON TOP of the model's own token block, so it goes into the LAST
+        // stylesheet in the document rather than the base layer.
+        if (reference?.mood === 'dark') {
+            const flip = `\n${darkFirstCss(palette)}\n`;
+            const last = html.lastIndexOf('</style>');
+            if (last >= 0) html = html.slice(0, last) + flip + html.slice(last);
+            else if (/<\/head>/i.test(html)) html = html.replace(/<\/head>/i, `<style>${flip}</style>\n</head>`);
         }
         // The drawn icon set, once per document, before anything can reference it.
         if (!/id="i-check"/.test(html)) {
@@ -349,7 +387,7 @@ ${prev!.html}`
         } catch (e: any) {
             return { ok: false, error: `write_failed: ${e?.message || e}`, logs };
         }
-        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair };
+        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair, reference };
         logs.push(`web_page_builder: ${isEdit ? 'edited' : 'wrote'} ${filename} (${html.length} bytes)${projectFiles.length ? ` + ${projectFiles.length} project files` : ''} in ${ARTIFACT_DIR}`);
 
         // [BROWSABLE OUTPUT] Mirror the generated file(s) into the active workspace
@@ -477,6 +515,7 @@ ${prev!.html}`
             parts.push(isAr
                 ? `🎨 نظام التصميم: ${kind} · تخطيط ${archetype} · خطوط ${typePair.note} · لوحة ${palette.scheme === 'analogous' ? 'متجانسة' : 'متكاملة'} حول ${palette.primary} (تباين AA مضمون)`
                 : `🎨 Design system: ${kind} · ${archetype} layout · ${typePair.note} type · ${palette.scheme} palette around ${palette.primary} (AA contrast by construction)`);
+            if (referenceNote) parts.push(referenceNote);
             if (imgRequested) {
                 // Be exact about how many photos are real: claiming "images added"
                 // when the network was down would be a lie the user can see.

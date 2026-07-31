@@ -142,7 +142,16 @@ export function pickHue(request: string): number {
 /* ---------- the palette ----------------------------------------------------- */
 
 export function buildPalette(request: string): Palette {
-    const hue = pickHue(request);
+    return paletteForHue(pickHue(request));
+}
+
+/**
+ * The palette for a hue that has already been decided — by the request, or by a
+ * reference site the user pointed at. Everything below is derived, so a borrowed
+ * brand colour still ships with AA-safe text instead of whatever the reference
+ * happened to get away with.
+ */
+export function paletteForHue(hue: number): Palette {
     // Warm hues read better with an analogous partner; cool hues can carry a
     // complementary accent without clashing.
     const scheme: Palette['scheme'] = hue >= 20 && hue <= 60 ? 'analogous' : 'complementary';
@@ -204,6 +213,38 @@ export function paletteCss(p: Palette): string {
   --shadow-sm:0 1px 2px rgba(0,0,0,.4); --shadow-md:0 8px 24px -8px rgba(0,0,0,.55);
   --shadow-lg:0 24px 60px -16px rgba(0,0,0,.65);
 }}`;
+}
+
+/**
+ * Make the page dark for everyone.
+ *
+ * Every page ships light with a dark @media block, which means a user who asked
+ * for the feel of a dark site gets a white page on a light-mode laptop — the one
+ * thing they did not ask for. A dark reference is dark at noon, unconditionally,
+ * so this drops the preference query entirely: the identity is the design, not a
+ * user setting. The tokens are the same ones the palette already derived, so the
+ * contrast guarantees carry over untouched.
+ *
+ * It must be appended AFTER the model's own token block to win the cascade —
+ * including after that block's own prefers-color-scheme rule.
+ */
+export function darkFirstCss(p: Palette): string {
+    return `/* dark by design: the style reference is a dark interface */
+:root,:root:where(*){
+  --bg:${p.darkBg}; --surface:${p.darkSurface}; --text:${p.darkText};
+  --text-muted:${p.darkTextMuted}; --border:${p.darkBorder};
+  --brand-light:${hslCss(p.hue, 40, 22)};
+  --shadow-sm:0 1px 2px rgba(0,0,0,.5); --shadow-md:0 10px 30px -8px rgba(0,0,0,.6);
+  --shadow-lg:0 28px 70px -16px rgba(0,0,0,.72);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:light){:root{
+  --bg:${p.darkBg}; --surface:${p.darkSurface}; --text:${p.darkText};
+  --text-muted:${p.darkTextMuted}; --border:${p.darkBorder};
+  --brand-light:${hslCss(p.hue, 40, 22)};
+  color-scheme:dark;
+}}
+body{background:var(--bg);color:var(--text)}`;
 }
 
 /** The art-direction brief handed to the model along with the tokens. */
