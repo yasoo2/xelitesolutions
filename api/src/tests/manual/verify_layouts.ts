@@ -34,6 +34,7 @@ import {
     layoutCss, primitivesCss, iconSprite, typographyCss, pickTypePair, type Archetype,
 } from '../../core/design/layouts';
 import { chromeCss } from '../../core/design/chrome';
+import { siteNav, siteNavCss } from '../../core/design/site-plan';
 import { logoCss } from '../../core/design/logo';
 import { bidiCss } from '../../core/design/language';
 import { themeCss, lightOverrideCss, revealCss } from '../../core/design/theme';
@@ -78,12 +79,21 @@ function bodyFor(a: Archetype): string {
                     : a === 'overlap' ? `<div class="stagger">${cards(4)}</div>`
                         : `<div class="grid-3">${cards(3)}</div>`;
 
-    return `<header class="site-header" data-joe-header><div class="wrap header-inner">
-  <a class="brand" href="index.html">الرؤية</a>
-  <nav class="site-nav" id="site-nav" aria-label="التنقل"><ul class="nav-links">
-    <li><a href="#a">من نحن</a></li><li><a href="#c">تواصل</a></li></ul>
-    <div class="nav-actions"><a class="btn" href="#c">ابدأ</a></div></nav>
-</div></header>
+    /**
+     * Joe's OWN shared site header, not a hand-written stand-in.
+     *
+     * The current-page link sits on a 12% brand wash and was the one thing this
+     * file did not render — so when the audit started parsing color-mix() and
+     * began treating that wash as an opaque surface, nothing here noticed and
+     * the end-to-end run reported every page of every site at 1.6:1. A harness
+     * that renders a simplified header is checking a page nobody ships.
+     */
+    return siteNav(
+        [{ file: 'index.html', kind: 'landing', title: 'الرئيسية', purpose: '' },
+         { file: 'about.html', kind: 'landing', title: 'من نحن', purpose: '' },
+         { file: 'contact.html', kind: 'landing', title: 'تواصل', purpose: '' }],
+        'index.html', 'الرؤية', { isArabic: true, hue: palette.hue },
+    ) + `
 <main>
 ${hero}
 <section class="section" id="a"><div class="wrap">
@@ -114,6 +124,7 @@ function pageFor(a: Archetype): string {
 ${typographyCss(typePair)}
 ${layoutCss(a)}
 ${chromeCss()}
+${siteNavCss()}
 ${logoCss()}
 ${themeCss(darkTokenBlock(palette))}
 ${lightOverrideCss(lightTokenBlock(palette))}
@@ -130,15 +141,26 @@ ${paletteCss(palette)}</style></head>
  * band inherits its background from neither.
  */
 const CONTRAST_PROBE = `(function () {
+  /* [r,g,b,a] in 0-255 channels, or null when the string names no colour.
+     color(srgb …) channels are 0-1 — reading them as 0-255 turns white into
+     black — and Chromium resolves every color-mix() to that form, which this
+     kit uses constantly. Skipping them, which this function used to do, is not
+     neutral either: it quietly reports a pass. */
   function toRgb(c) {
-    var m = String(c).match(/[\\d.]+/g);
+    var s = String(c);
+    var srgb = s.match(/color\\(\\s*srgb\\s+([^)]+)\\)/i);
+    if (srgb) {
+      var q = srgb[1].replace('/', ' ').split(/\\s+/).filter(Boolean).map(parseFloat);
+      return [(q[0] || 0) * 255, (q[1] || 0) * 255, (q[2] || 0) * 255, q[3] === undefined ? 1 : q[3]];
+    }
+    var m = s.match(/rgba?\\(([^)]+)\\)/);
     if (!m) return null;
-    if (String(c).indexOf('color(') === 0) return null;   // not a plain rgb() — skip rather than guess
-    if (m.length > 3 && parseFloat(m[3]) === 0) return null;
-    return [+m[0], +m[1], +m[2]];
+    var p = m[1].replace('/', ' ').split(/[,\\s]+/).filter(Boolean).map(parseFloat);
+    return [p[0] || 0, p[1] || 0, p[2] || 0, p[3] === undefined ? 1 : p[3]];
   }
+  function opaque(c) { return !!c && c[3] >= 0.995; }
   function lum(rgb) {
-    var a = rgb.map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    var a = [rgb[0], rgb[1], rgb[2]].map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
     return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
   }
   /**
@@ -153,6 +175,12 @@ const CONTRAST_PROBE = `(function () {
    * Verify the instrument before believing it.
    */
   function behind(el) {
+    /* A translucent layer is paint ON a surface, not the surface. The current
+       nav link sits on a 12% brand wash; stopping there compares the text
+       against a colour nothing on the page is painted with, and reports a link
+       everyone can read at 1.6:1. Layers are collected going up and composited
+       coming back down — which is what the compositor itself does. */
+    var layers = [];
     for (var n = el; n && n !== document.documentElement; n = n.parentElement) {
       var cs = getComputedStyle(n);
       if (cs.backgroundImage && cs.backgroundImage !== 'none') {
@@ -163,12 +191,18 @@ const CONTRAST_PROBE = `(function () {
            seven compositions. An instrument that skips is not neutral; it is
            quietly reporting a pass. */
         if (cs.backgroundImage.indexOf('url(') >= 0) return null;
-        var stops = cs.backgroundImage.match(/rgba?\([^)]+\)|color\(\s*srgb[^)]+\)/gi) || [];
+        /* \\( — a single backslash here is eaten by the TEMPLATE LITERAL this
+           script lives in, so the emitted regex becomes rgba?([^)]+), whose
+           parens are a capture group rather than a literal bracket. It still
+           matched, just not the whole colour, and every gradient band silently
+           became unmeasurable: 252 skipped nodes reported as a clean pass. */
+        var stops = cs.backgroundImage.match(/rgba?\\([^)]+\\)|color\\(\\s*srgb[^)]+\\)/gi) || [];
         var solid = [];
-        for (var k = 0; k < stops.length; k++) { var c = toRgb(stops[k]); if (c) solid.push(c); }
+        for (var k = 0; k < stops.length; k++) { var c = toRgb(stops[k]); if (opaque(c)) solid.push(c); }
         if (!solid.length) return null;
         solid.sort(function (a, b) { return lum(a) - lum(b); });
-        return solid[0];
+        layers.push(solid[0]);
+        break;
       }
       /* A ::before or ::after carrying a background is painted BETWEEN this text
          and the colour the walk is about to find. The showcase hero does exactly
@@ -183,15 +217,31 @@ const CONTRAST_PROBE = `(function () {
       for (var i = 0; i < 2; i++) {
         var pe = getComputedStyle(n, i ? '::after' : '::before');
         if (!pe || pe.content === 'none') continue;
-        if (!(pe.backgroundImage && pe.backgroundImage !== 'none') && !toRgb(pe.backgroundColor)) continue;
+        /* PAINT, not merely a declared colour. toRgb now parses rgba(0,0,0,0)
+           into a value instead of returning null, so a bare truthiness test
+           reads every fully transparent pseudo-element as opaque — which took the
+           unmeasurable count from 12 to 252 and turned this probe into a
+           rubber stamp. Alpha is the whole question here. */
+        var peBg = toRgb(pe.backgroundColor);
+        var peHasPaint = (pe.backgroundImage && pe.backgroundImage !== 'none') || (peBg && peBg[3] > 0.004);
+        if (!peHasPaint) continue;
         var pw = parseFloat(pe.width), ph = parseFloat(pe.height);
         if (!isFinite(pw) || !isFinite(ph)) return null;          // cannot tell — do not guess
         if (pw >= box.width * 0.9 && ph >= box.height * 0.9) return null;
       }
-      var c = toRgb(cs.backgroundColor);
-      if (c) return c;
+      var bc = toRgb(cs.backgroundColor);
+      if (bc && bc[3] > 0.004) { layers.push(bc); if (opaque(bc)) break; }
     }
-    return toRgb(getComputedStyle(document.body).backgroundColor) || [255, 255, 255];
+    if (!layers.length || !opaque(layers[layers.length - 1])) {
+      var body = toRgb(getComputedStyle(document.body).backgroundColor);
+      layers.push(opaque(body) ? body : [255, 255, 255, 1]);
+    }
+    var out = [255, 255, 255];
+    for (var j = layers.length - 1; j >= 0; j--) {
+      var al = layers[j][3], L = layers[j];
+      out = [0, 1, 2].map(function (ch) { return L[ch] * al + out[ch] * (1 - al); });
+    }
+    return out;
   }
   var bad = [], unmeasurable = 0;
   var els = document.querySelectorAll('h1,h2,h3,h4,p,a,span,li,button,.btn,.eyebrow,.lede,.stat-label,.stat-value,figcaption');
@@ -204,7 +254,7 @@ const CONTRAST_PROBE = `(function () {
     if (cs.visibility === 'hidden' || cs.display === 'none' || parseFloat(cs.opacity) < 0.5) return;
     var fg = toRgb(cs.color); if (!fg) return;
     var bg = behind(el);
-    if (!bg) { unmeasurable++; return; }
+    if (!bg) { unmeasurable++; if (window.__skips) window.__skips.push(el.tagName.toLowerCase() + '.' + String(el.className).slice(0,30) + ' | ' + el.textContent.trim().slice(0,18)); return; }
     var a = lum(fg), b = lum(bg);
     var ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
     // AA is 4.5 for body text, 3.0 for large text (>=24px, or >=18.66px bold).
@@ -253,9 +303,11 @@ async function main() {
 
                 const tag = `${a}/${scheme}/${vp.label}`;
 
+                await page.evaluate(() => { (window as any).__skips = []; });
                 const probe = await page.evaluate(CONTRAST_PROBE) as { bad: any[]; unmeasurable: number };
                 add(`${tag}: every text node clears AA`, probe.bad.length === 0, probe.bad.slice(0, 4));
                 unmeasured += probe.unmeasurable;
+                if (process.env.SHOW_SKIPS && probe.unmeasurable) console.log(`  skips ${tag}:`, (await page.evaluate(() => (window as any).__skips)).slice(0,6));
 
                 const hScroll = await page.evaluate(() => {
                     const de = document.documentElement, before = window.scrollX;

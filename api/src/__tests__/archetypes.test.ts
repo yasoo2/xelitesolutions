@@ -22,6 +22,7 @@
 
 import { pickArchetype, layoutCss, layoutBrief, pickTypePair, type Archetype } from '../core/design/layouts';
 import { paletteForHue, paletteCss, darkTokenBlock, lightTokenBlock, darkFirstCss, contrastRatio } from '../core/design/design-system';
+import { siteNavCss } from '../core/design/site-plan';
 
 const ALL: Archetype[] = ['split', 'centered', 'bento', 'editorial', 'showcase', 'overlap', 'contrast'];
 
@@ -165,5 +166,35 @@ describe('the brand colour used as TEXT is fitted for that job', () => {
 
     it('is what the eyebrow actually uses', () => {
         expect(layoutCss('split')).toMatch(/\.eyebrow\{[^}]*color:var\(--brand-text/);
+    });
+});
+
+describe('a tinted surface is picked as a PAIR, never half at a time', () => {
+    /**
+     * The site header's "you are here" link went wrong twice, in opposite
+     * directions, because its colour and its background were chosen separately.
+     *
+     *   1. var(--brand) on a 12% brand wash measured 4.12:1 in a browser — below
+     *      AA — at the hues that happened to land there. Changed to
+     *      var(--brand-dark), which is fitted to 7:1 against WHITE.
+     *   2. …which in dark mode is a deep blue on a near-black header: 1.97:1, on
+     *      every page of every site Joe builds.
+     *
+     * --tint and --on-tint are DEFINED against each other and proven AA at every
+     * hue in both schemes. That is the whole reason the pair exists.
+     */
+    it('uses the pair for the current page and for hover', () => {
+        const css = siteNavCss();
+        expect(css).toMatch(/a\[aria-current="page"\]\{[^}]*color:var\(--on-tint\)[^}]*background:var\(--tint\)/);
+        expect(css).toMatch(/a:hover\{[^}]*color:var\(--on-tint\)[^}]*background:var\(--tint\)/);
+    });
+
+    it('never hand-picks one half of a tinted surface', () => {
+        // --brand-dark is fitted against white; on a tint in dark mode it is the
+        // 1.97:1 defect above. If it comes back here, so does that.
+        // Comments are stripped first — the rule this guards is written down
+        // right there in one, and asserting against prose is not a check.
+        const declarations = siteNavCss().replace(/\/\*[\s\S]*?\*\//g, '');
+        expect(declarations).not.toMatch(/--brand-dark/);
     });
 });

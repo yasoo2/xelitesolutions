@@ -99,6 +99,7 @@ function collector() {
     };
     const effBg = (el: Element): number[] | null => {
         let n: Element | null = el;
+        const layers: number[][] = [];
         while (n) {
             const st = getComputedStyle(n);
             const box = n.getBoundingClientRect();
@@ -122,20 +123,45 @@ function collector() {
                 if (child.querySelector('img,picture,video') || (cs.backgroundImage && cs.backgroundImage !== 'none')) return null;
             }
 
+            /**
+             * A TRANSLUCENT LAYER IS NOT A SURFACE — it is paint ON one.
+             *
+             * The kit tints things constantly: the current nav link sits on
+             * `color-mix(in srgb, var(--brand) 12%, transparent)`. Treating
+             * that 12% wash as if it were the background means comparing the
+             * text against a colour nothing on the page is actually painted
+             * with. Measured end to end the moment color-mix started parsing:
+             * every page of every site reported its own nav link at 1.6:1 and
+             * lost 30 points for a link that is perfectly readable.
+             *
+             * Layers are collected on the way up and composited on the way
+             * down, which is what the compositor itself does.
+             */
             const bg = parse(st.backgroundColor);
-            if (bg[3] > 0.1) return bg;
+            if (bg[3] >= 0.995) { layers.push(bg); break; }
+            if (bg[3] > 0.004) layers.push(bg);
+
             // A gradient hides the real colour; sample its darkest declared stop.
             const bi = st.backgroundImage;
             if (bi && bi !== 'none') {
                 if (/url\(/i.test(bi)) return null;                 // a photograph: unknowable
                 const stops = [...bi.matchAll(/rgba?\([^)]+\)|color\(\s*srgb[^)]+\)/gi)].map(m => parse(m[0]));
-                const opaque = stops.filter(c => c[3] > 0.1);
-                if (opaque.length) return opaque.sort((a, b) => lum(a[0], a[1], a[2]) - lum(b[0], b[1], b[2]))[0];
+                const opaque = stops.filter(c => c[3] >= 0.995);
+                if (opaque.length) {
+                    layers.push(opaque.sort((a, b) => lum(a[0], a[1], a[2]) - lum(b[0], b[1], b[2]))[0]);
+                    break;
+                }
                 return null;                                         // a gradient we cannot read
             }
             n = n.parentElement;
         }
-        return [255, 255, 255, 1];
+        // Bottom-up: the deepest layer is painted last, over everything below it.
+        let out = [255, 255, 255];
+        for (let i = layers.length - 1; i >= 0; i--) {
+            const a = layers[i][3];
+            out = [0, 1, 2].map(c => layers[i][c] * a + out[c] * (1 - a));
+        }
+        return [out[0], out[1], out[2], 1];
     };
     const visible = (el: HTMLElement) => {
         const r = el.getBoundingClientRect(), st = getComputedStyle(el);

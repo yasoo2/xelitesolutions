@@ -196,13 +196,17 @@ export function siteNavCss(): string {
    4.12:1, below AA, on every page of every site Joe builds. Nav links are the
    primary way around a site; they take the colour that has headroom. */
 .site-header nav a{color:var(--text);text-decoration:none;padding:var(--space-2) var(--space-3);border-radius:var(--radius);transition:color .18s ease,background .18s ease}
-.site-header nav a:hover{color:var(--brand-dark);background:color-mix(in srgb,var(--brand) 10%,transparent)}
-/* --brand-dark, not --brand. --brand is fitted to 4.5:1 against WHITE; the
-   current-page link sits on a 12% brand tint, and measured in a browser it came
-   out at 4.12:1 — below AA — on every page of a site whose hue happened to land
-   there. --brand-dark is fitted to 7:1, which leaves headroom on a tint at any
-   hue. Hue-dependent contrast is exactly what only measurement catches. */
-.site-header nav a[aria-current="page"]{color:var(--brand-dark);font-weight:700;background:color-mix(in srgb,var(--brand) 12%,transparent)}
+/* --tint and --on-tint, which are DEFINED as a pair and fitted to 4.5:1
+   against each other in both schemes at every hue.
+   The two rules below used to hand-pick a colour and a wash: --brand on a 12%
+   brand tint measured 4.12:1 in a browser, so it was changed to --brand-dark,
+   which is fitted to 7:1 against WHITE and leaves headroom — in LIGHT mode. In
+   dark mode --brand-dark is a deep blue on a near-black header and measured
+   1.97:1, on every page of every site. A tinted surface is only ever safe as a
+   pair, which is why the pair exists; picking the two halves separately is how
+   this went wrong twice. */
+.site-header nav a:hover{color:var(--on-tint);background:var(--tint)}
+.site-header nav a[aria-current="page"]{color:var(--on-tint);font-weight:700;background:var(--tint)}
 @media (max-width:640px){.site-header .wrap{flex-direction:column;align-items:flex-start}}`;
 }
 
