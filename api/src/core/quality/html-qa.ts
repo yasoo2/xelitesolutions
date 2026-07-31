@@ -22,6 +22,27 @@ export interface HtmlReview {
 
 const PLACEHOLDER_HOSTS = /https?:\/\/(via\.placeholder\.com|placehold\.it|placeholder\.com|placekitten\.com|dummyimage\.com|loremflickr\.com|unsplash\.it)[^\s"')]*/gi;
 
+/**
+ * A copy of the document in which script and style CONTENTS are blanked out,
+ * character for character.
+ *
+ * Structural rules must not see inside code. A runtime that builds markup from
+ * strings — every one Joe ships does — contains `</header>`, `<main>` and `<h1>`
+ * as ordinary text, and a rule that finds them there will either edit the wrong
+ * place or decide the page already has something it does not.
+ *
+ * The replacement is the same LENGTH as what it replaces, so an offset found in
+ * the mask addresses the identical character in the original and a splice can be
+ * applied to the real document without any remapping.
+ */
+export function maskNonMarkup(html: string): string {
+    return String(html || '').replace(
+        /(<(script|style)\b[^>]*>)([\s\S]*?)(<\/\2\s*>)/gi,
+        (_m, open: string, _tag: string, body: string, close: string) =>
+            open + body.replace(/[^\n]/g, ' ') + close,
+    );
+}
+
 /** Deterministic review + safe auto-fix. Never throws. */
 export function reviewHtml(rawHtml: string, isArabic = false): HtmlReview {
     let html = String(rawHtml || '');
@@ -264,13 +285,52 @@ export function reviewHtml(rawHtml: string, isArabic = false): HtmlReview {
     //     Safe to add only when the document has one header and one footer and
     //     everything between them is the content — which is the shape every
     //     blueprint produces.
-    if (/<body[\s>]/i.test(html) && !/<main[\s>]|role=["']main["']/i.test(html)) {
-        const headerEnd = html.search(/<\/header\s*>/i);
-        const footerStart = html.search(/<footer[\s>]/i);
-        if (headerEnd > 0 && footerStart > headerEnd) {
-            const after = headerEnd + (html.match(/<\/header\s*>/i) || [''])[0].length;
-            html = html.slice(0, after) + '\n<main>' + html.slice(after, footerStart) + '</main>\n' + html.slice(footerStart);
-            fixed.push('wrapped the page content in <main>');
+    //
+    //     SEARCHED ON A MASK, not on the raw document. This rule used to scan
+    //     the whole file, and the cart runtime builds its panel with
+    //
+    //         '…</header>' + '<main>' + '<div data-cart-items></div>' + …
+    //
+    //     so on every page that sells something the FIRST `</header>` in the
+    //     file was inside a JavaScript string. The insertion cut that string in
+    //     half — "Invalid or unexpected token" — and a syntax error in one
+    //     script tag stops every script on the page, exactly like the duplicate
+    //     `const` did. Measured end to end: the store page threw, and its cart,
+    //     forms and widgets were all dead.
+    //
+    //     The same masking fixes a second bug in the same rule: the literal
+    //     '<main>' inside that JS string satisfied the "does the page already
+    //     have a <main>?" test, so pages WITH a cart were skipped and pages
+    //     without one often had no header/footer pair to anchor to. Four of five
+    //     measured pages ended up with no <main> at all.
+    if (/<body[\s>]/i.test(html)) {
+        const mask = maskNonMarkup(html);
+        if (!/<main[\s>]|role=["']main["']/i.test(mask)) {
+            // Where the content starts: after the header, or after <body> when
+            // the page has no header.
+            const closeHeader = mask.match(/<\/header\s*>/i);
+            const headerEnd = mask.search(/<\/header\s*>/i);
+            const bodyOpen = mask.match(/<body[^>]*>/i);
+            const start = headerEnd >= 0 && closeHeader
+                ? headerEnd + closeHeader[0].length
+                : (bodyOpen ? mask.indexOf(bodyOpen[0]) + bodyOpen[0].length : -1);
+
+            // Where it ends: at the footer, or at </body> when there is none.
+            // Requiring a footer was too strict — measured, four of five page
+            // kinds had a header and sections but no <footer>, so they came out
+            // with no landmark at all and a screen-reader user had no way to
+            // skip the navigation.
+            const footerStart = mask.search(/<footer[\s>]/i);
+            const bodyClose = mask.search(/<\/body\s*>/i);
+            const end = footerStart > start ? footerStart : (bodyClose > start ? bodyClose : -1);
+
+            // There has to be something in between worth wrapping.
+            if (start > 0 && end > start && /<(section|article|div|h1|h2)\b/i.test(mask.slice(start, end))) {
+                // Offsets from the mask address the original exactly: masking
+                // replaces characters, it never changes how many there are.
+                html = html.slice(0, start) + '\n<main>' + html.slice(start, end) + '</main>\n' + html.slice(end);
+                fixed.push('wrapped the page content in <main>');
+            }
         }
     }
 

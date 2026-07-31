@@ -118,9 +118,56 @@ describe('accessibility fixes', () => {
         expect(r.html.indexOf('</main>')).toBeLessThan(r.html.indexOf('<footer'));
     });
 
-    it('does not invent a <main> when there is no header/footer shape to anchor it', () => {
+    it('adds <main> even when the page has no footer', () => {
+        // This used to require BOTH a header and a footer, and refuse otherwise.
+        // Measured end to end afterwards: four of five page kinds have a header
+        // and sections but no <footer>, so they shipped with no landmark at all
+        // and a screen-reader user had no way past the navigation. A page with
+        // content always has a main region; the only question was where it ends.
+        const r = reviewHtml(page('<header><nav>ن</nav></header><section><h1>ع</h1></section>'), true);
+        expect(r.html).toContain('<main>');
+        expect(r.html.indexOf('<main>')).toBeGreaterThan(r.html.indexOf('</header>'));
+        expect(r.html.indexOf('</main>')).toBeLessThan(r.html.indexOf('</body>'));
+    });
+
+    it('adds <main> to a page with no header either', () => {
         const r = reviewHtml(page('<section><h1>ع</h1></section>'), true);
+        expect(r.html).toContain('<main><section><h1>ع</h1></section></main>'.replace(/</g, '<').slice(0, 6));
+        expect(r.html).toMatch(/<main>[\s\S]*<section>[\s\S]*<\/main>/);
+    });
+
+    it('does not wrap a body that has nothing to wrap', () => {
+        const r = reviewHtml(page('<p>سطر</p>'), true);
         expect(r.html).not.toContain('<main>');
+    });
+
+    it('leaves a page that already has a <main> alone', () => {
+        const r = reviewHtml(page('<header>ن</header><main><section><h1>ع</h1></section></main>'), true);
+        expect((r.html.match(/<main\b/g) || []).length).toBe(1);
+    });
+
+    it('NEVER writes <main> into the middle of a JavaScript string', () => {
+        // The rule searched the raw document, so on every page with a cart the
+        // first `</header>` in the file was inside the cart runtime, which
+        // builds its panel with '…</header>' + '<main>' + '…'. The insertion cut
+        // that string in half — "Invalid or unexpected token" — and one syntax
+        // error stops EVERY script on the page. Measured: the store page threw,
+        // and its cart, forms and widgets were all dead.
+        const runtime = `<script>var p=document.createElement('div');
+p.innerHTML='<aside><header><h2>'+T.title+'</h2></header>'+'<main>'+'<div></div>'+'</main>'+'</aside>';</script>`;
+        const r = reviewHtml(page(`<section><h1>ع</h1></section>${runtime}`), true);
+
+        const js = (r.html.match(/<script>([\s\S]*?)<\/script>/) || [, ''])[1];
+        // The only assertion that matters: it still parses.
+        expect(() => new Function(js)).not.toThrow();
+        // …and the string it was built from was not cut in half.
+        expect(js.replace(/\s+/g, '')).toContain(`</header>'+'<main>'`);
+    });
+
+    it('does not mistake a <main> inside a script for the page having one', () => {
+        const r = reviewHtml(page(`<header>ن</header><section><h1>ع</h1></section><script>var s='<main>x</main>';</script>`), true);
+        // The real document still gets its landmark.
+        expect(r.html).toMatch(/<\/header>\s*<main>/);
     });
 });
 
