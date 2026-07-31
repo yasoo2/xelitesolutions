@@ -17,6 +17,7 @@ import { planSite, siteNav, siteNavCss, verifyInternalLinks, targetPage, type Si
 import { cartBrief, cartRuntime, cartCss, needsCart } from '../../../core/design/commerce';
 import { formBrief, formRuntime, formCss } from '../../../core/design/forms';
 import { chartBrief, chartRuntime, chartCss, needsCharts } from '../../../core/design/dataviz';
+import { widgetBrief, widgetRuntime, widgetCss, usesWidgets } from '../../../core/design/widgets';
 import { resolveImages, creditsBlock, availableSources } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
@@ -169,7 +170,7 @@ ${blueprintBrief(kind)}
 
 ${layoutBrief(archetype, typePair)}
 
-${primitivesBrief()}\n\n${formBrief()}${needsCharts(kind) ? `\n\n${chartBrief()}` : ''}${needsCart(kind) ? `\n\n${cartBrief()}` : ''}${reference ? `\n\n${referenceBrief(reference)}` : ''}`;
+${primitivesBrief()}\n\n${formBrief()}\n\n${widgetBrief()}${needsCharts(kind) ? `\n\n${chartBrief()}` : ''}${needsCart(kind) ? `\n\n${cartBrief()}` : ''}${reference ? `\n\n${referenceBrief(reference)}` : ''}`;
 
         const systemPrompt = isEdit
             ? `You are an elite front-end engineer. MODIFY the existing HTML page: apply EXACTLY the change requested and keep everything else intact — same design system, same tokens, same sections unless the change asks otherwise. Return the COMPLETE updated HTML file.
@@ -463,7 +464,7 @@ ${prev!.html}`
         // The brief asked for all of it and the model shipped a page with zero
         // transitions, zero :hover, zero :focus and no rule for `button` at all.
         // Placed right after <style> so anything the model DID write still wins.
-        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}\n${formCss()}${needsCharts(kind) ? `\n${chartCss()}` : ''}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
+        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}${needsCharts(kind) ? `\n${chartCss()}` : ''}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
         // A section-wise build already carries the base layer — assembled by Joe,
         // not by the model — so injecting it again would duplicate ~10 KB of CSS.
         if (!/Joe UI kit — base layer/.test(html)) {
@@ -508,6 +509,13 @@ ${prev!.html}`
 
         // A dashboard has no photographs — every visual on it is drawn — and a
         // weak model cannot draw an SVG chart from data.
+        // Only when the page actually uses one — the detection is data-attribute
+        // presence, so an unused widget costs nothing.
+        if (usesWidgets(html) && !/Joe widgets/.test(html)) {
+            const wr = widgetRuntime(isAr);
+            html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${wr}\n</body>`) : html + wr;
+        }
+
         if (/data-chart/i.test(html) && !/Joe charts/.test(html)) {
             const cr = chartRuntime(isAr);
             html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${cr}\n</body>`) : html + cr;
@@ -989,7 +997,7 @@ ${prev!.html}`
                 // the model has never heard of.
                 .filter(p => !/header/i.test(p.id));
 
-            const design = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}\n\n${formBrief()}${needsCharts(page.kind) ? `\n\n${chartBrief()}` : ''}${needsCart(page.kind) ? `\n\n${cartBrief()}` : ''}${reference ? `\n\n${referenceBrief(reference)}` : ''}
+            const design = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}\n\n${formBrief()}\n\n${widgetBrief()}${needsCharts(page.kind) ? `\n\n${chartBrief()}` : ''}${needsCart(page.kind) ? `\n\n${cartBrief()}` : ''}${reference ? `\n\n${referenceBrief(reference)}` : ''}
 THIS PAGE: "${page.title}" — ${page.purpose}
 It is one page of a ${sitePlan.pages.length}-page site (${sitePlan.pages.map(p => p.title).join(' · ')}).
 Do NOT write a site header or navigation; the site already has one. Link to another page with
@@ -1041,7 +1049,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 title: `${page.title} — ${brand}`,
                 isArabic: isAr,
                 tokenCss: paletteCss(palette),
-                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}\n${formCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                 sections,
                 sprite: iconSprite(),
                 script: uiKitScript(),
@@ -1056,6 +1064,10 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
             if (siteHasCart) {
                 const rt = cartRuntime(isAr);
                 pageHtml = /<\/body>/i.test(pageHtml) ? pageHtml.replace(/<\/body>/i, `${rt}\n</body>`) : pageHtml + rt;
+            }
+            if (usesWidgets(pageHtml)) {
+                const wr = widgetRuntime(isAr);
+                pageHtml = /<\/body>/i.test(pageHtml) ? pageHtml.replace(/<\/body>/i, `${wr}\n</body>`) : pageHtml + wr;
             }
             if (/data-chart/i.test(pageHtml)) {
                 const cr = chartRuntime(isAr);
