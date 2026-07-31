@@ -73,33 +73,142 @@ const DOMAIN_LEXICON: Array<[RegExp, string[]]> = [
     [/أزياء|ازياء|fashion|جمال|beauty|salon/i, ['fashion model studio', 'salon interior']],
 ];
 
-/** Phrases so generic they return nothing related to any particular business. */
+/**
+ * THE FACE FOR EACH TRADE.
+ *
+ * An avatar slot is a person — a testimonial, a team member, an author. Ranking
+ * by shape cannot fix a subject that names no person at all, so a testimonial
+ * card asking for "espresso machine" got exactly that: a coffee machine in a
+ * circle where a customer's face belongs. The subject itself has to be a person
+ * before the search runs.
+ */
+const PORTRAITS: Array<[RegExp, string]> = [
+    [/برمج|سوفت|software|program|code|dev|تقني|تكنولوج|tech/i, 'software engineer portrait'],
+    [/استشار|consult|إدارة|ادارة|management/i, 'business consultant portrait'],
+    [/قهوة|كافيه|coffee|cafe/i, 'barista portrait'],
+    [/مطعم|طعام|restaurant|food|طاه|شيف|chef/i, 'chef portrait'],
+    [/طب|صح|عياد|clinic|medical|health|ممرض|nurse/i, 'doctor portrait'],
+    [/تعليم|مدرس|معلم|education|teacher|school/i, 'teacher portrait'],
+    [/محام|قانون|law|legal/i, 'lawyer portrait'],
+    [/مالي|محاسب|finance|account|bank/i, 'accountant portrait'],
+    [/هندس|معمار|engineer|architect/i, 'engineer portrait'],
+    [/رياض|لياقة|gym|fitness|مدرب|coach|trainer/i, 'fitness trainer portrait'],
+    [/أزياء|ازياء|fashion|جمال|beauty|salon|حلاق/i, 'stylist portrait'],
+    [/مزرع|زراع|farm|agricultur/i, 'farmer portrait'],
+];
+
+/** Words that name a person, so an avatar subject can be checked for one. */
+const PERSON = /\b(portrait|person|man|woman|people|face|smiling|team member|founder|customer|client|employee|worker|staff|headshot|owner|doctor|nurse|chef|barista|teacher|student|lawyer|engineer|developer|designer|trainer|coach|stylist|farmer|consultant|accountant|manager)\b/i;
+
+/**
+ * NOUNS THE LEXICON ABOVE DOES NOT COVER.
+ *
+ * The domain table only fires for the sectors it happens to list. A request for
+ * «مكتب هندسة معمارية» or «مشتل نباتات» matched nothing, which left `vocabulary`
+ * holding only the Latin words the user typed — and for a request written
+ * entirely in Arabic, that is NOTHING. `isSpecificEnough` then returned true for
+ * every subject on the "nothing to check against" branch, so the whole grounding
+ * pass was inert for exactly the requests that needed it most.
+ *
+ * This is the translation layer: a real Arabic noun mapped to the English a
+ * photo archive is actually indexed in. Not a translator — a lookup table, which
+ * is honest about being finite and is right about what it does contain.
+ */
+const NOUN_LEXICON: Array<[RegExp, string]> = [
+    [/معمار|عمارة|architect/i, 'architecture building facade'],
+    [/هندس|engineer/i, 'engineering site'],
+    [/بناء|إنشاء|انشاء|مقاول|construction|contractor/i, 'construction site workers'],
+    [/أثاث|اثاث|furniture/i, 'furniture showroom'],
+    [/ديكور|interior/i, 'interior design room'],
+    [/سيار|مركب|car|auto|vehicle/i, 'car showroom'],
+    [/ملابس|أزياء|ازياء|clothing|apparel/i, 'clothing rack boutique'],
+    [/مجوهرات|ذهب|jewel|gold/i, 'jewellery close up'],
+    [/زهور|ورود|نبات|مشتل|flower|plant|nursery/i, 'flower shop arrangement'],
+    [/كتب|مكتبة|نشر|book|library|publish/i, 'bookshelf library'],
+    [/طباعة|print/i, 'printing press workshop'],
+    [/تصوير|photograph|camera/i, 'photographer camera'],
+    [/موسيق|music|studio/i, 'music studio microphone'],
+    [/مزرع|زراع|farm|agricultur/i, 'farm field crops'],
+    [/شحن|نقل|لوجست|توصيل|logistic|shipping|delivery/i, 'delivery van warehouse'],
+    [/مستودع|warehouse/i, 'warehouse shelves'],
+    [/تنظيف|نظافة|clean/i, 'cleaning service'],
+    [/أمن|امن|حراس|security|guard/i, 'security control room'],
+    [/تأمين|تامين|insurance/i, 'insurance paperwork desk'],
+    [/طاقة|شمس|solar|energy/i, 'solar panels field'],
+    [/بيطر|حيوان|vet|pet|animal/i, 'veterinary clinic pet'],
+    [/أطفال|اطفال|حضانة|روضة|kids|children|nursery/i, 'children playing classroom'],
+    [/زفاف|أعراس|اعراس|مناسبات|wedding|event/i, 'wedding event hall'],
+    [/ألعاب|العاب|gaming|game/i, 'gaming setup screens'],
+    [/رحلات|سياح|travel|tour/i, 'travel landscape'],
+    [/مصنع|صناع|factory|manufactur|industr/i, 'factory production line'],
+    [/مختبر|معمل|lab|research/i, 'laboratory research'],
+    [/خياط|نسيج|textile|tailor/i, 'tailor workshop fabric'],
+    [/حلويات|مخبز|bakery|pastry|dessert/i, 'bakery pastries'],
+    [/عسل|honey|نحل/i, 'honey jars beekeeper'],
+];
+
+/**
+ * Phrases so generic they return nothing related to any particular business.
+ *
+ * The whole-string form missed the phrase models actually write. "professional
+ * business people in a modern office" is five words of pure stock filler and
+ * sailed through, because it is not one of the listed single words. What makes
+ * a subject useless is not its length — it is having no content word in it at
+ * all, which is what the second test below measures.
+ */
 const GENERIC = /^(business|office|work|team|people|success|technology|company|meeting|professional|corporate|modern|abstract|background)([\s-]*(people|photo|image|background|concept))?$/i;
+
+/** Words that carry no subject on their own. A phrase made only of these names nothing. */
+const FILLER = new Set([
+    'business', 'office', 'work', 'working', 'team', 'people', 'person', 'success', 'successful',
+    'technology', 'tech', 'company', 'meeting', 'professional', 'professionals', 'corporate',
+    'modern', 'abstract', 'background', 'concept', 'photo', 'image', 'picture', 'stock',
+    'group', 'happy', 'smiling', 'young', 'beautiful', 'nice', 'good', 'great', 'best',
+    'man', 'woman', 'men', 'women', 'guy', 'lady', 'colleagues', 'workplace', 'desk', 'laptop',
+]);
 
 export interface ImageBrief {
     /** English subjects grounded in what this business actually does. */
     suggestions: string[];
     /** Terms any query must touch to count as on-topic. */
     vocabulary: string[];
+    /** Subjects that name a PERSON, for slots where a face belongs. */
+    portraits: string[];
 }
 
 export function buildImageBrief(request: string): ImageBrief {
     const r = probeOf(request);
     const suggestions: string[] = [];
     const vocabulary: string[] = [];
+    const portraits: string[] = [];
+
+    const learn = (subject: string) => {
+        if (!suggestions.includes(subject)) suggestions.push(subject);
+        for (const w of subject.split(/\s+/)) {
+            const lw = w.toLowerCase();
+            if (lw.length > 3 && !vocabulary.includes(lw)) vocabulary.push(lw);
+        }
+    };
+
     for (const [re, subjects] of DOMAIN_LEXICON) {
         if (!re.test(r)) continue;
-        for (const s of subjects) {
-            if (!suggestions.includes(s)) suggestions.push(s);
-            for (const w of s.split(/\s+/)) if (w.length > 3 && !vocabulary.includes(w)) vocabulary.push(w);
-        }
+        for (const s of subjects) learn(s);
     }
+    // The nouns the sector table does not cover — without these a request
+    // written entirely in Arabic produced an EMPTY vocabulary, and an empty
+    // vocabulary means every subject passes unchecked.
+    for (const [re, subject] of NOUN_LEXICON) if (re.test(r)) learn(subject);
+
+    for (const [re, face] of PORTRAITS) {
+        if (re.test(r) && !portraits.includes(face)) portraits.push(face);
+    }
+
     // Latin words the user wrote themselves (a brand, a product) are on-topic too.
     for (const w of r.match(/[a-z]{4,}/gi) || []) {
         const lw = w.toLowerCase();
         if (!vocabulary.includes(lw)) vocabulary.push(lw);
     }
-    return { suggestions: suggestions.slice(0, 12), vocabulary };
+    return { suggestions: suggestions.slice(0, 12), vocabulary, portraits };
 }
 
 /**
@@ -110,13 +219,46 @@ export function isSpecificEnough(subject: string, brief: ImageBrief): boolean {
     const s = String(subject || '').trim();
     if (s.length < 6) return false;
     if (GENERIC.test(s)) return false;
-    if (!brief.vocabulary.length) return true;      // nothing to check against
+
     const words = s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+
+    /**
+     * A phrase built ENTIRELY out of filler names nothing, at any length.
+     * "professional business people in a modern office" is five words that tell
+     * an archive precisely as much as "office" does, and the whole-string test
+     * above waves it through because it is not one of the listed single words.
+     * This runs before the vocabulary check on purpose: it is true regardless
+     * of what the business happens to be.
+     */
+    if (words.length && words.every(w => FILLER.has(w) || w.length <= 2)) return false;
+
+    if (!brief.vocabulary.length) return true;      // nothing to check against
     return brief.vocabulary.some(v => words.some(w => w.includes(v) || v.includes(w)));
 }
 
-/** The nearest on-topic subject, used when the model writes something generic. */
-export function groundSubject(subject: string, brief: ImageBrief, index: number): string {
+/** Does this subject name a person? An avatar slot that does not is a defect. */
+export function namesAPerson(subject: string): boolean {
+    return PERSON.test(String(subject || ''));
+}
+
+/**
+ * The nearest on-topic subject, used when the model writes something generic.
+ *
+ * SLOT-AWARE, because shape ranking cannot rescue the wrong kind of thing. An
+ * avatar is a face — a testimonial, a team member, an author — and a subject
+ * that names no person puts a coffee machine in the circle where a customer's
+ * portrait belongs. Ranking by aspect ratio happily calls that a perfect
+ * square. The subject has to name a person BEFORE the search runs.
+ */
+export function groundSubject(subject: string, brief: ImageBrief, index: number, slot?: ImageSlot): string {
+    if (slot === 'avatar') {
+        if (namesAPerson(subject) && isSpecificEnough(subject, brief)) return subject;
+        if (brief.portraits.length) return brief.portraits[index % brief.portraits.length];
+        // No trade to draw a face from: say "a person", which at least searches
+        // for the right KIND of thing, rather than keeping a subject we know is
+        // wrong for this slot.
+        return namesAPerson(subject) ? subject : 'professional headshot portrait';
+    }
     if (isSpecificEnough(subject, brief)) return subject;
     if (!brief.suggestions.length) return subject;
     return brief.suggestions[index % brief.suggestions.length];

@@ -39,6 +39,9 @@ export interface Palette {
     /** A brand-tinted surface and text guaranteed readable on it — always a pair. */
     tint: string;
     onTint: string;
+    /** The brand colour as TEXT on the page surface — a different fit from the fill. */
+    brandText: string;
+    darkBrandText: string;
     darkTint: string;
     onDarkTint: string;
     /** Dark-mode counterparts, so every page ships with both. */
@@ -196,9 +199,26 @@ export function paletteForHue(hue: number): Palette {
     const tint = primaryLight;
     const darkTint = hslCss(hue, 40, 22);
 
+    /**
+     * THE BRAND COLOUR USED AS TEXT, which is not the same colour as the brand
+     * used as a fill.
+     *
+     * --brand is fitted to 4.5:1 against WHITE, because its job is to be a
+     * button that carries white text. Two rules then borrowed it as a FOREGROUND
+     * — the eyebrow label above every section heading, and every ghost button —
+     * and in dark mode that lands a mid-tone on a near-black surface. Measured
+     * in a browser across all seven compositions: 3.85:1, below AA, on every
+     * dark-mode page Joe has ever built. Nothing caught it because the palette
+     * guarantees contrast for the pairs it defines, and this was not one of
+     * them.
+     */
+    const brandText = fitContrast(hue, 68, 52, surface, 4.5, -1);
+    const darkBrandText = fitContrast(hue, 68, 62, darkSurface, 4.5, 1);
+
     return {
         hue, scheme, primary, primaryDark, primaryLight,
         tint, onTint: fitContrast(hue, 70, 34, tint, 4.5, -1),
+        brandText, darkBrandText,
         darkTint, onDarkTint: fitContrast(hue, 70, 72, darkTint, 4.5, 1),
         secondary: fitContrast(secondaryHue, 62, 48, white, 4.5, -1),
         accent: fitContrast(accentHue, 70, 46, white, 4.5, -1),
@@ -215,7 +235,7 @@ export function paletteCss(p: Palette): string {
     return `:root{
   --brand:${p.primary}; --brand-dark:${p.primaryDark}; --brand-light:${p.primaryLight};
   --secondary:${p.secondary}; --accent:${p.accent}; --on-brand:${p.onPrimary};
-  --tint:${p.tint}; --on-tint:${p.onTint};
+  --tint:${p.tint}; --on-tint:${p.onTint}; --brand-text:${p.brandText};
   --bg:${p.bg}; --surface:${p.surface}; --text:${p.text}; --text-muted:${p.textMuted}; --border:${p.border};
   --radius:14px; --radius-lg:22px; --radius-pill:999px;
   --shadow-sm:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.08);
@@ -247,7 +267,7 @@ export function darkTokenBlock(p: Palette): string {
     return `
   --bg:${p.darkBg}; --surface:${p.darkSurface}; --text:${p.darkText};
   --text-muted:${p.darkTextMuted}; --border:${p.darkBorder};
-  --tint:${p.darkTint}; --on-tint:${p.onDarkTint};
+  --tint:${p.darkTint}; --on-tint:${p.onDarkTint}; --brand-text:${p.darkBrandText};
   --shadow-sm:0 1px 2px rgba(0,0,0,.4); --shadow-md:0 8px 24px -8px rgba(0,0,0,.55);
   --shadow-lg:0 24px 60px -16px rgba(0,0,0,.65);
 `;
@@ -257,7 +277,7 @@ export function lightTokenBlock(p: Palette): string {
     return `
   --bg:${p.bg}; --surface:${p.surface}; --text:${p.text};
   --text-muted:${p.textMuted}; --border:${p.border};
-  --tint:${p.tint}; --on-tint:${p.onTint};
+  --tint:${p.tint}; --on-tint:${p.onTint}; --brand-text:${p.brandText};
   --shadow-sm:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.08);
   --shadow-md:0 8px 24px -8px rgba(15,23,42,.18);
   --shadow-lg:0 24px 60px -16px rgba(15,23,42,.24);
@@ -282,7 +302,7 @@ export function darkFirstCss(p: Palette): string {
 :root,:root:where(*){
   --bg:${p.darkBg}; --surface:${p.darkSurface}; --text:${p.darkText};
   --text-muted:${p.darkTextMuted}; --border:${p.darkBorder};
-  --tint:${p.darkTint}; --on-tint:${p.onDarkTint};
+  --tint:${p.darkTint}; --on-tint:${p.onDarkTint}; --brand-text:${p.darkBrandText};
   --shadow-sm:0 1px 2px rgba(0,0,0,.5); --shadow-md:0 10px 30px -8px rgba(0,0,0,.6);
   --shadow-lg:0 28px 70px -16px rgba(0,0,0,.72);
   color-scheme:dark;
@@ -290,7 +310,7 @@ export function darkFirstCss(p: Palette): string {
 @media (prefers-color-scheme:light){:root{
   --bg:${p.darkBg}; --surface:${p.darkSurface}; --text:${p.darkText};
   --text-muted:${p.darkTextMuted}; --border:${p.darkBorder};
-  --tint:${p.darkTint}; --on-tint:${p.onDarkTint};
+  --tint:${p.darkTint}; --on-tint:${p.onDarkTint}; --brand-text:${p.darkBrandText};
   color-scheme:dark;
 }}
 body{background:var(--bg);color:var(--text)}`;
@@ -377,7 +397,7 @@ button:active,.btn:active,a.btn:active,[type=submit]:active{transform:translateY
    hierarchy at all. The selectors now match the specificity of what they
    override. */
 a.btn-ghost,button.btn-ghost,.btn.btn-ghost,button.ghost,a.ghost{
-  background:transparent;color:var(--brand,#2563eb);border-color:var(--border,rgba(0,0,0,.15));
+  background:transparent;color:var(--brand-text,var(--brand,#2563eb));border-color:var(--border,rgba(0,0,0,.15));
   box-shadow:none}
 a.btn-ghost:hover,button.btn-ghost:hover,.btn.btn-ghost:hover,button.ghost:hover,a.ghost:hover{
   background:var(--brand-light,rgba(37,99,235,.08));border-color:var(--brand,#2563eb)}

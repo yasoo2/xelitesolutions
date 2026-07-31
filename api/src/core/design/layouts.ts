@@ -23,7 +23,7 @@ function probeOf(request: string): string {
 
 import type { PageKind } from './blueprints';
 
-export type Archetype = 'split' | 'centered' | 'bento' | 'editorial' | 'showcase';
+export type Archetype = 'split' | 'centered' | 'bento' | 'editorial' | 'showcase' | 'overlap' | 'contrast';
 
 /** How each kind of page is composed, and which hero opens it. */
 const KIND_ARCHETYPE: Record<PageKind, Archetype> = {
@@ -39,12 +39,72 @@ const KIND_ARCHETYPE: Record<PageKind, Archetype> = {
     generic: 'split',
 };
 
+/**
+ * Compositions a page of a given kind can wear without breaking.
+ *
+ * The single default per kind is why every landing page Joe ever built came out
+ * as the same arrangement — «لم يستخدم التصاميم العالمية». Two different
+ * companies asking for the same kind of page got a pixel-identical skeleton.
+ * These are the shapes that suit each kind; which one a request gets is decided
+ * below, stably, from the request itself.
+ */
+const KIND_ALTERNATIVES: Partial<Record<PageKind, Archetype[]>> = {
+    landing: ['split', 'overlap', 'contrast', 'centered'],
+    generic: ['split', 'overlap', 'centered'],
+    portfolio: ['editorial', 'overlap', 'contrast'],
+    store: ['showcase', 'bento'],
+    restaurant: ['showcase', 'overlap'],
+    event: ['centered', 'contrast'],
+    blog: ['editorial'],
+    docs: ['editorial'],
+    dashboard: ['bento'],
+    app: ['bento', 'overlap'],
+};
+
+/**
+ * The request reduced to what it MEANS, for hashing.
+ *
+ * `probeOf` deliberately keeps the raw text alongside the canonical form, which
+ * is right for the keyword tests above — a pattern should match either
+ * spelling. It is wrong for a hash: «أريد موقعاً» and «اريد موقعا» are the same
+ * brief, and hashing the raw text handed them two different compositions.
+ * Re-typing your own request with a hamza on it is not a request for a
+ * redesign.
+ */
+function canonicalForHash(text: string): string {
+    return String(text || '')
+        .replace(/[\u064B-\u0652\u0670\u0640]/g, '')   // diacritics and tatweel
+        .replace(/[أإآٱ]/g, 'ا')
+        .replace(/ى/g, 'ي')
+        .replace(/ة/g, 'ه')
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function hashOf(text: string): number {
+    let h = 0;
+    for (let i = 0; i < text.length; i++) h = text.charCodeAt(i) + ((h << 5) - h);
+    return Math.abs(h);
+}
+
 export function pickArchetype(kind: PageKind, request: string): Archetype {
     // An explicit ask wins over the default for the page type.
     const r = probeOf(request);
     if (/بسيط|مينمال|minimal|clean/i.test(r)) return 'centered';
     if (/مجل|editorial|magazine|مقالات/i.test(r)) return 'editorial';
     if (/بينتو|bento|لوحات/i.test(r)) return 'bento';
+    if (/متداخل|طبقات|overlap|layered|عصري|modern layout/i.test(r)) return 'overlap';
+    if (/جريء|جريئ|صارخ|تباين|bold|brutal|high[- ]contrast|striking/i.test(r)) return 'contrast';
+
+    /**
+     * Nothing named: pick from the shapes this KIND can wear, stably from the
+     * request. Stable matters — re-running the same brief must give the same
+     * page, or an edit turns into a redesign. Different matters too: it is the
+     * difference between a system and a template.
+     */
+    const options = KIND_ALTERNATIVES[kind];
+    if (options && options.length) return options[hashOf(canonicalForHash(request)) % options.length];
     return KIND_ARCHETYPE[kind] || 'split';
 }
 
@@ -62,7 +122,7 @@ export function layoutCss(a: Archetype): string {
 .section-head{max-width:62ch;margin-bottom:clamp(28px,4vw,56px)}
 .section-head.center{margin-inline:auto;text-align:center}
 .eyebrow{display:inline-block;font-size:var(--step--1);font-weight:700;letter-spacing:.12em;
-  text-transform:uppercase;color:var(--brand);margin-bottom:12px}
+  text-transform:uppercase;color:var(--brand-text,var(--brand));margin-bottom:12px}
 .lede{font-size:var(--step-1);color:var(--text-muted);max-width:60ch}
 /* display:grid lives on EVERY grid class, not only on .grid.
    The brief reads "….grid.grid-2 / .grid-3 / .grid-4", so a model writes
@@ -86,7 +146,8 @@ export function layoutCss(a: Archetype): string {
 /* Full-bleed band, used to break the rhythm between sections */
 .band{background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:var(--on-brand);
   padding-block:clamp(40px,6vw,90px)}
-.band .lede,.band .eyebrow{color:color-mix(in srgb,var(--on-brand) 82%,transparent)}
+.band .lede,.band .eyebrow,.band .stat span,.band .stat-label{color:color-mix(in srgb,var(--on-brand) 82%,transparent)}
+.band .stat b,.band .stat-value{color:var(--on-brand)}
 
 /* Depth without noise: a soft aura behind the opening section */
 .aura{position:relative;isolation:isolate;overflow:hidden}
@@ -162,6 +223,85 @@ export function layoutCss(a: Archetype): string {
 .showcase-grid{display:grid;gap:clamp(14px,2vw,24px);grid-template-columns:repeat(2,1fr)}
 @media(min-width:760px){.showcase-grid{grid-template-columns:repeat(3,1fr)}}
 @media(min-width:1100px){.showcase-grid{grid-template-columns:repeat(4,1fr)}}`,
+
+        /**
+         * OVERLAP — the studio look: a panel lifted over the image it sits on,
+         * and an asymmetric grid that refuses the centred column.
+         *
+         * Every archetype above puts its elements side by side or one under the
+         * other. None of them lets anything cross anything else, which is the
+         * single move that separates a designed page from a stack of boxes —
+         * and the reason «كل الصفحات تبدو متشابهة».
+         *
+         * The overlap is a NEGATIVE MARGIN, applied only from 900px up. On a
+         * phone the panel simply follows the image, because a card pulled up
+         * over a 340px-tall photo covers it entirely.
+         */
+        overlap: `
+.hero{padding-block:clamp(40px,5vw,72px) 0}
+.hero h1{font-size:var(--step-5);letter-spacing:-.035em;margin-bottom:var(--space-4)}
+.hero-media img{width:100%;border-radius:var(--radius-lg);box-shadow:var(--shadow-lg)}
+.hero-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:clamp(24px,3vw,42px);box-shadow:var(--shadow-lg);margin-top:var(--space-6)}
+@media(min-width:900px){
+  .hero-panel{margin-top:clamp(-140px,-9vw,-64px);margin-inline-end:auto;width:min(560px,66%);
+    position:relative;z-index:2}
+}
+/* Rows that step, rather than sit in a rectangle. */
+.stagger{display:grid;gap:clamp(20px,3vw,40px);grid-template-columns:1fr}
+@media(min-width:860px){
+  .stagger{grid-template-columns:repeat(2,1fr);align-items:start}
+  .stagger > *:nth-child(even){margin-top:clamp(28px,4vw,72px)}
+}
+.feature-row{display:grid;gap:clamp(24px,4vw,56px);align-items:center;grid-template-columns:1fr}
+@media(min-width:900px){.feature-row{grid-template-columns:1fr 1fr}
+  .feature-row:nth-of-type(even) .feature-media{order:-1}}`,
+
+        /**
+         * CONTRAST — hard edges, oversized type, full-bleed dark bands.
+         *
+         * The opposite end of the range from `centered`, and the one shape the
+         * kit had nothing like: everything Joe built was soft — rounded, tinted,
+         * shadowed. A brand that wants to look decisive had no composition to
+         * ask for.
+         *
+         * The dark band uses the palette's OWN dark tokens, so a page in this
+         * shape is still one palette rather than a light page with black boxes
+         * dropped on it, and the text on it is the token already proven
+         * readable against that surface.
+         */
+        contrast: `
+.hero{padding-block:clamp(56px,9vw,140px);background:var(--text);color:var(--bg);
+  border-radius:0}
+.hero h1{font-size:clamp(2.6rem,9vw,5.5rem);letter-spacing:-.045em;line-height:.98;
+  text-transform:none;max-width:16ch}
+.hero .lede{color:color-mix(in srgb,var(--bg) 82%,var(--text));max-width:52ch}
+.hero .btn{border-radius:0}
+.hero-actions{display:flex;gap:var(--space-3);flex-wrap:wrap;margin-top:var(--space-8)}
+/* Alternating bands, so the page has a rhythm you can feel while scrolling. */
+.band{background:var(--text);color:var(--bg);border-radius:0}
+.band .card{background:transparent;border-color:color-mix(in srgb,var(--bg) 26%,transparent);
+  color:inherit;box-shadow:none}
+/* The common layer tints a band's lede with --on-brand, which is WHITE. On this
+   band — which is var(--text) — that is right in light mode and invisible in
+   dark, where --text is the near-white one. Tied to the same pair as the band
+   itself, it inverts with it instead of fighting it. */
+.band .lede,.band .eyebrow,.band .stat span,.band .stat-label{color:color-mix(in srgb,var(--bg) 82%,var(--text))}
+.band .stat b,.band .stat-value{color:var(--bg)}
+/* A ghost button is --brand on a light page. Dropped on an inverted block it is
+   a mid-blue on near-black, which is the "secondary action nobody can read"
+   defect this kit keeps finding. On these two surfaces it takes the surface's
+   own foreground. */
+.hero .btn-ghost,.band .btn-ghost{color:var(--bg);
+  border-color:color-mix(in srgb,var(--bg) 45%,transparent)}
+.hero .btn-ghost:hover,.band .btn-ghost:hover{border-color:var(--bg);
+  background:color-mix(in srgb,var(--bg) 14%,transparent);color:var(--bg)}
+.section:nth-of-type(even) > .wrap > .section-head h2{letter-spacing:-.03em}
+.card{border-radius:0;box-shadow:none;border-width:1.5px}
+.btn{border-radius:0}
+.rule{border:0;border-top:1.5px solid var(--text);margin-block:clamp(32px,5vw,64px)}
+/* A number that is meant to be read from across the room. */
+.stat-value{font-size:clamp(2.4rem,6vw,4rem);letter-spacing:-.04em}`,
     };
 
     return common + perArchetype[a];
@@ -218,6 +358,8 @@ export function layoutBrief(a: Archetype, t: TypePair): string {
         bento: 'The page is a BENTO of tiles of different weights. Use <div class="bento"> with .card children; the widths vary automatically, so do not set your own column spans.',
         editorial: 'The page is EDITORIAL: a measured reading column (.prose, max 68ch) with figures breaking the rhythm, and .masonry for any gallery.',
         showcase: 'The hero is a full-bleed SHOWCASE banner with the photograph behind the copy. Use <section class="hero"><div class="hero-bg"><img …></div><div class="wrap hero-copy"><h1>…</h1>…</div></section>. Product/menu grids use .showcase-grid.',
+        overlap: 'The hero OVERLAPS: a wide photograph, then a panel lifted over its lower edge. Use <section class="hero"><div class="wrap"><h1>…</h1><p class="lede">…</p></div><div class="wrap hero-media"><img …></div><div class="wrap"><div class="hero-panel">…the key points or the form…</div></div></section>. Use .stagger instead of .grid-2 where two columns should step past each other. Do NOT add your own negative margins.',
+        contrast: 'The page is HIGH CONTRAST: the hero is a solid dark block with oversized type, and full-bleed <section class="section band"> blocks alternate with plain ones down the page. Use <section class="hero"><div class="wrap"><h1>…</h1><p class="lede">…</p><div class="hero-actions">…</div></div></section>. Corners are square by design — never add a border-radius.',
     };
     return `COMPOSITION — build into these classes, do not invent your own geometry:
 ${shape[a]}

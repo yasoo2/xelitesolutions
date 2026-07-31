@@ -33,7 +33,8 @@
     "verify:split": "ts-node --transpile-only src/tests/manual/verify_split_project.ts",
     "verify:e2e": "ts-node --transpile-only src/tests/manual/verify_build_e2e.ts",
     "verify:narration": "ts-node --transpile-only src/tests/manual/verify_narration.ts",
-    "verify:theme": "ts-node --transpile-only src/tests/manual/verify_theme.ts"
+    "verify:theme": "ts-node --transpile-only src/tests/manual/verify_theme.ts",
+    "verify:layouts": "ts-node --transpile-only src/tests/manual/verify_layouts.ts"
   },
   "keywords": [],
   "author": "",

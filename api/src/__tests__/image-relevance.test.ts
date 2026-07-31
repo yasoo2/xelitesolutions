@@ -117,3 +117,87 @@ describe('real subjects a build should still find', () => {
         ['barista coffee', { title: 'Barista preparing coffee', tags: [] }],
     ])('accepts %s', (query, meta) => expect(isRelevant(query as string, meta)).toBe(true));
 });
+
+/* ---------- subjects grounded in what the business actually is -------------- */
+
+import {
+    namesAPerson, buildImageBrief, groundSubject, isSpecificEnough,
+} from '../core/design/image-brief';
+
+describe('a request written entirely in Arabic still grounds its images', () => {
+    /**
+     * The hole this closes: the sector table only fires for the sectors it
+     * lists. «مكتب هندسة معمارية» matched nothing, so `vocabulary` held only the
+     * Latin words the user typed — and in a pure-Arabic request that is NOTHING.
+     * `isSpecificEnough` then returned true on its "nothing to check against"
+     * branch and the entire grounding pass was inert for exactly the requests
+     * that needed it most.
+     */
+    it('reads Arabic nouns the sector table never covered', () => {
+        const brief = buildImageBrief('اريد موقعا لمكتب هندسة معمارية في الرياض');
+        expect(brief.vocabulary.length).toBeGreaterThan(0);
+        expect(brief.suggestions.join(' ')).toMatch(/architecture|engineering/);
+    });
+
+    it.each([
+        ['مشتل نباتات وزهور', /flower|plant/],
+        ['شركة شحن وتوصيل طلبات', /delivery|warehouse/],
+        ['مصنع أثاث خشبي', /furniture|factory/],
+        ['عيادة بيطرية للحيوانات الأليفة', /veterinary/],
+        ['مخبز وحلويات', /bakery/],
+    ])('%s finds a real subject', (request, want) => {
+        expect(buildImageBrief(request).suggestions.join(' ')).toMatch(want);
+    });
+
+    it('replaces a generic subject once there is a vocabulary to judge against', () => {
+        const brief = buildImageBrief('موقع لشركة مقاولات وبناء');
+        const grounded = groundSubject('business people', brief, 0);
+        expect(grounded).not.toBe('business people');
+        expect(grounded).toMatch(/construction/);
+    });
+});
+
+describe('a phrase of pure filler names nothing, however long', () => {
+    const brief = buildImageBrief('شركة برمجيات');
+
+    it.each([
+        'professional business people in a modern office',
+        'happy young team working at a desk',
+        'successful corporate group photo',
+    ])('rejects "%s"', s => expect(isSpecificEnough(s, brief)).toBe(false));
+
+    it('still accepts a phrase with a real subject in it', () => {
+        expect(isSpecificEnough('software developer reviewing source code', brief)).toBe(true);
+    });
+});
+
+describe('an avatar is a face', () => {
+    /**
+     * Ranking by shape calls a square photo of an espresso machine a perfect
+     * avatar. It is square and it is wrong: that circle is where a customer's
+     * portrait goes. The subject has to name a person before the search runs.
+     */
+    const brief = buildImageBrief('مقهى متخصص في القهوة المختصة');
+
+    it('turns a non-person avatar subject into a person', () => {
+        const g = groundSubject('espresso machine close up', brief, 0, 'avatar');
+        expect(namesAPerson(g)).toBe(true);
+        expect(g).toMatch(/barista|portrait/);
+    });
+
+    it('keeps a person subject that is already grounded', () => {
+        const g = groundSubject('barista portrait smiling', brief, 0, 'avatar');
+        expect(g).toBe('barista portrait smiling');
+    });
+
+    it('asks for a person even when the trade is unknown', () => {
+        const bare = buildImageBrief('اريد صفحة');
+        const g = groundSubject('a wide mountain range', bare, 0, 'avatar');
+        expect(namesAPerson(g)).toBe(true);
+    });
+
+    it('leaves other slots to their own subject', () => {
+        const g = groundSubject('coffee beans roasting', brief, 0, 'hero');
+        expect(g).toBe('coffee beans roasting');
+    });
+});

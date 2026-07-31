@@ -393,7 +393,7 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     let gi = 0;
     for (const m of String(html).matchAll(IMAGE_MARKER)) {
         const { slot, subject } = parseSlot(m[1]);
-        const grounded = brief ? groundSubject(subject, brief, gi++) : subject;
+        const grounded = brief ? groundSubject(subject, brief, gi++, slot) : subject;
         parsed.push({ key: `${slot}|${grounded}`, slot, subject: grounded });
     }
     const queries: string[] = [];
@@ -431,7 +431,7 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     let mi = 0;
     let out = String(html).replace(IMAGE_MARKER, (_full, rawQuery: string) => {
         const { slot, subject } = parseSlot(rawQuery);
-        const grounded = brief ? groundSubject(subject, brief, mi++) : subject;
+        const grounded = brief ? groundSubject(subject, brief, mi++, slot) : subject;
         const q = `${slot}|${grounded}`;
         const v = seen.get(q) || 0;
         seen.set(q, v + 1);
