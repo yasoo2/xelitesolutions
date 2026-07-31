@@ -119,17 +119,26 @@ export function planSite(kind: PageKind, request: string, isArabic: boolean): Si
  * first place. `aria-current` marks the page you are on, which is both correct
  * markup and the hook the stylesheet uses.
  */
-export function siteNav(pages: PageSpec[], currentFile: string, brand: string): string {
+export function siteNav(pages: PageSpec[], currentFile: string, brand: string, opts?: { withCart?: boolean; isArabic?: boolean }): string {
     const links = pages.map(p => {
         const active = p.file === currentFile;
         return `<a href="${p.file}"${active ? ' aria-current="page"' : ''}>${escapeHtml(p.title)}</a>`;
     }).join('\n      ');
 
+    // The cart button belongs to the shared header for the same reason the nav
+    // does: it has to be on every page, identical, with a badge the shared
+    // runtime can find. A per-page cart button is how a basket disappears when
+    // the visitor clicks through.
+    const cart = opts?.withCart
+        ? `\n      <button type="button" class="btn" data-cart-open aria-label="${opts.isArabic === false ? 'Cart' : 'السلة'}">`
+        + `<svg width="18" height="18" aria-hidden="true"><use href="#i-cart"/></svg> <span data-cart-count data-count="0">0</span></button>`
+        : '';
+
     return `<header class="site-header">
   <div class="wrap" style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-6)">
     <a href="index.html" class="brand" style="font-weight:800;font-size:var(--step-1);text-decoration:none;color:var(--text)">${escapeHtml(brand)}</a>
-    <nav aria-label="${escapeHtml(pages[0]?.title === 'Home' ? 'Main navigation' : 'التنقل الرئيسي')}">
-      ${links}
+    <nav aria-label="${escapeHtml(opts?.isArabic === false ? 'Main navigation' : 'التنقل الرئيسي')}">
+      ${links}${cart}
     </nav>
   </div>
 </header>`;
