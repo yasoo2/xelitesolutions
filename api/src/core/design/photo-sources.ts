@@ -100,7 +100,7 @@ async function searchOpenverse(query: string, timeoutMs: number): Promise<{ item
 
 /** Commons hosts a lot of what a niche subject actually needs — machinery,
  *  architecture, food, places — and none of it needs a key. */
-async function searchWikimedia(query: string, timeoutMs: number): Promise<{ items: PhotoCandidate[]; reason?: string }> {
+async function searchWikimedia(query: string, timeoutMs: number, width = 1600): Promise<{ items: PhotoCandidate[]; reason?: string }> {
     const params = new URLSearchParams({
         action: 'query', format: 'json', formatversion: '2', origin: '*',
         generator: 'search',
@@ -109,7 +109,10 @@ async function searchWikimedia(query: string, timeoutMs: number): Promise<{ item
         gsrlimit: '10',
         prop: 'imageinfo',
         iiprop: 'url|size|mime|extmetadata',
-        iiurlwidth: '1600',            // ask for a sane rendition, not a 40 MP original
+        // Ask for the width this SLOT needs, not a fixed 1600 and certainly not
+        // the 40 MP original. An avatar shown at 64px was costing as many bytes
+        // as the hero — pixels nobody can see, on a connection somebody pays for.
+        iiurlwidth: String(Math.max(200, Math.min(2000, Math.round(width)))),
     });
     const endpoint = String(process.env.JOE_WIKIMEDIA_API || 'https://commons.wikimedia.org/w/api.php');
     const { data, reason } = await getJson(`${endpoint}?${params}`, timeoutMs);
@@ -195,7 +198,7 @@ async function searchUnsplash(query: string, timeoutMs: number): Promise<{ items
 
 /* ---------- the pool -------------------------------------------------------- */
 
-type Searcher = (q: string, ms: number) => Promise<{ items: PhotoCandidate[]; reason?: string }>;
+type Searcher = (q: string, ms: number, width?: number) => Promise<{ items: PhotoCandidate[]; reason?: string }>;
 
 const SOURCES: Array<{ name: string; search: Searcher; needsKey?: string }> = [
     { name: 'openverse', search: searchOpenverse },
@@ -224,11 +227,11 @@ export function availableSources(): { active: string[]; dormant: Array<{ name: s
  * costs nothing — the others still answer, and the failure is reported rather
  * than hidden.
  */
-export async function searchAllSources(query: string, timeoutMs = 9000): Promise<{ candidates: PhotoCandidate[]; outcomes: SourceOutcome[] }> {
+export async function searchAllSources(query: string, timeoutMs = 9000, width?: number): Promise<{ candidates: PhotoCandidate[]; outcomes: SourceOutcome[] }> {
     const runnable = SOURCES.filter(s => !s.needsKey || String(process.env[s.needsKey] || '').trim());
     const settled = await Promise.all(runnable.map(async (s): Promise<{ o: SourceOutcome; items: PhotoCandidate[] }> => {
         try {
-            const { items, reason } = await s.search(query, timeoutMs);
+            const { items, reason } = await s.search(query, timeoutMs, width);
             return { o: { provider: s.name, ok: !reason && items.length > 0, count: items.length, reason }, items };
         } catch (e: any) {
             return { o: { provider: s.name, ok: false, count: 0, reason: String(e?.message || e).slice(0, 90) }, items: [] };

@@ -274,6 +274,20 @@ function collector() {
         imgTotal, imgNoDims, textChecked: checked,
         density: sample(),
         scrollHeight: de.scrollHeight,
+        // Weight, as the browser sees it. A page can be perfectly laid out and
+        // still take fifteen seconds on the connection the visitor actually has.
+        domNodes: document.querySelectorAll('*').length,
+        // The largest image as DISPLAYED versus its intrinsic size: a 2400px
+        // photograph in a 300px card is 8x the bytes for no visible benefit.
+        oversizedImages: (Array.from(document.querySelectorAll('img')) as HTMLImageElement[])
+            .filter(i => i.naturalWidth > 0)
+            .map(i => ({
+                alt: (i.alt || '').slice(0, 30),
+                natural: i.naturalWidth,
+                shown: Math.round(i.getBoundingClientRect().width * (window.devicePixelRatio || 1)),
+            }))
+            .filter(x => x.shown > 0 && x.natural > x.shown * 2)
+            .slice(0, 6),
         sections: document.querySelectorAll('section').length,
         quirks: document.compatMode !== 'CSS1Compat',
         // RTL
@@ -312,6 +326,8 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
     const screenshots: string[] = [];
     const metrics: Record<string, any> = {};
     const consoleErrors: string[] = [];
+    /** What the page actually costs to load, measured on the desktop pass. */
+    const transfer = { requests: 0, bytes: 0, imageBytes: 0, images: 0, scriptBytes: 0 };
 
     try {
         for (const vp of VIEWPORTS) {
@@ -336,6 +352,26 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
                 consoleErrors.push(t.slice(0, 160));
             });
             page.on('pageerror', (e: any) => { if (consoleErrors.length < 5) consoleErrors.push(String(e?.message || e).slice(0, 160)); });
+
+            // Real transferred weight, counted from responses rather than
+            // estimated from the markup — an inline data: URI and a 900 KB JPEG
+            // look identical in the HTML and are nothing alike on a phone.
+            if (vp.label === 'desktop') {
+                page.on('response', async (r: any) => {
+                    try {
+                        const h = r.headers() || {};
+                        const type = String(h['content-type'] || '').split(';')[0];
+                        const len = Number(h['content-length'] || 0);
+                        const size = Number.isFinite(len) && len > 0
+                            ? len
+                            : (await r.body().then((b: Buffer) => b.length).catch(() => 0));
+                        transfer.requests++;
+                        transfer.bytes += size;
+                        if (/^image\//.test(type)) { transfer.imageBytes += size; transfer.images++; }
+                        if (/javascript/.test(type)) transfer.scriptBytes += size;
+                    } catch { /* a response we cannot measure is not a failure */ }
+                });
+            }
             // A failed navigation used to be swallowed, and the audit then measured
             // the BROWSER'S OWN ERROR PAGE — which has two images with no alt and a
             // "Details" button — and reported a score for it as if it were the
@@ -435,6 +471,42 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
     }
     if (consoleErrors.length) {
         findings.push({ code: 'js_errors', severity: 'major', ar: `أخطاء JavaScript: ${consoleErrors[0]}`, en: `JavaScript errors: ${consoleErrors[0]}` });
+    }
+
+    // ---- weight ------------------------------------------------------------
+    //
+    // A page can be laid out perfectly and still take fifteen seconds on the
+    // connection the visitor actually has. These are budgets, not opinions: the
+    // measured number is always quoted so the user can disagree with the
+    // threshold rather than with the claim.
+    const KB = 1024;
+    const totalKb = Math.round(transfer.bytes / KB);
+    const imgKb = Math.round(transfer.imageBytes / KB);
+    if (transfer.bytes > 2_500_000) {
+        findings.push({
+            code: 'page_weight', severity: totalKb > 5000 ? 'major' : 'minor',
+            ar: `الصفحة تزن ${totalKb} ك.ب عبر ${transfer.requests} طلبًا${imgKb ? ` (منها ${imgKb} ك.ب صور)` : ''} — بطيئة على اتصال متوسط`,
+            en: `The page weighs ${totalKb} KB across ${transfer.requests} requests${imgKb ? ` (${imgKb} KB of it images)` : ''} — slow on an average connection`,
+            hint: 'fewer or smaller photographs; the layout is not the problem',
+        });
+    }
+    const oversized = metrics.desktop?.oversizedImages || [];
+    if (oversized.length >= 2) {
+        const worst = oversized.slice().sort((a: any, b: any) => (b.natural / b.shown) - (a.natural / a.shown))[0];
+        findings.push({
+            code: 'oversized_images', severity: 'minor',
+            ar: `${oversized.length} صورة أكبر بكثير من مساحتها المعروضة — أسوأها «${worst.alt}» بعرض ${worst.natural}px داخل ${worst.shown}px`,
+            en: `${oversized.length} image(s) far larger than the box they are shown in — worst is "${worst.alt}" at ${worst.natural}px inside ${worst.shown}px`,
+            hint: 'request a smaller rendition for this slot; the extra pixels are never seen',
+        });
+    }
+    if (metrics.desktop?.domNodes > 2500) {
+        findings.push({
+            code: 'dom_size', severity: 'minor',
+            ar: `${metrics.desktop.domNodes} عنصر في الصفحة — يبطئ التخطيط على الأجهزة الضعيفة`,
+            en: `${metrics.desktop.domNodes} DOM nodes — layout gets slow on weaker devices`,
+            hint: 'the markup is repeating itself; look for duplicated cards',
+        });
     }
 
     // ---- RTL ---------------------------------------------------------------
@@ -547,7 +619,7 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
     findings.push(...deduped);
 
     const penalty = findings.reduce((n, f) => n + (f.severity === 'critical' ? 30 : f.severity === 'major' ? 14 : 5), 0);
-    return { ran: true, score: Math.max(0, 100 - penalty), findings, screenshots, metrics };
+    return { ran: true, score: Math.max(0, 100 - penalty), findings, screenshots, metrics: { ...metrics, transfer } };
 }
 
 /** The findings, as a repair instruction the model can act on. */

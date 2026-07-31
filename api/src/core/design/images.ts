@@ -155,7 +155,11 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
     // website: NC forbids commercial use — which a business site is — and ND
     // forbids the cropping any layout does. Joe was handing the user a licence
     // breach with a tidy credits line underneath it.
-    const { candidates, outcomes } = await searchAllSources(query, timeoutMs);
+    // Ask each archive for a rendition sized to THIS slot. The extra pixels in a
+    // 2400px original dropped into a 300px card are bytes the visitor pays for
+    // and never sees. 2x the slot minimum keeps it crisp on a retina screen.
+    const wanted = Math.round(SLOTS[slot].minWidth * 1.25);
+    const { candidates, outcomes } = await searchAllSources(query, timeoutMs, wanted);
     lastSourceOutcomes = outcomes;
     // A subject the model asked for twice must not come back as the same photo
     // in both places — a build shipped the identical portrait as two different
