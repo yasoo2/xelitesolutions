@@ -12,7 +12,8 @@ import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirst
 import { findReferenceUrl, extractReference, paletteFromReference, referenceBrief, referenceOverridesCss, referenceSummary } from '../../../core/design/reference';
 import { detectPageKind, blueprintBrief, imageBudget, blueprintSections, kindLabel } from '../../../core/design/blueprints';
 import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteSectionwise, type WrittenSection } from '../../../core/design/section-writer';
-import { splitIntoSections, targetSections, extractEditedSection, spliceSections, sectionEditPrompt, type PageSection } from '../../../core/design/section-editor';
+import { brandFrom, pageTitle } from '../../../core/design/page-head';
+import { splitIntoSections, targetSections, sectionsForFindings, extractEditedSection, spliceSections, sectionEditPrompt, type PageSection } from '../../../core/design/section-editor';
 import { planSite, siteNav, siteNavCss, verifyInternalLinks, targetPage, type SitePlan } from '../../../core/design/site-plan';
 import { cartBrief, cartRuntime, cartCss, needsCart } from '../../../core/design/commerce';
 import { formBrief, formRuntime, formCss } from '../../../core/design/forms';
@@ -330,7 +331,10 @@ ${prev!.html}`
             // rather than hand the user a page with two sections in it.
             if (ok.length >= Math.max(3, Math.ceil(plans.length * 0.6))) {
                 html = assemblePage({
-                    title: request.slice(0, 60),
+                    // Not `request.slice(0, 60)`. That put the user's own
+                    // instruction to Joe in the browser tab, cut off mid-word:
+                    // «ابني صفحة ويب لشركه تكنلوجية اسمها xelitesolutions وهي شركة ».
+                    title: pageTitle({ request, isArabic: isAr, kindLabel: kind }),
                     isArabic: isAr,
                     tokenCss: paletteCss(palette),
                     baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
@@ -769,8 +773,38 @@ ${prev!.html}`
                 logs.push(`behaviour audit: ${b.score}/100, ${b.metrics.dead}/${b.metrics.pressed} dead control(s), ${b.metrics.deadAnchors} dead anchor(s)`);
                 const brief = behaviourRepairBrief(b.findings, b.controls);
                 if (brief && html.length > REPAIR_SIZE_LIMIT) {
-                    repairSkipped = true;
-                    logs.push(`behaviour repair skipped: page is ${Math.round(html.length / 1024)} KB, larger than one completion`);
+                    // Too big to return whole — but the dead controls have
+                    // LABELS, and a label locates the section it sits in. Repair
+                    // those sections instead of reporting four real defects and
+                    // shipping them, which is what this branch used to do.
+                    const probes = b.controls.filter(c => !c.worked && c.label).map(c => String(c.label));
+                    const repairDesign = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}`;
+                    const scoped = await this.repairSections({
+                        html, filename, probes, brief, design: repairDesign, isAr, sessionId, context,
+                        note: isAr
+                            ? `🖱️ الصفحة كبيرة، فأصلح الأقسام التي فيها الأزرار المعطّلة`
+                            : `🖱️ Page is large — repairing only the sections holding the dead controls`,
+                    });
+                    if (scoped) {
+                        const after = await auditBehaviour(url, { kind });
+                        const keptControls = after.ran && after.metrics.pressed >= Math.floor(b.metrics.pressed * 0.8);
+                        if (after.ran && after.score > b.score && keptControls) {
+                            behaviourRepairs = b.findings.length - after.findings.length;
+                            behaviourFindings = after.findings;
+                            behaviourScore = after.score;
+                            html = scoped;
+                            logs.push(`behaviour repair (section-scoped): ${b.score} → ${after.score}`);
+                        } else {
+                            // The measurement did not improve, so the edit is
+                            // reverted rather than kept on faith.
+                            fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+                            repairSkipped = true;
+                            logs.push(`behaviour repair (section-scoped) did not improve the score — reverted`);
+                        }
+                    } else {
+                        repairSkipped = true;
+                        logs.push(`behaviour repair skipped: page is ${Math.round(html.length / 1024)} KB and the findings could not be traced to specific sections`);
+                    }
                 } else if (brief) {
                     if (sessionId) broadcastThinkingDetail(sessionId, isAr
                         ? `🖱️ ضغطتُ عناصر الصفحة فعليًا: ${b.metrics.dead} منها لا تستجيب — أُصلحها`
@@ -964,6 +998,61 @@ ${prev!.html}`
      * pages missing is worse than the single page it replaced, so the caller
      * falls back rather than shipping a half-site.
      */
+
+    /**
+     * Repair a page that is too large to return in one completion, by repairing
+     * only the sections the findings point at.
+     *
+     * The whole-page repair asks the model for the entire document. Past roughly
+     * 24 KB the provider truncates the reply before it finishes, the result is
+     * rejected, and the call is spent for nothing — so the build used to report
+     * the findings and ship them. That was honest and it was still a page with
+     * four known defects in it.
+     *
+     * A section is 2-6 KB. `sectionsForFindings` locates the ones that actually
+     * contain what the audit named — the label of a button that did nothing, the
+     * text of a link that goes nowhere — and each is rewritten on its own, then
+     * spliced back at its exact character range so nothing else in the document
+     * can move.
+     *
+     * Returns null when no section could be identified, or when nothing usable
+     * came back. It never returns a page it has not written to disk, and the
+     * CALLER re-measures: an edit that does not improve the score is reverted.
+     */
+    private async repairSections(opts: {
+        html: string; filename: string; probes: string[]; brief: string; design: string;
+        isAr: boolean; sessionId: any; context: any; note: string;
+    }): Promise<string | null> {
+        const { html, filename, probes, brief, design, isAr, sessionId, context, note } = opts;
+        const sections = splitIntoSections(html);
+        const targets = sectionsForFindings(sections, probes);
+        if (!targets.length) return null;
+
+        if (sessionId) broadcastThinkingDetail(sessionId, `${note} (${targets.length})`);
+
+        const edits: Array<{ section: PageSection; html: string }> = [];
+        for (const section of targets) {
+            try {
+                const reply = await routeToModel([
+                    { role: 'system', content: sectionEditPrompt({ request: brief, section, isArabic: isAr, designBrief: design }) },
+                    { role: 'user', content: section.html },
+                ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                if (isProviderFailure(reply)) continue;
+                const got = extractEditedSection(String(reply || ''), section);
+                // A "repair" that returns a stub is a deletion wearing a fix's
+                // clothes. The section may grow; it may not collapse.
+                if (got.ok && got.html.length > section.html.length * 0.6) {
+                    edits.push({ section, html: got.html });
+                }
+            } catch { /* this section stays as it is */ }
+        }
+        if (!edits.length) return null;
+
+        const out = spliceSections(html, edits);
+        fs.writeFileSync(path.join(ARTIFACT_DIR, filename), out, 'utf-8');
+        return out;
+    }
+
     private async buildSite(opts: {
         sitePlan: SitePlan; request: string; isAr: boolean; kind: any;
         palette: any; archetype: any; typePair: any; reference: any;
@@ -976,8 +1065,10 @@ ${prev!.html}`
 
         // The brand name the header carries on every page — taken from the
         // request rather than invented per page, so it does not drift.
-        const brand = (request.match(/[«"']([^«»"']{2,40})[»"']/) || [])[1]
-            || (isAr ? 'موقعنا' : 'Our Site');
+        // Quotes were the ONLY signal read here, so «شركة اسمها xelitesolutions»
+        // — the way the request is normally phrased — fell through to "موقعنا"
+        // and the real name never reached the header or the title.
+        const brand = brandFrom(request, isAr) || (isAr ? 'موقعنا' : 'Our Site');
 
         // A cart belongs to the SITE, not to one page: if any page sells, every
         // page needs the runtime and the badge.
@@ -1046,7 +1137,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
             }
 
             let pageHtml = assemblePage({
-                title: `${page.title} — ${brand}`,
+                title: pageTitle({ request, isArabic: isAr, kindLabel: page.kind, pageName: page.title, brand }),
                 isArabic: isAr,
                 tokenCss: paletteCss(palette),
                 baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,

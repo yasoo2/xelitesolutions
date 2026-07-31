@@ -100,6 +100,46 @@ ${written.length ? `\nALREADY WRITTEN, do not repeat any of it: ${written.join('
 ${designBrief}`;
 }
 
+/**
+ * Give every section's script its own scope.
+ *
+ * Each section is written by a separate call that cannot see the others, so two
+ * of them naturally reach for the same obvious name. A page Joe shipped had
+ * `const cards = document.querySelectorAll('.card')` in both its services
+ * section and its testimonials section, and the browser answered:
+ *
+ *     Identifier 'cards' has already been declared
+ *
+ * That is not a broken hover effect. A duplicate top-level declaration is a
+ * SyntaxError, and the failure is not contained to the feature that caused it:
+ * every script on the page stops, including the form validation, the counters
+ * and the widget runtime Joe injects itself. The measured build reported
+ * 40/100 on interaction and "4 of 10 buttons do nothing" — one collision.
+ *
+ * Telling the model to pick unique names is not enforcement; it cannot see the
+ * other sections to know what is taken. An IIFE makes the collision impossible
+ * instead of unlikely, and costs the section nothing: everything it does — query
+ * the DOM, bind listeners, read data attributes — works identically inside one.
+ *
+ * A script with a `src`, or a `type` that is not JavaScript (JSON-LD, importmap,
+ * a template), is left exactly as it is. Wrapping those would corrupt them.
+ */
+export function isolateSectionScripts(html: string): string {
+    return String(html || '').replace(
+        /<script\b([^>]*)>([\s\S]*?)<\/script>/gi,
+        (whole, attrs: string, body: string) => {
+            if (/\bsrc\s*=/i.test(attrs)) return whole;
+            const type = (attrs.match(/\btype\s*=\s*["']?([^"'\s>]+)/i) || [])[1];
+            if (type && !/^(text\/javascript|application\/javascript|module)$/i.test(type)) return whole;
+            // A module already has its own scope; wrapping it would break a
+            // top-level await inside it.
+            if (/^module$/i.test(type || '')) return whole;
+            if (!body.trim()) return whole;
+            return `<script${attrs}>\n(function(){\n${body}\n})();\n</script>`;
+        },
+    );
+}
+
 /** Pull a usable section out of whatever the model returned. */
 export function extractSection(raw: string, id: string): { html: string; ok: boolean; reason?: string } {
     let out = String(raw || '').trim();
@@ -140,7 +180,8 @@ export function extractSection(raw: string, id: string): { html: string; ok: boo
             out = out.replace(opener[0], replaced);
         }
     }
-    return { html: out, ok: true };
+    // Done last, so the scoping applies to whatever survived the repairs above.
+    return { html: isolateSectionScripts(out), ok: true };
 }
 
 /**

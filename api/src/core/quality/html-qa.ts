@@ -115,9 +115,38 @@ export function reviewHtml(rawHtml: string, isArabic = false): HtmlReview {
         // 6d. Text on a branded background must use the colour the palette
         //     guarantees against it. A measured page put --text (#252f41) on
         //     --brand (#316ed8): 2.79:1, far below the 4.5:1 minimum.
+        //
+        //     A TINT IS NOT A FILL. This rule used to match `var(--brand)`
+        //     anywhere in the background, including inside a color-mix that is
+        //     mostly transparent. A page Joe shipped came out with
+        //
+        //       th{background:color-mix(in srgb,var(--brand) 6%,transparent);
+        //          color:var(--on-brand);}
+        //
+        //     — white text on a 6% tint of blue, i.e. white on white. Every
+        //     table header on the page was invisible, and the rule that did it
+        //     is the CONTRAST safety net. A fix that has to be proven to help
+        //     must be proven not to hurt, so a brand reference that sits inside
+        //     a color-mix now only counts when the brand is the majority.
         let recolored = 0;
+        const brandIsTheSurface = (body: string): boolean => {
+            const bg = (body.match(/background(-color|-image)?\s*:([^;]*)/i) || [])[2];
+            if (!bg || !/var\(\s*--brand(-dark)?\s*\)/i.test(bg)) return false;
+            // Strip every color-mix whose brand share is a majority — what is
+            // left still mentioning --brand is a solid fill or a brand gradient.
+            const withoutMinorMixes = bg.replace(
+                /color-mix\([^()]*(?:\([^()]*\)[^()]*)*\)/gi,
+                (mix) => {
+                    const pct = Number((mix.match(/var\(\s*--brand(?:-dark)?\s*\)\s*(\d{1,3})%/i) || [])[1]);
+                    // No percentage given means an even split — not enough
+                    // brand to guarantee the palette's contrast pairing.
+                    return Number.isFinite(pct) && pct >= 60 ? 'var(--brand)' : '';
+                },
+            );
+            return /var\(\s*--brand(-dark)?\s*\)/i.test(withoutMinorMixes);
+        };
         const withColor = styleBlock.replace(/([^{}]+)\{([^}]*)\}/g, (full, sel, body) => {
-            const brandBg = /background(-color|-image)?\s*:[^;]*var\(\s*--brand(-dark)?\s*\)/i.test(body);
+            const brandBg = brandIsTheSurface(body);
             if (brandBg && !/(^|;)\s*color\s*:/i.test(body)) {
                 recolored++;
                 return `${sel}{${body.trim().replace(/;?$/, ';')}color:var(--on-brand);}`;

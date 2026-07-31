@@ -137,6 +137,57 @@ export function targetSections(request: string, sections: PageSection[]): PageSe
     return winners.sort((a, b) => a.index - b.index);
 }
 
+/**
+ * The sections an audit's findings are actually about.
+ *
+ * A page Joe shipped was 45 KB. The whole-page repair asks the model to return
+ * the whole document, which at that size is truncated by the provider before it
+ * finishes — so the build reported:
+ *
+ *     ℹ️ الصفحة أكبر من أن تُعاد كاملة في ردّ واحد، فلم أُشغّل الإصلاح التلقائي
+ *     ⚠️ الزر المطلوب «تسجيل الخروج» غير موجود
+ *     🖱️ 4 من 10 أزرار لا تفعل شيئًا عند الضغط
+ *
+ * It measured the page, named four real defects, and shipped all four. Skipping
+ * the repair was the honest thing to do about a call that would have failed, but
+ * honesty about a defect is not a fix — and a page written section by section
+ * can be repaired section by section. Each one is 2-6 KB, which comfortably
+ * fits.
+ *
+ * `probes` are the concrete strings the audit produced — the label of a dead
+ * button, the id in a selector, the alt of an oversized image. A section is a
+ * target when it actually contains one. Nothing is guessed: a probe that matches
+ * nowhere simply yields no section, and the caller reports the finding as it
+ * already does.
+ */
+export function sectionsForFindings(
+    sections: PageSection[],
+    probes: string[],
+    max = 3,
+): PageSection[] {
+    const wanted = probes.map(p => String(p || '').trim()).filter(p => p.length >= 2);
+    if (!sections.length || !wanted.length) return [];
+
+    const scored = sections.map(s => {
+        const hay = s.html;
+        let score = 0;
+        for (const p of wanted) {
+            // An exact occurrence of the label as the model wrote it.
+            if (hay.includes(p)) { score += 10; continue; }
+            // …or the same text with whitespace normalised, which is how a
+            // browser reports a label that was pretty-printed across lines.
+            const loose = p.replace(/\s+/g, '\\s+').replace(/[.*+?^${}()|[\]\\]/g, m => (m === '\\' ? m : '\\' + m));
+            try { if (new RegExp(loose, 'i').test(hay)) score += 6; } catch { /* not a usable probe */ }
+        }
+        return { s, score };
+    }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+
+    // Repairing most of the document one section at a time is the whole-page
+    // repair with extra steps — and more chances to corrupt the splice.
+    if (scored.length > Math.max(max, Math.ceil(sections.length * 0.6))) return [];
+    return scored.slice(0, max).map(x => x.s).sort((a, b) => a.index - b.index);
+}
+
 /* ---------- putting it back -------------------------------------------------- */
 
 /** Clean whatever the model returned back down to one section block. */
