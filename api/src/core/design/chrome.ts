@@ -21,6 +21,8 @@
  * script gets a working hamburger anyway.
  */
 
+import { KNOWN_CONTROLS } from './content-contract';
+
 /** The markup contract handed to the model. */
 export function chromeBrief(opts: { isArabic: boolean; pages?: string[]; withAuth?: boolean }): string {
     const { isArabic, pages = [], withAuth } = opts;
@@ -516,15 +518,25 @@ interface ControlSpec {
     ghost: boolean;
 }
 
-const AUTH_CONTROLS: ControlSpec[] = [
-    // These carry data-auth rather than an href. A static page has nothing at
-    // "#login" to land on — measured, Joe was inserting three links to an id
-    // that did not exist — and the runtime below gives them real behaviour.
-    { ar: 'تسجيل الدخول', en: 'Sign in', match: /(تسجيل\s*(ال)?دخول|دخول|log\s?in|sign\s?in)/i, href: '', ghost: true },
-    { ar: 'تسجيل الخروج', en: 'Sign out', match: /(تسجيل\s*(ال)?خروج|خروج|log\s?out|sign\s?out)/i, href: '', ghost: true },
-    { ar: 'من نحن', en: 'About', match: /(من\s*نحن|عن\s*(الشركة|نا)|about)/i, href: '#about', ghost: true },
-    { ar: 'اتصل بنا', en: 'Contact', match: /(ات[صّ]ل\s*بنا|تواصل\s*معنا|contact)/i, href: '#contact', ghost: false },
-];
+/**
+ * Derived from the ONE list in content-contract, not a second copy of it.
+ *
+ * There were two, with different patterns, and they disagreed: this file
+ * accepted «تواصل معنا» as the contact control and therefore added nothing,
+ * while the content check required «…بنا» and reported the button missing. Joe
+ * told the user a control was missing from a page Joe had decided already had
+ * it. Only the presentation — where it points, how loud it is — belongs here.
+ */
+const PRESENTATION: Record<string, { href: string; ghost: boolean }> = {
+    'تسجيل الدخول': { href: '', ghost: true },     // opens the sign-in panel
+    'تسجيل الخروج': { href: '', ghost: true },
+    'من نحن': { href: '#about', ghost: true },
+    'اتصل بنا': { href: '#contact', ghost: false },
+};
+
+const AUTH_CONTROLS: ControlSpec[] = KNOWN_CONTROLS
+    .filter(c => PRESENTATION[c.ar])
+    .map(c => ({ ar: c.ar, en: c.en, match: c.match, ...PRESENTATION[c.ar] }));
 
 /**
  * Put a control the user explicitly asked for into the header.
@@ -636,7 +648,13 @@ export function repairDeadAnchors(html: string, opts?: { isArabic?: boolean }): 
      * heading is what the link is named after.
      */
     const targets: Array<{ id: string; words: string[] }> = [];
-    for (const m of src.matchAll(/<(section|header|footer|article|div)\b[^>]*\bid\s*=\s*["']([^"']+)["'][^>]*>([\s\S]{0,4000})/gi)) {
+    // The body is captured in a LOOKAHEAD so it is not consumed. With a normal
+    // capture, matchAll resumes after each match's 4000-character window and
+    // every id inside that window is skipped — measured, only the first few
+    // sections of a nine-section page became targets, and `contact-section`
+    // (the last one) was never seen. A «تواصل معنا» link that had a section to
+    // land on was demoted to a <span> because the scan never offered it.
+    for (const m of src.matchAll(/<(section|header|footer|article|div)\b[^>]*\bid\s*=\s*["']([^"']+)["'][^>]*>(?=([\s\S]{0,4000}))/gi)) {
         const id = m[2];
         const heading = (m[3].match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]\s*>/i) || [, ''])[1]
             .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -665,11 +683,38 @@ export function repairDeadAnchors(html: string, opts?: { isArabic?: boolean }): 
             return `<a${before}href="#"${after}>`;
         });
 
+    /**
+     * What a nav label MEANS, so an Arabic label can find an English id.
+     *
+     * Section ids are English slugs from the blueprint — `contact-section`,
+     * `about-us` — and the links a visitor reads are Arabic. Word-against-word
+     * matching cannot bridge that, so «اتصل بنا» found nothing and this repair
+     * DELETED the button the user had explicitly asked for. Joe's own content
+     * check then reported it missing, on the page Joe had just removed it from.
+     * Measured end to end: two requested controls, both gone.
+     */
+    const INTENTS: Array<[RegExp, RegExp]> = [
+        [/ات[صّ]ل\s*بنا|تواصل\s*معنا|راسلنا|contact|reach\s*us|get\s*in\s*touch/i, /contact|reach|touch|enquir|inquir/i],
+        [/من\s*نحن|عن\s*(نا|الشركة)|قصتنا|about|who\s*we/i, /about|who|story|team|company/i],
+        [/خدمات|services|what\s*we\s*do/i, /service|offer|what-we|how-it/i],
+        [/الأسعار|الاسعار|الباقات|الحزم|pricing|plans|packages/i, /pric|plan|package|tier/i],
+        [/آراء|شهادات|testimonial|review/i, /testimonial|review|client|customer/i],
+        [/الأسئلة|اسئلة|faq|questions/i, /faq|question/i],
+        [/المدونة|أخبار|blog|news/i, /blog|news|article|post/i],
+        [/المنتجات|المتجر|products|shop|store/i, /product|shop|store|catalog/i],
+    ];
+
     const out = src2.replace(/<a\b([^>]*?)href\s*=\s*["']#["']([^>]*)>([\s\S]*?)<\/a\s*>/gi,
         (whole, before: string, after: string, inner: string) => {
-            const label = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+            const raw = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            const label = raw.toLowerCase();
             if (!label) return whole;
-            const hit = targets.find(t => t.words.some(w => label.includes(w) || w.includes(label)));
+            let hit = targets.find(t => t.words.some(w => label.includes(w) || w.includes(label)));
+            if (!hit) {
+                // Nothing matched literally — try what the label MEANS.
+                const intent = INTENTS.find(([lab]) => lab.test(raw));
+                if (intent) hit = targets.find(t => intent[1].test(t.id));
+            }
             fixed++;
             const attrs = `${before}${after}`.replace(/\s+/g, ' ').trim();
             if (hit) return `<a ${attrs ? attrs + ' ' : ''}href="#${hit.id}">${inner}</a>`.replace(/<a\s+href/, '<a href');

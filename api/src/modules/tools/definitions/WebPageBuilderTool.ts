@@ -195,6 +195,40 @@ ${prev!.html}`
         // out weaker than the first. Long pages are now written one section at a
         // time, each with the whole design system in front of it.
         const blueprint = blueprintSections(kind);
+
+        /**
+         * A control the user asked for needs somewhere to point.
+         *
+         * The landing blueprint has no "about" section, so a requested «من نحن»
+         * button had no destination: the dead-link repair demoted it to plain
+         * text and the content check then reported the button missing — Joe
+         * removing a control and complaining that it was gone. Measured end to
+         * end on the user's own request, which asked for exactly that button.
+         *
+         * Naming a nav control is naming a section. The blueprint gains it, so
+         * the section is written, the link lands, and nothing has to be faked.
+         */
+        {
+            const wanted = extractRequirements(request);
+            const IMPLIED: Array<[string, RegExp, string]> = [
+                ['من نحن', /\babout\b|who we are/i,
+                    'about: who the business is — a short honest story, what it does differently, and the people behind it'],
+                ['اتصل بنا', /\bcontact\b/i,
+                    'contact: how to reach the business — a working form, a real address, opening hours'],
+                ['خدماتنا', /\bservices?\b|what we do/i,
+                    'services: what the business actually does, one card per service with a real description'],
+                ['الأسعار', /\bpric|\bplans?\b|packages/i,
+                    'pricing: the real packages with real numbers and what each one includes'],
+            ];
+            for (const [label, present, line] of IMPLIED) {
+                if (!wanted.buttons.includes(label) && !wanted.sections.includes(label)) continue;
+                if (blueprint.some(b => present.test(b))) continue;
+                // Before the footer if there is one, so the page still reads in order.
+                const footerAt = blueprint.findIndex(b => /^footer/i.test(b));
+                if (footerAt > 0) blueprint.splice(footerAt, 0, line); else blueprint.push(line);
+                logs.push(`blueprint: added a "${label}" section because the request asked for that control`);
+            }
+        }
         // `!isMultiFile` used to be part of this condition, which meant asking
         // for a proper multi-file project silently gave up the path that writes
         // the page WELL — the two were coupled for no reason. Splitting is a
@@ -259,6 +293,17 @@ ${prev!.html}`
             }
         }
 
+        /**
+         * Did the user ask for something to be REMOVED?
+         *
+         * The only case in which an edit is allowed to come back with less than
+         * it started with. Everything else — add, change, fix, translate — must
+         * keep what is already on the page.
+         */
+        const mayShrink = /(احذف|إحذف|امسح|أزل|ازل|شيل|احذفي|اشطب|remove|delete|drop|take out|get rid of|shorten|اختصر|قلّل|قلل)/i.test(request);
+        /** Sections whose edit was refused for losing content, reported to the user. */
+        const editShrank: string[] = [];
+
         const editBase = siteEditHtml || prev?.html || '';
         if (isEdit && prev && editBase.length > 8000) {
             const existing = splitIntoSections(editBase);
@@ -279,16 +324,43 @@ ${prev!.html}`
                         ], undefined, undefined, undefined, undefined, undefined, undefined, context);
                     } catch (e: any) { logs.push(`section edit ${section.id} failed: ${e?.message || e}`); continue; }
                     const got = extractEditedSection(raw, section);
-                    if (got.ok) { applied.push({ section, html: got.html }); editedSections.push(section.headings[0] || section.id); }
-                    logs.push(`section edit ${section.id || section.tag}: ${got.ok ? `${got.html.length} bytes` : `rejected — ${got.reason}`}`);
+                    /**
+                     * AN EDIT THAT ADDS SOMETHING MUST NOT RETURN LESS.
+                     *
+                     * The prompt says "Do not shorten it. Every card, item and
+                     * paragraph that is there now must still be there" — and an
+                     * instruction is not enforcement. Measured end to end: asking
+                     * to ADD a button to a store page came back with a section
+                     * 28% smaller and the product grid gone, and the only guard
+                     * was a whole-document floor of 0.6 that a 28% loss sails
+                     * straight through.
+                     *
+                     * The comparison is per SECTION, against the exact block it
+                     * replaces, because that is where the content is lost. A
+                     * request that asks to REMOVE something is allowed to shrink;
+                     * anything else keeps what was there.
+                     */
+                    const tooSmall = got.ok && !mayShrink && got.html.length < section.html.length * 0.85;
+                    if (got.ok && !tooSmall) {
+                        applied.push({ section, html: got.html });
+                        editedSections.push(section.headings[0] || section.id);
+                    } else if (tooSmall) {
+                        editShrank.push(section.headings[0] || section.id);
+                    }
+                    logs.push(`section edit ${section.id || section.tag}: ${got.ok
+                        ? (tooSmall
+                            ? `rejected — came back ${Math.round((1 - got.html.length / section.html.length) * 100)}% smaller and the request did not ask to remove anything`
+                            : `${got.html.length} bytes`)
+                        : `rejected — ${got.reason}`}`);
                 }
                 if (applied.length) {
                     working = spliceSections(editBase, applied);
                     // The splice cannot lose the document — but check, because
                     // silently shipping a broken page is the failure this exists
-                    // to prevent.
-                    if (/<\/html\s*>/i.test(working) && working.length > editBase.length * 0.6) html = working;
-                    else logs.push('targeted edit discarded: the spliced document did not look intact');
+                    // to prevent. The floor is tight unless removal was asked for.
+                    const floor = mayShrink ? 0.5 : 0.9;
+                    if (/<\/html\s*>/i.test(working) && working.length > editBase.length * floor) html = working;
+                    else logs.push(`targeted edit discarded: the spliced document lost ${Math.round((1 - working.length / editBase.length) * 100)}% of the page`);
                 }
             }
         }
@@ -465,6 +537,39 @@ ${prev!.html}`
             if (isEdit && prev) { html = prev.html; editFellBack = true; }
             else { html = `<!DOCTYPE html>\n<html lang="${isAr ? 'ar' : 'en'}"${isAr ? ' dir="rtl"' : ''}>\n<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>XElite</title></head>\n<body>\n${html}\n</body>\n</html>`; }
         }
+        /**
+         * A WHOLE-PAGE EDIT MUST NOT COME BACK WITH LESS OF THE PAGE.
+         *
+         * When a change cannot be scoped to one section, Joe sends the entire
+         * document and asks for the entire document back. The prompt says "keep
+         * everything else intact"; the model does not always. Measured end to
+         * end: "add a button to the contact section" returned a page 28% shorter
+         * with the product grid gone, and the only check on this path was
+         * "is it HTML at all".
+         *
+         * Compared as CONTENT, not as bytes: `prev.html` carries Joe's injected
+         * stylesheet and runtimes and the model's reply does not, so a byte
+         * comparison would reject every honest edit. Visible text and section
+         * count are what the user would notice missing.
+         */
+        let editLostContent: { text: number; sections: number } | null = null;
+        if (isEdit && prev && !editFellBack && !mayShrink && /<html[\s>]/i.test(html)) {
+            const textOf = (h: string) => h
+                .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ')
+                .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
+            const sectionsOf = (h: string) => (h.match(/<section\b/gi) || []).length;
+            const beforeText = textOf(prev.html), afterText = textOf(html);
+            const beforeSections = sectionsOf(prev.html), afterSections = sectionsOf(html);
+            if (afterText < beforeText * 0.8 || afterSections < beforeSections - 1) {
+                editLostContent = {
+                    text: Math.max(0, Math.round((1 - afterText / Math.max(1, beforeText)) * 100)),
+                    sections: Math.max(0, beforeSections - afterSections),
+                };
+                logs.push(`edit refused: the reply dropped ${editLostContent.text}% of the text and ${editLostContent.sections} section(s); the page is unchanged`);
+                html = prev.html;
+            }
+        }
+
         // Detect a no-op edit: the model returned HTML identical to the current page
         // (weak models sometimes echo it back). We must NOT claim we changed it.
         const editNoOp = isEdit && !!prev && (editFellBack || html.trim() === prev.html.trim());
@@ -1096,6 +1201,18 @@ ${prev!.html}`
             if (contentRepairs) parts.push(isAr ? `✍️ إصلاحات المحتوى: ${contentRepairs}` : `✍️ Content repairs: ${contentRepairs}`);
             // A page half in English when Arabic was asked for is a defect, and
             // one the user can see at a glance — so it is named, not buried.
+            // A refused edit must be visible: the user asked for a change and did
+            // not get it, and silence would read as "done".
+            if (editLostContent) {
+                parts.push(isAr
+                    ? `⚠️ رفضتُ هذا التعديل: النموذج أعاد الصفحة ناقصة ${editLostContent.text}% من نصّها${editLostContent.sections ? ` و${editLostContent.sections} قسمًا` : ''}، وكان سيحذف محتوى لم تطلب حذفه. صفحتك كما هي. جرّب طلبًا أدقّ مثل «في قسم اتصل بنا أضف زر …».`
+                    : `⚠️ Refused this edit: the model returned the page missing ${editLostContent.text}% of its text${editLostContent.sections ? ` and ${editLostContent.sections} section(s)` : ''}, which would have deleted content you did not ask to remove. Your page is unchanged. Try naming the section, e.g. "in the contact section, add a …".`);
+            }
+            if (editShrank.length) {
+                parts.push(isAr
+                    ? `⚠️ رفضتُ تعديل ${editShrank.length} قسم (${editShrank.slice(0, 3).join('، ')}) لأن النموذج أعادها ناقصة وكان سيحذف محتوى لم تطلب حذفه. الصفحة كما كانت — أعد صياغة الطلب أو حدّد القسم بالاسم.`
+                    : `⚠️ Refused the edit to ${editShrank.length} section(s) (${editShrank.slice(0, 3).join(', ')}): the model returned less than was there and would have deleted content you did not ask to remove. The page is unchanged.`);
+            }
             if (languageFailures.length) {
                 parts.push(isAr
                     ? `⚠️ ${languageFailures.length} قسم عاد بالإنجليزية ولم يتحسّن بعد إعادة الطلب (${languageFailures.slice(0, 3).join('، ')}) — النموذج الحالي ضعيف في العربية. اطلب إعادة كتابة القسم وسأصلحه.`

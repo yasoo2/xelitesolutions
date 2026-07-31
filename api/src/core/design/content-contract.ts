@@ -44,14 +44,25 @@ export interface Requirements {
 const BUTTON_WORDS = /(?:زر|أزرار|ازرار|button|buttons?)\s*(?:مثل|such as|like)?\s*/gi;
 
 /** Named controls, in both languages, with the label to look for in the page. */
-const KNOWN_CONTROLS: Array<{ re: RegExp; ar: string; match: RegExp }> = [
-    { re: /تسجيل\s*(ال)?دخول|log\s*in|login|sign\s*in/i, ar: 'تسجيل الدخول', match: /تسجيل\s*(ال)?دخول|log\s*in|login|sign\s*in/i },
-    { re: /تسجيل\s*(ال)?خروج|(?:^|\s)خروج|log\s*out|logout|sign\s*out/i, ar: 'تسجيل الخروج', match: /تسجيل\s*(ال)?خروج|(?:>|\s)خروج|log\s*out|logout|sign\s*out/i },
-    { re: /من\s*نحن|about\s*us|about/i, ar: 'من نحن', match: /من\s*نحن|about/i },
-    { re: /(?:اتصل|اتص|تواصل)\s*بنا|contact\s*us|contact/i, ar: 'اتصل بنا', match: /(?:اتصل|اتص|تواصل)\s*بنا|contact/i },
-    { re: /التسجيل|إنشاء\s*حساب|انشاء\s*حساب|sign\s*up|register/i, ar: 'إنشاء حساب', match: /التسجيل|إنشاء\s*حساب|انشاء\s*حساب|sign\s*up|register/i },
-    { re: /خدماتنا|services/i, ar: 'خدماتنا', match: /خدمات|services/i },
-    { re: /الأسعار|الاسعار|pricing|prices/i, ar: 'الأسعار', match: /سعر|أسعار|اسعار|pricing|price/i },
+/**
+ * The controls a user can name, and how to recognise one already on the page.
+ *
+ * EXPORTED because there used to be a second copy of this list in chrome.ts with
+ * slightly different patterns, and the two disagreed: chrome.ts accepted
+ * «تواصل معنا» as the contact control and did not add one, while this list
+ * required «…بنا» and reported it missing. Joe told the user a button was
+ * missing from a page Joe had decided already had it. One list, one answer.
+ */
+export const KNOWN_CONTROLS: Array<{ re: RegExp; ar: string; en: string; match: RegExp }> = [
+    { re: /تسجيل\s*(ال)?دخول|log\s*in|login|sign\s*in/i, ar: 'تسجيل الدخول', en: 'Sign in', match: /تسجيل\s*(ال)?دخول|log\s*in|login|sign\s*in/i },
+    { re: /تسجيل\s*(ال)?خروج|(?:^|\s)خروج|log\s*out|logout|sign\s*out/i, ar: 'تسجيل الخروج', en: 'Sign out', match: /تسجيل\s*(ال)?خروج|(?:>|\s)خروج|log\s*out|logout|sign\s*out/i },
+    { re: /من\s*نحن|about\s*us|about/i, ar: 'من نحن', en: 'About', match: /من\s*نحن|عن\s*(نا|الشركة)|about/i },
+    // «تواصل معنا» is the same control as «اتصل بنا». Requiring «…بنا» made
+    // this list disagree with the one that inserts the button.
+    { re: /(?:ات[صّ]ل|اتص|تواصل)\s*(بنا|معنا)|contact\s*us|contact/i, ar: 'اتصل بنا', en: 'Contact', match: /(?:ات[صّ]ل|اتص|تواصل)\s*(بنا|معنا)|راسلنا|contact/i },
+    { re: /التسجيل|إنشاء\s*حساب|انشاء\s*حساب|sign\s*up|register/i, ar: 'إنشاء حساب', en: 'Sign up', match: /التسجيل|إنشاء\s*حساب|انشاء\s*حساب|sign\s*up|register/i },
+    { re: /خدماتنا|services/i, ar: 'خدماتنا', en: 'Services', match: /خدمات|services/i },
+    { re: /الأسعار|الاسعار|pricing|prices/i, ar: 'الأسعار', en: 'Pricing', match: /سعر|أسعار|اسعار|pricing|price/i },
 ];
 
 export function extractRequirements(request: string): Requirements {

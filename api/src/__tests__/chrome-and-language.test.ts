@@ -20,6 +20,7 @@ import {
     ensureHeaderControls, wireAuthControls, repairDeadAnchors,
 } from '../core/design/chrome';
 import { uiKitCss } from '../core/design/design-system';
+import { KNOWN_CONTROLS } from '../core/design/content-contract';
 
 describe('a section that came back in the wrong language is detected', () => {
     const englishSection = `<section class="section" id="hero"><div class="wrap">
@@ -500,5 +501,75 @@ describe('a sign-in link the model wrote is wired, not deleted', () => {
     it('leaves ordinary links alone', () => {
         const src = '<a href="#contact">اتصل بنا</a><a href="#">الأسعار</a>';
         expect(wireAuthControls(src).wired).toBe(0);
+    });
+});
+
+describe('an Arabic label can find an English section id', () => {
+    const page = `<main>
+<section class="section" id="hero"><h2>ترحيب</h2></section>
+<section class="section" id="services-features"><h2>قسم رقم 3</h2></section>
+<section class="section" id="pricing-packages-if"><h2>قسم رقم 5</h2></section>
+<section class="section" id="contact-section"><h2>قسم رقم 9</h2>
+<a class="btn" href="#contact">تواصل معنا</a></section></main>`;
+
+    it('retargets «تواصل معنا» to #contact-section', () => {
+        // Section ids are English slugs; the link a visitor reads is Arabic.
+        // Word-against-word matching cannot bridge that, so the repair DELETED
+        // the button the user had asked for and the content check then reported
+        // it missing — from a page Joe had just removed it from.
+        const got = repairDeadAnchors(page);
+        expect(got.html).toContain('<a class="btn" href="#contact-section">تواصل معنا</a>');
+        expect(got.html).not.toContain('<span');
+    });
+
+    it('sees EVERY section, not just the ones before the first 4000 characters', () => {
+        // The scan captured up to 4000 characters after each id, and matchAll
+        // resumes after a match — so every id inside that window was skipped.
+        // Measured: only the first sections of a nine-section page became
+        // targets and `contact-section`, the last one, was never offered.
+        const big = '<main>' + Array.from({ length: 6 }, (_, i) =>
+            `<section id="filler-${i}"><h2>ح${i}</h2><p>${'ن'.repeat(900)}</p></section>`).join('')
+            + '<section id="pricing-block"><h2>الباقات</h2></section>'
+            + '<a href="#nowhere">الأسعار</a></main>';
+        expect(repairDeadAnchors(big).html).toContain('href="#pricing-block"');
+    });
+
+    it.each([
+        ['من نحن', 'about-us'],
+        ['الأسعار', 'pricing-packages'],
+        ['خدماتنا', 'services-features'],
+        ['الأسئلة الشائعة', 'faq-block'],
+    ])('maps «%s» onto #%s', (label, id) => {
+        const p = `<main><section id="${id}"><h2>ع</h2></section><a href="#">${label}</a></main>`;
+        expect(repairDeadAnchors(p).html).toContain(`href="#${id}"`);
+    });
+
+    it('still demotes a label that means nothing on this page', () => {
+        const p = '<main><section id="hero"><h2>ع</h2></section><a href="#">Terms of Service</a></main>';
+        expect(repairDeadAnchors(p).html).toContain('<span>Terms of Service</span>');
+    });
+});
+
+describe('the header controls come from ONE list', () => {
+    it('recognises «تواصل معنا» as the contact control, like the content check does', () => {
+        // There were two lists with different patterns: this file accepted
+        // «تواصل معنا» and added nothing, while the content check required
+        // «…بنا» and reported the button missing.
+        const header = `<header class="site-header"><div class="wrap header-inner"><nav class="site-nav">
+<div class="nav-actions"><a class="btn" href="#contact">تواصل معنا</a></div></nav></div></header>`;
+        expect(ensureHeaderControls(header, { wanted: ['اتصل بنا'], isArabic: true }).added).toEqual([]);
+    });
+
+    it('is derived from the shared list, so the two cannot drift apart', () => {
+        const labels = KNOWN_CONTROLS.map(c => c.ar);
+        for (const l of ['تسجيل الدخول', 'تسجيل الخروج', 'من نحن', 'اتصل بنا']) {
+            expect(labels).toContain(l);
+        }
+        // Every shared entry carries both languages, which is what the header
+        // needs to label a button it inserts.
+        for (const c of KNOWN_CONTROLS) {
+            expect(typeof c.en).toBe('string');
+            expect(c.en.length).toBeGreaterThan(1);
+        }
     });
 });

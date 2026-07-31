@@ -36,6 +36,16 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 // silently depends on somebody's network is not a test. Joe must produce a
 // complete page with its designed gradients instead.
 process.env.JOE_IMAGE_TIMEOUT = process.env.JOE_IMAGE_TIMEOUT || '1200';
+/**
+ * Joe's OWN visual and behaviour audits need a browser, and without this they
+ * are skipped — which was silently true for every run of this script until a
+ * probe printed the logs: "visual audit skipped: browser launch failed". The
+ * harness was measuring the deterministic pipeline only, and reporting it as if
+ * it had measured the audit-and-repair loop too.
+ */
+if (!process.env.BROWSER_EXECUTABLE_PATH && fs.existsSync('/opt/pw-browsers/chromium')) {
+    process.env.BROWSER_EXECUTABLE_PATH = '/opt/pw-browsers/chromium';
+}
 
 // There is no websocket in a test runner; the broadcast warning is expected and
 // drowns the findings. Exactly that line is dropped, nothing else.
@@ -88,9 +98,13 @@ const HEADER_WRONG_CLASSES = `<header class="site-header"><div class="wrap heade
 function stubReply(prompt: string, turn: number): string {
     const p = prompt.toLowerCase();
 
-    // A section edit or a repair asks for a specific element back.
+    // A section edit or a repair asks for a specific element back. The edit
+    // must actually CHANGE something, or "the model returned no change" is
+    // indistinguishable from a broken edit path.
     if (p.includes('you are editing one section') || p.includes('return the complete updated html')) {
-        return GOOD_SECTION_AR('repaired', 99);
+        const id = (prompt.match(/id="([^"]+)"/) || [, 'repaired'])[1];
+        return GOOD_SECTION_AR(id, 99).replace('</div></section>',
+            '<a class="btn" href="#contact" data-edit-marker>احجز استشارة مجانية</a></div></section>');
     }
     if (p.includes('you are writing one section')) {
         const id = (prompt.match(/id="([^"]+)"/) || [, `sec-${turn}`])[1];
@@ -109,6 +123,37 @@ function stubReply(prompt: string, turn: number): string {
     return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>ص</title>
 <style>:root{--brand:#2563eb}</style></head><body>${HEADER_WRONG_CLASSES}<main>
 ${GOOD_SECTION_AR('a', 1)}${GOOD_SECTION_AR('b', 2)}${BAD_SECTION_EN('c')}</main></body></html>`;
+}
+
+/**
+ * Serve the artifact directory the way the real server does.
+ *
+ * Joe audits its own page over HTTP at `http://localhost:<PORT>/artifacts/...`,
+ * so without a server on that port every audit is skipped — which was silently
+ * true for every run of this script until a probe printed the logs. With this,
+ * the harness exercises the audit-and-repair loop, not only the deterministic
+ * pipeline in front of it.
+ */
+function startArtifactServer(dir: string): Promise<{ port: number; close: () => void }> {
+    return new Promise(resolve => {
+        const types: Record<string, string> = {
+            '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
+            '.js': 'text/javascript; charset=utf-8', '.jpg': 'image/jpeg',
+            '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+        };
+        const server = http.createServer((req, res) => {
+            const rel = decodeURIComponent((req.url || '').split('?')[0]).replace(/^\/artifacts\/?/, '');
+            const file = path.join(dir, rel);
+            // Never serve outside the directory being served.
+            if (!path.resolve(file).startsWith(path.resolve(dir))) { res.writeHead(403); res.end(); return; }
+            fs.readFile(file, (err, buf) => {
+                if (err) { res.writeHead(404); res.end('not found'); return; }
+                res.writeHead(200, { 'Content-Type': types[path.extname(file).toLowerCase()] || 'application/octet-stream' });
+                res.end(buf);
+            });
+        });
+        server.listen(0, '127.0.0.1', () => resolve({ port: (server.address() as any).port, close: () => server.close() }));
+    });
 }
 
 function startStub(): Promise<{ url: string; close: () => void; calls: number }> {
@@ -362,6 +407,11 @@ async function main() {
     const only = process.argv.slice(2).filter(a => !a.startsWith('-'));
     const kinds = only.length ? only : Object.keys(REQUESTS);
 
+    const artifactDirEnv = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+    fs.mkdirSync(artifactDirEnv, { recursive: true });
+    const files = await startArtifactServer(artifactDirEnv);
+    process.env.PORT = String(files.port);   // read when Joe builds its audit URL
+
     const stub: any = await startStub();
     const { WebPageBuilderTool } = require('../../modules/tools/definitions/WebPageBuilderTool');
     const tool = new WebPageBuilderTool();
@@ -407,14 +457,59 @@ async function main() {
         const maj = findings.filter(f => f.severity === 'major').length;
         totalCritical += crit; totalMajor += maj;
 
+        const auditLog = (res.logs || []).filter((l: string) => /visual audit|behaviour audit/.test(l));
+        const auditsRan = auditLog.some((l: string) => !/skipped/.test(l));
+        if (!auditsRan) {
+            console.log(`  ! [minor] Joe's own audits did not run: ${(auditLog[0] || 'no audit log line').slice(0, 90)}`);
+        }
         console.log(`  built in ${((Date.now() - t0) / 1000).toFixed(1)}s · ${fs.statSync(target).size} bytes · title "${facts.title}"`);
+        for (const l of auditLog) console.log(`  · ${l.slice(0, 110)}`);
+        // Joe's own findings, verbatim — the counts alone hide what is wrong.
+        for (const line of String(res.output?.message || '').split('\n')) {
+            if (/^\s*•/.test(line)) console.log(`    ${line.trim().slice(0, 120)}`);
+        }
         console.log(`  lang=${facts.lang} dir=${facts.dir} sections=${facts.sections} arabic=${Math.round((facts.arabicShare as number) * 100)}% bdi=${facts.bdi}`);
         if (!findings.length) console.log('  ✓ nothing found');
         for (const f of findings) console.log(`  ${f.severity === 'critical' ? '✗' : '!'} [${f.severity}] ${f.text}`);
+
+        /* ---------- the EDIT path, on the page just built ------------------ */
+        // Half of real use is "now change this". It shares a tool with the build
+        // but almost none of its code, and nothing had ever measured it.
+        const before = fs.readFileSync(target, 'utf-8');
+        const edit = await tool.execute(
+            { request: 'أضف زرًا في قسم التواصل مكتوب عليه «احجز استشارة مجانية»' },
+            {
+                sessionId: `e2e-${kind}`, userId: 'e2e',
+                modelConfig: { provider: 'openai', model: 'stub', apiKey: 'sk-stub', baseUrl: stub.url },
+            });
+        if (!edit?.ok) {
+            console.log(`  ✗ [critical] the edit failed: ${edit?.error}`);
+            totalCritical++;
+        } else {
+            const after = fs.readFileSync(target, 'utf-8');
+            const refused = /رفضتُ|Refused this edit|Refused the edit/.test(String(edit.output?.message || ''));
+            if (after === before && !refused) {
+                console.log('  ! [major] the edit reported success and changed nothing on disk');
+                totalMajor++;
+            } else if (refused) {
+                // Keeping the page and saying so is the CORRECT outcome when the
+                // model's reply would have deleted content.
+                console.log('  · edit refused on purpose (the reply would have lost content) — page kept');
+            }
+            const m2 = await measure(browser, 'file://' + target);
+            const c2 = m2.findings.filter(f => f.severity === 'critical').length;
+            const j2 = m2.findings.filter(f => f.severity === 'major').length;
+            totalCritical += c2; totalMajor += j2;
+            const grew = after.length >= before.length * 0.8;
+            if (!grew) { console.log(`  ! [major] the edit shrank the page ${before.length} → ${after.length} bytes`); totalMajor++; }
+            console.log(`  edit: ${before.length} → ${after.length} bytes${m2.findings.length ? '' : ' · ✓ still clean'}`);
+            for (const f of m2.findings) console.log(`  ${f.severity === 'critical' ? '✗' : '!'} [after edit][${f.severity}] ${f.text}`);
+        }
     }
 
     await browser.close();
     stub.close();
+    files.close();
     console.log(`\n${totalCritical} critical, ${totalMajor} major across ${kinds.length} page kind(s).`);
     process.exit(totalCritical ? 1 : 0);
 }

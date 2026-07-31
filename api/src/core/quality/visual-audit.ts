@@ -79,7 +79,22 @@ function collector() {
     };
 
     // ---- overflow
-    const overflow = Math.max(0, de.scrollWidth - de.clientWidth);
+    //
+    // What matters is whether the visitor can DRAG THE PAGE SIDEWAYS, not what
+    // scrollWidth reports. `overflow-x: clip` removes the scrolling and leaves
+    // scrollWidth alone, so a mobile drawer parked off the edge — every page Joe
+    // builds has one — was measured at 320px of overflow on a 390px phone and
+    // cost the page 35 points for something no visitor could ever do. The
+    // repair it triggered could not fix it either, because there was nothing
+    // wrong. Ask the page to scroll and see whether it moves.
+    const scrollable = (() => {
+        const before = window.scrollX;
+        window.scrollTo(de.scrollWidth, 0);
+        const moved = Math.abs(window.scrollX - before);
+        window.scrollTo(before, 0);
+        return moved;
+    })();
+    const overflow = scrollable > 1 ? Math.max(0, de.scrollWidth - de.clientWidth) : 0;
     const wideElements: string[] = [];
     // ---- contrast
     const contrastFails: Array<{ text: string; ratio: number; need: number }> = [];
