@@ -5,6 +5,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { extractProfileLearnings, isCorruptedName, normalizeForMatch } from './learn';
 
 export interface MemoryEntry {
     id: string;
@@ -103,15 +104,18 @@ class LongTermMemory {
         const queryLower = query.toLowerCase();
         const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
 
+        const normQueryWords = queryWords.map(normalizeForMatch).filter(Boolean);
         const scored = userMemories.map(memory => {
-            const contentLower = memory.content.toLowerCase();
+            // Normalize BOTH sides so «البرمجة» in memory matches «برمجة» in the
+            // query — Arabic proclitics and hamza forms no longer hide a match.
+            const contentNorm = normalizeForMatch(memory.content);
 
             // Calculate relevance score
             let score = 0;
 
             // Keyword matching
-            for (const word of queryWords) {
-                if (contentLower.includes(word)) {
+            for (const word of normQueryWords) {
+                if (contentNorm.includes(word)) {
                     score += 2;
                 }
             }
@@ -192,34 +196,24 @@ class LongTermMemory {
 
             const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
 
-            // Learn name
-            const nameMatch = content.match(/(?:اسمي|انا|أنا|name is|i am|i'm)\s+([أ-يa-z]+)/i);
-            if (nameMatch) {
-                profile.name = nameMatch[1];
-                profile.facts.set('name', nameMatch[1]);
+            // [SAFE LEARNING] Only an explicit self-introduction sets the name;
+            // «أنا أريد بناء موقع» no longer teaches Joe the name is «أريد».
+            const learned = extractProfileLearnings(content);
+            if (learned.name) {
+                profile.name = learned.name;
+                profile.facts.set('name', learned.name);
             }
-
-            // Learn programming preferences
-            const progLangs = content.match(/\b(javascript|typescript|python|java|golang|rust|c\+\+|react|vue|angular)\b/gi);
-            if (progLangs) {
-                profile.preferences.programmingLanguages = [
+            if (learned.programmingLanguages.length) {
+                profile.preferences.programmingLanguages = Array.from(new Set([
                     ...(profile.preferences.programmingLanguages || []),
-                    ...progLangs.map((l: string) => l.toLowerCase())
-                ];
-                // Remove duplicates
-                profile.preferences.programmingLanguages = Array.from(new Set(profile.preferences.programmingLanguages));
+                    ...learned.programmingLanguages,
+                ])).slice(-12); // keep the most recent dozen, not an unbounded pile
             }
-
-            // Learn project types
-            if (/\b(website|web app|api|mobile app)\b/i.test(content)) {
-                const type = content.match(/\b(website|web app|api|mobile app)\b/i)?.[0].toLowerCase();
-                if (type) {
-                    profile.preferences.projectTypes = [
-                        ...(profile.preferences.projectTypes || []),
-                        type
-                    ];
-                    profile.preferences.projectTypes = Array.from(new Set(profile.preferences.projectTypes));
-                }
+            if (learned.projectTypes.length) {
+                profile.preferences.projectTypes = Array.from(new Set([
+                    ...(profile.preferences.projectTypes || []),
+                    ...learned.projectTypes,
+                ])).slice(-12);
             }
 
             // Store important conversations
@@ -239,13 +233,22 @@ class LongTermMemory {
     /**
      * Get conversation summary for context
      */
-    async getContextSummary(userId: string): Promise<string> {
+    async getContextSummary(userId: string, query: string = ''): Promise<string> {
         await this.ensureInitialized();
         const profile = await this.getProfile(userId);
-        const recentMemories = await this.recall(userId, '', 5);
+        // Recall is driven by the CURRENT request, so the past that surfaces is
+        // the past that is relevant — not merely the most recent.
+        const recentMemories = await this.recall(userId, query, 5);
 
         const parts: string[] = [];
 
+        // [SELF-HEAL] A profile poisoned by the old extractor («name: أريد») is
+        // dropped on read, so a returning user is never greeted by a verb.
+        if (profile.name && isCorruptedName(profile.name)) {
+            profile.name = undefined;
+            profile.facts.delete('name');
+            this.saveProfile(userId).catch(() => { /* best effort */ });
+        }
         if (profile.name) {
             parts.push(`User name: ${profile.name}`);
         }

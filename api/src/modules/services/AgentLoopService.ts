@@ -61,7 +61,8 @@ export class AgentLoopService {
         const memUserId = String(userId || 'local-user');
         let memoryContext = '';
         try {
-            memoryContext = await longTermMemory.getContextSummary(memUserId);
+            // Pass the goal so recall surfaces the memories RELEVANT to it.
+            memoryContext = await longTermMemory.getContextSummary(memUserId, goal);
             if (memoryContext) broadcastThinkingDetail(sessionId, uiText('recalledContext', language));
         } catch { /* non-fatal */ }
 
