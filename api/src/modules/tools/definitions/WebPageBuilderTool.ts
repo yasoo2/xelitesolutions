@@ -14,7 +14,7 @@ import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirst
 import { findReferenceUrl, extractReference, paletteFromReference, referenceBrief, referenceOverridesCss, referenceSummary } from '../../../core/design/reference';
 import { detectPageKind, blueprintBrief, imageBudget, blueprintSections, kindLabel } from '../../../core/design/blueprints';
 import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteSectionwise, type WrittenSection } from '../../../core/design/section-writer';
-import { brandFrom, pageTitle } from '../../../core/design/page-head';
+import { brandFrom, pageTitle, metaDescription } from '../../../core/design/page-head';
 import { ensureLogo, logoCss } from '../../../core/design/logo';
 import { themeCss, lightOverrideCss, revealCss, themeRuntime, revealRuntime, ensureThemeToggle, pickRevealStyle } from '../../../core/design/theme';
 import { chromeBrief, chromeCss, chromeRuntime, authCss, authRuntime, ensureHeaderControls, wireAuthControls, repairDeadAnchors } from '../../../core/design/chrome';
@@ -597,6 +597,7 @@ ${prev!.html}`
                     // instruction to Joe in the browser tab, cut off mid-word:
                     // «ابني صفحة ويب لشركه تكنلوجية اسمها xelitesolutions وهي شركة ».
                     title: pageTitle({ request, isArabic: isAr, kindLabel: kind }),
+                    description: metaDescription({ request, isArabic: isAr, kindLabel: kind }),
                     isArabic: isAr,
                     tokenCss: paletteCss(palette),
                     baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
@@ -1098,6 +1099,19 @@ the WORDS, not the structure.`;
                 }
             }
         } catch { /* a title is not worth failing a build over */ }
+
+        // The meta description too, on EVERY path — the section-wise build
+        // composes one, but the single-shot and edit paths keep whatever the
+        // model returned, which measured as: nothing. Composed like the title
+        // (brand + what the page IS), never pasted from the prompt.
+        try {
+            if (!/<meta[^>]+name=["']description["']/i.test(html)) {
+                const desc = metaDescription({ request, isArabic: isAr, kindLabel: kind }).replace(/[<>"]/g, '').trim();
+                if (desc) {
+                    html = html.replace(/<\/head>/i, `<meta name="description" content="${desc}">\n</head>`);
+                }
+            }
+        } catch { /* same rule as the title */ }
 
         // The combined self-contained HTML is always the source of truth for edits.
         // Stable filename per session so the preview URL stays consistent across edits.
@@ -1799,6 +1813,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
 
             let pageHtml = assemblePage({
                 title: pageTitle({ request, isArabic: isAr, kindLabel: page.kind, pageName: page.title, brand }),
+                description: metaDescription({ request, isArabic: isAr, kindLabel: page.kind, pageName: page.title, brand }),
                 isArabic: isAr,
                 tokenCss: paletteCss(palette),
                 baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,

@@ -365,6 +365,48 @@ function collector() {
     }
     const focusSuppressed = outlineKilled > 0 && focusRules === 0 ? outlineKilled : 0;
 
+    // ---- document plumbing: the checks a broken deploy fails ----------------
+    //
+    // These are cheap DOM questions, but each one is a real shipping failure:
+    // an image whose file is missing renders as a broken glyph, a duplicated id
+    // silently breaks every anchor and label pointing at it, an http:// asset
+    // is blocked the moment the page is hosted over https.
+    const brokenImages: string[] = [];
+    for (const img of Array.from(document.querySelectorAll('img')) as HTMLImageElement[]) {
+        // complete && naturalWidth 0 = the browser TRIED and the file was not
+        // there. A data: URI or a still-loading image never lands here.
+        if (img.complete && img.naturalWidth === 0 && (img.getAttribute('src') || '').trim()) {
+            if (brokenImages.length < 5) brokenImages.push((img.getAttribute('src') || '').slice(0, 80));
+        }
+    }
+
+    const idCounts = new Map<string, number>();
+    for (const el of Array.from(document.querySelectorAll('[id]'))) {
+        const id = el.getAttribute('id') || '';
+        if (id) idCounts.set(id, (idCounts.get(id) || 0) + 1);
+    }
+    const duplicateIds = [...idCounts.entries()].filter(([, n]) => n > 1).map(([id]) => id).slice(0, 6);
+
+    const titleLength = (document.title || '').trim().length;
+    const hasViewportMeta = !!document.querySelector('meta[name="viewport"]');
+    const metaDescription = (document.querySelector('meta[name="description"]')?.getAttribute('content') || '').trim();
+
+    let blankNoOpener = 0;
+    for (const a of Array.from(document.querySelectorAll('a[target="_blank"]'))) {
+        const rel = (a.getAttribute('rel') || '').toLowerCase();
+        if (!/noopener|noreferrer/.test(rel)) blankNoOpener++;
+    }
+
+    let httpResources = 0;
+    const httpSamples: string[] = [];
+    for (const el of Array.from(document.querySelectorAll('img[src], script[src], link[rel="stylesheet"][href], iframe[src], video[src], audio[src], source[src]'))) {
+        const url = el.getAttribute('src') || el.getAttribute('href') || '';
+        if (/^http:\/\//i.test(url)) {
+            httpResources++;
+            if (httpSamples.length < 3) httpSamples.push(url.slice(0, 80));
+        }
+    }
+
     // Whitespace balance: how much of the first screen is empty background.
     const sample = () => {
         let filled = 0, cells = 0;
@@ -404,6 +446,10 @@ function collector() {
         // accessibility
         headingJumps, h1Count, unlabelledFields, iconOnlyUnnamed, imgNoAlt,
         missingLandmarks, focusSuppressed, outlineKilled, focusRules,
+        // document plumbing
+        brokenImages, duplicateIds, titleLength, hasViewportMeta,
+        metaDescriptionLength: metaDescription.length, blankNoOpener,
+        httpResources, httpSamples,
     };
 }
 
@@ -725,6 +771,66 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
                 ar: 'لا يوجد مؤشر تركيز ظاهر — الصفحة غير قابلة للاستخدام بلوحة المفاتيح',
                 en: 'No visible focus indicator anywhere — the page cannot be used with a keyboard',
                 hint: 'never outline:none without a :focus-visible replacement',
+            });
+        }
+    }
+
+    // ---- document plumbing: what a broken deploy fails ----------------------
+    if (d) {
+        if ((d.brokenImages || []).length > 0) {
+            findings.push({
+                code: 'broken_images', severity: 'major',
+                ar: `${d.brokenImages.length} صورة فشل تحميلها فعليًا في المتصفح (الملف غير موجود): ${d.brokenImages[0]}`,
+                en: `${d.brokenImages.length} image(s) actually failed to load in the browser (file missing): ${d.brokenImages[0]}`,
+                hint: 'point the src at a file that exists, or remove the img',
+            });
+        }
+        if ((d.duplicateIds || []).length > 0) {
+            findings.push({
+                code: 'duplicate_ids', severity: 'minor',
+                ar: `معرّفات id مكررة (${d.duplicateIds.slice(0, 3).join('، ')}) — الروابط والتسميات تصل للأول فقط`,
+                en: `Duplicated ids (${d.duplicateIds.slice(0, 3).join(', ')}) — anchors and labels reach only the first`,
+                hint: 'every id must be unique in the document',
+            });
+        }
+        if (d.titleLength === 0) {
+            findings.push({
+                code: 'no_title', severity: 'major',
+                ar: 'الصفحة بلا <title> — التبويب فارغ ومحركات البحث بلا عنوان',
+                en: 'The page has no <title> — the tab is blank and search engines have nothing',
+                hint: 'add a descriptive <title> in <head>',
+            });
+        }
+        if (!d.hasViewportMeta) {
+            findings.push({
+                code: 'no_viewport', severity: 'major',
+                ar: 'لا يوجد meta viewport — الجوال سيعرض الصفحة مصغّرة كسطح مكتب',
+                en: 'No viewport meta — phones render the page as a zoomed-out desktop',
+                hint: 'add <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+            });
+        }
+        if ((d.metaDescriptionLength || 0) < 20) {
+            findings.push({
+                code: 'no_meta_description', severity: 'minor',
+                ar: 'لا يوجد وصف meta description — محركات البحث ستخترع مقتطفًا بدلًا منه',
+                en: 'No meta description — search engines will invent the snippet themselves',
+                hint: 'add <meta name="description" content="..."> (~150 chars) describing the page',
+            });
+        }
+        if ((d.blankNoOpener || 0) > 0) {
+            findings.push({
+                code: 'blank_no_noopener', severity: 'minor',
+                ar: `${d.blankNoOpener} رابط target="_blank" بلا rel="noopener" — الصفحة المفتوحة تستطيع التحكم بصفحتك`,
+                en: `${d.blankNoOpener} target="_blank" link(s) without rel="noopener" — the opened page can script yours`,
+                hint: 'add rel="noopener" to every target="_blank" link',
+            });
+        }
+        if ((d.httpResources || 0) > 0) {
+            findings.push({
+                code: 'http_resources', severity: 'major',
+                ar: `${d.httpResources} مورد يُحمَّل عبر http:// غير المشفّر — سيُحجب فور استضافة الصفحة على https: ${(d.httpSamples || [])[0] || ''}`,
+                en: `${d.httpResources} resource(s) load over plain http:// — blocked as mixed content the moment the page is hosted on https: ${(d.httpSamples || [])[0] || ''}`,
+                hint: 'use https:// URLs or local files for every script, style, and image',
             });
         }
     }

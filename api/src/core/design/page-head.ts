@@ -130,3 +130,41 @@ export function pageTitle(opts: {
     const title = parts.filter(Boolean).join(' — ').trim();
     return title.length > 70 ? title.slice(0, 69).trimEnd() + '…' : title;
 }
+
+/** Page kinds → what this page offers, phrased for a search-result snippet. */
+const KIND_DESC: Record<string, { ar: string; en: string }> = {
+    landing: { ar: 'تعرّف على خدماتنا وأعمالنا وتواصل معنا مباشرة من الموقع الرسمي', en: 'Explore our services and work, and get in touch — the official site' },
+    store: { ar: 'تصفّح المنتجات وأضفها إلى السلة واطلب أونلاين', en: 'Browse the products, add to cart, and order online' },
+    restaurant: { ar: 'اطّلع على قائمة الطعام واحجز طاولتك وتواصل معنا', en: 'See the menu, book a table, and get in touch' },
+    portfolio: { ar: 'معرض أعمالنا ومشاريعنا المنجزة', en: 'A portfolio of our completed work and projects' },
+    blog: { ar: 'مقالات وأخبار محدّثة باستمرار', en: 'Articles and news, updated regularly' },
+    dashboard: { ar: 'لوحة تحكم لمتابعة البيانات والمؤشرات', en: 'A dashboard for tracking data and metrics' },
+    app: { ar: 'تطبيق ويب يعمل مباشرة من المتصفح', en: 'A web app that runs right in the browser' },
+    about: { ar: 'قصتنا وفريقنا وما نؤمن به', en: 'Our story, our team, and what we stand for' },
+    contact: { ar: 'طرق التواصل معنا وموقعنا وساعات العمل', en: 'How to reach us — location and hours' },
+};
+
+/**
+ * The meta description, composed like the title: from what the page IS, never
+ * by pasting the user's prompt. Search engines show ~150-160 characters; a page
+ * without one gets a snippet invented by the crawler, and the visual audit now
+ * flags that.
+ */
+export function metaDescription(opts: {
+    request: string;
+    isArabic: boolean;
+    kindLabel: string;
+    pageName?: string;
+    brand?: string;
+}): string {
+    const { request, isArabic, kindLabel, pageName } = opts;
+    const lang = isArabic ? 'ar' : 'en';
+    const brand = (opts.brand ?? brandFrom(request, isArabic)).trim();
+    const what = (KIND_DESC[kindLabel] || KIND_DESC.landing)[lang];
+    const page = (pageName || '').trim();
+
+    const desc = brand
+        ? (isArabic ? `${brand}${page ? ` — ${page}` : ''}: ${what}.` : `${brand}${page ? ` — ${page}` : ''}: ${what}.`)
+        : `${page ? `${page}: ` : ''}${what}.`;
+    return desc.length > 160 ? desc.slice(0, 159).trimEnd() + '…' : desc;
+}

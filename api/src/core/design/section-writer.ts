@@ -198,14 +198,19 @@ export function assemblePage(opts: {
     sprite: string;
     /** Injected once, before </body>. */
     script: string;
+    /** Search-result snippet; composed by page-head, never the raw request. */
+    description?: string;
 }): string {
-    const { title, isArabic, tokenCss, baseLayer, sections, sprite, script } = opts;
+    const { title, isArabic, tokenCss, baseLayer, sections, sprite, script, description } = opts;
     const body = sections.filter(s => s.ok).map(s => s.html).join('\n\n');
+    const descTag = (description || '').trim()
+        ? `\n<meta name="description" content="${String(description).replace(/[<>"]/g, '').trim()}">`
+        : '';
     return `<!DOCTYPE html>
 <html lang="${isArabic ? 'ar' : 'en'}"${isArabic ? ' dir="rtl"' : ''}>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">${descTag}
 <title>${title.replace(/[<>&"]/g, '')}</title>
 <style>
 ${baseLayer}

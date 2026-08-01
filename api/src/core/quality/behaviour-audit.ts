@@ -274,6 +274,28 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
         metrics.forms = forms.length;
         metrics.formsWithoutValidation = forms.filter((f: any) => f.fields > 0 && f.required === 0).length;
 
+        // Fake buttons: things wired to a click but unreachable by keyboard.
+        // A <div onclick> LOOKS identical to a button and works with a mouse —
+        // a keyboard or switch-device user cannot even land on it. Real
+        // <button>/<a href> are natively focusable; everything else needs
+        // tabindex to exist for the Tab key at all.
+        const keyboardUnreachable: string[] = await page.evaluate(() => {
+            const out: string[] = [];
+            const natively = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'SUMMARY']);
+            document.querySelectorAll('[onclick],[role="button"]').forEach(el => {
+                const h = el as HTMLElement;
+                if (natively.has(h.tagName)) return;
+                if (h.tagName === 'A' && h.hasAttribute('href')) return;
+                if (h.hasAttribute('tabindex')) return;
+                const cs = getComputedStyle(h);
+                if (cs.display === 'none' || cs.visibility === 'hidden') return;
+                if (out.length < 6) out.push((h.innerText || h.tagName).trim().slice(0, 40) || h.tagName);
+            });
+            return out;
+        }).catch(() => []);
+        metrics.keyboardUnreachable = keyboardUnreachable.length;
+        (metrics as any).keyboardUnreachableSamples = keyboardUnreachable;
+
         metrics.jsErrors = jsErrors.length;
         await page.close();
     } catch (e: any) {
@@ -336,6 +358,15 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
             ar: `نموذج بلا أي حقل مطلوب — يمكن إرساله فارغًا`,
             en: 'A form has no required fields, so it can be submitted empty',
             hint: 'mark the essential inputs required and give them types (email/tel)',
+        });
+    }
+    if ((metrics.keyboardUnreachable || 0) > 0) {
+        const samples = ((metrics as any).keyboardUnreachableSamples || []).slice(0, 3).map((s: string) => `«${s}»`).join('، ');
+        findings.push({
+            code: 'keyboard_unreachable', severity: 'major',
+            ar: `${metrics.keyboardUnreachable} عنصر قابل للنقر لا يصله زر Tab إطلاقًا${samples ? `: ${samples}` : ''} — مستخدم لوحة المفاتيح لا يستطيع تشغيله`,
+            en: `${metrics.keyboardUnreachable} clickable element(s) the Tab key can never reach${samples ? `: ${samples}` : ''} — unusable by keyboard`,
+            hint: 'use a real <button>, or add tabindex="0" plus a keydown handler for Enter/Space',
         });
     }
 
