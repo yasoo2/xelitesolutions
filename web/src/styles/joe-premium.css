@@ -3373,6 +3373,31 @@ body:not(.rtl) .joe-user-info {
     :root { --joe-chat-col: 760px; }
 }
 
+/* ---------- Touch sizes: fingers are not mouse pointers ---------- */
+/* Measured at 390px: the composer's action buttons were 28x28 and the
+   workspace tabs 42x28 — under any comfortable touch minimum. Desktop keeps
+   its compact sizes; only real phones grow. */
+@media (max-width: 640px) {
+    .joe-chat-input-area .action-btn,
+    .joe-chat-input-area .provider-btn,
+    .joe-chat-input-area .send-btn {
+        width: 38px !important;
+        height: 38px !important;
+        min-width: 38px !important;
+    }
+    .joe-chat-input-area .action-btn svg,
+    .joe-chat-input-area .provider-btn svg,
+    .joe-chat-input-area .send-btn svg {
+        width: 17px !important;
+        height: 17px !important;
+    }
+    .joe-workspace-tab {
+        padding: 9px 13px;
+        min-height: 38px;
+    }
+    .joe-user-trigger { padding: 5px 8px 5px 5px; }
+}
+
 /* ---------- Responsive: phones (canvas becomes a full-screen overlay) ---------- */
 @media (max-width: 900px) {
     .joe-main { position: relative; }

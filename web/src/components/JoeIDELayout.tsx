@@ -627,8 +627,10 @@ export default function JoeIDELayout({
                     style={{
                         display: 'flex',
                         position: 'fixed',
-                        bottom: 60,
-                        right: 16,
+                        // 60px sat EXACTLY on the composer's send button and
+                        // swallowed its taps — measured on a real 390px view.
+                        bottom: 176,
+                        right: 12,
                         zIndex: 1001,
                         width: 48,
                         height: 48,
