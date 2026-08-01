@@ -149,7 +149,13 @@ const CONNECT = "[.'&\\-+/@_:~?=#]+";
    the bare `@` is neutral and lays out with the Arabic, so «@xelite» reads
    «xelite@». */
 const WORD = `@?[A-Za-z][A-Za-z0-9]*(?:${CONNECT}[A-Za-z0-9]+)*`;
-const LATIN_RUN = new RegExp(`${WORD}(?:\\s+${WORD})*`, 'g');
+/**
+ * HTML entities are matched FIRST (alternation is ordered) so their name is
+ * never mistaken for prose. Without this, «&copy; 2023» became
+ * «&<bdi>copy</bdi>; 2023» — the entity's NAME got isolated and the page
+ * shipped a literal broken "&copy;" in its footer. Seen in a real build.
+ */
+const LATIN_RUN = new RegExp(`&[A-Za-z][A-Za-z0-9]{1,30};|${WORD}(?:\\s+${WORD})*`, 'g');
 
 /**
  * Wrap Latin runs that sit inside Arabic prose in <bdi>.
@@ -180,7 +186,11 @@ export function isolateLatinRuns(html: string): string {
     let m: RegExpExecArray | null;
     const emitText = (text: string, at: number) => {
         if (inHole(at) || !ARABIC.test(text)) { out += text; return; }
-        out += text.replace(LATIN_RUN, (run) => (run.trim().length >= 2 ? `<bdi>${run}</bdi>` : run));
+        out += text.replace(LATIN_RUN, (run) => {
+            // An entity passes through byte for byte — it is markup, not prose.
+            if (run.startsWith('&') && run.endsWith(';')) return run;
+            return run.trim().length >= 2 ? `<bdi>${run}</bdi>` : run;
+        });
     };
     while ((m = tag.exec(src))) {
         emitText(src.slice(cursor, m.index), cursor);

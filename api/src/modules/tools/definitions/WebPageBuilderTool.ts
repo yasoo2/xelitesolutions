@@ -25,10 +25,10 @@ import { cartBrief, cartRuntime, cartCss, needsCart } from '../../../core/design
 import { formBrief, formRuntime, formCss } from '../../../core/design/forms';
 import { chartBrief, chartRuntime, chartCss, needsCharts } from '../../../core/design/dataviz';
 import { widgetBrief, widgetRuntime, widgetCss, usesWidgets } from '../../../core/design/widgets';
-import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPlaceholder, groundImageSrcs } from '../../../core/design/images';
+import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPlaceholder, groundImageSrcs, stripBrokenStyleImages } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
-import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, surfacePairingCss, ownedSurfaces } from '../../../core/design/layouts';
+import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, surfacePairingCss, ownedSurfaces, normalizeIconRefs } from '../../../core/design/layouts';
 import { pickFlourish, flourishCss, flourishBrief } from '../../../core/design/flourish';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
@@ -158,7 +158,7 @@ export class WebPageBuilderTool implements ToolDefinition {
         // of regenerating a brand new one from scratch.
         // The palette and page kind are remembered with the page: a follow-up edit
         // must not re-roll the colours or re-decide what the page is.
-        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any; reference?: any; site?: { dir: string; pages: any[] } }> =
+        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any; flourish?: any; reference?: any; site?: { dir: string; pages: any[] } }> =
             (global as any).joePages || ((global as any).joePages = {});
         const prev = store[sessionKey];
         const wantsNew = /(new page|from scratch|صفحة جديدة|من الصفر|ابدأ من جديد)/i.test(request);
@@ -1053,6 +1053,21 @@ the WORDS, not the structure.`;
                 logs.push(`images: ${g.fixed} image(s) pointed at a file that does not exist `
                     + `(${g.broken.slice(0, 3).join(', ')}) — replaced with the page gradient`);
             }
+            // Malformed marker remnants inside inline styles — «url('... avatar}}»
+            // — survive the marker regex and 404 on every load. Strip them.
+            const b = stripBrokenStyleImages(html);
+            if (b.removed) {
+                html = b.html;
+                logs.push(`images: ${b.removed} broken style background(s) removed — each pointed at marker debris, not a file`);
+            }
+            // Icons the model addressed by the wrong id (#check for #i-check,
+            // #facebook the sprite never had) or left as a bare <use> outside
+            // an <svg> — every one an invisible glyph until now.
+            const ic = normalizeIconRefs(html);
+            if (ic.fixed) {
+                html = ic.html;
+                logs.push(`content: repointed ${ic.fixed} icon reference(s) at symbols that exist`);
+            }
         }
 
         // [REVIVED weak-model-enhancer] Self-correction pass: strip leftover
@@ -1914,6 +1929,10 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                     out = g.html;
                     logs.push(`${file}: ${g.fixed} image(s) pointed at a missing file — replaced with the page gradient`);
                 }
+                const b = stripBrokenStyleImages(out);
+                if (b.removed) { out = b.html; logs.push(`${file}: ${b.removed} broken style background(s) removed`); }
+                const ic = normalizeIconRefs(out);
+                if (ic.fixed) { out = ic.html; logs.push(`${file}: repointed ${ic.fixed} icon reference(s)`); }
             }
             written.set(file, out);
             fs.writeFileSync(path.join(outDir, file), out, 'utf-8');

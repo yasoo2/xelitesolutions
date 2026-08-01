@@ -411,6 +411,29 @@ function escapeXml(s: string): string {
 
 export const IMAGE_MARKER = /\{\{\s*IMAGE\s*:\s*([^}]{2,110}?)\s*\}\}/g;
 
+/**
+ * Remove style declarations whose url() still carries marker braces.
+ *
+ * The marker pipeline covers well-formed {{IMAGE:...}} — but a model sometimes
+ * emits a MALFORMED one inside an inline style («url('... avatar}}») that the
+ * marker regex cannot match, and it survives every sweep. Measured on the
+ * user's machine: three 404s per page-load for a url that was never a url.
+ * A background that cannot load is better absent — the card keeps its own
+ * surface color underneath.
+ */
+export function stripBrokenStyleImages(html: string): { html: string; removed: number } {
+    let removed = 0;
+    const out = String(html).replace(/style="([^"]*)"/gi, (full, css: string) => {
+        if (!/\{\{|\}\}/.test(css)) return full;
+        const cleaned = css
+            .replace(/background[^;:"]*:\s*[^;]*(?:\{\{|\}\})[^;]*(?:;|$)/gi, () => { removed++; return ''; })
+            .replace(/url\([^)]*(?:\{\{|\}\})[^)]*\)?/gi, () => { removed++; return 'none'; })
+            .trim();
+        return cleaned ? `style="${cleaned}"` : '';
+    });
+    return { html: out, removed };
+}
+
 export interface ImageResolution {
     html: string;
     requested: number;

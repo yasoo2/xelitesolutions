@@ -665,10 +665,43 @@ export function isProviderCoolingDown(name: string): boolean {
     if (Date.now() >= until) { recentlyFailedProviders.delete(name); return false; }
     return true;
 }
-export function markProviderFailed(name: string): void {
+export function markProviderFailed(name: string, forMs?: number): void {
     if (name === 'Local (Auto)') return;
-    recentlyFailedProviders.set(name, Date.now() + RECENT_FAIL_TTL_MS);
+    recentlyFailedProviders.set(name, Date.now() + (forMs && forMs > 0 ? forMs : RECENT_FAIL_TTL_MS));
 }
+
+/**
+ * How long a rate-limit error says to wait, in ms — or null when it doesn't say.
+ * Groq's daily-quota 429 reads "Please try again in 24m40.896s" (sometimes with
+ * an hours part); LLM7's reads "Retry after 30045 seconds". Cooling the provider
+ * for its REAL window instead of the default 60s stops every subsequent call
+ * from re-hammering a quota that resets in half an hour — measured on the
+ * user's machine: a five-minute tail of futile Groq probes after a build.
+ */
+export function retryAfterMsFrom(message: string): number | null {
+    const s = String(message || '');
+    const hms = s.match(/try again in (?:(\d+)h)?(?:(\d+)m)?([\d.]+)s/i);
+    if (hms) {
+        const ms = ((parseInt(hms[1] || '0', 10) * 3600) + (parseInt(hms[2] || '0', 10) * 60) + parseFloat(hms[3])) * 1000;
+        return Number.isFinite(ms) && ms > 0 ? Math.min(ms, 30 * 60_000) : null;
+    }
+    const secs = s.match(/retry after (\d+) seconds/i);
+    if (secs) return Math.min(parseInt(secs[1], 10) * 1000, 30 * 60_000);
+    return null;
+}
+
+/**
+ * Dead-brain latch. When EVERY provider has just failed, walking the whole mesh
+ * again seconds later costs minutes (the local model alone gets a 180s cold-load
+ * timeout) and cannot succeed. For a short window after a total failure the
+ * router answers honestly and INSTANTLY; the next call after the window probes
+ * the full mesh again. Any success clears it immediately.
+ */
+let lastTotalFailureAt = 0;
+const DEAD_BRAIN_LATCH_MS = Math.max(0, parseInt(String(process.env.DEAD_BRAIN_LATCH_MS || '').trim(), 10) || 45_000);
+/** The local model timing out once means a 180s wait per walk; remember it and
+ *  probe with a short timeout for a while instead. */
+let localTimedOutAt = 0;
 export function markProviderOk(name: string): void {
     recentlyFailedProviders.delete(name);
 }
@@ -1246,6 +1279,15 @@ export async function routeToModel(
     let lastError = '';
     let sawRateLimit = false;
 
+    // Dead-brain latch: every provider failed moments ago; a re-walk costs
+    // minutes and cannot succeed yet. Answer honestly and instantly.
+    if (lastTotalFailureAt && Date.now() - lastTotalFailureAt < DEAD_BRAIN_LATCH_MS) {
+        console.warn(`[IntelligentRouter] ⛔ Dead-brain latch: all providers failed ${Math.round((Date.now() - lastTotalFailureAt) / 1000)}s ago — answering without a re-walk.`);
+        return PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد قبل لحظات). لم أستطع تنفيذ الطلب. "
+            + "الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، "
+            + "أو تحقّق من اتصال الإنترنت. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)";
+    }
+
     // 1. Try Selected Model First (Happy Path)
     // Skip Groq here when it's cooling down (e.g. it just hit a 429 rate limit) —
     // otherwise EVERY request re-hammers Groq, eats a 429, and only then falls back,
@@ -1257,6 +1299,7 @@ export async function routeToModel(
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
             const rawAns = await Promise.race([callGroq(selectedModel.model, effectiveMessages, onPartial, tools), timeoutPromise]) as string;
             const ans = cleanOutput(rawAns);
+            lastTotalFailureAt = 0; // the brain is alive — release the latch
             markProviderOk('Groq (Free)'); // it worked — clear any cooldown
             if (!cacheDisabled && !hasSensitive && ans && ans.length > 20) {
                 await LLMCacheTool.saveToCache(cacheKeyPayload, ans, selectedModel.model);
@@ -1267,9 +1310,12 @@ export async function routeToModel(
         // If not Groq or Groq fails, fall through to the Chain of Steel
     } catch (e: any) {
         console.warn(`[IntelligentRouter] Primary choice ${selectedModel.name} failed: ${e.message} `);
-        // A 429 (rate limit) or 413 means Groq is temporarily unusable — cool it down
-        // so neither the happy path nor the mesh keeps hammering it this minute.
-        if (/\b(429|rate limit|413)\b/i.test(String(e?.message || ''))) markProviderFailed('Groq (Free)');
+        // A 429 (rate limit) or 413 means Groq is temporarily unusable — cool it
+        // down for the window the error itself names (a DAILY quota says "try
+        // again in 24m"; the default 60s had every call re-eating that 429).
+        if (/\b(429|rate limit|413)\b/i.test(String(e?.message || ''))) {
+            markProviderFailed('Groq (Free)', retryAfterMsFrom(String(e?.message || '')) || undefined);
+        }
         if (RATE_LIMIT_RE.test(String(e?.message || ''))) sawRateLimit = true;
         lastError = e.message;
     }
@@ -1325,6 +1371,12 @@ export async function routeToModel(
                 // keyless gateway. It still returns as soon as the model responds.
                 const envT = parseInt(String(process.env.LOCAL_LLM_TIMEOUT || '').trim(), 10);
                 timeoutValue = Number.isFinite(envT) && envT > 0 ? envT : 180000;
+                // ...but a local brain that JUST timed out gets a short probe, not
+                // another three minutes. Measured: with providers on daily quotas,
+                // the 180s local wait alone turned each failed call into minutes.
+                if (localTimedOutAt && Date.now() - localTimedOutAt < 300_000) {
+                    timeoutValue = Math.min(timeoutValue, 20_000);
+                }
             }
             if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)') {
                 // Keyless gateways can be slower; give the keyless brains room.
@@ -1341,6 +1393,7 @@ export async function routeToModel(
 
             if (ans && ans.length > 2) {
                 console.info(`[IntelligentRouter] ✅ Success via ${p.name} `);
+                lastTotalFailureAt = 0; // the brain is alive — release the latch
                 markProviderOk(p.name); // clear any prior cooldown — it works again
                 if (!cacheDisabled && !hasSensitive && ans.length > 20) {
                     await LLMCacheTool.saveToCache(cacheKeyPayload, ans, selectedModel.model);
@@ -1352,8 +1405,11 @@ export async function routeToModel(
             markProviderFailed(p.name);
         } catch (e: any) {
             console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message} `);
-            markProviderFailed(p.name);
+            // A rate-limit error that names its own window cools the provider
+            // for that window, not for the default 60 seconds.
+            markProviderFailed(p.name, retryAfterMsFrom(String(e?.message || '')) || undefined);
             if (RATE_LIMIT_RE.test(String(e?.message || ''))) sawRateLimit = true;
+            if (p.name === 'Local (Auto)' && /TIMEOUT/i.test(String(e?.message || ''))) localTimedOutAt = Date.now();
             lastError = e.message;
         }
     }
@@ -1386,6 +1442,7 @@ export async function routeToModel(
     // the words "افتح/اكتب" in a dead-brain prompt into real browser_run and
     // write_file commands — that is how a browser once opened out of nowhere.)
     console.error(`[IntelligentRouter] CRITICAL: All LLM providers failed. Returning honest error.`);
+    lastTotalFailureAt = Date.now(); // latch: the next calls answer instantly for a while
     if (localStrict) {
         return PROVIDER_FAILURE_PREFIX + ` (الوضع المحلي الصارم — لم يستجب المحرّك المحلي${lastError ? `: ${String(lastError).slice(0, 160)}` : ''}). `
             + "شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة.";

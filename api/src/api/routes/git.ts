@@ -53,25 +53,45 @@ const STATUS_CACHE_MS = Number(process.env.GIT_STATUS_CACHE_MS || 5000);
 // Windows machine this serves, each spawn costs real seconds and the frontend
 // polls this endpoint on a timer: 4 commands per refresh was the single
 // biggest background load Joe put on the laptop.
+// Stale-while-revalidate: on the user's laptop a single `git status` was
+// measured at 0.6-8.3 SECONDS during a build, and the old handler made the
+// HTTP request WAIT for it. Now a request is answered from the cache
+// instantly, and when the cache is old ONE background refresh runs — nobody
+// ever waits on git, and concurrent polls never stack refreshes.
+let _statusRefreshing = false;
+async function refreshGitStatus(): Promise<void> {
+    if (_statusRefreshing) return;
+    _statusRefreshing = true;
+    try {
+        const result = await gitExec(['status', '--porcelain', '--branch']);
+        if (!result.ok) {
+            // "fatal: not a git repository" lands here; anything else (index
+            // lock, permission) is transient — a brief initialized:false is
+            // still right, the next refresh re-checks.
+            _statusCache = { at: Date.now(), data: { initialized: false, files: [] } };
+            return;
+        }
+        const snap = parseStatusPorcelainBranch(result.stdout || '');
+        _statusCache = {
+            at: Date.now(),
+            data: { initialized: true, branch: snap.branch, files: snap.files, ahead: snap.ahead, behind: snap.behind },
+        };
+    } finally {
+        _statusRefreshing = false;
+    }
+}
+
 router.get('/status', authenticate as any, async (req: Request, res: Response) => {
-    if (_statusCache && (Date.now() - _statusCache.at) < STATUS_CACHE_MS) {
-        return res.json(_statusCache.data);
+    if (_statusCache) {
+        res.json(_statusCache.data);
+        if (Date.now() - _statusCache.at >= STATUS_CACHE_MS) {
+            refreshGitStatus().catch(() => { /* next poll retries */ });
+        }
+        return;
     }
-
-    const result = await gitExec(['status', '--porcelain', '--branch']);
-    if (!result.ok) {
-        // "fatal: not a git repository" lands here; anything else (index lock,
-        // permission) is transient — caching `initialized:false` briefly is
-        // still right, the next refresh re-checks.
-        const data = { initialized: false, files: [] };
-        _statusCache = { at: Date.now(), data };
-        return res.json(data);
-    }
-
-    const snap = parseStatusPorcelainBranch(result.stdout || '');
-    const data = { initialized: true, branch: snap.branch, files: snap.files, ahead: snap.ahead, behind: snap.behind };
-    _statusCache = { at: Date.now(), data };
-    res.json(data);
+    // Very first call after boot: nothing to serve stale, so this one waits.
+    await refreshGitStatus().catch(() => { });
+    res.json(_statusCache ? (_statusCache as any).data : { initialized: false, files: [] });
 });
 
 // GET /git/diff

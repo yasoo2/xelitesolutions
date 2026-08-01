@@ -550,10 +550,46 @@ export function iconSprite(): string {
         cart: '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>',
         menu: '<line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>',
         close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+        /**
+         * Social marks. Every footer the model writes carries facebook/twitter/
+         * linkedin/instagram <use> refs, and the sprite had none of them — four
+         * invisible links per page, on every page. Seen in a real build.
+         */
+        facebook: '<path d="M15 8h2V5h-2a4 4 0 0 0-4 4v2H9v3h2v7h3v-7h2.2l.8-3H14V9a1 1 0 0 1 1-1z"/>',
+        twitter: '<path d="M4 4l16 16M20 4L4 20"/>',
+        x: '<path d="M4 4l16 16M20 4L4 20"/>',
+        linkedin: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 11v5M8 8v.01M12 16v-3a2 2 0 0 1 4 0v3"/>',
+        instagram: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M16.8 7.2v.01"/>',
+        whatsapp: '<path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/><path d="M9 8.5c0 4 2.5 6.5 6.5 6.5l.5-2-2-1-1 1c-1-.5-2-1.5-2.5-2.5l1-1-1-2z"/>',
+        youtube: '<rect x="2" y="5" width="20" height="14" rx="4"/><polygon points="10 9 16 12 10 15"/>',
     };
     const symbols = Object.entries(paths)
         .map(([id, d]) => `<symbol id="i-${id}" viewBox="0 0 24 24">${d}</symbol>`).join('');
     return `<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">${symbols}</svg>`;
+}
+
+/**
+ * Point <use> refs at symbols that exist. Models write href="#check" and
+ * href="#facebook" — the sprite's ids are #i-check and #i-facebook, so every
+ * such icon rendered as nothing. Only KNOWN names are rewritten; an anchor to
+ * a page section is untouched because <use> is the only element rewritten.
+ */
+export function normalizeIconRefs(html: string): { html: string; fixed: number } {
+    const known = new Set(['check', 'arrow', 'star', 'shield', 'spark', 'users', 'code', 'chart', 'mail', 'phone',
+        'pin', 'clock', 'cart', 'menu', 'close', 'facebook', 'twitter', 'x', 'linkedin', 'instagram', 'whatsapp', 'youtube']);
+    let fixed = 0;
+    let out = String(html).replace(/(<use\b[^>]*?href=")#(?!i-)([a-z-]+)(")/gi, (full, pre, name, post) => {
+        if (!known.has(String(name).toLowerCase())) return full;
+        fixed++;
+        return `${pre}#i-${String(name).toLowerCase()}${post}`;
+    });
+    // A bare <use> outside an <svg> renders NOTHING — the model writes
+    // <span class="icon"><use …></use></span> and the browser ignores it.
+    out = out.replace(/(<span class="icon">)\s*(<use\b[^>]*>\s*<\/use>)\s*(<\/span>)/gi, (_full, _pre, use) => {
+        fixed++;
+        return `<svg class="icon">${use}</svg>`;
+    });
+    return { html: out, fixed };
 }
 
 /** How the model is told to use the primitives. */

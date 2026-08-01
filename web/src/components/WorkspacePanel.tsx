@@ -100,6 +100,34 @@ function CopyBtn({ text }: { text: string }) {
     );
 }
 
+/**
+ * Copy that actually lands. navigator.clipboard silently rejects when the
+ * document has lost focus or the permission is denied — the old handler
+ * swallowed that rejection, so the button LOOKED like it did nothing (the
+ * user reported exactly that). The textarea + execCommand path works in
+ * every browser context this app runs in, so it is the fallback.
+ */
+function copyTextRobustly(text: string): void {
+    const fallback = () => {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            document.execCommand('copy');
+            ta.remove();
+        } catch { /* nothing else to try */ }
+    };
+    if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).catch(fallback);
+    } else {
+        fallback();
+    }
+}
+
 // ─── Panel Toolbar ─────────────────────────────────────────────────
 function PanelToolbar({ filter, onFilterChange, onCopyAll, onClear, count, label }:
     { filter: string; onFilterChange: (v: string) => void; onCopyAll: () => void; onClear: () => void; count: number; label: string }) {
@@ -294,7 +322,16 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
     }, [filtered.length, autoScroll, liveFiles.reduce((n, f) => n + f.content.length, 0)]);
 
     const handleCopyAll = () => {
-        navigator.clipboard.writeText(filtered.join('\n')).catch(() => { });
+        // Everything the panel SHOWS is what "copy all" copies: the live file
+        // contents too, not just the log lines — copying half the screen and
+        // reporting success read as "the button does not work".
+        const parts: string[] = [];
+        for (const f of liveFiles) {
+            parts.push(`===== ${f.file}${f.done ? '' : ' (still building)'} =====`);
+            parts.push(f.content);
+        }
+        parts.push(...filtered);
+        copyTextRobustly(parts.join('\n'));
     };
 
     const getLogColor = (log: string) => {
@@ -399,7 +436,7 @@ function EnhancedProblemsPanel({ problems }: { problems: any[] }) {
         const text = filtered.map(p =>
             `[${p.type?.toUpperCase() || 'ERROR'}] ${p.message}${p.file ? ` (${p.file}${p.line ? `:${p.line}` : ''})` : ''}`
         ).join('\n');
-        navigator.clipboard.writeText(text).catch(() => { });
+        copyTextRobustly(text);
     };
 
     const getTypeColor = (type: string) => {
