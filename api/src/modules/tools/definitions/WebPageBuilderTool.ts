@@ -23,7 +23,7 @@ import { cartBrief, cartRuntime, cartCss, needsCart } from '../../../core/design
 import { formBrief, formRuntime, formCss } from '../../../core/design/forms';
 import { chartBrief, chartRuntime, chartCss, needsCharts } from '../../../core/design/dataviz';
 import { widgetBrief, widgetRuntime, widgetCss, usesWidgets } from '../../../core/design/widgets';
-import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPlaceholder } from '../../../core/design/images';
+import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPlaceholder, groundImageSrcs } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
 import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, surfacePairingCss, ownedSurfaces } from '../../../core/design/layouts';
@@ -948,6 +948,23 @@ the WORDS, not the structure.`;
             logs.push(`images: ${swept} unresolved marker(s) replaced with the page gradient — each would have 404'd`);
         }
 
+        /**
+         * …and then ask the only question that actually settles it: IS THE FILE
+         * THERE? The sweep above recognises a well-formed marker. A build the
+         * user reported shipped three broken images that it could not: two
+         * markers that had lost their opening brace somewhere upstream, and a
+         * filename the model simply invented. All three reached the browser as
+         * 404s. This checks reality instead of syntax.
+         */
+        {
+            const g = groundImageSrcs(html, ARTIFACT_DIR, palette.hue);
+            if (g.fixed) {
+                html = g.html;
+                logs.push(`images: ${g.fixed} image(s) pointed at a file that does not exist `
+                    + `(${g.broken.slice(0, 3).join(', ')}) — replaced with the page gradient`);
+            }
+        }
+
         // [REVIVED weak-model-enhancer] Self-correction pass: strip leftover
         // TODO/placeholder comments the weak local model sometimes emits.
         try {
@@ -1739,6 +1756,14 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
             if (isAr) out = isolateLatinRuns(out);
 
             out = reviewHtml(out, isAr, { ownedSurfaces: ownedSurfaces(archetype) }).html;
+            // Same reality check a single page gets: no src may 404.
+            {
+                const g = groundImageSrcs(out, outDir, palette.hue);
+                if (g.fixed) {
+                    out = g.html;
+                    logs.push(`${file}: ${g.fixed} image(s) pointed at a missing file — replaced with the page gradient`);
+                }
+            }
             written.set(file, out);
             fs.writeFileSync(path.join(outDir, file), out, 'utf-8');
         }

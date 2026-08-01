@@ -467,3 +467,92 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
         sourceErrors: Array.from(failures, ([p, r]) => `${p}: ${r}`),
     };
 }
+
+
+/**
+ * NO IMAGE MAY POINT AT SOMETHING THAT IS NOT THERE.
+ *
+ * The marker sweep upstream replaces a WELL-FORMED `{{IMAGE:…}}` that never
+ * resolved. It cannot help when the marker arrives mangled, and a real build
+ * shipped exactly that: the page requested
+ *
+ *   /artifacts/joe-…/software%20developer%7D%7D        → 404
+ *   /artifacts/joe-…/avatar-programming%7D%7D          → 404
+ *   /artifacts/joe-…/xelite-solutions-logo.png         → 404
+ *
+ * — three different failures with one thing in common. The first two are a
+ * marker that lost its opening brace somewhere upstream, so the sweep's regex
+ * did not recognise it; the third is the model inventing a filename, which no
+ * marker logic was ever going to catch. Every one of them reached the browser
+ * as a broken image, which is what the user saw and reported.
+ *
+ * So this does not reason about markers at all. It asks the only question that
+ * matters — IS THE FILE THERE? — and anything that is not gets the page's own
+ * gradient, which always renders. A remote URL is left alone: Joe does not emit
+ * those, and rewriting someone's deliberate CDN link would be worse than the
+ * problem.
+ */
+export function groundImageSrcs(
+    html: string,
+    dir: string,
+    hue: number,
+): { html: string; fixed: number; broken: string[] } {
+    const broken: string[] = [];
+    let fixed = 0;
+
+    const exists = (raw: string): boolean => {
+        try {
+            const clean = decodeURIComponent(String(raw).split(/[?#]/)[0]).trim();
+            if (!clean) return false;
+            // A path that climbs out of the artifact directory is not "there"
+            // either, whatever the filesystem says.
+            const full = path.resolve(dir, clean);
+            const root = path.resolve(dir);
+            if (full !== root && !full.startsWith(root + path.sep)) return false;
+            return fs.existsSync(full) && fs.statSync(full).isFile();
+        } catch { return false; }
+    };
+
+    /**
+     * MARKUP ONLY. A store's cart runtime BUILDS markup in JavaScript —
+     * `'<img src="' + item.image + '">'` — and a naive sweep over the whole
+     * document rewrites that string literal, dropping a multi-line data URI
+     * into the middle of an expression. Measured: "Unexpected string" on every
+     * page of every store, the entire runtime dead, from a repair whose whole
+     * purpose was to stop shipping broken pages.
+     *
+     * Script and style bodies are blanked character-for-character, so an offset
+     * into the mask is an offset into the original and the edits below land in
+     * real markup.
+     */
+    const src0 = String(html || '');
+    const masked = src0.replace(/<(script|style)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi,
+        (full, tag, body) => full.slice(0, full.length - body.length - `</${tag}>`.length)
+            + ' '.repeat(body.length) + `</${tag}>`);
+
+    const edits: Array<{ at: number; end: number; text: string }> = [];
+    for (const m of masked.matchAll(/<img\b[^>]*>/gi)) {
+        const tag = m[0];
+        const srcM = tag.match(/\ssrc\s*=\s*["']([^"']*)["']/i);
+        if (!srcM) continue;
+        const v = srcM[1].trim();
+        // Already a picture: a data URI, or a remote address someone chose.
+        if (/^(data:|https?:|\/\/)/i.test(v)) continue;
+        if (v && exists(v)) continue;
+
+        broken.push(v.slice(0, 60));
+        fixed++;
+        // The alt text is what the picture was FOR, so it is the best subject
+        // available for the gradient that replaces it.
+        const alt = (tag.match(/\salt\s*=\s*["']([^"']*)["']/i) || [])[1] || '';
+        const subject = (alt || v.replace(/[{}|]/g, ' ')).replace(/\.(png|jpe?g|webp|svg|gif)$/i, '').trim();
+        const at = m.index! + srcM.index!;
+        edits.push({ at, end: at + srcM[0].length, text: ` src="${gradientPlaceholder(subject || 'image', hue)}"` });
+    }
+
+    let out = src0;
+    for (let i = edits.length - 1; i >= 0; i--) {
+        out = out.slice(0, edits[i].at) + edits[i].text + out.slice(edits[i].end);
+    }
+    return { html: out, fixed, broken };
+}

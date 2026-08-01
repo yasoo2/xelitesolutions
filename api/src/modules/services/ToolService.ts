@@ -153,6 +153,37 @@ function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' |
     return 'medium';
 }
 
+/**
+ * Names a planner reaches for that this registry spells differently.
+ *
+ * Every entry is a synonym for a tool that EXISTS — no entry may point at
+ * something merely similar. `grep_search` is the one that cost a real user
+ * their request; the rest are the same class of well-known name.
+ */
+const TOOL_ALIASES: Record<string, string> = {
+    grep_search: 'search_files',
+    grep: 'search_files',
+    ripgrep: 'search_files',
+    code_search: 'search_files',
+    search_code: 'search_files',
+    find_in_files: 'search_files',
+    file_search: 'search_files',
+    file_read: 'read_file',
+    cat_file: 'read_file',
+    open_file: 'read_file',
+    file_write: 'write_file',
+    create_file: 'write_file',
+    edit_file: 'file_edit',
+    str_replace: 'file_edit',
+    list_directory: 'inspect_directory',
+    list_files: 'inspect_directory',
+    run_command: 'terminal_manager',
+    bash: 'terminal_manager',
+    shell: 'shell_execute',
+    web_search: 'search_api',
+    fetch_url: 'http_fetch',
+};
+
 export async function executeTool(name: string, input: any, context?: ToolContext) {
     // [FIREWALL] Strict Single Brain Enforcement
     executionFirewall.validateExecution(`ToolService:${name}`);
@@ -479,14 +510,44 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     }
 
     try {
-        const tDef = tools.find(t => t.name === effectiveName);
+        let tDef = tools.find(t => t.name === effectiveName);
+
+        /**
+         * A NAME THE PLANNER INVENTED IS NOT A REASON TO ABANDON THE RUN.
+         *
+         * A real session died here. The user asked to recolour a page; the
+         * planner emitted a step calling `grep_search`, which is not registered
+         * — the tool is `search_files`. It failed, retried, failed identically,
+         * hit "max retries" and took the whole request down with it. The user
+         * got nothing, for a synonym.
+         *
+         * These are SYNONYMS, not guesses: each name below is a well-known name
+         * for a tool that exists here under a different one. Anything not on the
+         * list still fails, and fails loudly — silently running a tool nobody
+         * asked for would be far worse than an honest dead end.
+         */
+        if (!tDef) {
+            const alias = TOOL_ALIASES[effectiveName];
+            if (alias && tools.some(t => t.name === alias)) {
+                logs.push(`tool alias: "${effectiveName}" is not registered — using "${alias}", which is the same tool under its real name`);
+                effectiveName = alias;
+                tDef = tools.find(t => t.name === effectiveName);
+            }
+        }
+
         if (!tDef) {
             // A bare "unknown_tool" says nothing: it reaches the user as a dead end
             // and the log never records WHICH name failed. Name it, and offer the
             // closest registered tools so a mis-picked name is obvious at a glance.
+            // Any SHARED SEGMENT, not just the first one. `grep_search` against
+            // `search_files` shares "search" and matched neither the substring
+            // test nor the first-segment test, so the log that was supposed to
+            // make a mis-picked name obvious printed no suggestion at all.
+            const parts = new Set(effectiveName.split(/[_-]+/).filter(Boolean));
             const near = tools
                 .map(t => t.name)
-                .filter(n => n.includes(effectiveName) || effectiveName.includes(n) || n.split('_')[0] === effectiveName.split('_')[0])
+                .filter(n => n.includes(effectiveName) || effectiveName.includes(n)
+                    || n.split(/[_-]+/).some(seg => parts.has(seg)))
                 .slice(0, 5);
             logs.push(`unknown_tool: "${effectiveName}" is not registered${near.length ? ` (closest: ${near.join(', ')})` : ''}`);
             return {
