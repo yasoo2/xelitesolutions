@@ -1,4 +1,5 @@
 import type { RepairTicket } from './RepairTicketService';
+import { repairMemory } from '../../core/memory/repair-memory';
 
 export interface SelfFixPlan {
   type: 'self_fix_plan';
@@ -8,6 +9,8 @@ export interface SelfFixPlan {
   strategy: 'missing_file_fix' | 'dependency_fix' | 'build_fix' | 'code_fix' | 'permission_stop' | 'manual_review';
   suggestedTool?: string;
   suggestedInput?: Record<string, unknown>;
+  /** A cure proven on this same error class in a past run — context, not a script. */
+  rememberedCure?: string;
   safety: {
     requiresTrustedContext: boolean;
     runOnlyOnce: boolean;
@@ -151,6 +154,26 @@ export class SelfFixService {
       return this.stop(ticket, 'Critical/security-related issue requires explicit review before repair.', 'permission_stop');
     }
 
+    // Scar tissue: a cure proven on this same error class in a past run.
+    // The deterministic rules below stay in charge — they extract the CURRENT
+    // filenames and lines — but the remembered cure rides along as context,
+    // and it rescues the one case the rules abandon: no rule matched, yet the
+    // disease is one Joe already beat.
+    // The recall key is primaryError ALONE — the exact shape recording uses
+    // (here on rerun success, and in the orchestrator where the node's raw
+    // error becomes the ticket's primaryError). Keying on rawTextOf prefixed
+    // the phase STATUS («failed …») and the signatures never met; appending
+    // failedTasks[0].error doubled the text with the same effect.
+    const remembered = (() => {
+      try {
+        const errKey = String(ticket.primaryError || '').trim();
+        return errKey ? repairMemory.recallRepair(errKey) : null;
+      } catch { return null; }
+    })();
+    const cureNote = remembered
+      ? `A cure proven ${remembered.wins}x on this same error class: ${remembered.repair}`
+      : '';
+
     const missingFilename = extractMissingFilename(ticket, text);
     if (missingFilename && /missing file|enoent|existssync|not found|missing asset|missing config|process\.exit\(1\)/i.test(text)) {
       return {
@@ -164,6 +187,7 @@ export class SelfFixService {
           filename: missingFilename,
           content: `Created by JOE self-healing to satisfy missing file check: ${missingFilename}\n`,
         },
+        rememberedCure: cureNote || undefined,
         safety: this.safety(),
         sourceTicket: ticket,
       };
@@ -180,6 +204,7 @@ export class SelfFixService {
         suggestedInput: {
           command: 'npm install && npm run build',
         },
+        rememberedCure: cureNote || undefined,
         safety: this.safety(),
         sourceTicket: ticket,
       };
@@ -197,6 +222,7 @@ export class SelfFixService {
           strategy: 'build_fix',
           suggestedTool: 'file_edit',
           suggestedInput: targetedEdit,
+          rememberedCure: cureNote || undefined,
           safety: this.safety(),
           sourceTicket: ticket,
         };
@@ -215,9 +241,11 @@ export class SelfFixService {
           path: buildContext?.file || 'src/index.ts',
           description: buildContext?.file
             ? `Fix the following TypeScript/Build error in ${buildContext.file}:\nError: ${buildContext.message}\nLine: ${buildContext.line}\nSource: ${buildContext.sourceLine || 'Unknown'}`
-            : `Inspect and fix the following build error:\n${ticket.primaryError}`,
+            : `Inspect and fix the following build error:\n${ticket.primaryError}`
+            + (cureNote ? `\n[PROVEN PAST CURE — same error class]: ${cureNote}` : ''),
           context: JSON.stringify({ buildContext, repairTicket: ticket })
         },
+        rememberedCure: cureNote || undefined,
         safety: this.safety(),
         sourceTicket: ticket,
       };
@@ -233,9 +261,30 @@ export class SelfFixService {
         suggestedTool: 'ai_write_file',
         suggestedInput: {
           path: 'src/index.ts', // Fallback path, ideally should be derived from failed tasks
-          description: `Repair the following failed tasks in the current phase:\n${ticket.failedTasks.map(t => `- Task: ${t.task}\n  Error: ${t.error}`).join('\n')}`,
+          description: `Repair the following failed tasks in the current phase:\n${ticket.failedTasks.map(t => `- Task: ${t.task}\n  Error: ${t.error}`).join('\n')}`
+            + (cureNote ? `\n[PROVEN PAST CURE — same error class]: ${cureNote}` : ''),
           context: JSON.stringify({ repairTicket: ticket })
         },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    if (remembered) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `No static rule matched, but this error class was cured before (${remembered.wins}x). One guided attempt from memory.`,
+        maxAttempts: 1,
+        strategy: 'code_fix',
+        suggestedTool: 'ai_write_file',
+        suggestedInput: {
+          path: 'src/index.ts',
+          description: `Repair this failure using the cure that worked before.\nError:\n${ticket.primaryError}\n[PROVEN PAST CURE — same error class]: ${remembered.repair}`,
+          context: JSON.stringify({ repairTicket: ticket }),
+        },
+        rememberedCure: cureNote,
         safety: this.safety(),
         sourceTicket: ticket,
       };

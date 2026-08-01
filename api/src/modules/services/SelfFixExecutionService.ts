@@ -1,5 +1,6 @@
 import { executeTool } from './ToolService';
 import type { SelfFixPlan } from './SelfFixService';
+import { repairMemory } from '../../core/memory/repair-memory';
 
 const ALLOWED_SELF_FIX_TOOLS = new Set([
   'write_file',
@@ -121,6 +122,21 @@ export class SelfFixExecutionService {
 
     const rerunStatus = String(rerunResult?.output?.status || 'unknown');
     const rerunPassed = !!rerunResult?.ok && rerunStatus === 'completed';
+
+    // The rerun passing is the PROOF the cure worked — the only moment worth
+    // remembering. The store is shared with the orchestrator's recovery loop,
+    // so a cure learned in either system heals recurrences in both.
+    if (rerunPassed) {
+      const ticket = selfFixPlan.sourceTicket;
+      // primaryError ALONE — the same key shape recall uses. Composite keys
+      // (status prefixes, appended task errors) made signatures that never met.
+      const errText = String(ticket?.primaryError || '').trim();
+      if (errText) {
+        const inputHint = JSON.stringify(selfFixPlan.suggestedInput || {}).slice(0, 200);
+        repairMemory.recordRepair(errText, `${selfFixPlan.strategy} via ${repairTool} (${inputHint})`)
+          .catch((e) => console.warn('[RepairMemory] record failed:', e?.message));
+      }
+    }
 
     return {
       attempted: true,

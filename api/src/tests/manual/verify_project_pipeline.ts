@@ -11,17 +11,59 @@
  * The pipeline must NOT say done — it must stop with the honest partial
  * summary after the self-fix attempt fails.
  *
+ * Act 3 (the canonical loop heals AND learns): a phase fails on a missing
+ * file; the repair ticket routes to missing_file_fix, the placeholder is
+ * written, the phase reruns and passes — and the PROVEN cure lands in the
+ * shared repair-memory store, where a plan for the same disease now finds it.
+ *
  * Run:  JWT_SECRET=x npx tsx src/tests/manual/verify_project_pipeline.ts
  */
 import http from 'http';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 process.env.MOCK_DB = process.env.MOCK_DB || 'true';
 process.env.PERSISTENCE_MODE = process.env.PERSISTENCE_MODE || 'JSON';
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
+// Isolated repair-memory store — Act 3 proves a cure lands here.
+const MEMORY_DIR = path.join(os.tmpdir(), `joe-repair-mem-${Date.now()}`);
+process.env.JOE_MEMORY_DIR = MEMORY_DIR;
 
 const STAMP = Date.now();
 const DIR_OK = `pipeline-proof-${STAMP}`;
 const DIR_BAD = `pipeline-broken-${STAMP}`;
+const DIR_HEAL = `pipeline-heal-${STAMP}`;
+
+// Act 3's app: refuses to run until config.txt exists at the WORKSPACE root
+// (../ from the project dir). The error text is exactly what missing_file_fix
+// knows how to cure — and the placeholder it writes lands at that root.
+const APP_HEAL = `const fs=require('fs'),p=require('path');`
+    + `if(!fs.existsSync(p.join(__dirname,'..','config.txt'))){console.error('Missing file: config.txt');process.exit(1);}`
+    + `console.log('HEALED_APP_OK');`;
+
+function planForHeal() {
+    return {
+        projectName: 'proof-heal',
+        projectVibe: 'self-healing',
+        totalPhases: 1,
+        estimatedDuration: '1 minute',
+        phases: [
+            {
+                phaseNumber: 1,
+                name: 'App that needs config.txt',
+                description: 'Write the app, then run it — it fails until the config exists',
+                tasks: [
+                    { task: 'write the app', tool: 'write_file', args: { path: `${DIR_HEAL}/index.js`, content: APP_HEAL }, priority: 'high' },
+                    { task: 'run the app', tool: 'shell_execute', args: { command: `node ${DIR_HEAL}/index.js` }, priority: 'high' },
+                ],
+                deliverables: ['index.js'],
+                estimatedTime: '1 minute',
+            },
+        ],
+        dependencies: {},
+    };
+}
 
 // The generated app writes a witness file NEXT TO ITSELF when executed —
 // existence of the witness is physical proof the pipeline ran the code.
@@ -116,6 +158,31 @@ async function main() {
     currentPlan = planFor(DIR_BAD, APP_BAD);
     const bad = await run('project_pipeline', { request: 'build the broken proof project' });
 
+    // ---- ACT 3: the canonical loop heals a missing-file failure AND learns ----
+    currentPlan = planForHeal();
+    const healed = await run('project_pipeline', { request: 'build the self-healing proof project' });
+
+    // The cure must be ON DISK in the shared store, recorded as PROVEN.
+    // recordRepair is fire-and-forget BY DESIGN (memory never blocks the
+    // pipeline) — give the atomic tmp+rename a moment to land.
+    await new Promise((r) => setTimeout(r, 800));
+    let storedCure: any = null;
+    try {
+        const store = JSON.parse(fs.readFileSync(path.join(MEMORY_DIR, 'repairs.json'), 'utf-8'));
+        storedCure = store.find((r: any) => String(r.repair || '').includes('missing_file_fix')) || null;
+    } catch { /* absence fails the check below */ }
+
+    // And a NEW plan for the same disease must find it (in-process recall).
+    const { SelfFixService } = await import('../../modules/services/SelfFixService');
+    const { RepairTicketService } = await import('../../modules/services/RepairTicketService');
+    const sameDiseaseTicket = RepairTicketService.build({
+        projectName: 'recheck',
+        phase: { phaseNumber: 1, name: 'recheck' },
+        phaseStatus: 'failed',
+        phaseResult: { error: 'Missing file: config.txt', output: { status: 'failed', results: [{ task: 'run', tool: 'shell_execute', ok: false, error: 'Missing file: config.txt' }] } },
+    });
+    const recallPlan = SelfFixService.plan(sameDiseaseTicket);
+
     const checks: Array<[string, boolean]> = [
         ['working project: pipeline returned ok', good.ok === true],
         ['working project: 2/2 phases verified', good.output?.completedPhases === 2 && good.output?.verified === true],
@@ -131,6 +198,11 @@ async function main() {
             progress.some(m => m.includes('تذكرة إصلاح')) && progress.some(m => m.includes('أتوقف بصدق'))],
         ['per-task tool progress flowed through (phase executor voice)',
             progress.some(m => m.includes('[pipeline] planning')) || progress.some(m => m.includes('[pipeline]'))],
+        // ---- Act 3: the canonical loop heals and LEARNS ----
+        ['missing-file failure was healed by the canonical loop (pipeline ok after self-fix)', healed.ok === true],
+        ['the self-heal was announced live', progress.some(m => m.includes('نجح الإصلاح الذاتي'))],
+        ['the PROVEN cure landed in the shared repair-memory store on disk', !!storedCure && storedCure.wins >= 1],
+        ['a new plan for the same disease FINDS the remembered cure', !!recallPlan.rememberedCure && String(recallPlan.rememberedCure).includes('missing_file_fix')],
     ];
 
     let failed = 0;
