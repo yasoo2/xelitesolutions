@@ -239,6 +239,28 @@ export class WriteFileTool extends BaseTool {
             }
         });
 
+        // [CODE, LIVE] Autonomous builds write files with THIS tool, but only
+        // the page builder streamed to the live Logs panel — so a general build
+        // (JS, Python, config…) wrote files the user never watched appear. Emit
+        // the same file_stream event the page builder does, so every file Joe
+        // writes shows up live in the Logs tab, marked done (it is already on
+        // disk). Best-effort; the write already succeeded above.
+        try {
+            broadcast({
+                type: 'file_stream',
+                sessionId: context?.sessionId,
+                data: {
+                    sessionId: context?.sessionId,
+                    file: rawPath,
+                    chunk: content.slice(0, 60_000),
+                    done: true,
+                    label: 'written to disk',
+                    bytes: Buffer.byteLength(content),
+                    at: Date.now(),
+                },
+            } as any);
+        } catch { /* the live view is a window, never a dependency of the write */ }
+
         return { ok: true, output: { success: true }, logs };
     }
 }
