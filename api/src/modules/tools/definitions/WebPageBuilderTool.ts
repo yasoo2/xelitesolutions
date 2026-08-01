@@ -47,13 +47,42 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
  * trickled for effect — a fake typewriter over already-finished text is
  * exactly the kind of simulation this system is not allowed to contain.
  */
+/**
+ * Token deltas are tiny (a few characters each) and a section is thousands of
+ * them; one WebSocket message per token would flood the UI on a laptop. Deltas
+ * are therefore COALESCED BY SIZE — never by timer: a flush happens because
+ * enough real content arrived, or because a labeled/done event needs everything
+ * before it on screen first. The code still appears the moment it is written,
+ * just in honest ~half-KB breaths instead of single characters.
+ */
+const pendingDeltas = new Map<string, string>();
+const DELTA_FLUSH_BYTES = 512;
+
 function streamCodeToLogs(
     sessionId: any,
     file: string,
     chunk: string,
-    opts: { done?: boolean; label?: string } = {},
+    opts: { done?: boolean; label?: string; delta?: boolean } = {},
 ): void {
     try {
+        const key = `${String(sessionId || '')}|${file}`;
+        let toSend = String(chunk ?? '');
+
+        if (opts.delta && !opts.done) {
+            const buffered = (pendingDeltas.get(key) || '') + toSend;
+            if (buffered.length < DELTA_FLUSH_BYTES) {
+                pendingDeltas.set(key, buffered);
+                return;
+            }
+            pendingDeltas.delete(key);
+            toSend = buffered;
+        } else if (pendingDeltas.has(key)) {
+            // A labeled or final event must land AFTER everything streamed
+            // before it — prepend the tail still sitting in the buffer.
+            if (!opts.done) toSend = pendingDeltas.get(key)! + toSend;
+            pendingDeltas.delete(key);
+        }
+
         broadcast({
             type: 'file_stream',
             sessionId,
@@ -62,10 +91,10 @@ function streamCodeToLogs(
                 file,
                 // The panel is a live view, not an editor; a runaway chunk must
                 // not freeze the UI. The cap is per chunk and the panel appends.
-                chunk: String(chunk ?? '').slice(0, 60_000),
+                chunk: toSend.slice(0, 60_000),
                 done: !!opts.done,
                 label: opts.label,
-                bytes: Buffer.byteLength(String(chunk ?? '')),
+                bytes: Buffer.byteLength(toSend),
                 at: Date.now(),
             },
         } as any);
@@ -485,6 +514,22 @@ ${prev!.html}`
                 // Spread the photo budget over the sections that are still to come.
                 const share = Math.max(0, Math.ceil(photosLeft / Math.max(1, plans.length - plan.index + 1)));
                 let raw = '';
+                /**
+                 * TRUE token streaming. The model's own deltas, forwarded to
+                 * the Logs panel the instant each one exists — the user asked
+                 * for the code to APPEAR AS IT IS WRITTEN, not section by
+                 * section. Groq and the local brain stream; a provider that
+                 * cannot falls back to the whole-section chunk at acceptance.
+                 * No timers, no replays: every character shown was emitted by
+                 * the model in that same moment.
+                 */
+                let deltaBytes = 0;
+                const onDelta = (delta: string) => {
+                    if (!delta) return;
+                    deltaBytes += delta.length;
+                    streamCodeToLogs(sessionId, 'index.html', delta,
+                        { delta: true, label: `section ${plan.index}/${plans.length}: ${plan.id} — writing` });
+                };
                 try {
                     raw = await routeToModel([
                         {
@@ -495,7 +540,7 @@ ${prev!.html}`
                             }),
                         },
                         { role: 'user', content: `Write section ${plan.index}: ${plan.spec}` },
-                    ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                    ], undefined, undefined, onDelta, undefined, undefined, undefined, context);
                 } catch (e: any) {
                     written.push({ ...plan, html: '', ok: false, reason: String(e?.message || e).slice(0, 90) });
                     continue;
@@ -584,10 +629,17 @@ ${prev!.html}`
                 if (got.ok) {
                     titles.push(plan.spec.split(':')[0]);
                     photosLeft = Math.max(0, photosLeft - (got.html.match(/\{\{\s*IMAGE\s*:/gi) || []).length);
-                    // The section's real HTML, the moment it was accepted — this
-                    // is what makes the Logs panel a live view of the build.
-                    streamCodeToLogs(sessionId, 'index.html', got.html + '\n',
-                        { label: `section ${plan.index}/${plans.length}: ${plan.id}` });
+                    // The section's real HTML at acceptance — but only when the
+                    // provider did NOT stream its tokens above; otherwise the
+                    // same content would land twice. A streamed section just
+                    // gets its separator.
+                    if (deltaBytes === 0) {
+                        streamCodeToLogs(sessionId, 'index.html', got.html + '\n',
+                            { label: `section ${plan.index}/${plans.length}: ${plan.id}` });
+                    } else {
+                        streamCodeToLogs(sessionId, 'index.html', '\n',
+                            { label: `section ${plan.index}/${plans.length}: ${plan.id} ✓` });
+                    }
                 }
                 logs.push(`section ${plan.index} (${plan.id}): ${got.ok ? `${got.html.length} bytes` : `failed — ${got.reason}`}`);
             }
@@ -621,7 +673,11 @@ ${prev!.html}`
         try {
             if (!html) html = await routeToModel(
                 [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
-                undefined, undefined, undefined, undefined, undefined, undefined, context
+                undefined, undefined,
+                // Token streaming for the single-pass path too — short pages
+                // skip the section writer and used to appear only at the end.
+                (delta: string) => { if (delta) streamCodeToLogs(sessionId, 'index.html', delta, { delta: true, label: 'writing' }); },
+                undefined, undefined, undefined, context
             );
         } catch (e: any) {
             return { ok: false, error: `generation_failed: ${e?.message || e}`, logs };
@@ -1798,6 +1854,15 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
             for (const plan of plans) {
                 const share = Math.max(0, Math.ceil(photosLeft / Math.max(1, plans.length - plans.indexOf(plan))));
                 let raw = '';
+                // Same token streaming as the single-page path: the model's own
+                // deltas reach the Logs panel the instant they exist.
+                let deltaBytes = 0;
+                const onDelta = (delta: string) => {
+                    if (!delta) return;
+                    deltaBytes += delta.length;
+                    streamCodeToLogs(sessionId, page.file, delta,
+                        { delta: true, label: `${page.file} — section ${plan.index}/${plans.length}: ${plan.id} — writing` });
+                };
                 try {
                     raw = await routeToModel([
                         {
@@ -1809,7 +1874,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                             }),
                         },
                         { role: 'user', content: `Write section ${plan.index}: ${plan.spec}` },
-                    ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                    ], undefined, undefined, onDelta, undefined, undefined, undefined, context);
                 } catch (e: any) {
                     sections.push({ ...plan, html: '', ok: false, reason: String(e?.message || e).slice(0, 90) });
                     continue;
@@ -1823,8 +1888,13 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 if (got.ok) {
                     titles.push(plan.spec.split(':')[0]);
                     photosLeft = Math.max(0, photosLeft - (got.html.match(/\{\{\s*IMAGE\s*:/gi) || []).length);
-                    streamCodeToLogs(sessionId, page.file, got.html + '\n',
-                        { label: `${page.file} — section ${plan.index}/${plans.length}: ${plan.id}` });
+                    if (deltaBytes === 0) {
+                        streamCodeToLogs(sessionId, page.file, got.html + '\n',
+                            { label: `${page.file} — section ${plan.index}/${plans.length}: ${plan.id}` });
+                    } else {
+                        streamCodeToLogs(sessionId, page.file, '\n',
+                            { label: `${page.file} — section ${plan.index}/${plans.length}: ${plan.id} ✓` });
+                    }
                 }
             }
 

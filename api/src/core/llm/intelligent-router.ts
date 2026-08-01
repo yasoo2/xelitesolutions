@@ -1018,8 +1018,31 @@ export async function routeToModel(
                         apiKey: effectiveApiKey || 'dummy',
                         baseURL: effectiveBaseUrl
                     });
+                    const model = cfgModel || (cfgProvider === 'openai' ? 'gpt-4o' : 'google/gemma-2-9b-it:free');
+                    // When the caller wants live tokens and no tool-calling is in
+                    // play, actually STREAM. This is the route the user's machine
+                    // takes (custom groq config), and it was buffering complete
+                    // responses — so "live code" arrived a whole section at a time.
+                    if (typeof onPartial === 'function' && !tools?.length) {
+                        // Best effort: an endpoint that rejects streaming falls
+                        // through to the buffered call below — losing liveness,
+                        // never the answer.
+                        try {
+                            const stream: any = await client.chat.completions.create({
+                                model, messages: flatMessages as any, stream: true,
+                            });
+                            let text = '';
+                            for await (const chunk of stream) {
+                                const d = chunk?.choices?.[0]?.delta?.content || '';
+                                if (d) { text += d; try { onPartial(d); } catch { /* UI only */ } }
+                            }
+                            if (text.trim()) return cleanOutput(text);
+                        } catch (se: any) {
+                            console.warn(`[IntelligentRouter] Streaming unsupported by ${cfgProvider} endpoint (${String(se?.message || se).slice(0, 80)}) — using buffered completion.`);
+                        }
+                    }
                     const completion = await client.chat.completions.create({
-                        model: cfgModel || (cfgProvider === 'openai' ? 'gpt-4o' : 'google/gemma-2-9b-it:free'),
+                        model,
                         messages: flatMessages as any,
                         tools: tools as any,
                         tool_choice: tools ? 'auto' : undefined,

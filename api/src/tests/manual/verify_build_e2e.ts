@@ -218,11 +218,31 @@ function startStub(): Promise<{ url: string; close: () => void; calls: number }>
             req.on('end', () => {
                 state.calls++;
                 let prompt = '';
+                let wantsStream = false;
                 try {
                     const j = JSON.parse(body || '{}');
                     prompt = (j.messages || []).map((m: any) => String(m.content ?? '')).join('\n');
+                    wantsStream = !!j.stream;
                 } catch { /* an unparseable request still gets an answer */ }
                 const content = stubReply(prompt, turn++);
+                if (wantsStream) {
+                    // Real SSE, so the harness exercises the same token-streaming
+                    // client path the user's machine takes — content arrives in
+                    // many small deltas, exactly like a live provider.
+                    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+                    for (let i = 0; i < content.length; i += 120) {
+                        res.write(`data: ${JSON.stringify({
+                            id: 'stub', object: 'chat.completion.chunk', model: 'stub',
+                            choices: [{ index: 0, delta: { content: content.slice(i, i + 120) }, finish_reason: null }],
+                        })}\n\n`);
+                    }
+                    res.write(`data: ${JSON.stringify({
+                        id: 'stub', object: 'chat.completion.chunk', model: 'stub',
+                        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+                    })}\n\n`);
+                    res.end('data: [DONE]\n\n');
+                    return;
+                }
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     id: 'stub', object: 'chat.completion', model: 'stub',
