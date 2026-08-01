@@ -52,9 +52,17 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         || String(req.headers['accept-language'] || '').trim().toLowerCase().split(',')[0].split('-')[0]
         || 'en';
     const userId = (req as any).auth?.sub || bodyUserId || 'anonymous';
-    // The signed token carries the user's display name — thread it through to
-    // the tools so Joe can address the user personally («مساء الخير يا يونس»).
-    const userName = String((req as any).auth?.name || '').trim();
+    // The user's display name, threaded to the tools so Joe can greet them
+    // personally («مساء الخير يا يونس»). Local tokens often carry the literal
+    // placeholder 'User', so prefer, in order: a real token name, the name the
+    // UI resolved (Google profile / stored account, sent in the body), and
+    // finally the email's local part («younes.sowady2011» -> «Younes»).
+    const isGenericName = (n: string) => !n || /^(user|admin|anonymous|unknown|مستخدم)$/i.test(n);
+    const authName = String((req as any).auth?.name || '').trim();
+    const bodyName = String(req.body?.userName || '').trim().slice(0, 60);
+    const emailLocal = String((req as any).auth?.email || '').split('@')[0].split(/[._\-+]/)[0].replace(/\d+$/, '');
+    const emailName = emailLocal ? emailLocal.charAt(0).toUpperCase() + emailLocal.slice(1) : '';
+    const userName = [authName, bodyName, emailName].find(n => !isGenericName(n)) || '';
     
     console.log(`[RunRoute] Unified execution requested for session: ${sessionId}`);
 

@@ -7,6 +7,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTranslation } from 'react-i18next';
 import i18next from 'i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
+import { resolveIdentity } from '../lib/userIdentity';
 import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -2471,6 +2472,10 @@ export default function CommandComposer({
         // which language to answer in and every reply came back Arabic, however
         // the interface was set.
         language: (i18next.language || 'ar').split('-')[0],
+        // The signed token often carries a placeholder name ('User'), while the
+        // UI resolves the real one (Google profile / stored account). Send it so
+        // Joe can greet the user personally («مساء الخير يا يونس»).
+        userName: resolveIdentity().name || undefined,
       };
       if (systemInstructions && systemInstructions.trim()) {
         payload.systemInstructions = systemInstructions.trim();

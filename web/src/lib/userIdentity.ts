@@ -138,11 +138,17 @@ export function resolveIdentity(): UserIdentity {
 
     // The token is signed by the server, so it wins over anything cached locally.
     const email = String(claims?.email || stored?.email || google?.email || '').trim();
-    const rawName = String(claims?.name || stored?.name || '').trim();
-    const realName = rawName && !PLACEHOLDER_NAMES.has(rawName.toLowerCase()) ? rawName : '';
-    // A connected Google account knows the person's real name — better than a
-    // name reconstructed from the email address.
-    const name = realName || String(google?.name || '').trim() || nameFromEmail(email);
+    // Placeholder names are skipped PER SOURCE: a token that literally says
+    // 'User' (the local default) used to shadow the real name stored by the
+    // account/Google — «يونس السوادي» lost to a placeholder via `||`.
+    const firstRealName = (...candidates: unknown[]): string => {
+        for (const c of candidates) {
+            const v = String(c || '').trim();
+            if (v && !PLACEHOLDER_NAMES.has(v.toLowerCase())) return v;
+        }
+        return '';
+    };
+    const name = firstRealName(claims?.name, stored?.name, google?.name) || nameFromEmail(email);
     const rawRole = String(claims?.role || stored?.role || '').trim().toUpperCase();
     const role = (VALID_ROLES as string[]).includes(rawRole) ? (rawRole as UserRole) : '';
     const picture = String(claims?.picture || stored?.picture || stored?.avatar || google?.picture || '').trim();
