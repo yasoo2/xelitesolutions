@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
+import { SearchAddon } from 'xterm-addon-search';
 import 'xterm/css/xterm.css';
 import { SocketService } from '../../services/socket';
 import { API_URL } from '../../config';
-import { Terminal as TerminalIcon, RefreshCw, Trash2, Maximize2, Minimize2, X, Copy, Download, Check } from 'lucide-react';
+import { Terminal as TerminalIcon, RefreshCw, Trash2, Maximize2, Minimize2, X, Copy, Download, Check, Search, ChevronUp, ChevronDown } from 'lucide-react';
 
 // ANSI escape sequences are display, not content — strip them for copy/download.
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
@@ -31,6 +32,29 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
     const [justCopied, setJustCopied] = useState(false);
     const isReadyRef = useRef(false);
     const logBufferRef = useRef('');
+
+    // Search across the scrollback (Ctrl+F). The addon highlights matches and
+    // scrolls to them; the counter shows «الموضع/الإجمالي» honestly from the
+    // addon's own results event — no fake numbers.
+    const searchAddonRef = useRef<SearchAddon | null>(null);
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState<{ resultIndex: number; resultCount: number } | null>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const SEARCH_DECOR = {
+        decorations: {
+            matchOverviewRuler: '#f59e0b',
+            activeMatchColorOverviewRuler: '#10b981',
+            matchBackground: 'rgba(245, 158, 11, 0.35)',
+            activeMatchBackground: 'rgba(16, 185, 129, 0.55)',
+        },
+    } as const;
+    const runSearch = (q: string, dir: 'next' | 'prev' = 'next') => {
+        const addon = searchAddonRef.current;
+        if (!addon || !q) { setSearchResults(null); addon?.clearDecorations(); return; }
+        if (dir === 'next') addon.findNext(q, SEARCH_DECOR);
+        else addon.findPrevious(q, SEARCH_DECOR);
+    };
 
     useEffect(() => {
         if (!containerRef.current || isMinimized) return;
@@ -66,7 +90,27 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
 
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
-        
+
+        const searchAddon = new SearchAddon();
+        term.loadAddon(searchAddon);
+        searchAddonRef.current = searchAddon;
+        // The addon reports the real match position/count as it searches.
+        searchAddon.onDidChangeResults((r: any) => {
+            setSearchResults(r && r.resultCount >= 0 ? { resultIndex: r.resultIndex, resultCount: r.resultCount } : null);
+        });
+
+        // Ctrl+F opens search instead of the browser's find (useless on canvas
+        // scrollback); Escape is handled by the input itself.
+        term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+            if (e.type === 'keydown' && e.ctrlKey && (e.key === 'f' || e.key === 'F')) {
+                e.preventDefault();
+                setSearchOpen(true);
+                setTimeout(() => searchInputRef.current?.focus(), 50);
+                return false;
+            }
+            return true;
+        });
+
         termRef.current = term;
         fitAddonRef.current = fitAddon;
 
@@ -165,6 +209,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
             resizeObserver.disconnect();
             termRef.current = null;
             fitAddonRef.current = null;
+            searchAddonRef.current = null;
             isReadyRef.current = false;
             try {
                 term.dispose();
@@ -288,6 +333,18 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button
+                        onClick={() => {
+                            setSearchOpen(v => !v);
+                            if (!searchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
+                            else { setSearchQuery(''); setSearchResults(null); searchAddonRef.current?.clearDecorations(); }
+                        }}
+                        className="joe-term-btn"
+                        style={{ ...ghostBtn, ...(searchOpen ? { background: 'rgba(255,255,255,0.08)', color: '#fff' } : {}) }}
+                        title="بحث في السجل (Ctrl+F)"
+                    >
+                        <Search size={14} />
+                    </button>
                     <button onClick={handleCopyAll} className="joe-term-btn" style={ghostBtn} title="نسخ كل السجل">
                         {justCopied ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
                     </button>
@@ -314,6 +371,61 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                     )}
                 </div>
             </div>
+
+            {/* Search bar — appears under the header on Ctrl+F or the toolbar button */}
+            {searchOpen && !isMinimized && (
+                <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
+                    background: '#0e0e11', borderBottom: '1px solid rgba(255,255,255,0.06)', direction: 'ltr',
+                }}>
+                    <Search size={13} color="#64748b" />
+                    <input
+                        ref={searchInputRef}
+                        value={searchQuery}
+                        onChange={(e) => {
+                            const q = e.target.value;
+                            setSearchQuery(q);
+                            if (q) searchAddonRef.current?.findNext(q, { ...SEARCH_DECOR, incremental: true });
+                            else { setSearchResults(null); searchAddonRef.current?.clearDecorations(); }
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') runSearch(searchQuery, e.shiftKey ? 'prev' : 'next');
+                            if (e.key === 'Escape') {
+                                setSearchOpen(false); setSearchQuery(''); setSearchResults(null);
+                                searchAddonRef.current?.clearDecorations();
+                                termRef.current?.focus();
+                            }
+                        }}
+                        placeholder="ابحث في مخرجات الطرفية…"
+                        dir="auto"
+                        style={{
+                            flex: 1, maxWidth: 340, background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7,
+                            padding: '4px 10px', color: '#e2e8f0', fontSize: 12.5,
+                            fontFamily: 'inherit', outline: 'none',
+                        }}
+                    />
+                    <span style={{ fontSize: 11, color: '#64748b', minWidth: 52, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
+                        {searchQuery
+                            ? (searchResults && searchResults.resultCount > 0
+                                ? `${searchResults.resultIndex + 1}/${searchResults.resultCount}`
+                                : 'لا نتائج')
+                            : ''}
+                    </span>
+                    <button onClick={() => runSearch(searchQuery, 'prev')} className="joe-term-btn" style={ghostBtn} title="السابق (Shift+Enter)">
+                        <ChevronUp size={14} />
+                    </button>
+                    <button onClick={() => runSearch(searchQuery, 'next')} className="joe-term-btn" style={ghostBtn} title="التالي (Enter)">
+                        <ChevronDown size={14} />
+                    </button>
+                    <button
+                        onClick={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults(null); searchAddonRef.current?.clearDecorations(); termRef.current?.focus(); }}
+                        className="joe-term-btn danger" style={ghostBtn} title="إغلاق (Esc)"
+                    >
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
 
             {/* Main Terminal Viewport — flex:1 + absolute inner box give xterm a
                 REAL measured height, which is what lets it open and take input */}
