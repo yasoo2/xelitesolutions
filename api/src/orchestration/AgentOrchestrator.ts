@@ -14,7 +14,7 @@ import { ExecutionMemory } from '../core/orchestrator/ExecutionMemory';
 import { traceManager } from '../modules/services/TraceManager';
 import { executionFirewall } from './AgentExecutionFirewall';
 import intelligentRouter from '../core/llm/intelligent-router';
-import { withDeadline, NODE_DEADLINE_MS } from '../shared/utils/deadline';
+import { withDeadline, NODE_DEADLINE_MS, RUN_DEADLINE_MS } from '../shared/utils/deadline';
 import { repairMemory } from '../core/memory/repair-memory';
 
 /** Tools the PlanningEngine picks DETERMINISTICALLY. A node carrying one of
@@ -26,7 +26,7 @@ import { repairMemory } from '../core/memory/repair-memory';
 const DETERMINISTIC_TOOLS = [
     'google_account', 'user_browser',
     'write_file', 'file_write', 'create_file', 'write_to_file', 'read_file', 'file_read',
-    'web_page_builder', 'github_repo_manager',
+    'web_page_builder', 'github_repo_manager', 'project_pipeline',
 ];
 
 /**
@@ -363,8 +363,11 @@ export class AgentOrchestrator {
           // await that hangs inside a tool froze the whole run invisibly. Every
           // node now has a hard deadline; on expiry the node fails HONESTLY
           // («deadline_exceeded») and the run moves on or ends with a reason.
+          // A full-project pipeline node runs many phases (installs, builds,
+          // QA) — it gets the RUN budget, not a single node's slice.
+          const nodeBudget = node.tool === 'project_pipeline' ? RUN_DEADLINE_MS : NODE_DEADLINE_MS;
           const deadline = <T,>(p: Promise<T>) =>
-            withDeadline(p, NODE_DEADLINE_MS, `node ${node.id} (${node.tool || node.agent || 'task'})`);
+            withDeadline(p, nodeBudget, `node ${node.id} (${node.tool || node.agent || 'task'})`);
           if (isDirectAnswer) {
             const question = nodeInput?.question
               || (node.task || '').replace(/^(answering|respond to)\s*:\s*/i, '').trim()

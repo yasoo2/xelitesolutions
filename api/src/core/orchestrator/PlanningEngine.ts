@@ -229,6 +229,36 @@ Rules:
             return PlanningEngine.generateDynamicDag(intent, memory, context);
         }
 
+        // [FULL-PROJECT FAST-PATH] A complete multi-file project (backend, API,
+        // database, full stack) goes to the canonical engineering pipeline:
+        // plan phases -> execute with verification and auto build checks ->
+        // repair tickets and one self-fix on failure -> honest report. Before
+        // this route existed, «ابنِ لي مشروعاً متكاملاً بباك اند» fell to the
+        // page fast-path below and shipped as ONE HTML file, or to the generic
+        // DAG which wrote files nothing ever executed. This must be checked
+        // BEFORE the page builder — «تطبيق» matches its webNoun too.
+        {
+            const projectVerb = /\b(build|create|make|develop|scaffold|generate)\b/.test(goalLower)
+                || /(ابن|ابني|انشئ|أنشئ|اصنع|طور|اعمل|سو)/.test(probe);
+            const fullStackNoun = /(باك\s*اند|واجهة\s*خلفية|خادم|سيرفر|قاعدة\s*بيانات|مشروع\s*(متكامل|كامل)|تطبيق\s*(متكامل|كامل)|نظام\s*(متكامل|كامل|إدارة|اداره)|back\s*-?end|server\s*side|database|rest\s*api|api\s*server|full[-\s]?stack|complete\s+(project|app|application|system)|node\.?js|express|fastify|django|flask)/i.test(probe);
+            if (projectVerb && fullStackNoun) {
+                console.log(`[PlanningEngine] full-project fast-path -> project_pipeline "${String(intent.goal).slice(0, 80)}"`);
+                return {
+                    id: `project_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_pipeline',
+                        description: `Building complete project through the engineering pipeline: ${intent.goal}`,
+                        tool: 'project_pipeline',
+                        agent: 'Dev',
+                        input: { request: intent.goal },
+                        dependsOn: []
+                    }],
+                    metadata: { complexity: 'high', riskLevel: 'medium' }
+                };
+            }
+        }
+
         // [BUILD FAST-PATH] "build/create a web page/site/app" -> ACTUALLY build it:
         // generate the code, write the file, and open it in the live preview. This is
         // deterministic (reliable even on weak free models) and makes Joe execute like
