@@ -335,8 +335,9 @@ export class AgentOrchestrator {
         const agent = this.agents.get(node.agent);
         let result;
 
+        const liveSessionId = goalContext?.sessionId || dag.id;
         const executionContext = {
-            sessionId: goalContext?.sessionId || dag.id,
+            sessionId: liveSessionId,
             workspaceId: goalContext?.workspaceId,
             userId: goalContext?.userId,
             userName: goalContext?.userName,
@@ -347,7 +348,14 @@ export class AgentOrchestrator {
             language: goalContext?.language,
             // [PERSISTENT MEMORY] Forward the recalled user/project context so tools
             // (central_answer, page builder) can personalise their output.
-            memoryContext: goalContext?.memoryContext
+            memoryContext: goalContext?.memoryContext,
+            // [LIVE VOICE] Tools accept onProgress/onThought (phase executor,
+            // project pipeline, …) but the orchestrator never provided them —
+            // every progress call was a silent no-op and a multi-phase build ran
+            // MUTE for minutes, looking frozen. Wire both to the same
+            // thinking_detail stream the panel already renders.
+            onProgress: (m: string) => { try { broadcastThinkingDetail(liveSessionId, m); } catch { /* panel optional */ } },
+            onThought: (m: string) => { try { broadcastThinkingDetail(liveSessionId, m); } catch { /* panel optional */ } },
         };
 
         const isDirectAnswer = node.tool === 'central_answer'

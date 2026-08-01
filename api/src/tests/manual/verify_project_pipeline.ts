@@ -95,7 +95,13 @@ async function main() {
     const { executeTool } = await import('../../modules/services/ToolService');
     const { executionFirewall } = await import('../../orchestration/AgentExecutionFirewall');
 
-    const context = { sessionId: `pipeline-proof-${STAMP}`, userId: 'proof-user', workspaceId: `pipeline-proof-${STAMP}` };
+    // The live voice: everything the pipeline would say to the panel lands
+    // here — the proof that a long build is never mute.
+    const progress: string[] = [];
+    const context = {
+        sessionId: `pipeline-proof-${STAMP}`, userId: 'proof-user', workspaceId: `pipeline-proof-${STAMP}`,
+        onProgress: (m: string) => progress.push(m),
+    };
     const run = (tool: string, input: any) =>
         executionFirewall.runAsSystem(() => executeTool(tool, input, context));
 
@@ -117,6 +123,14 @@ async function main() {
         ['broken project: pipeline did NOT claim success', bad.ok === false],
         ['broken project: the honest partial summary is present', String(bad.output?.summary || bad.error || '').includes('توقف البناء بصدق')],
         ['broken project: phase progress reported truthfully (< 2 completed)', Number(bad.output?.completedPhases ?? 99) < 2],
+        // ---- the live voice: a long build must never be mute ----
+        ['the pipeline announced each phase live («المرحلة 1/2», «المرحلة 2/2»)',
+            progress.some(m => m.includes('المرحلة 1/2')) && progress.some(m => m.includes('المرحلة 2/2'))],
+        ['phase completion was announced live', progress.some(m => m.includes('اكتملت المرحلة'))],
+        ['the broken build announced its self-heal attempt and honest stop',
+            progress.some(m => m.includes('تذكرة إصلاح')) && progress.some(m => m.includes('أتوقف بصدق'))],
+        ['per-task tool progress flowed through (phase executor voice)',
+            progress.some(m => m.includes('[pipeline] planning')) || progress.some(m => m.includes('[pipeline]'))],
     ];
 
     let failed = 0;

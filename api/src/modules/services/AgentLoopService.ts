@@ -212,6 +212,7 @@ export class AgentLoopService {
         workspaceId: string;
         plannerResult: any;
         modelConfig?: any;
+        onProgress?: (msg: string) => void;
     }) {
         const { sessionId, runId, userId, workspaceId, plannerResult } = opts;
 
@@ -230,8 +231,15 @@ export class AgentLoopService {
         workspaceId: string;
         plannerResult: any;
         modelConfig?: any;
+        onProgress?: (msg: string) => void;
     }) {
         const { sessionId, runId, userId, workspaceId, plannerResult, modelConfig } = opts;
+        // The live voice: without it a multi-phase build runs mute for minutes
+        // and the user reads the silence as a freeze. Falls back to the panel's
+        // thinking_detail stream when no callback was handed in.
+        const voice = (m: string) => {
+            try { opts.onProgress ? opts.onProgress(m) : broadcastThinkingDetail(sessionId, m); } catch { /* optional */ }
+        };
         const phases = plannerResult.output.phases;
         const projectContext = {
             projectName: plannerResult.output.projectName || 'Unknown',
@@ -240,19 +248,24 @@ export class AgentLoopService {
             workspaceId,
             userId,
         };
-        const executionContext = { sessionId, workspaceId, userId, modelConfig };
+        const executionContext = { sessionId, workspaceId, userId, modelConfig, onProgress: voice, onThought: voice };
         const results: any[] = [];
         let completedPhases = 0;
+        const totalPhases = Number(projectContext.totalPhases || phases.length);
 
         for (const phase of phases) {
+            voice(`⚙️ المرحلة ${phase.phaseNumber || completedPhases + 1}/${totalPhases} — ${phase.name || 'تنفيذ'}`);
             const phaseResult = await executeTool('phase_executor', { phase, projectContext }, executionContext);
             const status = String(phaseResult?.output?.status || 'unknown');
 
             if (phaseResult?.ok && status === 'completed') {
+                voice(`✅ اكتملت المرحلة ${phase.phaseNumber || completedPhases + 1}/${totalPhases} وتحقَّقت`);
                 results.push({ ...phaseResult.output, status: 'completed' });
                 completedPhases++;
                 continue;
             }
+
+            voice(`⚠️ تعثرت المرحلة ${phase.phaseNumber || completedPhases + 1} — أفتح تذكرة إصلاح وأحاول العلاج الذاتي…`);
 
             // Phase failed — enter self-healing pipeline
             const failedTasks = (phaseResult?.output?.results || [])
@@ -282,6 +295,7 @@ export class AgentLoopService {
             });
 
             if (selfFixExecution.ok) {
+                voice(`🔧 نجح الإصلاح الذاتي — المرحلة ${phase.phaseNumber || completedPhases + 1} اكتملت بعد العلاج`);
                 results.push({
                     ...(selfFixExecution.rerunResult?.output || phaseResult?.output),
                     status: 'completed',
@@ -293,6 +307,7 @@ export class AgentLoopService {
             }
 
             // Self-fix failed — stop per AGENTS.md rule
+            voice(`⛔ لم ينجح الإصلاح الذاتي — أتوقف بصدق عند ${completedPhases}/${totalPhases} مراحل`);
             results.push({ ...phaseResult?.output, status, repairTicket, selfFixPlan, selfFixExecution });
             return { ok: false, completedPhases, results, repairTicket, selfFixPlan, selfFixExecution };
         }

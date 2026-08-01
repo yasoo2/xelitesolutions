@@ -79,6 +79,9 @@ export class ProjectPipelineTool implements ToolDefinition {
             workspaceId: context?.workspaceId || context?.sessionId || 'default',
             plannerResult,
             modelConfig: context?.modelConfig,
+            // The live voice: phase-by-phase progress reaches the same panel
+            // stream the orchestrator wired into this tool's context.
+            onProgress: (m: string) => say(m),
         });
 
         // 3 — Report with the numbers as they are. A partial delivery announced
