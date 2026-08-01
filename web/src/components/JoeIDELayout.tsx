@@ -293,6 +293,12 @@ export default function JoeIDELayout({
      * moment it exists on the server, appended per file.
      */
     const [liveFiles, setLiveFiles] = useState<import('./WorkspacePanel').LiveFile[]>([]);
+    /**
+     * The build's current stage — derived server-side from the real log line
+     * that just happened (never a timer). Audit scores accumulate so the strip
+     * can keep showing them after the stage moves on.
+     */
+    const [buildStatus, setBuildStatus] = useState<import('./WorkspacePanel').BuildStatusState | null>(null);
 
     useEffect(() => {
         // Subscribe to socket events for logs
@@ -363,6 +369,21 @@ export default function JoeIDELayout({
                 // build would otherwise sit above the new ones forever.
                 if (event.type === 'run_started' || event.type === 'user_input') {
                     setLiveFiles([]);
+                    setBuildStatus(null);
+                }
+
+                // The build's stage strip: each event is the structured form of
+                // a log line that JUST happened. Scores stick; the stage moves.
+                if (event.type === 'build_status' && event.data?.stage) {
+                    const d = event.data;
+                    setBuildStatus(prev => ({
+                        current: d,
+                        scores: {
+                            ...(prev?.scores || {}),
+                            ...(typeof d.score === 'number' ? { [d.stage]: d.score } : {}),
+                        },
+                        done: !!d.terminal,
+                    }));
                 }
 
                 // Logs
@@ -528,6 +549,7 @@ export default function JoeIDELayout({
                             onMaximizeToggle={handleMaximizeToggle}
                             logs={logs}
                             liveFiles={liveFiles}
+                            buildStatus={buildStatus}
                             problems={problems}
                             mobileCollapsed={isExplorerCollapsed}
                             onMobileToggle={toggleExplorer}

@@ -3,6 +3,7 @@ import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import path from 'path';
 import { authenticate } from '../middleware/auth';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
+import { parseStatusPorcelainBranch } from '../../core/git/parse-status';
 
 const router = Router();
 
@@ -44,50 +45,31 @@ let _statusCache: { at: number; data: any } | null = null;
 const STATUS_CACHE_MS = Number(process.env.GIT_STATUS_CACHE_MS || 5000);
 
 // GET /git/status
+//
+// ONE git command instead of four. `git status --porcelain --branch` carries
+// the entry list, the branch name, and ahead/behind in a single spawn — and
+// its failure IS the "not a repository" answer, so the rev-parse pre-flight,
+// `branch --show-current`, and `rev-list --count` spawns are gone. On the
+// Windows machine this serves, each spawn costs real seconds and the frontend
+// polls this endpoint on a timer: 4 commands per refresh was the single
+// biggest background load Joe put on the laptop.
 router.get('/status', authenticate as any, async (req: Request, res: Response) => {
     if (_statusCache && (Date.now() - _statusCache.at) < STATUS_CACHE_MS) {
         return res.json(_statusCache.data);
     }
-    // Check if git initialized
-    const check = await gitExec(['rev-parse', '--is-inside-work-tree']);
-    if (!check.ok) {
+
+    const result = await gitExec(['status', '--porcelain', '--branch']);
+    if (!result.ok) {
+        // "fatal: not a git repository" lands here; anything else (index lock,
+        // permission) is transient — caching `initialized:false` briefly is
+        // still right, the next refresh re-checks.
         const data = { initialized: false, files: [] };
         _statusCache = { at: Date.now(), data };
         return res.json(data);
     }
 
-    // Get status
-    const result = await gitExec(['status', '--porcelain']);
-    if (!result.ok) {
-        return res.status(500).json({ error: result.error });
-    }
-
-    const lines = (result.stdout || '').split('\n').filter((l: string) => l.trim());
-    const files = lines.map((line: string) => {
-        const status = line.substring(0, 2);
-        const file = line.substring(3).trim();
-        return { status, file };
-    });
-
-    // Get branch
-    const branchRes = await gitExec(['branch', '--show-current']);
-    const branch = (branchRes.stdout || '').trim();
-
-    // Get stats (ahead/behind)
-    let ahead = 0;
-    let behind = 0;
-    try {
-        const statsRes = await gitExec(['rev-list', '--left-right', '--count', 'HEAD...@{u}']);
-        if (statsRes.ok) {
-            const parts = (statsRes.stdout || '').trim().split(/\s+/);
-            if (parts.length >= 2) {
-                ahead = parseInt(parts[0]) || 0;
-                behind = parseInt(parts[1]) || 0;
-            }
-        }
-    } catch { }
-
-    const data = { initialized: true, branch, files, ahead, behind };
+    const snap = parseStatusPorcelainBranch(result.stdout || '');
+    const data = { initialized: true, branch: snap.branch, files: snap.files, ahead: snap.ahead, behind: snap.behind };
     _statusCache = { at: Date.now(), data };
     res.json(data);
 });

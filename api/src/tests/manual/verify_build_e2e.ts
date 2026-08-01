@@ -70,6 +70,13 @@ const fileStreamEvents: Array<{ file: string; chunk: string; done: boolean }> = 
  * id, so a line sent only to the legacy trio never reached a real session.
  */
 const terminalEvents: Array<{ id: string; data: string; at: number }> = [];
+/**
+ * Build-status strip events. Each one must be the structured form of a log
+ * line that really happened — the harness asserts the stages a real build
+ * necessarily passes through (sections → audits → written) all fired, and
+ * that audit events carried their scores.
+ */
+const buildStatusEvents: Array<{ stage: string; score?: number; terminal?: boolean; detail: string }> = [];
 {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const ws = require('../../api/ws');
@@ -84,6 +91,14 @@ const terminalEvents: Array<{ id: string; data: string; at: number }> = [];
         }
         if (event?.type === 'terminal_output') {
             terminalEvents.push({ id: String(event.id || ''), data: String(event.data || ''), at: Date.now() });
+        }
+        if (event?.type === 'build_status' && event?.data?.stage) {
+            buildStatusEvents.push({
+                stage: String(event.data.stage),
+                score: typeof event.data.score === 'number' ? event.data.score : undefined,
+                terminal: !!event.data.terminal,
+                detail: String(event.data.detail || ''),
+            });
         }
         return realBroadcast(event);
     };
@@ -624,6 +639,27 @@ async function main() {
         else {
             if (!toSession.length) { console.log('  ✗ [critical] no terminal line was addressed to the session id — the panel a user actually sees receives nothing'); totalCritical++; }
             if (span < 5000) { console.log(`  ! [major] all terminal lines arrived within ${(span / 1000).toFixed(1)}s — a post-hoc flood, not a live stream`); totalMajor++; }
+        }
+    }
+
+    /**
+     * Did the STATUS STRIP see the build's stages? A real build necessarily
+     * passes through writing sections, both audits, and the written-file
+     * moment — if any of those stages never fired an event, the strip lied by
+     * omission. Audit events must carry the score the audit measured.
+     */
+    {
+        const stages = new Set(buildStatusEvents.map(e => e.stage));
+        const audits = buildStatusEvents.filter(e => e.stage.startsWith('audit-') && typeof e.score === 'number');
+        const terminals = buildStatusEvents.filter(e => e.terminal);
+        console.log(`status strip: ${buildStatusEvents.length} event(s), stages seen: ${[...stages].join(', ') || 'none'}; ${audits.length} scored audit event(s)`);
+        if (!buildStatusEvents.length) { console.log('  ✗ [critical] no build_status events at all — the strip would never appear'); totalCritical++; }
+        else {
+            for (const must of ['sections', 'audit-visual', 'audit-behaviour', 'written']) {
+                if (!stages.has(must)) { console.log(`  ! [major] stage "${must}" never fired — the strip skips a phase every build has`); totalMajor++; }
+            }
+            if (!audits.length) { console.log('  ! [major] no audit event carried a score'); totalMajor++; }
+            if (!terminals.length) { console.log('  ! [major] no terminal stage event — the strip never learns the build finished'); totalMajor++; }
         }
     }
 

@@ -32,6 +32,25 @@ export interface LiveFile {
     updatedAt: number;
 }
 
+/**
+ * The build's current stage, as reported by the server the moment the log
+ * line proving it was pushed. `scores` accumulates audit results so they stay
+ * visible after the build moves past the audits.
+ */
+export interface BuildStatusState {
+    current: {
+        stage: string;
+        labelAr: string;
+        label: string;
+        detail: string;
+        score?: number;
+        section?: { index: number; id: string };
+        terminal?: boolean;
+    };
+    scores: Record<string, number>;
+    done: boolean;
+}
+
 interface WorkspacePanelProps {
     activeTab?: WorkspaceTab;
     onTabChange?: (tab: WorkspaceTab) => void;
@@ -44,6 +63,7 @@ interface WorkspacePanelProps {
     onMaximizeToggle?: () => void;
     logs?: string[];
     liveFiles?: LiveFile[];
+    buildStatus?: BuildStatusState | null;
     problems?: any[];
     mobileCollapsed?: boolean;
     onMobileToggle?: () => void;
@@ -207,7 +227,54 @@ const LIVE_CARET_CSS = `
 @media (prefers-reduced-motion: reduce){ .joe-live-caret{ animation:none } }
 `;
 
-function EnhancedLogsPanel({ logs, liveFiles = [] }: { logs: string[]; liveFiles?: LiveFile[] }) {
+/**
+ * One line of truth about the running build: the stage that JUST produced a
+ * log line, plus every audit score seen so far. There is no percentage bar
+ * because the server does not know one — a stalled build shows a stalled
+ * strip, which is exactly what the user should see.
+ */
+function BuildStatusStrip({ status }: { status: BuildStatusState }) {
+    const scoreColor = (n: number) => (n >= 90 ? '#10b981' : n >= 70 ? '#f59e0b' : '#ef4444');
+    const scoreLabel: Record<string, string> = {
+        'audit-visual': 'بصري',
+        'audit-behaviour': 'تفاعل',
+    };
+    return (
+        <div dir="rtl" style={{
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            padding: '8px 12px', marginBottom: 6, borderRadius: 8,
+            background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.18)',
+            fontSize: 12,
+        }}>
+            {!status.done && (
+                <span className="joe-live-caret" aria-hidden style={{ fontWeight: 700 }}>●</span>
+            )}
+            {status.done && <span aria-hidden style={{ color: '#10b981', fontWeight: 700 }}>✓</span>}
+            <span style={{ fontWeight: 600, color: 'var(--joe-text, #e4e4e7)' }}>
+                {status.current.labelAr}
+            </span>
+            {Object.entries(status.scores).map(([stage, n]) => (
+                <span key={stage} style={{
+                    padding: '1px 8px', borderRadius: 999, fontWeight: 700,
+                    color: scoreColor(n), border: `1px solid ${scoreColor(n)}55`,
+                    background: `${scoreColor(n)}14`,
+                }}>
+                    {scoreLabel[stage] || stage} {n}/100
+                </span>
+            ))}
+            <span dir="ltr" style={{
+                color: 'var(--joe-text-muted, #71717a)',
+                fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                flex: 1, minWidth: 120, textAlign: 'left',
+            }}>
+                {status.current.detail}
+            </span>
+        </div>
+    );
+}
+
+function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs: string[]; liveFiles?: LiveFile[]; buildStatus?: BuildStatusState | null }) {
     const { t } = useTranslation();
     const [filter, setFilter] = useState('');
     const [clearIndex, setClearIndex] = useState(0);
@@ -258,6 +325,7 @@ function EnhancedLogsPanel({ logs, liveFiles = [] }: { logs: string[]; liveFiles
                     fontSize: 12, lineHeight: 1.6,
                 }}
             >
+                {buildStatus && <BuildStatusStrip status={buildStatus} />}
                 {liveFiles.length > 0 && (
                     <div style={{ paddingBottom: 4 }}>
                         {liveFiles.map(f => <LiveFileCard key={f.file} f={f} />)}
@@ -423,6 +491,7 @@ export default function WorkspacePanel({
     onMaximizeToggle,
     logs = [],
     liveFiles = [],
+    buildStatus = null,
     problems = [],
     mobileCollapsed,
     onMobileToggle
@@ -561,7 +630,7 @@ export default function WorkspacePanel({
 
                 {/* Logs Tab */}
                 {activeTab === 'logs' && (
-                    <EnhancedLogsPanel logs={logs} liveFiles={liveFiles} />
+                    <EnhancedLogsPanel logs={logs} liveFiles={liveFiles} buildStatus={buildStatus} />
                 )}
 
                 {/* Problems Tab */}
