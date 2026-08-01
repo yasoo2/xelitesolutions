@@ -49,7 +49,9 @@ if ($LASTEXITCODE -ne 0) {
 # --- [2/4] التحقق من نجاح السحب --------------------------------------------
 $after = (git rev-parse --short HEAD 2>$null)
 Write-Host "`n[2/4] آخر تحديث لديك الآن:" -ForegroundColor Yellow
-git log --oneline -1
+# --no-pager: بدونها يفتح git قارئ صفحات (END) ويعلّق السكربت حتى يضغط
+# المستخدم q — حدث فعلاً وتوقف التحديث في منتصفه.
+git --no-pager log --oneline -1
 
 if ($before -eq $after) {
     Write-Host "    (لا جديد — نسختك محدّثة أصلاً)" -ForegroundColor DarkGray
