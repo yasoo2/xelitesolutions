@@ -119,17 +119,34 @@ const NAMED_HUES: Array<[RegExp, number]> = [
     [/\b(pink|rose|magenta)\b|وردي|زهري/i, 330],
 ];
 
-/** Sector defaults, used when the user names no colour at all. */
-const SECTOR_HUES: Array<[RegExp, number]> = [
-    [/تقني|تكنلوج|تكنولوج|برمج|software|tech|saas|ai|digital|consult|استشار/i, 218],
-    [/متجر|تسوق|shop|store|ecommerce|commerce/i, 258],
-    [/مطعم|كافيه|قهوة|طعام|food|restaurant|cafe|coffee/i, 25],
-    [/صح|طب|عياد|health|medical|clinic|doctor|fitness|لياقة/i, 168],
-    [/عقار|real ?estate|property|سكن/i, 200],
-    [/تعليم|مدرس|دورة|education|course|school|academy/i, 235],
-    [/محام|قانون|law|legal|مالي|finance|bank|بنك|محاسب/i, 212],
-    [/سفر|سياح|travel|tour|hotel|فندق/i, 190],
-    [/جمال|تجميل|أزياء|ازياء|beauty|fashion|salon|spa/i, 330],
+/**
+ * Sector BANDS, used when the user names no colour at all.
+ *
+ * These were single numbers, and that is why «في كل مرّة أطلب من جو بناء موقع
+ * فإنه يعطي نفس اللون». Every technology company on earth got hue 218 — the
+ * identical blue — every shop got 258, every restaurant got 25. The sector was
+ * being treated as an answer when it is only a constraint: a consultancy should
+ * not be pink, and it does not follow that it must be one exact blue.
+ *
+ * A band says what the sector rules OUT. Which hue inside it belongs to this
+ * business is decided from the request, so two consultancies are recognisably
+ * different and the same brief still rebuilds identically.
+ */
+const SECTOR_HUES: Array<[RegExp, [number, number]]> = [
+    // `تطبيق` belongs here and its absence sent app companies to HEALTH: the
+    // bare stem `طب` below matched inside «تطبيقات», so a software shop was
+    // painted clinic-teal. Arabic has no \b, so every Arabic stem in these
+    // tables must be long enough not to hide inside another word. `ai` gets a
+    // real \b for the same reason — it lives inside "email" and "chair".
+    [/تقني|تكنلوج|تكنولوج|برمج|تطبيق|software|tech|saas|ai|digital|consult|استشار|apps?/i, [196, 256]],
+    [/متجر|تسوق|shop|store|ecommerce|commerce/i, [246, 292]],
+    [/مطعم|كافيه|قهوة|طعام|food|restaurant|cafe|coffee/i, [8, 44]],
+    [/صحة|صحي|طبي|طبيب|عيادة|عياد|مستشفى|health|medical|clinic|doctor|fitness|لياقة/i, [150, 192]],
+    [/عقار|real ?estate|property|سكن/i, [176, 216]],
+    [/تعليم|مدرس|دورة|education|course|school|academy/i, [222, 268]],
+    [/محام|قانون|law|legal|مالي|finance|bank|بنك|محاسب/i, [198, 234]],
+    [/سفر|سياح|travel|tour|hotel|فندق/i, [172, 206]],
+    [/جمال|تجميل|أزياء|ازياء|beauty|fashion|salon|spa/i, [312, 348]],
 ];
 
 function hashHue(text: string): number {
@@ -140,8 +157,14 @@ function hashHue(text: string): number {
 
 export function pickHue(request: string): number {
     const r = probeOf(request);
+    // A colour the user NAMED is not a suggestion. «أزرق» means blue, exactly.
     for (const [re, hue] of NAMED_HUES) if (re.test(r)) return hue;
-    for (const [re, hue] of SECTOR_HUES) if (re.test(r)) return hue;
+    for (const [re, [lo, hi]] of SECTOR_HUES) {
+        if (!re.test(r)) continue;
+        // Stable per brief, spread across the band. The same request rebuilds
+        // the same colour; a different business gets a different one.
+        return (lo + (hashHue(r) % Math.max(1, hi - lo))) % 360;
+    }
     // Nothing named: stable per request, so re-running the same brief keeps the
     // same identity instead of a different colour every time.
     return hashHue(r);

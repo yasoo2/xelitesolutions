@@ -338,10 +338,32 @@ const DEFAULT_PAIR: TypePair = {
     note: 'neutral modern',
 };
 
+/**
+ * Faces that suit any subject, so a brief the sector table does not recognise
+ * still gets a considered pairing rather than the same neutral one every time.
+ */
+const GENERAL_PAIRS: TypePair[] = [
+    DEFAULT_PAIR,
+    { display: `'Georgia','Charter','Amiri','Noto Naskh Arabic',serif`, body: `'Segoe UI','Noto Sans Arabic',system-ui,sans-serif`, note: 'serif headline, sans body' },
+    { display: `'Trebuchet MS','Segoe UI','Noto Kufi Arabic',system-ui,sans-serif`, body: `'Georgia','Amiri','Noto Naskh Arabic',serif`, note: 'sans headline, serif reading' },
+    { display: `'Segoe UI Semibold','Segoe UI','Noto Kufi Arabic',system-ui,sans-serif`, body: `'Segoe UI','Noto Sans Arabic',system-ui,sans-serif`, note: 'quiet and even' },
+    { display: `'Palatino Linotype','Book Antiqua','Amiri','Noto Naskh Arabic',serif`, body: `'Segoe UI','Noto Sans Arabic',system-ui,sans-serif`, note: 'humanist serif' },
+];
+
+/**
+ * The type pairing for this brief.
+ *
+ * A sector match still wins — a law firm gets the serif and a clinic gets the
+ * calm sans, because that is a real design decision and not a preference. What
+ * changed is the fallback: it used to be ONE pairing for every brief the table
+ * did not recognise, which is a third of the reason «يعطي نفس التصميم في كل
+ * مرّة». Now an unrecognised brief chooses among faces that all suit it,
+ * stably, so two of them do not look like the same company.
+ */
 export function pickTypePair(request: string): TypePair {
     const r = probeOf(request);
     for (const p of PAIRS) if (p.re.test(r)) return p.pair;
-    return DEFAULT_PAIR;
+    return GENERAL_PAIRS[hashOf(canonicalForHash(request)) % GENERAL_PAIRS.length];
 }
 
 export function typographyCss(t: TypePair): string {

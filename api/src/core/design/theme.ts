@@ -78,16 +78,69 @@ export function lightOverrideCss(lightTokens: string): string {
     return `:root[data-theme="light"]{${body}}`;
 }
 
+/**
+ * How a section arrives.
+ *
+ * There was exactly one — a 26px fade-up — on every page Joe has ever built,
+ * which is a third of «يعطي نفس التصميم ونفس الحركات في كل مرّة». These are
+ * five, and every one of them is a REAL alternative rather than the same move
+ * at a different speed: content that rises, that settles from above, that
+ * arrives from the side the language reads from, that grows into place, or that
+ * is wiped open. Each still ends at `transform:none`, so nothing is left
+ * displaced once it has played.
+ */
+export type RevealStyle = 'rise' | 'settle' | 'slide' | 'grow' | 'wipe';
+
+export const REVEAL_STYLES: RevealStyle[] = ['rise', 'settle', 'slide', 'grow', 'wipe'];
+
+/** Stable per brief: the same request keeps the motion the user approved. */
+export function pickRevealStyle(request: string): RevealStyle {
+    let h = 0;
+    const t = String(request || '');
+    for (let i = 0; i < t.length; i++) h = t.charCodeAt(i) + ((h << 5) - h);
+    return REVEAL_STYLES[Math.abs(h) % REVEAL_STYLES.length];
+}
+
 /** The reveal, kept apart from the theme so a dark-first page can take just this. */
-export function revealCss(): string {
+export function revealCss(style: RevealStyle = 'rise'): string {
+    // `inset-inline` and a logical translate: on an RTL page the slide must come
+    // from the right, or the motion fights the reading direction.
+    const from: Record<RevealStyle, string> = {
+        rise: 'transform:translateY(26px)',
+        settle: 'transform:translateY(-22px)',
+        slide: 'transform:translateX(calc(34px * var(--reveal-dir,1)))',
+        grow: 'transform:scale(.965)',
+        wipe: 'transform:translateY(14px);clip-path:inset(0 0 24% 0)',
+    };
+    const to: Record<RevealStyle, string> = {
+        wipe: 'opacity:1;transform:none;clip-path:inset(0 0 0 0)',
+        rise: 'opacity:1;transform:none', settle: 'opacity:1;transform:none',
+        slide: 'opacity:1;transform:none', grow: 'opacity:1;transform:none',
+    };
+    const ease: Record<RevealStyle, string> = {
+        rise: '.7s cubic-bezier(.2,.8,.3,1)',
+        settle: '.62s cubic-bezier(.16,1,.3,1)',
+        slide: '.66s cubic-bezier(.22,.9,.24,1)',
+        grow: '.58s cubic-bezier(.2,.9,.3,1.06)',
+        wipe: '.74s cubic-bezier(.25,.85,.25,1)',
+    };
     return `
-[data-reveal-section]{opacity:0;transform:translateY(26px);
-  transition:opacity .7s cubic-bezier(.2,.8,.3,1),transform .7s cubic-bezier(.2,.8,.3,1)}
-[data-reveal-section].is-in{opacity:1;transform:none}
+/* Section reveal — "${style}" */
+:root{--reveal-dir:1}
+[dir="rtl"]{--reveal-dir:-1}
+/* A section waiting off to the side must be CLIPPED, not scrollable. Without
+   this, every horizontally-displaced section extended the document and the
+   audit measured real sideways scroll on every page carrying the slide motion.
+   \`clip\` rather than \`hidden\`: hidden turns body into a scroll container and
+   breaks position:sticky; clip only forbids the overflow. */
+html,body{overflow-x:clip}
+[data-reveal-section]{opacity:0;${from[style]};
+  transition:opacity ${ease[style]},transform ${ease[style]},clip-path ${ease[style]}}
+[data-reveal-section].is-in{${to[style]}}
 
 @media (prefers-reduced-motion:reduce){
   /* VISIBLE, not faster. A reveal that still moves is not a concession. */
-  [data-reveal-section]{opacity:1;transform:none;transition:none}
+  [data-reveal-section]{opacity:1;transform:none;clip-path:none;transition:none}
 }
 `.trim();
 }

@@ -32,6 +32,7 @@ import { bidiCss } from '../../core/design/language';
 import { logoCss } from '../../core/design/logo';
 import {
     themeCss, lightOverrideCss, revealCss, themeRuntime, revealRuntime, ensureThemeToggle,
+    REVEAL_STYLES, type RevealStyle,
 } from '../../core/design/theme';
 import {
     uiKitCss, buildPalette, paletteCss, darkTokenBlock, lightTokenBlock,
@@ -51,7 +52,7 @@ function sections(): string {
 </div></section>`).join('\n');
 }
 
-function buildPage(): string {
+function buildPage(style: RevealStyle = 'rise'): string {
     const header = `<header class="site-header" data-joe-header><div class="wrap header-inner">
   <a class="brand" href="index.html">إكس إيليت</a>
   <button class="nav-toggle" type="button" aria-label="القائمة" aria-controls="site-nav">
@@ -78,7 +79,7 @@ ${chromeCss()}
 ${logoCss()}
 ${themeCss(darkTokenBlock(palette))}
 ${lightOverrideCss(lightTokenBlock(palette))}
-${revealCss()}
+${revealCss(style)}
 ${bidiCss()}
 ${paletteCss(palette)}</style></head>
 <body>${iconSprite()}${body}${chromeRuntime(true)}${themeRuntime(true)}${revealRuntime()}</body></html>`;
@@ -279,6 +280,53 @@ async function main() {
             'a different background', before !== (await bgOf(page)));
         await page.screenshot({ path: path.join(OUT, 'phone.png') });
         await ctx.close();
+    }
+
+    /* ---------- 7. every motion style, not only the default ----------------- */
+    for (const style of REVEAL_STYLES) {
+        const f = path.join(OUT, `motion-${style}.html`);
+        fs.writeFileSync(f, buildPage(style), 'utf-8');
+        const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+        const page = await ctx.newPage();
+        page.on('pageerror', (e: Error) => errors.push(`${style}: ${e.message}`));
+        await page.goto('file://' + f);
+        await page.waitForTimeout(400);
+
+        const below = await page.evaluate(() =>
+            Array.prototype.filter.call(document.querySelectorAll('[data-reveal-section]'),
+                (s: any) => parseFloat(getComputedStyle(s).opacity) < 1).length);
+        add(`motion "${style}": sections below the fold start hidden`, below, '> 0', below > 0);
+
+        await page.evaluate(() => {
+            window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' as ScrollBehavior });
+        });
+        await page.waitForTimeout(1600);
+        // Every style must END EXACTLY IN PLACE: full opacity, identity
+        // transform, no clip. A reveal that leaves content shifted or cropped
+        // is worse than no reveal.
+        const settled = await page.evaluate(() =>
+            Array.prototype.every.call(document.querySelectorAll('[data-reveal-section]'), (s: any) => {
+                const cs = getComputedStyle(s);
+                return parseFloat(cs.opacity) === 1
+                    && (cs.transform === 'none' || cs.transform === 'matrix(1, 0, 0, 1, 0, 0)')
+                    && (cs.clipPath === 'none'
+                        // Chromium serialises inset(0 0 0 0) to its shortest form,
+                        // so "inset(0px)" IS fully open — only a non-zero inset crops.
+                        || /^inset\(\s*0(px)?(\s+0(px)?){0,3}\s*\)$/.test(cs.clipPath));
+            }));
+        add(`motion "${style}": everything ends exactly in place`, settled, 'true', settled === true);
+        await ctx.close();
+
+        // …and with motion refused, nothing may ever be hidden.
+        const rctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+        const rpage = await rctx.newPage();
+        await rpage.goto('file://' + f);
+        await rpage.waitForTimeout(400);
+        const hidden = await rpage.evaluate(() =>
+            Array.prototype.filter.call(document.querySelectorAll('main > section'),
+                (s: any) => parseFloat(getComputedStyle(s).opacity) < 1).length);
+        add(`motion "${style}": reduced motion leaves everything visible`, hidden, '0', hidden === 0);
+        await rctx.close();
     }
 
     await browser.close();

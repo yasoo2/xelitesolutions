@@ -14,7 +14,7 @@ import { detectPageKind, blueprintBrief, imageBudget, blueprintSections, kindLab
 import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteSectionwise, type WrittenSection } from '../../../core/design/section-writer';
 import { brandFrom, pageTitle } from '../../../core/design/page-head';
 import { ensureLogo, logoCss } from '../../../core/design/logo';
-import { themeCss, lightOverrideCss, revealCss, themeRuntime, revealRuntime, ensureThemeToggle } from '../../../core/design/theme';
+import { themeCss, lightOverrideCss, revealCss, themeRuntime, revealRuntime, ensureThemeToggle, pickRevealStyle } from '../../../core/design/theme';
 import { chromeBrief, chromeCss, chromeRuntime, authCss, authRuntime, ensureHeaderControls, wireAuthControls, repairDeadAnchors } from '../../../core/design/chrome';
 import { wrongLanguage, languageRetryNote, isolateLatinRuns, bidiCss } from '../../../core/design/language';
 import { splitIntoSections, targetSections, sectionsForFindings, extractEditedSection, spliceSections, sectionEditPrompt, type PageSection } from '../../../core/design/section-editor';
@@ -163,10 +163,13 @@ export class WebPageBuilderTool implements ToolDefinition {
          * `[data-theme="light"]`, because the media query the palette already
          * emits cannot be beaten by a button in either direction on its own.
          */
+        // How sections arrive. One fixed fade-up shipped on every page Joe ever
+        // built; this is chosen from the brief, stably, like the palette is.
+        const motion = pickRevealStyle(request);
         const darkFirst = reference?.mood === 'dark';
         const themeLayer = darkFirst
-            ? revealCss()
-            : `${themeCss(darkTokenBlock(palette))}\n${lightOverrideCss(lightTokenBlock(palette))}\n${revealCss()}`;
+            ? revealCss(motion)
+            : `${themeCss(darkTokenBlock(palette))}\n${lightOverrideCss(lightTokenBlock(palette))}\n${revealCss(motion)}`;
         const themeScript = darkFirst ? revealRuntime() : `${themeRuntime(isAr)}\n${revealRuntime()}`;
 
         const baseRules = `STRICT RULES:
@@ -1365,8 +1368,8 @@ the WORDS, not the structure.`;
             // Say what was DECIDED, not just what was checked — the palette and the
             // page type are choices the user should be able to argue with.
             parts.push(isAr
-                ? `🎨 نظام التصميم: ${kind} · تخطيط ${archetype} · خطوط ${typePair.note} · لوحة ${palette.scheme === 'analogous' ? 'متجانسة' : 'متكاملة'} حول ${palette.primary} (تباين AA مضمون)`
-                : `🎨 Design system: ${kind} · ${archetype} layout · ${typePair.note} type · ${palette.scheme} palette around ${palette.primary} (AA contrast by construction)`);
+                ? `🎨 نظام التصميم: ${kind} · تخطيط ${archetype} · حركة ${motion} · خطوط ${typePair.note} · لوحة ${palette.scheme === 'analogous' ? 'متجانسة' : 'متكاملة'} حول ${palette.primary} (تباين AA مضمون)`
+                : `🎨 Design system: ${kind} · ${archetype} layout · ${motion} motion · ${typePair.note} type · ${palette.scheme} palette around ${palette.primary} (AA contrast by construction)`);
             if (referenceNote) parts.push(referenceNote);
             if (siteLinkNote) parts.push(siteLinkNote.trim());
             if (editedSections.length) {
@@ -1622,10 +1625,13 @@ the WORDS, not the structure.`;
         // Same decision as the single-page path, restated here because a site is
         // built by its own function: a dark-first page gets the reveal and no
         // toggle, everything else gets both directions of the switch.
+        // How sections arrive. One fixed fade-up shipped on every page Joe ever
+        // built; this is chosen from the brief, stably, like the palette is.
+        const motion = pickRevealStyle(request);
         const darkFirst = reference?.mood === 'dark';
         const themeLayer = darkFirst
-            ? revealCss()
-            : `${themeCss(darkTokenBlock(palette))}\n${lightOverrideCss(lightTokenBlock(palette))}\n${revealCss()}`;
+            ? revealCss(motion)
+            : `${themeCss(darkTokenBlock(palette))}\n${lightOverrideCss(lightTokenBlock(palette))}\n${revealCss(motion)}`;
         const themeScript = darkFirst ? revealRuntime() : `${themeRuntime(isAr)}\n${revealRuntime()}`;
 
         const written = new Map<string, string>();

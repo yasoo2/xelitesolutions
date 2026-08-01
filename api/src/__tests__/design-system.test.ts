@@ -65,10 +65,16 @@ describe('the palette is a decision, not a dice roll', () => {
     });
 
     it('falls back to a sector default when no colour is named', () => {
-        // A restaurant is warm; a clinic is not. These are choices the design
-        // system makes so the model cannot make them at random.
-        expect(buildPalette('مطعم إيطالي').hue).toBe(25);
-        expect(buildPalette('عيادة أسنان').hue).toBe(168);
+        // A restaurant is warm; a clinic is not. These used to be EXACT hues,
+        // which is why every restaurant Joe built wore the identical orange —
+        // «يعطي نفس اللون في كل مرة». The sector now guarantees the RANGE and
+        // the brief picks the exact value inside it, stably.
+        const r = buildPalette('مطعم إيطالي').hue;
+        expect(r).toBeGreaterThanOrEqual(8); expect(r).toBeLessThan(44);      // warm
+        const c = buildPalette('عيادة أسنان').hue;
+        expect(c).toBeGreaterThanOrEqual(150); expect(c).toBeLessThan(192);   // clinical
+        // Two different restaurants are recognisably different restaurants.
+        expect(buildPalette('مطعم إيطالي').hue).not.toBe(buildPalette('مطعم يمني شعبي').hue);
     });
 
     it('different briefs do not all collapse to one hue', () => {
