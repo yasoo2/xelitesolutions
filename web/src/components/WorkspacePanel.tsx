@@ -15,6 +15,23 @@ const PreviewPanel = lazy(() => import('./PreviewPanel'));
 
 type WorkspaceTab = 'browser' | 'terminal' | 'preview' | 'logs' | 'problems';
 
+/**
+ * A file Joe is building, streamed into the Logs panel as it truly grows.
+ *
+ * `content` is appended from `file_stream` events, each carrying a section's
+ * real HTML the moment it was accepted; `done` flips when the file hit disk.
+ * Nothing here is animated for effect — the panel shows exactly what exists,
+ * when it exists.
+ */
+export interface LiveFile {
+    file: string;
+    content: string;
+    done: boolean;
+    label?: string;
+    bytes: number;
+    updatedAt: number;
+}
+
 interface WorkspacePanelProps {
     activeTab?: WorkspaceTab;
     onTabChange?: (tab: WorkspaceTab) => void;
@@ -26,6 +43,7 @@ interface WorkspacePanelProps {
     isMaximized?: boolean;
     onMaximizeToggle?: () => void;
     logs?: string[];
+    liveFiles?: LiveFile[];
     problems?: any[];
     mobileCollapsed?: boolean;
     onMobileToggle?: () => void;
@@ -131,7 +149,65 @@ function PanelToolbar({ filter, onFilterChange, onCopyAll, onClear, count, label
 }
 
 // ─── Enhanced Logs Panel ───────────────────────────────────────────
-function EnhancedLogsPanel({ logs }: { logs: string[] }) {
+/** One growing file: name, size, state, and the code itself. */
+function LiveFileCard({ f }: { f: LiveFile }) {
+    const [open, setOpen] = useState(true);
+    const preRef = useRef<HTMLPreElement>(null);
+    // Follow the code as it arrives, like a terminal does.
+    useEffect(() => {
+        if (open && preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight;
+    }, [f.content.length, open]);
+
+    return (
+        <div style={{
+            margin: '6px 10px', borderRadius: 8, overflow: 'hidden',
+            border: `1px solid ${f.done ? 'rgba(34,197,94,.35)' : 'rgba(59,130,246,.35)'}`,
+            background: 'rgba(0,0,0,.25)',
+        }}>
+            <button
+                onClick={() => setOpen(v => !v)}
+                style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                    padding: '6px 10px', background: 'rgba(255,255,255,.04)',
+                    border: 'none', cursor: 'pointer', color: 'inherit',
+                    fontFamily: 'inherit', fontSize: 12, textAlign: 'start',
+                }}
+            >
+                <FileOutput size={13} style={{ flex: 'none', color: f.done ? '#22c55e' : '#3b82f6' }} />
+                <span style={{ fontWeight: 600, direction: 'ltr' }}>{f.file}</span>
+                <span style={{ color: 'var(--joe-text-muted)', fontSize: 11 }}>
+                    {(f.content.length / 1024).toFixed(1)} KB
+                </span>
+                <span style={{
+                    marginInlineStart: 'auto', fontSize: 11,
+                    color: f.done ? '#22c55e' : '#3b82f6',
+                }}>
+                    {f.done ? '✓ اكتمل' : (f.label || '⋯ يُكتب الآن')}
+                </span>
+            </button>
+            {open && (
+                <pre
+                    ref={preRef}
+                    dir="ltr"
+                    style={{
+                        margin: 0, padding: '8px 12px', maxHeight: 260, overflow: 'auto',
+                        fontSize: 11, lineHeight: 1.55, whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word', color: 'var(--joe-text-secondary, #cbd5e1)',
+                        borderTop: '1px solid rgba(255,255,255,.05)',
+                    }}
+                >{f.content}{!f.done && <span className="joe-live-caret">▌</span>}</pre>
+            )}
+        </div>
+    );
+}
+
+const LIVE_CARET_CSS = `
+@keyframes joeLiveCaret { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+.joe-live-caret{ animation: joeLiveCaret 1s step-start infinite; color:#3b82f6 }
+@media (prefers-reduced-motion: reduce){ .joe-live-caret{ animation:none } }
+`;
+
+function EnhancedLogsPanel({ logs, liveFiles = [] }: { logs: string[]; liveFiles?: LiveFile[] }) {
     const { t } = useTranslation();
     const [filter, setFilter] = useState('');
     const [clearIndex, setClearIndex] = useState(0);
@@ -148,7 +224,7 @@ function EnhancedLogsPanel({ logs }: { logs: string[] }) {
         if (autoScroll && scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [filtered.length, autoScroll]);
+    }, [filtered.length, autoScroll, liveFiles.reduce((n, f) => n + f.content.length, 0)]);
 
     const handleCopyAll = () => {
         navigator.clipboard.writeText(filtered.join('\n')).catch(() => { });
@@ -164,6 +240,7 @@ function EnhancedLogsPanel({ logs }: { logs: string[] }) {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <style>{LIVE_CARET_CSS}</style>
             <PanelToolbar
                 filter={filter}
                 onFilterChange={setFilter}
@@ -181,7 +258,12 @@ function EnhancedLogsPanel({ logs }: { logs: string[] }) {
                     fontSize: 12, lineHeight: 1.6,
                 }}
             >
-                {filtered.length === 0 ? (
+                {liveFiles.length > 0 && (
+                    <div style={{ paddingBottom: 4 }}>
+                        {liveFiles.map(f => <LiveFileCard key={f.file} f={f} />)}
+                    </div>
+                )}
+                {filtered.length === 0 && liveFiles.length === 0 ? (
                     <div style={{
                         padding: 24, textAlign: 'center',
                         color: 'var(--joe-text-muted)', fontSize: 13,
@@ -340,6 +422,7 @@ export default function WorkspacePanel({
     isMaximized,
     onMaximizeToggle,
     logs = [],
+    liveFiles = [],
     problems = [],
     mobileCollapsed,
     onMobileToggle
@@ -372,7 +455,7 @@ export default function WorkspacePanel({
         { id: 'browser', label: 'Browser', icon: <Globe size={16} /> },
         { id: 'terminal', label: 'Terminal', icon: <TerminalIcon size={16} /> },
         { id: 'preview', label: 'Preview', icon: <Eye size={16} /> },
-        { id: 'logs', label: 'Logs', icon: <FileOutput size={16} />, badge: logs.length > 0 ? logs.length : undefined },
+        { id: 'logs', label: 'Logs', icon: <FileOutput size={16} />, badge: (logs.length + liveFiles.length) > 0 ? logs.length + liveFiles.length : undefined },
         { id: 'problems', label: 'Problems', icon: <AlertTriangle size={16} />, badge: problems.length > 0 ? problems.length : undefined },
     ];
 
@@ -478,7 +561,7 @@ export default function WorkspacePanel({
 
                 {/* Logs Tab */}
                 {activeTab === 'logs' && (
-                    <EnhancedLogsPanel logs={logs} />
+                    <EnhancedLogsPanel logs={logs} liveFiles={liveFiles} />
                 )}
 
                 {/* Problems Tab */}

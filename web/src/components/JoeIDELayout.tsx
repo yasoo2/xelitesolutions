@@ -255,6 +255,17 @@ export default function JoeIDELayout({
         return () => window.removeEventListener('joe:open-browser-tab', handleOpenBrowserTab);
     }, [onWorkspaceTabChange]);
 
+    useEffect(() => {
+        // Live code arriving means the user should be WATCHING it arrive.
+        const handleOpenLogsTab = () => {
+            if (canAutoOpen.current) setIsWorkspaceCollapsed(false);
+            if (onWorkspaceTabChange) onWorkspaceTabChange('logs');
+            else setInternalWorkspaceTab('logs');
+        };
+        window.addEventListener('joe:open-logs-tab', handleOpenLogsTab);
+        return () => window.removeEventListener('joe:open-logs-tab', handleOpenLogsTab);
+    }, [onWorkspaceTabChange]);
+
     // Internal state for workspace tab if not controlled
     const [internalWorkspaceTab, setInternalWorkspaceTab] = useState<WorkspaceTab>('terminal');
 
@@ -276,6 +287,12 @@ export default function JoeIDELayout({
     // Logs and Problems State
     const [logs, setLogs] = useState<string[]>([]);
     const [problems, setProblems] = useState<any[]>([]);
+    /**
+     * Files Joe is building right now, streamed section by section.
+     * «أن تتكوّن داخلها الكودات بشكل حي» — each chunk is real content the
+     * moment it exists on the server, appended per file.
+     */
+    const [liveFiles, setLiveFiles] = useState<import('./WorkspacePanel').LiveFile[]>([]);
 
     useEffect(() => {
         // Subscribe to socket events for logs
@@ -302,6 +319,50 @@ export default function JoeIDELayout({
                     || event.type === 'browser_screenshot' || event.type === 'stream_frame')
                     && (toolName.includes('browser') || event.type === 'browser_screenshot' || event.type === 'stream_frame')) {
                     window.dispatchEvent(new Event('joe:open-browser-tab'));
+                }
+
+                /**
+                 * THE CODE, LIVE. A file_stream event carries a section's real
+                 * HTML the moment it was accepted, or a file's final text the
+                 * moment it hit disk. The Logs tab is where the user watches
+                 * the build happen, so the first chunk of a build reveals it.
+                 */
+                if (event.type === 'file_stream' && event.data?.file) {
+                    const d = event.data;
+                    setLiveFiles(prev => {
+                        const i = prev.findIndex(f => f.file === d.file);
+                        if (i === -1) {
+                            return [...prev, {
+                                file: String(d.file), content: String(d.chunk || ''),
+                                done: !!d.done, label: d.label, bytes: d.bytes || 0,
+                                updatedAt: d.at || Date.now(),
+                            }];
+                        }
+                        const next = prev.slice();
+                        const cur = next[i];
+                        next[i] = {
+                            ...cur,
+                            // A `done` event carries the WHOLE file as written —
+                            // it replaces the accumulated draft rather than
+                            // doubling it. Chunks append.
+                            content: d.done ? String(d.chunk || cur.content)
+                                : cur.content + String(d.chunk || ''),
+                            done: !!d.done || cur.done,
+                            label: d.label || cur.label,
+                            updatedAt: d.at || Date.now(),
+                        };
+                        return next;
+                    });
+                    if (canAutoOpen.current) {
+                        setIsWorkspaceCollapsed(false);
+                        window.dispatchEvent(new Event('joe:open-logs-tab'));
+                    }
+                }
+
+                // A fresh run starts with a clean slate — files from the last
+                // build would otherwise sit above the new ones forever.
+                if (event.type === 'run_started' || event.type === 'user_input') {
+                    setLiveFiles([]);
                 }
 
                 // Logs
@@ -466,6 +527,7 @@ export default function JoeIDELayout({
                             isMaximized={isMaximized}
                             onMaximizeToggle={handleMaximizeToggle}
                             logs={logs}
+                            liveFiles={liveFiles}
                             problems={problems}
                             mobileCollapsed={isExplorerCollapsed}
                             onMobileToggle={toggleExplorer}

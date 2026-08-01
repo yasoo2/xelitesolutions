@@ -52,6 +52,32 @@ if (!process.env.BROWSER_EXECUTABLE_PATH && fs.existsSync('/opt/pw-browsers/chro
 const realWarn = console.warn.bind(console);
 console.warn = (...a: any[]) => { if (typeof a[0] === 'string' && a[0].includes('liveWssRef is null')) return; realWarn(...a); };
 
+/**
+ * THE LIVE CODE STREAM IS MEASURED, not assumed.
+ *
+ * The Logs panel shows each file growing section by section — but only if the
+ * server actually emits `file_stream` events with real content at the right
+ * moments. Intercepting `broadcast` here catches the events the UI would see,
+ * so a build that silently stopped streaming fails this harness instead of
+ * shipping a dead panel.
+ */
+const fileStreamEvents: Array<{ file: string; chunk: string; done: boolean }> = [];
+{
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ws = require('../../api/ws');
+    const realBroadcast = ws.broadcast.bind(ws);
+    ws.broadcast = (event: any) => {
+        if (event?.type === 'file_stream' && event?.data) {
+            fileStreamEvents.push({
+                file: String(event.data.file || ''),
+                chunk: String(event.data.chunk || ''),
+                done: !!event.data.done,
+            });
+        }
+        return realBroadcast(event);
+    };
+}
+
 /* ---------- the stub model -------------------------------------------------- */
 
 const BAD_SECTION_EN = (id: string) => `<section class="section" id="${id}"><div class="wrap">
@@ -554,6 +580,25 @@ async function main() {
     await browser.close();
     stub.close();
     files.close();
+
+    /**
+     * Did the builds STREAM? Every page above was produced section by section,
+     * so the Logs panel should have received: chunks that are real HTML, and a
+     * closing `done` per written file whose content is the complete document.
+     */
+    {
+        const chunks = fileStreamEvents.filter(e => !e.done);
+        const dones = fileStreamEvents.filter(e => e.done);
+        const realHtml = chunks.filter(e => /<(section|header|footer|div|main)\b/i.test(e.chunk));
+        const completeDocs = dones.filter(e => /<!DOCTYPE html/i.test(e.chunk) || /<html/i.test(e.chunk));
+        const files = new Set(fileStreamEvents.map(e => e.file));
+        console.log(`\nlive stream: ${chunks.length} section chunk(s), ${dones.length} file completion(s) across ${files.size} file(s)`);
+        if (!chunks.length) { console.log('  ✗ [critical] no live section chunks were broadcast — the Logs panel would stay empty'); totalCritical++; }
+        else if (realHtml.length < chunks.length * 0.9) { console.log(`  ! [major] only ${realHtml.length}/${chunks.length} chunks contain real markup`); totalMajor++; }
+        if (!dones.length) { console.log('  ✗ [critical] no file was announced as written — the panel never closes a file'); totalCritical++; }
+        else if (!completeDocs.length) { console.log('  ! [major] no completion event carried a complete document'); totalMajor++; }
+    }
+
     console.log(`\n${totalCritical} critical, ${totalMajor} major across ${kinds.length} page kind(s).`);
     process.exit(totalCritical ? 1 : 0);
 }

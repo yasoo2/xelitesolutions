@@ -29,6 +29,45 @@ import { buildImageBrief } from '../../../core/design/image-brief';
 import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, surfacePairingCss, ownedSurfaces } from '../../../core/design/layouts';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+
+/**
+ * The code, live, in the Logs panel.
+ *
+ * «يجب أن تفتح قائمة اللوجز وأن يفتح الملف وأن تتكوّن داخلها الكودات بشكل حي»
+ * — and nothing of the kind existed: the Logs tab showed one-line strings
+ * ("Step Started", "Step Done") while the actual work — the HTML being written
+ * section by section — was invisible until the preview appeared fully formed.
+ *
+ * Each event carries REAL content at the moment it truly exists: a section's
+ * HTML right after the model produced it and it passed extraction, a file's
+ * final text right after writeFileSync returned. Nothing is re-chunked or
+ * trickled for effect — a fake typewriter over already-finished text is
+ * exactly the kind of simulation this system is not allowed to contain.
+ */
+function streamCodeToLogs(
+    sessionId: any,
+    file: string,
+    chunk: string,
+    opts: { done?: boolean; label?: string } = {},
+): void {
+    try {
+        broadcast({
+            type: 'file_stream',
+            sessionId,
+            data: {
+                sessionId,
+                file,
+                // The panel is a live view, not an editor; a runaway chunk must
+                // not freeze the UI. The cap is per chunk and the panel appends.
+                chunk: String(chunk ?? '').slice(0, 60_000),
+                done: !!opts.done,
+                label: opts.label,
+                bytes: Buffer.byteLength(String(chunk ?? '')),
+                at: Date.now(),
+            },
+        } as any);
+    } catch { /* the build never depends on the UI listening */ }
+}
 const PORT = String(process.env.PORT || '5002');
 
 /**
@@ -506,6 +545,10 @@ ${prev!.html}`
                 if (got.ok) {
                     titles.push(plan.spec.split(':')[0]);
                     photosLeft = Math.max(0, photosLeft - (got.html.match(/\{\{\s*IMAGE\s*:/gi) || []).length);
+                    // The section's real HTML, the moment it was accepted — this
+                    // is what makes the Logs panel a live view of the build.
+                    streamCodeToLogs(sessionId, 'index.html', got.html + '\n',
+                        { label: `section ${plan.index}/${plans.length}: ${plan.id}` });
                 }
                 logs.push(`section ${plan.index} (${plan.id}): ${got.ok ? `${got.html.length} bytes` : `failed — ${got.reason}`}`);
             }
@@ -1044,6 +1087,9 @@ the WORDS, not the structure.`;
             // Always write the combined file too (keeps single-file preview working
             // and is the source of truth for future edits).
             fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+            // The finished file, as written to disk — the Logs panel closes the
+            // live view with exactly what the preview is about to show.
+            streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
 
             /**
              * Split into real files ALWAYS, not only when a project was asked for.
@@ -1069,10 +1115,11 @@ the WORDS, not the structure.`;
                 const abs = path.join(ARTIFACT_DIR, dir);
                 fs.mkdirSync(abs, { recursive: true });
                 fs.writeFileSync(path.join(abs, 'index.html'), split.indexHtml, 'utf-8');
+                streamCodeToLogs(sessionId, 'index.html', split.indexHtml, { done: true, label: 'written to disk' });
                 projectFiles.push({ name: 'index.html', bytes: split.indexHtml.length });
                 projIndex = split.indexHtml;
-                if (split.css) { fs.writeFileSync(path.join(abs, 'styles.css'), split.css, 'utf-8'); projectFiles.push({ name: 'styles.css', bytes: split.css.length }); projCss = split.css; }
-                if (split.js) { fs.writeFileSync(path.join(abs, 'script.js'), split.js, 'utf-8'); projectFiles.push({ name: 'script.js', bytes: split.js.length }); projJs = split.js; }
+                if (split.css) { fs.writeFileSync(path.join(abs, 'styles.css'), split.css, 'utf-8'); projectFiles.push({ name: 'styles.css', bytes: split.css.length }); projCss = split.css; streamCodeToLogs(sessionId, 'styles.css', split.css, { done: true, label: 'written to disk' }); }
+                if (split.js) { fs.writeFileSync(path.join(abs, 'script.js'), split.js, 'utf-8'); projectFiles.push({ name: 'script.js', bytes: split.js.length }); projJs = split.js; streamCodeToLogs(sessionId, 'script.js', split.js, { done: true, label: 'written to disk' }); }
                 base = `http://localhost:${PORT}/artifacts/${dir}/index.html`;
             } else if (siteEditFile && prev?.site) {
                 // Preview the page that changed, inside the site it belongs to.
@@ -1214,6 +1261,9 @@ the WORDS, not the structure.`;
                             logs.push(`visual repair (section-scoped): ${audit.score} → ${after.score}`);
                         } else {
                             fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+            // The finished file, as written to disk — the Logs panel closes the
+            // live view with exactly what the preview is about to show.
+            streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
                             repairSkipped = true;
                             logs.push('visual repair (section-scoped) did not improve the score — reverted');
                         }
@@ -1249,6 +1299,9 @@ the WORDS, not the structure.`;
                                 logs.push(`visual repair accepted: ${audit.score} -> ${after.score}`);
                             } else {
                                 fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+            // The finished file, as written to disk — the Logs panel closes the
+            // live view with exactly what the preview is about to show.
+            streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
                                 logs.push('visual repair rejected (did not improve the measurements)');
                             }
                         }
@@ -1298,6 +1351,9 @@ the WORDS, not the structure.`;
                             // The measurement did not improve, so the edit is
                             // reverted rather than kept on faith.
                             fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+            // The finished file, as written to disk — the Logs panel closes the
+            // live view with exactly what the preview is about to show.
+            streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
                             repairSkipped = true;
                             logs.push(`behaviour repair (section-scoped) did not improve the score — reverted`);
                         }
@@ -1335,6 +1391,9 @@ the WORDS, not the structure.`;
                                 logs.push(`behaviour repair accepted: ${b.score} -> ${after.score}`);
                             } else {
                                 fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+            // The finished file, as written to disk — the Logs panel closes the
+            // live view with exactly what the preview is about to show.
+            streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
                                 logs.push(`behaviour repair rejected (${after.ran ? `${b.score} -> ${after.score}, controls ${b.metrics.pressed} -> ${after.metrics.pressed}` : 're-audit failed'})`);
                             }
                         }
@@ -1687,6 +1746,8 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 if (got.ok) {
                     titles.push(plan.spec.split(':')[0]);
                     photosLeft = Math.max(0, photosLeft - (got.html.match(/\{\{\s*IMAGE\s*:/gi) || []).length);
+                    streamCodeToLogs(sessionId, page.file, got.html + '\n',
+                        { label: `${page.file} — section ${plan.index}/${plans.length}: ${plan.id}` });
                 }
             }
 
@@ -1793,6 +1854,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
             }
             written.set(file, out);
             fs.writeFileSync(path.join(outDir, file), out, 'utf-8');
+            streamCodeToLogs(sessionId, file, out, { done: true, label: 'written to disk' });
         }
 
         // Does the site actually hold together? Asked, not assumed.

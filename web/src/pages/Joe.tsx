@@ -178,8 +178,18 @@ export default function Joe() {
                 triggerUncollapse();
             }
 
-            // Auto switch to preview for build / page tools
-            if (isToolStart && ['dev_server', 'dev_server_start', 'website_full_pipeline', 'scaffold_project', 'scaffold_full_stack', 'web_page_builder'].includes(toolName)) {
+            /**
+             * WHILE a page is being built, the thing worth watching is the CODE
+             * — the Logs tab, where every section streams in live. Switching to
+             * Preview at tool START showed the previous build (or a blank
+             * frame) for the whole run, then the finished page appeared with no
+             * transition. Preview opens on `preview_ready`, when there is
+             * actually something new to show.
+             */
+            if (isToolStart && toolName === 'web_page_builder') {
+                setWorkspaceTab('logs');
+                triggerUncollapse();
+            } else if (isToolStart && ['dev_server', 'dev_server_start', 'website_full_pipeline', 'scaffold_project', 'scaffold_full_stack'].includes(toolName)) {
                 setWorkspaceTab('preview');
                 triggerUncollapse();
             }
