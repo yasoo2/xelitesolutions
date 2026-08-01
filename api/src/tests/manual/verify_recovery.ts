@@ -16,14 +16,19 @@
  * Run:  JWT_SECRET=x npx tsx src/tests/manual/verify_recovery.ts
  */
 import http from 'http';
+import os from 'os';
+import path from 'path';
 
 process.env.MOCK_DB = process.env.MOCK_DB || 'true';
 process.env.PERSISTENCE_MODE = process.env.PERSISTENCE_MODE || 'JSON';
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
+// Isolated repair-memory store: the proof of "no memory on the first
+// encounter" must not be poisoned by cures learned in earlier harness runs.
+process.env.JOE_MEMORY_DIR = path.join(os.tmpdir(), `joe-repair-mem-${Date.now()}`);
 
 // Unique per run: a leftover file from an earlier run would make the read step
 // SUCCEED and the whole fault-injection silently evaporate (it happened).
-const PROOF_FILE = `joe-recovery-proof-${Date.now()}.txt`;
+let PROOF_FILE = `joe-recovery-proof-${Date.now()}.txt`;
 
 // ---------- the stub brain ----------
 const seen = {
@@ -31,6 +36,7 @@ const seen = {
     recoveryPlanCalls: 0,
     recoveryPromptHadError: false,
     recoveryPromptHadRules: false,
+    recoveryPromptHadMemory: [] as boolean[],
 };
 
 const stub = http.createServer((req, res) => {
@@ -50,6 +56,7 @@ const stub = http.createServer((req, res) => {
                 seen.recoveryPlanCalls++;
                 seen.recoveryPromptHadError = body.includes('File not found');
                 seen.recoveryPromptHadRules = body.includes('NEVER just re-run the failed step unchanged');
+                seen.recoveryPromptHadMemory.push(body.includes('A REPAIR THAT WORKED FOR THIS SAME ERROR BEFORE'));
                 // The repair: create the missing file. The orchestrator will retry
                 // the original read step on its own after this node completes.
                 send(JSON.stringify([{
@@ -84,12 +91,17 @@ async function main() {
 
     const { AgentOrchestrator } = await import('../../orchestration/AgentOrchestrator');
 
-    const orchestrator = new AgentOrchestrator();
-    const result = await orchestrator.execute({
-        id: `recovery-proof-${Date.now()}`,
-        goal: 'process the internal ledger records and merge the quarterly totals for verification',
-        context: { sessionId: `recovery-proof-${Date.now()}`, userId: 'proof-user', modelConfig },
-    });
+    const runOnce = async () => {
+        const orchestrator = new AgentOrchestrator();
+        return orchestrator.execute({
+            id: `recovery-proof-${Date.now()}`,
+            goal: 'process the internal ledger records and merge the quarterly totals for verification',
+            context: { sessionId: `recovery-proof-${Date.now()}`, userId: 'proof-user', modelConfig },
+        });
+    };
+
+    // ACT 1 — first encounter: fail, diagnose from the error, repair, retry.
+    const result = await runOnce();
 
     // The physical witness: the RETRIED read step returned the exact content the
     // repair node wrote — a real read of a real file the failed step needed.
@@ -99,14 +111,22 @@ async function main() {
     const repairRan = (result as any)?.result?.write_proof?.success === true;
     const healedContent = String(retriedRead?.content || '').includes('healed by recovery');
 
+    // ACT 2 — same disease, new session: a FRESH missing file raises the same
+    // error class. The recovery prompt must now carry the remembered cure.
+    PROOF_FILE = `joe-recovery-proof-${Date.now()}-act2.txt`;
+    const result2 = await runOnce();
+
     const checks: Array<[string, boolean]> = [
-        ['initial plan was requested once', seen.initialPlanCalls === 1],
-        ['recovery plan was requested (attemptRecovery fired)', seen.recoveryPlanCalls === 1],
+        ['initial plan was requested once per run', seen.initialPlanCalls === 2],
+        ['recovery plan was requested in both runs (attemptRecovery fired)', seen.recoveryPlanCalls === 2],
         ['recovery prompt CONTAINED the real error text ("File not found")', seen.recoveryPromptHadError],
         ['recovery prompt carried the FAILURE-RECOVERY rules', seen.recoveryPromptHadRules],
         ['repair node executed (write_proof succeeded)', repairRan],
         ['the FAILED step was retried and read the healed file from disk', healedContent],
         ['the whole run ended ok after recovery', result.ok === true],
+        ['FIRST encounter had no remembered cure (memory starts honest)', seen.recoveryPromptHadMemory[0] === false],
+        ['SECOND encounter was planned WITH the remembered cure', seen.recoveryPromptHadMemory[1] === true],
+        ['second run also recovered and finished ok', result2.ok === true],
     ];
 
     let failed = 0;
@@ -115,8 +135,8 @@ async function main() {
         if (!ok) failed++;
     }
     console.log(failed === 0
-        ? '\nPROOF COMPLETE: a failed step was diagnosed from its error, repaired, retried, and the run finished.'
-        : `\n${failed} CHECK(S) FAILED — result: ${JSON.stringify(result).slice(0, 600)}`);
+        ? '\nPROOF COMPLETE: a failed step was diagnosed from its error, repaired, retried — and the cure was REMEMBERED for the next encounter.'
+        : `\n${failed} CHECK(S) FAILED — run1: ${JSON.stringify(result).slice(0, 400)} run2: ${JSON.stringify(result2).slice(0, 400)}`);
 
     stub.close();
     process.exit(failed === 0 ? 0 : 1);

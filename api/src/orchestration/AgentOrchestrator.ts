@@ -15,6 +15,7 @@ import { traceManager } from '../modules/services/TraceManager';
 import { executionFirewall } from './AgentExecutionFirewall';
 import intelligentRouter from '../core/llm/intelligent-router';
 import { withDeadline, NODE_DEADLINE_MS } from '../shared/utils/deadline';
+import { repairMemory } from '../core/memory/repair-memory';
 
 /** Tools the PlanningEngine picks DETERMINISTICALLY. A node carrying one of
  *  these already knows exactly what to run and with which input, so it must be
@@ -53,6 +54,10 @@ export type ExecutionNode = {
   status: "pending" | "running" | "completed" | "failed";
   result?: any;
   retryCount?: number;
+  /** The error this node last failed with — the key into repair memory. */
+  lastError?: string;
+  /** What the injected recovery nodes did — recorded as the cure if the retry succeeds. */
+  repairNote?: string;
 };
 
 export type AgentDAG = {
@@ -385,6 +390,13 @@ export class AgentOrchestrator {
         }
         
         if (result.ok) {
+          // A retry that succeeds PROVES the repair worked — that is the only
+          // moment a cure is worth remembering. Recording at plan time would
+          // memorize guesses; recording here memorizes verified medicine.
+          if ((node.retryCount || 0) > 0 && node.lastError && node.repairNote) {
+            repairMemory.recordRepair(node.lastError, node.repairNote)
+              .catch((e) => console.warn('[RepairMemory] record failed:', e?.message));
+          }
           lastDone = { task: node.task, ok: true, summary: undefined };
           node.status = "completed";
           const cleanOutput = this.sanitizeOutput(result.output);
@@ -444,6 +456,7 @@ export class AgentOrchestrator {
 
           node.status = "failed";
           lastNodeError = result.error || lastNodeError;
+          node.lastError = typeof result.error === 'string' ? result.error : JSON.stringify(result.error ?? '');
           memory.record(node.id, node.task, result.error, "failed");
 
           if (traceId) {
@@ -528,6 +541,10 @@ export class AgentOrchestrator {
             }
             node.status = "pending";
             node.retryCount = currentRetryCount + 1;
+            // What the cure DID, phrased for a future planning prompt. If the
+            // retry succeeds, this exact line becomes the remembered medicine.
+            node.repairNote = nodesWithRetry
+              .map(n => `${n.tool || n.agent}: ${n.task}`).join(' | ').slice(0, 500);
             node.dependencies = Array.from(new Set([...node.dependencies, ...nodesWithRetry.map(n => n.id)]));
             dag.nodes = [...dag.nodes, ...nodesWithRetry];
             continue;
@@ -627,8 +644,21 @@ export class AgentOrchestrator {
     const errorText = String(
         (error && typeof error === 'object') ? ((error as any).message || JSON.stringify(error)) : (error ?? '')
     ).slice(0, 1500);
+
+    // Scar tissue: if Joe beat this exact class of error before, the proven cure
+    // rides into the planning prompt. The planner still thinks — the memory is a
+    // strong lead, not a script — but it starts from experience, not from zero.
+    let rememberedCure = '';
+    try {
+        const known = errorText ? repairMemory.recallRepair(errorText) : null;
+        if (known) {
+            rememberedCure = `\n[A REPAIR THAT WORKED FOR THIS SAME ERROR BEFORE (proven ${known.wins}x) — prefer it unless the context clearly differs]:\n${known.repair}`;
+            broadcastThinkingDetail(memory.sessionId, `🧠 أعرف هذا الخطأ — العلاج الذي نجح سابقاً: ${known.repair.slice(0, 120)}`);
+        }
+    } catch { /* memory is a bonus, never a blocker */ }
+
     const recoveryGoal = errorText
-        ? `Fix and continue: ${failedNode.task}\n[THE STEP FAILED WITH THIS ERROR — read it and plan the repair around its cause]:\n${errorText}`
+        ? `Fix and continue: ${failedNode.task}\n[THE STEP FAILED WITH THIS ERROR — read it and plan the repair around its cause]:\n${errorText}${rememberedCure}`
         : `Fix and continue: ${failedNode.task}`;
 
     // Ask PlanningEngine for recovery nodes
