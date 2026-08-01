@@ -2858,7 +2858,10 @@ html[data-theme="light"] .chat-view {
 }
 
 .events-content {
-  max-width: 1200px;
+  /* A chat reads best in a book-width column, not a 1200px sheet — the old
+     width left the single welcome message floating at the edge of a void
+     (the user's screenshot). 860px matches the ChatPanel column. */
+  max-width: 860px;
   margin: 0 auto;
   padding: 18px 24px 0;
 }
@@ -3934,12 +3937,16 @@ html[data-theme="light"] .providers-modal {
 }
 
 .input-container {
+  /* Same reading column as the feed, and a calmer voice: the permanent gold
+     ring + 60px shadow made an idle input the loudest thing on screen. */
+  max-width: 860px;
+  width: 100%;
+  margin-inline: auto;
   border: 1px solid var(--glass-border);
-  border-radius: 24px;
+  border-radius: 18px;
   background: rgba(15, 23, 42, 0.85);
-  /* Darker, more solid background */
   overflow: hidden;
-  box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.3), 0 20px 60px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.28);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -3966,21 +3973,25 @@ html[data-theme="light"] .input-container:focus-within {
 
 .main-input {
   width: 100%;
-  min-height: 52px;
-  /* Much more compact */
+  min-height: 48px;
   max-height: 300px;
-  padding: 14px 18px;
+  padding: 13px 16px;
   border: 0;
   background: transparent;
   color: var(--text-primary);
   outline: none;
   resize: none;
   /* Auto-resize handled by JS */
-  font-size: 15px;
-  /* Slightly larger text */
-  line-height: 1.5;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  /* Coding font */
+  font-size: 14.5px;
+  line-height: 1.55;
+  /* A conversation, not a terminal: the monospace coding font made the
+     placeholder read like a command prompt (the user called it out). */
+  font-family: inherit;
+}
+
+.main-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
 }
 
 .input-actions {

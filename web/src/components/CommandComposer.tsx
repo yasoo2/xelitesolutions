@@ -3120,29 +3120,39 @@ export default function CommandComposer({
           <div className="events-content" ref={eventsContentRef}>
             {events.length === 0 && (
               <div className="empty-state-hero">
+                {/* One logo, not two stacked ones — the second 160px EliteLogo
+                    pushed the input below the fold on laptop screens. */}
                 <div className="hero-logo-container">
                   <div className="hero-logo-glow"></div>
                   <div className="hero-logo-content">
-                    <div className="brand-mark brand-mark-hero" aria-hidden="true" />
+                    <EliteLogo size={72} />
                   </div>
                 </div>
 
                 <h1 className="hero-title">
-                  <span className="hero-title-main">Build Faster.</span>
-                  <span className="hero-title-sub">Think Deeper.</span>
+                  <span className="hero-title-main">{t('heroTitleMain', 'Build faster.')}</span>
+                  <span className="hero-title-sub">{t('heroTitleSub', 'Think deeper.')}</span>
                 </h1>
 
                 <p className="hero-subtitle">
-                  Your elite autonomous pair programmer is ready to engineer the future.
+                  {t('heroSubtitle', 'Describe what you want and Joe designs, builds, tests and delivers it.')}
                 </p>
 
-
-                {/* Joe's Refined Premium Logo */}
-                <div className="hero-elite-logo-container" style={{ marginTop: 40, marginBottom: 20 }}>
-                  <EliteLogo size={160} />
+                {/* Real starting points: each chip submits an actual prompt. */}
+                <div className="hero-chips">
+                  {[t('heroChip1'), t('heroChip2'), t('heroChip3'), t('heroChip4')]
+                    .filter(Boolean)
+                    .map((chip) => (
+                      <button
+                        key={chip}
+                        type="button"
+                        className="hero-chip"
+                        onClick={() => run(chip)}
+                      >
+                        {chip}
+                      </button>
+                    ))}
                 </div>
-
-
               </div>
             )}
 
