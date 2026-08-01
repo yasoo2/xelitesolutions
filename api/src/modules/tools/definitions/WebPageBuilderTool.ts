@@ -8,6 +8,7 @@ import { statusFromLine } from '../../../core/terminal/build-status';
 import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
 import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
 import { auditVisually, visualRepairBrief, type VisualFinding } from '../../../core/quality/visual-audit';
+import { applyMechanicalRepairs } from '../../../core/quality/repair-engine';
 import { auditBehaviour, behaviourRepairBrief, type BehaviourFinding } from '../../../core/quality/behaviour-audit';
 import { workspaceService } from '../../services/WorkspaceService';
 import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirstCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
@@ -1348,12 +1349,40 @@ the WORDS, not the structure.`;
         let visualScore = -1;
         let visualRepairs = 0;
         try {
-            const audit = await auditVisually(url, { screenshotDir: ARTIFACT_DIR, name: `audit-${sessionKey}` });
+            let audit = await auditVisually(url, { screenshotDir: ARTIFACT_DIR, name: `audit-${sessionKey}` });
             if (audit.ran) {
                 visualFindings = audit.findings;
                 visualScore = audit.score;
                 logs.push(`visual audit: ${audit.score}/100, ${audit.findings.length} finding(s)`
                     + (audit.metrics?.contrastUnmeasurable ? ` (${audit.metrics.contrastUnmeasurable} text node(s) on a photograph — contrast not measurable there)` : ''));
+
+                // [MECHANICAL REPAIR] Defects with exactly one correct fix are
+                // repaired with code — instantly, deterministically, without
+                // spending a model call. Kept only if a re-measurement agrees,
+                // the same rule every other repair here obeys.
+                const mech = applyMechanicalRepairs(html, audit.findings, { language: isAr ? 'ar' : 'en', subject: request });
+                if (mech.applied.length) {
+                    fs.writeFileSync(path.join(ARTIFACT_DIR, filename), mech.html, 'utf-8');
+                    const after = await auditVisually(url, { screenshotDir: ARTIFACT_DIR, name: `audit-${sessionKey}` });
+                    if (after.ran && (after.score > audit.score
+                        || (after.score === audit.score && after.findings.length < audit.findings.length))) {
+                        html = mech.html;
+                        store[sessionKey] = { ...(store[sessionKey] || {} as any), html };
+                        visualRepairs += mech.applied.length;
+                        visualFindings = after.findings;
+                        visualScore = after.score;
+                        logs.push(`mechanical repair (${mech.applied.join(', ')}): ${audit.score} → ${after.score}`);
+                        for (const note of mech.notesAr) logs.push(`🔧 ${note}`);
+                        if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                            ? `🔧 أصلحت آلياً ${mech.applied.length} عيباً مؤكداً وأعدت الفحص`
+                            : `🔧 Mechanically repaired ${mech.applied.length} certain defect(s) and re-measured`);
+                        audit = after;
+                    } else {
+                        fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+                        logs.push('mechanical repair did not measure better — reverted');
+                    }
+                }
+
                 const brief = visualRepairBrief(audit.findings);
                 // A whole-page repair asks the model to return the whole page. On a
                 // document this size the reply is truncated by the provider before
@@ -2048,6 +2077,23 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 auditedPages++;
                 logs.push(`audit ${file}: visual ${v.score}/100, behaviour ${b.score}/100, ${b.metrics.dead || 0} dead control(s)`
                     + (v.metrics?.contrastUnmeasurable ? ` (${v.metrics.contrastUnmeasurable} on a photograph)` : ''));
+
+                // [MECHANICAL REPAIR] Same law as the single-page path: defects
+                // with one correct fix are repaired with code, then re-measured;
+                // kept only if the browser agrees.
+                const mech = applyMechanicalRepairs(written.get(file)!, v.findings, { language: isAr ? 'ar' : 'en', subject: request });
+                if (mech.applied.length) {
+                    fs.writeFileSync(path.join(outDir, file), mech.html, 'utf-8');
+                    const v2 = await auditVisually(pageUrl, { screenshotDir: ARTIFACT_DIR, name: `audit-${dir}-${file.replace(/\W+/g, '-')}-mech` });
+                    if (v2.ran && (v2.score > v.score || (v2.score === v.score && v2.findings.length < v.findings.length))) {
+                        written.set(file, mech.html);
+                        logs.push(`audit ${file}: mechanical repair (${mech.applied.join(', ')}) ${v.score} → ${v2.score}`);
+                        for (const note of mech.notesAr) logs.push(`🔧 ${file}: ${note}`);
+                    } else {
+                        fs.writeFileSync(path.join(outDir, file), written.get(file)!, 'utf-8');
+                        logs.push(`audit ${file}: mechanical repair did not measure better — reverted`);
+                    }
+                }
 
                 // Repair the behaviour, page by page and section by section —
                 // the same machinery, and the same rule: keep it only if the
