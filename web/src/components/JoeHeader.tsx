@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield } from 'lucide-react';
+import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield, ChevronDown } from 'lucide-react';
 import { resolveIdentity, nameFromEmail, initialsFrom, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
 import JoeMark from './JoeMark';
 
@@ -60,6 +60,26 @@ export default function JoeHeader({
     const [photoBroken, setPhotoBroken] = useState(false);
     useEffect(() => { setPhotoBroken(false); }, [photo]);
 
+    // The avatar opens a dropdown holding settings / theme / system management.
+    // Closes on any outside click or Escape.
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!menuOpen) return;
+        const onDown = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [menuOpen]);
+
+    const isAdmin = isPrivileged(role) || localStorage.getItem('admin') === 'true';
+
     return (
         <header className="joe-header">
             {/* Left: Logo & Brand — the mark signs itself once per load.
@@ -101,75 +121,84 @@ export default function JoeHeader({
                         <PanelRight size={18} />
                     </button>
                     <div className="joe-action-spacer" style={{ width: '8px' }}></div>
-                    {onThemeToggle && (
-                        <button className="joe-header-btn" onClick={onThemeToggle} title={t('toggleTheme')}>
-                            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-                        </button>
-                    )}
-                    <button className="joe-header-btn" onClick={onSettingsClick} title={t('settings')}>
-                        <Settings size={18} />
-                    </button>
                     {onNewProject && (
                         <button className="joe-header-btn" onClick={onNewProject} title={t('newProject')} style={{ color: 'var(--joe-gold-primary)' }}>
                             <Plus size={18} />
                         </button>
                     )}
-                    {(() => {
-                        // Gate on the ROLE carried by the signed token, not on a
-                        // list of email addresses hardcoded in the bundle.
-                        const isAdmin = isPrivileged(role) || localStorage.getItem('admin') === 'true';
-
-                        if (isAdmin) {
-                            return (
-                                <button
-                                    className="joe-header-btn"
-                                    onClick={onSystemClick}
-                                    title="System Management"
-                                    style={{ color: '#60a5fa' }}
-                                >
-                                    <Shield size={18} />
-                                </button>
-                            );
-                        }
-
-                        return (
-                            <button
-                                className="joe-header-btn"
-                                disabled
-                                title="Deployment Access Restricted"
-                                style={{ color: '#3f3f46', opacity: 0.5, cursor: 'not-allowed' }}
-                            >
-                                <Rocket size={18} />
-                            </button>
-                        );
-                    })()}
                 </div>
 
                 <div className="joe-header-divider"></div>
 
-                <div className="joe-user-profile" title={email || undefined}>
-                    <div className="joe-user-info hide-mobile">
-                        <span className="joe-user-name">{displayName || t('sysNotLinked')}</span>
-                        <span className="joe-user-sub">
-                            {roleLabel && <span className={`joe-role-badge ${roleClass}`}>{roleLabel}</span>}
-                            {email && <span className="joe-user-email">{email}</span>}
-                        </span>
-                    </div>
-                    {photo && !photoBroken ? (
-                        <img
-                            src={photo}
-                            alt={displayName}
-                            className="joe-avatar"
-                            referrerPolicy="no-referrer"
-                            onError={() => setPhotoBroken(true)}
-                        />
-                    ) : (
-                        <div
-                            className="joe-avatar-placeholder"
-                            aria-label={displayName}
-                            style={{ background: `linear-gradient(135deg, ${id.color}, ${id.colorSoft})` }}
-                        >
-                            {initials || '—'}
+                {/* Modern account chip: just the avatar + a chevron. Everything
+                    else (name, email, settings, theme, system management) lives
+                    in the dropdown it opens. */}
+                <div className="joe-user-profile" ref={menuRef} style={{ position: 'relative' }}>
+                    <button
+                        type="button"
+                        className={`joe-user-trigger ${menuOpen ? 'open' : ''}`}
+                        onClick={() => setMenuOpen(v => !v)}
+                        title={displayName || email || undefined}
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen}
+                    >
+                        {photo && !photoBroken ? (
+                            <img
+                                src={photo}
+                                alt={displayName}
+                                className="joe-avatar"
+                                referrerPolicy="no-referrer"
+                                onError={() => setPhotoBroken(true)}
+                            />
+                        ) : (
+                            <div
+                                className="joe-avatar-placeholder"
+                                aria-label={displayName}
+                                style={{ background: `linear-gradient(135deg, ${id.color}, ${id.colorSoft})` }}
+                            >
+                                {initials || '—'}
+                            </div>
+                        )}
+                        <ChevronDown size={14} className="joe-user-chevron" />
+                    </button>
+
+                    {menuOpen && (
+                        <div className="joe-user-menu" role="menu">
+                            <div className="joe-user-menu-head">
+                                <div
+                                    className="joe-avatar-placeholder"
+                                    style={{ background: `linear-gradient(135deg, ${id.color}, ${id.colorSoft})`, width: 38, height: 38 }}
+                                >
+                                    {initials || '—'}
+                                </div>
+                                <div className="joe-user-menu-id">
+                                    <span className="joe-user-menu-name">{displayName || t('sysNotLinked')}</span>
+                                    {email && <span className="joe-user-menu-email">{email}</span>}
+                                </div>
+                                {roleLabel && <span className={`joe-role-badge ${roleClass}`}>{roleLabel}</span>}
+                            </div>
+
+                            <button className="joe-user-menu-item" role="menuitem"
+                                onClick={() => { setMenuOpen(false); onSettingsClick?.(); }}>
+                                <Settings size={16} />
+                                <span>{t('settings')}</span>
+                            </button>
+
+                            {onThemeToggle && (
+                                <button className="joe-user-menu-item" role="menuitem"
+                                    onClick={() => { setMenuOpen(false); onThemeToggle(); }}>
+                                    {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                                    <span>{theme === 'dark' ? t('themeLight', 'الوضع النهاري') : t('themeDark', 'الوضع الليلي')}</span>
+                                </button>
+                            )}
+
+                            {isAdmin && (
+                                <button className="joe-user-menu-item" role="menuitem"
+                                    onClick={() => { setMenuOpen(false); onSystemClick?.(); }}>
+                                    <Shield size={16} />
+                                    <span>{t('systemManagement', 'إدارة النظام')}</span>
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>

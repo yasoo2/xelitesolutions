@@ -179,7 +179,7 @@ export default function ChatPanel({
                     messages.map((msg) => (
                         <div key={msg.id} className={`joe-message ${msg.role}`}>
                             <div className={`joe-message-avatar ${msg.role === 'assistant' ? 'ai' : 'user'}`}>
-                                {msg.role === 'assistant' ? 'J' : 'U'}
+                                {msg.role === 'assistant' ? <JoeMark size={24} /> : 'U'}
                             </div>
                             <div className="joe-message-content">
                                 <div className="joe-message-bubble">
@@ -298,7 +298,7 @@ export default function ChatPanel({
 
                 {(isLoading || thinkingPhase !== 'idle') && (
                     <div className="joe-message assistant">
-                        <div className="joe-message-avatar ai">J</div>
+                        <div className="joe-message-avatar ai"><JoeMark size={24} /></div>
                         <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px' }}>
                             <NeuralThinkingIndicator
                                 visible={isLoading || thinkingPhase !== 'idle'}
