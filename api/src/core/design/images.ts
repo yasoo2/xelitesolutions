@@ -27,6 +27,21 @@ import { searchAllSources, availableSources, type SourceOutcome } from './photo-
 /** What the archives said the last time one was asked — reported to the user so
  *  "no photo" is always accompanied by the reason there is no photo. */
 let lastSourceOutcomes: SourceOutcome[] = [];
+/**
+ * How many candidates the subject gate refused since the last read.
+ *
+ * Module-level for the same reason `lastSourceOutcomes` is: the counting
+ * happens deep inside one photograph's resolution and the reporting happens
+ * once for the whole page.
+ */
+let lastRefusedForSubject = 0;
+let lastCandidatesSeen = 0;
+export function takeRelevanceTally(): { seen: number; refused: number } {
+    const t = { seen: lastCandidatesSeen, refused: lastRefusedForSubject };
+    lastCandidatesSeen = 0; lastRefusedForSubject = 0;
+    return t;
+}
+
 export function takeSourceOutcomes(): SourceOutcome[] { const o = lastSourceOutcomes; lastSourceOutcomes = []; return o; }
 export { availableSources };
 
@@ -117,12 +132,78 @@ function findCached(artifactDir: string, query: string, variant = 0): string | n
 const STOPWORDS = new Set(['the','a','an','of','in','on','at','and','or','with','for','to','by',
     'photo','image','picture','close','up','view','shot','background','people','person']);
 
-/** Normalise a word so "developers" and "developer" are the same evidence. */
+/**
+ * Normalise a word to the evidence it carries — MORPHOLOGY ONLY.
+ *
+ * Plurals were folded here from the start. Word forms were not, and that is why
+ * a real build came back with every photograph replaced by a gradient: the
+ * subject Joe generates is «software engineer portrait», and a genuine picture
+ * of an engineer is tagged `programming`, `development`, `coder`. None of those
+ * is the literal string "engineer", so a good photograph scored zero.
+ *
+ * Suffix stripping on whole tokens, applied until it settles so "engineer" and
+ * "engineering" agree. Never substrings: `includes('slot')` matching
+ * «Christiansborg Slot» is the bug this file exists to prevent.
+ *
+ * SYNONYMS ARE DELIBERATELY NOT DONE HERE. Rewriting a query term to a shared
+ * token collapses two distinct requirements into one — «software developer»
+ * became a single term, and one incidental "Software" category then satisfied
+ * the whole subject. That is precisely how the castle got in. Synonyms widen
+ * what counts as EVIDENCE; they must never narrow what is being asked for.
+ */
 function fold(w: string): string {
-    return w.endsWith('ies') && w.length > 4 ? w.slice(0, -3) + 'y'
-        : w.endsWith('es') && w.length > 4 ? w.slice(0, -2)
-            : w.endsWith('s') && w.length > 3 ? w.slice(0, -1)
-                : w;
+    let x = w;
+    for (let i = 0; i < 3; i++) {
+        const before = x;
+        x = x.endsWith('ies') && x.length > 4 ? x.slice(0, -3) + 'y'
+            : /(sses|shes|ches)$/.test(x) ? x.slice(0, -2)
+                : x.endsWith('s') && !x.endsWith('ss') && x.length > 3 ? x.slice(0, -1)
+                    : x;
+        for (const suf of ['ational', 'ation', 'ional', 'ment', 'ing', 'ers', 'er', 'ed', 'ion', 'ive']) {
+            if (x.length > suf.length + 2 && x.endsWith(suf)) { x = x.slice(0, -suf.length); break; }
+        }
+        // "programming" -> "programm", which is not "program". Collapsing the
+        // doubled consonant a suffix leaves behind is what makes the two agree;
+        // without it a photograph tagged `programming` did not support the term
+        // `program` and the page fell back to a gradient.
+        if (/([bcdfgmnprt])\1$/.test(x) && x.length > 3) x = x.slice(0, -1);
+        if (x === before) break;
+    }
+    return x;
+}
+
+/**
+ * Other words that would satisfy a term — checked against the CANDIDATE's
+ * metadata, never substituted into the query.
+ *
+ * Small and conservative on purpose: a wrong entry here puts the wrong
+ * photograph on someone's page, which is the failure this module exists to
+ * stop. Keys and values are stored folded, so both sides agree.
+ *
+ * A GENERIC WORD MAY NEVER PROVE A SPECIFIC ONE. The first draft mapped
+ * `consultant -> business` and `portrait -> person, man, woman, people`, and
+ * the suite immediately re-admitted «Founder June 2025» for "business
+ * consultant" — one of the three photographs that shipped wrong and started all
+ * of this — plus a stock skyline titled «Business district». If a term is broad
+ * enough to describe half an archive, it is not evidence.
+ */
+const SYNONYM: Record<string, string[]> = {
+    develop: ['program', 'cod', 'softwar'],
+    engineer: ['develop', 'program'],
+    softwar: ['program', 'cod', 'develop'],
+    portrait: ['headshot'],
+    offic: ['workspac', 'workplac'],
+    chef: ['cook', 'culinary'],
+    doctor: ['physician', 'clinic'],
+    meet: ['confer'],
+    consultant: ['advisor'],
+};
+
+/** Does the candidate's own vocabulary support this term, in any accepted form? */
+function supports(term: string, hay: Set<string>): boolean {
+    if (hay.has(term)) return true;
+    const alts = SYNONYM[term];
+    return !!alts && alts.some(a => hay.has(fold(a)));
 }
 
 const words = (s: string): string[] =>
@@ -135,14 +216,30 @@ const words = (s: string): string[] =>
  * candidate's title, description or tags, plus which ones matched.
  */
 export function relevanceOf(query: string, result: any): { share: number; matched: string[]; terms: string[] } {
-    const terms = [...new Set(words(query).filter(w => w.length > 2 && !STOPWORDS.has(w)))];
+    /**
+     * Reported in the WORDS THE SUBJECT WAS WRITTEN IN, matched on their stems.
+     *
+     * `fold` now strips derivational endings too, so "developer" stems to
+     * "develop" — correct for comparison and meaningless in a build log that
+     * tells someone which parts of their subject were supported. Keep both: the
+     * stem does the work, the original does the explaining.
+     */
+    const seen = new Set<string>();
+    const pairs: Array<{ raw: string; stem: string }> = [];
+    for (const raw of String(query || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) {
+        const stem = fold(raw);
+        if (stem.length <= 2 || STOPWORDS.has(stem) || STOPWORDS.has(raw) || seen.has(stem)) continue;
+        seen.add(stem);
+        pairs.push({ raw, stem });
+    }
+    const terms = pairs.map(p => p.raw);
     const tags = Array.isArray(result?.tags) ? result.tags.map((t: any) => String(t?.name ?? t)) : [];
     // A SET OF WORDS, not one long string. `hay.includes('slot')` matched
     // "Christiansborg Slot", and `includes('port')` matched "ports" and
     // "Portas" — substring matching is how a castle in Copenhagen became the
     // illustration for a software consultancy.
     const hay = new Set(words([result?.title, result?.description, ...tags].join(' ')));
-    const matched = terms.filter(t => hay.has(t));
+    const matched = pairs.filter(p => supports(p.stem, hay)).map(p => p.raw);
     return { share: terms.length ? matched.length / terms.length : 0, matched, terms };
 }
 
@@ -218,6 +315,19 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
     // and resolution alone scored an irrelevant photo 27-37 against a floor of
     // 25, so a well-proportioned picture of the wrong thing outranked having no
     // picture at all — measured against the three that actually shipped.
+    /**
+     * COUNT WHAT THE GATE THREW AWAY.
+     *
+     * "The archive failed", "the archive returned nothing" and "the archive
+     * returned twelve photographs and none of them were of the subject" are
+     * three completely different problems, and all three reached the user as
+     * the same coloured box with nothing said. The last one is the one this
+     * gate creates, so it is the one it has to own up to.
+     */
+    lastRefusedForSubject += candidates.filter(
+        c => !isRelevant(query, { title: c.title, description: c.description, tags: c.tags })).length;
+    lastCandidatesSeen += candidates.length;
+
     const ranked = candidates
         .filter(c => isRelevant(query, { title: c.title, description: c.description, tags: c.tags }))
         .map(c => ({
@@ -311,6 +421,14 @@ export interface ImageResolution {
     /** Which archive each photo came from, and why any of them failed. */
     sources: Record<string, number>;
     sourceErrors: string[];
+    /**
+     * Candidates the archives DID return, and how many were refused for not
+     * being of the subject. Without this, a page full of gradients says nothing
+     * about whether the network failed, the search was empty, or the pictures
+     * were simply of something else.
+     */
+    candidatesSeen: number;
+    refusedForSubject: number;
 }
 
 /**
@@ -398,7 +516,7 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     }
     const queries: string[] = [];
     for (const p of parsed) if (!queries.includes(p.key)) queries.push(p.key);
-    if (!queries.length) return { html, requested: 0, real: 0, credits: [], bytes: 0, sources: {}, sourceErrors: [] };
+    if (!queries.length) return { html, requested: 0, real: 0, credits: [], bytes: 0, sources: {}, sourceErrors: [], candidatesSeen: 0, refusedForSubject: 0 };
 
     // How many times each subject appears — a repeat needs its own photo.
     const occurrences = new Map<string, number>();
@@ -461,10 +579,13 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
         const p = img.provider || (img.fromCache ? 'cache' : 'unknown');
         sources[p] = (sources[p] || 0) + 1;
     }
+    const tally = takeRelevanceTally();
     return {
         html: out, requested: Math.min(requested, max), real: resolved.size, credits, bytes,
         sources,
         sourceErrors: Array.from(failures, ([p, r]) => `${p}: ${r}`),
+        candidatesSeen: tally.seen,
+        refusedForSubject: tally.refused,
     };
 }
 

@@ -903,6 +903,9 @@ the WORDS, not the structure.`;
         // images with no internet. No network -> a gradient in the page's own
         // palette, never a broken image and never a claim of a photo we lack.
         let imgReal = 0, imgRequested = 0, imgBytes = 0;
+        // Why a photograph is missing: the archives found nothing, or they found
+        // pictures of something else. Those need different answers from the user.
+        let imgSeen = 0, imgRefused = 0;
         let imgCredits: Array<{ creator: string; license: string; source: string }> = [];
         let imgSources: Record<string, number> = {};
         let imgSourceErrors: string[] = [];
@@ -911,6 +914,7 @@ the WORDS, not the structure.`;
             try {
                 const r = await resolveImages(html, ARTIFACT_DIR, palette.hue, { max: Math.max(4, photos + 2), brief: imageBrief });
                 html = r.html; imgReal = r.real; imgRequested = r.requested; imgCredits = r.credits; imgBytes = r.bytes;
+                imgSeen = r.candidatesSeen; imgRefused = r.refusedForSubject;
                 imgSources = r.sources; imgSourceErrors = r.sourceErrors;
                 // Creative-Commons licences require attribution IN THE PAGE, not in
                 // a chat message the visitor never sees. Without this the published
@@ -1385,7 +1389,24 @@ the WORDS, not the structure.`;
                 // exactly what it said. A missing photo with no reason reads as a
                 // bug in Joe rather than a search that came back empty.
                 const from = Object.entries(imgSources).map(([k, v]) => `${k}×${v}`).join('، ');
-                const why = imgSourceErrors.length ? ` — ${imgSourceErrors.join(' · ')}` : '';
+                /**
+                 * WHY there is no photograph, not just that there is none.
+                 *
+                 * «لم يفتح الصور … بل يضع مكانه خلفية ملونة فقط» — and nothing
+                 * in the report told the user whether the network failed, the
+                 * search came back empty, or every picture returned was of
+                 * something else. Only the last of those is Joe's own doing,
+                 * and it is the one the subject gate causes, so it says so.
+                 */
+                const offSubject = imgRefused && imgSeen
+                    ? (isAr
+                        ? ` — وجدت ${imgSeen} صورة ورفضت ${imgRefused} منها لأنها ليست عن الموضوع`
+                        : ` — found ${imgSeen}, refused ${imgRefused} as not being of the subject`)
+                    : (imgSeen === 0 && !imgSourceErrors.length
+                        ? (isAr ? ' — لم تُرجع الأرشيفات أي نتيجة لهذا الموضوع'
+                            : ' — the archives returned nothing for this subject')
+                        : '');
+                const why = (imgSourceErrors.length ? ` — ${imgSourceErrors.join(' · ')}` : '') + offSubject;
                 parts.push(isAr
                     ? `🖼️ الصور: ${imgReal} حقيقية مرخّصة من ${imgRequested} · ${kb} ك.ب${heavy ? ' ⚠️ ثقيلة — قد تبطئ التحميل' : ''}${from ? ` · المصادر: ${from}` : ''}${imgReal < imgRequested ? ` (الباقي تدرّجات${why})` : ''}`
                     : `🖼️ Photos: ${imgReal}/${imgRequested} real licensed · ${kb} KB${heavy ? ' ⚠️ heavy — may slow loading' : ''}${from ? ` · sources: ${from}` : ''}${imgReal < imgRequested ? ` (rest are gradients${why})` : ''}`);

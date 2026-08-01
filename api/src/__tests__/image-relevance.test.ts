@@ -201,3 +201,58 @@ describe('an avatar is a face', () => {
         expect(g).toBe('coffee beans roasting');
     });
 });
+
+describe('a good photograph is not refused for spelling the subject differently', () => {
+    /**
+     * The complaint: «لم يفتح الصور في المواقع أو الصفحات التي يبنيها بل يضع
+     * مكانه خلفية ملونة فقط» — every image on every page came back a gradient.
+     *
+     * Only two archives are reachable without an API key, and they describe a
+     * photograph in their own words. Joe's subject is «software engineer
+     * portrait»; a genuine picture of one is tagged `programming`, `developer`,
+     * `coding`. Matching literal strings, that scored zero, so the gate refused
+     * it and the page fell back to colour. Tightening the gate to two words had
+     * been right — it stopped a castle in Copenhagen illustrating a software
+     * consultancy — and it turned wrong photographs into NO photographs.
+     *
+     * The answer is not to count fewer words. It is to stop requiring them to be
+     * spelled identically.
+     */
+    it.each([
+        ['software developer', { title: 'Software development team at work', tags: ['programming'] }],
+        ['software developer', { title: 'A developer coding', tags: ['software engineering'] }],
+        ['restaurant kitchen chef', { title: 'Chef cooking in a restaurant kitchen', tags: ['culinary'] }],
+        ['doctor consulting patient', { title: 'Physician consulting a patient', tags: ['clinic'] }],
+    ])('accepts a real match for "%s"', (q, meta) => {
+        expect(isRelevant(q, meta)).toBe(true);
+    });
+
+    it('still refuses every photograph that actually shipped wrong', () => {
+        // The three from the build that started this. None may come back.
+        expect(isRelevant('software developer', {
+            title: 'Christiansborg Slot, Copenhagen', tags: ['Software'],
+        })).toBe(false);
+        expect(isRelevant('business consultant', {
+            title: 'Founder June 2025', tags: ['Business people'],
+        })).toBe(false);
+        expect(isRelevant('business consultant', {
+            title: 'Business district skyline at night', tags: [],
+        })).toBe(false);
+    });
+
+    it('never lets a generic word prove a specific one', () => {
+        // The first synonym table mapped consultant -> business and
+        // portrait -> person/man/woman. If a term is broad enough to describe
+        // half an archive, it is not evidence.
+        expect(isRelevant('business consultant portrait', {
+            title: 'People at a business event', tags: ['person', 'business'],
+        })).toBe(false);
+    });
+
+    it('reports the words the subject was written in, not their stems', () => {
+        // This is what a human reads in the build log.
+        const r = relevanceOf('software developers', { title: 'Software development', tags: [] });
+        expect(r.terms).toEqual(['software', 'developers']);
+        expect(r.matched).toContain('software');
+    });
+});
