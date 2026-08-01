@@ -63,10 +63,12 @@ export default function SessionsBar({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                padding: '8px 12px',
-                background: 'var(--bg-card)',
+                padding: '6px 12px',
+                background: 'color-mix(in srgb, var(--bg-card) 72%, transparent)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
                 borderTop: '1px solid var(--border-color)',
-                height: 48,
+                height: 42,
             }}
         >
             {/* Sessions Label */}
@@ -190,15 +192,16 @@ export default function SessionsBar({
                         display: 'flex',
                         alignItems: 'center',
                         gap: 6,
-                        padding: '6px 12px',
-                        background: 'var(--accent-primary)',
-                        color: '#000',
+                        padding: '6px 14px',
+                        background: 'linear-gradient(135deg, var(--joe-gold-primary, var(--accent-primary)), var(--joe-gold-dark, var(--accent-primary)))',
+                        color: '#08130d',
                         border: 'none',
-                        borderRadius: 6,
+                        borderRadius: 999,
                         fontSize: 12,
-                        fontWeight: 600,
+                        fontWeight: 650,
                         cursor: 'pointer',
                         whiteSpace: 'nowrap',
+                        boxShadow: '0 2px 10px rgba(52, 196, 139, 0.25)',
                     }}
                 >
                     <Plus size={14} />

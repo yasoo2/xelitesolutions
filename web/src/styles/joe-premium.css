@@ -568,14 +568,17 @@ body:not(.rtl) .joe-user-info {
     gap: 16px;
     min-height: 0;
     margin-bottom: 0;
+    /* A faint emerald aurora at the top gives the page depth without noise */
+    background: radial-gradient(640px 240px at 50% 0%, rgba(52, 196, 139, 0.055), transparent 70%);
 }
 
+/* The composer floats as its own card over a soft fade — no hard divider line */
 .joe-chat-input-area {
-    padding: 0 !important;
+    padding: 18px 20px 16px !important;
     margin: 0 -1px !important;
     width: calc(100% + 2px) !important;
-    background: var(--joe-bg-primary) !important;
-    border-top: 1px solid rgba(52, 196, 139, 0.2) !important;
+    background: linear-gradient(to top, var(--joe-bg-primary) 72%, transparent) !important;
+    border-top: none !important;
     flex-shrink: 0;
     position: sticky !important;
     bottom: 0 !important;
@@ -604,9 +607,8 @@ body:not(.rtl) .joe-user-info {
     background: transparent !important;
     border: none !important;
     border-radius: 0 !important;
-    padding: 12px 16px !important;
-    padding-bottom: 8px !important;
-    /* Reduced bottom padding */
+    padding: 0 !important;
+    /* The card look lives on .input-container now */
     gap: 0 !important;
     /* Gap handled by internal elements */
     display: flex !important;
@@ -790,25 +792,26 @@ body:not(.rtl) .joe-user-info {
     pointer-events: auto !important;
 }
 
-/* CRITICAL: Override global.css for input-container to be full width */
+/* The composer is a raised card (ChatGPT/Claude-style), not a bare strip */
 .joe-chat-input-area .input-container,
 .joe-chat-panel .input-container {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
-    padding: 0 !important;
-    border: none !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
+    padding: 13px 16px 10px !important;
+    border: 1px solid var(--joe-border) !important;
+    border-radius: 18px !important;
+    background: var(--joe-bg-card, rgba(18, 24, 31, 0.92)) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35) !important;
     transform: none !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
 }
 
 .joe-chat-input-area .input-container:focus-within,
 .joe-chat-panel .input-container:focus-within {
     transform: none !important;
-    box-shadow: none !important;
-    border: none !important;
+    border-color: var(--joe-border-strong) !important;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.4), 0 0 0 3px rgba(52, 196, 139, 0.12) !important;
 }
 
 /* ========== Providers Modal (Central Large Overlay) ========== */
@@ -1560,8 +1563,15 @@ body:not(.rtl) .joe-user-info {
 
 /* Visibility Fixes for Light Mode Chat Input */
 [data-theme="light"] .joe-chat-input-area {
+    background: linear-gradient(to top, var(--joe-bg-primary) 72%, transparent) !important;
+    border-top: none !important;
+}
+
+[data-theme="light"] .joe-chat-input-area .input-container,
+[data-theme="light"] .joe-chat-panel .input-container {
     background: #ffffff !important;
-    border-top: 1px solid var(--joe-border) !important;
+    border-color: rgba(30, 58, 138, 0.16) !important;
+    box-shadow: 0 10px 26px rgba(30, 58, 138, 0.10) !important;
 }
 
 [data-theme="light"] .joe-chat-input-area .main-input {

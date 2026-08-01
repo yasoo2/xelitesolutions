@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Sparkles, Send, Mic, User, Bot, Copy, Check } from 'lucide-react';
+import { Sparkles, Send, Mic, User, Bot, Copy, Check, Rocket, UtensilsCrossed, LayoutDashboard, BriefcaseBusiness } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -145,20 +145,28 @@ export default function ChatPanel({
                         }}>
                             <Sparkles size={30} />
                         </div>
-                        <h2 style={{ margin: 0, fontSize: 24, fontWeight: 750, color: 'var(--joe-text-primary)', letterSpacing: '-0.01em' }}>
+                        <h2 className="joe-empty-title" style={{ margin: 0, fontSize: 27, fontWeight: 800, letterSpacing: '-0.01em' }}>
                             {t('emptyChatTitle', 'How can I help you today?')}
                         </h2>
-                        <p style={{ margin: 0, fontSize: 14.5, color: 'var(--joe-text-secondary)', lineHeight: 1.7 }}>
+                        <p style={{ margin: 0, fontSize: 14.5, color: 'var(--joe-text-secondary)', lineHeight: 1.7, maxWidth: 460 }}>
                             {t('emptyChatDesc', "I'm Joe — your software engineer. Ask me to build a site, write code or run a task, and I'll show you the result live.")}
                         </p>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 4 }}>
-                            {[t('heroChip1'), t('heroChip2'), t('heroChip3'), t('heroChip4')].filter(Boolean).map((s) => (
+                        <div className="joe-suggest-grid">
+                            {[
+                                { icon: <Rocket size={17} />, label: t('heroChip1') },
+                                { icon: <UtensilsCrossed size={17} />, label: t('heroChip2') },
+                                { icon: <LayoutDashboard size={17} />, label: t('heroChip3') },
+                                { icon: <BriefcaseBusiness size={17} />, label: t('heroChip4') },
+                            ].filter(c => c.label).map((c) => (
                                 <button
-                                    key={s}
+                                    key={c.label}
                                     type="button"
-                                    onClick={() => sendQuickPrompt(s)}
-                                    className="joe-quick-chip"
-                                >{s}</button>
+                                    onClick={() => sendQuickPrompt(c.label)}
+                                    className="joe-suggest-card"
+                                >
+                                    <span className="joe-suggest-icon">{c.icon}</span>
+                                    <span className="joe-suggest-label">{c.label}</span>
+                                </button>
                             ))}
                         </div>
                     </div>
@@ -381,23 +389,64 @@ export default function ChatPanel({
     font-weight: 650;
 }
 
-/* Quick-start chips: real buttons that submit a prompt */
-.joe-quick-chip {
-    font-size: 12.5px;
-    font-family: inherit;
-    color: var(--joe-text-secondary);
+/* Welcome title: emerald gradient text */
+.joe-empty-title {
+    background: linear-gradient(120deg, var(--joe-text-primary) 30%, var(--joe-gold-primary) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Quick-start: a 2x2 grid of real suggestion cards (each submits a prompt) */
+.joe-suggest-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+    max-width: 520px;
+    margin-top: 6px;
+}
+@media (max-width: 640px) {
+    .joe-suggest-grid { grid-template-columns: 1fr; }
+}
+.joe-suggest-card {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 12px 14px;
+    border-radius: 14px;
     border: 1px solid var(--joe-border);
     background: var(--joe-bg-card);
-    padding: 8px 14px;
-    border-radius: 999px;
+    color: var(--joe-text-secondary);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: start;
     cursor: pointer;
-    line-height: 1.3;
-    transition: border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+    transition: border-color 0.18s ease, color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
-.joe-quick-chip:hover {
-    border-color: var(--joe-gold-primary);
+.joe-suggest-card:hover {
+    border-color: var(--joe-border-strong);
     color: var(--joe-text-primary);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+}
+.joe-suggest-icon {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    flex: 0 0 auto;
+    color: var(--joe-gold-primary);
+    background: rgba(52, 196, 139, 0.10);
+    border: 1px solid rgba(52, 196, 139, 0.18);
+}
+.joe-suggest-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
       `}</style>
         </aside>
