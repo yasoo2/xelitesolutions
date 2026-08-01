@@ -63,6 +63,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     const emailLocal = String((req as any).auth?.email || '').split('@')[0].split(/[._\-+]/)[0].replace(/\d+$/, '');
     const emailName = emailLocal ? emailLocal.charAt(0).toUpperCase() + emailLocal.slice(1) : '';
     const userName = [authName, bodyName, emailName].find(n => !isGenericName(n)) || '';
+    // Standing instructions from Settings («تعليمات جو الدائمة») — they shape HOW
+    // Joe works on every task (e.g. terminal-first building). Previously the UI
+    // sent this field and the server silently dropped it.
+    const systemInstructions = String(req.body?.systemInstructions || '').trim().slice(0, 4000);
     
     console.log(`[RunRoute] Unified execution requested for session: ${sessionId}`);
 
@@ -99,6 +103,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             sessionId,
             userId,
             userName,
+            systemInstructions,
             traceId,
             language: uiLanguage,
             modelConfig: {

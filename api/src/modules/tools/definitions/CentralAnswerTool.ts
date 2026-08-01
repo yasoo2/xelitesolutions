@@ -85,9 +85,16 @@ Your goal is to build the extraordinary.`;
                 : `- The user's name is unknown — do NOT invent one.\n`)
             + `- Local time of day right now: ${dayPartEn} (${dayPartAr}). If the user greets you or a greeting fits, use the matching one (صباح الخير/مساء الخير/Good ${dayPartEn === 'morning' ? 'morning' : 'evening'}) and vary your phrasing between conversations.`;
 
+        // Standing instructions from Settings — the user's permanent rules for
+        // how Joe should work (e.g. terminal-first building).
+        const standingIns = String(context?.systemInstructions || '').trim();
+        const standingBlock = standingIns
+            ? `\n\nSTANDING USER INSTRUCTIONS (always obey):\n${standingIns.slice(0, 2000)}`
+            : '';
+
         const systemPrompt = (isAr
             ? `${baseSystemPrompt}\n\nCRITICAL INSTRUCTION: اكتب ردّك **بالعربية الفصحى بالكامل**. لا تخلط كلمات إنجليزية داخل الجملة العربية (هذا يُشوّش قراءة النص). عند الحاجة لمصطلح تقني، اكتب مقابله العربي، وإن لزم ضع الإنجليزي بين قوسين بعده — مثال: «الواجهة الأمامية (Frontend)». استثناء وحيد: أسماء الأوامر/الأكواد داخل علامات الكود.`
-            : baseSystemPrompt) + personalBlock + memoryBlock;
+            : baseSystemPrompt) + personalBlock + standingBlock + memoryBlock;
 
         // Deterministic reply so a conversational turn NEVER fails into the
         // orchestrator's diagnostic "recovery" loop (the duplicated neural-thinking

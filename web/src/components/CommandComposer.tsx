@@ -903,18 +903,8 @@ export default function CommandComposer({
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
-  const [systemInstructions, setSystemInstructions] = useState<string>(() => {
-    try {
-      return localStorage.getItem('system_instructions') || '';
-    } catch {
-      return '';
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem('system_instructions', systemInstructions);
-    } catch { }
-  }, [systemInstructions]);
+  // Standing instructions are edited in Settings and read fresh at send time
+  // inside run() — no component state needed here.
   const initialProviderState = useMemo(() => {
     // Display order: Auto first, then the free providers (Groq/Gemini/Cerebras/
     // Mistral/DeepSeek/OpenRouter), then the paid ones. IMPORTANT: every provider
@@ -2477,8 +2467,13 @@ export default function CommandComposer({
         // Joe can greet the user personally («مساء الخير يا يونس»).
         userName: resolveIdentity().name || undefined,
       };
-      if (systemInstructions && systemInstructions.trim()) {
-        payload.systemInstructions = systemInstructions.trim();
+      // Read at SEND time (not mount time) so instructions saved in Settings a
+      // moment ago apply to this very run without reloading the page.
+      const standingInstructions = (() => {
+        try { return (localStorage.getItem('system_instructions') || '').trim(); } catch { return ''; }
+      })();
+      if (standingInstructions) {
+        payload.systemInstructions = standingInstructions;
       }
       console.log('[DEBUG-SEND] attachedFiles:', attachedFiles);
       console.log('[DEBUG-SEND] payload.fileIds:', payload.fileIds);

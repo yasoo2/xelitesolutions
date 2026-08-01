@@ -22,10 +22,17 @@ export class AgentLoopService {
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    static async execute(goal: string, options: { sessionId?: string; userId?: string; userName?: string; traceId?: string; modelConfig?: any; language?: string } = {}) {
+    static async execute(goal: string, options: { sessionId?: string; userId?: string; userName?: string; systemInstructions?: string; traceId?: string; modelConfig?: any; language?: string } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
         const userName = String(options.userName || '').trim();
+        // Standing user instructions ride WITH the goal so the planner and every
+        // tool see them — this is what makes «استخدم الطرفية في كل بناء» actually
+        // change how the whole run behaves, not just one reply.
+        const standing = String(options.systemInstructions || '').trim().slice(0, 4000);
+        const effectiveGoal = standing
+            ? `${goal}\n\n[STANDING USER INSTRUCTIONS — always apply to HOW you work]:\n${standing}`
+            : goal;
         const traceId = options.traceId;
         const modelConfig = options.modelConfig;
         const language = String(options.language || 'ar').trim().toLowerCase().split('-')[0] || 'ar';
@@ -61,8 +68,8 @@ export class AgentLoopService {
             const result = await orchestrator.execute({
                 id: runId,
                 traceId,
-                goal,
-                context: { userId, userName, sessionId, modelConfig, memoryContext, language }
+                goal: effectiveGoal,
+                context: { userId, userName, systemInstructions: standing, sessionId, modelConfig, memoryContext, language }
             });
 
             // [FIX] Surface the final answer to the chat UI.

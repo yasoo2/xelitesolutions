@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
     Moon, Sun, Check, LogOut, X,
     Palette, Globe, Shield, ChevronLeft,
-    Monitor, Smartphone, Mail, Activity
+    Monitor, Smartphone, Mail, Activity, Terminal, Wand2
 } from 'lucide-react';
 import { API_URL } from '../config';
 import SystemStatusPanel from './SystemStatusPanel';
@@ -27,7 +27,15 @@ const LANGUAGES = [
     { code: 'es', label: 'Español', flag: '🇪🇸' }
 ];
 
-type SettingsTab = 'status' | 'appearance' | 'language' | 'account';
+type SettingsTab = 'status' | 'appearance' | 'language' | 'instructions' | 'account';
+
+/** One-click preset: makes Joe use the terminal automatically while building. */
+const TERMINAL_FIRST_PRESET = `منهجية إلزامية في كل مهمة بناء أو تطوير:
+1) استخدم الطرفية تلقائياً في كل مرحلة: أنشئ مجلدات المشروع بأوامر حقيقية، وبعد كل مرحلة اعرض هيكل الملفات.
+2) بعد كتابة أي ملف تحقق منه من الطرفية (اعرض حجمه وأول أسطره).
+3) قبل إعلان أي إنجاز شغّل فحوصات حقيقية من الطرفية وأظهر نواتجها كاملة في تبويب Terminal.
+4) إذا فشل أمر: اقرأ الخطأ، أصلح السبب، وأعد المحاولة — لا تتجاوز خطأً أبداً.
+5) لا تقل «اكتمل العمل» إلا بعد نجاح كل الفحوصات، مع ملخص الأوامر التي نُفّذت.`;
 
 interface MenuItem {
     id: SettingsTab;
@@ -43,6 +51,19 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
 }) => {
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<SettingsTab>('status');
+
+    // Standing instructions travel with EVERY run (the composer reads this key
+    // at send time), so what is written here shapes how Joe works permanently.
+    const [instructions, setInstructions] = useState<string>(() => {
+        try { return localStorage.getItem('system_instructions') || ''; } catch { return ''; }
+    });
+    const [instrSaved, setInstrSaved] = useState(false);
+    const saveInstructions = (value: string) => {
+        setInstructions(value);
+        try { localStorage.setItem('system_instructions', value); } catch { }
+        setInstrSaved(true);
+        setTimeout(() => setInstrSaved(false), 1200);
+    };
 
     if (!isOpen) return null;
 
@@ -70,6 +91,14 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
             labelFallback: 'Interface language',
             descKey: 'languageDesc',
             descFallback: 'Interface language'
+        },
+        {
+            id: 'instructions',
+            icon: <Terminal size={18} />,
+            labelKey: 'joeInstructions',
+            labelFallback: 'Standing instructions',
+            descKey: 'joeInstructionsDesc',
+            descFallback: 'Rules Joe applies to every task'
         },
         {
             id: 'account',
@@ -196,6 +225,69 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                             <div className="stg-option-value stg-badge">
                                 {currentLang?.flag} {currentLang?.label}
                             </div>
+                        </div>
+                    </div>
+                );
+            case 'instructions':
+                return (
+                    <div className="stg-content-section stg-fade-in">
+                        <div className="stg-content-header">
+                            <Terminal size={22} />
+                            <div>
+                                <h3>{t('joeInstructions', 'Standing instructions')}</h3>
+                                <p>{t('joeInstructionsDesc', 'Rules Joe applies to every task')}</p>
+                            </div>
+                        </div>
+                        <textarea
+                            value={instructions}
+                            onChange={(e) => saveInstructions(e.target.value)}
+                            placeholder={t('joeInstructionsPh', 'مثال: استخدم الطرفية في كل خطوة بناء، وتحقق من كل ملف بعد كتابته…')}
+                            dir="auto"
+                            style={{
+                                width: '100%', minHeight: 190, resize: 'vertical',
+                                background: 'var(--joe-bg-card, rgba(255,255,255,0.04))',
+                                border: '1px solid var(--joe-border, rgba(255,255,255,0.1))',
+                                borderRadius: 12, padding: '12px 14px',
+                                color: 'var(--joe-text-primary, #eceef0)',
+                                fontSize: 13.5, lineHeight: 1.8, fontFamily: 'inherit',
+                                outline: 'none',
+                            }}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                            <button
+                                onClick={() => saveInstructions(TERMINAL_FIRST_PRESET)}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    padding: '8px 14px', borderRadius: 10, cursor: 'pointer',
+                                    border: '1px solid rgba(52,196,139,0.3)',
+                                    background: 'rgba(52,196,139,0.1)',
+                                    color: 'var(--joe-gold-primary, #34c48b)',
+                                    fontSize: 12.5, fontWeight: 650, fontFamily: 'inherit',
+                                }}
+                            >
+                                <Wand2 size={14} />
+                                {t('presetTerminalFirst', 'استخدام الطرفية تلقائياً في كل بناء')}
+                            </button>
+                            {instructions && (
+                                <button
+                                    onClick={() => saveInstructions('')}
+                                    style={{
+                                        padding: '8px 14px', borderRadius: 10, cursor: 'pointer',
+                                        border: '1px solid var(--joe-border, rgba(255,255,255,0.1))',
+                                        background: 'transparent', color: 'var(--joe-text-muted)',
+                                        fontSize: 12.5, fontFamily: 'inherit',
+                                    }}
+                                >
+                                    {t('clearInstructions', 'مسح التعليمات')}
+                                </button>
+                            )}
+                            <span style={{
+                                fontSize: 12, color: 'var(--joe-gold-primary, #34c48b)',
+                                opacity: instrSaved ? 1 : 0, transition: 'opacity 0.3s',
+                                display: 'flex', alignItems: 'center', gap: 4,
+                            }}>
+                                <Check size={13} /> {t('instrSaved', 'حُفظت — تُطبَّق على كل مهمة قادمة')}
+                            </span>
                         </div>
                     </div>
                 );

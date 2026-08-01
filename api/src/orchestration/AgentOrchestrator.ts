@@ -334,6 +334,7 @@ export class AgentOrchestrator {
             workspaceId: goalContext?.workspaceId,
             userId: goalContext?.userId,
             userName: goalContext?.userName,
+            systemInstructions: goalContext?.systemInstructions,
             traceId,
             memory: memory.getHistory(),
             modelConfig: goalContext?.modelConfig,
