@@ -220,7 +220,10 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
     // Handle incoming data
     useEffect(() => {
         const unsub = SocketService.subscribe((msg: any) => {
-            if (msg.type === 'terminal_output' && (msg.id === activeTabId || !msg.id)) {
+            // 'joe-agent' carries the commands Joe runs autonomously — shown in
+            // the SAME terminal so the user watches Joe work the shell in real
+            // time, fulfilling the standing "use the terminal" promise visibly.
+            if (msg.type === 'terminal_output' && (msg.id === activeTabId || msg.id === 'joe-agent' || !msg.id)) {
                 termRef.current?.write(msg.data);
                 // Keep a plain-text copy of everything shown, for copy/download.
                 const plain = stripAnsi(String(msg.data || ''));

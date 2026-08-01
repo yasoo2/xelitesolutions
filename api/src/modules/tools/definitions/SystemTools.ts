@@ -535,6 +535,26 @@ export class ShellExecuteTool extends BaseTool {
             return out;
         };
 
+        // [VISIBLE TERMINAL] When Joe runs a command autonomously, the user must
+        // SEE it in the Terminal tab — the standing "use the terminal" promise
+        // is empty if the work is invisible. Broadcast to the agent terminal
+        // view (id 'joe-agent'), NEVER the interactive local_terminal (that
+        // would interleave with the user's own typing). CR/LF and ANSI colour
+        // make it read like a real shell. Best-effort — never blocks the run.
+        const AGENT_TERM = 'joe-agent';
+        const paintToTerminal = (chunk: string) => {
+            try {
+                if (chunk) broadcast({ type: 'terminal_output', id: AGENT_TERM, data: chunk } as any);
+            } catch { /* the view is a window, never a dependency */ }
+        };
+        const echoCommand = () => paintToTerminal(`\r\n\x1b[36m$ ${redactCmd(command)}\x1b[0m\r\n`);
+        const echoResult = (stdout: string, stderr: string, exit: number) => {
+            const body = String(stdout || '') + (stderr ? `\x1b[31m${stderr}\x1b[0m` : '');
+            // Terminals want CRLF; a bare LF from a child process stair-steps.
+            paintToTerminal(body.replace(/\r?\n/g, '\r\n'));
+            paintToTerminal(exit === 0 ? '\x1b[32m✓\x1b[0m\r\n' : `\x1b[31m✗ exit ${exit}\x1b[0m\r\n`);
+        };
+
         if (dryRun) {
             const safeCmd = redactCmd(command);
             return { ok: true, output: { dryRun: true, status: 'success', command: safeCmd, stdout: `[dry run] ${safeCmd}`, exitCode: 0 }, logs: [`dryRun: ${safeCmd}`] };
@@ -619,10 +639,12 @@ export class ShellExecuteTool extends BaseTool {
                 };
             }
 
+            echoCommand();
             const r = await handleShellCommand(command, [], workDir, timeoutVal, false, context?.sessionId);
             const durationMs = Date.now() - startedAt;
             logs.push(...(r.logs || []));
             logs.push(`exec=${redactCmd(command)} server=local exit=${r.ok ? 0 : 1}`);
+            echoResult(String(r.output || ''), r.ok ? '' : String(r.error || ''), r.ok ? 0 : 1);
 
             return {
                 ok: r.ok,
