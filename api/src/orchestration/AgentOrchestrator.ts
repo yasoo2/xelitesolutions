@@ -333,6 +333,7 @@ export class AgentOrchestrator {
             sessionId: goalContext?.sessionId || dag.id,
             workspaceId: goalContext?.workspaceId,
             userId: goalContext?.userId,
+            userName: goalContext?.userName,
             traceId,
             memory: memory.getHistory(),
             modelConfig: goalContext?.modelConfig,

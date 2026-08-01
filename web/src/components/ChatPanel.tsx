@@ -6,6 +6,8 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
 import JoeMark from './JoeMark';
+import { composeGreeting } from '../lib/greetings';
+import { resolveIdentity } from '../lib/userIdentity';
 import TaskTracker from './TaskTracker';
 import TodosPanel from './TodosPanel';
 import ArtifactCard from './ArtifactCard';
@@ -59,9 +61,16 @@ export default function ChatPanel({
     isCollapsed = false,
     sessionId
 }: ChatPanelProps) {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // «مساء الخير يا يونس — ما الذي سنصنعه الليلة؟»: the welcome greets the user
+    // by name and matches the actual time of day, rotating its phrasing daily.
+    const greeting = React.useMemo(
+        () => composeGreeting(i18n.language, resolveIdentity().name),
+        [i18n.language]
+    );
 
     // [Wakil 6.0] Subscribe to thinking phase
     const [thinkingPhase, setThinkingPhase] = useState<'analyzing' | 'synthesizing' | 'executing' | 'idle'>('idle');
@@ -142,10 +151,10 @@ export default function ChatPanel({
                         <JoeMark size={92} animate />
 
                         <h2 className="joe-empty-title" style={{ margin: 0, fontSize: 27, fontWeight: 800, letterSpacing: '-0.01em' }}>
-                            {t('emptyChatTitle', 'How can I help you today?')}
+                            {greeting.salute}
                         </h2>
-                        <p style={{ margin: 0, fontSize: 14.5, color: 'var(--joe-text-secondary)', lineHeight: 1.7, maxWidth: 460 }}>
-                            {t('emptyChatDesc', "I'm Joe — your software engineer. Ask me to build a site, write code or run a task, and I'll show you the result live.")}
+                        <p style={{ margin: 0, fontSize: 16.5, color: 'var(--joe-text-secondary)', lineHeight: 1.7, maxWidth: 460 }}>
+                            {greeting.question}
                         </p>
                         <div className="joe-suggest-grid">
                             {[

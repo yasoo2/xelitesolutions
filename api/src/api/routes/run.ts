@@ -52,6 +52,9 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         || String(req.headers['accept-language'] || '').trim().toLowerCase().split(',')[0].split('-')[0]
         || 'en';
     const userId = (req as any).auth?.sub || bodyUserId || 'anonymous';
+    // The signed token carries the user's display name — thread it through to
+    // the tools so Joe can address the user personally («مساء الخير يا يونس»).
+    const userName = String((req as any).auth?.name || '').trim();
     
     console.log(`[RunRoute] Unified execution requested for session: ${sessionId}`);
 
@@ -87,6 +90,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         AgentLoopService.execute(text, {
             sessionId,
             userId,
+            userName,
             traceId,
             language: uiLanguage,
             modelConfig: {

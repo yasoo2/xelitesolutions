@@ -22,9 +22,10 @@ export class AgentLoopService {
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    static async execute(goal: string, options: { sessionId?: string; userId?: string; traceId?: string; modelConfig?: any; language?: string } = {}) {
+    static async execute(goal: string, options: { sessionId?: string; userId?: string; userName?: string; traceId?: string; modelConfig?: any; language?: string } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
+        const userName = String(options.userName || '').trim();
         const traceId = options.traceId;
         const modelConfig = options.modelConfig;
         const language = String(options.language || 'ar').trim().toLowerCase().split('-')[0] || 'ar';
@@ -61,7 +62,7 @@ export class AgentLoopService {
                 id: runId,
                 traceId,
                 goal,
-                context: { userId, sessionId, modelConfig, memoryContext, language }
+                context: { userId, userName, sessionId, modelConfig, memoryContext, language }
             });
 
             // [FIX] Surface the final answer to the chat UI.
