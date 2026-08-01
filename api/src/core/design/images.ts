@@ -23,6 +23,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { parseSlot, scoreCandidate, SLOTS, buildImageBrief, groundSubject, type ImageSlot, type ImageBrief } from './image-brief';
 import { searchAllSources, availableSources, type SourceOutcome } from './photo-sources';
+import { englishSubject } from './subject-translation';
 
 /** What the archives said the last time one was asked — reported to the user so
  *  "no photo" is always accompanied by the reason there is no photo. */
@@ -36,9 +37,12 @@ let lastSourceOutcomes: SourceOutcome[] = [];
  */
 let lastRefusedForSubject = 0;
 let lastCandidatesSeen = 0;
-export function takeRelevanceTally(): { seen: number; refused: number } {
-    const t = { seen: lastCandidatesSeen, refused: lastRefusedForSubject };
-    lastCandidatesSeen = 0; lastRefusedForSubject = 0;
+/** How many subjects were asked in English on the archives' behalf — an Arabic
+ *  page's subjects are translated for the SEARCH, never for the alt text. */
+let lastTranslatedQueries = 0;
+export function takeRelevanceTally(): { seen: number; refused: number; translated: number } {
+    const t = { seen: lastCandidatesSeen, refused: lastRefusedForSubject, translated: lastTranslatedQueries };
+    lastCandidatesSeen = 0; lastRefusedForSubject = 0; lastTranslatedQueries = 0;
     return t;
 }
 
@@ -290,6 +294,17 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
     const cached = findCached(artifactDir, query, variant);
     if (cached) return { query, src: cached, alt: query, fromCache: true, slot };
 
+    /**
+     * ASK IN THE ARCHIVES' LANGUAGE. An Arabic page asks for Arabic subjects,
+     * and every archive titles its photographs in English — so the relevance
+     * gate compared Arabic words against English evidence and refused every
+     * candidate, on every Arabic build, always. The subject is translated by
+     * dictionary (deterministic, works with every LLM provider dead) for the
+     * SEARCH and the GATE; the alt text the visitor hears stays as written.
+     */
+    const { query: searchQuery, translated } = englishSubject(query);
+    if (translated) lastTranslatedQueries++;
+
     // EVERY archive is asked, in parallel, and their answers compete in one pool.
     // A single archive is a single archive's worth of luck: a subject Openverse is
     // thin on left a gradient in the page even though Wikimedia had the picture.
@@ -303,7 +318,7 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
     // 2400px original dropped into a 300px card are bytes the visitor pays for
     // and never sees. 2x the slot minimum keeps it crisp on a retina screen.
     const wanted = Math.round(SLOTS[slot].minWidth * 1.25);
-    const { candidates, outcomes } = await searchAllSources(query, timeoutMs, wanted);
+    const { candidates, outcomes } = await searchAllSources(searchQuery, timeoutMs, wanted);
     lastSourceOutcomes = outcomes;
     // A subject the model asked for twice must not come back as the same photo
     // in both places — a build shipped the identical portrait as two different
@@ -325,14 +340,14 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
      * gate creates, so it is the one it has to own up to.
      */
     lastRefusedForSubject += candidates.filter(
-        c => !isRelevant(query, { title: c.title, description: c.description, tags: c.tags })).length;
+        c => !isRelevant(searchQuery, { title: c.title, description: c.description, tags: c.tags })).length;
     lastCandidatesSeen += candidates.length;
 
     const ranked = candidates
-        .filter(c => isRelevant(query, { title: c.title, description: c.description, tags: c.tags }))
+        .filter(c => isRelevant(searchQuery, { title: c.title, description: c.description, tags: c.tags }))
         .map(c => ({
             c,
-            score: scoreCandidate(query, slot, { title: c.title, description: c.description, tags: c.tags },
+            score: scoreCandidate(searchQuery, slot, { title: c.title, description: c.description, tags: c.tags },
                 c.width && c.height ? { width: c.width, height: c.height } : null),
         }))
         .filter(x => x.score > 25)
@@ -349,7 +364,7 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
         // Training Command" — a military exercise on a consulting page. Require
         // the result's own metadata to share a meaningful word with the subject
         // that was asked for, so an unrelated hit is skipped rather than shipped.
-        if (!isRelevant(query, r)) continue;
+        if (!isRelevant(searchQuery, r)) continue;
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), timeoutMs);
         try {
@@ -452,6 +467,8 @@ export interface ImageResolution {
      */
     candidatesSeen: number;
     refusedForSubject: number;
+    /** Subjects translated to English so the archives could understand them. */
+    translatedQueries: number;
 }
 
 /**
@@ -539,7 +556,7 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     }
     const queries: string[] = [];
     for (const p of parsed) if (!queries.includes(p.key)) queries.push(p.key);
-    if (!queries.length) return { html, requested: 0, real: 0, credits: [], bytes: 0, sources: {}, sourceErrors: [], candidatesSeen: 0, refusedForSubject: 0 };
+    if (!queries.length) return { html, requested: 0, real: 0, credits: [], bytes: 0, sources: {}, sourceErrors: [], candidatesSeen: 0, refusedForSubject: 0, translatedQueries: 0 };
 
     // How many times each subject appears — a repeat needs its own photo.
     const occurrences = new Map<string, number>();
@@ -609,6 +626,7 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
         sourceErrors: Array.from(failures, ([p, r]) => `${p}: ${r}`),
         candidatesSeen: tally.seen,
         refusedForSubject: tally.refused,
+        translatedQueries: tally.translated,
     };
 }
 

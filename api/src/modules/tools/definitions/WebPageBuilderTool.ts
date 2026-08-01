@@ -1069,6 +1069,7 @@ the WORDS, not the structure.`;
                 }
                 logs.push(`images: ${r.real}/${r.requested} real, ${Math.round(r.bytes / 1024)} KB, rest gradient`
                     + ` [${Object.entries(r.sources).map(([k, v]) => `${k}×${v}`).join(', ') || 'none'}]`
+                    + (r.translatedQueries ? ` (${r.translatedQueries} subject(s) searched in English for the archives)` : '')
                     + (r.sourceErrors.length ? ` (${r.sourceErrors.join('; ')})` : ''));
             } catch (e: any) { logs.push(`image sourcing failed: ${e?.message || e}`); }
         }

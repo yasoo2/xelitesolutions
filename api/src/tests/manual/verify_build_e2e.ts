@@ -633,12 +633,16 @@ async function main() {
      * closing `done` per written file whose content is the complete document.
      */
     {
-        const chunks = fileStreamEvents.filter(e => !e.done);
+        // Whitespace-only chunks are section SEPARATORS (a streamed section's
+        // closing "\n ✓") — they carry no content on purpose and must not
+        // count against the markup ratio. With token streaming a section
+        // arrives as several ~512-byte flushes; each is judged on its text.
+        const chunks = fileStreamEvents.filter(e => !e.done && e.chunk.trim().length > 0);
         const dones = fileStreamEvents.filter(e => e.done);
-        const realHtml = chunks.filter(e => /<(section|header|footer|div|main)\b/i.test(e.chunk));
+        const realHtml = chunks.filter(e => /<[a-z][^>]*>|<\/[a-z]+>|class="|<(section|header|footer|div|main)\b/i.test(e.chunk));
         const completeDocs = dones.filter(e => /<!DOCTYPE html/i.test(e.chunk) || /<html/i.test(e.chunk));
         const files = new Set(fileStreamEvents.map(e => e.file));
-        console.log(`\nlive stream: ${chunks.length} section chunk(s), ${dones.length} file completion(s) across ${files.size} file(s)`);
+        console.log(`\nlive stream: ${chunks.length} content chunk(s), ${dones.length} file completion(s) across ${files.size} file(s)`);
         if (!chunks.length) { console.log('  ✗ [critical] no live section chunks were broadcast — the Logs panel would stay empty'); totalCritical++; }
         else if (realHtml.length < chunks.length * 0.9) { console.log(`  ! [major] only ${realHtml.length}/${chunks.length} chunks contain real markup`); totalMajor++; }
         if (!dones.length) { console.log('  ✗ [critical] no file was announced as written — the panel never closes a file'); totalCritical++; }
