@@ -2759,61 +2759,74 @@ body:not(.rtl) .joe-user-info {
     overflow: hidden;
 }
 
+/* Compact, modern onboarding. The old card was 520px wide with 40px paddings
+   and read as a landing page; this one is a focused 420px dialog a laptop
+   screen swallows whole — half the vertical space, same information. */
 .onboarding-modal {
-    width: 520px;
+    width: 420px;
+    /* global.css gives every .dialog-box 28px/32px padding; stacked on this
+       modal's own section paddings it squeezed the option cards to 314px and
+       wrapped their text four lines tall. This modal spaces itself. */
+    padding: 0;
     border: 1px solid var(--joe-gold-border);
-    background: var(--joe-bg-panel);
+    /* A faint gold wash bleeding from the top edge — depth without noise. */
+    background:
+        radial-gradient(120% 70px at 50% 0%, color-mix(in srgb, var(--joe-gold-primary, #d4a643) 9%, transparent), transparent),
+        var(--joe-bg-panel);
     box-shadow: var(--joe-shadow-lg);
-    border-radius: 12px;
-    /* Sharper, more technical corners */
+    border-radius: 16px;
 }
 
 .onboarding-header {
-    padding: 40px 32px 24px;
+    padding: 24px 24px 14px;
     text-align: center;
 }
 
 .onboarding-badge {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 14px;
+    gap: 6px;
+    padding: 4px 12px;
     background: var(--joe-gold-subtle);
     border: 1px solid var(--joe-gold-border);
-    border-radius: 4px;
+    border-radius: 999px;
     color: var(--joe-gold-primary);
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    margin-bottom: 20px;
+    letter-spacing: 1.2px;
+    margin-bottom: 12px;
 }
 
 .onboarding-option-card {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 18px 20px;
+    gap: 12px;
+    padding: 12px 14px;
+    /* global.css centers everything inside .dialog-box; a list row reads
+       start-aligned, and centering wrapped the descriptions into tall
+       four-line columns. */
+    text-align: start;
     background: var(--joe-surface-subtle, rgba(255, 255, 255, 0.02));
     border: 1px solid var(--joe-border);
-    border-radius: 8px;
+    border-radius: 12px;
     cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
     position: relative;
     overflow: hidden;
 }
 
 .onboarding-option-card:hover {
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     background: var(--joe-bg-hover);
     border-color: var(--joe-gold-border);
     box-shadow: var(--joe-shadow-md);
 }
 
 .onboarding-card-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 8px;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2822,48 +2835,65 @@ body:not(.rtl) .joe-user-info {
     border: 1px solid var(--joe-border);
 }
 
-.onboarding-card-title {
-    margin: 0;
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--joe-text-primary);
-    margin-bottom: 2px;
+.onboarding-card-content {
+    flex: 1 1 auto;                    /* take the row's free width... */
+    min-width: 0;                      /* ...and ellipsize long labels, never wrap tall */
 }
 
-.onboarding-card-desc {
+/* .onboarding-modal prefix on purpose: global.css styles EVERY `.dialog-box h3`
+   as a 1.5rem gradient headline and every `.dialog-box p` with a 28px bottom
+   margin — one class alone loses that specificity fight, and the option cards
+   rendered as giant green banners (seen in the user's screenshot). Two classes
+   win; the gradient text-fill is explicitly reset. */
+.onboarding-modal .onboarding-card-title {
+    margin: 0 0 1px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--joe-text-primary);
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.onboarding-modal .onboarding-card-desc {
     margin: 0;
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--joe-text-secondary);
     line-height: 1.4;
     opacity: 0.8;
 }
 
 .onboarding-card-tag {
-    font-size: 9px;
+    font-size: 8.5px;
     font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 2px 7px;
+    border-radius: 999px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     background: var(--joe-surface-subtle, rgba(255, 255, 255, 0.05));
-    margin-left: auto;
+    margin-inline-start: auto;
+    flex-shrink: 0;
 }
 
+/* One slim row: the feature chips and the skip link share it instead of two
+   tall stacked footers with 40px of padding each. */
 .onboarding-footer {
-    padding: 24px 32px 40px;
+    padding: 10px 20px 16px;
     text-align: center;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 24px;
-    opacity: 0.5;
+    gap: 16px;
+    opacity: 0.55;
 }
 
 .onboarding-feature-item {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 11px;
+    gap: 5px;
+    font-size: 10.5px;
     color: var(--joe-text-muted);
 }
 

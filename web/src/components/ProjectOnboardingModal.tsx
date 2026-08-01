@@ -57,16 +57,16 @@ const ProjectOnboardingModal: React.FC<Props> = ({ isOpen, onClose, onSelectLoca
                             <Sparkles size={12} />
                             <span>{t('onboardingWelcome', 'Welcome to JOE')}</span>
                         </motion.div>
-                        <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 600, color: 'var(--joe-text-primary)', letterSpacing: '-0.01em' }}>
+                        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 650, color: 'var(--joe-text-primary)', letterSpacing: '-0.01em' }}>
                             {t('onboardingTitle', 'Project setup')}
                         </h2>
-                        <p style={{ marginTop: '8px', fontSize: '13px', color: 'var(--joe-text-secondary)', opacity: 0.7, maxWidth: '400px', marginInline: 'auto', lineHeight: '1.5' }}>
+                        <p style={{ marginTop: '5px', fontSize: '12px', color: 'var(--joe-text-secondary)', opacity: 0.7, maxWidth: '320px', marginInline: 'auto', lineHeight: '1.5' }}>
                             {t('onboardingSubtitle', 'Choose the workspace to start building your app.')}
                         </p>
                     </div>
 
                     {/* Options Stack - Clean & Technical */}
-                    <div style={{ padding: '0 32px 32px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ padding: '0 20px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {/* Local Option */}
                         <motion.div
                             className="onboarding-option-card"
@@ -76,14 +76,14 @@ const ProjectOnboardingModal: React.FC<Props> = ({ isOpen, onClose, onSelectLoca
                             onClick={onSelectLocal}
                         >
                             <div className="onboarding-card-icon" style={{ color: '#3b82f6' }}>
-                                <Monitor size={24} />
+                                <Monitor size={19} />
                             </div>
                             <div className="onboarding-card-content">
                                 <h3 className="onboarding-card-title">{t('onboardingLocal', 'Local environment')}</h3>
                                 <p className="onboarding-card-desc">{t('onboardingLocalDesc', 'Start straight away on this machine.')}</p>
                             </div>
                             <div className="onboarding-card-tag" style={{ color: '#3b82f6' }}>{t('onboardingFast', 'Fast')}</div>
-                            <ArrowUpRight size={16} style={{ opacity: 0.3 }} />
+                            <ArrowUpRight size={14} style={{ opacity: 0.3, flexShrink: 0 }} />
                         </motion.div>
 
                         {/* GitHub Option */}
@@ -96,40 +96,38 @@ const ProjectOnboardingModal: React.FC<Props> = ({ isOpen, onClose, onSelectLoca
                             onClick={onSelectGitHub}
                         >
                             <div className="onboarding-card-icon" style={{ color: 'var(--joe-gold-primary)' }}>
-                                <Github size={24} />
+                                <Github size={19} />
                             </div>
                             <div className="onboarding-card-content">
                                 <h3 className="onboarding-card-title">{t('onboardingGitHub', 'GitHub repository')}</h3>
                                 <p className="onboarding-card-desc">{t('onboardingGitHubDesc', 'Link the project to an external repository for syncing.')}</p>
                             </div>
-                            <div className="onboarding-card-tag" style={{ color: 'var(--joe-gold-primary)' }}>{t('onboardingPro', 'Professional')}</div>
-                            <ArrowUpRight size={16} style={{ opacity: 0.3 }} />
+                            <div className="onboarding-card-tag" style={{ color: 'var(--joe-gold-primary)' }}>{t('onboardingProShort', 'Pro')}</div>
+                            <ArrowUpRight size={14} style={{ opacity: 0.3, flexShrink: 0 }} />
                         </motion.div>
                     </div>
 
-                    {/* Minimal Footer */}
+                    {/* One slim row: feature chips + skip, instead of two tall footers */}
                     <div className="onboarding-footer">
                         <div className="onboarding-feature-item">
-                            <Zap size={14} />
+                            <Zap size={12} />
                             <span>AI Integration</span>
                         </div>
                         <div className="onboarding-feature-item">
-                            <Shield size={14} />
+                            <Shield size={12} />
                             <span>Secure</span>
                         </div>
-                    </div>
-
-                    {/* Setup Later */}
-                    <div style={{ paddingBottom: '32px', textAlign: 'center' }}>
                         <button
                             onClick={onClose}
                             style={{
                                 background: 'transparent',
                                 border: 'none',
                                 color: 'var(--joe-text-muted)',
-                                fontSize: '11px',
+                                fontSize: '10.5px',
                                 cursor: 'pointer',
-                                opacity: 0.6
+                                textDecoration: 'underline',
+                                textUnderlineOffset: '3px',
+                                padding: 0,
                             }}
                         >
                             {t('onboardingSkip', 'Set up later')}
