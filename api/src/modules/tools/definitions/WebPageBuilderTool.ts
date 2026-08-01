@@ -9,6 +9,7 @@ import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
 import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
 import { auditVisually, visualRepairBrief, type VisualFinding } from '../../../core/quality/visual-audit';
 import { applyMechanicalRepairs } from '../../../core/quality/repair-engine';
+import { checkpointKey, loadCheckpoint, saveCheckpointSection, clearCheckpoint } from '../../../core/resume/checkpoint';
 import { auditBehaviour, behaviourRepairBrief, type BehaviourFinding } from '../../../core/quality/behaviour-audit';
 import { workspaceService } from '../../services/WorkspaceService';
 import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirstCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
@@ -508,7 +509,31 @@ ${prev!.html}`
             const titles: string[] = [];
             let photosLeft = photos;
 
+            // [RESUME] Sections accepted by an EARLIER run of this same request
+            // (a build that died on quota exhaustion, a closed laptop) are
+            // reloaded instead of re-generated — the model is only asked for
+            // what is actually missing. Safe: the design seeds are pure
+            // functions of the request text, so old and new sections share one
+            // design by construction.
+            const cpKey = checkpointKey(sessionKey, request, kind);
+            const cp = loadCheckpoint(ARTIFACT_DIR, cpKey);
+            let resumedSections = 0;
+            if (cp && sessionId) broadcastThinkingDetail(sessionId, isAr
+                ? `⏯️ وجدت بناءً سابقًا غير مكتمل لنفس الطلب — أستأنف من نقطة الحفظ`
+                : `⏯️ Found an unfinished earlier build of this request — resuming from checkpoint`);
+
             for (const plan of plans) {
+                const savedHtml = cp?.sections?.[plan.id];
+                if (savedHtml) {
+                    written.push({ ...plan, html: savedHtml, ok: true });
+                    titles.push(cp!.titles?.[plan.id] || plan.spec.split(':')[0]);
+                    photosLeft = Math.max(0, photosLeft - (savedHtml.match(/\{\{\s*IMAGE\s*:/gi) || []).length);
+                    resumedSections++;
+                    streamCodeToLogs(sessionId, 'index.html', savedHtml + '\n',
+                        { label: `section ${plan.index}/${plans.length}: ${plan.id} ⏯ from checkpoint` });
+                    logs.push(`section ${plan.index} (${plan.id}): resumed from checkpoint (${savedHtml.length} bytes, no model call)`);
+                    continue;
+                }
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? `✍️ أكتب القسم ${plan.index}/${plans.length}: ${plan.spec.split(':')[0]}`
                     : `✍️ Writing section ${plan.index}/${plans.length}: ${plan.spec.split(':')[0]}`);
@@ -630,6 +655,9 @@ ${prev!.html}`
                 if (got.ok) {
                     titles.push(plan.spec.split(':')[0]);
                     photosLeft = Math.max(0, photosLeft - (got.html.match(/\{\{\s*IMAGE\s*:/gi) || []).length);
+                    // Persist the accepted section NOW — if the next model call
+                    // dies on quota, this work survives to the next attempt.
+                    saveCheckpointSection(ARTIFACT_DIR, cpKey, request, plan.id, got.html, plan.spec.split(':')[0]);
                     // The section's real HTML at acceptance — but only when the
                     // provider did NOT stream its tokens above; otherwise the
                     // same content would land twice. A streamed section just
@@ -664,9 +692,14 @@ ${prev!.html}`
                     sprite: iconSprite(),
                     script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}\n${themeScript}`,
                 });
-                logs.push(`section-wise build: ${ok.length}/${plans.length} sections, ${html.length} bytes`);
+                logs.push(`section-wise build: ${ok.length}/${plans.length} sections, ${html.length} bytes`
+                    + (resumedSections ? ` (${resumedSections} resumed from checkpoint — no model calls spent on them)` : ''));
+                // The page assembled — this build's checkpoint has served its
+                // purpose. An incomplete build keeps it for the next attempt.
+                clearCheckpoint(ARTIFACT_DIR, cpKey);
             } else {
-                logs.push(`section-wise build produced only ${ok.length}/${plans.length} sections — falling back to a single pass`);
+                logs.push(`section-wise build produced only ${ok.length}/${plans.length} sections — falling back to a single pass`
+                    + (ok.length ? `; ${ok.length} good section(s) are checkpointed and will be REUSED if this request is retried` : ''));
                 sectionReport = null;
             }
         }
