@@ -86,3 +86,23 @@ describe('the translation feeds the search and the gate — never the alt text',
         expect(src).toMatch(/translatedQueries: tally\.translated/);
     });
 });
+
+describe('gap-fill: subjects that MEASURED as passthrough now translate', () => {
+    // Each of these fell to a gradient because the dictionary did not know the
+    // words — proven by a coverage probe, fixed by adding the vocabulary.
+    const cases: Array<[string, RegExp]> = [
+        ['شقة حديثة للبيع', /apartment|for sale/],
+        ['ملعب كرة قدم', /stadium|football/],
+        ['صالون تجميل', /salon|beauty/],
+        ['قاعة أفراح', /hall|wedding/],
+        ['طائرة في السماء', /airplane|sky/],
+    ];
+    for (const [subject, expected] of cases) {
+        it(`«${subject}» now reaches the archives in English`, () => {
+            const r = englishSubject(subject);
+            expect(r.translated).toBe(true);
+            expect(r.query).not.toMatch(/[؀-ۿ]/); // no Arabic left in the search query
+            expect(r.query).toMatch(expected);
+        });
+    }
+});

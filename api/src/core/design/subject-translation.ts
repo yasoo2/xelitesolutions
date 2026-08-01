@@ -123,6 +123,40 @@ const AR_EN: Record<string, string> = {
     'جمال': 'beauty', 'شعر': 'hair', 'عطور': 'perfume', 'مجوهرات': 'jewelry',
     'ساعه': 'watch', 'اطفال': 'children', 'عائله': 'family', 'زفاف': 'wedding',
     'قانون': 'law', 'قانوني': 'legal', 'عداله': 'justice', 'محكمه': 'court',
+    // ---- gap-fill: measured passthroughs on real Arabic subjects ----
+    // Every entry here was a subject that fell to a gradient because the
+    // dictionary did not know it. Housing / property
+    'شقه': 'apartment', 'شقق': 'apartments', 'فيلا': 'villa', 'عماره': 'building',
+    'غرفه': 'room', 'صاله المعيشه': 'living room', 'مطبخ حديث': 'modern kitchen',
+    'حمام': 'bathroom', 'مفتاح': 'key', 'مفروش': 'furnished',
+    // sale / commerce verbs & words
+    'بيع': 'sale', 'للبيع': 'for sale', 'ايجار': 'rent', 'للايجار': 'for rent',
+    'شراء': 'buying', 'خصم': 'discount', 'عرض خاص': 'special offer', 'تخفيضات': 'discounts',
+    // sports & venues
+    'ملعب': 'stadium', 'كره': 'ball', 'قدم': 'football', 'سله': 'basketball',
+    'تنس': 'tennis', 'سباحه': 'swimming', 'مسبح': 'swimming pool', 'جري': 'running',
+    'بطوله': 'championship', 'فريق رياضي': 'sports team', 'كابتن': 'captain',
+    // beauty & salon
+    'صالون': 'salon', 'تجميل': 'beauty salon', 'حلاقه': 'barber', 'قص': 'haircut',
+    'مكياج': 'makeup', 'اظافر': 'nails', 'بشره': 'skincare', 'سبا': 'spa', 'مساج': 'massage',
+    // events & weddings
+    'قاعه': 'hall', 'افراح': 'wedding', 'حفله': 'party', 'مناسبه': 'event',
+    'تخرج': 'graduation', 'استقبال': 'reception', 'ورود': 'flowers', 'هدايا': 'gifts',
+    'كوش': 'wedding stage', 'دعوه': 'invitation',
+    // travel & sky
+    'طائره': 'airplane', 'سماء': 'sky', 'غيوم': 'clouds', 'سحاب': 'clouds',
+    'مطار دولي': 'international airport', 'جواز': 'passport', 'حقيبه': 'luggage',
+    'وجهه': 'destination', 'فندق فاخر': 'luxury hotel', 'منتجع': 'resort',
+    // more everyday nouns that appear in briefs
+    'قهوه عربيه': 'arabic coffee', 'حلويات شرقيه': 'middle eastern sweets',
+    'خضروات': 'vegetables', 'فواكه': 'fruits', 'لحوم': 'meat', 'دجاج': 'chicken',
+    'سمك': 'fish', 'ارز': 'rice', 'عسل': 'honey', 'زيتون': 'olives',
+    'ورشه سيارات': 'car workshop', 'غسيل': 'car wash', 'اطارات': 'tires',
+    'نظافه': 'cleaning', 'تنظيف': 'cleaning', 'صيانه': 'maintenance',
+    'كهربائي': 'electrician', 'سباك': 'plumber', 'نجار': 'carpenter', 'دهان': 'painter',
+    'حداد': 'blacksmith', 'بلاط': 'tiles', 'اسمنت': 'cement',
+    'مخبز': 'bakery', 'مخبوزات': 'baked goods', 'معجنات': 'pastries',
+    'زبون سعيد': 'happy customer', 'تقييم': 'review', 'نجوم': 'stars', 'جائزه': 'award',
 };
 
 /** The exact form, then suffix-stripped forms of it. */
