@@ -22,9 +22,19 @@ Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "`n[1/4] سحب آخر تحديث من GitHub..." -ForegroundColor Yellow
 
 $before = (git rev-parse --short HEAD 2>$null)
-git pull origin main
+# نلتقط مخرجات السحب لنميّز بين نوعي الفشل — درس من عطل حقيقي: انقطاع
+# الإنترنت (Could not resolve host) عولج خطأً كتعارض تاريخ، فجرى stash
+# و reset --hard بلا داعٍ. الشبكة المقطوعة ليست تعارضاً.
+$pullOutput = (git pull origin main 2>&1 | Out-String)
+Write-Host $pullOutput
+$pullFailed = ($LASTEXITCODE -ne 0)
+$isNetworkFailure = $pullFailed -and ($pullOutput -match 'Could not resolve host|unable to access|Connection timed out|Could not read from remote|Failed to connect|Network is unreachable|SSL_ERROR|Recv failure')
 
-if ($LASTEXITCODE -ne 0) {
+if ($isNetworkFailure) {
+    Write-Host "`n[!] لا يوجد اتصال بالإنترنت (أو GitHub غير متاح الآن)." -ForegroundColor Yellow
+    Write-Host "    لن أغيّر شيئاً في نسختك — سأشغّل النسخة الحالية كما هي." -ForegroundColor Yellow
+    Write-Host "    أعد تشغيل update-joe.ps1 حين يعود الاتصال لتحصل على آخر تحديث." -ForegroundColor DarkGray
+} elseif ($pullFailed) {
     Write-Host "`n[!] فشل السحب العادي (غالباً بسبب تعارض في التاريخ)." -ForegroundColor Red
     Write-Host "    سأجعل نسختك مطابقة تماماً لما على GitHub." -ForegroundColor Yellow
 

@@ -12,8 +12,22 @@ import { uiText } from '../../shared/utils/language';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
 
 /**
+ * Lessons Joe applies to every system HE builds — each line was paid for by a
+ * real outage of Joe itself (the adm-zip crash loop of 2026-08). A launcher
+ * that trusts the mere existence of node_modules restarts a deterministic
+ * crash forever; an updater that mistakes a dead network for a history
+ * conflict destroys local state. Joe must never ship those bugs to others.
+ */
+export const BUILD_DISCIPLINE = [
+    '[ENGINEERING DISCIPLINE — apply when you build launch/update/deploy scripts or long-running services]:',
+    '1. Dependency freshness: an install step must re-run when the manifest (package.json, requirements.txt, ...) changes — compare a stored hash/stamp; never skip installing just because node_modules (or venv) exists.',
+    '2. Crash-loop guard: any auto-restart loop must stop after ~3 consecutive fast crashes (<15s uptime) with a clear message naming the likely cause, and should attempt ONE automatic dependency reinstall before giving up. Never restart a deterministic crash forever.',
+    '3. Failure taxonomy in updaters: distinguish network failure (could not resolve host / timeout) from state conflict (merge/history). Network failure = warn and keep the current version; NEVER destructively reset over a connectivity error.',
+].join('\n');
+
+/**
  * AgentLoopService - Dynamic Runtime Gateway
- * 
+ *
  * Provides two execution paths:
  * 1. execute() — Dynamic agent-driven via AgentOrchestrator
  * 2. runPlannedPhasesIfPresent() — Canonical pipeline with self-healing (AGENTS.md)
@@ -31,9 +45,13 @@ export class AgentLoopService {
         // tool see them — this is what makes «استخدم الطرفية في كل بناء» actually
         // change how the whole run behaves, not just one reply.
         const standing = String(options.systemInstructions || '').trim().slice(0, 4000);
-        const effectiveGoal = standing
-            ? `${goal}\n\n[STANDING USER INSTRUCTIONS — always apply to HOW you work]:\n${standing}`
-            : goal;
+        // The build discipline rides only on runs that smell like engineering —
+        // scripts, services, deploys — so a plain question is not taxed with it.
+        const looksLikeEngineering = /build|deploy|script|install|server|service|launch|restart|update|setup|مشروع|سكربت|خادم|تشغيل|تحديث|نشر|ابنِ|ابني|موقع|تطبيق|نظام/i.test(goal);
+        const blocks = [goal];
+        if (standing) blocks.push(`[STANDING USER INSTRUCTIONS — always apply to HOW you work]:\n${standing}`);
+        if (looksLikeEngineering) blocks.push(BUILD_DISCIPLINE);
+        const effectiveGoal = blocks.join('\n\n');
         const traceId = options.traceId;
         const modelConfig = options.modelConfig;
         const language = String(options.language || 'ar').trim().toLowerCase().split('-')[0] || 'ar';

@@ -123,15 +123,35 @@ if (-not $node) {
 Push-Location $apiDir
 
 # [1/3] تثبيت التبعيات إن لزم
-if (-not (Test-Path "$apiDir\node_modules")) {
-    Write-Host "`n[1/3] Installing dependencies (first run only, قد يأخذ دقائق)..." -ForegroundColor Yellow
+# الدرس المستفاد: فحص "هل node_modules موجود؟" وحده أوقع جو في حلقة انهيار لا
+# تنتهي (Cannot find module 'adm-zip') — لأن التحديث أضاف تبعيات جديدة إلى
+# package.json بينما node_modules قديم موجود، فتخطّى السكربت التثبيت.
+# الحل الصحيح: نُقارن بصمة package.json الحالية ببصمة آخر تثبيت ناجح (ملف
+# .dep-stamp). إن تغيّرت التبعيات في أي git pull، يُعاد التثبيت تلقائياً.
+function Sync-Dependencies {
+    param([string]$dir, [string]$label)
+    $pkg = Join-Path $dir "package.json"
+    $stampFile = Join-Path $dir ".dep-stamp"
+    $currentHash = (Get-FileHash -Path $pkg -Algorithm SHA256).Hash
+    $storedHash = if (Test-Path $stampFile) { (Get-Content $stampFile -Raw -ErrorAction SilentlyContinue).Trim() } else { "" }
+    $needInstall = (-not (Test-Path (Join-Path $dir "node_modules"))) -or ($storedHash -ne $currentHash)
+    if (-not $needInstall) {
+        Write-Host "`n[$label] Dependencies up to date." -ForegroundColor Green
+        return $true
+    }
+    Write-Host "`n[$label] Dependencies changed (or first run) — installing... قد يأخذ دقائق" -ForegroundColor Yellow
     npm install --no-audit --no-fund --legacy-peer-deps
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "[X] فشل تثبيت التبعيات. راجع الأخطاء أعلاه." -ForegroundColor Red
-        Pop-Location; Read-Host "اضغط Enter للخروج"; exit 1
+        Write-Host "[X] فشل تثبيت التبعيات في $dir. راجع الأخطاء أعلاه." -ForegroundColor Red
+        return $false
     }
-} else {
-    Write-Host "`n[1/3] Dependencies already installed." -ForegroundColor Green
+    Set-Content -Path $stampFile -Value $currentHash -NoNewline
+    Write-Host "[$label] Dependencies installed." -ForegroundColor Green
+    return $true
+}
+
+if (-not (Sync-Dependencies -dir $apiDir -label "1/3")) {
+    Pop-Location; Read-Host "اضغط Enter للخروج"; exit 1
 }
 
 # [1b/3] تثبيت محرّك المتصفح (Chromium) الذي يستخدمه جو للتصفّح — مرّة واحدة فقط.
@@ -165,9 +185,10 @@ Pop-Location
 $webDir = "$PSScriptRoot\web"
 if (Test-Path $webDir) {
     Push-Location $webDir
-    if (-not (Test-Path "$webDir\node_modules")) {
-        Write-Host "`n[2b/3] Installing web dependencies (first run only)..." -ForegroundColor Yellow
-        npm install --no-audit --no-fund --legacy-peer-deps
+    # نفس درس الـ API: تبعيات الواجهة تتغيّر مع التحديثات (مثل xterm-addon-search)
+    # وتخطّي التثبيت يُفشل البناء ويُبقي واجهة قديمة تعمل بصمت.
+    if (-not (Sync-Dependencies -dir $webDir -label "2b/3")) {
+        Write-Host "[!] تعذّر تثبيت تبعيات الواجهة — سيُحاول البناء بما هو موجود." -ForegroundColor Red
     }
     Write-Host "`n[2b/3] Building Web UI (ensures the latest frontend fixes are live)..." -ForegroundColor Yellow
     npm run build
@@ -179,15 +200,48 @@ if (Test-Path $webDir) {
     Pop-Location
 }
 
-# [3/3] التشغيل مع إعادة تشغيل تلقائية
+# [3/3] التشغيل مع إعادة تشغيل تلقائية + حارس حلقة الانهيار
+# إن انهار جو فور الإقلاع ثلاث مرات متتالية (أقل من 15 ثانية لكل محاولة) فالعطل
+# حتمي — إعادة التشغيل رقم 23 لن تصلح ما لم تصلحه رقم 2. نتوقف برسالة واضحة
+# تشرح العلاج بدل حرق المعالج في حلقة لا نهائية.
 $restartCount = 0
+$fastCrashes = 0
 while ($true) {
     $restartCount++
     Write-Host "`n[3/3] Starting Joe (attempt #$restartCount)  ->  http://localhost:5002/joe" -ForegroundColor Yellow
     Push-Location $apiDir
+    $startedAt = Get-Date
     node dist/index.js
     $exitCode = $LASTEXITCODE
+    $aliveSeconds = ((Get-Date) - $startedAt).TotalSeconds
     Pop-Location
+
+    if ($aliveSeconds -lt 15) { $fastCrashes++ } else { $fastCrashes = 0 }
+
+    # علاج ذاتي: أول انهيار سريع سببه الأشيع تبعية ناقصة بعد تحديث —
+    # نعيد التثبيت مرة واحدة تلقائياً قبل إعادة المحاولة بدل انتظار المستخدم.
+    if ($fastCrashes -eq 1) {
+        Write-Host "`n[heal] انهيار سريع — أعيد تثبيت التبعيات احتياطاً (العلاج الأشيع)..." -ForegroundColor Yellow
+        Push-Location $apiDir
+        npm install --no-audit --no-fund --legacy-peer-deps
+        if ($LASTEXITCODE -eq 0) {
+            Set-Content -Path (Join-Path $apiDir ".dep-stamp") -Value (Get-FileHash -Path (Join-Path $apiDir "package.json") -Algorithm SHA256).Hash -NoNewline
+        }
+        Pop-Location
+    }
+
+    if ($fastCrashes -ge 3) {
+        Write-Host "`n============================================" -ForegroundColor Red
+        Write-Host "[X] جو انهار $fastCrashes مرات متتالية فور الإقلاع — التوقف عن إعادة المحاولة." -ForegroundColor Red
+        Write-Host "    السبب الأرجح: تبعيات ناقصة أو ملف تالف. جرّب بالترتيب:" -ForegroundColor Yellow
+        Write-Host "      1) cd $apiDir ; npm install --no-audit --no-fund --legacy-peer-deps" -ForegroundColor Yellow
+        Write-Host "      2) اقرأ رسالة الخطأ أعلاه (مثل Cannot find module '...' = تبعية ناقصة)" -ForegroundColor Yellow
+        Write-Host "      3) ثم أعد التشغيل: .\update-joe.ps1" -ForegroundColor Yellow
+        Write-Host "============================================" -ForegroundColor Red
+        Read-Host "اضغط Enter للخروج"
+        exit 1
+    }
+
     Write-Host "`n[!] Joe stopped (exit code: $exitCode). Restarting in 3 seconds... (اضغط Ctrl+C للإيقاف)" -ForegroundColor Red
     Start-Sleep -Seconds 3
 }

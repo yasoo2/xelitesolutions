@@ -53,3 +53,5 @@ api/last_stable_commit
 # Joe local secrets (never commit)
 joe-secrets.ps1
 api/.playwright-chromium-installed
+api/.dep-stamp
+web/.dep-stamp
