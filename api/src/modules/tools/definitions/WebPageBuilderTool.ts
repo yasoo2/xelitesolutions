@@ -526,6 +526,42 @@ ${prev!.html}`
             const cpKey = checkpointKey(sessionKey, request, kind);
             const cp = loadCheckpoint(ARTIFACT_DIR, cpKey);
             let resumedSections = 0;
+
+            // [PROGRESSIVE PREVIEW] The page grows ON SCREEN as sections land.
+            // After every accepted section a real partial document (same tokens,
+            // same layout CSS) is written and the Preview told to reload — with
+            // the split view, the user watches code stream on one side and the
+            // page take shape on the other. Image markers get the same gradient
+            // placeholder the pipeline uses, so nothing raw ever shows; the
+            // interactive runtime is left out until the final assembly (buttons
+            // wired halfway would be the dishonest kind of alive).
+            const partialFile = `joe-${sessionKey}.html`;
+            let partialsEmitted = 0;
+            const emitPartialPreview = (soFar: WrittenSection[]) => {
+                try {
+                    const okSoFar = soFar.filter(s => s.ok);
+                    if (!okSoFar.length) return;
+                    let partial = assemblePage({
+                        title: pageTitle({ request, isArabic: isAr, kindLabel: kind }),
+                        description: metaDescription({ request, isArabic: isAr, kindLabel: kind }),
+                        isArabic: isAr,
+                        tokenCss: paletteCss(palette),
+                        baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${flourishLayer}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                        sections: okSoFar,
+                        sprite: iconSprite(),
+                        script: '',
+                    });
+                    partial = partial.replace(/\{\{\s*IMAGE\s*:([^}]*)\}\}/gi, (_m, spec: string) =>
+                        gradientPlaceholder(String(spec).split('|').pop()!.trim() || 'image', palette.hue));
+                    fs.writeFileSync(path.join(ARTIFACT_DIR, partialFile), partial, 'utf-8');
+                    partialsEmitted++;
+                    const purl = `http://localhost:${PORT}/artifacts/${partialFile}?v=${Date.now()}`;
+                    broadcast({ type: 'preview_ready', sessionId, data: { url: purl, previewUrl: purl, sessionId, partial: true, sections: okSoFar.length } } as any);
+                    if (sessionId && partialsEmitted === 1) broadcastThinkingDetail(sessionId, isAr
+                        ? '👀 المعاينة الحية بدأت — شاهد الصفحة تكبر قسماً بعد قسم'
+                        : '👀 Live preview started — watch the page grow section by section');
+                } catch { /* the preview is a window, never a dependency of the build */ }
+            };
             if (cp && sessionId) broadcastThinkingDetail(sessionId, isAr
                 ? `⏯️ وجدت بناءً سابقًا غير مكتمل لنفس الطلب — أستأنف من نقطة الحفظ`
                 : `⏯️ Found an unfinished earlier build of this request — resuming from checkpoint`);
@@ -540,6 +576,7 @@ ${prev!.html}`
                     streamCodeToLogs(sessionId, 'index.html', savedHtml + '\n',
                         { label: `section ${plan.index}/${plans.length}: ${plan.id} ⏯ from checkpoint` });
                     logs.push(`section ${plan.index} (${plan.id}): resumed from checkpoint (${savedHtml.length} bytes, no model call)`);
+                    emitPartialPreview(written);
                     continue;
                 }
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
@@ -678,6 +715,7 @@ ${prev!.html}`
                     // Persist the accepted section NOW — if the next model call
                     // dies on quota, this work survives to the next attempt.
                     saveCheckpointSection(ARTIFACT_DIR, cpKey, request, plan.id, got.html, plan.spec.split(':')[0]);
+                    emitPartialPreview(written);
                     // The section's real HTML at acceptance — but only when the
                     // provider did NOT stream its tokens above; otherwise the
                     // same content would land twice. A streamed section just

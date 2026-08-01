@@ -14,6 +14,7 @@ import { ExecutionMemory } from '../core/orchestrator/ExecutionMemory';
 import { traceManager } from '../modules/services/TraceManager';
 import { executionFirewall } from './AgentExecutionFirewall';
 import intelligentRouter from '../core/llm/intelligent-router';
+import { withDeadline, NODE_DEADLINE_MS } from '../shared/utils/deadline';
 
 /** Tools the PlanningEngine picks DETERMINISTICALLY. A node carrying one of
  *  these already knows exactly what to run and with which input, so it must be
@@ -353,25 +354,31 @@ export class AgentOrchestrator {
         const nodeInput = this.resolveInputRefs(node.input, dag);
 
         try {
+          // [WALL CLOCK] The stall detector only runs BETWEEN iterations — an
+          // await that hangs inside a tool froze the whole run invisibly. Every
+          // node now has a hard deadline; on expiry the node fails HONESTLY
+          // («deadline_exceeded») and the run moves on or ends with a reason.
+          const deadline = <T,>(p: Promise<T>) =>
+            withDeadline(p, NODE_DEADLINE_MS, `node ${node.id} (${node.tool || node.agent || 'task'})`);
           if (isDirectAnswer) {
             const question = nodeInput?.question
               || (node.task || '').replace(/^(answering|respond to)\s*:\s*/i, '').trim()
               || node.task;
-            result = await executeTool('central_answer', { question }, executionContext);
+            result = await deadline(executeTool('central_answer', { question }, executionContext));
           } else if (node.tool === 'web_page_builder') {
             // Deterministic build tool — run it directly so the weak-model tool-picker
             // can't downgrade a "build a page" request back into a chat answer.
-            result = await executeTool('web_page_builder', nodeInput, executionContext);
+            result = await deadline(executeTool('web_page_builder', nodeInput, executionContext));
           } else if (typeof node.tool === 'string' && ((node.tool.startsWith('browser_') && node.tool !== 'browser_run') || DETERMINISTIC_TOOLS.includes(node.tool))) {
             // Deterministic tools (browser smart-tools, Google account, user's own
             // browser, file read/write) — run the exact tool directly so the weak-model
             // tool-picker or a Dev agent can't mis-handle a node that already names its
             // tool and carries a resolved input (e.g. write the browser's data to a file).
-            result = await executeTool(node.tool, nodeInput, executionContext);
+            result = await deadline(executeTool(node.tool, nodeInput, executionContext));
           } else if (agent) {
-            result = await agent.execute(node.task, nodeInput, executionContext);
+            result = await deadline(agent.execute(node.task, nodeInput, executionContext));
           } else {
-            result = await executeTool(node.tool, { ...nodeInput, context: memory.getHistory() }, executionContext);
+            result = await deadline(executeTool(node.tool, { ...nodeInput, context: memory.getHistory() }, executionContext));
           }
         } catch (err: any) {
           result = { ok: false, error: err.message };

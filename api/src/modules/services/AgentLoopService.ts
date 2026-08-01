@@ -9,6 +9,7 @@ import { executeTool } from './ToolService';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { longTermMemory } from '../../core/memory/long-term-memory';
 import { uiText } from '../../shared/utils/language';
+import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
 
 /**
  * AgentLoopService - Dynamic Runtime Gateway
@@ -65,12 +66,14 @@ export class AgentLoopService {
         } catch { /* non-fatal */ }
 
         try {
-            const result = await orchestrator.execute({
+            // [WALL CLOCK] The whole run has a hard ceiling. Past it the user
+            // gets an honest failure — never a spinner that lives forever.
+            const result = await withDeadline(orchestrator.execute({
                 id: runId,
                 traceId,
                 goal: effectiveGoal,
                 context: { userId, userName, systemInstructions: standing, sessionId, modelConfig, memoryContext, language }
-            });
+            }), RUN_DEADLINE_MS, 'run');
 
             // [FIX] Surface the final answer to the chat UI.
             // The /run/start route is fire-and-forget, so without this broadcast the
@@ -115,8 +118,15 @@ export class AgentLoopService {
             return result;
         } catch (error: any) {
             console.error(`[AgentLoopService] Fatal runtime error:`, error);
+            // A deadline expiry is explained in the user's language, with the
+            // truthful promise the checkpoints make good on.
+            const failText = error instanceof DeadlineError
+                ? (language === 'ar'
+                    ? `⚠️ تجاوزت المهمة حدّها الزمني الكلي (${Math.round(RUN_DEADLINE_MS / 60000)} دقيقة) فأوقفتُها بصدق بدل تركها معلّقة. أعد إرسال نفس الطلب وسيستأنف البناء من نقطة الحفظ دون إعادة ما اكتمل.`
+                    : `⚠️ The task exceeded its total time limit (${Math.round(RUN_DEADLINE_MS / 60000)} min) and was stopped honestly instead of hanging. Send the same request again — the build resumes from its checkpoint.`)
+                : `⚠️ ${error?.message || uiText('unexpectedError', language)}`;
             // Still tell the UI so it stops "thinking" and shows what went wrong.
-            broadcast({ type: 'text', sessionId, data: { text: `⚠️ ${error?.message || uiText('unexpectedError', language)}`, sessionId }, runId } as any);
+            broadcast({ type: 'text', sessionId, data: { text: failText, sessionId }, runId } as any);
             broadcast({ type: 'run_finished', runId, data: { runId, ok: false, sessionId } } as any);
             if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {
                 await Run.findByIdAndUpdate(runId, { $set: { status: 'failed' } }).catch(() => {});
