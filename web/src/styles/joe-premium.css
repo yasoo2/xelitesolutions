@@ -509,7 +509,7 @@ body:not(.rtl) .joe-user-info {
 }
 
 .joe-chat-header {
-    padding: 14px 16px;
+    padding: 9px 16px;
     border-bottom: 1px solid var(--joe-border);
     display: flex;
     align-items: center;

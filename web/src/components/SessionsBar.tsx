@@ -256,7 +256,11 @@ function SessionChip({
                     textOverflow: 'ellipsis',
                 }}
             >
-                {session.title || t('sidebar.newChat')}
+                {/* Sessions created before naming kicks in were stored with a literal
+                    English "New Session" title — show the localized label instead. */}
+                {!session.title || /^new (session|chat)$/i.test(session.title.trim())
+                    ? t('sidebar.newChat')
+                    : session.title}
             </span>
 
             <AnimatePresence>

@@ -2126,6 +2126,19 @@ export default function CommandComposer({
     }
   }
 
+  // ChatPanel's quick-start chips submit real prompts through this event —
+  // the ref keeps the listener bound once while always calling the fresh run().
+  const quickRunRef = useRef<(t: string) => void>(() => { });
+  quickRunRef.current = (t: string) => { void run(t); };
+  useEffect(() => {
+    const onQuickPrompt = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail === 'string' && detail.trim()) quickRunRef.current(detail);
+    };
+    window.addEventListener('joe:quick-prompt', onQuickPrompt);
+    return () => window.removeEventListener('joe:quick-prompt', onQuickPrompt);
+  }, []);
+
   async function run(overrideText?: string) {
     const inputText = overrideText || text;
 

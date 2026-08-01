@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Sparkles, Send, Mic, User, Bot, Copy, Check } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -15,6 +16,23 @@ interface Message {
     role: 'user' | 'assistant';
     content: string;
     timestamp?: Date;
+}
+
+// Old sessions stored system messages with literally escaped newlines ("\n\n"
+// rendered as text). The source strings are fixed, but persisted history still
+// carries them — unescape outside code fences so old chats read correctly too.
+function unescapeStoredNewlines(text: string): string {
+    if (!text.includes('\\n')) return text;
+    return text
+        .split('```')
+        .map((seg, i) => (i % 2 === 0 ? seg.replace(/\\n/g, '\n') : seg))
+        .join('```');
+}
+
+// Quick-start chips submit a REAL prompt: CommandComposer owns the run loop,
+// so the chip hands the text over via a window event it listens for.
+function sendQuickPrompt(text: string) {
+    window.dispatchEvent(new CustomEvent('joe:quick-prompt', { detail: text }));
 }
 
 interface ChatPanelProps {
@@ -40,6 +58,7 @@ export default function ChatPanel({
     isCollapsed = false,
     sessionId
 }: ChatPanelProps) {
+    const { t } = useTranslation();
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -100,12 +119,9 @@ export default function ChatPanel({
             {/* Header */}
             <div className="joe-chat-header">
                 <div className="joe-chat-title">
-                    <Sparkles size={18} className="joe-chat-title-icon" />
-                    <span>AI Chat</span>
+                    <Sparkles size={16} className="joe-chat-title-icon" />
+                    <span>Joe</span>
                 </div>
-                <span style={{ fontSize: 12, color: 'var(--joe-text-muted)' }}>
-                    {messages.length} messages
-                </span>
             </div>
 
             {/* Messages */}
@@ -130,18 +146,19 @@ export default function ChatPanel({
                             <Sparkles size={30} />
                         </div>
                         <h2 style={{ margin: 0, fontSize: 24, fontWeight: 750, color: 'var(--joe-text-primary)', letterSpacing: '-0.01em' }}>
-                            كيف أساعدك اليوم؟
+                            {t('emptyChatTitle', 'How can I help you today?')}
                         </h2>
                         <p style={{ margin: 0, fontSize: 14.5, color: 'var(--joe-text-secondary)', lineHeight: 1.7 }}>
-                            أنا <b>جو</b> — مهندسك البرمجي. اطلب مني أن أبني موقعاً، أكتب كوداً، أو أنفّذ مهمة، وسأعمل عبر أدواتي (الملفات، الطرفية، المتصفح) وأعرض النتيجة مباشرة.
+                            {t('emptyChatDesc', "I'm Joe — your software engineer. Ask me to build a site, write code or run a task, and I'll show you the result live.")}
                         </p>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 4 }}>
-                            {['ابنِ صفحة هبوط لمتجر قهوة', 'اكتب دالة تحقّق من البريد', 'أنشئ لعبة بسيطة بالمتصفح'].map((s) => (
-                                <span key={s} style={{
-                                    fontSize: 12.5, color: 'var(--joe-text-secondary)',
-                                    border: '1px solid var(--joe-border)', background: 'var(--joe-bg-card)',
-                                    padding: '7px 13px', borderRadius: 999
-                                }}>{s}</span>
+                            {[t('heroChip1'), t('heroChip2'), t('heroChip3'), t('heroChip4')].filter(Boolean).map((s) => (
+                                <button
+                                    key={s}
+                                    type="button"
+                                    onClick={() => sendQuickPrompt(s)}
+                                    className="joe-quick-chip"
+                                >{s}</button>
                             ))}
                         </div>
                     </div>
@@ -239,7 +256,7 @@ export default function ChatPanel({
                                             }
                                         }}
                                     >
-                                        {msg.content}
+                                        {unescapeStoredNewlines(msg.content)}
                                     </ReactMarkdown>
                                 </div>
                                 {msg.role === 'assistant' && (
@@ -359,10 +376,28 @@ export default function ChatPanel({
 }
 
 .joe-chat-header .joe-chat-title span {
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    font-size: 13px;
-    opacity: 0.9;
+    letter-spacing: 0.2px;
+    font-size: 14px;
+    font-weight: 650;
+}
+
+/* Quick-start chips: real buttons that submit a prompt */
+.joe-quick-chip {
+    font-size: 12.5px;
+    font-family: inherit;
+    color: var(--joe-text-secondary);
+    border: 1px solid var(--joe-border);
+    background: var(--joe-bg-card);
+    padding: 8px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    line-height: 1.3;
+    transition: border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+.joe-quick-chip:hover {
+    border-color: var(--joe-gold-primary);
+    color: var(--joe-text-primary);
+    transform: translateY(-1px);
 }
       `}</style>
         </aside>
