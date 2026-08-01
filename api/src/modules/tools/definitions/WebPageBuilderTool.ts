@@ -9,6 +9,7 @@ import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
 import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
 import { auditVisually, visualRepairBrief, type VisualFinding } from '../../../core/quality/visual-audit';
 import { applyMechanicalRepairs } from '../../../core/quality/repair-engine';
+import { selfCheckScript } from '../../../core/design/self-check';
 import { checkpointKey, loadCheckpoint, saveCheckpointSection, clearCheckpoint } from '../../../core/resume/checkpoint';
 import { guardSectionStyles } from '../../../core/design/style-guard';
 import { auditBehaviour, behaviourRepairBrief, type BehaviourFinding } from '../../../core/quality/behaviour-audit';
@@ -709,7 +710,7 @@ ${prev!.html}`
                     baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${flourishLayer}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                     sections: written,
                     sprite: iconSprite(),
-                    script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}\n${themeScript}`,
+                    script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}\n${themeScript}\n${selfCheckScript(isAr)}`,
                 });
                 logs.push(`section-wise build: ${ok.length}/${plans.length} sections, ${html.length} bytes`
                     + (resumedSections ? ` (${resumedSections} resumed from checkpoint — no model calls spent on them)` : ''));
@@ -1995,7 +1996,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${flourishLayer}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                 sections,
                 sprite: iconSprite(),
-                script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}\n${themeScript}`,
+                script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}\n${themeScript}\n${selfCheckScript(isAr)}`,
             });
             // The one navigation, injected after <body> so it is identical on
             // every page and always points at files that will exist.
