@@ -71,7 +71,7 @@ const KIND_ALTERNATIVES: Partial<Record<PageKind, Archetype[]>> = {
  * Re-typing your own request with a hamza on it is not a request for a
  * redesign.
  */
-function canonicalForHash(text: string): string {
+export function canonicalForHash(text: string): string {
     return String(text || '')
         .replace(/[\u064B-\u0652\u0670\u0640]/g, '')   // diacritics and tatweel
         .replace(/[أإآٱ]/g, 'ا')
@@ -82,7 +82,7 @@ function canonicalForHash(text: string): string {
         .toLowerCase();
 }
 
-function hashOf(text: string): number {
+export function hashOf(text: string): number {
     let h = 0;
     for (let i = 0; i < text.length; i++) h = text.charCodeAt(i) + ((h << 5) - h);
     return Math.abs(h);

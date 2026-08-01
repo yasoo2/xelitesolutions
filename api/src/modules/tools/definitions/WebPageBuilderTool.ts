@@ -29,6 +29,7 @@ import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPl
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
 import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, surfacePairingCss, ownedSurfaces } from '../../../core/design/layouts';
+import { pickFlourish, flourishCss, flourishBrief } from '../../../core/design/flourish';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 
@@ -220,6 +221,11 @@ export class WebPageBuilderTool implements ToolDefinition {
         // Composition and type pairing are DECISIONS, made here. Left to the model
         // every page came out as the same stack of centred boxes with Arial on it.
         const archetype = (isEdit && (prev as any)?.archetype) || pickArchetype(kind, request);
+        // The decorative layer (shaped hero edge, heading accents, brand glow)
+        // is a design decision like the archetype: stable per brief, kept on
+        // edits so a text change does not reshape the header.
+        const flourish = (isEdit && (prev as any)?.flourish) || pickFlourish(kind, request);
+        const flourishLayer = flourishCss(flourish, { centered: archetype === 'centered' });
         const typePair = (isEdit && (prev as any)?.typePair) || pickTypePair(request);
 
         /**
@@ -267,7 +273,7 @@ ${paletteCss(palette)}
 
 ${blueprintBrief(kind)}
 
-${layoutBrief(archetype, typePair)}
+${layoutBrief(archetype, typePair)}${flourishBrief(flourish) ? '\n\n' + flourishBrief(flourish) : ''}
 
 ${primitivesBrief()}\n\n${formBrief()}\n\n${widgetBrief()}${needsCharts(kind) ? `\n\n${chartBrief()}` : ''}${needsCart(kind) ? `\n\n${cartBrief()}` : ''}${reference ? `\n\n${referenceBrief(reference)}` : ''}`;
 
@@ -344,7 +350,7 @@ ${prev!.html}`
         const sitePlan = isEdit ? null : planSite(kind, request, isAr);
         if (sitePlan?.multiPage) {
             const built = await this.buildSite({
-                sitePlan, request, isAr, kind, palette, archetype, typePair, reference,
+                sitePlan, request, isAr, kind, palette, archetype, typePair, flourish, reference,
                 imageBrief, photos, context, sessionId, logs,
             });
             if (built) {
@@ -353,7 +359,7 @@ ${prev!.html}`
                 store[sessionKey] = {
                     ...(store[sessionKey] || {} as any),
                     filename: built.entry, html: built.entryHtml,
-                    palette, kind, archetype, typePair, reference,
+                    palette, kind, archetype, typePair, flourish, reference,
                     site: { dir: built.dir, pages: built.pages },
                 };
                 return built.result;
@@ -405,7 +411,7 @@ ${prev!.html}`
             const existing = splitIntoSections(editBase);
             const targets = targetSections(request, existing);
             if (targets.length) {
-                const design = `${designBrief(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}`;
+                const design = `${designBrief(palette)}\n\n${layoutBrief(archetype, typePair)}${flourishBrief(flourish) ? '\n\n' + flourishBrief(flourish) : ''}\n\n${primitivesBrief()}`;
                 let working = editBase;
                 const applied: Array<{ section: PageSection; html: string }> = [];
                 for (const section of targets) {
@@ -467,7 +473,7 @@ ${prev!.html}`
         const languageFailures: string[] = [];
         if (sectionwise) {
             const plans = planSections(blueprint);
-            const design = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${chromeBrief({ isArabic: isAr, withAuth: /دخول|خروج|login|logout|sign\s?in|sign\s?up|حساب/i.test(request) })}\n\n${primitivesBrief()}${reference ? `\n\n${referenceBrief(reference)}` : ''}`;
+            const design = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}${flourishBrief(flourish) ? '\n\n' + flourishBrief(flourish) : ''}\n\n${chromeBrief({ isArabic: isAr, withAuth: /دخول|خروج|login|logout|sign\s?in|sign\s?up|حساب/i.test(request) })}\n\n${primitivesBrief()}${reference ? `\n\n${referenceBrief(reference)}` : ''}`;
             const written: WrittenSection[] = [];
             const titles: string[] = [];
             let photosLeft = photos;
@@ -600,7 +606,7 @@ ${prev!.html}`
                     description: metaDescription({ request, isArabic: isAr, kindLabel: kind }),
                     isArabic: isAr,
                     tokenCss: paletteCss(palette),
-                    baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                    baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${flourishLayer}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                     sections: written,
                     sprite: iconSprite(),
                     script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}\n${themeScript}`,
@@ -821,7 +827,7 @@ business — a different service, a different benefit, a different number. Do no
 reword the same sentence three times; that is the defect. Keep the markup, the
 classes and the design tokens exactly as they are, and keep every card: replace
 the WORDS, not the structure.`;
-                const repairDesign = `${designBrief(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}`;
+                const repairDesign = `${designBrief(palette)}\n\n${layoutBrief(archetype, typePair)}${flourishBrief(flourish) ? '\n\n' + flourishBrief(flourish) : ''}\n\n${primitivesBrief()}`;
                 const scoped = await this.repairSections({
                     html, probes, brief, design: repairDesign, isAr, sessionId, context,
                     note: isAr ? `✍️ أُعيد كتابة الأقسام ذات المحتوى المكرّر` : `✍️ Rewriting the sections with repeated copy`,
@@ -877,7 +883,7 @@ the WORDS, not the structure.`;
         // The brief asked for all of it and the model shipped a page with zero
         // transitions, zero :hover, zero :focus and no rule for `button` at all.
         // Placed right after <style> so anything the model DID write still wins.
-        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}${needsCharts(kind) ? `\n${chartCss()}` : ''}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
+        const baseLayer = `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${flourishLayer}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}${needsCharts(kind) ? `\n${chartCss()}` : ''}${needsCart(kind) ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`;
         // A section-wise build already carries the base layer — assembled by Joe,
         // not by the model — so injecting it again would duplicate ~10 KB of CSS.
         if (!/Joe UI kit — base layer/.test(html)) {
@@ -1179,7 +1185,7 @@ the WORDS, not the structure.`;
         }
         // `site` must survive an edit — dropping it would turn the next follow-up
         // back into a single-page edit against the wrong file.
-        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair, reference, site: prev?.site };
+        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair, flourish, reference, site: prev?.site };
 
         // An edit can introduce a link to a page that does not exist. On a site
         // that is checkable, so it is checked rather than left for the user.
@@ -1297,7 +1303,7 @@ the WORDS, not the structure.`;
                     const probes = audit.findings
                         .flatMap(f => [...String(isAr ? f.ar : f.en).matchAll(/[«"']([^«»"']{2,60})[»"']/g)].map(m => m[1]))
                         .filter(p => p.trim().length >= 2);
-                    const repairDesign = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}`;
+                    const repairDesign = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}${flourishBrief(flourish) ? '\n\n' + flourishBrief(flourish) : ''}\n\n${primitivesBrief()}`;
                     const scoped = probes.length ? await this.repairSections({
                         html, filename, probes, brief, design: repairDesign, isAr, sessionId, context,
                         note: isAr
@@ -1384,7 +1390,7 @@ the WORDS, not the structure.`;
                     // those sections instead of reporting four real defects and
                     // shipping them, which is what this branch used to do.
                     const probes = b.controls.filter(c => !c.worked && c.label).map(c => String(c.label));
-                    const repairDesign = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}`;
+                    const repairDesign = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}${flourishBrief(flourish) ? '\n\n' + flourishBrief(flourish) : ''}\n\n${primitivesBrief()}`;
                     const scoped = await this.repairSections({
                         html, filename, probes, brief, design: repairDesign, isAr, sessionId, context,
                         note: isAr
@@ -1715,10 +1721,13 @@ the WORDS, not the structure.`;
 
     private async buildSite(opts: {
         sitePlan: SitePlan; request: string; isAr: boolean; kind: any;
-        palette: any; archetype: any; typePair: any; reference: any;
+        palette: any; archetype: any; typePair: any; flourish: any; reference: any;
         imageBrief: any; photos: number; context: any; sessionId: any; logs: string[];
     }): Promise<{ entry: string; entryHtml: string; dir: string; pages: any[]; result: any } | null> {
-        const { sitePlan, request, isAr, kind, palette, archetype, typePair, reference, imageBrief, context, sessionId, logs } = opts;
+        const { sitePlan, request, isAr, kind, palette, archetype, typePair, flourish, reference, imageBrief, context, sessionId, logs } = opts;
+        // Same decorative layer on every page of the site — a wave on the home
+        // page and a straight edge on the contact page would read as two sites.
+        const flourishLayer = flourishCss(flourish, { centered: archetype === 'centered' });
         const dir = `site-${String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
         const outDir = path.join(ARTIFACT_DIR, dir);
         fs.mkdirSync(outDir, { recursive: true });
@@ -1761,7 +1770,7 @@ the WORDS, not the structure.`;
                 // the model has never heard of.
                 .filter(p => !/header/i.test(p.id));
 
-            const design = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}\n\n${formBrief()}\n\n${widgetBrief()}${needsCharts(page.kind) ? `\n\n${chartBrief()}` : ''}${needsCart(page.kind) ? `\n\n${cartBrief()}` : ''}${reference ? `\n\n${referenceBrief(reference)}` : ''}
+            const design = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}${flourishBrief(flourish) ? '\n\n' + flourishBrief(flourish) : ''}\n\n${primitivesBrief()}\n\n${formBrief()}\n\n${widgetBrief()}${needsCharts(page.kind) ? `\n\n${chartBrief()}` : ''}${needsCart(page.kind) ? `\n\n${cartBrief()}` : ''}${reference ? `\n\n${referenceBrief(reference)}` : ''}
 THIS PAGE: "${page.title}" — ${page.purpose}
 It is one page of a ${sitePlan.pages.length}-page site (${sitePlan.pages.map(p => p.title).join(' · ')}).
 Do NOT write a site header or navigation; the site already has one. Link to another page with
@@ -1816,7 +1825,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 description: metaDescription({ request, isArabic: isAr, kindLabel: page.kind, pageName: page.title, brand }),
                 isArabic: isAr,
                 tokenCss: paletteCss(palette),
-                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
+                baseLayer: `${uiKitCss()}\n${typographyCss(typePair)}\n${layoutCss(archetype)}\n${flourishLayer}\n${chromeCss()}\n${authCss()}\n${logoCss()}\n${themeLayer}\n${bidiCss()}\n${primitivesCss()}\n${formCss()}\n${widgetCss()}\n${chartCss()}\n${siteNavCss()}${siteHasCart ? `\n${cartCss()}` : ''}${reference ? `\n${referenceOverridesCss(reference)}` : ''}`,
                 sections,
                 sprite: iconSprite(),
                 script: `${uiKitScript()}\n${chromeRuntime(isAr)}\n${authRuntime(isAr)}\n${themeScript}`,
@@ -1957,7 +1966,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 const probes = b.controls.filter(c => !c.worked && c.label).map(c => String(c.label));
                 if (brief && probes.length) {
                     const before = written.get(file)!;
-                    const repairDesign = `${designBrief(palette)}\n\n${layoutBrief(archetype, typePair)}\n\n${primitivesBrief()}`;
+                    const repairDesign = `${designBrief(palette)}\n\n${layoutBrief(archetype, typePair)}${flourishBrief(flourish) ? '\n\n' + flourishBrief(flourish) : ''}\n\n${primitivesBrief()}`;
                     const scoped = await this.repairSections({
                         html: before, filename: path.join(dir, file), probes, brief,
                         design: repairDesign, isAr, sessionId, context,
