@@ -3,6 +3,7 @@ import path from 'path';
 import { ToolDefinition } from '../types';
 import { routeToModel, isProviderFailure } from '../../../core/llm/intelligent-router';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
+import { paintLine } from '../../../core/terminal/paint';
 import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
 import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
 import { auditVisually, visualRepairBrief, type VisualFinding } from '../../../core/quality/visual-audit';
@@ -133,7 +134,7 @@ export class WebPageBuilderTool implements ToolDefinition {
                 try {
                     [String(sessionId || ''), 'local', 'default', 'panel-terminal']
                         .filter(Boolean)
-                        .forEach(id => broadcast({ type: 'terminal_output', id, data: `[joe] ${line}\r\n` } as any));
+                        .forEach(id => broadcast({ type: 'terminal_output', id, data: `${paintLine(line, '[joe]')}\r\n` } as any));
                 } catch { /* the build never depends on the UI listening */ }
             }
             return rawPush(...lines);

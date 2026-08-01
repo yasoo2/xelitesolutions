@@ -6,6 +6,7 @@ import path from 'path';
 import { glob } from 'glob';
 import { ToolDefinition } from '../tools/types';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
+import { paintLine } from '../../core/terminal/paint';
 import { normalizeUrlForGoto } from '../../shared/utils/url';
 import { traceManager } from './TraceManager';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
@@ -674,7 +675,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             if (!(res as any)?.logsStreamedLive) {
                 const termIds = [String(contextSessionId || ''), 'local', 'default', 'panel-terminal'].filter(Boolean);
                 toolLogs.forEach((line: string) => {
-                    const data = line + '\r\n';
+                    const data = paintLine(line) + '\r\n';
                     termIds.forEach(id => {
                         broadcast({ type: 'terminal_output', id, data });
                     });

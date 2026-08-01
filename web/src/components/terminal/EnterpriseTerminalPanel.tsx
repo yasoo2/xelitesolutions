@@ -4,7 +4,11 @@ import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 import { SocketService } from '../../services/socket';
 import { API_URL } from '../../config';
-import { Terminal as TerminalIcon, RefreshCw, Trash2, Maximize2, Minimize2, X } from 'lucide-react';
+import { Terminal as TerminalIcon, RefreshCw, Trash2, Maximize2, Minimize2, X, Copy, Download, Check } from 'lucide-react';
+
+// ANSI escape sequences are display, not content — strip them for copy/download.
+const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+const LOG_BUFFER_CAP = 2_000_000; // ~2 MB of scrollback kept for copy/download
 
 interface EnterpriseTerminalPanelProps {
     onClose?: () => void;
@@ -21,7 +25,12 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
     const [isMinimized, setIsMinimized] = useState(false);
     const [isReady, setIsReady] = useState(false);
     const [isConnecting, setIsConnecting] = useState(true);
+    // Bumping this remounts the xterm instance and re-creates the shell session —
+    // reconnect used to window.location.reload() the ENTIRE app to do this.
+    const [sessionEpoch, setSessionEpoch] = useState(0);
+    const [justCopied, setJustCopied] = useState(false);
     const isReadyRef = useRef(false);
+    const logBufferRef = useRef('');
 
     useEffect(() => {
         if (!containerRef.current || isMinimized) return;
@@ -161,13 +170,17 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                 term.dispose();
             } catch { }
         };
-    }, [activeTabId, isMinimized, workspaceId]);
+    }, [activeTabId, isMinimized, workspaceId, sessionEpoch]);
 
     // Handle incoming data
     useEffect(() => {
         const unsub = SocketService.subscribe((msg: any) => {
             if (msg.type === 'terminal_output' && (msg.id === activeTabId || !msg.id)) {
                 termRef.current?.write(msg.data);
+                // Keep a plain-text copy of everything shown, for copy/download.
+                const plain = stripAnsi(String(msg.data || ''));
+                const next = logBufferRef.current + plain;
+                logBufferRef.current = next.length > LOG_BUFFER_CAP ? next.slice(-LOG_BUFFER_CAP) : next;
             }
         });
         return () => unsub();
@@ -175,6 +188,25 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
 
     const handleClear = () => {
         termRef.current?.clear();
+        logBufferRef.current = '';
+    };
+
+    const handleCopyAll = async () => {
+        try {
+            await navigator.clipboard.writeText(logBufferRef.current);
+            setJustCopied(true);
+            setTimeout(() => setJustCopied(false), 1500);
+        } catch { /* clipboard permission denied — the button simply does nothing visible */ }
+    };
+
+    const handleDownload = () => {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const blob = new Blob([logBufferRef.current], { type: 'text/plain;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `joe-terminal-${stamp}.log`;
+        a.click();
+        URL.revokeObjectURL(a.href);
     };
 
     const handleReconnect = async () => {
@@ -191,13 +223,11 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                 },
                 body: JSON.stringify({ action: 'kill', id: activeTabId })
             });
-            // Give it a moment to die before recreating (handled by cleanup logic on backend)
-            setTimeout(() => {
-                // The useEffect will not re-run, so we manually call create again.
-                // Actually, best to just reload the page or trigger a re-mount.
-                window.location.reload();
-            }, 500);
-        } catch { }
+        } catch { /* the old session may already be gone — recreate regardless */ }
+        // Remount the terminal (the main effect depends on sessionEpoch): the old
+        // xterm is disposed and a fresh shell session is created — the rest of the
+        // app keeps running, nothing reloads.
+        setTimeout(() => setSessionEpoch(e => e + 1), 300);
     };
 
     return (
@@ -228,6 +258,20 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                 </div>
 
                 <div className="flex items-center gap-2">
+                    <button
+                        onClick={handleCopyAll}
+                        className="p-1.5 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95"
+                        title="نسخ كل السجل"
+                    >
+                        {justCopied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                    </button>
+                    <button
+                        onClick={handleDownload}
+                        className="p-1.5 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95"
+                        title="تنزيل السجل كملف"
+                    >
+                        <Download size={14} />
+                    </button>
                     <button
                         onClick={handleClear}
                         className="p-1.5 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95"
