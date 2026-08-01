@@ -583,30 +583,20 @@ export default function WorkspacePanel({
         <main className={`joe-workspace ${isMobileCollapsed ? 'collapsed-mobile' : ''}`}>
             {/* Tabs */}
             <div className="joe-workspace-tabs">
-                <div style={{ display: 'flex', gap: 6, flex: 1, overflowX: 'auto', minWidth: 0 }}>
+                {/* One segmented control: every tab lives inside the same rounded
+                    rail and the active one is a raised thumb — instead of loose
+                    labels floating in the bar. */}
+                <div className="joe-tab-segment">
                     {tabs.map((tab) => (
                         <button
                             key={tab.id}
                             className={`joe-workspace-tab ${activeTab === tab.id ? 'active' : ''}`}
                             onClick={() => handleTabChange(tab.id)}
-                            style={{ position: 'relative' }}
                         >
                             {tab.icon}
                             <span className="hide-mobile">{tab.label}</span>
-                            {/* Badge */}
                             {tab.badge !== undefined && tab.badge > 0 && (
-                                <span style={{
-                                    background: tab.id === 'problems' ? '#ef4444' : 'var(--joe-gold-primary, #2ba179)',
-                                    color: '#fff',
-                                    fontSize: 9,
-                                    fontWeight: 700,
-                                    padding: '1px 5px',
-                                    borderRadius: 99,
-                                    minWidth: 14,
-                                    textAlign: 'center',
-                                    lineHeight: '14px',
-                                    marginLeft: 4,
-                                }}>
+                                <span className={`joe-tab-badge ${tab.id === 'problems' ? 'danger' : ''}`}>
                                     {tab.badge > 99 ? '99+' : tab.badge}
                                 </span>
                             )}
