@@ -62,6 +62,14 @@ console.warn = (...a: any[]) => { if (typeof a[0] === 'string' && a[0].includes(
  * shipping a dead panel.
  */
 const fileStreamEvents: Array<{ file: string; chunk: string; done: boolean }> = [];
+/**
+ * Terminal lines, with WHEN they arrived. «هل يستخدمه النظام خلال عملية
+ * البناء» is a question about timing: a terminal that gets every line in one
+ * flood after the tool returns is not being used DURING anything. Each entry
+ * records the id it was addressed to — the panel only listens on the session
+ * id, so a line sent only to the legacy trio never reached a real session.
+ */
+const terminalEvents: Array<{ id: string; data: string; at: number }> = [];
 {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const ws = require('../../api/ws');
@@ -73,6 +81,9 @@ const fileStreamEvents: Array<{ file: string; chunk: string; done: boolean }> = 
                 chunk: String(event.data.chunk || ''),
                 done: !!event.data.done,
             });
+        }
+        if (event?.type === 'terminal_output') {
+            terminalEvents.push({ id: String(event.id || ''), data: String(event.data || ''), at: Date.now() });
         }
         return realBroadcast(event);
     };
@@ -597,6 +608,23 @@ async function main() {
         else if (realHtml.length < chunks.length * 0.9) { console.log(`  ! [major] only ${realHtml.length}/${chunks.length} chunks contain real markup`); totalMajor++; }
         if (!dones.length) { console.log('  ✗ [critical] no file was announced as written — the panel never closes a file'); totalCritical++; }
         else if (!completeDocs.length) { console.log('  ! [major] no completion event carried a complete document'); totalMajor++; }
+    }
+
+    /**
+     * Did the TERMINAL hear the build — during it, on the right id?
+     * The builds above each take ~30s; if the terminal lines all cluster into
+     * the final second, they were flushed after the fact, not streamed.
+     */
+    {
+        const toSession = terminalEvents.filter(e => e.id && !['local', 'default', 'panel-terminal'].includes(e.id));
+        const span = terminalEvents.length > 1
+            ? terminalEvents[terminalEvents.length - 1].at - terminalEvents[0].at : 0;
+        console.log(`terminal: ${terminalEvents.length} line broadcast(s), ${toSession.length} addressed to a session id, spread over ${(span / 1000).toFixed(1)}s`);
+        if (!terminalEvents.length) { console.log('  ✗ [critical] the terminal heard nothing at all during seven builds'); totalCritical++; }
+        else {
+            if (!toSession.length) { console.log('  ✗ [critical] no terminal line was addressed to the session id — the panel a user actually sees receives nothing'); totalCritical++; }
+            if (span < 5000) { console.log(`  ! [major] all terminal lines arrived within ${(span / 1000).toFixed(1)}s — a post-hoc flood, not a live stream`); totalMajor++; }
+        }
     }
 
     console.log(`\n${totalCritical} critical, ${totalMajor} major across ${kinds.length} page kind(s).`);

@@ -110,7 +110,34 @@ export class WebPageBuilderTool implements ToolDefinition {
     mockSupported = false;
 
     async execute(input: any, context?: any) {
+        /**
+         * THE BUILD LOG IS LIVE, and it goes where the user is actually looking.
+         *
+         * Two defects hid every line of it. The echoes were broadcast to the
+         * ids 'local'/'default'/'panel-terminal' — but the terminal panel
+         * listens on the SESSION id, so during a real session none of them
+         * ever arrived. And they were sent in one flood AFTER the build
+         * finished ("generated N bytes", past tense), under a comment claiming
+         * "Real-time Log Streaming". A terminal that is silent for the whole
+         * build and then narrates it in the past is not a terminal, it is a
+         * press release.
+         *
+         * Each line is now broadcast AT THE MOMENT it is pushed — which is the
+         * moment the section landed, the image resolved, the audit measured —
+         * to the session's own terminal id plus the legacy ids.
+         */
         const logs: string[] = [];
+        const rawPush = logs.push.bind(logs);
+        logs.push = (...lines: string[]) => {
+            for (const line of lines) {
+                try {
+                    [String(sessionId || ''), 'local', 'default', 'panel-terminal']
+                        .filter(Boolean)
+                        .forEach(id => broadcast({ type: 'terminal_output', id, data: `[joe] ${line}\r\n` } as any));
+                } catch { /* the build never depends on the UI listening */ }
+            }
+            return rawPush(...lines);
+        };
         const request = String(
             input?.request || input?.question || input?.instruction || input?.task || input?.goal || ''
         ).trim();
@@ -1176,9 +1203,15 @@ the WORDS, not the structure.`;
         // Cache-busting query so the Preview iframe RELOADS to show the change.
         const url = `${base}?v=${Date.now()}`;
 
-        // Stream the engineering steps to the terminal panel so the user SEES the work.
+        // Closing summary to the terminal. The per-step lines already streamed
+        // LIVE via logs.push above; this echoes only what is new at the end,
+        // and to the session's own terminal id — the one the panel listens on.
         const term = (line: string) => {
-            try { ['local', 'default', 'panel-terminal'].forEach(id => broadcast({ type: 'terminal_output', id, data: line + '\r\n' } as any)); } catch { /* ignore */ }
+            try {
+                [String(sessionId || ''), 'local', 'default', 'panel-terminal']
+                    .filter(Boolean)
+                    .forEach(id => broadcast({ type: 'terminal_output', id, data: line + '\r\n' } as any));
+            } catch { /* ignore */ }
         };
         term('web_page_builder: generating page with the local AI...');
         term('generated ' + html.length + ' bytes of HTML');
@@ -1583,7 +1616,7 @@ the WORDS, not the structure.`;
             ? `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}\n\n${qaSummary}\n\n${fileList}\n\nاطلب أي تعديل آخر (مثل: «أضف زر» أو «غيّر اللون») وسيظهر مباشرة في المعاينة.`
             : `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}\n\n${qaSummary}\n\n${fileList}\n\nAsk for any further change (e.g. "add a button" / "change the color") and it updates live.`;
 
-        return { ok: true, output: { message, url, previewUrl: url, path: filename }, logs };
+        return { ok: true, output: { message, url, previewUrl: url, path: filename }, logs, logsStreamedLive: true } as any;
     }
 
     /**

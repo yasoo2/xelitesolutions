@@ -163,10 +163,15 @@ export default function Joe() {
                 setWorkspaceTab('terminal');
                 triggerUncollapse();
             }
-            if (msg.type === 'terminal_output') {
-                setWorkspaceTab('terminal');
-                triggerUncollapse();
-            }
+            /**
+             * terminal_output must NEVER steal the tab. Every build streams its
+             * log lines to the terminal, and the closing flood lands right
+             * after preview_ready — so this handler yanked the user from the
+             * fresh Preview (or from the live code in Logs) to the Terminal at
+             * the exact moment the finished page appeared. The terminal opens
+             * when a command TOOL starts (handled above), which is the moment
+             * the user actually wants to watch it.
+             */
 
             // Auto switch to browser for browser actions
             if (isToolStart && (toolName.startsWith('browser_') || toolName === 'open_page' || toolName === 'click_element')) {

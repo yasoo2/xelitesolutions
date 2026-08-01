@@ -657,18 +657,29 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                 });
             }
             
-            // [NEW] Real-time Log Streaming to Frontend Terminals
-            toolLogs.forEach((line: string) => {
-                const data = line + '\r\n';
-                // Broadcast to multiple common IDs to ensure visibility
-                ['local', 'default', 'panel-terminal'].forEach(id => {
-                    broadcast({
-                        type: 'terminal_output',
-                        id: id,
-                        data: data
+            /**
+             * Post-run log flush to the frontend terminals.
+             *
+             * Honest name: this is NOT real-time — it runs after the tool has
+             * returned, which for a page build means minutes of silence and
+             * then a flood. Tools that stream their own lines live (the page
+             * builder does, line by line as the work happens) say so with
+             * `logsStreamedLive`, and re-broadcasting them here would print
+             * every line twice.
+             *
+             * The SESSION id is included because that is the id the terminal
+             * panel actually listens on — the legacy trio alone never reached
+             * a live session's terminal at all.
+             */
+            if (!(res as any)?.logsStreamedLive) {
+                const termIds = [String(contextSessionId || ''), 'local', 'default', 'panel-terminal'].filter(Boolean);
+                toolLogs.forEach((line: string) => {
+                    const data = line + '\r\n';
+                    termIds.forEach(id => {
+                        broadcast({ type: 'terminal_output', id, data });
                     });
                 });
-            });
+            }
 
             logs.push(...toolLogs);
 
