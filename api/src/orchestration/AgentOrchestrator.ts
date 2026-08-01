@@ -3,7 +3,7 @@ import { IntentParser } from '../core/intelligence/IntentParser';
 import { executeTool } from '../modules/services/ToolService';
 import { broadcastThinkingDetail, broadcast } from '../api/ws';
 import { narrate, narrationEnabled } from '../core/agents/narrator';
-import { routeToModel } from '../core/llm/intelligent-router';
+import { routeToModel, isProviderFailure, PROVIDER_FAILURE_PREFIX } from '../core/llm/intelligent-router';
 import { emitDepartment } from './departments';
 import { randomUUID } from 'crypto';
 import { BaseAgent } from './agents/BaseAgent';
@@ -445,6 +445,37 @@ export class AgentOrchestrator {
                 error: result.error,
                 duration: Date.now() - startTime
             });
+          }
+
+          /**
+           * A DEAD BRAIN IS NOT A FAILURE TO RECOVER FROM. IT IS THE END.
+           *
+           * When every provider is unreachable, this used to hand the failure
+           * to the PLANNER — which is itself an LLM call, on the engine that
+           * just proved unreachable. Worse, the planner reads the failure text,
+           * and that text is Joe's advice TO THE USER: «شغّل Ollama محلياً …
+           * أو تحقّق من اتصال الإنترنت». It duly turned that advice into a task
+           * list and executed it.
+           *
+           * Measured in a real session, after the user asked only to recolour a
+           * page: a seven-node "Fix and continue" plan whose first step,
+           * `check_internet`, went to the BROWSER agent — which opened a real
+           * browser window and asked the user to intervene — and whose second,
+           * `run_ollama_locally`, ran `ollama serve` in their terminal. The user
+           * saw a browser open «لأسباب لا أعلمها». That is what happened.
+           *
+           * Remediation text is for a human to read, never for a planner to
+           * execute. When the engine is gone, say so once and stop.
+           */
+          // CONTAINS, not starts-with: by the time a failure reaches here it has
+          // usually been wrapped ("Node X failed: …"), and `isProviderFailure`
+          // anchors at the start because narration needs it to.
+          const saysNoBrain = (x: any) =>
+            isProviderFailure(x) || String(x ?? '').includes(PROVIDER_FAILURE_PREFIX);
+          if (saysNoBrain(result.error) || saysNoBrain((result as any).result)) {
+            console.error('[AgentOrchestrator] No LLM provider reachable — ending the run instead of planning a recovery.');
+            if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason: 'provider_unreachable' });
+            return { ok: false, result: result.error };
           }
 
           // [DECISION] Intelligent recovery attempt (Reviewer/QA department steps in)
