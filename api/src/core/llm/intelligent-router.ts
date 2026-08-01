@@ -1470,6 +1470,19 @@ export async function routeToModel(
         return PROVIDER_FAILURE_PREFIX + ` (الوضع المحلي الصارم — لم يستجب المحرّك المحلي${lastError ? `: ${String(lastError).slice(0, 160)}` : ''}). `
             + "شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة.";
     }
+    // Say WHY, precisely. "No provider answered" reads as an outage; a daily
+    // quota is a different problem with a different fix, and the error itself
+    // says when it lifts. Measured on the user's machine: Groq's daily 100k
+    // tokens gone, LLM7's daily quota gone — and the message blamed the
+    // internet connection.
+    if (sawRateLimit) {
+        const resetMs = retryAfterMsFrom(lastError);
+        const resetNote = resetMs ? ` (يزول أقرب حدّ خلال ~${Math.max(1, Math.round(resetMs / 60_000))} دقيقة)` : '';
+        return PROVIDER_FAILURE_PREFIX + ` — السبب: الحصص اليومية/الساعية المجانية للمزوّدات استُهلكت${resetNote}. `
+            + "لم أنفّذ الطلب ولن أدّعي غير ذلك. الحلول: انتظر عودة الحصة، "
+            + "أو شغّل Ollama محلياً (ollama serve)، "
+            + "أو — الحل الدائم — أضِف مفتاح Gemini المجاني في ملف .env بسطر GOOGLE_API_KEY=... من aistudio.google.com (1500 طلب/يوم مجاناً).";
+    }
     return PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. "
         + "الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، "
         + "أو تحقّق من اتصال الإنترنت لاستخدام الذكاء المجّاني. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)";

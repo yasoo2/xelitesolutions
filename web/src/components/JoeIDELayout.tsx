@@ -394,7 +394,10 @@ export default function JoeIDELayout({
                 } else if (event.type === 'run_finished') {
                     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Run Finished`]);
                 } else if (event.type === 'text') {
-                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${event.data}`]);
+                    // event.data is { text, sessionId } — logging the object
+                    // printed a literal "[object Object]" line in the panel.
+                    const t = typeof event.data === 'string' ? event.data : String(event.data?.text ?? '');
+                    if (t) setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${t}`]);
                 } else if (event.type === 'terminal_output') {
                     // Optional: Add terminal output to logs? Maybe too noisy.
                 }
