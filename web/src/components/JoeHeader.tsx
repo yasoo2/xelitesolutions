@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield } from 'lucide-react';
 import { resolveIdentity, nameFromEmail, initialsFrom, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
+import JoeMark from './JoeMark';
 
 interface JoeHeaderProps {
     userAvatar?: string;
@@ -61,12 +62,13 @@ export default function JoeHeader({
 
     return (
         <header className="joe-header">
-            {/* Left: Logo & Brand */}
+            {/* Left: Logo & Brand — the mark signs itself once per load.
+                The brand name is ALWAYS the Latin word "Joe", in every locale. */}
             <div className="joe-header-left">
-                <div className="joe-logo">J</div>
+                <JoeMark size={30} animate className="joe-brand-mark" />
                 <div className="joe-brand">
-                    <span className="joe-brand-name">JOE</span>
-                    <span className="joe-brand-tagline">Comprehensive AI System</span>
+                    <span className="joe-brand-name" style={{ textTransform: 'none', letterSpacing: '-0.3px' }}>Joe</span>
+                    <span className="joe-brand-tagline">{t('brandTagline', 'AI Software Engineer')}</span>
                 </div>
             </div>
 

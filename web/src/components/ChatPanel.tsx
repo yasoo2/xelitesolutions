@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
+import JoeMark from './JoeMark';
 import TaskTracker from './TaskTracker';
 import TodosPanel from './TodosPanel';
 import ArtifactCard from './ArtifactCard';
@@ -119,7 +120,7 @@ export default function ChatPanel({
             {/* Header */}
             <div className="joe-chat-header">
                 <div className="joe-chat-title">
-                    <Sparkles size={16} className="joe-chat-title-icon" />
+                    <JoeMark size={19} />
                     <span>Joe</span>
                 </div>
             </div>
@@ -137,14 +138,9 @@ export default function ChatPanel({
                         alignItems: 'center',
                         gap: 14
                     }}>
-                        <div style={{
-                            width: 64, height: 64, borderRadius: 20,
-                            display: 'grid', placeItems: 'center',
-                            background: 'linear-gradient(135deg, var(--joe-gold-primary), var(--joe-gold-dark))',
-                            color: '#08130d', boxShadow: 'var(--joe-shadow-gold, 0 0 30px rgba(52,196,139,0.3))'
-                        }}>
-                            <Sparkles size={30} />
-                        </div>
+                        {/* The signature writes itself when you open a fresh chat */}
+                        <JoeMark size={92} animate />
+
                         <h2 className="joe-empty-title" style={{ margin: 0, fontSize: 27, fontWeight: 800, letterSpacing: '-0.01em' }}>
                             {t('emptyChatTitle', 'How can I help you today?')}
                         </h2>
