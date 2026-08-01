@@ -319,7 +319,10 @@ export class ExecutionEngine {
                     return;
                 }
 
-                exec(cmd, { cwd: currentCwd, shell: '/bin/sh', timeout: 30000 }, (err: any, stdout: string, stderr: string) => {
+                // '/bin/sh' does not exist on Windows — when node-pty is missing
+                // there, this hardcoded shell made EVERY manual command fail.
+                // undefined lets Node pick the platform default (cmd.exe / sh).
+                exec(cmd, { cwd: currentCwd, shell: process.platform === 'win32' ? undefined : '/bin/sh', timeout: 30000 }, (err: any, stdout: string, stderr: string) => {
                     if (err && !stdout && !stderr) {
                         resolve(`Error: ${err.message}\n`);
                     } else {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
@@ -230,76 +230,84 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
         setTimeout(() => setSessionEpoch(e => e + 1), 300);
     };
 
+    // This project has NO Tailwind — the old markup styled everything with
+    // Tailwind utility classes that silently did nothing. The worst casualty:
+    // the xterm container ("absolute inset-2") collapsed to ZERO height, so the
+    // terminal never opened and the user could not type a single command. Real
+    // inline styles below; the ghost-button hover states live in the <style> tag.
+    const ghostBtn: CSSProperties = {
+        padding: 6, borderRadius: 8, border: 'none', background: 'transparent',
+        color: '#94a3b8', cursor: 'pointer', display: 'grid', placeItems: 'center',
+    };
     return (
         <div
-            className={`${isEmbedded
-                ? 'w-full h-full'
-                : `fixed bottom-4 right-4 bg-[#09090b] border border-white/10 rounded-xl shadow-2xl transition-all duration-300 ${isMinimized ? 'w-64 h-12' : 'w-[800px] h-[500px]'}`
-                } overflow-hidden flex flex-col`}
-            style={{ zIndex: isEmbedded ? 1 : 100 }}
+            style={{
+                ...(isEmbedded
+                    ? { width: '100%', height: '100%' }
+                    : {
+                        position: 'fixed', bottom: 16, right: 16,
+                        width: isMinimized ? 256 : 800, height: isMinimized ? 48 : 500,
+                        border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12,
+                        boxShadow: '0 25px 60px rgba(0,0,0,0.55)', transition: 'all 0.3s ease',
+                    }),
+                background: '#09090b',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                zIndex: isEmbedded ? 1 : 100,
+            }}
         >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 bg-[#121214] border-b border-white/5 select-none">
-                <div className="flex items-center gap-3">
-                    <div className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
-                        <TerminalIcon size={14} className="text-emerald-500" />
+            <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 14px', background: '#121214',
+                borderBottom: '1px solid rgba(255,255,255,0.06)', userSelect: 'none', direction: 'ltr',
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                        padding: 6, borderRadius: 8, display: 'grid', placeItems: 'center',
+                        background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.2)',
+                    }}>
+                        <TerminalIcon size={14} color="#10b981" />
                     </div>
-                    <div className="flex flex-col">
-                        <span className="text-[11px] font-bold text-slate-200 uppercase tracking-widest leading-tight">Terminal</span>
-                        <span className="text-[9px] text-slate-500 font-mono tracking-wider">JOE Autonomous Shell</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0', letterSpacing: 2, textTransform: 'uppercase' }}>Terminal</span>
+                        <span style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace', letterSpacing: 1 }}>JOE Shell</span>
                     </div>
-                    <div className="h-4 w-[1px] bg-white/10 mx-2"></div>
-                    <div className="flex items-center gap-2">
-                        <div className={`w-1.5 h-1.5 rounded-full ${isConnecting ? 'bg-blue-500 animate-pulse' : isReady ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-red-500'}`}></div>
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                    <div style={{ height: 16, width: 1, background: 'rgba(255,255,255,0.1)', margin: '0 8px' }}></div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <div style={{
+                            width: 6, height: 6, borderRadius: '50%',
+                            background: isConnecting ? '#3b82f6' : isReady ? '#10b981' : '#ef4444',
+                            boxShadow: isReady && !isConnecting ? '0 0 8px rgba(16,185,129,0.8)' : 'none',
+                        }}></div>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: 1, textTransform: 'uppercase' }}>
                             {isConnecting ? 'Connecting' : isReady ? 'Connected' : 'Offline'}
                         </span>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={handleCopyAll}
-                        className="p-1.5 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95"
-                        title="نسخ كل السجل"
-                    >
-                        {justCopied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button onClick={handleCopyAll} className="joe-term-btn" style={ghostBtn} title="نسخ كل السجل">
+                        {justCopied ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
                     </button>
-                    <button
-                        onClick={handleDownload}
-                        className="p-1.5 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95"
-                        title="تنزيل السجل كملف"
-                    >
+                    <button onClick={handleDownload} className="joe-term-btn" style={ghostBtn} title="تنزيل السجل كملف">
                         <Download size={14} />
                     </button>
-                    <button
-                        onClick={handleClear}
-                        className="p-1.5 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95"
-                        title="Clear Output"
-                    >
+                    <button onClick={handleClear} className="joe-term-btn" style={ghostBtn} title="Clear Output">
                         <Trash2 size={14} />
                     </button>
-                    <button
-                        onClick={handleReconnect}
-                        className="p-1.5 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95"
-                        title="Reconnect Session"
-                    >
+                    <button onClick={handleReconnect} className="joe-term-btn" style={ghostBtn} title="Reconnect Session">
                         <RefreshCw size={14} className={isConnecting ? 'animate-spin' : ''} />
                     </button>
-                    
+
                     {!isEmbedded && (
                         <>
-                            <div className="w-[1px] h-4 bg-white/10 mx-1"></div>
-                            <button
-                                onClick={() => setIsMinimized(!isMinimized)}
-                                className="p-1.5 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-all"
-                            >
+                            <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)', margin: '0 4px' }}></div>
+                            <button onClick={() => setIsMinimized(!isMinimized)} className="joe-term-btn" style={ghostBtn}>
                                 {isMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
                             </button>
-                            <button
-                                onClick={onClose}
-                                className="p-1.5 hover:bg-red-500/20 hover:text-red-400 rounded-lg text-slate-400 transition-all"
-                            >
+                            <button onClick={onClose} className="joe-term-btn danger" style={ghostBtn}>
                                 <X size={14} />
                             </button>
                         </>
@@ -307,15 +315,20 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                 </div>
             </div>
 
-            {/* Main Terminal Viewport */}
+            {/* Main Terminal Viewport — flex:1 + absolute inner box give xterm a
+                REAL measured height, which is what lets it open and take input */}
             {!isMinimized && (
-                <div className="flex-1 bg-[#09090b] relative p-2 overflow-hidden">
-                    <div ref={containerRef} className="absolute inset-2" />
+                <div style={{ flex: 1, background: '#09090b', position: 'relative', overflow: 'hidden', minHeight: 0 }}>
+                    <div ref={containerRef} style={{ position: 'absolute', top: 8, right: 8, bottom: 8, left: 8 }} />
                 </div>
             )}
             
             {/* Global Styles for xterm overrides */}
             <style>{`
+                .joe-term-btn:hover { background: rgba(255,255,255,0.06) !important; color: #ffffff !important; }
+                .joe-term-btn.danger:hover { background: rgba(239,68,68,0.18) !important; color: #f87171 !important; }
+                .animate-spin { animation: joeTermSpin 1s linear infinite; }
+                @keyframes joeTermSpin { to { transform: rotate(360deg); } }
                 .xterm-viewport {
                     scrollbar-width: thin;
                     scrollbar-color: rgba(255, 255, 255, 0.1) transparent;

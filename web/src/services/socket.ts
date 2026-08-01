@@ -218,7 +218,11 @@ async function connect() {
       const data = JSON.parse(event.data);
 
       // [Wakil 4.7] Deduplication Logic
-      const id = data.id || data.seq || (data.ts && data.type ? `${data.type}:${data.ts}` : null);
+      // Terminal streams carry the SESSION id in `id` — the same value on every
+      // chunk — so deduping by it swallowed all output after the first chunk
+      // and made the manual terminal look dead. Streams are never deduped.
+      const isStream = data.type === 'terminal_output' || data.type === 'terminal_input' || data.type === 'terminal_resize';
+      const id = isStream ? null : (data.id || data.seq || (data.ts && data.type ? `${data.type}:${data.ts}` : null));
       if (id) {
         const key = String(id);
         if (seenMessageIds.has(key)) {
