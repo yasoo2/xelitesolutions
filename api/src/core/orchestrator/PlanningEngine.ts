@@ -1,6 +1,7 @@
 import { StructuredIntent } from '../intelligence/IntentParser';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { normalizeIntentText } from './promptNormalizer';
+import { compactHistoryForPrompt } from './history-compact';
 
 export interface ExecutionStep {
     id: string;
@@ -216,6 +217,18 @@ Rules:
             ? `${intent.goal || ''}\n${goalNorm}` : String(intent.goal || '');
         const goalLower = probe.toLowerCase();
 
+        // A recovery goal ("Fix and continue: <task>\n[THE STEP FAILED WITH THIS
+        // ERROR]: …") must NEVER enter the keyword fast-paths below. The goal now
+        // carries the failed task's own words plus raw error text — both full of
+        // exactly the keywords the fast-paths trigger on. Measured failure modes:
+        // a short recovery goal (<30 chars) fell into the chat fast-path and the
+        // "repair" was a paragraph of prose; a failed search step matched the web
+        // search fast-path and re-ran the identical failing search with zero
+        // analysis. Recovery is planned from the error, by the real planner, always.
+        if (/^fix and continue:/i.test(String(intent.goal || '').trim())) {
+            return PlanningEngine.generateDynamicDag(intent, memory, context);
+        }
+
         // [BUILD FAST-PATH] "build/create a web page/site/app" -> ACTUALLY build it:
         // generate the code, write the file, and open it in the live preview. This is
         // deterministic (reliable even on weak free models) and makes Joe execute like
@@ -240,12 +253,9 @@ Rules:
             // page on a question — the verbs above already cover "improve the design".
             || /(لون|ألوان|الوان|زر|أزرار|ازرار|خلفية|خلفيه|خلفيات|حجم|أحجام|عنوان|عناوين|خط|خطوط)/.test(probe);
 
-        // A recovery goal ("Fix and continue: <failed task>") must NEVER reach the
-        // page builder: rebuilding from the text of a failed step overwrote the
-        // user's finished page with a page about "Search for beautiful color
-        // palettes". Recovery repairs the failed step; it does not re-author the work.
-        const isRecoveryGoal = /^fix and continue:/i.test(String(intent.goal || '').trim());
-        if (!isRecoveryGoal && ((buildVerb && webNoun) || (hasActivePage && editIntent))) {
+        // Recovery goals were bounced out of generatePlan at the very top — by the
+        // time execution reaches here the goal is a genuine user request.
+        if ((buildVerb && webNoun) || (hasActivePage && editIntent)) {
             return {
                 id: `build_${Date.now()}`,
                 goal: intent.goal,
@@ -738,7 +748,7 @@ Rules:
         // English steps and a web search when the user asked for nicer colours —
         // ask the model what was actually meant. Deterministic paths already had
         // their chance, so this costs nothing on the requests they handle.
-        if (!isRecoveryGoal && String(intent.goal || '').trim().length >= 6) {
+        if (String(intent.goal || '').trim().length >= 6) {
             const routed = await PlanningEngine.classifyRequestIntent(intent.goal, { hasActivePage }, context);
             if (routed) {
                 console.log(`[PlanningEngine] semantic router -> ${routed.intent}${routed.repo ? ` (${routed.repo})` : ''}`);
@@ -807,9 +817,28 @@ Rules:
             };
         }
 
+        return PlanningEngine.generateDynamicDag(intent, memory, context);
+    }
+
+    /**
+     * The real planner: an LLM-generated execution DAG. Reached two ways —
+     * a genuine goal that no fast-path claimed, or a RECOVERY goal that was
+     * deliberately routed here past every fast-path (a repair must be planned
+     * from the error, never keyword-matched back into the step that failed).
+     */
+    private static async generateDynamicDag(intent: StructuredIntent, memory: any, context?: any): Promise<ExecutionPlan> {
         console.log(`[PlanningEngine] Generating REAL-TIME DAG for: ${intent.goal}`);
 
-        const historyContext = memory ? `\nPrevious Execution History:\n${JSON.stringify(memory)}` : "";
+        const isRecovery = /^fix and continue:/i.test(String(intent.goal || '').trim());
+        // Compacted, never raw: one completed page-builder node used to drag an
+        // entire HTML page into this prompt and the planning call itself died on
+        // free-tier token limits — turning every recovery into the failover node.
+        const historyContext = memory ? `\nPrevious Execution History:\n${JSON.stringify(compactHistoryForPrompt(memory))}` : "";
+        const recoveryRules = isRecovery ? `
+This is a FAILURE-RECOVERY plan. Non-negotiable rules:
+- READ the error text inside the goal. Every step you propose must address its CAUSE (missing dependency -> install it; wrong path -> locate the right one; syntax error -> read the file and fix that line).
+- NEVER just re-run the failed step unchanged as the whole plan; earn the retry with a diagnosis or repair step before it.
+- Keep it minimal: diagnose -> repair -> re-run. Do not re-author work that already succeeded.` : '';
 
         const entropySeed = Math.random().toString(36).substring(7);
         const systemPrompt = `You are a Professional Software Architecture Planner.
@@ -822,7 +851,7 @@ Constraints:
 - Define explicit dependencies (dependsOn).
 - Assign an agent to each node: Dev, Security, Browser, General.
 - DO NOT use static templates. Analyze the specific goal from a fresh perspective.
-- Provide a brief "reasoning" field for EACH step explaining why this path was chosen.
+- Provide a brief "reasoning" field for EACH step explaining why this path was chosen.${recoveryRules}
 
 Goal: ${intent.goal}
 Complexity: ${intent.complexity}
@@ -830,13 +859,13 @@ Risk: ${intent.riskLevel}${historyContext}
 
 Return ONLY a JSON array of steps:
 [
-  { 
-    "id": "node_id", 
-    "task": "precise task description", 
-    "tool": "tool_name", 
-    "agent": "agent_type", 
-    "input": { "instruction": "..." }, 
-    "dependsOn": ["prev_node_id"] 
+  {
+    "id": "node_id",
+    "task": "precise task description",
+    "tool": "tool_name",
+    "agent": "agent_type",
+    "input": { "instruction": "..." },
+    "dependsOn": ["prev_node_id"]
   }
 ]`;
 
@@ -858,7 +887,7 @@ Return ONLY a JSON array of steps:
                     input: step.input || {},
                     dependsOn: Array.isArray(step.dependsOn) ? step.dependsOn.map(String) : []
                 }));
-                
+
                 return {
                     id: `dag_${Date.now()}`,
                     goal: intent.goal,
@@ -875,7 +904,8 @@ Return ONLY a JSON array of steps:
 
         // Emergency Fallback (Dynamic but minimal)
         console.warn(`[PlanningEngine] Using failover node for: ${intent.goal}`);
-        const isBrowserFallback = (intent.suggestedAgent === 'Browser') || (intent.requiredTools && intent.requiredTools.includes('browser_run')) || !!urlMatch;
+        const fallbackUrl = String(intent.goal || '').match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);
+        const isBrowserFallback = (intent.suggestedAgent === 'Browser') || (intent.requiredTools && intent.requiredTools.includes('browser_run')) || !!fallbackUrl;
         // For browser intents, open the live browser deterministically instead of
         // the generic browser_run (which needs explicit actions and otherwise dies
         // with "actions_or_instruction_required" -> "Recovery failed").
@@ -887,7 +917,7 @@ Return ONLY a JSON array of steps:
                 description: `Respond to: ${intent.goal}`,
                 tool: isBrowserFallback ? 'browser_launch' : 'central_answer',
                 agent: isBrowserFallback ? 'Browser' : (intent.suggestedAgent || 'General'),
-                input: isBrowserFallback ? { url: urlMatch ? urlMatch[0] : '', request: intent.goal } : { question: intent.goal },
+                input: isBrowserFallback ? { url: fallbackUrl ? fallbackUrl[0] : '', request: intent.goal } : { question: intent.goal },
                 dependsOn: []
             }],
             metadata: { complexity: 'low', riskLevel: 'low' }

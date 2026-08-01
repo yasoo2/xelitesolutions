@@ -618,11 +618,23 @@ export class AgentOrchestrator {
    */
   private async attemptRecovery(failedNode: ExecutionNode, error: any, memory: ExecutionMemory, dag: AgentDAG, traceId?: string): Promise<{ recovered: boolean; newNodes: ExecutionNode[] }> {
     broadcastThinkingDetail(memory.sessionId, `⚠️ Analyzing failure: ${failedNode.task}...`);
-    
+
+    // The ERROR TEXT rides in the recovery goal itself. Before this, the planner
+    // was asked to "Fix and continue: <task>" while the actual failure reason sat
+    // buried in a raw history JSON blob — a weak model plans the repair from the
+    // task title and re-runs the same failing step. A doctor cannot treat a
+    // patient whose symptoms were withheld.
+    const errorText = String(
+        (error && typeof error === 'object') ? ((error as any).message || JSON.stringify(error)) : (error ?? '')
+    ).slice(0, 1500);
+    const recoveryGoal = errorText
+        ? `Fix and continue: ${failedNode.task}\n[THE STEP FAILED WITH THIS ERROR — read it and plan the repair around its cause]:\n${errorText}`
+        : `Fix and continue: ${failedNode.task}`;
+
     // Ask PlanningEngine for recovery nodes
-    const recoveryPlan = await PlanningEngine.generatePlan({ 
-        intent: { goal: `Fix and continue: ${failedNode.task}`, complexity: 'high', riskLevel: 'medium', suggestedAgent: failedNode.agent, rawIntent: {} }, 
-        memory: memory.getHistory() 
+    const recoveryPlan = await PlanningEngine.generatePlan({
+        intent: { goal: recoveryGoal, complexity: 'high', riskLevel: 'medium', suggestedAgent: failedNode.agent, rawIntent: {} },
+        memory: memory.getHistory()
     }, traceId, this.context);
 
     const newNodes: ExecutionNode[] = (recoveryPlan.steps as any).map((step: any) => ({
@@ -653,9 +665,19 @@ export class AgentOrchestrator {
     }
     if (typeof output === 'object') {
       const sanitized = { ...output };
-      // Remove known leaked fields from ToolService/child_process
-      delete sanitized.stdout;
-      delete sanitized.stderr;
+      // TRUNCATE stdout/stderr — never delete them. Deleting blinded every later
+      // step in the DAG: "run the tests, then fix what failed" recorded a
+      // successful test run as {status:'success'} with the entire report erased,
+      // so the fix step had nothing to read. The output of a command Joe ran IS
+      // the material the next step works with.
+      if (typeof sanitized.stdout === 'string' && sanitized.stdout.length > 4000) {
+        sanitized.stdout = sanitized.stdout.slice(0, 4000) + `\n…[truncated ${sanitized.stdout.length - 4000} chars]`;
+      }
+      if (typeof sanitized.stderr === 'string' && sanitized.stderr.length > 2000) {
+        sanitized.stderr = sanitized.stderr.slice(0, 2000) + `\n…[truncated ${sanitized.stderr.length - 2000} chars]`;
+      }
+      // The raw command line can carry inline secrets (API keys in env prefixes) —
+      // that one stays out of recorded results.
       delete sanitized.command;
       return sanitized;
     }
