@@ -103,7 +103,7 @@ function planFor(dir: string, appSource: string) {
     };
 }
 
-let currentPlan = planFor(DIR_OK, APP_OK);
+let currentPlan: any = planFor(DIR_OK, APP_OK);
 
 const stub = http.createServer((req, res) => {
     let body = '';
@@ -203,6 +203,17 @@ async function main() {
         ['the self-heal was announced live', progress.some(m => m.includes('نجح الإصلاح الذاتي'))],
         ['the PROVEN cure landed in the shared repair-memory store on disk', !!storedCure && storedCure.wins >= 1],
         ['a new plan for the same disease FINDS the remembered cure', !!recallPlan.rememberedCure && String(recallPlan.rememberedCure).includes('missing_file_fix')],
+        // ---- the delivery report: what the chat actually shows ----
+        ['the summary is a real delivery REPORT, not a terse line (headline + phases + files)',
+            String(good.output?.summary || '').includes('## ✅')
+            && String(good.output?.summary || '').includes('### المراحل')
+            && String(good.output?.summary || '').includes('### الملفات')],
+        ['the report names the actual written file', String(good.output?.summary || '').includes(`${DIR_OK}/index.js`)],
+        ['the report gives an honest run hint for the entry file', String(good.output?.summary || '').includes(`node ${DIR_OK}/index.js`)],
+        ['the failure report carries the diagnosis (failed phase + real error)',
+            String(bad.output?.summary || '').includes('### ماذا حدث')
+            && String(bad.output?.summary || '').includes('deliberately broken app')],
+        ['the healed run reports its self-heal in the delivery report', String(healed.output?.summary || '').includes('أُصلحت ذاتياً')],
     ];
 
     let failed = 0;

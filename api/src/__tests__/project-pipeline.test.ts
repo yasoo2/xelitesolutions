@@ -63,7 +63,27 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/const verified = pipeline\?\.ok === true/);
         expect(src).toMatch(/ok: verified/);
         // The honest partial-delivery message exists in Arabic.
-        expect(src).toMatch(/توقف البناء بصدق عند/);
+        expect(src).toMatch(/توقف البناء بصدق/);
+    });
+
+    test('the chat gets a delivery REPORT, not a terse line', () => {
+        // extractAnswer picks `summary` — so summary must BE the report.
+        expect(src).toMatch(/summary = this\.buildDeliveryReport\(/);
+        // Phases, files and diagnosis sections exist in both languages.
+        expect(src).toMatch(/### المراحل/);
+        expect(src).toMatch(/### الملفات/);
+        expect(src).toMatch(/### ماذا حدث/);
+        expect(src).toMatch(/### Phases/);
+        expect(src).toMatch(/### Files/);
+    });
+
+    test('the file list comes from the PLAN itself — exact paths, not guesses', () => {
+        expect(src).toMatch(/t\?\.args\?\.path \|\| t\?\.args\?\.filename/);
+    });
+
+    test('the run hint is honest: only when an entry file or package.json was really written', () => {
+        expect(src).toMatch(/verified && \(entry \|\| wrotePackageJson\)/);
+        expect(src).toMatch(/index\|main\|app\|server/);
     });
 
     test('it is registered and runs deterministically in the orchestrator', () => {

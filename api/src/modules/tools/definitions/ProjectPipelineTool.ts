@@ -86,16 +86,20 @@ export class ProjectPipelineTool implements ToolDefinition {
 
         // 3 — Report with the numbers as they are. A partial delivery announced
         // as partial is engineering; announced as done, it is a lie.
+        //
+        // This summary IS what lands in the chat: extractAnswer picks the
+        // `summary` field of the final node's output. Before this report
+        // existed, a completed multi-phase build surfaced as ONE terse line
+        // and the whole story (phases, files, how to run) was discarded.
         const total = Number(plannerResult.output.totalPhases || phases.length);
         const done = Number(pipeline?.completedPhases || 0);
         const verified = pipeline?.ok === true;
-        const failDetail = !verified
-            ? (pipeline?.repairTicket?.summary || pipeline?.error || 'phase failed and self-fix did not recover it')
-            : '';
-        const summary = verified
-            ? `اكتمل المشروع: ${done}/${total} مراحل نُفِّذت وتحقَّقت (بناء + فحوص).`
-            : `توقف البناء بصدق عند ${done}/${total} مراحل — ${String(failDetail).slice(0, 300)}`;
-        say(`[pipeline] ${summary}`);
+        const summary = this.buildDeliveryReport({
+            language: String(context?.language || 'ar').toLowerCase().startsWith('ar') ? 'ar' : 'en',
+            projectName: String(plannerResult.output.projectName || 'project'),
+            phases, pipeline, done, total, verified,
+        });
+        say(`[pipeline] ${verified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
         return {
             ok: verified,
@@ -113,5 +117,100 @@ export class ProjectPipelineTool implements ToolDefinition {
             },
             logs,
         };
+    }
+
+    /**
+     * The delivery report the user actually reads in the chat — markdown, in
+     * the run's language, built ONLY from what provably happened: the phases
+     * that ran, the files the plan wrote, and a run hint only when an entry
+     * file is really there to run. No invented claims.
+     */
+    private buildDeliveryReport(args: {
+        language: 'ar' | 'en';
+        projectName: string;
+        phases: any[];
+        pipeline: any;
+        done: number;
+        total: number;
+        verified: boolean;
+    }): string {
+        const { language: lang, projectName, phases, pipeline, done, total, verified } = args;
+        const ar = lang === 'ar';
+        const lines: string[] = [];
+
+        lines.push(verified
+            ? (ar ? `## ✅ اكتمل المشروع: ${projectName}` : `## ✅ Project delivered: ${projectName}`)
+            : (ar ? `## ⚠️ توقف البناء بصدق: ${projectName}` : `## ⚠️ Build stopped honestly: ${projectName}`));
+        lines.push(ar
+            ? `**المراحل:** ${done}/${total} نُفِّذت وتحقَّقت (تنفيذ فعلي + فحوص، لا مجرد كتابة ملفات).`
+            : `**Phases:** ${done}/${total} executed and verified (real execution + checks, not just written files).`);
+
+        // Phase-by-phase, from the pipeline's own results.
+        const phaseResults: any[] = Array.isArray(pipeline?.results) ? pipeline.results : [];
+        if (phaseResults.length) {
+            lines.push('');
+            lines.push(ar ? '### المراحل' : '### Phases');
+            for (const p of phaseResults) {
+                const okMark = p?.status === 'completed' ? '✅' : '❌';
+                const name = String(p?.phaseName || `Phase ${p?.phaseNumber ?? '?'}`);
+                const tasks = `${p?.completedTasks ?? '?'}/${p?.totalTasks ?? '?'}`;
+                const healed = p?.selfFixExecution?.ok ? (ar ? ' — أُصلحت ذاتياً 🔧' : ' — self-healed 🔧') : '';
+                lines.push(`- ${okMark} ${name} (${ar ? 'مهام' : 'tasks'}: ${tasks})${healed}`);
+            }
+        }
+
+        // Files the PLAN wrote — the paths are in the plan itself, so this list
+        // is exact, not guessed.
+        const writeTools = new Set(['write_file', 'ai_write_file', 'file_write', 'create_file', 'write_to_file']);
+        const files: string[] = [];
+        for (const ph of phases) {
+            for (const t of (Array.isArray(ph?.tasks) ? ph.tasks : [])) {
+                if (!writeTools.has(String(t?.tool || ''))) continue;
+                const p = String(t?.args?.path || t?.args?.filename || t?.input?.path || t?.input?.filename || '').trim();
+                if (p && !files.includes(p)) files.push(p);
+            }
+        }
+        if (files.length) {
+            lines.push('');
+            lines.push(ar ? '### الملفات' : '### Files');
+            for (const f of files.slice(0, 15)) lines.push(`- \`${f}\``);
+            if (files.length > 15) lines.push(ar ? `- … و${files.length - 15} ملفات أخرى` : `- … and ${files.length - 15} more`);
+        }
+
+        // A run hint ONLY when the plan really wrote an entry file.
+        const entry = files.find(f => /(^|\/)(index|main|app|server)\.(js|mjs|cjs|ts)$/i.test(f));
+        const wrotePackageJson = files.some(f => /(^|\/)package\.json$/i.test(f));
+        if (verified && (entry || wrotePackageJson)) {
+            lines.push('');
+            lines.push(ar ? '### التشغيل' : '### Run it');
+            if (wrotePackageJson) lines.push(ar ? '```\nnpm install\nnpm start\n```' : '```\nnpm install\nnpm start\n```');
+            else if (entry) lines.push(`\`\`\`\nnode ${entry}\n\`\`\``);
+        }
+
+        // On failure: name the failed phase and the real error head, plus what
+        // the self-fix tried — the user deserves the diagnosis, not a shrug.
+        if (!verified) {
+            const failedPhase = phaseResults.find(p => p?.status !== 'completed');
+            const ticket = pipeline?.repairTicket;
+            lines.push('');
+            lines.push(ar ? '### ماذا حدث' : '### What happened');
+            if (failedPhase) {
+                lines.push(ar
+                    ? `- المرحلة المتعثرة: **${failedPhase.phaseName || failedPhase.phaseNumber}**`
+                    : `- Failed phase: **${failedPhase.phaseName || failedPhase.phaseNumber}**`);
+            }
+            if (ticket?.primaryError) {
+                lines.push((ar ? '- الخطأ: ' : '- Error: ') + '`' + String(ticket.primaryError).slice(0, 220) + '`');
+            }
+            const sfReason = pipeline?.selfFixExecution?.reason || pipeline?.selfFixPlan?.reason;
+            if (sfReason) {
+                lines.push((ar ? '- محاولة الإصلاح الذاتي: ' : '- Self-fix attempt: ') + String(sfReason).slice(0, 220));
+            }
+            lines.push(ar
+                ? `- ما اكتمل قبل التوقف (${done}/${total}) سليمٌ ومتحقَّق منه.`
+                : `- Everything completed before the stop (${done}/${total}) is verified and intact.`);
+        }
+
+        return lines.join('\n').slice(0, 3500);
     }
 }
