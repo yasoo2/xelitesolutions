@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
     Globe, Terminal as TerminalIcon, Eye, Loader, Maximize2,
     ChevronDown, ChevronUp, FileOutput, AlertTriangle,
-    Copy, CopyCheck, Trash2, Search, ArrowDownToLine
+    Copy, CopyCheck, Trash2, Search, ArrowDownToLine, Columns2
 } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -549,6 +549,20 @@ export default function WorkspacePanel({
         }
     };
 
+    // Split view: Logs + Preview side by side — watch the code being written
+    // and the page taking shape at the same moment, no tab hopping. The
+    // preference survives reloads.
+    const [splitView, setSplitView] = useState<boolean>(() => {
+        try { return localStorage.getItem('joe-split-view') === '1'; } catch { return false; }
+    });
+    const toggleSplit = () => {
+        setSplitView(v => {
+            try { localStorage.setItem('joe-split-view', v ? '0' : '1'); } catch { }
+            return !v;
+        });
+    };
+    const splitActive = splitView && (activeTab === 'logs' || activeTab === 'preview');
+
     const handleMobileToggle = () => {
         if (onMobileToggle) {
             onMobileToggle();
@@ -614,6 +628,23 @@ export default function WorkspacePanel({
                     {isMobileCollapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                 </button>
 
+                {/* Split: Logs + Preview side by side (active on those tabs) */}
+                {(activeTab === 'logs' || activeTab === 'preview') && (
+                    <button
+                        className="joe-header-btn hide-mobile"
+                        onClick={toggleSplit}
+                        title={splitView ? 'عرض مفرد' : 'السجلات + المعاينة معاً'}
+                        style={{
+                            border: 'none',
+                            background: splitActive ? 'rgba(52,196,139,0.12)' : 'transparent',
+                            color: splitActive ? 'var(--joe-gold-primary)' : undefined,
+                            borderRadius: 8,
+                        }}
+                    >
+                        <Columns2 size={16} />
+                    </button>
+                )}
+
                 {onMaximizeToggle && (
                     <button
                         className="joe-header-btn hide-mobile"
@@ -646,19 +677,31 @@ export default function WorkspacePanel({
                     </ErrorBoundary>
                 )}
 
-                {/* Preview Tab - Always mounted so event listeners stay active */}
-                <div style={{ display: activeTab === 'preview' ? 'contents' : 'none' }}>
-                    <ErrorBoundary fallbackTitle={t('loadPreviewFailed')}>
-                        <Suspense fallback={<LoadingFallback />}>
-                            <PreviewPanel url={previewUrl} />
-                        </Suspense>
-                    </ErrorBoundary>
+                {/* Logs + Preview share a split-capable area. The preview stays
+                    ALWAYS mounted (its event listeners must survive tab hops);
+                    in split mode each pane takes half, logs beside preview. */}
+                <div
+                    style={splitActive
+                        ? { display: 'flex', width: '100%', height: '100%', minHeight: 0 }
+                        : { display: 'contents' }}
+                >
+                    {(activeTab === 'logs' || splitActive) && (
+                        <div style={splitActive
+                            ? { flex: '1 1 50%', minWidth: 0, display: 'flex', flexDirection: 'column', borderInlineEnd: '1px solid var(--joe-border)' }
+                            : { display: 'contents' }}>
+                            <EnhancedLogsPanel logs={logs} liveFiles={liveFiles} buildStatus={buildStatus} />
+                        </div>
+                    )}
+                    <div style={splitActive
+                        ? { flex: '1 1 50%', minWidth: 0, display: 'flex', flexDirection: 'column' }
+                        : { display: activeTab === 'preview' ? 'contents' : 'none' }}>
+                        <ErrorBoundary fallbackTitle={t('loadPreviewFailed')}>
+                            <Suspense fallback={<LoadingFallback />}>
+                                <PreviewPanel url={previewUrl} />
+                            </Suspense>
+                        </ErrorBoundary>
+                    </div>
                 </div>
-
-                {/* Logs Tab */}
-                {activeTab === 'logs' && (
-                    <EnhancedLogsPanel logs={logs} liveFiles={liveFiles} buildStatus={buildStatus} />
-                )}
 
                 {/* Problems Tab */}
                 {activeTab === 'problems' && (
