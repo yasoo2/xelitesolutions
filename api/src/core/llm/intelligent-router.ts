@@ -680,6 +680,42 @@ export function orderByCooldown<T extends { name: string }>(providers: T[]): T[]
     return [...fresh, ...cooled];
 }
 
+/** Does this error message describe a rate limit (as opposed to a dead provider)? */
+export const RATE_LIMIT_RE = /\b(429|rate.?limit(?:ed)?|too many requests)\b/i;
+
+// A 429 is not an outage — it is a timer. On a machine whose ONLY live brain is
+// rate-limited Groq (Ollama not running, no other keys), failing the whole build
+// the instant every provider errors means a 60-second speed bump kills 4 minutes
+// of completed work. Patience is bounded and honest: wait only when a rate limit
+// was actually seen, only until the earliest cooldown expires, and never longer
+// than the cap.
+const RATE_LIMIT_PATIENCE_MS = Math.max(
+    0,
+    parseInt(String(process.env.LLM_RATELIMIT_PATIENCE_MS || '').trim(), 10) || (RECENT_FAIL_TTL_MS + 15000)
+);
+
+/**
+ * How long to wait before retrying the provider mesh after every provider failed.
+ * Returns null when waiting is pointless: nothing was rate-limited (the failures
+ * are real outages, not timers), or the soonest recovery is further away than the
+ * caller is willing to stall.
+ */
+export function rateLimitPatienceMs(
+    sawRateLimit: boolean,
+    cooldownUntil: number[],
+    now: number,
+    capMs: number
+): number | null {
+    if (!sawRateLimit || capMs <= 0) return null;
+    const future = cooldownUntil.filter(t => t > now);
+    // No cooldown on record (e.g. the limit came from a provider we don't track by
+    // name): a short flat wait still beats declaring the brain dead.
+    const earliest = future.length ? Math.min(...future) : now + 20000;
+    const wait = (earliest - now) + 1500; // land just past the expiry, not on it
+    if (wait > capMs) return null;
+    return Math.max(2000, wait);
+}
+
 /**
  * When no provider answers, routeToModel returns an apology STRING rather than
  * throwing — which is right for a chat reply, and wrong for every caller that
@@ -1208,6 +1244,7 @@ export async function routeToModel(
         });
     }
     let lastError = '';
+    let sawRateLimit = false;
 
     // 1. Try Selected Model First (Happy Path)
     // Skip Groq here when it's cooling down (e.g. it just hit a 429 rate limit) —
@@ -1233,6 +1270,7 @@ export async function routeToModel(
         // A 429 (rate limit) or 413 means Groq is temporarily unusable — cool it down
         // so neither the happy path nor the mesh keeps hammering it this minute.
         if (/\b(429|rate limit|413)\b/i.test(String(e?.message || ''))) markProviderFailed('Groq (Free)');
+        if (RATE_LIMIT_RE.test(String(e?.message || ''))) sawRateLimit = true;
         lastError = e.message;
     }
 
@@ -1252,6 +1290,12 @@ export async function routeToModel(
             meshProviders.push(local); // offline backup, tried only after cloud/keyless
         }
     }
+
+    // Two passes at most: if the first pass fails and at least one failure was a
+    // RATE LIMIT (a timer, not an outage), wait until the earliest cooldown expires
+    // — bounded by RATE_LIMIT_PATIENCE_MS — and try the mesh once more. This is the
+    // difference between "site build aborted on page 4" and "paused 60s, finished".
+    for (let meshAttempt = 0; meshAttempt < 2; meshAttempt++) {
 
     // Move providers that are in cooldown (recently failed) to the END of the order
     // rather than dropping them entirely — so if EVERY provider is cooling down we
@@ -1309,41 +1353,46 @@ export async function routeToModel(
         } catch (e: any) {
             console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message} `);
             markProviderFailed(p.name);
+            if (RATE_LIMIT_RE.test(String(e?.message || ''))) sawRateLimit = true;
             lastError = e.message;
         }
     }
 
-    // Final catch-all (Guarantee a response)
-    try {
-        if (localStrict) {
-            return lastError || 'LOCAL_LLM_FAILED';
+    // Every provider failed this pass. If a rate limit was among the failures the
+    // brain is not dead — it is on a timer. Wait it out (bounded) and go again.
+    if (meshAttempt === 0) {
+        const waitMs = rateLimitPatienceMs(
+            sawRateLimit,
+            [...recentlyFailedProviders.values()],
+            Date.now(),
+            RATE_LIMIT_PATIENCE_MS
+        );
+        if (waitMs !== null) {
+            const secs = Math.round(waitMs / 1000);
+            console.info(`[IntelligentRouter] ⏳ Rate-limited, not dead: waiting ${secs}s for the limit to reset, then retrying every provider once.`);
+            onProgress?.(`⏳ مزوّد الذكاء وصل حدّ الطلبات المؤقت — أنتظر ${secs} ثانية ثم أُكمل تلقائياً`);
+            await new Promise(r => setTimeout(r, waitMs));
+            continue;
         }
-        
-        const promptText = flatMessages.map(m => String(m.content || '')).join('\n');
-        const pLower = promptText.toLowerCase();
-
-        // If asking for tool choice or JSON, generate structured JSON fallback
-        if (promptText.includes('Choose the single best tool') || promptText.includes('JSON Format') || tools?.length) {
-            if (pLower.includes('browser') || pLower.includes('web') || pLower.includes('متصفح') || pLower.includes('افتح') || pLower.includes('ابحث')) {
-                return JSON.stringify({ tool: "browser_run", args: { instructionText: promptText }, reasoning: "Emergency offline routing for browser" });
-            }
-            if (pLower.includes('read') || pLower.includes('اقرأ') || pLower.includes('عرض')) {
-                return JSON.stringify({ tool: "read_file", args: { path: "package.json" }, reasoning: "Emergency offline routing for read" });
-            }
-            if (pLower.includes('write') || pLower.includes('create') || pLower.includes('أنشئ') || pLower.includes('اكتب')) {
-                return JSON.stringify({ tool: "write_file", args: { path: "output.txt", content: promptText }, reasoning: "Emergency offline routing for write" });
-            }
-            return JSON.stringify({ tool: "central_answer", args: { question: promptText }, reasoning: "Emergency offline routing for general" });
-        }
-
-        // Standard text fallback
-        console.error(`[IntelligentRouter] CRITICAL: All LLM providers failed. Returning honest error.`);
-        return PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. "
-            + "الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، "
-            + "أو تحقّق من اتصال الإنترنت لاستخدام الذكاء المجّاني. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)";
-    } catch (e: any) {
-        return PROVIDER_FAILURE_PREFIX + " ولم يُنفَّذ الطلب. شغّل Ollama محلياً أو تحقّق من الإنترنت ثم أعد المحاولة.";
     }
+    break;
+    } // end mesh attempts
+
+    // No provider answered and waiting would not help (or already didn't).
+    // There is exactly ONE honest thing to say here, for EVERY kind of caller.
+    // A tool-choice prompt does not get a guessed tool call, a JSON prompt does
+    // not get invented JSON — a router with no brain behind it must never
+    // fabricate decisions. (An earlier "emergency offline routing" here turned
+    // the words "افتح/اكتب" in a dead-brain prompt into real browser_run and
+    // write_file commands — that is how a browser once opened out of nowhere.)
+    console.error(`[IntelligentRouter] CRITICAL: All LLM providers failed. Returning honest error.`);
+    if (localStrict) {
+        return PROVIDER_FAILURE_PREFIX + ` (الوضع المحلي الصارم — لم يستجب المحرّك المحلي${lastError ? `: ${String(lastError).slice(0, 160)}` : ''}). `
+            + "شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة.";
+    }
+    return PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. "
+        + "الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، "
+        + "أو تحقّق من اتصال الإنترنت لاستخدام الذكاء المجّاني. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)";
 }
 
 /**

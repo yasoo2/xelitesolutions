@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { planNextStep } from '../../core/llm';
-import { routeToModel } from '../../core/llm/intelligent-router';
+import { routeToModel, isProviderFailure } from '../../core/llm/intelligent-router';
 import { executeTool } from '../../modules/services/ToolService';
 import { workspaceService } from '../../modules/services/WorkspaceService';
 
@@ -166,7 +166,7 @@ async function verifyLocalAutoProvider() {
             { role: 'user', content: 'Say: local provider OK' }
         ]);
         const out = String(text || '').trim();
-        if (!out || out.includes('LOCAL_LLM_FAILED')) {
+        if (!out || out.includes('LOCAL_LLM_FAILED') || isProviderFailure(out)) {
             console.error('❌ Local provider did not respond correctly:', out);
             process.exit(1);
         }
