@@ -1,12 +1,54 @@
-import { Router, Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { authenticate } from '../middleware/auth';
 import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import { workspaceService } from '../../modules/services/WorkspaceService';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
+import { archiveProject, extractProject } from '../../core/transfer/project-archive';
 
 const router = Router();
+
+/**
+ * [EXPORT] The active project as ONE downloadable zip (with a manifest).
+ * The path is decided SERVER-side from the workspace — the client cannot
+ * point this at an arbitrary directory.
+ */
+router.get('/export', authenticate as any, (req: Request, res: Response) => {
+    try {
+        const root = workspaceService.getActiveRoot(String(req.query.workspaceId || '') || undefined);
+        const out = archiveProject(root);
+        const name = `joe-project-${path.basename(root).replace(/[^\w.-]+/g, '-')}-${new Date().toISOString().slice(0, 10)}.zip`;
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+        res.setHeader('X-Files', String(out.files));
+        return res.send(out.buffer);
+    } catch (e: any) {
+        return res.status(400).json({ ok: false, error: e?.message || 'export_failed' });
+    }
+});
+
+/**
+ * [IMPORT] A previously exported zip becomes a FRESH `imported-…` directory
+ * beside the active project — never on top of existing work. Zip-slip and
+ * zip-bomb attempts are refused loudly inside extractProject.
+ */
+router.post('/import', authenticate as any,
+    express.raw({ type: ['application/zip', 'application/octet-stream'], limit: '220mb' }),
+    (req: Request, res: Response) => {
+        try {
+            const body: Buffer = req.body;
+            if (!Buffer.isBuffer(body) || body.length < 22) {
+                return res.status(400).json({ ok: false, error: 'no zip payload received' });
+            }
+            const root = workspaceService.getActiveRoot(String(req.query.workspaceId || '') || undefined);
+            const parent = path.dirname(path.resolve(root));
+            const result = extractProject(body, parent);
+            return res.json({ ok: true, dir: result.dir, files: result.files, bytes: result.bytes });
+        } catch (e: any) {
+            return res.status(400).json({ ok: false, error: e?.message || 'import_failed' });
+        }
+    });
 
 type SpawnResult = { code: number | null; stdout: string; stderr: string };
 
