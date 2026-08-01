@@ -10,6 +10,7 @@ import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/qu
 import { auditVisually, visualRepairBrief, type VisualFinding } from '../../../core/quality/visual-audit';
 import { applyMechanicalRepairs } from '../../../core/quality/repair-engine';
 import { checkpointKey, loadCheckpoint, saveCheckpointSection, clearCheckpoint } from '../../../core/resume/checkpoint';
+import { guardSectionStyles } from '../../../core/design/style-guard';
 import { auditBehaviour, behaviourRepairBrief, type BehaviourFinding } from '../../../core/quality/behaviour-audit';
 import { workspaceService } from '../../services/WorkspaceService';
 import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirstCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
@@ -475,7 +476,13 @@ ${prev!.html}`
                      */
                     const tooSmall = got.ok && !mayShrink && got.html.length < section.html.length * 0.85;
                     if (got.ok && !tooSmall) {
-                        applied.push({ section, html: got.html });
+                        // Edited sections get the same style guard as fresh ones.
+                        const g = guardSectionStyles(got.html, section.id || undefined);
+                        if (g.actions.length) {
+                            logs.push(`style guard (edit ${section.id || section.tag}): ${g.actions.join(', ')}`);
+                            for (const note of g.notesAr) logs.push(`🛡️ ${note}`);
+                        }
+                        applied.push({ section, html: g.html });
                         editedSections.push(section.headings[0] || section.id);
                     } else if (tooSmall) {
                         editShrank.push(section.headings[0] || section.id);
@@ -648,6 +655,18 @@ ${prev!.html}`
                         }
                     } catch (e: any) {
                         logs.push(`section ${plan.index} (${plan.id}): retry failed — ${String(e?.message || e).slice(0, 80)}`);
+                    }
+                }
+
+                // [STYLE GUARD] Whatever styling the section brought stays INSIDE
+                // it: global rules are dropped, the rest is scoped to its #id,
+                // and inline landmines (fixed position, giant widths) defused.
+                if (got.ok) {
+                    const g = guardSectionStyles(got.html, plan.id);
+                    if (g.actions.length) {
+                        got = { ...got, html: g.html };
+                        logs.push(`style guard (${plan.id}): ${g.actions.join(', ')}`);
+                        for (const note of g.notesAr) logs.push(`🛡️ ${note}`);
                     }
                 }
 
