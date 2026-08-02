@@ -149,6 +149,58 @@ export class GitOpsTool extends BaseTool {
                 }
             }
 
+            // Non-fast-forward: the remote branch moved ahead of us (someone else
+            // pushed, or our clone is stale). Failing here silently was the old
+            // behaviour — the push just "didn't work" with a cryptic git message.
+            // A senior engineer integrates the remote work and replays their own
+            // commits on top, then pushes. NEVER a silent force-push: that would
+            // destroy the remote's history, the exact mistake the launcher's own
+            // reset-on-network-failure lesson taught. On a REAL conflict we abort
+            // cleanly and report honestly, leaving the user's history untouched.
+            const isNonFastForward = op === 'push'
+                && /non-fast-forward|fetch first|\[rejected\]|tip of your current branch is behind|Updates were rejected/i.test(errorMsg);
+            if (isNonFastForward) {
+                logs.push('Smart Recovery: remote branch has diverged — integrating remote work before retrying push...');
+                try {
+                    const revParse = await handleGitCommand('rev-parse', ['--abbrev-ref', 'HEAD'], fallbackCwd);
+                    const branch = String(revParse?.output || '').trim();
+                    if (!branch || branch === 'HEAD') {
+                        logs.push('Smart Recovery: detached HEAD — cannot auto-integrate safely.');
+                        return { ok: false, error: 'push_rejected: HEAD منفصل، يتعذّر الدمج التلقائي بأمان. راجع الفرع يدوياً.', logs };
+                    }
+                    const authEnv = { ...process.env, ...env };
+                    await runGitWithEnv('fetch', ['origin'], authEnv, fallbackCwd);
+                    // Rebase local commits on top of the remote tip: linear history,
+                    // no surprise merge commit, our work replayed on top of theirs.
+                    try {
+                        await runGitWithEnv('pull', ['--rebase', 'origin', branch], authEnv, fallbackCwd);
+                    } catch (rebaseErr: any) {
+                        // A genuine conflict (or unstaged changes). Leave NOTHING
+                        // half-done: abort the rebase so the tree is clean, and tell
+                        // the truth instead of forcing.
+                        try { await runGitWithEnv('rebase', ['--abort'], authEnv, fallbackCwd); } catch { /* nothing to abort */ }
+                        logs.push(`Smart Recovery: real conflict, aborted rebase to keep the tree clean — ${rebaseErr?.message || ''}`);
+                        return {
+                            ok: false,
+                            error: 'push_rejected_conflict: الفرع البعيد يحوي تغييرات تتعارض مع تغييراتك ويحتاج دمجاً يدوياً. لم أُغيّر شيئاً في تاريخك المحلي.',
+                            // In output so it survives ToolService's return shaping
+                            // ({ ok, output, logs, artifacts, error }) — a top-level
+                            // custom field would be silently dropped.
+                            output: { conflict: true, reason: 'remote_diverged_conflict' },
+                            logs,
+                        };
+                    }
+                    // Clean rebase → replay the original push (recompute args:
+                    // safeArgs lives in the try scope, out of reach here).
+                    const pushArgs = Array.isArray(args) ? args.map(a => String(a || '')).filter(a => a.length > 0) : [];
+                    const retryResult = await runGitWithEnv('push', pushArgs, authEnv, fallbackCwd);
+                    logs.push('Smart Recovery: integrated remote work and pushed successfully.');
+                    return { ok: true, output: { output: retryResult.stdout || retryResult.stderr, integratedRemote: true }, logs };
+                } catch (recoveryError: any) {
+                    logs.push(`Smart Recovery Failed: ${recoveryError.message}`);
+                }
+            }
+
             if (op === 'remote' && args[0] === 'add' && errorMsg.includes('remote origin already exists')) {
                 logs.push('Smart Recovery: Remote exists, updating URL...');
                 try {
