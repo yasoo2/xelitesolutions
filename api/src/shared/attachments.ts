@@ -22,6 +22,8 @@ export interface AttachmentInput {
     content: string;
     /** Where the raw file lives, for tools that can open binary formats. */
     path: string;
+    /** Set when `content` is a vision model's description, not extracted text. */
+    visionDescribed?: boolean;
 }
 
 /** One file may not eat the whole budget… */
@@ -50,7 +52,17 @@ export function formatAttachmentsBlock(files: AttachmentInput[]): string {
         const media = /^(image|audio|video)\//i.test(f.mimeType || '');
         let body: string;
         const text = String(f.content || '').trim();
-        if (media) {
+        if (media && text) {
+            // An image the vision pass ANALYZED (or an honest size-limit note):
+            // the description is the content, clearly labelled as seen, with
+            // the raw file's path kept for tools that can open pixels.
+            const cap = Math.max(0, Math.min(ATTACHMENT_PER_FILE_CHARS, budget));
+            const body0 = text.length > cap ? `${text.slice(0, cap)}\n…[truncated]` : text;
+            budget -= Math.min(text.length, cap);
+            body = f.visionDescribed
+                ? `(the image was ANALYZED by a vision model — this is what it shows:)\n${body0}\n(raw file on disk at: ${f.path})`
+                : body0;
+        } else if (media) {
             // No text to give — but SAY SO, with the on-disk path, so the model
             // acknowledges the file instead of ignoring it, and a tool that can
             // open media knows where it is.

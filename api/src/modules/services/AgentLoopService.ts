@@ -10,6 +10,7 @@ import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { longTermMemory } from '../../core/memory/long-term-memory';
 import { uiText } from '../../shared/utils/language';
 import { formatAttachmentsBlock } from '../../shared/attachments';
+import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
 
 /**
@@ -55,7 +56,26 @@ export class AgentLoopService {
          * the message «لخص هذا الملف» is meaningless without the file under
          * it. Bounded by formatAttachmentsBlock so a huge attachment cannot
          * evict the instructions that follow.
+         *
+         * Images get EYES first: a vision model turns each attached picture
+         * into a precise description (all visible text transcribed) before
+         * the block is built, so «حلل هذه اللقطة» is answered from the
+         * pixels, not from the filename. Runs in this background execute —
+         * the HTTP response already returned — and never blocks the run:
+         * with no vision provider the image stays honestly declared.
          */
+        const language0 = String(options.language || 'ar').trim().toLowerCase().split('-')[0] || 'ar';
+        if ((options.attachments || []).some(a => /^image\//i.test(a.mimeType || '') && !String(a.content || '').trim())) {
+            broadcastThinkingDetail(options.sessionId || '', language0 === 'ar' ? '👁️ أفحص الصور المرفقة بنموذج رؤية…' : '👁️ Reading the attached images with a vision model…');
+            try {
+                const mc = options.modelConfig || {};
+                const r = await describeImageAttachments(options.attachments || [], {
+                    language: language0,
+                    groqApiKey: String(mc.provider || '').toLowerCase() === 'groq' ? mc.apiKey : undefined,
+                });
+                if (r.described) console.log(`[AgentLoopService] Vision described ${r.described} image(s), ${r.skipped} skipped`);
+            } catch (e: any) { console.warn('[AgentLoopService] vision pass failed (continuing):', e?.message || e); }
+        }
         const attachBlock = formatAttachmentsBlock(options.attachments || []);
         if (attachBlock) blocks.push(attachBlock);
         if (standing) blocks.push(`[STANDING USER INSTRUCTIONS — always apply to HOW you work]:\n${standing}`);

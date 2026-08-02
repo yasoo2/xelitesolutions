@@ -33,7 +33,7 @@ async function main() {
 
     // Capture the run instead of running it: the proof is about what REACHES
     // the agent, and a full agent loop would spend the daily model quota.
-    let captured: { goal: string; options: any } | null = null;
+    let captured: any = null;
     const realExecute = AgentLoopService.execute;
     (AgentLoopService as any).execute = async (goal: string, options: any) => {
         captured = { goal, options };

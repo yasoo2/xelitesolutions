@@ -26,7 +26,7 @@ async function main() {
     const { AgentLoopService } = await import('../../modules/services/AgentLoopService');
     const { formatAttachmentsBlock } = await import('../../shared/attachments');
 
-    let captured: { goal: string; options: any } | null = null;
+    let captured: any = null;
     const realExecute = AgentLoopService.execute;
     (AgentLoopService as any).execute = async (goal: string, options: any) => {
         captured = { goal, options };
