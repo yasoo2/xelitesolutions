@@ -1,0 +1,100 @@
+/**
+ * THE PAPERCLIP PIPELINE. Analyzed end to end on the user's request
+ * («زر المرفقات قم بتحليله بشكل دقيق»), and the chain was broken in the
+ * middle: /files/upload extracted and stored each file's text, the composer
+ * sent fileIds with the message — and /runs/start never read them. Joe
+ * answered every «لخص هذا الملف» without ever seeing the file.
+ *
+ * These tests lock the repaired chain link by link.
+ */
+import fs from 'fs';
+import path from 'path';
+import {
+    formatAttachmentsBlock,
+    ATTACHMENT_PER_FILE_CHARS,
+    ATTACHMENT_TOTAL_CHARS,
+} from '../shared/attachments';
+
+const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
+
+describe('attachments — the block the model reads', () => {
+    test('a text file arrives with its content, under a header that names it', () => {
+        const block = formatAttachmentsBlock([
+            { name: 'notes.md', mimeType: 'text/markdown', size: 2048, content: '# خطة المشروع\nالبند الأول', path: '/tmp/x' },
+        ]);
+        expect(block).toContain('[ATTACHED FILES — the user attached 1 file(s)');
+        expect(block).toContain('(1) notes.md — text/markdown, 2 KB');
+        expect(block).toContain('# خطة المشروع');
+    });
+
+    test('an image is DECLARED with its on-disk path, never silently dropped', () => {
+        const block = formatAttachmentsBlock([
+            { name: 'shot.png', mimeType: 'image/png', size: 5 * 1024 * 1024, content: '', path: '/uploads/shot.png' },
+        ]);
+        expect(block).toContain('shot.png — image/png, 5.0 MB');
+        expect(block).toContain('binary image file');
+        expect(block).toContain('/uploads/shot.png');
+    });
+
+    test('a huge file is truncated at the per-file cap and says so', () => {
+        const big = 'م'.repeat(ATTACHMENT_PER_FILE_CHARS + 5_000);
+        const block = formatAttachmentsBlock([
+            { name: 'log.txt', mimeType: 'text/plain', size: big.length, content: big, path: '/tmp/l' },
+        ]);
+        expect(block.length).toBeLessThan(ATTACHMENT_PER_FILE_CHARS + 600);
+        expect(block).toContain('…[truncated: the file continues for 5000 more characters]');
+    });
+
+    test('files together respect the TOTAL budget — the second file gets what remains', () => {
+        const a = 'a'.repeat(ATTACHMENT_PER_FILE_CHARS);
+        const b = 'b'.repeat(ATTACHMENT_PER_FILE_CHARS);
+        const c = 'c'.repeat(ATTACHMENT_PER_FILE_CHARS);
+        const block = formatAttachmentsBlock([
+            { name: '1.txt', mimeType: 'text/plain', size: a.length, content: a, path: '' },
+            { name: '2.txt', mimeType: 'text/plain', size: b.length, content: b, path: '' },
+            { name: '3.txt', mimeType: 'text/plain', size: c.length, content: c, path: '' },
+        ]);
+        // First two fill the total budget; the third must arrive as a header +
+        // truncation notice, not another 48k of text.
+        expect(block.length).toBeLessThan(ATTACHMENT_TOTAL_CHARS + 1_000);
+        expect(block).toContain('(3) 3.txt');
+    });
+
+    test('no attachments → empty string, so callers push unconditionally', () => {
+        expect(formatAttachmentsBlock([])).toBe('');
+        expect(formatAttachmentsBlock(undefined as any)).toBe('');
+    });
+});
+
+describe('attachments — the chain is actually wired', () => {
+    test('files.ts exports the loader (Mongo first, offline cache second)', () => {
+        const src = read('api', 'routes', 'files.ts');
+        expect(src).toContain('export async function loadUploadedFiles');
+        expect(src).toMatch(/FileModel\.findById\(id\)/);
+        expect(src).toMatch(/readFileFromCache\(id\)/);
+    });
+
+    test('/runs/start READS fileIds and loads them — the dropped-on-the-floor bug', () => {
+        const src = read('api', 'routes', 'run.ts');
+        expect(src).toMatch(/req\.body\?\.fileIds/);
+        expect(src).toMatch(/await loadUploadedFiles\(fileIds\)/);
+        expect(src).toMatch(/attachments,/);
+    });
+
+    test('the run rides the attachments right after the goal itself', () => {
+        const src = read('modules', 'services', 'AgentLoopService.ts');
+        expect(src).toContain("formatAttachmentsBlock(options.attachments || [])");
+        // Attachment block is pushed before standing instructions.
+        expect(src.indexOf('if (attachBlock) blocks.push(attachBlock)'))
+            .toBeLessThan(src.indexOf('STANDING USER INSTRUCTIONS — always apply'));
+    });
+
+    test('the composer has ONE upload path — the button no longer lacks previews', () => {
+        const src = fs.readFileSync(
+            path.join(__dirname, '..', '..', '..', 'web', 'src', 'components', 'CommandComposer.tsx'), 'utf-8');
+        const handler = src.slice(src.indexOf('async function handleFileSelect'), src.indexOf('// Reusable upload function'));
+        expect(handler).toContain('await uploadFiles(selected)');
+        // The old duplicated XHR body is gone from the handler.
+        expect(handler).not.toContain('xhr.open');
+    });
+});

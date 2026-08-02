@@ -9,6 +9,7 @@ import { executeTool } from './ToolService';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { longTermMemory } from '../../core/memory/long-term-memory';
 import { uiText } from '../../shared/utils/language';
+import { formatAttachmentsBlock } from '../../shared/attachments';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
 
 /**
@@ -37,7 +38,7 @@ export class AgentLoopService {
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    static async execute(goal: string, options: { sessionId?: string; userId?: string; userName?: string; systemInstructions?: string; traceId?: string; modelConfig?: any; language?: string } = {}) {
+    static async execute(goal: string, options: { sessionId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
         const userName = String(options.userName || '').trim();
@@ -49,6 +50,14 @@ export class AgentLoopService {
         // scripts, services, deploys — so a plain question is not taxed with it.
         const looksLikeEngineering = /build|deploy|script|install|server|service|launch|restart|update|setup|مشروع|سكربت|خادم|تشغيل|تحديث|نشر|ابنِ|ابني|موقع|تطبيق|نظام/i.test(goal);
         const blocks = [goal];
+        /**
+         * What the user ATTACHED rides directly after what the user SAID —
+         * the message «لخص هذا الملف» is meaningless without the file under
+         * it. Bounded by formatAttachmentsBlock so a huge attachment cannot
+         * evict the instructions that follow.
+         */
+        const attachBlock = formatAttachmentsBlock(options.attachments || []);
+        if (attachBlock) blocks.push(attachBlock);
         if (standing) blocks.push(`[STANDING USER INSTRUCTIONS — always apply to HOW you work]:\n${standing}`);
         if (looksLikeEngineering) blocks.push(BUILD_DISCIPLINE);
         const effectiveGoal = blocks.join('\n\n');

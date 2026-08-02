@@ -1783,102 +1783,16 @@ export default function CommandComposer({
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files?.length) return;
-    const selectedFiles = Array.from(e.target.files);
-
-    setIsUploading(true);
-    setUploadProgress(0);
-
-    try {
-      const token = localStorage.getItem('token');
-
-      // Upload sequentially to show progress for each
-      for (const file of selectedFiles) {
-        setUploadProgress(0); // Reset for next file
-
-        const formData = new FormData();
-        formData.append('file', file);
-        if (sessionId) formData.append('sessionId', sessionId);
-
-        await new Promise<void>((resolve) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open('POST', `${API}/files/upload`);
-
-          if (token) {
-            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-          }
-
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-              const percentComplete = Math.round((event.loaded / event.total) * 100);
-              setUploadProgress(percentComplete);
-            }
-          };
-
-          xhr.onload = () => {
-            if (xhr.status === 401) {
-              handleUnauthorized();
-              resolve();
-              return;
-            }
-
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try {
-                const data = JSON.parse(xhr.responseText);
-
-                const fileData =
-                  data && typeof data === 'object' && data.file && typeof data.file === 'object'
-                    ? data.file
-                    : data;
-
-                const idRaw = (fileData as any)?.id ?? (fileData as any)?._id;
-                if (!idRaw) {
-                  console.error('Invalid file upload response:', data);
-                  alert(t('uploadFailed') || `Upload failed for ${file.name}: No data returned`);
-                  resolve();
-                  return;
-                }
-
-                const id = String(idRaw);
-                const displayName = String(
-                  (fileData as any)?.originalName ??
-                  (fileData as any)?.name ??
-                  file.name
-                );
-
-                setAttachedFiles((prev) => {
-                  if (prev.some((f) => f.id === id)) return prev;
-                  return [...prev, { id, name: displayName }];
-                });
-                resolve();
-              } catch (err) {
-                console.error('Error parsing response:', err);
-                alert(t('uploadFailed') || `Upload failed for ${file.name}`);
-                resolve();
-              }
-            } else {
-              alert(t('uploadFailed') || `Upload failed for ${file.name}`);
-              resolve();
-            }
-          };
-
-          xhr.onerror = () => {
-            console.error('Network error during upload');
-            alert(t('uploadError') || `Network error uploading ${file.name}`);
-            // We resolve instead of reject to allow other files to try uploading
-            resolve();
-          };
-
-          xhr.send(formData);
-        });
-      }
-
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+    /**
+     * ONE upload path for every entry point. This handler used to duplicate
+     * uploadFiles() with fewer features: files attached via the paperclip
+     * BUTTON got no image preview, no size, no success state — while the same
+     * file dragged in got all three. Same chip, two different behaviours,
+     * depending on which door the file came through.
+     */
+    const selected = Array.from(e.target.files);
+    await uploadFiles(selected);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   // Reusable upload function for drag-drop and clipboard paste

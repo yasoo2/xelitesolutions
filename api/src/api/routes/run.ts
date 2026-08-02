@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { AgentLoopService } from '../../modules/services/AgentLoopService';
 import { authenticateOptional } from '../middleware/auth';
+import { loadUploadedFiles } from './files';
 import { Run } from '../../shared/models/run';
 import { ToolExecution } from '../../shared/models/toolExecution';
 import { Artifact } from '../../shared/models/artifact';
@@ -67,6 +68,28 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     // Joe works on every task (e.g. terminal-first building). Previously the UI
     // sent this field and the server silently dropped it.
     const systemInstructions = String(req.body?.systemInstructions || '').trim().slice(0, 4000);
+
+    /**
+     * THE PAPERCLIP'S MISSING HALF. The composer uploads each attachment,
+     * /files/upload extracts its text and stores it, the chip shows success,
+     * and the message arrives here carrying fileIds — which this route never
+     * read. Same disease as systemInstructions above: the UI sent it, the
+     * server dropped it, and Joe answered «لخص هذا الملف» without ever seeing
+     * the file. Load them now and hand them to the run.
+     */
+    const fileIds: string[] = Array.isArray(req.body?.fileIds) ? req.body.fileIds : [];
+    let attachments: Awaited<ReturnType<typeof loadUploadedFiles>> = [];
+    if (fileIds.length) {
+        try {
+            attachments = await loadUploadedFiles(fileIds);
+            console.log(`[RunRoute] Loaded ${attachments.length}/${fileIds.length} attachment(s) for the run`);
+            if (attachments.length < fileIds.length) {
+                console.warn(`[RunRoute] ${fileIds.length - attachments.length} attachment id(s) could not be found`);
+            }
+        } catch (e: any) {
+            console.warn('[RunRoute] Loading attachments failed (continuing without):', e?.message || e);
+        }
+    }
     
     console.log(`[RunRoute] Unified execution requested for session: ${sessionId}`);
 
@@ -104,6 +127,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             userId,
             userName,
             systemInstructions,
+            attachments,
             traceId,
             language: uiLanguage,
             modelConfig: {

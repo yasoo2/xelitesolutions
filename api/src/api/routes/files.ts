@@ -2,9 +2,20 @@ import { Router, Request, Response, RequestHandler } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import mongoose from 'mongoose';
 const pdf = require('pdf-parse');
 import { FileModel } from '../../shared/models/file';
 import { authenticate } from '../middleware/auth';
+
+/**
+ * Ask MongoDB only when it is actually there. `FileModel.findById` on a
+ * dead connection does not fail fast — mongoose BUFFERS the query for its
+ * 10-second timeout, twice for two attachments. Measured on the live wire
+ * proof: /runs/start took 20.0 seconds to deliver two files that were
+ * sitting in the offline cache the whole time. The user's machine runs
+ * without Mongo, so that stall would be on EVERY message with attachments.
+ */
+const mongoReady = () => mongoose.connection?.readyState === 1;
 
 // Offline fallback: uploads are always written to .file-cache.json (see /upload),
 // so file retrieval must read from it when MongoDB is unavailable (JSON/mock mode).
@@ -213,11 +224,56 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
   }
 });
 
+/** An uploaded file, in the shape a run carries it as an attachment. */
+export interface UploadedAttachment {
+    id: string;
+    name: string;
+    mimeType: string;
+    size: number;
+    /** The text extracted at upload time (PDF text, file text) — '' for media. */
+    content: string;
+    /** Where the raw bytes live on disk, for tools that can open them. */
+    path: string;
+}
+
+/**
+ * Load uploaded files by id so a run can actually READ what the user attached.
+ *
+ * This is the missing half of the paperclip button: the upload route above
+ * extracts each file's text and stores it, the composer sends the ids with the
+ * message — and /runs/start used to drop them on the floor, so Joe answered
+ * every «لخص هذا الملف» without ever seeing the file.
+ *
+ * MongoDB first, the offline cache second — the same order the GET routes use.
+ * An unknown id is skipped rather than thrown: a missing attachment must not
+ * cost the user their whole message.
+ */
+export async function loadUploadedFiles(ids: string[]): Promise<UploadedAttachment[]> {
+    const out: UploadedAttachment[] = [];
+    for (const raw of (Array.isArray(ids) ? ids : []).slice(0, 12)) {
+        const id = String(raw || '').trim();
+        if (!id) continue;
+        let f: any = null;
+        if (mongoReady()) { try { f = await FileModel.findById(id); } catch { /* offline */ } }
+        if (!f) f = readFileFromCache(id);
+        if (!f) continue;
+        out.push({
+            id,
+            name: String(f.originalName || f.filename || 'file'),
+            mimeType: String(f.mimeType || ''),
+            size: Number(f.size || 0),
+            content: String(f.content || ''),
+            path: String(f.path || ''),
+        });
+    }
+    return out;
+}
+
 // Get file content/metadata
 router.get('/:id', authenticate as any, async (req: Request, res: Response) => {
   try {
     let file: any = null;
-    try { file = await FileModel.findById(req.params.id); } catch { /* offline */ }
+    if (mongoReady()) { try { file = await FileModel.findById(req.params.id); } catch { /* offline */ } }
     if (!file) file = readFileFromCache(String(req.params.id));
     if (!file) return res.status(404).json({ error: 'File not found' });
     res.json(file);
@@ -230,7 +286,7 @@ router.get('/:id', authenticate as any, async (req: Request, res: Response) => {
 router.get('/:id/raw', authenticate as any, async (req: Request, res: Response) => {
   try {
     let file: any = null;
-    try { file = await FileModel.findById(req.params.id); } catch { /* offline */ }
+    if (mongoReady()) { try { file = await FileModel.findById(req.params.id); } catch { /* offline */ } }
     if (!file) file = readFileFromCache(String(req.params.id));
     if (!file || !file.path) return res.status(404).json({ error: 'File not found' });
     res.sendFile(file.path);
