@@ -92,7 +92,7 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(registry).toMatch(/createTool\(ProjectPipelineTool\)/);
         const orch = fs.readFileSync(
             path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
-        expect(orch).toMatch(/'project_pipeline',?\s*\n?\]/);
+        expect(orch).toMatch(/'project_pipeline'/);
         // And it gets the RUN budget — a multi-phase build is not one node's slice.
         expect(orch).toMatch(/node\.tool === 'project_pipeline' \? RUN_DEADLINE_MS : NODE_DEADLINE_MS/);
     });

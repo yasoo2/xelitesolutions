@@ -229,6 +229,39 @@ Rules:
             return PlanningEngine.generateDynamicDag(intent, memory, context);
         }
 
+        // [RUN / STOP FAST-PATH] "شغّل المشروع" / "run the project" starts the
+        // built system live and opens its preview; "أوقف المشروع" / "stop it"
+        // stops it. Deterministic so a weak model can't turn "run my system"
+        // back into a chat answer. Checked before the build path so "شغّل" is
+        // never mistaken for "ابنِ".
+        {
+            // A build verb (develop/build/create/ابنِ/أنشئ) means "make a new
+            // system", never "run the existing one" — so run/stop must yield to
+            // the build path when one is present. Word boundaries stop "serve"
+            // from matching inside "server" (which wrongly grabbed build requests).
+            const hasBuildVerb = /\b(build|create|make|develop|scaffold|generate|code)\b/i.test(probe)
+                || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|برمج)/.test(probe);
+            const targetNoun = /(المشروع|النظام|الخادم|السيرفر|المعاينة|\bproject\b|\bserver\b|\bapp\b|\bpreview\b|localhost)/i.test(probe);
+            const stopIntent = !hasBuildVerb && targetNoun
+                && /(أوقف|اوقف|إيقاف|ايقاف|اقفل|\bstop\b|\bkill\b|shut\s*down)/i.test(probe);
+            const runIntent = !hasBuildVerb && !stopIntent && targetNoun
+                && /(شغّ?ل|تشغيل|شغلي|\brun\b|\bstart\b|\blaunch\b|\bserve\b|\bpreview\b)/i.test(probe);
+            if (stopIntent) {
+                return {
+                    id: `stop_${Date.now()}`, goal: intent.goal,
+                    steps: [{ id: 'project_stop', description: 'إيقاف الخادم', tool: 'project_stop', agent: 'Dev', input: {}, dependsOn: [] }],
+                    metadata: { complexity: 'low', riskLevel: 'low' },
+                };
+            }
+            if (runIntent) {
+                return {
+                    id: `run_${Date.now()}`, goal: intent.goal,
+                    steps: [{ id: 'project_run', description: 'تشغيل المشروع ومعاينته حيّاً', tool: 'project_run', agent: 'Dev', input: {}, dependsOn: [] }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
+        }
+
         // [FULL-PROJECT FAST-PATH] A complete multi-file project (backend, API,
         // database, full stack) goes to the canonical engineering pipeline:
         // plan phases -> execute with verification and auto build checks ->

@@ -94,10 +94,26 @@ export class ProjectPipelineTool implements ToolDefinition {
         const total = Number(plannerResult.output.totalPhases || phases.length);
         const done = Number(pipeline?.completedPhases || 0);
         const verified = pipeline?.ok === true;
+
+        // 3 — The last mile: a VERIFIED system is RUN, not left inert on disk.
+        // No button — the pipeline starts it and the live preview opens itself.
+        // Best-effort: a run failure never turns a good build into a failure;
+        // it just means the user starts it manually.
+        let liveUrl = '';
+        if (verified) {
+            try {
+                say('▶️ أُشغّل النظام لتراه حيّاً…');
+                const runRes = await executeTool('project_run', {}, context);
+                if (runRes?.ok && runRes.output?.url) liveUrl = String(runRes.output.url);
+            } catch (e: any) {
+                say(`ℹ️ اكتمل البناء، لكن التشغيل التلقائي تعثّر: ${e?.message || e}`);
+            }
+        }
+
         const summary = this.buildDeliveryReport({
             language: String(context?.language || 'ar').toLowerCase().startsWith('ar') ? 'ar' : 'en',
             projectName: String(plannerResult.output.projectName || 'project'),
-            phases, pipeline, done, total, verified,
+            phases, pipeline, done, total, verified, liveUrl,
         });
         say(`[pipeline] ${verified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
@@ -110,6 +126,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 totalPhases: total,
                 verified,
                 summary,
+                liveUrl: liveUrl || undefined,
                 report: pipeline?.engineeringReport,
                 reportMarkdown: pipeline?.engineeringReportMarkdown,
                 results: pipeline?.results,
@@ -133,14 +150,23 @@ export class ProjectPipelineTool implements ToolDefinition {
         done: number;
         total: number;
         verified: boolean;
+        liveUrl?: string;
     }): string {
-        const { language: lang, projectName, phases, pipeline, done, total, verified } = args;
+        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
 
         lines.push(verified
             ? (ar ? `## ✅ اكتمل المشروع: ${projectName}` : `## ✅ Project delivered: ${projectName}`)
             : (ar ? `## ⚠️ توقف البناء بصدق: ${projectName}` : `## ⚠️ Build stopped honestly: ${projectName}`));
+
+        // The live system, front and center — it is RUNNING, not just built.
+        if (verified && liveUrl) {
+            lines.push('');
+            lines.push(ar
+                ? `### 🟢 نظامك يعمل الآن\nالمعاينة الحية مفتوحة على: **${liveUrl}**\nيمكنك استخدامه الآن. لإيقافه قل: «أوقف المشروع».`
+                : `### 🟢 Your system is live\nOpen at: **${liveUrl}**\nUse it now. To stop it, say: "stop the project".`);
+        }
         lines.push(ar
             ? `**المراحل:** ${done}/${total} نُفِّذت وتحقَّقت (تنفيذ فعلي + فحوص، لا مجرد كتابة ملفات).`
             : `**Phases:** ${done}/${total} executed and verified (real execution + checks, not just written files).`);
