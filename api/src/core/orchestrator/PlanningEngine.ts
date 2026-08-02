@@ -260,6 +260,16 @@ Rules:
                     metadata: { complexity: 'medium', riskLevel: 'low' },
                 };
             }
+            // [DEPLOY FAST-PATH] "انشر المشروع" / "deploy it" → permanent GitHub
+            // Pages. A build verb doesn't block this: "انشر" is its own intent.
+            const deployIntent = targetNoun || /(انشر|أنشر|نشر|deploy|publish|استضف|استضافة|host|go\s*live|على\s*الإنترنت|رابط\s*دائم)/i.test(probe);
+            if (/(انشر|أنشر|deploy|publish|استضف|استضافة|go\s*live|رابط\s*دائم|على\s*الانترنت|على\s*الإنترنت)/i.test(probe) && deployIntent) {
+                return {
+                    id: `deploy_${Date.now()}`, goal: intent.goal,
+                    steps: [{ id: 'deploy_pages', description: 'نشر المشروع بشكل دائم على GitHub Pages', tool: 'deploy_pages', agent: 'Dev', input: {}, dependsOn: [] }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
         }
 
         // [FULL-PROJECT FAST-PATH] A complete multi-file project (backend, API,

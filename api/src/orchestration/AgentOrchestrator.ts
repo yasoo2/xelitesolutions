@@ -26,7 +26,7 @@ import { repairMemory } from '../core/memory/repair-memory';
 const DETERMINISTIC_TOOLS = [
     'google_account', 'user_browser',
     'write_file', 'file_write', 'create_file', 'write_to_file', 'read_file', 'file_read',
-    'web_page_builder', 'github_repo_manager', 'project_pipeline', 'project_run', 'project_stop',
+    'web_page_builder', 'github_repo_manager', 'project_pipeline', 'project_run', 'project_stop', 'deploy_pages',
 ];
 
 /**

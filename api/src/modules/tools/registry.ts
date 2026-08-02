@@ -22,6 +22,7 @@ import * as EliteTools from './definitions/EliteTools';
 import { PhaseExecutorTool } from './definitions/PhaseExecutorTool';
 import { ProjectPipelineTool } from './definitions/ProjectPipelineTool';
 import { ProjectRunTool, ProjectStopTool } from './definitions/ProjectRunTool';
+import { DeployPagesTool } from './definitions/DeployPagesTool';
 import { ProjectStateManagerTool } from './definitions/ProjectStateManagerTool';
 import { AutoTesterTool } from './definitions/AutoTesterTool';
 import { TemplateManagerTool } from './definitions/TemplateManagerTool';
@@ -261,6 +262,7 @@ const baseTools: ToolDefinition[] = [
   createTool(ProjectPipelineTool),
   createTool(ProjectRunTool),
   createTool(ProjectStopTool),
+  createTool(DeployPagesTool),
   createTool(CentralAnswerTool),
   createTool(WebPageBuilderTool),
   createTool(AutoTesterTool),
