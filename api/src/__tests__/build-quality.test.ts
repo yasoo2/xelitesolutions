@@ -293,6 +293,46 @@ describe('7e — a section brings content, never document structure', () => {
     });
 });
 
+/**
+ * 8 — THE PHOTO-KILLING GUARD. resolveImages writes every real downloaded
+ * photograph as src="/artifacts/images/x.jpg" — the address the server
+ * answers. groundImageSrcs resolved that root-absolute path against the
+ * filesystem root, declared the file missing, and replaced FOUR real licensed
+ * photographs with gradients on a measured build («لم تظهر الصور» with the
+ * photographers still credited at the bottom of the page). Never again.
+ */
+describe('8 — the missing-file guard recognises the pipeline\'s own photos', () => {
+    const { groundImageSrcs, imagesToMarkers } = require('../core/design/images');
+    const os = require('os'); const fs8 = require('fs'); const path8 = require('path');
+    const artWith = (name: string) => {
+        const dir = fs8.mkdtempSync(path8.join(os.tmpdir(), 'joe-photo-'));
+        fs8.mkdirSync(path8.join(dir, 'images'), { recursive: true });
+        fs8.writeFileSync(path8.join(dir, 'images', name), 'JPG');
+        return dir;
+    };
+    test('a REAL /artifacts/images/… photo survives the guard', () => {
+        const dir = artWith('hero.jpg');
+        const g = groundImageSrcs('<img src="/artifacts/images/hero.jpg" alt="x">', dir, 20);
+        expect(g.fixed).toBe(0);
+        expect(g.html).toContain('/artifacts/images/hero.jpg');
+    });
+    test('a MISSING /artifacts/images/… photo still becomes the gradient', () => {
+        const dir = artWith('hero.jpg');
+        const g = groundImageSrcs('<img src="/artifacts/images/nope.jpg" alt="x">', dir, 20);
+        expect(g.fixed).toBe(1);
+        expect(g.html).toContain('data:image/svg+xml');
+    });
+    test('imagesToMarkers leaves the pipeline\'s own photos alone too', () => {
+        const dir = artWith('hero.jpg');
+        const r = imagesToMarkers('<img src="/artifacts/images/hero.jpg" alt="x">', dir);
+        expect(r.converted).toBe(0);
+    });
+    test('the builder reports the photo count from the FINAL page, and cleans alt debris', () => {
+        expect(builderSrc).toMatch(/FINAL page carries/);
+        expect(builderSrc).toMatch(/cleaned marker debris from alt text/);
+    });
+});
+
 describe('7f — a button that says "add to cart" adds to the cart', () => {
     const commerceSrc = fs.readFileSync(
         path.join(__dirname, '..', 'core', 'design', 'commerce.ts'), 'utf-8');

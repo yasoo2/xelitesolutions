@@ -664,8 +664,23 @@ export function groundImageSrcs(
 
     const exists = (raw: string): boolean => {
         try {
-            const clean = decodeURIComponent(String(raw).split(/[?#]/)[0]).trim();
+            let clean = decodeURIComponent(String(raw).split(/[?#]/)[0]).trim();
             if (!clean) return false;
+            /**
+             * /artifacts/… IS the artifact dir — the pipeline's OWN photos.
+             *
+             * resolveImages writes every real downloaded photograph as
+             * src="/artifacts/images/x.jpg" (the address the server answers),
+             * and this check used to resolve that ROOT-ABSOLUTE path against
+             * the filesystem root, land outside the artifact dir, and declare
+             * the file missing. The result, measured on a real build: FOUR
+             * real licensed photographs downloaded (395 KB, credits added to
+             * the page) and every one of them replaced with a gradient by the
+             * very guard built to protect them. The user's report — «لم تظهر
+             * الصور» with the photographers still credited at the bottom —
+             * was this line's doing.
+             */
+            if (clean.startsWith('/artifacts/')) clean = clean.slice('/artifacts/'.length);
             // A path that climbs out of the artifact directory is not "there"
             // either, whatever the filesystem says.
             const full = path.resolve(dir, clean);
@@ -748,8 +763,11 @@ export function imagesToMarkers(html: string, dir: string): { html: string; conv
 
     const localExists = (raw: string): boolean => {
         try {
-            const clean = decodeURIComponent(String(raw).split(/[?#]/)[0]).trim();
+            let clean = decodeURIComponent(String(raw).split(/[?#]/)[0]).trim();
             if (!clean) return false;
+            // Same normalization as groundImageSrcs: /artifacts/… is the
+            // artifact dir itself, not a filesystem-root path.
+            if (clean.startsWith('/artifacts/')) clean = clean.slice('/artifacts/'.length);
             const full = path.resolve(dir, clean);
             const root = path.resolve(dir);
             if (full !== root && !full.startsWith(root + path.sep)) return false;

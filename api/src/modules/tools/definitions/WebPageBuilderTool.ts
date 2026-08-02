@@ -1265,6 +1265,13 @@ the WORDS, not the structure.`;
                 html = lb.html;
                 logs.push(`content: named ${lb.fixed} icon-only control(s) for screen readers`);
             }
+            // Marker debris in ALT text — «designer sketching interface}}» —
+            // rendered inside placeholder art and screen-reader output alike.
+            {
+                const before = html;
+                html = html.replace(/(alt="[^"]*?)\s*[}{]{2,}\s*(")/gi, '$1$2');
+                if (html !== before) logs.push('images: cleaned marker debris from alt text');
+            }
         }
 
         // [REVIVED weak-model-enhancer] Self-correction pass: strip leftover
@@ -1767,6 +1774,22 @@ the WORDS, not the structure.`;
             logs.push(`explorer mirror failed: ${e?.message || e} — the preview still serves from ${ARTIFACT_DIR}`);
         }
 
+        /**
+         * The photo line reports what is on the FINAL page, not what an
+         * earlier stage once inserted. A measured build said «4/8 real» while
+         * the delivered page carried ZERO — a later pass had (wrongly) swept
+         * the real files out. The pipeline bug is fixed, and this recount
+         * guarantees the number can never lie again: it is read from the same
+         * bytes the visitor gets.
+         */
+        if (imgRequested) {
+            const onPage = (html.match(/<img\b[^>]*src="\/artifacts\/images\//gi) || []).length;
+            if (onPage !== imgReal) {
+                logs.push(`images: FINAL page carries ${onPage} real photo(s); the pipeline inserted ${imgReal} — reporting the real number`);
+                imgReal = onPage;
+            }
+        }
+
         // Compose the QA summary line for the chat reply.
         const qaSummary = (() => {
             const parts: string[] = [];
@@ -2262,6 +2285,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 }
                 const lb = labelIconOnlyButtons(out, isAr);
                 if (lb.fixed) { out = lb.html; logs.push(`${file}: named ${lb.fixed} icon-only control(s)`); }
+                out = out.replace(/(alt="[^"]*?)\s*[}{]{2,}\s*(")/gi, '$1$2');
             }
             written.set(file, out);
             fs.writeFileSync(path.join(outDir, file), out, 'utf-8');
