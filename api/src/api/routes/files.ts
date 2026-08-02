@@ -31,6 +31,24 @@ function readFileFromCache(id: string): any | null {
 
 const router = Router();
 
+/**
+ * Arabic filenames arrive intact. Browsers send multipart filenames as
+ * UTF-8, but busboy (under multer) decodes them as latin1 — so the user's
+ * «محضر.txt» became «ÙØ­Ø¶Ø±.txt» in the chat chip, on disk, and in every
+ * record. Measured on the live display proof. Re-reading the same bytes as
+ * UTF-8 recovers the real name; pure-ASCII names pass through unchanged,
+ * and a re-read that produces replacement characters means the name really
+ * was latin1, so the original is kept.
+ */
+function fixFilenameEncoding(name: string): string {
+  const raw = String(name || '');
+  if (!/[-￿]/.test(raw)) return raw;   // ASCII: nothing to fix
+  try {
+    const utf8 = Buffer.from(raw, 'latin1').toString('utf8');
+    return /�/.test(utf8) ? raw : utf8;
+  } catch { return raw; }
+}
+
 // Configure Multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -42,7 +60,7 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + '-' + file.originalname);
+    cb(null, uniqueSuffix + '-' + fixFilenameEncoding(file.originalname));
   }
 });
 
@@ -71,6 +89,8 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
     const { sessionId } = req.body;
     let content = '';
 
+    // The recovered UTF-8 name is THE name from here on — chips, records, chat.
+    req.file.originalname = fixFilenameEncoding(req.file.originalname);
     const lowerName = req.file.originalname.toLowerCase();
 
     // Universal Loader Logic

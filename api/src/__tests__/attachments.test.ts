@@ -98,3 +98,43 @@ describe('attachments — the chain is actually wired', () => {
         expect(handler).not.toContain('xhr.open');
     });
 });
+
+/**
+ * THE CHIP IS PART OF THE MESSAGE — the user's question «المرفق يظهر في
+ * واجهة الدردشة بشكل صحيح؟» found three display leaks: the WS echo carried
+ * text only, a reload rebuilt history without the chips, and an Arabic
+ * filename arrived as latin1 mojibake («ÙØ­Ø¶Ø±.txt»). All three, locked.
+ */
+describe('attachments — visible in the chat, and after a reload, with real names', () => {
+    const runSrc = read('api', 'routes', 'run.ts');
+    const filesSrc = read('api', 'routes', 'files.ts');
+    const sessSrc = read('api', 'controllers', 'sessionController.ts');
+    const composerSrc = fs.readFileSync(
+        path.join(__dirname, '..', '..', '..', 'web', 'src', 'components', 'CommandComposer.tsx'), 'utf-8');
+
+    test('the server echo and the stored message both carry the chips (meta only)', () => {
+        expect(runSrc).toContain('files: attachmentMeta()');
+        expect(runSrc).toMatch(/role: 'user', content: text, attachments: attachmentMeta\(\)/);
+        // Meta never includes the extracted content — history stays light.
+        expect(runSrc).toMatch(/attachmentMeta = \(\) => attachments\.map\(a => \(\{ id: a\.id, name: a\.name, mimeType: a\.mimeType, size: a\.size \}\)\)/);
+    });
+
+    test('a reload rebuilds the user bubble in the same {text, files} shape', () => {
+        expect(sessSrc).toContain('Array.isArray(m.attachments)');
+        expect(sessSrc).toMatch(/\{ text: sanitizeUserMessageForUi\(m\.content\), files \}/);
+    });
+
+    test('an attached image shows ITSELF in the bubble, not a generic icon', () => {
+        expect(composerSrc).toMatch(/f\.preview \? \(\s*<img src=\{f\.preview\}/);
+    });
+
+    test('Arabic filenames are recovered from busboy\'s latin1 decode', () => {
+        expect(filesSrc).toContain('function fixFilenameEncoding');
+        expect(filesSrc).toContain('req.file.originalname = fixFilenameEncoding(req.file.originalname)');
+        // …and the disk name goes through the same recovery.
+        expect(filesSrc).toMatch(/uniqueSuffix \+ '-' \+ fixFilenameEncoding\(file\.originalname\)/);
+        // The recovery itself, replayed: the exact mojibake the proof measured.
+        const mojibake = Buffer.from('محضر.txt', 'utf8').toString('latin1');
+        expect(Buffer.from(mojibake, 'latin1').toString('utf8')).toBe('محضر.txt');
+    });
+});

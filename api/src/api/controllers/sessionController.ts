@@ -524,9 +524,15 @@ export async function listSessionMessages(req: Request, res: Response) {
 
         messages.forEach((m: any) => {
             if (m.role === 'user') {
+                // The chips the user saw when sending come back after a reload:
+                // stored attachment meta is re-attached to the history event in
+                // the same {text, files} shape the live bubble renders.
+                const files = Array.isArray(m.attachments) ? m.attachments : [];
                 events.push({
                     type: 'user_input',
-                    data: sanitizeUserMessageForUi(m.content),
+                    data: files.length
+                        ? { text: sanitizeUserMessageForUi(m.content), files }
+                        : sanitizeUserMessageForUi(m.content),
                     ts: new Date(m.createdAt).getTime(),
                     id: m._id.toString(),
                     seq: 0

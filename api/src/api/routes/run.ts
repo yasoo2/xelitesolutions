@@ -100,10 +100,14 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     // Persist the user message in offline/JSON mode so the chat shows the FULL
     // conversation (user + Joe) and it survives reloads. Agent runs go through this
     // route, which previously saved nothing — so only Joe's reply ever appeared.
+    // What the user ATTACHED is part of what the user SAID — the chips must
+    // survive a reload, so the meta (never the content) is stored with the
+    // message and rebuilt into the history events.
+    const attachmentMeta = () => attachments.map(a => ({ id: a.id, name: a.name, mimeType: a.mimeType, size: a.size }));
     try {
         if (process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
             const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
-            store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'user', content: text, createdAt: new Date() });
+            store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'user', content: text, attachments: attachmentMeta(), createdAt: new Date() });
         }
     } catch { /* non-fatal */ }
 
@@ -111,7 +115,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     // conversation. The composer that posts here does not add it client-side, so
     // without this only Joe's reply would appear.
     try {
-        broadcast({ type: 'user_input', sessionId, data: { text, sessionId }, id: `uin-${Date.now()}` } as any);
+        broadcast({ type: 'user_input', sessionId, data: { text, sessionId, files: attachmentMeta() }, id: `uin-${Date.now()}` } as any);
     } catch { /* non-fatal */ }
 
     try {

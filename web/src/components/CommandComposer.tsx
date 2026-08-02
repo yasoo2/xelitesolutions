@@ -612,11 +612,19 @@ const ChatBubble = forwardRef(
                 {files.map((f: any, i: number) => (
                   <div key={i} style={{
                     display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '4px 8px', borderRadius: 6,
+                    padding: f.preview ? 4 : '4px 8px', borderRadius: 8,
                     background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)',
                     fontSize: 11, color: 'var(--text-secondary)'
                   }}>
-                    <FileText size={12} style={{ opacity: 0.7 }} />
+                    {/* An attached IMAGE shows itself, not a generic icon — the
+                        composer already carries the data-URI preview it made. */}
+                    {f.preview ? (
+                      <img src={f.preview} alt={f.name || 'image'} style={{
+                        width: 44, height: 44, objectFit: 'cover', borderRadius: 6, display: 'block'
+                      }} />
+                    ) : (
+                      <FileText size={12} style={{ opacity: 0.7 }} />
+                    )}
                     <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {f.name || 'File'}
                     </span>
