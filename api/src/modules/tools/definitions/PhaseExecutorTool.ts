@@ -191,20 +191,41 @@ export class PhaseExecutorTool implements ToolDefinition {
                 ['ai_write_file', 'write_file', 'file_edit', 'file_edit_advanced', 'scaffold_project'].includes(String(t.tool || ''))
             );
             if (hasCodeTasks && !phase.verificationTask && allOk && executionContext.workspaceId) {
-                logs.push('[PhaseExecutor] 🔍 Auto-running build check after code generation phase...');
-                try {
-                    const buildResult = await executeTool('shell_execute', {
-                        command: 'npm run build 2>&1 || echo "BUILD_CHECK_FAILED"',
-                    }, executionContext);
-                    const buildOutput = String((buildResult as any)?.output?.stdout || (buildResult as any)?.output || '');
-                    if (buildOutput.includes('BUILD_CHECK_FAILED') || !buildResult.ok) {
-                        logs.push('[PhaseExecutor] ⚠️ Auto-build check found issues — orchestrator should route to self-fix');
-                        status = 'partial';
-                    } else {
-                        logs.push('[PhaseExecutor] ✅ Auto-build check passed');
+                // The check must run WHERE the project lives and ONLY when there
+                // is build tooling to check. The old version ran `npm run build`
+                // at the workspace ROOT: generated projects live in subfolders,
+                // so npm found no package.json, printed an error, and every
+                // code phase was falsely marked partial — self-fix churn over a
+                // build that never existed. The project dir is derived from the
+                // plan's own written package.json path; no package.json written
+                // means nothing to build, and skipping is the honest verdict.
+                const writtenPaths = tasks
+                    .map((t: any) => String(t?.args?.path || t?.args?.filename || t?.input?.path || t?.input?.filename || ''))
+                    .filter(Boolean);
+                const pkgPath = writtenPaths.find((p: string) => /(^|\/)package\.json$/i.test(p.replace(/\\/g, '/')));
+                if (!pkgPath) {
+                    logs.push('[PhaseExecutor] ℹ️ Auto-build check skipped honestly: this phase wrote no package.json, so there is no build to run.');
+                } else {
+                    const projectDir = pkgPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+                    logs.push(`[PhaseExecutor] 🔍 Auto-running build check in ${projectDir || 'workspace root'}...`);
+                    try {
+                        const buildResult = await executeTool('shell_execute', {
+                            // --if-present: a project without a build script is
+                            // NOT a failure (most simple Node apps have none).
+                            command: 'npm run --if-present build 2>&1 || echo BUILD_CHECK_FAILED',
+                            ...(projectDir ? { cwd: projectDir } : {}),
+                            timeout: 300000,
+                        }, executionContext);
+                        const buildOutput = String((buildResult as any)?.output?.stdout || (buildResult as any)?.output || '');
+                        if (buildOutput.includes('BUILD_CHECK_FAILED') || !buildResult.ok) {
+                            logs.push('[PhaseExecutor] ⚠️ Auto-build check found issues — orchestrator should route to self-fix');
+                            status = 'partial';
+                        } else {
+                            logs.push('[PhaseExecutor] ✅ Auto-build check passed');
+                        }
+                    } catch {
+                        logs.push('[PhaseExecutor] ℹ️ Auto-build check errored — treated as skipped, not as failure');
                     }
-                } catch {
-                    logs.push('[PhaseExecutor] ℹ️ Auto-build check skipped (no build script or error)');
                 }
             }
 

@@ -202,7 +202,11 @@ export class SelfFixService {
         strategy: 'dependency_fix',
         suggestedTool: 'shell_execute',
         suggestedInput: {
-          command: 'npm install && npm run build',
+          // --if-present: a project without a build script must not turn a
+          // SUCCESSFUL install into a failed repair. The timeout matches
+          // reality on a weak laptop — npm install alone can take minutes.
+          command: 'npm install --no-audit --no-fund && npm run --if-present build',
+          timeout: 600000,
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),

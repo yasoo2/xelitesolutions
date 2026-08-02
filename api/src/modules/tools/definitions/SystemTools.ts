@@ -542,7 +542,14 @@ export class ShellExecuteTool extends BaseTool {
         const logs: string[] = [];
         const command = String(input?.command ?? '');
         let cwdInput = String(input?.cwd ?? '');
-        const timeoutVal = Number(input?.timeout ?? 30000);
+        // Package managers and build tools routinely run for minutes — on the
+        // user's real laptop `npm install` alone can take five. The old flat
+        // 30s default KILLED those runs mid-install and the failure surfaced
+        // as a build error nobody could reproduce. Explicit timeouts always
+        // win; only the default is command-aware.
+        const isLongRunner = /^\s*(npm|npx|yarn|pnpm|pip3?|composer|dotnet|cargo|mvn|gradle|make)\b/.test(command)
+            || /&&\s*(npm|npx|yarn|pnpm)\b/.test(command);
+        const timeoutVal = Number(input?.timeout ?? (isLongRunner ? 300000 : 30000));
         const background = !!input?.background;
         const dryRun = !!input?.dryRun;
 

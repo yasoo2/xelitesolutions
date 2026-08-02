@@ -100,7 +100,13 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
     test('the executor chain it relies on really verifies: build check after code phases', () => {
         const phaseExec = fs.readFileSync(
             path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'PhaseExecutorTool.ts'), 'utf-8');
-        expect(phaseExec).toMatch(/npm run build/);
+        expect(phaseExec).toMatch(/npm run --if-present build/);
         expect(phaseExec).toMatch(/verificationTask/);
+        // The check runs in the PROJECT dir derived from the plan's own
+        // package.json path — never blindly at the workspace root — and skips
+        // honestly when the phase wrote no package.json.
+        expect(phaseExec).toMatch(/pkgPath\.replace/);
+        expect(phaseExec).toMatch(/skipped honestly/);
+        expect(phaseExec).toMatch(/timeout: 300000/);
     });
 });
