@@ -137,25 +137,25 @@ export default function ChatPanel({
             {/* Messages */}
             <div className="joe-chat-messages">
                 {messages.length === 0 ? (
-                    <div className="joe-chat-empty" style={{
-                        margin: 'auto',
-                        textAlign: 'center',
-                        padding: '24px 20px',
-                        maxWidth: 560,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 14
-                    }}>
+                    /**
+                     * The welcome screen. Two measured defects fixed here:
+                     *
+                     * - It was CRUSHED on short screens: this is a child of a
+                     *   flex column, and its default flex-shrink squeezed the
+                     *   box while the 92px mark kept its size — the logo's top
+                     *   was cut off (the user photographed exactly that). Now
+                     *   it never shrinks (flex-shrink:0) and every size inside
+                     *   is fluid (clamp on the mark, title, text and gaps), so
+                     *   it fits any screen and scrolls as a whole if it must.
+                     * - All styling lives in the stylesheet below, where media
+                     *   queries can actually reach it.
+                     */
+                    <div className="joe-chat-empty">
                         {/* The signature writes itself when you open a fresh chat */}
-                        <JoeMark size={92} animate />
+                        <span className="joe-empty-mark"><JoeMark size={92} animate /></span>
 
-                        <h2 className="joe-empty-title" style={{ margin: 0, fontSize: 27, fontWeight: 800, letterSpacing: '-0.01em' }}>
-                            {greeting.salute}
-                        </h2>
-                        <p style={{ margin: 0, fontSize: 16.5, color: 'var(--joe-text-secondary)', lineHeight: 1.7, maxWidth: 460 }}>
-                            {greeting.question}
-                        </p>
+                        <h2 className="joe-empty-title">{greeting.salute}</h2>
+                        <p className="joe-empty-question">{greeting.question}</p>
                         <div className="joe-suggest-grid">
                             {[
                                 { icon: <Rocket size={17} />, label: t('heroChip1') },
@@ -176,7 +176,20 @@ export default function ChatPanel({
                         </div>
                     </div>
                 ) : (
-                    messages.map((msg) => (
+                    <>
+                        {/**
+                          * The greeting does not vanish when the conversation
+                          * starts — the user asked for it to STAY in the chat:
+                          * «لن لا تختفي وتبقى في الدردشة». It becomes the first
+                          * entry of the conversation, compact, and scrolls with
+                          * the history like any other part of the chat.
+                          */}
+                        <div className="joe-chat-hello" dir="auto">
+                            <JoeMark size={20} />
+                            <span className="joe-chat-hello-salute">{greeting.salute}</span>
+                            <span className="joe-chat-hello-q">{greeting.question}</span>
+                        </div>
+                        {messages.map((msg) => (
                         <div key={msg.id} className={`joe-message ${msg.role}`}>
                             <div className={`joe-message-avatar ${msg.role === 'assistant' ? 'ai' : 'user'}`}>
                                 {msg.role === 'assistant' ? <JoeMark size={24} /> : 'U'}
@@ -292,7 +305,8 @@ export default function ChatPanel({
                                 )}
                             </div>
                         </div>
-                    ))
+                        ))}
+                    </>
                 )}
                 <div ref={messagesEndRef} />
 
@@ -394,12 +408,98 @@ export default function ChatPanel({
     font-weight: 650;
 }
 
-/* Welcome title: emerald gradient text */
+/* ========== Welcome screen — fits EVERY screen, never crushed ========== */
+/* This is a child of a flex column: without flex-shrink:0 the column squeezed
+   it on short screens while the fixed-size mark kept its height, and the top
+   of the logo was cut off (photographed by the user at ~570px). It must never
+   shrink; if the screen is truly tiny it scrolls as a whole instead. */
+.joe-chat-empty {
+    margin: auto;
+    flex-shrink: 0;
+    text-align: center;
+    padding: clamp(10px, 3vh, 24px) 16px;
+    max-width: min(560px, 100%);
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(8px, 1.8vh, 14px);
+    animation: joeWelcomeIn 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+@keyframes joeWelcomeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .joe-chat-empty { animation: none; }
+}
+/* The mark scales with the viewport height instead of demanding 92px. */
+.joe-empty-mark { display: inline-flex; }
+.joe-empty-mark .joe-mark {
+    width: clamp(48px, 12vh, 92px);
+    height: auto;
+}
+/* Welcome title: emerald gradient text, fluid size */
 .joe-empty-title {
+    margin: 0;
+    font-size: clamp(18px, 1.2vw + 1.6vh, 27px);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: 1.35;
+    overflow-wrap: break-word;
+    max-width: 100%;
     background: linear-gradient(120deg, var(--joe-text-primary) 30%, var(--joe-gold-primary) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
+}
+.joe-empty-question {
+    margin: 0;
+    font-size: clamp(13.5px, 0.5vw + 1.2vh, 16.5px);
+    color: var(--joe-text-secondary);
+    line-height: 1.7;
+    max-width: 460px;
+}
+/* Short screens: tighten what remains so the chips stay reachable. */
+@media (max-height: 620px) {
+    .joe-chat-empty { gap: 7px; padding-top: 8px; padding-bottom: 8px; }
+    .joe-suggest-card { padding: 9px 12px; }
+}
+
+/* ========== The greeting STAYS in the chat once the conversation starts ==== */
+/* «لن لا تختفي وتبقى في الدردشة» — it becomes the conversation's first entry:
+   compact, quiet, and it scrolls with the history like any message. */
+.joe-chat-hello {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    gap: 8px;
+    padding: 9px 16px;
+    margin: 2px auto 6px;
+    max-width: 100%;
+    border: 1px solid var(--joe-border);
+    border-radius: 999px;
+    background: var(--joe-bg-card);
+    color: var(--joe-text-secondary);
+    font-size: 12.5px;
+    line-height: 1.5;
+    text-align: center;
+}
+.joe-chat-hello .joe-mark { flex: 0 0 auto; color: var(--joe-gold-primary); }
+.joe-chat-hello-salute {
+    font-weight: 700;
+    color: var(--joe-text-primary);
+    background: linear-gradient(120deg, var(--joe-text-primary) 30%, var(--joe-gold-primary) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.joe-chat-hello-q { opacity: 0.85; }
+.joe-chat-hello-q::before { content: '·'; margin-inline-end: 8px; opacity: 0.5; }
+@media (max-width: 480px) {
+    .joe-chat-hello-q { display: none; } /* the salute alone carries it on a phone */
 }
 
 /* Quick-start: a 2x2 grid of real suggestion cards (each submits a prompt) */
