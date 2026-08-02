@@ -29,7 +29,7 @@ import { cartBrief, cartRuntime, cartCss, needsCart } from '../../../core/design
 import { formBrief, formRuntime, formCss } from '../../../core/design/forms';
 import { chartBrief, chartRuntime, chartCss, needsCharts } from '../../../core/design/dataviz';
 import { widgetBrief, widgetRuntime, widgetCss, usesWidgets } from '../../../core/design/widgets';
-import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPlaceholder, groundImageSrcs, stripBrokenStyleImages } from '../../../core/design/images';
+import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPlaceholder, groundImageSrcs, stripBrokenStyleImages, imagesToMarkers } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
 import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, surfacePairingCss, ownedSurfaces, normalizeIconRefs } from '../../../core/design/layouts';
@@ -179,9 +179,22 @@ export class WebPageBuilderTool implements ToolDefinition {
             }
             return rawPush(...lines);
         };
+        /**
+         * The COACHING TEXT never reaches the design brief.
+         *
+         * Routing was already immunised against the injected [STANDING USER
+         * INSTRUCTIONS]/[ENGINEERING DISCIPLINE] blocks — but the goal handed
+         * to THIS tool still carried them, and they poisoned the build twice,
+         * measured on a real run of «Build a modern restaurant website»:
+         * the word "stored" inside the block matched the /store/ page-kind
+         * pattern, so the restaurant became an online shop with a cart; and
+         * the section writer treated the block as CONTENT, shipping a
+         * services grid whose cards were "Dependency Freshness", "Crash-Loop
+         * Guard" and "Failure taxonomy in updaters" — on a restaurant page.
+         */
         const request = String(
             input?.request || input?.question || input?.instruction || input?.task || input?.goal || ''
-        ).trim();
+        ).replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE)[\s\S]*$/i, '').trim();
         const sessionId = context?.sessionId;
         if (!request) return { ok: false, error: 'no_request', logs };
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -1146,7 +1159,24 @@ the WORDS, not the structure.`;
         let imgCredits: Array<{ creator: string; license: string; source: string }> = [];
         let imgSources: Record<string, number> = {};
         let imgSourceErrors: string[] = [];
-        if (photos > 0 && /\{\{\s*IMAGE\s*:/i.test(html)) {
+        /**
+         * URLs the model wrote anyway → photo requests. Measured: five
+         * source.unsplash.com links (a dead service) 404'd on screen, and a
+         * dozen invented local filenames became gradients when each carried a
+         * perfectly good subject in its alt text. Promoted to markers, they go
+         * through the SAME archives as everything else and come back as real
+         * licensed photographs.
+         */
+        {
+            const conv = imagesToMarkers(html, ARTIFACT_DIR);
+            if (conv.converted) {
+                html = conv.html;
+                logs.push(`images: promoted ${conv.converted} model-written image URL(s)/missing file(s) to real photo requests`);
+            }
+        }
+        // Markers present = photos wanted, whatever the kind's budget said: the
+        // model asked for a picture there, and a 404 is not an answer.
+        if (/\{\{\s*IMAGE\s*:/i.test(html)) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `🖼️ أجلب صوراً حقيقية مرخّصة للصفحة` : `🖼️ Sourcing real licensed photographs`);
             try {
                 const r = await resolveImages(html, ARTIFACT_DIR, palette.hue, { max: Math.max(4, photos + 2), brief: imageBrief });
@@ -2181,6 +2211,13 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
         const credits: Array<{ creator: string; license: string; source: string }> = [];
         for (const [file, raw] of Array.from(written)) {
             let out = raw;
+            {
+                const conv = imagesToMarkers(out, ARTIFACT_DIR);
+                if (conv.converted) {
+                    out = conv.html;
+                    logs.push(`${file}: promoted ${conv.converted} model-written image URL(s) to real photo requests`);
+                }
+            }
             if (/\{\{\s*IMAGE\s*:/i.test(out)) {
                 try {
                     const r = await resolveImages(out, ARTIFACT_DIR, palette.hue, { max: 8, brief: imageBrief });

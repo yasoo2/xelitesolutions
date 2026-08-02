@@ -96,6 +96,44 @@ function scopeStyleBlock(css: string, sid: string, dropped: Set<string>): string
     return parts.join('');
 }
 
+/**
+ * Broken CSS SYNTAX is repaired before anything else reasons about the sheet.
+ *
+ * Two real fragments from one measured build:
+ *   `@media (prefers-color-scheme: dark) { --bg:#121019; … }`   — declarations
+ *      with no selector directly inside an at-rule: invalid, silently dropped
+ *      by the browser at best; and
+ *   `@media (max-width: 768px) { #x .grid-3 { … }`              — a brace never
+ *      closed, which swallows EVERY rule concatenated after it in styles.css.
+ * The second one is how «تداخلت الكلمات» happens: half the stylesheet simply
+ * stops applying downstream of one section's typo.
+ */
+export function repairCssSyntax(css: string): { css: string; fixes: string[] } {
+    let out = String(css || '');
+    const fixes: string[] = [];
+    // Bare declarations inside an at-rule get a selector. :root is the honest
+    // one (they are custom properties), and the section guard downstream drops
+    // a :root redeclaration anyway — so the junk exits cleanly either way.
+    out = out.replace(/@(media|supports)([^{]*)\{([^{}]*)\}/g, (whole, at: string, cond: string, body: string) => {
+        const b = String(body).trim();
+        if (!b || !/^--?[a-zA-Z][\w-]*\s*:/.test(b)) return whole;
+        fixes.push('wrapped-bare-declarations');
+        return `@${at}${cond}{:root{${b}}}`;
+    });
+    const opens = (out.match(/\{/g) || []).length;
+    const closes = (out.match(/\}/g) || []).length;
+    if (opens > closes) {
+        out += '\n' + '}'.repeat(opens - closes);
+        fixes.push(`closed-${opens - closes}-unclosed-brace(s)`);
+    } else if (closes > opens) {
+        let extra = closes - opens;
+        const before = extra;
+        while (extra > 0 && /\}\s*$/.test(out)) { out = out.replace(/\}\s*$/, '\n'); extra--; }
+        if (extra < before) fixes.push('removed-orphan-closing-brace(s)');
+    }
+    return { css: out, fixes };
+}
+
 export function guardSectionStyles(html: string, sectionId?: string): StyleGuardResult {
     const actions: string[] = [];
     const notesAr: string[] = [];
@@ -103,7 +141,14 @@ export function guardSectionStyles(html: string, sectionId?: string): StyleGuard
     const sid = String(sectionId || '').trim();
 
     // ── <style> blocks inside the section ───────────────────────────────
-    out = out.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_whole, css: string) => {
+    out = out.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_whole, rawCss: string) => {
+        // Syntax first: scoping cannot reason about a sheet whose braces lie.
+        const syn = repairCssSyntax(rawCss);
+        const css = syn.css;
+        if (syn.fixes.length) {
+            for (const f of syn.fixes) actions.push(`css-syntax:${f}`);
+            notesAr.push('أصلحت صياغة CSS غير صالحة داخل قسم — قوس غير مغلق كان سيبطل كل التنسيقات التي بعده');
+        }
         const dropped = new Set<string>();
         // Token hijack: a section redeclaring :root variables changes EVERY
         // section's colours. Always removed (also caught by GLOBAL_SELECTOR,

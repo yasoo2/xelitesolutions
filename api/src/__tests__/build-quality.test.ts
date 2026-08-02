@@ -180,3 +180,128 @@ describe('6 — the build ends with executable next steps, not a shrug', () => {
         expect(builderSrc).toMatch(/«انشر المشروع» → رابط دائم/);
     });
 });
+
+/**
+ * 7 — the restaurant-build fix pack. Every case below is a defect measured on
+ * one real run of «Build a modern restaurant website»: the injected coaching
+ * text turned the restaurant into a store (the word "stored" matched /store/)
+ * and shipped "Crash-Loop Guard" as a restaurant service card; five dead
+ * source.unsplash.com links 404'd on screen; the logo was an 800×600 gradient
+ * rectangle; one unclosed CSS brace swallowed the stylesheet after it; and
+ * three "Add to Cart" buttons logged to the console and did nothing.
+ */
+describe('7 — coaching text cannot poison the page', () => {
+    const DISCIPLINE = '\n\n[ENGINEERING DISCIPLINE — apply when you build launch/update/deploy scripts]:'
+        + '\n1. compare a stored hash/stamp; never skip installing.'
+        + '\n2. Crash-loop guard: restart ... server ... cart of woes none.';
+    test('the builder strips the injected block from the request before ANY design decision', () => {
+        expect(builderSrc).toMatch(/\.replace\(\/\\n\+\\\[\(STANDING USER INSTRUCTIONS\|ENGINEERING DISCIPLINE\)/);
+    });
+    test('"stored" in the coaching text no longer turns a restaurant into a store', () => {
+        const { detectPageKind } = require('../core/design/blueprints');
+        expect(detectPageKind('Build a modern restaurant website' + DISCIPLINE)).toBe('restaurant');
+        expect(detectPageKind('Build a modern restaurant website')).toBe('restaurant');
+        // …and a real store request still detects as one.
+        expect(detectPageKind('build an online store with a cart')).toBe('store');
+    });
+});
+
+describe('7b — model-written image URLs become real photo requests', () => {
+    const { imagesToMarkers } = require('../core/design/images');
+    const os = require('os');
+    test('a dead external URL becomes a marker whose subject is the alt text', () => {
+        const r = imagesToMarkers(
+            '<img src="https://source.unsplash.com/600x400/?restaurant,kitchen,chef" alt="Restaurant kitchen chef">',
+            os.tmpdir());
+        expect(r.converted).toBe(1);
+        expect(r.html).toMatch(/src="\{\{IMAGE:card\|Restaurant kitchen chef\}\}"/);
+    });
+    test('no alt → the subject comes from the URL query terms', () => {
+        const r = imagesToMarkers('<img src="https://source.unsplash.com/600x400/?design,studio,desk">', os.tmpdir());
+        expect(r.html).toMatch(/\{\{IMAGE:card\|design studio desk\}\}/);
+    });
+    test('an invented local file is promoted too; avatars keep their slot', () => {
+        const r = imagesToMarkers('<img class="avatar" src="chef-maria.jpg" alt="Maria Rodriguez portrait">', os.tmpdir());
+        expect(r.html).toMatch(/\{\{IMAGE:avatar\|Maria Rodriguez portrait\}\}/);
+    });
+    test('logos, data URIs and existing files are left alone; scripts are never rewritten', () => {
+        const fs2 = require('fs'); const path2 = require('path');
+        const dir = fs2.mkdtempSync(path2.join(os.tmpdir(), 'joe-imgs-'));
+        fs2.writeFileSync(path2.join(dir, 'real.jpg'), 'JPG');
+        const html = '<img class="logo" src="logo.png" alt="DineEase Logo">'
+            + '<img src="data:image/svg+xml;utf8,x" alt="g">'
+            + '<img src="real.jpg" alt="kept">'
+            + '<script>var s = \'<img src="https://cdn.example.com/x.jpg">\';</script>';
+        const r = imagesToMarkers(html, dir);
+        expect(r.converted).toBe(0);
+        expect(r.html).toBe(html);
+    });
+});
+
+describe('7c — a placeholder is not a logo', () => {
+    const { ensureLogo } = require('../core/design/logo');
+    test('an invented logo.png inside the brand link is replaced with the drawn mark', () => {
+        const r = ensureLogo('<a class="brand" href="/"><img src="logo.png" alt="DineEase Logo" class="logo"></a>',
+            { brand: 'DineEase', hue: 258, isArabic: false });
+        expect(r.added).toBe(true);
+        expect(r.html).toContain('<svg');
+        expect(r.html).toContain('brand-name');
+        expect(r.html).not.toContain('logo.png');
+    });
+    test('a gradient-placeholder data URI logo is replaced too', () => {
+        const gr = 'data:image/svg+xml;utf8,%3Csvg%3E%3ClinearGradient%3E%3C/linearGradient%3E%3C/svg%3E';
+        const r = ensureLogo(`<a class="brand" href="/"><img src="${gr}" alt="Logo"></a>`,
+            { brand: 'DineEase', hue: 258, isArabic: false });
+        expect(r.added).toBe(true);
+    });
+    test('a REAL photo the user chose is untouched', () => {
+        const r = ensureLogo('<a class="brand" href="/"><img src="https://mysite.com/mark.png" alt="brand"></a>',
+            { brand: 'X', hue: 10, isArabic: false });
+        expect(r.added).toBe(false);
+    });
+});
+
+describe('7d — broken CSS syntax is repaired, not shipped', () => {
+    const { repairCssSyntax } = require('../core/design/style-guard');
+    test('bare declarations inside @media get a selector', () => {
+        const r = repairCssSyntax('@media (prefers-color-scheme: dark) { --bg:#121019; --text:#f4f4f6; }');
+        expect(r.css).toContain(':root{--bg:#121019');
+        expect(r.fixes).toContain('wrapped-bare-declarations');
+    });
+    test('an unclosed brace is closed — it was swallowing every rule after it', () => {
+        const r = repairCssSyntax('@media (max-width:768px){ .grid-3{grid-template-columns:1fr}');
+        const opens = (r.css.match(/\{/g) || []).length;
+        const closes = (r.css.match(/\}/g) || []).length;
+        expect(opens).toBe(closes);
+    });
+    test('splitHtmlProject repairs each part, so one bad section cannot kill styles.css', () => {
+        const page = '<html><head><style>.a{color:red}</style></head><body>'
+            + '<style>@media (max-width:768px){ .b{color:blue}</style>'
+            + '<style>.c{color:green}</style></body></html>';
+        const split = splitHtmlProject(page);
+        expect((split.css.match(/\{/g) || []).length).toBe((split.css.match(/\}/g) || []).length);
+        expect(split.css).toContain('.c{color:green}');
+    });
+});
+
+describe('7e — a section brings content, never document structure', () => {
+    test('stray <main>/</main> from the model is stripped from a section', () => {
+        const { extractSection } = require('../core/design/section-writer');
+        const got = extractSection('<section class="section" id="x"><p>hi</p></main><footer>f</footer></section>', 'x');
+        expect(got.ok).toBe(true);
+        expect(got.html).not.toMatch(/<\/?main/i);
+    });
+});
+
+describe('7f — a button that says "add to cart" adds to the cart', () => {
+    const commerceSrc = fs.readFileSync(
+        path.join(__dirname, '..', 'core', 'design', 'commerce.ts'), 'utf-8');
+    test('the cart runtime understands the model\'s dialects: .cart-btn, #add-to-cart, the visible label', () => {
+        expect(commerceSrc).toMatch(/cart-btn/);
+        expect(commerceSrc).toMatch(/add-to-cart/);
+        expect(commerceSrc).toMatch(/add to cart\|أضف/);
+        // …and derives the product from the card when data-product is absent.
+        expect(commerceSrc).toMatch(/closest\('\.card, \.product, article, li/);
+        expect(commerceSrc).toMatch(/new-price/);
+    });
+});

@@ -718,3 +718,83 @@ export function groundImageSrcs(
     }
     return { html: out, fixed, broken };
 }
+
+/**
+ * Model-written image URLs become PHOTO REQUESTS, before the archives run.
+ *
+ * The brief forbids external image links and the models write them anyway. A
+ * measured build shipped five `https://source.unsplash.com/600x400/?restaurant,
+ * kitchen,chef` images — a service that no longer exists, so every one 404'd
+ * on screen, and the audit could report them but nothing upstream could fix
+ * them: groundImageSrcs deliberately leaves remote URLs alone, and the marker
+ * sweep never sees a URL that was never a marker.
+ *
+ * The address itself says what the picture was FOR — the alt text, or the
+ * query terms in the URL — and that is exactly what a `{{IMAGE:slot|subject}}`
+ * marker carries. So instead of patching the symptom with a gradient, the URL
+ * is rewritten into the marker it should have been, resolveImages fetches a
+ * REAL licensed photograph for it, and only if every archive comes back empty
+ * does the usual sweep paint the on-palette gradient. Missing local files the
+ * model invented (dish1.jpg) get the same promotion. Logos are skipped — a
+ * stock photo is never a logo; the drawn wordmark handles those.
+ */
+export function imagesToMarkers(html: string, dir: string): { html: string; converted: number } {
+    const src0 = String(html || '');
+    // Same script/style masking as groundImageSrcs, same reason: runtime code
+    // that builds `<img src="...">` strings must never be rewritten.
+    const masked = src0.replace(/<(script|style)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi,
+        (full, tag, body) => full.slice(0, full.length - body.length - `</${tag}>`.length)
+            + ' '.repeat(body.length) + `</${tag}>`);
+
+    const localExists = (raw: string): boolean => {
+        try {
+            const clean = decodeURIComponent(String(raw).split(/[?#]/)[0]).trim();
+            if (!clean) return false;
+            const full = path.resolve(dir, clean);
+            const root = path.resolve(dir);
+            if (full !== root && !full.startsWith(root + path.sep)) return false;
+            return fs.existsSync(full) && fs.statSync(full).isFile();
+        } catch { return false; }
+    };
+
+    const STOP = new Set(['http', 'https', 'www', 'com', 'org', 'net', 'images', 'image', 'img', 'photo',
+        'photos', 'source', 'unsplash', 'pexels', 'picsum', 'placeholder', 'jpg', 'jpeg', 'png', 'webp', 'svg', 'gif']);
+    const subjectFromUrl = (u: string): string => {
+        try {
+            const decoded = decodeURIComponent(u.replace(/^(https?:)?\/\//i, ''));
+            return decoded.split(/[\/?&,=+._:-]+/)
+                .filter(w => w.length > 2 && !/^\d+(x\d+)?$/.test(w) && !STOP.has(w.toLowerCase()))
+                .slice(0, 5).join(' ').trim();
+        } catch { return ''; }
+    };
+
+    let converted = 0;
+    const edits: Array<{ at: number; end: number; text: string }> = [];
+    for (const m of masked.matchAll(/<img\b[^>]*>/gi)) {
+        const tag = m[0];
+        const srcM = tag.match(/\ssrc\s*=\s*["']([^"']*)["']/i);
+        if (!srcM) continue;
+        const v = srcM[1].trim();
+        const cls = (tag.match(/\sclass\s*=\s*["']([^"']*)["']/i) || [])[1] || '';
+        const alt = (tag.match(/\salt\s*=\s*["']([^"']*)["']/i) || [])[1] || '';
+        // A logo is drawn, never fetched from a photo archive.
+        if (/\blogo\b/i.test(cls) || /\blogo\b/i.test(alt)) continue;
+        if (/^data:/i.test(v) || /\{\{\s*IMAGE/i.test(v)) continue;
+        const external = /^(https?:)?\/\//i.test(v);
+        if (!external && (!v || localExists(v))) continue;
+
+        const subject = (alt.trim() || (external ? subjectFromUrl(v) : subjectFromUrl(v)) || 'image').slice(0, 90);
+        const slot = /\bavatar\b/i.test(cls) || /avatar|portrait|headshot/i.test(alt) ? 'avatar'
+            : /\bthumb|card-thumb\b/i.test(cls) ? 'thumb'
+                : 'card';
+        converted++;
+        const at = m.index! + srcM.index!;
+        edits.push({ at, end: at + srcM[0].length, text: ` src="{{IMAGE:${slot}|${subject.replace(/["|{}]/g, ' ').trim()}}}"` });
+    }
+
+    let out = src0;
+    for (let i = edits.length - 1; i >= 0; i--) {
+        out = out.slice(0, edits[i].at) + edits[i].text + out.slice(edits[i].end);
+    }
+    return { html: out, converted };
+}

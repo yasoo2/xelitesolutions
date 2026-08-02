@@ -21,8 +21,13 @@ const DETECTORS: Array<[PageKind, RegExp]> = [
     ['dashboard', /لوحة تحكم|لوحة قيادة|لوحة إدارة|لوحة ادارة|إحصائ|احصائ|تحليلات|مبيعات|dashboard|admin panel|analytics|kpi|metrics|report(ing)? ui/i],
     ['docs', /توثيق|وثائق|دليل استخدام|docs|documentation|api reference|developer guide/i],
     ['event', /فعالية|مؤتمر|حفل|زفاف|event|conference|meetup|webinar|wedding|summit/i],
-    ['store', /متجر|تسوق|منتجات|سلة|شراء|shop|store|e-?commerce|cart|checkout|product page|catalog/i],
-    ['restaurant', /مطعم|كافيه|قهوة|مقهى|قائمة الطعام|منيو|مخبز|حلويات|restaurant|cafe|coffee|menu|bakery|pizza|bistro/i],
+    // Word-bounded Latin keywords, learned the hard way: the injected coaching
+    // text contains "compare a STORED hash" and bare /store/ matched it — a
+    // measured build of «restaurant website» came out as an online shop with a
+    // cart, because the store pattern is checked first. (Arabic needs no \b:
+    // its keywords are whole distinctive words already.)
+    ['store', /متجر|تسوق|منتجات|سلة|شراء|\bshop\b|\bstores?\b|e-?commerce|\bcarts?\b|\bcheckout\b|product page|\bcatalog/i],
+    ['restaurant', /مطعم|كافيه|قهوة|مقهى|قائمة الطعام|منيو|مخبز|حلويات|restaurant|\bcafe\b|\bcoffee\b|\bmenu\b|bakery|pizza|bistro/i],
     ['portfolio', /بورتفوليو|معرض أعمال|معرض اعمال|سيرة ذاتية|portfolio|resume|\bcv\b|showcase|my work|photographer/i],
     ['blog', /مدونة|مقالات|أخبار|اخبار|blog|articles|magazine|newsroom/i],
     ['app', /تطبيق ويب|واجهة تطبيق|web ?app|application ui|saas app|tool ui|admin tool/i],
@@ -30,13 +35,19 @@ const DETECTORS: Array<[PageKind, RegExp]> = [
 ];
 
 export function detectPageKind(request: string, probe?: string): PageKind {
+    // The injected coaching blocks never take part in this decision — the
+    // builder strips them before calling, and this strips them again for any
+    // caller that forgot: the block talks about installs, restarts and carts
+    // of state, and one measured build became a STORE because of the word
+    // "stored" inside it.
+    const own = String(request || '').replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE)[\s\S]*$/i, '');
     // Normalise first. «لشركه» is «لشركة» to any reader and to nobody's regex —
     // the same Arabic spelling gap that sent a build request to the generic
     // planner once already. The canonical companion is tested alongside the
     // user's own words, never instead of them.
     let canonical = '';
-    try { canonical = normalizeIntentText(request || ''); } catch { /* optional */ }
-    const text = `${request || ''}\n${canonical}\n${probe || ''}`;
+    try { canonical = normalizeIntentText(own); } catch { /* optional */ }
+    const text = `${own}\n${canonical}\n${probe || ''}`;
     for (const [kind, re] of DETECTORS) if (re.test(text)) return kind;
     return 'generic';
 }

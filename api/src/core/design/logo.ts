@@ -119,9 +119,34 @@ export function ensureLogo(html: string, opts: LogoOptions): { html: string; add
     const src = String(html || '');
     const link = src.match(/<a\b[^>]*class="[^"]*\bbrand\b[^"]*"[^>]*>([\s\S]*?)<\/a\s*>/i);
     if (!link) return { html: src, added: false };
-    if (/<svg|<img/i.test(link[1])) return { html: src, added: false };
+    // A drawn mark is already there — done.
+    if (/<svg/i.test(link[1])) return { html: src, added: false };
 
-    const text = link[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    /**
+     * An <img> logo used to end the matter here — and a measured build shipped
+     * the ugliest corner a page can have because of it: the model wrote
+     * `<img src="logo.png" class="logo">`, the file never existed, the
+     * missing-file repair swapped in an 800×600 GRADIENT PLACEHOLDER, and
+     * this function saw "there is an img, nothing to do". The header carried
+     * a giant purple rectangle reading "DineEase Logo" — the user's exact
+     * complaint: «لم يظهر اللوغو». A placeholder is not a logo; only a REAL
+     * picture the user supplied is. So: a data-URI gradient, or an img whose
+     * name says logo but whose file is nowhere — replaced with the drawn
+     * wordmark. A working remote/data photo the user chose is left alone.
+     */
+    const img = link[1].match(/<img\b[^>]*>/i);
+    if (img) {
+        const imgSrc = ((img[0].match(/\ssrc\s*=\s*["']([^"']*)["']/i) || [])[1] || '').trim();
+        const isGradientPlaceholder = /^data:image\/svg\+xml/i.test(imgSrc) && /linearGradient|%3ClinearGradient/i.test(imgSrc);
+        // A bare invented filename ("logo.png") — no path, no scheme — is the
+        // model reaching for a file that never existed. A rooted or pathed
+        // reference (/logo.svg, assets/logo.png) may be the user's real file
+        // and is left exactly as they wrote it.
+        const isInventedFile = /^[\w-]*logo[\w-]*\.(png|jpe?g|svg|webp|gif)$/i.test(imgSrc);
+        if (!isGradientPlaceholder && !isInventedFile && imgSrc) return { html: src, added: false };
+    }
+
+    const text = link[1].replace(/<img\b[^>]*>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     const brand = text || opts.brand;
     const open = link[0].slice(0, link[0].indexOf('>') + 1);
     const withAria = /aria-label=/i.test(open) ? open : open.replace(/>$/, ` aria-label="${escapeXml(brand)}">`);

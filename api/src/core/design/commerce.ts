@@ -183,13 +183,39 @@ export function cartRuntime(isArabic: boolean): string {
     if (t.closest('[data-cart-open]')) { e.preventDefault(); ensurePanel(); open(); return; }
 
     var add = t.closest('[data-add]');
-    if (!add) return;
+    /* The model's own dialects. The brief says data-add inside data-product;
+       a measured build wrote class="cart-btn" and id="add-to-cart" instead,
+       and the behaviour audit pressed three "Add to Cart" buttons that logged
+       to the console and did nothing else. The visitor does not care whose
+       naming convention won — a button that says "add to cart" adds to the
+       cart. The card is whatever container carries a heading and a price. */
+    if (!add) {
+      var legacy = t.closest('button, a');
+      if (legacy && !legacy.closest('.joe-cart-panel') &&
+          (/\bcart-btn\b/.test(legacy.className || '') ||
+           /^add-to-cart/i.test(legacy.id || '') ||
+           /add to cart|أضف (إلى |لل)?السلة|اضف (الى |لل)?السلة/i.test((legacy.textContent || '').trim()))) {
+        add = legacy;
+      }
+      if (!add) return;
+    }
     var card = add.closest('[data-product]');
+    if (!card) {
+      /* Nearest container that can NAME the product: a heading and, ideally,
+         a price. Without one there is nothing honest to add. */
+      var host = add.closest('.card, .product, article, li, [class*="item"]') || add.parentElement;
+      if (host && host.querySelector && host.querySelector('h1,h2,h3,h4,.card-title')) card = host;
+    }
     if (!card) return;
     e.preventDefault();
 
     var name = (card.getAttribute('data-name') || (card.querySelector('h1,h2,h3,h4') || {}).textContent || '').trim();
     var price = parseFloat(String(card.getAttribute('data-price') || '').replace(/[^0-9.]/g, '')) || 0;
+    if (!price) {
+      /* The visible price on the card — the discounted one when both appear. */
+      var priceEl = card.querySelector('.new-price, [class*="price"] .new-price, .price, [class*="price"]');
+      if (priceEl) price = parseFloat(String(priceEl.textContent || '').replace(/[^0-9.]/g, '')) || 0;
+    }
     var img = card.getAttribute('data-image') || ((card.querySelector('img') || {}).getAttribute ? card.querySelector('img').getAttribute('src') : '');
     var id = card.getAttribute('data-id') || name;
 

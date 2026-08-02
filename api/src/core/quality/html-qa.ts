@@ -499,9 +499,13 @@ export function splitHtmlProject(rawHtml: string): SplitProject {
     const cssParts: string[] = [];
     const jsParts: string[] = [];
 
-    // Extract inline <style> ... </style> blocks.
+    // Extract inline <style> ... </style> blocks. Each part is syntax-repaired
+    // FIRST: one unclosed brace in one part swallows every rule concatenated
+    // after it in styles.css — measured as half a page losing its layout.
+    const { repairCssSyntax } = require('../design/style-guard');
     html = html.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (_m, body) => {
-        if (String(body).trim()) cssParts.push(String(body).trim());
+        const trimmed = String(body).trim();
+        if (trimmed) cssParts.push(repairCssSyntax(trimmed).css);
         return '';
     });
 

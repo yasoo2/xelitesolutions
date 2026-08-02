@@ -153,6 +153,12 @@ export function extractSection(raw: string, id: string): { html: string; ok: boo
         out = out.replace(/<\/body[\s\S]*$/i, '');
     }
     out = out.replace(/<!DOCTYPE[^>]*>/gi, '').replace(/<\/?html[^>]*>/gi, '').replace(/<head[\s\S]*?<\/head>/gi, '').trim();
+    // A stray <main> or </main> inside ONE section corrupts the whole document
+    // when the sections are concatenated — a measured build closed <main> in
+    // its newsletter section, so the model's own footer and everything after
+    // it landed OUTSIDE the page structure and rendered twice. assemblePage
+    // owns the document skeleton; a section brings content only.
+    out = out.replace(/<\/?main\b[^>]*>/gi, '').trim();
 
     if (!out) return { html: '', ok: false, reason: 'the model returned nothing' };
     // It must be a real block, not a stray sentence.
