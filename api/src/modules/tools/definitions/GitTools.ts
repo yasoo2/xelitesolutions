@@ -4,25 +4,56 @@ import { ToolPermission } from '../types';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import { spawn } from 'child_process';
 import { getSessionSecret, getUserSecret } from '../../services/secrets';
 import { workspaceService } from '../../services/WorkspaceService';
 import { handleGitCommand } from '../handlers';
-import { executionEngine } from '../../../kernel/ExecutionEngine';
 
-async function runGitWithEnv(operation: string, args: string[], env: any, cwd: string) {
+/**
+ * Runs git with a REAL argv array — never a joined-then-split string.
+ *
+ * The previous runner joined the args into `git a b c` and handed it to a
+ * runner that re-split on whitespace. Any argument containing a space was
+ * shredded: `commit -m "Scaffolded project by Joe"` became the message
+ * "Scaffolded" plus five bogus pathspecs, so EVERY auto-commit in the push
+ * flow failed with "pathspec did not match". Passing argv straight to spawn
+ * keeps each argument intact, on every platform, with no shell quoting to get
+ * wrong. shell:false means no shell metacharacters are interpreted either.
+ */
+function runGitWithEnv(operation: string, args: string[], env: any, cwd: string): Promise<{ stdout: string; stderr: string }> {
     const op = String(operation || '');
     if (!/^[a-z0-9-]+$/.test(op)) {
-        throw new Error('invalid_git_operation');
+        return Promise.reject(new Error('invalid_git_operation'));
     }
-    const finalArgs = [op, ...args.map(a => String(a || ''))];
-    const fullCommand = `git ${finalArgs.join(' ')}`;
-    
-    const result = await executionEngine.run(fullCommand, { cwd, env, shell: false });
-    if (result.ok) {
-        return { stdout: result.output, stderr: result.error };
-    } else {
-        throw new Error(result.error || result.output || `Exit code ${result.exitCode}`);
-    }
+    const finalArgs = [op, ...args.map(a => String(a ?? ''))];
+    return new Promise((resolve, reject) => {
+        const child = spawn('git', finalArgs, { cwd, env, shell: false });
+        let stdout = '';
+        let stderr = '';
+        let settled = false;
+        const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            try { child.kill('SIGKILL'); } catch { /* already gone */ }
+            reject(new Error('git_timeout'));
+        }, 600000); // authenticated network ops on a weak machine need room
+        timer.unref?.();
+        child.stdout?.on('data', (d) => { stdout += d.toString(); });
+        child.stderr?.on('data', (d) => { stderr += d.toString(); });
+        child.on('error', (e) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            reject(e);
+        });
+        child.on('close', (code) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            if (code === 0) resolve({ stdout, stderr });
+            else reject(new Error(stderr.trim() || stdout.trim() || `git exited with code ${code}`));
+        });
+    });
 }
 
 export class GitOpsTool extends BaseTool {
@@ -67,13 +98,25 @@ export class GitOpsTool extends BaseTool {
 
                     if (token) {
                         askpassDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'joe-askpass-'));
-                        const askpassPath = path.join(askpassDir, 'askpass.sh');
-                        const script = `#!/bin/sh\ncase "$1" in\n*Username*) echo "x-access-token";;\n*) echo "$JOE_GIT_TOKEN";;\nesac\n`;
+                        // The user runs on Windows. A `#!/bin/sh` askpass with
+                        // mode 0o700 does NOT execute there — Windows ignores
+                        // shebangs and the +x bit is meaningless on NTFS, so
+                        // every authenticated push/clone against a private repo
+                        // silently failed with an auth prompt git could not
+                        // answer. The askpass must be a program the host OS can
+                        // actually run: a .bat on Windows, the .sh elsewhere.
+                        // GitHub tokens are [A-Za-z0-9_] so echoing them in a
+                        // batch file is safe (no %, &, ^, <, >, | to escape).
+                        const isWindows = process.platform === 'win32';
+                        const askpassPath = path.join(askpassDir, isWindows ? 'askpass.bat' : 'askpass.sh');
+                        const script = isWindows
+                            ? `@echo off\r\necho.%~1 | findstr /I "Username" >nul\r\nif %errorlevel%==0 (echo x-access-token) else (echo %JOE_GIT_TOKEN%)\r\n`
+                            : `#!/bin/sh\ncase "$1" in\n*Username*) echo "x-access-token";;\n*) echo "$JOE_GIT_TOKEN";;\nesac\n`;
                         await fs.promises.writeFile(askpassPath, script, { mode: 0o700 });
 
                         env.GIT_ASKPASS = askpassPath;
                         env.GIT_TERMINAL_PROMPT = '0';
-                        env.DISPLAY = '1';
+                        if (!isWindows) env.DISPLAY = '1'; // X11 hint — irrelevant on Windows
                         env.JOE_GIT_TOKEN = token;
                     }
                 } catch (e: any) {
