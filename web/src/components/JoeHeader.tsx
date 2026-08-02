@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bot, MessageSquare, Settings, Moon, Sun, Plus, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield, ChevronDown } from 'lucide-react';
+import { Bot, MessageSquare, Settings, Moon, Sun, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield, ChevronDown } from 'lucide-react';
 import { resolveIdentity, nameFromEmail, initialsFrom, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
 import JoeMark from './JoeMark';
 
@@ -120,12 +120,10 @@ export default function JoeHeader({
                     >
                         <PanelRight size={18} />
                     </button>
-                    <div className="joe-action-spacer" style={{ width: '8px' }}></div>
-                    {onNewProject && (
-                        <button className="joe-header-btn" onClick={onNewProject} title={t('newProject')} style={{ color: 'var(--joe-gold-primary)' }}>
-                            <Plus size={18} />
-                        </button>
-                    )}
+                    {/* The "+" (new project) button lived here and was removed at
+                        the user's request: «قم بحذفه فلا فائدة له» — a project is
+                        started by ASKING Joe in the chat, not by a header button,
+                        and the button duplicated that with an extra click. */}
                 </div>
 
                 <div className="joe-header-divider"></div>
