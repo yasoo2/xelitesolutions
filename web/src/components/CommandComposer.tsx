@@ -1790,6 +1790,7 @@ export default function CommandComposer({
   }
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    console.log('[Attach] change event:', e.target.files?.length ?? 0, 'file(s)');
     if (!e.target.files?.length) return;
     /**
      * ONE upload path for every entry point. This handler used to duplicate
@@ -1805,6 +1806,7 @@ export default function CommandComposer({
 
   // Reusable upload function for drag-drop and clipboard paste
   async function uploadFiles(files: File[]) {
+    console.log('[Attach] uploading', files.length, 'file(s) to', `${API}/files/upload`);
     if (!files.length) return;
     setIsUploading(true);
     setUploadProgress(0);
@@ -3870,6 +3872,7 @@ export default function CommandComposer({
                 <input
                   type="file"
                   multiple
+                  data-joe-attach
                   ref={fileInputRef}
                   onChange={handleFileSelect}
                   style={{ display: 'none' }}

@@ -27,6 +27,7 @@ interface Message {
     role: 'user' | 'assistant';
     content: string;
     timestamp?: Date;
+    files?: Array<{ id?: string; name?: string; mimeType?: string; size?: number }>;
 }
 
 export default function Joe() {
@@ -278,6 +279,10 @@ export default function Joe() {
                 const role = msg.type === 'user_input' ? 'user' : (msg.role || 'assistant');
                 const content = msg.type === 'user_input' ? (typeof msg.data === 'string' ? msg.data : msg.data?.text || msg.data) : (msg.data?.text || msg.content);
                 const id = msg.id || (msg.type === 'user_input' ? `msg-${msg.ts || Date.now()}` : `msg-${Date.now()}`);
+                // The attachments ride the echo as {files:[{id,name,…}]} — this
+                // line used to keep only the text, which is EXACTLY why the
+                // user's attached image never appeared in the chat.
+                const files = msg.type === 'user_input' && Array.isArray(msg.data?.files) ? msg.data.files : undefined;
 
                 setMessages(prev => {
                     // Avoid duplicates
@@ -286,6 +291,7 @@ export default function Joe() {
                         id,
                         role,
                         content,
+                        files,
                         timestamp: new Date()
                     }];
                 });
@@ -347,6 +353,8 @@ export default function Joe() {
                             id: e.id || `msg-${e.ts}`,
                             role: 'user',
                             content: typeof e.data === 'string' ? e.data : (e.data?.text || JSON.stringify(e.data)),
+                            // The stored attachment meta — the chips survive reloads.
+                            files: Array.isArray(e.data?.files) ? e.data.files : undefined,
                             timestamp: new Date(e.ts || Date.now())
                         }];
                     }

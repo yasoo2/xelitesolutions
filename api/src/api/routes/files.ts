@@ -313,7 +313,18 @@ router.get('/:id', authenticate as any, async (req: Request, res: Response) => {
 });
 
 // Serve raw file
-router.get('/:id/raw', authenticate as any, async (req: Request, res: Response) => {
+//
+// An <img> tag cannot send an Authorization header, and the chat renders
+// attachment thumbnails with plain <img src="/api/files/:id/raw?token=…">.
+// The query token is lifted into the header BEFORE authenticate runs — same
+// JWT, same verification, just a transport the browser can actually use for
+// images. Scoped to this one route.
+router.get('/:id/raw', ((req: Request, _res: Response, next: any) => {
+  if (!req.headers.authorization && typeof req.query.token === 'string' && req.query.token) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  next();
+}) as any, authenticate as any, async (req: Request, res: Response) => {
   try {
     let file: any = null;
     if (mongoReady()) { try { file = await FileModel.findById(req.params.id); } catch { /* offline */ } }

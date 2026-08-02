@@ -34,7 +34,53 @@ const MAX_DESC_TOKENS = 900;
 
 interface VisionTarget { baseUrl: string; model: string; apiKey: string; label: string }
 
-function targets(userGroqKey?: string): VisionTarget[] {
+const GROQ_BASE = 'https://api.groq.com/openai/v1';
+/** Last resort when the catalog cannot be listed. */
+const GROQ_STATIC_FALLBACK = [
+    'meta-llama/llama-4-scout-17b-16e-instruct',
+    'meta-llama/llama-4-maverick-17b-128e-instruct',
+];
+/** What a vision-capable model id looks like, across catalog generations. */
+const VISION_ID = /scout|maverick|vision|llava|pixtral|[-_]vl\b|vl[-_]|gemma-?3/i;
+
+let groqCatalogCache: { at: number; ids: string[] } | null = null;
+
+/**
+ * ASK GROQ WHAT IT SERVES TODAY. The first release pinned two llama-4 model
+ * ids and both answered 404 on the user's machine — providers rename and
+ * retire models faster than any hardcoded list survives. The catalog is
+ * listed live (cached 10 minutes), filtered to vision-capable ids, and the
+ * static names remain only as the fallback when /models itself is
+ * unreachable. JOE_VISION_GROQ_MODELS (comma-separated) overrides both.
+ */
+async function groqVisionModels(apiKey: string): Promise<string[]> {
+    const override = String(process.env.JOE_VISION_GROQ_MODELS || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (override.length) return override;
+    if (groqCatalogCache && Date.now() - groqCatalogCache.at < 600_000) return groqCatalogCache.ids;
+    try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 10_000);
+        const res = await fetch(`${GROQ_BASE}/models`, { signal: ctrl.signal, headers: { 'Authorization': `Bearer ${apiKey}` } });
+        clearTimeout(timer);
+        if (!res.ok) throw new Error(`models list ${res.status}`);
+        const data: any = await res.json();
+        const all: string[] = (data?.data || []).map((m: any) => String(m?.id || '')).filter(Boolean);
+        const vision = all.filter(id => VISION_ID.test(id))
+            // Prefer the larger/newer families first: maverick > scout > the rest.
+            .sort((a, b) => {
+                const rank = (id: string) => /maverick/i.test(id) ? 0 : /scout/i.test(id) ? 1 : 2;
+                return rank(a) - rank(b);
+            });
+        console.info(`[Vision] Groq catalog: ${all.length} models, ${vision.length} vision-capable${vision.length ? ` (${vision.slice(0, 3).join(', ')}${vision.length > 3 ? ', …' : ''})` : ''}`);
+        groqCatalogCache = { at: Date.now(), ids: vision.length ? vision.slice(0, 4) : GROQ_STATIC_FALLBACK };
+    } catch (e: any) {
+        console.warn(`[Vision] could not list Groq models (${e?.message || e}) — using static fallback names`);
+        groqCatalogCache = { at: Date.now(), ids: GROQ_STATIC_FALLBACK };
+    }
+    return groqCatalogCache.ids;
+}
+
+async function targets(userGroqKey?: string): Promise<VisionTarget[]> {
     const out: VisionTarget[] = [];
     const oBase = String(process.env.JOE_VISION_BASE_URL || '').trim().replace(/\/+$/, '');
     if (oBase) {
@@ -47,11 +93,8 @@ function targets(userGroqKey?: string): VisionTarget[] {
     }
     const groqKey = String(userGroqKey || process.env.GROQ_API_KEY || '').trim();
     if (groqKey && groqKey !== 'dummy') {
-        for (const model of [
-            'meta-llama/llama-4-scout-17b-16e-instruct',
-            'meta-llama/llama-4-maverick-17b-128e-instruct',
-        ]) {
-            out.push({ baseUrl: 'https://api.groq.com/openai/v1', model, apiKey: groqKey, label: `groq:${model.split('/')[1]}` });
+        for (const model of await groqVisionModels(groqKey)) {
+            out.push({ baseUrl: GROQ_BASE, model, apiKey: groqKey, label: `groq:${model.split('/').pop()}` });
         }
     }
     return out;
@@ -109,7 +152,7 @@ export async function describeImageAttachments(
     const language = String(opts.language || 'ar').split('-')[0];
     const list = (attachments || []).filter(a => /^image\//i.test(a.mimeType || '') && !String(a.content || '').trim());
     if (!list.length) return { described: 0, skipped: 0 };
-    const chain = targets(opts.groqApiKey);
+    const chain = await targets(opts.groqApiKey);
     if (!chain.length) {
         console.info('[Vision] no vision provider configured (set GROQ_API_KEY or JOE_VISION_BASE_URL) — images stay declared, not described');
         return { described: 0, skipped: list.length };

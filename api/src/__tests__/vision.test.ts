@@ -102,6 +102,41 @@ describe('vision — the image becomes a scene', () => {
         expect(calls).toBe(0);
     });
 
+    test('Groq vision models are DISCOVERED from the live catalog, not hardcoded', async () => {
+        // The field failure: both pinned llama-4 ids answered 404 on the
+        // user's machine. The chain must ask /models and use what exists.
+        const calls: Array<{ url: string; body?: any }> = [];
+        global.fetch = (async (url: any, init: any) => {
+            calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : undefined });
+            if (String(url).endsWith('/models')) {
+                return {
+                    ok: true, json: async () => ({
+                        data: [
+                            { id: 'llama-3.3-70b-versatile' },
+                            { id: 'qwen-2.5-vl-72b-instruct' },
+                            { id: 'meta-llama/llama-4-scout-17b-16e-instruct' },
+                        ],
+                    }),
+                } as any;
+            }
+            return { ok: true, json: async () => ({ choices: [{ message: { content: 'وصف بصري كامل للمشهد كما طُلب' } }] }) } as any;
+        }) as any;
+        const saved = process.env.GROQ_API_KEY;
+        process.env.GROQ_API_KEY = 'gsk_test';
+        try {
+            const att = imageAtt('cat.png');
+            const r = await describeImageAttachments([att], { language: 'ar' });
+            expect(r.described).toBe(1);
+            expect(calls[0].url).toContain('/models');
+            const chat = calls.find(c => c.url.endsWith('/chat/completions'));
+            // A DISCOVERED vision id was used — scout outranks the generic vl model.
+            expect(chat?.body?.model).toBe('meta-llama/llama-4-scout-17b-16e-instruct');
+            expect(att.visionDescribed).toBe(true);
+        } finally {
+            if (saved !== undefined) process.env.GROQ_API_KEY = saved; else delete process.env.GROQ_API_KEY;
+        }
+    });
+
     test('the run actually invokes the vision pass before building the block', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
         expect(src).toContain('describeImageAttachments(options.attachments || []');

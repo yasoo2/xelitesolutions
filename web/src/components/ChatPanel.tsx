@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Sparkles, Send, Mic, User, Bot, Copy, Check, Rocket, UtensilsCrossed, LayoutDashboard, BriefcaseBusiness } from 'lucide-react';
+import { Sparkles, Send, Mic, User, Bot, Copy, Check, Rocket, UtensilsCrossed, LayoutDashboard, BriefcaseBusiness, Paperclip } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -18,6 +18,8 @@ interface Message {
     id: string;
     role: 'user' | 'assistant';
     content: string;
+    /** Attachment meta the user sent with this message (id/name/type/size). */
+    files?: Array<{ id?: string; name?: string; mimeType?: string; size?: number }>;
     timestamp?: Date;
 }
 
@@ -196,6 +198,31 @@ export default function ChatPanel({
                             </div>
                             <div className="joe-message-content">
                                 <div className="joe-message-bubble">
+                                    {/* The attachments the user sent WITH this message.
+                                        This renderer never showed them — the user
+                                        attached an image, pressed Enter, and the chat
+                                        showed text only. Images render as REAL
+                                        thumbnails served by the API (so they survive
+                                        reloads); other files show name chips. */}
+                                    {Array.isArray(msg.files) && msg.files.length > 0 && (
+                                        <div className="joe-msg-files">
+                                            {msg.files.map((f, i) => {
+                                                const isImage = /^image\//i.test(f.mimeType || '');
+                                                const token = (() => { try { return localStorage.getItem('token') || ''; } catch { return ''; } })();
+                                                const rawUrl = f.id ? `/api/files/${encodeURIComponent(f.id)}/raw?token=${encodeURIComponent(token)}` : '';
+                                                return isImage && rawUrl ? (
+                                                    <a key={i} href={rawUrl} target="_blank" rel="noopener noreferrer" className="joe-msg-file is-image" title={f.name || ''}>
+                                                        <img src={rawUrl} alt={f.name || 'image'} loading="lazy" />
+                                                    </a>
+                                                ) : (
+                                                    <span key={i} className="joe-msg-file" title={f.name || ''}>
+                                                        <Paperclip size={12} />
+                                                        <span className="joe-msg-file-name">{f.name || 'ملف'}</span>
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                     <ReactMarkdown
                                         components={{
                                             code({ className, children, ...props }: any) {
@@ -464,6 +491,45 @@ export default function ChatPanel({
 @media (max-height: 620px) {
     .joe-chat-empty { gap: 7px; padding-top: 8px; padding-bottom: 8px; }
     .joe-suggest-card { padding: 9px 12px; }
+}
+
+/* ========== Attachments inside a sent message ========== */
+.joe-msg-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.joe-msg-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--joe-border);
+    background: var(--joe-bg-card);
+    color: var(--joe-text-secondary);
+    font-size: 11.5px;
+    max-width: 220px;
+}
+.joe-msg-file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: ltr;
+    unicode-bidi: plaintext;
+}
+.joe-msg-file.is-image {
+    padding: 0;
+    overflow: hidden;
+    border-radius: 10px;
+    line-height: 0;
+}
+.joe-msg-file.is-image img {
+    display: block;
+    width: 132px;
+    height: 132px;
+    object-fit: cover;
 }
 
 /* ========== The greeting STAYS in the chat once the conversation starts ==== */
