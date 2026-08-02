@@ -213,6 +213,23 @@ export class GitOpsTool extends BaseTool {
                 }
             }
 
+            // An auth failure on a network op almost always means the token was
+            // revoked or expired mid-work. Git says "Authentication failed" /
+            // "could not read Username" / "invalid username or password" — all
+            // cryptic to the user. Translate it into a clear, actionable answer
+            // so Joe says "reconnect your token", not a raw fatal line.
+            const wasNetworkOp = ['push', 'fetch', 'pull', 'clone'].includes(op);
+            const looksAuth = /authentication failed|could not read username|invalid username or password|403|terminal prompts disabled|remote: (invalid|repository not found)|permission to .* denied/i.test(errorMsg);
+            if (wasNetworkOp && looksAuth) {
+                logs.push('git.error=auth_failed (token likely revoked/expired)');
+                return {
+                    ok: false,
+                    error: 'انتهت صلاحية توكن GitHub أو تم إلغاؤه، فتعذّرت المصادقة. أعِد ربط حسابك بتوكن جديد يملك صلاحية repo ثم أعد المحاولة.',
+                    output: { tokenInvalid: true, operation: op },
+                    logs,
+                };
+            }
+
             logs.push(`git.error=${e.message}`);
             return { ok: false, error: e.message || e.stderr, logs };
         } finally {

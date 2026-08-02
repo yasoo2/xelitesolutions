@@ -16,6 +16,34 @@ import https from 'https';
 const router = Router();
 const repoTool = new GitHubRepoManagerTool();
 
+/**
+ * Turns a raw GitHub API failure into a clear, actionable answer.
+ *
+ * A revoked or expired token makes GitHub reply `{message:"Bad credentials"}`;
+ * the routes used to re-emit that verbatim as an HTTP 500 — the user saw a
+ * cryptic English phrase and no hint that the fix is "reconnect your token".
+ * This maps the real failure classes to the right status and an Arabic
+ * sentence that says what to DO. The token is never auto-deleted (a transient
+ * blip must not wipe a good connection) — the user re-entering it overwrites it.
+ */
+function classifyGhError(e: any): { status: number; body: any } {
+    const status = Number(e?.status) || 0;
+    const msg = String(e?.message || '');
+    if (status === 401 || /bad credentials|requires authentication/i.test(msg)) {
+        return { status: 401, body: { error: 'انتهت صلاحية توكن GitHub أو تم إلغاؤه. أعِد ربط حسابك بتوكن جديد لمتابعة العمل.', connected: false, tokenInvalid: true } };
+    }
+    if (status === 403 && /rate limit/i.test(msg)) {
+        return { status: 429, body: { error: 'تجاوزت حدّ طلبات GitHub مؤقتاً. انتظر قليلاً ثم أعد المحاولة.', rateLimited: true } };
+    }
+    if (status === 403) {
+        return { status: 403, body: { error: 'التوكن الحالي لا يملك الصلاحية الكافية لهذه العملية. أعِد ربط حسابك بتوكن يملك صلاحية repo كاملة.', tokenInsufficientScope: true } };
+    }
+    if (status === 404) {
+        return { status: 404, body: { error: 'المستودع غير موجود أو لا تملك صلاحية الوصول إليه بهذا التوكن.', notFound: true } };
+    }
+    return { status: status >= 400 ? status : 500, body: { error: msg || 'خطأ غير متوقع من GitHub.' } };
+}
+
 // ─── Helper: Make GitHub API request ───
 function ghApi(method: string, path: string, token: string, body?: any): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -159,7 +187,7 @@ router.get('/repos', authenticate as any, async (req: Request, res: Response) =>
         }));
         return res.json({ repos: mapped, total: mapped.length });
     } catch (e: any) {
-        return res.status(500).json({ error: e.message });
+        const { status, body } = classifyGhError(e); return res.status(status).json(body);
     }
 });
 
@@ -180,7 +208,7 @@ router.post('/repos', authenticate as any, async (req: Request, res: Response) =
         });
         return res.json(result);
     } catch (e: any) {
-        return res.status(500).json({ error: e.message });
+        const { status, body } = classifyGhError(e); return res.status(status).json(body);
     }
 });
 
@@ -282,7 +310,7 @@ router.get('/repos/:owner/:repo/contents', authenticate as any, async (req: Requ
 
         return res.json({ contents });
     } catch (e: any) {
-        return res.status(500).json({ error: e.message });
+        const { status, body } = classifyGhError(e); return res.status(status).json(body);
     }
 });
 
@@ -304,7 +332,7 @@ router.get('/repos/:owner/:repo/commits', authenticate as any, async (req: Reque
         }));
         return res.json({ commits: mapped });
     } catch (e: any) {
-        return res.status(500).json({ error: e.message });
+        const { status, body } = classifyGhError(e); return res.status(status).json(body);
     }
 });
 
@@ -325,7 +353,7 @@ router.get('/repos/:owner/:repo/branches', authenticate as any, async (req: Requ
         }));
         return res.json({ branches: mapped });
     } catch (e: any) {
-        return res.status(500).json({ error: e.message });
+        const { status, body } = classifyGhError(e); return res.status(status).json(body);
     }
 });
 

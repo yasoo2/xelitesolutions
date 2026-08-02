@@ -11,9 +11,11 @@ interface Props {
     onClose: () => void;
     onConnected: (user: GitHubUser) => void;
     onSelectRepo?: (repo: GitHubRepo) => void;
+    /** A token-expired/revoked message from live use, shown as a reconnect banner. */
+    tokenError?: string | null;
 }
 
-const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, onSelectRepo }) => {
+const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, onSelectRepo, tokenError }) => {
     const { t } = useTranslation();
     const [token, setToken] = useState('');
     const [loading, setLoading] = useState(false);
@@ -74,6 +76,13 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>
                                 {t('connectGitHub', 'Connect GitHub')}
                             </h3>
+                            {/* Live-use token failure (revoked/expired). Never
+                                silent: the reason the panel emptied is stated here. */}
+                            {tokenError && !success && (
+                                <p style={{ margin: '6px 0 0', fontSize: '12.5px', color: '#f14c4c', fontWeight: 600, lineHeight: 1.5 }}>
+                                    ⚠️ {tokenError}
+                                </p>
+                            )}
                             <p style={{ margin: '4px 0 0', fontSize: '13px', opacity: 0.6 }}>
                                 {success ? t('selectRepoDesc', 'Choose the repository to sync') : t('connectGitHubDesc', 'Connect your account to build professional projects')}
                             </p>

@@ -83,6 +83,10 @@ export default function Joe() {
     const [ghCommits, setGhCommits] = useState<GitHubCommit[]>([]);
     const [ghConnected, setGhConnected] = useState(false);
     const [ghLoading, setGhLoading] = useState(false);
+    // A revoked/expired token used to fail SILENTLY (every GitHub call was
+    // .catch(()=>{})), so the panel just showed an empty list. This holds the
+    // clear backend message so the UI can prompt the user to reconnect.
+    const [ghError, setGhError] = useState<string | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
     const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
     const [workspace, setWorkspace] = useState<any>(null);
@@ -500,6 +504,7 @@ export default function Joe() {
                 const s = await githubService.getStatus(wsId || undefined);
                 if (s.connected) {
                     setGhConnected(true);
+                    setGhError(null);
                     setGhUser({ username: s.username!, avatarUrl: s.avatarUrl!, name: s.name! });
                     const repos = await githubService.listRepos();
                     setGhRepos(repos);
@@ -516,8 +521,11 @@ export default function Joe() {
                         }
                     }
                 }
-            } catch {
-                // GitHub init not available
+            } catch (e: any) {
+                // A revoked/expired token throws the clear backend message here.
+                // Surface it instead of leaving the panel mysteriously empty.
+                const msg = String(e?.message || '');
+                if (msg && /توكن|token|صلاحية|credential/i.test(msg)) setGhError(msg);
             }
         };
 
@@ -531,12 +539,16 @@ export default function Joe() {
         try {
             const repos = await githubService.listRepos();
             setGhRepos(repos);
+            setGhError(null);
             if (activeRepo) {
                 const commits = await githubService.getCommits(activeRepo.fullName.split('/')[0], activeRepo.name);
                 setGhCommits(commits);
             }
-        } catch {
-            // GitHub refresh failed silently
+        } catch (e: any) {
+            // Explicit user action (refresh): if the token died, open the
+            // reconnect dialog so the fix is right in front of them.
+            const msg = String(e?.message || '');
+            if (msg && /توكن|token|صلاحية|credential/i.test(msg)) { setGhError(msg); setIsGitHubOpen(true); }
         } finally {
             setGhLoading(false);
         }
@@ -788,6 +800,7 @@ export default function Joe() {
                     onClose={() => setIsGitHubOpen(false)}
                     onConnected={handleGitHubConnected}
                     onSelectRepo={handleSelectRepo}
+                    tokenError={ghError}
                 />
                 <ProjectOnboardingModal
                     isOpen={isOnboardingOpen}
