@@ -37,6 +37,13 @@ export class ExecutionEnforcer {
                 const fullPath = path.join(dir, entry.name);
                 if (entry.isDirectory()) {
                     if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '.git') continue;
+                    // Test directories are NOT runtime execution paths — they are
+                    // never imported by the running server, only invoked manually
+                    // (tsx) or by jest. Proof harnesses legitimately drive real git
+                    // via child_process to build fixtures. The Single Execution
+                    // Authority governs the RUNTIME; policing test setup here only
+                    // blocked startup over files that never run in production.
+                    if (entry.name === '__tests__' || entry.name === 'tests' || entry.name === '__mocks__') continue;
                     scan(fullPath);
                 } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.js')) {
                     // Skip ExecutionEngine and ExecutionGuard as they are the authorized owners

@@ -4,10 +4,10 @@ import { ToolPermission } from '../types';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { spawn } from 'child_process';
 import { getSessionSecret, getUserSecret } from '../../services/secrets';
 import { workspaceService } from '../../services/WorkspaceService';
 import { handleGitCommand } from '../handlers';
+import { executionEngine } from '../../../kernel/ExecutionEngine';
 
 /**
  * Runs git with a REAL argv array — never a joined-then-split string.
@@ -16,44 +16,23 @@ import { handleGitCommand } from '../handlers';
  * runner that re-split on whitespace. Any argument containing a space was
  * shredded: `commit -m "Scaffolded project by Joe"` became the message
  * "Scaffolded" plus five bogus pathspecs, so EVERY auto-commit in the push
- * flow failed with "pathspec did not match". Passing argv straight to spawn
- * keeps each argument intact, on every platform, with no shell quoting to get
- * wrong. shell:false means no shell metacharacters are interpreted either.
+ * flow failed with "pathspec did not match".
+ *
+ * The fix routes an argv array through ExecutionEngine.runArgv — the sanctioned
+ * single execution authority — so each argument stays intact on every platform
+ * with no shell re-parsing, and this tool imports NO child_process (the boot
+ * enforcer forbids it, correctly).
  */
-function runGitWithEnv(operation: string, args: string[], env: any, cwd: string): Promise<{ stdout: string; stderr: string }> {
+async function runGitWithEnv(operation: string, args: string[], env: any, cwd: string): Promise<{ stdout: string; stderr: string }> {
     const op = String(operation || '');
     if (!/^[a-z0-9-]+$/.test(op)) {
-        return Promise.reject(new Error('invalid_git_operation'));
+        throw new Error('invalid_git_operation');
     }
     const finalArgs = [op, ...args.map(a => String(a ?? ''))];
-    return new Promise((resolve, reject) => {
-        const child = spawn('git', finalArgs, { cwd, env, shell: false });
-        let stdout = '';
-        let stderr = '';
-        let settled = false;
-        const timer = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            try { child.kill('SIGKILL'); } catch { /* already gone */ }
-            reject(new Error('git_timeout'));
-        }, 600000); // authenticated network ops on a weak machine need room
-        timer.unref?.();
-        child.stdout?.on('data', (d) => { stdout += d.toString(); });
-        child.stderr?.on('data', (d) => { stderr += d.toString(); });
-        child.on('error', (e) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            reject(e);
-        });
-        child.on('close', (code) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            if (code === 0) resolve({ stdout, stderr });
-            else reject(new Error(stderr.trim() || stdout.trim() || `git exited with code ${code}`));
-        });
-    });
+    // authenticated network ops on a weak machine need room
+    const res = await executionEngine.runArgv('git', finalArgs, { cwd, env, timeout: 600000 });
+    if (res.ok) return { stdout: res.output || '', stderr: res.error || '' };
+    throw new Error(String(res.error || res.output || `git exited with code ${res.exitCode}`).trim() || 'git_failed');
 }
 
 export class GitOpsTool extends BaseTool {

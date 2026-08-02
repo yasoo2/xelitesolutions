@@ -172,7 +172,16 @@ export class ExecutionEngine {
 
             switch (request.type) {
                 case 'shell':
-                    data = await this.runCommandInternal(request.payload.command!, request.payload.options);
+                    // When a real argv array is supplied, spawn it verbatim — no
+                    // whitespace re-splitting. This is how git (and any tool with
+                    // arguments that contain spaces, like a commit message) runs
+                    // correctly WITHOUT any caller importing child_process. The
+                    // engine stays the single execution authority.
+                    if (Array.isArray(request.payload.args) && request.payload.command) {
+                        data = await this.runArgvInternal(request.payload.command, request.payload.args, request.payload.options);
+                    } else {
+                        data = await this.runCommandInternal(request.payload.command!, request.payload.options);
+                    }
                     break;
                 case 'pty':
                     data = await this.createSession(request.payload.options || {});
@@ -395,12 +404,66 @@ export class ExecutionEngine {
         };
     }
 
+    /**
+     * Run a program with a REAL argv array (no shell, no whitespace splitting).
+     * The sanctioned way for a tool to run git/npm/etc with arguments that
+     * contain spaces — the caller never touches child_process, so the Single
+     * Execution Authority (and its boot-time enforcer) stays intact.
+     */
+    async runArgv(file: string, args: string[], options: ExecutionOptions = {}): Promise<any> {
+        const result = await this.execute({
+            id: 'runargv_' + Date.now(),
+            type: 'shell',
+            payload: { command: file, args, options },
+            priority: 'normal'
+        });
+        return {
+            ok: result.success && (result.data?.ok !== false),
+            output: result.data?.output || '',
+            error: result.data?.error || result.error || '',
+            exitCode: result.data?.exitCode,
+            pid: result.data?.pid,
+            duration: result.duration
+        };
+    }
+
+    private async runArgvInternal(file: string, args: string[], options: ExecutionOptions = {}): Promise<any> {
+        return new Promise((resolve) => {
+            const child = spawn(file, args, {
+                cwd: options.cwd || this.getWorkspaceRoot(),
+                env: { ...process.env, ...options.env },
+                shell: false, // argv is already tokenized — never let a shell re-parse it
+                stdio: options.stdio || 'pipe'
+            });
+            let stdout = '';
+            let stderr = '';
+            let done = false;
+            child.stdout?.on('data', (d) => { stdout += d.toString(); });
+            child.stderr?.on('data', (d) => { stderr += d.toString(); });
+            child.on('close', (code) => {
+                if (done) return; done = true;
+                resolve({ ok: code === 0, output: stdout, error: stderr, exitCode: code, pid: child.pid });
+            });
+            child.on('error', (err) => {
+                if (done) return; done = true;
+                resolve({ ok: false, error: err.message, exitCode: 1 });
+            });
+            if (options.timeout) {
+                setTimeout(() => {
+                    if (done) return; done = true;
+                    try { child.kill('SIGKILL'); } catch {}
+                    resolve({ ok: false, error: 'Execution timed out', exitCode: 124 });
+                }, options.timeout);
+            }
+        });
+    }
+
     private async runCommandInternal(command: string, options: ExecutionOptions = {}): Promise<any> {
         return new Promise((resolve) => {
             const parts = command.trim().split(/\s+/);
             const cmd = parts[0];
             const args = parts.slice(1);
-            
+
             const child = spawn(cmd, args, {
                 cwd: options.cwd || this.getWorkspaceRoot(),
                 env: { ...process.env, ...options.env },

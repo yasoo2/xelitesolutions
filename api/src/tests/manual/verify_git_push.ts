@@ -60,8 +60,9 @@ async function main() {
     const gitToolsSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'modules', 'tools', 'definitions', 'GitTools.ts'), 'utf-8');
     const windowsAskpass = gitToolsSrc.includes("isWindows ? 'askpass.bat'")
         && gitToolsSrc.includes('findstr /I "Username"');
-    const usesSpawnArgv = gitToolsSrc.includes("spawn('git', finalArgs")
-        && !gitToolsSrc.includes('finalArgs.join');
+    const usesSpawnArgv = gitToolsSrc.includes("executionEngine.runArgv('git', finalArgs")
+        && !gitToolsSrc.includes('finalArgs.join')
+        && !gitToolsSrc.includes("from 'child_process'");
 
     const checks: Array<[string, boolean]> = [
         ['git add succeeded', addRes.ok === true],
@@ -69,7 +70,7 @@ async function main() {
         ['git push to the remote succeeded', pushRes.ok === true],
         ['PROOF: the remote commit message is intact, word for word', remoteMsg === COMMIT_MSG],
         ['PROOF: the edited file really reached the remote', remoteHasFile],
-        ['the git runner spawns a real argv array (no join-then-split)', usesSpawnArgv],
+        ['the git runner passes a real argv array via ExecutionEngine (no join-then-split, no child_process)', usesSpawnArgv],
         ['a Windows-executable askpass (.bat) is shipped for token auth', windowsAskpass],
     ];
 

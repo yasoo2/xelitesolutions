@@ -18,19 +18,27 @@ const src = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'GitTools.ts'), 'utf-8');
 
 describe('argv is preserved — multi-word commit messages survive', () => {
-    test('git is spawned with a real argv array, not a joined string', () => {
-        expect(src).toMatch(/spawn\('git', finalArgs, \{ cwd, env, shell: false \}\)/);
+    const engine = fs.readFileSync(
+        path.join(__dirname, '..', 'kernel', 'ExecutionEngine.ts'), 'utf-8');
+
+    test('git runs via a real argv array through ExecutionEngine, not a joined string', () => {
+        expect(src).toMatch(/executionEngine\.runArgv\('git', finalArgs/);
     });
     test('the join-then-split runner is gone', () => {
         expect(src).not.toMatch(/finalArgs\.join\(' '\)/);
-        expect(src).not.toMatch(/executionEngine\.run/);
     });
-    test('shell:false — no shell metacharacter interpretation on any arg', () => {
-        expect(src).toMatch(/shell: false/);
-        expect(src).not.toMatch(/shell: true/);
+    test('the tool imports NO child_process — the boot enforcer forbids it', () => {
+        expect(src).not.toMatch(/from ['"]child_process['"]/);
+        expect(src).not.toMatch(/\bspawn\(/);
+    });
+    test('ExecutionEngine.runArgv spawns argv verbatim (no whitespace re-split)', () => {
+        expect(engine).toMatch(/async runArgv\(file: string, args: string\[\]/);
+        expect(engine).toMatch(/spawn\(file, args, \{/);
+        const argvInternal = engine.slice(engine.indexOf('runArgvInternal'));
+        expect(argvInternal.slice(0, 600)).not.toMatch(/split\(\/\\s\+\//);
     });
     test('the network-op timeout is generous enough for a weak machine', () => {
-        expect(src).toMatch(/600000/);
+        expect(src).toMatch(/timeout: 600000/);
     });
 });
 
