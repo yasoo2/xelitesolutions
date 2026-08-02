@@ -33,6 +33,7 @@ import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPl
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
 import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, surfacePairingCss, ownedSurfaces, normalizeIconRefs } from '../../../core/design/layouts';
+import { sanitizeInlineSvg, labelIconOnlyButtons } from '../../../core/design/svg-sanity';
 import { pickFlourish, flourishCss, flourishBrief } from '../../../core/design/flourish';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
@@ -295,7 +296,9 @@ ${photos > 0
   Use about ${photos} of them, each with a DIFFERENT subject, and always a real alt attribute.
   The subject must name something THIS business actually does — "business people" or "office" are
   useless to a photo archive and will be replaced. Never link an external image URL yourself.${imageBrief.suggestions.length
-                    ? `\n  Subjects that fit this brief: ${imageBrief.suggestions.slice(0, 8).join('; ')}.` : ''}`
+                    ? `\n  Subjects that fit this brief: ${imageBrief.suggestions.slice(0, 8).join('; ')}.` : ''}${(kind === 'dashboard' || kind === 'app')
+                    ? `\n  This is an admin/app screen: photographs are SMALL — thumb slots in the products/orders
+  table, avatar slots in the activity feed and user lists. Never a full-width hero photograph.` : ''}`
                 : `- This page type needs no photographs: use inline SVG, gradients and type instead.`}
 ${isAr ? '- Arabic page: <html lang="ar" dir="rtl"> with natural Arabic copy (not translated-sounding).' : ''}
 
@@ -1217,6 +1220,21 @@ the WORDS, not the structure.`;
                 html = ic.html;
                 logs.push(`content: repointed ${ic.fixed} icon reference(s) at symbols that exist`);
             }
+            // Hand-drawn SVG the model got wrong in ways with exactly one fix:
+            // var() in presentation attributes (invalid, discarded) and
+            // --on-brand inks on white cards (drawn, invisible at 1.05:1).
+            const sv = sanitizeInlineSvg(html);
+            if (sv.movedToStyle || sv.remappedOnBrand) {
+                html = sv.html;
+                for (const note of sv.notesAr) logs.push(`🔧 ${note}`);
+            }
+            // Icon-only controls a screen reader cannot name — the audit
+            // reported them on build after build; the fix is deterministic.
+            const lb = labelIconOnlyButtons(html, isAr);
+            if (lb.fixed) {
+                html = lb.html;
+                logs.push(`content: named ${lb.fixed} icon-only control(s) for screen readers`);
+            }
         }
 
         // [REVIVED weak-model-enhancer] Self-correction pass: strip leftover
@@ -1299,6 +1317,38 @@ the WORDS, not the structure.`;
         let base: string;
         const projectFiles: Array<{ name: string; bytes: number }> = [];
         let projIndex = '', projCss = '', projJs = '';
+        let projectDir = '';
+
+        /**
+         * EVERY LATER WRITE GOES THROUGH THIS — the combined file AND, when the
+         * page previews as a split project, the project folder the preview URL
+         * actually points at.
+         *
+         * The repair passes below used to write only the combined file, while
+         * `url` — the address every re-audit measures — served the SPLIT
+         * folder. So a repair changed a file nobody was looking at, the
+         * re-measurement read the untouched one, "did not improve" fired every
+         * time, and the honest-sounding revert shipped the page with its known
+         * defects intact. A build the user reported went out at Visual 37/100
+         * exactly this way.
+         */
+        const writeOut = (h: string) => {
+            fs.writeFileSync(path.join(ARTIFACT_DIR, filename), h, 'utf-8');
+            if (projectDir) {
+                const abs = path.join(ARTIFACT_DIR, projectDir);
+                const s = splitHtmlProject(h);
+                if (s && s.multiFile) {
+                    fs.writeFileSync(path.join(abs, 'index.html'), s.indexHtml, 'utf-8');
+                    fs.writeFileSync(path.join(abs, 'styles.css'), s.css || '', 'utf-8');
+                    fs.writeFileSync(path.join(abs, 'script.js'), s.js || '', 'utf-8');
+                    projIndex = s.indexHtml; projCss = s.css || ''; projJs = s.js || '';
+                    for (const f of projectFiles) {
+                        f.bytes = f.name === 'index.html' ? s.indexHtml.length
+                            : f.name === 'styles.css' ? (s.css || '').length : (s.js || '').length;
+                    }
+                }
+            }
+        };
         try {
             fs.mkdirSync(path.dirname(path.join(ARTIFACT_DIR, filename)), { recursive: true });
             // Always write the combined file too (keeps single-file preview working
@@ -1337,6 +1387,7 @@ the WORDS, not the structure.`;
                 projIndex = split.indexHtml;
                 if (split.css) { fs.writeFileSync(path.join(abs, 'styles.css'), split.css, 'utf-8'); projectFiles.push({ name: 'styles.css', bytes: split.css.length }); projCss = split.css; streamCodeToLogs(sessionId, 'styles.css', split.css, { done: true, label: 'written to disk' }); }
                 if (split.js) { fs.writeFileSync(path.join(abs, 'script.js'), split.js, 'utf-8'); projectFiles.push({ name: 'script.js', bytes: split.js.length }); projJs = split.js; streamCodeToLogs(sessionId, 'script.js', split.js, { done: true, label: 'written to disk' }); }
+                projectDir = dir;
                 base = `http://localhost:${PORT}/artifacts/${dir}/index.html`;
             } else if (siteEditFile && prev?.site) {
                 // Preview the page that changed, inside the site it belongs to.
@@ -1372,23 +1423,12 @@ the WORDS, not the structure.`;
         }
         logs.push(`web_page_builder: ${isEdit ? 'edited' : 'wrote'} ${filename} (${html.length} bytes)${projectFiles.length ? ` + ${projectFiles.length} project files` : ''} in ${ARTIFACT_DIR}`);
 
-        // [BROWSABLE OUTPUT] Mirror the generated file(s) into the active workspace
-        // root under joe-output/<session>/ so they show up in the file explorer and
-        // the user can browse/edit them. Best-effort; preview still serves from
-        // ARTIFACT_DIR. Then tell the UI to refresh the tree.
-        try {
-            const root = workspaceService.getActiveRoot(context?.workspaceId);
-            const outDir = path.join(root, 'joe-output', `joe-${sessionKey}`);
-            fs.mkdirSync(outDir, { recursive: true });
-            if (projectFiles.length) {
-                fs.writeFileSync(path.join(outDir, 'index.html'), projIndex, 'utf-8');
-                if (projCss) fs.writeFileSync(path.join(outDir, 'styles.css'), projCss, 'utf-8');
-                if (projJs) fs.writeFileSync(path.join(outDir, 'script.js'), projJs, 'utf-8');
-            } else {
-                fs.writeFileSync(path.join(outDir, 'index.html'), html, 'utf-8');
-            }
-            broadcast({ type: 'workspace_updated', sessionId, data: { sessionId, path: outDir } } as any);
-        } catch { /* non-fatal: preview still works from ARTIFACT_DIR */ }
+        // [BROWSABLE OUTPUT] The mirror into the File Explorer happens AFTER the
+        // audit/repair passes below, so the files the user browses are the
+        // repaired ones — and it writes into the explorer's OWN root (see
+        // getExplorerRoot), because the old mirror used the tool's workspace
+        // root, a sibling folder the explorer never lists: files were written
+        // and «لم تظهر في قائمة فايل اكسبلورر».
 
         // Cache-busting query so the Preview iframe RELOADS to show the change.
         const url = `${base}?v=${Date.now()}`;
@@ -1453,7 +1493,7 @@ the WORDS, not the structure.`;
                 // the same rule every other repair here obeys.
                 const mech = applyMechanicalRepairs(html, audit.findings, { language: isAr ? 'ar' : 'en', subject: request });
                 if (mech.applied.length) {
-                    fs.writeFileSync(path.join(ARTIFACT_DIR, filename), mech.html, 'utf-8');
+                    writeOut(mech.html);
                     const after = await auditVisually(url, { screenshotDir: ARTIFACT_DIR, name: `audit-${sessionKey}` });
                     if (after.ran && (after.score > audit.score
                         || (after.score === audit.score && after.findings.length < audit.findings.length))) {
@@ -1469,7 +1509,7 @@ the WORDS, not the structure.`;
                             : `🔧 Mechanically repaired ${mech.applied.length} certain defect(s) and re-measured`);
                         audit = after;
                     } else {
-                        fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+                        writeOut(html);
                         logs.push('mechanical repair did not measure better — reverted');
                     }
                 }
@@ -1497,7 +1537,7 @@ the WORDS, not the structure.`;
                         .filter(p => p.trim().length >= 2);
                     const repairDesign = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}${flourishBrief(flourish) ? '\n\n' + flourishBrief(flourish) : ''}\n\n${primitivesBrief()}`;
                     const scoped = probes.length ? await this.repairSections({
-                        html, filename, probes, brief, design: repairDesign, isAr, sessionId, context,
+                        html, write: writeOut, probes, brief, design: repairDesign, isAr, sessionId, context,
                         note: isAr
                             ? `👁️ الصفحة كبيرة، فأصلح الأقسام التي فيها الملاحظات`
                             : `👁️ Page is large — repairing only the sections the findings name`,
@@ -1511,10 +1551,8 @@ the WORDS, not the structure.`;
                             html = scoped;
                             logs.push(`visual repair (section-scoped): ${audit.score} → ${after.score}`);
                         } else {
-                            fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
-            // The finished file, as written to disk — the Logs panel closes the
-            // live view with exactly what the preview is about to show.
-            streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
+                            writeOut(html);
+                            streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
                             repairSkipped = true;
                             logs.push('visual repair (section-scoped) did not improve the score — reverted');
                         }
@@ -1537,7 +1575,7 @@ the WORDS, not the structure.`;
                         const d2 = out.search(/<!DOCTYPE html>|<html[\s>]/i);
                         if (d2 > 0) out = out.slice(d2);
                         if (/<\/html\s*>/i.test(out) && out.length > html.length * 0.7) {
-                            fs.writeFileSync(path.join(ARTIFACT_DIR, filename), out, 'utf-8');
+                            writeOut(out);
                             const after = await auditVisually(url, { screenshotDir: ARTIFACT_DIR, name: `audit-${sessionKey}` });
                             // Only keep a repair the browser agrees is better.
                             if (after.ran && after.score > audit.score) {
@@ -1549,10 +1587,8 @@ the WORDS, not the structure.`;
                                 broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any);
                                 logs.push(`visual repair accepted: ${audit.score} -> ${after.score}`);
                             } else {
-                                fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
-            // The finished file, as written to disk — the Logs panel closes the
-            // live view with exactly what the preview is about to show.
-            streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
+                                writeOut(html);
+                                streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
                                 logs.push('visual repair rejected (did not improve the measurements)');
                             }
                         }
@@ -1584,7 +1620,7 @@ the WORDS, not the structure.`;
                     const probes = b.controls.filter(c => !c.worked && c.label).map(c => String(c.label));
                     const repairDesign = `${designBrief(palette)}\n\nTOKEN BLOCK (already in the page — use the tokens, do not redeclare them):\n${paletteCss(palette)}\n\n${layoutBrief(archetype, typePair)}${flourishBrief(flourish) ? '\n\n' + flourishBrief(flourish) : ''}\n\n${primitivesBrief()}`;
                     const scoped = await this.repairSections({
-                        html, filename, probes, brief, design: repairDesign, isAr, sessionId, context,
+                        html, write: writeOut, probes, brief, design: repairDesign, isAr, sessionId, context,
                         note: isAr
                             ? `🖱️ الصفحة كبيرة، فأصلح الأقسام التي فيها الأزرار المعطّلة`
                             : `🖱️ Page is large — repairing only the sections holding the dead controls`,
@@ -1601,10 +1637,8 @@ the WORDS, not the structure.`;
                         } else {
                             // The measurement did not improve, so the edit is
                             // reverted rather than kept on faith.
-                            fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
-            // The finished file, as written to disk — the Logs panel closes the
-            // live view with exactly what the preview is about to show.
-            streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
+                            writeOut(html);
+                            streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
                             repairSkipped = true;
                             logs.push(`behaviour repair (section-scoped) did not improve the score — reverted`);
                         }
@@ -1627,7 +1661,7 @@ the WORDS, not the structure.`;
                         const d3 = out.search(/<!DOCTYPE html>|<html[\s>]/i);
                         if (d3 > 0) out = out.slice(d3);
                         if (/<\/html\s*>/i.test(out) && out.length > html.length * 0.7) {
-                            fs.writeFileSync(path.join(ARTIFACT_DIR, filename), out, 'utf-8');
+                            writeOut(out);
                             const after = await auditBehaviour(url, { kind });
                             // A "fix" that deletes the buttons scores well on dead
                             // controls, so the count of controls must not fall.
@@ -1641,10 +1675,8 @@ the WORDS, not the structure.`;
                                 broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any);
                                 logs.push(`behaviour repair accepted: ${b.score} -> ${after.score}`);
                             } else {
-                                fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
-            // The finished file, as written to disk — the Logs panel closes the
-            // live view with exactly what the preview is about to show.
-            streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
+                                writeOut(html);
+                                streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
                                 logs.push(`behaviour repair rejected (${after.ran ? `${b.score} -> ${after.score}, controls ${b.metrics.pressed} -> ${after.metrics.pressed}` : 're-audit failed'})`);
                             }
                         }
@@ -1671,6 +1703,39 @@ the WORDS, not the structure.`;
                 qaBrowserLine = isAr ? `\n🧪 اختبار المتصفح: وجد ملاحظات ⚠️ (${errs})` : `\n🧪 Browser test: found issues ⚠️ (${errs})`;
             }
         } catch { /* non-fatal */ }
+
+        /**
+         * [BROWSABLE OUTPUT] Mirror the FINISHED file(s) — after every repair
+         * pass above, not before them — into the root the File Explorer
+         * actually displays.
+         *
+         * Two real defects lived in the old mirror. It ran before the audits,
+         * so the browsable copy froze at the pre-repair state. And it resolved
+         * the root through the tool's workspace context, which is NOT how the
+         * explorer resolves its own /project/tree request — the copies landed
+         * in a sibling folder no panel lists, and the user reported the exact
+         * symptom: «تم بناء النظام ولكن الملفات لم تظهر في قائمة فايل
+         * اكسبلورر». Failures are logged now, not swallowed: a mirror that
+         * fails silently reads as "Joe forgot my files".
+         */
+        let explorerPath = '';
+        try {
+            const root = workspaceService.getExplorerRoot();
+            const outDir = path.join(root, 'joe-output', `joe-${sessionKey}`);
+            fs.mkdirSync(outDir, { recursive: true });
+            if (projectFiles.length) {
+                fs.writeFileSync(path.join(outDir, 'index.html'), projIndex, 'utf-8');
+                if (projCss) fs.writeFileSync(path.join(outDir, 'styles.css'), projCss, 'utf-8');
+                if (projJs) fs.writeFileSync(path.join(outDir, 'script.js'), projJs, 'utf-8');
+            } else {
+                fs.writeFileSync(path.join(outDir, 'index.html'), html, 'utf-8');
+            }
+            explorerPath = path.join('joe-output', `joe-${sessionKey}`);
+            logs.push(`explorer mirror: ${projectFiles.length || 1} file(s) → ${outDir}`);
+            broadcast({ type: 'workspace_updated', sessionId, data: { sessionId, path: outDir } } as any);
+        } catch (e: any) {
+            logs.push(`explorer mirror failed: ${e?.message || e} — the preview still serves from ${ARTIFACT_DIR}`);
+        }
 
         // Compose the QA summary line for the chat reply.
         const qaSummary = (() => {
@@ -1830,9 +1895,31 @@ the WORDS, not the structure.`;
             : (isAr ? `📄 الملف: ${filename}` : `📄 File: ${filename}`);
         const okPrefix = editNoOp ? '' : '✅ ';
         const shownTail = editNoOp ? '' : (isAr ? ' وعُرض في المعاينة.' : ' and shown in Preview.');
+        // WHERE the files are, in the panel the user actually looks at.
+        const whereLine = explorerPath
+            ? (isAr ? `\n📂 في مستعرض الملفات: ${explorerPath}` : `\n📂 In the File Explorer: ${explorerPath}`)
+            : '';
+        /**
+         * WHAT COMES NEXT — said, not assumed. The build used to end with
+         * "ask for any change"; the user asked for a build that carries
+         * itself to publication: «يكون مكتمل لحد أن يكون ناشره أون لاين».
+         * These are the real next moves Joe can execute, each one a sentence
+         * the user can send as-is.
+         */
+        const nextSteps = isAr
+            ? `\n\n🧭 خطوات تالية يمكنني تنفيذها الآن — أرسل أيّ سطر كما هو:
+   • «انشر المشروع» → رابط دائم مجاني على الإنترنت (GitHub Pages)
+   • «حوّله إلى موقع متعدد الصفحات» → صفحات مترابطة بقائمة تنقّل واحدة
+   • «اجعله بأسلوب موقع stripe.com» → أقرأ هوية أي موقع حيّ وأطبّقها
+   • «عدّل قسم …» → أعدّل القسم المسمّى وحده دون المساس بالباقي`
+            : `\n\n🧭 Next steps I can run right now — send any line as-is:
+   • "انشر المشروع" → a permanent free URL (GitHub Pages)
+   • "make it a multi-page site" → linked pages, one navigation
+   • "style it like stripe.com" → I read a live site's identity and apply it
+   • "edit the … section" → only that section is touched`;
         const message = isAr
-            ? `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}\n\n${qaSummary}\n\n${fileList}\n\nاطلب أي تعديل آخر (مثل: «أضف زر» أو «غيّر اللون») وسيظهر مباشرة في المعاينة.`
-            : `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}\n\n${qaSummary}\n\n${fileList}\n\nAsk for any further change (e.g. "add a button" / "change the color") and it updates live.`;
+            ? `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}${whereLine}\n\n${qaSummary}\n\n${fileList}${nextSteps}`
+            : `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}${whereLine}\n\n${qaSummary}\n\n${fileList}${nextSteps}`;
 
         return { ok: true, output: { message, url, previewUrl: url, path: filename }, logs, logsStreamedLive: true } as any;
     }
@@ -1878,10 +1965,16 @@ the WORDS, not the structure.`;
          * html back to write later.
          */
         filename?: string;
+        /**
+         * Preferred over `filename`: the caller's own writer, which also keeps
+         * the split project files (the ones the audit URL actually serves) in
+         * step with the combined document.
+         */
+        write?: (h: string) => void;
         probes: string[]; brief: string; design: string;
         isAr: boolean; sessionId: any; context: any; note: string;
     }): Promise<string | null> {
-        const { html, filename, probes, brief, design, isAr, sessionId, context, note } = opts;
+        const { html, filename, write, probes, brief, design, isAr, sessionId, context, note } = opts;
         const sections = splitIntoSections(html);
         const targets = sectionsForFindings(sections, probes);
         if (!targets.length) return null;
@@ -1907,7 +2000,8 @@ the WORDS, not the structure.`;
         if (!edits.length) return null;
 
         const out = spliceSections(html, edits);
-        if (filename) fs.writeFileSync(path.join(ARTIFACT_DIR, filename), out, 'utf-8');
+        if (write) write(out);
+        else if (filename) fs.writeFileSync(path.join(ARTIFACT_DIR, filename), out, 'utf-8');
         return out;
     }
 
@@ -2124,6 +2218,13 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 if (b.removed) { out = b.html; logs.push(`${file}: ${b.removed} broken style background(s) removed`); }
                 const ic = normalizeIconRefs(out);
                 if (ic.fixed) { out = ic.html; logs.push(`${file}: repointed ${ic.fixed} icon reference(s)`); }
+                const sv = sanitizeInlineSvg(out);
+                if (sv.movedToStyle || sv.remappedOnBrand) {
+                    out = sv.html;
+                    for (const note of sv.notesAr) logs.push(`🔧 ${file}: ${note}`);
+                }
+                const lb = labelIconOnlyButtons(out, isAr);
+                if (lb.fixed) { out = lb.html; logs.push(`${file}: named ${lb.fixed} icon-only control(s)`); }
             }
             written.set(file, out);
             fs.writeFileSync(path.join(outDir, file), out, 'utf-8');
@@ -2222,10 +2323,34 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
             }
         }
 
+        /**
+         * The finished site, browsable in the File Explorer — same mirror, same
+         * root, same reason as the single page: a site the user cannot find in
+         * the file panel «لم تظهر في قائمة فايل اكسبلورر» no matter how well it
+         * was built. Written after the audits so the copies are the repaired ones.
+         */
+        let explorerPath = '';
+        try {
+            const root = workspaceService.getExplorerRoot();
+            const mirrorDir = path.join(root, 'joe-output', dir);
+            fs.mkdirSync(mirrorDir, { recursive: true });
+            for (const [file, out] of Array.from(written)) {
+                fs.writeFileSync(path.join(mirrorDir, file), out, 'utf-8');
+            }
+            explorerPath = path.join('joe-output', dir);
+            logs.push(`explorer mirror: ${written.size} page(s) → ${mirrorDir}`);
+            broadcast({ type: 'workspace_updated', sessionId, data: { sessionId, path: mirrorDir } } as any);
+        } catch (e: any) {
+            logs.push(`explorer mirror failed: ${e?.message || e}`);
+        }
+
         const lines: string[] = [];
         lines.push(isAr
             ? `🏗️ بُني موقع من ${written.size} صفحات مترابطة: ${sitePlan.pages.filter(p => written.has(p.file)).map(p => p.title).join(' · ')}`
             : `🏗️ Built a ${written.size}-page linked site: ${sitePlan.pages.filter(p => written.has(p.file)).map(p => p.title).join(' · ')}`);
+        if (explorerPath) {
+            lines.push(isAr ? `📂 في مستعرض الملفات: ${explorerPath}` : `📂 In the File Explorer: ${explorerPath}`);
+        }
         if (auditedPages) {
             lines.push(isAr
                 ? `👁️ فُحصت ${auditedPages} صفحة في متصفح حقيقي${auditNotes.length ? '' : ' — بلا ملاحظات'}`
@@ -2264,8 +2389,14 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
         const message = (isAr ? '✅ تم بناء الموقع وعُرض في المعاينة.' : '✅ Site built and shown in Preview.')
             + `\n\n${artifact}\n\n${lines.join('\n')}\n\n`
             + (isAr
-                ? 'اطلب تعديل صفحة بعينها (مثل: «عدّل صفحة المنتجات») وسأعدّلها وحدها.'
-                : 'Ask for a change to one page (e.g. "edit the products page") and only that page is touched.');
+                ? `🧭 خطوات تالية يمكنني تنفيذها الآن — أرسل أيّ سطر كما هو:
+   • «انشر المشروع» → رابط دائم مجاني على الإنترنت (GitHub Pages)
+   • «عدّل صفحة المنتجات» → أعدّل تلك الصفحة وحدها
+   • «اجعله بأسلوب موقع stripe.com» → أقرأ هوية أي موقع حيّ وأطبّقها`
+                : `🧭 Next steps I can run right now — send any line as-is:
+   • "انشر المشروع" → a permanent free URL (GitHub Pages)
+   • "edit the products page" → only that page is touched
+   • "style it like stripe.com" → I read a live site's identity and apply it`);
 
         return {
             entry: `${dir}/index.html`,

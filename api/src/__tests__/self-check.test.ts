@@ -8,6 +8,17 @@ describe('self-check script generation', () => {
     const ar = selfCheckScript(true);
     const en = selfCheckScript(false);
 
+    test('is a COMPLETE <script> element — bare JS pasted into <body> renders as page text', () => {
+        // REGRESSION (user-reported): every sibling runtime returns a wrapped
+        // <script>; this one returned bare JS and assemblePage concatenates
+        // them into the body — the whole self-check shipped as VISIBLE TEXT
+        // at the end of the delivered page.
+        for (const s of [ar, en]) {
+            expect(s.trimStart().startsWith('<script>')).toBe(true);
+            expect(s.trimEnd().endsWith('</script>')).toBe(true);
+        }
+    });
+
     test('activates ONLY behind the ?joe-check flag — visitors see nothing', () => {
         expect(ar).toContain('joe-check');
         expect(ar).toMatch(/if \(!\/\[\?&#\]joe-check\/.test\(location\.search \+ location\.hash\)\) return;/);

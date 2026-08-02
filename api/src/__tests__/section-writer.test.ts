@@ -182,11 +182,16 @@ describe('sectionPrompt', () => {
 
     it('does not offer a photo budget to a page type that takes no photographs', () => {
         const noPhotos = sectionPrompt({
-            plan: plans[0], total: 1, kindLabel: kindLabel('dashboard'), request: 'لوحة تحكم',
+            plan: plans[0], total: 1, kindLabel: kindLabel('docs'), request: 'موقع توثيق',
             isArabic: true, designBrief: '', written: [], photosLeft: 0, imageSubjects: [],
         });
         expect(noPhotos).toMatch(/No photographs/i);
-        expect(imageBudget('dashboard')).toBe(0);
+        expect(imageBudget('docs')).toBe(0);
+        // A dashboard is NOT such a page any more: a store's admin screen with
+        // no product thumbs and no avatars read as a wireframe — the user's
+        // own verdict was «ظهر بدون صور فقط خلفيات ملونة». Real ones are full
+        // of small photographs.
+        expect(imageBudget('dashboard')).toBeGreaterThanOrEqual(3);
     });
 });
 

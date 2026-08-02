@@ -45,7 +45,16 @@ export function selfCheckScript(isArabic: boolean): string {
     // The labels are baked in as an array of [count-fn-template] pairs the
     // runtime fills with real numbers. Kept as a plain template string so the
     // page stays dependency-free.
-    return `
+    //
+    // WRAPPED IN <script> TAGS — this is not a style choice. Every other
+    // runtime Joe injects (uiKitScript, chromeRuntime, themeRuntime …) returns
+    // a complete <script> element, and assemblePage concatenates them straight
+    // into the <body>. This one returned BARE JavaScript, so on every
+    // section-wise build the whole self-check landed as VISIBLE TEXT at the
+    // end of the page — the user photographed it: «يوجد كودات لم يتم اصلاحها
+    // وتم عرضها بالنظام». A build product that renders its own source is the
+    // exact defect this file exists to detect.
+    return `<script>
 /* Joe self-check — runs ONLY when the address contains ?joe-check */
 (function(){
   if (!/[?&#]joe-check/.test(location.search + location.hash)) return;
@@ -97,5 +106,6 @@ export function selfCheckScript(isArabic: boolean): string {
   }
   if (document.readyState === 'complete') setTimeout(run, 400);
   else window.addEventListener('load', function(){ setTimeout(run, 400); });
-})();`;
+})();
+</script>`;
 }

@@ -134,10 +134,20 @@ const KIND_LABEL: Record<PageKind, string> = {
     app: 'web application UI', event: 'event page', docs: 'documentation site', generic: 'web page',
 };
 
-/** How many real photographs this kind of page should carry. */
+/**
+ * How many real photographs this kind of page should carry.
+ *
+ * dashboard/app were 0 — "an admin screen is all data" — and the user's own
+ * verdict on the result was «ظهر بدون صور فقط خلفيات ملونة»: a store's admin
+ * dashboard with no product thumbnails and no user avatars does not read as
+ * an admin screen, it reads as a wireframe. Real ones (Shopify, Stripe) are
+ * full of small photographs: the products in the orders table, the avatars in
+ * the activity feed. The budget is small and the slots (thumb/avatar) tell
+ * the archive to fetch small square crops, so the page stays light.
+ */
 const IMAGE_BUDGET: Record<PageKind, number> = {
-    store: 9, landing: 4, portfolio: 6, restaurant: 7, dashboard: 0,
-    blog: 6, app: 0, event: 5, docs: 0, generic: 3,
+    store: 9, landing: 4, portfolio: 6, restaurant: 7, dashboard: 4,
+    blog: 6, app: 2, event: 5, docs: 0, generic: 3,
 };
 
 export function blueprintBrief(kind: PageKind): string {

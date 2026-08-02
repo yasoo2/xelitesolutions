@@ -187,6 +187,27 @@ export class WorkspaceService {
         return local;
     }
 
+    /**
+     * The root the File Explorer ACTUALLY displays.
+     *
+     * The explorer fetches /project/tree with no workspaceId, from an HTTP
+     * request that carries no async workspace context — so it always resolves
+     * to the persisted local root. A tool, meanwhile, runs inside
+     * runWithWorkspace(sessionWorkspaceId): its getActiveRoot() lands in
+     * externalRoot/<wsId>/, a sibling folder the explorer never lists. That
+     * is the whole story of «تم بناء النظام ولكن الملفات لم تظهر في قائمة
+     * فايل اكسبلورر» — the build's mirror wrote real files into a folder no
+     * panel shows. Anything meant to be SEEN in the explorer must be written
+     * under THIS root, resolved the same way the explorer's own request is.
+     */
+    getExplorerRoot(): string {
+        const local = this.localRoot;
+        if (!fs.existsSync(local)) {
+            try { fs.mkdirSync(local, { recursive: true }); } catch { }
+        }
+        return local;
+    }
+
     async setActiveRoot(newPath: string, workspaceId?: string): Promise<boolean> {
         try {
             if (!fs.existsSync(newPath)) {

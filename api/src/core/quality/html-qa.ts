@@ -506,9 +506,22 @@ export function splitHtmlProject(rawHtml: string): SplitProject {
     });
 
     // Extract inline <script> ... </script> blocks (skip ones with a src=).
+    //
+    // Each part is FENCED in its own try/catch. As separate <script> elements
+    // an exception in one stops only that element; concatenated into a single
+    // script.js, the first uncaught error at the top aborts EVERYTHING after
+    // it. A shipped build measured exactly that: one section script hit a null
+    // and the behaviour audit found 13 of 14 controls dead — the theme switch,
+    // the forms, the charts, all of Joe's own runtimes below the throw never
+    // ran. The fence restores the isolation the split silently removed.
+    // (try{} is not a scope for var/function, so parts that publish globals
+    // still publish them; each part is already an IIFE besides.)
     html = html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (m, attrs, body) => {
         if (/\bsrc\s*=/.test(String(attrs))) return m; // external script: keep as-is
-        if (String(body).trim()) jsParts.push(String(body).trim());
+        const type = (String(attrs).match(/\btype\s*=\s*["']?([^"'\s>]+)/i) || [])[1];
+        if (type && !/^(text\/javascript|application\/javascript)$/i.test(type)) return m; // JSON-LD, importmap, module: keep as-is
+        const part = String(body).trim();
+        if (part) jsParts.push(`try{\n${part}\n}catch(e){console.error('joe:section-script failed:',e);}`);
         return '';
     });
 

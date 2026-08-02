@@ -185,6 +185,36 @@ export function extractSection(raw: string, id: string): { html: string; ok: boo
 }
 
 /**
+ * Anything in the runtime bundle that is NOT inside a <script> element gets
+ * wrapped in one.
+ *
+ * The bundle handed to assemblePage is a concatenation of independent runtime
+ * functions, and one of them (the self-check) returned bare JavaScript while
+ * its siblings returned complete <script> elements. assemblePage pasted the
+ * mix straight into <body>, so the bare part rendered as VISIBLE TEXT at the
+ * end of every delivered page. Fixing that one function fixes one instance;
+ * this guard closes the class — a future runtime added without its tags is
+ * wrapped instead of displayed.
+ */
+export function ensureScriptTags(bundle: string): string {
+    const src = String(bundle || '');
+    if (!src.trim()) return src;
+    let out = '';
+    let at = 0;
+    const re = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
+    let m: RegExpExecArray | null;
+    const wrap = (text: string) =>
+        text.trim() ? `<script>\n${text.trim()}\n</script>\n` : '';
+    while ((m = re.exec(src))) {
+        out += wrap(src.slice(at, m.index));
+        out += m[0] + '\n';
+        at = m.index + m[0].length;
+    }
+    out += wrap(src.slice(at));
+    return out.trimEnd();
+}
+
+/**
  * Assemble the document. Deterministic — the head, the token block and the base
  * layer are Joe's, not the model's, so they cannot be forgotten or malformed.
  */
@@ -201,7 +231,9 @@ export function assemblePage(opts: {
     /** Search-result snippet; composed by page-head, never the raw request. */
     description?: string;
 }): string {
-    const { title, isArabic, tokenCss, baseLayer, sections, sprite, script, description } = opts;
+    const { title, isArabic, tokenCss, baseLayer, sections, sprite, description } = opts;
+    // Bare JS in the bundle would render as page text — wrap it, never show it.
+    const script = ensureScriptTags(opts.script);
     const body = sections.filter(s => s.ok).map(s => s.html).join('\n\n');
     const descTag = (description || '').trim()
         ? `\n<meta name="description" content="${String(description).replace(/[<>"]/g, '').trim()}">`

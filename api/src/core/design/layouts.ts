@@ -551,6 +551,37 @@ export function iconSprite(): string {
         menu: '<line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>',
         close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
         /**
+         * The vocabulary of an admin screen. A real dashboard build shipped
+         * `<use href="#i-search"/>` in its header — the model reached for the
+         * obvious name and the sprite did not have it, so the search button
+         * rendered as an empty square. These are the names models actually
+         * write on dashboards, stores and app UIs, measured from real builds.
+         */
+        search: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.3" y2="16.3"/>',
+        user: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+        heart: '<path d="M12 21s-7.5-4.8-9.5-9A5.4 5.4 0 0 1 12 6.6 5.4 5.4 0 0 1 21.5 12c-2 4.2-9.5 9-9.5 9z"/>',
+        settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+        home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/>',
+        plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+        minus: '<line x1="5" y1="12" x2="19" y2="12"/>',
+        trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+        edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"/>',
+        eye: '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>',
+        lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+        bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+        calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+        filter: '<polygon points="22 3 2 3 10 12.5 10 19 14 21 14 12.5"/>',
+        download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+        upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+        globe: '<circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/>',
+        box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><polyline points="3 8 12 13 21 8"/><line x1="12" y1="13" x2="12" y2="21"/>',
+        truck: '<rect x="1" y="5" width="14" height="11" rx="1"/><path d="M15 8h4l3 3v5h-7z"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
+        wallet: '<rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="17" cy="15" r="1"/>',
+        logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+        refresh: '<polyline points="23 4 23 10 17 10"/><path d="M20.5 15a9 9 0 1 1-2-9.4L23 10"/>',
+        warning: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17.01"/>',
+        info: '<circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8.01"/>',
+        /**
          * Social marks. Every footer the model writes carries facebook/twitter/
          * linkedin/instagram <use> refs, and the sprite had none of them — four
          * invisible links per page, on every page. Seen in a real build.
@@ -576,7 +607,9 @@ export function iconSprite(): string {
  */
 export function normalizeIconRefs(html: string): { html: string; fixed: number } {
     const known = new Set(['check', 'arrow', 'star', 'shield', 'spark', 'users', 'code', 'chart', 'mail', 'phone',
-        'pin', 'clock', 'cart', 'menu', 'close', 'facebook', 'twitter', 'x', 'linkedin', 'instagram', 'whatsapp', 'youtube']);
+        'pin', 'clock', 'cart', 'menu', 'close', 'facebook', 'twitter', 'x', 'linkedin', 'instagram', 'whatsapp', 'youtube',
+        'search', 'user', 'heart', 'settings', 'home', 'plus', 'minus', 'trash', 'edit', 'eye', 'lock', 'bell',
+        'calendar', 'filter', 'download', 'upload', 'globe', 'box', 'truck', 'wallet', 'logout', 'refresh', 'warning', 'info']);
     let fixed = 0;
     let out = String(html).replace(/(<use\b[^>]*?href=")#(?!i-)([a-z-]+)(")/gi, (full, pre, name, post) => {
         if (!known.has(String(name).toLowerCase())) return full;
@@ -596,7 +629,10 @@ export function normalizeIconRefs(html: string): { html: string; fixed: number }
 export function primitivesBrief(): string {
     return `COMPONENTS available to you (already styled — use them, do not re-invent):
 - Icons: <svg class="icon"><use href="#i-NAME"/></svg> where NAME is one of
-  check arrow star shield spark users code chart mail phone pin clock cart menu close.
+  check arrow star shield spark users code chart mail phone pin clock cart menu close
+  search user heart settings home plus minus trash edit eye lock bell calendar filter
+  download upload globe box truck wallet logout refresh warning info.
+  Every icon-only <button> or <a> MUST carry an aria-label naming its action.
   Wrap a feature icon in <span class="icon-box">…</span>. Never use an emoji as an icon.
 - .ruled for feature/spec lists, .steps for numbered how-it-works, details.faq for FAQ
   (no JavaScript needed), .table-wrap around any <table>, .stat for figures, .badge for labels.
