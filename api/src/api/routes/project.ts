@@ -169,8 +169,14 @@ function getImports(content: string): string[] {
 
 type SearchResult = { path: string; line: number; preview: string };
 
+// A rare query used to walk EVERY text file in the repo — on a huge project on
+// a weak machine that meant reading thousands of files for a single search.
+// This budget bounds how many files are opened, regardless of matches found.
+const SEARCH_FILE_BUDGET = 4000;
+const searchScanned = { count: 0 };
+
 async function searchInDir(dirPath: string, query: string, results: SearchResult[], limit: number, ignore: string[]) {
-  if (results.length >= limit) return;
+  if (results.length >= limit || searchScanned.count >= SEARCH_FILE_BUDGET) return;
   let entries: fs.Dirent[] = [];
   try {
     entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
@@ -179,7 +185,7 @@ async function searchInDir(dirPath: string, query: string, results: SearchResult
   }
 
   for (const ent of entries) {
-    if (results.length >= limit) return;
+    if (results.length >= limit || searchScanned.count >= SEARCH_FILE_BUDGET) return;
     if (ignore.includes(ent.name)) continue;
     const fullPath = path.join(dirPath, ent.name);
 
@@ -188,6 +194,7 @@ async function searchInDir(dirPath: string, query: string, results: SearchResult
       continue;
     }
     if (!ent.isFile()) continue;
+    searchScanned.count++;
 
     let stat: fs.Stats | null = null;
     try {
@@ -407,9 +414,18 @@ router.get('/tree', authenticate as any, async (req: Request, res: Response) => 
       return a.name.localeCompare(b.name);
     });
 
+    // A single directory can hold thousands of entries (a data/ or assets/
+    // folder). Rendering all of them at once froze the panel on a weak machine.
+    // Cap per directory and tell the UI how many were hidden — the tree stays
+    // lazy per level, so this only bounds one directory's fan-out.
+    const DIR_CAP = 800;
     const tree = [];
+    let shown = 0;
+    let hiddenCount = 0;
     for (const f of files) {
       if (['node_modules', '.git', 'dist', 'build', '.DS_Store'].includes(f.name)) continue;
+      if (shown >= DIR_CAP) { hiddenCount++; continue; }
+      shown++;
 
       const fullPath = path.join(rootPath, f.name);
       const isDir = f.isDirectory();
@@ -422,7 +438,7 @@ router.get('/tree', authenticate as any, async (req: Request, res: Response) => 
       });
     }
 
-    res.json({ root: rootPath, tree });
+    res.json({ root: rootPath, tree, ...(hiddenCount > 0 ? { truncated: true, hiddenCount } : {}) });
   } catch (e) {
     res.status(500).json({ error: 'Tree generation failed' });
   }
@@ -443,8 +459,9 @@ router.get('/search', authenticate as any, async (req: Request, res: Response) =
           : '';
     const activeRoot = workspaceService.getActiveRoot(workspaceId || undefined);
     const results: SearchResult[] = [];
-    await searchInDir(activeRoot, query, results, 100, ['node_modules', '.git', 'dist', 'build', '.DS_Store']);
-    res.json({ results });
+    searchScanned.count = 0; // reset the per-request file budget
+    await searchInDir(activeRoot, query, results, 100, ['node_modules', '.git', 'dist', 'build', '.DS_Store', '.next', 'coverage', 'vendor']);
+    res.json({ results, ...(searchScanned.count >= SEARCH_FILE_BUDGET ? { partial: true } : {}) });
   } catch (e) {
     res.status(500).json({ error: 'Search failed' });
   }

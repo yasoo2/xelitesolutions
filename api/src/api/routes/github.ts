@@ -254,16 +254,21 @@ router.post('/repos/:owner/:repo/connect', authenticate as any, async (req: Requ
             mode = 'updated';
         } else {
             const url = `https://github.com/${fullName}.git`;
+            // Shallow, single-branch clone: on a weak machine a large repo
+            // downloads in seconds with a fraction of the disk — the full
+            // history is rarely needed to work on the current code, and a
+            // deeper history can be fetched on demand later.
+            const shallow = ['--depth', '1', '--single-branch'];
             if (dirEmpty) {
-                say(`⬇️ أستنسخ ${fullName} إلى مساحة العمل…`);
-                const r = await executeTool('git_ops', { operation: 'clone', args: [url, '.'], cwd: root, userId, sessionId }, gitCtx);
+                say(`⬇️ أستنسخ ${fullName} إلى مساحة العمل (نسخة سريعة خفيفة)…`);
+                const r = await executeTool('git_ops', { operation: 'clone', args: [...shallow, url, '.'], cwd: root, userId, sessionId }, gitCtx);
                 if (!r.ok) throw new Error(String(r.error || 'git clone failed'));
                 mode = 'cloned';
             } else {
                 // The workspace already holds unrelated files: clone into a named
                 // subdir and point the active root there, so nothing is clobbered.
-                say(`⬇️ أستنسخ ${fullName} إلى مجلد فرعي (مساحة العمل غير فارغة)…`);
-                const r = await executeTool('git_ops', { operation: 'clone', args: [url, repo], cwd: root, userId, sessionId }, gitCtx);
+                say(`⬇️ أستنسخ ${fullName} إلى مجلد فرعي (نسخة سريعة خفيفة)…`);
+                const r = await executeTool('git_ops', { operation: 'clone', args: [...shallow, url, repo], cwd: root, userId, sessionId }, gitCtx);
                 if (!r.ok) throw new Error(String(r.error || 'git clone failed'));
                 workdir = path.join(root, repo);
                 await workspaceService.setActiveRoot(workdir, workspaceId);
