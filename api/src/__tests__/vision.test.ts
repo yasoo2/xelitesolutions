@@ -167,7 +167,12 @@ describe('vision — the image becomes a scene', () => {
     test('the brain installs its own eyes: moondream auto-pull wired into startup', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'core', 'llm', 'local-brain.ts'), 'utf-8');
         expect(src).toContain('export function ensureLocalVisionModel');
-        expect(src).toMatch(/spawn\('ollama', \['pull', 'moondream'\]/);
+        // Via Ollama's own HTTP API — the ExecutionEnforcer BLOCKED the whole
+        // server when a first draft spawned `ollama pull` as a child process.
+        expect(src).toMatch(/fetch\(`\$\{host\}\/api\/pull`/);
+        expect(src).toContain("name: 'moondream'");
+        expect(src).not.toContain('child_process');
+        expect(src).not.toMatch(/\bspawn\(/);
         expect(src).toContain("JOE_VISION_AUTOPULL");
         // …and it actually runs at boot, after detection.
         expect(src).toContain('ensureLocalVisionModel();');

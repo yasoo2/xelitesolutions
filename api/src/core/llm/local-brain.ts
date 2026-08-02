@@ -180,22 +180,31 @@ export function ensureLocalVisionModel(): void {
     if (!state.available || !state.host) return;
     const VISION = /llava|moondream|bakllava|minicpm|vision|[-_.]vl\b|vl[-_.:]|qwen.*vl/i;
     if (state.models.some(m => VISION.test(m))) return;   // eyes already installed
+    const host = state.host;
     console.info('[LocalBrain] no vision model installed — pulling moondream (~1.7GB) in the background so attached images can be analyzed offline…');
-    try {
-        const { spawn } = require('child_process');
-        const child = spawn('ollama', ['pull', 'moondream'], { shell: true, stdio: 'ignore', detached: false });
-        child.on('exit', (code: number) => {
-            if (code === 0) {
+    // Ollama pulls models over its OWN HTTP API — no shell, no child process.
+    // (The first draft spawned `ollama pull` and the ExecutionEnforcer rightly
+    // blocked the whole server from starting: direct process execution is
+    // architecturally banned here. The registry download happens inside the
+    // Ollama daemon either way; this is the same pull, minus the violation.)
+    void (async () => {
+        try {
+            const res = await fetch(`${host}/api/pull`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: 'moondream', stream: false }),
+            });
+            const body: any = await res.json().catch(() => ({}));
+            if (res.ok && String(body?.status || '').includes('success')) {
                 console.info('[LocalBrain] ✅ moondream installed — attached images will now be analyzed locally.');
-                void detectLocalModels();   // refresh the model list
+                await detectLocalModels();   // refresh the model list
             } else {
-                console.warn(`[LocalBrain] moondream pull exited with code ${code} — run manually: ollama pull moondream`);
+                console.warn(`[LocalBrain] moondream pull answered ${res.status} (${String(body?.error || body?.status || '')}) — run manually: ollama pull moondream`);
             }
-        });
-        child.on('error', (e: any) => console.warn(`[LocalBrain] could not start ollama pull (${e?.message || e}) — run manually: ollama pull moondream`));
-    } catch (e: any) {
-        console.warn(`[LocalBrain] vision auto-pull unavailable: ${e?.message || e}`);
-    }
+        } catch (e: any) {
+            console.warn(`[LocalBrain] moondream pull failed (${e?.message || e}) — run manually: ollama pull moondream`);
+        }
+    })();
 }
 
 /**
