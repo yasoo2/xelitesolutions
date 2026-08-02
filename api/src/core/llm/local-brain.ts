@@ -165,6 +165,40 @@ export async function warmUpLocalBrain(): Promise<void> {
 }
 
 /**
+ * LOCAL EYES, INSTALLED WHILE NOBODY WAITS.
+ *
+ * Field-measured: the user's Groq plan carries ZERO vision models and the
+ * daily quota was spent — so «حلل هذه الصورة» had no eyes anywhere. Ollama
+ * is already running on that machine; moondream (~1.7GB, 1.8B params) gives
+ * it vision that works offline, quota-free, on a CPU laptop. Pulled ONCE,
+ * in the background, never blocking startup; every later image analysis is
+ * then fully local. Disable with JOE_VISION_AUTOPULL=0. A failed pull only
+ * logs — the mesh still answers text as before.
+ */
+export function ensureLocalVisionModel(): void {
+    if (String(process.env.JOE_VISION_AUTOPULL || '1') === '0') return;
+    if (!state.available || !state.host) return;
+    const VISION = /llava|moondream|bakllava|minicpm|vision|[-_.]vl\b|vl[-_.:]|qwen.*vl/i;
+    if (state.models.some(m => VISION.test(m))) return;   // eyes already installed
+    console.info('[LocalBrain] no vision model installed — pulling moondream (~1.7GB) in the background so attached images can be analyzed offline…');
+    try {
+        const { spawn } = require('child_process');
+        const child = spawn('ollama', ['pull', 'moondream'], { shell: true, stdio: 'ignore', detached: false });
+        child.on('exit', (code: number) => {
+            if (code === 0) {
+                console.info('[LocalBrain] ✅ moondream installed — attached images will now be analyzed locally.');
+                void detectLocalModels();   // refresh the model list
+            } else {
+                console.warn(`[LocalBrain] moondream pull exited with code ${code} — run manually: ollama pull moondream`);
+            }
+        });
+        child.on('error', (e: any) => console.warn(`[LocalBrain] could not start ollama pull (${e?.message || e}) — run manually: ollama pull moondream`));
+    } catch (e: any) {
+        console.warn(`[LocalBrain] vision auto-pull unavailable: ${e?.message || e}`);
+    }
+}
+
+/**
  * Full boot sequence: detect models, then warm them up in the background.
  * Returns a short human-readable summary for the startup log.
  */
@@ -177,5 +211,7 @@ export async function initLocalBrain(): Promise<string> {
     }
     // Warm up in the background — don't block server readiness.
     void warmUpLocalBrain();
+    // …and make sure the brain has EYES (background pull, never blocks).
+    ensureLocalVisionModel();
     return `Local brain ready: ${state.models.length} model(s) — chat=${state.chatModel}, code=${state.codeModel}. Warming up in background.`;
 }

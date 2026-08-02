@@ -18,7 +18,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-vision-'));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 const realFetch = global.fetch;
-afterEach(() => { global.fetch = realFetch; delete process.env.JOE_VISION_BASE_URL; delete process.env.JOE_VISION_MODEL; });
+afterEach(() => { global.fetch = realFetch; delete process.env.JOE_VISION_BASE_URL; delete process.env.JOE_VISION_MODEL; delete process.env.LOCAL_LLM_BASE_URL; });
 
 function imageAtt(name = 'shot.png', bytes: Buffer = PNG_1x1): AttachmentInput {
     const p = path.join(tmp, name);
@@ -135,6 +135,53 @@ describe('vision — the image becomes a scene', () => {
         } finally {
             if (saved !== undefined) process.env.GROQ_API_KEY = saved; else delete process.env.GROQ_API_KEY;
         }
+    });
+
+    test('LOCAL EYES: an Ollama vision model is discovered and asked FIRST, no key needed', async () => {
+        // The field log that forced this: Groq's catalog had ZERO vision
+        // models and the quota was spent. Ollama runs on the user's machine.
+        const calls: Array<{ url: string; body?: any }> = [];
+        global.fetch = (async (url: any, init: any) => {
+            calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : undefined });
+            if (String(url).endsWith('/api/tags')) {
+                return { ok: true, json: async () => ({ models: [{ name: 'qwen2.5-coder:7b' }, { name: 'moondream:latest' }] }) } as any;
+            }
+            return { ok: true, json: async () => ({ choices: [{ message: { content: 'لقطة شاشة لواجهة جو مع زر أخضر' } }] }) } as any;
+        }) as any;
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
+        const savedKey = process.env.GROQ_API_KEY;
+        delete process.env.GROQ_API_KEY;   // no cloud at all — local must carry it
+        try {
+            const att = imageAtt('local.png');
+            const r = await describeImageAttachments([att], { language: 'ar' });
+            expect(r.described).toBe(1);
+            expect(calls[0].url).toBe('http://127.0.0.1:11434/api/tags');
+            const chat = calls.find(c => c.url.endsWith('/chat/completions'));
+            expect(chat?.url).toBe('http://127.0.0.1:11434/v1/chat/completions');
+            // The VISION model was chosen — never the coder model.
+            expect(chat?.body?.model).toBe('moondream:latest');
+            expect(att.visionDescribed).toBe(true);
+        } finally { if (savedKey !== undefined) process.env.GROQ_API_KEY = savedKey; }
+    });
+
+    test('the brain installs its own eyes: moondream auto-pull wired into startup', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'core', 'llm', 'local-brain.ts'), 'utf-8');
+        expect(src).toContain('export function ensureLocalVisionModel');
+        expect(src).toMatch(/spawn\('ollama', \['pull', 'moondream'\]/);
+        expect(src).toContain("JOE_VISION_AUTOPULL");
+        // …and it actually runs at boot, after detection.
+        expect(src).toContain('ensureLocalVisionModel();');
+    });
+
+    test('a question about an attachment NEVER becomes a GitHub-repo job', () => {
+        // Field-measured: «حلل هذه الصورة» + [ATTACHED FILES…] was routed to
+        // analyze_repo and the run hunted for a GITHUB_TOKEN.
+        const src = fs.readFileSync(path.join(__dirname, '..', 'core', 'orchestrator', 'PlanningEngine.ts'), 'utf-8');
+        const guard = src.indexOf('ATTACHMENTS ARE THE SUBJECT');
+        const router = src.indexOf('[SEMANTIC ROUTER]');
+        expect(guard).toBeGreaterThan(0);
+        expect(guard).toBeLessThan(router);   // deterministic rule runs BEFORE any model routing
+        expect(src).toContain("tool: 'central_answer'");
     });
 
     test('the run actually invokes the vision pass before building the block', () => {

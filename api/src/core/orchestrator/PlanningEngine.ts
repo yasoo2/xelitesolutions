@@ -845,6 +845,38 @@ Rules:
             };
         }
 
+        /**
+         * [ATTACHMENTS ARE THE SUBJECT] «حلل هذه الصورة» plus an
+         * [ATTACHED FILES …] block is a question about the ATTACHED CONTENT —
+         * never a repository job. Field-measured: the semantic router read
+         * exactly that as analyze_repo, and the run spent its whole model
+         * budget hunting for a GITHUB_TOKEN while the user waited for an
+         * image analysis. Deterministic rule, ahead of any model call:
+         * attachments present + no build verb → answer directly from the
+         * goal, which already carries the file text / vision description.
+         */
+        const goalWithFiles = String(intent.goal || '');
+        if (/\[ATTACHED FILES/.test(goalWithFiles)) {
+            const userPart = goalWithFiles.split('[ATTACHED FILES')[0];
+            const wantsBuild = /\b(build|create|implement|develop|scaffold)\b|ابنِ|ابني|انشئ|أنشئ|اصنع|حوّل|حول .*موقع|موقع من|صفحة من/i.test(userPart);
+            if (!wantsBuild) {
+                console.log('[PlanningEngine] attachments present + no build verb → direct answer about the attached content');
+                return {
+                    id: `chat_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'direct_response',
+                        description: 'Answering about the attached file(s)',
+                        tool: 'central_answer',
+                        agent: 'General',
+                        input: { question: intent.goal },
+                        dependsOn: []
+                    }],
+                    metadata: { complexity: 'low', riskLevel: 'low' }
+                };
+            }
+        }
+
         // [SEMANTIC ROUTER] Every keyword path above has missed. Rather than hand
         // the request to the generic DAG planner — which is what produced six
         // English steps and a web search when the user asked for nicer colours —

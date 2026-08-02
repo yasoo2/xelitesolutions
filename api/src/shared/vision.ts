@@ -32,7 +32,50 @@ const CALL_TIMEOUT_MS = 30_000;
 /** Enough for a thorough description, small enough to stay snappy. */
 const MAX_DESC_TOKENS = 900;
 
-interface VisionTarget { baseUrl: string; model: string; apiKey: string; label: string }
+interface VisionTarget { baseUrl: string; model: string; apiKey: string; label: string; timeoutMs?: number }
+
+/**
+ * LOCAL EYES FIRST. The field log that forced this: the user's Groq plan
+ * lists 15 models and ZERO vision-capable ones, and the daily quota was
+ * exhausted anyway — cloud vision simply does not exist on that machine.
+ * But Ollama does (the local brain runs qwen2.5-coder). A local vision
+ * model (moondream/llava/…-vl) answers through Ollama's OpenAI endpoint
+ * with no key, no quota and no internet, so it is tried FIRST. A CPU
+ * laptop needs minutes, not seconds — hence the long per-target timeout.
+ */
+const OLLAMA_VISION_ID = /llava|moondream|bakllava|minicpm|vision|[-_.]vl\b|vl[-_.:]|qwen.*vl/i;
+
+function ollamaRoot(): string | null {
+    const raw = String(process.env.LOCAL_LLM_BASE_URL || '').trim();
+    if (!raw) return null;
+    try {
+        const u = new URL(raw.endsWith('/') ? raw.slice(0, -1) : raw);
+        return `${u.protocol}//${u.host}`;
+    } catch { return null; }
+}
+
+async function ollamaVisionTargets(): Promise<VisionTarget[]> {
+    const host = ollamaRoot();
+    if (!host) return [];
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 2500);
+        const res = await fetch(`${host}/api/tags`, { signal: ctrl.signal });
+        clearTimeout(t);
+        if (!res.ok) return [];
+        const data: any = await res.json().catch(() => ({}));
+        const models: string[] = (data?.models || []).map((m: any) => String(m?.name || m?.model || '')).filter(Boolean);
+        const vis = models.filter(m => OLLAMA_VISION_ID.test(m));
+        if (!vis.length) {
+            console.info('[Vision] Ollama is running but has no vision model — run once: ollama pull moondream  (~1.7GB, then images work fully offline)');
+            return [];
+        }
+        return vis.slice(0, 2).map(m => ({
+            baseUrl: `${host}/v1`, model: m, apiKey: 'ollama', label: `ollama:${m}`,
+            timeoutMs: 180_000,   // a 1.8B vision model on a CPU laptop takes its time — let it finish
+        }));
+    } catch { return []; }
+}
 
 const GROQ_BASE = 'https://api.groq.com/openai/v1';
 /** Last resort when the catalog cannot be listed. */
@@ -72,6 +115,9 @@ async function groqVisionModels(apiKey: string): Promise<string[]> {
                 return rank(a) - rank(b);
             });
         console.info(`[Vision] Groq catalog: ${all.length} models, ${vision.length} vision-capable${vision.length ? ` (${vision.slice(0, 3).join(', ')}${vision.length > 3 ? ', …' : ''})` : ''}`);
+        // When NONE match, print what DOES exist — the field log that led here
+        // said "0 vision-capable" and left us guessing which ids were there.
+        if (!vision.length) console.warn(`[Vision] no vision ids in the Groq catalog. It lists: ${all.join(', ')}`);
         groqCatalogCache = { at: Date.now(), ids: vision.length ? vision.slice(0, 4) : GROQ_STATIC_FALLBACK };
     } catch (e: any) {
         console.warn(`[Vision] could not list Groq models (${e?.message || e}) — using static fallback names`);
@@ -91,6 +137,8 @@ async function targets(userGroqKey?: string): Promise<VisionTarget[]> {
             label: 'override',
         });
     }
+    // Local Ollama vision: free, offline, quota-proof — ahead of any cloud.
+    out.push(...await ollamaVisionTargets());
     const groqKey = String(userGroqKey || process.env.GROQ_API_KEY || '').trim();
     if (groqKey && groqKey !== 'dummy') {
         for (const model of await groqVisionModels(groqKey)) {
@@ -108,7 +156,7 @@ function describePrompt(language: string): string {
 
 async function callVision(t: VisionTarget, dataUrl: string, language: string): Promise<string | null> {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), CALL_TIMEOUT_MS);
+    const timer = setTimeout(() => ctrl.abort(), t.timeoutMs || CALL_TIMEOUT_MS);
     try {
         const res = await fetch(`${t.baseUrl}/chat/completions`, {
             method: 'POST',
