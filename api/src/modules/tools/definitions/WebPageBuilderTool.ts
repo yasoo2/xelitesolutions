@@ -18,7 +18,7 @@ import { buildPalette, paletteCss, designBrief, uiKitCss, uiKitScript, darkFirst
 import { findReferenceUrl, extractReference, paletteFromReference, referenceBrief, referenceOverridesCss, referenceSummary } from '../../../core/design/reference';
 import { detectPageKind, blueprintBrief, imageBudget, blueprintSections, kindLabel } from '../../../core/design/blueprints';
 import { planSections, sectionPrompt, extractSection, assemblePage, shouldWriteSectionwise, type WrittenSection } from '../../../core/design/section-writer';
-import { brandFrom, pageTitle, metaDescription } from '../../../core/design/page-head';
+import { brandFrom, pageTitle, metaDescription, ensurePublishHead } from '../../../core/design/page-head';
 import { ensureLogo, logoCss } from '../../../core/design/logo';
 import { themeCss, lightOverrideCss, revealCss, themeRuntime, revealRuntime, ensureThemeToggle, pickRevealStyle } from '../../../core/design/theme';
 import { chromeBrief, chromeCss, chromeRuntime, authCss, authRuntime, ensureHeaderControls, wireAuthControls, repairDeadAnchors } from '../../../core/design/chrome';
@@ -1338,6 +1338,20 @@ the WORDS, not the structure.`;
             }
         } catch { /* same rule as the title */ }
 
+        // [PUBLISH-READY HEAD] The favicon drawn from the brand, the og/twitter
+        // share card, the mobile theme-color. Every page Joe ever shipped had
+        // the browser's grey globe in its tab and pasted into WhatsApp as a
+        // bare link with no title — the last visible tells that nobody
+        // finished the page. Deterministic, idempotent, after title+description
+        // so the card copies what the tab already says.
+        try {
+            const head = ensurePublishHead(html, { brand: brandFrom(request, isAr), hue: palette.hue, isArabic: isAr });
+            if (head.added.length) {
+                html = head.html;
+                logs.push(`head: added ${head.added.join(', ')} — the tab and the share card now carry the brand`);
+            }
+        } catch { /* a share card is not worth failing a build over */ }
+
         // The combined self-contained HTML is always the source of truth for edits.
         // Stable filename per session so the preview URL stays consistent across edits.
         // A site edit writes back into the site folder, under the name of the
@@ -2287,6 +2301,12 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
                 if (lb.fixed) { out = lb.html; logs.push(`${file}: named ${lb.fixed} icon-only control(s)`); }
                 out = out.replace(/(alt="[^"]*?)\s*[}{]{2,}\s*(")/gi, '$1$2');
             }
+            // Every page of the site gets the publish-ready head: one favicon,
+            // one share card each — a shared link to ANY page shows the brand.
+            try {
+                const head = ensurePublishHead(out, { brand, hue: palette.hue, isArabic: isAr });
+                if (head.added.length) { out = head.html; logs.push(`${file}: head +${head.added.join('+')}`); }
+            } catch { /* non-fatal */ }
             written.set(file, out);
             fs.writeFileSync(path.join(outDir, file), out, 'utf-8');
             streamCodeToLogs(sessionId, file, out, { done: true, label: 'written to disk' });

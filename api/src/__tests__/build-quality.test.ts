@@ -333,6 +333,52 @@ describe('8 — the missing-file guard recognises the pipeline\'s own photos', (
     });
 });
 
+/**
+ * 9 — PUBLISH-READY HEAD. Every page Joe shipped had the browser's grey globe
+ * in its tab and pasted into WhatsApp as a bare link: no favicon, no share
+ * card, no theme-color. All three are now derived deterministically from the
+ * brand and palette on every path.
+ */
+describe('9 — the tab and the share card carry the brand', () => {
+    const { ensurePublishHead } = require('../core/design/page-head');
+    const { faviconDataUri } = require('../core/design/logo');
+    const page = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>DineEase — مطعم</title>'
+        + '<meta name="description" content="مطعم عصري بقائمة موسمية."></head><body></body></html>';
+
+    test('the favicon is a self-contained SVG with CONCRETE colours (no CSS vars)', () => {
+        const fav = faviconDataUri({ brand: 'DineEase', hue: 20, isArabic: false });
+        expect(fav.startsWith('data:image/svg+xml')).toBe(true);
+        const svg = decodeURIComponent(fav.split(',')[1]);
+        expect(svg).toContain('hsl(20,62%,50%)');
+        expect(svg).not.toContain('var(--');   // vars do not resolve in a standalone favicon
+        expect(svg).toContain('>DI<');         // the monogram (first two letters of a one-word brand)
+    });
+
+    test('favicon, share card and theme-color are injected once, from the page\'s own title/description', () => {
+        const r = ensurePublishHead(page, { brand: 'DineEase', hue: 20, isArabic: true });
+        expect(r.added.sort()).toEqual(['favicon', 'share-card', 'theme-color']);
+        expect(r.html).toMatch(/<link rel="icon" type="image\/svg\+xml" href="data:image\/svg\+xml/);
+        expect(r.html).toContain('<meta property="og:title" content="DineEase — مطعم">');
+        expect(r.html).toContain('<meta property="og:description" content="مطعم عصري بقائمة موسمية.">');
+        expect(r.html).toContain('og:locale" content="ar_AR"');
+        expect(r.html).toContain('twitter:card');
+        expect(r.html).toMatch(/theme-color" content="hsl\(20,62%,45%\)"/);
+        // Idempotent — a second run adds nothing.
+        expect(ensurePublishHead(r.html, { brand: 'DineEase', hue: 20, isArabic: true }).added).toEqual([]);
+    });
+
+    test('anything the author already wrote is left alone', () => {
+        const withIcon = page.replace('</head>', '<link rel="icon" href="/mine.png"></head>');
+        const r = ensurePublishHead(withIcon, { brand: 'X', hue: 10, isArabic: false });
+        expect(r.added).not.toContain('favicon');
+        expect(r.html).toContain('/mine.png');
+    });
+
+    test('the builder wires it on BOTH paths — single page and every site page', () => {
+        expect((builderSrc.match(/ensurePublishHead\(/g) || []).length).toBeGreaterThanOrEqual(2);
+    });
+});
+
 describe('7f — a button that says "add to cart" adds to the cart', () => {
     const commerceSrc = fs.readFileSync(
         path.join(__dirname, '..', 'core', 'design', 'commerce.ts'), 'utf-8');

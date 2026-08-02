@@ -84,6 +84,32 @@ export function logoMark(opts: LogoOptions): string {
 </svg>`;
 }
 
+/**
+ * The same mark as a FAVICON — a self-contained SVG data URI.
+ *
+ * The browser tab is part of the deliverable: a page with the browser's grey
+ * globe next to its name reads as unfinished before it is even opened, and no
+ * model ever ships a favicon. This one is the brand tile at 64px, with the
+ * palette baked in as CONCRETE colours: a favicon is a standalone document,
+ * so the page's var(--brand) tokens do not exist inside it.
+ */
+export function faviconDataUri(opts: LogoOptions): string {
+    const mono = initials(opts.brand);
+    const arabic = /[ؠ-ٟٮ-ۓۺ-ۿ]/.test(mono);
+    const size = arabic ? 30 : mono.length > 1 ? 26 : 34;
+    const h = ((Math.round(opts.hue) % 360) + 360) % 360;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">`
+        + `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">`
+        + `<stop offset="0%" stop-color="hsl(${h},62%,50%)"/>`
+        + `<stop offset="100%" stop-color="hsl(${(h + 40) % 360},68%,36%)"/>`
+        + `</linearGradient></defs>`
+        + `<rect width="64" height="64" rx="16" fill="url(#g)"/>`
+        + `<text x="32" y="${arabic ? 35 : 34}" text-anchor="middle" dominant-baseline="central" `
+        + `font-family="system-ui,sans-serif" font-size="${size}" font-weight="800" `
+        + `letter-spacing="${arabic ? 0 : -1}" fill="#ffffff">${escapeXml(mono)}</text></svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 /** The mark plus the name — what goes in the corner of the header. */
 export function logoLockup(opts: LogoOptions): string {
     return `<a class="brand" href="index.html" aria-label="${escapeXml(opts.brand)}">

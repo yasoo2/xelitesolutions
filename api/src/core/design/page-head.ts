@@ -168,3 +168,61 @@ export function metaDescription(opts: {
         : `${page ? `${page}: ` : ''}${what}.`;
     return desc.length > 160 ? desc.slice(0, 159).trimEnd() + '…' : desc;
 }
+
+/**
+ * PUBLISH-READY <head> — what a real site carries and no model writes.
+ *
+ * Three things, each measured missing on every page Joe ever shipped:
+ *   - a FAVICON: the browser's grey globe next to the site's name reads as
+ *     unfinished before the page is even opened;
+ *   - the og:/twitter: share card: a link pasted into WhatsApp or X showed a
+ *     bare URL with no title, no description, no identity;
+ *   - theme-color: the mobile browser chrome stayed default grey around a
+ *     page whose whole identity is its palette.
+ *
+ * Deterministic and idempotent: everything is derived from the title,
+ * description and brand already on the page; anything already present is
+ * left exactly as the author (or a previous run) wrote it.
+ */
+export function ensurePublishHead(html: string, opts: {
+    brand?: string;
+    hue: number;
+    isArabic: boolean;
+}): { html: string; added: string[] } {
+    const { faviconDataUri } = require('./logo');
+    let out = String(html || '');
+    const added: string[] = [];
+    if (!/<\/head>/i.test(out)) return { html: out, added };
+
+    const esc = (s: string) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const title = ((out.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [, ''])[1] || '').replace(/\s+/g, ' ').trim();
+    const desc = ((out.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']*)["']/i) || [, ''])[1] || '').trim();
+    const brand = (opts.brand || title.split(/[—|–-]/)[0] || '').trim();
+
+    const inject = (snippet: string) => { out = out.replace(/<\/head>/i, `${snippet}\n</head>`); };
+
+    if (!/<link[^>]+rel=["'][^"']*icon/i.test(out) && brand) {
+        inject(`<link rel="icon" type="image/svg+xml" href="${faviconDataUri({ brand, hue: opts.hue, isArabic: opts.isArabic })}">`);
+        added.push('favicon');
+    }
+    if (!/<meta[^>]+name=["']theme-color/i.test(out)) {
+        const h = ((Math.round(opts.hue) % 360) + 360) % 360;
+        inject(`<meta name="theme-color" content="hsl(${h},62%,45%)">`);
+        added.push('theme-color');
+    }
+    if (!/<meta[^>]+property=["']og:title/i.test(out) && title) {
+        const lines = [
+            `<meta property="og:title" content="${esc(title)}">`,
+            desc ? `<meta property="og:description" content="${esc(desc)}">` : '',
+            `<meta property="og:type" content="website">`,
+            brand ? `<meta property="og:site_name" content="${esc(brand)}">` : '',
+            `<meta property="og:locale" content="${opts.isArabic ? 'ar_AR' : 'en_US'}">`,
+            `<meta name="twitter:card" content="summary">`,
+            `<meta name="twitter:title" content="${esc(title)}">`,
+            desc ? `<meta name="twitter:description" content="${esc(desc)}">` : '',
+        ].filter(Boolean).join('\n');
+        inject(lines);
+        added.push('share-card');
+    }
+    return { html: out, added };
+}

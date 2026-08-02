@@ -53,6 +53,8 @@ async function main() {
     html = normalizeIconRefs(html).html;
     html = sanitizeInlineSvg(html).html;
     html = labelIconOnlyButtons(html, true).html;
+    const { ensurePublishHead } = await import('../../core/design/page-head');
+    html = ensurePublishHead(html, { brand: 'إثبات', hue: 160, isArabic: true }).html;
 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-bq-'));
     const split = splitHtmlProject(html);
@@ -91,8 +93,20 @@ async function main() {
             axisFontSize: getComputedStyle(axis).fontSize,
             sparkStroke: getComputedStyle(spark).stroke,
             btnLabel: btn.getAttribute('aria-label') || '',
+            favicon: (document.querySelector('link[rel="icon"]') || { getAttribute: () => '' } as any).getAttribute('href') || '',
+            ogTitle: !!document.querySelector('meta[property="og:title"]'),
+            themeColor: !!document.querySelector('meta[name="theme-color"]'),
         };
     });
+    // The favicon must actually RENDER, not merely be declared.
+    const favLoads = await page.evaluate((href: string) => new Promise<boolean>(res => {
+        if (!href) return res(false);
+        const im = new Image();
+        im.onload = () => res(im.naturalWidth > 0);
+        im.onerror = () => res(false);
+        im.src = href;
+        setTimeout(() => res(false), 2000);
+    }), m.favicon).catch(() => false);
     await browser.close();
 
     const brandRgb = 'rgb(14, 122, 95)'; // #0e7a5f
@@ -106,6 +120,8 @@ async function main() {
         [`sparkline stroke is the brand ink, not white-on-white → ${m.sparkStroke}`, m.sparkStroke === brandRgb],
         [`icon-only button is named for screen readers → "${m.btnLabel}"`, m.btnLabel === 'بحث'],
         ['the only page error is the deliberate one, and it was fenced (none escaped)', pageErrors.length === 0],
+        ['the tab carries a favicon, and its pixels actually render', m.favicon.startsWith('data:image/svg+xml') && favLoads === true],
+        ['the share card (og:title) and theme-color are on the page', m.ogTitle && m.themeColor],
     ];
 
     let failed = 0;
