@@ -179,7 +179,14 @@ export function ensureLocalVisionModel(): void {
     if (String(process.env.JOE_VISION_AUTOPULL || '1') === '0') return;
     if (!state.available || !state.host) return;
     const VISION = /llava|moondream|bakllava|minicpm|vision|[-_.]vl\b|vl[-_.:]|qwen.*vl/i;
-    if (state.models.some(m => VISION.test(m))) return;   // eyes already installed
+    // ALWAYS say what the eyes situation is. A silent early-return here left
+    // the user reading a boot log that answered nothing — vision state is now
+    // one explicit line in every single boot.
+    const eyes = state.models.find(m => VISION.test(m));
+    if (eyes) {
+        console.info(`[LocalBrain] 👁️ vision model already installed: ${eyes} — attached images are analyzed locally.`);
+        return;
+    }
     const host = state.host;
     console.info('[LocalBrain] no vision model installed — pulling moondream (~1.7GB) in the background so attached images can be analyzed offline…');
     // Ollama pulls models over its OWN HTTP API — no shell, no child process.
