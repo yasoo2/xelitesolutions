@@ -100,3 +100,32 @@ export function arabicShare(text: string): number {
     const letters = (t.match(/[\u0600-\u06FFa-zA-Z]/g) || []).length;
     return letters === 0 ? 0 : arabic / letters;
 }
+
+/**
+ * The language of the MESSAGE beats the language of the SWITCHER.
+ *
+ * Field-measured: the UI was set to English, the user typed \u00AB\u062D\u0644\u0644 \u0647\u0630\u0647 \u0627\u0644\u0635\u0648\u0631\u0647\u00BB,
+ * and the run carried \u00AB[RESPONSE LANGUAGE \u2026]: The user's language is English\u00BB \u2014
+ * so the model produced fluent English nobody asked for. \u00AB\u064A\u062C\u0628 \u0623\u0646 \u064A\u0631\u062F \u0628\u0627\u0644\u0644\u063A\u0629
+ * \u0627\u0644\u062A\u064A \u0637\u064F\u0644\u0628 \u0645\u0646\u0647 \u0628\u0647\u0627\u00BB: the reply follows what the user WROTE. The UI language
+ * remains the fallback only when the message's script decides nothing
+ * (numbers, code, emoji, a bare URL, a two-letter \u00ABok\u00BB).
+ */
+export function messageLanguage(text: string, uiLanguage: any = 'ar'): SupportedLanguage {
+    const fallback = normalizeLanguage(uiLanguage);
+    const t = String(text || '');
+    if (arabicShare(t) >= 0.25) return 'ar';
+    const latin = (t.match(/[a-zA-Z]/g) || []).length;
+    const cyrillic = (t.match(/[\u0400-\u04FF]/g) || []).length;
+    const arabic = (t.match(/[\u0600-\u06FF]/g) || []).length;
+    const letters = latin + cyrillic + arabic;
+    if (letters < 4) return fallback;
+    if (cyrillic / letters >= 0.5) return 'ru';
+    if (latin / letters >= 0.75) {
+        // Latin script alone cannot tell en/fr/de/es apart \u2014 trust the switcher
+        // when it already names a Latin-script language; otherwise English is
+        // the honest reading of a Latin-script message.
+        return fallback === 'ar' || fallback === 'ru' ? 'en' : fallback;
+    }
+    return fallback;
+}

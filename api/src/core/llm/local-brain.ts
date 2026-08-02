@@ -23,6 +23,14 @@ export interface LocalBrainState {
     detectedAt: number;
 }
 
+/**
+ * Vision models small enough for a CPU laptop to answer with BEFORE the
+ * timeout. llava:latest (7B) was installed on the user's machine and still
+ * timed out at 180s — heavy eyes are treated as absent for warm-up and
+ * auto-pull decisions. Mirrors FAST_VISION_ID in shared/vision.ts.
+ */
+const FAST_VISION = /moondream|minicpm|llava-phi/i;
+
 const state: LocalBrainState = {
     available: false,
     host: null,
@@ -151,6 +159,13 @@ export async function warmUpLocalBrain(): Promise<void> {
     if (state.chatModel) models.add(state.chatModel);
     const envModel = String(process.env.LOCAL_LLM_MODEL || '').trim();
     if (envModel) models.add(envModel);
+    // The FAST vision model stays warm too (moondream is ~1.7GB resident —
+    // affordable). Cold-loading eyes at question time is part of why llava
+    // burned its entire timeout before producing a word. Heavy vision models
+    // (llava 7B+) are deliberately NOT pinned: on a 16GB laptop that would
+    // evict the chat/code models the user talks to every minute.
+    const fastEyes = state.models.find(m => FAST_VISION.test(m));
+    if (fastEyes) models.add(fastEyes);
     if (models.size === 0) return;
 
     for (const model of models) {
@@ -182,13 +197,22 @@ export function ensureLocalVisionModel(): void {
     // ALWAYS say what the eyes situation is. A silent early-return here left
     // the user reading a boot log that answered nothing — vision state is now
     // one explicit line in every single boot.
-    const eyes = state.models.find(m => VISION.test(m));
-    if (eyes) {
-        console.info(`[LocalBrain] 👁️ vision model already installed: ${eyes} — attached images are analyzed locally.`);
+    const eyes = state.models.filter(m => VISION.test(m));
+    const fastEyes = eyes.find(m => FAST_VISION.test(m));
+    if (fastEyes) {
+        console.info(`[LocalBrain] 👁️ vision model already installed: ${fastEyes} — attached images are analyzed locally.`);
         return;
     }
     const host = state.host;
-    console.info('[LocalBrain] no vision model installed — pulling moondream (~1.7GB) in the background so attached images can be analyzed offline…');
+    if (eyes.length) {
+        // Having ONLY a heavy vision model is the field failure this line
+        // answers: llava:latest was installed and still timed out at 180s on
+        // the user's CPU — eyes that never finish are no eyes. moondream is
+        // pulled alongside it and, being FAST, gets tried first from now on.
+        console.info(`[LocalBrain] 👁️ vision model installed (${eyes[0]}) but it is too heavy for a CPU to answer in time — pulling moondream (~1.7GB) in the background as the fast local eyes…`);
+    } else {
+        console.info('[LocalBrain] no vision model installed — pulling moondream (~1.7GB) in the background so attached images can be analyzed offline…');
+    }
     // Ollama pulls models over its OWN HTTP API — no shell, no child process.
     // (The first draft spawned `ollama pull` and the ExecutionEnforcer rightly
     // blocked the whole server from starting: direct process execution is
@@ -205,6 +229,7 @@ export function ensureLocalVisionModel(): void {
             if (res.ok && String(body?.status || '').includes('success')) {
                 console.info('[LocalBrain] ✅ moondream installed — attached images will now be analyzed locally.');
                 await detectLocalModels();   // refresh the model list
+                void warmUpLocalBrain();     // load the new eyes into RAM now, not at question time
             } else {
                 console.warn(`[LocalBrain] moondream pull answered ${res.status} (${String(body?.error || body?.status || '')}) — run manually: ollama pull moondream`);
             }

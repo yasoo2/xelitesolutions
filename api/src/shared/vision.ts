@@ -44,6 +44,13 @@ interface VisionTarget { baseUrl: string; model: string; apiKey: string; label: 
  * laptop needs minutes, not seconds — hence the long per-target timeout.
  */
 const OLLAMA_VISION_ID = /llava|moondream|bakllava|minicpm|vision|[-_.]vl\b|vl[-_.:]|qwen.*vl/i;
+/**
+ * Small vision models a CPU laptop can actually finish with. Field-measured:
+ * llava:latest (7B) hit the 180s timeout on the user's i5 with no GPU — the
+ * eyes existed and still saw nothing. moondream (1.8B) answers in a fraction
+ * of that; when both are installed, the one that can finish goes first.
+ */
+const FAST_VISION_ID = /moondream|minicpm|llava-phi/i;
 
 function ollamaRoot(): string | null {
     const raw = String(process.env.LOCAL_LLM_BASE_URL || '').trim();
@@ -65,14 +72,19 @@ async function ollamaVisionTargets(): Promise<VisionTarget[]> {
         if (!res.ok) return [];
         const data: any = await res.json().catch(() => ({}));
         const models: string[] = (data?.models || []).map((m: any) => String(m?.name || m?.model || '')).filter(Boolean);
-        const vis = models.filter(m => OLLAMA_VISION_ID.test(m));
+        const vis = models.filter(m => OLLAMA_VISION_ID.test(m))
+            // CPU-finishable models first: moondream before llava, always.
+            .sort((a, b) => (FAST_VISION_ID.test(a) ? 0 : 1) - (FAST_VISION_ID.test(b) ? 0 : 1));
         if (!vis.length) {
             console.info('[Vision] Ollama is running but has no vision model — run once: ollama pull moondream  (~1.7GB, then images work fully offline)');
             return [];
         }
         return vis.slice(0, 2).map(m => ({
             baseUrl: `${host}/v1`, model: m, apiKey: 'ollama', label: `ollama:${m}`,
-            timeoutMs: 180_000,   // a 1.8B vision model on a CPU laptop takes its time — let it finish
+            // A vision model on a CPU laptop takes its time — let it finish.
+            // 180s was measured to cut llava off mid-load; 300s is the ceiling
+            // before the answer stops being worth waiting for.
+            timeoutMs: 300_000,
         }));
     } catch { return []; }
 }

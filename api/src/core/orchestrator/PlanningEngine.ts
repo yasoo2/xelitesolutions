@@ -220,8 +220,13 @@ Rules:
         // the fast-paths trigger on (deploy, launch, server, install), so a plain
         // "Build an admin dashboard" was routed to deploy_pages. Strip every
         // injected block before detection; the FULL goal still reaches the tools.
+        // [ATTACHED FILES …] is injected too — and it is the most dangerous
+        // block of all for detection: it carries the attachment's own words
+        // (file names, «disk», «file», extracted text), which is exactly what
+        // sent «حلل هذه الصوره» + an image block into the browser+file
+        // compound fast-path («browse then write is.txt», field-measured).
         const rawGoal = String(intent.goal || '');
-        const injectedAt = rawGoal.search(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE)/i);
+        const injectedAt = rawGoal.search(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)/i);
         const userGoal = injectedAt >= 0 ? rawGoal.slice(0, injectedAt).trim() : rawGoal;
         const goalNorm = normalizeIntentText(userGoal);
         const probe = goalNorm && goalNorm !== userGoal.toLowerCase()
@@ -238,6 +243,38 @@ Rules:
         // analysis. Recovery is planned from the error, by the real planner, always.
         if (/^fix and continue:/i.test(String(intent.goal || '').trim())) {
             return PlanningEngine.generateDynamicDag(intent, memory, context);
+        }
+
+        /**
+         * [ATTACHMENTS ARE THE SUBJECT — DECIDED BEFORE EVERY FAST-PATH]
+         * «حلل هذه الصورة» plus an [ATTACHED FILES …] block is a question
+         * about the ATTACHED CONTENT — never a browser job, a repo job or a
+         * file-write job. This guard used to sit just before the semantic
+         * router, AFTER all the keyword fast-paths — and the field log shows
+         * the browser+file compound path firing first on the English words
+         * inside the attachment block itself and planning «browse then write
+         * is.txt» for an image question. Attachment questions are therefore
+         * decided HERE, at the top, from the USER'S OWN WORDS only.
+         */
+        if (/\[ATTACHED FILES/.test(rawGoal)) {
+            const userPart = rawGoal.split('[ATTACHED FILES')[0];
+            const wantsBuild = /\b(build|create|implement|develop|scaffold)\b|ابنِ|ابني|انشئ|أنشئ|اصنع|حوّل|حول .*موقع|موقع من|صفحة من/i.test(userPart);
+            if (!wantsBuild) {
+                console.log('[PlanningEngine] attachments present + no build verb → direct answer about the attached content');
+                return {
+                    id: `chat_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'direct_response',
+                        description: 'Answering about the attached file(s)',
+                        tool: 'central_answer',
+                        agent: 'General',
+                        input: { question: intent.goal },
+                        dependsOn: []
+                    }],
+                    metadata: { complexity: 'low', riskLevel: 'low' }
+                };
+            }
         }
 
         // [RUN / STOP FAST-PATH] "شغّل المشروع" / "run the project" starts the
@@ -845,37 +882,9 @@ Rules:
             };
         }
 
-        /**
-         * [ATTACHMENTS ARE THE SUBJECT] «حلل هذه الصورة» plus an
-         * [ATTACHED FILES …] block is a question about the ATTACHED CONTENT —
-         * never a repository job. Field-measured: the semantic router read
-         * exactly that as analyze_repo, and the run spent its whole model
-         * budget hunting for a GITHUB_TOKEN while the user waited for an
-         * image analysis. Deterministic rule, ahead of any model call:
-         * attachments present + no build verb → answer directly from the
-         * goal, which already carries the file text / vision description.
-         */
-        const goalWithFiles = String(intent.goal || '');
-        if (/\[ATTACHED FILES/.test(goalWithFiles)) {
-            const userPart = goalWithFiles.split('[ATTACHED FILES')[0];
-            const wantsBuild = /\b(build|create|implement|develop|scaffold)\b|ابنِ|ابني|انشئ|أنشئ|اصنع|حوّل|حول .*موقع|موقع من|صفحة من/i.test(userPart);
-            if (!wantsBuild) {
-                console.log('[PlanningEngine] attachments present + no build verb → direct answer about the attached content');
-                return {
-                    id: `chat_${Date.now()}`,
-                    goal: intent.goal,
-                    steps: [{
-                        id: 'direct_response',
-                        description: 'Answering about the attached file(s)',
-                        tool: 'central_answer',
-                        agent: 'General',
-                        input: { question: intent.goal },
-                        dependsOn: []
-                    }],
-                    metadata: { complexity: 'low', riskLevel: 'low' }
-                };
-            }
-        }
+        // (The [ATTACHMENTS ARE THE SUBJECT] guard now runs at the TOP of this
+        // method, before every keyword fast-path — see above. It used to live
+        // here and the browser+file compound path beat it to the goal.)
 
         // [SEMANTIC ROUTER] Every keyword path above has missed. Rather than hand
         // the request to the generic DAG planner — which is what produced six

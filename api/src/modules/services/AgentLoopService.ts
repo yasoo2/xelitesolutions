@@ -8,7 +8,7 @@ import { SelfFixExecutionService } from './SelfFixExecutionService';
 import { executeTool } from './ToolService';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { longTermMemory } from '../../core/memory/long-term-memory';
-import { uiText, languageName } from '../../shared/utils/language';
+import { uiText, languageName, messageLanguage } from '../../shared/utils/language';
 import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
@@ -64,7 +64,11 @@ export class AgentLoopService {
          * the HTTP response already returned — and never blocks the run:
          * with no vision provider the image stays honestly declared.
          */
-        const language0 = String(options.language || 'ar').trim().toLowerCase().split('-')[0] || 'ar';
+        // The MESSAGE decides the language, the UI switcher only breaks ties:
+        // the field log carried «The user's language is English» over the goal
+        // «حلل هذه الصوره» because the switcher said so. messageLanguage reads
+        // the script of what the user actually wrote.
+        const language0 = messageLanguage(goal, options.language || 'ar');
         if ((options.attachments || []).some(a => /^image\//i.test(a.mimeType || '') && !String(a.content || '').trim())) {
             broadcastThinkingDetail(options.sessionId || '', language0 === 'ar' ? '👁️ أفحص الصور المرفقة بنموذج رؤية…' : '👁️ Reading the attached images with a vision model…');
             try {
@@ -88,7 +92,10 @@ export class AgentLoopService {
         const effectiveGoal = blocks.join('\n\n');
         const traceId = options.traceId;
         const modelConfig = options.modelConfig;
-        const language = String(options.language || 'ar').trim().toLowerCase().split('-')[0] || 'ar';
+        // One language for the whole run — the block above, uiText fallbacks,
+        // and context.language (which central_answer measures against) all
+        // follow the message-derived choice, never the raw switcher value.
+        const language = language0;
 
         console.log(`[AgentLoopService] REAL-TIME Execution Request: ${goal} (traceId=${traceId})`);
         broadcastThinkingDetail(sessionId, "🧠 Activating Dynamic Agent Runtime...");

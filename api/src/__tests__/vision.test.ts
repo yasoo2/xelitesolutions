@@ -195,3 +195,51 @@ describe('vision — the image becomes a scene', () => {
         expect(src.indexOf('describeImageAttachments')).toBeLessThan(src.indexOf('const attachBlock = formatAttachmentsBlock'));
     });
 });
+
+/**
+ * EYES THAT FINISH — from the «لقد فشل» log: llava:latest (7B) was
+ * installed and STILL timed out at 180s on the user's CPU-only laptop.
+ * Eyes that never answer are no eyes. The chain now (1) tries the
+ * CPU-finishable model first when both are installed, (2) gives a vision
+ * call up to 300s, (3) keeps the fast model warm in RAM, and (4) pulls
+ * moondream even when a heavy llava already exists.
+ */
+describe('vision on a CPU laptop — the model that can finish goes first', () => {
+    test('moondream is tried BEFORE llava when both are installed', async () => {
+        const calls: Array<{ url: string; body?: any }> = [];
+        global.fetch = (async (url: any, init: any) => {
+            calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : undefined });
+            if (String(url).endsWith('/api/tags')) {
+                return { ok: true, json: async () => ({ models: [{ name: 'llava:latest' }, { name: 'qwen2.5-coder:7b' }, { name: 'moondream:latest' }] }) } as any;
+            }
+            return { ok: true, json: async () => ({ choices: [{ message: { content: 'لقطة شاشة لصفحة هبوط داكنة بشعار ذهبي' } }] }) } as any;
+        }) as any;
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
+        const savedKey = process.env.GROQ_API_KEY;
+        delete process.env.GROQ_API_KEY;
+        try {
+            const att = imageAtt('order.png');
+            const r = await describeImageAttachments([att], { language: 'ar' });
+            expect(r.described).toBe(1);
+            const chat = calls.find(c => c.url.endsWith('/chat/completions'));
+            expect(chat?.body?.model).toBe('moondream:latest');   // NOT llava
+        } finally { if (savedKey !== undefined) process.env.GROQ_API_KEY = savedKey; }
+    });
+
+    test('a local vision call is given 300s — 180s cut llava off mid-load', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'shared', 'vision.ts'), 'utf-8');
+        expect(src).toContain('timeoutMs: 300_000');
+        expect(src).not.toContain('timeoutMs: 180_000');
+        expect(src).toContain('FAST_VISION_ID');
+    });
+
+    test('the fast eyes are warmed at boot and moondream is pulled even when heavy llava exists', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'core', 'llm', 'local-brain.ts'), 'utf-8');
+        // warm-up includes the FAST vision model (kept resident in RAM)…
+        expect(src).toMatch(/const fastEyes = state\.models\.find\(m => FAST_VISION\.test\(m\)\);\s*\n\s*if \(fastEyes\) models\.add\(fastEyes\);/);
+        // …and a machine with ONLY a heavy vision model still gets moondream.
+        expect(src).toContain('too heavy for a CPU');
+        // After a successful pull the new eyes are loaded immediately.
+        expect(src).toContain('void warmUpLocalBrain();');
+    });
+});

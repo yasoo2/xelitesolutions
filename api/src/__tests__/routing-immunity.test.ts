@@ -82,3 +82,59 @@ describe('ambiguous verbs do not collide across intents', () => {
         expect(await tool('شغّل المشروع الآن')).toBe('project_run');
     });
 });
+
+/**
+ * THE ATTACHMENT HIJACK — the exact goal from the user's «لقد فشل» log.
+ *
+ * «حلل هذه الصوره» plus the runtime's injected blocks was planned as
+ * «browse then write is.txt»: the browser+file compound fast-path read the
+ * ENGLISH WORDS INSIDE the injected blocks («file», «disk», «Write EVERY
+ * word») as the user's own request. The attachment guard now runs at the
+ * very top of generatePlan, before every keyword fast-path, and detection
+ * strips the [ATTACHED FILES …] block like the other injected blocks.
+ */
+describe('attachment questions survive every keyword fast-path', () => {
+    // Reconstructed from the field log: the honest no-vision block plus the
+    // language contract — full of exactly the words the fast-paths react to.
+    const FIELD_GOAL =
+        'حلل هذه الصوره' +
+        '\n\n[ATTACHED FILES — the user attached 1 file(s) to this message. Read them; the message refers to them.]' +
+        '\n--- (1) لقطة شاشة 2026-07-31 013631.png — image/png, 1.1 MB' +
+        '\n(binary image file — no text content, and NO vision analysis was available for this run: ' +
+        'you have NOT seen this file. Do NOT invent or guess its contents, dimensions, dates or any metadata — ' +
+        'the filename is a name, not data. Tell the user plainly that image analysis is unavailable right now. ' +
+        'The raw file is on disk at: C:/Users/home/uploads/screen.png)' +
+        '\n\n[RESPONSE LANGUAGE — NON-NEGOTIABLE]: The user\'s language is Arabic (العربية). Write EVERY word of your reply in it.';
+
+    it('the field goal routes to central_answer — never to browse-then-write', async () => {
+        expect(await tool(FIELD_GOAL)).toBe('central_answer');
+    });
+
+    it('a described image question routes the same way', async () => {
+        const g = 'ما رأيك بهذا التصميم؟' +
+            '\n\n[ATTACHED FILES — the user attached 1 file(s) to this message. Read them; the message refers to them.]' +
+            '\n--- (1) shot.png — image/png, 90 KB' +
+            '\n(the image was ANALYZED by a vision model — this is what it shows:)\nصفحة هبوط داكنة بشعار ذهبي' +
+            '\n(raw file on disk at: /up/shot.png)';
+        expect(await tool(g)).toBe('central_answer');
+    });
+
+    it('a BUILD request with an attachment still builds (the guard yields to build verbs)', async () => {
+        const g = 'ابنِ لي صفحة مثل هذه الصورة' +
+            '\n\n[ATTACHED FILES — the user attached 1 file(s) to this message. Read them; the message refers to them.]' +
+            '\n--- (1) ref.png — image/png, 90 KB\n(the image was ANALYZED by a vision model — this is what it shows:)\nصفحة هبوط';
+        expect(await tool(g)).not.toBe('central_answer');
+    });
+
+    it('the guard sits ABOVE every keyword fast-path in the source', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const src = fs.readFileSync(path.join(__dirname, '..', 'core', 'orchestrator', 'PlanningEngine.ts'), 'utf-8');
+        const guard = src.indexOf('ATTACHMENTS ARE THE SUBJECT');
+        expect(guard).toBeGreaterThan(0);
+        expect(guard).toBeLessThan(src.indexOf('[RUN / STOP FAST-PATH]'));
+        expect(guard).toBeLessThan(src.indexOf('BROWSER + FILE COMPOUND FAST-PATH'));
+        // …and intent detection strips the attachment block like the others.
+        expect(src).toMatch(/STANDING USER INSTRUCTIONS\|ENGINEERING DISCIPLINE\|ATTACHED FILES\|RESPONSE LANGUAGE/);
+    });
+});
