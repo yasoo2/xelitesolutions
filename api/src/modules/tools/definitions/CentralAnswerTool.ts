@@ -1,5 +1,6 @@
 import { ToolDefinition } from '../types';
 import { routeToModel } from '../../../core/llm/intelligent-router';
+import { arabicShare } from '../../../shared/utils/language';
 
 /**
  * CentralAnswerTool - A simple Q&A tool for general questions
@@ -171,12 +172,42 @@ Your goal is to build the extraordinary.`;
                 { role: 'user', content: question }
             ], undefined, undefined, undefined, undefined, undefined, undefined, context);
 
-            const text = (typeof answer === 'string' ? answer : '').trim();
+            let text = (typeof answer === 'string' ? answer : '').trim();
+            /**
+             * ENFORCE THE LANGUAGE BY MEASUREMENT. The system prompt above
+             * DEMANDS Arabic — and a weak fallback model answered the user's
+             * Arabic question in fluent English anyway (field-reported, with
+             * the reply pasted). An instruction is a request; this is the
+             * contract: measure the reply's script, and when an Arabic
+             * question got a non-Arabic answer, have the model rewrite it
+             * once. The rewrite is kept only if it measurably complies.
+             */
+            const logs = ['central_answer: Answered via router'];
+            if (text && isAr && arabicShare(text) < 0.35) {
+                try {
+                    const rewritten = await routeToModel([
+                        {
+                            role: 'system',
+                            content: 'أعد كتابة النص التالي بالعربية الفصحى بالكامل، بنفس المعنى والتفاصيل والبنية (العناوين والقوائم والترقيم كما هي). لا تضف معلومات ولا تحذف شيئاً. أبقِ أسماء الأوامر والأكواد كما هي داخل علامات الكود. أخرج النص المُعاد كتابته فقط دون أي مقدمة.',
+                        },
+                        { role: 'user', content: text },
+                    ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                    const rt = String(rewritten || '').trim();
+                    if (rt.length >= 2 && arabicShare(rt) > Math.max(0.5, arabicShare(text))) {
+                        logs.push(`central_answer: language enforced — reply was ${Math.round(arabicShare(text) * 100)}% Arabic, rewritten to ${Math.round(arabicShare(rt) * 100)}%`);
+                        text = rt;
+                    } else {
+                        logs.push('central_answer: language rewrite did not comply — kept the original');
+                    }
+                } catch (e: any) {
+                    logs.push(`central_answer: language rewrite failed (${e?.message || e}) — kept the original`);
+                }
+            }
             if (text && text.length >= 2) {
                 return {
                     ok: true,
                     output: text,
-                    logs: ['central_answer: Answered via router']
+                    logs
                 };
             }
             // Empty/invalid router response -> deterministic reply (still a success).

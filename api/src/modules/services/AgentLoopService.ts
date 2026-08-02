@@ -8,7 +8,7 @@ import { SelfFixExecutionService } from './SelfFixExecutionService';
 import { executeTool } from './ToolService';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { longTermMemory } from '../../core/memory/long-term-memory';
-import { uiText } from '../../shared/utils/language';
+import { uiText, languageName } from '../../shared/utils/language';
 import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
@@ -79,6 +79,11 @@ export class AgentLoopService {
         const attachBlock = formatAttachmentsBlock(options.attachments || []);
         if (attachBlock) blocks.push(attachBlock);
         if (standing) blocks.push(`[STANDING USER INSTRUCTIONS — always apply to HOW you work]:\n${standing}`);
+        // The user's language is a CONTRACT, not a hint: an Arabic question
+        // answered in English (field-reported) reads as not being heard.
+        // central_answer additionally measures and enforces this; the block
+        // makes every other reply path carry the same obligation.
+        blocks.push(`[RESPONSE LANGUAGE — NON-NEGOTIABLE]: The user's language is ${languageName(language0)}. Write EVERY word of your reply in it.`);
         if (looksLikeEngineering) blocks.push(BUILD_DISCIPLINE);
         const effectiveGoal = blocks.join('\n\n');
         const traceId = options.traceId;

@@ -60,13 +60,20 @@ export function formatAttachmentsBlock(files: AttachmentInput[]): string {
             const body0 = text.length > cap ? `${text.slice(0, cap)}\n…[truncated]` : text;
             budget -= Math.min(text.length, cap);
             body = f.visionDescribed
-                ? `(the image was ANALYZED by a vision model — this is what it shows:)\n${body0}\n(raw file on disk at: ${f.path})`
+                ? `(the image was ANALYZED by a vision model — this is what it shows:)\n${body0}\n(Answer ONLY from this description. The file's binary metadata — exact pixel dimensions, creation date, format internals — is NOT known to you. NEVER state such details; the filename is a name, not data.)\n(raw file on disk at: ${f.path})`
                 : body0;
         } else if (media) {
             // No text to give — but SAY SO, with the on-disk path, so the model
             // acknowledges the file instead of ignoring it, and a tool that can
             // open media knows where it is.
-            body = `(binary ${String(f.mimeType).split('/')[0]} file — no text content. The raw file is on disk at: ${f.path})`;
+            /**
+             * NOT SEEN means NOT SEEN. A field-measured reply "analyzed" an
+             * undescribed image with invented dimensions, a creation date
+             * lifted from the FILENAME, and imaginary embedded links — a
+             * confident fabrication, the worst failure an assistant has.
+             * The block now forbids it in so many words.
+             */
+            body = `(binary ${String(f.mimeType).split('/')[0]} file — no text content, and NO vision analysis was available for this run: you have NOT seen this file. Do NOT invent or guess its contents, dimensions, dates or any metadata — the filename is a name, not data. Tell the user plainly that image analysis is unavailable right now. The raw file is on disk at: ${f.path})`;
         } else if (!text) {
             body = `(no extractable text content. The raw file is on disk at: ${f.path})`;
         } else {

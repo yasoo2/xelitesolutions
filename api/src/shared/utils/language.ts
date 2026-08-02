@@ -83,3 +83,20 @@ export function uiText(key: keyof typeof UI, language: any): string {
     const lang = normalizeLanguage(language);
     return UI[key]?.[lang] ?? UI[key]?.ar ?? '';
 }
+
+
+/**
+ * How much of a text's LETTERS are Arabic script (0..1).
+ *
+ * The enforcement metric behind «يجب أن يرد باللغة التي طُلب منه بها»: the
+ * user asked in Arabic and a weak fallback model answered in English — an
+ * instruction is a request, a measurement is a contract. Digits, spaces and
+ * punctuation are excluded so a code snippet or a number does not dilute
+ * the score of an otherwise-Arabic reply.
+ */
+export function arabicShare(text: string): number {
+    const t = String(text || '');
+    const arabic = (t.match(/[\u0600-\u06FF]/g) || []).length;
+    const letters = (t.match(/[\u0600-\u06FFa-zA-Z]/g) || []).length;
+    return letters === 0 ? 0 : arabic / letters;
+}

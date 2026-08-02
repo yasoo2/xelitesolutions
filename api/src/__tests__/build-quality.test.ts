@@ -195,7 +195,7 @@ describe('7 — coaching text cannot poison the page', () => {
         + '\n1. compare a stored hash/stamp; never skip installing.'
         + '\n2. Crash-loop guard: restart ... server ... cart of woes none.';
     test('the builder strips the injected block from the request before ANY design decision', () => {
-        expect(builderSrc).toMatch(/\.replace\(\/\\n\+\\\[\(STANDING USER INSTRUCTIONS\|ENGINEERING DISCIPLINE\)/);
+        expect(builderSrc).toMatch(/\.replace\(\/\\n\+\\\[\(STANDING USER INSTRUCTIONS\|ENGINEERING DISCIPLINE\|RESPONSE LANGUAGE\)/);
     });
     test('"stored" in the coaching text no longer turns a restaurant into a store', () => {
         const { detectPageKind } = require('../core/design/blueprints');
