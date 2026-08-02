@@ -212,9 +212,20 @@ Rules:
         // the keywords the fast-paths know). ALL detection regexes test the probe;
         // extraction (queries, filenames, emails) still reads the original goal so
         // the user's own words are never mangled.
-        const goalNorm = normalizeIntentText(intent.goal || '');
-        const probe = goalNorm && goalNorm !== String(intent.goal || '').toLowerCase()
-            ? `${intent.goal || ''}\n${goalNorm}` : String(intent.goal || '');
+        //
+        // CRITICAL: intent detection must see ONLY the user's request. The runtime
+        // appends coaching blocks to the goal — "[STANDING USER INSTRUCTIONS …]"
+        // and "[ENGINEERING DISCIPLINE … apply when you build launch/update/deploy
+        // scripts or long-running services]". Those blocks contain the very words
+        // the fast-paths trigger on (deploy, launch, server, install), so a plain
+        // "Build an admin dashboard" was routed to deploy_pages. Strip every
+        // injected block before detection; the FULL goal still reaches the tools.
+        const rawGoal = String(intent.goal || '');
+        const injectedAt = rawGoal.search(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE)/i);
+        const userGoal = injectedAt >= 0 ? rawGoal.slice(0, injectedAt).trim() : rawGoal;
+        const goalNorm = normalizeIntentText(userGoal);
+        const probe = goalNorm && goalNorm !== userGoal.toLowerCase()
+            ? `${userGoal}\n${goalNorm}` : userGoal;
         const goalLower = probe.toLowerCase();
 
         // A recovery goal ("Fix and continue: <task>\n[THE STEP FAILED WITH THIS

@@ -33,6 +33,22 @@ describe('"انشر / deploy" routes to permanent deployment, deterministically'
     test('"ابنِ مشروعاً" is NOT deploy', async () => {
         expect((await plan('ابنِ لي نظام إدارة متكامل بباك اند')).steps[0].tool).toBe('project_pipeline');
     });
+
+    // REGRESSION (from a real run): the runtime appends an ENGINEERING DISCIPLINE
+    // block containing the words "deploy/launch/server/install". Intent detection
+    // must see ONLY the user's request — a plain build must not be hijacked by
+    // keywords inside the injected coaching text.
+    test('a build request with the injected discipline block still routes to BUILD, not deploy', async () => {
+        const injected = 'Build an admin dashboard for an online store'
+            + '\n\n[ENGINEERING DISCIPLINE — apply when you build launch/update/deploy scripts or long-running services]:'
+            + '\n1. Dependency freshness … never skip installing …'
+            + '\n2. Crash-loop guard … restart … server …'
+            + '\n3. Failure taxonomy in updaters … deploy …';
+        const p = await plan(injected);
+        expect(['web_page_builder', 'project_pipeline']).toContain(p.steps[0].tool);
+        expect(p.steps[0].tool).not.toBe('deploy_pages');
+        expect(p.steps[0].tool).not.toBe('project_run');
+    });
     test('deploy_pages is deterministic in the orchestrator', () => {
         expect(orch).toMatch(/'deploy_pages'/);
     });

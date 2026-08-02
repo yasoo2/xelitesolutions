@@ -454,9 +454,16 @@ export class AgentOrchestrator {
           // the browser extension, provide a 2FA code — are asking the USER to act.
           // That is a legitimate answer to surface, NOT a system failure to "recover"
           // from. Show the tool's own message instead of spawning a recovery loop.
-          const userActionableTool = typeof node.tool === 'string' &&
-            (node.tool === 'google_account' || node.tool === 'user_browser' || node.tool.startsWith('browser_'));
-          const toolMsg = (result as any)?.output?.message || (result as any)?.output?.summary;
+          const out = (result as any)?.output || {};
+          // An explicit "user must act" marker on ANY tool's output means the same:
+          // surface the message, never loop. deploy_pages returning needsConnect
+          // used to trigger a browser "obtain a token" recovery loop — exactly the
+          // wrong response. The tool's own error IS the answer the user needs.
+          const userActionMarker = !!(out.needsConnect || out.needsRepo || out.tokenInvalid || out.unsupported);
+          const userActionableTool = (typeof node.tool === 'string' &&
+            (node.tool === 'google_account' || node.tool === 'user_browser' || node.tool.startsWith('browser_')))
+            || userActionMarker;
+          const toolMsg = out.message || out.summary || (userActionMarker ? result.error : undefined);
           if (userActionableTool && toolMsg) {
             node.status = "completed";
             node.result = toolMsg;
