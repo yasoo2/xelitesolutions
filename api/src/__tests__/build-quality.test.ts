@@ -391,3 +391,147 @@ describe('7f — a button that says "add to cart" adds to the cart', () => {
         expect(commerceSrc).toMatch(/new-price/);
     });
 });
+
+/**
+ * 10 — THE LANDING-PAGE DUMP. The user's newest real build (a tech-startup
+ * landing page) measured: «5 of 9 controls do nothing when clicked» — every
+ * one an FAQ question whose model script manually re-toggled a native
+ * <details>; a stray `<main>` OPENED inside section#sticky-header-nav-links
+ * (`</header>\n<main>\n</section>`); 33 of 39 photo candidates refused by the
+ * subject gate (2/6 real photos); and a 4.33:1 «/month» that the size-limited
+ * repair pass never touched.
+ */
+describe('10 — an FAQ question opens its answer, whatever the model wired', () => {
+    const { uiKitScript } = require('../core/design/design-system');
+    test('the details-guard ships in the unconditional ui-kit runtime', () => {
+        const js = uiKitScript();
+        expect(js).toContain('__joeDetailsGuard');
+        // Capture phase, so it sees the click before any model handler…
+        expect(js).toMatch(/addEventListener\('click',[\s\S]*?, true\)/);
+        // …and restores intent only when the net state did not change.
+        expect(js).toContain('if (d.open === before) d.open = !before');
+    });
+    test('the guard is idempotent — a second copy refuses to double-install', () => {
+        expect(uiKitScript()).toContain("if (window.__joeDetailsGuard) return");
+    });
+});
+
+describe('10b — <main> is inserted at the TOP LEVEL of body, never inside a section', () => {
+    const { reviewHtml } = require('../core/quality/html-qa');
+    const nestedHeaderPage = `<!DOCTYPE html><html><head><title>t</title></head><body>
+<section class="section" id="sticky-header-nav-links"><header class="site-header"><nav><a href="#hero">Home</a></nav></header><p>strap</p></section>
+<section class="section" id="hero"><h1>Launch faster</h1></section>
+<footer><p>©</p></footer>
+</body></html>`;
+
+    test('the landing-page corruption: nested </header> no longer anchors <main>', () => {
+        const r = reviewHtml(nestedHeaderPage, false);
+        // The measured defect, verbatim: <main> opening between the nested
+        // header close and the section close.
+        expect(r.html).not.toMatch(/<\/header>\s*<main>\s*(<p|<\/section)/i);
+        // The landmark exists, and it opens AFTER the header-carrying section.
+        const mainAt = r.html.search(/<main>/i);
+        const firstSectionClose = r.html.indexOf('</section>');
+        expect(mainAt).toBeGreaterThan(firstSectionClose);
+        // …and closes before the footer.
+        expect(r.html.indexOf('</main>')).toBeLessThan(r.html.indexOf('<footer'));
+    });
+
+    test('the normal shape — top-level header — keeps its old, correct anchor', () => {
+        const normal = `<!DOCTYPE html><html><head><title>t</title></head><body>
+<header class="site-header"><nav><a href="#a">A</a></nav></header>
+<section id="a"><h1>Hi</h1></section>
+<footer><p>©</p></footer>
+</body></html>`;
+        const r = reviewHtml(normal, false);
+        expect(r.html).toMatch(/<\/header>\s*<main>/i);
+        expect(r.html.indexOf('</main>')).toBeLessThan(r.html.indexOf('<footer'));
+    });
+
+    test('a document whose balance never recovers gets no <main> rather than a guess', () => {
+        const broken = `<!DOCTYPE html><html><head><title>t</title></head><body>
+<section><header>h</header><h2>x</h2>
+</body></html>`;
+        const r = reviewHtml(broken, false);
+        expect(r.html).not.toMatch(/<main[\s>]/i);
+    });
+});
+
+describe('10c — an over-specified photo subject gets a second, simpler ask', () => {
+    const { condenseSubject } = require('../core/design/images');
+    const imagesSrc = fs.readFileSync(
+        path.join(__dirname, '..', 'core', 'design', 'images.ts'), 'utf-8');
+
+    test('five terms condense to the head of the noun phrase', () => {
+        expect(condenseSubject('modern tech startup office workspace')).toBe('office workspace');
+        expect(condenseSubject('software developer team collaboration')).toBe('team collaboration');
+    });
+    test('a subject already at two terms is NOT retried (same words, same answer)', () => {
+        expect(condenseSubject('developer portrait')).toBeNull();
+    });
+    test('stopwords do not count as terms', () => {
+        expect(condenseSubject('a photo of the team')).toBeNull();
+    });
+    test('the retry is wired into resolveImages, after the full subject fails', () => {
+        expect(imagesSrc).toMatch(/if \(!img\) \{\s*\n\s*const condensed = condenseSubject/);
+        // …and two subjects that condense identically must not take the same photo.
+        expect(imagesSrc).toContain('condensedUses');
+    });
+});
+
+describe('10d — a contrast failure is arithmetic, and arithmetic is repaired by code', () => {
+    const { compliantColor, wcagRatio, applyMechanicalRepairs } = require('../core/quality/repair-engine');
+
+    test('the «/month» case: 4.33:1 grey on white is nudged over 4.5:1, same hue', () => {
+        const fixed = compliantColor([124, 124, 124], [255, 255, 255], 4.5);
+        expect(fixed).not.toBeNull();
+        expect(wcagRatio(fixed!, [255, 255, 255])).toBeGreaterThanOrEqual(4.5);
+        // Greyscale in, greyscale out — the identity of the colour survives.
+        expect(fixed![0]).toBe(fixed![1]);
+        expect(fixed![1]).toBe(fixed![2]);
+    });
+    test('light text on a dark band is lightened, not blackened', () => {
+        const fixed = compliantColor([180, 180, 190], [30, 30, 40], 4.5);
+        expect(fixed).not.toBeNull();
+        expect(wcagRatio(fixed!, [30, 30, 40])).toBeGreaterThanOrEqual(4.5);
+    });
+    test('an unreachable target returns null — no guessed colour ships', () => {
+        expect(compliantColor([200, 200, 200], [118, 118, 118], 7)).toBeNull();
+    });
+
+    const page = '<!DOCTYPE html><html><head><title>t</title></head><body><span class="term">/month</span></body></html>';
+    const finding = {
+        code: 'contrast',
+        data: [{ sel: '.term', fg: [124, 124, 124], bg: [255, 255, 255], need: 4.5, ratio: 4.33 }],
+    };
+    test('the mechanical pass writes ONE scoped override and reports itself', () => {
+        const r = applyMechanicalRepairs(page, [finding]);
+        expect(r.applied).toContain('contrast');
+        expect(r.html).toMatch(/<style id="joe-contrast-fix">\n\.term\{color:rgb\(\d+,\d+,\d+\) !important\}/);
+        // Idempotent: repairing the repaired page rebuilds the same block, not a second one.
+        const twice = applyMechanicalRepairs(r.html, [finding]);
+        expect((twice.html.match(/joe-contrast-fix/g) || []).length)
+            .toBe((r.html.match(/joe-contrast-fix/g) || []).length);
+    });
+    test('a selector that could escape the stylesheet is refused', () => {
+        const evil = { code: 'contrast', data: [{ sel: 'x{}</style><script>', fg: [0, 0, 0], bg: [255, 255, 255], need: 4.5 }] };
+        const r = applyMechanicalRepairs(page, [evil]);
+        expect(r.applied).not.toContain('contrast');
+        expect(r.html).not.toContain('<script>');
+    });
+    test('…but the child combinator is a selector, not an escape — the audit\'s real shape passes', () => {
+        // The first live run refused «#pricing > p.price > span.term» for its
+        // `>` and the repair never fired. That character is how the audit
+        // writes every selector.
+        const real = { code: 'contrast', data: [{ sel: '#pricing > p.price > span.term', fg: [124, 124, 124], bg: [255, 255, 255], need: 4.5, ratio: 4.17 }] };
+        const r = applyMechanicalRepairs(page, [real]);
+        expect(r.applied).toContain('contrast');
+        expect(r.html).toContain('#pricing > p.price > span.term{color:rgb(');
+    });
+    test('the audit hands the repair its ammunition: selector, fg and bg per failing node', () => {
+        const auditSrc = fs.readFileSync(
+            path.join(__dirname, '..', 'core', 'quality', 'visual-audit.ts'), 'utf-8');
+        expect(auditSrc).toMatch(/sel: selOf\(el\)/);
+        expect(auditSrc).toMatch(/data: m\.contrastFails/);
+    });
+});

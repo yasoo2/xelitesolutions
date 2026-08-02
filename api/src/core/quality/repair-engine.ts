@@ -56,9 +56,66 @@ function firstText(html: string, tag: string): string {
     return m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// ── contrast arithmetic ──────────────────────────────────────────────────
+//
+// WCAG contrast is a formula, and a formula is something code solves exactly.
+// A 4.33:1 price note that needs 4.5:1 does not need a model's judgement — it
+// needs its lightness moved a few percent away from its background, along its
+// own hue, until the formula says yes.
+
+function wcagLum(r: number, g: number, b: number): number {
+    const a = [r, g, b].map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+}
+export function wcagRatio(fg: number[], bg: number[]): number {
+    const L1 = wcagLum(fg[0], fg[1], fg[2]), L2 = wcagLum(bg[0], bg[1], bg[2]);
+    return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+}
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    let h = 0;
+    if (d) {
+        if (max === r) h = ((g - b) / d) % 6;
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h *= 60; if (h < 0) h += 360;
+    }
+    const l = (max + min) / 2;
+    const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    return [h, s * 100, l * 100];
+}
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+    s /= 100; l /= 100;
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+    const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x]
+        : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+    return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+/**
+ * The nearest colour to `fg` — same hue, same saturation — whose contrast
+ * against `bg` reaches `need`. Walks lightness away from the background in 1%
+ * steps; tries the other direction when the first runs out of room. Null when
+ * neither direction gets there (a mid-grey background), so the caller skips
+ * rather than ships a guess.
+ */
+export function compliantColor(fg: number[], bg: number[], need: number): [number, number, number] | null {
+    const [h, s, l0] = rgbToHsl(fg[0], fg[1], fg[2]);
+    const target = need + 0.1;   // clear the bar, don't graze it
+    const darkenFirst = wcagLum(bg[0], bg[1], bg[2]) >= wcagLum(fg[0], fg[1], fg[2]);
+    for (const dir of darkenFirst ? [-1, 1] : [1, -1]) {
+        for (let l = l0; l >= 0 && l <= 100; l += dir) {
+            const rgb = hslToRgb(h, s, l);
+            if (wcagRatio(rgb, bg) >= target) return rgb;
+        }
+    }
+    return null;
+}
+
 export function applyMechanicalRepairs(
     html: string,
-    findings: Array<{ code: string }>,
+    findings: Array<{ code: string; data?: any }>,
     ctx: RepairContext = {},
 ): MechanicalRepair {
     const codes = new Set(findings.map(f => f.code));
@@ -186,6 +243,43 @@ export function applyMechanicalRepairs(
         if (patched > 0) {
             applied.push('img_no_alt');
             notesAr.push(`أضفت alt لـ${patched} صورة كانت بلا وصف — قارئ الشاشة كان سيقرأ اسم الملف`);
+        }
+    }
+
+    // ── contrast: solve the formula instead of asking the model ─────────
+    //
+    // The audit now hands over each failing node's selector, computed
+    // foreground and composited background. The fix is arithmetic: the same
+    // hue, nudged in lightness until WCAG says yes, delivered as a scoped
+    // override. On the page that motivated this, the whole-page model repair
+    // was SKIPPED for size and a 4.33:1 «/month» shipped as-is; this costs no
+    // model call and survives any page size. The caller's re-audit keeps it
+    // only if the measurement actually improves — same law as every repair.
+    if (codes.has('contrast')) {
+        const fails = findings.filter(f => f.code === 'contrast').flatMap(f => Array.isArray(f.data) ? f.data : []);
+        const rules: string[] = [];
+        const done = new Set<string>();
+        for (const f of fails) {
+            const sel = String(f?.sel || '');
+            // A selector is embedded in a stylesheet — refuse anything that
+            // could close the tag (`<`) or break out of the rule (`{`/`}`).
+            // `>` stays: it is the child combinator, and the audit's selectors
+            // are built from it («#pricing > p.price > span.term») — refusing
+            // it refused every real selector, measured on the first live run.
+            if (!sel || done.has(sel) || /[<{}]/.test(sel)) continue;
+            if (!Array.isArray(f.fg) || !Array.isArray(f.bg) || !isFinite(f.need)) continue;
+            const fixed = compliantColor(f.fg, f.bg, Number(f.need));
+            if (!fixed) continue;
+            done.add(sel);
+            rules.push(`${sel}{color:rgb(${fixed[0]},${fixed[1]},${fixed[2]}) !important}`);
+        }
+        if (rules.length) {
+            // Idempotent: one authoritative block, rebuilt from the latest
+            // measurement rather than appended to forever.
+            out = out.replace(/<style id="joe-contrast-fix">[\s\S]*?<\/style>\n?/g, '');
+            out = injectIntoHead(out, `<style id="joe-contrast-fix">\n${rules.join('\n')}\n</style>`);
+            applied.push('contrast');
+            notesAr.push(`رفعت تباين ${rules.length} نصاً إلى حد WCAG بتعديل درجة اللون نفسه — دون تغيير هويته`);
         }
     }
 

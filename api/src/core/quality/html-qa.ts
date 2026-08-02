@@ -433,16 +433,72 @@ export function reviewHtml(
             const closeHeader = mask.match(/<\/header\s*>/i);
             const headerEnd = mask.search(/<\/header\s*>/i);
             const bodyOpen = mask.match(/<body[^>]*>/i);
-            const start = headerEnd >= 0 && closeHeader
+            let start = headerEnd >= 0 && closeHeader
                 ? headerEnd + closeHeader[0].length
                 : (bodyOpen ? mask.indexOf(bodyOpen[0]) + bodyOpen[0].length : -1);
+
+            /**
+             * THE ANCHOR MUST SIT AT THE TOP LEVEL OF <body>.
+             *
+             * A measured landing page carried its site header INSIDE a section
+             * — `<section id="sticky-header-nav-links"><header>…</header>…` —
+             * and anchoring right after that nested `</header>` shipped
+             * `</header>\n<main>\n</section>`: a <main> that opens inside one
+             * section and is closed after the last one. Every browser then
+             * "repairs" that into a different tree than the one that was
+             * written, and the landmark points at nothing.
+             *
+             * So the tag balance is walked from <body> to the candidate; when
+             * the anchor turns out to be nested, it is moved forward to just
+             * after the close of the element that contains it. A document
+             * whose balance never returns to the top level gets no <main> at
+             * all — declining to guess beats corrupting the tree.
+             */
+            const VOID = /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
+            const TAG = /<(\/?)([a-zA-Z][\w-]*)(?:"[^"]*"|'[^']*'|[^>])*?(\/?)>/g;
+            const bodyStart = bodyOpen ? mask.indexOf(bodyOpen[0]) + bodyOpen[0].length : -1;
+            if (start > 0 && bodyStart >= 0 && start > bodyStart) {
+                let depth = 0;
+                TAG.lastIndex = bodyStart;
+                let t: RegExpExecArray | null;
+                while ((t = TAG.exec(mask)) && t.index < start) {
+                    if (VOID.test(t[2]) || t[3] === '/') continue;
+                    depth += t[1] === '/' ? -1 : 1;
+                }
+                if (depth > 0) {
+                    // Nested: continue the walk until the containing element
+                    // closes, and anchor right after that closing tag.
+                    let moved = -1;
+                    TAG.lastIndex = start;
+                    while ((t = TAG.exec(mask))) {
+                        if (VOID.test(t[2]) || t[3] === '/') continue;
+                        depth += t[1] === '/' ? -1 : 1;
+                        if (depth === 0) { moved = t.index + t[0].length; break; }
+                    }
+                    start = moved;
+                }
+            }
 
             // Where it ends: at the footer, or at </body> when there is none.
             // Requiring a footer was too strict — measured, four of five page
             // kinds had a header and sections but no <footer>, so they came out
             // with no landmark at all and a screen-reader user had no way to
             // skip the navigation.
-            const footerStart = mask.search(/<footer[\s>]/i);
+            //
+            // The footer anchor obeys the same top-level rule as the header
+            // one: a <footer> nested inside the last section would put the
+            // closing </main> mid-section, the mirror image of the bug above.
+            let footerStart = mask.search(/<footer[\s>]/i);
+            if (footerStart > start && start > 0) {
+                let depth = 0;
+                TAG.lastIndex = start;
+                let t: RegExpExecArray | null;
+                while ((t = TAG.exec(mask)) && t.index < footerStart) {
+                    if (VOID.test(t[2]) || t[3] === '/') continue;
+                    depth += t[1] === '/' ? -1 : 1;
+                }
+                if (depth !== 0) footerStart = -1;
+            }
             const bodyClose = mask.search(/<\/body\s*>/i);
             const end = footerStart > start ? footerStart : (bodyClose > start ? bodyClose : -1);
 

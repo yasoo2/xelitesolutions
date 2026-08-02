@@ -408,6 +408,24 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
     return null;
 }
 
+/**
+ * The last two meaningful English words of a subject — the head of its noun
+ * phrase — or null when the subject is already that short (retrying with the
+ * same words would just spend the network twice).
+ *
+ * «modern tech startup office workspace» → «office workspace»;
+ * «software developer portrait» → «developer portrait». Arabic subjects go
+ * through the same dictionary the search itself uses, so the retry asks in
+ * the archives' language too.
+ */
+export function condenseSubject(subject: string): string | null {
+    const { query } = englishSubject(subject);
+    const terms = String(query || '').toLowerCase().split(/[^a-z0-9]+/)
+        .filter(w => w.length > 2 && !STOPWORDS.has(w) && !STOPWORDS.has(fold(w)));
+    if (terms.length < 3) return null;
+    return terms.slice(-2).join(' ');
+}
+
 /** A gradient stand-in, used only when a real photo could not be obtained. */
 export function gradientPlaceholder(query: string, hue: number): string {
     const h2 = (hue + 40) % 360;
@@ -571,11 +589,40 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     // Sequential on purpose: a laptop on a home connection does better with one
     // request at a time than with a dozen competing ones.
     const failures = new Map<string, string>();
+    // How many times each CONDENSED subject has already produced a photo, so a
+    // second full subject that condenses to the same pair skips the candidates
+    // the first one took — the page must not carry the identical photo twice.
+    const condensedUses = new Map<string, number>();
     for (const q of queries) {
         const times = Math.min(occurrences.get(q) || 1, 4);
         for (let v = 0; v < times && fetched < max; v++) {
-            const img = await sourceImage(artifactDir, subjectOf.get(q)!, opts?.timeoutMs ?? 9000, v, slotOf.get(q));
+            let img = await sourceImage(artifactDir, subjectOf.get(q)!, opts?.timeoutMs ?? 9000, v, slotOf.get(q));
             fetched++;
+            /**
+             * A SECOND, SIMPLER ASK before giving up on the subject.
+             *
+             * A model writes subjects like «modern tech startup office
+             * workspace» — over-specified for archives that title their
+             * photographs in three words. Measured on a shipped landing page:
+             * the archives returned 39 candidates and the gate refused 33,
+             * not because they had nothing but because a five-term subject can
+             * rarely find two supported terms in a three-word title. The page
+             * got 2 real photos out of 6.
+             *
+             * The retry asks for the subject's HEAD — its last two meaningful
+             * English words, where a noun phrase keeps its meaning («startup
+             * office»). The relevance gate is NOT loosened: two terms, both
+             * must be supported, same as ever. The question got shorter, not
+             * the standard lower.
+             */
+            if (!img) {
+                const condensed = condenseSubject(subjectOf.get(q)!);
+                if (condensed) {
+                    const used = condensedUses.get(condensed) || 0;
+                    img = await sourceImage(artifactDir, condensed, opts?.timeoutMs ?? 9000, v + used, slotOf.get(q));
+                    if (img) condensedUses.set(condensed, used + 1);
+                }
+            }
             // Keep the reason an archive gave. "No photo" with no explanation is
             // the kind of silence that reads as a bug in Joe rather than a search
             // that came back empty.

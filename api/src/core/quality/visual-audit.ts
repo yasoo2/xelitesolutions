@@ -23,6 +23,12 @@ export interface VisualFinding {
     en: string;
     /** A CSS-ish hint at what to change, handed to the repair pass. */
     hint?: string;
+    /**
+     * Machine-readable detail for the MECHANICAL repair pass — e.g. the
+     * contrast finding carries every failing node's selector, foreground and
+     * measured background, so the fix can be computed instead of asked for.
+     */
+    data?: any;
 }
 
 export interface VisualAudit {
@@ -187,7 +193,32 @@ function collector() {
     const overflow = scrollable > 1 ? Math.max(0, de.scrollWidth - de.clientWidth) : 0;
     const wideElements: string[] = [];
     // ---- contrast
-    const contrastFails: Array<{ text: string; ratio: number; need: number }> = [];
+    //
+    // Each failure carries the MEANS OF ITS OWN REPAIR: the computed foreground,
+    // the composited background it was measured against, and a selector that
+    // reaches the element. Text and a ratio alone name the defect; they leave a
+    // deterministic fixer with nothing to act on, so a 4.33:1 price note used to
+    // ride through every repair pass untouched.
+    const contrastFails: Array<{ text: string; ratio: number; need: number; sel: string; fg: number[]; bg: number[] }> = [];
+    const selOf = (el: Element): string => {
+        const parts: string[] = [];
+        let n: Element | null = el;
+        for (let hop = 0; n && n.tagName && !/^(BODY|HTML)$/.test(n.tagName) && hop < 6; hop++) {
+            if ((n as HTMLElement).id) { parts.unshift('#' + CSS.escape((n as HTMLElement).id)); return parts.join(' > '); }
+            let s = n.tagName.toLowerCase();
+            const cn = n.getAttribute('class') || '';
+            const cls = cn.trim().split(/\s+/).filter(Boolean)[0];
+            if (cls) s += '.' + CSS.escape(cls);
+            const p = n.parentElement;
+            if (p) {
+                const same = Array.from(p.children).filter(c => c.tagName === n!.tagName);
+                if (same.length > 1) s += ':nth-of-type(' + (same.indexOf(n) + 1) + ')';
+            }
+            parts.unshift(s);
+            n = p;
+        }
+        return parts.join(' > ');
+    };
     // Text sitting on a photograph, counted rather than guessed at.
     let unmeasurable = 0;
     // ---- tap targets
@@ -224,7 +255,15 @@ function collector() {
         const need = (size >= 24 || (size >= 18.66 && bold)) ? 3 : 4.5;
         if (r < need) {
             const key = txt.slice(0, 24);
-            if (!seen.has(key) && contrastFails.length < 12) { seen.add(key); contrastFails.push({ text: txt.slice(0, 40), ratio: Math.round(r * 100) / 100, need }); }
+            if (!seen.has(key) && contrastFails.length < 12) {
+                seen.add(key);
+                contrastFails.push({
+                    text: txt.slice(0, 40), ratio: Math.round(r * 100) / 100, need,
+                    sel: selOf(el),
+                    fg: [Math.round(fg[0]), Math.round(fg[1]), Math.round(fg[2])],
+                    bg: [Math.round(bg[0]), Math.round(bg[1]), Math.round(bg[2])],
+                });
+            }
         }
         if (checked > 500) break;
     }
@@ -602,6 +641,7 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
                 ar: `${m.contrastFails.length} نص بتباين ضعيف ${where} — أسوأها ${worst.ratio}:1 (المطلوب ${worst.need}) في «${worst.text}»`,
                 en: `${m.contrastFails.length} low-contrast text node(s) on ${whereEn} — worst ${worst.ratio}:1 (needs ${worst.need}) at "${worst.text}"`,
                 hint: 'use var(--on-brand) on branded surfaces, var(--text) on light ones',
+                data: m.contrastFails,
             });
         }
         if (vp.label === 'mobile' && m.smallTargets?.length) {
@@ -841,6 +881,13 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
     const rank = { critical: 3, major: 2, minor: 1 } as const;
     for (const f of findings) {
         const prev = byCode.get(f.code);
+        // Wording keeps the worst viewport; machine-readable detail keeps BOTH
+        // — a node failing only on mobile still needs its mechanical fix.
+        if (prev && Array.isArray(prev.data) && Array.isArray(f.data)) {
+            const merged = [...prev.data];
+            for (const d of f.data) if (!merged.some((p: any) => p.sel && p.sel === d.sel)) merged.push(d);
+            prev.data = merged; f.data = merged;
+        }
         if (!prev || rank[f.severity] > rank[prev.severity]) byCode.set(f.code, f);
     }
     const deduped = [...byCode.values()].sort((a, b) => rank[b.severity] - rank[a.severity]);

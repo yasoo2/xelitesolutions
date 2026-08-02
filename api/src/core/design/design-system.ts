@@ -470,6 +470,29 @@ section img:not([class*=icon]):not([class*=logo]){
 /** The scroll-reveal behaviour the CSS above depends on. */
 export function uiKitScript(): string {
     return `<script>
+/* Joe details-guard — an FAQ must open when its question is pressed.
+   A model likes to "wire" a native <details class="faq-item"> itself:
+     question.addEventListener('click', () => item.hasAttribute('open')
+       ? item.removeAttribute('open') : item.setAttribute('open',''))
+   The browser toggles open on the summary click, THEN that handler toggles it
+   back — net nothing. Measured on a shipped landing page: 5 of 9 controls
+   "did nothing when clicked", every one an FAQ question. The guard watches the
+   click in the capture phase and, once every handler and the native action
+   have run, restores the visitor's intent: a summary click that ended with the
+   state it started with is flipped. A working accordion is left alone —
+   its state DID change — and so is a handler that preventDefault()s and
+   toggles correctly. */
+(function(){
+  if (window.__joeDetailsGuard) return; window.__joeDetailsGuard = true;
+  document.addEventListener('click', function(ev){
+    var t = ev.target, s = t && t.closest ? t.closest('summary') : null;
+    if (!s) return;
+    var d = s.closest('details');
+    if (!d) return;
+    var before = d.open;
+    setTimeout(function(){ if (d.open === before) d.open = !before; }, 0);
+  }, true);
+})();
 (function(){
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var targets = document.querySelectorAll('section > *, main > section, .card, .service, .step, .result, .price, .testimonial');
