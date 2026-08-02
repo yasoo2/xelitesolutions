@@ -44,6 +44,7 @@ import {
     type LucideIcon
 } from 'lucide-react';
 import { API_URL as API } from '../config';
+import { useTranslation } from 'react-i18next';
 import CodeEditor from './CodeEditor';
 const DiffViewer = lazy(() => import('./DiffViewer'));
 import { motion, AnimatePresence } from 'framer-motion';
@@ -436,6 +437,8 @@ const ModalInput = ({
     onSubmit,
     title,
     placeholder,
+    hint,
+    presets,
     loading
 }: {
     isOpen: boolean;
@@ -443,6 +446,8 @@ const ModalInput = ({
     onSubmit: (val: string) => void;
     title: string;
     placeholder: string;
+    hint?: string;
+    presets?: Array<{ label: string; value: string }>;
     loading?: boolean;
 }) => {
     const [val, setVal] = useState('');
@@ -463,19 +468,34 @@ const ModalInput = ({
                     boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
                 }}
             >
-                <h3 style={{ marginTop: 0, marginBottom: 16 }}>{title}</h3>
+                <h3 style={{ marginTop: 0, marginBottom: hint ? 8 : 16 }}>{title}</h3>
+                {hint && (
+                    <p style={{ margin: '0 0 14px', fontSize: 12.5, lineHeight: 1.7, opacity: 0.65 }}>{hint}</p>
+                )}
                 <input
                     autoFocus
+                    dir="ltr"
                     className="elite-input"
                     value={val}
                     onChange={e => setVal(e.target.value)}
                     placeholder={placeholder}
-                    style={{ width: '100%', marginBottom: 16 }}
+                    style={{ width: '100%', marginBottom: presets?.length ? 10 : 16 }}
                     onKeyDown={e => {
                         if (e.key === 'Enter' && !loading) onSubmit(val);
                         if (e.key === 'Escape') onClose();
                     }}
                 />
+                {presets && presets.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+                        {presets.map(p => (
+                            <button key={p.label} type="button" onClick={() => setVal(p.value)}
+                                className="elite-btn-secondary"
+                                style={{ fontSize: 11.5, padding: '4px 10px', opacity: 0.9 }}>
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                     <button onClick={onClose} className="elite-btn-secondary" disabled={loading}>Cancel</button>
                     <button onClick={() => onSubmit(val)} className="elite-btn-primary" disabled={loading || !val}>
@@ -488,6 +508,7 @@ const ModalInput = ({
 };
 
 const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerProps>(({ sessionId, activeRepo, githubUser }, ref) => {
+    const { t } = useTranslation();
     const [viewMode, setViewMode] = useState<'local' | 'github'>('local');
     const [repos, setRepos] = useState<any[]>([]);
     // const [activeRepo, setActiveRepo] = useState<string | null>(null); // Removed, now from props
@@ -1095,6 +1116,30 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
         }
     }, [activePath]);
 
+    // Quick-pick common folders. Derived from the current active path so it
+    // matches the real machine (Windows C:\Users\<name> or POSIX /home/<name>),
+    // with a new project subfolder appended so files never scatter into the root.
+    const folderPresets = (): Array<{ label: string; value: string }> => {
+        const p = activeWorkspace?.path || '';
+        const win = p.match(/^([A-Za-z]:\\Users\\[^\\]+)/);
+        if (win) {
+            const home = win[1];
+            return [
+                { label: t('fx_presetDesktop', 'سطح المكتب'), value: `${home}\\Desktop\\my-project` },
+                { label: t('fx_presetDocuments', 'المستندات'), value: `${home}\\Documents\\my-project` },
+            ];
+        }
+        const nix = p.match(/^(\/(?:home|Users)\/[^/]+)/);
+        if (nix) {
+            const home = nix[1];
+            return [
+                { label: t('fx_presetDesktop', 'سطح المكتب'), value: `${home}/Desktop/my-project` },
+                { label: t('fx_presetDocuments', 'المستندات'), value: `${home}/Documents/my-project` },
+            ];
+        }
+        return [];
+    };
+
     const handleModalSubmit = async (val: string) => {
         if (!val) return;
         const type = modalConfig.type;
@@ -1109,6 +1154,8 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                 });
                 if (res.ok) {
                     await loadRoot();
+                    // Tell the panel's location bar the build folder changed.
+                    window.dispatchEvent(new Event('workspace:updated'));
                     setModalConfig({ open: false, type: null, loading: false });
                 } else {
                     alert('Path not found');
@@ -1143,8 +1190,12 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                 isOpen={modalConfig.open}
                 onClose={() => setModalConfig({ open: false, type: null, loading: false })}
                 onSubmit={handleModalSubmit}
-                title={modalConfig.type === 'folder' ? 'Open Absolute Path' : 'Clone Repository'}
-                placeholder={modalConfig.type === 'folder' ? '/app/src/...' : 'https://github.com/user/repo'}
+                title={modalConfig.type === 'folder' ? t('fx_chooseLocationTitle', 'اختر مكان حفظ ملفات المشروع') : 'Clone Repository'}
+                hint={modalConfig.type === 'folder' ? t('fx_chooseLocationHint', 'اكتب مساراً كاملاً على جهازك (مثال ويندوز: C:\\Users\\home\\Desktop\\my-app). سيُنشأ المجلد إن لم يكن موجوداً.') : undefined}
+                // Windows-first placeholder — the old '/app/src/...' was a Linux
+                // path meaningless on the user's machine.
+                placeholder={modalConfig.type === 'folder' ? 'C:\\Users\\home\\Desktop\\my-app' : 'https://github.com/user/repo'}
+                presets={modalConfig.type === 'folder' ? folderPresets() : undefined}
                 loading={modalConfig.loading}
             />
 
@@ -1445,8 +1496,16 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                         />
                                     ))}
                                     {tree.length === 0 && !loading && (
-                                        <div className="elite-empty-state">
-                                            {viewMode === 'github' ? 'Empty Repository' : 'Empty Directory'}
+                                        <div className="elite-empty-state" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '28px 16px', textAlign: 'center' }}>
+                                            <FolderPlus size={26} style={{ opacity: 0.4 }} />
+                                            <div style={{ fontWeight: 600, fontSize: 13 }}>
+                                                {t('fx_emptyTitle', 'لا توجد ملفات بعد')}
+                                            </div>
+                                            <div style={{ fontSize: 12, opacity: 0.6, lineHeight: 1.6, maxWidth: 220 }}>
+                                                {viewMode === 'github'
+                                                    ? t('fx_emptyGithubDesc', 'هذا المستودع فارغ أو لم تُحمّل ملفاته بعد.')
+                                                    : t('fx_emptyLocalDesc', 'اطلب من جو أن يبني مشروعاً، أو أنشئ ملفاً، أو غيّر مكان المشروع.')}
+                                            </div>
                                         </div>
                                     )}
                                 </>

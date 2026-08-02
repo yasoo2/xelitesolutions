@@ -228,7 +228,9 @@ router.get('/root', authenticate as any, (req: Request, res: Response) => {
         ? String((req.query as any).workspaceId).trim()
         : '';
   const activeRoot = workspaceService.getActiveRoot(workspaceId || undefined);
-  res.json({ path: activeRoot, name: path.basename(activeRoot) });
+  // isDefault lets the UI say "this is the default location — you can change it".
+  const isDefault = path.basename(activeRoot) === 'my-workspace';
+  res.json({ path: activeRoot, name: path.basename(activeRoot), isDefault });
 });
 
 // Set Active Root (Switch Workspace)

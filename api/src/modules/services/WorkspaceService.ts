@@ -124,6 +124,36 @@ export class WorkspaceService {
     
     private rootsByWorkspaceId = new Map<string, string>();
 
+    // The local (no-workspace) project root — where builds land in single-user
+    // local mode. Two real bugs lived here: getActiveRoot() ignored currentRoot
+    // and always returned an internal "system-fallback" folder, so choosing a
+    // folder had NO effect; and the choice was in-memory only, so every restart
+    // reverted it. Now it is a clearly-named default that PERSISTS to disk.
+    private _localRoot: string | null = null;
+    private get localRootFile(): string {
+        return path.join(this.externalRoot, '.joe-local-root.json');
+    }
+    private get localRoot(): string {
+        if (this._localRoot) return this._localRoot;
+        // Load a previously chosen location.
+        try {
+            const saved = JSON.parse(fs.readFileSync(this.localRootFile, 'utf-8'))?.path;
+            if (saved && typeof saved === 'string') { this._localRoot = saved; return saved; }
+        } catch { /* no saved choice yet */ }
+        // A name the user understands — "my-workspace", not "system-fallback".
+        this._localRoot = path.join(this.externalRoot, 'my-workspace');
+        return this._localRoot;
+    }
+    private set localRoot(p: string) {
+        this._localRoot = p;
+        try {
+            fs.mkdirSync(path.dirname(this.localRootFile), { recursive: true });
+            fs.writeFileSync(this.localRootFile, JSON.stringify({ path: p }, null, 2));
+        } catch (e) {
+            console.warn('[WorkspaceService] Could not persist local root choice:', e);
+        }
+    }
+
     private resolveWorkspaceId(workspaceId?: string) {
         const explicit = typeof workspaceId === 'string' ? workspaceId.trim() : '';
         if (explicit) return explicit;
@@ -147,11 +177,14 @@ export class WorkspaceService {
             this.rootsByWorkspaceId.set(wsId, autoPath);
             return autoPath;
         }
-        const fallback = path.join(this.externalRoot, 'system-fallback');
-        if (!fs.existsSync(fallback)) {
-            try { fs.mkdirSync(fallback, { recursive: true }); } catch { }
+        // No workspace id (local single-user mode): use the persisted local
+        // root, creating it if needed. This is the folder the File Explorer
+        // shows and where local builds land — the same path everywhere.
+        const local = this.localRoot;
+        if (!fs.existsSync(local)) {
+            try { fs.mkdirSync(local, { recursive: true }); } catch { }
         }
-        return fallback;
+        return local;
     }
 
     async setActiveRoot(newPath: string, workspaceId?: string): Promise<boolean> {
@@ -162,7 +195,9 @@ export class WorkspaceService {
             await import('fs').then(fs => fs.promises.access(newPath));
             const wsId = this.resolveWorkspaceId(workspaceId);
             if (wsId) this.rootsByWorkspaceId.set(wsId, newPath);
-            else this.currentRoot = newPath;
+            // No workspace id: persist the choice so it actually takes effect AND
+            // survives the next restart (the old currentRoot was ignored + lost).
+            else { this.currentRoot = newPath; this.localRoot = newPath; }
             return true;
         } catch {
             return false;
@@ -172,7 +207,7 @@ export class WorkspaceService {
     resetToSystem(workspaceId?: string) {
         const wsId = this.resolveWorkspaceId(workspaceId);
         if (wsId) this.rootsByWorkspaceId.delete(wsId);
-        else this.currentRoot = process.cwd();
+        else { this.currentRoot = process.cwd(); this.localRoot = path.join(this.externalRoot, 'my-workspace'); }
     }
 
     async runWithWorkspace<T>(workspaceId: string | undefined, fn: () => Promise<T> | T): Promise<T> {
