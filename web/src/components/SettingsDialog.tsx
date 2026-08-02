@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { API_URL } from '../config';
 import SystemStatusPanel from './SystemStatusPanel';
+import { ACCENTS, getAccent, setAccent, type AccentId, type ThemeMode } from '../accents';
 
 interface SettingsDialogProps {
     isOpen: boolean;
@@ -63,6 +64,16 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
         try { localStorage.setItem('system_instructions', value); } catch { }
         setInstrSaved(true);
         setTimeout(() => setInstrSaved(false), 1200);
+    };
+
+    // Each theme mode remembers its OWN accent colour («تحت كل وضع عدة
+    // ألوان»). Picking one applies instantly when that mode is active, and
+    // is stored for the next time the mode is switched on.
+    const [accentDark, setAccentDark] = useState<AccentId>(() => getAccent('dark'));
+    const [accentLight, setAccentLight] = useState<AccentId>(() => getAccent('light'));
+    const pickAccent = (mode: ThemeMode, id: AccentId) => {
+        (mode === 'dark' ? setAccentDark : setAccentLight)(id);
+        setAccent(mode, id, theme);
     };
 
     if (!isOpen) return null;
@@ -179,6 +190,42 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                 </div>
                             </button>
                         </div>
+                        {/* One accent palette PER MODE — the dark theme and the
+                            light theme each keep their own colour. */}
+                        {(['dark', 'light'] as ThemeMode[]).map(mode => (
+                            <div className="stg-accent-group" key={mode}>
+                                <div className="stg-accent-title">
+                                    {mode === 'dark' ? <Moon size={14} /> : <Sun size={14} />}
+                                    <span>
+                                        {mode === 'dark'
+                                            ? t('accentDarkTitle', 'ألوان الوضع الليلي')
+                                            : t('accentLightTitle', 'ألوان الوضع النهاري')}
+                                    </span>
+                                    {theme === mode && <span className="stg-accent-live">{t('accentActive', 'المطبَّق الآن')}</span>}
+                                </div>
+                                <div className="stg-accent-row" role="group">
+                                    {ACCENTS.map(a => {
+                                        const chosen = (mode === 'dark' ? accentDark : accentLight) === a.id;
+                                        return (
+                                            <button
+                                                key={a.id}
+                                                className={`stg-accent-swatch ${chosen ? 'active' : ''}`}
+                                                style={{ background: mode === 'dark' ? a.dark : a.light }}
+                                                onClick={() => pickAccent(mode, a.id)}
+                                                title={a.label}
+                                                aria-pressed={chosen}
+                                                data-accent-id={`${mode}-${a.id}`}
+                                            >
+                                                {chosen && <Check size={13} />}
+                                            </button>
+                                        );
+                                    })}
+                                    <span className="stg-accent-name">
+                                        {ACCENTS.find(a => a.id === (mode === 'dark' ? accentDark : accentLight))?.label}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
                         <div className="stg-option-row">
                             <div className="stg-option-label">
                                 <Monitor size={16} />

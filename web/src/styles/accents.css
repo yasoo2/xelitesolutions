@@ -1,0 +1,244 @@
+/**
+ * Theme accents — «تحت كل وضع عدة ألوان لتغيّر لون الثيم».
+ *
+ * The user picks an accent PER MODE in Settings: the dark theme and the
+ * light «الفاتح النقي» theme each remember their own colour. The choice is
+ * stored as joe-accent-dark / joe-accent-light and applied as a
+ * data-accent attribute on <html> whenever the theme flips (accents.ts).
+ *
+ * Emerald is the default and needs NO attribute — these blocks only exist
+ * for the four alternatives. Each block re-tunes the SAME variable families
+ * both stylesheets already consume (--accent-* from theme.css, --joe-* from
+ * joe-premium.css), so every button, border, glow and gradient follows the
+ * chosen colour with zero component changes.
+ *
+ * Selector shape is deliberate: :not([data-theme="light"]) lifts the dark
+ * rules to (0,2,1) so they beat theme.css/:root token blocks regardless of
+ * bundle order, and the light rules carry the same weight over the
+ * [data-theme="light"] override blocks. The light rules ALSO target
+ * .joe-ide-layout itself: joe-premium declares the light tokens on that
+ * element directly, and a custom property declared ON an element always
+ * beats one inherited from <html> — measured live as the ice accent
+ * silently losing to the layout's own emerald.
+ */
+
+/* Icon/text colour ON the accent (the send button's arrow). Defaults here,
+   because neither older stylesheet defines it. */
+html:not([data-theme="light"]) { --joe-on-accent: #05130d; }
+html[data-theme="light"] { --joe-on-accent: #ffffff; }
+
+/* ══════════════ ذهب إكسلايت — the XELITE logo gold ══════════════ */
+html[data-accent="gold"]:not([data-theme="light"]) {
+    --accent-primary: #E3B65A;
+    --accent-primary-rgb: 227, 182, 90;
+    --accent-rgb: 227, 182, 90;
+    --accent-glow: rgba(227, 182, 90, 0.4);
+    --bg-hover: rgba(227, 182, 90, 0.08);
+    --border-color: rgba(227, 182, 90, 0.15);
+    --border-light: rgba(227, 182, 90, 0.25);
+    --brand-mark-yellow: #E3B65A;
+    --brand-mark-yellow-rgb: 227, 182, 90;
+    --brand-gradient: linear-gradient(135deg, #C99C3F 0%, #F0CE7E 45%, #A87E22 100%);
+    --brand-text-gradient: linear-gradient(135deg, #F0CE7E 0%, #E3B65A 50%, #C99C3F 100%);
+    --brand-badge-border: rgba(227, 182, 90, 0.3);
+    --joe-gold-primary: #E3B65A;
+    --joe-gold-secondary: #C99C3F;
+    --joe-gold-dark: #A87E22;
+    --joe-gold-glow: rgba(227, 182, 90, 0.4);
+    --joe-gold-subtle: rgba(227, 182, 90, 0.15);
+    --joe-gold-border: rgba(227, 182, 90, 0.35);
+    --joe-text-gold: #E3B65A;
+    --joe-bg-hover: rgba(227, 182, 90, 0.12);
+    --joe-border: rgba(227, 182, 90, 0.25);
+    --joe-border-strong: rgba(227, 182, 90, 0.45);
+    --joe-border-glow: 0 0 15px rgba(227, 182, 90, 0.3), 0 0 30px rgba(227, 182, 90, 0.15);
+    --joe-shadow-gold: 0 0 25px rgba(227, 182, 90, 0.25);
+    --joe-msg-user-bg: rgba(227, 182, 90, 0.15);
+    --joe-on-accent: #221806;
+}
+html[data-theme="light"][data-accent="gold"],
+html[data-theme="light"][data-accent="gold"] .joe-ide-layout {
+    --accent-primary: #A87E22;
+    --accent-secondary: #8A681C;
+    --accent-primary-rgb: 168, 126, 34;
+    --accent-rgb: 168, 126, 34;
+    --accent-glow: rgba(168, 126, 34, 0.18);
+    --bg-hover: rgba(168, 126, 34, 0.07);
+    --border-color: rgba(168, 126, 34, 0.18);
+    --border-light: rgba(168, 126, 34, 0.28);
+    --brand-mark-yellow: #A87E22;
+    --brand-mark-yellow-rgb: 168, 126, 34;
+    --brand-gradient: linear-gradient(135deg, #8A681C 0%, #C99C3F 45%, #6E5316 100%);
+    --brand-text-gradient: linear-gradient(135deg, #C99C3F 0%, #A87E22 50%, #8A681C 100%);
+    --joe-gold-primary: #A87E22;
+    --joe-gold-secondary: #8A681C;
+    --joe-gold-dark: #6E5316;
+    --joe-gold-glow: rgba(168, 126, 34, 0.22);
+    --joe-gold-subtle: rgba(168, 126, 34, 0.09);
+    --joe-gold-border: rgba(168, 126, 34, 0.20);
+    --joe-text-gold: #8A681C;
+    --joe-bg-hover: rgba(168, 126, 34, 0.07);
+    --joe-on-accent: #ffffff;
+}
+
+/* ══════════════ التركوازي ══════════════ */
+html[data-accent="turquoise"]:not([data-theme="light"]) {
+    --accent-primary: #3BC8C2;
+    --accent-primary-rgb: 59, 200, 194;
+    --accent-rgb: 59, 200, 194;
+    --accent-glow: rgba(59, 200, 194, 0.4);
+    --bg-hover: rgba(59, 200, 194, 0.08);
+    --border-color: rgba(59, 200, 194, 0.15);
+    --border-light: rgba(59, 200, 194, 0.25);
+    --brand-mark-yellow: #3BC8C2;
+    --brand-mark-yellow-rgb: 59, 200, 194;
+    --brand-gradient: linear-gradient(135deg, #2FA6A1 0%, #6FDDD7 45%, #22807C 100%);
+    --brand-text-gradient: linear-gradient(135deg, #6FDDD7 0%, #3BC8C2 50%, #2FA6A1 100%);
+    --brand-badge-border: rgba(59, 200, 194, 0.3);
+    --joe-gold-primary: #3BC8C2;
+    --joe-gold-secondary: #2FA6A1;
+    --joe-gold-dark: #22807C;
+    --joe-gold-glow: rgba(59, 200, 194, 0.4);
+    --joe-gold-subtle: rgba(59, 200, 194, 0.15);
+    --joe-gold-border: rgba(59, 200, 194, 0.35);
+    --joe-text-gold: #3BC8C2;
+    --joe-bg-hover: rgba(59, 200, 194, 0.12);
+    --joe-border: rgba(59, 200, 194, 0.25);
+    --joe-border-strong: rgba(59, 200, 194, 0.45);
+    --joe-border-glow: 0 0 15px rgba(59, 200, 194, 0.3), 0 0 30px rgba(59, 200, 194, 0.15);
+    --joe-shadow-gold: 0 0 25px rgba(59, 200, 194, 0.25);
+    --joe-msg-user-bg: rgba(59, 200, 194, 0.15);
+    --joe-on-accent: #04211f;
+}
+html[data-theme="light"][data-accent="turquoise"],
+html[data-theme="light"][data-accent="turquoise"] .joe-ide-layout {
+    --accent-primary: #0F7E79;
+    --accent-secondary: #0C6663;
+    --accent-primary-rgb: 15, 126, 121;
+    --accent-rgb: 15, 126, 121;
+    --accent-glow: rgba(15, 126, 121, 0.18);
+    --bg-hover: rgba(15, 126, 121, 0.07);
+    --border-color: rgba(15, 126, 121, 0.18);
+    --border-light: rgba(15, 126, 121, 0.28);
+    --brand-mark-yellow: #0F7E79;
+    --brand-mark-yellow-rgb: 15, 126, 121;
+    --brand-gradient: linear-gradient(135deg, #0C6663 0%, #2FA6A1 45%, #094F4C 100%);
+    --brand-text-gradient: linear-gradient(135deg, #2FA6A1 0%, #0F7E79 50%, #0C6663 100%);
+    --joe-gold-primary: #0F7E79;
+    --joe-gold-secondary: #0C6663;
+    --joe-gold-dark: #094F4C;
+    --joe-gold-glow: rgba(15, 126, 121, 0.22);
+    --joe-gold-subtle: rgba(15, 126, 121, 0.09);
+    --joe-gold-border: rgba(15, 126, 121, 0.20);
+    --joe-text-gold: #0C6663;
+    --joe-bg-hover: rgba(15, 126, 121, 0.07);
+    --joe-on-accent: #ffffff;
+}
+
+/* ══════════════ الأحادي الفاخر — white on dark, charcoal on light ══════════════ */
+html[data-accent="mono"]:not([data-theme="light"]) {
+    --accent-primary: #ECF2EE;
+    --accent-primary-rgb: 236, 242, 238;
+    --accent-rgb: 236, 242, 238;
+    --accent-glow: rgba(236, 242, 238, 0.3);
+    --bg-hover: rgba(236, 242, 238, 0.07);
+    --border-color: rgba(236, 242, 238, 0.14);
+    --border-light: rgba(236, 242, 238, 0.22);
+    --brand-mark-yellow: #ECF2EE;
+    --brand-mark-yellow-rgb: 236, 242, 238;
+    --brand-gradient: linear-gradient(135deg, #C9D4CE 0%, #FFFFFF 45%, #A3B0AA 100%);
+    --brand-text-gradient: linear-gradient(135deg, #FFFFFF 0%, #ECF2EE 50%, #C9D4CE 100%);
+    --brand-badge-border: rgba(236, 242, 238, 0.3);
+    --joe-gold-primary: #ECF2EE;
+    --joe-gold-secondary: #C9D4CE;
+    --joe-gold-dark: #A3B0AA;
+    --joe-gold-glow: rgba(236, 242, 238, 0.3);
+    --joe-gold-subtle: rgba(236, 242, 238, 0.12);
+    --joe-gold-border: rgba(236, 242, 238, 0.30);
+    --joe-text-gold: #ECF2EE;
+    --joe-bg-hover: rgba(236, 242, 238, 0.10);
+    --joe-border: rgba(236, 242, 238, 0.22);
+    --joe-border-strong: rgba(236, 242, 238, 0.40);
+    --joe-border-glow: 0 0 15px rgba(236, 242, 238, 0.22), 0 0 30px rgba(236, 242, 238, 0.10);
+    --joe-shadow-gold: 0 0 25px rgba(236, 242, 238, 0.18);
+    --joe-msg-user-bg: rgba(236, 242, 238, 0.12);
+    --joe-on-accent: #0d1210;
+}
+html[data-theme="light"][data-accent="mono"],
+html[data-theme="light"][data-accent="mono"] .joe-ide-layout {
+    --accent-primary: #1B2620;
+    --accent-secondary: #141C18;
+    --accent-primary-rgb: 27, 38, 32;
+    --accent-rgb: 27, 38, 32;
+    --accent-glow: rgba(27, 38, 32, 0.15);
+    --bg-hover: rgba(27, 38, 32, 0.06);
+    --border-color: rgba(27, 38, 32, 0.16);
+    --border-light: rgba(27, 38, 32, 0.26);
+    --brand-mark-yellow: #1B2620;
+    --brand-mark-yellow-rgb: 27, 38, 32;
+    --brand-gradient: linear-gradient(135deg, #141C18 0%, #3A4A42 45%, #0D1310 100%);
+    --brand-text-gradient: linear-gradient(135deg, #3A4A42 0%, #1B2620 50%, #141C18 100%);
+    --joe-gold-primary: #1B2620;
+    --joe-gold-secondary: #141C18;
+    --joe-gold-dark: #0D1310;
+    --joe-gold-glow: rgba(27, 38, 32, 0.18);
+    --joe-gold-subtle: rgba(27, 38, 32, 0.08);
+    --joe-gold-border: rgba(27, 38, 32, 0.20);
+    --joe-text-gold: #141C18;
+    --joe-bg-hover: rgba(27, 38, 32, 0.06);
+    --joe-on-accent: #f4f6f4;
+}
+
+/* ══════════════ الأزرق الجليدي ══════════════ */
+html[data-accent="ice"]:not([data-theme="light"]) {
+    --accent-primary: #8FBFEA;
+    --accent-primary-rgb: 143, 191, 234;
+    --accent-rgb: 143, 191, 234;
+    --accent-glow: rgba(143, 191, 234, 0.4);
+    --bg-hover: rgba(143, 191, 234, 0.08);
+    --border-color: rgba(143, 191, 234, 0.15);
+    --border-light: rgba(143, 191, 234, 0.25);
+    --brand-mark-yellow: #8FBFEA;
+    --brand-mark-yellow-rgb: 143, 191, 234;
+    --brand-gradient: linear-gradient(135deg, #6FA6D9 0%, #B4D5F2 45%, #4F86BC 100%);
+    --brand-text-gradient: linear-gradient(135deg, #B4D5F2 0%, #8FBFEA 50%, #6FA6D9 100%);
+    --brand-badge-border: rgba(143, 191, 234, 0.3);
+    --joe-gold-primary: #8FBFEA;
+    --joe-gold-secondary: #6FA6D9;
+    --joe-gold-dark: #4F86BC;
+    --joe-gold-glow: rgba(143, 191, 234, 0.4);
+    --joe-gold-subtle: rgba(143, 191, 234, 0.15);
+    --joe-gold-border: rgba(143, 191, 234, 0.35);
+    --joe-text-gold: #8FBFEA;
+    --joe-bg-hover: rgba(143, 191, 234, 0.12);
+    --joe-border: rgba(143, 191, 234, 0.25);
+    --joe-border-strong: rgba(143, 191, 234, 0.45);
+    --joe-border-glow: 0 0 15px rgba(143, 191, 234, 0.3), 0 0 30px rgba(143, 191, 234, 0.15);
+    --joe-shadow-gold: 0 0 25px rgba(143, 191, 234, 0.25);
+    --joe-msg-user-bg: rgba(143, 191, 234, 0.15);
+    --joe-on-accent: #0a1826;
+}
+html[data-theme="light"][data-accent="ice"],
+html[data-theme="light"][data-accent="ice"] .joe-ide-layout {
+    --accent-primary: #2D6FA8;
+    --accent-secondary: #245A88;
+    --accent-primary-rgb: 45, 111, 168;
+    --accent-rgb: 45, 111, 168;
+    --accent-glow: rgba(45, 111, 168, 0.18);
+    --bg-hover: rgba(45, 111, 168, 0.07);
+    --border-color: rgba(45, 111, 168, 0.18);
+    --border-light: rgba(45, 111, 168, 0.28);
+    --brand-mark-yellow: #2D6FA8;
+    --brand-mark-yellow-rgb: 45, 111, 168;
+    --brand-gradient: linear-gradient(135deg, #245A88 0%, #4F86BC 45%, #1B4568 100%);
+    --brand-text-gradient: linear-gradient(135deg, #4F86BC 0%, #2D6FA8 50%, #245A88 100%);
+    --joe-gold-primary: #2D6FA8;
+    --joe-gold-secondary: #245A88;
+    --joe-gold-dark: #1B4568;
+    --joe-gold-glow: rgba(45, 111, 168, 0.22);
+    --joe-gold-subtle: rgba(45, 111, 168, 0.09);
+    --joe-gold-border: rgba(45, 111, 168, 0.20);
+    --joe-text-gold: #245A88;
+    --joe-bg-hover: rgba(45, 111, 168, 0.07);
+    --joe-on-accent: #ffffff;
+}

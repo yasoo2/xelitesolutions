@@ -4080,11 +4080,10 @@ export default function CommandComposer({
                 style={{ position: 'relative' }}
               >
                 {status !== 'idle' || !!approval || !!secretPrompt ? (
-                  <>
-                    <Square size={14} fill="currentColor" style={{ zIndex: 2 }} />
-                    <div className="btn-thinking-pulse" />
-                  </>
-                ) : <ArrowUp size={16} />}
+                  // «حلقة التقدّم»: the ring and arc are drawn by the button's
+                  // own ::before/::after — only the stop square is content.
+                  <Square size={10} fill="currentColor" />
+                ) : <ArrowUp size={14} />}
               </button>
             </div>
           </div>

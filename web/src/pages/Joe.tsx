@@ -21,6 +21,7 @@ import { githubService, GitHubRepo, GitHubUser, GitHubCommit } from '../services
 import { useTranslation } from 'react-i18next';
 import { resolveIdentity, isPrivileged, loadGoogleProfile } from '../lib/userIdentity';
 import { API_URL } from '../config';
+import { applyAccent } from '../accents';
 
 interface Message {
     id: string;
@@ -678,10 +679,12 @@ export default function Joe() {
         }
     }, []);
 
-    // Theme synchronization
+    // Theme synchronization — each mode also carries its OWN accent colour
+    // (chosen in Settings, stored per mode), applied the moment the mode is.
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', theme);
         try { localStorage.setItem('joe-theme', theme); } catch { /* storage unavailable */ }
+        applyAccent(theme);
     }, [theme]);
 
     const handleLangChange = useCallback((newLang: string) => {

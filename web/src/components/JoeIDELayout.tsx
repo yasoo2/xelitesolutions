@@ -11,6 +11,7 @@ import CommandPalette, { Command } from './CommandPalette';
 import { GitHubRepo, GitHubCommit, GitHubUser } from '../services/githubService';
 import { FolderOpen } from 'lucide-react';
 import '../styles/joe-premium.css';
+import '../styles/accents.css';
 import { useAutoOpen, PanelType } from '../services/AutoOpenManager';
 import { ErrorBoundary } from './ErrorBoundary';
 interface Session {
