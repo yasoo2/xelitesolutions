@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 const pdf = require('pdf-parse');
 import { FileModel } from '../../shared/models/file';
 import { authenticate } from '../middleware/auth';
+import { officeKind, extractOfficeText } from '../../shared/office-text';
 
 /**
  * Ask MongoDB only when it is actually there. `FileModel.findById` on a
@@ -45,31 +46,20 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB limit (Universal)
-  fileFilter: (req, file, cb) => {
-    // AUDIT-117: Reject executables, HTML, and scripts
-    const dangerousExtensions = ['.exe', '.sh', '.bat', '.cmd', '.msi', '.ps1', '.html', '.htm'];
-    const lowerName = file.originalname.toLowerCase();
-    
-    if (dangerousExtensions.some(ext => lowerName.endsWith(ext))) {
-      return cb(new Error('File type not allowed for security reasons.'));
-    }
-
-    const dangerousMimes = [
-      'application/x-msdownload',
-      'application/x-sh',
-      'text/html'
-    ];
-    
-    if (dangerousMimes.includes(file.mimetype)) {
-      return cb(new Error('MIME type not allowed for security reasons.'));
-    }
-    
-    cb(null, true);
-  }
-});
+/**
+ * ACCEPT EVERYTHING. The owner's explicit decision for their own machine:
+ * «اريد ان يرفع اي صيغه واي عدد ملفات واي حجم دون رفض شيء» — any format,
+ * any count, any size, refuse nothing. Joe runs locally, single-user, and
+ * the files land on the user's own disk; a size cap or an extension list
+ * here only rejects the user's own property.
+ *
+ * The security control MOVED instead of vanishing: the risk of an uploaded
+ * .html/.svg was never the upload — it was RENDERING it later on Joe's own
+ * origin. The /:id/raw route below therefore serves active content as a
+ * plain-text download (nosniff + attachment), so nothing a user uploads can
+ * ever script the app that stores it.
+ */
+const upload = multer({ storage });
 
 // Upload endpoint
 router.post('/upload', authenticate as any, upload.single('file') as any, async (req: Request, res: Response) => {
@@ -84,7 +74,24 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
     const lowerName = req.file.originalname.toLowerCase();
 
     // Universal Loader Logic
-    if (req.file.mimetype === 'application/pdf') {
+    const office = officeKind(req.file.originalname, req.file.mimetype);
+    if (office) {
+      /**
+       * Word/Excel/PowerPoint used to fall through to the binary check and
+       * arrive at the run as «no extractable text» — while being exactly the
+       * formats the user's real documents live in. OOXML is a zip of XML;
+       * the text is extracted here at upload time, the same moment PDFs get
+       * theirs, so the attachment carries the contract's words and the
+       * spreadsheet's rows. An unreadable/corrupt file returns '' and keeps
+       * the honest binary path.
+       */
+      try {
+        content = extractOfficeText(req.file.path, office);
+        if (content) console.info(`[UniversalLoader] Extracted ${content.length} chars from ${office}: ${req.file.originalname}`);
+      } catch (err) {
+        console.warn('[UniversalLoader] Office extract warning:', err);
+      }
+    } else if (req.file.mimetype === 'application/pdf') {
       try {
         const dataBuffer = await fs.promises.readFile(req.file.path);
         const data = await pdf(dataBuffer);
@@ -250,7 +257,10 @@ export interface UploadedAttachment {
  */
 export async function loadUploadedFiles(ids: string[]): Promise<UploadedAttachment[]> {
     const out: UploadedAttachment[] = [];
-    for (const raw of (Array.isArray(ids) ? ids : []).slice(0, 12)) {
+    // No count cap — «اي عدد ملفات». The prompt itself stays bounded by
+    // formatAttachmentsBlock's total character budget, which is the honest
+    // place to bound it: files on disk are free, tokens are not.
+    for (const raw of (Array.isArray(ids) ? ids : [])) {
         const id = String(raw || '').trim();
         if (!id) continue;
         let f: any = null;
@@ -289,6 +299,21 @@ router.get('/:id/raw', authenticate as any, async (req: Request, res: Response) 
     if (mongoReady()) { try { file = await FileModel.findById(req.params.id); } catch { /* offline */ } }
     if (!file) file = readFileFromCache(String(req.params.id));
     if (!file || !file.path) return res.status(404).json({ error: 'File not found' });
+    /**
+     * Uploads are accepted WITHOUT any type filter, so this route is where
+     * the safety lives: active content (HTML/SVG/XML) is delivered as a
+     * plain-text ATTACHMENT — the browser downloads it instead of executing
+     * its scripts on Joe's origin. nosniff stops the browser from second-
+     * guessing the declared type for everything else.
+     */
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    const rawName = String(file.originalName || path.basename(String(file.path)));
+    const active = /\.(x?html?|svg|xml)$/i.test(rawName)
+      || /text\/html|application\/xhtml|image\/svg/i.test(String(file.mimeType || ''));
+    if (active) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(rawName)}`);
+    }
     res.sendFile(file.path);
   } catch (e) {
     res.status(500).json({ error: 'Error serving file' });
