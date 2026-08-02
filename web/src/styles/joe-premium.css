@@ -1669,58 +1669,58 @@ body:not(.rtl) .joe-user-info {
 [data-theme="light"],
 [data-theme="light"] .joe-ide-layout {
     /* Tinted fill for cards/chips that used rgba(255,255,255,.02) — a white
-       veil over white is invisible, so light mode gets a faint blue wash. */
-    --joe-surface-subtle: rgba(37, 99, 235, 0.045);
-    --joe-scrim: rgba(15, 40, 80, 0.32);
-    /* White & blue. Panels are pure white and lift off a barely-tinted blue
-       canvas; every accent below is a shade of blue rather than the dark
-       theme's emerald, so light mode reads as its own design instead of a
-       washed-out copy of the dark one. The variables keep their historical
-       "gold" names — they are the accent slots the whole stylesheet already
-       references, and renaming them would touch a thousand call sites. */
-    --joe-bg-primary: #f2f7fd;
+       veil over white is invisible, so light mode gets a faint emerald wash. */
+    --joe-surface-subtle: rgba(14, 122, 95, 0.045);
+    --joe-scrim: rgba(28, 40, 35, 0.32);
+    /* «الفاتح النقي» — the light identity the user picked from six measured
+       mockups: pure white panels on a neutral green-white canvas, accents in
+       the SAME emerald family as the dark theme so both modes read as one
+       product. The variables keep their historical "gold" names — they are
+       the accent slots the whole stylesheet already references, and renaming
+       them would touch a thousand call sites. */
+    --joe-bg-primary: #F6F7F6;
     --joe-bg-secondary: #ffffff;
     --joe-bg-panel: #ffffff;
     --joe-bg-card: #ffffff;
-    --joe-bg-hover: rgba(37, 99, 235, 0.07);
+    --joe-bg-hover: rgba(14, 122, 95, 0.07);
 
-    /* Blue accent, dark enough to stay readable on white */
-    --joe-gold-primary: #2563eb;
-    --joe-gold-secondary: #1d4ed8;
-    --joe-gold-dark: #1e3a8a;
-    --joe-gold-glow: rgba(37, 99, 235, 0.22);
-    --joe-gold-subtle: rgba(37, 99, 235, 0.09);
-    --joe-gold-border: rgba(37, 99, 235, 0.20);
+    /* Emerald accent, dark enough to stay readable on white */
+    --joe-gold-primary: #0E7A5F;
+    --joe-gold-secondary: #0B6850;
+    --joe-gold-dark: #0A5643;
+    --joe-gold-glow: rgba(14, 122, 95, 0.22);
+    --joe-gold-subtle: rgba(14, 122, 95, 0.09);
+    --joe-gold-border: rgba(14, 122, 95, 0.20);
 
-    --joe-text-primary: #0f1e33;
-    --joe-text-secondary: #47566b;
-    --joe-text-muted: #7d8ea6;
-    --joe-text-gold: #1d4ed8;
+    --joe-text-primary: #1C201E;
+    --joe-text-secondary: #5A645F;
+    --joe-text-muted: #8B958F;
+    --joe-text-gold: #0B6850;
 
-    --joe-blue-primary: #2563eb;
-    --joe-blue-secondary: #1d4ed8;
-    --joe-blue-glow: rgba(37, 99, 235, 0.2);
+    --joe-blue-primary: #0E7A5F;
+    --joe-blue-secondary: #0B6850;
+    --joe-blue-glow: rgba(14, 122, 95, 0.2);
 
-    /* Borders carry a navy tint instead of neutral black — pure black hairlines
-       on white are what made the panels look grey. */
-    --joe-border: rgba(15, 40, 80, 0.10);
-    --joe-border-strong: rgba(15, 40, 80, 0.17);
-    --joe-border-glow: 0 0 15px rgba(37, 99, 235, 0.10);
+    /* Borders carry a green-ink tint instead of neutral black — pure black
+       hairlines on white are what made the panels look grey. */
+    --joe-border: rgba(28, 40, 35, 0.10);
+    --joe-border-strong: rgba(28, 40, 35, 0.17);
+    --joe-border-glow: 0 0 15px rgba(14, 122, 95, 0.10);
 
-    --joe-shadow-sm: 0 2px 8px rgba(30, 58, 138, 0.07);
-    --joe-shadow-md: 0 6px 20px -6px rgba(30, 58, 138, 0.14);
-    --joe-shadow-lg: 0 16px 40px -12px rgba(30, 58, 138, 0.20);
-    --joe-shadow-gold: 0 0 20px rgba(37, 99, 235, 0.14);
+    --joe-shadow-sm: 0 2px 8px rgba(24, 48, 40, 0.07);
+    --joe-shadow-md: 0 6px 20px -6px rgba(24, 48, 40, 0.14);
+    --joe-shadow-lg: 0 16px 40px -12px rgba(24, 48, 40, 0.20);
+    --joe-shadow-gold: 0 0 20px rgba(14, 122, 95, 0.14);
 
     /* Message bubbles */
-    --joe-msg-bg: #f2f7fd;
+    --joe-msg-bg: #F6F7F6;
     --joe-msg-ai-bg: #ffffff;
-    --joe-msg-user-bg: rgba(37, 99, 235, 0.09);
-    --joe-msg-text: #0f1e33;
+    --joe-msg-user-bg: rgba(14, 122, 95, 0.09);
+    --joe-msg-text: #1C201E;
 
     --joe-thinking-bg: #ffffff;
-    --joe-thinking-border: rgba(15, 40, 80, 0.10);
-    --joe-thinking-text: #47566b;
+    --joe-thinking-border: rgba(28, 40, 35, 0.10);
+    --joe-thinking-text: #5A645F;
 }
 
 /* Visibility Fixes for Light Mode Chat Input */
@@ -1732,8 +1732,8 @@ body:not(.rtl) .joe-user-info {
 [data-theme="light"] .joe-chat-input-area .input-container,
 [data-theme="light"] .joe-chat-panel .input-container {
     background: #ffffff !important;
-    border-color: rgba(30, 58, 138, 0.16) !important;
-    box-shadow: 0 10px 26px rgba(30, 58, 138, 0.10) !important;
+    border-color: rgba(24, 48, 40, 0.16) !important;
+    box-shadow: 0 10px 26px rgba(24, 48, 40, 0.10) !important;
 }
 
 [data-theme="light"] .joe-chat-input-area .main-input {
@@ -1754,7 +1754,7 @@ body:not(.rtl) .joe-user-info {
     background: linear-gradient(135deg, var(--joe-gold-primary) 0%, var(--joe-gold-dark) 100%) !important;
     color: #ffffff !important;
     border: 1px solid var(--joe-gold-primary) !important;
-    box-shadow: 0 2px 10px rgba(37, 99, 235, 0.2) !important;
+    box-shadow: 0 2px 10px rgba(14, 122, 95, 0.2) !important;
 }
 
 [data-theme="light"] .joe-chat-input-area .send-btn svg {
@@ -1769,7 +1769,7 @@ body:not(.rtl) .joe-user-info {
 
 /* Header & Panel Button Fixes for Light Mode */
 [data-theme="light"] .joe-header-btn {
-    background: #f0f9ff !important;
+    background: #F2F6F4 !important;
     border-color: var(--joe-border) !important;
     color: var(--joe-text-secondary) !important;
 }
@@ -1785,7 +1785,7 @@ body:not(.rtl) .joe-user-info {
 [data-theme="light"] .settings-dialog {
     background: #ffffff !important;
     border-color: var(--joe-gold-primary) !important;
-    box-shadow: 0 20px 60px rgba(37, 99, 235, 0.1) !important;
+    box-shadow: 0 20px 60px rgba(14, 122, 95, 0.1) !important;
 }
 
 [data-theme="light"] .providers-modal h3,
@@ -1797,24 +1797,24 @@ body:not(.rtl) .joe-user-info {
 /* Tab & Toolbar Fixes */
 [data-theme="light"] .joe-terminal-toolbar,
 [data-theme="light"] .joe-browser-toolbar {
-    background: #f0f9ff !important;
+    background: #F2F6F4 !important;
     border-bottom-color: var(--joe-border) !important;
     color: var(--joe-text-secondary) !important;
 }
 
 [data-theme="light"] .joe-tab-segment {
-    background: rgba(30, 58, 138, 0.05);
+    background: rgba(24, 48, 40, 0.05);
 }
 
 [data-theme="light"] .joe-workspace-tab.active {
     background: #ffffff !important;
     color: var(--joe-gold-primary) !important;
-    box-shadow: 0 2px 8px rgba(30, 58, 138, 0.12) !important;
+    box-shadow: 0 2px 8px rgba(24, 48, 40, 0.12) !important;
 }
 
 /* AI Thinking Pulse */
 [data-theme="light"] .btn-thinking-pulse {
-    background: rgba(37, 99, 235, 0.3) !important;
+    background: rgba(14, 122, 95, 0.3) !important;
 }
 
 /* ========== Responsive - Large Desktop ========== */
@@ -2425,7 +2425,7 @@ body:not(.rtl) .joe-user-info {
 }
 
 .stg-theme-light-preview {
-    background: #f0f9ff;
+    background: #F2F6F4;
 }
 
 .stg-preview-header {
@@ -2672,30 +2672,30 @@ body:not(.rtl) .joe-user-info {
 /* --- Light Mode Overrides --- */
 [data-theme="light"] .stg-panel {
     background: #ffffff;
-    border-color: rgba(37, 99, 235, 0.2);
-    box-shadow: 0 0 60px rgba(37, 99, 235, 0.06), 0 30px 80px rgba(0, 0, 0, 0.15);
+    border-color: rgba(14, 122, 95, 0.2);
+    box-shadow: 0 0 60px rgba(14, 122, 95, 0.06), 0 30px 80px rgba(0, 0, 0, 0.15);
 }
 
 [data-theme="light"] .stg-sidebar {
     background: #f8fafc;
-    border-left-color: rgba(37, 99, 235, 0.1);
+    border-left-color: rgba(14, 122, 95, 0.1);
 }
 
 [data-theme="light"] .stg-nav-item.active {
-    background: rgba(37, 99, 235, 0.08);
+    background: rgba(14, 122, 95, 0.08);
     box-shadow: inset 3px 0 0 var(--joe-gold-primary);
 }
 
 [data-theme="light"] .stg-nav-icon {
-    background: rgba(37, 99, 235, 0.05);
+    background: rgba(14, 122, 95, 0.05);
 }
 
 [data-theme="light"] .stg-nav-item.active .stg-nav-icon {
-    background: rgba(37, 99, 235, 0.12);
+    background: rgba(14, 122, 95, 0.12);
 }
 
 [data-theme="light"] .stg-theme-card {
-    border-color: rgba(37, 99, 235, 0.1);
+    border-color: rgba(14, 122, 95, 0.1);
 }
 
 [data-theme="light"] .stg-theme-card.active {
@@ -2703,17 +2703,17 @@ body:not(.rtl) .joe-user-info {
 }
 
 [data-theme="light"] .stg-lang-item:hover {
-    background: rgba(37, 99, 235, 0.04);
+    background: rgba(14, 122, 95, 0.04);
 }
 
 [data-theme="light"] .stg-option-row {
-    background: rgba(37, 99, 235, 0.03);
-    border-color: rgba(37, 99, 235, 0.08);
+    background: rgba(14, 122, 95, 0.03);
+    border-color: rgba(14, 122, 95, 0.08);
 }
 
 [data-theme="light"] .stg-badge {
-    background: rgba(37, 99, 235, 0.06);
-    border-color: rgba(37, 99, 235, 0.12);
+    background: rgba(14, 122, 95, 0.06);
+    border-color: rgba(14, 122, 95, 0.12);
 }
 
 [data-theme="light"] .stg-danger-zone {
@@ -3455,5 +3455,5 @@ body:not(.rtl) .joe-user-info {
    A near-black scrim over a white page is jarring and hides the fact that the
    dialog underneath is light. Use a navy-tinted veil instead. */
 [data-theme="light"] .dialog-overlay {
-    background: var(--joe-scrim, rgba(15, 40, 80, 0.32)) !important;
+    background: var(--joe-scrim, rgba(28, 40, 35, 0.32)) !important;
 }
