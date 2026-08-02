@@ -6,6 +6,11 @@ import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
 import { GitHubRepoManagerTool } from '../../modules/tools/definitions/GitHubRepoManagerTool';
 import { setUserSecretEncrypted, getUserSecret } from '../../modules/services/secrets';
+import { executeTool } from '../../modules/services/ToolService';
+import { workspaceService } from '../../modules/services/WorkspaceService';
+import { broadcastThinkingDetail } from '../ws';
+import fs from 'fs';
+import path from 'path';
 import https from 'https';
 
 const router = Router();
@@ -108,6 +113,12 @@ router.get('/status', authenticate as any, async (req: Request, res: Response) =
 });
 
 // ─── GET /repos — List repos ───
+// "See ALL my repositories" means ALL: owned, org, AND collaborator repos, past
+// the first page. The old call (`type=owner&per_page=30`) hid every org and
+// shared repo and silently truncated at 30 — a user with more, or with a repo
+// they only collaborate on, could never connect to it here. GitHub caps a page
+// at 100; we walk pages until they run out (bounded, so a 900-repo account can't
+// stall the UI), and `affiliation` widens the net to everything the token sees.
 router.get('/repos', authenticate as any, async (req: Request, res: Response) => {
     try {
         const userId = (req as any).auth?.sub;
@@ -115,9 +126,21 @@ router.get('/repos', authenticate as any, async (req: Request, res: Response) =>
         if (!token) return res.status(400).json({ error: 'GitHub not connected', connected: false });
         const clean = token.replace(/[\s\n\r]/g, '');
 
-        const sort = req.query.sort || 'updated';
-        const repos = await ghApi('GET', `/user/repos?sort=${sort}&per_page=30&type=owner`, clean);
-        const mapped = (repos as any[]).map((r: any) => ({
+        const sort = String(req.query.sort || 'updated');
+        const MAX_PAGES = 10; // up to 1000 repos — beyond that, search is the right tool
+        const all: any[] = [];
+        for (let page = 1; page <= MAX_PAGES; page++) {
+            const batch = await ghApi(
+                'GET',
+                `/user/repos?sort=${sort}&per_page=100&page=${page}&affiliation=owner,collaborator,organization_member`,
+                clean,
+            );
+            if (!Array.isArray(batch) || batch.length === 0) break;
+            all.push(...batch);
+            if (batch.length < 100) break; // last page
+        }
+
+        const mapped = all.map((r: any) => ({
             id: r.id,
             name: r.name,
             fullName: r.full_name,
@@ -128,9 +151,13 @@ router.get('/repos', authenticate as any, async (req: Request, res: Response) =>
             language: r.language,
             updatedAt: r.updated_at,
             defaultBranch: r.default_branch,
-            stars: r.stargazers_count
+            stars: r.stargazers_count,
+            // So the UI can tell "mine" from "shared/org" — the user asked to see
+            // them all, but which is which still matters.
+            owned: !!r.permissions?.admin || String(r.owner?.login || '').toLowerCase() === String((req as any).__ghLogin || '').toLowerCase(),
+            role: r.permissions?.admin ? 'admin' : r.permissions?.push ? 'write' : 'read',
         }));
-        return res.json({ repos: mapped });
+        return res.json({ repos: mapped, total: mapped.length });
     } catch (e: any) {
         return res.status(500).json({ error: e.message });
     }
@@ -154,6 +181,76 @@ router.post('/repos', authenticate as any, async (req: Request, res: Response) =
         return res.json(result);
     } catch (e: any) {
         return res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── POST /repos/:owner/:repo/connect — Connect AND clone a repo ───
+// The heart of "شبك على مستودع بشكل مباشر": setting activeRepo only stored a
+// NAME — the local workspace stayed empty, so Joe could analyse via the API but
+// could never open, edit, or build the repo's real files. This endpoint makes
+// the connection physical: it records the active repo AND clones (or updates)
+// the working tree into the workspace root, so the very next build/edit acts on
+// the actual code. Idempotent — a repo already on disk is fetched, not re-cloned.
+router.post('/repos/:owner/:repo/connect', authenticate as any, async (req: Request, res: Response) => {
+    const userId = (req as any).auth?.sub;
+    const owner = String(req.params.owner || '');
+    const repo = String(req.params.repo || '');
+    const fullName = `${owner}/${repo}`;
+    const hdrWs = req.headers['x-workspace-id'];
+    const workspaceId = (req.body?.workspaceId as string) || (Array.isArray(hdrWs) ? hdrWs[0] : hdrWs) || '';
+    const sessionId = (req.body?.sessionId as string) || '';
+    try {
+        const token = userId ? await getUserSecret(userId, 'github', 'GITHUB_TOKEN') : null;
+        if (!token) return res.status(400).json({ error: 'GitHub not connected', connected: false });
+        if (!workspaceId) return res.status(400).json({ error: 'workspaceId is required to connect a repo' });
+
+        // 1) Record the selection so every later tool resolves the connected repo.
+        await workspaceService.updateWorkspace(userId, workspaceId, { activeRepo: fullName, kind: 'github' });
+
+        // 2) Bring the working tree down. getActiveRoot creates/returns the dir.
+        const root = workspaceService.getActiveRoot(workspaceId);
+        const hasGit = (() => { try { return fs.existsSync(path.join(root, '.git')); } catch { return false; } })();
+        const dirEmpty = (() => { try { return fs.readdirSync(root).length === 0; } catch { return true; } })();
+        const say = (m: string) => { if (sessionId) { try { broadcastThinkingDetail(sessionId, m); } catch { /* optional */ } } };
+
+        // Auth rides through git_ops' askpass (token never enters the URL or logs).
+        const gitCtx = { sessionId, workspaceId };
+        let mode: 'cloned' | 'updated' | 'cloned_subdir';
+        let workdir = root;
+
+        if (hasGit) {
+            say(`🔄 المستودع ${fullName} موجود محلياً — أجلب آخر التحديثات…`);
+            const r = await executeTool('git_ops', { operation: 'fetch', args: ['--all', '--prune'], cwd: root, userId, sessionId }, gitCtx);
+            if (!r.ok) throw new Error(String(r.error || 'git fetch failed'));
+            await executeTool('git_ops', { operation: 'pull', args: ['--ff-only'], cwd: root, userId, sessionId }, gitCtx).catch(() => {});
+            mode = 'updated';
+        } else {
+            const url = `https://github.com/${fullName}.git`;
+            if (dirEmpty) {
+                say(`⬇️ أستنسخ ${fullName} إلى مساحة العمل…`);
+                const r = await executeTool('git_ops', { operation: 'clone', args: [url, '.'], cwd: root, userId, sessionId }, gitCtx);
+                if (!r.ok) throw new Error(String(r.error || 'git clone failed'));
+                mode = 'cloned';
+            } else {
+                // The workspace already holds unrelated files: clone into a named
+                // subdir and point the active root there, so nothing is clobbered.
+                say(`⬇️ أستنسخ ${fullName} إلى مجلد فرعي (مساحة العمل غير فارغة)…`);
+                const r = await executeTool('git_ops', { operation: 'clone', args: [url, repo], cwd: root, userId, sessionId }, gitCtx);
+                if (!r.ok) throw new Error(String(r.error || 'git clone failed'));
+                workdir = path.join(root, repo);
+                await workspaceService.setActiveRoot(workdir, workspaceId);
+                mode = 'cloned_subdir';
+            }
+        }
+
+        say(`✅ المستودع ${fullName} جاهز للعمل عليه محلياً.`);
+        // Fetch the default branch so the UI can show it immediately.
+        let defaultBranch = 'main';
+        try { const meta = await ghApi('GET', `/repos/${fullName}`, token.replace(/[\s\n\r]/g, '')); defaultBranch = meta.default_branch || 'main'; } catch { /* non-fatal */ }
+
+        return res.json({ ok: true, connected: true, activeRepo: fullName, mode, workdir, defaultBranch });
+    } catch (e: any) {
+        return res.status(500).json({ ok: false, error: `تعذّر ربط المستودع: ${e?.message || e}` });
     }
 });
 

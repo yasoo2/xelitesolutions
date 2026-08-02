@@ -561,6 +561,11 @@ export class ShellExecuteTool extends BaseTool {
             out = out.replace(/(\bapi[_-]?key\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
             out = out.replace(/(\bsecret\s*=\s*)[^&\s]+/gi, '$1[REDACTED]');
             out = out.replace(/(\b--token\s+)[^\s]+/gi, '$1[REDACTED]');
+            // Credentials embedded in a git remote URL — a tokenized clone/push
+            // (https://x-access-token:ghp_…@github.com/…) must never surface in
+            // the visible terminal or the logs.
+            out = out.replace(/(https?:\/\/)([^:@/\s]+):([^@/\s]+)@/gi, '$1$2:[REDACTED]@');
+            out = out.replace(/\bgh[pousr]_[A-Za-z0-9]{16,}/g, '[REDACTED]');
             return out;
         };
 

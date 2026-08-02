@@ -546,9 +546,18 @@ export default function Joe() {
         setActiveRepo(repo);
         setGhLoading(true);
 
-        // Persist selection
+        // Connect AND clone: selecting a repo used to only STORE its name, so the
+        // local workspace stayed empty and Joe could never work on the real files.
+        // connectRepo clones (or updates) the working tree so the next build/edit
+        // acts on the actual code. Falls back to the name-only store if the clone
+        // endpoint is unavailable, so selection never hard-fails.
         if (workspaceId) {
-            githubService.setActiveRepo(workspaceId, repo.fullName).catch(() => {});
+            try {
+                const r = await githubService.connectRepo(workspaceId, repo.fullName, activeSessionId || undefined);
+                if (!r?.ok) throw new Error(r?.error || 'connect failed');
+            } catch {
+                githubService.setActiveRepo(workspaceId, repo.fullName).catch(() => {});
+            }
         }
 
         try {
@@ -559,7 +568,7 @@ export default function Joe() {
         } finally {
             setGhLoading(false);
         }
-    }, [workspaceId]);
+    }, [workspaceId, activeSessionId]);
 
     const handleSend = useCallback(async () => {
         if (!inputValue.trim() || isLoading) return;

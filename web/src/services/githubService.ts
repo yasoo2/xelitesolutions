@@ -87,6 +87,20 @@ class GitHubService {
     async setActiveRepo(workspaceId: string, fullName: string): Promise<void> {
         return api.put(`/workspaces/${workspaceId}`, { activeRepo: fullName });
     }
+
+    /**
+     * Connect a repo AND bring its files down locally — the real "connect to a
+     * repo" the user expects. setActiveRepo only stores the name; this clones (or
+     * updates) the working tree so Joe edits and builds the actual code.
+     */
+    async connectRepo(
+        workspaceId: string,
+        fullName: string,
+        sessionId?: string,
+    ): Promise<{ ok: boolean; mode?: string; workdir?: string; defaultBranch?: string; error?: string }> {
+        const [owner, repo] = fullName.split('/');
+        return api.post(`/github/repos/${owner}/${repo}/connect`, { workspaceId, sessionId });
+    }
 }
 
 export const githubService = new GitHubService();
