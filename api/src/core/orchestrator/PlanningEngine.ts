@@ -246,17 +246,38 @@ Rules:
         // back into a chat answer. Checked before the build path so "شغّل" is
         // never mistaken for "ابنِ".
         {
-            // A build verb (develop/build/create/ابنِ/أنشئ) means "make a new
-            // system", never "run the existing one" — so run/stop must yield to
-            // the build path when one is present. Word boundaries stop "serve"
-            // from matching inside "server" (which wrongly grabbed build requests).
+            // A question/search ("how do I run…", "ابحث عن كيفية…", "…؟") describes
+            // a topic; it does NOT command run/stop/deploy — those must yield to it.
+            const isQuestion = /^\s*(how|what|why|when|where|which|can|do|does|is|are|should|explain)\b/i.test(userGoal.trim())
+                || /(^|\s)(كيف|ماذا|لماذا|متى|أين|هل|اشرح|وضّ?ح|ما\s+هو|ما\s+هي)(\s|$)/.test(userGoal)
+                || /(ابحث|بحث|دوّ?ر\s*عن|ابغى\s*اعرف|search\s+for|google|look\s*up)/i.test(probe)
+                || /\?\s*$/.test(userGoal.trim());
+
+            // A build verb ("make a NEW one") beats run/stop — "ابنِ وشغّل" builds.
             const hasBuildVerb = /\b(build|create|make|develop|scaffold|generate|code)\b/i.test(probe)
                 || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|برمج)/.test(probe);
-            const targetNoun = /(المشروع|النظام|الخادم|السيرفر|المعاينة|\bproject\b|\bserver\b|\bapp\b|\bpreview\b|localhost)/i.test(probe);
-            const stopIntent = !hasBuildVerb && targetNoun
+
+            // A concrete project/server target — NOT a browser, NOT content. Word
+            // boundaries keep "serve" out of "server" and "app" out of "happen".
+            const projectTarget = /(المشروع|النظام|الخادم|السيرفر|المعاينة|\bproject\b|\bserver\b|\bapp\b|\bapplication\b|\bpreview\b|dev\s*server|localhost)/i.test(probe);
+            const deployTarget = projectTarget || /(الموقع|الصفحة|\bsite\b|\bwebsite\b|\bpage\b)/i.test(probe);
+            // Content that "انشر/publish" ALSO applies to — publishing an article is
+            // NOT deploying a site. This is the collision that sent "انشر مقالاً" to deploy.
+            const contentNoun = /(مقال|منشور|تدوينة|تغريدة|خبر|إعلان|محتوى|قصة|\barticle\b|\bpost\b|\bblog\b|\btweet\b|\bstory\b|\bcontent\b)/i.test(probe);
+
+            const stopIntent = !isQuestion && !hasBuildVerb && projectTarget
                 && /(أوقف|اوقف|إيقاف|ايقاف|اقفل|\bstop\b|\bkill\b|shut\s*down)/i.test(probe);
-            const runIntent = !hasBuildVerb && !stopIntent && targetNoun
+            const runIntent = !isQuestion && !hasBuildVerb && !stopIntent && projectTarget
                 && /(شغّ?ل|تشغيل|شغلي|\brun\b|\bstart\b|\blaunch\b|\bserve\b|\bpreview\b)/i.test(probe);
+
+            // Deploy: the unambiguous words (deploy / go live / رابط دائم / استضف)
+            // fire on their own; the ambiguous ones (انشر / publish / host) need a
+            // site/project target and must not be about content.
+            const strongDeploy = /(\bdeploy\b|استضف|استضافة|go\s*live|رابط\s*دائم|github\s*pages|gh-pages)/i.test(probe);
+            const softPublish = /(انشر|أنشر|\bpublish\b|\bhost\b)/i.test(probe);
+            const deployIntent = !isQuestion && !hasBuildVerb && !contentNoun
+                && (strongDeploy || (softPublish && deployTarget));
+
             if (stopIntent) {
                 return {
                     id: `stop_${Date.now()}`, goal: intent.goal,
@@ -271,10 +292,7 @@ Rules:
                     metadata: { complexity: 'medium', riskLevel: 'low' },
                 };
             }
-            // [DEPLOY FAST-PATH] "انشر المشروع" / "deploy it" → permanent GitHub
-            // Pages. A build verb doesn't block this: "انشر" is its own intent.
-            const deployIntent = targetNoun || /(انشر|أنشر|نشر|deploy|publish|استضف|استضافة|host|go\s*live|على\s*الإنترنت|رابط\s*دائم)/i.test(probe);
-            if (/(انشر|أنشر|deploy|publish|استضف|استضافة|go\s*live|رابط\s*دائم|على\s*الانترنت|على\s*الإنترنت)/i.test(probe) && deployIntent) {
+            if (deployIntent) {
                 return {
                     id: `deploy_${Date.now()}`, goal: intent.goal,
                     steps: [{ id: 'deploy_pages', description: 'نشر المشروع بشكل دائم على GitHub Pages', tool: 'deploy_pages', agent: 'Dev', input: {}, dependsOn: [] }],
