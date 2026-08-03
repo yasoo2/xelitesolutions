@@ -375,6 +375,100 @@ export class ProjectEditTool extends BaseTool {
             }
         }
 
+        // ── deterministic fast path: whole-ROW add/delete — «ضف طبق كباب
+        //    مشوي بسعر 55»، «احذف منتج طقم الهدية». The serializer's row
+        //    format is the contract: a new row is one well-formed line
+        //    inserted before the array's close (with a best-effort REAL
+        //    photo), a deleted row is one line removed with its orphaned
+        //    file and, when it was the last photo, the credits. These run
+        //    BEFORE the text-edit branch on purpose: «بسعر 55» would
+        //    otherwise read as a price edit on a row that does not exist yet.
+        const rowNounM = request.match(/(?<![ء-ي])(?:ال)?(طبق|منتج)(?![ء-ي])|\b(dish|product)\b/i);
+        const addRowIntent = !!rowNounM && /((?<![ء-ي])(ضي?ف|أضف|اضف|حطّ?)(?![ء-ي])[^.\n]{0,15}(طبق|منتج))|\badd\b[^.\n]{0,25}\b(dish|product)\b/i.test(request);
+        const delRowIntent = !!rowNounM && !addRowIntent && !/صور|photo|image|picture/i.test(request)
+            && /((احذف|امسح|شيل|أزل|ازل)[^.\n]{0,20}(طبق|منتج))|\b(remove|delete)\b[^.\n]{0,25}\b(dish|product)\b/i.test(request);
+        const menuArr = /طبق|dish/i.test(rowNounM?.[0] || '') ? 'menu' : 'products';
+
+        if (!touched.length && addRowIntent && fs.existsSync(path.join(dir, contentRel))) {
+            const body = fs.readFileSync(path.join(dir, contentRel), 'utf-8');
+            const esc = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
+            const nameTail = ((request.match(/(?:(?<![ء-ي])(?:طبق|منتج)(?![ء-ي])|\b(?:dish|product)\b)\s+(.+)$/i) || [])[1] || '');
+            let name = nameTail.split(/\s+(?:بسعر|بوصف)/)[0].split(/\s+(?:price|for|at)\b/i)[0] || '';
+            name = name.trim().replace(/^(جديد\s+|اسمه\s+|باسم\s+|called\s+|named\s+)/i, '').replace(/^[«"']|[»"'.،!؟]+$/g, '').trim();
+            if (!name) {
+                return { ok: true, output: { message: isAr ? '➕ سمِّ العنصر الجديد — مثال: «ضف طبق كباب مشوي بسعر 55».' : '➕ Name the new item — e.g. "add a dish Grilled kebab for 55".' }, logs } as any;
+            }
+            if (body.includes(`name: '${esc(name)}'`)) {
+                return { ok: true, output: { message: isAr ? `➕ «${name}» موجود مسبقاً — قل «غيّر سعر ${name} إلى …» لتعديله.` : `➕ "${name}" already exists — say "change the price of ${name} to …".` }, logs } as any;
+            }
+            const block = (body.match(new RegExp(`${menuArr}: \\[\\n([\\s\\S]*?)\\n  \\],`)) || [])[1] || '';
+            const siblingPrice = (block.match(/price: '([^']*)'/) || [])[1] || '';
+            const priceRaw = ((request.match(/(?:بسعر|\bprice\b|\bfor\b|\bat\b)\s*\$?([^\n.،]{1,30})/i) || [])[1] || '')
+                .split(/\s+(?:بوصف|described)/)[0].trim();
+            const price = priceRaw
+                ? (/^\d+([.,]\d+)?$/.test(priceRaw) && /\d/.test(siblingPrice) ? siblingPrice.replace(/\d+([.,]\d+)?/, priceRaw) : priceRaw)
+                : '—';
+            const desc = ((request.match(/(?:بوصف|ووصفه?)\s+(.+)$/) || request.match(/\bdescribed as\s+(.+)$/i) || [])[1] || '').trim()
+                || (isAr ? (menuArr === 'menu' ? 'طبق جديد من مطبخنا' : 'إضافة جديدة إلى المتجر') : (menuArr === 'menu' ? 'A new dish from our kitchen' : 'A new addition to the store'));
+            // A REAL photo for the newcomer, best-effort like every photo step.
+            let img: { src: string; alt: string } | null = null;
+            let addCredits: Array<{ creator: string; license: string; source: string }> = [];
+            try {
+                const { fetchCardImages } = require('./ReactProjectTool');
+                const got = await fetchCardImages({
+                    subjects: [`${name} ${desc}`], projDir: dir, hue: (buildPalette(request) as any).hue ?? 260,
+                    artifactDir: process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', slot: 'card', label: 'edit',
+                });
+                img = got.images[0];
+                addCredits = got.credits;
+                logs.push(`row add: photo → ${got.note}`);
+            } catch { /* the row ships clean without one */ }
+            const rowLine = `    { name: '${esc(name)}', desc: '${esc(desc)}', price: '${esc(price)}', img: ${img ? `{ src: '${esc(img.src)}', alt: '${esc(img.alt)}' }` : 'null'} },`;
+            let next = body.replace(new RegExp(`(${menuArr}: \\[\\n[\\s\\S]*?)(\\n  \\],)`), (_m, a: string, b: string) => `${a}\n${rowLine}${b}`);
+            for (const c of addCredits) {
+                if (c.source && !next.includes(esc(c.source))) {
+                    next = next.replace(/credits: \[\n?/, m2 => `${m2}    { creator: '${esc(c.creator)}', license: '${esc(c.license)}', source: '${esc(c.source)}' },\n`);
+                }
+            }
+            const gate = syntaxOk(contentRel, next);
+            if (gate.ok && next !== body) {
+                write(contentRel, next);
+                notes.push(isAr
+                    ? `➕ أضفت «${name}» إلى ${menuArr === 'menu' ? 'القائمة' : 'المنتجات'} بسعر «${price}»${img ? ' مع صورة حقيقية مرخّصة' : ''}.`
+                    : `➕ Added "${name}" (${price})${img ? ' with a real licensed photo' : ''}.`);
+                logs.push(`row add: ${name} → ${menuArr}`);
+            } else if (!gate.ok) {
+                refused.push(`${contentRel}: row insert breaks the syntax (${gate.error}) — refused`);
+            }
+        }
+
+        if (!touched.length && delRowIntent && fs.existsSync(path.join(dir, contentRel))) {
+            const body = fs.readFileSync(path.join(dir, contentRel), 'utf-8');
+            const rows = [...body.matchAll(/^ {4}\{ name: '([^']*)',[^\n]*\},$/gm)]
+                .map(m => ({ name: m[1], line: m[0] }))
+                .filter(r => /desc: '/.test(r.line) && /price: '/.test(r.line));   // dishes and products, not tiers/people
+            const target = pickPhotoRow(rows, request);
+            if (!target) {
+                const names = rows.map(r => `«${r.name}»`).join('، ');
+                return { ok: true, output: { message: isAr ? `🗑️ سمِّ العنصر المطلوب حذفه — العناصر: ${names || 'لا شيء'}.` : `🗑️ Name the item to delete — items: ${names || 'none'}.` }, logs } as any;
+            }
+            const oldSrc = (target.line.match(/img: \{ src: '([^']+)'/) || [])[1];
+            let next = body.replace(target.line + '\n', '');
+            if (!/img: \{ src: /.test(next) && !/heroImage: \{ src: /.test(next)) {
+                next = next.replace(/credits: \[[\s\S]*?\n  \],/, 'credits: [\n  ],');
+                logs.push('row delete: last photo left — credits emptied too');
+            }
+            const gate = syntaxOk(contentRel, next);
+            if (gate.ok && next !== body) {
+                write(contentRel, next);
+                dropUnreferenced(next, oldSrc);
+                notes.push(isAr ? `🗑️ حذفت «${target.name}» من ${menuArr === 'menu' ? 'القائمة' : 'المنتجات'}.` : `🗑️ Deleted "${target.name}".`);
+                logs.push(`row delete: ${target.name}`);
+            } else if (!gate.ok) {
+                refused.push(`${contentRel}: row delete breaks the syntax (${gate.error}) — refused`);
+            }
+        }
+
         // ── deterministic fast path: named-row TEXT edits — «غيّر سعر طقم
         //    الهدية إلى 200»، «عدّل وصف الإصدار الفاخر إلى …»، «غيّر اسم …».
         //    The row lives in content.js in the serializer's own single-line

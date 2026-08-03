@@ -254,6 +254,15 @@ describe('the offline scaffold ships clean rows and a conditional thumb', () => 
             const rmNone: any = await new ProjectEditTool().execute({ request: 'احذف صورة الواجهة' }, { sessionId: 'img-edit' });
             expect(String(rmNone.output.message)).toMatch(/لا توجد صورة/);
             expect(contentOf()).toBe(bare);
+
+            // [9] «ضف طبق …» — a whole new row arrives WITH a real fetched photo
+            const addRow: any = await new ProjectEditTool().execute({ request: 'ضف طبق كنافة بالقشطة بسعر 30' }, { sessionId: 'img-edit' });
+            expect(addRow.ok).toBe(true);
+            const withRow = contentOf();
+            const rowM = withRow.match(/\{ name: 'كنافة بالقشطة', desc: '[^']+', price: '30 ر\.س', img: \{ src: '(images\/[^']+)'/);
+            expect(rowM).toBeTruthy();
+            expect(fs.existsSync(path.join(dir, 'public', rowM![1]))).toBe(true);
+            expect(withRow).toContain('stub-archive.test');   // its licence line rode along
         } finally {
             (global as any).fetch = guardFetch;
             fs.rmSync(process.env.ARTIFACT_DIR!, { recursive: true, force: true });

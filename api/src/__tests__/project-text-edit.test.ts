@@ -76,4 +76,32 @@ describe('named-row text edits — deterministic, no model', () => {
         expect(String(r.output.message)).toContain('↩️');
         expect(contentOf()).toMatch(/'الأكثر مبيعاً'/);   // the rename is undone
     });
+
+    it('«ضف منتج …» inserts a full well-formed row; no network here → clean img: null', async () => {
+        const r: any = await edit('ضف منتج عطر الليل بسعر 300 بوصف رائحة شرقية فاخرة');
+        expect(r.ok).toBe(true);
+        const c = contentOf();
+        expect(c).toContain("{ name: 'عطر الليل', desc: 'رائحة شرقية فاخرة', price: '300 ر.س', img: null },");
+        const { syntaxOk } = require('../modules/tools/definitions/ProjectEditTool');
+        expect(syntaxOk('src/content.js', c).ok).toBe(true);
+    });
+
+    it('a duplicate add is refused with guidance; a dish with no price ships with «—»', async () => {
+        const dup: any = await edit('ضف منتج عطر الليل بسعر 500');
+        expect(String(dup.output.message)).toContain('موجود مسبقاً');
+        const r: any = await edit('ضف منتج مجموعة السفر');
+        expect(r.ok).toBe(true);
+        expect(contentOf()).toMatch(/\{ name: 'مجموعة السفر',[^\n]*?price: '—'/);
+    });
+
+    it('«احذف منتج …» removes exactly that row; an unnamed delete lists the items', async () => {
+        const r: any = await edit('احذف منتج مجموعة السفر');
+        expect(r.ok).toBe(true);
+        const c = contentOf();
+        expect(c).not.toContain('مجموعة السفر');
+        expect(c).toContain('عطر الليل');                 // its neighbour survived
+        const none: any = await edit('احذف المنتج');
+        expect(String(none.output.message)).toContain('سمِّ العنصر');
+        expect(contentOf()).toBe(c);
+    });
 });

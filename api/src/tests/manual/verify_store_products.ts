@@ -139,6 +139,31 @@ async function main() {
     const prices2 = await p3.evaluate(() => [...document.querySelectorAll('.product-price')].map(e => e.textContent || ''));
     check('the browser shows the NEW price on the named card only', prices2.includes('$99') && prices2.includes('$39') && !prices2.includes('$69'), prices2.join(','));
 
+    console.log('\n[5] «أضف منتجاً جديداً» — صف كامل بصورة حقيقية يصل الرف ويُبنى ويظهر');
+    const addRow: any = await new ProjectEditTool().execute(
+        { request: 'add a product Night Rose for $120' }, { sessionId: 'store-wire' });
+    check('the row add succeeded AND the real build verified it', !!addRow.ok && addRow.output.buildVerified === true, JSON.stringify({ ok: addRow.ok, bv: addRow.output?.buildVerified, msg: String(addRow.output?.message).slice(0, 120) }));
+    const content3 = fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8');
+    const newRowM = content3.match(/\{ name: 'Night Rose', desc: '[^']+', price: '\$120', img: \{ src: '(images\/[^']+)'/);
+    check('the new row carries name, inherited-format price AND a real fetched photo', !!newRowM, (content3.match(/\{ name: 'Night Rose'[^\n]*/) || ['(row missing)'])[0].slice(0, 140));
+    check('…whose file landed in public/images', !!newRowM && fs.existsSync(path.join(proj, 'public', newRowM![1])));
+    const p4 = await browser.newPage();
+    await p4.goto(`http://127.0.0.1:${(site.address() as any).port}/`, { waitUntil: 'networkidle' });
+    const seen4 = await p4.evaluate(() => ({
+        cards: document.querySelectorAll('.product-card').length,
+        night: (() => { const c = [...document.querySelectorAll('.product-card')].find(x => /Night Rose/.test(x.textContent || '')); return !!c && !!(c.querySelector('.product-photo') as HTMLImageElement | null)?.naturalWidth && /\$120/.test(c.textContent || ''); })(),
+    }));
+    check('the browser shows FOUR cards, the newcomer painted with its price', seen4.cards === 4 && seen4.night, JSON.stringify(seen4));
+
+    console.log('\n[6] «احذف المنتج الجديد» — الصف يرحل بملفه والبناء يتحقق');
+    const giftSrc2 = (content3.match(/\{ name: 'Night Rose',[^\n]*?img: \{ src: '(images\/[^']+)'/) || [])[1];
+    const delRow: any = await new ProjectEditTool().execute(
+        { request: 'delete the product Night Rose' }, { sessionId: 'store-wire' });
+    check('the row delete succeeded AND the real build verified it', !!delRow.ok && delRow.output.buildVerified === true, JSON.stringify({ ok: delRow.ok, bv: delRow.output?.buildVerified }));
+    const content4 = fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8');
+    check('the row and its orphaned file are gone; neighbours intact',
+        !content4.includes('Night Rose') && content4.includes('Classic edition') && !!giftSrc2 && !fs.existsSync(path.join(proj, 'public', giftSrc2)));
+
     await browser.close();
     site.close(); archive.close();
     fs.rmSync(root, { recursive: true, force: true });
