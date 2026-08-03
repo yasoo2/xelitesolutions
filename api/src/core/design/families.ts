@@ -56,18 +56,18 @@ export function familyFor(request: string, kind: PageKind): DesignFamily {
 export function familyCss(f: DesignFamily): string {
     const blocks: Record<DesignFamily, string> = {
         minimal: `:root{
-  --f-font:'Segoe UI','Noto Sans Arabic',system-ui,sans-serif;
-  --f-head:inherit;
-  --f-head-weight:800;
+  --f-font:${familyFonts('minimal').body};
+  --f-head:${familyFonts('minimal').head};
+  --f-head-weight:700;
   --f-radius:18px;--f-radius-sm:12px;--f-btn-radius:999px;
   --f-border-w:1px;
   --f-card-shadow:none;
   --f-photo-shadow:0 24px 60px -16px rgba(0,0,0,.25);
 }`,
         elegant: `:root{
-  --f-font:'Segoe UI','Noto Sans Arabic',system-ui,sans-serif;
-  --f-head:'Amiri','Georgia','Times New Roman',serif;
-  --f-head-weight:600;
+  --f-font:${familyFonts('elegant').body};
+  --f-head:${familyFonts('elegant').head};
+  --f-head-weight:700;
   --f-radius:6px;--f-radius-sm:4px;--f-btn-radius:6px;
   --f-border-w:1px;
   --f-card-shadow:0 1px 2px rgba(0,0,0,.06);
@@ -77,8 +77,8 @@ export function familyCss(f: DesignFamily): string {
 h1,h2{line-height:1.3}
 .card{border-color:color-mix(in srgb,var(--border) 60%,transparent)}`,
         bold: `:root{
-  --f-font:'Segoe UI','Noto Sans Arabic',system-ui,sans-serif;
-  --f-head:inherit;
+  --f-font:${familyFonts('bold').body};
+  --f-head:${familyFonts('bold').head};
   --f-head-weight:900;
   --f-radius:4px;--f-radius-sm:2px;--f-btn-radius:4px;
   --f-border-w:2px;
@@ -89,9 +89,9 @@ h1,h2{line-height:1.3}
 .btn{border:2px solid transparent;font-weight:800}
 .hero h1{font-size:clamp(2.4rem,6vw,4rem)}`,
         warm: `:root{
-  --f-font:'Segoe UI','Noto Sans Arabic',system-ui,sans-serif;
-  --f-head:inherit;
-  --f-head-weight:800;
+  --f-font:${familyFonts('warm').body};
+  --f-head:${familyFonts('warm').head};
+  --f-head-weight:700;
   --f-radius:26px;--f-radius-sm:18px;--f-btn-radius:999px;
   --f-border-w:1px;
   --f-card-shadow:0 14px 40px -18px color-mix(in srgb,var(--brand) 35%,transparent);
@@ -100,6 +100,56 @@ h1,h2{line-height:1.3}
 .card{border-color:color-mix(in srgb,var(--brand) 18%,var(--border))}`,
     };
     return `/* joe-family:${f} */\n${blocks[f]}\n/* /joe-family */`;
+}
+
+/* ---------- REAL bundled Arabic webfonts (OFL) --------------------------- */
+
+const ARABIC_RANGE = 'U+0600-06FF, U+0750-077F, U+0870-088E, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF';
+const LATIN_RANGE = 'U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+20AC, U+2122, U+FEFF, U+FFFD';
+
+/**
+ * Which REAL font files each family ships, and the @font-face css that
+ * loads them from the project's own public/fonts. This exists because the
+ * elegant family used to declare 'Amiri, Georgia, serif' while shipping NO
+ * font file at all — Amiri is on nobody's machine and Georgia has no Arabic
+ * glyphs, so the "luxury serif" headings rendered in the plain system font
+ * (field discovery, 2026-08-04). Now the fonts travel WITH the app.
+ */
+export function familyFonts(f: DesignFamily): { files: string[]; faces: string; body: string; head: string } {
+    const face = (family: string, weight: number, file: string, range: string) =>
+        `@font-face{font-family:'${family}';font-style:normal;font-weight:${weight};font-display:swap;src:url('./fonts/${file}') format('woff2');unicode-range:${range}}`;
+    const pair = (family: string, weight: number, base: string) =>
+        face(family, weight, `${base}-${weight}-arabic.woff2`, ARABIC_RANGE) + '\n'
+        + face(family, weight, `${base}-${weight}-latin.woff2`, LATIN_RANGE);
+    const cairo = (w: number) => pair('Cairo', w, 'cairo');
+    const tajawal = (w: number) => pair('Tajawal', w, 'tajawal');
+    const amiri = (w: number) => pair('Amiri', w, 'amiri');
+    switch (f) {
+        case 'elegant': return {
+            files: ['cairo-400-arabic.woff2', 'cairo-400-latin.woff2', 'cairo-700-arabic.woff2', 'cairo-700-latin.woff2', 'amiri-700-arabic.woff2', 'amiri-700-latin.woff2'],
+            faces: [cairo(400), cairo(700), amiri(700)].join('\n'),
+            body: "'Cairo','Noto Sans Arabic',system-ui,sans-serif",
+            head: "'Amiri','Noto Naskh Arabic',serif",
+        };
+        case 'bold': return {
+            files: ['cairo-400-arabic.woff2', 'cairo-400-latin.woff2', 'cairo-700-arabic.woff2', 'cairo-700-latin.woff2', 'cairo-900-arabic.woff2', 'cairo-900-latin.woff2'],
+            faces: [cairo(400), cairo(700), cairo(900)].join('\n'),
+            body: "'Cairo','Noto Sans Arabic',system-ui,sans-serif",
+            head: "'Cairo','Noto Sans Arabic',system-ui,sans-serif",
+        };
+        case 'warm': return {
+            files: ['tajawal-400-arabic.woff2', 'tajawal-400-latin.woff2', 'tajawal-700-arabic.woff2', 'tajawal-700-latin.woff2'],
+            faces: [tajawal(400), tajawal(700)].join('\n'),
+            body: "'Tajawal','Noto Sans Arabic',system-ui,sans-serif",
+            head: "'Tajawal','Noto Sans Arabic',system-ui,sans-serif",
+        };
+        default: return {
+            files: ['cairo-400-arabic.woff2', 'cairo-400-latin.woff2', 'cairo-700-arabic.woff2', 'cairo-700-latin.woff2'],
+            faces: [cairo(400), cairo(700)].join('\n'),
+            body: "'Cairo','Noto Sans Arabic',system-ui,sans-serif",
+            head: "'Cairo','Noto Sans Arabic',system-ui,sans-serif",
+        };
+    }
 }
 
 /** Swap the family block inside a css file's contents; null when unmarked. */

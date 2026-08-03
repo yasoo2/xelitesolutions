@@ -1,0 +1,32 @@
+{
+ "Cairo": {
+  "400": {
+   "arabic": "cairo-400-arabic.woff2",
+   "latin": "cairo-400-latin.woff2"
+  },
+  "700": {
+   "arabic": "cairo-700-arabic.woff2",
+   "latin": "cairo-700-latin.woff2"
+  },
+  "900": {
+   "arabic": "cairo-900-arabic.woff2",
+   "latin": "cairo-900-latin.woff2"
+  }
+ },
+ "Amiri": {
+  "700": {
+   "arabic": "amiri-700-arabic.woff2",
+   "latin": "amiri-700-latin.woff2"
+  }
+ },
+ "Tajawal": {
+  "400": {
+   "arabic": "tajawal-400-arabic.woff2",
+   "latin": "tajawal-400-latin.woff2"
+  },
+  "700": {
+   "arabic": "tajawal-700-arabic.woff2",
+   "latin": "tajawal-700-latin.woff2"
+  }
+ }
+}

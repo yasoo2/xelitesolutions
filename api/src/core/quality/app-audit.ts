@@ -71,6 +71,9 @@ export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number
         page.on('response', (r: any) => { if (r.status() >= 400) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`); });
         await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
 
+        // The declared webfont must actually LOAD — a stack that names Cairo
+        // while serving no file is the exact costume this audit was born from.
+        await page.evaluate(() => (document as any).fonts?.ready);
         const dom = await page.evaluate(() => {
             const controls = [...document.querySelectorAll('a.btn, button, .nav-links a')] as HTMLElement[];
             const small = controls.filter(c => {
@@ -87,6 +90,12 @@ export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number
                 h1s: document.querySelectorAll('h1').length,
                 bg: getComputedStyle(document.body).backgroundColor,
                 hasToggle: !!document.querySelector('.theme-toggle'),
+                declaredFont: getComputedStyle(document.body).fontFamily.split(',')[0].replace(/["']/g, '').trim(),
+                fontLoaded: (() => {
+                    const first = getComputedStyle(document.body).fontFamily.split(',')[0].replace(/["']/g, '').trim();
+                    if (!['Cairo', 'Amiri', 'Tajawal'].includes(first)) return null;   // not one of ours — no claim to check
+                    try { return (document as any).fonts.check(`16px "${first}"`); } catch { return null; }
+                })(),
             };
         });
 
@@ -107,6 +116,7 @@ export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number
         if (dom.small.length) findings.push({ id: 'small_targets', severity: 'medium', detail: `${dom.small.length} هدف لمس أصغر من 40px: ${dom.small[0]}` });
         if (dom.h1s !== 1) findings.push({ id: 'h1_count', severity: 'low', detail: `عدد h1 = ${dom.h1s} (المطلوب 1)` });
         if (dom.hasToggle && !toggleWorks) findings.push({ id: 'theme_toggle_dead', severity: 'medium', detail: 'زر الوضع الليلي لا يغيّر الألوان فعلياً' });
+        if (dom.fontLoaded === false) findings.push({ id: 'webfont_missing', severity: 'medium', detail: `الخط المعلن «${dom.declaredFont}» لم يُحمَّل فعلياً — ملفاته غائبة` });
 
         return { score: scoreOf(findings), findings };
     } catch (e: any) {

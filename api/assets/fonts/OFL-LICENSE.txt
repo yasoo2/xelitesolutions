@@ -1,0 +1,4 @@
+Cairo, Amiri and Tajawal are licensed under the SIL Open Font License 1.1.
+https://openfontlicense.org — Copyright the respective project authors:
+Cairo (Mohamed Gaber & contributors), Amiri (Khaled Hosny),
+Tajawal (Boutros Fonts). Redistributed unmodified as woff2.

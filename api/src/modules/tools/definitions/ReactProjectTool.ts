@@ -21,7 +21,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { familyFor, familyCss, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
+import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { resolveImages } from '../../../core/design/images';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
@@ -415,6 +415,7 @@ import Footer from './components/Footer.jsx';
 ${comps.map(c => `import ${c} from './components/${c}.jsx';`).join('\n')}
 import { usePath } from './router.jsx';
 import { content } from './content.js';
+import { useReveal } from './reveal.js';
 
 export const pages = [
 ${pageConst}
@@ -422,6 +423,7 @@ ${pageConst}
 
 export default function App() {
   const path = usePath();
+  useReveal();
   const page = pages.find((p) => p.path === path);
   return (
     <>
@@ -477,8 +479,10 @@ function fileAppJsx(sections: string[]): string {
     return `import React from 'react';
 ${comps.map(c => `import ${c} from './components/${c}.jsx';`).join('\n')}
 import { content } from './content.js';
+import { useReveal } from './reveal.js';
 
 export default function App() {
+  useReveal();
   return (
     <>
       <Navbar content={content} />
@@ -545,6 +549,7 @@ ${(c.credits || []).map(cr => `    { creator: '${js(cr.creator)}', license: '${j
   orderCta: '${js((c as any).orderCta || 'اطلب الآن')}',
   // The owner's REAL details from Joe's business memory — or null, never a
   // fabricated placeholder.
+  heroSecondary: ${(c as any).heroSecondary ? `{ label: '${js((c as any).heroSecondary.label)}', href: '${js((c as any).heroSecondary.href)}' }` : 'null'},
   contact: ${(c as any).contact ? `{ phone: '${js((c as any).contact.phone)}', wa: '${js((c as any).contact.wa)}', email: '${js((c as any).contact.email)}', instagram: '${js((c as any).contact.instagram)}', twitter: '${js((c as any).contact.twitter)}', address: '${js((c as any).contact.address)}', hours: '${js((c as any).contact.hours)}' }` : 'null'},
 };
 `;
@@ -587,9 +592,15 @@ export default function Hero({ content }) {
     <section className="hero" id="top">
       <div className={content.heroImage ? 'wrap hero-split' : 'wrap'}>
         <div>
+          <span className="hero-eyebrow">✦ {content.tagline}</span>
           <h1>{content.heroTitle}</h1>
           <p className="lede">{content.heroLede}</p>
-          <a className="btn" href="#contact">{content.cta}</a>
+          <div className="hero-ctas">
+            <a className="btn" href="#contact">{content.cta}</a>
+            {content.heroSecondary ? (
+              <a className="btn btn-ghost" href={content.heroSecondary.href}>{content.heroSecondary.label}</a>
+            ) : null}
+          </div>
         </div>
         {content.heroImage ? (
           <img className="hero-photo" src={content.heroImage.src} alt={content.heroImage.alt}
@@ -605,14 +616,21 @@ export default function Hero({ content }) {
 function fileFeaturesJsx(): string {
     return `import React from 'react';
 
+const ICONS = [
+  <svg key="a" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>,
+  <svg key="b" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-3 8-10V5l-8-3-8 3v7c0 7 8 10 8 10z"/></svg>,
+  <svg key="c" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-5"/></svg>,
+];
+
 export default function Features({ content }) {
   return (
     <section className="section" id="features">
       <div className="wrap">
         <h2>{content.featuresTitle}</h2>
         <div className="grid-3">
-          {content.features.map((f) => (
+          {content.features.map((f, i) => (
             <div className="card" key={f.title}>
+              <div className="card-icon" aria-hidden="true">{ICONS[i % ICONS.length]}</div>
               <h3>{f.title}</h3>
               <p>{f.text}</p>
             </div>
@@ -966,28 +984,68 @@ export default function Footer({ content }) {
 `;
 }
 
+/** Scroll-reveal: cards drift in as they enter the viewport. Respects
+ *  prefers-reduced-motion (the CSS disables it there) and observes only —
+ *  content is never hidden from crawlers or reader modes. */
+function fileRevealJs(): string {
+    return `import { useEffect } from 'react';
+
+export function useReveal() {
+  useEffect(() => {
+    const items = document.querySelectorAll('.card, .menu-item, .stat, .faq-item');
+    if (!('IntersectionObserver' in window) || !items.length) return;
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      }
+    }, { threshold: 0.12 });
+    items.forEach((el) => { el.setAttribute('data-reveal', ''); io.observe(el); });
+    return () => io.disconnect();
+  }, []);
+}
+`;
+}
+
 function fileBaseCss(family: DesignFamily): string {
-    return `${familyCss(family)}
+    return `${familyFonts(family).faces}
+${familyCss(family)}
 *,*::before,*::after{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--f-font);line-height:1.7}
 h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .wrap{width:min(100% - 2rem,1180px);margin-inline:auto}
 .section{padding-block:clamp(48px,7vw,110px)}
-.site-header{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--border);z-index:10}
+.section h2{font-size:clamp(1.6rem,3vw,2.3rem);margin:0 0 26px;position:relative;padding-bottom:14px}
+.section h2::after{content:'';position:absolute;bottom:0;inset-inline-start:0;width:56px;height:4px;border-radius:4px;background:linear-gradient(90deg,var(--brand),var(--brand-dark))}
+.band h2::after,.stats-band h2::after{background:color-mix(in srgb,#fff 80%,transparent)}
+.site-header{position:sticky;top:0;background:color-mix(in srgb,var(--surface) 84%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);z-index:10}
 .header-inner{display:flex;align-items:center;gap:20px;min-height:64px}
 .brand{font-weight:800;font-size:1.2rem;color:var(--text);text-decoration:none;margin-inline-end:auto}
 .nav-links{display:flex;gap:10px}
 .nav-links a{color:var(--text);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;min-height:44px;padding:0 8px}
 .nav-links a:hover{color:var(--brand)}
 .theme-toggle{background:none;border:1px solid var(--border);border-radius:10px;min-width:44px;min-height:44px;cursor:pointer;color:var(--text)}
-.hero{padding-block:clamp(64px,10vw,140px);background:radial-gradient(80% 60% at 50% 0,color-mix(in srgb,var(--tint) 30%,transparent),transparent)}
-.hero h1{font-size:clamp(2rem,5vw,3.4rem);line-height:1.15;margin:0 0 14px}
+.hero{padding-block:clamp(72px,11vw,150px);background:radial-gradient(80% 60% at 50% 0,color-mix(in srgb,var(--tint) 30%,transparent),transparent);position:relative;overflow:hidden}
+.hero::before,.hero::after{content:'';position:absolute;border-radius:50%;filter:blur(70px);pointer-events:none}
+.hero::before{width:440px;height:440px;background:color-mix(in srgb,var(--brand) 55%,transparent);top:-150px;inset-inline-end:-130px;opacity:.5}
+.hero::after{width:360px;height:360px;background:color-mix(in srgb,var(--brand-dark) 55%,transparent);bottom:-170px;inset-inline-start:-110px;opacity:.35}
+.hero .wrap{position:relative;z-index:1}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand);border:1px solid color-mix(in srgb,var(--brand) 30%,transparent);padding:6px 16px;border-radius:999px;font-weight:700;font-size:.92rem;margin-bottom:18px}
+.hero h1{font-size:clamp(2.2rem,5.5vw,3.8rem);line-height:1.18;margin:0 0 14px}
+.hero-ctas{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.btn-ghost{background:transparent;color:var(--brand);border:2px solid color-mix(in srgb,var(--brand) 45%,transparent)}
+.btn-ghost:hover{background:color-mix(in srgb,var(--brand) 10%,transparent)}
 .lede{color:var(--text-muted);font-size:1.15rem;max-width:60ch}
 .btn{display:inline-block;background:var(--brand);color:var(--on-brand);padding:12px 24px;border-radius:var(--f-btn-radius);border:0;text-decoration:none;font:inherit;font-weight:700;cursor:pointer;margin-top:14px}
-.btn:hover{background:var(--brand-dark)}
+.btn{transition:transform .25s ease,box-shadow .25s ease,background .25s ease}
+.btn:hover{background:var(--brand-dark);transform:translateY(-2px);box-shadow:0 10px 24px -10px color-mix(in srgb,var(--brand) 55%,transparent)}
 .grid-3{display:grid;gap:22px;grid-template-columns:1fr}
 @media(min-width:900px){.grid-3{grid-template-columns:repeat(3,1fr)}}
-.card{background:var(--surface);border:var(--f-border-w) solid var(--border);border-radius:var(--f-radius);padding:24px;box-shadow:var(--f-card-shadow)}
+.card{background:var(--surface);border:var(--f-border-w) solid var(--border);border-radius:var(--f-radius);padding:24px;box-shadow:var(--f-card-shadow);position:relative;overflow:hidden;transition:transform .35s ease,box-shadow .35s ease}
+.card::before{content:'';position:absolute;inset-inline:0;top:0;height:3px;background:linear-gradient(90deg,var(--brand),var(--brand-dark));opacity:0;transition:opacity .35s}
+.card:hover{transform:translateY(-6px);box-shadow:0 18px 44px -16px color-mix(in srgb,var(--brand) 35%,rgba(0,0,0,.25))}
+.card:hover::before{opacity:1}
+.card-icon{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--brand) 14%,transparent);color:var(--brand);margin-bottom:14px}
+.card-icon svg{width:24px;height:24px}
 .band{background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:var(--on-brand)}
 .band h2{margin-top:0}
 form{display:grid;gap:12px;max-width:520px}
@@ -1038,6 +1096,9 @@ textarea{min-height:120px}
 .hero-split{display:grid;gap:34px;align-items:center;grid-template-columns:1fr}
 @media(min-width:900px){.hero-split{grid-template-columns:1.1fr 1fr}}
 .hero-photo{width:100%;border-radius:var(--f-radius);box-shadow:var(--f-photo-shadow);object-fit:cover;aspect-ratio:4/3}
+[data-reveal]{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease}
+[data-reveal].in{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){[data-reveal]{opacity:1;transform:none;transition:none}.card,.btn{transition:none}}
 .credits{font-size:.85rem;opacity:.8}
 .credits a{color:inherit}
 `;
@@ -1123,6 +1184,16 @@ export class ReactProjectTool extends BaseTool {
         const prevEntry = ((global as any).joeProjects || {})[sessionKey];
         const apiLink = prevEntry?.type === 'api' && prevEntry?.resource
             ? `http://localhost:${prevEntry.port || 4100}/api/${prevEntry.resource}` : '';
+        // The hero's second CTA points at the kind's main content — an
+        // anchor on a single page, a real route on a multi-page app.
+        (content as any).heroSecondary = (() => {
+            const target = kind === 'restaurant' ? 'menu' : kind === 'store' ? 'products' : 'features';
+            const label = isAr
+                ? (kind === 'restaurant' ? 'استعرض القائمة' : kind === 'store' ? 'تصفح المنتجات' : 'اكتشف المميزات')
+                : (kind === 'restaurant' ? 'See the menu' : kind === 'store' ? 'Browse products' : 'Explore features');
+            const onHome = !multiPage || pages[0].sections.includes(target === 'menu' ? 'Menu' : target === 'products' ? 'Products' : 'Features');
+            return { label, href: multiPage && !onHome ? `#/${target}` : `#${target}` };
+        })();
         (content as any).api = apiLink;
         // …and WRITES into it: visitor orders post to the API's orders table.
         (content as any).ordersApi = apiLink ? apiLink.replace(/\/api\/[a-z]+$/, '/api/orders') : '';
@@ -1223,6 +1294,7 @@ export class ReactProjectTool extends BaseTool {
             'src/main.jsx': fileMainJsx(),
             'src/App.jsx': multiPage ? fileMultiPageAppJsx(pages, isAr) : fileAppJsx(sections),
             'src/content.js': fileContentJs(content),
+            'src/reveal.js': fileRevealJs(),
             ...(multiPage ? { 'src/router.jsx': fileRouterJsx() } : {}),
             // Joe's REAL palette tokens — the same engine every page uses. The
             // data-theme blocks make the Navbar toggle actually change the
@@ -1251,6 +1323,32 @@ export class ReactProjectTool extends BaseTool {
         if (multiPage) files['src/components/Navbar.jsx'] = fileMultiPageNavbarJsx();
         for (const [rel, body] of Object.entries(files)) {
             fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
+        }
+        // The REAL font files travel WITH the app (public/fonts + OFL
+        // notice) — a declared family that ships no file is a costume, not
+        // typography (the Amiri/Georgia discovery).
+        {
+            const fontCandidates = [
+                path.resolve(__dirname, '..', '..', '..', '..', 'assets', 'fonts'),
+                path.resolve(process.cwd(), 'assets', 'fonts'),
+                path.resolve(process.cwd(), 'api', 'assets', 'fonts'),
+            ];
+            const fontsDir = fontCandidates.find(d => fs.existsSync(path.join(d, 'cairo-400-arabic.woff2')));
+            if (fontsDir) {
+                // Inside src/styles so Vite RESOLVES the url() and emits
+                // hashed assets — public/ references 404'd in production
+                // (measured by the new webfont audit check, score 62).
+                fs.mkdirSync(path.join(proj, 'src', 'styles', 'fonts'), { recursive: true });
+                let copied = 0;
+                for (const f of familyFonts(family).files) {
+                    try { fs.copyFileSync(path.join(fontsDir, f), path.join(proj, 'src', 'styles', 'fonts', f)); copied++; }
+                    catch { /* a missing weight falls back per @font-face */ }
+                }
+                try { fs.copyFileSync(path.join(fontsDir, 'OFL-LICENSE.txt'), path.join(proj, 'src', 'styles', 'fonts', 'OFL-LICENSE.txt')); } catch { /* notice best-effort */ }
+                term(`fonts: bundled ${copied} real Arabic webfont files (OFL) for the ${family} identity`);
+            } else {
+                term('fonts: bundle not found — system font stacks will serve (honest fallback)');
+            }
         }
         term(`react_project: scaffolded ${Object.keys(files).length} files in ${proj} — design family: ${family}`);
 
