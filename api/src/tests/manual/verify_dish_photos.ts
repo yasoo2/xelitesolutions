@@ -97,8 +97,10 @@ async function main() {
     const pubImages = fs.existsSync(path.join(proj, 'public', 'images')) ? fs.readdirSync(path.join(proj, 'public', 'images')) : [];
     check('hero + 2 dishes + 2 portraits landed INSIDE the project (public/images)', pubImages.length === 5, pubImages.join(','));
     const content = fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8');
+    // 2 dishes + 2 testimonials carry photos; the salad AND the (unused by
+    // the restaurant, always serialized) 3 product rows stay null.
     check('the salad serializes img: null while dishes AND testimonials carry photos',
-        (content.match(/img: \{ src: 'images\//g) || []).length === 4 && (content.match(/img: null/g) || []).length === 1);
+        (content.match(/img: \{ src: 'images\//g) || []).length === 4 && (content.match(/img: null/g) || []).length === 4);
     check('the shared source appears ONCE in the merged credits', (content.match(/landing\/shared-grill/g) || []).length === 1);
 
     console.log('\n[2] متصفح حقيقي يرى الصور مرسومة بالبكسل والصف الثالث نظيفاً');
@@ -152,7 +154,7 @@ async function main() {
         { request: 'add a photo of fresh fruit bowl to the Season salad dish' }, { sessionId: 'dish-wire' });
     check('the edit succeeded AND the real vite build verified it', !!edit.ok && edit.output.buildVerified === true, JSON.stringify({ ok: edit.ok, bv: edit.output?.buildVerified, msg: String(edit.output?.message).slice(0, 120) }));
     const content2 = fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8');
-    check('ONLY the salad row gained the photo (no other row rewritten)', /\{ name: 'Season salad',[^\n]*?img: \{ src: 'images\//.test(content2) && (content2.match(/img: null/g) || []).length === 0 && (content2.match(/img: \{ src: 'images\//g) || []).length === 5);
+    check('ONLY the salad row gained the photo (no other row rewritten)', /\{ name: 'Season salad',[^\n]*?img: \{ src: 'images\//.test(content2) && (content2.match(/img: null/g) || []).length === 3 && (content2.match(/img: \{ src: 'images\//g) || []).length === 5);   // the 3 product rows stay null
     const p2 = await browser.newPage();
     await p2.goto(`http://127.0.0.1:${(site.address() as any).port}/`, { waitUntil: 'networkidle' });
     const seen2 = await p2.evaluate(() => {

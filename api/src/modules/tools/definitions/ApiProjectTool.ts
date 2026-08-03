@@ -402,7 +402,9 @@ export class ApiProjectTool extends BaseTool {
 
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
-        projects[sessionKey] = { dir: proj, type: 'api', brand, updatedAt: Date.now(), lastRequest: request.slice(0, 80) };
+        // resource + port ride along so a LATER react build in this session
+        // can link itself to this API (the full-stack chain).
+        projects[sessionKey] = { dir: proj, type: 'api', brand, resource, port: 4100, updatedAt: Date.now(), lastRequest: request.slice(0, 80) };
         persistJoeProjects();
 
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');

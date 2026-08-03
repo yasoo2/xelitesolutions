@@ -537,6 +537,9 @@ ${(c.credits || []).map(cr => `    { creator: '${js(cr.creator)}', license: '${j
   // Joe's inbox — the previewed app really delivers its form; a published
   // copy cannot reach localhost, and the form says so honestly instead.
   inbox: '${js((c as any).inbox || '')}',
+  // The session's Joe API, when one was built first — the list sections
+  // read their LIVE rows from it and fall back to the rows above.
+  api: '${js((c as any).api || '')}',
 };
 `;
 }
@@ -666,15 +669,33 @@ export default function Contact({ content }) {
 }
 
 function fileMenuJsx(): string {
-    return `import React from 'react';
+    return `import React, { useEffect, useState } from 'react';
 
 export default function Menu({ content }) {
+  // The baked rows are the honest default. Built next to a Joe API, the
+  // menu asks it for the LIVE rows and swaps them in — photos kept by
+  // name — and ANY failure (API stopped, published copy, no link at all)
+  // keeps the baked rows without a flicker of breakage.
+  const [rows, setRows] = useState(content.menu);
+  const [live, setLive] = useState(false);
+  useEffect(() => {
+    if (!content.api) return;
+    fetch(content.api).then((r) => r.json()).then((d) => {
+      const fetched = d.dishes || d.products || d.items;
+      if (!Array.isArray(fetched) || !fetched.length) return;
+      setRows(fetched.map((f) => ({
+        name: f.name, desc: f.details || '', price: f.price || '',
+        img: (content.menu.find((m) => m.name === f.name) || {}).img || null,
+      })));
+      setLive(true);
+    }).catch(() => { /* offline or published — the baked rows stand */ });
+  }, []);
   return (
     <section className="section" id="menu">
       <div className="wrap">
-        <h2>{content.menuTitle}</h2>
+        <h2>{content.menuTitle}{live ? <span className="live-dot" title="بيانات حية من قاعدة البيانات">●</span> : null}</h2>
         <ul className="menu-list">
-          {content.menu.map((m) => (
+          {rows.map((m) => (
             <li className="menu-item" key={m.name}>
               {m.img ? (
                 <img className="menu-thumb" src={m.img.src} alt={m.img.alt} loading="lazy" decoding="async" />
@@ -695,15 +716,31 @@ export default function Menu({ content }) {
 }
 
 function fileProductsJsx(): string {
-    return `import React from 'react';
+    return `import React, { useEffect, useState } from 'react';
 
 export default function Products({ content }) {
+  // Baked rows by default; LIVE rows from the session's Joe API when the
+  // app was born linked — photos kept by name, failures keep the shelf.
+  const [rows, setRows] = useState(content.products);
+  const [live, setLive] = useState(false);
+  useEffect(() => {
+    if (!content.api) return;
+    fetch(content.api).then((r) => r.json()).then((d) => {
+      const fetched = d.products || d.dishes || d.items;
+      if (!Array.isArray(fetched) || !fetched.length) return;
+      setRows(fetched.map((f) => ({
+        name: f.name, desc: f.details || '', price: f.price || '',
+        img: (content.products.find((p) => p.name === f.name) || {}).img || null,
+      })));
+      setLive(true);
+    }).catch(() => { /* offline or published — the baked rows stand */ });
+  }, []);
   return (
     <section className="section" id="products">
       <div className="wrap">
-        <h2>{content.productsTitle}</h2>
+        <h2>{content.productsTitle}{live ? <span className="live-dot" title="بيانات حية من قاعدة البيانات">●</span> : null}</h2>
         <div className="grid-3">
-          {content.products.map((p) => (
+          {rows.map((p) => (
             <div className="card product-card" key={p.name}>
               {p.img ? (
                 <img className="product-photo" src={p.img.src} alt={p.img.alt} loading="lazy" decoding="async" />
@@ -887,6 +924,8 @@ textarea{min-height:120px}
 .product-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto}
 .product-foot .btn{margin-top:0;padding:9px 20px}
 .product-price{color:var(--brand);font-size:1.15rem;white-space:nowrap}
+.live-dot{color:#2ecc71;font-size:.65em;vertical-align:middle;margin-inline-start:10px;animation:live-pulse 2s infinite}
+@keyframes live-pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .menu-price{color:var(--brand);white-space:nowrap;font-size:1.1rem}
 .tier{display:flex;flex-direction:column;gap:10px}
 .tier.featured{border-color:var(--brand);box-shadow:0 12px 34px -14px color-mix(in srgb,var(--brand) 45%,transparent)}
@@ -958,6 +997,16 @@ export class ReactProjectTool extends BaseTool {
         const content = deriveContent(request, isAr, kind);
         const dirName = `react-${slug(content.brand)}`;
         const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+        const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+        // THE FULL-STACK LINK: when this session's previous project is a Joe
+        // API, the new frontend is born connected — content.js carries the
+        // API's URL, the list components ask it for the LIVE rows at runtime,
+        // and any failure (API stopped, published copy) keeps the baked rows.
+        const prevEntry = ((global as any).joeProjects || {})[sessionKey];
+        const apiLink = prevEntry?.type === 'api' && prevEntry?.resource
+            ? `http://localhost:${prevEntry.port || 4100}/api/${prevEntry.resource}` : '';
+        (content as any).api = apiLink;
+        if (apiLink) term(`full-stack link: this app reads LIVE rows from ${apiLink}`);
         // The app's form delivers into Joe's inbox while it runs next to Joe.
         (content as any).inbox = `http://localhost:${process.env.PORT || '5002'}/api/public/forms/${dirName.replace(/[^a-zA-Z0-9._-]/g, '')}`;
 
@@ -1095,9 +1144,8 @@ export class ReactProjectTool extends BaseTool {
 
         // Remember the project so «عدل …» routes to the SURGICAL editor and
         // survives restarts like everything else Joe remembers.
-        const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
-        projects[sessionKey] = { dir: proj, type: 'react', brand: content.brand, updatedAt: Date.now(), lastRequest: request.slice(0, 80) };
+        projects[sessionKey] = { dir: proj, type: 'react', brand: content.brand, updatedAt: Date.now(), lastRequest: request.slice(0, 80), ...(apiLink ? { linkedApi: apiLink } : {}) };
         persistJoeProjects();
 
         // The freshly built app opens in the preview panel on its own — the

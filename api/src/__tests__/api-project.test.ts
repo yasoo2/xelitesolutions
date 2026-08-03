@@ -88,6 +88,32 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         expect(apiResourceForKind('store' as any, true).seeds.some(s => s.name === 'طقم الهدية')).toBe(true);
     });
 
+    it('FULL-STACK LINK: a react build after an API build is born connected — and unlinked otherwise', async () => {
+        const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
+        // The API registered itself above for session api-t (resource dishes).
+        expect((global as any).joeProjects['api-t'].resource).toBe('dishes');
+        const linked: any = await new ReactProjectTool().execute(
+            { request: 'ابنِ موقع react لمطعم الشواء', skipInstall: true, root: tmp }, { sessionId: 'api-t' });
+        const content = fs.readFileSync(path.join(linked.output.path, 'src', 'content.js'), 'utf-8');
+        expect(content).toContain("api: 'http://localhost:4100/api/dishes'");
+        const menu = fs.readFileSync(path.join(linked.output.path, 'src', 'components', 'Menu.jsx'), 'utf-8');
+        expect(menu).toContain('fetch(content.api)');
+        expect(menu).toContain('.catch(');                       // failures keep the baked rows
+        expect(menu).toContain('useState(content.menu)');        // the baked rows ARE the default
+        expect(menu).toContain('live-dot');
+        expect(syntaxOk('Menu.jsx', menu).ok).toBe(true);
+        expect((global as any).joeProjects['api-t'].linkedApi).toBe('http://localhost:4100/api/dishes');
+        // A session with NO API stays unlinked — the hook is inert on api: ''.
+        const plain: any = await new ReactProjectTool().execute(
+            { request: 'ابنِ موقع react لمتجر عطور', skipInstall: true, root: tmp }, { sessionId: 'api-plain' });
+        const content2 = fs.readFileSync(path.join(plain.output.path, 'src', 'content.js'), 'utf-8');
+        expect(content2).toContain("api: ''");
+        const products = fs.readFileSync(path.join(plain.output.path, 'src', 'components', 'Products.jsx'), 'utf-8');
+        expect(products).toContain('if (!content.api) return');
+        expect(syntaxOk('Products.jsx', products).ok).toBe(true);
+        delete (global as any).joeProjects?.['api-plain'];
+    });
+
     it('db.js is the dual-backend contract: sqlite first, same-interface JSON fallback, honest health', async () => {
         const res: any = await new ApiProjectTool().execute(
             { request: 'build an api for inventory', skipInstall: true, root: tmp }, { sessionId: 'api-t' });
