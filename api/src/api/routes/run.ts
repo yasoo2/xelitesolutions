@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { AgentLoopService } from '../../modules/services/AgentLoopService';
 import { authenticateOptional } from '../middleware/auth';
 import { loadUploadedFiles } from './files';
+import { persistChatStores } from '../chat-store';
 import { Run } from '../../shared/models/run';
 import { ToolExecution } from '../../shared/models/toolExecution';
 import { Artifact } from '../../shared/models/artifact';
@@ -199,6 +200,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
             const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
             store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'user', content: text, attachments: attachmentMeta(), createdAt: new Date() });
+            persistChatStores();
         }
     } catch { /* non-fatal */ }
 

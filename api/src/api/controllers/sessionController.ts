@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { persistChatStores } from '../chat-store';
 import mongoose from 'mongoose';
 import { Session } from '../../shared/models/session';
 import { Tenant } from '../../shared/models/tenant';
@@ -60,6 +61,7 @@ export async function createSession(req: Request, res: Response) {
 
                 // Add to start of list
                 (global as any).mockSessions = [mockSession, ...mockSessions];
+                persistChatStores();
 
                 console.warn('[SessionController] DB offline - created and saved mock session', mockSession.id);
                 return res.json(mockSession);
@@ -95,6 +97,7 @@ export function updateMockSessionTitle(sessionId: string, newTitle: string) {
     const idx = mockSessions.findIndex((s: any) => s._id.toString() === sessionId || s.id === sessionId);
     if (idx >= 0) {
         mockSessions[idx].title = newTitle;
+        persistChatStores();
         console.log(`[SessionController] Updated mock session title: ${sessionId} -> ${newTitle}`);
     } else {
         // If not found, maybe create it? Or just warn.
@@ -140,6 +143,7 @@ export async function deleteSession(req: Request, res: Response) {
             (global as any).mockSessions = list.filter((x: any) => String(x.id ?? x._id) !== String(id) && String(x._id) !== String(id));
             const msgs: any[] = (global as any).mockMessages || [];
             (global as any).mockMessages = msgs.filter((m: any) => String(m.sessionId) !== String(id));
+            persistChatStores();
             return res.json({ ok: true });
         }
         await Session.findByIdAndDelete(id);
@@ -155,6 +159,7 @@ export async function deleteAllSessions(req: Request, res: Response) {
         if (isOffline) {
             (global as any).mockSessions = [];
             (global as any).mockMessages = [];
+            persistChatStores();
             return res.json({ ok: true, count: 0 });
         }
         // NOTE: listSessions uses find({}) without userId filter (single-tenant, inconsistent userId formats).
@@ -274,6 +279,7 @@ export async function addMessage(req: Request, res: Response) {
             const mockMessages = (global as any).mockMessages || [];
             (global as any).mockMessages = mockMessages;
             mockMessages.push(message);
+            persistChatStores();
             console.warn('[SessionController] DB offline - saved mock message to store', message);
         } else {
             message = await Message.create({

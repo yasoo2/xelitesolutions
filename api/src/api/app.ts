@@ -16,6 +16,7 @@ import sessionsRoutes from './routes/sessions';
 import foldersRoutes from './routes/folders';
 import queueRoutes from './routes/queue';
 import filesRoutes from './routes/files';
+import { loadChatStores } from './chat-store';
 import approvalsRoutes from './routes/approvals';
 import projectRoutes from './routes/project';
 import assetsRoutes from './routes/assets';
@@ -66,11 +67,24 @@ export const createApp = () => {
   const isProd = process.env.NODE_ENV === 'production';
   const allowedOrigins = new Set<string>((config.allowedOrigins || []).map(normalizeOrigin).filter(Boolean));
 
-  // [DEBUG] Log every single request before any processing
-  app.use((req, res, next) => {
-    console.log(`[RAW-HTTP] ${req.method} ${req.path} - Headers: ${JSON.stringify(req.headers)}`);
-    next();
-  });
+  // Conversations must survive restarts — restore the JSON-mode chat
+  // stores before any route can touch them.
+  try { loadChatStores(); } catch { /* best-effort */ }
+
+  // Per-request logging is morgan's job (one concise line below). The old
+  // old raw-header debug line printed EVERY header of EVERY request — including
+  // the user's full JWT, which then landed in every log they shared. Full
+  // headers are opt-in (JOE_HTTP_DEBUG=1) and credentials are redacted
+  // even then.
+  if (String(process.env.JOE_HTTP_DEBUG || '') === '1') {
+    app.use((req, _res, next) => {
+      const h: any = { ...req.headers };
+      if (h.authorization) h.authorization = '[REDACTED]';
+      if (h.cookie) h.cookie = '[REDACTED]';
+      console.log(`[HTTP] ${req.method} ${req.path} - Headers: ${JSON.stringify(h)}`);
+      next();
+    });
+  }
 
   app.use(cors({
     origin: (origin, callback) => {
