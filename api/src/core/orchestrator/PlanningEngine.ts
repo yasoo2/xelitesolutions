@@ -551,6 +551,20 @@ Rules:
             }
         }
 
+        // [BUSINESS PROFILE] «احفظ بيانات عملي» — Joe's business memory:
+        // save/show/clear the real contact details every build injects.
+        {
+            const profileAsk = /(احفظ|خزن|خزّن|سجل|سجّل|اعرض|أعرض|امسح|احذف)\s*[^.\n]{0,12}?(بيانات|ملف)\s*(عملي|العمل|المشروع|النشاط|شركتي|متجري|مطعمي)|\b(business|my)\s*profile\b/i.test(probe);
+            if (profileAsk) {
+                return {
+                    id: `profile_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{ id: 'business_profile', description: 'إدارة بيانات العمل المحفوظة', tool: 'business_profile', agent: 'General', input: { request: intent.goal }, dependsOn: [] }],
+                    metadata: { complexity: 'low', riskLevel: 'low' },
+                };
+            }
+        }
+
         // [ORDERS READ] «اعرض الطلبات» — the owner reads visitor orders from
         // the API project's database, in the chat, server up or not.
         {

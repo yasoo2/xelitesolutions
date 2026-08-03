@@ -543,6 +543,9 @@ ${(c.credits || []).map(cr => `    { creator: '${js(cr.creator)}', license: '${j
   api: '${js((c as any).api || '')}',
   ordersApi: '${js((c as any).ordersApi || '')}',
   orderCta: '${js((c as any).orderCta || 'اطلب الآن')}',
+  // The owner's REAL details from Joe's business memory — or null, never a
+  // fabricated placeholder.
+  contact: ${(c as any).contact ? `{ phone: '${js((c as any).contact.phone)}', wa: '${js((c as any).contact.wa)}', email: '${js((c as any).contact.email)}', instagram: '${js((c as any).contact.instagram)}', twitter: '${js((c as any).contact.twitter)}', address: '${js((c as any).contact.address)}', hours: '${js((c as any).contact.hours)}' }` : 'null'},
 };
 `;
 }
@@ -649,6 +652,15 @@ export default function Contact({ content }) {
     <section className="section band" id="contact">
       <div className="wrap">
         <h2>{content.contactTitle}</h2>
+        {content.contact ? (
+          <ul className="contact-info">
+            {content.contact.phone ? <li><a href={'tel:' + content.contact.phone}>📞 {content.contact.phone}</a></li> : null}
+            {content.contact.wa ? <li><a href={content.contact.wa} target="_blank" rel="noopener noreferrer">💬 {content.isArabic === false ? 'WhatsApp' : 'واتساب'}</a></li> : null}
+            {content.contact.email ? <li><a href={'mailto:' + content.contact.email}>✉️ {content.contact.email}</a></li> : null}
+            {content.contact.address ? <li>📍 {content.contact.address}</li> : null}
+            {content.contact.hours ? <li>🕐 {content.contact.hours}</li> : null}
+          </ul>
+        ) : null}
         {sent === 'delivered' ? (
           <p className="form-note">✅ وصلت رسالتك — ستظهر في صندوق رسائل الموقع.</p>
         ) : sent ? (
@@ -928,6 +940,13 @@ export default function Footer({ content }) {
     <footer className="site-footer">
       <div className="wrap">
         <p>© {new Date().getFullYear()} {content.brand}</p>
+        {content.contact && (content.contact.instagram || content.contact.twitter) ? (
+          <p className="socials">
+            {content.contact.instagram ? <a href={'https://instagram.com/' + content.contact.instagram} target="_blank" rel="noopener noreferrer">Instagram</a> : null}
+            {content.contact.instagram && content.contact.twitter ? ' · ' : ''}
+            {content.contact.twitter ? <a href={'https://x.com/' + content.contact.twitter} target="_blank" rel="noopener noreferrer">X</a> : null}
+          </p>
+        ) : null}
         {content.credits && content.credits.length ? (
           <p className="credits">
             {content.isArabic === false ? 'Image credits: ' : 'مصادر الصور: '}
@@ -994,6 +1013,10 @@ textarea{min-height:120px}
 .order-form input{padding:9px 12px;border:var(--f-border-w) solid var(--border);border-radius:var(--f-radius-sm);font:inherit;background:var(--surface);color:var(--text)}
 .order-form .btn{margin-top:0}
 .order-note{background:color-mix(in srgb,var(--tint) 40%,transparent);padding:10px 14px;border-radius:10px;margin:10px 0 0;font-size:.95rem}
+.contact-info{list-style:none;margin:0 0 18px;padding:0;display:flex;flex-wrap:wrap;gap:10px 22px}
+.contact-info a{color:inherit;text-decoration:none;font-weight:600}
+.contact-info a:hover{text-decoration:underline}
+.socials a{color:inherit;font-weight:600}
 @keyframes live-pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .menu-price{color:var(--brand);white-space:nowrap;font-size:1.1rem}
 .tier{display:flex;flex-direction:column;gap:10px}
@@ -1065,6 +1088,31 @@ export class ReactProjectTool extends BaseTool {
         const pages = pagesForKind(kind);
         const sections = multiPage ? [...new Set(pages.flatMap(p => p.sections))] : sectionsForKind(kind);
         const content = deriveContent(request, isAr, kind);
+        // BUSINESS MEMORY: the saved real details flow into the build — the
+        // brand when the request named none, and a REAL contact block (tel:,
+        // wa.me, mailto, socials). Absent profile → the old honest silence.
+        const { getProfile } = require('../../../core/profile/business-profile');
+        const profile = input?.skipProfile ? null : getProfile(sessionId);
+        // The saved brand steps in whenever derivation produced a GENERIC
+        // token («ابنِ موقع react لمطعمي» derives 'react') — an explicit
+        // real name in the request still wins.
+        if (profile?.brand && /^(مشروعي|myapp|react|vite|رياكت|ريأكت|سبا|spa|app|api)$/i.test(content.brand.trim())) {
+            content.heroTitle = content.heroTitle.split(content.brand).join(profile.brand);
+            content.brand = profile.brand;
+        }
+        if (profile) {
+            const wa = String(profile.whatsapp || profile.phone || '').replace(/[^0-9+]/g, '').replace(/^\+/, '').replace(/^0/, '966');
+            const ig = String(profile.instagram || '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/\/$/, '');
+            const tw = String(profile.twitter || '').replace(/^https?:\/\/(www\.)?(twitter|x)\.com\//i, '').replace(/^@/, '').replace(/\/$/, '');
+            (content as any).contact = {
+                phone: profile.phone || '', wa: (profile.whatsapp || profile.phone) ? `https://wa.me/${wa}` : '',
+                email: profile.email || '', instagram: ig, twitter: tw,
+                address: profile.address || '', hours: profile.hours || '',
+            };
+            term(`business memory: real contact details injected (${Object.keys(profile).filter(k => k !== 'updatedAt').join(', ')})`);
+        } else {
+            (content as any).contact = null;
+        }
         const dirName = `react-${slug(content.brand)}`;
         const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');

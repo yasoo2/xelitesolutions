@@ -20,6 +20,7 @@ import { FormInboxTool } from './definitions/FormInboxTool';
 import { ImportProjectTool } from './definitions/ImportProjectTool';
 import { ApiProjectTool } from './definitions/ApiProjectTool';
 import { OrdersReadTool } from './definitions/OrdersReadTool';
+import { BusinessProfileTool } from './definitions/BusinessProfileTool';
 import { RequestAnalyzerTool } from './definitions/RequestAnalyzerTool';
 import { ProjectPlannerTool } from './definitions/ProjectPlannerTool';
 import { AIGeneratorTool } from './definitions/AIGeneratorTool';
@@ -277,6 +278,7 @@ const baseTools: ToolDefinition[] = [
   createTool(ImportProjectTool),
   createTool(ApiProjectTool),
   createTool(OrdersReadTool),
+  createTool(BusinessProfileTool),
   createTool(AutoTesterTool),
   createTool(CodeReviewerTool),
   createTool(SecurityScannerTool),
