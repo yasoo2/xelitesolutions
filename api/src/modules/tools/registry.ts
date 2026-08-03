@@ -15,6 +15,7 @@ import { BulkFileGeneratorTool } from './definitions/BulkFileGeneratorTool';
 import { CentralAnswerTool } from './definitions/CentralAnswerTool';
 import { WebPageBuilderTool } from './definitions/WebPageBuilderTool';
 import { ReactProjectTool } from './definitions/ReactProjectTool';
+import { ProjectEditTool } from './definitions/ProjectEditTool';
 import { RequestAnalyzerTool } from './definitions/RequestAnalyzerTool';
 import { ProjectPlannerTool } from './definitions/ProjectPlannerTool';
 import { AIGeneratorTool } from './definitions/AIGeneratorTool';
@@ -267,6 +268,7 @@ const baseTools: ToolDefinition[] = [
   createTool(CentralAnswerTool),
   createTool(WebPageBuilderTool),
   createTool(ReactProjectTool),
+  createTool(ProjectEditTool),
   createTool(AutoTesterTool),
   createTool(CodeReviewerTool),
   createTool(SecurityScannerTool),

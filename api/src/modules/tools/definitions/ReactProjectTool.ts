@@ -22,6 +22,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom } from '../../../core/design/page-head';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
+import { persistJoeProjects } from '../../../api/page-store';
 
 const slug = (s: string) => (String(s || '').toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'app';
@@ -426,6 +427,13 @@ export class ReactProjectTool extends BaseTool {
                 term(`vite build → ${built ? 'OK (dist/index.html)' : `exit ${b}`}`);
             }
         }
+
+        // Remember the project so «عدل …» routes to the SURGICAL editor and
+        // survives restarts like everything else Joe remembers.
+        const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
+        projects[sessionKey] = { dir: proj, type: 'react', brand: content.brand, updatedAt: Date.now(), lastRequest: request.slice(0, 80) };
+        persistJoeProjects();
 
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');
         const message = isAr

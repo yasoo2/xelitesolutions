@@ -17,7 +17,7 @@ import foldersRoutes from './routes/folders';
 import queueRoutes from './routes/queue';
 import filesRoutes from './routes/files';
 import { loadChatStores } from './chat-store';
-import { loadJoePages } from './page-store';
+import { loadJoePages, loadJoeProjects } from './page-store';
 import approvalsRoutes from './routes/approvals';
 import projectRoutes from './routes/project';
 import assetsRoutes from './routes/assets';
@@ -74,6 +74,7 @@ export const createApp = () => {
   // …and the built-page memory too, so «عدّل …» after an update still edits
   // the page that was on screen instead of starting a tool circus.
   try { loadJoePages(); } catch { /* best-effort */ }
+  try { loadJoeProjects(); } catch { /* best-effort */ }
 
   // Per-request logging is morgan's job (one concise line below). The old
   // old raw-header debug line printed EVERY header of EVERY request — including

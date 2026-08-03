@@ -507,6 +507,32 @@ Rules:
             }
         }
 
+        // [SURGICAL PROJECT EDIT] When the session's ACTIVE artifact is a
+        // scaffolded project (newer than any built page), an edit belongs to
+        // the diff editor — it changes lines in real files, verifies with the
+        // real build, and reverts on red. A page-only session keeps the page
+        // editor below.
+        {
+            const pageEntry = (global as any).joePages?.[activeKey];
+            const projEntry = (global as any).joeProjects?.[activeKey];
+            const projectNewer = !!projEntry && (!pageEntry || (Number(projEntry.updatedAt) || 0) > (Number(pageEntry.updatedAt) || 0));
+            if (projectNewer && editIntent && !(buildVerb && webNoun)) {
+                return {
+                    id: `projedit_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_edit',
+                        description: `Surgical edit of the active project: ${intent.goal}`,
+                        tool: 'project_edit',
+                        agent: 'Dev',
+                        input: { request: intent.goal },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
+        }
+
         // Recovery goals were bounced out of generatePlan at the very top — by the
         // time execution reaches here the goal is a genuine user request.
         if ((buildVerb && webNoun) || (hasActivePage && editIntent)) {

@@ -72,6 +72,54 @@ export function persistJoePages(): void {
     (timer as any).unref?.();
 }
 
+/* ---------- the PROJECT store — Stage 3 (surgical edits) -------------------
+ * joeProjects remembers the last scaffolded PROJECT per session (a React app
+ * is a directory of files, not one html), so «عدل …» after a scaffold routes
+ * to the surgical project editor instead of the page builder. Same disk
+ * pattern, same file directory, own file. */
+
+const projectsFile = () => path.join(storeDir(), 'joe-projects.json');
+const MAX_PERSISTED_PROJECTS = 20;
+
+export function loadJoeProjects(): void {
+    try {
+        const g: any = global as any;
+        if (g.joeProjects && Object.keys(g.joeProjects).length > 0) return;
+        if (!fs.existsSync(projectsFile())) return;
+        const v = JSON.parse(fs.readFileSync(projectsFile(), 'utf-8'));
+        if (v && typeof v === 'object' && !Array.isArray(v)) {
+            g.joeProjects = v;
+            const n = Object.keys(v).length;
+            if (n) console.info(`[PageStore] 💾 restored ${n} project(s) — surgical edits survive restarts.`);
+        }
+    } catch { /* start fresh */ }
+}
+
+let projTimer: ReturnType<typeof setTimeout> | null = null;
+export function persistJoeProjects(): void {
+    if (projTimer) return;
+    projTimer = setTimeout(() => {
+        projTimer = null;
+        try {
+            const g: any = global as any;
+            const entries = Object.entries(g.joeProjects || {});
+            entries.sort((a: any, b: any) => (Number(b[1]?.updatedAt) || 0) - (Number(a[1]?.updatedAt) || 0));
+            fs.mkdirSync(storeDir(), { recursive: true });
+            fs.writeFileSync(projectsFile(), JSON.stringify(Object.fromEntries(entries.slice(0, MAX_PERSISTED_PROJECTS)), null, 0), 'utf-8');
+        } catch { /* memory continues */ }
+    }, DEBOUNCE_MS);
+    (projTimer as any).unref?.();
+}
+
+export function flushJoeProjects(): void {
+    if (projTimer) { clearTimeout(projTimer); projTimer = null; }
+    try {
+        const g: any = global as any;
+        fs.mkdirSync(storeDir(), { recursive: true });
+        fs.writeFileSync(projectsFile(), JSON.stringify(g.joeProjects || {}, null, 0), 'utf-8');
+    } catch { /* best-effort */ }
+}
+
 /** Test/shutdown hook: write NOW, no debounce. */
 export function flushJoePages(): void {
     if (timer) { clearTimeout(timer); timer = null; }
