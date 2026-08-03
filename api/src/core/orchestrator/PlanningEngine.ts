@@ -256,7 +256,10 @@ Rules:
          * is.txt» for an image question. Attachment questions are therefore
          * decided HERE, at the top, from the USER'S OWN WORDS only.
          */
-        const WANTS_BUILD_RE = /\b(build|create|implement|develop|scaffold)\b|ابنِ|ابني|انشئ|أنشئ|اصنع|حوّل|حول .*موقع|موقع من|صفحة من/i;
+        // نفّذ/طبّق are BUILD verbs. They were missing, so «نفّذ هذا الـPRD»
+        // with the document attached fell into the ask-about-the-attachment
+        // guard and produced a chat ABOUT the requirements instead of a build.
+        const WANTS_BUILD_RE = /\b(build|create|implement|develop|scaffold|execute|apply)\b|ابنِ|ابني|انشئ|أنشئ|اصنع|نفّ?ذ|طبّ?ق|حوّل|حول .*موقع|موقع من|صفحة من/i;
         if (/\[ATTACHED FILES/.test(rawGoal)) {
             const userPart = rawGoal.split('[ATTACHED FILES')[0];
             if (!WANTS_BUILD_RE.test(userPart)) {
@@ -273,6 +276,43 @@ Rules:
                         dependsOn: []
                     }],
                     metadata: { complexity: 'low', riskLevel: 'low' }
+                };
+            }
+        }
+
+        /**
+         * [THE PRD ROUTE] «نفّذ هذا الـPRD وطبّق كل ما فيه» + an attached
+         * requirements document is the user's declared end-goal for Joe.
+         * The document's full text (extracted from pdf/docx/txt, or read by
+         * OCR from a photographed page) already rides in the goal's
+         * [ATTACHED FILES] block — what was missing is the ROUTE: a build
+         * verb plus a document lands in the canonical engineering pipeline
+         * (phases → execution with real checks → honest report), never in
+         * a chat about the requirements and never in the one-page builder.
+         */
+        if (/\[ATTACHED FILES/.test(rawGoal) && WANTS_BUILD_RE.test(rawGoal.split('[ATTACHED FILES')[0])) {
+            const attachSection = rawGoal.slice(rawGoal.indexOf('[ATTACHED FILES'));
+            // A document attachment (anything whose declared type is not
+            // pure media), or an explicit requirements word from the user —
+            // including a PHOTOGRAPHED requirements page (image + OCR text).
+            const hasDocAttachment = /—\s*(application|text)\//.test(attachSection);
+            const prdWord = /\bPRD\b|متطلبات|مواصفات|كراس(ة)?\s*شروط|requirements?|specification|spec\b/i
+                .test(rawGoal.split('[ATTACHED FILES')[0]);
+            const hasOcrText = attachSection.includes('OCR — the EXACT text read inside the image');
+            if (hasDocAttachment || (prdWord && hasOcrText) || (prdWord && /—\s*image\//.test(attachSection))) {
+                console.log('[PlanningEngine] PRD/document + build verb → project_pipeline (build what the document says)');
+                return {
+                    id: `prd_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_pipeline',
+                        description: 'تنفيذ ما يطلبه المستند المرفق: مراحل ← تنفيذ مع فحص حقيقي ← تقرير صادق',
+                        tool: 'project_pipeline',
+                        agent: 'Dev',
+                        input: { request: intent.goal },
+                        dependsOn: []
+                    }],
+                    metadata: { complexity: 'high', riskLevel: 'medium' }
                 };
             }
         }

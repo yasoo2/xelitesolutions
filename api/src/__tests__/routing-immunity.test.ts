@@ -163,3 +163,40 @@ describe('image-analysis requests never become a tool circus', () => {
         expect(await tool('ابنِ لي صفحة مثل هذه الصورة')).not.toBe('central_answer');
     });
 });
+
+/**
+ * THE PRD ROUTE — the user's declared end-goal: «بالمستقبل رح اعطي جو
+ * بي ار دي واقول له حللها وقم بتطبيقها». Before this route existed,
+ * نفّذ/طبّق were not even build verbs, so an attached requirements doc
+ * plus «نفّذه» produced a CHAT about the requirements.
+ */
+describe('an attached requirements document + a build verb → the engineering pipeline', () => {
+    const DOC_BLOCK =
+        '\n\n[ATTACHED FILES — the user attached 1 file(s) to this message. Read them; the message refers to them.]' +
+        '\n--- (1) PRD-متجر.docx — application/vnd.openxmlformats-officedocument.wordprocessingml.document, 88 KB' +
+        '\nالمتطلبات: صفحة رئيسية، سلة مشتريات، لوحة إدارة\nAcceptance: checkout works end to end';
+    const PHOTO_PRD_BLOCK =
+        '\n\n[ATTACHED FILES — the user attached 1 file(s) to this message. Read them; the message refers to them.]' +
+        '\n--- (1) prd-page1.png — image/png, 210 KB' +
+        '\n(the image was ANALYZED by a vision model — this is what it shows:)\nصفحة مستند مطبوع' +
+        '\n(OCR — the EXACT text read inside the image, verbatim; quote from THIS when the user asks what the image says:)\nالمتطلبات: تسجيل دخول، تقارير شهرية';
+
+    it('«نفذ هذا الـPRD وطبق كل ما فيه» + doc → project_pipeline', async () => {
+        expect(await tool('نفذ هذا الـPRD وطبق كل ما فيه' + DOC_BLOCK)).toBe('project_pipeline');
+    });
+    it('"implement this requirements document" routes the same in English', async () => {
+        expect(await tool('implement this requirements document fully' + DOC_BLOCK)).toBe('project_pipeline');
+    });
+    it('a PHOTOGRAPHED PRD (image + OCR text) with نفذ reaches the pipeline too', async () => {
+        expect(await tool('نفذ متطلبات هذا الـPRD المصور' + PHOTO_PRD_BLOCK)).toBe('project_pipeline');
+    });
+    it('«حلل هذا الـPRD» (analysis, not implementation) stays a direct answer', async () => {
+        expect(await tool('حلل هذا الـPRD وأعطني رأيك' + DOC_BLOCK)).toBe('central_answer');
+    });
+    it('«ابنِ لي صفحة مثل هذه الصورة» (a design reference, not a PRD) is NOT the pipeline', async () => {
+        const g = 'ابنِ لي صفحة مثل هذه الصورة' +
+            '\n\n[ATTACHED FILES — the user attached 1 file(s) to this message. Read them; the message refers to them.]' +
+            '\n--- (1) ref.png — image/png, 90 KB\n(the image was ANALYZED by a vision model — this is what it shows:)\nصفحة هبوط داكنة';
+        expect(await tool(g)).not.toBe('project_pipeline');
+    });
+});
