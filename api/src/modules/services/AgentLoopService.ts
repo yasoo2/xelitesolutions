@@ -13,6 +13,7 @@ import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
 import { persistChatStores } from '../../api/chat-store';
+import { clarifyGate } from '../../core/orchestrator/clarify';
 
 /**
  * Lessons Joe applies to every system HE builds — each line was paid for by a
@@ -51,6 +52,44 @@ export class AgentLoopService {
         // The build discipline rides only on runs that smell like engineering —
         // scripts, services, deploys — so a plain question is not taxed with it.
         const looksLikeEngineering = /build|deploy|script|install|server|service|launch|restart|update|setup|مشروع|سكربت|خادم|تشغيل|تحديث|نشر|ابنِ|ابني|موقع|تطبيق|نظام/i.test(goal);
+
+        /**
+         * [CLARIFY GATE] A build prompt with almost nothing in it does not
+         * start a build — it starts a CONVERSATION. «ابن لي موقع» gets 4
+         * pointed questions (deterministic, no model call); the next message
+         * is merged with the original request and the build runs once, with
+         * the full picture. Detailed prompts, edits, attachments and «ابدأ
+         * مباشرة» pass straight through.
+         */
+        try {
+            const gateLang = messageLanguage(goal, options.language || 'ar');
+            const activeKey = String(sessionId).replace(/[^a-zA-Z0-9._-]/g, '_');
+            const hasActivePage = !!((global as any).joePages && (global as any).joePages[activeKey]);
+            const gate = clarifyGate(goal, sessionId, gateLang, {
+                hasActivePage,
+            });
+            if (gate.kind === 'ask' && !(options.attachments || []).length) {
+                broadcastThinkingDetail(sessionId, gateLang === 'ar'
+                    ? '💬 الطلب مختصر جداً — أسأل توضيحات قبل أن أبني'
+                    : '💬 The brief is thin — asking a few questions before building');
+                const clarifyRunId = `clarify-${Date.now()}`;
+                broadcast({ type: 'text', sessionId, data: { text: gate.text, sessionId }, runId: clarifyRunId } as any);
+                broadcast({ type: 'run_finished', runId: clarifyRunId, data: { runId: clarifyRunId, ok: true, sessionId } } as any);
+                try {
+                    if (process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
+                        const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
+                        store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: gate.text, createdAt: new Date() });
+                        persistChatStores();
+                    }
+                } catch { /* non-fatal */ }
+                return { ok: true, result: { answer: gate.text, clarify: true } };
+            }
+            if (gate.kind === 'merge') {
+                console.log(`[AgentLoopService] 💬 clarify: merged the user's answers into the original build request`);
+                goal = gate.goal;
+            }
+        } catch { /* the gate must never block a run */ }
+
         const blocks = [goal];
         /**
          * What the user ATTACHED rides directly after what the user SAID —

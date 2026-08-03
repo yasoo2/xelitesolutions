@@ -427,7 +427,10 @@ Rules:
             const projectVerb = /\b(build|create|make|develop|scaffold|generate)\b/.test(goalLower)
                 || /(ابن|ابني|انشئ|أنشئ|اصنع|طور|اعمل|سو)/.test(probe);
             const fullStackNoun = /(باك\s*اند|واجهة\s*خلفية|خادم|سيرفر|قاعدة\s*بيانات|مشروع\s*(متكامل|كامل)|تطبيق\s*(متكامل|كامل)|نظام\s*(متكامل|كامل|إدارة|اداره)|back\s*-?end|server\s*side|database|rest\s*api|api\s*server|full[-\s]?stack|complete\s+(project|app|application|system)|node\.?js|express|fastify|django|flask)/i.test(probe);
-            if (projectVerb && fullStackNoun) {
+            // A PHONE app is the page builder's job (it ships an installable
+            // PWA); «تطبيق جوال متكامل» must not fall into the backend pipeline.
+            const { wantsMobileApp } = require('../design/pwa');
+            if (projectVerb && fullStackNoun && !wantsMobileApp(probe)) {
                 console.log(`[PlanningEngine] full-project fast-path -> project_pipeline "${String(intent.goal).slice(0, 80)}"`);
                 return {
                     id: `project_${Date.now()}`,

@@ -197,7 +197,7 @@ export default function Joe() {
              * transition. Preview opens on `preview_ready`, when there is
              * actually something new to show.
              */
-            if (isToolStart && toolName === 'web_page_builder') {
+            if ((isToolStart && toolName === 'web_page_builder') || msg.type === 'build_started') {
                 setWorkspaceTab('logs');
                 triggerUncollapse();
             } else if (isToolStart && ['dev_server', 'dev_server_start', 'website_full_pipeline', 'scaffold_project', 'scaffold_full_stack'].includes(toolName)) {
@@ -217,8 +217,20 @@ export default function Joe() {
 
                     if (isInternal) {
                         setPreviewUrl(url);
-                        setWorkspaceTab('preview');
-                        triggerUncollapse();
+                        /**
+                         * A PARTIAL preview (the page growing section by
+                         * section) must NOT steal the tab: it fires seconds
+                         * into every build and used to yank the user away
+                         * from the Logs stream they were promised — which
+                         * read as «اللوجز لا تفتح». The URL still updates,
+                         * so the split view (and a user who switches by
+                         * hand) watches the page grow; only the FINISHED
+                         * page flips the tab to Preview.
+                         */
+                        if (!msg.data?.partial) {
+                            setWorkspaceTab('preview');
+                            triggerUncollapse();
+                        }
                     }
                 }
             }

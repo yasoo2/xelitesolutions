@@ -35,6 +35,7 @@ import { buildImageBrief } from '../../../core/design/image-brief';
 import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, applySurfacePairing, ownedSurfaces, normalizeIconRefs } from '../../../core/design/layouts';
 import { sanitizeInlineSvg, labelIconOnlyButtons } from '../../../core/design/svg-sanity';
 import { persistJoePages } from '../../../api/page-store';
+import { wantsMobileApp, ensurePwaMarkup, manifestJson, serviceWorkerJs, iconPng, installNote } from '../../../core/design/pwa';
 import { pickFlourish, flourishCss, flourishBrief } from '../../../core/design/flourish';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
@@ -200,13 +201,19 @@ export class WebPageBuilderTool implements ToolDefinition {
         if (!request) return { ok: false, error: 'no_request', logs };
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
 
+        // The UI opens the Logs tab THE MOMENT a build begins, so the user
+        // watches the code stream from the first token. tool_started exists
+        // too, but it carries no sessionId and races the panel mount; this
+        // explicit signal is the one the frontend trusts.
+        try { broadcast({ type: 'build_started', sessionId, data: { tool: 'web_page_builder', sessionId } } as any); } catch { /* UI optional */ }
+
         const isAr = /[؀-ۿ]/.test(request);
 
         // Per-session page memory: follow-up requests EDIT the current page instead
         // of regenerating a brand new one from scratch.
         // The palette and page kind are remembered with the page: a follow-up edit
         // must not re-roll the colours or re-decide what the page is.
-        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any; flourish?: any; reference?: any; site?: { dir: string; pages: any[] }; updatedAt?: number }> =
+        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any; flourish?: any; reference?: any; site?: { dir: string; pages: any[] }; updatedAt?: number; pwa?: boolean }> =
             (global as any).joePages || ((global as any).joePages = {});
         const prev = store[sessionKey];
         // «موقع جديد»/«تصميم جديد» must start OVER — with an active page they
@@ -219,7 +226,13 @@ export class WebPageBuilderTool implements ToolDefinition {
         // structure (like a real team) instead of one self-contained file. Triggered
         // by explicit intent; once on, it stays on for follow-up edits of the session.
         const multiFileIntent = /(multi.?file|separate files|split.*(css|js)|as a project|ملفات? منفصلة|منفصل|مشروع كامل|مشروع منظم|css منفصل|js منفصل|افصل)/i.test(request);
-        const isMultiFile = multiFileIntent || (isEdit && !!(prev as any)?.multiFile);
+        // [MOBILE APP] «تطبيق اندرويد/آيفون» becomes an INSTALLABLE app: the
+        // page gains a manifest, generated icons, iOS meta and an offline
+        // service worker (PWA). Those are separate files by necessity, so a
+        // mobile app is always a multi-file project. The flag sticks across
+        // edits with the rest of the page memory.
+        const isMobileApp = wantsMobileApp(request) || (isEdit && !!(prev as any)?.pwa);
+        const isMultiFile = multiFileIntent || isMobileApp || (isEdit && !!(prev as any)?.multiFile);
 
         // Department pipeline (visible in the thinking panel) — BA analyses the
         // request, Developer builds, QA reviews. Makes Joe feel like a team.
@@ -1446,6 +1459,19 @@ the WORDS, not the structure.`;
                 }
             }
         };
+        // [MOBILE APP] The manifest link, iOS meta and service-worker
+        // registration go into the document BEFORE it is written/split, so
+        // every later write (repairs re-split through writeOut) keeps them.
+        if (isMobileApp) {
+            html = ensurePwaMarkup(html, {
+                name: pageTitle({ request, isArabic: isAr, kindLabel: kind }),
+                themeColor: palette.primary,
+                backgroundColor: '#ffffff',
+                isArabic: isAr,
+            });
+            logs.push('mobile app: injected manifest link, iOS meta and the service-worker registration');
+        }
+
         try {
             fs.mkdirSync(path.dirname(path.join(ARTIFACT_DIR, filename)), { recursive: true });
             // Always write the combined file too (keeps single-file preview working
@@ -1484,6 +1510,28 @@ the WORDS, not the structure.`;
                 projIndex = split.indexHtml;
                 if (split.css) { fs.writeFileSync(path.join(abs, 'styles.css'), split.css, 'utf-8'); projectFiles.push({ name: 'styles.css', bytes: split.css.length }); projCss = split.css; streamCodeToLogs(sessionId, 'styles.css', split.css, { done: true, label: 'written to disk' }); }
                 if (split.js) { fs.writeFileSync(path.join(abs, 'script.js'), split.js, 'utf-8'); projectFiles.push({ name: 'script.js', bytes: split.js.length }); projJs = split.js; streamCodeToLogs(sessionId, 'script.js', split.js, { done: true, label: 'written to disk' }); }
+                // The app files themselves: manifest, worker and REAL generated
+                // icons (rounded brand-colour PNGs, drawn byte by byte — no
+                // image library needed). Written once; repairs re-split only
+                // index/styles/script, so these persist.
+                if (isMobileApp) {
+                    const appName = pageTitle({ request, isArabic: isAr, kindLabel: kind });
+                    const manifest = manifestJson({ name: appName, themeColor: palette.primary, backgroundColor: '#ffffff', isArabic: isAr });
+                    const sw = serviceWorkerJs();
+                    fs.writeFileSync(path.join(abs, 'manifest.webmanifest'), manifest, 'utf-8');
+                    fs.writeFileSync(path.join(abs, 'sw.js'), sw, 'utf-8');
+                    const i192 = iconPng(192, palette.primary);
+                    const i512 = iconPng(512, palette.primary);
+                    fs.writeFileSync(path.join(abs, 'icon-192.png'), i192);
+                    fs.writeFileSync(path.join(abs, 'icon-512.png'), i512);
+                    projectFiles.push(
+                        { name: 'manifest.webmanifest', bytes: manifest.length },
+                        { name: 'sw.js', bytes: sw.length },
+                        { name: 'icon-192.png', bytes: i192.length },
+                        { name: 'icon-512.png', bytes: i512.length },
+                    );
+                    logs.push(`mobile app: wrote manifest.webmanifest, sw.js and generated icon-192/512.png (${appName})`);
+                }
                 projectDir = dir;
                 base = `http://localhost:${PORT}/artifacts/${dir}/index.html`;
             } else if (siteEditFile && prev?.site) {
@@ -1497,7 +1545,7 @@ the WORDS, not the structure.`;
         }
         // `site` must survive an edit — dropping it would turn the next follow-up
         // back into a single-page edit against the wrong file.
-        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair, flourish, reference, site: prev?.site, updatedAt: Date.now() };
+        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair, flourish, reference, site: prev?.site, updatedAt: Date.now(), pwa: isMobileApp };
         persistJoePages();
 
         // An edit can introduce a link to a page that does not exist. On a site
@@ -1862,6 +1910,7 @@ the WORDS, not the structure.`;
             parts.push(isAr
                 ? `🎨 نظام التصميم: ${kind} · تخطيط ${archetype} · حركة ${motion} · خطوط ${typePair.note} · لوحة ${palette.scheme === 'analogous' ? 'متجانسة' : 'متكاملة'} حول ${palette.primary} (تباين AA مضمون)`
                 : `🎨 Design system: ${kind} · ${archetype} layout · ${motion} motion · ${typePair.note} type · ${palette.scheme} palette around ${palette.primary} (AA contrast by construction)`);
+            if (isMobileApp) parts.push(installNote(isAr));
             if (referenceNote) parts.push(referenceNote);
             if (siteLinkNote) parts.push(siteLinkNote.trim());
             if (editedSections.length) {
