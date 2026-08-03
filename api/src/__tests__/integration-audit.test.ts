@@ -134,6 +134,13 @@ describe('project undo — the history is finally read', () => {
     });
 });
 
+describe('the orchestrator plans WITH the session', () => {
+    it('a goal with no explicit context still plans as its own session (goal.id)', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
+        expect(src).toContain('goal.context || { sessionId: goal.id }');
+    });
+});
+
 describe('the repo typechecks clean — the architecture map exists', () => {
     it('docs/ARCHITECTURE.md documents the stores and the registration contract', () => {
         const doc = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'docs', 'ARCHITECTURE.md'), 'utf-8');

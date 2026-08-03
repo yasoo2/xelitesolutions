@@ -97,7 +97,12 @@ export class AgentOrchestrator {
     console.log(`[AgentOrchestrator] Starting REAL-TIME orchestration for goal: ${goal.goal}`);
     broadcastThinkingDetail(goal.id, `🧠 Initializing Autonomous Brain for goal: ${goal.goal}`);
 
-    this.context = goal.context;
+    // goal.id IS the session — callers that pass no explicit context (the
+    // REST /api/agent entry among them) must still plan WITH the session,
+    // or the planner looks up joeProjects['default'], misses the active
+    // project, and an edit like «غيّر الطراز» falls past the surgical
+    // editor (caught by the UI-integration wire proof).
+    this.context = goal.context || { sessionId: goal.id };
 
     // Initialize Runtime Memory
     const runtimeMemory = new ExecutionMemory(goal.id);
