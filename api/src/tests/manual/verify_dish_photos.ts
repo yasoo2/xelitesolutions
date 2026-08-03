@@ -172,6 +172,27 @@ async function main() {
     const undo: any = await new ProjectEditTool().execute({ request: 'تراجع عن آخر تعديل' }, { sessionId: 'dish-wire' });
     check('undo restored the pre-edit content.js', /↩️/.test(String(undo.output?.message)) && /\{ name: 'Season salad',[^\n]*?img: null/.test(fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8')), String(undo.output?.message).slice(0, 100));
 
+    console.log('\n[5] «احذف صورة طبق المشاوي» — الصف يعود نظيفاً والملف اليتيم يُحذف والبناء يتحقق');
+    const grillSrc = (fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8')
+        .match(/\{ name: 'Mixed grill',[^\n]*?img: \{ src: '(images\/[^']+)'/) || [])[1];
+    check('the grill row carried a photo before the removal', !!grillSrc, 'no src found');
+    const rm: any = await new ProjectEditTool().execute(
+        { request: 'remove the photo from the Mixed grill dish' }, { sessionId: 'dish-wire' });
+    check('the removal succeeded AND the real vite build verified it', !!rm.ok && rm.output.buildVerified === true, JSON.stringify({ ok: rm.ok, bv: rm.output?.buildVerified }));
+    const content3 = fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8');
+    check('the grill row is null again; hero and the other photos stayed',
+        /\{ name: 'Mixed grill',[^\n]*?img: null/.test(content3) && /heroImage: \{ src: /.test(content3));
+    check('the orphaned photo file left public/images', !!grillSrc && !fs.existsSync(path.join(proj, 'public', grillSrc)));
+    check('credits stay while other photos remain', content3.includes('landing'), content3.match(/credits: \[[\s\S]*?\],/)?.[0].slice(0, 80) || '');
+    const p3 = await browser.newPage();
+    await p3.goto(`http://127.0.0.1:${(site.address() as any).port}/`, { waitUntil: 'networkidle' });
+    const seen3 = await p3.evaluate(() => {
+        const thumbs = [...document.querySelectorAll('.menu-thumb')] as HTMLImageElement[];
+        const grill = [...document.querySelectorAll('.menu-item')].find(li => /Mixed grill/i.test(li.textContent || ''));
+        return { thumbCount: thumbs.length, painted: thumbs.every(t => t.naturalWidth > 0), grillClean: !!grill && !grill.querySelector('img') };
+    });
+    check('the browser sees ONE painted dish thumbnail left and a clean grill row', seen3.thumbCount === 1 && seen3.painted && seen3.grillClean, JSON.stringify(seen3));
+
     await browser.close();
     site.close(); archive.close();
     fs.rmSync(root, { recursive: true, force: true });

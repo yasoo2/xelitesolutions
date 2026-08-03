@@ -206,6 +206,41 @@ describe('the offline scaffold ships clean rows and a conditional thumb', () => 
             expect(String(undo.output.message)).toContain('↩️');
             const reverted = contentOf();
             expect(reverted).toMatch(/\{ name: 'مشاوي مشكلة',[^\n]*?img: null/);
+
+            // [5] REPLACE: a new subject swaps the hero photo and the orphan file is deleted
+            const oldHeroSrc = contentOf().match(/heroImage: \{ src: '(images\/[^']+)'/)![1];
+            const swap: any = await new ProjectEditTool().execute({ request: 'غير صورة الواجهة الى صورة قهوة عربية' }, { sessionId: 'img-edit' });
+            expect(swap.ok).toBe(true);
+            const newHeroSrc = contentOf().match(/heroImage: \{ src: '(images\/[^']+)'/)![1];
+            expect(newHeroSrc).not.toBe(oldHeroSrc);
+            expect(fs.existsSync(path.join(dir, 'public', newHeroSrc))).toBe(true);
+            expect(fs.existsSync(path.join(dir, 'public', oldHeroSrc))).toBe(false);   // no orphan ships
+
+            // [6] REMOVE a named dish photo: the row goes back to null, its file leaves,
+            //     the hero's photo and the credits stay
+            await new ProjectEditTool().execute({ request: 'ضف صورة لطبق حلو البيت' }, { sessionId: 'img-edit' });
+            const dishSrc = contentOf().match(/\{ name: 'حلو البيت',[^\n]*?img: \{ src: '(images\/[^']+)'/)![1];
+            const rm: any = await new ProjectEditTool().execute({ request: 'احذف صورة طبق حلو البيت' }, { sessionId: 'img-edit' });
+            expect(rm.ok).toBe(true);
+            expect(String(rm.output.message)).toContain('🗑️');
+            expect(contentOf()).toMatch(/\{ name: 'حلو البيت',[^\n]*?img: null/);
+            expect(fs.existsSync(path.join(dir, 'public', dishSrc))).toBe(false);
+            expect(contentOf()).toMatch(/heroImage: \{ src: /);
+            expect(contentOf()).toContain('stub-archive.test');    // credits stay while photos remain
+
+            // [7] removing the LAST photo empties the credits — no licence line for
+            //     pictures that left
+            const rmHero: any = await new ProjectEditTool().execute({ request: 'احذف صورة الواجهة' }, { sessionId: 'img-edit' });
+            expect(rmHero.ok).toBe(true);
+            const bare = contentOf();
+            expect(bare).toContain('heroImage: null');
+            expect(bare).not.toContain('stub-archive.test');
+            expect(fs.existsSync(path.join(dir, 'public', newHeroSrc))).toBe(false);
+
+            // [8] nothing left to remove → an honest answer, no write
+            const rmNone: any = await new ProjectEditTool().execute({ request: 'احذف صورة الواجهة' }, { sessionId: 'img-edit' });
+            expect(String(rmNone.output.message)).toMatch(/لا توجد صورة/);
+            expect(contentOf()).toBe(bare);
         } finally {
             (global as any).fetch = guardFetch;
             fs.rmSync(process.env.ARTIFACT_DIR!, { recursive: true, force: true });

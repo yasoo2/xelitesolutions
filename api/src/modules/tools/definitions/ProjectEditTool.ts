@@ -111,6 +111,23 @@ export function diffSummary(before: string, after: string): { added: number; rem
     return { added, removed };
 }
 
+/** The rows of content.js that can carry a photo, in the serializer's own
+ *  single-line format — dishes carry desc, testimonials carry role. */
+export function photoRows(body: string): Array<{ name: string; kind: 'dish' | 'person'; second: string; img: string }> {
+    return [...String(body).matchAll(/\{ name: '([^']*)', (desc|role): '([^']*)',[^\n]*?img: (null|\{[^}]*\})/g)]
+        .map(m => ({ name: m[1], kind: m[2] === 'desc' ? 'dish' as const : 'person' as const, second: m[3], img: m[4] }));
+}
+
+/** The row the request names — SCORED by matched name words, never
+ *  first-match: «لطبق مشاوي مشكلة» contains «طبق», which is also the first
+ *  word of «طبق اليوم», and first-match handed the photo to the wrong dish. */
+export function pickPhotoRow<T extends { name: string }>(rows: T[], request: string): T | null {
+    return rows
+        .map(r => ({ r, hits: r.name.split(/\s+/).filter(w => w.length >= 3 && request.includes(w)).length }))
+        .filter(x => x.hits > 0)
+        .sort((a, b) => b.hits - a.hits)[0]?.r || null;
+}
+
 const EDITABLE = /\.(jsx?|tsx?|mjs|css|html|json)$/i;
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'build']);
 
@@ -238,25 +255,65 @@ export class ProjectEditTool extends BaseTool {
         const imageIntent = /(ضي?ف|أضف|اضف|حطّ?|ركّ?ب|غيّ?ر|بدّ?ل)[^.\n]{0,30}صور(ة|ه)|صور(ة|ه)\s*(جديدة|حقيقية)|\b(add|change|set|put)\b[^.\n]{0,30}\b(photo|image|picture)\b/i.test(request);
         const contentRel = 'src/content.js';
         const notes: string[] = [];
+        const reEsc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        /** The photo the row/hero currently carries — its src, or undefined. */
+        const currentSrcOf = (body: string, target: { name: string } | null): string | undefined => target
+            ? (body.match(new RegExp(`\\{ name: '${reEsc(target.name)}',[^\\n]*?img: \\{ src: '([^']+)'`)) || [])[1]
+            : (body.match(/heroImage: \{ src: '([^']+)'/) || [])[1];
+        /** A photo file nothing references any more has no business shipping. */
+        const dropUnreferenced = (body: string, src?: string) => {
+            if (src && !body.includes(src)) {
+                try { fs.unlinkSync(path.join(dir, 'public', src)); logs.push(`image edit: deleted unreferenced ${src}`); }
+                catch { /* already gone */ }
+            }
+        };
+
+        // ── deterministic fast path: «احذف الصورة …» — the mirror of adding.
+        //    The row goes back to null (the components render the no-photo
+        //    shape by construction), the orphaned file is deleted from
+        //    public/, and removing the LAST photo also empties the credits —
+        //    no licence line for pictures that left. Same gates, same undo.
+        const removeImageIntent = /(احذف|امسح|شيل(?:ي|وا)?|أزل|ازل)[^.\n]{0,30}صور(ة|ه)|\b(remove|delete|drop)\b[^.\n]{0,30}\b(photo|image|picture)\b/i.test(request);
+        if (!touched.length && removeImageIntent && fs.existsSync(path.join(dir, contentRel))) {
+            const body = fs.readFileSync(path.join(dir, contentRel), 'utf-8');
+            const target = pickPhotoRow(photoRows(body), request);
+            const oldSrc = currentSrcOf(body, target);
+            const where = target ? `«${target.name}»` : (isAr ? 'واجهة الصفحة' : 'the hero');
+            if (!oldSrc) {
+                return {
+                    ok: true,
+                    output: { message: isAr ? `🖼️ لا توجد صورة على ${where} أصلاً — لا شيء يُحذف.` : `🖼️ ${where} has no photo — nothing to remove.` },
+                    logs,
+                } as any;
+            }
+            let next = target
+                ? body.replace(new RegExp(`(\\{ name: '${reEsc(target.name)}',[^\\n]*?img: )\\{[^}]*\\}`), '$1null')
+                : body.replace(/heroImage: \{[^}]*\}/, 'heroImage: null');
+            if (!/img: \{ src: /.test(next) && !/heroImage: \{ src: /.test(next)) {
+                next = next.replace(/credits: \[[\s\S]*?\n  \],/, 'credits: [\n  ],');
+                logs.push('image edit: last photo removed — credits emptied too');
+            }
+            const gate = syntaxOk(contentRel, next);
+            if (gate.ok) {
+                write(contentRel, next);
+                dropUnreferenced(next, oldSrc);
+                notes.push(isAr ? `🗑️ أزلت الصورة من ${where} — وعاد الصف نصياً نظيفاً.` : `🗑️ Removed the photo from ${where} — the row is a clean text row again.`);
+                logs.push(`image edit: ${target ? target.name : 'heroImage'} photo removed`);
+            } else {
+                refused.push(`${contentRel}: image removal breaks the syntax (${gate.error}) — refused`);
+            }
+        }
+
         if (!touched.length && imageIntent && fs.existsSync(path.join(dir, contentRel))) {
             const body = fs.readFileSync(path.join(dir, contentRel), 'utf-8');
             const esc = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
-            const reEsc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            // The rows that can carry a photo, read from the project's OWN content.
-            const rows = [...body.matchAll(/\{ name: '([^']*)', (desc|role): '([^']*)',[^\n]*?img: (null|\{[^}]*\})/g)]
-                .map(m => ({ name: m[1], kind: m[2] === 'desc' ? 'dish' as const : 'person' as const, second: m[3] }));
-            // The row the request names — scored, not first-match: «لطبق مشاوي
-            // مشكلة» contains «طبق», which is also the first word of «طبق
-            // اليوم», and first-match handed the photo to the wrong dish.
-            const target = rows
-                .map(r => ({ r, hits: r.name.split(/\s+/).filter(w => w.length >= 3 && request.includes(w)).length }))
-                .filter(x => x.hits > 0)
-                .sort((a, b) => b.hits - a.hits)[0]?.r || null;
+            const rows = photoRows(body);
+            const target = pickPhotoRow(rows, request);
             // What the user asked the photo to BE, when they said it.
             let tail = (request.match(/صور(?:ة|ه)\s+([^\n.،!؟]{3,80})/) || request.match(/\b(?:photo|image|picture)\s+(?:of\s+)?([^\n.,!?]{3,80})/i) || [])[1] || '';
             tail = tail.replace(/^(لل|ل|الى|إلى|في|عن|من)\s*/, '')
                 .replace(/\b(the|to|for|of|hero|banner|header|section|menu|dish|page)\b/gi, ' ')
-                .replace(/(حقيقية|جديدة|القسم|قسم|طبق|لطبق|البطل|بطل|الواجهة|واجهة|الرئيسية|رئيسية|الترويسة|ترويسة|الغلاف|غلاف|الصفحة|صفحة|الموقع|موقع|القائمة|قائمة)/g, ' ');
+                .replace(/(حقيقية|جديدة|أخرى|اخرى|القسم|قسم|طبق|لطبق|البطل|بطل|الواجهة|واجهة|الرئيسية|رئيسية|الترويسة|ترويسة|الغلاف|غلاف|الصفحة|صفحة|الموقع|موقع|القائمة|قائمة|الصورة|بصورة|صورة|الى|إلى)/g, ' ');
             if (target) for (const w of target.name.split(/\s+/)) tail = tail.split(w).join(' ');
             tail = tail.replace(/\s+/g, ' ').trim();
             if (tail.length < 4) tail = '';
@@ -287,6 +344,7 @@ export class ProjectEditTool extends BaseTool {
                         logs,
                     } as any;
                 }
+                const replacedSrc = currentSrcOf(body, target);   // a REPLACE leaves an orphan behind
                 let next = target
                     ? body.replace(
                         new RegExp(`(\\{ name: '${reEsc(target.name)}',[^\n]*?img: )(null|\\{[^}]*\\})`),
@@ -304,6 +362,7 @@ export class ProjectEditTool extends BaseTool {
                     const gate = syntaxOk(contentRel, next);
                     if (gate.ok) {
                         write(contentRel, next);
+                        dropUnreferenced(next, replacedSrc);
                         const where = target ? `«${target.name}»` : (isAr ? 'واجهة الصفحة' : 'the hero');
                         notes.push(isAr
                             ? `🖼️ أضفت صورة حقيقية مرخّصة إلى ${where} (${img.src}) — والاعتماد في التذييل.`
