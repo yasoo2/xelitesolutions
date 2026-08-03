@@ -66,7 +66,17 @@ export type AgentDAG = {
   status: "idle" | "running" | "completed" | "failed";
 };
 
+/**
+ * A RUN-LEVEL recovery budget. The per-node retry cap (2) never stopped the
+ * field failure: every recovery injects NEW nodes with NEW ids whose retry
+ * counters start at zero, so one broken request grew 5 → 9 → 12 → 13 nodes,
+ * each cycle burning provider tokens and minutes. Three recoveries per run
+ * is the honest ceiling — past it, Joe says what failed and stops.
+ */
+const MAX_RECOVERIES_PER_RUN = 3;
+
 export class AgentOrchestrator {
+  private recoveriesUsed = 0;
   private memory: Map<string, ExecutionMemory> = new Map();
   private agents: Map<AgentType, BaseAgent> = new Map();
   private context?: Record<string, any>;
@@ -526,6 +536,15 @@ export class AgentOrchestrator {
             return { ok: false, result: result.error || "Fatal execution error: Max retries reached" };
           }
 
+          if (this.recoveriesUsed >= MAX_RECOVERIES_PER_RUN) {
+            console.error(`[AgentOrchestrator] Recovery budget exhausted (${MAX_RECOVERIES_PER_RUN} per run) — stopping honestly instead of growing the plan again.`);
+            if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_budget_exhausted', nodeId: node.id });
+            return {
+              ok: false,
+              result: `تعذّر إكمال المهمة بعد ${MAX_RECOVERIES_PER_RUN} محاولات إصلاح متتالية — توقفت بصدق بدل الدوران في حلقة إصلاحات. آخر خطأ: ${String((result.error as any)?.message || result.error || '').slice(0, 300)}`,
+            };
+          }
+          this.recoveriesUsed++;
           const recoveryResult = await this.attemptRecovery(node, result.error, memory, dag, traceId);
           if (recoveryResult.recovered) {
             broadcastThinkingDetail(memory.sessionId, `⚠️ Recovering from failure in "${node.task}". Injecting repair nodes...`);

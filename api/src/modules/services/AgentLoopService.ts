@@ -149,7 +149,7 @@ export class AgentLoopService {
             const answerText = AgentLoopService.extractAnswer(result);
             const finalText = result.ok
                 ? (answerText || uiText('done', language))
-                : `⚠️ ${answerText || uiText('failed', language)}`;
+                : `⚠️ ${AgentLoopService.humanizeFailure(answerText, language) || uiText('failed', language)}`;
             broadcast({ type: 'text', sessionId, data: { text: finalText, sessionId }, runId } as any);
             broadcast({ type: 'run_finished', runId, data: { runId, ok: result.ok, sessionId } } as any);
 
@@ -204,6 +204,24 @@ export class AgentLoopService {
      * The orchestrator returns { ok, result } where result maps stepId -> output.
      * For a chat/direct-answer node this output is the reply text.
      */
+    /**
+     * A RAW SYSTEM ERROR IS NOT AN ANSWER. Field log, verbatim final reply:
+     * «⚠️ ENOENT: no such file or directory, scandir 'C:\…\path_to_directory'»
+     * — the user asked about a picture and got a filesystem stack line. Raw
+     * errors stay (honesty: the technical detail is real and useful for
+     * repair) but they arrive WRAPPED in a human sentence in the user's
+     * language, clearly marked as the machine detail, never as the reply.
+     */
+    static humanizeFailure(text: string, language: string): string {
+        const t = String(text || '').trim();
+        if (!t) return t;
+        const RAW_ERROR = /ENOENT|EACCES|EPERM|ECONN|ETIMEDOUT|EADDRINUSE|is not recognized as an internal|SyntaxError:|TypeError:|ReferenceError:|Cannot read propert|no such file or directory|command not found|MODULE_NOT_FOUND/i;
+        if (!RAW_ERROR.test(t)) return t;
+        return language === 'ar'
+            ? `تعذّر إكمال الطلب — صادف التنفيذ خطأً تقنياً وتوقفت بصدق.\nالتفاصيل التقنية (للصيانة): ${t.slice(0, 400)}`
+            : `Could not complete the request — execution hit a technical error and stopped honestly.\nTechnical detail (for repair): ${t.slice(0, 400)}`;
+    }
+
     private static extractAnswer(result: { ok: boolean; result: any }): string {
         const toText = (v: any): string => {
             if (v == null) return '';

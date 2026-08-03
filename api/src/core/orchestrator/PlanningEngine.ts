@@ -1093,17 +1093,16 @@ Return ONLY a JSON array of steps:
                 // DAG JSON; the daily quota stays for the user-facing answer.
             ], undefined, undefined, undefined, undefined, undefined, undefined, { ...(context || {}), purpose: 'internal' });
 
-            const jsonMatch = response.match(/\[[\s\S]*\]/);
-            if (jsonMatch) {
-                const rawSteps = JSON.parse(jsonMatch[0]);
-                const steps: ExecutionStep[] = (Array.isArray(rawSteps) ? rawSteps : []).map((step: any) => ({
+            const rawSteps = PlanningEngine.parseJsonArrayLoose(response);
+            if (rawSteps) {
+                const steps: ExecutionStep[] = PlanningEngine.sanitizeSteps((Array.isArray(rawSteps) ? rawSteps : []).map((step: any) => ({
                     id: String(step.id || `step_${Math.random().toString(36).substring(7)}`),
                     description: String(step.description || step.task || step.task_description || `Execute task`),
                     tool: String(step.tool || 'shell_execute'),
                     agent: String(step.agent || 'General'),
                     input: step.input || {},
                     dependsOn: Array.isArray(step.dependsOn) ? step.dependsOn.map(String) : []
-                }));
+                })), String(intent.goal || ''));
 
                 return {
                     id: `dag_${Date.now()}`,
@@ -1139,5 +1138,74 @@ Return ONLY a JSON array of steps:
             }],
             metadata: { complexity: 'low', riskLevel: 'low' }
         };
+    }
+
+    /**
+     * TOLERANT JSON. The field log: «Dynamic DAG generation failed:
+     * SyntaxError: Expected ',' or '}' after property value at position
+     * 1306» — one bad character from a weak model threw away an otherwise
+     * valid 5-node plan and dropped the run into the failover node. Broken
+     * JSON is repaired in stages (fences, trailing commas, smart quotes),
+     * and as the last resort every individually-valid object is salvaged —
+     * four good nodes beat zero.
+     */
+    static parseJsonArrayLoose(text: string): any[] | null {
+        const cleaned = String(text || '').replace(/```(?:json)?/gi, '');
+        const m = cleaned.match(/\[[\s\S]*\]/);
+        if (!m) return null;
+        const raw = m[0];
+        const attempts = [
+            raw,
+            raw.replace(/,\s*([}\]])/g, '$1'),
+            raw.replace(/[“”«»]/g, '"').replace(/[‘’]/g, "'").replace(/,\s*([}\]])/g, '$1'),
+            raw.replace(/\}\s*\{/g, '},{').replace(/,\s*([}\]])/g, '$1'),
+        ];
+        for (const a of attempts) {
+            try { const v = JSON.parse(a); if (Array.isArray(v)) return v; } catch { /* next repair */ }
+        }
+        // Salvage: extract each balanced {...} object and keep the valid ones.
+        const objs: any[] = [];
+        let depth = 0, start = -1;
+        for (let i = 0; i < raw.length; i++) {
+            const c = raw[i];
+            if (c === '{') { if (depth === 0) start = i; depth++; }
+            else if (c === '}') {
+                depth--;
+                if (depth === 0 && start >= 0) {
+                    try { objs.push(JSON.parse(raw.slice(start, i + 1).replace(/,\s*([}\]])/g, '$1'))); } catch { /* skip the broken one */ }
+                    start = -1;
+                }
+            }
+        }
+        if (objs.length) console.warn(`[PlanningEngine] JSON was broken — salvaged ${objs.length} valid node(s) instead of failing over.`);
+        return objs.length ? objs : null;
+    }
+
+    /**
+     * PLAN SANITY. The field log again, verbatim: «Node node_3 failed:
+     * central_answer was called without a question», «Node node_4 failed:
+     * filename or path is required» — the model planned tool calls with
+     * empty inputs and each one became a user-visible failure plus a
+     * recovery cycle. Every step now leaves planning with the inputs its
+     * tool cannot run without.
+     */
+    static sanitizeSteps<T extends { tool: string; description: string; input: any }>(steps: T[], goal: string): T[] {
+        const userGoal = goal.split(/\n+\[(?:ATTACHED FILES|STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|RESPONSE LANGUAGE)/)[0].trim();
+        for (const s of steps) {
+            s.input = s.input && typeof s.input === 'object' ? s.input : {};
+            const t = String(s.tool || '');
+            if (t === 'central_answer' && !String(s.input.question || '').trim()) {
+                s.input.question = s.description && s.description !== 'Execute task'
+                    ? `${s.description}\n\n(السياق الكامل للطلب): ${userGoal}` : userGoal;
+            }
+            if ((t === 'browser_run' || t === 'browser_launch') && !String(s.input.task || s.input.url || s.input.instructionText || '').trim()) {
+                s.input.task = s.description || userGoal;
+            }
+            if (t === 'write_file' && !String(s.input.path || s.input.filename || '').trim()) {
+                s.input.path = `joe-output-${Date.now()}.txt`;
+            }
+            if (!s.input.request) s.input.request = userGoal;
+        }
+        return steps;
     }
 }
