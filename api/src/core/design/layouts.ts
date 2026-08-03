@@ -432,6 +432,31 @@ export function surfacePairingCss(a: Archetype): string {
 .band.band{${band}}${heroBlock}`.trim();
 }
 
+/**
+ * Injects the pairing as ONE addressable, idempotent block.
+ *
+ * It used to be appended into "the last </style>" on every write. Two measured
+ * failures came out of that: (1) after the first contrast repair, the last
+ * style block IS <style id="joe-contrast-fix"> — a block that repair rebuilds
+ * from scratch, so the pairing landed inside it and was WIPED on the next
+ * repair round, taking the band's readability with it; (2) nothing removed the
+ * previous copy, so every edit appended another — a shipped styles.css carried the
+ * same .band.band rule three times. One named block, rebuilt in place, ends
+ * both.
+ */
+export function applySurfacePairing(html: string, a: Archetype): string {
+    let out = String(html || '');
+    out = out.replace(/<style id="joe-surface-pairing">[\s\S]*?<\/style>\n?/g, '');
+    // …and sweep the legacy inline copies this bug already planted in pages
+    // built before the block existed (including inside joe-contrast-fix).
+    out = out.replace(/\/\* Joe surface pairing[^*]*\*\/\s*\.band\.band\{[^}]*\}(?:\s*\.hero\.hero[^{]*\{[^}]*\})*\n?/g, '');
+    const block = `<style id="joe-surface-pairing">\n${surfacePairingCss(a)}\n</style>`;
+    if (/<\/head>/i.test(out)) return out.replace(/<\/head>/i, `${block}\n</head>`);
+    const last = out.lastIndexOf('</style>');
+    if (last >= 0) return out.slice(0, last + '</style>'.length) + `\n${block}` + out.slice(last + '</style>'.length);
+    return `${block}\n${out}`;
+}
+
 export function layoutBrief(a: Archetype, t: TypePair): string {
     const shape: Record<Archetype, string> = {
         split: 'The hero is SPLIT: copy on one side, a photograph on the other. Use <section class="hero aura"><div class="wrap hero-split"><div>…copy…</div><div class="hero-media"><img …></div></div></section>. Feature sections use .feature-row, which alternates image side automatically.',

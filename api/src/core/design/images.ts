@@ -497,7 +497,16 @@ export interface ImageResolution {
  * before the visitor has scrolled. Both are applied only to tags Joe filled in,
  * and only where the author did not already set them.
  */
-function hardenImgTags(html: string, byLocalSrc: Map<string, ResolvedImage>): string {
+export function hardenImgTags(html: string, byLocalSrc: Map<string, ResolvedImage>): string {
+    /**
+     * The FIRST photograph is the hero — almost always the Largest Contentful
+     * Paint. A shipped build lazy-loaded it («<img loading="lazy" … hero»),
+     * which tells the browser to DEPRIORITIZE the one image the visitor is
+     * looking at while it waits: the page paints, then the hero pops in late.
+     * The first photo loads eager and high-priority; everything below the
+     * fold stays lazy, which is what lazy was for.
+     */
+    let firstPhoto = true;
     return html.replace(/<img\b[^>]*>/gi, (tag) => {
         const srcMatch = tag.match(/src\s*=\s*"([^"]+)"/i);
         const src = srcMatch?.[1] || '';
@@ -507,7 +516,13 @@ function hardenImgTags(html: string, byLocalSrc: Map<string, ResolvedImage>): st
         if (img.width && img.height && !/\bwidth\s*=/i.test(out) && !/\bheight\s*=/i.test(out)) {
             out = out.replace(/<img\b/i, `<img width="${img.width}" height="${img.height}"`);
         }
-        if (!/\bloading\s*=/i.test(out)) out = out.replace(/<img\b/i, '<img loading="lazy" decoding="async"');
+        if (firstPhoto) {
+            // Even a lazy the model wrote itself: lazy on the LCP is never right.
+            out = out.replace(/\sloading\s*=\s*"[^"]*"/i, '');
+            if (!/\bfetchpriority\s*=/i.test(out)) out = out.replace(/<img\b/i, '<img loading="eager" fetchpriority="high"');
+            if (!/\bdecoding\s*=/i.test(out)) out = out.replace(/<img\b/i, '<img decoding="async"');
+        } else if (!/\bloading\s*=/i.test(out)) out = out.replace(/<img\b/i, '<img loading="lazy" decoding="async"');
+        firstPhoto = false;
         // Give the photo the shape its position needs. Without this a portrait
         // dropped into a wide card stretches the whole row.
         if (img.slot && SLOTS[img.slot] && !/\bstyle\s*=/i.test(out)) {

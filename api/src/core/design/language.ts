@@ -220,5 +220,14 @@ bdi{unicode-bidi:isolate}
 [dir="rtl"] .price,[dir="rtl"] .stat b,[dir="rtl"] time,[dir="rtl"] [data-count-to]{unicode-bidi:isolate}
 /* Tabular numerals so a column of figures lines up in either direction. */
 .stat b,td,th,.price,[data-count-to]{font-variant-numeric:tabular-nums}
+/* Arabic is a CONNECTED script: tracking pulls its letters apart and negative
+   tracking makes them collide. The kit's .eyebrow ships letter-spacing:.12em
+   with text-transform:uppercase — Latin conventions that on an Arabic page
+   break every ligature in the label (seen on «خدماتنا»/«مشاريعنا» in a real
+   build) and uppercase means nothing. Headings carry -.01/-.02em for the same
+   Latin reason. :is() takes the specificity of its strongest argument, so
+   these outrank the kit's .hero h1 (-.035em) too. */
+[dir="rtl"] :is(.eyebrow,h1,h2,h3,h4,.display,.hero h1,.brand-name){letter-spacing:0}
+[dir="rtl"] .eyebrow{text-transform:none}
 `.trim();
 }

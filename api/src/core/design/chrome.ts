@@ -704,12 +704,43 @@ export function repairDeadAnchors(html: string, opts?: { isArabic?: boolean }): 
         [/المنتجات|المتجر|products|shop|store/i, /product|shop|store|catalog/i],
     ];
 
+    /**
+     * The Arabic definite article, normalised away for matching. «المشاريع»
+     * and «مشاريعنا» share their root but not a substring, so the footer's
+     * «المشاريع» was demoted to a <span> on a page whose top nav carried a
+     * perfectly good «المشاريع» link three sections up.
+     */
+    const deArticle = (s: string) => s.replace(/(^|\s)ال(?=\S)/g, '$1');
+
+    /**
+     * Living twins: a dead link whose LABEL already appears on a working link
+     * is not an unknown — it is the same button in a second place. Adopt the
+     * working link's destination before ever considering a demotion.
+     */
+    const liveByLabel = new Map<string, string>();
+    for (const m of src2.matchAll(/<a\b[^>]*?href\s*=\s*["']#([A-Za-z][\w:.-]*)["'][^>]*>([\s\S]*?)<\/a\s*>/gi)) {
+        if (!existingIds.has(m[1])) continue;
+        const label = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!label) continue;
+        if (!liveByLabel.has(label)) liveByLabel.set(label, m[1]);
+        const bare = deArticle(label);
+        if (bare !== label && !liveByLabel.has(bare)) liveByLabel.set(bare, m[1]);
+    }
+
     const out = src2.replace(/<a\b([^>]*?)href\s*=\s*["']#["']([^>]*)>([\s\S]*?)<\/a\s*>/gi,
         (whole, before: string, after: string, inner: string) => {
             const raw = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
             const label = raw.toLowerCase();
             if (!label) return whole;
-            let hit = targets.find(t => t.words.some(w => label.includes(w) || w.includes(label)));
+            const bare = deArticle(label);
+            let hit = targets.find(t => t.words.some(w => {
+                const bw = deArticle(w);
+                return label.includes(w) || w.includes(label) || bare.includes(bw) || bw.includes(bare);
+            }));
+            if (!hit) {
+                const twin = liveByLabel.get(label) || liveByLabel.get(bare);
+                if (twin) hit = { id: twin, words: [] };
+            }
             if (!hit) {
                 // Nothing matched literally — try what the label MEANS.
                 const intent = INTENTS.find(([lab]) => lab.test(raw));

@@ -416,13 +416,22 @@ export function chartRuntime(isArabic: boolean): string {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', all);
   else all();
   /* Dark mode is a different set of steps, not an automatic flip — redraw. */
+  function redrawAll() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-chart][data-drawn]'), function (f) {
+      f.innerHTML = ''; f.removeAttribute('data-drawn'); render(f);
+    });
+  }
   try {
     var mq = window.matchMedia('(prefers-color-scheme: dark)');
-    if (mq.addEventListener) mq.addEventListener('change', function () {
-      Array.prototype.forEach.call(document.querySelectorAll('[data-chart][data-drawn]'), function (f) {
-        f.innerHTML = ''; f.removeAttribute('data-drawn'); render(f);
-      });
-    });
+    if (mq.addEventListener) mq.addEventListener('change', redrawAll);
+  } catch (e) { }
+  /* The page's OWN theme switch sets data-theme on <html> and fires no media
+     event at all — pressing it left every chart in the previous palette until
+     a reload. Watch the attribute the switch actually writes. */
+  try {
+    if (window.MutationObserver) new MutationObserver(function (muts) {
+      for (var i = 0; i < muts.length; i++) if (muts[i].attributeName === 'data-theme') { redrawAll(); return; }
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   } catch (e) { }
 })();
 </script>`;

@@ -32,7 +32,7 @@ import { widgetBrief, widgetRuntime, widgetCss, usesWidgets } from '../../../cor
 import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPlaceholder, groundImageSrcs, stripBrokenStyleImages, imagesToMarkers } from '../../../core/design/images';
 import { extractRequirements, verifyContent, wireNavigation, repairBrief, demotePlaceholderPrefills, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
-import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, surfacePairingCss, ownedSurfaces, normalizeIconRefs } from '../../../core/design/layouts';
+import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, applySurfacePairing, ownedSurfaces, normalizeIconRefs } from '../../../core/design/layouts';
 import { sanitizeInlineSvg, labelIconOnlyButtons } from '../../../core/design/svg-sanity';
 import { pickFlourish, flourishCss, flourishBrief } from '../../../core/design/flourish';
 
@@ -1104,12 +1104,7 @@ the WORDS, not the structure.`;
          * 1.0:1 in a browser — white on white, a blank screen — and a repainted
          * `.band` measured 1.04:1 on any composition at all.
          */
-        {
-            const pairing = `\n${surfacePairingCss(archetype)}\n`;
-            const last = html.lastIndexOf('</style>');
-            if (last >= 0) html = html.slice(0, last) + pairing + html.slice(last);
-            else if (/<\/head>/i.test(html)) html = html.replace(/<\/head>/i, `<style>${pairing}</style>\n</head>`);
-        }
+        html = applySurfacePairing(html, archetype);
         // The drawn icon set, once per document, before anything can reference it.
         if (!/id="i-check"/.test(html)) {
             html = /<body[^>]*>/i.test(html)
@@ -2234,11 +2229,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
              * — every page of the site, for the same reason a single page gets
              * it: a repainted `.band` keeps white text and goes blank.
              */
-            {
-                const pairing = `\n${surfacePairingCss(archetype)}\n`;
-                const last = pageHtml.lastIndexOf('</style>');
-                if (last >= 0) pageHtml = pageHtml.slice(0, last) + pairing + pageHtml.slice(last);
-            }
+            pageHtml = applySurfacePairing(pageHtml, archetype);
             // The switch goes into the shared header, so it is in the same place
             // on every page of the site and the choice carries across the click.
             if (!darkFirst) pageHtml = ensureThemeToggle(pageHtml, isAr).html;
