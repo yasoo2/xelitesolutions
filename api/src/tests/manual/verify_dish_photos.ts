@@ -212,6 +212,37 @@ async function main() {
     check('a traversal attempt is refused', trav !== 200, String(trav));
     api.close();
 
+    console.log('\n[7] النشر: مجلد التحضير يحمل الصور ويعمل وحده بلا خادم جو خلفه');
+    const { findBuiltArtifact, stageForPages } = await import('../../core/deploy/publish-source');
+    const src = findBuiltArtifact({ sessionId: 'dish-wire', artifactDir: process.env.ARTIFACT_DIR!, explorerRoot: root });
+    check('«انشر المشروع» finds the project\'s production build', !!src?.dir && src.dir.endsWith('dist'), JSON.stringify(src));
+    const stage = path.join(root, 'publish-stage');
+    const staged = stageForPages(src!, stage, process.env.ARTIFACT_DIR!);
+    const stagedImages = fs.existsSync(path.join(stage, 'images')) ? fs.readdirSync(path.join(stage, 'images')) : [];
+    check('the photos rode into the stage folder', stagedImages.length >= 4, stagedImages.join(','));
+    check('nothing unresolved — the project build has no /artifacts/ ghosts', staged.unresolved.length === 0, staged.unresolved.join(','));
+    const pub = http.createServer((req, res2) => {
+        const rel = decodeURIComponent(String(req.url || '/').split('?')[0]).replace(/^\/+/, '') || 'index.html';
+        const file = path.join(stage, rel);
+        if (!file.startsWith(stage) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res2.writeHead(404); return res2.end(); }
+        res2.writeHead(200, { 'content-type': file.endsWith('.html') ? 'text/html' : file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.png') ? 'image/png' : 'application/octet-stream' });
+        res2.end(fs.readFileSync(file));
+    });
+    pub.listen(0, '127.0.0.1');
+    await new Promise<void>(r => pub.once('listening', () => r()));
+    const b2 = await (require('playwright').chromium).launch({ args: ['--no-sandbox'] });
+    const p5 = await b2.newPage();
+    await p5.goto(`http://127.0.0.1:${(pub.address() as any).port}/`, { waitUntil: 'networkidle' });
+    const seen5 = await p5.evaluate(() => ({
+        hero: (document.querySelector('.hero-photo') as HTMLImageElement | null)?.naturalWidth || 0,
+        thumbs: [...document.querySelectorAll('.menu-thumb')].filter((t: any) => t.naturalWidth > 0).length,
+        avatars: [...document.querySelectorAll('.quote-avatar')].filter((a: any) => a.naturalWidth > 0).length,
+    }));
+    check('the PUBLISHED folder renders its photos standalone (hero + thumb + avatars)',
+        seen5.hero > 0 && seen5.thumbs === 1 && seen5.avatars === 2, JSON.stringify(seen5));
+    await b2.close();
+    pub.close();
+
     await browser.close();
     site.close(); archive.close();
     fs.rmSync(root, { recursive: true, force: true });

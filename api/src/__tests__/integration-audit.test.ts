@@ -80,6 +80,22 @@ describe('«انشر المشروع» publishes the ACTIVE artifact', () => {
         (global as any).joeProjects['pub-t'] = { dir: path.join(tmp, 'no-dist'), updatedAt: 9000 };
         expect(() => findBuiltArtifact({ sessionId: 'pub-t', artifactDir: tmp })).not.toThrow();
     });
+    it('a project dist WITH photos stages SELF-CONTAINED — images ride to the permanent link', () => {
+        const { stageForPages } = require('../core/deploy/publish-source');
+        const dist = path.join(tmp, 'photo-app', 'dist');
+        fs.mkdirSync(path.join(dist, 'images'), { recursive: true });
+        fs.mkdirSync(path.join(dist, 'assets'), { recursive: true });
+        fs.writeFileSync(path.join(dist, 'index.html'), '<html><script src="./assets/a.js"></script></html>');
+        fs.writeFileSync(path.join(dist, 'images', 'dish.png'), Buffer.from([137, 80, 78, 71]));
+        // The app references its photos RELATIVELY (content.js does since the
+        // photo batches) — nothing to rewrite, everything to carry.
+        fs.writeFileSync(path.join(dist, 'assets', 'a.js'), "const img = { src: 'images/dish.png' };");
+        const stage = path.join(tmp, 'stage-photo');
+        const r = stageForPages({ kind: 'site', dir: dist, labelAr: 'x' }, stage, tmp);
+        expect(fs.existsSync(path.join(stage, 'images', 'dish.png'))).toBe(true);
+        expect(fs.readFileSync(path.join(stage, 'assets', 'a.js'), 'utf-8')).toContain("'images/dish.png'");
+        expect(r.unresolved).toEqual([]);   // no /artifacts/ ghosts in a project build
+    });
 });
 
 describe('«شغّل المشروع» defaults to the session\'s active project', () => {
