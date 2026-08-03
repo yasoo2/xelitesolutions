@@ -127,6 +127,21 @@ async function main() {
     check('…and the API rows replaced the baked ones (5 cards from the database)', seen.cards === 5, String(seen.cards));
     check('…while the name-matched baked photo stays painted', seen.paintedByName);
 
+    console.log('\n[3ب] زائر حقيقي يضغط «اطلب الآن» ويملأ النموذج — والطلب صف حقيقي في القاعدة');
+    const card = p.locator('.product-card', { hasText: 'طقم الهدية' });
+    await card.locator('button.btn').click();
+    await card.locator('input[aria-label="الاسم"]').fill('خالد التجريبي');
+    await card.locator('input[aria-label="الجوال"]').fill('0500000000');
+    await card.locator('input[aria-label="الكمية"]').fill('2');
+    await card.locator('button[type="submit"]').click();
+    await p.waitForSelector('.order-note');
+    const note = await p.evaluate(() => document.querySelector('.order-note')?.textContent || '');
+    check('the page announced the order WITH its database id', /استلمنا طلبك رقم #\d+/.test(note) && note.includes('طقم الهدية'), note.slice(0, 90));
+    const orders = await fetch('http://127.0.0.1:4100/api/orders').then(r => r.json());
+    check('the order is READABLE from the database over HTTP (item, customer, qty)',
+        orders?.ok === true && orders.orders.some((o: any) => o.item === 'طقم الهدية' && o.customer === 'خالد التجريبي' && o.qty === 2),
+        JSON.stringify(orders?.orders?.[0] || {}).slice(0, 140));
+
     console.log('\n[4] الصدق: يُقتل الخادم — والصفحة تسقط للبيانات المخبوزة بلا انهيار');
     try { apiSrv?.kill(); } catch { /* gone */ }
     await new Promise(r => setTimeout(r, 400));
@@ -143,6 +158,15 @@ async function main() {
     check('no live row, no live dot — the baked shelf stands (4 baked cards, photos painted)',
         !seen2.liveRow && !seen2.liveDot && seen2.cards === 4 && seen2.painted === 4, JSON.stringify(seen2));
     check('…and ZERO page errors during the fallback', errors.length === 0, errors.join(' | ').slice(0, 120));
+    // Ordering with the API dead: the visitor's intent is KEPT, honestly.
+    const deadCard = p2.locator('.product-card', { hasText: 'الإصدار الفاخر' });
+    await deadCard.locator('button.btn').click();
+    await deadCard.locator('input[aria-label="الاسم"]').fill('زائر');
+    await deadCard.locator('button[type="submit"]').click();
+    await p2.waitForSelector('.order-note');
+    const deadNote = await p2.evaluate(() => document.querySelector('.order-note')?.textContent || '');
+    check('a dead-server order answers honestly and points at the contact form',
+        deadNote.includes('تعذر الوصول') && deadNote.includes('الإصدار الفاخر'), deadNote.slice(0, 90));
 
     await browser.close();
     site.close(); archive.close();

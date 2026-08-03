@@ -538,8 +538,11 @@ ${(c.credits || []).map(cr => `    { creator: '${js(cr.creator)}', license: '${j
   // copy cannot reach localhost, and the form says so honestly instead.
   inbox: '${js((c as any).inbox || '')}',
   // The session's Joe API, when one was built first — the list sections
-  // read their LIVE rows from it and fall back to the rows above.
+  // read their LIVE rows from it and fall back to the rows above, and the
+  // order buttons WRITE visitor orders into its orders table.
   api: '${js((c as any).api || '')}',
+  ordersApi: '${js((c as any).ordersApi || '')}',
+  orderCta: '${js((c as any).orderCta || 'اطلب الآن')}',
 };
 `;
 }
@@ -670,6 +673,7 @@ export default function Contact({ content }) {
 
 function fileMenuJsx(): string {
     return `import React, { useEffect, useState } from 'react';
+import OrderButton from './OrderButton.jsx';
 
 export default function Menu({ content }) {
   // The baked rows are the honest default. Built next to a Joe API, the
@@ -703,6 +707,7 @@ export default function Menu({ content }) {
               <div className="menu-body">
                 <h3>{m.name}</h3>
                 <p>{m.desc}</p>
+                {content.ordersApi ? <OrderButton item={m.name} content={content} /> : null}
               </div>
               <strong className="menu-price">{m.price}</strong>
             </li>
@@ -717,6 +722,7 @@ export default function Menu({ content }) {
 
 function fileProductsJsx(): string {
     return `import React, { useEffect, useState } from 'react';
+import OrderButton from './OrderButton.jsx';
 
 export default function Products({ content }) {
   // Baked rows by default; LIVE rows from the session's Joe API when the
@@ -749,13 +755,70 @@ export default function Products({ content }) {
               <p>{p.desc}</p>
               <div className="product-foot">
                 <strong className="product-price">{p.price}</strong>
-                <a className="btn" href="#contact">{content.cta}</a>
+                {content.ordersApi
+                  ? <OrderButton item={p.name} content={content} />
+                  : <a className="btn" href="#contact">{content.cta}</a>}
               </div>
             </div>
           ))}
         </div>
       </div>
     </section>
+  );
+}
+`;
+}
+
+/**
+ * The write half of the full-stack link: an inline order form that POSTS a
+ * REAL row into the API's orders table. Success shows the order's OWN id
+ * (the database assigned it); any failure keeps the visitor's intent on
+ * screen honestly and points at the contact form — never a fake "sent".
+ */
+function fileOrderButtonJsx(): string {
+    return `import React, { useState } from 'react';
+
+export default function OrderButton({ item, content }) {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState('idle');   // idle | sending | done | kept
+  const [orderId, setOrderId] = useState(0);
+  const [form, setForm] = useState({ customer: '', phone: '', qty: 1 });
+  const ar = content.isArabic !== false;
+  const submit = async (e) => {
+    e.preventDefault();
+    setState('sending');
+    try {
+      const r = await fetch(content.ordersApi, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item, qty: Number(form.qty) || 1, customer: form.customer, phone: form.phone }),
+      });
+      const d = await r.json();
+      if (r.ok && d.ok) { setOrderId(d.order.id); setState('done'); return; }
+      setState('kept');
+    } catch { setState('kept'); }
+  };
+  if (state === 'done') {
+    return <p className="order-note">✅ {ar ? \`استلمنا طلبك رقم #\${orderId} — \${item}\` : \`Order #\${orderId} received — \${item}\`}</p>;
+  }
+  if (state === 'kept') {
+    return <p className="order-note">⚠️ {ar ? \`تعذر الوصول للخادم الآن — اطلب «\${item}» عبر نموذج التواصل.\` : \`The server is unreachable — order "\${item}" via the contact form.\`}</p>;
+  }
+  if (!open) {
+    return <button type="button" className="btn" onClick={() => setOpen(true)}>{content.orderCta}</button>;
+  }
+  return (
+    <form className="order-form" onSubmit={submit}>
+      <input required aria-label={ar ? 'الاسم' : 'Name'} placeholder={ar ? 'الاسم' : 'Name'} value={form.customer}
+        onChange={(e) => setForm({ ...form, customer: e.target.value })} />
+      <input aria-label={ar ? 'الجوال' : 'Phone'} placeholder={ar ? 'الجوال (اختياري)' : 'Phone (optional)'} value={form.phone}
+        onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+      <input type="number" min="1" max="99" aria-label={ar ? 'الكمية' : 'Quantity'} value={form.qty}
+        onChange={(e) => setForm({ ...form, qty: e.target.value })} />
+      <button type="submit" className="btn" disabled={state === 'sending'}>
+        {state === 'sending' ? '…' : ar ? 'أرسل الطلب' : 'Send order'}
+      </button>
+    </form>
   );
 }
 `;
@@ -925,6 +988,10 @@ textarea{min-height:120px}
 .product-foot .btn{margin-top:0;padding:9px 20px}
 .product-price{color:var(--brand);font-size:1.15rem;white-space:nowrap}
 .live-dot{color:#2ecc71;font-size:.65em;vertical-align:middle;margin-inline-start:10px;animation:live-pulse 2s infinite}
+.order-form{display:grid;gap:8px;margin-top:10px;max-width:320px}
+.order-form input{padding:9px 12px;border:1px solid var(--border);border-radius:10px;font:inherit;background:var(--surface);color:var(--text)}
+.order-form .btn{margin-top:0}
+.order-note{background:color-mix(in srgb,var(--tint) 40%,transparent);padding:10px 14px;border-radius:10px;margin:10px 0 0;font-size:.95rem}
 @keyframes live-pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .menu-price{color:var(--brand);white-space:nowrap;font-size:1.1rem}
 .tier{display:flex;flex-direction:column;gap:10px}
@@ -1006,7 +1073,10 @@ export class ReactProjectTool extends BaseTool {
         const apiLink = prevEntry?.type === 'api' && prevEntry?.resource
             ? `http://localhost:${prevEntry.port || 4100}/api/${prevEntry.resource}` : '';
         (content as any).api = apiLink;
-        if (apiLink) term(`full-stack link: this app reads LIVE rows from ${apiLink}`);
+        // …and WRITES into it: visitor orders post to the API's orders table.
+        (content as any).ordersApi = apiLink ? apiLink.replace(/\/api\/[a-z]+$/, '/api/orders') : '';
+        (content as any).orderCta = isAr ? 'اطلب الآن' : 'Order now';
+        if (apiLink) term(`full-stack link: this app reads LIVE rows from ${apiLink} and writes orders to ${(content as any).ordersApi}`);
         // The app's form delivers into Joe's inbox while it runs next to Joe.
         (content as any).inbox = `http://localhost:${process.env.PORT || '5002'}/api/public/forms/${dirName.replace(/[^a-zA-Z0-9._-]/g, '')}`;
 
@@ -1109,6 +1179,12 @@ export class ReactProjectTool extends BaseTool {
         for (const c of ['Navbar', ...sections, 'Footer']) {
             const tpl = componentTemplates[c];
             if (tpl) files[`src/components/${c}.jsx`] = tpl();
+        }
+        // Menu/Products import OrderButton statically — ship it with them.
+        // An unlinked app never renders it (ordersApi is ''), and the
+        // bundler keeps the build green either way.
+        if (sections.includes('Menu') || sections.includes('Products')) {
+            files['src/components/OrderButton.jsx'] = fileOrderButtonJsx();
         }
         // The multi-page app swaps in a Navbar of real page Links.
         if (multiPage) files['src/components/Navbar.jsx'] = fileMultiPageNavbarJsx();

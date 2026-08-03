@@ -129,4 +129,48 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         expect(server).toContain("error: 'name_required'");
         expect(server).toContain('404');
     });
+
+    it('ORDERS: both backends carry the orders store, the routes validate, the README teaches them', async () => {
+        const res: any = await new ApiProjectTool().execute(
+            { request: 'ابنِ لي API لمنتجات متجر', skipInstall: true, root: tmp }, { sessionId: 'api-t' });
+        const db = fs.readFileSync(path.join(res.output.path, 'db.js'), 'utf-8');
+        for (const method of ['listOrders', 'createOrder', 'countOrders']) {
+            expect((db.match(new RegExp(`${method}: `, 'g')) || []).length).toBe(2);   // once per backend
+        }
+        expect(db).toContain('CREATE TABLE IF NOT EXISTS orders');
+        const server = fs.readFileSync(path.join(res.output.path, 'server.js'), 'utf-8');
+        expect(server).toContain("'/api/orders'");
+        expect(server).toContain("error: 'item_required'");
+        expect(server).toContain("error: 'customer_required'");
+        expect(server).toContain("error: 'bad_qty'");
+        const { syntaxOk } = require('../modules/tools/definitions/ProjectEditTool');
+        expect(syntaxOk('server.js', server).ok).toBe(true);
+        expect(syntaxOk('db.js', db).ok).toBe(true);
+        expect(fs.readFileSync(path.join(res.output.path, 'README.md'), 'utf-8')).toContain('/api/orders');
+    });
+
+    it('the LINKED frontend gets ordersApi and the OrderButton; unlinked ships the plain CTA', async () => {
+        const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
+        // Session api-t currently holds the products API from the test above.
+        const linked: any = await new ReactProjectTool().execute(
+            { request: 'ابنِ متجر react للعطور', skipInstall: true, root: tmp }, { sessionId: 'api-t' });
+        const content = fs.readFileSync(path.join(linked.output.path, 'src', 'content.js'), 'utf-8');
+        expect(content).toContain("ordersApi: 'http://localhost:4100/api/orders'");
+        expect(content).toContain("orderCta: 'اطلب الآن'");
+        const btnPath = path.join(linked.output.path, 'src', 'components', 'OrderButton.jsx');
+        expect(fs.existsSync(btnPath)).toBe(true);
+        const btn = fs.readFileSync(btnPath, 'utf-8');
+        expect(btn).toContain('fetch(content.ordersApi');
+        expect(btn).toContain("setState('kept')");           // the honest failure path
+        expect(syntaxOk('OrderButton.jsx', btn).ok).toBe(true);
+        const products = fs.readFileSync(path.join(linked.output.path, 'src', 'components', 'Products.jsx'), 'utf-8');
+        expect(products).toContain('content.ordersApi');
+        expect(products).toContain('<OrderButton item={p.name}');
+        // Unlinked session: ordersApi empty, the plain CTA renders instead.
+        const plain: any = await new ReactProjectTool().execute(
+            { request: 'ابنِ متجر react للحقائب', skipInstall: true, root: tmp }, { sessionId: 'api-plain2' });
+        const content2 = fs.readFileSync(path.join(plain.output.path, 'src', 'content.js'), 'utf-8');
+        expect(content2).toContain("ordersApi: ''");
+        delete (global as any).joeProjects?.['api-plain2'];
+    });
 });

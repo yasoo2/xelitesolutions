@@ -128,13 +128,37 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
       },
       remove: (id) => conn.prepare('DELETE FROM ${resource} WHERE id = ?').run(Number(id)).changes > 0,
       count: () => Number(conn.prepare('SELECT COUNT(*) AS n FROM ${resource}').get().n),
+      listOrders: () => conn.prepare('SELECT * FROM orders ORDER BY id DESC LIMIT 500').all()
+        .map((o) => ({ id: o.id, item: o.item, qty: o.qty, customer: o.customer, phone: o.phone, note: o.note, created_at: o.created_at })),
+      createOrder: ({ item, qty = 1, customer, phone = '', note = '' }) => {
+        const r = conn.prepare('INSERT INTO orders (item, qty, customer, phone, note) VALUES (?, ?, ?, ?, ?)')
+          .run(String(item), Number(qty), String(customer), String(phone), String(note));
+        const o = conn.prepare('SELECT * FROM orders WHERE id = ?').get(r.lastInsertRowid);
+        return { id: o.id, item: o.item, qty: o.qty, customer: o.customer, phone: o.phone, note: o.note, created_at: o.created_at };
+      },
+      countOrders: () => Number(conn.prepare('SELECT COUNT(*) AS n FROM orders').get().n),
     };
+    conn.exec(\`CREATE TABLE IF NOT EXISTS orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item TEXT NOT NULL,
+      qty INTEGER DEFAULT 1,
+      customer TEXT NOT NULL,
+      phone TEXT DEFAULT '',
+      note TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )\`);
   } catch { /* an older Node — the JSON backend below serves instead */ }
 }
 
 if (!db) {
   const FILE = path.join(HERE, 'data.json');
-  const load = () => { try { return JSON.parse(fs.readFileSync(FILE, 'utf-8')); } catch { return { seq: 0, rows: [] }; } };
+  const load = () => {
+    try {
+      const s = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
+      s.orders = s.orders || []; s.oseq = s.oseq || 0;
+      return s;
+    } catch { return { seq: 0, rows: [], oseq: 0, orders: [] }; }
+  };
   const save = (s) => fs.writeFileSync(FILE, JSON.stringify(s, null, 2));
   db = {
     backend: 'json',
@@ -165,6 +189,15 @@ if (!db) {
       return s.rows.length < before;
     },
     count: () => load().rows.length,
+    listOrders: () => load().orders.slice().reverse().slice(0, 500),
+    createOrder: ({ item, qty = 1, customer, phone = '', note = '' }) => {
+      const s = load();
+      const order = { id: ++s.oseq, item: String(item), qty: Number(qty), customer: String(customer), phone: String(phone), note: String(note), created_at: new Date().toISOString() };
+      s.orders.push(order);
+      save(s);
+      return order;
+    },
+    countOrders: () => load().orders.length,
   };
 }
 
@@ -207,7 +240,29 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, backend: db.backend, count: db.count() }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, backend: db.backend, count: db.count(), orders: db.countOrders() }));
+
+// Visitor ORDERS — the frontend's «اطلب الآن» writes real rows here.
+app.get('/api/orders', (_req, res) => res.json({ ok: true, orders: db.listOrders() }));
+
+app.post('/api/orders', (req, res) => {
+  const { item, qty, customer, phone, note } = req.body || {};
+  if (typeof item !== 'string' || !item.trim() || item.length > 200) {
+    return res.status(400).json({ ok: false, error: 'item_required' });
+  }
+  if (typeof customer !== 'string' || !customer.trim() || customer.length > 100) {
+    return res.status(400).json({ ok: false, error: 'customer_required' });
+  }
+  const q = qty === undefined ? 1 : Number(qty);
+  if (!Number.isInteger(q) || q < 1 || q > 99) {
+    return res.status(400).json({ ok: false, error: 'bad_qty' });
+  }
+  if ((phone !== undefined && (typeof phone !== 'string' || phone.length > 30))
+    || (note !== undefined && (typeof note !== 'string' || note.length > 500))) {
+    return res.status(400).json({ ok: false, error: 'bad_fields' });
+  }
+  res.status(201).json({ ok: true, order: db.createOrder({ item: item.trim(), qty: q, customer: customer.trim(), phone, note }) });
+});
 
 app.get('/api/${resource}', (_req, res) => res.json({ ok: true, ${resource}: db.list() }));
 
@@ -277,6 +332,13 @@ curl http://localhost:4100/api/${resource}
 curl -X POST http://localhost:4100/api/${resource} -H "Content-Type: application/json" -d '{"name":"جديد","details":"وصف","price":"50"}'
 curl -X PUT  http://localhost:4100/api/${resource}/1 -H "Content-Type: application/json" -d '{"price":"75"}'
 curl -X DELETE http://localhost:4100/api/${resource}/1
+\`\`\`
+
+## الطلبات — تكتبها واجهة المتجر/المطعم المربوطة تلقائياً
+
+\`\`\`bash
+curl http://localhost:4100/api/orders
+curl -X POST http://localhost:4100/api/orders -H "Content-Type: application/json" -d '{"item":"طقم الهدية","qty":2,"customer":"خالد","phone":"05xxxxxxxx"}'
 \`\`\`
 
 البيانات محفوظة على القرص (\`data.db\` أو \`data.json\`) — تنجو من إعادة التشغيل.
