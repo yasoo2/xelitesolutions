@@ -32,9 +32,9 @@ export function rememberSessionFiles(sessionId: string, fileIds: string[]): void
     }
 }
 
-export function recallSessionFiles(sessionId: string): string[] {
+export function recallSessionFiles(sessionId: string, maxAgeMs: number = SESSION_FILE_TTL_MS): string[] {
     const hit = SESSION_FILE_MEMORY.get(sessionId);
-    if (!hit || Date.now() - hit.at > SESSION_FILE_TTL_MS) return [];
+    if (!hit || Date.now() - hit.at > maxAgeMs) return [];
     return [...hit.fileIds];
 }
 
@@ -48,6 +48,26 @@ export const REFERS_TO_ATTACHMENT =
     // NB: \b is ASCII-only in JS and silently fails around Arabic letters —
     // the pronoun suffix is bounded with a lookahead instead.
     /(صور|لقط|سكرين|مرفق|المستند|الملف|فايل|ملف|image|photo|picture|screenshot|attach|\bfile\b|document|\bpdf\b|docx|xlsx|pptx)|(حلل|افحص|اقرأ|صِ?ف|وضّ?ح|لخّ?ص|ترجم|شوف|طالع)(ها|يها|ه)(?![ء-ي])/i;
+
+/**
+ * The WEAK tier — «صار يتهبل» (field log): «هل هذا متعلق بهاتف أم آيباد؟»
+ * points at the picture with nothing but a demonstrative, missed the strong
+ * regex, and the planner spawned an iPad-vs-iPhone browser expedition. Bare
+ * demonstratives and feminine pronoun suffixes (عنها، فيها — الصورة) DO
+ * refer to the attachment in a live conversation — but only a FRESH one, so
+ * this tier recalls within a short window, not the full six hours.
+ */
+export const WEAK_ATTACHMENT_REFERENCE =
+    /(?<![ء-ي])(هذا|هذه|هذي|ذلك|تلك|بهذا|بهذه|لهذا|لهذه|عليها|عنها|فيها|منها|إليها|اليها)(?![ء-ي])|\b(this|that|these|those|it)\b/i;
+export const WEAK_REFERENCE_WINDOW_MS = 15 * 60_000;
+
+/** How strongly the message points at the session's last attachment. */
+export function attachmentRecallMode(text: string): 'strong' | 'weak' | 'none' {
+    const t = String(text || '');
+    if (REFERS_TO_ATTACHMENT.test(t)) return 'strong';
+    if (WEAK_ATTACHMENT_REFERENCE.test(t)) return 'weak';
+    return 'none';
+}
 
 /**
  * [PROVIDER VERIFY] Actually test a provider with a tiny prompt and report
@@ -141,13 +161,23 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
          * when a message REFERS to an attachment (هذه الصوره، الملف، حللها…)
          * and carries none, the session's last uploaded files ride again.
          */
-        const remembered = recallSessionFiles(String(sessionId || ''));
-        if (remembered.length && REFERS_TO_ATTACHMENT.test(String(text || ''))) {
-            try {
-                attachments = await loadUploadedFiles(remembered);
-                if (attachments.length) console.log(`[RunRoute] 🧷 Re-attached ${attachments.length} earlier file(s) — the message refers to them (attachment memory)`);
-            } catch (e: any) {
-                console.warn('[RunRoute] Attachment memory reload failed (continuing without):', e?.message || e);
+        const recallMode = attachmentRecallMode(String(text || ''));
+        if (recallMode !== 'none') {
+            // Strong reference (الصوره، الملف، حللها…) recalls within the full
+            // TTL; a weak one (هذا، فيها، this…) only while the file is FRESH.
+            const remembered = recallSessionFiles(String(sessionId || ''), recallMode === 'strong' ? undefined : WEAK_REFERENCE_WINDOW_MS);
+            if (remembered.length) {
+                try {
+                    attachments = await loadUploadedFiles(remembered);
+                    if (attachments.length) {
+                        console.log(`[RunRoute] 🧷 Re-attached ${attachments.length} earlier file(s) — ${recallMode} reference (attachment memory)`);
+                        // Touch the memory so a CHAIN of follow-ups keeps the
+                        // picture on the table («حلل» → «هل هذا هاتف؟» → «وماذا عن…»).
+                        rememberSessionFiles(String(sessionId || ''), remembered);
+                    }
+                } catch (e: any) {
+                    console.warn('[RunRoute] Attachment memory reload failed (continuing without):', e?.message || e);
+                }
             }
         }
     }

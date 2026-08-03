@@ -59,3 +59,46 @@ describe('what counts as referring to an attachment', () => {
         test(`«${t}» → nothing is dragged back in`, () => expect(REFERS_TO_ATTACHMENT.test(t)).toBe(false));
     }
 });
+
+/**
+ * THE WEAK TIER — «صار يتهبل» (field log): «هل هذا متعلق بهاتف ام اي باد؟»
+ * points at the fresh screenshot with only a demonstrative; it missed the
+ * strong regex and the planner spawned an iPad-vs-iPhone browser
+ * expedition. Demonstratives recall the attachment too — but only while
+ * it is fresh (15 minutes), so an old picture is never dragged into an
+ * unrelated conversation hours later.
+ */
+import { attachmentRecallMode, WEAK_REFERENCE_WINDOW_MS } from '../api/routes/run';
+
+describe('weak references — demonstratives point at the fresh attachment', () => {
+    const weak = [
+        'هل هذا متعلق بهاتف ام اي باد؟',   // the field message, verbatim
+        'ما رأيك فيها؟',
+        'هل هذه واجهة حقيقية؟',
+        'ماذا يوجد عنها في الويب؟',
+        'is this a phone screen?',
+    ];
+    const none = [
+        'كم الساعة الآن؟',
+        'شغّل المشروع',
+        'ما هي عاصمة فرنسا؟',
+        'ابنِ لي موقعاً لمطعم',
+    ];
+    for (const t of weak) {
+        test(`«${t}» → weak recall`, () => expect(attachmentRecallMode(t)).toBe('weak'));
+    }
+    for (const t of none) {
+        test(`«${t}» → no recall at all`, () => expect(attachmentRecallMode(t)).toBe('none'));
+    }
+    test('a strong noun stays strong (not downgraded by also containing هذا)', () => {
+        expect(attachmentRecallMode('حلل هذه الصوره')).toBe('strong');
+    });
+    test('the weak window is minutes, not hours', () => {
+        expect(WEAK_REFERENCE_WINDOW_MS).toBeLessThanOrEqual(30 * 60_000);
+    });
+    test('recall honours a custom max age (the weak window)', () => {
+        rememberSessionFiles('s-weak-1', ['w1']);
+        expect(recallSessionFiles('s-weak-1', WEAK_REFERENCE_WINDOW_MS)).toEqual(['w1']);
+        expect(recallSessionFiles('s-weak-1', -1)).toEqual([]);   // already "too old"
+    });
+});

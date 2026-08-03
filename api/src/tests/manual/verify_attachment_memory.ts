@@ -107,16 +107,22 @@ async function main() {
     const plan = await PlanningEngine.generatePlan({ intent: { goal: goal2, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });
     check('planner: direct answer, no exiftool circus', plan.steps.length === 1 && plan.steps[0].tool === 'central_answer', plan.steps.map(s => s.tool).join(','));
 
+    // ── msg 2b: the WEAK follow-up from the next field log ───────────────
+    console.log('\n[2b] «هل هذا متعلق بهاتف ام اي باد؟» — إشارة ضمنية فقط، بلا مرفق');
+    await post({ text: 'هل هذا متعلق بهاتف ام اي باد؟', sessionId: 'mem-e2e', language: 'en' });
+    await new Promise(r => setTimeout(r, 400));
+    check('a demonstrative recalls the FRESH attachment (weak tier)', runs[2]?.attachments.length === 1, `got ${runs[2]?.attachments.length}`);
+
     // ── msg 3: unrelated question — the old screenshot must stay away ───
     console.log('\n[3] «كم الساعة الآن؟» — سؤال لا علاقة له بالمرفق');
     await post({ text: 'كم الساعة الآن؟', sessionId: 'mem-e2e', language: 'en' });
     await new Promise(r => setTimeout(r, 400));
-    check('no attachment dragged into an unrelated message', runs[2]?.attachments.length === 0, `got ${runs[2]?.attachments.length}`);
+    check('no attachment dragged into an unrelated message', runs[3]?.attachments.length === 0, `got ${runs[3]?.attachments.length}`);
 
     // ── other session: memory never leaks across sessions ───────────────
     await post({ text: 'حلل هذه الصوره', sessionId: 'other-session', language: 'en' });
     await new Promise(r => setTimeout(r, 400));
-    check('another session recalls nothing', runs[3]?.attachments.length === 0, `got ${runs[3]?.attachments.length}`);
+    check('another session recalls nothing', runs[4]?.attachments.length === 0, `got ${runs[4]?.attachments.length}`);
 
     server.close(); ollama.close();
     console.log(`\n===== ${pass} passed, ${fail} failed =====`);
