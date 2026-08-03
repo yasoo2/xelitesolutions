@@ -19,6 +19,7 @@ import filesRoutes from './routes/files';
 import { loadChatStores } from './chat-store';
 import { loadJoePages, loadJoeProjects } from './page-store';
 import approvalsRoutes from './routes/approvals';
+import formsPublicRoutes from './routes/formsPublic';
 import projectRoutes from './routes/project';
 import assetsRoutes from './routes/assets';
 import memoryRoutes from './routes/memory';
@@ -210,6 +211,8 @@ export const createApp = () => {
   apiRouter.use('/queue', queueRoutes);
   apiRouter.use('/files', filesRoutes);
   apiRouter.use('/approvals', approvalsRoutes);
+  // Built pages POST their form submissions here (visitor-facing, no auth).
+  apiRouter.use('/public/forms', formsPublicRoutes);
   apiRouter.use('/project', projectRoutes);
   apiRouter.use('/assets', assetsRoutes);
   apiRouter.use('/memory', memoryRoutes);

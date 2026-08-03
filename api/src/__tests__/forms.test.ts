@@ -95,10 +95,17 @@ describe('the runtime is a real, accessible validator', () => {
         expect(rt).toContain('clipboard');
     });
 
-    it('is self-contained: no dependency, no network', () => {
+    it('is self-contained: no dependency, and the ONLY network call is the page\'s own inbox', () => {
         expect(rt.startsWith('<script>')).toBe(true);
-        expect(rt).not.toMatch(/\bfetch\s*\(|XMLHttpRequest|\bimport\s|\brequire\s*\(/);
+        expect(rt).not.toMatch(/XMLHttpRequest|\bimport\s|\brequire\s*\(/);
+        // Stage 4 added exactly one legitimate network path: a POST to the
+        // data-joe-inbox endpoint the page itself carries. No other URL is
+        // ever contacted — no third-party service, nothing hardcoded.
         expect(rt).not.toMatch(/https?:\/\//);
+        const fetches = rt.match(/\bfetch\s*\(/g) || [];
+        expect(fetches.length).toBe(1);
+        expect(rt).toContain("form.getAttribute('data-joe-inbox')");
+        expect(rt).toContain('deliverFallback');
     });
 });
 

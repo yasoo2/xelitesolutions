@@ -171,6 +171,9 @@ export const content = {
 ${c.features.map(f => `    { title: '${js(f.title)}', text: '${js(f.text)}' },`).join('\n')}
   ],
   contactTitle: '${js(c.contactTitle)}',
+  // Joe's inbox — the previewed app really delivers its form; a published
+  // copy cannot reach localhost, and the form says so honestly instead.
+  inbox: '${js((c as any).inbox || '')}',
 };
 `;
 }
@@ -248,19 +251,32 @@ function fileContactJsx(): string {
     return `import React, { useState } from 'react';
 
 export default function Contact({ content }) {
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState(false);       // 'delivered' | 'kept' | false
   const [form, setForm] = useState({ name: '', email: '', msg: '' });
-  const onSubmit = (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault();
-    // Honest by default: no backend is wired yet, so the message is kept on
-    // screen for the visitor instead of pretending it was delivered.
-    setSent(true);
+    // Joe's inbox first — real delivery when the app runs next to Joe.
+    // Anywhere else the fetch fails and the message is kept ON SCREEN for
+    // the visitor instead of pretending it was delivered.
+    if (content.inbox) {
+      try {
+        const r = await fetch(content.inbox, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: form, page: document.title }),
+        });
+        if (r.ok) { setSent('delivered'); return; }
+      } catch { /* unreachable — fall through to the honest path */ }
+    }
+    setSent('kept');
   };
   return (
     <section className="section band" id="contact">
       <div className="wrap">
         <h2>{content.contactTitle}</h2>
-        {sent ? (
+        {sent === 'delivered' ? (
+          <p className="form-note">✅ وصلت رسالتك — ستظهر في صندوق رسائل الموقع.</p>
+        ) : sent ? (
           <p className="form-note">📝 {form.name ? form.name + ' — ' : ''}{form.msg || '…'}</p>
         ) : (
           <form onSubmit={onSubmit}>
@@ -338,8 +354,8 @@ export class ReactProjectTool extends BaseTool {
         },
         required: ['request'],
     };
-    permissions: ToolPermission[] = ['execute', 'fs_write'];
-    sideEffects: ToolPermission[] = ['execute', 'fs_write'];
+    permissions: ToolPermission[] = ['execute', 'write'];
+    sideEffects: ToolPermission[] = ['execute', 'write'];
     rateLimitPerMinute = 6;
     auditFields = ['request'];
 
@@ -363,6 +379,8 @@ export class ReactProjectTool extends BaseTool {
         const palette = buildPalette(request);
         const content = deriveContent(request, isAr);
         const dirName = `react-${slug(content.brand)}`;
+        // The app's form delivers into Joe's inbox while it runs next to Joe.
+        (content as any).inbox = `http://localhost:${process.env.PORT || '5002'}/api/public/forms/${dirName.replace(/[^a-zA-Z0-9._-]/g, '')}`;
 
         // The project lands where the File Explorer actually looks.
         const { workspaceService } = require('../../services/WorkspaceService');

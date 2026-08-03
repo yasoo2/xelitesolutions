@@ -26,7 +26,7 @@ import { wrongLanguage, languageRetryNote, isolateLatinRuns, bidiCss } from '../
 import { splitIntoSections, targetSections, sectionsForFindings, extractEditedSection, spliceSections, sectionEditPrompt, type PageSection } from '../../../core/design/section-editor';
 import { planSite, siteNav, siteNavCss, verifyInternalLinks, targetPage, type SitePlan } from '../../../core/design/site-plan';
 import { cartBrief, cartRuntime, cartCss, needsCart } from '../../../core/design/commerce';
-import { formBrief, formRuntime, formCss } from '../../../core/design/forms';
+import { formBrief, formRuntime, formCss, wireFormsToInbox } from '../../../core/design/forms';
 import { chartBrief, chartRuntime, chartCss, needsCharts } from '../../../core/design/dataviz';
 import { widgetBrief, widgetRuntime, widgetCss, usesWidgets } from '../../../core/design/widgets';
 import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPlaceholder, groundImageSrcs, stripBrokenStyleImages, imagesToMarkers } from '../../../core/design/images';
@@ -1527,6 +1527,15 @@ the WORDS, not the structure.`;
                 }
             }
         };
+        // [LIVE DATA] Every data-joe-form gets Joe's inbox endpoint: the
+        // previewed page really delivers its submissions («اعرض رسائل
+        // النموذج» reads them); a published copy falls back to the honest
+        // mailto/copy path when the endpoint is unreachable.
+        {
+            const wired = wireFormsToInbox(html, sessionKey, PORT);
+            if (wired !== html) { html = wired; logs.push('forms: wired to the Joe inbox (real delivery in preview, honest fallback when published)'); }
+        }
+
         // [MOBILE APP] The manifest link, iOS meta and service-worker
         // registration go into the document BEFORE it is written/split, so
         // every later write (repairs re-split through writeOut) keeps them.

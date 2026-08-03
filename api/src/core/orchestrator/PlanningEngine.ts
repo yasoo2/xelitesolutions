@@ -507,6 +507,20 @@ Rules:
             }
         }
 
+        // [FORM INBOX] «اعرض رسائل النموذج» — the live-data reading path.
+        {
+            const inboxAsk = /(اعرض|أعرض|شوف|كم|هل\s*(وصل|فيه))\s*[^.\n]{0,25}?(رسائل|رساله|رسالة|الرسائل)|صندوق\s*(الرسائل|النموذج|الوارد)|من\s*راسل|form\s*(inbox|messages|submissions)/i.test(probe);
+            const hasArtifact = !!((global as any).joePages?.[activeKey] || (global as any).joeProjects?.[activeKey]);
+            if (inboxAsk && hasArtifact) {
+                return {
+                    id: `inbox_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{ id: 'form_inbox', description: 'قراءة رسائل نموذج الموقع', tool: 'form_inbox', agent: 'General', input: { request: intent.goal }, dependsOn: [] }],
+                    metadata: { complexity: 'low', riskLevel: 'low' },
+                };
+            }
+        }
+
         // [SURGICAL PROJECT EDIT] When the session's ACTIVE artifact is a
         // scaffolded project (newer than any built page), an edit belongs to
         // the diff editor — it changes lines in real files, verifies with the

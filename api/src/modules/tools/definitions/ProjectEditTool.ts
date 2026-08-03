@@ -140,8 +140,8 @@ export class ProjectEditTool extends BaseTool {
         },
         required: ['request'],
     };
-    permissions: ToolPermission[] = ['execute', 'fs_write'];
-    sideEffects: ToolPermission[] = ['fs_write'];
+    permissions: ToolPermission[] = ['execute', 'write'];
+    sideEffects: ToolPermission[] = ['write'];
     rateLimitPerMinute = 12;
     auditFields = ['request'];
 

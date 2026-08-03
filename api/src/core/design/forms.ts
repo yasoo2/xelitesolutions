@@ -60,6 +60,8 @@ export function formRuntime(isArabic: boolean): string {
             short: 'النص قصير جدًا.',
             fix: 'صحّح الحقول المحدّدة ثم أعد المحاولة.',
             opened: 'فُتح برنامج البريد لديك برسالة جاهزة — اضغط «إرسال» فيه لإتمام الإرسال.',
+            delivered: '✅ وصلت رسالتك — ستظهر في صندوق رسائل الموقع.',
+            sending: 'جارٍ الإرسال…',
             noEndpoint: 'لم يُوصَل هذا النموذج بخادم بعد، فلم تُرسَل رسالتك إلى أي جهة. نصّها محفوظ أدناه لتنسخه.',
             copy: 'انسخ نص الرسالة',
             copied: 'نُسخ',
@@ -71,6 +73,8 @@ export function formRuntime(isArabic: boolean): string {
             short: 'That is too short.',
             fix: 'Fix the highlighted fields and try again.',
             opened: 'Your mail app was opened with the message ready — press send there to deliver it.',
+            delivered: '✅ Your message was delivered to the site inbox.',
+            sending: 'Sending…',
             noEndpoint: 'This form is not connected to a server, so your message was NOT sent anywhere. Its text is kept below so you can copy it.',
             copy: 'Copy the message',
             copied: 'Copied',
@@ -165,6 +169,40 @@ export function formRuntime(isArabic: boolean): string {
     }
 
     var text = body(form);
+
+    /**
+     * THE INBOX PATH — real delivery. When the page carries a data-joe-inbox
+     * endpoint (Joe injects it at build time), the submission is POSTed to
+     * Joe's own server and lands in the site's inbox, readable in the chat
+     * with «اعرض رسائل النموذج». On a PUBLISHED copy of the page that
+     * endpoint is unreachable, the fetch rejects, and the honest fallback
+     * below (mailto / keep-the-text) takes over — capability added, honesty
+     * kept.
+     */
+    var inbox = (form.getAttribute('data-joe-inbox') || '').trim();
+    if (inbox && typeof fetch === 'function') {
+      var payload = {};
+      Array.prototype.forEach.call(form.elements, function (el) {
+        if (el.name && el.type !== 'submit' && el.type !== 'button') payload[el.name] = el.value;
+      });
+      s.textContent = T.sending;
+      s.setAttribute('data-tone', 'warn');
+      fetch(inbox, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: payload, page: document.title }),
+      }).then(function (r) {
+        if (!r.ok) throw new Error('http ' + r.status);
+        s.textContent = T.delivered;
+        s.setAttribute('data-tone', 'ok');
+        form.reset();
+      }).catch(function () { deliverFallback(form, s, text); });
+      return;
+    }
+    deliverFallback(form, s, text);
+  });
+
+  function deliverFallback(form, s, text) {
     var to = (form.getAttribute('data-to') || '').trim();
     // A destination that is obviously a placeholder is not a destination.
     if (to && !/example\\.(com|org)|your-?email|@domain/i.test(to) && /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(to)) {
@@ -197,7 +235,7 @@ export function formRuntime(isArabic: boolean): string {
       else { var r = document.createRange(); r.selectNode(pre); var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); done(); }
     });
     s.appendChild(p); s.appendChild(pre); s.appendChild(btn);
-  });
+  }
 
   /**
    * The browser refuses to fire a submit event at all while a required field
@@ -238,4 +276,21 @@ export function formCss(): string {
 .joe-form-copy{white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
   padding:var(--space-4);margin:var(--space-4) 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--step--1);overflow:auto;max-height:240px}
 @media (prefers-color-scheme:dark){.joe-field-error,.joe-form-status[data-tone="error"]{color:#f87171}}`;
+}
+
+/**
+ * Point every data-joe-form at Joe's inbox for this site. Injected at build
+ * time; idempotent (a rebuild replaces its own attribute). The endpoint is
+ * absolute (localhost) on purpose: the PREVIEWED page reaches it, and a
+ * PUBLISHED copy fails the fetch and falls back to the honest path.
+ */
+export function wireFormsToInbox(html: string, siteId: string, port: string | number): string {
+    const clean = String(siteId || '').replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 80);
+    if (!clean) return String(html || '');
+    const endpoint = `http://localhost:${port}/api/public/forms/${clean}`;
+    return String(html || '').replace(/<form\b[^>]*>/gi, (tag) => {
+        if (!/data-joe-form/.test(tag)) return tag;
+        const stripped = tag.replace(/\s*data-joe-inbox\s*=\s*"[^"]*"/i, '');
+        return stripped.replace(/<form\b/i, `<form data-joe-inbox="${endpoint}"`);
+    });
 }
