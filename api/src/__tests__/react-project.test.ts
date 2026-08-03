@@ -197,3 +197,36 @@ describe('multi-page React apps', () => {
         fs.rmSync(tmp, { recursive: true, force: true });
     });
 });
+
+/**
+ * REAL PHOTOS — the hero photo rides Joe's existing image engine, lands
+ * INSIDE the project (public/), credits its licence in the footer, and a
+ * no-photo build ships clean (heroImage: null, no broken <img>).
+ */
+describe('real photos in React apps', () => {
+    it('offline scaffolds ship clean without a photo (null, no <img> markup baked)', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-img-'));
+        const res: any = await new ReactProjectTool().execute(
+            { request: 'ابن لي مشروع React لمقهى', root: tmp, skipInstall: true }, { sessionId: 'img-off' });
+        const content = fs.readFileSync(path.join(res.output.path, 'src', 'content.js'), 'utf-8');
+        expect(content).toContain('heroImage: null');
+        expect(fs.existsSync(path.join(res.output.path, 'public', 'images'))).toBe(false);
+        delete (global as any).joeProjects?.['img-off'];
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+    it('the Hero renders the photo CONDITIONALLY (eager, high priority) and the Footer credits it', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-img2-'));
+        const res: any = await new ReactProjectTool().execute(
+            { request: 'ابن لي مشروع React لمقهى', root: tmp, skipInstall: true }, { sessionId: 'img-t' });
+        const hero = fs.readFileSync(path.join(res.output.path, 'src', 'components', 'Hero.jsx'), 'utf-8');
+        expect(hero).toContain('content.heroImage ?');
+        expect(hero).toContain('fetchpriority="high"');
+        expect(syntaxOk('Hero.jsx', hero).ok).toBe(true);
+        const footer = fs.readFileSync(path.join(res.output.path, 'src', 'components', 'Footer.jsx'), 'utf-8');
+        expect(footer).toContain('content.credits');
+        expect(footer).toContain('noopener noreferrer nofollow');
+        expect(syntaxOk('Footer.jsx', footer).ok).toBe(true);
+        delete (global as any).joeProjects?.['img-t'];
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+});

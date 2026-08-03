@@ -22,6 +22,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
+import { resolveImages } from '../../../core/design/images';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
 
@@ -51,6 +52,37 @@ interface ReactContent {
     faqTitle: string;
     faq: Array<{ q: string; a: string }>;
     stats: Array<{ value: string; label: string }>;
+    /** A real licensed photograph, or null — never a broken <img>. */
+    heroImage?: { src: string; alt: string } | null;
+    /** CC attribution for the photos the app carries — a licence obligation. */
+    credits?: Array<{ creator: string; license: string; source: string }>;
+}
+
+/**
+ * One REAL hero photograph through Joe's existing image engine — the same
+ * archives, subject-grounding and licence bookkeeping every page build uses.
+ * The file is COPIED INTO the project's public/ so the dev server and the
+ * published dist both carry it. Best-effort by contract: no network, no
+ * result, any error → { image: null } and the app ships clean without one.
+ */
+async function fetchHeroImage(opts: {
+    subject: string; projDir: string; hue: number; artifactDir: string;
+}): Promise<{ image: { src: string; alt: string } | null; credits: Array<{ creator: string; license: string; source: string }>; note: string }> {
+    try {
+        const probe = `<div>{{IMAGE:hero|${opts.subject.slice(0, 90)}}}</div>`;
+        const r = await resolveImages(probe, opts.artifactDir, opts.hue, { max: 1, timeoutMs: 20_000 });
+        const m = r.html.match(/src="\/artifacts\/images\/([^"]+)"[^>]*/);
+        if (!r.real || !m) return { image: null, credits: [], note: `no photo (${r.sourceErrors[0] || 'archives returned nothing'})` };
+        const file = m[1];
+        const from = path.join(opts.artifactDir, 'images', file);
+        if (!fs.existsSync(from)) return { image: null, credits: [], note: 'resolved photo missing on disk' };
+        fs.mkdirSync(path.join(opts.projDir, 'public', 'images'), { recursive: true });
+        fs.copyFileSync(from, path.join(opts.projDir, 'public', 'images', file));
+        const alt = (r.html.match(/alt="([^"]*)"/) || [, opts.subject])[1] || opts.subject;
+        return { image: { src: `images/${file}`, alt }, credits: r.credits, note: `1 real licensed photo (${Object.keys(r.sources).join(',')})` };
+    } catch (e: any) {
+        return { image: null, credits: [], note: `photo step skipped (${String(e?.message || e).slice(0, 80)})` };
+    }
 }
 
 /** A multi-page app: pages composed from the SAME section components. */
@@ -419,6 +451,11 @@ ${c.faq.map(f => `    { q: '${js(f.q)}', a: '${js(f.a)}' },`).join('\n')}
   stats: [
 ${c.stats.map(s => `    { value: '${js(s.value)}', label: '${js(s.label)}' },`).join('\n')}
   ],
+  // A real licensed photograph, or null — the Hero renders cleanly either way.
+  heroImage: ${c.heroImage ? `{ src: '${js(c.heroImage.src)}', alt: '${js(c.heroImage.alt)}' }` : 'null'},
+  credits: [
+${(c.credits || []).map(cr => `    { creator: '${js(cr.creator)}', license: '${js(cr.license)}', source: '${js(cr.source)}' },`).join('\n')}
+  ],
   // Joe's inbox — the previewed app really delivers its form; a published
   // copy cannot reach localhost, and the form says so honestly instead.
   inbox: '${js((c as any).inbox || '')}',
@@ -461,10 +498,16 @@ function fileHeroJsx(): string {
 export default function Hero({ content }) {
   return (
     <section className="hero" id="top">
-      <div className="wrap">
-        <h1>{content.heroTitle}</h1>
-        <p className="lede">{content.heroLede}</p>
-        <a className="btn" href="#contact">{content.cta}</a>
+      <div className={content.heroImage ? 'wrap hero-split' : 'wrap'}>
+        <div>
+          <h1>{content.heroTitle}</h1>
+          <p className="lede">{content.heroLede}</p>
+          <a className="btn" href="#contact">{content.cta}</a>
+        </div>
+        {content.heroImage ? (
+          <img className="hero-photo" src={content.heroImage.src} alt={content.heroImage.alt}
+            loading="eager" fetchpriority="high" decoding="async" />
+        ) : null}
       </div>
     </section>
   );
@@ -669,6 +712,18 @@ export default function Footer({ content }) {
     <footer className="site-footer">
       <div className="wrap">
         <p>© {new Date().getFullYear()} {content.brand}</p>
+        {content.credits && content.credits.length ? (
+          <p className="credits">
+            {'مصادر الصور: '}
+            {content.credits.map((c, i) => (
+              <span key={c.source || c.creator}>
+                {i > 0 ? ' · ' : ''}
+                {c.source ? <a href={c.source} target="_blank" rel="noopener noreferrer nofollow">{c.creator}</a> : c.creator}
+                {' (' + c.license + ')'}
+              </span>
+            ))}
+          </p>
+        ) : null}
       </div>
     </footer>
   );
@@ -723,6 +778,11 @@ textarea{min-height:120px}
 .stats-row{display:flex;gap:34px;flex-wrap:wrap;justify-content:center;text-align:center}
 .stat strong{display:block;font-size:2.2rem;line-height:1.1}
 .stat span{opacity:.85}
+.hero-split{display:grid;gap:34px;align-items:center;grid-template-columns:1fr}
+@media(min-width:900px){.hero-split{grid-template-columns:1.1fr 1fr}}
+.hero-photo{width:100%;border-radius:22px;box-shadow:0 24px 60px -16px rgba(0,0,0,.25);object-fit:cover;aspect-ratio:4/3}
+.credits{font-size:.85rem;opacity:.8}
+.credits a{color:inherit}
 `;
 }
 
@@ -771,6 +831,7 @@ export class ReactProjectTool extends BaseTool {
         const sections = multiPage ? [...new Set(pages.flatMap(p => p.sections))] : sectionsForKind(kind);
         const content = deriveContent(request, isAr, kind);
         const dirName = `react-${slug(content.brand)}`;
+        const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
         // The app's form delivers into Joe's inbox while it runs next to Joe.
         (content as any).inbox = `http://localhost:${process.env.PORT || '5002'}/api/public/forms/${dirName.replace(/[^a-zA-Z0-9._-]/g, '')}`;
 
@@ -784,6 +845,21 @@ export class ReactProjectTool extends BaseTool {
         if (sessionId) broadcastThinkingDetail(sessionId, isAr
             ? `⚛️ أبني مشروع React حقيقي (Vite): ${content.brand}`
             : `⚛️ Scaffolding a real Vite + React project: ${content.brand}`);
+
+        // A REAL photograph for the hero — through the same engine, archives
+        // and licence bookkeeping every page build uses. skipInstall implies
+        // a fully-offline scaffold (tests, air-gapped machines), so the photo
+        // step is skipped with it; any live failure ships a clean no-image app.
+        if (!input?.skipInstall && !input?.skipImages) {
+            if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🖼️ أبحث عن صورة حقيقية مرخّصة للبطل…' : '🖼️ Finding a real licensed hero photo…');
+            const hero = await fetchHeroImage({
+                subject: `${content.tagline || content.brand}`,
+                projDir: proj, hue: (palette as any).hue ?? 260, artifactDir: ARTIFACT_DIR,
+            });
+            content.heroImage = hero.image;
+            content.credits = hero.credits;
+            term(`hero photo: ${hero.note}`);
+        }
 
         const componentTemplates: Record<string, () => string> = {
             Navbar: fileNavbarJsx, Hero: fileHeroJsx, Features: fileFeaturesJsx,
