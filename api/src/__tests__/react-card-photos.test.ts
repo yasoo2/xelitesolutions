@@ -33,18 +33,19 @@ jest.mock('../core/design/photo-sources', () => {
             if (/salad/i.test(query)) {
                 return { candidates: [], outcomes: [{ provider: 'stub-archive', ok: false, count: 0, reason: 'nothing for this subject' }] };
             }
-            return {
-                candidates: [{
-                    url: `http://stub-archive.test/photo/${encodeURIComponent(query)}.png`,
-                    title: query,                      // identical title → passes the REAL relevance gate
-                    tags: [],
-                    creator: `Photographer ${query.split(' ')[0]}`,
-                    license: 'CC BY 2.0',
-                    landing: `http://stub-archive.test/landing/${encodeURIComponent(query)}`,
-                    provider: 'stub-archive',
-                }],
-                outcomes: [{ provider: 'stub-archive', ok: true, count: 1 }],
-            };
+            // THREE candidates per query, like a real archive — the variant
+            // machinery (a subject asked N times gets N different photos)
+            // needs more than one hit to skip into.
+            const candidates = [0, 1, 2].map(i => ({
+                url: `http://stub-archive.test/photo/${encodeURIComponent(query)}-${i}.png`,
+                title: query,                      // identical title → passes the REAL relevance gate
+                tags: [],
+                creator: `Photographer ${query.split(' ')[0]}`,
+                license: 'CC BY 2.0',
+                landing: `http://stub-archive.test/landing/${encodeURIComponent(query)}-${i}`,
+                provider: 'stub-archive',
+            }));
+            return { candidates, outcomes: [{ provider: 'stub-archive', ok: true, count: candidates.length }] };
         }),
     };
 });
@@ -101,6 +102,18 @@ describe('per-dish photos — the REAL pipeline against a stub archive', () => {
         expect(h.image).toBeTruthy();
         expect(fs.existsSync(path.join(projDir, 'public', h.image!.src))).toBe(true);
         expect(h.credits).toHaveLength(1);
+    });
+
+    it('the SAME subject asked twice gets two DIFFERENT photos — the variant machinery', async () => {
+        const { fetchCardImages } = require('../modules/tools/definitions/ReactProjectTool');
+        const r = await fetchCardImages({
+            subjects: ['handmade leather bag', 'handmade leather bag'],
+            projDir, hue: 20, artifactDir, slot: 'card', label: 'product',
+        });
+        expect(r.images[0]).toBeTruthy();
+        expect(r.images[1]).toBeTruthy();
+        expect(r.images[0]!.src).not.toBe(r.images[1]!.src);   // four cards never share one picture
+        for (const img of r.images) expect(fs.existsSync(path.join(projDir, 'public', img!.src))).toBe(true);
     });
 
     it('the avatar slot rides the same batched call — a real portrait lands in public/', async () => {
@@ -192,7 +205,7 @@ describe('the offline scaffold ships clean rows and a conditional thumb', () => 
             expect(dish.ok).toBe(true);
             const after = contentOf();
             expect(after).toMatch(/\{ name: 'مشاوي مشكلة',[^\n]*?img: \{ src: 'images\//);
-            expect((after.match(/img: null/g) || []).length).toBe(5);  // 3 other dishes + 2 testimonials untouched
+            expect((after.match(/img: null/g) || []).length).toBe(9);  // 3 other dishes + 4 products + 2 testimonials untouched
             expect(((global as any).joeProjects['img-edit'].history || []).length).toBeGreaterThanOrEqual(2);
 
             // [3] archives empty → an HONEST refusal, nothing changed
@@ -247,6 +260,24 @@ describe('the offline scaffold ships clean rows and a conditional thumb', () => 
             if (prevArtifacts === undefined) delete process.env.ARTIFACT_DIR; else process.env.ARTIFACT_DIR = prevArtifacts;
             delete (global as any).joeProjects?.['img-edit'];
         }
+    });
+
+    it('a store scaffolds PRODUCT CARDS (photos, prices, CTA) — not abstract tiers', async () => {
+        const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
+        const res: any = await new ReactProjectTool().execute(
+            { request: 'ابنِ موقع react لمتجر عطور', skipInstall: true, root }, { sessionId: 'card-off' });
+        expect(res.ok).toBe(true);
+        const compDir = path.join(res.output.path, 'src', 'components');
+        expect(fs.existsSync(path.join(compDir, 'Products.jsx'))).toBe(true);
+        expect(fs.existsSync(path.join(compDir, 'Pricing.jsx'))).toBe(false);
+        const products = fs.readFileSync(path.join(compDir, 'Products.jsx'), 'utf-8');
+        expect(products).toContain('p.img ?');
+        expect(products).toContain('product-price');
+        const { transformSync } = require('esbuild');
+        expect(() => transformSync(products, { loader: 'jsx' })).not.toThrow();
+        const content = fs.readFileSync(path.join(res.output.path, 'src', 'content.js'), 'utf-8');
+        expect(content).toContain('منتجاتنا');
+        expect((content.match(/img: null/g) || []).length).toBeGreaterThanOrEqual(6);  // 4 products + 2 testimonials, offline-clean
     });
 
     it('content.js serializes isArabic, and the Footer credits label follows the language', async () => {

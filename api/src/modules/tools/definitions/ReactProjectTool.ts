@@ -45,6 +45,9 @@ interface ReactContent {
     /** Kind-specific blocks — only the ones the kind's section list uses are rendered. */
     menuTitle: string;
     menu: Array<{ name: string; desc: string; price: string; img?: { src: string; alt: string } | null }>;
+    /** Store product cards — real merchandise with photos, not abstract tiers. */
+    productsTitle: string;
+    products: Array<{ name: string; desc: string; price: string; img?: { src: string; alt: string } | null }>;
     pricingTitle: string;
     tiers: Array<{ name: string; price: string; period: string; features: string[]; featured?: boolean }>;
     testimonialsTitle: string;
@@ -157,7 +160,7 @@ export function pagesForKind(kind: PageKind): AppPage[] {
         ];
         case 'store': return [
             { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Testimonials'] },
-            { path: '/pricing', title: 'الباقات', titleEn: 'Pricing', sections: ['Pricing', 'Faq'] },
+            { path: '/products', title: 'المنتجات', titleEn: 'Products', sections: ['Products', 'Faq'] },
             { path: '/contact', title: 'تواصل معنا', titleEn: 'Contact', sections: ['Contact'] },
         ];
         default: return [
@@ -181,11 +184,13 @@ export function wantsMultiPage(text: string): boolean {
 export function sectionsForKind(kind: PageKind): string[] {
     switch (kind) {
         case 'restaurant': return ['Hero', 'Menu', 'Testimonials', 'Contact'];
-        case 'store': return ['Hero', 'Pricing', 'Testimonials', 'Faq', 'Contact'];
+        // Real product CARDS with photos and prices — a store sells things,
+        // not subscription tiers. Pricing stays for app/dashboard kinds.
+        case 'store': return ['Hero', 'Products', 'Testimonials', 'Faq', 'Contact'];
         case 'landing': return ['Hero', 'Features', 'Stats', 'Testimonials', 'Contact'];
         case 'portfolio': return ['Hero', 'Features', 'Stats', 'Contact'];
         case 'dashboard':
-        case 'app': return ['Hero', 'Features', 'Stats', 'Faq', 'Contact'];
+        case 'app': return ['Hero', 'Features', 'Pricing', 'Faq', 'Contact'];
         case 'event': return ['Hero', 'Stats', 'Faq', 'Contact'];
         default: return ['Hero', 'Features', 'Faq', 'Contact'];
     }
@@ -222,6 +227,13 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
             { name: 'مشاوي مشكلة', desc: 'تشكيلة مشاوي على الفحم مع الأرز', price: '65 ر.س' },
             { name: 'سلطة الموسم', desc: 'خضار المزرعة مع صلصة الليمون', price: '24 ر.س' },
             { name: 'حلو البيت', desc: 'حلوى اليوم من مطبخنا', price: '18 ر.س' },
+        ],
+        productsTitle: 'منتجاتنا',
+        products: [
+            { name: 'الإصدار الكلاسيكي', desc: 'الخيار الأقرب لقلوب عملائنا', price: '120 ر.س' },
+            { name: 'الإصدار الفاخر', desc: 'خامات أرقى ولمسة نهائية مميزة', price: '220 ر.س' },
+            { name: 'طقم الهدية', desc: 'تغليف أنيق جاهز للإهداء', price: '180 ر.س' },
+            { name: 'الأكثر مبيعاً', desc: 'اختيار عملائنا هذا الموسم', price: '150 ر.س' },
         ],
         pricingTitle: 'الباقات والأسعار',
         tiers: [
@@ -264,6 +276,12 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
             { name: 'Dish of the day', desc: 'The chef\'s seasonal recipe', price: '$18' },
             { name: 'Mixed grill', desc: 'Charcoal grill selection with rice', price: '$24' },
             { name: 'Season salad', desc: 'Farm greens, lemon dressing', price: '$9' },
+        ],
+        productsTitle: 'Our products',
+        products: [
+            { name: 'Classic edition', desc: 'The customer favourite', price: '$39' },
+            { name: 'Premium edition', desc: 'Finer materials, finished by hand', price: '$69' },
+            { name: 'Gift set', desc: 'Elegant packaging, ready to give', price: '$59' },
         ],
         pricingTitle: 'Plans & pricing',
         tiers: [
@@ -492,6 +510,10 @@ ${c.features.map(f => `    { title: '${js(f.title)}', text: '${js(f.text)}' },`)
   menu: [
 ${c.menu.map(m => `    { name: '${js(m.name)}', desc: '${js(m.desc)}', price: '${js(m.price)}', img: ${m.img ? `{ src: '${js(m.img.src)}', alt: '${js(m.img.alt)}' }` : 'null'} },`).join('\n')}
   ],
+  productsTitle: '${js(c.productsTitle)}',
+  products: [
+${c.products.map(p => `    { name: '${js(p.name)}', desc: '${js(p.desc)}', price: '${js(p.price)}', img: ${p.img ? `{ src: '${js(p.img.src)}', alt: '${js(p.img.alt)}' }` : 'null'} },`).join('\n')}
+  ],
   pricingTitle: '${js(c.pricingTitle)}',
   tiers: [
 ${c.tiers.map(t => `    { name: '${js(t.name)}', price: '${js(t.price)}', period: '${js(t.period)}', featured: ${t.featured ? 'true' : 'false'}, features: [${t.features.map(f => `'${js(f)}'`).join(', ')}] },`).join('\n')}
@@ -672,6 +694,36 @@ export default function Menu({ content }) {
 `;
 }
 
+function fileProductsJsx(): string {
+    return `import React from 'react';
+
+export default function Products({ content }) {
+  return (
+    <section className="section" id="products">
+      <div className="wrap">
+        <h2>{content.productsTitle}</h2>
+        <div className="grid-3">
+          {content.products.map((p) => (
+            <div className="card product-card" key={p.name}>
+              {p.img ? (
+                <img className="product-photo" src={p.img.src} alt={p.img.alt} loading="lazy" decoding="async" />
+              ) : null}
+              <h3>{p.name}</h3>
+              <p>{p.desc}</p>
+              <div className="product-foot">
+                <strong className="product-price">{p.price}</strong>
+                <a className="btn" href="#contact">{content.cta}</a>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+`;
+}
+
 function filePricingJsx(): string {
     return `import React from 'react';
 
@@ -828,6 +880,13 @@ textarea{min-height:120px}
 .menu-item p{margin:0;color:var(--text-muted)}
 .menu-body{flex:1}
 .menu-thumb{width:84px;height:84px;object-fit:cover;border-radius:14px;flex:none}
+.product-card{display:flex;flex-direction:column;gap:10px}
+.product-card h3,.product-card p{margin:0}
+.product-card p{color:var(--text-muted)}
+.product-photo{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px}
+.product-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto}
+.product-foot .btn{margin-top:0;padding:9px 20px}
+.product-price{color:var(--brand);font-size:1.15rem;white-space:nowrap}
 .menu-price{color:var(--brand);white-space:nowrap;font-size:1.1rem}
 .tier{display:flex;flex-direction:column;gap:10px}
 .tier.featured{border-color:var(--brand);box-shadow:0 12px 34px -14px color-mix(in srgb,var(--brand) 45%,transparent)}
@@ -941,6 +1000,21 @@ export class ReactProjectTool extends BaseTool {
                 term(`dish photos: ${cards.note}`);
             }
 
+            // The store's merchandise — the SAME subject asked once per card:
+            // the engine's variant machinery returns a DIFFERENT photograph
+            // for each repeat, so four cards never share one picture.
+            if (sections.includes('Products') && content.products.length) {
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🛍️ أجلب صوراً حقيقية للمنتجات…' : '🛍️ Finding real product photos…');
+                const prods = await fetchCardImages({
+                    subjects: content.products.map(() => `${content.tagline || content.brand}`),
+                    projDir: proj, hue: (palette as any).hue ?? 260, artifactDir: ARTIFACT_DIR,
+                    slot: 'card', label: 'product',
+                });
+                content.products.forEach((p, i) => { p.img = prods.images[i] || null; });
+                content.credits = mergeCredits(content.credits, prods.credits);
+                term(`product photos: ${prods.note}`);
+            }
+
             // Faces for the testimonials — the engine's avatar slot, whose
             // sizing and grounding were built for exactly this position.
             if (sections.includes('Testimonials') && content.testimonials.length) {
@@ -958,7 +1032,7 @@ export class ReactProjectTool extends BaseTool {
 
         const componentTemplates: Record<string, () => string> = {
             Navbar: fileNavbarJsx, Hero: fileHeroJsx, Features: fileFeaturesJsx,
-            Menu: fileMenuJsx, Pricing: filePricingJsx, Testimonials: fileTestimonialsJsx,
+            Menu: fileMenuJsx, Products: fileProductsJsx, Pricing: filePricingJsx, Testimonials: fileTestimonialsJsx,
             Faq: fileFaqJsx, Stats: fileStatsJsx, Contact: fileContactJsx, Footer: fileFooterJsx,
         };
         const files: Record<string, string> = {

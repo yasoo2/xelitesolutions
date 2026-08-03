@@ -104,7 +104,11 @@ import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
 describe('kind-aware React apps', () => {
     it('the kinds map to the sections a real business needs', () => {
         expect(sectionsForKind('restaurant')).toContain('Menu');
-        expect(sectionsForKind('store')).toContain('Pricing');
+        // A store sells THINGS: product cards with photos and prices, not
+        // subscription tiers. Pricing stays for app/dashboard kinds.
+        expect(sectionsForKind('store')).toContain('Products');
+        expect(sectionsForKind('store')).not.toContain('Pricing');
+        expect(sectionsForKind('app')).toContain('Pricing');   // tiers belong to SaaS, not shelves
         expect(sectionsForKind('landing')).toContain('Stats');
         expect(sectionsForKind('generic')).toContain('Faq');
         for (const k of ['restaurant', 'store', 'landing', 'portfolio', 'app', 'event', 'generic'] as any[]) {
@@ -132,7 +136,7 @@ describe('kind-aware React apps', () => {
         }
     });
 
-    it('the restaurant app carries the menu with prices; the store carries tiers', async () => {
+    it('the restaurant app carries the menu with prices; the store carries product cards', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-kind2-'));
         const rest: any = await new ReactProjectTool().execute({ request: 'ابن لي مشروع React لمطعم', root: tmp, skipInstall: true }, { sessionId: 'kind-rest' });
         expect(fs.existsSync(path.join(rest.output.path, 'src', 'components', 'Menu.jsx'))).toBe(true);
