@@ -200,3 +200,38 @@ describe('an attached requirements document + a build verb → the engineering p
         expect(await tool(g)).not.toBe('project_pipeline');
     });
 });
+
+/**
+ * DESIGN VERBS ARE BUILD VERBS — from the field log that motivated batch 26:
+ * «اريد تصميم مختلف لهذه الصوره» arrived WITH the analyzed screenshot of the
+ * XELITE site and got a CHAT reply («أنا على استعداد لإعادة تصميم الصورة…»)
+ * instead of a build, because صمّم/تصميم were not in WANTS_BUILD_RE. The very
+ * next message «هل يمكنك تصميم صفحة مشابهه لها» then had to carry the whole
+ * request again. A design request over an attachment is a BUILD; an OPINION
+ * about a design stays a chat.
+ */
+describe('design requests over an attachment build — opinions still chat', () => {
+    const IMG_BLOCK =
+        '\n\n[ATTACHED FILES — the user attached 1 file(s) to this message. Read them; the message refers to them.]' +
+        '\n--- (1) لقطة شاشة.png — image/png, 1.1 MB' +
+        '\n(the image was ANALYZED by a vision model — this is what it shows:)\nموقع XELITE بخلفية بنفسجية وشعار ذهبي';
+
+    it('«اريد تصميم مختلف لهذه الصوره» (the field message) is NOT hijacked to chat', async () => {
+        expect(await tool('اريد تصميم مختلف لهذه الصوره' + IMG_BLOCK)).not.toBe('central_answer');
+    });
+    it('«هل يمكنك تصميم صفحة مشابهه لها» is NOT hijacked to chat', async () => {
+        expect(await tool('هل يمكنك تصميم صفحة مشابهه لها' + IMG_BLOCK)).not.toBe('central_answer');
+    });
+    it('«أعد تصميم هذه الصفحة» is NOT hijacked to chat', async () => {
+        expect(await tool('أعد تصميم هذه الصفحة' + IMG_BLOCK)).not.toBe('central_answer');
+    });
+    it('"design a similar page" is NOT hijacked to chat in English', async () => {
+        expect(await tool('design a similar page to this' + IMG_BLOCK)).not.toBe('central_answer');
+    });
+    it('«ما رأيك بهذا التصميم؟» (an OPINION about the design) stays a direct answer', async () => {
+        expect(await tool('ما رأيك بهذا التصميم؟' + IMG_BLOCK)).toBe('central_answer');
+    });
+    it('«صف لي هذا التصميم» (describe, not build) stays a direct answer', async () => {
+        expect(await tool('صف لي هذا التصميم' + IMG_BLOCK)).toBe('central_answer');
+    });
+});

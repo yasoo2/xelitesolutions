@@ -214,6 +214,24 @@ export function extractEditedSection(raw: string, original: PageSection): { html
     const opens = (out.match(new RegExp(`<${original.tag}\\b`, 'gi')) || []).length;
     const closes = (out.match(new RegExp(`</${original.tag}\\s*>`, 'gi')) || []).length;
     if (opens !== closes) return { html: '', ok: false, reason: 'unbalanced tags in the response' };
+
+    /**
+     * ELIDED MARKUP IS CORRUPTION, NOT AN EDIT.
+     *
+     * A real contact-section edit came back with «<div ... var(--space-4);">»
+     * and «<label for="name" style="display: block; margin-bottom: ...» — the
+     * model wrote literal «...» where the unchanged attributes belonged. The
+     * second form never closes its quote, so the browser swallowed the
+     * <input> that followed INTO the style attribute: the form lost its
+     * fields, and the visual audit of the shipped page read the wreckage as
+     * three "contrast" failures at 1.38:1. Tag balance and size both passed —
+     * the elisions are short and the section tags still paired up — which is
+     * exactly why this check exists. Refusing keeps the original section and
+     * tells the user, which is always better than shipping a broken page.
+     */
+    if (/<[a-z][^<>]*?\s\.\.\.[\s>/"']/i.test(out) || /<[a-z][^<>]*?\s\.\.\.$/im.test(out)) {
+        return { html: '', ok: false, reason: 'the model elided markup ("...") instead of returning the full section' };
+    }
     // A section that came back as a tenth of its former self was not edited, it
     // was forgotten. Better to keep the original and say so.
     if (out.length < original.html.length * 0.25) {

@@ -1444,6 +1444,17 @@ export async function routeToModel(
                 if (localTimedOutAt && Date.now() - localTimedOutAt < 300_000) {
                     timeoutValue = Math.min(timeoutValue, 20_000);
                 }
+                // [INTELLIGENCE ECONOMY] Internal reasoning (intent/plan JSON)
+                // gets a LEASH, not the full local window: when Ollama is busy
+                // chewing a vision request, an internal planning call queued
+                // behind it would otherwise hold the whole run for up to 3
+                // minutes before falling to the mesh. Seen live: the plan call
+                // arrived while moondream described a screenshot and the user
+                // stared at a frozen run. 25s is enough for qwen to answer a
+                // short JSON prompt when free, and cheap to give up when not.
+                if (internalCall) {
+                    timeoutValue = Math.min(timeoutValue, 25_000);
+                }
             }
             if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)') {
                 // Keyless gateways can be slower; give the keyless brains room.

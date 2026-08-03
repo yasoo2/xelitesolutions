@@ -6,7 +6,7 @@ import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { paintLine } from '../../../core/terminal/paint';
 import { statusFromLine } from '../../../core/terminal/build-status';
 import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
-import { reviewHtml, browserSmokeTest, splitHtmlProject } from '../../../core/quality/html-qa';
+import { reviewHtml, browserSmokeTest, splitHtmlProject, stripFabricatedScripts, dropDeadExternalScripts } from '../../../core/quality/html-qa';
 import { auditVisually, visualRepairBrief, type VisualFinding } from '../../../core/quality/visual-audit';
 import { applyMechanicalRepairs } from '../../../core/quality/repair-engine';
 import { selfCheckScript } from '../../../core/design/self-check';
@@ -30,7 +30,7 @@ import { formBrief, formRuntime, formCss } from '../../../core/design/forms';
 import { chartBrief, chartRuntime, chartCss, needsCharts } from '../../../core/design/dataviz';
 import { widgetBrief, widgetRuntime, widgetCss, usesWidgets } from '../../../core/design/widgets';
 import { resolveImages, creditsBlock, availableSources, IMAGE_MARKER, gradientPlaceholder, groundImageSrcs, stripBrokenStyleImages, imagesToMarkers } from '../../../core/design/images';
-import { extractRequirements, verifyContent, wireNavigation, repairBrief, type ContentIssue } from '../../../core/design/content-contract';
+import { extractRequirements, verifyContent, wireNavigation, repairBrief, demotePlaceholderPrefills, type ContentIssue } from '../../../core/design/content-contract';
 import { buildImageBrief } from '../../../core/design/image-brief';
 import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, surfacePairingCss, ownedSurfaces, normalizeIconRefs } from '../../../core/design/layouts';
 import { sanitizeInlineSvg, labelIconOnlyButtons } from '../../../core/design/svg-sanity';
@@ -949,6 +949,35 @@ ${prev!.html}`
             if (authWired.wired) {
                 html = authWired.html;
                 logs.push(`content: wired ${authWired.wired} sign-in/out control(s) to the auth panel`);
+            }
+
+            // A script the model INVENTED: «joe-form@1.0.0» shipped on a real
+            // page — no such npm package exists, so every load of the page eats
+            // a 404, and the form runtime it pretends to be is already inlined.
+            // Fabricated «joe-*» CDN scripts go unconditionally; any other
+            // external script goes only when its CDN definitively answers 404.
+            {
+                const fab = stripFabricatedScripts(html);
+                if (fab.removed.length) {
+                    html = fab.html;
+                    logs.push(`content: removed ${fab.removed.length} fabricated external script(s): ${fab.removed.join(', ')}`);
+                }
+                const dead = await dropDeadExternalScripts(html);
+                if (dead.removed.length) {
+                    html = dead.html;
+                    logs.push(`content: removed ${dead.removed.length} external script(s) whose CDN answers 404: ${dead.removed.join(', ')}`);
+                }
+            }
+
+            // Dummy contact details PRE-FILLED as value= («info@example.com»,
+            // «059999999999») become placeholder= — hint text, not a claim.
+            {
+                const pre = demotePlaceholderPrefills(html);
+                if (pre.fixed) {
+                    html = pre.html;
+                    contentRepairs += pre.fixed;
+                    logs.push(`content: demoted ${pre.fixed} dummy prefilled value(s) to placeholders`);
+                }
             }
 
             // A link with href="#" is the model's placeholder for "a link belongs

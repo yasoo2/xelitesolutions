@@ -82,3 +82,40 @@ describe('retryAfterMsFrom reads the real Groq TPD message', () => {
         customRouteCooldownUntil.delete('test:route');
     });
 });
+
+/**
+ * THE INTERNAL LEASH — field log, batch 26: a planning call (internal) landed
+ * while Ollama was busy describing a screenshot with moondream, and the run
+ * froze for the FULL local window (up to 3 minutes) before falling to the
+ * mesh. Internal reasoning gets a leash: at most 25s on the local brain,
+ * then the mesh takes over. User-facing calls keep the generous window.
+ */
+describe('internal calls never wait the full local window', () => {
+    it('the router caps the Local timeout for internal purpose', () => {
+        const src = read('core', 'llm', 'intelligent-router.ts');
+        expect(src).toContain('if (internalCall) {');
+        expect(src).toMatch(/internalCall\)\s*\{\s*\n\s*timeoutValue = Math\.min\(timeoutValue, 25_000\)/);
+    });
+    it('the leash lives INSIDE the Local (Auto) branch — cloud timeouts untouched', () => {
+        const src = read('core', 'llm', 'intelligent-router.ts');
+        const local = src.indexOf("p.name === 'Local (Auto)'", src.indexOf('for (const p of orderedProviders)'));
+        const leash = src.indexOf('timeoutValue = Math.min(timeoutValue, 25_000)');
+        const keyless = src.indexOf("p.name === 'LLM7 (Keyless)'", local);
+        expect(local).toBeGreaterThan(0);
+        expect(leash).toBeGreaterThan(local);
+        expect(leash).toBeLessThan(keyless);
+    });
+});
+
+/**
+ * LLM7 never re-tries a model that answered 401/402/403 — the dead-model
+ * memory that stops the «gpt-5-chat 401 → try again next call» loop.
+ */
+describe('LLM7 remembers dead models', () => {
+    it('401/402/403 add the model to the blocked set, and candidates skip it', () => {
+        const src = read('core', 'llm', 'providers', 'llm7.ts');
+        expect(src).toContain('private blocked = new Set<string>()');
+        expect(src).toMatch(/status === 401 \|\| status === 402 \|\| status === 403\) this\.blocked\.add\(m\)/);
+        expect(src).toMatch(/!this\.blocked\.has\(m\)/);
+    });
+});

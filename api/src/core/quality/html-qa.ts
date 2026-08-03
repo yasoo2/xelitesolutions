@@ -534,6 +534,58 @@ export function reviewHtml(
     return { html, issues, fixed, score };
 }
 
+/**
+ * External scripts the model INVENTED.
+ *
+ * A shipped page carried «<script src="https://cdn.jsdelivr.net/npm/joe-form@1.0.0/dist/joe-form.min.js">»
+ * — there is no such npm package. The model saw Joe's inline form runtime and
+ * hallucinated it as a public CDN library; every visitor's browser then eats a
+ * 404 (a js_errors finding in Joe's own audit), and on the published site the
+ * request fails forever. No «joe-*» package exists on any CDN — Joe's runtimes
+ * are always inlined — so any external script claiming one is fabricated by
+ * construction and removed without needing the network to prove it.
+ */
+export function stripFabricatedScripts(rawHtml: string): { html: string; removed: string[] } {
+    const removed: string[] = [];
+    const html = String(rawHtml || '').replace(/<script\b[^>]*\bsrc\s*=\s*(["'])(https?:\/\/[^"']+)\1[^>]*>\s*<\/script\s*>/gi,
+        (whole, _q: string, src: string) => {
+            if (/\/joe-[a-z0-9._-]*[@/]/i.test(src) || /\/joe-[a-z0-9._-]+\.(min\.)?js(\?|$)/i.test(src)) {
+                removed.push(src);
+                return '';
+            }
+            return whole;
+        });
+    return { html, removed };
+}
+
+/**
+ * External scripts whose CDN answers "gone". Best-effort and honest about the
+ * network: only a definite 404/410 removes the tag — a timeout or an offline
+ * machine proves nothing and changes nothing.
+ */
+export async function dropDeadExternalScripts(rawHtml: string, timeoutMs = 3500): Promise<{ html: string; removed: string[] }> {
+    let html = String(rawHtml || '');
+    const removed: string[] = [];
+    const tags = [...html.matchAll(/<script\b[^>]*\bsrc\s*=\s*(["'])(https?:\/\/[^"']+)\1[^>]*>\s*<\/script\s*>/gi)];
+    for (const m of tags) {
+        const src = m[2];
+        if (/^https?:\/\/(localhost|127\.|0\.0\.0\.0|192\.168\.|10\.)/i.test(src)) continue;
+        try {
+            const ctl = new AbortController();
+            const t = setTimeout(() => ctl.abort(), timeoutMs);
+            let res = await fetch(src, { method: 'HEAD', signal: ctl.signal } as any).catch(() => null as any);
+            // Some CDNs refuse HEAD; a 405 says nothing about the file.
+            if (res && res.status === 405) res = await fetch(src, { method: 'GET', signal: ctl.signal } as any).catch(() => null as any);
+            clearTimeout(t);
+            if (res && (res.status === 404 || res.status === 410)) {
+                html = html.replace(m[0], '');
+                removed.push(src);
+            }
+        } catch { /* network says nothing — keep the tag */ }
+    }
+    return { html, removed };
+}
+
 export interface SplitProject {
     indexHtml: string;
     css: string;

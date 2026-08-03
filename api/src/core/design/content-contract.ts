@@ -328,6 +328,41 @@ export function wireNavigation(html: string): { html: string; fixed: string[] } 
     return { html: out, fixed };
 }
 
+/**
+ * Dummy contact details PRE-FILLED into form fields, demoted to placeholders.
+ *
+ * A shipped contact form arrived with value="info@example.com" and
+ * value="059999999999" — the visitor opens the page and the fields already
+ * claim an address and a phone number that belong to nobody. The content check
+ * above has flagged this on build after build («بيانات تواصل وهمية … معروضة
+ * كأنها حقيقية») and fixed it on none, because the fix went to the model with
+ * the whole page. It is mechanical: a dummy value= becomes placeholder= — the
+ * grey hint text every form uses for exactly this — and a field that already
+ * has a placeholder simply loses the fake value.
+ */
+export function demotePlaceholderPrefills(html: string): { html: string; fixed: number } {
+    let fixed = 0;
+    const isDummy = (v: string) => {
+        const t = v.trim();
+        if (!t) return false;
+        if (PLACEHOLDER_CONTACT.test(t)) return true;
+        const digits = t.replace(/[\s()+.-]/g, '');
+        if (/^\d{6,15}$/.test(digits)) {
+            if (/(\d)\1{4,}/.test(digits)) return true;                       // 059999999999
+            if ('01234567890123456789'.includes(digits)) return true;         // 123456789…
+        }
+        return false;
+    };
+    const out = String(html || '').replace(/<input\b[^>]*>/gi, (tag) => {
+        const m = tag.match(/\svalue\s*=\s*(["'])([^"']*)\1/i);
+        if (!m || !isDummy(m[2])) return tag;
+        fixed++;
+        if (/\splaceholder\s*=/i.test(tag)) return tag.replace(m[0], '');
+        return tag.replace(m[0], ` placeholder=${m[1]}${m[2]}${m[1]}`);
+    });
+    return { html: out, fixed };
+}
+
 /** The precise list handed back to the model, the way a compiler reports errors. */
 export function repairBrief(issues: ContentIssue[], isAr: boolean): string {
     const repairable = issues.filter(i => i.repairable);

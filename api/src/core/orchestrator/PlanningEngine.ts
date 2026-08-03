@@ -259,7 +259,12 @@ Rules:
         // نفّذ/طبّق are BUILD verbs. They were missing, so «نفّذ هذا الـPRD»
         // with the document attached fell into the ask-about-the-attachment
         // guard and produced a chat ABOUT the requirements instead of a build.
-        const WANTS_BUILD_RE = /\b(build|create|implement|develop|scaffold|execute|apply)\b|ابنِ|ابني|انشئ|أنشئ|اصنع|نفّ?ذ|طبّ?ق|حوّل|حول .*موقع|موقع من|صفحة من/i;
+        // DESIGN requests are builds too — field log: «اريد تصميم مختلف لهذه
+        // الصوره» fell into the guard and got a CHAT about the picture. The
+        // design words are matched as REQUESTS (صمّم، تصميم مختلف/جديد/صفحة،
+        // redesign, design a/new…), never as bare nouns — «ما رأيك بهذا
+        // التصميم؟» stays an opinion question.
+        const WANTS_BUILD_RE = /\b(build|create|implement|develop|scaffold|execute|apply|redesign)\b|\bdesign\s+(a|an|new|another|different|similar)\b|ابنِ|ابني|انشئ|أنشئ|اصنع|نفّ?ذ|طبّ?ق|صمّ?م(?![ء-ي])|أ?عد\s*تصميم|تصميم\s*(مختلف|جديد|آخر|اخر|مشابه|صفح|موقع|واجه)|حوّل|حول .*موقع|موقع من|صفحة من/i;
         if (/\[ATTACHED FILES/.test(rawGoal)) {
             const userPart = rawGoal.split('[ATTACHED FILES')[0];
             if (!WANTS_BUILD_RE.test(userPart)) {

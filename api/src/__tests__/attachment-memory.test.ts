@@ -102,3 +102,25 @@ describe('weak references — demonstratives point at the fresh attachment', () 
         expect(recallSessionFiles('s-weak-1', -1)).toEqual([]);   // already "too old"
     });
 });
+
+/**
+ * THE MISSING PRONOUNS — field log, batch 26: «هل يمكنك تصميم صفحة مشابهه
+ * لها» pointed at the screenshot with لها, which was not in the weak set, so
+ * the page was built WITHOUT the image description it was supposed to
+ * resemble. لها/بها/مثلها and their siblings are attachment pronouns too.
+ */
+describe('weak references — لها/بها/مثلها point at the fresh attachment', () => {
+    const weak = [
+        'هل يمكنك تصميم صفحة مشابهه لها',   // the field message, verbatim
+        'اصنع شيئاً مثلها',
+        'ماذا تلاحظ بها؟',
+        'اكتب وصفاً لها',
+        'صمم صفحة كهذه',
+    ];
+    for (const t of weak) {
+        test(`«${t}» → weak recall at least`, () => expect(attachmentRecallMode(t)).not.toBe('none'));
+    }
+    test('ordinary لها inside a WORD does not trigger (اللهاية…)', () => {
+        expect(attachmentRecallMode('اشرح لي قواعد اللغة العربية')).toBe('none');
+    });
+});

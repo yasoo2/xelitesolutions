@@ -59,7 +59,9 @@ export const REFERS_TO_ATTACHMENT =
  * this tier recalls within a short window, not the full six hours.
  */
 export const WEAK_ATTACHMENT_REFERENCE =
-    /(?<![ء-ي])(هذا|هذه|هذي|ذلك|تلك|بهذا|بهذه|لهذا|لهذه|عليها|عنها|فيها|منها|إليها|اليها)(?![ء-ي])|\b(this|that|these|those|it)\b/i;
+    // «مشابهه لها» (field log) pointed at the fresh screenshot with a bare
+    // pronoun and missed recall — the page was built WITHOUT the image.
+    /(?<![ء-ي])(هذا|هذه|هذي|ذلك|تلك|بهذا|بهذه|لهذا|لهذه|عليها|عنها|فيها|منها|إليها|اليها|لها|بها|مثلها|مثله|كهذه|كهذا)(?![ء-ي])|\b(this|that|these|those|it)\b/i;
 export const WEAK_REFERENCE_WINDOW_MS = 15 * 60_000;
 
 /** How strongly the message points at the session's last attachment. */
