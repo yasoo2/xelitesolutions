@@ -21,6 +21,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
+import { familyFor, familyCss, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { resolveImages } from '../../../core/design/images';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
@@ -946,9 +947,11 @@ export default function Footer({ content }) {
 `;
 }
 
-function fileBaseCss(): string {
-    return `*,*::before,*::after{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:'Segoe UI','Noto Sans Arabic',system-ui,sans-serif;line-height:1.7}
+function fileBaseCss(family: DesignFamily): string {
+    return `${familyCss(family)}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--f-font);line-height:1.7}
+h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .wrap{width:min(100% - 2rem,1180px);margin-inline:auto}
 .section{padding-block:clamp(48px,7vw,110px)}
 .site-header{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--border);z-index:10}
@@ -961,15 +964,15 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Segoe UI','Not
 .hero{padding-block:clamp(64px,10vw,140px);background:radial-gradient(80% 60% at 50% 0,color-mix(in srgb,var(--tint) 30%,transparent),transparent)}
 .hero h1{font-size:clamp(2rem,5vw,3.4rem);line-height:1.15;margin:0 0 14px}
 .lede{color:var(--text-muted);font-size:1.15rem;max-width:60ch}
-.btn{display:inline-block;background:var(--brand);color:var(--on-brand);padding:12px 24px;border-radius:999px;border:0;text-decoration:none;font-weight:700;cursor:pointer;margin-top:14px}
+.btn{display:inline-block;background:var(--brand);color:var(--on-brand);padding:12px 24px;border-radius:var(--f-btn-radius);border:0;text-decoration:none;font-weight:700;cursor:pointer;margin-top:14px}
 .btn:hover{background:var(--brand-dark)}
 .grid-3{display:grid;gap:22px;grid-template-columns:1fr}
 @media(min-width:900px){.grid-3{grid-template-columns:repeat(3,1fr)}}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:24px}
+.card{background:var(--surface);border:var(--f-border-w) solid var(--border);border-radius:var(--f-radius);padding:24px;box-shadow:var(--f-card-shadow)}
 .band{background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:var(--on-brand)}
 .band h2{margin-top:0}
 form{display:grid;gap:12px;max-width:520px}
-input,textarea{padding:12px 14px;border:1px solid var(--border);border-radius:12px;font:inherit;background:var(--surface);color:var(--text)}
+input,textarea{padding:12px 14px;border:var(--f-border-w) solid var(--border);border-radius:var(--f-radius-sm);font:inherit;background:var(--surface);color:var(--text)}
 textarea{min-height:120px}
 .form-note{background:color-mix(in srgb,#fff 18%,transparent);padding:14px;border-radius:12px}
 .site-footer{border-top:1px solid var(--border);padding-block:28px;color:var(--text-muted)}
@@ -978,17 +981,17 @@ textarea{min-height:120px}
 .menu-item h3{margin:0 0 4px}
 .menu-item p{margin:0;color:var(--text-muted)}
 .menu-body{flex:1}
-.menu-thumb{width:84px;height:84px;object-fit:cover;border-radius:14px;flex:none}
+.menu-thumb{width:84px;height:84px;object-fit:cover;border-radius:var(--f-radius-sm);flex:none}
 .product-card{display:flex;flex-direction:column;gap:10px}
 .product-card h3,.product-card p{margin:0}
 .product-card p{color:var(--text-muted)}
-.product-photo{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px}
+.product-photo{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--f-radius-sm)}
 .product-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto}
 .product-foot .btn{margin-top:0;padding:9px 20px}
 .product-price{color:var(--brand);font-size:1.15rem;white-space:nowrap}
 .live-dot{color:#2ecc71;font-size:.65em;vertical-align:middle;margin-inline-start:10px;animation:live-pulse 2s infinite}
 .order-form{display:grid;gap:8px;margin-top:10px;max-width:320px}
-.order-form input{padding:9px 12px;border:1px solid var(--border);border-radius:10px;font:inherit;background:var(--surface);color:var(--text)}
+.order-form input{padding:9px 12px;border:var(--f-border-w) solid var(--border);border-radius:var(--f-radius-sm);font:inherit;background:var(--surface);color:var(--text)}
 .order-form .btn{margin-top:0}
 .order-note{background:color-mix(in srgb,var(--tint) 40%,transparent);padding:10px 14px;border-radius:10px;margin:10px 0 0;font-size:.95rem}
 @keyframes live-pulse{0%,100%{opacity:1}50%{opacity:.35}}
@@ -1002,7 +1005,7 @@ textarea{min-height:120px}
 .quote blockquote{margin:0 0 10px;font-size:1.05rem;line-height:1.8}
 .quote figcaption{color:var(--text-muted);display:flex;align-items:center;gap:10px}
 .quote-avatar{width:52px;height:52px;border-radius:50%;object-fit:cover;flex:none}
-.faq-item{border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:0 18px;margin-bottom:10px}
+.faq-item{border:var(--f-border-w) solid var(--border);border-radius:var(--f-radius-sm);background:var(--surface);padding:0 18px;margin-bottom:10px}
 .faq-item summary{cursor:pointer;padding:14px 0;font-weight:700;min-height:44px;display:flex;align-items:center}
 .faq-item p{color:var(--text-muted);padding-bottom:14px;margin:0}
 .stats-band{background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:var(--on-brand)}
@@ -1011,7 +1014,7 @@ textarea{min-height:120px}
 .stat span{opacity:.85}
 .hero-split{display:grid;gap:34px;align-items:center;grid-template-columns:1fr}
 @media(min-width:900px){.hero-split{grid-template-columns:1.1fr 1fr}}
-.hero-photo{width:100%;border-radius:22px;box-shadow:0 24px 60px -16px rgba(0,0,0,.25);object-fit:cover;aspect-ratio:4/3}
+.hero-photo{width:100%;border-radius:var(--f-radius);box-shadow:var(--f-photo-shadow);object-fit:cover;aspect-ratio:4/3}
 .credits{font-size:.85rem;opacity:.8}
 .credits a{color:inherit}
 `;
@@ -1057,6 +1060,7 @@ export class ReactProjectTool extends BaseTool {
         // ships a menu, a store ships pricing — never the same generic three
         // sections for every request.
         const kind = detectPageKind(request);
+        const family = familyFor(request, kind);
         const multiPage = wantsMultiPage(request);
         const pages = pagesForKind(kind);
         const sections = multiPage ? [...new Set(pages.flatMap(p => p.sections))] : sectionsForKind(kind);
@@ -1077,12 +1081,22 @@ export class ReactProjectTool extends BaseTool {
         (content as any).orderCta = isAr ? 'اطلب الآن' : 'Order now';
         if (apiLink) term(`full-stack link: this app reads LIVE rows from ${apiLink} and writes orders to ${(content as any).ordersApi}`);
         // The app's form delivers into Joe's inbox while it runs next to Joe.
-        (content as any).inbox = `http://localhost:${process.env.PORT || '5002'}/api/public/forms/${dirName.replace(/[^a-zA-Z0-9._-]/g, '')}`;
+
 
         // The project lands where the File Explorer actually looks.
         const { workspaceService } = require('../../services/WorkspaceService');
         const root = String(input?.root || workspaceService.getExplorerRoot());
-        const proj = path.join(root, dirName);
+        let proj = path.join(root, dirName);
+        // Two sessions with generic brands must NEVER share a directory —
+        // the second build silently overwrote the first app (caught by the
+        // families wire proof: two different stores landed in react-react).
+        // The session that OWNS the directory may rebuild in place.
+        if (fs.existsSync(proj) && ((global as any).joeProjects || {})[sessionKey]?.dir !== proj) {
+            const suffix = sessionKey.replace(/[^a-zA-Z0-9]/g, '').slice(-4).toLowerCase() || Date.now().toString(36).slice(-4);
+            proj = path.join(root, `${dirName}-${suffix}`);
+        }
+        // The app's form delivers into Joe's inbox while it runs next to Joe.
+        (content as any).inbox = `http://localhost:${process.env.PORT || '5002'}/api/public/forms/${path.basename(proj).replace(/[^a-zA-Z0-9._-]/g, '')}`;
         fs.mkdirSync(path.join(proj, 'src', 'components'), { recursive: true });
         fs.mkdirSync(path.join(proj, 'src', 'styles'), { recursive: true });
 
@@ -1170,7 +1184,7 @@ export class ReactProjectTool extends BaseTool {
 :root[data-theme="light"]{${lightTokenBlock(palette)}}
 :root[data-theme="dark"]{color-scheme:dark}
 :root[data-theme="light"]{color-scheme:light}`,
-            'src/styles/base.css': fileBaseCss(),
+            'src/styles/base.css': fileBaseCss(family),
         };
         // Only the components this KIND actually uses are written — a
         // restaurant carries Menu.jsx, a store carries Pricing.jsx, and no
@@ -1190,7 +1204,7 @@ export class ReactProjectTool extends BaseTool {
         for (const [rel, body] of Object.entries(files)) {
             fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
         }
-        term(`react_project: scaffolded ${Object.keys(files).length} files in ${proj}`);
+        term(`react_project: scaffolded ${Object.keys(files).length} files in ${proj} — design family: ${family}`);
 
         // ── prove it compiles: npm install + vite build, streamed live ──────
         let installed = false, built = false, npmMissing = false;
@@ -1247,6 +1261,7 @@ export class ReactProjectTool extends BaseTool {
         const message = isAr
             ? `⚛️ ${built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
 
+🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
 ${fileList}
 

@@ -402,7 +402,13 @@ export class ApiProjectTool extends BaseTool {
         const dirName = `api-${slug(brand)}`;
         const { workspaceService } = require('../../services/WorkspaceService');
         const root = String(input?.root || workspaceService.getExplorerRoot());
-        const proj = path.join(root, dirName);
+        const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+        let proj = path.join(root, dirName);
+        // Same cross-session collision guard as the react scaffolder.
+        if (fs.existsSync(proj) && ((global as any).joeProjects || {})[sessionKey]?.dir !== proj) {
+            const suffix = sessionKey.replace(/[^a-zA-Z0-9]/g, '').slice(-4).toLowerCase() || Date.now().toString(36).slice(-4);
+            proj = path.join(root, `${dirName}-${suffix}`);
+        }
         fs.mkdirSync(proj, { recursive: true });
 
         if (sessionId) broadcastThinkingDetail(sessionId, isAr
@@ -411,7 +417,7 @@ export class ApiProjectTool extends BaseTool {
 
         const files: Record<string, string> = {
             'package.json': filePackageJson(brand),
-            'server.js': fileServerJs(resource, brand, dirName),
+            'server.js': fileServerJs(resource, brand, path.basename(proj)),
             'db.js': fileDbJs(resource),
             'seed.js': fileSeedJs(seeds),
             'README.md': fileReadme(brand, resource, labelAr),
@@ -483,7 +489,6 @@ export class ApiProjectTool extends BaseTool {
             }
         }
 
-        const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
         // resource + port ride along so a LATER react build in this session
         // can link itself to this API (the full-stack chain).
@@ -519,7 +524,7 @@ Routes: GET/POST /api/${resource} · GET/PUT/DELETE /api/${resource}/:id · GET 
 
         return {
             ok: true,
-            output: { message, path: proj, dir: dirName, resource, installed, proven, backend, files: Object.keys(files) },
+            output: { message, path: proj, dir: path.basename(proj), resource, installed, proven, backend, files: Object.keys(files) },
             logs,
         } as any;
     }

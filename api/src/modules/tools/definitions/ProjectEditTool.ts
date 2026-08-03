@@ -374,6 +374,44 @@ export class ProjectEditTool extends BaseTool {
             }
         }
 
+        // ── deterministic fast path: DESIGN FAMILY swap — «غيّر الطراز إلى
+        //    فاخر». The scaffold wrote the family as one marker-wrapped
+        //    variable block in base.css; the swap replaces exactly that
+        //    block, the palette and every component stay untouched, and the
+        //    usual gates, build verify, undo and live preview ride along.
+        const styleIntent = /(غيّ?ر|بدّ?ل|اجعل|خلّ?ي)[^.\n]{0,25}(الطراز|طراز|النمط|نمط|الستايل|ستايل|الأسلوب|أسلوب|التصميم)|\b(change|switch|make)\b[^.\n]{0,25}\b(style|theme|look)\b/i.test(request);
+        const baseCssRel = 'src/styles/base.css';
+        if (!touched.length && styleIntent && fs.existsSync(path.join(dir, baseCssRel))) {
+            const { familyFor, swapFamilyCss, familyOf, FAMILY_LABEL_AR } = require('../../../core/design/families');
+            const wanted = familyFor(request, 'generic');
+            // «غيّر الطراز» with no named family must ASK, not silently pick
+            // the generic default.
+            const named = wanted !== 'minimal' || /(بسيط|نظيف|مينيمال|minimal|clean)/i.test(request);
+            const css = fs.readFileSync(path.join(dir, baseCssRel), 'utf-8');
+            const current = familyOf(css);
+            if (current && !named) {
+                return { ok: true, output: { message: `🎨 الطراز الحالي: «${FAMILY_LABEL_AR[current]}». سمِّ الطراز الجديد — «غيّر الطراز إلى فاخر» أو جريء أو دافئ أو بسيط.` }, logs } as any;
+            }
+            if (current) {
+                if (current === wanted) {
+                    return { ok: true, output: { message: `🎨 الطراز الحالي هو بالفعل «${FAMILY_LABEL_AR[wanted]}» — اطلب: فاخر، جريء، دافئ، أو بسيط.` }, logs } as any;
+                }
+                const next = swapFamilyCss(css, wanted);
+                if (next) {
+                    const gate = syntaxOk(baseCssRel, next);
+                    if (gate.ok) {
+                        write(baseCssRel, next);
+                        notes.push(isAr
+                            ? `🎨 بدّلت الطراز من «${FAMILY_LABEL_AR[current]}» إلى «${FAMILY_LABEL_AR[wanted]}» — الألوان والمحتوى كما هما.`
+                            : `🎨 Switched the design family to "${wanted}".`);
+                        logs.push(`design family: ${current} → ${wanted} — deterministic, no model`);
+                    } else {
+                        refused.push(`${baseCssRel}: family swap breaks the css (${gate.error}) — refused`);
+                    }
+                }
+            }
+        }
+
         // ── deterministic fast path: whole-ROW add/delete — «ضف طبق كباب
         //    مشوي بسعر 55»، «احذف منتج طقم الهدية». The serializer's row
         //    format is the contract: a new row is one well-formed line
