@@ -21,6 +21,7 @@ import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom } from '../../../core/design/page-head';
+import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
 
@@ -40,19 +41,53 @@ interface ReactContent {
     features: Array<{ title: string; text: string }>;
     contactTitle: string;
     isArabic: boolean;
+    /** Kind-specific blocks — only the ones the kind's section list uses are rendered. */
+    menuTitle: string;
+    menu: Array<{ name: string; desc: string; price: string }>;
+    pricingTitle: string;
+    tiers: Array<{ name: string; price: string; period: string; features: string[]; featured?: boolean }>;
+    testimonialsTitle: string;
+    testimonials: Array<{ name: string; role: string; quote: string }>;
+    faqTitle: string;
+    faq: Array<{ q: string; a: string }>;
+    stats: Array<{ value: string; label: string }>;
+}
+
+/**
+ * WHICH sections a kind of app carries — the same judgement the page
+ * builder's blueprints encode, applied to the React component library. A
+ * restaurant without its menu is a landing page wearing a restaurant's name.
+ */
+export function sectionsForKind(kind: PageKind): string[] {
+    switch (kind) {
+        case 'restaurant': return ['Hero', 'Menu', 'Testimonials', 'Contact'];
+        case 'store': return ['Hero', 'Pricing', 'Testimonials', 'Faq', 'Contact'];
+        case 'landing': return ['Hero', 'Features', 'Stats', 'Testimonials', 'Contact'];
+        case 'portfolio': return ['Hero', 'Features', 'Stats', 'Contact'];
+        case 'dashboard':
+        case 'app': return ['Hero', 'Features', 'Stats', 'Faq', 'Contact'];
+        case 'event': return ['Hero', 'Stats', 'Faq', 'Contact'];
+        default: return ['Hero', 'Features', 'Faq', 'Contact'];
+    }
 }
 
 /** Content derived from the request — deterministic, never blocks on a model. */
-function deriveContent(request: string, isAr: boolean): ReactContent {
+function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic'): ReactContent {
     const brand = brandFrom(request, isAr) || (isAr ? 'مشروعي' : 'MyApp');
     const subject = request.replace(/(ابنِ|ابني|انشئ|أنشئ|اصنع|اعمل|سوي|مشروع|تطبيق|موقع|react|ريأكت|رياكت|vite|فيت|لي|جديد|build|create|make|app|project|site)/gi, ' ')
         .replace(/\s+/g, ' ').trim();
-    return isAr ? {
+    const restaurant = kind === 'restaurant';
+    const store = kind === 'store';
+    const base: ReactContent = isAr ? {
         brand,
         tagline: subject || 'منصة حديثة سريعة',
         heroTitle: subject ? `${brand} — ${subject}` : `${brand} يبدأ من هنا`,
-        heroLede: 'تطبيق React حقيقي بأداء فوري، مبني بهوية بصرية متسقة وجاهز للنشر.',
-        cta: 'ابدأ الآن',
+        heroLede: restaurant
+            ? 'نكهات تُطبخ بشغف وتصل طازجة — تصفح القائمة واحجز طاولتك.'
+            : store
+                ? 'منتجات مختارة بعناية وتجربة شراء سريعة وواضحة الأسعار.'
+                : 'تطبيق React حقيقي بأداء فوري، مبني بهوية بصرية متسقة وجاهز للنشر.',
+        cta: restaurant ? 'احجز طاولة' : store ? 'تسوق الآن' : 'ابدأ الآن',
         featuresTitle: 'لماذا نحن؟',
         features: [
             { title: 'سرعة فورية', text: 'بناء Vite حديث — تحميل فوري وتحديث حي أثناء التطوير.' },
@@ -61,12 +96,41 @@ function deriveContent(request: string, isAr: boolean): ReactContent {
         ],
         contactTitle: 'تواصل معنا',
         isArabic: true,
+        menuTitle: 'قائمة الطعام',
+        menu: [
+            { name: 'طبق اليوم', desc: 'وصفة الشيف الموسمية بمكونات طازجة', price: '48 ر.س' },
+            { name: 'مشاوي مشكلة', desc: 'تشكيلة مشاوي على الفحم مع الأرز', price: '65 ر.س' },
+            { name: 'سلطة الموسم', desc: 'خضار المزرعة مع صلصة الليمون', price: '24 ر.س' },
+            { name: 'حلو البيت', desc: 'حلوى اليوم من مطبخنا', price: '18 ر.س' },
+        ],
+        pricingTitle: 'الباقات والأسعار',
+        tiers: [
+            { name: 'الأساسية', price: '49', period: 'ر.س/شهر', features: ['كل الأساسيات', 'دعم بالبريد', 'تحديثات مستمرة'] },
+            { name: 'الاحترافية', price: '99', period: 'ر.س/شهر', features: ['كل ما في الأساسية', 'أولوية الدعم', 'تقارير متقدمة'], featured: true },
+            { name: 'المؤسسات', price: '199', period: 'ر.س/شهر', features: ['كل ما في الاحترافية', 'مدير حساب', 'تخصيص كامل'] },
+        ],
+        testimonialsTitle: 'ماذا قالوا عنا',
+        testimonials: [
+            { name: 'سارة العتيبي', role: restaurant ? 'زبونة دائمة' : 'صاحبة مشروع', quote: restaurant ? 'أفضل نكهة جربتها — والخدمة أسرع مما توقعت.' : 'تجربة سلسة من أول ضغطة — أنصح به بلا تردد.' },
+            { name: 'محمد الشهري', role: restaurant ? 'ناقد طعام' : 'مدير تسويق', quote: restaurant ? 'التفاصيل الصغيرة هنا تصنع الفرق، من التقديم إلى الطعم.' : 'رفع أداء فريقنا بشكل ملموس خلال أسابيع.' },
+        ],
+        faqTitle: 'أسئلة شائعة',
+        faq: [
+            { q: restaurant ? 'هل يلزم حجز مسبق؟' : 'كيف أبدأ؟', a: restaurant ? 'نهاية الأسبوع يفضَّل الحجز؛ بقية الأيام تسع الصالة الجميع.' : 'أنشئ حسابك وستكون جاهزاً خلال دقيقتين.' },
+            { q: store ? 'ما سياسة الاسترجاع؟' : 'هل يمكن الإلغاء في أي وقت؟', a: store ? 'استرجاع مجاني خلال 14 يوماً بحالة المنتج الأصلية.' : 'نعم — بلا رسوم وبلا أسئلة.' },
+            { q: 'كيف أتواصل معكم؟', a: 'من نموذج التواصل أدناه، ونرد خلال يوم عمل.' },
+        ],
+        stats: [
+            { value: '+500', label: restaurant ? 'طبق يقدَّم يومياً' : 'عميل نشط' },
+            { value: '4.9', label: 'تقييم العملاء' },
+            { value: '24/7', label: 'دعم متواصل' },
+        ],
     } : {
         brand,
         tagline: subject || 'A fast modern platform',
         heroTitle: subject ? `${brand} — ${subject}` : `${brand} starts here`,
         heroLede: 'A real React app with instant performance, a consistent design system, ready to ship.',
-        cta: 'Get started',
+        cta: restaurant ? 'Book a table' : store ? 'Shop now' : 'Get started',
         featuresTitle: 'Why us?',
         features: [
             { title: 'Instant speed', text: 'A modern Vite build — instant loads and live reload in development.' },
@@ -75,7 +139,35 @@ function deriveContent(request: string, isAr: boolean): ReactContent {
         ],
         contactTitle: 'Contact us',
         isArabic: false,
+        menuTitle: 'The menu',
+        menu: [
+            { name: 'Dish of the day', desc: 'The chef\'s seasonal recipe', price: '$18' },
+            { name: 'Mixed grill', desc: 'Charcoal grill selection with rice', price: '$24' },
+            { name: 'Season salad', desc: 'Farm greens, lemon dressing', price: '$9' },
+        ],
+        pricingTitle: 'Plans & pricing',
+        tiers: [
+            { name: 'Basic', price: '19', period: '$/mo', features: ['All the essentials', 'Email support'] },
+            { name: 'Pro', price: '49', period: '$/mo', features: ['Everything in Basic', 'Priority support'], featured: true },
+            { name: 'Enterprise', price: '99', period: '$/mo', features: ['Everything in Pro', 'Account manager'] },
+        ],
+        testimonialsTitle: 'What people say',
+        testimonials: [
+            { name: 'Sarah M.', role: 'Founder', quote: 'Smooth from the first click — highly recommended.' },
+            { name: 'Omar K.', role: 'Marketing lead', quote: 'Lifted our team\'s output within weeks.' },
+        ],
+        faqTitle: 'FAQ',
+        faq: [
+            { q: 'How do I start?', a: 'Create your account — you are live in two minutes.' },
+            { q: 'Can I cancel anytime?', a: 'Yes — no fees, no questions.' },
+        ],
+        stats: [
+            { value: '+500', label: 'active customers' },
+            { value: '4.9', label: 'customer rating' },
+            { value: '24/7', label: 'support' },
+        ],
     };
+    return base;
 }
 
 /* ---------- the templates — compile-safe by construction -------------------- */
@@ -133,13 +225,11 @@ createRoot(document.getElementById('root')).render(
 `;
 }
 
-function fileAppJsx(): string {
+/** App.jsx assembled from the KIND's section list — only what is used is imported. */
+function fileAppJsx(sections: string[]): string {
+    const comps = ['Navbar', ...sections, 'Footer'];
     return `import React from 'react';
-import Navbar from './components/Navbar.jsx';
-import Hero from './components/Hero.jsx';
-import Features from './components/Features.jsx';
-import Contact from './components/Contact.jsx';
-import Footer from './components/Footer.jsx';
+${comps.map(c => `import ${c} from './components/${c}.jsx';`).join('\n')}
 import { content } from './content.js';
 
 export default function App() {
@@ -147,9 +237,7 @@ export default function App() {
     <>
       <Navbar content={content} />
       <main>
-        <Hero content={content} />
-        <Features content={content} />
-        <Contact content={content} />
+${sections.map(c => `        <${c} content={content} />`).join('\n')}
       </main>
       <Footer content={content} />
     </>
@@ -171,6 +259,25 @@ export const content = {
 ${c.features.map(f => `    { title: '${js(f.title)}', text: '${js(f.text)}' },`).join('\n')}
   ],
   contactTitle: '${js(c.contactTitle)}',
+  menuTitle: '${js(c.menuTitle)}',
+  menu: [
+${c.menu.map(m => `    { name: '${js(m.name)}', desc: '${js(m.desc)}', price: '${js(m.price)}' },`).join('\n')}
+  ],
+  pricingTitle: '${js(c.pricingTitle)}',
+  tiers: [
+${c.tiers.map(t => `    { name: '${js(t.name)}', price: '${js(t.price)}', period: '${js(t.period)}', featured: ${t.featured ? 'true' : 'false'}, features: [${t.features.map(f => `'${js(f)}'`).join(', ')}] },`).join('\n')}
+  ],
+  testimonialsTitle: '${js(c.testimonialsTitle)}',
+  testimonials: [
+${c.testimonials.map(t => `    { name: '${js(t.name)}', role: '${js(t.role)}', quote: '${js(t.quote)}' },`).join('\n')}
+  ],
+  faqTitle: '${js(c.faqTitle)}',
+  faq: [
+${c.faq.map(f => `    { q: '${js(f.q)}', a: '${js(f.a)}' },`).join('\n')}
+  ],
+  stats: [
+${c.stats.map(s => `    { value: '${js(s.value)}', label: '${js(s.label)}' },`).join('\n')}
+  ],
   // Joe's inbox — the previewed app really delivers its form; a published
   // copy cannot reach localhost, and the form says so honestly instead.
   inbox: '${js((c as any).inbox || '')}',
@@ -296,6 +403,123 @@ export default function Contact({ content }) {
 `;
 }
 
+function fileMenuJsx(): string {
+    return `import React from 'react';
+
+export default function Menu({ content }) {
+  return (
+    <section className="section" id="menu">
+      <div className="wrap">
+        <h2>{content.menuTitle}</h2>
+        <ul className="menu-list">
+          {content.menu.map((m) => (
+            <li className="menu-item" key={m.name}>
+              <div>
+                <h3>{m.name}</h3>
+                <p>{m.desc}</p>
+              </div>
+              <strong className="menu-price">{m.price}</strong>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+`;
+}
+
+function filePricingJsx(): string {
+    return `import React from 'react';
+
+export default function Pricing({ content }) {
+  return (
+    <section className="section" id="pricing">
+      <div className="wrap">
+        <h2>{content.pricingTitle}</h2>
+        <div className="grid-3">
+          {content.tiers.map((t) => (
+            <div className={t.featured ? 'card tier featured' : 'card tier'} key={t.name}>
+              <h3>{t.name}</h3>
+              <p className="tier-price"><strong>{t.price}</strong> <span>{t.period}</span></p>
+              <ul>
+                {t.features.map((f) => <li key={f}>{f}</li>)}
+              </ul>
+              <a className="btn" href="#contact">{content.cta}</a>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+`;
+}
+
+function fileTestimonialsJsx(): string {
+    return `import React from 'react';
+
+export default function Testimonials({ content }) {
+  return (
+    <section className="section" id="testimonials">
+      <div className="wrap">
+        <h2>{content.testimonialsTitle}</h2>
+        <div className="grid-3">
+          {content.testimonials.map((t) => (
+            <figure className="card quote" key={t.name}>
+              <blockquote>“{t.quote}”</blockquote>
+              <figcaption><strong>{t.name}</strong> — {t.role}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+`;
+}
+
+function fileFaqJsx(): string {
+    return `import React from 'react';
+
+export default function Faq({ content }) {
+  return (
+    <section className="section" id="faq">
+      <div className="wrap">
+        <h2>{content.faqTitle}</h2>
+        {content.faq.map((f) => (
+          <details className="faq-item" key={f.q}>
+            <summary>{f.q}</summary>
+            <p>{f.a}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+  );
+}
+`;
+}
+
+function fileStatsJsx(): string {
+    return `import React from 'react';
+
+export default function Stats({ content }) {
+  return (
+    <section className="section stats-band" id="stats">
+      <div className="wrap stats-row">
+        {content.stats.map((s) => (
+          <div className="stat" key={s.label}>
+            <strong>{s.value}</strong>
+            <span>{s.label}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+`;
+}
+
 function fileFooterJsx(): string {
     return `import React from 'react';
 
@@ -338,6 +562,26 @@ input,textarea{padding:12px 14px;border:1px solid var(--border);border-radius:12
 textarea{min-height:120px}
 .form-note{background:color-mix(in srgb,#fff 18%,transparent);padding:14px;border-radius:12px}
 .site-footer{border-top:1px solid var(--border);padding-block:28px;color:var(--text-muted)}
+.menu-list{list-style:none;margin:0;padding:0;max-width:720px}
+.menu-item{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding:18px 0;border-bottom:1px dashed var(--border)}
+.menu-item h3{margin:0 0 4px}
+.menu-item p{margin:0;color:var(--text-muted)}
+.menu-price{color:var(--brand);white-space:nowrap;font-size:1.1rem}
+.tier{display:flex;flex-direction:column;gap:10px}
+.tier.featured{border-color:var(--brand);box-shadow:0 12px 34px -14px color-mix(in srgb,var(--brand) 45%,transparent)}
+.tier-price{font-size:1.05rem}
+.tier-price strong{font-size:2rem}
+.tier ul{margin:0;padding-inline-start:20px;color:var(--text-muted)}
+.tier .btn{margin-top:auto;align-self:flex-start}
+.quote blockquote{margin:0 0 10px;font-size:1.05rem;line-height:1.8}
+.quote figcaption{color:var(--text-muted)}
+.faq-item{border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:0 18px;margin-bottom:10px}
+.faq-item summary{cursor:pointer;padding:14px 0;font-weight:700;min-height:44px;display:flex;align-items:center}
+.faq-item p{color:var(--text-muted);padding-bottom:14px;margin:0}
+.stats-band{background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:var(--on-brand)}
+.stats-row{display:flex;gap:34px;flex-wrap:wrap;justify-content:center;text-align:center}
+.stat strong{display:block;font-size:2.2rem;line-height:1.1}
+.stat span{opacity:.85}
 `;
 }
 
@@ -377,7 +621,12 @@ export class ReactProjectTool extends BaseTool {
         };
 
         const palette = buildPalette(request);
-        const content = deriveContent(request, isAr);
+        // The SAME kind judgement the page builder uses: a restaurant app
+        // ships a menu, a store ships pricing — never the same generic three
+        // sections for every request.
+        const kind = detectPageKind(request);
+        const sections = sectionsForKind(kind);
+        const content = deriveContent(request, isAr, kind);
         const dirName = `react-${slug(content.brand)}`;
         // The app's form delivers into Joe's inbox while it runs next to Joe.
         (content as any).inbox = `http://localhost:${process.env.PORT || '5002'}/api/public/forms/${dirName.replace(/[^a-zA-Z0-9._-]/g, '')}`;
@@ -393,19 +642,19 @@ export class ReactProjectTool extends BaseTool {
             ? `⚛️ أبني مشروع React حقيقي (Vite): ${content.brand}`
             : `⚛️ Scaffolding a real Vite + React project: ${content.brand}`);
 
+        const componentTemplates: Record<string, () => string> = {
+            Navbar: fileNavbarJsx, Hero: fileHeroJsx, Features: fileFeaturesJsx,
+            Menu: fileMenuJsx, Pricing: filePricingJsx, Testimonials: fileTestimonialsJsx,
+            Faq: fileFaqJsx, Stats: fileStatsJsx, Contact: fileContactJsx, Footer: fileFooterJsx,
+        };
         const files: Record<string, string> = {
             'package.json': filePackageJson(content.brand),
             'vite.config.js': fileViteConfig(),
             'index.html': fileIndexHtml(content),
             '.gitignore': 'node_modules\ndist\n',
             'src/main.jsx': fileMainJsx(),
-            'src/App.jsx': fileAppJsx(),
+            'src/App.jsx': fileAppJsx(sections),
             'src/content.js': fileContentJs(content),
-            'src/components/Navbar.jsx': fileNavbarJsx(),
-            'src/components/Hero.jsx': fileHeroJsx(),
-            'src/components/Features.jsx': fileFeaturesJsx(),
-            'src/components/Contact.jsx': fileContactJsx(),
-            'src/components/Footer.jsx': fileFooterJsx(),
             // Joe's REAL palette tokens — the same engine every page uses. The
             // data-theme blocks make the Navbar toggle actually change the
             // colours (paletteCss alone only follows the OS preference).
@@ -416,6 +665,13 @@ export class ReactProjectTool extends BaseTool {
 :root[data-theme="light"]{color-scheme:light}`,
             'src/styles/base.css': fileBaseCss(),
         };
+        // Only the components this KIND actually uses are written — a
+        // restaurant carries Menu.jsx, a store carries Pricing.jsx, and no
+        // project ships dead files.
+        for (const c of ['Navbar', ...sections, 'Footer']) {
+            const tpl = componentTemplates[c];
+            if (tpl) files[`src/components/${c}.jsx`] = tpl();
+        }
         for (const [rel, body] of Object.entries(files)) {
             fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
         }

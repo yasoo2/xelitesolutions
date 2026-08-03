@@ -73,8 +73,11 @@ describe('the scaffold: complete, RTL, tokenized, honest', () => {
         }
     });
     it('the audit lessons are baked in: h2 before the cards, labelled fields, 44px targets', () => {
-        const features = fs.readFileSync(path.join(out.output.path, 'src', 'components', 'Features.jsx'), 'utf-8');
-        expect(features).toContain('<h2>');
+        // The kind decides WHICH section follows the hero (a coffee shop gets
+        // a Menu, not Features) — the lesson holds for whichever shipped.
+        const compDir = path.join(out.output.path, 'src', 'components');
+        const second = ['Menu.jsx', 'Features.jsx', 'Pricing.jsx'].find(f => fs.existsSync(path.join(compDir, f)))!;
+        expect(fs.readFileSync(path.join(compDir, second), 'utf-8')).toContain('<h2>');
         const contact = fs.readFileSync(path.join(out.output.path, 'src', 'components', 'Contact.jsx'), 'utf-8');
         expect((contact.match(/aria-label=/g) || []).length).toBeGreaterThanOrEqual(3);
         const css = fs.readFileSync(path.join(out.output.path, 'src', 'styles', 'base.css'), 'utf-8');
@@ -87,5 +90,59 @@ describe('the scaffold: complete, RTL, tokenized, honest', () => {
     it('skipInstall means exactly that — no node_modules were created', () => {
         expect(fs.existsSync(path.join(out.output.path, 'node_modules'))).toBe(false);
         expect(out.output.installed).toBe(false);
+    });
+});
+
+/**
+ * KIND-AWARE APPS — a restaurant carries its menu, a store its pricing.
+ * Every kind's full component set must parse (the esbuild gate), because
+ * the templates are the ONLY author of this code.
+ */
+import { sectionsForKind } from '../modules/tools/definitions/ReactProjectTool';
+import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
+
+describe('kind-aware React apps', () => {
+    it('the kinds map to the sections a real business needs', () => {
+        expect(sectionsForKind('restaurant')).toContain('Menu');
+        expect(sectionsForKind('store')).toContain('Pricing');
+        expect(sectionsForKind('landing')).toContain('Stats');
+        expect(sectionsForKind('generic')).toContain('Faq');
+        for (const k of ['restaurant', 'store', 'landing', 'portfolio', 'app', 'event', 'generic'] as any[]) {
+            const s = sectionsForKind(k);
+            expect(s[0]).toBe('Hero');
+            expect(s[s.length - 1]).toBe('Contact');
+        }
+    });
+
+    it('every kind scaffolds a full component set that PARSES', async () => {
+        for (const req of [
+            'ابن لي مشروع React لمطعم مأكولات بحرية',
+            'ابن لي مشروع React لمتجر عطور',
+            'build me a react app landing page for a startup',
+        ]) {
+            const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-kind-'));
+            const res: any = await new ReactProjectTool().execute({ request: req, root: tmp, skipInstall: true }, { sessionId: `kind-${Math.random().toString(36).slice(2, 6)}` });
+            expect(res.ok).toBe(true);
+            const compDir = path.join(res.output.path, 'src', 'components');
+            for (const f of fs.readdirSync(compDir)) {
+                const gate = syntaxOk(f, fs.readFileSync(path.join(compDir, f), 'utf-8'));
+                expect(`${f}:${gate.ok}`).toBe(`${f}:true`);
+            }
+            fs.rmSync(tmp, { recursive: true, force: true });
+        }
+    });
+
+    it('the restaurant app carries the menu with prices; the store carries tiers', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-kind2-'));
+        const rest: any = await new ReactProjectTool().execute({ request: 'ابن لي مشروع React لمطعم', root: tmp, skipInstall: true }, { sessionId: 'kind-rest' });
+        expect(fs.existsSync(path.join(rest.output.path, 'src', 'components', 'Menu.jsx'))).toBe(true);
+        expect(fs.existsSync(path.join(rest.output.path, 'src', 'components', 'Pricing.jsx'))).toBe(false);
+        const content = fs.readFileSync(path.join(rest.output.path, 'src', 'content.js'), 'utf-8');
+        expect(content).toContain('قائمة الطعام');
+        expect(content).toContain('ر.س');
+        const app = fs.readFileSync(path.join(rest.output.path, 'src', 'App.jsx'), 'utf-8');
+        expect(app).toContain('<Menu content={content} />');
+        expect(app).not.toContain('Pricing');
+        fs.rmSync(tmp, { recursive: true, force: true });
     });
 });
