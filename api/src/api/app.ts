@@ -252,6 +252,10 @@ export const createApp = () => {
   const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
   app.use('/artifacts', express.static(ARTIFACT_DIR));
 
+  // The active project's production build, served live for the preview panel.
+  const projectPreviewRoutes = require('./routes/projectPreview').default;
+  app.use('/project-preview', projectPreviewRoutes);
+
   // Static frontend
   const candidates = [
     path.resolve(process.cwd(), '../web/dist'),
@@ -263,7 +267,7 @@ export const createApp = () => {
   if (fs.existsSync(webDistPath)) {
     app.use(express.static(webDistPath));
     app.get(/(.*)/, (req, res, next) => {
-      if (req.path.startsWith('/api') || req.path.startsWith('/artifacts')) return next();
+      if (req.path.startsWith('/api') || req.path.startsWith('/artifacts') || req.path.startsWith('/project-preview')) return next();
       res.sendFile(path.join(webDistPath, 'index.html'));
     });
   }

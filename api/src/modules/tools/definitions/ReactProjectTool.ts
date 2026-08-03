@@ -1026,6 +1026,15 @@ export class ReactProjectTool extends BaseTool {
         projects[sessionKey] = { dir: proj, type: 'react', brand: content.brand, updatedAt: Date.now(), lastRequest: request.slice(0, 80) };
         persistJoeProjects();
 
+        // The freshly built app opens in the preview panel on its own — the
+        // same moment a page build does, through the live /project-preview
+        // route that serves this session's dist.
+        let previewUrl = '';
+        if (built) {
+            previewUrl = `http://localhost:${process.env.PORT || '5002'}/project-preview/${sessionKey}/index.html?v=${Date.now()}`;
+            try { broadcast({ type: 'preview_ready', sessionId, data: { url: previewUrl, previewUrl, sessionId } } as any); } catch { /* UI optional */ }
+        }
+
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');
         const message = isAr
             ? `⚛️ ${built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
@@ -1033,7 +1042,7 @@ export class ReactProjectTool extends BaseTool {
 📂 المسار: ${proj}
 ${fileList}
 
-${built ? '✅ npm install + vite build نجحا — نسخة الإنتاج جاهزة في dist/.' : npmMissing ? '⚠️ npm غير متاح هنا — المشروع جاهز، ثبّته بنفسك: npm install ثم npm run dev.' : installed ? '✅ الحزم مثبتة.' : input?.skipInstall ? 'ℹ️ تخطيت التثبيت كما طُلب.' : '⚠️ التثبيت لم يكتمل — جرّب: npm install داخل المجلد.'}
+${built ? '✅ npm install + vite build نجحا — نسخة الإنتاج جاهزة في dist/ والمعاينة الحية فُتحت تلقائياً.' : npmMissing ? '⚠️ npm غير متاح هنا — المشروع جاهز، ثبّته بنفسك: npm install ثم npm run dev.' : installed ? '✅ الحزم مثبتة.' : input?.skipInstall ? 'ℹ️ تخطيت التثبيت كما طُلب.' : '⚠️ التثبيت لم يكتمل — جرّب: npm install داخل المجلد.'}
 
 🧭 خطوات تالية — أرسل أيّ سطر كما هو:
    • «شغّل خادم التطوير» → معاينة حية بتحديث فوري

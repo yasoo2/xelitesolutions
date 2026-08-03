@@ -193,6 +193,25 @@ async function main() {
     });
     check('the browser sees ONE painted dish thumbnail left and a clean grill row', seen3.thumbCount === 1 && seen3.painted && seen3.grillClean, JSON.stringify(seen3));
 
+    console.log('\n[6] المعاينة الحية: خادم جو الحقيقي يقدّم dist عبر ‎/project-preview‎ والمتصفح يراه');
+    process.env.JWT_SECRET = process.env.JWT_SECRET || 'x';
+    process.env.PERSISTENCE_MODE = 'JSON';
+    const { createApp } = await import('../../api/app');
+    const api = createApp().listen(0, '127.0.0.1');
+    await new Promise<void>(r => api.once('listening', () => r()));
+    const apiPort = (api.address() as any).port;
+    const p4 = await browser.newPage();
+    const resp = await p4.goto(`http://127.0.0.1:${apiPort}/project-preview/dish-wire/index.html`, { waitUntil: 'networkidle' });
+    check('the REAL app served the project preview (200, no-store)', !!resp && resp.status() === 200 && String(resp.headers()['cache-control']).includes('no-store'), String(resp?.status()));
+    const seen4 = await p4.evaluate(() => ({
+        brand: document.querySelector('.brand')?.textContent || '',
+        thumbs: [...document.querySelectorAll('.menu-thumb')].filter((t: any) => t.naturalWidth > 0).length,
+    }));
+    check('…and the browser rendered the app through it (assets included)', !!seen4.brand && seen4.thumbs === 1, JSON.stringify(seen4));
+    const trav = await p4.evaluate(async (port: number) => (await fetch(`http://127.0.0.1:${port}/project-preview/dish-wire/..%2F..%2Fpackage.json`)).status, apiPort);
+    check('a traversal attempt is refused', trav !== 200, String(trav));
+    api.close();
+
     await browser.close();
     site.close(); archive.close();
     fs.rmSync(root, { recursive: true, force: true });

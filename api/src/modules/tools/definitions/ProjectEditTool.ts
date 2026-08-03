@@ -467,6 +467,15 @@ Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits
         projects[sessionKey] = { ...(entry || {}), dir, updatedAt: Date.now(), history, lastRequest: request.slice(0, 80) };
         persistJoeProjects();
 
+        // The verified change is VISIBLE the moment it lands — the preview
+        // panel refreshes off the freshly rebuilt dist through the live
+        // /project-preview route. Only a green build earns this: a skipped
+        // or failed verification has no fresh dist to show.
+        if (buildVerified === true) {
+            const url = `http://localhost:${process.env.PORT || '5002'}/project-preview/${sessionKey}/index.html?v=${Date.now()}`;
+            try { broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any); } catch { /* UI optional */ }
+        }
+
         const stats = touched.map(t => {
             const d = diffSummary(t.before, t.after);
             return `   • ${t.file} (+${d.added} −${d.removed})`;
