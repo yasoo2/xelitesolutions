@@ -126,3 +126,40 @@ describe('the repo typechecks clean — the architecture map exists', () => {
         expect(doc).toContain('DETERMINISTIC_TOOLS');
     });
 });
+
+describe('one front door for scaffolds — the tool-picker cannot bypass the verified path', () => {
+    const svc = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'ToolService.ts'), 'utf-8');
+    it('a frontend-flavoured scaffold_full_stack call redirects to react_project', () => {
+        expect(svc).toContain("name === 'scaffold_full_stack'");
+        const block = svc.slice(svc.indexOf("name === 'scaffold_full_stack'"), svc.indexOf("name === 'scaffold_full_stack'") + 1200);
+        expect(block).toContain("effectiveName = 'react_project'");
+        expect(block).toMatch(/backendish/);   // full-stack calls stay untouched
+    });
+});
+
+describe('the inbox notifies the owner LIVE', () => {
+    const { ownerSessionOf } = require('../api/routes/formsPublic');
+    afterEach(() => {
+        delete (global as any).joePages?.['own-a'];
+        delete (global as any).joeProjects?.['own-b'];
+    });
+    it('a page site id resolves to its own session', () => {
+        (global as any).joePages = { ...(global as any).joePages, 'own-a': { filename: 'x.html', html: '<html>x</html>' } };
+        expect(ownerSessionOf('own-a')).toBe('own-a');
+    });
+    it('a React project site id resolves through its directory name', () => {
+        (global as any).joeProjects = { ...(global as any).joeProjects, 'own-b': { dir: '/w/react-my-shop' } };
+        expect(ownerSessionOf('react-my-shop')).toBe('own-b');
+    });
+    it('an unowned site notifies nobody (and never throws)', () => {
+        expect(ownerSessionOf('stranger-site')).toBeNull();
+    });
+    it('the POST handler notifies after storing', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'api', 'routes', 'formsPublic.ts'), 'utf-8');
+        const storeAt = src.indexOf('appendSubmission(site, fields');
+        const notifyAt = src.indexOf('notifyOwner(site, entry.fields)');
+        expect(storeAt).toBeGreaterThan(0);
+        expect(notifyAt).toBeGreaterThan(storeAt);
+        expect(src).toContain("type: 'form_submission'");
+    });
+});

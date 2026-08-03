@@ -277,6 +277,31 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         }
     }
 
+    /**
+     * [ONE FRONT DOOR FOR SCAFFOLDS — audit follow-up] Three generators can
+     * plausibly answer «ابن لي تطبيق React»: react_project (deterministic
+     * templates, verified npm install + vite build), scaffold_full_stack (its
+     * own unverified stack), and the generic scaffolder. The planner already
+     * sends explicit requests to react_project; this catches the WEAK-MODEL
+     * TOOL-PICKER choosing scaffold_full_stack for a frontend-flavoured app,
+     * and redirects it to the verified path. Genuinely full-stack calls
+     * (backend/database words present) keep their tool untouched.
+     */
+    if (name === 'scaffold_full_stack') {
+        const flavour = JSON.stringify(effectiveInput || {});
+        const frontendish = /react|vite|\bspa\b|frontend|landing|واجهة|ريأكت|رياكت/i.test(flavour);
+        const backendish = /back\s*-?end|\bapi\b|server|database|mongo|postgres|express|fastify|auth|قاعدة|خادم|باك/i.test(flavour);
+        if (frontendish && !backendish) {
+            effectiveName = 'react_project';
+            if (!(effectiveInput as any).request) {
+                (effectiveInput as any).request = [
+                    (effectiveInput as any).name, (effectiveInput as any).type,
+                    ...((effectiveInput as any).features || []),
+                ].filter(Boolean).join(' ') || 'react app';
+            }
+        }
+    }
+
     // [FIX] Aliasing for commonly hallucinated tool names
     if (name === 'npm_install' || name === 'install_package') {
         effectiveName = 'npm_manager';

@@ -54,6 +54,11 @@ ${formRuntime(true)}
     await new Promise<void>(r => site.once('listening', () => r()));
     const pageUrl = `http://127.0.0.1:${(site.address() as any).port}/`;
 
+    // The site belongs to a session — the way a real build registers it —
+    // so the live notification has an owner to reach.
+    (global as any).joePages = { ...(global as any).joePages, [ 'wire-site' ]: { filename: 'x.html', html: '<html>x</html>', updatedAt: Date.now() } };
+    (global as any).mockMessages = [];
+
     console.log('\n[1] زائر حقيقي يملأ النموذج ويرسل — الرسالة تصل صندوق جو');
     const { chromium } = require('playwright');
     const browser = await chromium.launch({ args: ['--no-sandbox'] });
@@ -67,6 +72,12 @@ ${formRuntime(true)}
     check('the page announced REAL delivery', statusText.includes('وصلت رسالتك'), statusText || '(none)');
     const inboxRaw = fs.readFileSync(path.join(tmp, 'form-inbox.json'), 'utf-8');
     check('the submission is on DISK with its fields', inboxRaw.includes('خالد التجريبي') && inboxRaw.includes('حجز طاولة'));
+
+    console.log('\n[1ب] الإشعار الحي وصل المالك في محادثته لحظة الإرسال');
+    const g2: any = global as any;
+    const notif = (g2.mockMessages || []).find((m: any) => m.sessionId === SITE && /📬/.test(m.content));
+    check('a live 📬 notification landed in the owner\'s chat', !!notif, JSON.stringify((g2.mockMessages || []).slice(-2)).slice(0, 150));
+    check('…with a preview of the visitor\'s message', !!notif && /خالد التجريبي/.test(notif.content));
 
     console.log('\n[2] المالك يقرأ الرسائل في المحادثة');
     const { FormInboxTool } = await import('../../modules/tools/definitions/FormInboxTool');
