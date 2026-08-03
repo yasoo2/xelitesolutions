@@ -53,6 +53,39 @@ interface ReactContent {
     stats: Array<{ value: string; label: string }>;
 }
 
+/** A multi-page app: pages composed from the SAME section components. */
+export interface AppPage { path: string; title: string; titleEn: string; sections: string[] }
+
+/**
+ * The page plan per kind. The home page keeps the hero and the social
+ * proof; the kind's core content gets its own page; contact is always its
+ * own destination — the shape every real business site uses.
+ */
+export function pagesForKind(kind: PageKind): AppPage[] {
+    switch (kind) {
+        case 'restaurant': return [
+            { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Testimonials'] },
+            { path: '/menu', title: 'القائمة', titleEn: 'Menu', sections: ['Menu'] },
+            { path: '/contact', title: 'تواصل معنا', titleEn: 'Contact', sections: ['Contact'] },
+        ];
+        case 'store': return [
+            { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Testimonials'] },
+            { path: '/pricing', title: 'الباقات', titleEn: 'Pricing', sections: ['Pricing', 'Faq'] },
+            { path: '/contact', title: 'تواصل معنا', titleEn: 'Contact', sections: ['Contact'] },
+        ];
+        default: return [
+            { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Features', 'Stats'] },
+            { path: '/about', title: 'عن المشروع', titleEn: 'About', sections: ['Testimonials', 'Faq'] },
+            { path: '/contact', title: 'تواصل معنا', titleEn: 'Contact', sections: ['Contact'] },
+        ];
+    }
+}
+
+/** Does the request ask for a MULTI-PAGE app? Single-page stays the default. */
+export function wantsMultiPage(text: string): boolean {
+    return /(متعدد\s*الصفحات|متعدده?\s*الصفحات|صفحات\s*(مترابطة|متعددة|متعدده)|عدة\s*صفحات|multi\s*-?\s*page|multiple\s*pages|with\s*pages)/i.test(String(text || ''));
+}
+
 /**
  * WHICH sections a kind of app carries — the same judgement the page
  * builder's blueprints encode, applied to the React component library. A
@@ -222,6 +255,114 @@ createRoot(document.getElementById('root')).render(
     <App />
   </React.StrictMode>
 );
+`;
+}
+
+/**
+ * A ~40-line hash router instead of a react-router dependency, on purpose:
+ * the production build publishes to STATIC hosting (GitHub Pages), where a
+ * history router 404s on refresh at any subpath. Hash navigation survives
+ * refresh anywhere, adds zero install weight, and cannot drift versions.
+ */
+function fileRouterJsx(): string {
+    return `import React, { useEffect, useState } from 'react';
+
+const readPath = () => {
+  const raw = window.location.hash.replace(/^#/, '');
+  return raw.startsWith('/') ? raw : '/' + raw;
+};
+
+export function usePath() {
+  const [path, setPath] = useState(readPath);
+  useEffect(() => {
+    const onChange = () => {
+      setPath(readPath());
+      // A new page starts at its top, the way real navigation does.
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    };
+    window.addEventListener('hashchange', onChange);
+    return () => window.removeEventListener('hashchange', onChange);
+  }, []);
+  return path;
+}
+
+export function Link({ to, children, className }) {
+  const current = usePath() === to;
+  return (
+    <a className={className} href={'#' + to} aria-current={current ? 'page' : undefined}>
+      {children}
+    </a>
+  );
+}
+`;
+}
+
+/** The multi-page App: pages composed from the SAME section components. */
+function fileMultiPageAppJsx(pages: AppPage[], isAr: boolean): string {
+    const comps = [...new Set(pages.flatMap(p => p.sections))];
+    const pageConst = pages.map(p => {
+        const title = isAr ? p.title : p.titleEn;
+        return `  { path: '${p.path}', title: '${js(title)}', render: (content) => (<>\n${p.sections.map(s => `    <${s} content={content} />`).join('\n')}\n  </>) },`;
+    }).join('\n');
+    return `import React from 'react';
+import Navbar from './components/Navbar.jsx';
+import Footer from './components/Footer.jsx';
+${comps.map(c => `import ${c} from './components/${c}.jsx';`).join('\n')}
+import { usePath } from './router.jsx';
+import { content } from './content.js';
+
+export const pages = [
+${pageConst}
+];
+
+export default function App() {
+  const path = usePath();
+  const page = pages.find((p) => p.path === path);
+  return (
+    <>
+      <Navbar content={content} pages={pages} />
+      <main>
+        {page ? page.render(content) : (
+          <section className="section"><div className="wrap">
+            <h1>404</h1>
+            <p>${isAr ? 'هذه الصفحة غير موجودة — عد إلى الرئيسية من القائمة.' : 'This page does not exist — head back home from the menu.'}</p>
+          </div></section>
+        )}
+      </main>
+      <Footer content={content} />
+    </>
+  );
+}
+`;
+}
+
+/** Navbar for the multi-page app: real page Links with aria-current. */
+function fileMultiPageNavbarJsx(): string {
+    return `import React, { useEffect, useState } from 'react';
+import { Link } from '../router.jsx';
+
+export default function Navbar({ content, pages }) {
+  const [dark, setDark] = useState(() => {
+    try { return localStorage.getItem('theme') === 'dark'; } catch { return false; }
+  });
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch { /* private mode */ }
+  }, [dark]);
+  return (
+    <header className="site-header">
+      <div className="wrap header-inner">
+        <Link className="brand" to="/">{content.brand}</Link>
+        <nav className="nav-links">
+          {pages.map((p) => <Link key={p.path} to={p.path}>{p.title}</Link>)}
+        </nav>
+        <button type="button" className="theme-toggle" aria-pressed={dark} onClick={() => setDark(d => !d)}>
+          {dark ? '☀️' : '🌙'}
+        </button>
+      </div>
+    </header>
+  );
+}
 `;
 }
 
@@ -625,7 +766,9 @@ export class ReactProjectTool extends BaseTool {
         // ships a menu, a store ships pricing — never the same generic three
         // sections for every request.
         const kind = detectPageKind(request);
-        const sections = sectionsForKind(kind);
+        const multiPage = wantsMultiPage(request);
+        const pages = pagesForKind(kind);
+        const sections = multiPage ? [...new Set(pages.flatMap(p => p.sections))] : sectionsForKind(kind);
         const content = deriveContent(request, isAr, kind);
         const dirName = `react-${slug(content.brand)}`;
         // The app's form delivers into Joe's inbox while it runs next to Joe.
@@ -653,8 +796,9 @@ export class ReactProjectTool extends BaseTool {
             'index.html': fileIndexHtml(content),
             '.gitignore': 'node_modules\ndist\n',
             'src/main.jsx': fileMainJsx(),
-            'src/App.jsx': fileAppJsx(sections),
+            'src/App.jsx': multiPage ? fileMultiPageAppJsx(pages, isAr) : fileAppJsx(sections),
             'src/content.js': fileContentJs(content),
+            ...(multiPage ? { 'src/router.jsx': fileRouterJsx() } : {}),
             // Joe's REAL palette tokens — the same engine every page uses. The
             // data-theme blocks make the Navbar toggle actually change the
             // colours (paletteCss alone only follows the OS preference).
@@ -672,6 +816,8 @@ export class ReactProjectTool extends BaseTool {
             const tpl = componentTemplates[c];
             if (tpl) files[`src/components/${c}.jsx`] = tpl();
         }
+        // The multi-page app swaps in a Navbar of real page Links.
+        if (multiPage) files['src/components/Navbar.jsx'] = fileMultiPageNavbarJsx();
         for (const [rel, body] of Object.entries(files)) {
             fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
         }

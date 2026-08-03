@@ -146,3 +146,54 @@ describe('kind-aware React apps', () => {
         fs.rmSync(tmp, { recursive: true, force: true });
     });
 });
+
+/**
+ * MULTI-PAGE APPS — a real router without a dependency: hash navigation
+ * (survives refresh on static hosting), pages composed from the SAME
+ * section components, aria-current on the active link, honest 404.
+ */
+import { pagesForKind, wantsMultiPage } from '../modules/tools/definitions/ReactProjectTool';
+
+describe('multi-page React apps', () => {
+    it('detection: multi-page is explicit, single-page stays the default', () => {
+        expect(wantsMultiPage('ابن لي مشروع React متعدد الصفحات لمطعم')).toBe(true);
+        expect(wantsMultiPage('build a multi-page react app')).toBe(true);
+        expect(wantsMultiPage('ابن لي مشروع React لمطعم')).toBe(false);
+    });
+    it('every kind\'s page plan starts at home and ends at contact', () => {
+        for (const k of ['restaurant', 'store', 'landing', 'generic'] as any[]) {
+            const pages = pagesForKind(k);
+            expect(pages[0].path).toBe('/');
+            expect(pages[pages.length - 1].path).toBe('/contact');
+            expect(pages.length).toBeGreaterThanOrEqual(3);
+        }
+    });
+    it('a multi-page restaurant scaffold: router present, every file parses, menu on its own page', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-mp-'));
+        const res: any = await new ReactProjectTool().execute(
+            { request: 'ابن لي مشروع React متعدد الصفحات لمطعم', root: tmp, skipInstall: true }, { sessionId: 'mp-t' });
+        expect(res.ok).toBe(true);
+        const proj = res.output.path;
+        expect(fs.existsSync(path.join(proj, 'src', 'router.jsx'))).toBe(true);
+        for (const rel of ['src/router.jsx', 'src/App.jsx', 'src/components/Navbar.jsx']) {
+            const gate = syntaxOk(rel, fs.readFileSync(path.join(proj, rel), 'utf-8'));
+            expect(`${rel}:${gate.ok}`).toBe(`${rel}:true`);
+        }
+        const app = fs.readFileSync(path.join(proj, 'src', 'App.jsx'), 'utf-8');
+        expect(app).toContain("path: '/menu'");
+        expect(app).toContain('404');
+        const nav = fs.readFileSync(path.join(proj, 'src', 'components', 'Navbar.jsx'), 'utf-8');
+        expect(nav).toContain("from '../router.jsx'");
+        delete (global as any).joeProjects?.['mp-t'];
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+    it('the single-page scaffold is untouched (no router file, anchor nav)', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-sp-'));
+        const res: any = await new ReactProjectTool().execute(
+            { request: 'ابن لي مشروع React لمطعم', root: tmp, skipInstall: true }, { sessionId: 'sp-t' });
+        expect(fs.existsSync(path.join(res.output.path, 'src', 'router.jsx'))).toBe(false);
+        expect(fs.readFileSync(path.join(res.output.path, 'src', 'components', 'Navbar.jsx'), 'utf-8')).toContain('href="#top"');
+        delete (global as any).joeProjects?.['sp-t'];
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+});
