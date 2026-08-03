@@ -44,6 +44,15 @@ interface ReactContent {
     ctaBandTitle: string;
     ctaBandText: string;
     isArabic: boolean;
+    /** Which hero ARCHETYPE this build wears — the component falls back to
+     *  'centered' whenever no photograph arrived, so it is never a promise. */
+    heroLayout: 'overlay' | 'split' | 'centered';
+    /** The trust strip under the hero — short, kind-specific, three of them. */
+    perks: string[];
+    /** A real photo mosaic. Empty until the archives answer; an empty gallery
+     *  renders NOTHING rather than an empty section. */
+    galleryTitle: string;
+    gallery: Array<{ src: string; alt: string }>;
     /** Kind-specific blocks — only the ones the kind's section list uses are rendered. */
     menuTitle: string;
     menu: Array<{ name: string; desc: string; price: string; img?: { src: string; alt: string } | null }>;
@@ -157,12 +166,12 @@ export function pagesForKind(kind: PageKind): AppPage[] {
     switch (kind) {
         case 'restaurant': return [
             { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Testimonials', 'Cta'] },
-            { path: '/menu', title: 'القائمة', titleEn: 'Menu', sections: ['Menu'] },
+            { path: '/menu', title: 'القائمة', titleEn: 'Menu', sections: ['Menu', 'Gallery'] },
             { path: '/contact', title: 'تواصل معنا', titleEn: 'Contact', sections: ['Contact'] },
         ];
         case 'store': return [
             { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Testimonials', 'Cta'] },
-            { path: '/products', title: 'المنتجات', titleEn: 'Products', sections: ['Products', 'Faq'] },
+            { path: '/products', title: 'المنتجات', titleEn: 'Products', sections: ['Products', 'Gallery', 'Faq'] },
             { path: '/contact', title: 'تواصل معنا', titleEn: 'Contact', sections: ['Contact'] },
         ];
         default: return [
@@ -183,14 +192,29 @@ export function wantsMultiPage(text: string): boolean {
  * builder's blueprints encode, applied to the React component library. A
  * restaurant without its menu is a landing page wearing a restaurant's name.
  */
+/**
+ * The hero ARCHETYPE — the single biggest reason two sites look alike is one
+ * hero shape for all of them. A restaurant deserves a full-bleed photograph
+ * with the copy laid over it; a SaaS page reads better split; a page with no
+ * photograph at all is centred on purpose rather than by accident.
+ */
+export function heroLayoutFor(kind: PageKind, family: DesignFamily): 'overlay' | 'split' | 'centered' {
+    if (kind === 'restaurant' || kind === 'event') return 'overlay';
+    if (kind === 'store') return family === 'elegant' ? 'overlay' : 'split';
+    // Everything else is SPLIT — a photograph beside the copy. 'centered' is
+    // never wished for: it is what the component falls back to when no
+    // photograph arrived, so a downloaded photo is never left unrendered.
+    return 'split';
+}
+
 export function sectionsForKind(kind: PageKind): string[] {
     switch (kind) {
-        case 'restaurant': return ['Hero', 'Menu', 'Testimonials', 'Cta', 'Contact'];
+        case 'restaurant': return ['Hero', 'Menu', 'Gallery', 'Testimonials', 'Cta', 'Contact'];
         // Real product CARDS with photos and prices — a store sells things,
         // not subscription tiers. Pricing stays for app/dashboard kinds.
-        case 'store': return ['Hero', 'Products', 'Testimonials', 'Cta', 'Faq', 'Contact'];
+        case 'store': return ['Hero', 'Products', 'Gallery', 'Testimonials', 'Cta', 'Faq', 'Contact'];
         case 'landing': return ['Hero', 'Features', 'Stats', 'Testimonials', 'Cta', 'Contact'];
-        case 'portfolio': return ['Hero', 'Features', 'Stats', 'Cta', 'Contact'];
+        case 'portfolio': return ['Hero', 'Features', 'Gallery', 'Stats', 'Cta', 'Contact'];
         case 'dashboard':
         case 'app': return ['Hero', 'Features', 'Pricing', 'Cta', 'Faq', 'Contact'];
         case 'event': return ['Hero', 'Stats', 'Cta', 'Faq', 'Contact'];
@@ -225,6 +249,14 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
         ctaBandTitle: restaurant ? 'طاولتك جاهزة الليلة' : store ? 'وصّلنا لك الأفضل' : 'جاهز تبدأ؟',
         ctaBandText: restaurant ? 'احجز الآن ودع المطبخ يتكفل بالباقي.' : store ? 'اطلب اليوم ويصلك بسرعة وبتغليف يليق.' : 'خطوتك الأولى تبعد ضغطة زر واحدة.',
         isArabic: true,
+        heroLayout: 'centered',
+        perks: restaurant
+            ? ['مكونات طازجة يومياً', 'حجز فوري بلا انتظار', 'مواقف متاحة للعملاء']
+            : store
+                ? ['شحن سريع', 'دفع آمن', 'استرجاع خلال 14 يوماً']
+                : ['إطلاق خلال دقائق', 'يعمل على كل الأجهزة', 'دعم عربي كامل'],
+        galleryTitle: restaurant ? 'من داخل المطعم' : store ? 'من المعرض' : 'أعمالنا',
+        gallery: [],
         menuTitle: 'قائمة الطعام',
         menu: [
             { name: 'طبق اليوم', desc: 'وصفة الشيف الموسمية بمكونات طازجة', price: '48 ر.س' },
@@ -277,6 +309,14 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
         ctaBandTitle: restaurant ? 'Your table is ready tonight' : store ? 'The best, delivered' : 'Ready to start?',
         ctaBandText: restaurant ? 'Book now — the kitchen handles the rest.' : store ? 'Order today, arrive fast, wrapped right.' : 'Your first step is one click away.',
         isArabic: false,
+        heroLayout: 'centered',
+        perks: restaurant
+            ? ['Fresh every morning', 'Instant booking', 'Parking on site']
+            : store
+                ? ['Fast shipping', 'Secure checkout', '14-day returns']
+                : ['Live in minutes', 'Works on every device', 'Real human support'],
+        galleryTitle: restaurant ? 'Inside the room' : store ? 'The gallery' : 'Selected work',
+        gallery: [],
         menuTitle: 'The menu',
         menu: [
             { name: 'Dish of the day', desc: 'The chef\'s seasonal recipe', price: '$18' },
@@ -518,6 +558,19 @@ ${c.features.map(f => `    { title: '${js(f.title)}', text: '${js(f.text)}' },`)
   contactTitle: '${js(c.contactTitle)}',
   ctaBandTitle: '${js(c.ctaBandTitle)}',
   ctaBandText: '${js(c.ctaBandText)}',
+  // The hero ARCHETYPE this build wears — 'overlay' lays the copy over a
+  // full-bleed photograph, 'split' sets it beside one, 'centered' needs none.
+  heroLayout: '${js(c.heroLayout)}',
+  perks: [${c.perks.map(p => `'${js(p)}'`).join(', ')}],
+  galleryTitle: '${js(c.galleryTitle)}',
+  gallery: [
+${c.gallery.map(g => `    { src: '${js(g.src)}', alt: '${js(g.alt)}' },`).join('\n')}
+  ],
+  // The navigation is built from the sections this app ACTUALLY has — a
+  // restaurant's menu used to link to a #features anchor that never existed.
+  navLinks: [
+${((c as any).navLinks || []).map((n: any) => `    { href: '${js(n.href)}', label: '${js(n.label)}' },`).join('\n')}
+  ],
   menuTitle: '${js(c.menuTitle)}',
   menu: [
 ${c.menu.map(m => `    { name: '${js(m.name)}', desc: '${js(m.desc)}', price: '${js(m.price)}', img: ${m.img ? `{ src: '${js(m.img.src)}', alt: '${js(m.img.alt)}' }` : 'null'} },`).join('\n')}
@@ -579,8 +632,9 @@ export default function Navbar({ content }) {
       <div className="wrap header-inner">
         <a className="brand" href="#top">{content.brand}</a>
         <nav className="nav-links">
-          <a href="#features">{content.isArabic === false ? 'Features' : 'المميزات'}</a>
-          <a href="#contact">{content.contactTitle}</a>
+          {(content.navLinks || []).map((l) => (
+            <a href={l.href} key={l.href}>{l.label}</a>
+          ))}
         </nav>
         <button type="button" className="theme-toggle" aria-pressed={dark} onClick={() => setDark(d => !d)}>
           {dark ? '☀️' : '🌙'}
@@ -595,25 +649,89 @@ export default function Navbar({ content }) {
 function fileHeroJsx(): string {
     return `import React from 'react';
 
+// Three archetypes, one component. The layout the build ASKED for only
+// happens when a real photograph arrived — otherwise the hero centres itself
+// on purpose instead of leaving a hole where a picture should have been.
 export default function Hero({ content }) {
-  return (
-    <section className="hero" id="top">
-      <div className={content.heroImage ? 'wrap hero-split' : 'wrap'}>
-        <div>
-          <span className="hero-eyebrow">✦ {content.tagline}</span>
-          <h1>{content.heroTitle}</h1>
-          <p className="lede">{content.heroLede}</p>
-          <div className="hero-ctas">
-            <a className="btn" href="#contact">{content.cta}</a>
-            {content.heroSecondary ? (
-              <a className="btn btn-ghost" href={content.heroSecondary.href}>{content.heroSecondary.label}</a>
-            ) : null}
-          </div>
-        </div>
-        {content.heroImage ? (
+  const layout = content.heroImage ? (content.heroLayout || 'split') : 'centered';
+  const copy = (
+    <div className="hero-copy">
+      <span className="hero-eyebrow">✦ {content.tagline}</span>
+      <h1>{content.heroTitle}</h1>
+      <p className="lede">{content.heroLede}</p>
+      <div className="hero-ctas">
+        <a className="btn" href="#contact">{content.cta}</a>
+        {content.heroSecondary ? (
+          <a className="btn btn-ghost" href={content.heroSecondary.href}>{content.heroSecondary.label}</a>
+        ) : null}
+      </div>
+    </div>
+  );
+  const perks = (content.perks && content.perks.length) ? (
+    <div className="perks-band">
+      <ul className="wrap perks">
+        {content.perks.map((p) => (
+          <li className="perk" key={p}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg>
+            <span>{p}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  ) : null;
+  if (layout === 'overlay') {
+    return (
+      <section className="hero hero-overlay" id="top">
+        <img className="hero-bg" src={content.heroImage.src} alt={content.heroImage.alt}
+          loading="eager" fetchpriority="high" decoding="async" />
+        <div className="hero-scrim" aria-hidden="true" />
+        <div className="wrap">{copy}</div>
+        {perks}
+      </section>
+    );
+  }
+  if (layout === 'split') {
+    return (
+      <section className="hero hero-split-layout" id="top">
+        <div className="wrap hero-split">
+          {copy}
           <img className="hero-photo" src={content.heroImage.src} alt={content.heroImage.alt}
             loading="eager" fetchpriority="high" decoding="async" />
-        ) : null}
+        </div>
+        {perks}
+      </section>
+    );
+  }
+  return (
+    <section className="hero hero-centered" id="top">
+      <div className="wrap">{copy}</div>
+      {perks}
+    </section>
+  );
+}
+`;
+}
+
+/** A real photo mosaic — the first cell twice the size, the rest a grid.
+ *  With no photographs it renders NOTHING: an empty gallery is worse than
+ *  no gallery, and this build refuses to ship a section made of holes. */
+function fileGalleryJsx(): string {
+    return `import React from 'react';
+
+export default function Gallery({ content }) {
+  const shots = content.gallery || [];
+  if (!shots.length) return null;
+  return (
+    <section className="section" id="gallery">
+      <div className="wrap">
+        <h2>{content.galleryTitle}</h2>
+        <div className="gallery-mosaic">
+          {shots.map((g, i) => (
+            <figure className={i === 0 ? 'shot shot-lead' : 'shot'} key={g.src}>
+              <img src={g.src} alt={g.alt} loading="lazy" decoding="async" />
+            </figure>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -981,9 +1099,37 @@ function fileFooterJsx(): string {
     return `import React from 'react';
 
 export default function Footer({ content }) {
+  const c = content.contact;
   return (
     <footer className="site-footer">
-      <div className="wrap">
+      <div className="wrap footer-cols">
+        <div className="footer-col">
+          <p className="footer-brand">{content.brand}</p>
+          <p className="footer-blurb">{content.tagline}</p>
+        </div>
+        {(content.navLinks || []).length ? (
+          <nav className="footer-col">
+            <h4>{content.isArabic === false ? 'Sections' : 'الأقسام'}</h4>
+            <ul className="footer-links">
+              {content.navLinks.map((l) => (
+                <li key={l.href}><a href={l.href}>{l.label}</a></li>
+              ))}
+            </ul>
+          </nav>
+        ) : null}
+        {c && (c.phone || c.email || c.address || c.hours) ? (
+          <div className="footer-col">
+            <h4>{content.contactTitle}</h4>
+            <ul className="footer-links">
+              {c.phone ? <li><a href={'tel:' + c.phone}>{c.phone}</a></li> : null}
+              {c.email ? <li><a href={'mailto:' + c.email}>{c.email}</a></li> : null}
+              {c.address ? <li>{c.address}</li> : null}
+              {c.hours ? <li>{c.hours}</li> : null}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+      <div className="wrap footer-bottom">
         <p>© {new Date().getFullYear()} {content.brand}</p>
         {content.contact && (content.contact.instagram || content.contact.twitter) ? (
           <p className="socials">
@@ -1143,6 +1289,36 @@ main > .section:nth-of-type(even):not(.band):not(.stats-band):not(.cta-band){bac
 @media (prefers-reduced-motion: reduce){[data-reveal]{opacity:1;transform:none;transition:none}.card,.btn{transition:none}}
 .credits{font-size:.85rem;opacity:.8}
 .credits a{color:inherit}
+.hero-overlay{padding:0;display:grid;isolation:isolate}
+.hero-overlay > *{grid-area:1/1}
+.hero-overlay .hero-bg{width:100%;height:100%;min-height:clamp(420px,60vh,640px);object-fit:cover}
+.hero-overlay .hero-scrim{background:linear-gradient(to top,color-mix(in srgb,var(--bg) 92%,transparent),color-mix(in srgb,var(--bg) 55%,transparent) 55%,color-mix(in srgb,var(--bg) 20%,transparent))}
+.hero-overlay .wrap{align-self:end;padding-block:clamp(40px,7vw,90px);z-index:1}
+.hero-overlay .perks-band{align-self:end;z-index:2}
+.hero-centered .hero-copy{max-width:44rem;margin-inline:auto;text-align:center}
+.hero-centered .lede{margin-inline:auto}
+.hero-centered .hero-ctas{justify-content:center}
+.perks-band{border-top:1px solid color-mix(in srgb,var(--border) 70%,transparent);background:color-mix(in srgb,var(--surface) 70%,transparent);backdrop-filter:blur(6px);margin-top:clamp(30px,5vw,56px)}
+.perks{list-style:none;margin:0;padding:14px 1rem;display:flex;flex-wrap:wrap;gap:12px 30px;justify-content:center}
+.perk{display:inline-flex;align-items:center;gap:8px;font-weight:600;color:var(--text)}
+.perk svg{width:18px;height:18px;color:var(--brand);flex:none}
+.gallery-mosaic{display:grid;gap:14px;grid-template-columns:repeat(2,1fr)}
+@media(min-width:900px){.gallery-mosaic{grid-template-columns:repeat(4,1fr)}
+.gallery-mosaic .shot-lead{grid-column:span 2;grid-row:span 2}}
+.shot{margin:0;overflow:hidden;border-radius:var(--f-radius);background:color-mix(in srgb,var(--tint) 40%,transparent)}
+.shot img{width:100%;height:100%;aspect-ratio:1/1;object-fit:cover;display:block;transition:transform .6s ease}
+.shot:hover img{transform:scale(1.06)}
+.footer-cols{display:grid;gap:26px;grid-template-columns:1fr;padding-bottom:22px}
+@media(min-width:760px){.footer-cols{grid-template-columns:1.6fr 1fr 1fr}}
+.footer-col h4{margin:0 0 10px;font-size:1rem;color:var(--text)}
+.footer-brand{font-weight:800;font-size:1.15rem;color:var(--text);margin:0 0 6px}
+.footer-blurb{margin:0;max-width:38ch}
+.footer-links{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.footer-links a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;min-height:32px}
+.footer-links a:hover{color:var(--brand)}
+.footer-bottom{border-top:1px solid var(--border);padding-top:16px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center}
+.footer-bottom p{margin:0}
+.footer-bottom .credits{margin-inline-start:auto}
 
 /* The family layer rides LAST on purpose. It used to sit at the top, where
    every rule it wrote below :root — the elegant flat band, the bold diagonal,
@@ -1244,6 +1420,26 @@ export class ReactProjectTool extends BaseTool {
             const onHome = !multiPage || pages[0].sections.includes(target === 'menu' ? 'Menu' : target === 'products' ? 'Products' : 'Features');
             return { label, href: multiPage && !onHome ? `#/${target}` : `#${target}` };
         })();
+        // The hero ARCHETYPE and the navigation both come from what this build
+        // actually contains: the restaurant used to advertise a #features
+        // anchor it never rendered.
+        content.heroLayout = heroLayoutFor(kind, family);
+        const SECTION_ANCHOR: Record<string, string> = {
+            Features: 'features', Menu: 'menu', Products: 'products', Gallery: 'gallery',
+            Pricing: 'pricing', Testimonials: 'testimonials', Faq: 'faq', Stats: 'stats', Contact: 'contact',
+        };
+        const SECTION_LABEL: Record<string, [string, string]> = {
+            Features: ['المميزات', 'Features'], Menu: ['القائمة', 'Menu'], Products: ['المنتجات', 'Products'],
+            Gallery: ['المعرض', 'Gallery'], Pricing: ['الأسعار', 'Pricing'], Testimonials: ['آراء العملاء', 'Reviews'],
+            Faq: ['أسئلة شائعة', 'FAQ'], Stats: ['بالأرقام', 'Numbers'], Contact: [content.contactTitle, content.contactTitle],
+        };
+        // On a multi-page app the anchors are ROUTES — «#menu» would drive the
+        // hash router straight into its own 404 page.
+        (content as any).navLinks = multiPage
+            ? pages.map(p => ({ href: `#${p.path}`, label: isAr ? p.title : p.titleEn }))
+            : sections
+                .filter(s => SECTION_ANCHOR[s])
+                .map(s => ({ href: `#${SECTION_ANCHOR[s]}`, label: SECTION_LABEL[s][isAr ? 0 : 1] }));
         (content as any).api = apiLink;
         // …and WRITES into it: visitor orders post to the API's orders table.
         (content as any).ordersApi = apiLink ? apiLink.replace(/\/api\/[a-z]+$/, '/api/orders') : '';
@@ -1316,6 +1512,22 @@ export class ReactProjectTool extends BaseTool {
                 term(`product photos: ${prods.note}`);
             }
 
+            // The GALLERY — a real photo mosaic of the place or the work.
+            // Four asks of the same subject: the engine's variant machinery
+            // returns a different photograph each time, and whatever the
+            // archives could not answer simply shrinks the mosaic.
+            if (sections.includes('Gallery')) {
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🖼️ أجلب صور المعرض…' : '🖼️ Finding gallery photos…');
+                const shots = await fetchCardImages({
+                    subjects: [0, 1, 2, 3].map(() => `${content.tagline || content.brand}`),
+                    projDir: proj, hue: (palette as any).hue ?? 260, artifactDir: ARTIFACT_DIR,
+                    slot: 'card', label: 'gallery',
+                });
+                content.gallery = shots.images.filter(Boolean) as Array<{ src: string; alt: string }>;
+                content.credits = mergeCredits(content.credits, shots.credits);
+                term(`gallery photos: ${shots.note}`);
+            }
+
             // Faces for the testimonials — the engine's avatar slot, whose
             // sizing and grounding were built for exactly this position.
             if (sections.includes('Testimonials') && content.testimonials.length) {
@@ -1333,7 +1545,7 @@ export class ReactProjectTool extends BaseTool {
 
         const componentTemplates: Record<string, () => string> = {
             Navbar: fileNavbarJsx, Hero: fileHeroJsx, Features: fileFeaturesJsx,
-            Menu: fileMenuJsx, Products: fileProductsJsx, Pricing: filePricingJsx, Testimonials: fileTestimonialsJsx,
+            Menu: fileMenuJsx, Products: fileProductsJsx, Gallery: fileGalleryJsx, Pricing: filePricingJsx, Testimonials: fileTestimonialsJsx,
             Faq: fileFaqJsx, Stats: fileStatsJsx, Cta: fileCtaJsx, Contact: fileContactJsx, Footer: fileFooterJsx,
         };
         const files: Record<string, string> = {

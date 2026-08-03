@@ -95,7 +95,7 @@ async function main() {
     const fancy: any = await new ReactProjectTool().execute(
         { request: 'ابنِ متجر react فاخر للعطور', root, skipImages: true }, { sessionId: 'du-a' });
     const bold: any = await new ReactProjectTool().execute(
-        { request: 'ابنِ موقع react لمنصة تقنية بتصميم جريء', root, skipImages: true }, { sessionId: 'du-b' });
+        { request: 'ابنِ موقع react لمنصة تقنية بتصميم جريء', root }, { sessionId: 'du-b' });
     check('both built for real', fancy.output?.built === true && bold.output?.built === true);
     const fontsA = fs.readdirSync(path.join(fancy.output.path, 'src', 'styles', 'fonts'));
     check('the elegant app ships REAL Amiri + Cairo woff2 files with the OFL notice',
@@ -221,6 +221,77 @@ async function main() {
     check('the dish thumbnails painted at the new 112px size', warmGeom.thumbPainted && warmGeom.thumbW === 112, JSON.stringify(warmGeom));
     check('the warm CTA band is a ROUNDED gradient slab (28px) — its own family shape',
         warmGeom.bandRadius === '28px' && warmGeom.bandGradient, JSON.stringify(warmGeom));
+
+    console.log('\n[7] ثلاثة أشكال للبطل، معرض صور حقيقي، شريط ثقة، وتنقّل لا يكذب');
+    const heroSeen3 = await pC.evaluate(() => {
+        const hero = document.querySelector('.hero') as HTMLElement;
+        const bg = document.querySelector('.hero-bg') as HTMLImageElement | null;
+        const copy = document.querySelector('.hero-copy') as HTMLElement | null;
+        const perks = [...document.querySelectorAll('.perk')] as HTMLElement[];
+        const shots = [...document.querySelectorAll('.gallery-mosaic .shot img')] as HTMLImageElement[];
+        const lead = document.querySelector('.shot-lead img') as HTMLImageElement | null;
+        const navA = [...document.querySelectorAll('.nav-links a')] as HTMLAnchorElement[];
+        return {
+            overlay: hero.classList.contains('hero-overlay'),
+            bgPainted: !!bg && bg.naturalWidth > 0,
+            // The copy really sits OVER the photograph, not beside it.
+            copyOverPhoto: !!bg && !!copy
+                && copy.getBoundingClientRect().top >= bg.getBoundingClientRect().top
+                && copy.getBoundingClientRect().bottom <= bg.getBoundingClientRect().bottom + 2,
+            heroRadius: getComputedStyle(hero).borderEndStartRadius,
+            perks: perks.length,
+            perkIcons: document.querySelectorAll('.perk svg').length,
+            shots: shots.length,
+            shotsPainted: shots.every(s => s.naturalWidth > 0),
+            leadWider: !!lead && shots.length > 1 && lead.getBoundingClientRect().width > shots[1].getBoundingClientRect().width * 1.5,
+            navHrefs: navA.map(a => a.getAttribute('href') || ''),
+            navResolves: navA.every(a => {
+                const id = (a.getAttribute('href') || '').slice(1);
+                return !!id && !!document.getElementById(id);
+            }),
+            footerCols: document.querySelectorAll('.footer-cols .footer-col').length,
+            footerLinks: document.querySelectorAll('.footer-links a').length,
+        };
+    });
+    check('the restaurant wears the OVERLAY hero — a full-bleed photograph with the copy laid over it',
+        heroSeen3.overlay && heroSeen3.bgPainted && heroSeen3.copyOverPhoto, JSON.stringify(heroSeen3));
+    check('…and the warm family rounds its bottom edge (56px)', heroSeen3.heroRadius === '56px', heroSeen3.heroRadius);
+    check('the trust strip carries THREE perks, each with its own icon', heroSeen3.perks === 3 && heroSeen3.perkIcons === 3, JSON.stringify(heroSeen3));
+    check('the GALLERY mosaic painted real photographs, the lead cell twice the size',
+        heroSeen3.shots >= 3 && heroSeen3.shotsPainted && heroSeen3.leadWider, JSON.stringify(heroSeen3));
+    check('every navigation link points at a section that REALLY EXISTS (the restaurant used to advertise a #features it never rendered)',
+        heroSeen3.navHrefs.length >= 3 && heroSeen3.navResolves, heroSeen3.navHrefs.join(','));
+    check('the footer is a real three-column footer with live links', heroSeen3.footerCols >= 2 && heroSeen3.footerLinks >= 3, JSON.stringify(heroSeen3));
+
+    const splitSeen = await pB.evaluate(() => {
+        const hero = document.querySelector('.hero') as HTMLElement;
+        const photo = document.querySelector('.hero-photo') as HTMLImageElement | null;
+        const copy = document.querySelector('.hero-copy') as HTMLElement | null;
+        return {
+            split: hero.classList.contains('hero-split-layout'),
+            painted: !!photo && photo.naturalWidth > 0,
+            // Side by side: the copy and the photograph share a horizontal band.
+            sideBySide: !!photo && !!copy && Math.abs(copy.getBoundingClientRect().top - photo.getBoundingClientRect().top) < 400
+                && copy.getBoundingClientRect().right <= photo.getBoundingClientRect().left + 2
+                || (!!photo && !!copy && photo.getBoundingClientRect().right <= copy.getBoundingClientRect().left + 2),
+            clip: getComputedStyle(hero).clipPath,
+        };
+    });
+    check('the tech platform wears the SPLIT hero — copy beside the photograph, not over it',
+        splitSeen.split && splitSeen.painted && splitSeen.sideBySide, JSON.stringify(splitSeen));
+    check('…and the bold family cuts its hero on a diagonal', /polygon/.test(splitSeen.clip), splitSeen.clip);
+
+    const centeredSeen = await pA.evaluate(() => {
+        const hero = document.querySelector('.hero') as HTMLElement;
+        const copy = document.querySelector('.hero-copy') as HTMLElement | null;
+        return {
+            centered: hero.classList.contains('hero-centered'),
+            noHoles: !document.querySelector('.hero-bg') && !document.querySelector('.hero-photo'),
+            align: copy ? getComputedStyle(copy).textAlign : '',
+        };
+    });
+    check('a build with NO photograph centres its hero on purpose — never a hole where a picture should be',
+        centeredSeen.centered && centeredSeen.noHoles && centeredSeen.align === 'center', JSON.stringify(centeredSeen));
 
     await browser.close();
     sA.close(); sB.close(); sC.close(); archive.close();

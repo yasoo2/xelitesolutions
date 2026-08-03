@@ -246,3 +246,106 @@ describe('real photos in React apps', () => {
         fs.rmSync(tmp, { recursive: true, force: true });
     });
 });
+
+/**
+ * HERO ARCHETYPES, GALLERY, TRUST STRIP, HONEST NAVIGATION.
+ *
+ * One hero shape for every business is the loudest reason two builds look
+ * alike, so the archetype is picked deterministically — and 'centered' is
+ * never WISHED for: it is the honest fallback when no photograph arrived,
+ * which is what keeps a downloaded photo from going unrendered.
+ *
+ * The navigation is locked to the sections the build actually has. A
+ * restaurant used to advertise a #features anchor it never rendered.
+ */
+import { heroLayoutFor } from '../modules/tools/definitions/ReactProjectTool';
+
+describe('the hero archetypes and the sections that came with them', () => {
+    it('the archetype is deterministic, kind- and family-aware', () => {
+        expect(heroLayoutFor('restaurant', 'warm')).toBe('overlay');
+        expect(heroLayoutFor('event', 'bold')).toBe('overlay');
+        expect(heroLayoutFor('store', 'elegant')).toBe('overlay');
+        expect(heroLayoutFor('store', 'bold')).toBe('split');
+        expect(heroLayoutFor('app', 'bold')).toBe('split');
+        expect(heroLayoutFor('generic', 'minimal')).toBe('split');
+        for (const k of ['restaurant', 'store', 'landing', 'app', 'generic'] as any[]) {
+            expect(heroLayoutFor(k, 'warm')).not.toBe('centered');    // never wished for
+        }
+    });
+    it('the photo-carrying kinds gained a gallery, before the social proof', () => {
+        for (const k of ['restaurant', 'store', 'portfolio'] as any[]) {
+            const sec = sectionsForKind(k);
+            expect(sec).toContain('Gallery');
+            expect(sec.indexOf('Gallery')).toBeLessThan(sec.indexOf('Cta'));
+        }
+        expect(sectionsForKind('app')).not.toContain('Gallery');
+    });
+
+    describe('a scaffolded restaurant', () => {
+        let out: any, root: string;
+        beforeAll(async () => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-arch-'));
+            out = await new ReactProjectTool().execute(
+                { request: 'ابن لي مشروع React لمطعم', root, skipInstall: true }, { sessionId: 'arch-t' });
+        });
+        afterAll(() => { fs.rmSync(root, { recursive: true, force: true }); delete (global as any).joeProjects?.['arch-t']; });
+
+        it('asks for the overlay hero and carries all three branches, each parseable', () => {
+            const content = fs.readFileSync(path.join(out.output.path, 'src', 'content.js'), 'utf-8');
+            expect(content).toContain("heroLayout: 'overlay'");
+            const hero = fs.readFileSync(path.join(out.output.path, 'src', 'components', 'Hero.jsx'), 'utf-8');
+            for (const cls of ['hero-overlay', 'hero-split-layout', 'hero-centered']) expect(hero).toContain(cls);
+            expect(hero).toContain("content.heroImage ? (content.heroLayout || 'split') : 'centered'");
+            expect(syntaxOk('Hero.jsx', hero).ok).toBe(true);
+        });
+        it('the trust strip is three real perks with icons', () => {
+            const content = fs.readFileSync(path.join(out.output.path, 'src', 'content.js'), 'utf-8');
+            const perks = (content.match(/perks: \[(.*)\]/) || [])[1] || '';
+            expect(perks.split("', '").length).toBe(3);
+            expect(fs.readFileSync(path.join(out.output.path, 'src', 'components', 'Hero.jsx'), 'utf-8')).toContain('perks-band');
+        });
+        it('an EMPTY gallery renders nothing at all — never a section made of holes', () => {
+            const gal = fs.readFileSync(path.join(out.output.path, 'src', 'components', 'Gallery.jsx'), 'utf-8');
+            expect(gal).toContain('if (!shots.length) return null;');
+            expect(syntaxOk('Gallery.jsx', gal).ok).toBe(true);
+            expect(fs.readFileSync(path.join(out.output.path, 'src', 'content.js'), 'utf-8')).toMatch(/gallery: \[\s*\]/);
+        });
+        it('every navigation link names a section this build REALLY renders', () => {
+            const content = fs.readFileSync(path.join(out.output.path, 'src', 'content.js'), 'utf-8');
+            const hrefs = [...content.matchAll(/\{ href: '#([a-z]+)', label:/g)].map(m => m[1]);
+            expect(hrefs.length).toBeGreaterThanOrEqual(3);
+            expect(hrefs).toContain('menu');
+            expect(hrefs).toContain('gallery');
+            expect(hrefs).not.toContain('features');          // the anchor that never existed
+            const ids = new Set(['menu', 'gallery', 'testimonials', 'contact', 'cta', 'products', 'features', 'pricing', 'faq', 'stats']);
+            for (const h of hrefs) {
+                expect(ids.has(h)).toBe(true);
+                const comp = h[0].toUpperCase() + h.slice(1);
+                expect(fs.existsSync(path.join(out.output.path, 'src', 'components', `${comp}.jsx`))).toBe(true);
+            }
+            const nav = fs.readFileSync(path.join(out.output.path, 'src', 'components', 'Navbar.jsx'), 'utf-8');
+            expect(nav).toContain('content.navLinks');
+            expect(nav).not.toContain('#features');
+        });
+        it('the footer became a real three-column footer', () => {
+            const footer = fs.readFileSync(path.join(out.output.path, 'src', 'components', 'Footer.jsx'), 'utf-8');
+            expect(footer).toContain('footer-cols');
+            expect(footer).toContain('footer-links');
+            expect(footer).toContain('content.navLinks');
+            expect(syntaxOk('Footer.jsx', footer).ok).toBe(true);
+        });
+    });
+
+    it('a MULTI-PAGE app navigates by ROUTE — «#menu» would drive the router into its own 404', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-arch2-'));
+        const out: any = await new ReactProjectTool().execute(
+            { request: 'ابن لي مشروع React متعدد الصفحات لمطعم', root, skipInstall: true }, { sessionId: 'arch-mp' });
+        const content = fs.readFileSync(path.join(out.output.path, 'src', 'content.js'), 'utf-8');
+        const hrefs = [...content.matchAll(/\{ href: '(#[^']*)', label:/g)].map(m => m[1]);
+        expect(hrefs).toContain('#/');
+        expect(hrefs).toContain('#/menu');
+        expect(hrefs.every(h => h.startsWith('#/'))).toBe(true);
+        fs.rmSync(root, { recursive: true, force: true });
+        delete (global as any).joeProjects?.['arch-mp'];
+    });
+});

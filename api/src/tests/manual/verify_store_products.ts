@@ -120,7 +120,13 @@ async function main() {
     const content2 = fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8');
     check('ONLY the Gift set lost its photo', /\{ name: 'Gift set',[^\n]*?img: null/.test(content2)
         && (content2.match(/products: \[[\s\S]*?\n  \],/)![0].match(/src: 'images\//g) || []).length === 2);
-    check('its orphaned file left public/images', !!giftSrc && !fs.existsSync(path.join(proj, 'public', giftSrc)));
+    // The invariant is not «always delete»: the gallery mosaic may still be
+    // showing that very file. Never an orphan, never a dangling reference.
+    const stillUsed = !!giftSrc && content2.includes(giftSrc);
+    check(stillUsed
+        ? 'its file STAYS — the gallery still shows it (no dangling reference)'
+        : 'its orphaned file left public/images',
+        !!giftSrc && fs.existsSync(path.join(proj, 'public', giftSrc)) === stillUsed, `stillUsed=${stillUsed}`);
     const p2 = await browser.newPage();
     await p2.goto(`http://127.0.0.1:${(site.address() as any).port}/`, { waitUntil: 'networkidle' });
     const seen2 = await p2.evaluate(() => ({

@@ -128,7 +128,9 @@ async function main() {
         brand: document.querySelector('.brand')?.textContent || '',
         h1: document.querySelector('h1')?.textContent || '',
         radius: getComputedStyle(document.querySelector('.card')!).borderRadius,
-        heroPainted: ((document.querySelector('.hero-photo') as HTMLImageElement | null)?.naturalWidth || 0) > 0,
+        // Whichever archetype this kind wears: the overlay's full-bleed
+        // .hero-bg or the split layout's .hero-photo.
+        heroPainted: ((document.querySelector('.hero-bg, .hero-photo') as HTMLImageElement | null)?.naturalWidth || 0) > 0,
     }));
     check('الرابط يقدَّم من خادم جو نفسه (200)', !!resp && resp.status() === 200);
     check('التطبيق مرسوم في المعاينة — العلامة والعنوان والصورة الحقيقية', seen.brand.length > 0 && seen.h1.length > 0 && seen.heroPainted, JSON.stringify(seen));

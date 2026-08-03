@@ -124,7 +124,9 @@ async function main() {
         const thumbs = [...document.querySelectorAll('.menu-thumb')] as HTMLImageElement[];
         const items = [...document.querySelectorAll('.menu-item')];
         const salad = items.find(li => /salad/i.test(li.textContent || ''));
-        const hero = document.querySelector('.hero-photo') as HTMLImageElement | null;
+        // The restaurant now wears the OVERLAY hero — its photograph is the
+        // full-bleed .hero-bg rather than the split layout's .hero-photo.
+        const hero = document.querySelector('.hero-bg, .hero-photo') as HTMLImageElement | null;
         const avatars = [...document.querySelectorAll('.quote-avatar')] as HTMLImageElement[];
         const credits = document.querySelector('.credits');
         return {
@@ -236,7 +238,7 @@ async function main() {
     const p5 = await b2.newPage();
     await p5.goto(`http://127.0.0.1:${(pub.address() as any).port}/`, { waitUntil: 'networkidle' });
     const seen5 = await p5.evaluate(() => ({
-        hero: (document.querySelector('.hero-photo') as HTMLImageElement | null)?.naturalWidth || 0,
+        hero: (document.querySelector('.hero-bg, .hero-photo') as HTMLImageElement | null)?.naturalWidth || 0,
         thumbs: [...document.querySelectorAll('.menu-thumb')].filter((t: any) => t.naturalWidth > 0).length,
         avatars: [...document.querySelectorAll('.quote-avatar')].filter((a: any) => a.naturalWidth > 0).length,
     }));
