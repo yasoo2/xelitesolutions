@@ -1,3 +1,4 @@
+export {};
 /**
  * LIVE WIRE PROOF — the attachment is VISIBLE in the chat, and stays visible.
  *

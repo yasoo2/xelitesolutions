@@ -1,3 +1,4 @@
+export {};
 /**
  * WIRE PROOF — orchestrator rigor on the REAL dynamic-DAG path.
  *

@@ -57,7 +57,7 @@ async function main() {
 
     async function upload(name: string, bytes: Buffer | string, type: string) {
         const fd = new FormData();
-        fd.append('file', new Blob([typeof bytes === 'string' ? Buffer.from(bytes) : bytes], { type }), name);
+        fd.append('file', new Blob([new Uint8Array(typeof bytes === 'string' ? Buffer.from(bytes) : bytes)], { type }), name);
         fd.append('sessionId', 'proof-open');
         const res = await fetch(`${base}/files/upload`, { method: 'POST', headers: auth, body: fd as any });
         return { status: res.status, body: await res.json().catch(() => null) };

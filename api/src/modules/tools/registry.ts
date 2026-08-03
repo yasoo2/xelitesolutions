@@ -46,7 +46,7 @@ import { AlertManagerTool } from './definitions/AlertManagerTool';
 import { JavaBuilderTool } from './definitions/JavaBuilderTool';
 import { GoBuilderTool } from './definitions/GoBuilderTool';
 import { JoeEngineeringReportTool } from './definitions/JoeEngineeringReportTool';
-import { EchoTool, FileEditTool, ShellExecuteTool, WriteFileTool, ScaffoldProjectTool, LsTool } from './definitions/SystemTools';
+import { EchoTool, FileEditTool, ShellExecuteTool, WriteFileTool, ScaffoldProjectTool, LsTool, NpmManagerTool, ShellStatusTool } from './definitions/SystemTools';
 
 
 // Self Coding Tools
@@ -287,6 +287,15 @@ const baseTools: ToolDefinition[] = [
   new WriteFileTool(),
   new ScaffoldProjectTool(),
   new LsTool(),
+  // [AUDIT] npm_manager and shell_check_status were DEFINED for months and
+  // never registered — npm_manager is a name the frontend watches to open
+  // the terminal, and the WHOLE npm_install/npm_build/npm_run alias family
+  // resolves to it: written, wired in the UI, aliased to — and unreachable.
+  // (grep_search stays UNregistered on purpose: ToolService deliberately
+  // redirects that name to search_files — a field-proven fix an existing
+  // lock test protects against shadowing.)
+  new NpmManagerTool(),
+  new ShellStatusTool(),
   new TerminalManagerTool(),
   new SafeReadFileTool(),
   new AskUserTool(),

@@ -63,7 +63,7 @@ async function main() {
 </section>`;
 
     let html = assemblePage({
-        title: 'Landing proof', isArabic: false,
+        title: 'Landing proof', isArabic: false, sprite: '',
         tokenCss: ':root{--step-0:16px;--text:#111827;--brand:#0e7a5f;--on-brand:#fff;--bg:#ffffff}\n'
             + 'body{background:#fff;color:#111827}\n.term{color:#7c7c7c;font-size:15px}',
         baseLayer: uiKitCss(),

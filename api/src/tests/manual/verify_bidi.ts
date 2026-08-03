@@ -69,9 +69,9 @@ async function main() {
     });
     console.log('  [dbg]', JSON.stringify(probe, null, 1).slice(0, 600));
 
-    const ar = probe.find(p => p.text.startsWith('مرحباً'));
-    const en = probe.find(p => p.text.startsWith('Hello'));
-    check('every paragraph carries dir="auto"', probe.length > 0 && probe.every(p => p.dirAttr === 'auto'));
+    const ar = probe.find((p: any) => p.text.startsWith('مرحباً'));
+    const en = probe.find((p: any) => p.text.startsWith('Hello'));
+    check('every paragraph carries dir="auto"', probe.length > 0 && probe.every((p: any) => p.dirAttr === 'auto'));
     check('the Arabic-with-Latin-name paragraph resolves RTL', ar?.direction === 'rtl', JSON.stringify(ar));
     check('its unicode-bidi isolates the mixed runs (plaintext)', /plaintext/.test(ar?.bidi || ''), ar?.bidi);
     check('an English-with-Arabic-words paragraph resolves LTR', en?.direction === 'ltr', JSON.stringify(en));

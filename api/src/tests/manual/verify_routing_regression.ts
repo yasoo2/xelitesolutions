@@ -1,3 +1,4 @@
+export {};
 /**
  * LIVE PROOF — the exact bug from the user's run: "Build an admin dashboard for
  * an online store" was routed to deploy_pages (because the injected ENGINEERING

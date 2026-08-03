@@ -209,9 +209,9 @@ function collector() {
             const cn = n.getAttribute('class') || '';
             const cls = cn.trim().split(/\s+/).filter(Boolean)[0];
             if (cls) s += '.' + CSS.escape(cls);
-            const p = n.parentElement;
+            const p: Element | null = n.parentElement;
             if (p) {
-                const same = Array.from(p.children).filter(c => c.tagName === n!.tagName);
+                const same = Array.from(p.children).filter((c: Element) => c.tagName === n!.tagName);
                 if (same.length > 1) s += ':nth-of-type(' + (same.indexOf(n) + 1) + ')';
             }
             parts.unshift(s);

@@ -50,6 +50,23 @@ export function findBuiltArtifact(opts: {
     const key = sessionKeyOf(sessionId);
     const store = (global as any).joePages?.[key];
 
+    // 0) [AUDIT INTEGRATION] A scaffolded/imported PROJECT that is the
+    // session's newest artifact publishes its PRODUCTION BUILD (dist/ —
+    // vite.config already uses base './' so it serves from any subpath).
+    // Before this, «انشر المشروع» after «ابن لي مشروع React» silently
+    // published an older page or nothing: Stage 2 built projects the
+    // publish chain had never heard of.
+    {
+        const proj = (global as any).joeProjects?.[key];
+        const projectNewer = proj?.dir && (!store || (Number(proj.updatedAt) || 0) > (Number(store.updatedAt) || 0));
+        if (projectNewer) {
+            const dist = path.join(String(proj.dir), 'dist');
+            if (fs.existsSync(path.join(dist, 'index.html'))) {
+                return { kind: 'site', dir: dist, labelAr: `نسخة الإنتاج من مشروع «${proj.brand || path.basename(proj.dir)}»` };
+            }
+        }
+    }
+
     // 1) The session's multi-page site.
     if (store?.site?.dir) {
         const dir = path.join(artifactDir, store.site.dir);

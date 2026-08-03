@@ -94,8 +94,16 @@ export class ProjectRunTool implements ToolDefinition {
     async execute(input: any, context?: any) {
         const logs: string[] = [];
         const say = (m: string) => { logs.push(m); context?.onProgress?.(m); };
-        const cwd = String(input?.cwd || '').trim() || workspaceService.getActiveRoot(context?.workspaceId);
+        // [AUDIT INTEGRATION] «شغّل المشروع» right after a scaffold/import
+        // used to start the WORKSPACE ROOT, not the project the session just
+        // created — the two stores never talked. The session's active
+        // project is the default now; an explicit cwd still wins.
+        const activeProj = (global as any).joeProjects?.[String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_')];
+        const cwd = String(input?.cwd || '').trim()
+            || (activeProj?.dir && fs.existsSync(activeProj.dir) ? String(activeProj.dir) : '')
+            || workspaceService.getActiveRoot(context?.workspaceId);
         if (!fs.existsSync(cwd)) return { ok: false, error: `مسار المشروع غير موجود: ${cwd}`, logs };
+        if (activeProj?.dir === cwd) logs.push(`project_run: using the session's active project (${cwd})`);
 
         const key = runKey(context);
         // One project, one server: stop a previous run before starting again.

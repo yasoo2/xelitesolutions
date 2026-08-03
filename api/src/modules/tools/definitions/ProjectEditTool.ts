@@ -166,6 +166,43 @@ export class ProjectEditTool extends BaseTool {
             } as any;
         }
 
+        /**
+         * [UNDO — the integration the audit found missing] Every surgical
+         * edit records the files it replaced into the project's history, but
+         * nothing ever READ that history: «تراجع» on a project session fell
+         * through to the model path and produced noise. Now it is what it
+         * says: the last edit batch is restored byte-for-byte, instantly.
+         */
+        const undoIntent = /(تراجع|ارجع|أرجع|رجّع)[^.\n]{0,25}(تعديل|تغيير|نسخ|سابق|قبل)|\b(undo|rollback|revert)\b|النسخة السابقة/i.test(request);
+        if (undoIntent) {
+            const history: Array<{ file: string; before: string; at: number }> = entry?.history || [];
+            if (!history.length) {
+                return { ok: true, output: { message: isAr ? 'لا يوجد تعديل سابق مسجّل على هذا المشروع للتراجع عنه.' : 'No recorded edit to undo on this project.' }, logs } as any;
+            }
+            // The last BATCH: everything recorded at the newest timestamp.
+            const newest = history[history.length - 1].at;
+            const batch = history.filter(h => newest - h.at < 5_000);
+            const kept = history.filter(h => newest - h.at >= 5_000);
+            const restored: string[] = [];
+            for (const h of batch) {
+                try { fs.writeFileSync(path.join(dir, h.file), h.before, 'utf-8'); restored.push(h.file); }
+                catch (e: any) { logs.push(`undo failed for ${h.file}: ${e?.message || e}`); }
+            }
+            projects[sessionKey] = { ...(entry || {}), dir, updatedAt: Date.now(), history: kept };
+            persistJoeProjects();
+            logs.push(`undo: restored ${restored.length} file(s) from the last edit batch`);
+            return {
+                ok: true,
+                output: {
+                    message: isAr
+                        ? `↩️ تراجعت عن آخر تعديل — استُرجع ${restored.length} ملف:\n${restored.map(f => `   • ${f}`).join('\n')}\n🗂️ المتبقي في السجل: ${kept.length} تعديل أقدم.`
+                        : `↩️ Undid the last edit — restored ${restored.length} file(s).`,
+                    restored,
+                },
+                logs,
+            } as any;
+        }
+
         const touched: Array<{ file: string; before: string; after: string }> = [];
         const refused: string[] = [];
         const write = (rel: string, body: string) => {

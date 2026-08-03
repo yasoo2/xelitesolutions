@@ -1,0 +1,128 @@
+/**
+ * THE ROOT AUDIT, locked — so no tool can rot in the gap between
+ * "defined" and "reachable" again, and the cross-tool integrations the
+ * audit repaired stay repaired.
+ *
+ * Findings this locks (2026-08 audit, measured not guessed):
+ *  - grep_search / npm_manager / shell_check_status: defined for months,
+ *    never registered — with the WHOLE npm_* alias family silently dead
+ *    because every alias resolves to the unregistered npm_manager.
+ *  - «انشر المشروع» after a React/imported project published an older page:
+ *    publish-source only knew joePages.
+ *  - «شغّل المشروع» started the workspace root, not the session's project.
+ *  - project undo: history was written and never read.
+ */
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
+describe('every defined tool is reachable', () => {
+    // The REAL registry — not a source grep.
+    const { tools } = require('../modules/tools/registry');
+    const names = new Set(tools.map((t: any) => t.name));
+
+    it('the audit orphans are registered (npm_manager, shell_check_status)', () => {
+        for (const n of ['npm_manager', 'shell_check_status']) {
+            expect(names.has(n)).toBe(true);
+        }
+        // grep_search stays unregistered ON PURPOSE: ToolService redirects
+        // that name to search_files (a field-proven fix) and an existing
+        // lock forbids shadowing an alias with a real tool.
+        expect(names.has('grep_search')).toBe(false);
+        expect(names.has('search_files')).toBe(true);
+    });
+    it('every tool the planner routes to exists', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'core', 'orchestrator', 'PlanningEngine.ts'), 'utf-8');
+        const routed = [...src.matchAll(/tool: '([a-z_0-9]+)'/g)].map(m => m[1]);
+        const missing = [...new Set(routed)].filter(t => !names.has(t));
+        expect(missing).toEqual([]);
+    });
+    it('every DETERMINISTIC tool exists directly or through a ToolService alias', () => {
+        const orch = fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
+        const det = [...orch.match(/DETERMINISTIC_TOOLS = \[([\s\S]*?)\]/)![1].matchAll(/'([a-z_0-9]+)'/g)].map(m => m[1]);
+        const svc = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'ToolService.ts'), 'utf-8');
+        const missing = det.filter(t => !names.has(t) && !new RegExp(`['"]${t}['"]`).test(svc));
+        expect(missing).toEqual([]);
+    });
+    it('the registry has no silent duplicates', () => {
+        expect(names.size).toBe(tools.length);
+    });
+});
+
+describe('«انشر المشروع» publishes the ACTIVE artifact', () => {
+    const { findBuiltArtifact } = require('../core/deploy/publish-source');
+    let tmp: string;
+    beforeAll(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-pub-')); });
+    afterAll(() => {
+        fs.rmSync(tmp, { recursive: true, force: true });
+        delete (global as any).joeProjects?.['pub-t'];
+        delete (global as any).joePages?.['pub-t'];
+    });
+
+    it('a NEWER project with a dist/ wins over an older page', () => {
+        const dist = path.join(tmp, 'react-shop', 'dist');
+        fs.mkdirSync(dist, { recursive: true });
+        fs.writeFileSync(path.join(dist, 'index.html'), '<html>app</html>');
+        (global as any).joeProjects = { ...(global as any).joeProjects, 'pub-t': { dir: path.join(tmp, 'react-shop'), brand: 'متجري', updatedAt: 2000 } };
+        (global as any).joePages = { ...(global as any).joePages, 'pub-t': { filename: 'x.html', html: '<html>old</html>', updatedAt: 1000 } };
+        const src = findBuiltArtifact({ sessionId: 'pub-t', artifactDir: tmp });
+        expect(src?.dir).toBe(dist);
+        expect(src?.labelAr).toContain('متجري');
+    });
+    it('an OLDER project yields to the newer page (no hijack)', () => {
+        (global as any).joeProjects['pub-t'].updatedAt = 500;
+        fs.writeFileSync(path.join(tmp, 'x.html'), '<html>newer page</html>');
+        const src = findBuiltArtifact({ sessionId: 'pub-t', artifactDir: tmp });
+        expect(String(src?.dir || src?.file || '')).not.toContain('react-shop');
+        expect(src?.file).toContain('x.html');
+    });
+    it('a newer project WITHOUT a dist does not break the chain', () => {
+        (global as any).joeProjects['pub-t'] = { dir: path.join(tmp, 'no-dist'), updatedAt: 9000 };
+        expect(() => findBuiltArtifact({ sessionId: 'pub-t', artifactDir: tmp })).not.toThrow();
+    });
+});
+
+describe('«شغّل المشروع» defaults to the session\'s active project', () => {
+    it('the run tool consults joeProjects before the workspace root', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectRunTool.ts'), 'utf-8');
+        expect(src).toContain('joeProjects');
+        expect(src.indexOf('joeProjects')).toBeLessThan(src.indexOf('workspaceService.getActiveRoot'));
+    });
+});
+
+describe('project undo — the history is finally read', () => {
+    const { ProjectEditTool } = require('../modules/tools/definitions/ProjectEditTool');
+    let tmp: string;
+    beforeAll(() => {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-undo-'));
+        fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'package.json'), '{"name":"u"}');
+        fs.writeFileSync(path.join(tmp, 'src', 'a.js'), 'const x = 2;');
+        (global as any).joeProjects = {
+            ...(global as any).joeProjects,
+            'undo-t': { dir: tmp, updatedAt: Date.now(), history: [{ file: 'src/a.js', before: 'const x = 1;', at: Date.now() }] },
+        };
+    });
+    afterAll(() => { delete (global as any).joeProjects?.['undo-t']; fs.rmSync(tmp, { recursive: true, force: true }); });
+
+    it('«تراجع عن آخر تعديل» restores the recorded bytes', async () => {
+        const res: any = await new ProjectEditTool().execute({ request: 'تراجع عن آخر تعديل' }, { sessionId: 'undo-t' });
+        expect(res.ok).toBe(true);
+        expect(String(res.output.message)).toContain('↩️');
+        expect(fs.readFileSync(path.join(tmp, 'src', 'a.js'), 'utf-8')).toBe('const x = 1;');
+        expect((global as any).joeProjects['undo-t'].history.length).toBe(0);
+    });
+    it('an empty history is an honest answer', async () => {
+        const res: any = await new ProjectEditTool().execute({ request: 'تراجع عن آخر تعديل' }, { sessionId: 'undo-t' });
+        expect(String(res.output.message)).toContain('لا يوجد');
+    });
+});
+
+describe('the repo typechecks clean — the architecture map exists', () => {
+    it('docs/ARCHITECTURE.md documents the stores and the registration contract', () => {
+        const doc = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'docs', 'ARCHITECTURE.md'), 'utf-8');
+        expect(doc).toContain('joe-projects.json');
+        expect(doc).toContain('Registration contract');
+        expect(doc).toContain('DETERMINISTIC_TOOLS');
+    });
+});
