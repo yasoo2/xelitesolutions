@@ -103,7 +103,7 @@ export async function fetchHeroImage(opts: {
  */
 export async function fetchCardImages(opts: {
     subjects: string[]; projDir: string; hue: number; artifactDir: string;
-    slot?: 'card' | 'avatar'; label?: string;
+    slot?: 'card' | 'avatar' | 'hero'; label?: string;
 }): Promise<{ images: Array<{ src: string; alt: string } | null>; credits: Array<{ creator: string; license: string; source: string }>; note: string }> {
     const slot = opts.slot || 'card';
     const label = opts.label || 'dish';

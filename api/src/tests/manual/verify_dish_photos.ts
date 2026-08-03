@@ -143,6 +143,35 @@ async function main() {
     check('the footer carries the MERGED deduped credits (4 sources: shared grill, dish, 2 portraits)', seen.creditLinks === 4, seen.creditText);
     check('…and names the shared photographer once', (seen.creditText.match(/Shared Grill Photographer/g) || []).length === 1, seen.creditText);
 
+    console.log('\n[3] تعديل جراحي: «أضف صورة لطبق السلطة» يجلب صورة حقيقية ويعاد البناء ويتحقق');
+    // The salad shipped without a photo (its archives were empty). Now the
+    // owner asks for one with a subject the archives DO carry — the surgical
+    // editor fetches it, edits ONLY that row, and the REAL build verifies.
+    const { ProjectEditTool } = require('../../modules/tools/definitions/ProjectEditTool');
+    const edit: any = await new ProjectEditTool().execute(
+        { request: 'add a photo of fresh fruit bowl to the Season salad dish' }, { sessionId: 'dish-wire' });
+    check('the edit succeeded AND the real vite build verified it', !!edit.ok && edit.output.buildVerified === true, JSON.stringify({ ok: edit.ok, bv: edit.output?.buildVerified, msg: String(edit.output?.message).slice(0, 120) }));
+    const content2 = fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8');
+    check('ONLY the salad row gained the photo (no other row rewritten)', /\{ name: 'Season salad',[^\n]*?img: \{ src: 'images\//.test(content2) && (content2.match(/img: null/g) || []).length === 0 && (content2.match(/img: \{ src: 'images\//g) || []).length === 5);
+    const p2 = await browser.newPage();
+    await p2.goto(`http://127.0.0.1:${(site.address() as any).port}/`, { waitUntil: 'networkidle' });
+    const seen2 = await p2.evaluate(() => {
+        const thumbs = [...document.querySelectorAll('.menu-thumb')] as HTMLImageElement[];
+        const salad = [...document.querySelectorAll('.menu-item')].find(li => /salad/i.test(li.textContent || ''));
+        return {
+            thumbCount: thumbs.length,
+            painted: thumbs.every(t => t.naturalWidth > 0),
+            saladHasThumb: !!salad && !!salad.querySelector('.menu-thumb'),
+            creditLinks: document.querySelector('.credits')?.querySelectorAll('a').length ?? -1,
+        };
+    });
+    check('the browser now sees THREE painted dish thumbnails — the salad included', seen2.thumbCount === 3 && seen2.painted && seen2.saladHasThumb, JSON.stringify(seen2));
+    check('the new licence line reached the rebuilt footer (5 sources)', seen2.creditLinks === 5, String(seen2.creditLinks));
+
+    console.log('\n[4] «تراجع» يسترجع الملف بايتاً ببايت');
+    const undo: any = await new ProjectEditTool().execute({ request: 'تراجع عن آخر تعديل' }, { sessionId: 'dish-wire' });
+    check('undo restored the pre-edit content.js', /↩️/.test(String(undo.output?.message)) && /\{ name: 'Season salad',[^\n]*?img: null/.test(fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8')), String(undo.output?.message).slice(0, 100));
+
     await browser.close();
     site.close(); archive.close();
     fs.rmSync(root, { recursive: true, force: true });

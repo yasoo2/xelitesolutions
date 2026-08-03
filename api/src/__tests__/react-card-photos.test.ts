@@ -155,6 +155,65 @@ describe('the offline scaffold ships clean rows and a conditional thumb', () => 
         expect(() => transformSync(quotes, { loader: 'jsx' })).not.toThrow();
     });
 
+    it('«ضف صورة» — the surgical editor lands a REAL photo in content.js, row by row', async () => {
+        const { iconPng } = require('../core/design/pwa');
+        const png: Buffer = iconPng(640, '#2b6ab4');
+        const guardFetch = (global as any).fetch;
+        (global as any).fetch = async (url: any) => {
+            if (!String(url).startsWith('http://stub-archive.test')) return guardFetch(url);
+            return {
+                ok: true, status: 200,
+                headers: { get: (k: string) => (k.toLowerCase() === 'content-type' ? 'image/png' : null) },
+                arrayBuffer: async () => png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength),
+            };
+        };
+        const prevArtifacts = process.env.ARTIFACT_DIR;
+        process.env.ARTIFACT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-imgedit-art-'));
+        try {
+            const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
+            const { ProjectEditTool } = require('../modules/tools/definitions/ProjectEditTool');
+            const scaffolded: any = await new ReactProjectTool().execute(
+                { request: 'ابنِ موقع react لمطعم مشاوي', skipInstall: true, root }, { sessionId: 'img-edit' });
+            const dir = scaffolded.output.path;
+            const contentOf = () => fs.readFileSync(path.join(dir, 'src', 'content.js'), 'utf-8');
+            expect(contentOf()).toContain('heroImage: null');
+
+            // [1] the hero — heroImage: null flips to a real copied photo
+            const hero: any = await new ProjectEditTool().execute({ request: 'ضف صورة للواجهة الرئيسية' }, { sessionId: 'img-edit' });
+            expect(hero.ok).toBe(true);
+            expect(hero.output.touched).toContain('src/content.js');
+            const heroM = contentOf().match(/heroImage: \{ src: '(images\/[^']+)'/);
+            expect(heroM).toBeTruthy();
+            expect(fs.existsSync(path.join(dir, 'public', heroM![1]))).toBe(true);
+            expect(contentOf()).toContain('stub-archive.test');       // the licence line rode along
+
+            // [2] a NAMED dish — only that row changes, its neighbours stay null
+            const dish: any = await new ProjectEditTool().execute({ request: 'ضف صورة لطبق مشاوي مشكلة' }, { sessionId: 'img-edit' });
+            expect(dish.ok).toBe(true);
+            const after = contentOf();
+            expect(after).toMatch(/\{ name: 'مشاوي مشكلة',[^\n]*?img: \{ src: 'images\//);
+            expect((after.match(/img: null/g) || []).length).toBe(5);  // 3 other dishes + 2 testimonials untouched
+            expect(((global as any).joeProjects['img-edit'].history || []).length).toBeGreaterThanOrEqual(2);
+
+            // [3] archives empty → an HONEST refusal, nothing changed
+            const none: any = await new ProjectEditTool().execute({ request: 'add a photo of garden salad to the hero' }, { sessionId: 'img-edit' });
+            expect(none.ok).toBe(true);
+            expect(String(none.output.message)).toMatch(/no suitable licensed photo/);
+            expect(contentOf()).toBe(after);
+
+            // [4] «تراجع» restores the recorded bytes — the dish loses its photo again
+            const undo: any = await new ProjectEditTool().execute({ request: 'تراجع عن آخر تعديل' }, { sessionId: 'img-edit' });
+            expect(String(undo.output.message)).toContain('↩️');
+            const reverted = contentOf();
+            expect(reverted).toMatch(/\{ name: 'مشاوي مشكلة',[^\n]*?img: null/);
+        } finally {
+            (global as any).fetch = guardFetch;
+            fs.rmSync(process.env.ARTIFACT_DIR!, { recursive: true, force: true });
+            if (prevArtifacts === undefined) delete process.env.ARTIFACT_DIR; else process.env.ARTIFACT_DIR = prevArtifacts;
+            delete (global as any).joeProjects?.['img-edit'];
+        }
+    });
+
     it('content.js serializes isArabic, and the Footer credits label follows the language', async () => {
         const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
         const res: any = await new ReactProjectTool().execute(

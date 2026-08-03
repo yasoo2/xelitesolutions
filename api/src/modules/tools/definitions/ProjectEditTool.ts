@@ -227,6 +227,95 @@ export class ProjectEditTool extends BaseTool {
                 : `🎨 Rebuilt the palette around ${palette.primary} — deterministic, no model`);
         }
 
+        // ── deterministic fast path: «ضف صورة …» — a REAL photo where the
+        //    app already knows how to show one. The target row lives in
+        //    content.js (heroImage / a dish's img / a testimonial's img, all
+        //    rendered conditionally by construction), and the photo comes
+        //    through the SAME engine and licence bookkeeping every build
+        //    uses. No model writes code; the row edit is a regex on the
+        //    serializer's own single-line format, gated and build-verified
+        //    like every other edit — and «تراجع» undoes it.
+        const imageIntent = /(ضي?ف|أضف|اضف|حطّ?|ركّ?ب|غيّ?ر|بدّ?ل)[^.\n]{0,30}صور(ة|ه)|صور(ة|ه)\s*(جديدة|حقيقية)|\b(add|change|set|put)\b[^.\n]{0,30}\b(photo|image|picture)\b/i.test(request);
+        const contentRel = 'src/content.js';
+        const notes: string[] = [];
+        if (!touched.length && imageIntent && fs.existsSync(path.join(dir, contentRel))) {
+            const body = fs.readFileSync(path.join(dir, contentRel), 'utf-8');
+            const esc = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
+            const reEsc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            // The rows that can carry a photo, read from the project's OWN content.
+            const rows = [...body.matchAll(/\{ name: '([^']*)', (desc|role): '([^']*)',[^\n]*?img: (null|\{[^}]*\})/g)]
+                .map(m => ({ name: m[1], kind: m[2] === 'desc' ? 'dish' as const : 'person' as const, second: m[3] }));
+            // The row the request names — scored, not first-match: «لطبق مشاوي
+            // مشكلة» contains «طبق», which is also the first word of «طبق
+            // اليوم», and first-match handed the photo to the wrong dish.
+            const target = rows
+                .map(r => ({ r, hits: r.name.split(/\s+/).filter(w => w.length >= 3 && request.includes(w)).length }))
+                .filter(x => x.hits > 0)
+                .sort((a, b) => b.hits - a.hits)[0]?.r || null;
+            // What the user asked the photo to BE, when they said it.
+            let tail = (request.match(/صور(?:ة|ه)\s+([^\n.،!؟]{3,80})/) || request.match(/\b(?:photo|image|picture)\s+(?:of\s+)?([^\n.,!?]{3,80})/i) || [])[1] || '';
+            tail = tail.replace(/^(لل|ل|الى|إلى|في|عن|من)\s*/, '')
+                .replace(/\b(the|to|for|of|hero|banner|header|section|menu|dish|page)\b/gi, ' ')
+                .replace(/(حقيقية|جديدة|القسم|قسم|طبق|لطبق|البطل|بطل|الواجهة|واجهة|الرئيسية|رئيسية|الترويسة|ترويسة|الغلاف|غلاف|الصفحة|صفحة|الموقع|موقع|القائمة|قائمة)/g, ' ');
+            if (target) for (const w of target.name.split(/\s+/)) tail = tail.split(w).join(' ');
+            tail = tail.replace(/\s+/g, ' ').trim();
+            if (tail.length < 4) tail = '';
+            const tagline = (body.match(/tagline: '([^']*)'/) || [])[1] || (body.match(/brand: '([^']*)'/) || [])[1] || '';
+            const subject = target
+                ? (tail || (target.kind === 'person' ? 'professional headshot portrait' : `${target.name} ${target.second}`))
+                : (tail || tagline);
+            const slot = target ? (target.kind === 'person' ? 'avatar' as const : 'card' as const) : 'hero' as const;
+            if (subject) {
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                    ? `🖼️ أجلب صورة حقيقية مرخّصة: ${subject.slice(0, 60)}`
+                    : `🖼️ Fetching a real licensed photo: ${subject.slice(0, 60)}`);
+                const { fetchCardImages } = require('./ReactProjectTool');
+                const got = await fetchCardImages({
+                    subjects: [subject], projDir: dir, hue: (buildPalette(request) as any).hue ?? 260,
+                    artifactDir: process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', slot, label: 'edit',
+                });
+                const img = got.images[0];
+                logs.push(`image edit: subject «${subject}» slot ${slot} → ${got.note}`);
+                if (!img) {
+                    return {
+                        ok: true,
+                        output: {
+                            message: isAr
+                                ? `🖼️ لم أجد صورة مرخّصة مناسبة لـ«${subject.slice(0, 50)}» في الأرشيفات — لم أغيّر شيئاً. جرّب وصفاً آخر للصورة.`
+                                : `🖼️ The archives had no suitable licensed photo for "${subject.slice(0, 50)}" — nothing was changed. Try another description.`,
+                        },
+                        logs,
+                    } as any;
+                }
+                let next = target
+                    ? body.replace(
+                        new RegExp(`(\\{ name: '${reEsc(target.name)}',[^\n]*?img: )(null|\\{[^}]*\\})`),
+                        `$1{ src: '${esc(img.src)}', alt: '${esc(img.alt)}' }`)
+                    : body.replace(/heroImage: (?:null|\{[^}]*\})/, `heroImage: { src: '${esc(img.src)}', alt: '${esc(img.alt)}' }`);
+                if (next === body) {
+                    logs.push('image edit: no photo-capable row found in content.js — falling through');
+                } else {
+                    // The licence line rides along, once per source.
+                    for (const c of got.credits) {
+                        if (c.source && !next.includes(esc(c.source))) {
+                            next = next.replace(/credits: \[\n?/, m => `${m}    { creator: '${esc(c.creator)}', license: '${esc(c.license)}', source: '${esc(c.source)}' },\n`);
+                        }
+                    }
+                    const gate = syntaxOk(contentRel, next);
+                    if (gate.ok) {
+                        write(contentRel, next);
+                        const where = target ? `«${target.name}»` : (isAr ? 'واجهة الصفحة' : 'the hero');
+                        notes.push(isAr
+                            ? `🖼️ أضفت صورة حقيقية مرخّصة إلى ${where} (${img.src}) — والاعتماد في التذييل.`
+                            : `🖼️ Added a real licensed photo to ${where} (${img.src}), credited in the footer.`);
+                        logs.push(`image edit: ${target ? target.name : 'heroImage'} ← ${img.src}`);
+                    } else {
+                        refused.push(`${contentRel}: image edit breaks the syntax (${gate.error}) — refused`);
+                    }
+                }
+            }
+        }
+
         // ── the general path: SEARCH/REPLACE from the model ─────────────────
         if (!touched.length) {
             const files = listFiles(dir);
@@ -325,10 +414,10 @@ Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits
         }).join('\n');
         const message = isAr
             ? `🔬 عُدّل المشروع جراحياً — ${touched.length} ملف:\n${stats}
-${buildVerified === true ? '✅ vite build نجح بعد التعديل — المشروع سليم.' : buildVerified === false ? '' : 'ℹ️ (الحزم غير مثبتة — تخطيت تحقق البناء؛ بوابة الفحص النحوي طُبّقت على كل ملف)'}${refused.length ? `\n⚠️ رُفض ${refused.length} تعديلاً غير آمن:\n${refused.map(r => `   • ${r}`).join('\n')}` : ''}
+${notes.length ? notes.join('\n') + '\n' : ''}${buildVerified === true ? '✅ vite build نجح بعد التعديل — المشروع سليم.' : buildVerified === false ? '' : 'ℹ️ (الحزم غير مثبتة — تخطيت تحقق البناء؛ بوابة الفحص النحوي طُبّقت على كل ملف)'}${refused.length ? `\n⚠️ رُفض ${refused.length} تعديلاً غير آمن:\n${refused.map(r => `   • ${r}`).join('\n')}` : ''}
 
 🧭 «شغّل خادم التطوير» للمعاينة الحية · «تراجع» يسترجع الملفات السابقة`
-            : `🔬 Surgical edit — ${touched.length} file(s):\n${stats}\n${buildVerified === true ? '✅ vite build passed after the edit.' : ''}`;
+            : `🔬 Surgical edit — ${touched.length} file(s):\n${stats}\n${notes.length ? notes.join('\n') + '\n' : ''}${buildVerified === true ? '✅ vite build passed after the edit.' : ''}`;
         return { ok: true, output: { message, dir, touched: touched.map(t => t.file), refused, buildVerified }, logs } as any;
     }
 }
