@@ -103,6 +103,17 @@ describe('per-dish photos — the REAL pipeline against a stub archive', () => {
         expect(h.credits).toHaveLength(1);
     });
 
+    it('the avatar slot rides the same batched call — a real portrait lands in public/', async () => {
+        const { fetchCardImages } = require('../modules/tools/definitions/ReactProjectTool');
+        const r = await fetchCardImages({
+            subjects: ['smiling woman customer portrait'],
+            projDir, hue: 20, artifactDir, slot: 'avatar', label: 'portrait',
+        });
+        expect(r.images[0]).toBeTruthy();
+        expect(fs.existsSync(path.join(projDir, 'public', r.images[0]!.src))).toBe(true);
+        expect(r.note).toContain('1/1 real portrait photos');
+    });
+
     it('mergeCredits: one licence line per source across hero + dishes', () => {
         const { mergeCredits } = require('../modules/tools/definitions/ReactProjectTool');
         const a = [{ creator: 'A', license: 'CC BY', source: 'https://x/1' }];
@@ -130,13 +141,18 @@ describe('the offline scaffold ships clean rows and a conditional thumb', () => 
             { request: 'ابنِ موقع react لمطعم مشاوي', skipInstall: true, root }, { sessionId: 'card-off' });
         expect(res.ok).toBe(true);
         const content = fs.readFileSync(path.join(res.output.path, 'src', 'content.js'), 'utf-8');
-        expect((content.match(/img: null/g) || []).length).toBeGreaterThanOrEqual(4);  // the whole Arabic menu
+        expect((content.match(/img: null/g) || []).length).toBeGreaterThanOrEqual(6);  // the whole Arabic menu + both testimonials
         expect(content).not.toContain('img: undefined');
+        expect(content).not.toContain('photoSubject');   // internal search hint, never shipped to the visitor
         const menu = fs.readFileSync(path.join(res.output.path, 'src', 'components', 'Menu.jsx'), 'utf-8');
         expect(menu).toContain('m.img ?');
         expect(menu).toContain('loading="lazy"');
+        const quotes = fs.readFileSync(path.join(res.output.path, 'src', 'components', 'Testimonials.jsx'), 'utf-8');
+        expect(quotes).toContain('t.img ?');
+        expect(quotes).toContain('quote-avatar');
         const { transformSync } = require('esbuild');
         expect(() => transformSync(menu, { loader: 'jsx' })).not.toThrow();
+        expect(() => transformSync(quotes, { loader: 'jsx' })).not.toThrow();
     });
 
     it('content.js serializes isArabic, and the Footer credits label follows the language', async () => {

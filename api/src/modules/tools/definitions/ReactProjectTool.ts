@@ -48,7 +48,10 @@ interface ReactContent {
     pricingTitle: string;
     tiers: Array<{ name: string; price: string; period: string; features: string[]; featured?: boolean }>;
     testimonialsTitle: string;
-    testimonials: Array<{ name: string; role: string; quote: string }>;
+    /** photoSubject: an authored English portrait subject for the avatar slot —
+     *  the archives title their photographs in English, so asking in Arabic
+     *  would refuse every candidate. Never serialized into the app. */
+    testimonials: Array<{ name: string; role: string; quote: string; photoSubject?: string; img?: { src: string; alt: string } | null }>;
     faqTitle: string;
     faq: Array<{ q: string; a: string }>;
     stats: Array<{ value: string; label: string }>;
@@ -90,20 +93,24 @@ export async function fetchHeroImage(opts: {
 }
 
 /**
- * REAL photographs for the menu dishes — ONE batched resolveImages call for
- * all of them (the engine fetches distinct subjects sequentially and caps the
- * total itself). Each marker is wrapped in an indexed <figure> so a dish whose
- * archives came back empty maps to null while its neighbours keep their
- * photos — never a shifted-by-one gallery. Files are copied into public/
- * like the hero; best-effort by contract.
+ * REAL photographs for a list of subjects — ONE batched resolveImages call
+ * for all of them (the engine fetches distinct subjects sequentially and caps
+ * the total itself). Each marker is wrapped in an indexed <figure> so a
+ * subject whose archives came back empty maps to null while its neighbours
+ * keep their photos — never a shifted-by-one gallery. Files are copied into
+ * public/ like the hero; best-effort by contract. The slot rides the engine's
+ * own sizing judgement: 'card' for dishes, 'avatar' for portraits.
  */
 export async function fetchCardImages(opts: {
     subjects: string[]; projDir: string; hue: number; artifactDir: string;
+    slot?: 'card' | 'avatar'; label?: string;
 }): Promise<{ images: Array<{ src: string; alt: string } | null>; credits: Array<{ creator: string; license: string; source: string }>; note: string }> {
+    const slot = opts.slot || 'card';
+    const label = opts.label || 'dish';
     try {
         if (!opts.subjects.length) return { images: [], credits: [], note: 'no subjects' };
         const probe = opts.subjects.map((s, i) =>
-            `<figure data-card="${i}"><img src="{{IMAGE:card|${s.replace(/["|{}]/g, ' ').trim().slice(0, 90)}}}" alt=""></figure>`).join('\n');
+            `<figure data-card="${i}"><img src="{{IMAGE:${slot}|${s.replace(/["|{}]/g, ' ').trim().slice(0, 90)}}}" alt=""></figure>`).join('\n');
         const r = await resolveImages(probe, opts.artifactDir, opts.hue, { max: opts.subjects.length, timeoutMs: 30_000 });
         const images = opts.subjects.map((s, i): { src: string; alt: string } | null => {
             const seg = r.html.match(new RegExp(`<figure data-card="${i}">([\\s\\S]*?)</figure>`))?.[1] || '';
@@ -117,9 +124,9 @@ export async function fetchCardImages(opts: {
             return { src: `images/${m[1]}`, alt };
         });
         const real = images.filter(Boolean).length;
-        return { images, credits: r.credits, note: `${real}/${opts.subjects.length} real dish photos (${Object.keys(r.sources).join(',') || r.sourceErrors[0] || 'archives returned nothing'})` };
+        return { images, credits: r.credits, note: `${real}/${opts.subjects.length} real ${label} photos (${Object.keys(r.sources).join(',') || r.sourceErrors[0] || 'archives returned nothing'})` };
     } catch (e: any) {
-        return { images: opts.subjects.map(() => null), credits: [], note: `dish photos skipped (${String(e?.message || e).slice(0, 80)})` };
+        return { images: opts.subjects.map(() => null), credits: [], note: `${label} photos skipped (${String(e?.message || e).slice(0, 80)})` };
     }
 }
 
@@ -224,8 +231,8 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
         ],
         testimonialsTitle: 'ماذا قالوا عنا',
         testimonials: [
-            { name: 'سارة العتيبي', role: restaurant ? 'زبونة دائمة' : 'صاحبة مشروع', quote: restaurant ? 'أفضل نكهة جربتها — والخدمة أسرع مما توقعت.' : 'تجربة سلسة من أول ضغطة — أنصح به بلا تردد.' },
-            { name: 'محمد الشهري', role: restaurant ? 'ناقد طعام' : 'مدير تسويق', quote: restaurant ? 'التفاصيل الصغيرة هنا تصنع الفرق، من التقديم إلى الطعم.' : 'رفع أداء فريقنا بشكل ملموس خلال أسابيع.' },
+            { name: 'سارة العتيبي', role: restaurant ? 'زبونة دائمة' : 'صاحبة مشروع', quote: restaurant ? 'أفضل نكهة جربتها — والخدمة أسرع مما توقعت.' : 'تجربة سلسة من أول ضغطة — أنصح به بلا تردد.', photoSubject: 'smiling woman customer portrait' },
+            { name: 'محمد الشهري', role: restaurant ? 'ناقد طعام' : 'مدير تسويق', quote: restaurant ? 'التفاصيل الصغيرة هنا تصنع الفرق، من التقديم إلى الطعم.' : 'رفع أداء فريقنا بشكل ملموس خلال أسابيع.', photoSubject: 'smiling man portrait' },
         ],
         faqTitle: 'أسئلة شائعة',
         faq: [
@@ -266,8 +273,8 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
         ],
         testimonialsTitle: 'What people say',
         testimonials: [
-            { name: 'Sarah M.', role: 'Founder', quote: 'Smooth from the first click — highly recommended.' },
-            { name: 'Omar K.', role: 'Marketing lead', quote: 'Lifted our team\'s output within weeks.' },
+            { name: 'Sarah M.', role: 'Founder', quote: 'Smooth from the first click — highly recommended.', photoSubject: 'smiling woman customer portrait' },
+            { name: 'Omar K.', role: 'Marketing lead', quote: 'Lifted our team\'s output within weeks.', photoSubject: 'smiling man portrait' },
         ],
         faqTitle: 'FAQ',
         faq: [
@@ -491,7 +498,7 @@ ${c.tiers.map(t => `    { name: '${js(t.name)}', price: '${js(t.price)}', period
   ],
   testimonialsTitle: '${js(c.testimonialsTitle)}',
   testimonials: [
-${c.testimonials.map(t => `    { name: '${js(t.name)}', role: '${js(t.role)}', quote: '${js(t.quote)}' },`).join('\n')}
+${c.testimonials.map(t => `    { name: '${js(t.name)}', role: '${js(t.role)}', quote: '${js(t.quote)}', img: ${t.img ? `{ src: '${js(t.img.src)}', alt: '${js(t.img.alt)}' }` : 'null'} },`).join('\n')}
   ],
   faqTitle: '${js(c.faqTitle)}',
   faq: [
@@ -704,7 +711,12 @@ export default function Testimonials({ content }) {
           {content.testimonials.map((t) => (
             <figure className="card quote" key={t.name}>
               <blockquote>“{t.quote}”</blockquote>
-              <figcaption><strong>{t.name}</strong> — {t.role}</figcaption>
+              <figcaption>
+                {t.img ? (
+                  <img className="quote-avatar" src={t.img.src} alt={t.img.alt} loading="lazy" decoding="async" />
+                ) : null}
+                <span><strong>{t.name}</strong> — {t.role}</span>
+              </figcaption>
             </figure>
           ))}
         </div>
@@ -824,7 +836,8 @@ textarea{min-height:120px}
 .tier ul{margin:0;padding-inline-start:20px;color:var(--text-muted)}
 .tier .btn{margin-top:auto;align-self:flex-start}
 .quote blockquote{margin:0 0 10px;font-size:1.05rem;line-height:1.8}
-.quote figcaption{color:var(--text-muted)}
+.quote figcaption{color:var(--text-muted);display:flex;align-items:center;gap:10px}
+.quote-avatar{width:52px;height:52px;border-radius:50%;object-fit:cover;flex:none}
 .faq-item{border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:0 18px;margin-bottom:10px}
 .faq-item summary{cursor:pointer;padding:14px 0;font-weight:700;min-height:44px;display:flex;align-items:center}
 .faq-item p{color:var(--text-muted);padding-bottom:14px;margin:0}
@@ -926,6 +939,20 @@ export class ReactProjectTool extends BaseTool {
                 content.menu.forEach((m, i) => { m.img = cards.images[i] || null; });
                 content.credits = mergeCredits(content.credits, cards.credits);
                 term(`dish photos: ${cards.note}`);
+            }
+
+            // Faces for the testimonials — the engine's avatar slot, whose
+            // sizing and grounding were built for exactly this position.
+            if (sections.includes('Testimonials') && content.testimonials.length) {
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🙂 أجلب صوراً رمزية حقيقية للشهادات…' : '🙂 Finding real portrait photos for the testimonials…');
+                const avatars = await fetchCardImages({
+                    subjects: content.testimonials.map(t => t.photoSubject || 'professional headshot portrait'),
+                    projDir: proj, hue: (palette as any).hue ?? 260, artifactDir: ARTIFACT_DIR,
+                    slot: 'avatar', label: 'portrait',
+                });
+                content.testimonials.forEach((t, i) => { t.img = avatars.images[i] || null; });
+                content.credits = mergeCredits(content.credits, avatars.credits);
+                term(`testimonial avatars: ${avatars.note}`);
             }
         }
 

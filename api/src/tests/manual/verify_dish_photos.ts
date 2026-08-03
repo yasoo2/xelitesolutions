@@ -93,11 +93,12 @@ async function main() {
     const proj = res.output.path as string;
     const logText = (res.logs || []).join('\n');
     check('the terminal reported 2/3 real dish photos', logText.includes('2/3 real dish photos'), logText.split('\n').filter((l: string) => /photo/.test(l)).join(' | '));
+    check('…and 2/2 real testimonial portraits', logText.includes('2/2 real portrait photos'), logText.split('\n').filter((l: string) => /portrait/.test(l)).join(' | '));
     const pubImages = fs.existsSync(path.join(proj, 'public', 'images')) ? fs.readdirSync(path.join(proj, 'public', 'images')) : [];
-    check('hero + 2 dish photos landed INSIDE the project (public/images)', pubImages.length === 3, pubImages.join(','));
+    check('hero + 2 dishes + 2 portraits landed INSIDE the project (public/images)', pubImages.length === 5, pubImages.join(','));
     const content = fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8');
-    check('the salad serializes img: null while its neighbours carry photos',
-        (content.match(/img: \{ src: 'images\//g) || []).length === 2 && (content.match(/img: null/g) || []).length === 1);
+    check('the salad serializes img: null while dishes AND testimonials carry photos',
+        (content.match(/img: \{ src: 'images\//g) || []).length === 4 && (content.match(/img: null/g) || []).length === 1);
     check('the shared source appears ONCE in the merged credits', (content.match(/landing\/shared-grill/g) || []).length === 1);
 
     console.log('\n[2] متصفح حقيقي يرى الصور مرسومة بالبكسل والصف الثالث نظيفاً');
@@ -122,20 +123,24 @@ async function main() {
         const items = [...document.querySelectorAll('.menu-item')];
         const salad = items.find(li => /salad/i.test(li.textContent || ''));
         const hero = document.querySelector('.hero-photo') as HTMLImageElement | null;
+        const avatars = [...document.querySelectorAll('.quote-avatar')] as HTMLImageElement[];
         const credits = document.querySelector('.credits');
         return {
             thumbCount: thumbs.length,
             thumbsPainted: thumbs.every(t => t.naturalWidth > 0 && t.naturalHeight > 0),
             saladHasNoThumb: !!salad && !salad.querySelector('img'),
             heroPainted: !!hero && hero.naturalWidth > 0,
+            avatarCount: avatars.length,
+            avatarsPainted: avatars.every(a => a.naturalWidth > 0 && a.naturalHeight > 0),
             creditLinks: credits ? credits.querySelectorAll('a').length : -1,
-            creditText: credits ? (credits.textContent || '').slice(0, 200) : '',
+            creditText: credits ? (credits.textContent || '').slice(0, 300) : '',
         };
     });
     check('TWO dish thumbnails rendered real pixels', seen.thumbCount === 2 && seen.thumbsPainted, JSON.stringify(seen));
     check('the salad row is a clean text row — no broken <img>', seen.saladHasNoThumb);
     check('the hero photo rendered too', seen.heroPainted);
-    check('the footer carries the MERGED deduped credits (2 sources, not 3)', seen.creditLinks === 2, seen.creditText);
+    check('TWO testimonial avatars rendered real pixels', seen.avatarCount === 2 && seen.avatarsPainted, JSON.stringify(seen));
+    check('the footer carries the MERGED deduped credits (4 sources: shared grill, dish, 2 portraits)', seen.creditLinks === 4, seen.creditText);
     check('…and names the shared photographer once', (seen.creditText.match(/Shared Grill Photographer/g) || []).length === 1, seen.creditText);
 
     await browser.close();
