@@ -415,6 +415,34 @@ Rules:
             }
         }
 
+        // [API PROJECT FAST-PATH] An EXPLICIT backend request — «ابنِ لي API
+        // للطلبات», «باك اند بقاعدة بيانات» — scaffolds a runnable Express +
+        // SQLite backend with a live write/read proof. Explicit only, and a
+        // request that ALSO names a site/frontend keeps its richer path
+        // (pipeline or react) — this serves the backend-alone ask.
+        {
+            const apiNoun = /\b(api|backend|rest)\b|باك\s?[إا]ند|واجهة برمجية|قاعدة بيانات|خادم بيانات/i.test(probe);
+            const frontendNoun = /\b(react|vite|spa|landing|site|website|page)\b|ريأكت|رياكت|موقع|صفحة|فيت\b/i.test(probe);
+            const fullish = /(متكامل|كامل|full[-\s]?stack|complete)/i.test(probe);
+            const apiBuildVerb = /\b(build|create|make|develop|scaffold|generate)\b/.test(goalLower)
+                || /(ابن|ابني|انشئ|أنشئ|اصنع|طور|اعمل|سو)/.test(probe);
+            if (apiBuildVerb && apiNoun && !frontendNoun && !fullish) {
+                return {
+                    id: `apiproj_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'api_project',
+                        description: `Scaffolding and live-proving an Express + SQLite backend: ${intent.goal}`,
+                        tool: 'api_project',
+                        agent: 'Dev',
+                        input: { request: intent.goal },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
+        }
+
         // [FULL-PROJECT FAST-PATH] A complete multi-file project (backend, API,
         // database, full stack) goes to the canonical engineering pipeline:
         // plan phases -> execute with verification and auto build checks ->
