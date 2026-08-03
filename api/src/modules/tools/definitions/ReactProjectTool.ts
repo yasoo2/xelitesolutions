@@ -983,7 +983,7 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .hero{padding-block:clamp(64px,10vw,140px);background:radial-gradient(80% 60% at 50% 0,color-mix(in srgb,var(--tint) 30%,transparent),transparent)}
 .hero h1{font-size:clamp(2rem,5vw,3.4rem);line-height:1.15;margin:0 0 14px}
 .lede{color:var(--text-muted);font-size:1.15rem;max-width:60ch}
-.btn{display:inline-block;background:var(--brand);color:var(--on-brand);padding:12px 24px;border-radius:var(--f-btn-radius);border:0;text-decoration:none;font-weight:700;cursor:pointer;margin-top:14px}
+.btn{display:inline-block;background:var(--brand);color:var(--on-brand);padding:12px 24px;border-radius:var(--f-btn-radius);border:0;text-decoration:none;font:inherit;font-weight:700;cursor:pointer;margin-top:14px}
 .btn:hover{background:var(--brand-dark)}
 .grid-3{display:grid;gap:22px;grid-template-columns:1fr}
 @media(min-width:900px){.grid-3{grid-template-columns:repeat(3,1fr)}}
@@ -1284,6 +1284,17 @@ export class ReactProjectTool extends BaseTool {
             }
         }
 
+        // ── SELF-QA: a REAL browser measures the build before delivery ──────
+        let audit: any = null;
+        if (built && !input?.skipAudit) {
+            if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🔎 أفحص البناء في متصفح حقيقي قبل التسليم…' : '🔎 Self-QA in a real browser…');
+            const { auditBuiltApp } = require('../../../core/quality/app-audit');
+            audit = await auditBuiltApp(path.join(proj, 'dist'), { timeoutMs: 30_000 });
+            term(audit.skipped
+                ? `self-QA: skipped (${audit.skipped})`
+                : `self-QA: ${audit.score}/100${audit.findings.length ? ` — ${audit.findings.map((f: any) => f.id).join(', ')}` : ' — clean'}`);
+        }
+
         // Remember the project so «عدل …» routes to the SURGICAL editor and
         // survives restarts like everything else Joe remembers.
         const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
@@ -1293,6 +1304,7 @@ export class ReactProjectTool extends BaseTool {
             // database from disk, and the inbox bridge resolves the owner,
             // even after this react build took the session's project slot.
             ...(apiLink ? { linkedApi: apiLink, linkedApiDir: prevEntry.dir } : {}),
+            ...(audit && !audit.skipped ? { lastAudit: { score: audit.score, at: Date.now() } } : {}),
         };
         persistJoeProjects();
 
@@ -1309,7 +1321,7 @@ export class ReactProjectTool extends BaseTool {
         const message = isAr
             ? `⚛️ ${built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
 
-🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
+${audit ? `${require('../../../core/quality/app-audit').formatAudit(audit, true)}\n` : ''}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
 ${fileList}
 
@@ -1330,7 +1342,7 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
 
         return {
             ok: true,
-            output: { message, path: proj, dir: dirName, installed, built, files: Object.keys(files) },
+            output: { message, path: proj, dir: dirName, installed, built, audit, files: Object.keys(files) },
             logs,
         } as any;
     }
