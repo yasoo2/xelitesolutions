@@ -17,6 +17,7 @@ import { WebPageBuilderTool } from './definitions/WebPageBuilderTool';
 import { ReactProjectTool } from './definitions/ReactProjectTool';
 import { ProjectEditTool } from './definitions/ProjectEditTool';
 import { FormInboxTool } from './definitions/FormInboxTool';
+import { ImportProjectTool } from './definitions/ImportProjectTool';
 import { RequestAnalyzerTool } from './definitions/RequestAnalyzerTool';
 import { ProjectPlannerTool } from './definitions/ProjectPlannerTool';
 import { AIGeneratorTool } from './definitions/AIGeneratorTool';
@@ -271,6 +272,7 @@ const baseTools: ToolDefinition[] = [
   createTool(ReactProjectTool),
   createTool(ProjectEditTool),
   createTool(FormInboxTool),
+  createTool(ImportProjectTool),
   createTool(AutoTesterTool),
   createTool(CodeReviewerTool),
   createTool(SecurityScannerTool),

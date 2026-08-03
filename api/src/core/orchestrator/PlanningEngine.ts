@@ -507,6 +507,22 @@ Rules:
             }
         }
 
+        // [IMPORT PROJECT] «استورد هذا المستودع وافهمه» — a GitHub URL plus an
+        // import/understand/work verb clones it, reads it, and makes it the
+        // session's active project for the surgical editor.
+        {
+            const hasGithub = /github\.com\/[\w.-]+\/[\w.-]+/i.test(probe);
+            const importVerb = /(استورد|استيراد|اجلب|حمّل|افهم|حلل|اعمل\s*على|طوّر|طور|import|clone|understand|analy[sz]e|work\s*on)/i.test(probe);
+            if (hasGithub && importVerb) {
+                return {
+                    id: `import_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{ id: 'import_project', description: 'استيراد المستودع وفهمه وتفعيله للجلسة', tool: 'import_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [] }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
+        }
+
         // [FORM INBOX] «اعرض رسائل النموذج» — the live-data reading path.
         {
             const inboxAsk = /(اعرض|أعرض|شوف|كم|هل\s*(وصل|فيه))\s*[^.\n]{0,25}?(رسائل|رساله|رسالة|الرسائل)|صندوق\s*(الرسائل|النموذج|الوارد)|من\s*راسل|form\s*(inbox|messages|submissions)/i.test(probe);
