@@ -484,6 +484,29 @@ Rules:
             // the page's own tool (instant restore, no model call).
             || /(تراجع|استرجع|(ارجع|أرجع|رجّع)[^.\n]{0,20}نسخ|نسخ(ة|ه)\s*(السابق|القديم|رقم)|اعرض\s*النسخ|إصدار\s*سابق|\bundo\b|\brollback\b|\brevert\b|version\s*history)/i.test(probe);
 
+        // [REACT PROJECT FAST-PATH] An EXPLICIT framework request — «مشروع
+        // React», «تطبيق Vite», «SPA» — gets a real scaffolded project with a
+        // verified build, not a static page. Explicit only: a plain «ابن لي
+        // موقع» keeps the page builder that serves it best.
+        {
+            const reactNoun = /\b(react|vite|jsx|spa)\b|ريأكت|رياكت|ري أكت|فيت\b|سبا\b/i.test(probe);
+            if (buildVerb && reactNoun) {
+                return {
+                    id: `react_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'react_project',
+                        description: `Scaffolding and verifying a Vite + React project: ${intent.goal}`,
+                        tool: 'react_project',
+                        agent: 'Dev',
+                        input: { request: intent.goal },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
+        }
+
         // Recovery goals were bounced out of generatePlan at the very top — by the
         // time execution reaches here the goal is a genuine user request.
         if ((buildVerb && webNoun) || (hasActivePage && editIntent)) {
