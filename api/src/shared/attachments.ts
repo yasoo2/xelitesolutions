@@ -24,6 +24,8 @@ export interface AttachmentInput {
     path: string;
     /** Set when `content` is a vision model's description, not extracted text. */
     visionDescribed?: boolean;
+    /** Verbatim text read FROM the image by local OCR (ara+eng). */
+    ocrText?: string;
 }
 
 /** One file may not eat the whole budget… */
@@ -52,6 +54,12 @@ export function formatAttachmentsBlock(files: AttachmentInput[]): string {
         const media = /^(image|audio|video)\//i.test(f.mimeType || '');
         let body: string;
         const text = String(f.content || '').trim();
+        // What the local OCR READ inside the picture — the verbatim layer the
+        // small vision model cannot provide for Arabic screenshots.
+        const ocr = String((f as any).ocrText || '').trim();
+        const ocrPart = ocr
+            ? `\n(OCR — the EXACT text read inside the image, verbatim; quote from THIS when the user asks what the image says:)\n${ocr}`
+            : '';
         if (media && text) {
             // An image the vision pass ANALYZED (or an honest size-limit note):
             // the description is the content, clearly labelled as seen, with
@@ -60,8 +68,8 @@ export function formatAttachmentsBlock(files: AttachmentInput[]): string {
             const body0 = text.length > cap ? `${text.slice(0, cap)}\n…[truncated]` : text;
             budget -= Math.min(text.length, cap);
             body = f.visionDescribed
-                ? `(the image was ANALYZED by a vision model — this is what it shows:)\n${body0}\n(Answer ONLY from this description. The file's binary metadata — exact pixel dimensions, creation date, format internals — is NOT known to you. NEVER state such details; the filename is a name, not data.)\n(raw file on disk at: ${f.path})`
-                : body0;
+                ? `(the image was ANALYZED by a vision model — this is what it shows:)\n${body0}${ocrPart}\n(Answer ONLY from this description${ocr ? ' and the OCR text' : ''}. The file's binary metadata — exact pixel dimensions, creation date, format internals — is NOT known to you. NEVER state such details; the filename is a name, not data.)\n(raw file on disk at: ${f.path})`
+                : `${body0}${ocrPart}`;
         } else if (media) {
             // No text to give — but SAY SO, with the on-disk path, so the model
             // acknowledges the file instead of ignoring it, and a tool that can
@@ -73,7 +81,11 @@ export function formatAttachmentsBlock(files: AttachmentInput[]): string {
              * confident fabrication, the worst failure an assistant has.
              * The block now forbids it in so many words.
              */
-            body = `(binary ${String(f.mimeType).split('/')[0]} file — no text content, and NO vision analysis was available for this run: you have NOT seen this file. Do NOT invent or guess its contents, dimensions, dates or any metadata — the filename is a name, not data. Tell the user plainly that image analysis is unavailable right now. The raw file is on disk at: ${f.path})`;
+            body = ocr
+                // No scene description, but the OCR READ the text — that part
+                // is real and quotable; only the visual layer is missing.
+                ? `(no vision description was available for this run — but local OCR read the image's text verbatim:)${ocrPart}\n(Describe ONLY from this text; you have NOT seen the visuals — say so if asked about colours/layout. The raw file is on disk at: ${f.path})`
+                : `(binary ${String(f.mimeType).split('/')[0]} file — no text content, and NO vision analysis was available for this run: you have NOT seen this file. Do NOT invent or guess its contents, dimensions, dates or any metadata — the filename is a name, not data. Tell the user plainly that image analysis is unavailable right now. The raw file is on disk at: ${f.path})`;
         } else if (!text) {
             body = `(no extractable text content. The raw file is on disk at: ${f.path})`;
         } else {

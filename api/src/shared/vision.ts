@@ -25,6 +25,7 @@
  */
 import fs from 'fs';
 import type { AttachmentInput } from './attachments';
+import { extractImageText } from './ocr';
 
 /** Groq rejects base64 image URLs over ~4MB; keep headroom under it. */
 export const VISION_MAX_IMAGE_BYTES = 2_800_000;
@@ -216,9 +217,23 @@ export async function describeImageAttachments(
     const language = String(opts.language || 'ar').split('-')[0];
     const list = (attachments || []).filter(a => /^image\//i.test(a.mimeType || '') && !String(a.content || '').trim());
     if (!list.length) return { described: 0, skipped: 0 };
+
+    // THE VERBATIM LAYER: local OCR reads the exact words inside every image
+    // in parallel with the scene description. moondream says what the image
+    // IS; tesseract says what it SAYS — Arabic screenshot text included,
+    // which the small vision model cannot read (field-measured: the user's
+    // Arabic settings screenshot came back without one literal string).
+    const ocrJobs = new Map<AttachmentInput, Promise<string>>();
+    for (const att of list) ocrJobs.set(att, extractImageText(att.path).catch(() => ''));
+
     const chain = await targets(opts.groqApiKey);
     if (!chain.length) {
         console.info('[Vision] no vision provider configured (set GROQ_API_KEY or JOE_VISION_BASE_URL) — images stay declared, not described');
+        // The OCR layer still lands — text-in-image survives even with no eyes.
+        for (const att of list) {
+            const t = await ocrJobs.get(att)!;
+            if (t) att.ocrText = t;
+        }
         return { described: 0, skipped: list.length };
     }
 
@@ -252,6 +267,14 @@ export async function describeImageAttachments(
         } catch (e: any) {
             console.warn(`[Vision] could not read ${att.name}: ${e?.message || e}`);
             skipped++;
+        }
+    }
+    // Attach whatever the OCR read — alongside a description or alone.
+    for (const att of list) {
+        const t = await ocrJobs.get(att)!;
+        if (t) {
+            att.ocrText = t;
+            console.info(`[Vision] 📖 OCR merged for ${att.name} (${t.length} chars of verbatim text)`);
         }
     }
     return { described, skipped };

@@ -138,3 +138,57 @@ describe('attachments — visible in the chat, and after a reload, with real nam
         expect(Buffer.from(mojibake, 'latin1').toString('utf8')).toBe('محضر.txt');
     });
 });
+
+/**
+ * THE VERBATIM LAYER — OCR. moondream describes the scene but cannot READ
+ * Arabic screenshot text (field-measured: the user's settings screenshot
+ * came back without one literal string). Local tesseract now reads the
+ * exact words and the block carries them with honest labels.
+ */
+describe('OCR text inside the attachment block', () => {
+    const { formatAttachmentsBlock: fab } = require('../shared/attachments');
+    const img = (extra: any) => fab([{
+        name: 'شاشة.png', mimeType: 'image/png', size: 50_000, path: '/up/شاشة.png', content: '', ...extra,
+    }]);
+
+    it('description + OCR: both layers, clearly labelled', () => {
+        const b = img({ content: 'شاشة إعدادات داكنة', visionDescribed: true, ocrText: 'الإعدادات\nSettings\nحفظ' });
+        expect(b).toContain('ANALYZED by a vision model');
+        expect(b).toContain('OCR — the EXACT text read inside the image');
+        expect(b).toContain('الإعدادات\nSettings\nحفظ');
+        expect(b).toContain('and the OCR text');
+    });
+
+    it('OCR alone: the text is quotable, the visuals honestly unseen', () => {
+        const b = img({ ocrText: 'XELITE SOLUTIONS\nابدأ الآن' });
+        expect(b).toContain('no vision description was available');
+        expect(b).toContain('XELITE SOLUTIONS\nابدأ الآن');
+        expect(b).toContain('you have NOT seen the visuals');
+        expect(b).not.toContain('you have NOT seen this file');
+    });
+
+    it('neither: the original fabrication-ban block is untouched', () => {
+        const b = img({});
+        expect(b).toContain('you have NOT seen this file');
+        expect(b).toContain('image analysis is unavailable');
+    });
+
+    it('the vision pass wires OCR for every image, in parallel and merged', () => {
+        const fs2 = require('fs'); const path2 = require('path');
+        const src = fs2.readFileSync(path2.join(__dirname, '..', 'shared', 'vision.ts'), 'utf-8');
+        expect(src).toContain("import { extractImageText } from './ocr'");
+        expect(src).toContain('ocrJobs.set(att, extractImageText(att.path)');
+        expect(src).toContain('att.ocrText = t');
+        // Even with NO vision provider at all, the OCR layer still lands.
+        expect(src).toMatch(/no vision provider configured[\s\S]{0,400}ocrJobs\.get\(att\)/);
+    });
+
+    it('the OCR module is bounded and honest', () => {
+        const fs2 = require('fs'); const path2 = require('path');
+        const src = fs2.readFileSync(path2.join(__dirname, '..', 'shared', 'ocr.ts'), 'utf-8');
+        expect(src).toContain('OCR_MAX_IMAGE_BYTES');
+        expect(src).toContain('OCR_TIMEOUT_MS');
+        expect(src).toContain("JOE_OCR || '1'");
+        expect(src).toContain("return ''");
+    });
+});
