@@ -256,10 +256,10 @@ Rules:
          * is.txt» for an image question. Attachment questions are therefore
          * decided HERE, at the top, from the USER'S OWN WORDS only.
          */
+        const WANTS_BUILD_RE = /\b(build|create|implement|develop|scaffold)\b|ابنِ|ابني|انشئ|أنشئ|اصنع|حوّل|حول .*موقع|موقع من|صفحة من/i;
         if (/\[ATTACHED FILES/.test(rawGoal)) {
             const userPart = rawGoal.split('[ATTACHED FILES')[0];
-            const wantsBuild = /\b(build|create|implement|develop|scaffold)\b|ابنِ|ابني|انشئ|أنشئ|اصنع|حوّل|حول .*موقع|موقع من|صفحة من/i.test(userPart);
-            if (!wantsBuild) {
+            if (!WANTS_BUILD_RE.test(userPart)) {
                 console.log('[PlanningEngine] attachments present + no build verb → direct answer about the attached content');
                 return {
                     id: `chat_${Date.now()}`,
@@ -267,6 +267,38 @@ Rules:
                     steps: [{
                         id: 'direct_response',
                         description: 'Answering about the attached file(s)',
+                        tool: 'central_answer',
+                        agent: 'General',
+                        input: { question: intent.goal },
+                        dependsOn: []
+                    }],
+                    metadata: { complexity: 'low', riskLevel: 'low' }
+                };
+            }
+        }
+
+        /**
+         * [IMAGE ANALYSIS IS AN ANSWER, NEVER A TOOL CIRCUS] «قم بتحليل هذه
+         * الصوره» arriving with NO attachment block (the follow-up message
+         * that lost its file, or a restart that emptied the memory) went to
+         * the generic DAG, which planned exiftool (not installed on Windows),
+         * grep, write-file and a BROWSER node — five failing steps and a raw
+         * ENOENT as the final «answer» (field log, verbatim). Analyzing a
+         * picture is central_answer's job in every case: with a description
+         * it describes, without one it honestly says vision is unavailable.
+         */
+        {
+            const asksImageAnalysis =
+                /(حلل|تحليل|صِف|وصف|افحص|اقرأ|اشرح|analy[sz]e|describe|inspect|examine|explain|read)/i.test(probe)
+                && /(صور|لقط|سكرين|image|photo|picture|screenshot)/i.test(probe);
+            if (asksImageAnalysis && !WANTS_BUILD_RE.test(userGoal)) {
+                console.log('[PlanningEngine] image-analysis request → direct answer (no tool circus, with or without the file)');
+                return {
+                    id: `chat_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'direct_response',
+                        description: 'Analyzing the image (or honestly reporting vision state)',
                         tool: 'central_answer',
                         agent: 'General',
                         input: { question: intent.goal },

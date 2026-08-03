@@ -243,3 +243,33 @@ describe('vision on a CPU laptop — the model that can finish goes first', () =
         expect(src).toContain('void warmUpLocalBrain();');
     });
 });
+
+describe('the Groq catalog is authoritative', () => {
+    test('zero vision ids in a LISTED catalog → no doomed static calls at all', async () => {
+        // Field-measured: the user's catalog lists 15 models, none vision-capable,
+        // and the chain still fired the two static llama-4 names → two 404s per image.
+        const calls: string[] = [];
+        global.fetch = (async (url: any) => {
+            calls.push(String(url));
+            if (String(url).endsWith('/models')) {
+                return { ok: true, json: async () => ({ data: [{ id: 'llama-3.3-70b-versatile' }, { id: 'whisper-large-v3' }] }) } as any;
+            }
+            return { ok: true, json: async () => ({ choices: [{ message: { content: 'should never be called' } }] }) } as any;
+        }) as any;
+        const saved = process.env.GROQ_API_KEY;
+        process.env.GROQ_API_KEY = 'gsk_test_catalog';
+        try {
+            // Bust the 10-minute catalog cache from earlier tests in this file.
+            jest.resetModules();
+            const { describeImageAttachments: describe2 } = require('../shared/vision');
+            const att = imageAtt('no-eyes.png');
+            const r = await describe2([att], { language: 'ar' });
+            expect(r.described).toBe(0);
+            expect(att.content).toBe('');
+            expect(calls.some(u => u.endsWith('/chat/completions'))).toBe(false);
+        } finally {
+            if (saved !== undefined) process.env.GROQ_API_KEY = saved; else delete process.env.GROQ_API_KEY;
+            jest.resetModules();
+        }
+    });
+});

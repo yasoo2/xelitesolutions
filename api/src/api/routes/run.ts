@@ -13,6 +13,43 @@ import { broadcast } from '../ws';
 const router = Router();
 
 /**
+ * ATTACHMENT MEMORY (per session, in-process). Maps a sessionId to the file
+ * ids it last attached, so a follow-up message that REFERS to «الصوره/الملف»
+ * without re-attaching still reaches the model WITH the file. Bounded and
+ * time-limited: a session remembers only its latest batch, for six hours.
+ */
+const SESSION_FILE_MEMORY = new Map<string, { fileIds: string[]; at: number }>();
+const SESSION_FILE_TTL_MS = 6 * 3600_000;
+
+export function rememberSessionFiles(sessionId: string, fileIds: string[]): void {
+    if (!sessionId || !fileIds.length) return;
+    SESSION_FILE_MEMORY.set(sessionId, { fileIds: [...fileIds], at: Date.now() });
+    // The map only grows by one entry per session; prune stale ones lazily.
+    if (SESSION_FILE_MEMORY.size > 500) {
+        for (const [k, v] of SESSION_FILE_MEMORY) {
+            if (Date.now() - v.at > SESSION_FILE_TTL_MS) SESSION_FILE_MEMORY.delete(k);
+        }
+    }
+}
+
+export function recallSessionFiles(sessionId: string): string[] {
+    const hit = SESSION_FILE_MEMORY.get(sessionId);
+    if (!hit || Date.now() - hit.at > SESSION_FILE_TTL_MS) return [];
+    return [...hit.fileIds];
+}
+
+/**
+ * Does this message point at an attachment? Nouns («الصوره، الملف، اللقطة»),
+ * demonstratives with analysis verbs («حللها، افحصها، اقرأها»), and their
+ * English counterparts. Deliberately conservative: an unrelated follow-up
+ * («ابنِ لي موقعاً») must NOT drag the old screenshot back in.
+ */
+export const REFERS_TO_ATTACHMENT =
+    // NB: \b is ASCII-only in JS and silently fails around Arabic letters —
+    // the pronoun suffix is bounded with a lookahead instead.
+    /(صور|لقط|سكرين|مرفق|المستند|الملف|فايل|ملف|image|photo|picture|screenshot|attach|\bfile\b|document|\bpdf\b|docx|xlsx|pptx)|(حلل|افحص|اقرأ|صِ?ف|وضّ?ح|لخّ?ص|ترجم|شوف|طالع)(ها|يها|ه)(?![ء-ي])/i;
+
+/**
  * [PROVIDER VERIFY] Actually test a provider with a tiny prompt and report
  * whether it responds. The provider button is coloured GREEN on ok, RED on fail.
  * Works for free providers too — a placeholder key routes through the free mesh,
@@ -86,8 +123,32 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             if (attachments.length < fileIds.length) {
                 console.warn(`[RunRoute] ${fileIds.length - attachments.length} attachment id(s) could not be found`);
             }
+            // Remember what this session attached — the NEXT message may refer
+            // to it without re-attaching (see below).
+            if (attachments.length) rememberSessionFiles(String(sessionId || ''), fileIds);
         } catch (e: any) {
             console.warn('[RunRoute] Loading attachments failed (continuing without):', e?.message || e);
+        }
+    } else {
+        /**
+         * ATTACHMENT MEMORY — the field failure this closes: the user sent an
+         * image with «حلل», then followed up «قم بتحليل هذه الصوره» — and the
+         * composer sends fileIds only WITH the message that uploaded them, so
+         * the follow-up reached Joe with no attachment at all. The planner,
+         * seeing «analyze the image» and no image, invented an exiftool/grep/
+         * write-file circus and answered with a raw ENOENT. A human keeps the
+         * picture on the table for the whole conversation; now Joe does too:
+         * when a message REFERS to an attachment (هذه الصوره، الملف، حللها…)
+         * and carries none, the session's last uploaded files ride again.
+         */
+        const remembered = recallSessionFiles(String(sessionId || ''));
+        if (remembered.length && REFERS_TO_ATTACHMENT.test(String(text || ''))) {
+            try {
+                attachments = await loadUploadedFiles(remembered);
+                if (attachments.length) console.log(`[RunRoute] 🧷 Re-attached ${attachments.length} earlier file(s) — the message refers to them (attachment memory)`);
+            } catch (e: any) {
+                console.warn('[RunRoute] Attachment memory reload failed (continuing without):', e?.message || e);
+            }
         }
     }
     

@@ -138,3 +138,28 @@ describe('attachment questions survive every keyword fast-path', () => {
         expect(src).toMatch(/STANDING USER INSTRUCTIONS\|ENGINEERING DISCIPLINE\|ATTACHED FILES\|RESPONSE LANGUAGE/);
     });
 });
+
+/**
+ * THE FOLLOW-UP THAT LOST ITS FILE — from the next field log: «قمم بتحليل
+ * هذه الصوره» arrived with NO attachment block (the composer sends fileIds
+ * only with the uploading message) and the generic DAG planned exiftool +
+ * grep + write-file + a browser node, ending in a raw ENOENT reply. An
+ * image-analysis request is a DIRECT ANSWER in every case — with the file
+ * (described or honestly undescribed) or without it.
+ */
+describe('image-analysis requests never become a tool circus', () => {
+    it('«قم بتحليل هذه الصوره» with no attachment → central_answer', async () => {
+        expect(await tool('قم بتحليل هذه الصوره')).toBe('central_answer');
+    });
+    it('the exact field goal (typo and all) routes the same', async () => {
+        expect(await tool('قمم بتحليل هذه الصوره' +
+            '\n\n[RESPONSE LANGUAGE — NON-NEGOTIABLE]: The user\'s language is Arabic (العربية). Write EVERY word of your reply in it.'))
+            .toBe('central_answer');
+    });
+    it('"analyze this screenshot for me" routes the same in English', async () => {
+        expect(await tool('analyze this screenshot for me')).toBe('central_answer');
+    });
+    it('«ابنِ لي صفحة مثل هذه الصورة» (BUILD wins) is NOT hijacked to chat', async () => {
+        expect(await tool('ابنِ لي صفحة مثل هذه الصورة')).not.toBe('central_answer');
+    });
+});

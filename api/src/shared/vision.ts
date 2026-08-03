@@ -130,7 +130,11 @@ async function groqVisionModels(apiKey: string): Promise<string[]> {
         // When NONE match, print what DOES exist — the field log that led here
         // said "0 vision-capable" and left us guessing which ids were there.
         if (!vision.length) console.warn(`[Vision] no vision ids in the Groq catalog. It lists: ${all.join(', ')}`);
-        groqCatalogCache = { at: Date.now(), ids: vision.length ? vision.slice(0, 4) : GROQ_STATIC_FALLBACK };
+        // The catalog is AUTHORITATIVE: zero vision ids means Groq has no
+        // eyes on this plan — trying the static names anyway just produced
+        // two guaranteed 404s per image (field-measured). Static names are
+        // only for when /models itself cannot be reached.
+        groqCatalogCache = { at: Date.now(), ids: vision.slice(0, 4) };
     } catch (e: any) {
         console.warn(`[Vision] could not list Groq models (${e?.message || e}) — using static fallback names`);
         groqCatalogCache = { at: Date.now(), ids: GROQ_STATIC_FALLBACK };
