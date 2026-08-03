@@ -1659,6 +1659,23 @@ body:not(.rtl) .joe-user-info {
     padding: 2px 0;
 }
 
+/* BiDi sanity for mixed-script messages: «مرحباً يا Younes، لقد…» used to
+   scramble its visual word order around the Latin name. Every text block
+   inside a bubble isolates and resolves its own direction from its first
+   strong character (pairs with dir="auto" set per block in the renderers). */
+.joe-message-bubble,
+.joe-message-bubble p,
+.joe-message-bubble li,
+.joe-message-bubble h1,
+.joe-message-bubble h2,
+.joe-message-bubble h3,
+.joe-message-bubble blockquote,
+.chat-bubble-content,
+.chat-bubble-content p,
+.chat-bubble-content li {
+    unicode-bidi: plaintext;
+}
+
 /* User: a soft rounded emerald chip */
 .joe-message.user .joe-message-bubble {
     display: inline-block;

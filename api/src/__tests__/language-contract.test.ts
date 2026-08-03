@@ -145,3 +145,35 @@ describe('the run derives its language from the message, not the raw switcher', 
         expect(loop).toContain('const language = language0;');
     });
 });
+
+/**
+ * THE BIDI CONTRACT — «بسبب كلمة Younes خربشة ترتيب الكلمات» (field report):
+ * a Latin name inside an Arabic sentence scrambled the visual word order in
+ * the production chat renderer. Every text block now resolves its own
+ * direction (dir="auto") and isolates mixed runs (unicode-bidi: plaintext),
+ * and the language contract tells the model to write names in the reply's
+ * own script in the first place.
+ */
+describe('mixed-script messages render in logical order', () => {
+    const webRead = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'src', ...p), 'utf-8');
+
+    test('the production bubble and every markdown block carry dir="auto"', () => {
+        const panel = webRead('components', 'ChatPanel.tsx');
+        expect(panel).toContain('className="joe-message-bubble" dir="auto"');
+        for (const tag of ['p', 'li', 'ul', 'ol', 'h1', 'blockquote']) {
+            expect(panel).toContain(`<${tag} dir="auto"`);
+        }
+    });
+
+    test('unicode-bidi: plaintext isolates mixed runs in both chat renderers', () => {
+        const css = webRead('styles', 'joe-premium.css');
+        expect(css).toMatch(/\.joe-message-bubble p,[\s\S]{0,400}unicode-bidi: plaintext/);
+        expect(css).toMatch(/\.chat-bubble-content[\s\S]{0,400}unicode-bidi: plaintext/);
+    });
+
+    test('the language contract covers personal names (Younes → يونس)', () => {
+        const loop = read('modules', 'services', 'AgentLoopService.ts');
+        expect(loop).toContain('Younes → يونس');
+        expect(loop).toContain('never mix a Latin name into an Arabic sentence');
+    });
+});

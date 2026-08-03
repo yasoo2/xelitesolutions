@@ -87,7 +87,11 @@ export class AgentLoopService {
         // answered in English (field-reported) reads as not being heard.
         // central_answer additionally measures and enforces this; the block
         // makes every other reply path carry the same obligation.
-        blocks.push(`[RESPONSE LANGUAGE — NON-NEGOTIABLE]: The user's language is ${languageName(language0)}. Write EVERY word of your reply in it.`);
+        // «بسبب كلمة Younes خربشة ترتيب الكلمات» — a Latin name inside an
+        // Arabic sentence also triggers BiDi scrambling in some renderers.
+        // The display fix is dir="auto"/unicode-bidi in the UI; the CONTENT
+        // fix is writing the name in the reply's own script.
+        blocks.push(`[RESPONSE LANGUAGE — NON-NEGOTIABLE]: The user's language is ${languageName(language0)}. Write EVERY word of your reply in it. Personal names too: when replying in Arabic write names in Arabic script (Younes → يونس); never mix a Latin name into an Arabic sentence.`);
         if (looksLikeEngineering) blocks.push(BUILD_DISCIPLINE);
         const effectiveGoal = blocks.join('\n\n');
         const traceId = options.traceId;

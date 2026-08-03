@@ -197,7 +197,12 @@ export default function ChatPanel({
                                 {msg.role === 'assistant' ? <JoeMark size={24} /> : 'U'}
                             </div>
                             <div className="joe-message-content">
-                                <div className="joe-message-bubble">
+                                {/* dir="auto" + per-block auto direction below: a Latin
+                                    name («Younes») inside an Arabic sentence scrambled
+                                    the visual word order (BiDi), field-reported. Each
+                                    block resolves its direction from its own first
+                                    strong character, so mixed-script lines read right. */}
+                                <div className="joe-message-bubble" dir="auto">
                                     {/* The attachments the user sent WITH this message.
                                         This renderer never showed them — the user
                                         attached an image, pressed Enter, and the chat
@@ -225,6 +230,16 @@ export default function ChatPanel({
                                     )}
                                     <ReactMarkdown
                                         components={{
+                                            // Each paragraph/heading/list-item decides its own
+                                            // direction — the BiDi fix above, block by block.
+                                            h1: ({ ...props }) => <h1 dir="auto" {...props} />,
+                                            h2: ({ ...props }) => <h2 dir="auto" {...props} />,
+                                            h3: ({ ...props }) => <h3 dir="auto" {...props} />,
+                                            ul: ({ ...props }) => <ul dir="auto" {...props} />,
+                                            ol: ({ ...props }) => <ol dir="auto" {...props} />,
+                                            li: ({ ...props }) => <li dir="auto" {...props} />,
+                                            p: ({ ...props }) => <p dir="auto" {...props} />,
+                                            blockquote: ({ ...props }) => <blockquote dir="auto" {...props} />,
                                             code({ className, children, ...props }: any) {
                                                 // [ARTIFACT] A ```joe-artifact <json>``` block renders an elegant
                                                 // artifact card (file + open-preview/download) instead of raw JSON.
