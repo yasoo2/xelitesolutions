@@ -44,7 +44,7 @@ interface ReactContent {
     isArabic: boolean;
     /** Kind-specific blocks — only the ones the kind's section list uses are rendered. */
     menuTitle: string;
-    menu: Array<{ name: string; desc: string; price: string }>;
+    menu: Array<{ name: string; desc: string; price: string; img?: { src: string; alt: string } | null }>;
     pricingTitle: string;
     tiers: Array<{ name: string; price: string; period: string; features: string[]; featured?: boolean }>;
     testimonialsTitle: string;
@@ -65,11 +65,15 @@ interface ReactContent {
  * published dist both carry it. Best-effort by contract: no network, no
  * result, any error → { image: null } and the app ships clean without one.
  */
-async function fetchHeroImage(opts: {
+export async function fetchHeroImage(opts: {
     subject: string; projDir: string; hue: number; artifactDir: string;
 }): Promise<{ image: { src: string; alt: string } | null; credits: Array<{ creator: string; license: string; source: string }>; note: string }> {
     try {
-        const probe = `<div>{{IMAGE:hero|${opts.subject.slice(0, 90)}}}</div>`;
+        // The engine replaces a marker with a BARE local URL and then hardens
+        // the surrounding <img> — so the marker must live inside a src
+        // attribute. A marker floating in a <div> comes back as loose text
+        // with no src= to parse, and the app would never get its photo.
+        const probe = `<img src="{{IMAGE:hero|${opts.subject.replace(/["|{}]/g, ' ').trim().slice(0, 90)}}}" alt="">`;
         const r = await resolveImages(probe, opts.artifactDir, opts.hue, { max: 1, timeoutMs: 20_000 });
         const m = r.html.match(/src="\/artifacts\/images\/([^"]+)"[^>]*/);
         if (!r.real || !m) return { image: null, credits: [], note: `no photo (${r.sourceErrors[0] || 'archives returned nothing'})` };
@@ -83,6 +87,50 @@ async function fetchHeroImage(opts: {
     } catch (e: any) {
         return { image: null, credits: [], note: `photo step skipped (${String(e?.message || e).slice(0, 80)})` };
     }
+}
+
+/**
+ * REAL photographs for the menu dishes — ONE batched resolveImages call for
+ * all of them (the engine fetches distinct subjects sequentially and caps the
+ * total itself). Each marker is wrapped in an indexed <figure> so a dish whose
+ * archives came back empty maps to null while its neighbours keep their
+ * photos — never a shifted-by-one gallery. Files are copied into public/
+ * like the hero; best-effort by contract.
+ */
+export async function fetchCardImages(opts: {
+    subjects: string[]; projDir: string; hue: number; artifactDir: string;
+}): Promise<{ images: Array<{ src: string; alt: string } | null>; credits: Array<{ creator: string; license: string; source: string }>; note: string }> {
+    try {
+        if (!opts.subjects.length) return { images: [], credits: [], note: 'no subjects' };
+        const probe = opts.subjects.map((s, i) =>
+            `<figure data-card="${i}"><img src="{{IMAGE:card|${s.replace(/["|{}]/g, ' ').trim().slice(0, 90)}}}" alt=""></figure>`).join('\n');
+        const r = await resolveImages(probe, opts.artifactDir, opts.hue, { max: opts.subjects.length, timeoutMs: 30_000 });
+        const images = opts.subjects.map((s, i): { src: string; alt: string } | null => {
+            const seg = r.html.match(new RegExp(`<figure data-card="${i}">([\\s\\S]*?)</figure>`))?.[1] || '';
+            const m = seg.match(/src="\/artifacts\/images\/([^"]+)"/);
+            if (!m) return null;                          // gradient fallback → this dish ships clean
+            const from = path.join(opts.artifactDir, 'images', m[1]);
+            if (!fs.existsSync(from)) return null;
+            fs.mkdirSync(path.join(opts.projDir, 'public', 'images'), { recursive: true });
+            fs.copyFileSync(from, path.join(opts.projDir, 'public', 'images', m[1]));
+            const alt = (seg.match(/alt="([^"]*)"/) || [, s])[1] || s;
+            return { src: `images/${m[1]}`, alt };
+        });
+        const real = images.filter(Boolean).length;
+        return { images, credits: r.credits, note: `${real}/${opts.subjects.length} real dish photos (${Object.keys(r.sources).join(',') || r.sourceErrors[0] || 'archives returned nothing'})` };
+    } catch (e: any) {
+        return { images: opts.subjects.map(() => null), credits: [], note: `dish photos skipped (${String(e?.message || e).slice(0, 80)})` };
+    }
+}
+
+/** Union of credit lists, deduped by source — a licence line appears once. */
+export function mergeCredits(
+    a?: Array<{ creator: string; license: string; source: string }>,
+    b?: Array<{ creator: string; license: string; source: string }>,
+): Array<{ creator: string; license: string; source: string }> {
+    const out = [...(a || [])];
+    for (const c of (b || [])) if (!out.some(x => x.source === c.source)) out.push(c);
+    return out;
 }
 
 /** A multi-page app: pages composed from the SAME section components. */
@@ -423,6 +471,7 @@ function fileContentJs(c: ReactContent): string {
     return `// The words of the app, in one place — edit here, every component follows.
 export const content = {
   brand: '${js(c.brand)}',
+  isArabic: ${c.isArabic},
   tagline: '${js(c.tagline)}',
   heroTitle: '${js(c.heroTitle)}',
   heroLede: '${js(c.heroLede)}',
@@ -434,7 +483,7 @@ ${c.features.map(f => `    { title: '${js(f.title)}', text: '${js(f.text)}' },`)
   contactTitle: '${js(c.contactTitle)}',
   menuTitle: '${js(c.menuTitle)}',
   menu: [
-${c.menu.map(m => `    { name: '${js(m.name)}', desc: '${js(m.desc)}', price: '${js(m.price)}' },`).join('\n')}
+${c.menu.map(m => `    { name: '${js(m.name)}', desc: '${js(m.desc)}', price: '${js(m.price)}', img: ${m.img ? `{ src: '${js(m.img.src)}', alt: '${js(m.img.alt)}' }` : 'null'} },`).join('\n')}
   ],
   pricingTitle: '${js(c.pricingTitle)}',
   tiers: [
@@ -598,7 +647,10 @@ export default function Menu({ content }) {
         <ul className="menu-list">
           {content.menu.map((m) => (
             <li className="menu-item" key={m.name}>
-              <div>
+              {m.img ? (
+                <img className="menu-thumb" src={m.img.src} alt={m.img.alt} loading="lazy" decoding="async" />
+              ) : null}
+              <div className="menu-body">
                 <h3>{m.name}</h3>
                 <p>{m.desc}</p>
               </div>
@@ -714,7 +766,7 @@ export default function Footer({ content }) {
         <p>© {new Date().getFullYear()} {content.brand}</p>
         {content.credits && content.credits.length ? (
           <p className="credits">
-            {'مصادر الصور: '}
+            {content.isArabic === false ? 'Image credits: ' : 'مصادر الصور: '}
             {content.credits.map((c, i) => (
               <span key={c.source || c.creator}>
                 {i > 0 ? ' · ' : ''}
@@ -762,6 +814,8 @@ textarea{min-height:120px}
 .menu-item{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding:18px 0;border-bottom:1px dashed var(--border)}
 .menu-item h3{margin:0 0 4px}
 .menu-item p{margin:0;color:var(--text-muted)}
+.menu-body{flex:1}
+.menu-thumb{width:84px;height:84px;object-fit:cover;border-radius:14px;flex:none}
 .menu-price{color:var(--brand);white-space:nowrap;font-size:1.1rem}
 .tier{display:flex;flex-direction:column;gap:10px}
 .tier.featured{border-color:var(--brand);box-shadow:0 12px 34px -14px color-mix(in srgb,var(--brand) 45%,transparent)}
@@ -859,6 +913,20 @@ export class ReactProjectTool extends BaseTool {
             content.heroImage = hero.image;
             content.credits = hero.credits;
             term(`hero photo: ${hero.note}`);
+
+            // The dishes too — a restaurant menu with photographs sells; one
+            // batched engine call for all of them, each dish falling back to a
+            // clean text row when the archives had nothing for it.
+            if (sections.includes('Menu') && content.menu.length) {
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🍽️ أجلب صوراً حقيقية مرخّصة لأطباق القائمة…' : '🍽️ Finding real licensed photos for the menu dishes…');
+                const cards = await fetchCardImages({
+                    subjects: content.menu.map(m => `${m.name} ${m.desc}`),
+                    projDir: proj, hue: (palette as any).hue ?? 260, artifactDir: ARTIFACT_DIR,
+                });
+                content.menu.forEach((m, i) => { m.img = cards.images[i] || null; });
+                content.credits = mergeCredits(content.credits, cards.credits);
+                term(`dish photos: ${cards.note}`);
+            }
         }
 
         const componentTemplates: Record<string, () => string> = {
