@@ -53,6 +53,10 @@ describe('the four identities are real, distinct, and Arabic-safe', () => {
         expect(familyCss('elegant')).toContain('serif');
         expect(familyCss('bold')).toContain('6px 6px 0');            // the brutalist hard shadow
         expect(familyCss('warm')).toContain('--f-radius:26px');
+        // The CTA band wears each family's SHAPE — curved, diagonal, flat.
+        expect(familyCss('warm')).toContain('.cta-band{border-radius:28px');
+        expect(familyCss('bold')).toContain('.cta-band{clip-path:polygon');
+        expect(familyCss('elegant')).toContain('.cta-band{background:var(--surface)');
     });
     it('swapFamilyCss replaces exactly the block; unmarked css refuses', () => {
         const base = `${familyCss('warm')}\n.card{border-radius:var(--f-radius)}`;
@@ -80,6 +84,11 @@ describe('the scaffolder and the surgical editor carry the family', () => {
         const css = fs.readFileSync(cssPath, 'utf-8');
         expect(familyOf(css)).toBe('elegant');
         expect(css).toContain('font-family:var(--f-font)');
+        // The family layer must ride LAST. It used to sit at the top, where
+        // every rule below :root lost the tie to the base sheet that followed
+        // — the identity existed in the file and never on the screen.
+        expect(css.indexOf('/* joe-family:elegant */')).toBeGreaterThan(css.indexOf('.menu-list'));
+        expect(css.indexOf('.cta-band{background:var(--surface)')).toBeGreaterThan(css.lastIndexOf('.cta-band{background:linear-gradient'));
         expect(String(res.output.message)).toContain(FAMILY_LABEL_AR.elegant);
 
         const { ProjectEditTool } = require('../modules/tools/definitions/ProjectEditTool');

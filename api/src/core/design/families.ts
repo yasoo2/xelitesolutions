@@ -75,7 +75,9 @@ export function familyCss(f: DesignFamily): string {
 }
 .section{padding-block:clamp(64px,9vw,140px)}
 h1,h2{line-height:1.3}
-.card{border-color:color-mix(in srgb,var(--border) 60%,transparent)}`,
+.card{border-color:color-mix(in srgb,var(--border) 60%,transparent)}
+.cta-band{background:var(--surface);color:var(--text);border-block:1px solid var(--border)}
+.cta-band .btn-invert{background:var(--brand);color:var(--on-brand)}`,
         bold: `:root{
   --f-font:${familyFonts('bold').body};
   --f-head:${familyFonts('bold').head};
@@ -87,7 +89,8 @@ h1,h2{line-height:1.3}
 }
 .card{border-color:var(--text)}
 .btn{border:2px solid transparent;font-weight:800}
-.hero h1{font-size:clamp(2.4rem,6vw,4rem)}`,
+.hero h1{font-size:clamp(2.4rem,6vw,4rem)}
+.cta-band{clip-path:polygon(0 8%,100% 0,100% 92%,0 100%);padding-block:clamp(64px,9vw,130px)}`,
         warm: `:root{
   --f-font:${familyFonts('warm').body};
   --f-head:${familyFonts('warm').head};
@@ -97,7 +100,8 @@ h1,h2{line-height:1.3}
   --f-card-shadow:0 14px 40px -18px color-mix(in srgb,var(--brand) 35%,transparent);
   --f-photo-shadow:0 24px 60px -16px rgba(0,0,0,.22);
 }
-.card{border-color:color-mix(in srgb,var(--brand) 18%,var(--border))}`,
+.card{border-color:color-mix(in srgb,var(--brand) 18%,var(--border))}
+.cta-band{border-radius:28px;width:min(100% - 2rem,1180px);margin-inline:auto}`,
     };
     return `/* joe-family:${f} */\n${blocks[f]}\n/* /joe-family */`;
 }

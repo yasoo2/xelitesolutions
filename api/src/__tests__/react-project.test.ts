@@ -82,6 +82,12 @@ describe('the scaffold: complete, RTL, tokenized, honest', () => {
         expect((contact.match(/aria-label=/g) || []).length).toBeGreaterThanOrEqual(3);
         const css = fs.readFileSync(path.join(out.output.path, 'src', 'styles', 'base.css'), 'utf-8');
         expect(css).toContain('min-height:44px');
+        // Measured regressions from the tinted rhythm, now pinned: prices used
+        // plain --brand and read 4.43:1 on the tint; the brand link was a
+        // 21×33 tap target.
+        expect(css).toContain('--price:color-mix(in srgb,var(--brand) 78%,var(--text))');
+        expect(css).toContain('.menu-price{color:var(--price)');
+        expect(css).toMatch(/\.brand\{[^}]*min-height:44px;min-width:44px\}/);
     });
     it('the honest form: no fake delivery claim in the template', () => {
         const contact = fs.readFileSync(path.join(out.output.path, 'src', 'components', 'Contact.jsx'), 'utf-8');
@@ -109,6 +115,12 @@ describe('kind-aware React apps', () => {
         expect(sectionsForKind('store')).toContain('Products');
         expect(sectionsForKind('store')).not.toContain('Pricing');
         expect(sectionsForKind('app')).toContain('Pricing');   // tiers belong to SaaS, not shelves
+        // Every kind carries the mid-page CTA band, always before Contact.
+        for (const k of ['restaurant', 'store', 'landing', 'portfolio', 'app', 'event', 'generic'] as any[]) {
+            const sec = sectionsForKind(k);
+            expect(sec).toContain('Cta');
+            expect(sec.indexOf('Cta')).toBeLessThan(sec.indexOf('Contact'));
+        }
         expect(sectionsForKind('landing')).toContain('Stats');
         expect(sectionsForKind('generic')).toContain('Faq');
         for (const k of ['restaurant', 'store', 'landing', 'portfolio', 'app', 'event', 'generic'] as any[]) {

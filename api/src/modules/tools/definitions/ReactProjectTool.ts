@@ -41,6 +41,8 @@ interface ReactContent {
     featuresTitle: string;
     features: Array<{ title: string; text: string }>;
     contactTitle: string;
+    ctaBandTitle: string;
+    ctaBandText: string;
     isArabic: boolean;
     /** Kind-specific blocks — only the ones the kind's section list uses are rendered. */
     menuTitle: string;
@@ -154,17 +156,17 @@ export interface AppPage { path: string; title: string; titleEn: string; section
 export function pagesForKind(kind: PageKind): AppPage[] {
     switch (kind) {
         case 'restaurant': return [
-            { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Testimonials'] },
+            { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Testimonials', 'Cta'] },
             { path: '/menu', title: 'القائمة', titleEn: 'Menu', sections: ['Menu'] },
             { path: '/contact', title: 'تواصل معنا', titleEn: 'Contact', sections: ['Contact'] },
         ];
         case 'store': return [
-            { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Testimonials'] },
+            { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Testimonials', 'Cta'] },
             { path: '/products', title: 'المنتجات', titleEn: 'Products', sections: ['Products', 'Faq'] },
             { path: '/contact', title: 'تواصل معنا', titleEn: 'Contact', sections: ['Contact'] },
         ];
         default: return [
-            { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Features', 'Stats'] },
+            { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Features', 'Stats', 'Cta'] },
             { path: '/about', title: 'عن المشروع', titleEn: 'About', sections: ['Testimonials', 'Faq'] },
             { path: '/contact', title: 'تواصل معنا', titleEn: 'Contact', sections: ['Contact'] },
         ];
@@ -183,16 +185,16 @@ export function wantsMultiPage(text: string): boolean {
  */
 export function sectionsForKind(kind: PageKind): string[] {
     switch (kind) {
-        case 'restaurant': return ['Hero', 'Menu', 'Testimonials', 'Contact'];
+        case 'restaurant': return ['Hero', 'Menu', 'Testimonials', 'Cta', 'Contact'];
         // Real product CARDS with photos and prices — a store sells things,
         // not subscription tiers. Pricing stays for app/dashboard kinds.
-        case 'store': return ['Hero', 'Products', 'Testimonials', 'Faq', 'Contact'];
-        case 'landing': return ['Hero', 'Features', 'Stats', 'Testimonials', 'Contact'];
-        case 'portfolio': return ['Hero', 'Features', 'Stats', 'Contact'];
+        case 'store': return ['Hero', 'Products', 'Testimonials', 'Cta', 'Faq', 'Contact'];
+        case 'landing': return ['Hero', 'Features', 'Stats', 'Testimonials', 'Cta', 'Contact'];
+        case 'portfolio': return ['Hero', 'Features', 'Stats', 'Cta', 'Contact'];
         case 'dashboard':
-        case 'app': return ['Hero', 'Features', 'Pricing', 'Faq', 'Contact'];
-        case 'event': return ['Hero', 'Stats', 'Faq', 'Contact'];
-        default: return ['Hero', 'Features', 'Faq', 'Contact'];
+        case 'app': return ['Hero', 'Features', 'Pricing', 'Cta', 'Faq', 'Contact'];
+        case 'event': return ['Hero', 'Stats', 'Cta', 'Faq', 'Contact'];
+        default: return ['Hero', 'Features', 'Cta', 'Faq', 'Contact'];
     }
 }
 
@@ -220,6 +222,8 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
             { title: 'جاهز للتوسع', text: 'مكوّنات React نظيفة قابلة لإضافة صفحات وميزات جديدة.' },
         ],
         contactTitle: 'تواصل معنا',
+        ctaBandTitle: restaurant ? 'طاولتك جاهزة الليلة' : store ? 'وصّلنا لك الأفضل' : 'جاهز تبدأ؟',
+        ctaBandText: restaurant ? 'احجز الآن ودع المطبخ يتكفل بالباقي.' : store ? 'اطلب اليوم ويصلك بسرعة وبتغليف يليق.' : 'خطوتك الأولى تبعد ضغطة زر واحدة.',
         isArabic: true,
         menuTitle: 'قائمة الطعام',
         menu: [
@@ -270,6 +274,8 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
             { title: 'Built to grow', text: 'Clean React components ready for new pages and features.' },
         ],
         contactTitle: 'Contact us',
+        ctaBandTitle: restaurant ? 'Your table is ready tonight' : store ? 'The best, delivered' : 'Ready to start?',
+        ctaBandText: restaurant ? 'Book now — the kitchen handles the rest.' : store ? 'Order today, arrive fast, wrapped right.' : 'Your first step is one click away.',
         isArabic: false,
         menuTitle: 'The menu',
         menu: [
@@ -510,6 +516,8 @@ export const content = {
 ${c.features.map(f => `    { title: '${js(f.title)}', text: '${js(f.text)}' },`).join('\n')}
   ],
   contactTitle: '${js(c.contactTitle)}',
+  ctaBandTitle: '${js(c.ctaBandTitle)}',
+  ctaBandText: '${js(c.ctaBandText)}',
   menuTitle: '${js(c.menuTitle)}',
   menu: [
 ${c.menu.map(m => `    { name: '${js(m.name)}', desc: '${js(m.desc)}', price: '${js(m.price)}', img: ${m.img ? `{ src: '${js(m.img.src)}', alt: '${js(m.img.alt)}' }` : 'null'} },`).join('\n')}
@@ -729,8 +737,8 @@ export default function Menu({ content }) {
       <div className="wrap">
         <h2>{content.menuTitle}{live ? <span className="live-dot" title="بيانات حية من قاعدة البيانات">●</span> : null}</h2>
         <ul className="menu-list">
-          {rows.map((m) => (
-            <li className="menu-item" key={m.name}>
+          {rows.map((m, i) => (
+            <li className={m.img && i % 2 === 1 ? 'menu-item flip' : 'menu-item'} key={m.name}>
               {m.img ? (
                 <img className="menu-thumb" src={m.img.src} alt={m.img.alt} loading="lazy" decoding="async" />
               ) : null}
@@ -775,7 +783,7 @@ export default function Products({ content }) {
     <section className="section" id="products">
       <div className="wrap">
         <h2>{content.productsTitle}{live ? <span className="live-dot" title="بيانات حية من قاعدة البيانات">●</span> : null}</h2>
-        <div className="grid-3">
+        <div className="grid-3 products-grid">
           {rows.map((p) => (
             <div className="card product-card" key={p.name}>
               {p.img ? (
@@ -950,6 +958,25 @@ export default function Stats({ content }) {
 `;
 }
 
+function fileCtaJsx(): string {
+    return `import React from 'react';
+
+export default function Cta({ content }) {
+  return (
+    <section className="section cta-band" id="cta">
+      <div className="wrap cta-inner">
+        <div>
+          <h2>{content.ctaBandTitle}</h2>
+          <p className="cta-text">{content.ctaBandText}</p>
+        </div>
+        <a className="btn btn-invert" href="#contact">{content.cta}</a>
+      </div>
+    </section>
+  );
+}
+`;
+}
+
 function fileFooterJsx(): string {
     return `import React from 'react';
 
@@ -1008,8 +1035,12 @@ export function useReveal() {
 
 function fileBaseCss(family: DesignFamily): string {
     return `${familyFonts(family).faces}
-${familyCss(family)}
 *,*::before,*::after{box-sizing:border-box}
+/* Prices are small bold text on a TINTED band now, and plain --brand measured
+   4.43:1 there — a hair under AA. Pulling the brand toward the text colour
+   darkens it on light themes and lightens it on dark ones, so it clears 4.5
+   in both without ever leaving the palette. */
+:root{--price:color-mix(in srgb,var(--brand) 78%,var(--text))}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--f-font);line-height:1.7}
 h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .wrap{width:min(100% - 2rem,1180px);margin-inline:auto}
@@ -1019,7 +1050,7 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .band h2::after,.stats-band h2::after{background:color-mix(in srgb,#fff 80%,transparent)}
 .site-header{position:sticky;top:0;background:color-mix(in srgb,var(--surface) 84%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);z-index:10}
 .header-inner{display:flex;align-items:center;gap:20px;min-height:64px}
-.brand{font-weight:800;font-size:1.2rem;color:var(--text);text-decoration:none;margin-inline-end:auto}
+.brand{font-weight:800;font-size:1.2rem;color:var(--text);text-decoration:none;margin-inline-end:auto;display:inline-flex;align-items:center;min-height:44px;min-width:44px}
 .nav-links{display:flex;gap:10px}
 .nav-links a{color:var(--text);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;min-height:44px;padding:0 8px}
 .nav-links a:hover{color:var(--brand)}
@@ -1039,7 +1070,9 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .btn{transition:transform .25s ease,box-shadow .25s ease,background .25s ease}
 .btn:hover{background:var(--brand-dark);transform:translateY(-2px);box-shadow:0 10px 24px -10px color-mix(in srgb,var(--brand) 55%,transparent)}
 .grid-3{display:grid;gap:22px;grid-template-columns:1fr}
-@media(min-width:900px){.grid-3{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:900px){.grid-3{grid-template-columns:repeat(3,1fr)}
+.products-grid .product-card:first-child{grid-column:span 2}
+.products-grid .product-card:first-child .product-photo{aspect-ratio:16/8}}
 .card{background:var(--surface);border:var(--f-border-w) solid var(--border);border-radius:var(--f-radius);padding:24px;box-shadow:var(--f-card-shadow);position:relative;overflow:hidden;transition:transform .35s ease,box-shadow .35s ease}
 .card::before{content:'';position:absolute;inset-inline:0;top:0;height:3px;background:linear-gradient(90deg,var(--brand),var(--brand-dark));opacity:0;transition:opacity .35s}
 .card:hover{transform:translateY(-6px);box-shadow:0 18px 44px -16px color-mix(in srgb,var(--brand) 35%,rgba(0,0,0,.25))}
@@ -1058,14 +1091,15 @@ textarea{min-height:120px}
 .menu-item h3{margin:0 0 4px}
 .menu-item p{margin:0;color:var(--text-muted)}
 .menu-body{flex:1}
-.menu-thumb{width:84px;height:84px;object-fit:cover;border-radius:var(--f-radius-sm);flex:none}
+.menu-thumb{width:112px;height:112px;object-fit:cover;border-radius:var(--f-radius-sm);flex:none}
+.menu-item.flip{flex-direction:row-reverse}
 .product-card{display:flex;flex-direction:column;gap:10px}
 .product-card h3,.product-card p{margin:0}
 .product-card p{color:var(--text-muted)}
 .product-photo{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--f-radius-sm)}
 .product-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto}
 .product-foot .btn{margin-top:0;padding:9px 20px}
-.product-price{color:var(--brand);font-size:1.15rem;white-space:nowrap}
+.product-price{color:var(--price);font-size:1.15rem;white-space:nowrap}
 .live-dot{color:#2ecc71;font-size:.65em;vertical-align:middle;margin-inline-start:10px;animation:live-pulse 2s infinite}
 .order-form{display:grid;gap:8px;margin-top:10px;max-width:320px}
 .order-form input{padding:9px 12px;border:var(--f-border-w) solid var(--border);border-radius:var(--f-radius-sm);font:inherit;background:var(--surface);color:var(--text)}
@@ -1076,7 +1110,7 @@ textarea{min-height:120px}
 .contact-info a:hover{text-decoration:underline}
 .socials a{color:inherit;font-weight:600}
 @keyframes live-pulse{0%,100%{opacity:1}50%{opacity:.35}}
-.menu-price{color:var(--brand);white-space:nowrap;font-size:1.1rem}
+.menu-price{color:var(--price);white-space:nowrap;font-size:1.1rem}
 .tier{display:flex;flex-direction:column;gap:10px}
 .tier.featured{border-color:var(--brand);box-shadow:0 12px 34px -14px color-mix(in srgb,var(--brand) 45%,transparent)}
 .tier-price{font-size:1.05rem}
@@ -1089,6 +1123,14 @@ textarea{min-height:120px}
 .faq-item{border:var(--f-border-w) solid var(--border);border-radius:var(--f-radius-sm);background:var(--surface);padding:0 18px;margin-bottom:10px}
 .faq-item summary{cursor:pointer;padding:14px 0;font-weight:700;min-height:44px;display:flex;align-items:center}
 .faq-item p{color:var(--text-muted);padding-bottom:14px;margin:0}
+.cta-band{background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:var(--on-brand)}
+.cta-inner{display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap}
+.cta-band h2{margin:0 0 6px;padding-bottom:0}
+.cta-band h2::after{content:none}
+.cta-text{margin:0;opacity:.92;max-width:52ch}
+.btn-invert{background:var(--on-brand);color:var(--brand);margin-top:0}
+.btn-invert:hover{background:color-mix(in srgb,var(--on-brand) 88%,var(--brand))}
+main > .section:nth-of-type(even):not(.band):not(.stats-band):not(.cta-band){background:color-mix(in srgb,var(--tint) 16%,transparent)}
 .stats-band{background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:var(--on-brand)}
 .stats-row{display:flex;gap:34px;flex-wrap:wrap;justify-content:center;text-align:center}
 .stat strong{display:block;font-size:2.2rem;line-height:1.1}
@@ -1101,6 +1143,14 @@ textarea{min-height:120px}
 @media (prefers-reduced-motion: reduce){[data-reveal]{opacity:1;transform:none;transition:none}.card,.btn{transition:none}}
 .credits{font-size:.85rem;opacity:.8}
 .credits a{color:inherit}
+
+/* The family layer rides LAST on purpose. It used to sit at the top, where
+   every rule it wrote below :root — the elegant flat band, the bold diagonal,
+   the brutalist card border, the roomier sections — was silently cancelled by
+   the equal-specificity base rules that followed it. Only the variables
+   survived, which is precisely why every project looked like its sibling.
+   Last wins; the identity is now real below the token line too. */
+${familyCss(family)}
 `;
 }
 
@@ -1284,7 +1334,7 @@ export class ReactProjectTool extends BaseTool {
         const componentTemplates: Record<string, () => string> = {
             Navbar: fileNavbarJsx, Hero: fileHeroJsx, Features: fileFeaturesJsx,
             Menu: fileMenuJsx, Products: fileProductsJsx, Pricing: filePricingJsx, Testimonials: fileTestimonialsJsx,
-            Faq: fileFaqJsx, Stats: fileStatsJsx, Contact: fileContactJsx, Footer: fileFooterJsx,
+            Faq: fileFaqJsx, Stats: fileStatsJsx, Cta: fileCtaJsx, Contact: fileContactJsx, Footer: fileFooterJsx,
         };
         const files: Record<string, string> = {
             'package.json': filePackageJson(content.brand),

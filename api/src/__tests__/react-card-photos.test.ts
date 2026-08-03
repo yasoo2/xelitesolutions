@@ -38,6 +38,10 @@ jest.mock('../core/design/photo-sources', () => {
             // needs more than one hit to skip into.
             const candidates = [0, 1, 2].map(i => ({
                 url: `http://stub-archive.test/photo/${encodeURIComponent(query)}-${i}.png`,
+                // preview renditions for the byte-diet cases: a good one, and
+                // a deliberately tiny one that must FALL BACK to the full file
+                preview: /previewcase/.test(query) ? `http://stub-archive.test/photo/${encodeURIComponent(query)}-${i}-preview.png`
+                    : /tinyprev/.test(query) ? `http://stub-archive.test/photo/${encodeURIComponent(query)}-${i}-tiny.png` : undefined,
                 title: query,                      // identical title → passes the REAL relevance gate
                 tags: [],
                 creator: `Photographer ${query.split(' ')[0]}`,
@@ -54,17 +58,21 @@ describe('per-dish photos — the REAL pipeline against a stub archive', () => {
     let artifactDir: string;
     let projDir: string;
     let guardFetch: any;
+    const fetched: string[] = [];
 
     beforeAll(() => {
         const { iconPng } = require('../core/design/pwa');
         const png: Buffer = iconPng(640, '#b45a2b');   // a real 640px PNG — passes the real dimension gate
+        const tiny: Buffer = iconPng(320, '#b45a2b');  // too small for the card gate — must be rejected
         guardFetch = (global as any).fetch;
         (global as any).fetch = async (url: any) => {
             if (!String(url).startsWith(ARCHIVE)) return guardFetch(url);   // anything else still trips the network ban
+            fetched.push(String(url));
+            const body = /-tiny\.png$/.test(String(url)) ? tiny : png;
             return {
                 ok: true, status: 200,
                 headers: { get: (k: string) => (k.toLowerCase() === 'content-type' ? 'image/png' : null) },
-                arrayBuffer: async () => png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength),
+                arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength),
             };
         };
         artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-cards-art-'));
@@ -114,6 +122,29 @@ describe('per-dish photos — the REAL pipeline against a stub archive', () => {
         expect(r.images[1]).toBeTruthy();
         expect(r.images[0]!.src).not.toBe(r.images[1]!.src);   // four cards never share one picture
         for (const img of r.images) expect(fs.existsSync(path.join(projDir, 'public', img!.src))).toBe(true);
+    });
+
+    it('BYTE DIET: the archive PREVIEW is fetched first and suffices when it passes the gates', async () => {
+        const { fetchCardImages } = require('../modules/tools/definitions/ReactProjectTool');
+        fetched.length = 0;
+        const r = await fetchCardImages({ subjects: ['previewcase roast platter'], projDir, hue: 20, artifactDir });
+        expect(r.images[0]).toBeTruthy();
+        expect(fetched.some(u => u.endsWith('-preview.png'))).toBe(true);
+        expect(fetched.some(u => /-0\.png$/.test(u))).toBe(false);       // the full file was never needed
+    });
+
+    it('…and a too-small preview FALLS BACK to the full file, same gates', async () => {
+        const { fetchCardImages } = require('../modules/tools/definitions/ReactProjectTool');
+        fetched.length = 0;
+        const r = await fetchCardImages({ subjects: ['tinyprev grill tray'], projDir, hue: 20, artifactDir });
+        expect(r.images[0]).toBeTruthy();
+        const tinyAt = fetched.findIndex(u => u.endsWith('-tiny.png'));
+        const fullAt = fetched.findIndex(u => /-0\.png$/.test(u));
+        expect(tinyAt).toBeGreaterThanOrEqual(0);
+        expect(fullAt).toBeGreaterThan(tinyAt);                          // preview tried FIRST, full rescued it
+        const onDisk = path.join(projDir, 'public', r.images[0]!.src);
+        const { iconPng } = require('../core/design/pwa');
+        expect(fs.statSync(onDisk).size).toBe(iconPng(640, '#b45a2b').length);   // the 640px file is what shipped
     });
 
     it('the avatar slot rides the same batched call — a real portrait lands in public/', async () => {

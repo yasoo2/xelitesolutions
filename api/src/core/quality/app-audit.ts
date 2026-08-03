@@ -66,9 +66,18 @@ export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
+        const heavyImages: string[] = [];
         page.on('pageerror', (e: any) => pageErrors.push(String(e).slice(0, 120)));
         page.on('console', (m: any) => { if (m.type() === 'error') consoleErrors.push(String(m.text()).slice(0, 120)); });
-        page.on('response', (r: any) => { if (r.status() >= 400) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`); });
+        page.on('response', (r: any) => {
+            if (r.status() >= 400) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
+            try {
+                const len = Number(r.headers()['content-length'] || 0);
+                if (len > 400_000 && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(r.url())) {
+                    heavyImages.push(`${Math.round(len / 1024)}KB ${r.url().slice(-50)}`);
+                }
+            } catch { /* headers optional */ }
+        });
         await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
 
         // The declared webfont must actually LOAD — a stack that names Cairo
@@ -117,6 +126,7 @@ export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number
         if (dom.h1s !== 1) findings.push({ id: 'h1_count', severity: 'low', detail: `عدد h1 = ${dom.h1s} (المطلوب 1)` });
         if (dom.hasToggle && !toggleWorks) findings.push({ id: 'theme_toggle_dead', severity: 'medium', detail: 'زر الوضع الليلي لا يغيّر الألوان فعلياً' });
         if (dom.fontLoaded === false) findings.push({ id: 'webfont_missing', severity: 'medium', detail: `الخط المعلن «${dom.declaredFont}» لم يُحمَّل فعلياً — ملفاته غائبة` });
+        if (heavyImages.length) findings.push({ id: 'heavy_images', severity: 'low', detail: `${heavyImages.length} صورة ثقيلة (>400KB): ${heavyImages[0]}` });
 
         return { score: scoreOf(findings), findings };
     } catch (e: any) {

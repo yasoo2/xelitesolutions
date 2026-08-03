@@ -359,29 +359,44 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
         const r = { title: c.title, description: c.description, tags: c.tags };
         const src = c.url.trim();
         if (!src) continue;
+        // BYTE DIET: archives often offer a smaller rendition (preview). A
+        // 602KB original in a hero the visitor sees at 800px is bandwidth
+        // burned (field measurement). Try the preview FIRST — it must pass
+        // the very same type/size/dimension gates — and only fall back to
+        // the full file when the preview is missing or too small.
+        const candidateUrls = [String(c.preview || '').trim(), src].filter(Boolean).filter((u, i, a) => a.indexOf(u) === i);
         // RELEVANCE. Keyword search returns whatever it likes: a build for a
         // software consultancy came back with a photo credited to "7th Army
         // Training Command" — a military exercise on a consulting page. Require
         // the result's own metadata to share a meaningful word with the subject
         // that was asked for, so an unrelated hit is skipped rather than shipped.
         if (!isRelevant(searchQuery, r)) continue;
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), timeoutMs);
-        try {
-            const res = await fetch(src, { signal: ctrl.signal, headers: { 'User-Agent': 'Joe-AI-Agent' } });
-            if (!res.ok) continue;
-            const contentType = String(res.headers.get('content-type') || '');
-            if (!contentType.startsWith('image/')) continue;
-            const buf = Buffer.from(await res.arrayBuffer());
-            if (!buf.length || buf.length > 6_000_000) continue;
-            // A 200px thumbnail stretched across a hero looks worse than no photo
-            // at all, and a portrait crammed into a wide band looks broken. Judge
-            // the actual file, not the metadata, which is often missing.
-            const dim = imageSize(buf) || (c.width && c.height ? { width: c.width, height: c.height } : null);
-            const spec = SLOTS[slot];
-            // Judged against what this position actually needs, not one global
-            // minimum: an avatar can be 400px, a hero cannot.
-            if (dim && dim.width < Math.min(600, spec.minWidth)) continue;
+        let picked: { buf: Buffer; dim: { width: number; height: number } | null; contentType: string } | null = null;
+        for (const candidateUrl of candidateUrls) {
+            const ctrl = new AbortController();
+            const t2 = setTimeout(() => ctrl.abort(), timeoutMs);
+            try {
+                const res = await fetch(candidateUrl, { signal: ctrl.signal, headers: { 'User-Agent': 'Joe-AI-Agent' } });
+                if (!res.ok) continue;
+                const contentType = String(res.headers.get('content-type') || '');
+                if (!contentType.startsWith('image/')) continue;
+                const buf = Buffer.from(await res.arrayBuffer());
+                if (!buf.length || buf.length > 6_000_000) continue;
+                // A 200px thumbnail stretched across a hero looks worse than no photo
+                // at all, and a portrait crammed into a wide band looks broken. Judge
+                // the actual file, not the metadata, which is often missing.
+                const dim = imageSize(buf) || (c.width && c.height ? { width: c.width, height: c.height } : null);
+                const spec = SLOTS[slot];
+                // Judged against what this position actually needs, not one global
+                // minimum: an avatar can be 400px, a hero cannot.
+                if (dim && dim.width < Math.min(600, spec.minWidth)) continue;   // preview too small → the full file is next
+                picked = { buf, dim, contentType };
+                break;
+            } catch { /* try the next rendition */ } finally { clearTimeout(t2); }
+        }
+        if (!picked) continue;
+        {
+            const { buf, dim, contentType } = picked;
             if (skip > 0) { skip--; continue; }
             const dir = imagesDir(artifactDir);
             fs.mkdirSync(dir, { recursive: true });
@@ -403,7 +418,7 @@ export async function sourceImage(artifactDir: string, query: string, timeoutMs 
                 height: dim?.height,
                 bytes: buf.length,
             };
-        } catch { /* try the next result */ } finally { clearTimeout(t); }
+        }
     }
     return null;
 }
