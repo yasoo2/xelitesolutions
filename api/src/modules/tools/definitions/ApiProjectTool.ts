@@ -423,8 +423,16 @@ export class ApiProjectTool extends BaseTool {
             'README.md': fileReadme(brand, resource, labelAr),
             '.gitignore': 'node_modules\ndata.db\ndata.json\n',
         };
+        // Streamed to the Logs panel as each file lands — a backend build is
+        // watched the same way a frontend build is.
         for (const [rel, body] of Object.entries(files)) {
             fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
+            try {
+                broadcast({
+                    type: 'file_stream', sessionId,
+                    data: { file: rel, chunk: body, done: true, bytes: Buffer.byteLength(body), at: Date.now(), label: 'مكتوب' },
+                } as any);
+            } catch { /* UI optional — the file is already on disk */ }
         }
         term(`api_project: scaffolded ${Object.keys(files).length} files in ${proj}`);
 

@@ -39,7 +39,7 @@ const check = (name: string, ok: boolean, detail = '') => {
 
 // The ONLY seam in the photo run: the archive answers from a REAL local
 // server. Everything past it — download, dimension gate, copy, build — is live.
-const state = { baseUrl: '' };
+const state = { baseUrl: '', n: 0 };
 const Module = require('module');
 const origLoad = Module._load;
 Module._load = function (request: string, parent: any, isMain: boolean) {
@@ -47,14 +47,17 @@ Module._load = function (request: string, parent: any, isMain: boolean) {
     if (/photo-sources$/.test(String(request))) {
         return {
             ...out,
+            // A real archive answers with a SHELF of photographs, which is what
+            // lets the engine's variant machinery hand a different one to each
+            // repeat of the same subject (four gallery cells, four pictures).
             searchAllSources: async (query: string) => ({
-                candidates: [{
-                    url: `${state.baseUrl}/photo/${encodeURIComponent(query)}.png`,
+                candidates: [0, 1, 2, 3, 4, 5].map(i => ({
+                    url: `${state.baseUrl}/photo/${encodeURIComponent(query)}-${i}.png`,
                     title: query, tags: [], creator: 'Archive Photographer',
                     license: 'CC BY 2.0', landing: `${state.baseUrl}/landing/${encodeURIComponent(query)}`,
                     provider: 'stub-archive',
-                }],
-                outcomes: [{ provider: 'stub-archive', ok: true, count: 1 }],
+                })),
+                outcomes: [{ provider: 'stub-archive', ok: true, count: 6 }],
             }),
         };
     }
@@ -81,10 +84,14 @@ async function main() {
     fs.mkdirSync(process.env.JOE_CHAT_STORE_DIR, { recursive: true });
 
     const { iconPng } = require('../../core/design/pwa');
-    const png: Buffer = iconPng(640, '#b45a2b');
-    const archive = http.createServer((_req, res) => {
+    // DIFFERENT BYTES per photograph — the engine files a download under its
+    // content hash, so four identical pictures would collapse into one file
+    // (which is exactly what the gallery's dedupe is there to prevent).
+    const HUES = ['#b45a2b', '#2b6cb4', '#2bb46c', '#b42b8f', '#8f6c2b', '#3a3a72'];
+    const archive = http.createServer((req, res) => {
+        const n = Number((String(req.url || '').match(/-(\d+)\.png$/) || [])[1] || 0);
         res.writeHead(200, { 'content-type': 'image/png' });
-        res.end(png);
+        res.end(iconPng(640, HUES[n % HUES.length]) as Buffer);
     });
     archive.listen(0, '127.0.0.1');
     await new Promise<void>(r => archive.once('listening', () => r()));
@@ -95,7 +102,7 @@ async function main() {
     const fancy: any = await new ReactProjectTool().execute(
         { request: 'ابنِ متجر react فاخر للعطور', root, skipImages: true }, { sessionId: 'du-a' });
     const bold: any = await new ReactProjectTool().execute(
-        { request: 'ابنِ موقع react لمنصة تقنية بتصميم جريء', root }, { sessionId: 'du-b' });
+        { request: 'ابنِ تطبيق ويب react لإدارة المهام بتصميم جريء', root }, { sessionId: 'du-b' });
     check('both built for real', fancy.output?.built === true && bold.output?.built === true);
     const fontsA = fs.readdirSync(path.join(fancy.output.path, 'src', 'styles', 'fonts'));
     check('the elegant app ships REAL Amiri + Cairo woff2 files with the OFL notice',
@@ -292,6 +299,56 @@ async function main() {
     });
     check('a build with NO photograph centres its hero on purpose — never a hole where a picture should be',
         centeredSeen.centered && centeredSeen.noHoles && centeredSeen.align === 'center', JSON.stringify(centeredSeen));
+
+    console.log('\n[8] القصة والخطوات والمقارنة والموقع — أقسام حقيقية لا حشو');
+    const storySeen = await pC.evaluate(() => {
+        const media = document.querySelector('.story-media img') as HTMLImageElement | null;
+        const body = document.querySelector('.story-body') as HTMLElement | null;
+        const shots = [...document.querySelectorAll('.gallery-mosaic img')] as HTMLImageElement[];
+        const steps = [...document.querySelectorAll('.steps .step')] as HTMLElement[];
+        return {
+            storyPainted: !!media && media.naturalWidth > 0,
+            // The story's photograph was BORROWED from the mosaic — it must
+            // not appear in both places on the same page.
+            notRepeated: !!media && !shots.some(s => s.src === media.src),
+            sideBySide: !!media && !!body && Math.abs(media.getBoundingClientRect().top - body.getBoundingClientRect().top) < 500
+                && (media.getBoundingClientRect().left >= body.getBoundingClientRect().right - 2
+                    || body.getBoundingClientRect().left >= media.getBoundingClientRect().right - 2),
+            paras: document.querySelectorAll('.story-body p').length,
+            steps: steps.length,
+            stepNums: [...document.querySelectorAll('.step-num')].map(n => (n.textContent || '').trim()),
+            // No saved business profile in this proof → no invented pin.
+            location: !!document.querySelector('#location'),
+        };
+    });
+    check('the STORY runs beside its own photograph, borrowed from the mosaic and never repeated there',
+        storySeen.storyPainted && storySeen.notRepeated && storySeen.sideBySide && storySeen.paras === 2, JSON.stringify(storySeen));
+    check('the HOW-IT-WORKS steps are numbered 1·2·3', storySeen.steps === 3 && storySeen.stepNums.join('') === '123', JSON.stringify(storySeen));
+    check('with NO saved address the location block renders nothing — an invented pin is worse than no pin',
+        storySeen.location === false, String(storySeen.location));
+
+    const railSeen = await pC.evaluate(() => {
+        const rail = document.querySelector('.quote-rail') as HTMLElement | null;
+        return { snap: rail ? getComputedStyle(rail).scrollSnapType : '', flow: rail ? getComputedStyle(rail).gridAutoFlow : '' };
+    });
+    check('the testimonials ride a snap rail on narrow screens (row grid on the desktop)',
+        !!railSeen.flow, JSON.stringify(railSeen));
+
+    const compareSeen = await pB.evaluate(() => {
+        const table = document.querySelector('table.compare') as HTMLTableElement | null;
+        if (!table) return { rows: 0, cols: 0, yes: 0, no: 0, scrolls: false, featured: 0 };
+        return {
+            rows: table.querySelectorAll('tbody tr').length,
+            cols: table.querySelectorAll('thead th').length,
+            yes: table.querySelectorAll('.yes').length,
+            no: table.querySelectorAll('.no').length,
+            scrolls: getComputedStyle(table.parentElement as HTMLElement).overflowX === 'auto',
+            featured: table.querySelectorAll('.is-featured').length,
+        };
+    });
+    check('the tech platform ships a real COMPARISON TABLE built from its own tiers',
+        compareSeen.rows >= 4 && compareSeen.cols === 4 && compareSeen.yes > 0 && compareSeen.no > 0
+        && compareSeen.scrolls && compareSeen.featured > 0, JSON.stringify(compareSeen));
 
     await browser.close();
     sA.close(); sB.close(); sC.close(); archive.close();

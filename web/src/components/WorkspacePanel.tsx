@@ -302,6 +302,25 @@ function BuildStatusStrip({ status }: { status: BuildStatusState }) {
     );
 }
 
+/** A sticky divider so the files and the log lines read as two ORDERED
+ *  sections instead of one undifferentiated stream. */
+function SectionHeading({ label, note }: { label: string; note?: string }) {
+    return (
+        <div dir="rtl" style={{
+            position: 'sticky', top: 0, zIndex: 1,
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '5px 12px', margin: '2px 0 4px',
+            background: 'var(--joe-bg-secondary, rgba(15,15,18,.92))',
+            borderBottom: '1px solid rgba(255,255,255,.07)',
+            fontSize: 11, fontWeight: 700, letterSpacing: 0,
+            color: 'var(--joe-text-muted, #a1a1aa)',
+        }}>
+            <span>{label}</span>
+            {note ? <span style={{ marginInlineStart: 'auto', fontWeight: 500 }}>{note}</span> : null}
+        </div>
+    );
+}
+
 function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs: string[]; liveFiles?: LiveFile[]; buildStatus?: BuildStatusState | null }) {
     const { t } = useTranslation();
     const [filter, setFilter] = useState('');
@@ -365,8 +384,15 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
                 {buildStatus && <BuildStatusStrip status={buildStatus} />}
                 {liveFiles.length > 0 && (
                     <div style={{ paddingBottom: 4 }}>
+                        <SectionHeading
+                            label={`الملفات (${liveFiles.length})`}
+                            note={`${liveFiles.filter(f => f.done).length} مكتمل`}
+                        />
                         {liveFiles.map(f => <LiveFileCard key={f.file} f={f} />)}
                     </div>
+                )}
+                {liveFiles.length > 0 && filtered.length > 0 && (
+                    <SectionHeading label={`السجل (${filtered.length})`} />
                 )}
                 {filtered.length === 0 && liveFiles.length === 0 ? (
                     <div style={{

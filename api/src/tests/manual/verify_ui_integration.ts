@@ -115,6 +115,25 @@ async function main() {
         termLines.filter(l => /install|build|QA/.test(l)).slice(0, 3).join(' | '));
     const thinking = events.filter(e => /thinking/.test(String(e?.type)) && /[؀-ۿ]/.test(JSON.stringify(e)));
     check('شريط التفكير استقبل مراحل عربية حية', thinking.length >= 2, `stages=${thinking.length}`);
+    // THE FILES, LIVE. The field report was «شاشة اللوجز تفتح لكن لا تعرض
+    // اللوجز والملفات التي تبنى» — a React build emitted no file_stream at
+    // all, so the panel opened on an empty list of files.
+    const fileEvents = ofType('file_stream').map(e => e.data || {});
+    check('لوحة «Logs» استقبلت ملفات حية من بناء React', fileEvents.length >= 10, `files=${fileEvents.length}`);
+    check('…بأسماء حقيقية ومحتوى حقيقي (package.json + App.jsx + base.css)',
+        ['package.json', 'src/App.jsx', 'src/styles/base.css'].every(f => fileEvents.some((d: any) => d.file === f))
+        && fileEvents.every((d: any) => typeof d.chunk === 'string' && d.chunk.length > 0 && d.done === true),
+        fileEvents.map((d: any) => d.file).slice(0, 6).join(','));
+    check('…وبالترتيب الذي كُتبت به فعلاً على القرص',
+        fileEvents.findIndex((d: any) => d.file === 'package.json') < fileEvents.findIndex((d: any) => d.file === 'src/App.jsx'),
+        fileEvents.map((d: any) => d.file).join(','));
+    // The panel takes ONLY the 'panel-terminal' copy — the same line is
+    // broadcast to four ids, and four copies per line read as a broken log.
+    const panelLines = events.filter(e => e?.type === 'terminal_output' && e.id === 'panel-terminal');
+    check('بثّ الطرفية يصل للوحة عبر معرّف واحد (بلا تكرار رباعي)',
+        panelLines.length >= 10 && panelLines.length * 4 >= termLines.length && panelLines.length < termLines.length,
+        `panel=${panelLines.length} total=${termLines.length}`);
+
     const pv = ofType('preview_ready').map(e => String(e?.data?.url || ''));
     check('لوحة المعاينة استقبلت preview_ready برابط /project-preview', pv.some(u => u.includes('/project-preview/ui-wire/')), pv.join(' | ').slice(0, 120));
 

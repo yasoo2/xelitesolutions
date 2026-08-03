@@ -286,6 +286,10 @@ export default function JoeIDELayout({
     // ... inside component ...
 
     // Logs and Problems State
+    /** A long build streams thousands of lines; the panel keeps the last
+     *  MAX_LOG_LINES so a two-hour session cannot grow the tab out of memory. */
+    const MAX_LOG_LINES = 4000;
+    const capLogs = (next: string[]) => (next.length > MAX_LOG_LINES ? next.slice(next.length - MAX_LOG_LINES) : next);
     const [logs, setLogs] = useState<string[]>([]);
     const [problems, setProblems] = useState<any[]>([]);
     /**
@@ -400,7 +404,29 @@ export default function JoeIDELayout({
                     const t = typeof event.data === 'string' ? event.data : String(event.data?.text ?? '');
                     if (t) setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${t}`]);
                 } else if (event.type === 'terminal_output') {
-                    // Optional: Add terminal output to logs? Maybe too noisy.
+                    // THE BUILD'S REAL VOICE. Every builder narrates through
+                    // terminal_output — npm install, the vite build, the photo
+                    // notes, the audit verdict. The Logs panel used to ignore
+                    // all of it and showed four generic lines instead.
+                    //
+                    // The same line is broadcast to four ids so every terminal
+                    // tab can pick it up; taking ONLY 'panel-terminal' keeps it
+                    // from landing here four times over.
+                    if (event.id === 'panel-terminal') {
+                        const lines = String(event.data ?? '')
+                            .replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')     // ANSI colours never reach the DOM
+                            .split(/\r?\n/).map(l => l.trimEnd()).filter(Boolean);
+                        if (lines.length) {
+                            const stamp = new Date().toLocaleTimeString();
+                            setLogs(prev => capLogs([...prev, ...lines.map(l => `[${stamp}] ${l}`)]));
+                        }
+                    }
+                } else if (event.type === 'thinking_detail' && event.data?.detail) {
+                    // The stage narration the user already sees in chat — in
+                    // the log it is the spine the terminal lines hang from.
+                    setLogs(prev => capLogs([...prev, `[${new Date().toLocaleTimeString()}] ${String(event.data.detail)}`]));
+                } else if (event.type === 'tool_started' && (event.data?.name || event.data?.tool)) {
+                    setLogs(prev => capLogs([...prev, `[${new Date().toLocaleTimeString()}] ▶ ${String(event.data.name || event.data.tool)}`]));
                 }
 
                 // Problems

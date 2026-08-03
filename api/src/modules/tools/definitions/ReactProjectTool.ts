@@ -53,6 +53,18 @@ interface ReactContent {
      *  renders NOTHING rather than an empty section. */
     galleryTitle: string;
     gallery: Array<{ src: string; alt: string }>;
+    /** The story block — copy beside one photograph BORROWED from the mosaic
+     *  (a story worth telling costs no extra download). */
+    storyTitle: string;
+    storyBody: string[];
+    storyImage?: { src: string; alt: string } | null;
+    /** How it works, numbered — the section every service page needs. */
+    stepsTitle: string;
+    steps: Array<{ title: string; text: string }>;
+    /** The tier comparison matrix — built from `tiers`, never authored twice. */
+    compareTitle: string;
+    /** The location block. Renders ONLY from real business memory. */
+    locationTitle: string;
     /** Kind-specific blocks — only the ones the kind's section list uses are rendered. */
     menuTitle: string;
     menu: Array<{ name: string; desc: string; price: string; img?: { src: string; alt: string } | null }>;
@@ -209,16 +221,16 @@ export function heroLayoutFor(kind: PageKind, family: DesignFamily): 'overlay' |
 
 export function sectionsForKind(kind: PageKind): string[] {
     switch (kind) {
-        case 'restaurant': return ['Hero', 'Menu', 'Gallery', 'Testimonials', 'Cta', 'Contact'];
+        case 'restaurant': return ['Hero', 'Menu', 'Gallery', 'Story', 'Steps', 'Testimonials', 'Cta', 'Location', 'Contact'];
         // Real product CARDS with photos and prices — a store sells things,
         // not subscription tiers. Pricing stays for app/dashboard kinds.
-        case 'store': return ['Hero', 'Products', 'Gallery', 'Testimonials', 'Cta', 'Faq', 'Contact'];
-        case 'landing': return ['Hero', 'Features', 'Stats', 'Testimonials', 'Cta', 'Contact'];
-        case 'portfolio': return ['Hero', 'Features', 'Gallery', 'Stats', 'Cta', 'Contact'];
+        case 'store': return ['Hero', 'Products', 'Gallery', 'Story', 'Steps', 'Testimonials', 'Cta', 'Faq', 'Location', 'Contact'];
+        case 'landing': return ['Hero', 'Features', 'Steps', 'Stats', 'Testimonials', 'Cta', 'Contact'];
+        case 'portfolio': return ['Hero', 'Features', 'Gallery', 'Story', 'Stats', 'Cta', 'Contact'];
         case 'dashboard':
-        case 'app': return ['Hero', 'Features', 'Pricing', 'Cta', 'Faq', 'Contact'];
-        case 'event': return ['Hero', 'Stats', 'Cta', 'Faq', 'Contact'];
-        default: return ['Hero', 'Features', 'Cta', 'Faq', 'Contact'];
+        case 'app': return ['Hero', 'Features', 'Steps', 'Pricing', 'Compare', 'Cta', 'Faq', 'Contact'];
+        case 'event': return ['Hero', 'Steps', 'Stats', 'Cta', 'Faq', 'Contact'];
+        default: return ['Hero', 'Features', 'Steps', 'Cta', 'Faq', 'Contact'];
     }
 }
 
@@ -257,6 +269,30 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
                 : ['إطلاق خلال دقائق', 'يعمل على كل الأجهزة', 'دعم عربي كامل'],
         galleryTitle: restaurant ? 'من داخل المطعم' : store ? 'من المعرض' : 'أعمالنا',
         gallery: [],
+        storyTitle: restaurant ? 'حكايتنا' : store ? 'عن علامتنا' : 'قصتنا',
+        storyBody: restaurant
+            ? ['بدأنا بمطبخ صغير ووصفة واحدة، والباقي كتبه الزبائن الذين عادوا في اليوم التالي.',
+                'اليوم نطبخ بالمكونات نفسها والمعيار نفسه: لو ما يعجبنا نحن، لا يخرج من المطبخ.']
+            : store
+                ? ['اخترنا أن نبيع أقل ونختار أفضل — كل قطعة تمر بفحص قبل أن تصل إليك.',
+                    'التغليف والشحن جزء من المنتج عندنا، لأن التجربة تبدأ من لحظة الفتح.']
+                : ['بدأ المشروع بحاجة حقيقية لم نجد لها حلاً مريحاً، فبنينا الحل الذي كنا نبحث عنه.',
+                    'نطوّره كل أسبوع بملاحظات المستخدمين، والأولوية دائماً لما يوفّر وقتك.'],
+        storyImage: null,
+        stepsTitle: restaurant ? 'كيف تحجز؟' : store ? 'كيف تطلب؟' : 'كيف يعمل؟',
+        steps: restaurant
+            ? [{ title: 'اختر الوقت', text: 'حدد اليوم وعدد الأشخاص من نموذج التواصل.' },
+                { title: 'نؤكد لك', text: 'نرد بتأكيد الحجز خلال دقائق في أوقات العمل.' },
+                { title: 'تفضّل', text: 'طاولتك جاهزة عند وصولك — بلا انتظار.' }]
+            : store
+                ? [{ title: 'اختر منتجك', text: 'تصفح المنتجات واختر ما يناسبك.' },
+                    { title: 'أكّد الطلب', text: 'اطلب مباشرة من صفحة المنتج بخطوة واحدة.' },
+                    { title: 'يصلك', text: 'نجهّز الطلب ونشحنه بتغليف يليق به.' }]
+                : [{ title: 'أنشئ حسابك', text: 'دقيقتان وأنت جاهز — بلا إعدادات معقدة.' },
+                    { title: 'اربط بياناتك', text: 'استورد ما لديك وابدأ من حيث توقفت.' },
+                    { title: 'انطلق', text: 'تابع النتائج من لوحة واحدة واضحة.' }],
+        compareTitle: 'مقارنة الباقات',
+        locationTitle: restaurant ? 'موقعنا وأوقات العمل' : 'أين تجدنا',
         menuTitle: 'قائمة الطعام',
         menu: [
             { name: 'طبق اليوم', desc: 'وصفة الشيف الموسمية بمكونات طازجة', price: '48 ر.س' },
@@ -317,6 +353,30 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
                 : ['Live in minutes', 'Works on every device', 'Real human support'],
         galleryTitle: restaurant ? 'Inside the room' : store ? 'The gallery' : 'Selected work',
         gallery: [],
+        storyTitle: restaurant ? 'Our story' : store ? 'About the brand' : 'How we got here',
+        storyBody: restaurant
+            ? ['We started with a small kitchen and one recipe; the rest was written by the guests who came back the next day.',
+                'The standard has not moved since: if we would not eat it, it does not leave the kitchen.']
+            : store
+                ? ['We chose to sell less and choose better — every piece is checked before it reaches you.',
+                    'Packaging and shipping are part of the product here, because the experience starts at the unboxing.']
+                : ['The project began as a real need with no comfortable answer, so we built the answer we were looking for.',
+                    'It ships every week on user feedback, and whatever saves your time goes first.'],
+        storyImage: null,
+        stepsTitle: restaurant ? 'How to book' : store ? 'How to order' : 'How it works',
+        steps: restaurant
+            ? [{ title: 'Pick a time', text: 'Choose the day and the party size in the contact form.' },
+                { title: 'We confirm', text: 'You get a confirmation within minutes during opening hours.' },
+                { title: 'Just arrive', text: 'Your table is ready — no waiting.' }]
+            : store
+                ? [{ title: 'Choose', text: 'Browse the products and pick what fits.' },
+                    { title: 'Order', text: 'One step, straight from the product card.' },
+                    { title: 'Delivered', text: 'We pack it properly and ship it out.' }]
+                : [{ title: 'Create an account', text: 'Two minutes, no complicated setup.' },
+                    { title: 'Bring your data', text: 'Import what you have and pick up where you left off.' },
+                    { title: 'Go', text: 'Follow the results from one clear dashboard.' }],
+        compareTitle: 'Compare the plans',
+        locationTitle: restaurant ? 'Find us & opening hours' : 'Where to find us',
         menuTitle: 'The menu',
         menu: [
             { name: 'Dish of the day', desc: 'The chef\'s seasonal recipe', price: '$18' },
@@ -563,6 +623,16 @@ ${c.features.map(f => `    { title: '${js(f.title)}', text: '${js(f.text)}' },`)
   heroLayout: '${js(c.heroLayout)}',
   perks: [${c.perks.map(p => `'${js(p)}'`).join(', ')}],
   galleryTitle: '${js(c.galleryTitle)}',
+  storyTitle: '${js(c.storyTitle)}',
+  storyBody: [${c.storyBody.map(p => `'${js(p)}'`).join(', ')}],
+  // BORROWED from the mosaic below — a story never costs another download.
+  storyImage: ${c.storyImage ? `{ src: '${js(c.storyImage.src)}', alt: '${js(c.storyImage.alt)}' }` : 'null'},
+  stepsTitle: '${js(c.stepsTitle)}',
+  steps: [
+${c.steps.map(t => `    { title: '${js(t.title)}', text: '${js(t.text)}' },`).join('\n')}
+  ],
+  compareTitle: '${js(c.compareTitle)}',
+  locationTitle: '${js(c.locationTitle)}',
   gallery: [
 ${c.gallery.map(g => `    { src: '${js(g.src)}', alt: '${js(g.alt)}' },`).join('\n')}
   ],
@@ -1015,7 +1085,7 @@ export default function Testimonials({ content }) {
     <section className="section" id="testimonials">
       <div className="wrap">
         <h2>{content.testimonialsTitle}</h2>
-        <div className="grid-3">
+        <div className="grid-3 quote-rail">
           {content.testimonials.map((t) => (
             <figure className="card quote" key={t.name}>
               <blockquote>“{t.quote}”</blockquote>
@@ -1027,6 +1097,140 @@ export default function Testimonials({ content }) {
               </figcaption>
             </figure>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+`;
+}
+
+/** The story — copy beside one photograph, or a typographic panel when the
+ *  archives gave nothing. The photo is BORROWED from the mosaic, so a story
+ *  never costs another download and never repeats a picture on the page. */
+function fileStoryJsx(): string {
+    return `import React from 'react';
+
+export default function Story({ content }) {
+  const img = content.storyImage;
+  return (
+    <section className={img ? 'section story' : 'section story story-plain'} id="story">
+      <div className="wrap story-grid">
+        <div className="story-body">
+          <h2>{content.storyTitle}</h2>
+          {(content.storyBody || []).map((p) => <p key={p}>{p}</p>)}
+        </div>
+        {img ? (
+          <figure className="story-media">
+            <img src={img.src} alt={img.alt} loading="lazy" decoding="async" />
+          </figure>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+`;
+}
+
+/** How it works — numbered, connected, and readable at a glance. */
+function fileStepsJsx(): string {
+    return `import React from 'react';
+
+export default function Steps({ content }) {
+  return (
+    <section className="section" id="steps">
+      <div className="wrap">
+        <h2>{content.stepsTitle}</h2>
+        <ol className="steps">
+          {content.steps.map((s, i) => (
+            <li className="step card" key={s.title}>
+              <span className="step-num" aria-hidden="true">{i + 1}</span>
+              <h3>{s.title}</h3>
+              <p>{s.text}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
+`;
+}
+
+/** The comparison matrix — assembled from the SAME tiers the cards render,
+ *  so a plan can never say one thing in the cards and another in the table. */
+function fileCompareJsx(): string {
+    return `import React from 'react';
+
+export default function Compare({ content }) {
+  const tiers = content.tiers || [];
+  if (tiers.length < 2) return null;
+  const rows = [];
+  for (const t of tiers) for (const f of t.features) if (!rows.includes(f)) rows.push(f);
+  const ar = content.isArabic !== false;
+  return (
+    <section className="section" id="compare">
+      <div className="wrap">
+        <h2>{content.compareTitle}</h2>
+        <div className="table-scroll">
+          <table className="compare">
+            <thead>
+              <tr>
+                <th scope="col">{ar ? 'الميزة' : 'Feature'}</th>
+                {tiers.map((t) => (
+                  <th scope="col" key={t.name} className={t.featured ? 'is-featured' : undefined}>{t.name}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((f) => (
+                <tr key={f}>
+                  <th scope="row">{f}</th>
+                  {tiers.map((t) => (
+                    <td key={t.name} className={t.featured ? 'is-featured' : undefined}>
+                      {t.features.includes(f)
+                        ? <span className="yes" role="img" aria-label={ar ? 'متوفر' : 'included'}>✓</span>
+                        : <span className="no" role="img" aria-label={ar ? 'غير متوفر' : 'not included'}>—</span>}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+`;
+}
+
+/** The location block — REAL address and hours from Joe's business memory,
+ *  with directions links that open the visitor's own map app. With no saved
+ *  address it renders NOTHING: an invented pin is worse than no pin. */
+function fileLocationJsx(): string {
+    return `import React from 'react';
+
+export default function Location({ content }) {
+  const c = content.contact;
+  if (!c || !c.address) return null;
+  const q = encodeURIComponent(c.address);
+  const ar = content.isArabic !== false;
+  return (
+    <section className="section" id="location">
+      <div className="wrap">
+        <h2>{content.locationTitle}</h2>
+        <div className="location-grid">
+          <div>
+            <p className="location-address">📍 {c.address}</p>
+            {c.hours ? <p className="location-hours">🕒 {c.hours}</p> : null}
+            {c.phone ? <p><a href={'tel:' + c.phone}>{c.phone}</a></p> : null}
+            <div className="hero-ctas">
+              <a className="btn" href={'https://www.google.com/maps/search/?api=1&query=' + q}
+                target="_blank" rel="noopener noreferrer">{ar ? 'الاتجاهات على الخريطة' : 'Directions'}</a>
+              {c.wa ? <a className="btn btn-ghost" href={c.wa} target="_blank" rel="noopener noreferrer">{ar ? 'واتساب' : 'WhatsApp'}</a> : null}
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -1263,6 +1467,9 @@ textarea{min-height:120px}
 .tier-price strong{font-size:2rem}
 .tier ul{margin:0;padding-inline-start:20px;color:var(--text-muted)}
 .tier .btn{margin-top:auto;align-self:flex-start}
+.quote-rail{grid-auto-flow:column;grid-auto-columns:minmax(280px,1fr);overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px;scrollbar-width:thin}
+.quote-rail > .quote{scroll-snap-align:start}
+@media(min-width:900px){.quote-rail{grid-auto-flow:row;overflow-x:visible;scroll-snap-type:none}}
 .quote blockquote{margin:0 0 10px;font-size:1.05rem;line-height:1.8}
 .quote figcaption{color:var(--text-muted);display:flex;align-items:center;gap:10px}
 .quote-avatar{width:52px;height:52px;border-radius:50%;object-fit:cover;flex:none}
@@ -1319,6 +1526,32 @@ main > .section:nth-of-type(even):not(.band):not(.stats-band):not(.cta-band){bac
 .footer-bottom{border-top:1px solid var(--border);padding-top:16px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center}
 .footer-bottom p{margin:0}
 .footer-bottom .credits{margin-inline-start:auto}
+.story-grid{display:grid;gap:clamp(24px,4vw,52px);align-items:center;grid-template-columns:1fr}
+@media(min-width:900px){.story-grid{grid-template-columns:1fr 1fr}
+.story:nth-of-type(even) .story-media{order:-1}}
+.story-body p{color:var(--text-muted);max-width:56ch}
+.story-media{margin:0;overflow:hidden;border-radius:var(--f-radius);box-shadow:var(--f-photo-shadow)}
+.story-media img{width:100%;display:block;aspect-ratio:4/5;object-fit:cover}
+.story-plain .story-body{max-width:70ch;margin-inline:auto;text-align:center}
+.story-plain .story-body p{margin-inline:auto}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:20px;grid-template-columns:1fr;counter-reset:step}
+@media(min-width:900px){.steps{grid-template-columns:repeat(3,1fr)}}
+.step{padding-top:34px}
+.step h3{margin:0 0 6px}
+.step p{margin:0;color:var(--text-muted)}
+.step-num{position:absolute;top:16px;inset-inline-start:24px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--brand);color:var(--on-brand);font-weight:800}
+.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.compare{width:100%;border-collapse:collapse;min-width:520px}
+.compare th,.compare td{padding:14px 16px;text-align:start;border-bottom:1px solid var(--border)}
+.compare thead th{background:color-mix(in srgb,var(--tint) 35%,transparent);font-weight:800}
+.compare tbody th{font-weight:600;color:var(--text-muted)}
+.compare td{text-align:center}
+.compare .is-featured{background:color-mix(in srgb,var(--brand) 10%,transparent)}
+.compare .yes{color:var(--price);font-weight:800}
+.compare .no{color:var(--text-muted)}
+.location-address{font-size:1.15rem;font-weight:700;margin:0 0 6px}
+.location-hours{margin:0 0 6px;color:var(--text-muted)}
+.location-grid a{color:inherit}
 
 /* The family layer rides LAST on purpose. It used to sit at the top, where
    every rule it wrote below :root — the elegant flat band, the bold diagonal,
@@ -1420,26 +1653,43 @@ export class ReactProjectTool extends BaseTool {
             const onHome = !multiPage || pages[0].sections.includes(target === 'menu' ? 'Menu' : target === 'products' ? 'Products' : 'Features');
             return { label, href: multiPage && !onHome ? `#/${target}` : `#${target}` };
         })();
-        // The hero ARCHETYPE and the navigation both come from what this build
-        // actually contains: the restaurant used to advertise a #features
-        // anchor it never rendered.
+        // The hero ARCHETYPE comes from the kind and the family; the
+        // navigation is built LATER, once it is known which sections will
+        // actually render (see buildNavLinks below).
         content.heroLayout = heroLayoutFor(kind, family);
         const SECTION_ANCHOR: Record<string, string> = {
-            Features: 'features', Menu: 'menu', Products: 'products', Gallery: 'gallery',
-            Pricing: 'pricing', Testimonials: 'testimonials', Faq: 'faq', Stats: 'stats', Contact: 'contact',
+            Features: 'features', Menu: 'menu', Products: 'products', Gallery: 'gallery', Story: 'story',
+            Steps: 'steps', Pricing: 'pricing', Compare: 'compare', Testimonials: 'testimonials',
+            Faq: 'faq', Stats: 'stats', Location: 'location', Contact: 'contact',
         };
         const SECTION_LABEL: Record<string, [string, string]> = {
             Features: ['المميزات', 'Features'], Menu: ['القائمة', 'Menu'], Products: ['المنتجات', 'Products'],
-            Gallery: ['المعرض', 'Gallery'], Pricing: ['الأسعار', 'Pricing'], Testimonials: ['آراء العملاء', 'Reviews'],
-            Faq: ['أسئلة شائعة', 'FAQ'], Stats: ['بالأرقام', 'Numbers'], Contact: [content.contactTitle, content.contactTitle],
+            Gallery: ['المعرض', 'Gallery'], Story: [content.storyTitle, content.storyTitle],
+            Steps: [content.stepsTitle, content.stepsTitle], Pricing: ['الأسعار', 'Pricing'],
+            Compare: ['المقارنة', 'Compare'], Testimonials: ['آراء العملاء', 'Reviews'],
+            Faq: ['أسئلة شائعة', 'FAQ'], Stats: ['بالأرقام', 'Numbers'],
+            Location: ['الموقع', 'Find us'], Contact: [content.contactTitle, content.contactTitle],
+        };
+        // A section that renders NOTHING must never appear in the navigation:
+        // the gallery with no photographs, the location with no saved address,
+        // the comparison with a single tier. Called after the photo step so
+        // the answers are facts, not guesses.
+        const willRender = (sec: string): boolean => {
+            if (sec === 'Gallery') return content.gallery.length > 0;
+            if (sec === 'Location') return !!(content as any).contact?.address;
+            if (sec === 'Compare') return content.tiers.length >= 2;
+            return true;
         };
         // On a multi-page app the anchors are ROUTES — «#menu» would drive the
         // hash router straight into its own 404 page.
-        (content as any).navLinks = multiPage
-            ? pages.map(p => ({ href: `#${p.path}`, label: isAr ? p.title : p.titleEn }))
-            : sections
-                .filter(s => SECTION_ANCHOR[s])
-                .map(s => ({ href: `#${SECTION_ANCHOR[s]}`, label: SECTION_LABEL[s][isAr ? 0 : 1] }));
+        const buildNavLinks = () => {
+            (content as any).navLinks = multiPage
+                ? pages.map(p => ({ href: `#${p.path}`, label: isAr ? p.title : p.titleEn }))
+                : sections
+                    .filter(s => SECTION_ANCHOR[s] && willRender(s))
+                    .map(s => ({ href: `#${SECTION_ANCHOR[s]}`, label: SECTION_LABEL[s][isAr ? 0 : 1] }));
+        };
+        buildNavLinks();
         (content as any).api = apiLink;
         // …and WRITES into it: visitor orders post to the API's orders table.
         (content as any).ordersApi = apiLink ? apiLink.replace(/\/api\/[a-z]+$/, '/api/orders') : '';
@@ -1523,7 +1773,15 @@ export class ReactProjectTool extends BaseTool {
                     projDir: proj, hue: (palette as any).hue ?? 260, artifactDir: ARTIFACT_DIR,
                     slot: 'card', label: 'gallery',
                 });
-                content.gallery = shots.images.filter(Boolean) as Array<{ src: string; alt: string }>;
+                // A mosaic of the same picture four times is not a mosaic:
+                // identical files are collapsed before anything is borrowed.
+                const seenSrc = new Set<string>();
+                const got = (shots.images.filter(Boolean) as Array<{ src: string; alt: string }>)
+                    .filter(g => !seenSrc.has(g.src) && seenSrc.add(g.src));
+                // The story borrows the LAST shot rather than downloading its
+                // own — and the mosaic drops it, so no photo appears twice.
+                if (got.length >= 3) content.storyImage = got.pop() || null;
+                content.gallery = got;
                 content.credits = mergeCredits(content.credits, shots.credits);
                 term(`gallery photos: ${shots.note}`);
             }
@@ -1543,9 +1801,14 @@ export class ReactProjectTool extends BaseTool {
             }
         }
 
+        // The photographs have answered — the navigation is recomputed so a
+        // gallery that stayed empty never gets advertised in the menu.
+        buildNavLinks();
+
         const componentTemplates: Record<string, () => string> = {
             Navbar: fileNavbarJsx, Hero: fileHeroJsx, Features: fileFeaturesJsx,
-            Menu: fileMenuJsx, Products: fileProductsJsx, Gallery: fileGalleryJsx, Pricing: filePricingJsx, Testimonials: fileTestimonialsJsx,
+            Menu: fileMenuJsx, Products: fileProductsJsx, Gallery: fileGalleryJsx, Story: fileStoryJsx, Steps: fileStepsJsx,
+            Pricing: filePricingJsx, Compare: fileCompareJsx, Testimonials: fileTestimonialsJsx, Location: fileLocationJsx,
             Faq: fileFaqJsx, Stats: fileStatsJsx, Cta: fileCtaJsx, Contact: fileContactJsx, Footer: fileFooterJsx,
         };
         const files: Record<string, string> = {
@@ -1583,8 +1846,18 @@ export class ReactProjectTool extends BaseTool {
         }
         // The multi-page app swaps in a Navbar of real page Links.
         if (multiPage) files['src/components/Navbar.jsx'] = fileMultiPageNavbarJsx();
+        // THE FILES, LIVE. Every file this build writes is streamed to the
+        // Logs panel the moment it exists on disk — the same `file_stream`
+        // event the page builder emits. Without it the panel opened on a
+        // React build and showed nothing being built at all.
         for (const [rel, body] of Object.entries(files)) {
             fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
+            try {
+                broadcast({
+                    type: 'file_stream', sessionId,
+                    data: { file: rel, chunk: body, done: true, bytes: Buffer.byteLength(body), at: Date.now(), label: 'مكتوب' },
+                } as any);
+            } catch { /* UI optional — the file is already on disk */ }
         }
         // The REAL font files travel WITH the app (public/fonts + OFL
         // notice) — a declared family that ships no file is a costume, not

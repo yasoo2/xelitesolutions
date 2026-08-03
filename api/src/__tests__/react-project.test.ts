@@ -315,9 +315,15 @@ describe('the hero archetypes and the sections that came with them', () => {
             const hrefs = [...content.matchAll(/\{ href: '#([a-z]+)', label:/g)].map(m => m[1]);
             expect(hrefs.length).toBeGreaterThanOrEqual(3);
             expect(hrefs).toContain('menu');
-            expect(hrefs).toContain('gallery');
             expect(hrefs).not.toContain('features');          // the anchor that never existed
-            const ids = new Set(['menu', 'gallery', 'testimonials', 'contact', 'cta', 'products', 'features', 'pricing', 'faq', 'stats']);
+            // This scaffold is OFFLINE: no photographs arrived, so the gallery
+            // renders nothing — and a section that renders nothing must never
+            // be advertised in the menu.
+            expect(hrefs).not.toContain('gallery');
+            // Nor is a location advertised without a real saved address.
+            expect(hrefs).not.toContain('location');
+            const ids = new Set(['menu', 'gallery', 'story', 'steps', 'testimonials', 'contact', 'cta',
+                'products', 'features', 'pricing', 'compare', 'faq', 'stats', 'location']);
             for (const h of hrefs) {
                 expect(ids.has(h)).toBe(true);
                 const comp = h[0].toUpperCase() + h.slice(1);
