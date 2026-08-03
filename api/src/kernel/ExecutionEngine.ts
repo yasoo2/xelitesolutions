@@ -427,6 +427,57 @@ export class ExecutionEngine {
         };
     }
 
+    /**
+     * STREAMING / LONG-RUNNING execution — the sanctioned way for a tool to
+     * WATCH a process line by line (npm install progress, vite build output)
+     * or keep one alive and kill it later (a scaffolded server booted for a
+     * live write/read proof). Same Single Execution Authority, argv
+     * semantics; the caller never touches child_process, so the boot-time
+     * enforcer stays intact — this method exists precisely because the
+     * enforcer BLOCKED STARTUP on the user's machine when four build tools
+     * carried their own spawn calls (field log, 2026-08-03).
+     *
+     * Returns immediately with { done, kill, pid }: `done` resolves with the
+     * exit outcome (never rejects), `kill` stops the child. exitCode is 124
+     * on timeout, null when the process could not start at all.
+     */
+    runArgvStreaming(file: string, args: string[], options: ExecutionOptions & {
+        onLine?: (line: string, stream: 'stdout' | 'stderr') => void;
+    } = {}): { done: Promise<{ ok: boolean; exitCode: number | null; error?: string }>; kill: () => void; pid?: number } {
+        const { onLine, ...rest } = options;
+        const child = spawn(file, args, {
+            cwd: rest.cwd || this.getWorkspaceRoot(),
+            env: { ...process.env, ...rest.env },
+            // npm/npx on Windows are .cmd shims — callers there pass shell:true.
+            shell: rest.shell !== undefined ? rest.shell : false,
+        });
+        const feed = (stream: 'stdout' | 'stderr') => (b: Buffer) => {
+            if (!onLine) return;
+            String(b).split(/\r?\n/).filter(Boolean).forEach(l => { try { onLine(l, stream); } catch { /* observer errors never kill the child */ } });
+        };
+        child.stdout?.on('data', feed('stdout'));
+        child.stderr?.on('data', feed('stderr'));
+        let settled = false;
+        const done = new Promise<{ ok: boolean; exitCode: number | null; error?: string }>((resolve) => {
+            const t = rest.timeout ? setTimeout(() => {
+                if (settled) return; settled = true;
+                try { child.kill('SIGKILL'); } catch { /* already gone */ }
+                resolve({ ok: false, exitCode: 124, error: 'timeout' });
+            }, rest.timeout) : null;
+            child.on('close', (code) => {
+                if (settled) return; settled = true;
+                if (t) clearTimeout(t);
+                resolve({ ok: code === 0, exitCode: code });
+            });
+            child.on('error', (err) => {
+                if (settled) return; settled = true;
+                if (t) clearTimeout(t);
+                resolve({ ok: false, exitCode: null, error: err.message });
+            });
+        });
+        return { done, kill: () => { try { child.kill(); } catch { /* already gone */ } }, pid: child.pid };
+    }
+
     private async runArgvInternal(file: string, args: string[], options: ExecutionOptions = {}): Promise<any> {
         return new Promise((resolve) => {
             const child = spawn(file, args, {

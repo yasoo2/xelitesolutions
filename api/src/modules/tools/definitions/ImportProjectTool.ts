@@ -10,7 +10,6 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { analyzeProject, formatAnalysis } from '../../../core/project/analyze';
@@ -81,15 +80,19 @@ export class ImportProjectTool extends BaseTool {
             if (fs.existsSync(dir)) dir = path.join(root, `${repoName}-${Date.now().toString(36).slice(-4)}`);
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `📥 أستنسخ المستودع ${url}…` : `📥 Cloning ${url}…`);
             term(`git clone --depth 1 ${url}`);
-            const code = await new Promise<number>((resolve) => {
-                const child = spawn('git', ['clone', '--depth', '1', url, dir], { shell: process.platform === 'win32', env: { ...process.env } });
-                const t = setTimeout(() => { try { child.kill(); } catch { /* gone */ } resolve(-2); }, 180_000);
-                const feed = (b: Buffer) => String(b).split(/\r?\n/).filter(Boolean).forEach(l => term(`  ${l.slice(0, 160)}`));
-                child.stdout?.on('data', feed);
-                child.stderr?.on('data', feed);
-                child.on('error', () => { clearTimeout(t); resolve(-1); });
-                child.on('close', (c) => { clearTimeout(t); resolve(c ?? -1); });
-            });
+            // Through the Single Execution Authority — a direct spawn here
+            // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
+            const { executionEngine } = require('../../../kernel/ExecutionEngine');
+            const code = await (async () => {
+                const h = executionEngine.runArgvStreaming('git', ['clone', '--depth', '1', url, dir], {
+                    timeout: 180_000, shell: process.platform === 'win32',
+                    onLine: (l: string) => term(`  ${l.slice(0, 160)}`),
+                });
+                const r = await h.done;
+                if (r.exitCode === null) return -1;
+                if (r.exitCode === 124 && r.error === 'timeout') return -2;
+                return r.exitCode;
+            })();
             if (code !== 0) {
                 return {
                     ok: false,

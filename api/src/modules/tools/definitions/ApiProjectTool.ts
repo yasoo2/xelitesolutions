@@ -15,12 +15,12 @@
  * parameterized templates that run by construction (no model writes code),
  * kind-aware resources (a restaurant's API serves dishes, a store's serves
  * products), bounded validation, parameterized statements, and a LIVE PROOF
- * at the end — the tool spawns the real server, POSTs a real row over real
- * HTTP, reads it back, and only then reports the API as working.
+ * at the end — the tool boots the real server (through the Execution
+ * Authority), POSTs a real row over real HTTP, reads it back, and only
+ * then reports the API as working.
  */
 import fs from 'fs';
 import path from 'path';
-import { spawn, ChildProcess } from 'child_process';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { brandFrom } from '../../../core/design/page-head';
@@ -410,15 +410,19 @@ export class ApiProjectTool extends BaseTool {
         //    REAL row over REAL HTTP. Reported only as measured.
         let installed = false, proven = false, backend = '', createdId = 0, npmMissing = false;
         if (!input?.skipInstall) {
-            const inst = await new Promise<number>((resolve) => {
-                const child = spawn('npm', ['install', '--no-audit', '--no-fund'], { cwd: proj, shell: process.platform === 'win32', env: { ...process.env, NO_COLOR: '1' } });
-                const t = setTimeout(() => { try { child.kill(); } catch { /* gone */ } resolve(-2); }, 240_000);
-                const feed = (b: Buffer) => String(b).split(/\r?\n/).filter(Boolean).forEach(l => term(`  ${l.slice(0, 200)}`));
-                child.stdout?.on('data', feed);
-                child.stderr?.on('data', feed);
-                child.on('error', () => { clearTimeout(t); resolve(-1); });
-                child.on('close', (code) => { clearTimeout(t); resolve(code ?? -1); });
-            });
+            // Through the Single Execution Authority — a direct spawn here
+            // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
+            const { executionEngine } = require('../../../kernel/ExecutionEngine');
+            const inst = await (async () => {
+                const h = executionEngine.runArgvStreaming('npm', ['install', '--no-audit', '--no-fund'], {
+                    cwd: proj, timeout: 240_000, shell: process.platform === 'win32', env: { NO_COLOR: '1' },
+                    onLine: (l: string) => term(`  ${l.slice(0, 200)}`),
+                });
+                const r = await h.done;
+                if (r.exitCode === null) return -1;
+                if (r.exitCode === 124 && r.error === 'timeout') return -2;
+                return r.exitCode;
+            })();
             npmMissing = inst === -1;
             installed = inst === 0;
             term(`npm install → ${installed ? 'OK' : `exit ${inst}`}`);
@@ -426,20 +430,21 @@ export class ApiProjectTool extends BaseTool {
             if (installed) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🚀 أشغّل الخادم وأثبت كتابة/قراءة حقيقية…' : '🚀 Booting the server for a real write/read proof…');
                 const port = 4100 + Math.floor(Math.random() * 400);
-                let child: ChildProcess | null = null;
+                let child: { done: Promise<any>; kill: () => void } | null = null;
                 try {
-                    child = spawn(process.execPath, ['server.js'], { cwd: proj, env: { ...process.env, PORT: String(port), NODE_NO_WARNINGS: '1' } });
-                    const up = await new Promise<boolean>((resolve) => {
-                        const t = setTimeout(() => resolve(false), 15_000);
-                        child!.stdout?.on('data', (b: Buffer) => {
-                            const line = String(b).trim();
-                            if (line) term(`  ${line.slice(0, 200)}`);
-                            if (/listening on/.test(line)) { clearTimeout(t); resolve(true); }
-                        });
-                        child!.stderr?.on('data', (b: Buffer) => term(`  ${String(b).trim().slice(0, 200)}`));
-                        child!.on('error', () => { clearTimeout(t); resolve(false); });
-                        child!.on('exit', () => { clearTimeout(t); resolve(false); });
+                    let upResolve: (v: boolean) => void = () => { /* set below */ };
+                    const upPromise = new Promise<boolean>((resolve) => { upResolve = resolve; });
+                    const upTimer = setTimeout(() => upResolve(false), 15_000);
+                    child = executionEngine.runArgvStreaming(process.execPath, ['server.js'], {
+                        cwd: proj, env: { PORT: String(port), NODE_NO_WARNINGS: '1' },
+                        onLine: (l: string) => {
+                            term(`  ${l.slice(0, 200)}`);
+                            if (/listening on/.test(l)) upResolve(true);
+                        },
                     });
+                    child!.done.then(() => upResolve(false));
+                    const up = await upPromise;
+                    clearTimeout(upTimer);
                     if (up) {
                         const base = `http://127.0.0.1:${port}`;
                         const health = await fetch(`${base}/api/health`).then(r => r.json()).catch(() => null);

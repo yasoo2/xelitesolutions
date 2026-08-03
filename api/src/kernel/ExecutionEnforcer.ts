@@ -18,16 +18,43 @@ export class ExecutionEnforcer {
      */
     static validateIntegrity() {
         console.log('[ExecutionEnforcer] Running Boot-Time Integrity Check...');
-        
-        // Target specifically the src directory to avoid scanning scripts or other root folders
-        const apiDir = path.resolve(__dirname, '..');
-        const srcDir = path.join(apiDir, 'src');
-        
-        if (!fs.existsSync(srcDir)) {
-            // Fallback for different build structures if needed, but usually api/src
+        const violations = this.scanViolations();
+        if (violations === null) {
             console.warn('[ExecutionEnforcer] src directory not found for scan, skipping integrity check.');
             return;
         }
+
+        if (violations.length > 0) {
+            console.error('\x1b[1;31m[ExecutionEnforcer] FATAL: EXECUTION ARCHITECTURE VIOLATIONS DETECTED!\x1b[0m');
+            violations.forEach(v => console.error(`  ❌ ${v}`));
+            console.error('\x1b[1;31m[ExecutionEnforcer] SYSTEM STARTUP BLOCKED. Please migrate all execution to ExecutionEngine.\x1b[0m');
+            process.exit(1);
+        }
+
+        console.log('[ExecutionEnforcer] Integrity Check PASSED.');
+        this.isInitialized = true;
+    }
+
+    /**
+     * The scan itself, exit-free — so the TEST SUITE can run the exact same
+     * check the boot does. The 2026-08-03 field failure was four build tools
+     * carrying their own spawn calls: every wire proof was green because
+     * proofs import app.ts, and only the boot entry runs this check — on the
+     * user's machine, where it blocked startup three times in a row.
+     * Returns null when src/ is not found (packaged build), else the list.
+     */
+    static scanViolations(): string[] | null {
+        // Target specifically the src directory to avoid scanning scripts or
+        // other root folders. From the BUNDLE, __dirname/.. is api/ and src
+        // sits beside it; from SOURCE (tests, tsx), __dirname/.. IS src —
+        // the old resolution looked for src/src, found nothing, and silently
+        // skipped the scan in every dev environment. That silence is how
+        // four violating tools reached the user's machine.
+        const apiDir = path.resolve(__dirname, '..');
+        let srcDir = path.join(apiDir, 'src');
+        if (!fs.existsSync(srcDir) && path.basename(apiDir) === 'src') srcDir = apiDir;
+
+        if (!fs.existsSync(srcDir)) return null;
 
         const violations: string[] = [];
         
@@ -79,16 +106,7 @@ export class ExecutionEnforcer {
         };
 
         scan(srcDir);
-
-        if (violations.length > 0) {
-            console.error('\x1b[1;31m[ExecutionEnforcer] FATAL: EXECUTION ARCHITECTURE VIOLATIONS DETECTED!\x1b[0m');
-            violations.forEach(v => console.error(`  ❌ ${v}`));
-            console.error('\x1b[1;31m[ExecutionEnforcer] SYSTEM STARTUP BLOCKED. Please migrate all execution to ExecutionEngine.\x1b[0m');
-            process.exit(1);
-        }
-
-        console.log('[ExecutionEnforcer] Integrity Check PASSED.');
-        this.isInitialized = true;
+        return violations;
     }
 
     /**

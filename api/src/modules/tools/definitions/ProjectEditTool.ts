@@ -21,7 +21,6 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
@@ -606,12 +605,12 @@ Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits
         let buildVerified: boolean | null = null;
         if (fs.existsSync(path.join(dir, 'node_modules'))) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🏗️ أتحقق بالبناء الحقيقي (vite build)…' : '🏗️ Verifying with the real build…');
-            buildVerified = await new Promise<boolean>((resolve) => {
-                const child = spawn('npm', ['run', 'build'], { cwd: dir, shell: process.platform === 'win32', env: { ...process.env, NO_COLOR: '1' } });
-                const t = setTimeout(() => { try { child.kill(); } catch { /* gone */ } resolve(false); }, 180_000);
-                child.on('error', () => { clearTimeout(t); resolve(false); });
-                child.on('close', (code) => { clearTimeout(t); resolve(code === 0); });
-            });
+            // Through the Single Execution Authority — a direct spawn here
+            // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
+            const { executionEngine } = require('../../../kernel/ExecutionEngine');
+            buildVerified = (await executionEngine.runArgvStreaming('npm', ['run', 'build'], {
+                cwd: dir, timeout: 180_000, shell: process.platform === 'win32', env: { NO_COLOR: '1' },
+            }).done).ok;
             if (!buildVerified) {
                 for (const t of touched) fs.writeFileSync(path.join(dir, t.file), t.before, 'utf-8');
                 logs.push('build FAILED after the edit — every file reverted');

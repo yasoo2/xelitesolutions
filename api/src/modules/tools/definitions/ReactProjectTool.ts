@@ -16,7 +16,6 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
@@ -1196,15 +1195,20 @@ export class ReactProjectTool extends BaseTool {
         // ── prove it compiles: npm install + vite build, streamed live ──────
         let installed = false, built = false, npmMissing = false;
         if (!input?.skipInstall) {
-            const run = (cmd: string, args: string[], timeoutMs: number) => new Promise<number>((resolve) => {
-                const child = spawn(cmd, args, { cwd: proj, shell: process.platform === 'win32', env: { ...process.env, NO_COLOR: '1' } });
-                const t = setTimeout(() => { try { child.kill(); } catch { /* already gone */ } resolve(-2); }, timeoutMs);
-                const feed = (b: Buffer) => String(b).split(/\r?\n/).filter(Boolean).forEach(l => term(`  ${l.slice(0, 200)}`));
-                child.stdout?.on('data', feed);
-                child.stderr?.on('data', feed);
-                child.on('error', () => { clearTimeout(t); resolve(-1); });
-                child.on('close', (code) => { clearTimeout(t); resolve(code ?? -1); });
-            });
+            // Through the Single Execution Authority — a direct spawn here
+            // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
+            const { executionEngine } = require('../../../kernel/ExecutionEngine');
+            const run = async (cmd: string, args: string[], timeoutMs: number): Promise<number> => {
+                const h = executionEngine.runArgvStreaming(cmd, args, {
+                    cwd: proj, timeout: timeoutMs, shell: process.platform === 'win32',
+                    env: { NO_COLOR: '1' },
+                    onLine: (l: string) => term(`  ${l.slice(0, 200)}`),
+                });
+                const r = await h.done;
+                if (r.exitCode === null) return -1;                       // could not start (npm missing)
+                if (r.exitCode === 124 && r.error === 'timeout') return -2;
+                return r.exitCode;
+            };
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '📦 أثبّت الحزم (npm install)…' : '📦 Installing packages (npm install)…');
             const inst = await run('npm', ['install', '--no-audit', '--no-fund'], 240_000);
             npmMissing = inst === -1;
