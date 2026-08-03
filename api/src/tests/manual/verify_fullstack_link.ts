@@ -74,8 +74,23 @@ async function main() {
         { request: 'ابنِ لي API لمنتجات متجر العطور', root }, { sessionId: 'fs-link' });
     check('the API built and PROVED a live write/read', !!apiRes.ok && apiRes.output.proven === true && apiRes.output.resource === 'products', JSON.stringify({ proven: apiRes.output?.proven, resource: apiRes.output?.resource }));
     const apiProj = apiRes.output.path as string;
+
+    // The REAL Joe app — the orders bridge will announce into it live.
+    process.env.PERSISTENCE_MODE = 'JSON';
+    const { createApp } = await import('../../api/app');
+    const joeSrv = createApp().listen(0, '127.0.0.1');
+    await new Promise<void>(r => joeSrv.once('listening', () => r()));
+    const joePort = (joeSrv.address() as any).port;
+    (global as any).mockMessages = [];
+
     const apiSrv: ChildProcess | null = await new Promise((resolve) => {
-        const child = spawn(process.execPath, ['server.js'], { cwd: apiProj, env: { ...process.env, PORT: '4100', NODE_NO_WARNINGS: '1' } });
+        const child = spawn(process.execPath, ['server.js'], {
+            cwd: apiProj,
+            env: {
+                ...process.env, PORT: '4100', NODE_NO_WARNINGS: '1',
+                JOE_INBOX_URL: `http://127.0.0.1:${joePort}/api/public/forms/${path.basename(apiProj)}`,
+            },
+        });
         const t = setTimeout(() => resolve(null), 15_000);
         child.stdout?.on('data', (b: Buffer) => { if (/listening on/.test(String(b))) { clearTimeout(t); resolve(child); } });
         child.on('exit', () => { clearTimeout(t); resolve(null); });
@@ -142,6 +157,18 @@ async function main() {
         orders?.ok === true && orders.orders.some((o: any) => o.item === 'طقم الهدية' && o.customer === 'خالد التجريبي' && o.qty === 2),
         JSON.stringify(orders?.orders?.[0] || {}).slice(0, 140));
 
+    console.log('\n[3ج] الجسر الحي: الطلب وصل محادثة المالك 📬 و«اعرض الطلبات» تقرأه من القرص');
+    await new Promise(r => setTimeout(r, 700));
+    const inboxRaw = fs.readFileSync(path.join(process.env.JOE_CHAT_STORE_DIR!, 'form-inbox.json'), 'utf-8');
+    check('the order landed in Joe\'s inbox store (fire-and-forget bridge)', inboxRaw.includes('طقم الهدية') && inboxRaw.includes('خالد التجريبي'), inboxRaw.slice(0, 120));
+    const notif = ((global as any).mockMessages || []).find((m: any) => m.sessionId === 'fs-link' && /📬/.test(m.content));
+    check('…and the owner got the LIVE 📬 chat notification (linkedApiDir resolution)', !!notif && /طقم الهدية/.test(notif.content), JSON.stringify(((global as any).mockMessages || []).slice(-1)).slice(0, 140));
+    const { OrdersReadTool } = require('../../modules/tools/definitions/OrdersReadTool');
+    const readBack: any = await new OrdersReadTool().execute({ request: 'اعرض الطلبات' }, { sessionId: 'fs-link' });
+    check('«اعرض الطلبات» lists it straight from the DATABASE FILE (server not needed)',
+        readBack.output.total >= 1 && String(readBack.output.message).includes('طقم الهدية ×2 — خالد التجريبي'),
+        String(readBack.output?.message).slice(0, 140));
+
     console.log('\n[4] الصدق: يُقتل الخادم — والصفحة تسقط للبيانات المخبوزة بلا انهيار');
     try { apiSrv?.kill(); } catch { /* gone */ }
     await new Promise(r => setTimeout(r, 400));
@@ -169,7 +196,7 @@ async function main() {
         deadNote.includes('تعذر الوصول') && deadNote.includes('الإصدار الفاخر'), deadNote.slice(0, 90));
 
     await browser.close();
-    site.close(); archive.close();
+    site.close(); archive.close(); joeSrv.close();
     fs.rmSync(root, { recursive: true, force: true });
     console.log(`\n===== ${pass} passed, ${fail} failed =====`);
     process.exit(fail ? 1 : 0);

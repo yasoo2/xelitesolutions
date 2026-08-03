@@ -220,13 +220,27 @@ ${seeds.map(s => `    { name: '${js(s.name)}', details: '${js(s.details)}', pric
 `;
 }
 
-function fileServerJs(resource: string, brand: string): string {
+function fileServerJs(resource: string, brand: string, dirName: string): string {
     return `// ${brand} — a real Express API over a real database. Runs with:
 //   npm start            (port 4100)
 //   PORT=5050 npm start  (any port)
 import express from 'express';
 import { db } from './db.js';
 import { seed } from './seed.js';
+
+// THE LIVE BRIDGE to Joe: every new order is announced into the owner's
+// chat through Joe's existing public inbox — fire-and-forget, so the
+// visitor's response NEVER waits on it and a stopped Joe changes nothing.
+const JOE_INBOX = process.env.JOE_INBOX_URL || 'http://localhost:5002/api/public/forms/${dirName}';
+function notifyJoe(order) {
+  const fields = { 'طلب جديد': \`\${order.item} ×\${order.qty}\`, 'العميل': order.customer };
+  if (order.phone) fields['الجوال'] = order.phone;
+  fetch(JOE_INBOX, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields, page: 'orders-api' }),
+  }).catch(() => { /* Joe offline — the order is safe in OUR database */ });
+}
 
 const app = express();
 app.use(express.json({ limit: '100kb' }));
@@ -261,7 +275,9 @@ app.post('/api/orders', (req, res) => {
     || (note !== undefined && (typeof note !== 'string' || note.length > 500))) {
     return res.status(400).json({ ok: false, error: 'bad_fields' });
   }
-  res.status(201).json({ ok: true, order: db.createOrder({ item: item.trim(), qty: q, customer: customer.trim(), phone, note }) });
+  const order = db.createOrder({ item: item.trim(), qty: q, customer: customer.trim(), phone, note });
+  notifyJoe(order);
+  res.status(201).json({ ok: true, order });
 });
 
 app.get('/api/${resource}', (_req, res) => res.json({ ok: true, ${resource}: db.list() }));
@@ -395,7 +411,7 @@ export class ApiProjectTool extends BaseTool {
 
         const files: Record<string, string> = {
             'package.json': filePackageJson(brand),
-            'server.js': fileServerJs(resource, brand),
+            'server.js': fileServerJs(resource, brand, dirName),
             'db.js': fileDbJs(resource),
             'seed.js': fileSeedJs(seeds),
             'README.md': fileReadme(brand, resource, labelAr),

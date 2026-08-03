@@ -24,7 +24,11 @@ export function ownerSessionOf(site: string): string | null {
     if (pages[site]) return site;
     const projects = (global as any).joeProjects || {};
     for (const [key, p] of Object.entries<any>(projects)) {
-        if (p?.dir && path.basename(String(p.dir)).replace(/[^a-zA-Z0-9._-]/g, '') === site) return key;
+        // linkedApiDir too: after a react build takes the session slot, the
+        // API it was born linked to still notifies THIS owner (orders bridge).
+        for (const d of [p?.dir, p?.linkedApiDir]) {
+            if (d && path.basename(String(d)).replace(/[^a-zA-Z0-9._-]/g, '') === site) return key;
+        }
     }
     return null;
 }

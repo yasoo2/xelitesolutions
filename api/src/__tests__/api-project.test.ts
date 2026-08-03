@@ -34,6 +34,67 @@ describe('api_project is registered and reachable', () => {
     });
 });
 
+describe('«اعرض الطلبات» — the owner reads visitor orders in the chat', () => {
+    const { OrdersReadTool, readOrders } = require('../modules/tools/definitions/OrdersReadTool');
+    let tmp: string;
+    beforeAll(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-orders-')); });
+    afterAll(() => {
+        fs.rmSync(tmp, { recursive: true, force: true });
+        delete (global as any).joeProjects?.['ord-t'];
+    });
+
+    it('is registered, deterministic, and routed', async () => {
+        const { tools } = require('../modules/tools/registry');
+        expect(tools.some((t: any) => t.name === 'orders_read')).toBe(true);
+        const orch = fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
+        expect(orch.match(/DETERMINISTIC_TOOLS = \[([\s\S]*?)\]/)![1]).toContain("'orders_read'");
+        expect(await route('اعرض الطلبات')).toBe('orders_read');
+        expect(await route('كم طلب وصلني اليوم؟')).toBe('orders_read');
+    });
+
+    it('readOrders: the SQLite file on disk answers latest-first, server not needed', () => {
+        const dir = path.join(tmp, 'api-sq'); fs.mkdirSync(dir, { recursive: true });
+        const { DatabaseSync } = require('node:sqlite');
+        const conn = new DatabaseSync(path.join(dir, 'data.db'));
+        conn.exec("CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT, qty INTEGER, customer TEXT, phone TEXT DEFAULT '', note TEXT DEFAULT '', created_at TEXT DEFAULT '')");
+        conn.prepare('INSERT INTO orders (item, qty, customer) VALUES (?, ?, ?)').run('طقم الهدية', 2, 'خالد');
+        conn.prepare('INSERT INTO orders (item, qty, customer) VALUES (?, ?, ?)').run('الإصدار الفاخر', 1, 'سارة');
+        conn.close();
+        const rows = readOrders(dir)!;
+        expect(rows.map((r: any) => r.item)).toEqual(['الإصدار الفاخر', 'طقم الهدية']);
+    });
+
+    it('readOrders: the JSON twin answers with the same shape; a bare dir answers null', () => {
+        const dir = path.join(tmp, 'api-js'); fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify({ seq: 0, rows: [], oseq: 1, orders: [{ id: 1, item: 'عطر', qty: 3, customer: 'نورة', phone: '', note: '', created_at: '' }] }));
+        expect(readOrders(dir)![0]).toMatchObject({ item: 'عطر', qty: 3, customer: 'نورة' });
+        const bare = path.join(tmp, 'api-none'); fs.mkdirSync(bare, { recursive: true });
+        expect(readOrders(bare)).toBeNull();
+    });
+
+    it('the tool resolves the API through linkedApiDir and lists in Arabic; honest without one', async () => {
+        (global as any).joeProjects = { ...(global as any).joeProjects, 'ord-t': { dir: '/x/react-app', type: 'react', linkedApiDir: path.join(tmp, 'api-sq') } };
+        const r: any = await new OrdersReadTool().execute({}, { sessionId: 'ord-t' });
+        expect(r.output.total).toBe(2);
+        expect(String(r.output.message)).toContain('طقم الهدية ×2 — خالد');
+        const none: any = await new OrdersReadTool().execute({}, { sessionId: 'nobody-here' });
+        expect(String(none.output.message)).toContain('لا يوجد مشروع API');
+    });
+
+    it('the orders bridge: server.js notifies Joe fire-and-forget; ownerSessionOf follows linkedApiDir', async () => {
+        const res: any = await new ApiProjectTool().execute(
+            { request: 'ابنِ لي API لمنتجات متجر', skipInstall: true, root: tmp }, { sessionId: 'ord-t' });
+        const server = fs.readFileSync(path.join(res.output.path, 'server.js'), 'utf-8');
+        expect(server).toContain('JOE_INBOX_URL');
+        expect(server).toContain('notifyJoe(order)');
+        expect(server).toContain('/api/public/forms/');
+        const { ownerSessionOf } = require('../api/routes/formsPublic');
+        (global as any).joeProjects['ord-t'] = { dir: '/w/react-shop', linkedApiDir: '/w/api-my-store' };
+        expect(ownerSessionOf('api-my-store')).toBe('ord-t');
+        delete (global as any).joeProjects?.['ord-t'];
+    });
+});
+
 describe('routing — explicit backend asks reach api_project', () => {
     it('«ابنِ لي API لإدارة الطلبات» → api_project', async () => {
         expect(await route('ابنِ لي API لإدارة الطلبات')).toBe('api_project');

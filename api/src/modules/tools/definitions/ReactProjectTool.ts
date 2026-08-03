@@ -1225,7 +1225,13 @@ export class ReactProjectTool extends BaseTool {
         // Remember the project so «عدل …» routes to the SURGICAL editor and
         // survives restarts like everything else Joe remembers.
         const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
-        projects[sessionKey] = { dir: proj, type: 'react', brand: content.brand, updatedAt: Date.now(), lastRequest: request.slice(0, 80), ...(apiLink ? { linkedApi: apiLink } : {}) };
+        projects[sessionKey] = {
+            dir: proj, type: 'react', brand: content.brand, updatedAt: Date.now(), lastRequest: request.slice(0, 80),
+            // The API's url AND dir ride along: «اعرض الطلبات» reads the
+            // database from disk, and the inbox bridge resolves the owner,
+            // even after this react build took the session's project slot.
+            ...(apiLink ? { linkedApi: apiLink, linkedApiDir: prevEntry.dir } : {}),
+        };
         persistJoeProjects();
 
         // The freshly built app opens in the preview panel on its own — the

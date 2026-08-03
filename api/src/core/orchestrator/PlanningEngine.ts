@@ -551,6 +551,20 @@ Rules:
             }
         }
 
+        // [ORDERS READ] «اعرض الطلبات» — the owner reads visitor orders from
+        // the API project's database, in the chat, server up or not.
+        {
+            const ordersAsk = /(اعرض|أعرض|ارني|أرني|شوف|اقرأ|كم|هات)\s*[^.\n]{0,15}?(ال)?طلبات|طلبات\s*(جديدة|الزبائن|العملاء|الموقع)|كم\s*(من\s*)?طلب|هل\s*وصل[^.\n]{0,12}طلب|\b(show|list|read)\b[^.\n]{0,15}\borders\b/i.test(probe);
+            if (ordersAsk) {
+                return {
+                    id: `orders_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{ id: 'orders_read', description: 'قراءة طلبات الزوار من قاعدة بيانات المشروع', tool: 'orders_read', agent: 'General', input: { request: intent.goal }, dependsOn: [] }],
+                    metadata: { complexity: 'low', riskLevel: 'low' },
+                };
+            }
+        }
+
         // [FORM INBOX] «اعرض رسائل النموذج» — the live-data reading path.
         {
             const inboxAsk = /(اعرض|أعرض|شوف|كم|هل\s*(وصل|فيه))\s*[^.\n]{0,25}?(رسائل|رساله|رسالة|الرسائل)|صندوق\s*(الرسائل|النموذج|الوارد)|من\s*راسل|form\s*(inbox|messages|submissions)/i.test(probe);
