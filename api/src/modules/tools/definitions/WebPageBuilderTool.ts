@@ -34,6 +34,7 @@ import { extractRequirements, verifyContent, wireNavigation, repairBrief, demote
 import { buildImageBrief } from '../../../core/design/image-brief';
 import { pickArchetype, layoutCss, layoutBrief, pickTypePair, typographyCss, primitivesCss, primitivesBrief, iconSprite, applySurfacePairing, ownedSurfaces, normalizeIconRefs } from '../../../core/design/layouts';
 import { sanitizeInlineSvg, labelIconOnlyButtons } from '../../../core/design/svg-sanity';
+import { persistJoePages } from '../../../api/page-store';
 import { pickFlourish, flourishCss, flourishBrief } from '../../../core/design/flourish';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
@@ -205,10 +206,13 @@ export class WebPageBuilderTool implements ToolDefinition {
         // of regenerating a brand new one from scratch.
         // The palette and page kind are remembered with the page: a follow-up edit
         // must not re-roll the colours or re-decide what the page is.
-        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any; flourish?: any; reference?: any; site?: { dir: string; pages: any[] } }> =
+        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any; flourish?: any; reference?: any; site?: { dir: string; pages: any[] }; updatedAt?: number }> =
             (global as any).joePages || ((global as any).joePages = {});
         const prev = store[sessionKey];
-        const wantsNew = /(new page|from scratch|صفحة جديدة|من الصفر|ابدأ من جديد)/i.test(request);
+        // «موقع جديد»/«تصميم جديد» must start OVER — with an active page they
+        // used to be treated as an edit of the old one, which kept the palette
+        // and layout the user was explicitly asking to leave behind.
+        const wantsNew = /(new page|new site|from scratch|start over|different design|صفحة جديدة|موقع جديد|تصميم جديد|تصميم مختلف|صفحه جديده|من الصفر|ابدأ من جديد|ابدا من جديد)/i.test(request);
         const isEdit = !!prev && !wantsNew;
 
         // Multi-file project mode: produce a real index.html + styles.css + script.js
@@ -410,7 +414,9 @@ ${prev!.html}`
                     filename: built.entry, html: built.entryHtml,
                     palette, kind, archetype, typePair, flourish, reference,
                     site: { dir: built.dir, pages: built.pages },
+                    updatedAt: Date.now(),
                 };
+                persistJoePages();
                 return built.result;
             }
             logs.push('site build did not produce enough pages — falling back to a single page');
@@ -458,7 +464,23 @@ ${prev!.html}`
         const editBase = siteEditHtml || prev?.html || '';
         if (isEdit && prev && editBase.length > 8000) {
             const existing = splitIntoSections(editBase);
-            const targets = targetSections(request, existing);
+            let targets = targetSections(request, existing);
+            /**
+             * THE VAGUE EDIT — «عدل على كذا وكذا» (field report, verbatim).
+             *
+             * When no regex can trace the request to a section, the old path
+             * sent the WHOLE page through one completion and asked for the
+             * whole page back. On any real page that reply is truncated, the
+             * guard rejects it, the previous version is restored — and the
+             * user is told nothing changed. Read from outside: «جو لا يفهم
+             * ويصير يتهبل». Before falling that far, ask a model to point at
+             * the sections meant — internal purpose, so the local brain
+             * answers this small JSON for free. Any failure returns [] and
+             * the old fallback still exists.
+             */
+            if (!targets.length && existing.length > 1) {
+                targets = await this.pickSectionsWithModel(request, existing, context, sessionId, isAr);
+            }
             if (targets.length) {
                 const design = `${designBrief(palette)}\n\n${layoutBrief(archetype, typePair)}${flourishBrief(flourish) ? '\n\n' + flourishBrief(flourish) : ''}\n\n${primitivesBrief()}`;
                 let working = editBase;
@@ -1475,7 +1497,8 @@ the WORDS, not the structure.`;
         }
         // `site` must survive an edit — dropping it would turn the next follow-up
         // back into a single-page edit against the wrong file.
-        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair, flourish, reference, site: prev?.site };
+        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair, flourish, reference, site: prev?.site, updatedAt: Date.now() };
+        persistJoePages();
 
         // An edit can introduce a link to a page that does not exist. On a site
         // that is checkable, so it is checked rather than left for the user.
@@ -1573,7 +1596,8 @@ the WORDS, not the structure.`;
                     if (after.ran && (after.score > audit.score
                         || (after.score === audit.score && after.findings.length < audit.findings.length))) {
                         html = mech.html;
-                        store[sessionKey] = { ...(store[sessionKey] || {} as any), html };
+                        store[sessionKey] = { ...(store[sessionKey] || {} as any), html, updatedAt: Date.now() };
+                        persistJoePages();
                         visualRepairs += mech.applied.length;
                         visualFindings = after.findings;
                         visualScore = after.score;
@@ -1658,7 +1682,8 @@ the WORDS, not the structure.`;
                                 visualFindings = after.findings;
                                 visualScore = after.score;
                                 html = out;
-                                store[sessionKey] = { ...(store[sessionKey] || {} as any), html };
+                                store[sessionKey] = { ...(store[sessionKey] || {} as any), html, updatedAt: Date.now() };
+                        persistJoePages();
                                 broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any);
                                 logs.push(`visual repair accepted: ${audit.score} -> ${after.score}`);
                             } else {
@@ -1746,7 +1771,8 @@ the WORDS, not the structure.`;
                                 behaviourFindings = after.findings;
                                 behaviourScore = after.score;
                                 html = out;
-                                store[sessionKey] = { ...(store[sessionKey] || {} as any), html };
+                                store[sessionKey] = { ...(store[sessionKey] || {} as any), html, updatedAt: Date.now() };
+                        persistJoePages();
                                 broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any);
                                 logs.push(`behaviour repair accepted: ${b.score} -> ${after.score}`);
                             } else {
@@ -2048,6 +2074,45 @@ the WORDS, not the structure.`;
      * came back. It never returns a page it has not written to disk, and the
      * CALLER re-measures: an edit that does not improve the score is reverted.
      */
+    /**
+     * Resolve a vague edit request to the sections it is about, by asking a
+     * model to choose from the page's own section list. Internal purpose —
+     * the local brain handles this JSON; the daily cloud quota is untouched.
+     * Deterministic guards on the answer: ids must exist, at most 3, and []
+     * (a whole-page restyle) is a legitimate answer that keeps the old path.
+     */
+    private async pickSectionsWithModel(
+        request: string,
+        sections: PageSection[],
+        context: any,
+        sessionId?: string,
+        isAr?: boolean,
+    ): Promise<PageSection[]> {
+        try {
+            const menu = sections.map((s, i) =>
+                `${i + 1}. id="${s.id}" <${s.tag}> — ${s.headings.slice(0, 2).join(' / ') || '(no heading)'}`).join('\n');
+            const raw = await routeToModel([
+                {
+                    role: 'system',
+                    content: 'You match an edit request to the page sections it is about. Reply with ONLY a JSON array of the section ids to edit, at most 3, e.g. ["contact"]. If the request applies to the WHOLE page (a general restyle, colours everywhere), reply [].',
+                },
+                { role: 'user', content: `THE EDIT REQUEST: ${request}\n\nTHE PAGE'S SECTIONS:\n${menu}` },
+            ], undefined, undefined, undefined, undefined, undefined, undefined, { ...(context || {}), purpose: 'internal' });
+            const m = String(raw || '').match(/\[[\s\S]*?\]/);
+            if (!m) return [];
+            const ids = JSON.parse(m[0]);
+            if (!Array.isArray(ids)) return [];
+            const wanted = ids.map(String);
+            const picked = sections.filter(s => wanted.includes(s.id)).slice(0, 3);
+            if (picked.length && sessionId) {
+                broadcastThinkingDetail(sessionId, isAr
+                    ? `🎯 فهمت المقصود: سأعدّل ${picked.map(p => `«${p.headings[0] || p.id}»`).join('، ')} فقط`
+                    : `🎯 Resolved the request to: ${picked.map(p => p.id).join(', ')}`);
+            }
+            return picked;
+        } catch { return []; }
+    }
+
     private async repairSections(opts: {
         html: string;
         /**

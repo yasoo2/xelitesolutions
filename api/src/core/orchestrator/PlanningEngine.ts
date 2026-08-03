@@ -462,12 +462,21 @@ Rules:
         // singular meant «اريد اضافة الوان جميله» missed the edit path entirely and
         // the request was handed to the generic planner, which went off searching
         // the web for colour palettes instead of touching the page.
+        // The dialect verbs the user actually types — «ضيف زر», «حط صورة»,
+        // «خلي الخلفية غامقة», «شيل القسم الأخير», «سوي الخط أكبر» — were not
+        // edit verbs, so with a page open the message fell to the generic
+        // planner and «جو صار يتهبل» (field report, verbatim). They are gated
+        // by hasActivePage below, so they can never hijack a fresh build.
         const editIntent = /\b(add|change|modify|update|edit|remove|bigger|smaller|colou?r|button|background|header|footer|font|title|style|design|prettier|nicer)\b/i.test(goalLower)
-            || /(أضف|اضف|إضافة|اضافة|غيّر|غير|تغيير|عدّل|عدل|تعديل|بدّل|بدل|تبديل|اجعل|احذف|حذف|كبّر|كبر|تكبير|صغّر|صغر|تصغير|حسّن|حسن|تحسين|تنسيق|تجميل|جمّل)/.test(probe)
+            || /(أضف|اضف|إضافة|اضافة|غيّر|غير|تغيير|عدّل|عدل|تعديل|بدّل|بدل|تبديل|اجعل|احذف|حذف|كبّر|كبر|تكبير|صغّر|صغر|تصغير|حسّن|حسن|تحسين|تنسيق|تجميل|جمّل|امسح|أزل|ازل)/.test(probe)
+            // The SHORT dialect verbs need Arabic boundaries — bare /خلي/ fires
+            // inside «الداخلية» and /سوي/ inside «تساوي», turning ordinary
+            // questions into page edits.
+            || /(?<![ء-ي])(ضيف|ضِف|حطّ?(ي|ه|ها)?|خلّ?ي(ه|ها)?|شيل(ي|ه|ها)?|سوّ?ي(ه|ها)?|ركّ?ب|رتّ?ب|ظبط|ضبط|صلّ?ح|أصلح|اصلح)(?![ء-ي])/.test(probe)
             // Concrete page parts only. Generic words like «تصميم» or «شكل» appear in
             // ordinary questions ("ما هو تصميم قاعدة البيانات؟") and would rebuild the
             // page on a question — the verbs above already cover "improve the design".
-            || /(لون|ألوان|الوان|زر|أزرار|ازرار|خلفية|خلفيه|خلفيات|حجم|أحجام|عنوان|عناوين|خط|خطوط)/.test(probe);
+            || /(لون|ألوان|الوان|زر|أزرار|ازرار|خلفية|خلفيه|خلفيات|حجم|أحجام|عنوان|عناوين|خط|خطوط|قسم|أقسام|اقسام|صورة|صور|فوتر|هيدر|ترويسة|تذييل|قائمة|أيقونة|ايقونة|فقرة|نصوص)/.test(probe);
 
         // Recovery goals were bounced out of generatePlan at the very top — by the
         // time execution reaches here the goal is a genuine user request.
