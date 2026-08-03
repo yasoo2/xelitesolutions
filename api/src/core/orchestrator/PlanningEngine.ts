@@ -479,7 +479,10 @@ Rules:
             // Concrete page parts only. Generic words like «تصميم» or «شكل» appear in
             // ordinary questions ("ما هو تصميم قاعدة البيانات؟") and would rebuild the
             // page on a question — the verbs above already cover "improve the design".
-            || /(لون|ألوان|الوان|زر|أزرار|ازرار|خلفية|خلفيه|خلفيات|حجم|أحجام|عنوان|عناوين|خط|خطوط|قسم|أقسام|اقسام|صورة|صور|فوتر|هيدر|ترويسة|تذييل|قائمة|أيقونة|ايقونة|فقرة|نصوص)/.test(probe);
+            || /(لون|ألوان|الوان|زر|أزرار|ازرار|خلفية|خلفيه|خلفيات|حجم|أحجام|عنوان|عناوين|خط|خطوط|قسم|أقسام|اقسام|صورة|صور|فوتر|هيدر|ترويسة|تذييل|قائمة|أيقونة|ايقونة|فقرة|نصوص)/.test(probe)
+            // Version history: rollback/undo and the versions list belong to
+            // the page's own tool (instant restore, no model call).
+            || /(تراجع|استرجع|(ارجع|أرجع|رجّع)[^.\n]{0,20}نسخ|نسخ(ة|ه)\s*(السابق|القديم|رقم)|اعرض\s*النسخ|إصدار\s*سابق|\bundo\b|\brollback\b|\brevert\b|version\s*history)/i.test(probe);
 
         // Recovery goals were bounced out of generatePlan at the very top — by the
         // time execution reaches here the goal is a genuine user request.

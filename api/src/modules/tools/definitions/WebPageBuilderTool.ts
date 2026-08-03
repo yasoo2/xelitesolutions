@@ -213,7 +213,7 @@ export class WebPageBuilderTool implements ToolDefinition {
         // of regenerating a brand new one from scratch.
         // The palette and page kind are remembered with the page: a follow-up edit
         // must not re-roll the colours or re-decide what the page is.
-        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any; flourish?: any; reference?: any; site?: { dir: string; pages: any[] }; updatedAt?: number; pwa?: boolean }> =
+        const store: Record<string, { filename: string; html: string; multiFile?: boolean; palette?: any; kind?: any; archetype?: any; typePair?: any; flourish?: any; reference?: any; site?: { dir: string; pages: any[] }; updatedAt?: number; pwa?: boolean; versions?: Array<{ html: string; filename: string; at: number; note: string }>; lastRequest?: string }> =
             (global as any).joePages || ((global as any).joePages = {});
         const prev = store[sessionKey];
         // «موقع جديد»/«تصميم جديد» must start OVER — with an active page they
@@ -221,6 +221,74 @@ export class WebPageBuilderTool implements ToolDefinition {
         // and layout the user was explicitly asking to leave behind.
         const wantsNew = /(new page|new site|from scratch|start over|different design|صفحة جديدة|موقع جديد|تصميم جديد|تصميم مختلف|صفحه جديده|من الصفر|ابدأ من جديد|ابدا من جديد)/i.test(request);
         const isEdit = !!prev && !wantsNew;
+
+        /**
+         * [VERSION HISTORY — the Bolt/Lovable checkpoint] Every build and
+         * every accepted edit snapshots the page it replaces. «ارجع للنسخة
+         * السابقة» restores it INSTANTLY — pure bytes off the store, no model
+         * call, no quota — and the restore itself is undoable, because the
+         * page it replaces becomes a version too. «اعرض النسخ» lists them.
+         */
+        const restoreIntent = /(ارجع|أرجع|رجّع|رجع|تراجع|استرجع|استعد)[^.\n]{0,30}?(نسخ|سابق|قبل|إصدار|اصدار)|(النسخة|النسخه|الإصدار|الاصدار)\s*(السابق|القديم)|\b(undo|rollback|revert)\b|previous version/i;
+        const listVersionsIntent = /(اعرض|أعرض|قائمة|كم)\s*[^.\n]{0,20}?(النسخ|نسخ|الإصدارات|الاصدارات)|list\s+versions|version\s+history/i;
+        if (prev && listVersionsIntent.test(request)) {
+            const versions = prev.versions || [];
+            const fmt = (t: number) => new Date(t).toLocaleString(isAr ? 'ar' : 'en', { hour12: false });
+            const lines = versions.map((v, i) =>
+                `   ${i + 1}. ${fmt(v.at)}${v.note ? ` — «${v.note}»` : ''}`);
+            const message = isAr
+                ? (versions.length
+                    ? `🗂️ النسخ المحفوظة لهذه الصفحة (${versions.length}):\n${lines.join('\n')}\n   ▶️ الحالية: ${fmt(prev.updatedAt || Date.now())}${prev.lastRequest ? ` — «${prev.lastRequest}»` : ''}\n\nللاسترجاع: «ارجع للنسخة السابقة» أو «ارجع للنسخة رقم ٢»`
+                    : 'لا توجد نسخ محفوظة بعد — تُحفظ نسخة تلقائياً مع كل تعديل.')
+                : (versions.length
+                    ? `🗂️ Saved versions (${versions.length}):\n${lines.join('\n')}\n   ▶️ current: ${fmt(prev.updatedAt || Date.now())}\n\nRestore with "rollback" or "restore version 2".`
+                    : 'No saved versions yet — one is kept automatically with every edit.');
+            return { ok: true, output: { message }, logs } as any;
+        }
+        if (prev && restoreIntent.test(request)) {
+            const versions = (prev.versions || []).slice();
+            if (!versions.length) {
+                return {
+                    ok: true,
+                    output: { message: isAr ? 'لا توجد نسخة سابقة محفوظة لهذه الصفحة بعد — النسخ تُحفظ تلقائياً مع كل تعديل قادم.' : 'No previous version saved for this page yet.' },
+                    logs,
+                } as any;
+            }
+            const numbered = request.match(/(?:نسخة|النسخة|version)\s*(?:رقم\s*)?(\d+)/i);
+            let idx = versions.length - 1;
+            if (numbered) {
+                const n = parseInt(numbered[1], 10);
+                if (n >= 1 && n <= versions.length) idx = n - 1;
+            }
+            const target = versions[idx];
+            versions.splice(idx, 1);
+            versions.push({ html: prev.html, filename: prev.filename, at: prev.updatedAt || Date.now(), note: prev.lastRequest || '' });
+            try {
+                fs.writeFileSync(path.join(ARTIFACT_DIR, prev.filename), target.html, 'utf-8');
+                let url = `http://localhost:${PORT}/artifacts/${prev.filename}`;
+                const dirAbs = path.join(ARTIFACT_DIR, `joe-${sessionKey}`);
+                if (fs.existsSync(dirAbs)) {
+                    const s = splitHtmlProject(target.html);
+                    if (s && s.multiFile) {
+                        fs.writeFileSync(path.join(dirAbs, 'index.html'), s.indexHtml, 'utf-8');
+                        fs.writeFileSync(path.join(dirAbs, 'styles.css'), s.css || '', 'utf-8');
+                        fs.writeFileSync(path.join(dirAbs, 'script.js'), s.js || '', 'utf-8');
+                        url = `http://localhost:${PORT}/artifacts/joe-${sessionKey}/index.html`;
+                    }
+                }
+                url += `?v=${Date.now()}`;
+                store[sessionKey] = { ...prev, html: target.html, versions: versions.slice(-10), updatedAt: Date.now(), lastRequest: request.slice(0, 80) };
+                persistJoePages();
+                try { broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any); } catch { /* UI optional */ }
+                const message = isAr
+                    ? `↩️ استُرجعت النسخة ${numbered ? `رقم ${idx + 1}` : 'السابقة'} وعُرضت في المعاينة.\n🗂️ المتبقي ${versions.length} نسخة محفوظة — وهذا الاسترجاع نفسه قابل للتراجع بنفس الأمر.`
+                    : `↩️ Restored ${numbered ? `version ${idx + 1}` : 'the previous version'} and refreshed the preview.\n🗂️ ${versions.length} version(s) remain — the restore itself is undoable with the same command.`;
+                logs.push(`version restore: ${target.html.length} bytes from ${new Date(target.at).toISOString()}`);
+                return { ok: true, output: { message, url, previewUrl: url, path: prev.filename }, logs } as any;
+            } catch (e: any) {
+                return { ok: false, error: `restore_failed: ${e?.message || e}`, logs } as any;
+            }
+        }
 
         // Multi-file project mode: produce a real index.html + styles.css + script.js
         // structure (like a real team) instead of one self-contained file. Triggered
@@ -1545,7 +1613,12 @@ the WORDS, not the structure.`;
         }
         // `site` must survive an edit — dropping it would turn the next follow-up
         // back into a single-page edit against the wrong file.
-        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair, flourish, reference, site: prev?.site, updatedAt: Date.now(), pwa: isMobileApp };
+        // [VERSION HISTORY] The page this write replaces becomes a restorable
+        // checkpoint — the newest 10 are kept with the session.
+        const versionTrail = (prev && prev.html && prev.html !== html)
+            ? [...(prev.versions || []), { html: prev.html, filename: prev.filename, at: prev.updatedAt || Date.now(), note: prev.lastRequest || '' }].slice(-10)
+            : (prev?.versions || []);
+        store[sessionKey] = { filename, html, multiFile: isMultiFile, palette, kind, archetype, typePair, flourish, reference, site: prev?.site, updatedAt: Date.now(), pwa: isMobileApp, versions: versionTrail, lastRequest: request.slice(0, 80) };
         persistJoePages();
 
         // An edit can introduce a link to a page that does not exist. On a site
