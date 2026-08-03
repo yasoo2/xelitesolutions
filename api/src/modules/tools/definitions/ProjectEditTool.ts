@@ -375,6 +375,73 @@ export class ProjectEditTool extends BaseTool {
             }
         }
 
+        // ── deterministic fast path: named-row TEXT edits — «غيّر سعر طقم
+        //    الهدية إلى 200»، «عدّل وصف الإصدار الفاخر إلى …»، «غيّر اسم …».
+        //    The row lives in content.js in the serializer's own single-line
+        //    format; the field swap is a regex on that line — no model writes
+        //    code. A bare number keeps the row's currency affix («65 ر.س» +
+        //    «200» → «200 ر.س»), and same gates, build verify and undo apply.
+        const priceIntent = /(?<![ء-ي])(سعر|السعر|بسعر|أسعار|الأسعار)(?![ء-ي])|\bprices?\b/i.test(request);
+        const descIntent = /(?<![ء-ي])(وصف|الوصف)(?![ء-ي])|\bdescription\b/i.test(request);
+        const renameIntent = /(?<![ء-ي])(اسم|الاسم)(?![ء-ي])|\brename\b/i.test(request);
+        if (!touched.length && (priceIntent || descIntent || renameIntent) && fs.existsSync(path.join(dir, contentRel))) {
+            const body = fs.readFileSync(path.join(dir, contentRel), 'utf-8');
+            const esc = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
+            // Every serialized row, whole line — menu, products, tiers,
+            // testimonials all share the `{ name: '…', … },` shape.
+            const rowLines = [...body.matchAll(/^ {4}\{ name: '([^']*)',[^\n]*\},$/gm)]
+                .map(m => ({ name: m[1], line: m[0] }))
+                .filter(r => priceIntent ? /price: '/.test(r.line) : descIntent ? /desc: '/.test(r.line) : true);
+            const target = pickPhotoRow(rowLines, request);
+            // The new value: whatever follows إلى/ليصبح/=/to, quotes stripped.
+            const val = ((request.match(/(?:(?<![ء-ي])(?:إلى|الى|ليصبح|ليصير|يصير|تصير)(?![ء-ي])|=|\bto\b)\s*(.+)$/i) || [])[1] || '')
+                .trim().replace(/^[«"']|[»"'.،!؟]+$/g, '').trim();
+            const field = priceIntent ? (isAr ? 'سعر' : 'price') : descIntent ? (isAr ? 'وصف' : 'description') : (isAr ? 'اسم' : 'name');
+            if (!target || !val) {
+                // Prices live ONLY in rows, so a rowless price request earns a
+                // guided answer. A rowless اسم/وصف request may mean the brand
+                // or a section — that belongs to the model path below.
+                if (priceIntent) {
+                    const names = rowLines.map(r => `«${r.name}»`).join('، ');
+                    return {
+                        ok: true,
+                        output: {
+                            message: isAr
+                                ? `✏️ لأعدّل ${field} عنصرٍ بعينه، سمِّه واذكر القيمة الجديدة بعد «إلى» — العناصر المتاحة: ${names || 'لا صفوف قابلة للتعديل'}.\nمثال: «غيّر سعر ${rowLines[0]?.name || 'العنصر'} إلى 200»`
+                                : `✏️ Name the item and the new value after "to" — available items: ${names || 'none'}.`,
+                        },
+                        logs,
+                    } as any;
+                }
+            }
+            if (target && val) {
+                let newLine = target.line;
+                if (priceIntent) {
+                    const oldPrice = (target.line.match(/price: '([^']*)'/) || [])[1] || '';
+                    // A bare number inherits the row's own currency affix.
+                    const np = /^\d+([.,]\d+)?$/.test(val) && /\d/.test(oldPrice) ? oldPrice.replace(/\d+([.,]\d+)?/, val) : val;
+                    newLine = target.line.replace(/price: '[^']*'/, `price: '${esc(np)}'`);
+                } else if (descIntent) {
+                    newLine = target.line.replace(/desc: '[^']*'/, `desc: '${esc(val)}'`);
+                } else {
+                    newLine = target.line.replace(`name: '${target.name}'`, `name: '${esc(val)}'`);
+                }
+                if (newLine !== target.line) {
+                    const next = body.replace(target.line, newLine);
+                    const gate = syntaxOk(contentRel, next);
+                    if (gate.ok) {
+                        write(contentRel, next);
+                        notes.push(isAr
+                            ? `✏️ غيّرت ${field} «${target.name}»${priceIntent || renameIntent ? ` إلى «${(newLine.match(priceIntent ? /price: '([^']*)'/ : /name: '([^']*)'/) || [])[1]}»` : ''}.`
+                            : `✏️ Changed the ${field} of "${target.name}".`);
+                        logs.push(`text edit: ${target.name} ${field} updated — no model call`);
+                    } else {
+                        refused.push(`${contentRel}: text edit breaks the syntax (${gate.error}) — refused`);
+                    }
+                }
+            }
+        }
+
         // ── the general path: SEARCH/REPLACE from the model ─────────────────
         if (!touched.length) {
             const files = listFiles(dir);

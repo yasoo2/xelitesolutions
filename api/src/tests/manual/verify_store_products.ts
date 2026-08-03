@@ -129,6 +129,16 @@ async function main() {
     }));
     check('the browser sees TWO painted product photos and a clean Gift set card', seen2.painted === 2 && seen2.gift, JSON.stringify(seen2));
 
+    console.log('\n[4] «غيّر سعر Premium edition إلى 99$» — تعديل نصي حتمي يظهر في المتصفح');
+    const priceEdit: any = await new ProjectEditTool().execute(
+        { request: 'change the price of the Premium edition to $99' }, { sessionId: 'store-wire' });
+    check('the price edit succeeded AND the real build verified it', !!priceEdit.ok && priceEdit.output.buildVerified === true, JSON.stringify({ ok: priceEdit.ok, bv: priceEdit.output?.buildVerified, msg: String(priceEdit.output?.message).slice(0, 100) }));
+    check('no model was asked — the edit was deterministic', (priceEdit.logs || []).some((l: string) => /no model call/.test(l)), (priceEdit.logs || []).join(' | ').slice(0, 150));
+    const p3 = await browser.newPage();
+    await p3.goto(`http://127.0.0.1:${(site.address() as any).port}/`, { waitUntil: 'networkidle' });
+    const prices2 = await p3.evaluate(() => [...document.querySelectorAll('.product-price')].map(e => e.textContent || ''));
+    check('the browser shows the NEW price on the named card only', prices2.includes('$99') && prices2.includes('$39') && !prices2.includes('$69'), prices2.join(','));
+
     await browser.close();
     site.close(); archive.close();
     fs.rmSync(root, { recursive: true, force: true });
