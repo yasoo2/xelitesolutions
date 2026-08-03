@@ -9,7 +9,7 @@ import { LLMCacheTool } from '../../modules/tools/definitions/LLMCacheTool';
 import { OpenAIProvider } from './providers/openai';
 import { GeminiProvider } from './providers/gemini';
 import { OpenRouterProvider } from './providers/openrouter';
-import { pickLocalModel } from './local-brain';
+import { pickLocalModel, isLocalBrainReady } from './local-brain';
 import OpenAI from 'openai';
 
 let hack: any = pollinationsProvider;
@@ -646,6 +646,18 @@ async function callGroq(model: string, messages: any[], onPartial?: (delta: stri
 // FREE provider mesh for the rest of the process.
 const failedCustomRoutes = new Set<string>();
 
+/**
+ * [INTELLIGENCE ECONOMY] Quota-aware pause for the CUSTOM route.
+ *
+ * Field-measured: Groq's 100k tokens/day die by mid-session, and every
+ * later call still fired the custom route first — a guaranteed 429 plus a
+ * «try again in 24m» body, dozens of times per minute. The 429 says exactly
+ * how long to wait; the route now sleeps for THAT window (capped) and the
+ * mesh answers meanwhile. Exported for tests.
+ */
+export const customRouteCooldownUntil = new Map<string, number>();
+const CUSTOM_ROUTE_COOLDOWN_CAP_MS = 30 * 60_000;
+
 // Remembers FREE-mesh providers that just failed or timed out, so we skip them for
 // a short cooldown instead of paying a full (often long) round-trip through a dead
 // gateway on EVERY request. Example: DuckAI returns 418 and Pollinations returns
@@ -776,6 +788,14 @@ export async function routeToModel(
     tools?: any[],
     context?: any
 ): Promise<string> {
+
+    // [INTELLIGENCE ECONOMY] context.purpose === 'internal' marks the calls
+    // the user never reads directly — intent parsing, planning, tool
+    // selection, narration. Field-measured: these burned MOST of the 100k
+    // Groq tokens/day, so the visible answers fell to the weakest keyless
+    // provider by mid-session. Internal calls run on the local brain first
+    // and never touch the daily quota while it is available.
+    const internalCall = String((context as any)?.purpose || '') === 'internal';
 
     if (process.env.MOCK_LLM === 'true') {
         const promptText = JSON.stringify(messages);
@@ -974,8 +994,18 @@ export async function routeToModel(
         const isAuto = !cfgProvider || cfgProvider === 'mock' || cfgProvider === 'auto' || cfgProvider === 'free' || cfgProvider === 'default' || placeholderKey;
         if (!isAuto) {
           const routeKey = `${cfgProvider}:${String(cfgApiKey || '').slice(0, 12)}:${cfgModel || ''}`;
+          const quotaPausedUntil = customRouteCooldownUntil.get(routeKey) || 0;
           if (failedCustomRoutes.has(routeKey)) {
             console.log(`[IntelligentRouter] Skipping known-bad custom route ${cfgProvider}/${cfgModel} (previously failed auth/config) - using FREE providers.`);
+          } else if (internalCall && isLocalBrainReady()) {
+            // [INTELLIGENCE ECONOMY] Internal reasoning — intent parsing,
+            // planning, tool selection, narration — never spends the user's
+            // daily quota when a local brain is running. The custom (Groq)
+            // route is reserved for the ANSWER the user actually reads.
+            console.log('[IntelligentRouter] 💰 internal reasoning → local brain first (daily quota reserved for the final answer)');
+          } else if (quotaPausedUntil > Date.now()) {
+            const mins = Math.max(1, Math.ceil((quotaPausedUntil - Date.now()) / 60_000));
+            console.log(`[IntelligentRouter] 💰 custom route ${cfgProvider}/${cfgModel} quota-paused ~${mins}min (429 said so) — using free/local mesh meanwhile.`);
           } else {
             console.log(`✨ [IntelligentRouter] Custom Route: Provider=${cfgProvider}, Model=${cfgModel}, HasKey=${!!cfgApiKey}, HasUrl=${!!cfgBaseUrl}`);
             
@@ -1071,6 +1101,13 @@ export async function routeToModel(
                 if (authProblem) {
                     failedCustomRoutes.add(routeKey);
                     console.warn(`[IntelligentRouter] Custom route ${cfgProvider}/${cfgModel} DISABLED for this session (auth error). Joe will use FREE providers only - fix or remove the key in the model settings.`);
+                } else if (status === 429 || /rate limit|tokens per day|TPD/i.test(msg)) {
+                    // The 429 body tells us exactly when the quota returns —
+                    // pause the route for that window instead of re-hammering
+                    // a dead quota on every single call (field-measured tail).
+                    const waitMs = Math.min(retryAfterMsFrom(msg) || 5 * 60_000, CUSTOM_ROUTE_COOLDOWN_CAP_MS);
+                    customRouteCooldownUntil.set(routeKey, Date.now() + waitMs);
+                    console.warn(`[IntelligentRouter] 💰 Custom route ${cfgProvider}/${cfgModel} hit its quota — paused for ~${Math.ceil(waitMs / 60_000)}min (from the 429 itself). Free/local mesh carries the load meanwhile.`);
                 } else {
                     console.warn(`[IntelligentRouter] Custom route ${cfgProvider}/${cfgModel} failed once (${status || 'no status'}) but the key looks fine — it stays enabled and will be retried.`);
                 }
@@ -1317,7 +1354,10 @@ export async function routeToModel(
     // which is the repeated "Groq 429 → LLM7" storm the user saw. When cooled down we
     // go straight to the mesh (which also defers Groq) until the limit resets.
     try {
-        if (selectedModel.provider === 'groq' && hasGroqKey && !isProviderCoolingDown('Groq (Free)')) {
+        // [INTELLIGENCE ECONOMY] Internal reasoning never takes the Groq happy
+        // path while the local brain runs — the mesh (Local first) handles it.
+        if (selectedModel.provider === 'groq' && hasGroqKey && !isProviderCoolingDown('Groq (Free)')
+            && !(internalCall && isLocalBrainReady())) {
             // Groq is fast, but let's give it 15s
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
             const rawAns = await Promise.race([callGroq(selectedModel.model, effectiveMessages, onPartial, tools), timeoutPromise]) as string;
@@ -1352,7 +1392,11 @@ export async function routeToModel(
     // which is exactly why "Groq feels slow/fake": the system is really running
     // Local, not Groq. So push Local to the END whenever a cloud brain exists.
     const hasFastCloud = hasGroqKey || geminiProvider.isAvailable() || cerebrasProvider.isAvailable() || mistralProvider.isAvailable();
-    if (hasFastCloud) {
+    // [INTELLIGENCE ECONOMY] …but INTERNAL reasoning keeps Local FIRST even
+    // when a cloud brain exists: qwen answers intent/planning JSON fine, and
+    // every internal call sent to Groq is a token the user's final answer
+    // will not have by evening.
+    if (hasFastCloud && !internalCall) {
         const localIdx = meshProviders.findIndex(p => p.name === 'Local (Auto)');
         if (localIdx >= 0) {
             const [local] = meshProviders.splice(localIdx, 1);

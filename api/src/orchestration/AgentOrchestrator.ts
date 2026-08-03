@@ -301,7 +301,7 @@ export class AgentOrchestrator {
                 (prompt) => routeToModel(
                     [{ role: 'user', content: prompt }],
                     undefined, undefined, undefined, undefined, undefined, undefined,
-                    { modelConfig: goalContext?.modelConfig },
+                    { modelConfig: goalContext?.modelConfig, purpose: 'internal' },
                 ),
             );
             if (line.text) broadcastThinkingDetail(memory.sessionId, line.text);

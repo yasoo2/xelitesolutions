@@ -69,7 +69,9 @@ Return ONLY a JSON object:
                 requiresTools: false,
                 estimatedTokens: 1000,
                 language: 'en'
-            } as any, undefined, undefined, undefined, undefined, undefined, context);
+                // Internal reasoning: never spends the user's daily quota
+                // while the local brain is available (intelligence economy).
+            } as any, undefined, undefined, undefined, undefined, undefined, { ...(context || {}), purpose: 'internal' });
 
             let analysis: any;
             try {

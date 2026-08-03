@@ -144,7 +144,7 @@ Rules:
         let raw = '';
         try {
             raw = await Promise.race([
-                routeToModel([{ role: 'system', content: sys }, { role: 'user', content: `Request: ${goal}` }], undefined, undefined, undefined, undefined, undefined, undefined, context),
+                routeToModel([{ role: 'system', content: sys }, { role: 'user', content: `Request: ${goal}` }], undefined, undefined, undefined, undefined, undefined, undefined, { ...(context || {}), purpose: 'internal' }),
                 new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000)),
             ]);
         } catch { return null; }
@@ -181,7 +181,7 @@ Rules:
         let raw = '';
         try {
             raw = await Promise.race([
-                routeToModel([{ role: 'system', content: sys }, { role: 'user', content: `Request: ${goal}` }], undefined, undefined, undefined, undefined, undefined, undefined, context),
+                routeToModel([{ role: 'system', content: sys }, { role: 'user', content: `Request: ${goal}` }], undefined, undefined, undefined, undefined, undefined, undefined, { ...(context || {}), purpose: 'internal' }),
                 new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), 18000)),
             ]);
         } catch { return null; }
@@ -1049,7 +1049,9 @@ Return ONLY a JSON array of steps:
             const response = await routeToModel([
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Analyze goal and generate DAG for: ${intent.goal}` }
-            ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                // Planning is internal reasoning — the local brain writes the
+                // DAG JSON; the daily quota stays for the user-facing answer.
+            ], undefined, undefined, undefined, undefined, undefined, undefined, { ...(context || {}), purpose: 'internal' });
 
             const jsonMatch = response.match(/\[[\s\S]*\]/);
             if (jsonMatch) {

@@ -51,7 +51,9 @@ JSON Format:
                 requiresTools: true,
                 estimatedTokens: 1000,
                 language: 'en'
-            } as any, undefined, undefined, undefined, undefined, undefined, context);
+                // Tool selection is internal reasoning — local brain first,
+                // the daily quota stays reserved for user-facing answers.
+            } as any, undefined, undefined, undefined, undefined, undefined, { ...(context || {}), purpose: 'internal' });
 
             let decision: any;
             try {
