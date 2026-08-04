@@ -9,7 +9,21 @@ import { logger } from '../shared/utils/logger';
  */
 class AgentExecutionFirewall {
     private static instance: AgentExecutionFirewall;
-    public context = new AsyncLocalStorage<{ isOrchestrator: boolean; isSystem?: boolean; traceId?: string }>();
+    /**
+     * WHO THIS WORK IS FOR, carried with the work itself.
+     *
+     * Live events were addressed by each caller repeating the session in its
+     * payload, and fourteen call sites simply did not — a file diff, a
+     * screenshot, a shell line, a task update, a notification, and the question
+     * «Joe needs your input» all resolved to «nobody», which the wire delivers
+     * to EVERYBODY. Patching fourteen payloads would leave the fifteenth to be
+     * written tomorrow. The owner rides in the ambient context instead, so
+     * anything broadcast while a run is executing belongs to whoever started it.
+     */
+    public context = new AsyncLocalStorage<{
+        isOrchestrator: boolean; isSystem?: boolean; traceId?: string;
+        userId?: string; sessionId?: string;
+    }>();
 
     private constructor() {}
 
@@ -23,16 +37,34 @@ class AgentExecutionFirewall {
     /**
      * Executes a function within the authorized Orchestrator context
      */
-    public runInContext<T>(traceId: string | undefined, fn: () => T): T {
+    public runInContext<T>(traceId: string | undefined, fn: () => T, owner?: { userId?: string; sessionId?: string }): T {
         const parent = this.context.getStore();
-        return this.context.run({ isOrchestrator: true, isSystem: parent?.isSystem, traceId }, fn);
+        return this.context.run({
+            isOrchestrator: true,
+            isSystem: parent?.isSystem,
+            traceId,
+            userId: owner?.userId || parent?.userId,
+            sessionId: owner?.sessionId || parent?.sessionId,
+        }, fn);
+    }
+
+    /** The user this execution belongs to, when it belongs to one. */
+    public currentOwner(): { userId: string; sessionId: string } {
+        const s = this.context.getStore();
+        return { userId: String(s?.userId || ''), sessionId: String(s?.sessionId || '') };
     }
 
     /**
      * Executes a function as a trusted system background task
      */
-    public runAsSystem<T>(fn: () => T): T {
-        return this.context.run({ isOrchestrator: true, isSystem: true }, fn);
+    public runAsSystem<T>(fn: () => T, owner?: { userId?: string; sessionId?: string }): T {
+        const parent = this.context.getStore();
+        return this.context.run({
+            isOrchestrator: true,
+            isSystem: true,
+            userId: owner?.userId || parent?.userId,
+            sessionId: owner?.sessionId || parent?.sessionId,
+        }, fn);
     }
 
     /**

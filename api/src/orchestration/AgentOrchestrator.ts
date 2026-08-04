@@ -135,7 +135,7 @@ export class AgentOrchestrator {
     emitDepartment(goal.id, 'developer');
     const result = await executionFirewall.runInContext(goal.traceId, () => {
         return this.coordinate(dag, runtimeMemory, goal.context, goal.traceId, goal.goal);
-    });
+    }, { userId: goal.context?.userId, sessionId: goal.context?.sessionId || goal.id });
 
     // [Departments] QA reviews the outcome, then it's delivered.
     emitDepartment(goal.id, 'reviewer');

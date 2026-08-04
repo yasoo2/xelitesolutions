@@ -109,7 +109,7 @@ router.post('/:name/execute', authenticate, async (req: Request, res: Response) 
             userId,
             sessionId
         });
-    });
+    }, { userId, sessionId });
 
     res.json({
         ok: result.ok !== undefined ? result.ok : result.success !== false,

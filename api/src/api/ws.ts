@@ -94,7 +94,10 @@ function resolveEventUserId(ev: LiveEvent) {
     }
     const sid = trimId((ev as any).sessionId || (ev as any)?.data?.sessionId);
     const owner = sid ? sessionOwnerBySessionId.get(sid) : undefined;
-    return owner?.userId || '';
+    // Not «unknown, give up» — a shell line emitted by a tool during a run
+    // carries no terminal id and no session, and returning here left it
+    // ownerless (and therefore dropped). Fall through to the run it came from.
+    if (owner?.userId) return owner.userId;
   }
 
   // An event names its run or its session in one of several places, and Joe
@@ -114,6 +117,19 @@ function resolveEventUserId(ev: LiveEvent) {
   }
 
   if (t.startsWith('admin:')) return 'SUPER_ADMIN_ROLE';
+
+  // LAST RESORT: the run this event was emitted from. Fourteen call sites name
+  // no session at all — a file diff, a screenshot, a shell line, a task update,
+  // a notification, and «Joe needs your input» among them — and an event that
+  // belongs to nobody is delivered to everybody. The execution context knows
+  // whose work is running, so every one of them (and every one written later)
+  // is addressed without its author having to remember.
+  try {
+    const { executionFirewall } = require('../orchestration/AgentExecutionFirewall');
+    const owner = executionFirewall.currentOwner?.();
+    if (owner?.userId) return owner.userId;
+  } catch { /* outside a run there is nothing to inherit */ }
+
   return '';
 }
 

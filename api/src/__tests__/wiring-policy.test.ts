@@ -772,6 +772,24 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(toolSvc).toContain("data: { tool: effectiveName, ok, sessionId: contextSessionId }");
     });
 
+    it('an event with no address of its own inherits the run it came from', () => {
+        // A static sweep of the 73 broadcast sites found FOURTEEN naming no
+        // session, no run and no user — a file diff, a screenshot, shell output,
+        // a task update, a notification, and «Joe needs your input», a question
+        // that shown to everyone anyone could answer. Patching fourteen payloads
+        // would leave the fifteenth to be written tomorrow, so the owner rides
+        // in the execution context. Proven per type in verify_event_ownership.ts.
+        const fw = SRC('orchestration', 'AgentExecutionFirewall.ts');
+        expect(fw).toContain('public currentOwner()');
+        expect(fw).toMatch(/userId\?: string; sessionId\?: string;/);
+        const ws = SRC('api', 'ws.ts');
+        expect(ws).toContain('executionFirewall.currentOwner?.()');
+        // and the entry points declare whose run it is
+        expect(SRC('orchestration', 'AgentOrchestrator.ts'))
+            .toMatch(/\}, \{ userId: goal\.context\?\.userId, sessionId: goal\.context\?\.sessionId \|\| goal\.id \}\)/);
+        expect(SRC('api', 'routes', 'tools.ts')).toMatch(/\}, \{ userId, sessionId \}\)/);
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([
