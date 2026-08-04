@@ -236,6 +236,21 @@ export class AgentLoopService {
                 }
             } catch { /* non-fatal */ }
 
+            /**
+             * [AUTO-TITLE] Name the session now that it has a first exchange.
+             *
+             * Auto-naming used to run ONLY from the endpoints that read a
+             * session, and a live conversation reads nothing — the reply comes
+             * down this socket. So a new chat kept «جلسة جديدة» until the user
+             * switched away and back, which is exactly what he reported. The
+             * run is the honest trigger: the title appears while he is still
+             * looking at the conversation that earned it.
+             */
+            try {
+                const { autoNameSessionAfterReply } = require('../../api/controllers/sessionController');
+                void autoNameSessionAfterReply(sessionId);
+            } catch { /* naming is never worth failing a run over */ }
+
             // [PERSISTENT MEMORY] Learn from this turn so Joe remembers it next
             // session: extracts facts (name, preferred languages, project types)
             // and stores a Q/A memory. Best-effort, non-blocking.

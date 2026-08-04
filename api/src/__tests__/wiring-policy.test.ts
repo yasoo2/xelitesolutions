@@ -1602,3 +1602,34 @@ describe('the provider button says its name', () => {
         expect(weight).toBeLessThan(600);   // the name's 600
     });
 });
+
+/**
+ * A CHAT NAMES ITSELF WHILE YOU ARE STILL IN IT.
+ *
+ * «عند اضافة جلسة جديده ويتم الحوار مع جو داخلها فانها لا تاخذ عنوان تلقائي
+ * الا ان اغير الجلسة الى جلسة اخرى ومن ثم ارجع لها» — he had found the exact
+ * trigger. Auto-naming ran only from the endpoints that READ a session, and a
+ * live conversation reads nothing: the reply comes down the socket. The title
+ * was not late, it was never running.
+ */
+describe('the session title arrives during the conversation', () => {
+    it('the run names the session, after the reply is stored', () => {
+        const S = SRC('modules', 'services', 'AgentLoopService.ts');
+        expect(S).toMatch(/autoNameSessionAfterReply\(sessionId\)/);
+        expect(S.indexOf('autoNameSessionAfterReply')).toBeGreaterThan(S.indexOf("role: 'assistant', content: finalText"));
+    });
+
+    it('and the trigger refuses to rename what the user named', () => {
+        const C = SRC('api', 'controllers', 'sessionController.ts');
+        const fn = C.slice(C.indexOf('export async function autoNameSessionAfterReply'));
+        expect(fn).toMatch(/if \(!isAutoTitleCandidate\(title\)\) return;/);
+        expect(fn).toMatch(/if \(!messages\.some\(\(m: any\) => m\.role === 'user'\)\) return;/);
+    });
+
+    it('the session list is exempt from the per-conversation guard', () => {
+        const J = WEB('pages', 'Joe.tsx');
+        expect(J).toMatch(/if \(msg\?\.type === 'sessions:refresh'\) return true;/);
+        // …and the guard itself is still there for everything else.
+        expect(J).toMatch(/if \(!mine\(msg\)\) return;/);
+    });
+});

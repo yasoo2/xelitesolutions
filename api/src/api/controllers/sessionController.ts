@@ -370,6 +370,51 @@ export function isAutoTitleCandidate(title: string) {
     );
 }
 
+/**
+ * NAME THE SESSION WHEN IT EARNS A NAME — not when someone happens to look at it.
+ *
+ * Reported from the field: «عند اضافة جلسة جديده ويتم الحوار مع جو داخلها فانها
+ * لا تاخذ عنوان تلقائي الا ان اغير الجلسة الى جلسة اخرى ومن ثم ارجع لها».
+ *
+ * He was describing the trigger exactly. Auto-naming only ever ran from the two
+ * endpoints that READ a session (addMessage and listMessages), and during a live
+ * conversation neither is called: the reply arrives over the WebSocket. So the
+ * title waited, silently, until he switched away and came back and the app
+ * fetched the history — which is the only reason it ever appeared at all.
+ *
+ * This is the missing trigger: the run itself, the moment Joe's first reply is
+ * stored. Called fire-and-forget; the lock inside handleAutoNaming keeps a
+ * session named exactly once no matter how many paths reach it.
+ */
+export async function autoNameSessionAfterReply(sessionId: string): Promise<void> {
+    const sid = String(sessionId || '').trim();
+    if (!sid) return;
+    try {
+        // The same offline test the rest of this file uses — one rule, not two.
+        const isOffline = mongoose.connection.readyState !== 1
+            || process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON';
+        let title = '';
+        let messages: any[] = [];
+        if (isOffline) {
+            const sessions = (global as any).mockSessions || [];
+            const found = sessions.find((x: any) => String(x._id) === sid || x.id === sid);
+            if (!found) return;
+            title = String(found.title || '');
+            messages = ((global as any).mockMessages || []).filter((m: any) => String(m.sessionId) === sid);
+        } else {
+            const found: any = await Session.findById(sid).lean();
+            if (!found) return;
+            title = String(found.title || '');
+            messages = await Message.find({ sessionId: sid }).sort({ createdAt: 1 }).limit(5).lean();
+        }
+        if (!isAutoTitleCandidate(title)) return;                 // the user named it, or it is named
+        if (!messages.some((m: any) => m.role === 'user')) return; // nothing to name it after
+        await handleAutoNaming(sid, messages, isOffline);
+    } catch (e) {
+        console.error('[SessionController] autoNameSessionAfterReply failed', e);
+    }
+}
+
 // Guards against the title "thrash" where the frontend polls /messages a few
 // times during a run and each poll fires a concurrent rename (each producing a
 // different title). Locked synchronously on entry; a session is named ONCE.

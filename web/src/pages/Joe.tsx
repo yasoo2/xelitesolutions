@@ -167,6 +167,16 @@ export default function Joe() {
     useEffect(() => {
         /** Is this event about the conversation currently on screen? */
         const mine = (msg: any): boolean => {
+            /**
+             * THE SESSION LIST IS A SHARED SURFACE, NOT A PANEL.
+             *
+             * The guard below exists so a run in one chat cannot paint another
+             * chat's panels — and it was right to. But the sidebar shows EVERY
+             * session, so a rename that happens while you are reading a
+             * different conversation still belongs on screen. Filtering it out
+             * meant the new title only appeared after a reload.
+             */
+            if (msg?.type === 'sessions:refresh') return true;
             const sid = String(msg?.sessionId || msg?.data?.sessionId || '');
             if (!sid) return true;                       // global events (connection state)
             const active = String(activeSessionId || '');
