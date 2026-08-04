@@ -13,7 +13,7 @@ import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { analyzeProject, formatAnalysis } from '../../../core/project/analyze';
-import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
+import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
 
 export function githubUrlFrom(text: string): string | null {
@@ -53,8 +53,7 @@ export class ImportProjectTool extends BaseTool {
         const term = (line: string) => {
             logs.push(line);
             try {
-                [String(sessionId || ''), 'local', 'default', 'panel-terminal'].filter(Boolean)
-                    .forEach(id => broadcast({ type: 'terminal_output', id, data: line + '\r\n' } as any));
+                broadcastTerminalLine(sessionId, line + '\r\n');
             } catch { /* UI optional */ }
         };
 

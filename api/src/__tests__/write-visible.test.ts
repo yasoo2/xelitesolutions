@@ -98,3 +98,43 @@ describe('the panel reads as two ORDERED sections', () => {
         expect(panel).toMatch(/position: 'sticky'/);
     });
 });
+
+/**
+ * ONE LINE, ONE MESSAGE.
+ *
+ * Every builder used to fan the same terminal line out to four ids, because
+ * any of those tabs might be the one in front of the user. The field log
+ * shows the bill: four `[WS] Broadcast type=terminal_output` entries and
+ * four `websocket.outbound.sent` records for a single 58-byte line — on
+ * every line of every build. The addressing now travels INSIDE the message.
+ */
+describe('the terminal stream is sent once, not four times', () => {
+    const ws = fs.readFileSync(path.join(__dirname, '..', 'api', 'ws.ts'), 'utf-8');
+
+    test('a single helper owns the addressing', () => {
+        expect(ws).toContain('export function broadcastTerminalLine');
+        const at = ws.indexOf('export function broadcastTerminalLine');
+        const body = ws.slice(at, ws.indexOf('\n}', at));
+        expect(body).toContain("id: 'panel-terminal'");      // unchanged for anything filtering on id
+        expect(body).toContain('ids');                        // …and the full address list rides along
+        expect((body.match(/broadcast\(/g) || []).length).toBe(1);
+    });
+
+    test('NO builder fans a line out by hand any more', () => {
+        const files = ['ReactProjectTool', 'ApiProjectTool', 'ImportProjectTool', 'WebPageBuilderTool']
+            .map(f => path.join(__dirname, '..', 'modules', 'tools', 'definitions', `${f}.ts`))
+            .concat([path.join(__dirname, '..', 'modules', 'services', 'ToolService.ts')]);
+        for (const f of files) {
+            const src = fs.readFileSync(f, 'utf-8');
+            expect(src).not.toContain("'local', 'default', 'panel-terminal'");
+            expect(src).toContain('broadcastTerminalLine');
+        }
+    });
+
+    test('the terminal panel reads the address list, so no tab loses a line', () => {
+        const panel = fs.readFileSync(
+            path.join(__dirname, '..', '..', '..', 'web', 'src', 'components', 'terminal', 'EnterpriseTerminalPanel.tsx'), 'utf-8');
+        expect(panel).toContain('Array.isArray(msg.ids) && msg.ids.includes(activeTabId)');
+        expect(panel).toContain("msg.id === 'joe-agent'");    // the autonomous stream still shows
+    });
+});

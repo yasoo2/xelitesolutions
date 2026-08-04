@@ -284,6 +284,9 @@ export function attachWebSocket(server: Server) {
 export function broadcast(
   event: LiveEvent | { type: string; data: any; id?: string; runId?: string; seq?: number; ts?: number }
 ) {
+  // Observers see EVERY event, including the ones sent before a socket exists
+  // — a proof that measures a build must not depend on a client being there.
+  for (const o of broadcastObservers) { try { o(event); } catch { /* an observer never breaks the wire */ } }
   if (!liveWssRef) {
     console.warn('[WS] broadcast called but liveWssRef is null');
     return;
@@ -331,6 +334,40 @@ export function broadcast(
 }
 
 // [Wakil 6.0] Helper to broadcast thinking phase updates
+/**
+ * Watch every event that leaves this server, without owning a socket.
+ *
+ * A build harness used to reach in and reassign `ws.broadcast` — which the
+ * compiler exposes as a getter, so the assignment threw and the whole e2e
+ * proof stopped running unnoticed. An explicit observer says what was meant
+ * and cannot break: it never alters an event, and a throwing observer never
+ * reaches the wire.
+ */
+const broadcastObservers = new Set<(event: any) => void>();
+export function observeBroadcasts(fn: (event: any) => void): () => void {
+    broadcastObservers.add(fn);
+    return () => { broadcastObservers.delete(fn); };
+}
+
+/**
+ * ONE terminal line, sent ONCE.
+ *
+ * Every builder used to fan the same line out to four ids — the session, the
+ * generic 'local' and 'default' tabs, and the shared panel — because any of
+ * them might be the tab in front of the user. The field log shows the cost:
+ * four `[WS] Broadcast type=terminal_output` entries and four
+ * `websocket.outbound.sent` records for one 58-byte line, on every line of
+ * every build.
+ *
+ * The addressing is now IN the message: `id` stays the panel's own stream
+ * (so anything that filters on it is unchanged) and `ids` lists every tab
+ * this line belongs to. One message, same reach, a quarter of the traffic.
+ */
+export function broadcastTerminalLine(sessionId: string | undefined, line: string): void {
+    const ids = [String(sessionId || ''), 'local', 'default', 'panel-terminal'].filter(Boolean);
+    broadcast({ type: 'terminal_output', id: 'panel-terminal', ids, data: line } as any);
+}
+
 export function broadcastThinkingPhase(sessionId: string, phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle', detail?: string) {
   thinkingEventSeq += 1;
   broadcast({

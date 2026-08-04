@@ -69,7 +69,7 @@ const fileStreamEvents: Array<{ file: string; chunk: string; done: boolean }> = 
  * records the id it was addressed to — the panel only listens on the session
  * id, so a line sent only to the legacy trio never reached a real session.
  */
-const terminalEvents: Array<{ id: string; data: string; at: number }> = [];
+const terminalEvents: Array<{ id: string; ids: string[]; data: string; at: number }> = [];
 /**
  * Build-status strip events. Each one must be the structured form of a log
  * line that really happened — the harness asserts the stages a real build
@@ -78,10 +78,12 @@ const terminalEvents: Array<{ id: string; data: string; at: number }> = [];
  */
 const buildStatusEvents: Array<{ stage: string; score?: number; terminal?: boolean; detail: string }> = [];
 {
+    // The wire is watched through the server's OWN observer hook. Reaching in
+    // to reassign ws.broadcast threw — the compiler exposes it as a getter —
+    // and this proof had silently stopped running because of it.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const ws = require('../../api/ws');
-    const realBroadcast = ws.broadcast.bind(ws);
-    ws.broadcast = (event: any) => {
+    const { observeBroadcasts } = require('../../api/ws');
+    observeBroadcasts((event: any) => {
         if (event?.type === 'file_stream' && event?.data) {
             fileStreamEvents.push({
                 file: String(event.data.file || ''),
@@ -90,7 +92,7 @@ const buildStatusEvents: Array<{ stage: string; score?: number; terminal?: boole
             });
         }
         if (event?.type === 'terminal_output') {
-            terminalEvents.push({ id: String(event.id || ''), data: String(event.data || ''), at: Date.now() });
+            terminalEvents.push({ id: String(event.id || ''), ids: (event.ids || []).map((x: any) => String(x)), data: String(event.data || ''), at: Date.now() });
         }
         if (event?.type === 'build_status' && event?.data?.stage) {
             buildStatusEvents.push({
@@ -100,8 +102,7 @@ const buildStatusEvents: Array<{ stage: string; score?: number; terminal?: boole
                 detail: String(event.data.detail || ''),
             });
         }
-        return realBroadcast(event);
-    };
+    });
 }
 
 /* ---------- the stub model -------------------------------------------------- */
@@ -271,7 +272,13 @@ async function measure(browser: any, url: string): Promise<{ findings: Finding[]
     await page.goto(url, { waitUntil: 'load' });
     await page.waitForTimeout(700);
 
-    const facts = await page.evaluate(() => {
+    // tsx compiles this file with esbuild's keepNames helper, which wraps every
+    // named arrow in `__name(fn, "name")`. That helper exists in Node, not in
+    // the page — so this whole measurement had been throwing «__name is not
+    // defined» and the proof never ran. The page gets the identity function
+    // under that name, and the measuring code runs exactly as written.
+    await page.evaluate('globalThis.__name = globalThis.__name || ((f) => f)');
+    const facts = await page.evaluate(`(${String(() => {
         const vis = (el: Element) => {
             const r = el.getBoundingClientRect();
             return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
@@ -371,7 +378,7 @@ async function measure(browser: any, url: string): Promise<{ findings: Finding[]
             iconsResolved: Array.from(document.querySelectorAll('svg use')).length,
             brokenImgs: Array.from(document.querySelectorAll('img')).filter(i => (i as HTMLImageElement).naturalWidth === 0).length,
         };
-    });
+    })})()`) as any;
 
     if (errors.length) findings.push({ severity: 'critical', text: `JavaScript errors: ${errors.slice(0, 2).join(' | ')}` });
     if (facts.hScroll > 2) findings.push({ severity: 'major', text: `page scrolls ${facts.hScroll}px sideways on a desktop` });
@@ -655,7 +662,10 @@ async function main() {
      * the final second, they were flushed after the fact, not streamed.
      */
     {
-        const toSession = terminalEvents.filter(e => e.id && !['local', 'default', 'panel-terminal'].includes(e.id));
+        // The address list travels INSIDE the message now (one send instead of
+        // four copies), so «addressed to a session» means the session id is in
+        // `ids` — not that a separate copy was sent under that id.
+        const toSession = terminalEvents.filter(e => (e.ids || []).some(id => id && !['local', 'default', 'panel-terminal'].includes(id)));
         const span = terminalEvents.length > 1
             ? terminalEvents[terminalEvents.length - 1].at - terminalEvents[0].at : 0;
         console.log(`terminal: ${terminalEvents.length} line broadcast(s), ${toSession.length} addressed to a session id, spread over ${(span / 1000).toFixed(1)}s`);

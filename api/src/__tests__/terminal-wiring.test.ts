@@ -29,12 +29,23 @@ const JOE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'web', 'src', 'pages', 'Joe.tsx'), 'utf-8');
 
 describe('lines reach the terminal the user is actually looking at', () => {
-    it('the builder addresses the SESSION id, not only the legacy trio', () => {
-        expect(BUILDER).toMatch(/\[String\(sessionId \|\| ''\), 'local', 'default', 'panel-terminal'\]/);
+    // The ADDRESS is what matters, not the shape of the call. Both senders
+    // now hand the session id to one helper that carries the whole address
+    // list inside a single message (see write-visible.test.ts) — four copies
+    // of every line was the cost of doing it by hand.
+    it('the builder addresses the SESSION id', () => {
+        expect(BUILDER).toMatch(/broadcastTerminalLine\(sessionId,/);
     });
 
     it('ToolService includes the session id in its flush', () => {
-        expect(TOOLSVC).toMatch(/String\(contextSessionId \|\| ''\), 'local', 'default', 'panel-terminal'/);
+        expect(TOOLSVC).toMatch(/broadcastTerminalLine\(contextSessionId,/);
+    });
+
+    it('…and the helper really addresses that session, plus the shared tabs', () => {
+        const WS = fs.readFileSync(path.join(__dirname, '..', 'api', 'ws.ts'), 'utf-8');
+        const at = WS.indexOf('export function broadcastTerminalLine');
+        const body = WS.slice(at, WS.indexOf('\n}', at));
+        expect(body).toMatch(/String\(sessionId \|\| ''\), 'local', 'default', 'panel-terminal'/);
     });
 });
 
@@ -44,7 +55,7 @@ describe('the stream is live, not a post-hoc flood', () => {
         // which runs at the moment the section landed / the image resolved.
         const wrap = BUILDER.indexOf('logs.push = (...lines: string[])');
         expect(wrap).toBeGreaterThan(-1);
-        expect(BUILDER.slice(wrap, wrap + 500)).toContain("terminal_output");
+        expect(BUILDER.slice(wrap, wrap + 500)).toContain('broadcastTerminalLine');
     });
 
     it('a tool that streamed live is not flushed a second time', () => {

@@ -223,7 +223,13 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
             // 'joe-agent' carries the commands Joe runs autonomously — shown in
             // the SAME terminal so the user watches Joe work the shell in real
             // time, fulfilling the standing "use the terminal" promise visibly.
-            if (msg.type === 'terminal_output' && (msg.id === activeTabId || msg.id === 'joe-agent' || !msg.id)) {
+            // Builders now send ONE message carrying the list of tabs it belongs
+            // to (`ids`) instead of four copies of the same line — the tab still
+            // shows exactly what it showed before.
+            const addressedHere = msg.id === activeTabId
+                || (Array.isArray(msg.ids) && msg.ids.includes(activeTabId))
+                || msg.id === 'joe-agent' || !msg.id;
+            if (msg.type === 'terminal_output' && addressedHere) {
                 termRef.current?.write(msg.data);
                 // Keep a plain-text copy of everything shown, for copy/download.
                 const plain = stripAnsi(String(msg.data || ''));

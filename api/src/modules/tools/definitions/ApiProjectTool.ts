@@ -25,7 +25,7 @@ import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { brandFrom } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
+import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
 
 const slug = (s: string) => (String(s || '').toLowerCase()
@@ -391,8 +391,7 @@ export class ApiProjectTool extends BaseTool {
         const term = (line: string) => {
             logs.push(line);
             try {
-                [String(sessionId || ''), 'local', 'default', 'panel-terminal'].filter(Boolean)
-                    .forEach(id => broadcast({ type: 'terminal_output', id, data: line + '\r\n' } as any));
+                broadcastTerminalLine(sessionId, line + '\r\n');
             } catch { /* UI optional */ }
         };
 

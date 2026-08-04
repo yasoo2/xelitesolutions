@@ -129,10 +129,16 @@ async function main() {
         fileEvents.map((d: any) => d.file).join(','));
     // The panel takes ONLY the 'panel-terminal' copy — the same line is
     // broadcast to four ids, and four copies per line read as a broken log.
+    // ONE message per line now, carrying the list of tabs it belongs to. The
+    // field log showed four `[WS] Broadcast type=terminal_output` entries and
+    // four `websocket.outbound.sent` records for a single 58-byte line.
     const panelLines = events.filter(e => e?.type === 'terminal_output' && e.id === 'panel-terminal');
-    check('بثّ الطرفية يصل للوحة عبر معرّف واحد (بلا تكرار رباعي)',
-        panelLines.length >= 10 && panelLines.length * 4 >= termLines.length && panelLines.length < termLines.length,
+    check('بثّ الطرفية يصل مرة واحدة لكل سطر — لا أربع نسخ',
+        panelLines.length >= 10 && panelLines.length === termLines.length,
         `panel=${panelLines.length} total=${termLines.length}`);
+    check('…وكل رسالة تحمل قائمة التبويبات التي تخصّها',
+        panelLines.every((e: any) => Array.isArray(e.ids) && e.ids.includes('panel-terminal') && e.ids.includes('ui-wire')),
+        JSON.stringify(panelLines[0]?.ids));
 
     const pv = ofType('preview_ready').map(e => String(e?.data?.url || ''));
     check('لوحة المعاينة استقبلت preview_ready برابط /project-preview', pv.some(u => u.includes('/project-preview/ui-wire/')), pv.join(' | ').slice(0, 120));

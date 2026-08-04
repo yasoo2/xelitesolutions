@@ -650,7 +650,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         // But for now, we assume tDef has the handler.
 
         if (typeof (tDef as any).execute === 'function') {
-            const { broadcast } = require('../../api/ws');
+            const { broadcast, broadcastTerminalLine } = require('../../api/ws');
             
             // [NEW] Broadcast tool start
             broadcast({
@@ -698,13 +698,8 @@ export async function executeTool(name: string, input: any, context?: ToolContex
              * a live session's terminal at all.
              */
             if (!(res as any)?.logsStreamedLive) {
-                const termIds = [String(contextSessionId || ''), 'local', 'default', 'panel-terminal'].filter(Boolean);
-                toolLogs.forEach((line: string) => {
-                    const data = paintLine(line) + '\r\n';
-                    termIds.forEach(id => {
-                        broadcast({ type: 'terminal_output', id, data });
-                    });
-                });
+                // ONE message per line, addressed to every tab that wants it.
+                toolLogs.forEach((line: string) => broadcastTerminalLine(contextSessionId, paintLine(line) + '\r\n'));
             }
 
             logs.push(...toolLogs);

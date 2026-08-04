@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { ToolDefinition } from '../types';
 import { routeToModel, isProviderFailure } from '../../../core/llm/intelligent-router';
-import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
+import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { paintLine } from '../../../core/terminal/paint';
 import { statusFromLine } from '../../../core/terminal/build-status';
 import { selfCorrectionSystem } from '../../../core/llm/weak-model-enhancer';
@@ -170,9 +170,7 @@ export class WebPageBuilderTool implements ToolDefinition {
         logs.push = (...lines: string[]) => {
             for (const line of lines) {
                 try {
-                    [String(sessionId || ''), 'local', 'default', 'panel-terminal']
-                        .filter(Boolean)
-                        .forEach(id => broadcast({ type: 'terminal_output', id, data: `${paintLine(line, '[joe]')}\r\n` } as any));
+                    broadcastTerminalLine(sessionId, `${paintLine(line, '[joe]')}\r\n`);
                     // The same line, as a structured stage event for the status
                     // strip — derived from what just happened, never from a timer.
                     const status = statusFromLine(line);
@@ -1666,9 +1664,7 @@ the WORDS, not the structure.`;
         // and to the session's own terminal id — the one the panel listens on.
         const term = (line: string) => {
             try {
-                [String(sessionId || ''), 'local', 'default', 'panel-terminal']
-                    .filter(Boolean)
-                    .forEach(id => broadcast({ type: 'terminal_output', id, data: line + '\r\n' } as any));
+                broadcastTerminalLine(sessionId, line + '\r\n');
             } catch { /* ignore */ }
         };
         term('web_page_builder: generating page with the local AI...');
