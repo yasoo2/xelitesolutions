@@ -37,6 +37,7 @@ import { sanitizeInlineSvg, labelIconOnlyButtons } from '../../../core/design/sv
 import { persistJoePages } from '../../../api/page-store';
 import { wantsMobileApp, ensurePwaMarkup, manifestJson, serviceWorkerJs, iconPng, installNote } from '../../../core/design/pwa';
 import { pickFlourish, flourishCss, flourishBrief } from '../../../core/design/flourish';
+import { publicUrlFor } from '../../../shared/utils/publicUrl';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 
@@ -263,7 +264,7 @@ export class WebPageBuilderTool implements ToolDefinition {
             versions.push({ html: prev.html, filename: prev.filename, at: prev.updatedAt || Date.now(), note: prev.lastRequest || '' });
             try {
                 fs.writeFileSync(path.join(ARTIFACT_DIR, prev.filename), target.html, 'utf-8');
-                let url = `http://localhost:${PORT}/artifacts/${prev.filename}`;
+                let url = publicUrlFor(`/artifacts/${prev.filename}`);
                 const dirAbs = path.join(ARTIFACT_DIR, `joe-${sessionKey}`);
                 if (fs.existsSync(dirAbs)) {
                     const s = splitHtmlProject(target.html);
@@ -271,7 +272,7 @@ export class WebPageBuilderTool implements ToolDefinition {
                         fs.writeFileSync(path.join(dirAbs, 'index.html'), s.indexHtml, 'utf-8');
                         fs.writeFileSync(path.join(dirAbs, 'styles.css'), s.css || '', 'utf-8');
                         fs.writeFileSync(path.join(dirAbs, 'script.js'), s.js || '', 'utf-8');
-                        url = `http://localhost:${PORT}/artifacts/joe-${sessionKey}/index.html`;
+                        url = publicUrlFor(`/artifacts/joe-${sessionKey}/index.html`);
                     }
                 }
                 url += `?v=${Date.now()}`;
@@ -672,7 +673,7 @@ ${prev!.html}`
                         gradientPlaceholder(String(spec).split('|').pop()!.trim() || 'image', palette.hue));
                     fs.writeFileSync(path.join(ARTIFACT_DIR, partialFile), partial, 'utf-8');
                     partialsEmitted++;
-                    const purl = `http://localhost:${PORT}/artifacts/${partialFile}?v=${Date.now()}`;
+                    const purl = publicUrlFor(`/artifacts/${partialFile}?v=${Date.now()}`);
                     broadcast({ type: 'preview_ready', sessionId, data: { url: purl, previewUrl: purl, sessionId, partial: true, sections: okSoFar.length } } as any);
                     if (sessionId && partialsEmitted === 1) broadcastThinkingDetail(sessionId, isAr
                         ? '👀 المعاينة الحية بدأت — شاهد الصفحة تكبر قسماً بعد قسم'
@@ -1608,12 +1609,12 @@ the WORDS, not the structure.`;
                     logs.push(`mobile app: wrote manifest.webmanifest, sw.js and generated icon-192/512.png (${appName})`);
                 }
                 projectDir = dir;
-                base = `http://localhost:${PORT}/artifacts/${dir}/index.html`;
+                base = publicUrlFor(`/artifacts/${dir}/index.html`);
             } else if (siteEditFile && prev?.site) {
                 // Preview the page that changed, inside the site it belongs to.
-                base = `http://localhost:${PORT}/artifacts/${prev.site.dir}/${siteEditFile}`;
+                base = publicUrlFor(`/artifacts/${prev.site.dir}/${siteEditFile}`);
             } else {
-                base = `http://localhost:${PORT}/artifacts/${filename}`;
+                base = publicUrlFor(`/artifacts/${filename}`);
             }
         } catch (e: any) {
             return { ok: false, error: `write_failed: ${e?.message || e}`, logs };
@@ -2528,7 +2529,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
         const links = verifyInternalLinks(written);
         logs.push(`site links: ${links.checked} checked, ${links.dead.length} dead`);
 
-        const url = `http://localhost:${PORT}/artifacts/${dir}/index.html?v=${Date.now()}`;
+        const url = publicUrlFor(`/artifacts/${dir}/index.html?v=${Date.now()}`);
         try {
             broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any);
         } catch { /* preview is a courtesy; the files are written either way */ }
@@ -2551,7 +2552,7 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
         const auditNotes: string[] = [];
         let auditedPages = 0;
         for (const [file] of Array.from(written)) {
-            const pageUrl = `http://localhost:${PORT}/artifacts/${dir}/${file}?v=${Date.now()}`;
+            const pageUrl = publicUrlFor(`/artifacts/${dir}/${file}?v=${Date.now()}`);
             try {
                 const v = await auditVisually(pageUrl, { screenshotDir: ARTIFACT_DIR, name: `audit-${dir}-${file.replace(/\W+/g, '-')}` });
                 const b = await auditBehaviour(pageUrl, { kind });

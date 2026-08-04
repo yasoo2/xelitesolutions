@@ -1,3 +1,4 @@
+import { publicUrlFor } from '../../shared/utils/publicUrl';
 /**
  * Forms that tell the truth about what happened to the message.
  *
@@ -287,7 +288,7 @@ export function formCss(): string {
 export function wireFormsToInbox(html: string, siteId: string, port: string | number): string {
     const clean = String(siteId || '').replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 80);
     if (!clean) return String(html || '');
-    const endpoint = `http://localhost:${port}/api/public/forms/${clean}`;
+    const endpoint = publicUrlFor(`/api/public/forms/${clean}`);
     return String(html || '').replace(/<form\b[^>]*>/gi, (tag) => {
         if (!/data-joe-form/.test(tag)) return tag;
         const stripped = tag.replace(/\s*data-joe-inbox\s*=\s*"[^"]*"/i, '');

@@ -790,6 +790,33 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(SRC('api', 'routes', 'tools.ts')).toMatch(/\}, \{ userId, sessionId \}\)/);
     });
 
+    it('a link Joe hands out is not addressed to the reader’s own machine', () => {
+        // Twenty-three sites built `http://localhost:${PORT}/…` and handed it to
+        // a person — or wrote it INTO a page that gets published, so a visitor's
+        // contact form posted to THEIR localhost and the message vanished.
+        // PUBLIC_URL existed for this and only the sign-in flow honoured it.
+        const { publicUrlFor } = require('../shared/utils/publicUrl');
+        const before = process.env.PUBLIC_URL;
+        try {
+            process.env.PUBLIC_URL = 'https://joe.example.com/';
+            expect(publicUrlFor('/artifacts/x/index.html')).toBe('https://joe.example.com/artifacts/x/index.html');
+            delete process.env.PUBLIC_URL;
+            process.env.PORT = '5002';
+            expect(publicUrlFor('/artifacts/x/index.html')).toBe('http://localhost:5002/artifacts/x/index.html');
+        } finally { if (before === undefined) delete process.env.PUBLIC_URL; else process.env.PUBLIC_URL = before; }
+        // the user-facing builders go through it — no raw localhost link left
+        for (const f of [
+            ['modules', 'tools', 'definitions', 'WebPageBuilderTool.ts'],
+            ['modules', 'tools', 'definitions', 'ProjectEditTool.ts'],
+            ['core', 'design', 'forms.ts'],
+        ]) {
+            const src = SRC(...(f as [string]));
+            expect({ file: f.join('/'), usesHelper: /publicUrlFor\(/.test(src) }).toEqual({ file: f.join('/'), usesHelper: true });
+            expect({ file: f.join('/'), rawArtifactLink: /http:\/\/localhost:\$\{PORT\}\/artifacts/.test(src) })
+                .toEqual({ file: f.join('/'), rawArtifactLink: false });
+        }
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([

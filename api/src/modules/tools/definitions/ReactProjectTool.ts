@@ -25,6 +25,7 @@ import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily }
 import { resolveImages } from '../../../core/design/images';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
+import { publicUrlFor } from '../../../shared/utils/publicUrl';
 
 const slug = (s: string) => (String(s || '').toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'app';
@@ -2136,7 +2137,7 @@ export class ReactProjectTool extends BaseTool {
             proj = path.join(root, `${dirName}-${suffix}`);
         }
         // The app's form delivers into Joe's inbox while it runs next to Joe.
-        (content as any).inbox = `http://localhost:${process.env.PORT || '5002'}/api/public/forms/${path.basename(proj).replace(/[^a-zA-Z0-9._-]/g, '')}`;
+        (content as any).inbox = publicUrlFor(`/api/public/forms/${path.basename(proj).replace(/[^a-zA-Z0-9._-]/g, '')}`);
         fs.mkdirSync(path.join(proj, 'src', 'components'), { recursive: true });
         fs.mkdirSync(path.join(proj, 'src', 'styles'), { recursive: true });
 
@@ -2394,7 +2395,7 @@ export class ReactProjectTool extends BaseTool {
         // route that serves this session's dist.
         let previewUrl = '';
         if (built) {
-            previewUrl = `http://localhost:${process.env.PORT || '5002'}/project-preview/${sessionKey}/index.html?v=${Date.now()}`;
+            previewUrl = publicUrlFor(`/project-preview/${sessionKey}/index.html?v=${Date.now()}`);
             try { broadcast({ type: 'preview_ready', sessionId, data: { url: previewUrl, previewUrl, sessionId } } as any); } catch { /* UI optional */ }
         }
 

@@ -27,6 +27,7 @@ import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../..
 import { routeToModel } from '../../../core/llm/intelligent-router';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
+import { publicUrlFor } from '../../../shared/utils/publicUrl';
 
 /** One parsed SEARCH/REPLACE block. */
 export interface EditBlock { file: string; search: string; replace: string }
@@ -807,7 +808,7 @@ Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits
         // /project-preview route. Only a green build earns this: a skipped
         // or failed verification has no fresh dist to show.
         if (buildVerified === true) {
-            const url = `http://localhost:${process.env.PORT || '5002'}/project-preview/${sessionKey}/index.html?v=${Date.now()}`;
+            const url = publicUrlFor(`/project-preview/${sessionKey}/index.html?v=${Date.now()}`);
             try { broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any); } catch { /* UI optional */ }
         }
 
