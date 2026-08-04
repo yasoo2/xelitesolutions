@@ -208,6 +208,41 @@ describe('the server and the UI agree on event names', () => {
         expect(SRC('modules', 'services', 'DeployManager.ts')).toContain('deploymentId: deploymentId');
     });
 
+    it('the interface asks NOTHING of a third party to render itself', () => {
+        // Joe pulled five font families from fonts.googleapis.com on every page
+        // load: it needed the internet to look right, it paid a third-party
+        // handshake before the first paint, and it announced every visitor to
+        // Google — which stops being a footnote once Joe is online for the
+        // world. The fonts are vendored under web/public/fonts now, and this
+        // keeps them there.
+        const webRoot = path.join(WEB, '..');
+        const html = fs.readFileSync(path.join(webRoot, 'index.html'), 'utf-8');
+        expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
+        expect(html).toContain('/fonts/fonts.css');
+
+        const styles: string[] = [];
+        const walk = (dir: string) => {
+            for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, e.name);
+                if (e.isDirectory()) { walk(full); continue; }
+                if (/\.(css|tsx|ts)$/.test(e.name)) styles.push(fs.readFileSync(full, 'utf-8'));
+            }
+        };
+        walk(WEB);
+        // A comment may NAME the old host; an @import or a url() may not use it.
+        const live = styles.filter(b => /(@import\s+url\(['"]?https:\/\/fonts|src:\s*url\(['"]?https:\/\/fonts)/.test(b));
+        expect(live.length).toBe(0);
+
+        // …and every face the sheet declares must have a file behind it.
+        const fontsDir = path.join(webRoot, 'public', 'fonts');
+        const sheet = fs.readFileSync(path.join(fontsDir, 'fonts.css'), 'utf-8');
+        const declared = [...sheet.matchAll(/url\('\/fonts\/([^']+)'\)/g)].map(m => m[1]);
+        expect(declared.length).toBeGreaterThan(10);
+        expect(declared.filter(d => !fs.existsSync(path.join(fontsDir, d)))).toEqual([]);
+        // and the licence travels with them
+        expect(fs.existsSync(path.join(fontsDir, 'OFL-LICENSE.txt'))).toBe(true);
+    });
+
     it('no web fetch hardcodes /api — the base is one import, in one place', () => {
         // Three sentinel calls wrote `fetch('/api/...')` directly. They happen to
         // work today because API_URL IS '/api', which is precisely what makes it

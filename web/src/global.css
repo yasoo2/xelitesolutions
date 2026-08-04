@@ -2,7 +2,8 @@
 @import './styles/improved-ui.css';
 @import './styles/ide-layout.css';
 @import './styles/joe-premium.css';
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&display=swap');
+/* Cairo now comes from /fonts/fonts.css, loaded by index.html — this file no
+   longer reaches out to fonts.googleapis.com on every page load. */
 
 /* Premium UI Utilities */
 :root {
