@@ -429,7 +429,12 @@ describe('product pages, the team, and the build command', () => {
     it('npm is spawned DIRECTLY on Windows — no shell, so no DEP0190 warning', () => {
         const engine = fs.readFileSync(path.join(__dirname, '..', 'kernel', 'ExecutionEngine.ts'), 'utf-8');
         expect(engine).toContain("const WIN_CMD_SHIMS = new Set(['npm', 'npx', 'yarn', 'pnpm'])");
-        expect(engine).toMatch(/process\.platform === 'win32' && !rest\.shell && WIN_CMD_SHIMS\.has\(file\)/);
+        // The shim must run THROUGH A SHELL on Windows: since the CVE-2024-27980
+        // fix, spawning a .cmd without one throws EINVAL — measured on Node 24,
+        // where a scaffolded React project died before `npm install` began. The
+        // arguments are quoted here instead of being left to the shell.
+        expect(engine).toMatch(/const needsShell = isWin && rest\.shell === undefined && isShim/);
+        expect(engine).toContain('const quoteForCmd =');
         for (const t of ['ReactProjectTool', 'ApiProjectTool', 'ProjectEditTool', 'ImportProjectTool']) {
             const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', `${t}.ts`), 'utf-8');
             expect(src).not.toContain("shell: process.platform === 'win32'");

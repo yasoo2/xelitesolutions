@@ -198,7 +198,14 @@ export class AgentOrchestrator {
     // dependency so it resolves AFTER its producer ran. Applied here, not only
     // inside sanitizeSteps, so the deterministic fast paths and the recovery
     // planner get the same guarantee.
-    const nodes: ExecutionNode[] = PlanningEngine.wireDataFlow(rawPlan.steps as any).map((step: any) => ({
+    // EVERY plan — fast path, semantic route, recovery — leaves here runnable.
+    // Field log: a recovery plan produced «search_text needs a query» and then
+    // «central_answer was called without a question», because only the
+    // LLM branch went through the sanitiser. The argument pre-flight belongs to
+    // ALL of them, exactly like the data-flow repair below it.
+    const readySteps = PlanningEngine.fillRequiredArgs(
+        rawPlan.steps as any, String(goalText || intent.goal || ''), this.context);
+    const nodes: ExecutionNode[] = PlanningEngine.wireDataFlow(readySteps as any).map((step: any) => ({
       id: step.id,
       traceId,
       agent: (step.agent as AgentType) || "General",
@@ -831,7 +838,9 @@ export class AgentOrchestrator {
         memory: memory.getHistory()
     }, traceId, this.context);
 
-    const newNodes: ExecutionNode[] = PlanningEngine.wireDataFlow(recoveryPlan.steps as any).map((step: any) => ({
+    const newNodes: ExecutionNode[] = PlanningEngine.wireDataFlow(
+      PlanningEngine.fillRequiredArgs(recoveryPlan.steps as any, recoveryGoal, this.context) as any,
+    ).map((step: any) => ({
       id: step.id,
       traceId,
       agent: (step.agent as AgentType) || failedNode.agent || "General",

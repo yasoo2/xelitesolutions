@@ -448,17 +448,35 @@ export class ExecutionEngine {
         onLine?: (line: string, stream: 'stdout' | 'stderr') => void;
     } = {}): { done: Promise<{ ok: boolean; exitCode: number | null; error?: string }>; kill: () => void; pid?: number } {
         const { onLine, ...rest } = options;
-        // npm/npx/yarn/pnpm on Windows are .cmd shims. Running them through a
-        // SHELL works but Node 22+ answers with a DEP0190 deprecation warning
-        // on every build (it cannot escape the args safely). Naming the shim
-        // outright spawns it directly — no shell, no warning, and the
-        // arguments stay exactly as given.
-        const cmd = (process.platform === 'win32' && !rest.shell && WIN_CMD_SHIMS.has(file))
-            ? `${file}.cmd` : file;
-        const child = spawn(cmd, args, {
+        // npm/npx/yarn/pnpm on Windows are .cmd shims, and since the fix for
+        // CVE-2024-27980 (Node 18.20.2 / 20.12.2 / 21.7.3 and everything after)
+        // spawning a .cmd or .bat WITHOUT a shell throws outright:
+        //
+        //   Node app failed: internal_exception: Error: spawn EINVAL
+        //       at ExecutionEngine.runArgvStreaming
+        //
+        // That is the field log, on Node 24: nineteen files of a React project
+        // scaffolded, and then `npm install` died before it began. An earlier
+        // change here chose `npm.cmd` with no shell to silence a DEP0190
+        // deprecation WARNING — and bought a hard failure with it. A warning is
+        // survivable; EINVAL is not. The shell comes back, and the arguments are
+        // quoted here rather than left to it.
+        const isWin = process.platform === 'win32';
+        const isShim = WIN_CMD_SHIMS.has(file) || /\.(cmd|bat)$/i.test(file);
+        const needsShell = isWin && rest.shell === undefined && isShim;
+        const cmd = (isWin && WIN_CMD_SHIMS.has(file)) ? `${file}.cmd` : file;
+        /** cmd.exe quoting: wrap anything with a space or a metacharacter, and
+         *  double an embedded quote — the same rule cmd.exe itself applies. */
+        const quoteForCmd = (a: string) => {
+            const v = String(a);
+            if (!/[\s"&|<>^()%!]/.test(v)) return v;
+            return `"${v.replace(/"/g, '""')}"`;
+        };
+        const finalArgs = needsShell ? args.map(quoteForCmd) : args;
+        const child = spawn(cmd, finalArgs, {
             cwd: rest.cwd || this.getWorkspaceRoot(),
             env: { ...process.env, ...rest.env },
-            shell: rest.shell !== undefined ? rest.shell : false,
+            shell: rest.shell !== undefined ? rest.shell : needsShell,
         });
         const feed = (stream: 'stdout' | 'stderr') => (b: Buffer) => {
             if (!onLine) return;
