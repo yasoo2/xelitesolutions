@@ -14,7 +14,7 @@ import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
 import { persistChatStores } from '../../api/chat-store';
 import { clarifyGate } from '../../core/orchestrator/clarify';
-import { composeAnswer } from '../../core/orchestrator/answerComposer';
+import { composeAnswer, composeFailure } from '../../core/orchestrator/answerComposer';
 
 /**
  * Lessons Joe applies to every system HE builds — each line was paid for by a
@@ -188,9 +188,16 @@ export class AgentLoopService {
             // loading spinner). sessionId is included both top-level and in data so
             // the frontend's session filter accepts it.
             const answerText = AgentLoopService.extractAnswer(result, language);
+            // A RUN THAT FAILED HALFWAY STILL DID SOMETHING. Measured on a real
+            // three-step run: two files were written, the third step failed, and
+            // the whole reply was «⚠️ File not found» — the work invisible, the
+            // error unplaceable, and in English inside an Arabic session.
+            const failureText = Array.isArray((result as any).steps) && (result as any).steps.length
+                ? composeFailure((result as any).steps, answerText, language)
+                : AgentLoopService.humanizeFailure(answerText, language);
             const finalText = result.ok
                 ? (answerText || uiText('done', language))
-                : `⚠️ ${AgentLoopService.humanizeFailure(answerText, language) || uiText('failed', language)}`;
+                : `⚠️ ${failureText || uiText('failed', language)}`;
             broadcast({ type: 'text', sessionId, data: { text: finalText, sessionId }, runId } as any);
             broadcast({ type: 'run_finished', runId, data: { runId, ok: result.ok, sessionId } } as any);
 

@@ -144,6 +144,27 @@ async function main() {
     ], 'single');
     check('تشغيل من خطوة واحدة يعطي محتواه كما كان — بلا انحدار', c.text.trim() === FINDINGS, c.text.slice(0, 120));
 
+    console.log('\n[3] وتشغيل يفشل في منتصفه — العمل الذي نجح لا يختفي');
+    // Measured before the repair, on this very plan: two files were on disk and
+    // the entire reply was «⚠️ File not found».
+    const { composeFailure } = require('../../core/orchestrator/answerComposer');
+    const pageFile = path.join(box, 'page.html');
+    const d = await runPlan([
+        { id: 'build', description: 'ابنِ الصفحة', tool: 'write_file', agent: 'Dev', input: { path: pageFile, content: '<h1>تم البناء</h1>' }, dependsOn: [] },
+        { id: 'note', description: 'اكتب ملاحظة', tool: 'write_file', agent: 'Dev', input: { path: path.join(box, 'note.txt'), content: 'الصفحة جاهزة' }, dependsOn: ['build'] },
+        { id: 'deploy', description: 'انشر الموقع', tool: 'read_file', agent: 'Dev', input: { path: path.join(box, 'لا-يوجد.txt') }, dependsOn: ['note'] },
+    ], 'partial');
+    check('التشغيل فشل بصدق (لم يدّعِ النجاح)', d.out?.ok === false);
+    check('والخطوات خرجت مع الفشل لا معه فقط الخطأ', Array.isArray(d.out?.steps) && d.out.steps.length === 3);
+    const failText: string = composeFailure(d.out.steps, d.text, 'ar');
+    check('الرسالة تسمّي الخطوة التي فشلت', failText.includes('انشر الموقع'), failText.slice(0, 120));
+    check('وتُبقي التفصيل التقني كما هو — لا تخفيه', failText.includes('File not found'), failText.slice(0, 160));
+    check('وتقول ما أُنجز قبل التوقّف', failText.includes('ابنِ الصفحة') && failText.includes('اكتب ملاحظة'), failText);
+    check('وذلك العمل باقٍ فعلاً على القرص — لا مجرد ادّعاء',
+        fs.existsSync(pageFile) && fs.readFileSync(pageFile, 'utf-8').includes('تم البناء'));
+    check('والإطار عربي في جلسة عربية',
+        failText.startsWith('توقّفت عند الخطوة') && composeFailure(d.out.steps, d.text, 'en').startsWith('Stopped at step'), failText.slice(0, 40));
+
     try { fs.rmSync(box, { recursive: true, force: true }); } catch { /* best effort */ }
 
     console.log(`\n===== ${pass} passed, ${fail} failed =====`);

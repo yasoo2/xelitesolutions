@@ -155,11 +155,10 @@ export class AgentOrchestrator {
     const context = IntentParser.createContext('orchestrator', 'global', [], this.context);
     const intent = await IntentParser.parse(goalText, context);
     
-    // Inject memory into planning if available
-    const historySummary = memory ? memory.getSummary() : "";
-    const enrichedGoal = historySummary 
-        ? `${goalText}\n\n[CONTEXT: Previous attempts/steps results]\n${historySummary}` 
-        : goalText;
+    // (An `enrichedGoal` used to be built here from memory.getSummary() and
+    //  then never passed to anything — the plan was always made from goalText.
+    //  The history DOES reach the planner, through the `memory` argument below,
+    //  which generatePlan renders into its prompt. The dead string is gone.)
 
     const rawPlan = await PlanningEngine.generatePlan({ intent, memory: memory?.getHistory() }, traceId, this.context);
 
@@ -223,7 +222,10 @@ export class AgentOrchestrator {
     let lastDone: { task: string; ok: boolean; summary?: string } | undefined;
     let stepNo = 0;
     const maxIterations = Math.max(10, dag.nodes.length * 5);
-    const giveUp = (fallback: string) => ({ ok: false, result: lastNodeError || fallback });
+    // Every «the orchestrator gave up» exit carries the run's steps with it: a
+    // run that failed halfway still built things, and the reply used to be the
+    // bare error with no trace of the work that survived.
+    const giveUp = (fallback: string) => ({ ok: false, result: lastNodeError || fallback, steps: runSteps(dag) });
 
     while (completedNodes.size < dag.nodes.length) {
       iterations++;
@@ -549,7 +551,7 @@ export class AgentOrchestrator {
           if (saysNoBrain(result.error) || saysNoBrain((result as any).result)) {
             console.error('[AgentOrchestrator] No LLM provider reachable — ending the run instead of planning a recovery.');
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason: 'provider_unreachable' });
-            return { ok: false, result: result.error };
+            return { ok: false, result: result.error, steps: runSteps(dag) };
           }
 
           // [DECISION] Intelligent recovery attempt (Reviewer/QA department steps in)
@@ -557,7 +559,7 @@ export class AgentOrchestrator {
           const currentRetryCount = node.retryCount || 0;
           if (currentRetryCount >= 2) {
             console.error(`[AgentOrchestrator] Max retries reached for node: ${node.id}`);
-            return { ok: false, result: result.error || "Fatal execution error: Max retries reached" };
+            return { ok: false, result: result.error || "Fatal execution error: Max retries reached", steps: runSteps(dag) };
           }
 
           if (this.recoveriesUsed >= MAX_RECOVERIES_PER_RUN) {
@@ -598,7 +600,7 @@ export class AgentOrchestrator {
               }
               // Nothing usable came back: surface the real reason the node failed,
               // never a description of the recovery machinery.
-              return { ok: false, result: result.error || "Fatal execution error" };
+              return { ok: false, result: result.error || "Fatal execution error", steps: runSteps(dag) };
             }
             node.status = "pending";
             node.retryCount = currentRetryCount + 1;
@@ -611,7 +613,7 @@ export class AgentOrchestrator {
             continue;
           }
 
-          return { ok: false, result: result.error || "Fatal execution error" };
+          return { ok: false, result: result.error || "Fatal execution error", steps: runSteps(dag) };
         }
       }
     }

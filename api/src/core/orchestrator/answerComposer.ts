@@ -120,3 +120,39 @@ export function composeAnswer(steps: RunStep[], language?: string): string {
     const lines = done.map(s => `- ${s.task || s.tool || s.id}`).join('\n');
     return ar ? `تمّ التنفيذ:\n${lines}` : `Done:\n${lines}`;
 }
+
+/**
+ * A RUN THAT FAILED HALFWAY STILL DID SOMETHING.
+ *
+ * Measured on a real three-step run — build a page, write a note, then a step
+ * that failed: two files were on disk, and the entire reply was
+ *
+ *   ⚠️ File not found
+ *
+ * The user was not told the page existed, not told WHICH of the three steps
+ * failed, and read it in English in an Arabic session. The work was invisible
+ * and the error was unplaceable.
+ *
+ * The technical detail stays — it is real and it is what repairs the problem —
+ * but it arrives inside a sentence that names the step it belongs to, above a
+ * list of what survived.
+ */
+export function composeFailure(steps: RunStep[], rawError: string, language?: string): string {
+    const ar = String(language || '').startsWith('ar');
+    const detail = String(rawError || '').trim().slice(0, 400);
+    const list = (steps || []).filter(s => s && s.status === 'completed');
+    const failed = (steps || []).find(s => s && s.status === 'failed');
+
+    const head = failed
+        ? (ar ? `توقّفت عند الخطوة «${failed.task || failed.id}»${detail ? ` — ${detail}` : ''}`
+              : `Stopped at step “${failed.task || failed.id}”${detail ? ` — ${detail}` : ''}`)
+        : detail;
+    if (!list.length) return head;
+
+    const lines = list.map(s => {
+        const p = proseOf(s.result);
+        const extra = p && !isStatusLine(p) ? `\n  ${p.split('\n')[0].slice(0, 200)}` : '';
+        return `- ${s.task || s.tool || s.id}${extra}`;
+    }).join('\n');
+    return `${head}\n\n${ar ? 'وما أُنجز قبل التوقّف — وهو باقٍ:' : 'Completed before stopping — and it is still there:'}\n${lines}`;
+}

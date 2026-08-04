@@ -663,6 +663,24 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(AgentLoopService.extractAnswer({ ok: true, result: { a: { success: true } } }, 'ar')).not.toMatch(/[{}]/);
     });
 
+    it('a run that failed halfway still reports the work that survived', () => {
+        // Measured: two files written, the third step failed, and the whole
+        // reply was «⚠️ File not found» — work invisible, error unplaceable,
+        // English inside an Arabic session.
+        const { composeFailure } = require('../core/orchestrator/answerComposer');
+        const text = composeFailure([
+            { id: 'build', task: 'ابنِ الصفحة', status: 'completed', result: { success: true } },
+            { id: 'deploy', task: 'انشر الموقع', status: 'failed' },
+        ], 'File not found', 'ar');
+        expect(text).toContain('انشر الموقع');     // which step
+        expect(text).toContain('File not found');  // the real detail, kept
+        expect(text).toContain('ابنِ الصفحة');      // what survived
+        expect(text).toMatch(/^توقّفت عند الخطوة/);  // the user's language
+        // and the orchestrator must actually hand the steps to that function
+        expect(SRC('orchestration', 'AgentOrchestrator.ts')).toMatch(/giveUp = .*steps: runSteps\(dag\)/s);
+        expect(SRC('modules', 'services', 'AgentLoopService.ts')).toContain('composeFailure(');
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([
