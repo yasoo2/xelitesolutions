@@ -11,6 +11,7 @@ import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
+import { resolveToolPath } from '../utils';
 
 export class AuthBuilderTool extends BaseTool {
     name = 'auth_builder';
@@ -55,8 +56,17 @@ export class AuthBuilderTool extends BaseTool {
 
     async execute(input: any) {
         const logs: string[] = [];
-        const authType = input.type || 'jwt';
-        const outputDir = input.outputDir || './src/auth';
+        // Both required fields carried defaults, and the output directory was
+        // resolved against process.cwd() instead of the workspace — so an empty
+        // call generated a complete auth module straight into JOE'S OWN SOURCE
+        // TREE (api/src/auth). The sandboxed audit did exactly that, which is
+        // how it was found. A generator writes where it is told, inside the
+        // workspace, or it does not write.
+        const authType = String(input?.type || '').trim() || 'jwt';
+        const outputDirRaw = String(input?.outputDir || '').trim();
+        if (!outputDirRaw) {
+            return { ok: false, error: 'auth_builder needs an outputDir (e.g. "src/auth") — nothing was generated.', logs };
+        }
         const framework = input.framework || 'express';
         const providers = input.providers || ['google', 'github'];
         const includeRBAC = input.includeRBAC !== false;
@@ -67,7 +77,12 @@ export class AuthBuilderTool extends BaseTool {
             logs.push(`🔐 AuthBuilder: Generating ${authType} auth for ${framework}`);
 
             // Ensure output directory exists
-            const authDir = path.isAbsolute(outputDir) ? outputDir : path.resolve(process.cwd(), outputDir);
+            let authDir: string;
+            try {
+                authDir = resolveToolPath(outputDirRaw, { sandbox: true });
+            } catch {
+                return { ok: false, error: `refused: ${outputDirRaw} is outside the workspace — nothing was generated.`, logs };
+            }
             if (!fs.existsSync(authDir)) {
                 fs.mkdirSync(authDir, { recursive: true });
             }
@@ -136,7 +151,7 @@ export class AuthBuilderTool extends BaseTool {
 Auth system generated! Next steps:
 1. Install dependencies: npm install jsonwebtoken bcryptjs passport passport-google-oauth20 express-session
 2. Set environment variables: JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
-3. Import from '${outputDir}' in your main app
+3. Import from '${outputDirRaw}' in your main app
 ${authType === 'oauth' || authType === 'full' ? `4. user-store.ts persists users to data/users.json (override with AUTH_USER_STORE).
    It works as generated — it is not a stub — but it is single-process and
    file-backed. For production, replace findUserByProvider/findUserById/

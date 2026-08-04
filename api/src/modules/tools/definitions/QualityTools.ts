@@ -30,8 +30,11 @@ export class SonarAnalysisTool extends BaseTool {
 
     async execute(input: any) {
         try {
-            const key = String(input.projectKey || '').trim();
-            const sources = String(input.sources || '.').trim();
+            const key = String(input?.projectKey || '').trim();
+            // The scanner was launched with an empty -Dsonar.projectKey, which
+            // is a five-minute run that can only fail.
+            if (!key) return { ok: false, error: 'sonar_analysis needs a projectKey.', logs: [] };
+            const sources = String(input?.sources || '.').trim();
             const args = ['sonar-scanner', `-Dsonar.projectKey=${key}`, `-Dsonar.sources=${sources}`];
             const r = await handleShellCommand('npx', args, process.cwd(), 300000, false);
             if (!r.ok) {
@@ -382,9 +385,15 @@ export class LoadTesterTool extends BaseTool {
     async execute(input: any) {
         // Since we can't easily install k6 inside the container dynamically without root, 
         // we will implement a simple concurrent fetcher in Node as a "Lite" load tester.
-        const url = input.url;
-        const vus = Math.min(input.vus || 10, 50); // Cap for safety
-        const durationSec = parseInt(input.duration || '10');
+        // With no url this spun 10 workers calling fetch(undefined) in a tight
+        // loop for ten seconds — thousands of failing requests, reported as a
+        // successful load test with a 100% error rate.
+        const url = String(input?.url ?? '').trim();
+        if (!/^https?:\/\//i.test(url)) {
+            return { ok: false, error: 'load_tester needs an http(s) url to hit.', logs: [] };
+        }
+        const vus = Math.min(Number(input?.vus) || 10, 50); // Cap for safety
+        const durationSec = Math.min(Math.max(parseInt(String(input?.duration || '10')) || 10, 1), 300);
 
         let requests = 0;
         let errors = 0;

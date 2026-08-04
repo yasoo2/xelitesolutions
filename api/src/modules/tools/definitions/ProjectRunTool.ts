@@ -104,6 +104,15 @@ export class ProjectRunTool implements ToolDefinition {
             || workspaceService.getActiveRoot(context?.workspaceId);
         if (!fs.existsSync(cwd)) return { ok: false, error: `مسار المشروع غير موجود: ${cwd}`, logs };
         if (activeProj?.dir === cwd) logs.push(`project_run: using the session's active project (${cwd})`);
+        // Falling back to the workspace root is deliberate — «شغّل المشروع»
+        // right after a build must work with no arguments. But a root that
+        // holds no project at all is not a project: without this, an empty
+        // call spawned `npm start` in a folder with nothing to start, and
+        // waited 45s for a server that was never coming.
+        if (!input?.command && !['package.json', 'index.html', 'server.js', 'app.py', 'main.py', 'index.js']
+            .some(f => fs.existsSync(path.join(cwd, f)))) {
+            return { ok: false, error: `لا يوجد مشروع قابل للتشغيل في ${cwd} — ابنِ مشروعاً أولاً أو مرّر cwd.`, logs };
+        }
 
         const key = runKey(context);
         // One project, one server: stop a previous run before starting again.

@@ -60,7 +60,10 @@ export class ScreenshotTool extends BaseTool {
 
     async execute(input: any) {
         const logs: string[] = [];
-        const url = String(input?.url ?? '');
+        // A screenshot of nothing is not a screenshot: with no url this used to
+        // launch a real browser and navigate to the empty string.
+        const url = String(input?.url ?? '').trim();
+        if (!url) return { ok: false, error: 'screenshot needs a url to capture.', logs };
         const fullPage = Boolean(input?.fullPage ?? false);
         const width = Number(input?.width) || 1280;
         const height = Number(input?.height) || 720;

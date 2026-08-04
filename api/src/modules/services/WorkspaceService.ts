@@ -135,10 +135,18 @@ export class WorkspaceService {
     }
     private get localRoot(): string {
         if (this._localRoot) return this._localRoot;
-        // Load a previously chosen location.
+        // Load a previously chosen location — but only if it still EXISTS.
+        // A saved path can outlive its folder (a temp dir, an unplugged drive,
+        // a folder the user deleted), and returning it anyway pointed every
+        // build and the whole File Explorer at a directory that was not there.
+        // Proven while auditing: a run that pointed the root at a temp folder
+        // and then removed it left the choice persisted and the workspace dead
+        // until the file was deleted by hand. A vanished choice now falls back
+        // to the default instead of poisoning the next start.
         try {
             const saved = JSON.parse(fs.readFileSync(this.localRootFile, 'utf-8'))?.path;
-            if (saved && typeof saved === 'string') { this._localRoot = saved; return saved; }
+            if (saved && typeof saved === 'string' && fs.existsSync(saved)) { this._localRoot = saved; return saved; }
+            if (saved) console.warn(`[WorkspaceService] saved workspace root is gone (${saved}) — falling back to the default.`);
         } catch { /* no saved choice yet */ }
         // A name the user understands — "my-workspace", not "system-fallback".
         this._localRoot = path.join(this.externalRoot, 'my-workspace');

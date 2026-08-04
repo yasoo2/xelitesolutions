@@ -2,7 +2,9 @@
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import fs from 'fs';
+import path from 'path';
 import { handleShellCommand } from '../handlers';
+import { resolveToolPath } from '../utils';
 
 export class DbSchemaMigratorTool extends BaseTool {
     name = 'db_schema_migrator';
@@ -125,10 +127,30 @@ export class LargeDataSeederTool extends BaseTool {
     sideEffects: ToolPermission[] = ['write'];
 
     async execute(input: any) {
-        const rows = input.rows || 1000;
-        const format = input.format || 'csv';
-        const headers = input.headers || ['id', 'name'];
-        const p = input.outputPath;
+        // This tool wrote `fs.writeFileSync(input.outputPath, …)` with the raw
+        // string it was handed: no containment and no validation. The sandboxed
+        // audit proved it — asked for `../../../../tmp/joe-escape.txt`, it
+        // CREATED that file outside the workspace, and with no path at all it
+        // died on a TypeError from inside node. Both are fixed here: the path
+        // goes through the one resolver every other tool uses, and a missing
+        // argument earns a sentence.
+        const raw = String(input?.outputPath ?? '').trim();
+        if (!raw) {
+            return { ok: false, error: 'large_data_seeder needs an outputPath (e.g. "data/seed.csv") — nothing was written.' };
+        }
+        const headers = Array.isArray(input?.headers) && input.headers.length
+            ? input.headers.map((h: any) => String(h)) : ['id', 'name'];
+        // A seeder is a stress tool; it must not be a way to fill the disk.
+        const rows = Math.max(1, Math.min(Number(input?.rows) || 1000, 1_000_000));
+        const format = input?.format === 'json' ? 'json' : 'csv';
+
+        let p: string;
+        try {
+            p = resolveToolPath(raw, { sandbox: true });
+        } catch (e: any) {
+            return { ok: false, error: `refused: ${raw} is outside the workspace — nothing was written.` };
+        }
+        try { fs.mkdirSync(path.dirname(p), { recursive: true }); } catch { }
 
         let content = '';
         if (format === 'csv') {
@@ -147,7 +169,11 @@ export class LargeDataSeederTool extends BaseTool {
             content = JSON.stringify(arr, null, 2);
         }
 
-        fs.writeFileSync(p, content);
+        try {
+            fs.writeFileSync(p, content);
+        } catch (e: any) {
+            return { ok: false, error: `could not write ${raw}: ${String(e?.message || e)}` };
+        }
         const stats = fs.statSync(p);
 
         return {

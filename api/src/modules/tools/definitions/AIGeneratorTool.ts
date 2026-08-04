@@ -71,7 +71,20 @@ export class AIGeneratorTool implements ToolDefinition {
         context?: string
     }, context?: any) {
         const logs: string[] = [];
-        const filePath = input.path;
+        // Both fields are `required` in the schema, and the schema was the only
+        // thing enforcing them. Called with nothing, this tool went straight to
+        // the model and spent a full generation on an empty brief before dying
+        // on an undefined path — the sandboxed audit caught it burning a real
+        // LLM call for a request that could never be written anywhere.
+        const filePath = String(input?.path ?? '').trim();
+        const description = String(input?.description ?? '').trim();
+        if (!filePath || !description) {
+            return {
+                ok: false,
+                error: 'ai_write_file needs both a path and a description of what the file should contain — no model was called.',
+                logs,
+            };
+        }
         const contextWorkspaceId = context?.workspaceId;
         let callLLM: any;
         try { callLLM = getLLM(); }

@@ -36,6 +36,15 @@ export class ApiTesterTool implements ToolDefinition {
 
     async execute(input: { url: string; method: string; headers?: Record<string, string>; body?: string }) {
         const startTime = Date.now();
+        // With no url this called fetch(undefined) — a request to the string
+        // "undefined", reported back as a network failure instead of a missing
+        // argument.
+        const url = String(input?.url ?? '').trim();
+        if (!url) return { ok: false, error: 'api_tester needs a url to call.', logs: [] };
+        if (!/^https?:\/\//i.test(url)) {
+            return { ok: false, error: `api_tester needs an http(s) url — got "${url.slice(0, 60)}".`, logs: [] };
+        }
+        input = { ...input, url, method: String(input?.method || 'GET').toUpperCase() };
         const logs: string[] = [`Starting ${input.method} request to ${input.url}`];
 
         try {

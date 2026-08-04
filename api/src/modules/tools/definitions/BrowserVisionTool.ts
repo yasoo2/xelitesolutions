@@ -29,8 +29,24 @@ export class BrowserVisionTool extends BaseTool {
     sideEffects: ToolPermission[] = ['write'];
 
     async execute(input: any) {
-        const url = String(input.url);
-        const browser = await chromium.launch({ headless: true });
+        // The launch used to happen BEFORE anything was validated and OUTSIDE
+        // the try: called with no url it started a real Chromium to visit the
+        // string "undefined", and on a machine where Chromium is missing it
+        // threw a raw playwright error at the orchestrator instead of an
+        // answer. The audit caught both.
+        const url = String(input?.url ?? '').trim();
+        if (!url) return { ok: false, error: 'browser_vision needs a url to open.', logs: [] };
+
+        let browser: any;
+        try {
+            browser = await chromium.launch({ headless: true });
+        } catch (e: any) {
+            return {
+                ok: false,
+                error: `تعذّر تشغيل المتصفّح: ${String(e?.message || e).slice(0, 200)} — جرّب "npx playwright install chromium".`,
+                logs: [],
+            };
+        }
         const page = await browser.newPage();
 
         try {

@@ -84,8 +84,15 @@ export class TerraformManagerTool extends BaseTool {
     sideEffects: ToolPermission[] = ['execute'];
 
     async execute(input: any) {
-        const action = String(input.action).toLowerCase();
-        const dirRaw = String(input.directory).trim();
+        // `String(undefined)` is the string "undefined", which is truthy — so a
+        // call with no arguments used to reach the shell as
+        // `terraform -chdir=<workspace>/undefined undefined`.
+        const action = String(input?.action ?? '').trim().toLowerCase();
+        const dirRaw = String(input?.directory ?? '').trim();
+        if (!['init', 'plan', 'apply', 'destroy', 'validate'].includes(action)) {
+            return { ok: false, error: 'terraform_manager needs an action: init | plan | apply | destroy | validate.', logs: [] };
+        }
+        if (!dirRaw) return { ok: false, error: 'terraform_manager needs the directory holding main.tf.', logs: [] };
         const dir = resolveToolPath(dirRaw);
         if (!dir) return { ok: false, error: 'directory required', logs: [] };
 
@@ -157,7 +164,10 @@ export class KubernetesOpsTool extends BaseTool {
     sideEffects: ToolPermission[] = ['execute'];
 
     async execute(input: any) {
-        const cmdRaw = String(input.command).trim();
+        const cmdRaw = String(input?.command ?? '').trim();
+        // Without this, an empty call ran `kubectl undefined` against whatever
+        // cluster the machine is pointed at.
+        if (!cmdRaw) return { ok: false, error: 'kubernetes_ops needs a kubectl command (e.g. "get pods").', logs: [] };
         const parts = splitCommandLine(cmdRaw);
         if (!parts) return { ok: false, error: 'invalid_command', logs: [] };
 
@@ -198,7 +208,10 @@ export class DockerSwarmOpsTool extends BaseTool {
     sideEffects: ToolPermission[] = ['execute'];
 
     async execute(input: any) {
-        const action = input.action;
+        const action = String(input?.action ?? '').trim();
+        if (!['deploy_stack', 'list_services', 'service_logs', 'remove_stack'].includes(action)) {
+            return { ok: false, error: 'docker_swarm_ops needs an action: deploy_stack | list_services | service_logs | remove_stack.', logs: [] };
+        }
         const cwd = getWorkspaceRoot();
         let args: string[] = [];
 

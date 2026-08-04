@@ -132,8 +132,8 @@ export class FileEditTool extends BaseTool {
         type: 'object' as const,
         properties: {
             filename: { type: 'string' },
-            find: { type: 'string' },
-            replace: { type: 'string' }
+            find: { type: 'string', description: 'Text to find (alias: search / old_string)' },
+            replace: { type: 'string', description: 'Replacement text (alias: new_string)' }
         },
         required: ['filename', 'find', 'replace']
     };
@@ -145,9 +145,19 @@ export class FileEditTool extends BaseTool {
 
     async execute(input: any, context?: any) {
         const logs: string[] = [];
-        const filename = String(input?.filename ?? input?.path ?? '');
-        const find = String(input?.find ?? '');
-        const replace = String(input?.replace ?? '');
+        const filename = String(input?.filename ?? input?.path ?? '').trim();
+        // `search`/`old_string` are what every other editor in this codebase —
+        // and every model that has seen one — calls this field. It was not
+        // accepted here, and an empty `find` made `content.replace('', x)`
+        // PREPEND the replacement to the file: a silent corruption that looked
+        // like a successful edit. The wiring proof had been passing on it.
+        const find = String(input?.find ?? input?.search ?? input?.old_string ?? '');
+        const replace = String(input?.replace ?? input?.new_string ?? '');
+        // An empty filename resolved to the workspace ROOT, which exists, so the
+        // guard below waved it through and node died on `EISDIR` reading a
+        // directory. A missing argument is ordinary; it earns a sentence.
+        if (!filename) return { ok: false, error: 'file_edit needs a filename to edit.', logs };
+        if (!find) return { ok: false, error: 'file_edit needs the text to find (`find`).', logs };
         const resolved = safePath(filename, context?.workspaceId);
         if (!resolved.ok) return { ok: false, error: resolved.error, logs };
         const full = resolved.path;
@@ -155,6 +165,9 @@ export class FileEditTool extends BaseTool {
         if (!fs.existsSync(full)) {
             console.error(`[file_edit] File not found. input.filename: ${filename}, resolved full path: ${full}`);
             return { ok: false, error: 'File not found', logs };
+        }
+        if (fs.statSync(full).isDirectory()) {
+            return { ok: false, error: `${filename} is a folder, not a file.`, logs };
         }
 
         let content = fs.readFileSync(full, 'utf-8');
@@ -597,7 +610,11 @@ export class ShellExecuteTool extends BaseTool {
     async execute(input: any, context?: any) {
         const startedAt = Date.now();
         const logs: string[] = [];
-        const command = String(input?.command ?? '');
+        const command = String(input?.command ?? '').trim();
+        // Called with no command, this tool built a request out of nothing and
+        // handed it to the shell anyway — the audit saw `[object Object]` go
+        // through the gateway. No instruction means no execution.
+        if (!command) return { ok: false, error: 'shell_execute needs a command — nothing was run.', logs };
         let cwdInput = String(input?.cwd ?? '');
         // Package managers and build tools routinely run for minutes — on the
         // user's real laptop `npm install` alone can take five. The old flat

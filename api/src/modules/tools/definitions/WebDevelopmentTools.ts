@@ -70,7 +70,14 @@ export class WebPipelineTool extends BaseTool {
     async execute(input: any) {
         const logs: string[] = [];
         const steps: any[] = [];
-        const name = String(input?.name || 'mega-web').trim();
+        // `name` is required by the schema — and defaulting it to 'mega-web'
+        // meant an empty call scaffolded a whole e-commerce site nobody asked
+        // for: model calls, npm, the lot. A pipeline this large never runs on
+        // a guess.
+        const name = String(input?.name || '').trim();
+        if (!name) {
+            return { ok: false, error: 'website_full_pipeline needs a project name — nothing was built.', logs, steps };
+        }
         const type = String(input?.type || 'ecommerce').trim();
         const features = Array.isArray(input?.features) ? input.features : [];
         const baseDir = String(input?.baseDir || '').trim();
@@ -416,7 +423,14 @@ export class DevServerTool extends BaseTool {
 
     async execute(input: any, context?: any) {
         const logs: string[] = [];
-        const baseCwd = resolveToolPath(String(input?.cwd || '').trim(), { sandbox: true });
+        // `cwd` is required by the schema, and with it missing this tool used to
+        // fall back to the sandbox root and start a real dev server bound to
+        // 0.0.0.0 there — a public listener opened on no instruction at all.
+        const cwdArg = String(input?.cwd || '').trim();
+        if (!cwdArg) {
+            return { ok: false, error: 'dev_server_start needs the project folder (`cwd`) — no server was started.', logs };
+        }
+        const baseCwd = resolveToolPath(cwdArg, { sandbox: true });
         let port = Number(input?.port);
         if (!port) port = await findAvailablePort(5180);
 

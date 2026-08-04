@@ -680,6 +680,11 @@ export class BrowserCompareTool implements ToolDefinition {
         let before = normalizeUrl(input?.before || '');
         let after = normalizeUrl(input?.after || '');
         const single = normalizeUrl(input?.url || '');
+        // With no url at all this opened a browser session and then had nothing
+        // to navigate to — a page launched on no instruction.
+        if (!before && !after && !single) {
+            return { ok: false, error: 'browser_compare needs a url (or before/after urls) to compare.' };
+        }
 
         // Single-URL baseline workflow.
         const baselines: Record<string, { sig: any; png: string }> = (global as any).joeCompareBaselines || ((global as any).joeCompareBaselines = {});
