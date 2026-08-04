@@ -55,3 +55,10 @@ joe-secrets.ps1
 api/.playwright-chromium-installed
 api/.dep-stamp
 web/.dep-stamp
+
+# USER UPLOADS ARE NOT SOURCE CODE.
+# Every screenshot attached to a chat lands here. Without this line ten private
+# screenshots were swept into a commit by a plain `git add -A`, by someone who
+# only meant to save a code fix. They stay on disk; they leave the repository.
+uploads/
+api/uploads/
