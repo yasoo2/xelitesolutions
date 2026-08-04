@@ -232,14 +232,22 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
       return res.status(500).json({ error: 'Failed to save file' });
     }
 
-    // [PRIORITY 2] Try to save to MongoDB (fire-and-forget, non-blocking)
-    FileModel.create(fileData)
-      .then((fileDoc) => {
-        console.log('[MongoDB] File saved to DB successfully:', fileDoc._id);
-      })
-      .catch((dbErr) => {
-        console.warn('[MongoDB] Failed to save to DB (continuing with cache):', dbErr.message);
-      });
+    // [PRIORITY 2] Mirror into MongoDB — but ONLY when there is a MongoDB.
+    // On the user's machine Joe runs in JSON persistence mode with no server
+    // to connect to, so every upload printed «Failed to save to DB» after
+    // waiting on a connection that will never exist. The disk cache above IS
+    // the record here; the mirror is for deployments that have a database.
+    const mongoLive = String(process.env.PERSISTENCE_MODE || '').toUpperCase() !== 'JSON'
+      && (mongoose.connection?.readyState === 1);
+    if (mongoLive) {
+      FileModel.create(fileData)
+        .then((fileDoc) => {
+          console.log('[MongoDB] File saved to DB successfully:', fileDoc._id);
+        })
+        .catch((dbErr) => {
+          console.warn('[MongoDB] Failed to save to DB (continuing with cache):', dbErr.message);
+        });
+    }
 
     // Return success immediately with generated ID
     res.json(fileData);

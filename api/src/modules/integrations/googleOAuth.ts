@@ -229,6 +229,28 @@ export function saveTokensForUser(userId: string, rec: { refresh_token?: string;
   saveTokens(userId, { ...existing, ...rec, refresh_token: rec.refresh_token || existing.refresh_token });
 }
 
+/**
+ * A CONFIGURATION error is not a transient one.
+ *
+ * The field log shows «[GoogleOAuth] refresh failed (401): invalid_client The
+ * provided client secret is invalid.» on every single profile fetch, each one
+ * a real round trip to Google (measured at 0.35s and 1.57s). The credentials
+ * are not going to become valid between two requests: the same call will fail
+ * identically until someone edits them. So the failure is remembered AGAINST
+ * THE CREDENTIALS THEMSELVES — change the client id or secret and the very
+ * next call goes through, and a fifteen-minute window re-tests anyway so a
+ * fix outside the process is picked up without a restart.
+ */
+const badCredentialsUntil = new Map<string, number>();
+const BAD_CREDENTIALS_WINDOW_MS = 15 * 60_000;
+const credentialsKey = () => `${clientId()}::${String(clientSecret() || '').slice(-6)}`;
+/** Tests and diagnostics. */
+export function googleCredentialsRejected(): boolean {
+    const until = badCredentialsUntil.get(credentialsKey());
+    return !!until && Date.now() < until;
+}
+export function resetGoogleCredentialState(): void { badCredentialsUntil.clear(); }
+
 /** Return a valid access token for the user, refreshing it when expired. */
 export async function getAccessToken(userId: string): Promise<string | null> {
   let rec = loadTokens(userId);
@@ -239,6 +261,10 @@ export async function getAccessToken(userId: string): Promise<string | null> {
   if (!rec) return null;
   if (rec.access_token && rec.expiry && rec.expiry - Date.now() > 60_000) return rec.access_token;
   if (!rec.refresh_token) return rec.access_token || null;
+  // Google already told us these credentials are wrong — do not ask again
+  // with the same ones. A stored access token that is still valid is served
+  // as usual; otherwise the caller gets an honest null, instantly.
+  if (googleCredentialsRejected()) return rec.access_token || null;
   try {
     const res = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -253,6 +279,15 @@ export async function getAccessToken(userId: string): Promise<string | null> {
       try { console.warn(`[GoogleOAuth] refresh failed (${res.status}): ${data?.error || ''} ${data?.error_description || ''}`.trim()); } catch { }
       // invalid_grant = the refresh token was revoked/expired -> force reconnect.
       if (data?.error === 'invalid_grant') { try { clearTokensEverywhere(userId); } catch { } }
+      // invalid_client / unauthorized_client = the APP's own credentials are
+      // wrong. The tokens on disk are innocent and are left alone; what stops
+      // is the pointless retrying.
+      if (data?.error === 'invalid_client' || data?.error === 'unauthorized_client') {
+        badCredentialsUntil.set(credentialsKey(), Date.now() + BAD_CREDENTIALS_WINDOW_MS);
+        try {
+          console.warn('[GoogleOAuth] ⚙️ إعدادات Google غير صالحة (client id/secret) — أوقفت المحاولات ١٥ دقيقة. صحّح المفاتيح أو أعِد ربط الحساب من الإعدادات.');
+        } catch { /* logging is never the point */ }
+      }
       return null;
     }
     rec.access_token = data.access_token;
