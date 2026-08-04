@@ -354,14 +354,35 @@ export class ProjectEditTool extends BaseTool {
                     chat: ['المحادثة: غرف ورسائل دائمة وبحث ومزامنة مع الخادم إن وُجد.', 'Chat: rooms, durable messages, search and server sync when one exists.'],
                     weather: ['الطقس: بحث المدن، موقعك، توقّعات سبعة أيام، وتبديل الوحدة.', 'Weather: city search, your location, a seven-day forecast and a unit switch.'],
                 };
-                const note = (ABILITY_NOTE[appMeta.engine] || ['', ''])[isAr ? 0 : 1];
+                // DID THE PROGRAM ACTUALLY CHANGE? A regeneration that only
+                // rewrote index.html announced «المسارات جاهزة» to a user whose
+                // app already had them, and whose real complaint — a button
+                // that would not work — was never even looked at. The claim now
+                // follows the engine file, and a bug report gets a real browser
+                // audit instead of a headline.
+                const engineChanged = changed.some(c => /src\/components\/\w+App\.jsx$/.test(c.file));
+                const bugReport = /(لا\s*يعمل|ما\s*(يشتغل|بيشتغل)|معطّ?ل|عطل|مشكلة|خطأ)|(not\s*working|does\s*not\s*work|doesn'?t\s*work|broken|bug|error)/i.test(request);
+                let auditNote = '';
+                if (!engineChanged && bugReport && buildVerified === true && !input?.skipAudit) {
+                    try {
+                        const { auditBuiltApp, formatAudit } = require('../../../core/quality/app-audit');
+                        const a = await auditBuiltApp(path.join(dir, 'dist'));
+                        if (a && !a.skipped) auditNote = '\n' + formatAudit(a, isAr);
+                        logs.push(`bug report: audited the built app — ${a?.skipped ? `skipped (${a.skipped})` : `${a?.score}/100`}`);
+                    } catch (e: any) { logs.push(`bug-report audit failed: ${String(e?.message || e).slice(0, 80)}`); }
+                }
+                const note = engineChanged
+                    ? (ABILITY_NOTE[appMeta.engine] || ['', ''])[isAr ? 0 : 1]
+                    : (isAr
+                        ? `التطبيق يحمل هذه القدرة أصلاً — لم أغيّر منطقه، بل ${changed.length} ملفاً ثانوياً فقط.${bugReport ? ' وبما أنك تُبلغ عن عطل، فحصتُ البناء في متصفح حقيقي:' : ''}${auditNote}`
+                        : `The app already carries this capability — its logic is unchanged; only ${changed.length} peripheral file(s) moved.${auditNote}`);
                 logs.push(`app upgrade: ${appMeta.kind}/${appMeta.engine} — ${changed.length} file(s) regenerated, build ${buildVerified === null ? 'skipped' : buildVerified ? 'OK' : 'FAILED'}`);
                 return {
                     ok: true,
                     output: {
                         message: isAr
-                            ? `⚙️ حدّثتُ التطبيق نفسه — لا صفحة جديدة عنه.\n\n${note}\n\n📂 ${dir}\n${changed.map(c => `   • ${c.file}`).join('\n')}\n${buildVerified === true ? '\n✅ vite build نجح بعد الترقية — والمعاينة تحدّثت.' : ''}\n💾 بياناتك المحفوظة في التطبيق لم تُمَسّ.`
-                            : `⚙️ Upgraded the application itself — not a page about it.\n\n${note}\n\n📂 ${dir}\n${changed.map(c => `   • ${c.file}`).join('\n')}${buildVerified === true ? '\n✅ vite build passed.' : ''}`,
+                            ? `${engineChanged ? '⚙️ حدّثتُ التطبيق نفسه — لا صفحة جديدة عنه.' : 'ℹ️ راجعتُ التطبيق نفسه — لا صفحة جديدة عنه.'}\n\n${note}\n\n📂 ${dir}\n${changed.map(c => `   • ${c.file}`).join('\n')}\n${buildVerified === true ? '\n✅ vite build نجح بعد الترقية — والمعاينة تحدّثت.' : ''}\n💾 بياناتك المحفوظة في التطبيق لم تُمَسّ.`
+                            : `${engineChanged ? '⚙️ Upgraded the application itself — not a page about it.' : 'ℹ️ Reviewed the application itself — not a page about it.'}\n\n${note}\n\n📂 ${dir}\n${changed.map(c => `   • ${c.file}`).join('\n')}${buildVerified === true ? '\n✅ vite build passed.' : ''}`,
                         dir, touched: changed.map(c => c.file), buildVerified,
                     },
                     logs,

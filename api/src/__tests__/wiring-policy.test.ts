@@ -1126,3 +1126,60 @@ describe('the session\'s active artefact decides who edits it', () => {
         expect(E).toMatch(/app upgrade reverted/);
     });
 });
+
+/**
+ * JOE DOES NOT OVER-CLAIM.
+ *
+ * Three field failures in one session, all the same disease:
+ *   • a full platform specification (Next.js, FastAPI, PostGIS, portals,
+ *     offline maps, an AI assistant) → Joe scaffolded its small Leaflet app
+ *     and reported plain success, silent about the other ninety percent;
+ *   • «زر get directions لا يعمل» → the upgrade path regenerated index.html
+ *     and announced the directions feature the app already had, without ever
+ *     looking at the reported fault;
+ *   • «the current route system is not sufficient, transform it into
+ *     turn-by-turn navigation» → a THIRD copy of the app, built from scratch.
+ */
+describe('what was not built is said out loud', () => {
+    it('an oversized specification is answered with an explicit gap list', () => {
+        const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+        expect(R).toMatch(/const UNMET:/);
+        expect(R).toMatch(/unmetBlock/);
+        // the gap list must name the big-ticket asks, not hand-wave
+        for (const owed of ['next\\.?js', 'fastapi', 'postgis', 'kubernetes', 'offline']) {
+            expect(R.toLowerCase()).toMatch(new RegExp(owed));
+        }
+    });
+
+    it('an upgrade that changed no logic does not announce a feature', () => {
+        const E = SRC('modules', 'tools', 'definitions', 'ProjectEditTool.ts');
+        expect(E).toMatch(/const engineChanged = changed\.some/);
+        expect(E).toMatch(/bugReport/);
+        // a bug report gets a real browser audit rather than a headline
+        expect(E).toMatch(/auditBuiltApp/);
+    });
+
+    it('a bug report or an enhancement edits the app instead of rebuilding it', async () => {
+        const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
+        const g: any = global as any;
+        g.joeProjects = { s1: { dir: '/tmp/x', type: 'react', updatedAt: Date.now() } };
+        g.joePages = {};
+        const tools = async (goal: string) => (await PlanningEngine.generatePlan(
+            { intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } }, undefined, { sessionId: 's1' }))
+            .steps.map((s: any) => s.tool).join(' + ');
+        expect(await tools('زر get directions لا يعمل بشكل صحيح')).toBe('project_edit');
+        expect(await tools('The current route system is not sufficient. I want to transform it into a real turn-by-turn navigation system.')).toBe('project_edit');
+        g.joeProjects = {}; g.joePages = {};
+    });
+
+    it('the map engine really navigates — GPS, voice, reroute, and an honest limit', () => {
+        const T = SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        expect(T).toMatch(/steps=true/);                        // maneuvers, not just a line
+        expect(T).toMatch(/navigator\.geolocation\.watchPosition/);
+        expect(T).toMatch(/SpeechSynthesisUtterance/);
+        expect(T).toMatch(/rerouteFrom/);
+        expect(T).toMatch(/clearWatch/);                        // the watch is released
+        // Leaflet cannot rotate its map — the code says so rather than pretending
+        expect(T).toMatch(/Leaflet does not rotate its map/);
+    });
+});

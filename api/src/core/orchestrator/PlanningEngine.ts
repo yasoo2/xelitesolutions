@@ -732,7 +732,14 @@ Rules:
             const pageEntry = (global as any).joePages?.[activeKey];
             const projEntry = (global as any).joeProjects?.[activeKey];
             const projectNewer = !!projEntry && (!pageEntry || (Number(projEntry.updatedAt) || 0) > (Number(pageEntry.updatedAt) || 0));
-            if (projectNewer && editIntent && !(buildVerb && webNoun)) {
+            // A BUG REPORT AND AN ENHANCEMENT ARE EDITS TOO. From the field:
+            // «زر get directions لا يعمل بشكل صحيح» and «The current route system
+            // is not sufficient. I want to transform it into a real turn-by-turn
+            // navigation system» — neither carried an edit verb, so the second
+            // one built a THIRD copy of the app from scratch instead of
+            // improving the one the session already had.
+            const fixOrGrow = /(لا\s*يعمل|ما\s*(يشتغل|بيشتغل)|فيه\s*(مشكلة|خلل)|معطّ?ل|عطل|خطأ\s*في|غير\s*كاف|لا\s*يكفي|حوّ?له\s*إلى|طوّ?ره|حسّ?نه)|(not\s*working|does\s*not\s*work|doesn'?t\s*work|is\s*broken|not\s*sufficient|insufficient|not\s*enough|transform\s*it|turn\s*it\s*into|convert\s*it\s*into|improve\s*it|upgrade\s*it)/i.test(probe);
+            if (projectNewer && (editIntent || fixOrGrow) && !(buildVerb && webNoun)) {
                 return {
                     id: `projedit_${Date.now()}`,
                     goal: intent.goal,

@@ -106,6 +106,43 @@ async function main() {
     check('ويعرض المسافة والزمن معاً', /leg\.distance/.test(map) && /leg\.duration/.test(map));
     check('ويجعل الخريطة تحتضن المسار كاملاً', /fitBounds/.test(map));
 
+
+    console.log('\n[4b] وطلبٌ يقول «هذا لا يكفي، حوّله إلى ملاحة» لا يبني نسخة ثالثة');
+    g.joeProjects = { 'app-session': { dir: '/tmp/whatever', type: 'react', updatedAt: Date.now() } };
+    g.joePages = {};
+    const MEGA = [
+        'زر get directions لا يعمل بشكل صحيح',
+        'The current route system is not sufficient. I want to transform it into a real turn-by-turn navigation system similar to Google Maps.',
+        'this is broken, please fix it',
+        'حوّله إلى نظام ملاحة حقيقي',
+    ];
+    for (const m of MEGA) {
+        const tools = await planFor(m, 'app-session');
+        check(`«${m.slice(0, 44)}…» → ${tools}`, tools === 'project_edit');
+    }
+
+    console.log('\n[4c] والملاحة الحقيقية داخل المحرّك');
+    check('يطلب المناورات من OSRM لا الخط فقط', /steps=true/.test(map));
+    check('ويتتبّع الموقع باستمرار', /watchPosition/.test(map));
+    check('ويوجّه أيقونة السيارة باتجاه السير', /bearing\(/.test(map) && /carIcon/.test(map));
+    check('وينطق التعليمة صوتاً', /SpeechSynthesisUtterance/.test(map));
+    check('ويكتشف الخروج عن المسار ويعيد الحساب', /offRoute/.test(map) && /rerouteFrom/.test(map));
+    check('ويعرض المسافة والزمن والسرعة ووقت الوصول', /nav-nums/.test(map) && /ETA|الوصول/.test(map));
+    check('ويوقف تتبّع الـ GPS عند الإنهاء (لا يستنزف البطارية)', /clearWatch/.test(map));
+
+    console.log('\n[4d] وصدقٌ فيما لم يُبنَ');
+    const { ReactProjectTool: RPT } = require('../../modules/tools/definitions/ReactProjectTool');
+    const mega = await new RPT().execute({
+        request: 'Build Infinity Maps with Next.js 15, FastAPI, PostgreSQL PostGIS, Redis, Docker, Kubernetes, OAuth2 two-factor, an admin panel, a developer portal, offline maps, 3D buildings, live traffic and an AI assistant.',
+        skipInstall: true, skipProfile: true, root: ROOT,
+    }, { sessionId: 'mega' });
+    const megaMsg = String(mega?.output?.message || '');
+    check('يقول صراحةً ما لم يُنفّذه من المواصفة الضخمة', /did NOT build|لم أبنِه/.test(megaMsg), megaMsg.slice(0, 120));
+    for (const owed of ['Next.js', 'Docker', 'PostGIS']) {
+        check(`ويسمّي «${owed}»`, megaMsg.includes(owed));
+    }
+    check('ولا يدّعي بناءها', !/production-ready|جاهز للإنتاج/i.test(megaMsg));
+
     if (FAST) {
         console.log('\n(FAST=1 — تُخطّي البناء والمتصفح)');
         console.log(`\n===== ${pass} passed, ${fail} failed =====`);
@@ -164,6 +201,53 @@ async function main() {
         const said = await page.locator('.err').first().innerText().catch(() => '');
         check('وإن تعذّر الاتصال يقولها بصراحة بدل الصمت', /تعذّر/.test(said), said.slice(0, 60));
         await srv.close();
+
+        console.log('\n[7] والملاحة الحقيقية: نشغّلها بموقع مُحاكى ونقرأ البطاقة');
+        const srv3 = await serve(path.join(dir, 'dist'), 4715);
+        const ctx = await browser.newContext({
+            permissions: ['geolocation'],
+            geolocation: { latitude: 32.2211, longitude: 35.2544 },   // نابلس
+        });
+        const p3 = await ctx.newPage();
+        // The sandbox blocks the map services, so the route is served here —
+        // a real OSRM answer, recorded, so the drive itself is exercised.
+        await p3.route('**/nominatim.openstreetmap.org/**', (r: any) => r.fulfill({
+            status: 200, contentType: 'application/json',
+            body: JSON.stringify([{ place_id: '1', display_name: 'رام الله, فلسطين', lat: '31.9038', lon: '35.2034' }]),
+        }));
+        await p3.route('**/router.project-osrm.org/**', (r: any) => r.fulfill({
+            status: 200, contentType: 'application/json',
+            body: JSON.stringify({ routes: [{ distance: 41000, duration: 3000,
+                geometry: { coordinates: [[35.2544, 32.2211], [35.24, 32.1], [35.2034, 31.9038]] },
+                legs: [{ steps: [
+                    { name: 'شارع نابلس', distance: 1200, maneuver: { type: 'depart', modifier: 'straight', location: [35.2544, 32.2211] } },
+                    { name: 'طريق رام الله', distance: 39800, maneuver: { type: 'turn', modifier: 'left', location: [35.24, 32.1] } },
+                    { name: '', distance: 0, maneuver: { type: 'arrive', modifier: 'straight', location: [35.2034, 31.9038] } },
+                ] }] }] }),
+        }));
+        await p3.goto('http://localhost:4715/', { waitUntil: 'domcontentloaded' });
+        await p3.waitForTimeout(1200);
+        await p3.locator('.trip input').nth(0).fill('نابلس');
+        await p3.locator('.trip input').nth(1).fill('رام الله');
+        await p3.getByRole('button', { name: 'احسب المسار' }).click();
+        await p3.waitForTimeout(1500);
+        check('المسار حُسب وظهرت المسافة والزمن', /41/.test(await p3.locator('.trip-nums').innerText()));
+        check('وقائمة المناورات ظهرت', (await p3.locator('.steps-list li').count()) === 3);
+        const startBtn = p3.getByRole('button', { name: 'ابدأ الملاحة' });
+        check('وزر «ابدأ الملاحة» موجود', await startBtn.isVisible());
+        await startBtn.click();
+        await p3.waitForTimeout(2000);
+        check('بطاقة القيادة ظهرت', await p3.locator('.nav-card').isVisible());
+        const card = await p3.locator('.nav-card').innerText();
+        check('وفيها التعليمة التالية', /انعطف|واصل|انطلق|وصلت/.test(card), card.slice(0, 80));
+        check('وفيها المسافة المتبقية والزمن ووقت الوصول', /كم متبقية/.test(card) && /الوصول/.test(card), card.slice(0, 120));
+        check('وأيقونة السيارة على الخريطة', (await p3.locator('.car-icon').count()) === 1);
+        check('وزر الإنهاء حاضر', await p3.getByRole('button', { name: 'أنهِ الملاحة' }).isVisible());
+        await p3.getByRole('button', { name: 'أنهِ الملاحة' }).click();
+        await p3.waitForTimeout(400);
+        check('والإنهاء يزيل البطاقة والسيارة', (await p3.locator('.nav-card').count()) === 0 && (await p3.locator('.car-icon').count()) === 0);
+        await ctx.close();
+        await srv3.close();
     } finally { await browser.close(); }
 
     console.log(`\n===== ${pass} passed, ${fail} failed =====`);

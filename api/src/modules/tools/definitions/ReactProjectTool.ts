@@ -2453,10 +2453,45 @@ export class ReactProjectTool extends BaseTool {
             ],
         };
         const appAbilities = appBp ? (ABILITIES[appBp.engine] || ABILITIES.records)[isAr ? 0 : 1] : [];
+        /**
+         * WHAT WAS ASKED FOR AND NOT BUILT — said out loud.
+         *
+         * A user handed Joe a full platform specification — Next.js, FastAPI,
+         * PostGIS, a business portal, a developer portal, offline maps, an AI
+         * assistant — and Joe scaffolded its small Leaflet app and reported
+         * plain success. Silence about the other ninety percent is a lie told
+         * by omission, and it is the fastest way to lose someone's trust.
+         */
+        const UNMET: Array<[RegExp, string, string]> = [
+            [/next\.?js|nuxt|remix|astro/i, 'Next.js', 'Next.js'],
+            [/typescript|\bts\b/i, 'TypeScript', 'TypeScript'],
+            [/tailwind|shadcn|chakra|material\s*ui/i, 'Tailwind/shadcn', 'Tailwind/shadcn'],
+            [/maplibre|mapbox|vector\s*tiles?|pmtiles|3d\s*buildings?|terrain|hillshade|satellite|قمر\s*صناعي|ثلاثي\s*الأبعاد/i, 'MapLibre/بلاطات متجهة/3D/أقمار صناعية', 'MapLibre / vector tiles / 3D / satellite'],
+            [/fastapi|django|flask|spring|laravel|\.net\b/i, 'خادم Python/Java/.NET', 'a Python/Java/.NET backend'],
+            [/postgres|postgis|mysql|mongo|redis|elasticsearch|opensearch/i, 'قاعدة بيانات خارجية (Postgres/PostGIS/Redis…)', 'an external database (Postgres/PostGIS/Redis…)'],
+            [/\bgraphql\b|websockets?|celery|kafka|rabbitmq/i, 'GraphQL/WebSockets/طوابير المهام', 'GraphQL / WebSockets / task queues'],
+            [/\boauth2?\b|two[-\s]?factor|\b2fa\b|apple\s*login|google\s*login|jwt/i, 'تسجيل دخول ومصادقة', 'authentication (OAuth/2FA)'],
+            [/docker|kubernetes|helm|nginx|ci\/?cd|github\s*actions|terraform/i, 'Docker/Kubernetes/CI-CD', 'Docker / Kubernetes / CI-CD'],
+            [/prometheus|grafana|monitoring|observability/i, 'المراقبة (Prometheus/Grafana)', 'monitoring (Prometheus/Grafana)'],
+            [/admin\s*panel|business\s*portal|developer\s*portal|api\s*keys?|لوحة\s*(تحكم|إدارة)|بوابة\s*(المطوّ?رين|الأعمال)/i, 'لوحات الإدارة وبوابات المطوّرين/الأعمال', 'admin / business / developer portals'],
+            [/traffic|road\s*closures?|transit|public\s*transport|حركة\s*المرور|إغلاق\s*الطرق|النقل\s*العام/i, 'بيانات المرور الحيّة والنقل العام', 'live traffic and public transport'],
+            [/offline\s*(maps?|mode)|خرائط\s*بلا\s*إنترنت|بدون\s*إنترنت/i, 'الخرائط بلا إنترنت', 'offline maps'],
+            [/ai\s*assistant|مساعد\s*ذكي|recommendations?|توصيات/i, 'مساعد ذكي داخل التطبيق', 'an in-app AI assistant'],
+            [/reviews?|ratings?|تقييمات|مراجعات/i, 'التقييمات والمراجعات', 'reviews and ratings'],
+            [/unit\s*tests?|e2e|integration\s*tests?|اختبارات/i, 'حزمة الاختبارات', 'a test suite'],
+        ];
+        const unmet = appBp
+            ? UNMET.filter(([re]) => re.test(request)).map(u => (isAr ? u[1] : u[2]))
+            : [];
+        const unmetBlock = unmet.length
+            ? (isAr
+                ? `\n⚠️ وطلبتَ أيضاً ما لم أبنِه في هذه الخطوة — أقولها بصراحة بدل ادّعاء الاكتمال:\n${unmet.map(u => `   • ${u}`).join('\n')}\nأستطيع بناء الخادم وقاعدة البيانات كخطوة مستقلة: قل «ابنِ الباك إند لهذا التطبيق».\n`
+                : `\n⚠️ You also asked for things this step did NOT build — stated plainly rather than claimed:\n${unmet.map(u => `   • ${u}`).join('\n')}\n`)
+            : '';
         const appBlock = appBp
             ? (isAr
-                ? `\n🧠 هذا تطبيق يعمل، لا صفحة تتحدث عنه — «${appBp.title}»:\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n`
-                : `\n🧠 A working application, not a page about one — "${appBp.title}":\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n`)
+                ? `\n🧠 هذا تطبيق يعمل، لا صفحة تتحدث عنه — «${appBp.title}»:\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n${unmetBlock}`
+                : `\n🧠 A working application, not a page about one — "${appBp.title}":\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n${unmetBlock}`)
             : '';
         const message = isAr
             ? `⚛️ ${built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».

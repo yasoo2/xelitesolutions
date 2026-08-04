@@ -437,6 +437,10 @@ export default function RecordsApp({ content }) {
 export function fileMapAppJsx(isAr: boolean): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     const lang = isAr ? 'ar' : 'en';
+    // Spoken and written turn instructions — authored, never machine-translated.
+    const maneuverTable = isAr
+        ? `{ straight: 'واصل مستقيماً', left: 'انعطف يساراً', right: 'انعطف يميناً', 'slight left': 'ابقَ يساراً', 'slight right': 'ابقَ يميناً', 'sharp left': 'انعطف يساراً بحدّة', 'sharp right': 'انعطف يميناً بحدّة', uturn: 'استدر عائداً', roundabout: 'ادخل الدوّار', depart: 'انطلق', arrive: 'وصلت إلى وجهتك', onto: 'إلى' }`
+        : `{ straight: 'Continue straight', left: 'Turn left', right: 'Turn right', 'slight left': 'Keep left', 'slight right': 'Keep right', 'sharp left': 'Sharp left', 'sharp right': 'Sharp right', uturn: 'Make a U-turn', roundabout: 'Enter the roundabout', depart: 'Start driving', arrive: 'You have arrived', onto: 'onto' }`;
     return `import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -456,6 +460,40 @@ const distanceKm = (a, b) => {
   const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
   return Math.round(2 * R * Math.asin(Math.sqrt(h)) * 10) / 10;
+};
+
+/** The bearing from one point to the next — the car icon points along it. */
+const bearing = (a, b) => {
+  const rad = (d) => (d * Math.PI) / 180;
+  const y = Math.sin(rad(b.lng - a.lng)) * Math.cos(rad(b.lat));
+  const x = Math.cos(rad(a.lat)) * Math.sin(rad(b.lat)) - Math.sin(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.cos(rad(b.lng - a.lng));
+  return (Math.atan2(y, x) * 180) / Math.PI;
+};
+
+/** How far the driver is from the planned line, and how far is left along it. */
+const alongRoute = (pos, line) => {
+  let best = Infinity, at = 0;
+  for (let i = 0; i < line.length; i++) {
+    const d = distanceKm(pos, { lat: line[i][0], lng: line[i][1] });
+    if (d < best) { best = d; at = i; }
+  }
+  let left = 0;
+  for (let i = at; i < line.length - 1; i++) {
+    left += distanceKm({ lat: line[i][0], lng: line[i][1] }, { lat: line[i + 1][0], lng: line[i + 1][1] });
+  }
+  return { offRouteKm: best, index: at, remainingKm: Math.round(left * 10) / 10 };
+};
+
+/** OSRM names its maneuvers; a driver needs a sentence. */
+const MANEUVER = ${maneuverTable};
+const instructionFor = (st) => {
+  const m = st.maneuver || {};
+  const key = m.type === 'roundabout' || m.type === 'rotary' ? 'roundabout'
+    : m.type === 'arrive' ? 'arrive'
+      : m.type === 'depart' ? 'depart'
+        : (m.modifier || 'straight');
+  const road = st.name ? MANEUVER.onto + ' ' + st.name : '';
+  return ((MANEUVER[key] || MANEUVER.straight) + ' ' + road).trim();
 };
 
 export default function MapApp({ content }) {
@@ -478,10 +516,19 @@ export default function MapApp({ content }) {
   // actually want — how far, and how long.
   const [fromText, setFromText] = useState('');
   const [toText, setToText] = useState('');
-  const [trip, setTrip] = useState(null);      // { km, minutes, from, to }
+  const [trip, setTrip] = useState(null);      // { km, minutes, from, to, steps }
   const [routing, setRouting] = useState(false);
   const routeLine = useRef(null);
   const routeEnds = useRef(null);
+  // Turn-by-turn: the live drive, not the drawn line.
+  const [nav, setNav] = useState(null);        // { stepIndex, metresLeft, secondsLeft, speed, next }
+  const [voice, setVoice] = useState(true);
+  const geometry = useRef([]);
+  const destination = useRef(null);
+  const carMarker = useRef(null);
+  const watchId = useRef(null);
+  const lastFix = useRef(null);
+  const spokenAt = useRef(-1);
 
   useEffect(() => { store.write(places); }, [places, store]);
 
@@ -579,7 +626,8 @@ export default function MapApp({ content }) {
       if (!b) { setNote(${T('لم أجد الوجهة — جرّب اسماً أوضح.', 'Destination not found — try a clearer name.')}); return; }
 
       const url = 'https://router.project-osrm.org/route/v1/driving/'
-        + a.lng + ',' + a.lat + ';' + b.lng + ',' + b.lat + '?overview=full&geometries=geojson';
+        + a.lng + ',' + a.lat + ';' + b.lng + ',' + b.lat
+        + '?overview=full&geometries=geojson&steps=true&annotations=false';
       const r = await fetch(url);
       const d = await r.json();
       const leg = d && d.routes && d.routes[0];
@@ -596,10 +644,18 @@ export default function MapApp({ content }) {
         ]).addTo(map.current);
         map.current.fitBounds(routeLine.current.getBounds(), { padding: [40, 40] });
       }
+      // The maneuvers are what turns a drawn line into NAVIGATION.
+      const steps = ((leg.legs && leg.legs[0] && leg.legs[0].steps) || []).map((st) => ({
+        lat: st.maneuver.location[1], lng: st.maneuver.location[0],
+        text: instructionFor(st), distance: st.distance,
+      }));
+      geometry.current = line;
+      destination.current = b;
       setTrip({
         km: Math.round(leg.distance / 100) / 10,
         minutes: Math.round(leg.duration / 60),
         from: a.name.split(',')[0], to: b.name.split(',')[0],
+        steps, metres: leg.distance, seconds: leg.duration,
       });
     } catch {
       setNote(${T('تعذّر حساب المسار — تحقّق من اتصال الإنترنت.', 'Could not compute the route — check your connection.')});
@@ -607,10 +663,120 @@ export default function MapApp({ content }) {
   };
 
   const clearRoute = () => {
+    stopNav();
     if (routeLine.current) { routeLine.current.remove(); routeLine.current = null; }
     if (routeEnds.current) { routeEnds.current.remove(); routeEnds.current = null; }
+    geometry.current = []; destination.current = null;
     setTrip(null);
   };
+
+  /* ── turn-by-turn navigation ─────────────────────────────────────────────
+   * The drive itself: the browser's own GPS watch, a car that points where it
+   * is going, the map following it, the next maneuver spoken once, and a new
+   * route the moment the driver leaves this one.
+   * Honest limit: Leaflet does not rotate its map, so the CAR turns and the
+   * map follows — a rotating map needs MapLibre, which this build does not use.
+   */
+  const speak = (text) => {
+    if (!voice || !text) return;
+    try {
+      if (!('speechSynthesis' in window)) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = '${lang}' === 'ar' ? 'ar-SA' : 'en-US';
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    } catch { /* a browser without speech still shows the card */ }
+  };
+
+  const carIcon = (deg) => L.divIcon({
+    className: 'car-icon',
+    html: '<div style="transform:rotate(' + Math.round(deg) + 'deg)">▲</div>',
+    iconSize: [30, 30], iconAnchor: [15, 15],
+  });
+
+  const stopNav = () => {
+    if (watchId.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId.current);
+    watchId.current = null;
+    if (carMarker.current) { carMarker.current.remove(); carMarker.current = null; }
+    lastFix.current = null; spokenAt.current = -1;
+    try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch { /* optional */ }
+    setNav(null);
+  };
+
+  /** The route is recomputed from where the driver actually IS. */
+  const rerouteFrom = async (here) => {
+    if (!destination.current) return;
+    try {
+      const b = destination.current;
+      const url = 'https://router.project-osrm.org/route/v1/driving/'
+        + here.lng + ',' + here.lat + ';' + b.lng + ',' + b.lat
+        + '?overview=full&geometries=geojson&steps=true';
+      const d = await (await fetch(url)).json();
+      const leg = d && d.routes && d.routes[0];
+      if (!leg) return;
+      const line = leg.geometry.coordinates.map((c) => [c[1], c[0]]);
+      geometry.current = line;
+      if (routeLine.current && map.current) { routeLine.current.remove(); routeLine.current = L.polyline(line, { color: '#1a73e8', weight: 6, opacity: 0.85 }).addTo(map.current); }
+      const steps = ((leg.legs && leg.legs[0] && leg.legs[0].steps) || []).map((st) => ({
+        lat: st.maneuver.location[1], lng: st.maneuver.location[0], text: instructionFor(st), distance: st.distance,
+      }));
+      setTrip((t) => (t ? { ...t, steps, metres: leg.distance, seconds: leg.duration, km: Math.round(leg.distance / 100) / 10, minutes: Math.round(leg.duration / 60) } : t));
+      spokenAt.current = -1;
+      speak(${T('أعدتُ حساب المسار', 'Recalculating')});
+    } catch { /* offline: the previous line stands and the card says so */ }
+  };
+
+  const startNav = () => {
+    if (!trip || !navigator.geolocation) { setNote(${T('الملاحة تحتاج إذن الموقع من المتصفح.', 'Navigation needs the browser location permission.')}); return; }
+    setNav({ stepIndex: 0, remainingKm: trip.km, minutesLeft: trip.minutes, speed: 0, next: (trip.steps[0] || {}).text || '', toTurnM: 0, offRoute: false });
+    speak((trip.steps[0] || {}).text || '');
+    watchId.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        // A heading the device reports is better than one we infer; when it is
+        // missing — most desktops — it comes from the last two fixes.
+        const deg = Number.isFinite(pos.coords.heading) && pos.coords.heading !== null
+          ? pos.coords.heading
+          : (lastFix.current ? bearing(lastFix.current, here) : 0);
+        const kmh = Number.isFinite(pos.coords.speed) && pos.coords.speed !== null ? Math.round(pos.coords.speed * 3.6) : 0;
+        lastFix.current = here;
+
+        if (map.current) {
+          if (!carMarker.current) carMarker.current = L.marker([here.lat, here.lng], { icon: carIcon(deg), zIndexOffset: 1000 }).addTo(map.current);
+          else { carMarker.current.setLatLng([here.lat, here.lng]); carMarker.current.setIcon(carIcon(deg)); }
+          // Faster driving deserves a wider view; the car stays followed.
+          map.current.setView([here.lat, here.lng], kmh > 80 ? 15 : kmh > 40 ? 16 : 17, { animate: true, duration: 0.6 });
+        }
+
+        const line = geometry.current || [];
+        const on = line.length ? alongRoute(here, line) : { offRouteKm: 0, remainingKm: 0 };
+        const steps = (trip && trip.steps) || [];
+        // The next maneuver is the first one still ahead of the driver.
+        let idx = 0, toTurn = 0;
+        for (let i = 0; i < steps.length; i++) {
+          const d = distanceKm(here, steps[i]);
+          if (d > 0.03) { idx = i; toTurn = Math.round(d * 1000); break; }
+          idx = Math.min(i + 1, steps.length - 1);
+        }
+        if (toTurn && toTurn < 180 && spokenAt.current !== idx) { spokenAt.current = idx; speak((steps[idx] || {}).text || ''); }
+
+        const offRoute = on.offRouteKm > 0.06;
+        if (offRoute) rerouteFrom(here);
+
+        setNav({
+          stepIndex: idx,
+          remainingKm: on.remainingKm,
+          minutesLeft: Math.max(1, Math.round((on.remainingKm / Math.max(kmh, 30)) * 60)),
+          speed: kmh, next: (steps[idx] || {}).text || '', toTurnM: toTurn, offRoute,
+        });
+      },
+      () => setNote(${T('تعذّر تتبّع موقعك — تحقّق من إذن الموقع.', 'Could not follow your location — check the permission.')}),
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 },
+    );
+  };
+
+  // A watch left running after the panel closes drains a phone.
+  useEffect(() => () => { if (watchId.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId.current); }, []);
 
   const savePlace = (p, name) => {
     const row = { id: uid(), name: String(name || p.name || ${T('مكان', 'Place')}).slice(0, 80), lat: p.lat, lng: p.lng };
@@ -654,6 +820,27 @@ export default function MapApp({ content }) {
                 <span><b>{trip.minutes >= 60 ? Math.floor(trip.minutes / 60) + (${isAr ? "'س '" : "'h '"}) + (trip.minutes % 60) : trip.minutes}</b> ${isAr ? 'دقيقة' : 'min'}</span>
               </div>
               <p className="muted small">{${T('تقدير بالسيارة على الطرق الحقيقية — من OSRM.', 'Driving estimate on real roads — from OSRM.')}}</p>
+              <div className="actions">
+                {!nav ? (
+                  <button className="btn" type="button" onClick={startNav}>{${T('ابدأ الملاحة', 'Start navigation')}}</button>
+                ) : (
+                  <button className="btn danger" type="button" onClick={stopNav}>{${T('أنهِ الملاحة', 'End navigation')}}</button>
+                )}
+                <button className="btn ghost" type="button" onClick={() => setVoice(v => !v)}
+                  aria-pressed={voice}>{voice ? ${T('🔊 الصوت مفعّل', '🔊 Voice on')} : ${T('🔇 الصوت مطفأ', '🔇 Voice off')}}</button>
+              </div>
+              {trip.steps && trip.steps.length ? (
+                <details className="steps-list">
+                  <summary>{${T('خطوات الطريق', 'Turn list')}} ({trip.steps.length})</summary>
+                  <ol>
+                    {trip.steps.map((s, i) => (
+                      <li key={i} className={nav && nav.stepIndex === i ? 'on' : ''}>
+                        {s.text} <span className="muted">— {Math.round(s.distance)} ${isAr ? 'م' : 'm'}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              ) : null}
             </div>
           ) : null}
         </form>
@@ -715,6 +902,22 @@ export default function MapApp({ content }) {
 
       <div className="map-col">
         {tileError ? <p className="err tiles" role="status">{${T('تعذّر تحميل بلاطات OpenStreetMap — تحقّق من اتصال الإنترنت. باقي التطبيق يعمل.', 'OpenStreetMap tiles could not load — check your connection. The rest of the app still works.')}}</p> : null}
+        {/* The driving card: the next turn, then the numbers that matter. */}
+        {nav ? (
+          <div className="nav-card" role="status" aria-live="polite">
+            <div className="nav-next">
+              <strong>{nav.next || ${T('واصل', 'Continue')}}</strong>
+              {nav.toTurnM ? <span className="nav-turn-dist">{nav.toTurnM} ${isAr ? 'م' : 'm'}</span> : null}
+            </div>
+            <div className="nav-nums">
+              <span><b>{nav.remainingKm}</b> ${isAr ? 'كم متبقية' : 'km left'}</span>
+              <span><b>{nav.minutesLeft}</b> ${isAr ? 'دقيقة' : 'min'}</span>
+              <span><b>{nav.speed}</b> ${isAr ? 'كم/س' : 'km/h'}</span>
+              <span className="nav-eta">{${T('الوصول', 'ETA')}} {new Date(Date.now() + nav.minutesLeft * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+            {nav.offRoute ? <p className="nav-off">{${T('خرجتَ عن المسار — أعيد الحساب…', 'Off route — recalculating…')}}</p> : null}
+          </div>
+        ) : null}
         <section className="map-holder" ref={holder} aria-label={${T('الخريطة', 'Map')}} />
       </div>
     </div>
@@ -1101,6 +1304,20 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .trip-nums{display:flex;gap:18px;flex-wrap:wrap}
 .trip-nums b{font-size:1.5rem;color:var(--brand,#111);line-height:1}
 .trip-nums span{display:flex;align-items:baseline;gap:6px;color:var(--text-muted,#666)}
+.steps-list{margin-top:10px;font-size:.9rem}
+.steps-list summary{cursor:pointer;color:var(--text-muted,#666)}
+.steps-list ol{margin:8px 0 0;padding-inline-start:20px;display:grid;gap:6px;max-height:220px;overflow:auto}
+.steps-list li.on{font-weight:700;color:var(--brand,#111)}
+/* the drive */
+.nav-card{background:var(--brand,#1a73e8);color:var(--on-brand,#fff);border-radius:var(--radius-lg,16px);padding:14px 16px;display:grid;gap:10px}
+.nav-next{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.nav-next strong{font-size:1.25rem;line-height:1.3}
+.nav-turn-dist{font-size:1.1rem;font-weight:700;opacity:.9}
+.nav-nums{display:flex;gap:16px;flex-wrap:wrap;font-size:.9rem;opacity:.95}
+.nav-nums b{font-size:1.25rem}
+.nav-eta{margin-inline-start:auto}
+.nav-off{margin:0;font-weight:700}
+.car-icon div{font-size:24px;line-height:1;color:#1a73e8;text-shadow:0 0 3px #fff,0 0 6px #fff;transition:transform .4s ease}
 .leaflet-container{font:inherit}
 
 /* the chat */
