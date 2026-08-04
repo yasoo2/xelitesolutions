@@ -126,6 +126,87 @@ export class FileSearchTool extends BaseTool {
 }
 
 /**
+ * SEARCH INSIDE FILES — the capability the wiring audit found missing, and
+ * the one six well-known names were quietly pointed at the wrong tool for.
+ *
+ * `search_files` matches FILENAMES with a glob. Every model in the world says
+ * «grep», «ripgrep», «code_search», «find_in_files» when it means «find this
+ * TEXT in the code», and the alias table sent all of them to the glob tool —
+ * which answered `{ files: [] }`. Not an error, not a refusal: a confident,
+ * empty, wrong answer. Those names now land here, where the text is really
+ * read, and the glob keeps its own name.
+ */
+export class SearchTextTool extends BaseTool {
+    name = 'search_text';
+    description = 'Search for TEXT (or a regular expression) inside files in the workspace, returning file, line number and the matching line.';
+    version = '1.0.0';
+    tags = ['search', 'grep', 'read'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            query: { type: 'string', description: 'The text to find' },
+            pattern: { type: 'string', description: 'Alias of query' },
+            path: { type: 'string', description: 'Directory to search (defaults to the workspace root)' },
+            regex: { type: 'boolean', description: 'Treat the query as a regular expression' },
+            caseSensitive: { type: 'boolean' },
+            glob: { type: 'string', description: 'Limit to files matching this glob (default all text files)' },
+            maxResults: { type: 'number', description: 'Default 200' },
+        },
+        required: [] as string[],
+    };
+    outputSchema = { type: 'object' as const, properties: { matches: { type: 'array' }, total: { type: 'number' } } };
+    permissions: ToolPermission[] = ['read'];
+    sideEffects: ToolPermission[] = [];
+
+    async execute(input: any) {
+        const raw = String(input?.query ?? input?.pattern ?? '').trim();
+        if (!raw) return { ok: false, error: 'search_text needs a query — the text to look for.', logs: [] };
+        let root: string;
+        try { root = resolveToolPath(String(input?.path ?? '.')); }
+        catch (e: any) { return { ok: false, error: String(e?.message || e), logs: [] }; }
+
+        const max = Math.max(1, Math.min(1000, Number(input?.maxResults) || 200));
+        let re: RegExp;
+        try {
+            re = input?.regex === true
+                ? new RegExp(raw, input?.caseSensitive ? 'g' : 'gi')
+                : new RegExp(raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), input?.caseSensitive ? 'g' : 'gi');
+        } catch (e: any) { return { ok: false, error: `bad_regex: ${String(e?.message || e)}`, logs: [] }; }
+
+        const files = await glob(String(input?.glob || '**/*'), {
+            cwd: root, nodir: true, absolute: true, dot: false,
+            ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**', '**/*.png', '**/*.jpg',
+                '**/*.jpeg', '**/*.gif', '**/*.webp', '**/*.woff2', '**/*.zip', '**/*.pdf', '**/*.mp4'],
+        });
+        const matches: Array<{ file: string; line: number; text: string }> = [];
+        let scanned = 0;
+        for (const f of files) {
+            if (matches.length >= max) break;
+            try {
+                const st = fs.statSync(f);
+                if (!st.isFile() || st.size > 2_000_000) continue;      // a 2MB text file is not source
+                const body = fs.readFileSync(f, 'utf-8');
+                if (body.includes('\u0000')) continue;                  // binary
+                scanned++;
+                const lines = body.split(/\r?\n/);
+                for (let i = 0; i < lines.length && matches.length < max; i++) {
+                    re.lastIndex = 0;
+                    if (re.test(lines[i])) {
+                        matches.push({ file: path.relative(root, f) || path.basename(f), line: i + 1, text: lines[i].trim().slice(0, 300) });
+                    }
+                }
+            } catch { /* unreadable file — skip, never fail the search */ }
+        }
+        return {
+            ok: true,
+            output: { matches, total: matches.length, truncated: matches.length >= max },
+            logs: [`search_text=${raw} scanned=${scanned} matches=${matches.length}`],
+        };
+    }
+}
+
+
+/**
  * SymbolInspectorTool: extracts specific function/class definitions.
  * Equivalent to `view_code_item`.
  */

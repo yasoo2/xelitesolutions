@@ -49,7 +49,9 @@ import { AlertManagerTool } from './definitions/AlertManagerTool';
 import { JavaBuilderTool } from './definitions/JavaBuilderTool';
 import { GoBuilderTool } from './definitions/GoBuilderTool';
 import { JoeEngineeringReportTool } from './definitions/JoeEngineeringReportTool';
-import { EchoTool, FileEditTool, ShellExecuteTool, WriteFileTool, ScaffoldProjectTool, LsTool, NpmManagerTool, ShellStatusTool } from './definitions/SystemTools';
+import { EchoTool, FileEditTool, ShellExecuteTool, WriteFileTool, ScaffoldProjectTool, LsTool, NpmManagerTool, ShellStatusTool,
+  DeleteFileTool
+} from './definitions/SystemTools';
 
 
 // Self Coding Tools
@@ -86,7 +88,7 @@ import { SwaggerDocsTool } from './definitions/SwaggerDocsTool';
 import { TaskLifecycleTool } from './definitions/TaskLifecycleTool';
 import { TaskLoopTool } from './definitions/TaskLoopTool';
 import { TodoWriteTool } from './definitions/TodoWriteTool';
-import { DirectoryInspectionTool, FileSearchTool, SymbolInspectorTool, AdvancedFileEditTool } from './definitions/UtilityTools';
+import { DirectoryInspectionTool, FileSearchTool, SearchTextTool, SymbolInspectorTool, AdvancedFileEditTool } from './definitions/UtilityTools';
 import { VideoActionTool } from './definitions/VideoActionTool';
 import { ArchiveFilesTool } from './definitions/ArchiveFilesTool';
 import { DeployProjectTool } from './definitions/DeployProjectTool';
@@ -204,6 +206,8 @@ const revivedTools: (ToolDefinition | null)[] = [
   safeNew('task_loop', () => new TaskLoopTool()),
   safeNew('inspect_directory', () => new DirectoryInspectionTool()),
   safeNew('search_files', () => new FileSearchTool()),
+  // Content search — «grep» and its five synonyms resolve HERE now.
+  safeNew('search_text', () => new SearchTextTool()),
   safeNew('inspect_symbol', () => new SymbolInspectorTool()),
   safeNew('file_edit_advanced', () => new AdvancedFileEditTool()),
   safeNew('notify_user', () => new NotifyUserTool()),
@@ -291,6 +295,7 @@ const baseTools: ToolDefinition[] = [
   new FileEditTool(),
   new ShellExecuteTool(),
   new WriteFileTool(),
+  new DeleteFileTool(),
   new ScaffoldProjectTool(),
   new LsTool(),
   // [AUDIT] npm_manager and shell_check_status were DEFINED for months and

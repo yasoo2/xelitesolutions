@@ -185,6 +185,63 @@ export class FileEditTool extends BaseTool {
     }
 }
 
+/**
+ * DELETE A FILE — the capability the wiring audit found MISSING.
+ *
+ * 149 tools could create, read, edit, search and list; not one could remove.
+ * «احذف الملف الفلاني» had nowhere to go but a shell command, and the
+ * surgical editor had to unlink files behind the tool layer's back. The same
+ * containment as every other file tool applies: the path is resolved inside
+ * the workspace or the call is refused, a directory needs `recursive: true`
+ * said out loud, and a file that is already gone is reported honestly rather
+ * than counted as a deletion.
+ */
+export class DeleteFileTool extends BaseTool {
+    name = 'delete_file';
+    description = 'Delete a file (or, with recursive:true, a directory) inside the workspace. Refuses anything outside it.';
+    version = '1.0.0';
+    tags = ['fs', 'delete'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            path: { type: 'string', description: 'File or directory to delete' },
+            filename: { type: 'string', description: 'Alias of path' },
+            recursive: { type: 'boolean', description: 'Required to delete a directory and everything under it' },
+        },
+        required: [] as string[],
+    };
+    outputSchema = { type: 'object' as const, properties: { deleted: { type: 'boolean' } } };
+    permissions: ToolPermission[] = ['write'];
+    sideEffects: ToolPermission[] = ['write'];
+    rateLimitPerMinute = 60;
+    auditFields = ['path'];
+
+    async execute(input: any, context?: any) {
+        const logs: string[] = [];
+        const rawPath = String(input?.path || input?.filename || '').trim();
+        if (!rawPath) return { ok: false, error: 'delete_file needs a path — name the file to remove.', logs };
+        const resolved = safePath(rawPath, context?.workspaceId);
+        if (!resolved.ok) return { ok: false, error: resolved.error, logs };
+        const full = resolved.path;
+        if (!fs.existsSync(full)) {
+            // Not a deletion, and not a crash: the truth is that it is not there.
+            return { ok: false, error: `not_found: ${rawPath} does not exist — nothing was deleted.`, logs };
+        }
+        const isDir = fs.statSync(full).isDirectory();
+        if (isDir && input?.recursive !== true) {
+            return { ok: false, error: `is_directory: ${rawPath} is a directory — pass recursive:true to remove it and everything inside.`, logs };
+        }
+        try {
+            if (isDir) fs.rmSync(full, { recursive: true, force: true });
+            else fs.unlinkSync(full);
+        } catch (e: any) {
+            return { ok: false, error: `delete_failed: ${String(e?.message || e)}`, logs };
+        }
+        logs.push(`delete=${rawPath}${isDir ? ' (recursive)' : ''}`);
+        return { ok: true, output: { deleted: true, path: rawPath, wasDirectory: isDir }, logs };
+    }
+}
+
 export class WriteFileTool extends BaseTool {
     name = 'write_file';
     description = 'Write content to a file. Overwrites if exists.';

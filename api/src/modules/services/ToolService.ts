@@ -161,19 +161,34 @@ function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' |
  * something merely similar. `grep_search` is the one that cost a real user
  * their request; the rest are the same class of well-known name.
  */
-const TOOL_ALIASES: Record<string, string> = {
-    grep_search: 'search_files',
-    grep: 'search_files',
-    ripgrep: 'search_files',
-    code_search: 'search_files',
-    search_code: 'search_files',
-    find_in_files: 'search_files',
+export const TOOL_ALIASES: Record<string, string> = {
+    // CONTENT search — these names all mean «find this TEXT». They used to
+    // point at search_files, which matches FILENAMES with a glob and answered
+    // `{ files: [] }`: a confident, empty, wrong answer that never once looked
+    // inside a file. The wiring audit caught it.
+    grep_search: 'search_text',
+    grep: 'search_text',
+    ripgrep: 'search_text',
+    code_search: 'search_text',
+    search_code: 'search_text',
+    find_in_files: 'search_text',
+    search_in_files: 'search_text',
+    // FILENAME search keeps the glob tool.
     file_search: 'search_files',
+    find_files: 'search_files',
+    glob_search: 'search_files',
     file_read: 'read_file',
     cat_file: 'read_file',
     open_file: 'read_file',
     file_write: 'write_file',
     create_file: 'write_file',
+    // Named in the orchestrator's deterministic list and by several model
+    // families; it resolved to NOTHING until the wiring audit called it out.
+    write_to_file: 'write_file',
+    // The deletion synonyms every model reaches for.
+    remove_file: 'delete_file',
+    rm_file: 'delete_file',
+    unlink_file: 'delete_file',
     edit_file: 'file_edit',
     str_replace: 'file_edit',
     list_directory: 'inspect_directory',
@@ -407,11 +422,11 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         effectiveName = 'inspect_directory';
         if ((effectiveInput as any)?.depth == null) (effectiveInput as any).depth = 1;
     }
-    if (name === 'search_code' || name === 'find_in_files') {
-        effectiveName = 'grep_search';
-    }
-    if (name === 'grep') {
-        effectiveName = 'grep_search';
+    // These hand-written redirects pointed at «grep_search», which is itself
+    // an alias — a two-hop path that ended at the filename glob. One hop, to
+    // the tool that actually reads the files.
+    if (name === 'search_code' || name === 'find_in_files' || name === 'grep' || name === 'grep_search') {
+        effectiveName = 'search_text';
     }
     if (name === 'browse' || name === 'open_browser' || name === 'web_browse') {
         effectiveName = 'browser_run';
@@ -484,13 +499,10 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         }
     }
 
-    if (effectiveName === 'grep_search') {
-        const { BinaryService } = require('./BinaryService');
-        const check = await BinaryService.checkBinary('grep');
-        if (!check.exists || !check.compatible) {
-            return { ok: false, error: `binary_issue: ${check.error || 'grep not found'}. ${BinaryService.getHint('grep', check)}`, logs };
-        }
-    }
+    // The old grep_search path needed the system `grep` binary. search_text
+    // reads the files in JavaScript, so a machine without grep — every stock
+    // Windows box — can finally search its own code.
+
     if (effectiveName === 'inspect_directory' || effectiveName === 'search_files') {
         const { BinaryService } = require('./BinaryService');
         const check = await BinaryService.checkBinary('find');
