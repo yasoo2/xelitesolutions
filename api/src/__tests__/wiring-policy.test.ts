@@ -1204,7 +1204,15 @@ describe('the panels belong to a session', () => {
     it('an event naming another session never paints this one', () => {
         const L = WEB('components', 'JoeIDELayout.tsx');
         expect(L).toMatch(/const belongsHere/);
-        expect(L).toMatch(/if \(!belongsHere\(event\)\) return;/);
+        /**
+         * The guard still ends in `return` — nothing from another conversation
+         * reaches this screen's state. It no longer THROWS the event away
+         * first: it files it under its own session (see the background-run
+         * invariants below), which is a different thing from painting it here.
+         */
+        const guard = L.slice(L.indexOf('if (!belongsHere(event))'));
+        expect(guard.slice(0, 200)).toMatch(/^if \(!belongsHere\(event\)\) \{[\s\S]{0,120}return;/);
+        expect(guard.slice(0, 200)).not.toMatch(/set[A-Z]\w*\(/);
         const J = WEB('pages', 'Joe.tsx');
         expect(J).toMatch(/const mine = \(msg: any\)/);
         expect(J).toMatch(/if \(!mine\(msg\)\) return;/);
@@ -1666,5 +1674,87 @@ describe('the code view is fed by what builds actually emit', () => {
         const setup = WEB('monaco-setup.ts');
         expect(setup).toMatch(/loader\.config\(\{ monaco \}\)/);
         expect(WEB('main.tsx')).toMatch(/monaco-setup/);
+    });
+});
+
+/**
+ * A CONVERSATION YOU ARE NOT LOOKING AT IS STILL WORKING.
+ *
+ * «عند فتح جلسة وتشغيل بروميت وأثناء ما جو يعمل فيها فاذهب الى جلسة اخرى ومن
+ * ثم ارجع الى الجلسة السابقة فانها تكون قد توقفت ولم تكمل مهمتها».
+ *
+ * The run never stopped: `/api/runs/start` dispatches the loop and answers
+ * immediately, so the server keeps going no matter what the browser shows.
+ * What stopped was the UI's KNOWLEDGE of it. Every panel filters socket events
+ * down to the conversation on screen, and the layout used to `return` on an
+ * event belonging to anyone else — so the background run's files, logs and
+ * build status were thrown away as they arrived, and coming back restored the
+ * snapshot from the moment he left. A frozen panel is indistinguishable from a
+ * dead task.
+ *
+ * Two wires have to stay connected for this to keep working:
+ *   1. a background event is RECORDED into that session's archive, not dropped
+ *   2. the "who is running" registry is attached OUTSIDE the per-conversation
+ *      guards, or it would only ever see the session already on screen
+ */
+describe('a run keeps going while you read another conversation', () => {
+    it('the server answers the start request without waiting for the run', () => {
+        const R = SRC('api', 'routes', 'run.ts');
+        expect(R).toMatch(/\.catch\(/);
+        // the id the panels key on must be on the wire the moment the run begins
+        expect(R).toMatch(/type: 'run_started', sessionId/);
+    });
+
+    it('an event for a session that is not on screen is archived, never dropped', () => {
+        const L = WEB('components', 'JoeIDELayout.tsx');
+        expect(L).toMatch(/if \(!belongsHere\(event\)\) \{\s*\n\s*recordForBackgroundSession\(event\);\s*\n\s*return;/);
+        const fold = L.slice(L.indexOf('const recordForBackgroundSession'));
+        // the four panels a returning user actually reads
+        expect(fold).toMatch(/'file_stream'/);
+        expect(fold).toMatch(/'terminal_output' \|\| event\.type === 'log'/);
+        expect(fold).toMatch(/'build_status'/);
+        expect(fold).toMatch(/'problems'/);
+        expect(fold).toMatch(/panelArchive\.current\.set\(sid, cur\)/);
+    });
+
+    it('the running registry listens to every session, before any guard', () => {
+        const R = WEB('services', 'runningSessions.ts');
+        expect(R).toMatch(/type === 'run_started'/);
+        expect(R).toMatch(/run_finished' \|\| type === 'run_failed' \|\| type === 'run_cancelled'/);
+        // it subscribes to the raw socket — no sessionId filter of its own
+        expect(R).toMatch(/SocketService\.subscribe\(note\)/);
+        expect(R).not.toMatch(/activeSessionId|belongsHere|mine\(/);
+    });
+
+    it('and every path that ends a run says WHICH session ended', () => {
+        // a run_finished with no sessionId can never clear the dot it lit.
+        for (const [file, src] of [
+            ['AgentLoopService.ts', SRC('modules', 'services', 'AgentLoopService.ts')],
+            ['approvals.ts', SRC('api', 'routes', 'approvals.ts')],
+        ] as const) {
+            const ends = src.split('\n').filter(l => l.includes("type: 'run_finished'"));
+            expect(ends.length).toBeGreaterThan(0);
+            for (const line of ends) expect(`${file}: ${line}`).toMatch(/sessionId/);
+        }
+    });
+
+    it('the chip marks a working session, and only a working one', () => {
+        const J = WEB('pages', 'Joe.tsx');
+        expect(J).toMatch(/startTrackingRuns\(\)/);
+        expect(J).toMatch(/subscribeRunningSessions\(setRunningIds\)/);
+        expect(J).toMatch(/isRunning: isRunning\(s\.id\)/);
+        const B = WEB('components', 'SessionsBar.tsx');
+        expect(B).toMatch(/isRunning\?: boolean/);
+        expect(B).toMatch(/session\.isRunning \?[\s\S]{0,300}session-live-dot/);
+    });
+
+    it('the dot breathes, and holds still for anyone who asked it to', () => {
+        const C = fs.readFileSync(
+            path.join(__dirname, '..', '..', '..', 'web', 'src', 'styles', 'joe-premium.css'), 'utf-8');
+        expect(C).toMatch(/@keyframes joeSessionBreath/);
+        expect(C).toMatch(/\.session-live-dot \{[\s\S]{0,120}animation: joeSessionBreath/);
+        const reduced = C.slice(C.indexOf('prefers-reduced-motion'));
+        expect(C).toMatch(/prefers-reduced-motion: reduce\) \{[\s\S]{0,200}\.session-live-dot \{ animation: none/);
+        expect(reduced.length).toBeGreaterThan(0);
     });
 });

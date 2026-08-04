@@ -194,6 +194,13 @@ router.post('/:id/decision', authenticate as any, async (req, res) => {
   const a = await Approval.findByIdAndUpdate(id, { $set: { status: decision } }, { new: true });
   if (!a) return res.status(404).json({ error: 'Approval not found' });
   broadcast({ type: 'approval_result', runId: ctx.runId, data: { id, decision } });
+  /**
+   * The chip's live dot is cleared by `run_finished`, and the UI can only match
+   * it to a conversation by the sessionId it carries. This path used to send
+   * the event without one, so a run that ended here left the session marked as
+   * working forever. The id is right there on the Run — carry it.
+   */
+  const runSessionId = String((run as any).sessionId || '').trim() || undefined;
   if (decision === 'approved') {
     broadcast({ type: 'step_started', runId: ctx.runId, data: { name: `execute:${ctx.name}`, input: redactToolInputForBroadcast(ctx.name, ctx.input) } });
     const sessionId = typeof ctx.input?.sessionId === 'string' && ctx.input.sessionId.trim() ? ctx.input.sessionId.trim() : undefined;
@@ -212,12 +219,12 @@ router.post('/:id/decision', authenticate as any, async (req, res) => {
       // Persist artifacts in DB using Artifact model if needed
     }
     await Run.findByIdAndUpdate(ctx.runId, { $set: { status: result.ok ? 'done' : 'failed' } });
-    broadcast({ type: 'run_finished', runId: ctx.runId, data: { runId: ctx.runId, ok: result.ok } });
+    broadcast({ type: 'run_finished', runId: ctx.runId, sessionId: runSessionId, data: { runId: ctx.runId, ok: result.ok, sessionId: runSessionId } } as any);
     planContext.delete(id);
     return res.json({ ok: true, result });
   } else {
     await Run.findByIdAndUpdate(ctx.runId, { $set: { status: 'denied' } });
-    broadcast({ type: 'run_finished', runId: ctx.runId, data: { runId: ctx.runId, ok: false } });
+    broadcast({ type: 'run_finished', runId: ctx.runId, sessionId: runSessionId, data: { runId: ctx.runId, ok: false, sessionId: runSessionId } } as any);
     planContext.delete(id);
     return res.json({ ok: true, denied: true });
   }

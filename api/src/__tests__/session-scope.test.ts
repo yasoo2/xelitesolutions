@@ -56,6 +56,11 @@ const DELIBERATELY_SHARED: Record<string, string> = {
     'pages/admin/SystemManagement.tsx':
         'An operator screen for the whole server: its events are system-wide by definition and belong to '
         + 'no conversation.',
+    'services/runningSessions.ts':
+        'The registry of which conversations are still working. "Who is running" is a fact about ALL of them, '
+        + 'not about the one on screen, so this is the one consumer that deliberately listens without a session '
+        + 'filter — scoping it would defeat its only purpose, which is to light the chip of a session you are NOT '
+        + 'looking at. It writes to no panel: it keeps a set of ids and notifies subscribers.',
 };
 
 describe('INVARIANT: what displays a run belongs to the run’s session', () => {
@@ -81,6 +86,18 @@ describe('INVARIANT: what displays a run belongs to the run’s session', () => 
         // …and forget the previous conversation when it changes.
         const resets = /\}, \[sessionId\]\)|\}, \[activeSessionId\]\)|prevSessionIdRef/.test(src);
         expect(resets).toBe(true);
+    });
+
+    /**
+     * The one exemption granted to a module that listens to EVERY session has
+     * to stay harmless. It is allowed to know who is running; it is not allowed
+     * to put anything on screen — that is what the scoping rule protects.
+     */
+    it('the unscoped run registry keeps ids and paints nothing', () => {
+        const src = fs.readFileSync(path.join(WEB_SRC, 'services', 'runningSessions.ts'), 'utf-8');
+        expect(src).not.toMatch(/document\.|window\.dispatchEvent|setState|useState|innerHTML/);
+        // its whole surface is a set of ids plus subscribers
+        expect(src).toMatch(/const running = new Set<string>\(\)/);
     });
 });
 

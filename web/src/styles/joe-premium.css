@@ -3655,3 +3655,20 @@ body:not(.rtl) .joe-user-info {
 [data-theme="light"] .dialog-overlay {
     background: var(--joe-scrim, rgba(28, 40, 35, 0.32)) !important;
 }
+
+/* A conversation still working, seen from the sessions bar.
+   Slow and shallow on purpose: a heartbeat you notice when you look for it,
+   never a strobe competing with the work itself. */
+@keyframes joeSessionBreath {
+    0%, 100% { opacity: .95; box-shadow: 0 0 0 0 rgba(16, 185, 129, .45); }
+    50%      { opacity: .45; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0); }
+}
+
+.session-live-dot {
+    animation: joeSessionBreath 1.8s ease-in-out infinite;
+}
+
+/* Respect a user who asked the system for less motion. */
+@media (prefers-reduced-motion: reduce) {
+    .session-live-dot { animation: none; opacity: .95; }
+}

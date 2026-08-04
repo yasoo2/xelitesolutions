@@ -22,6 +22,8 @@ interface Session {
     preview?: string;
     timestamp: Date;
     isActive: boolean;
+    /** Joe is still working in this conversation, even if you are not in it. */
+    isRunning?: boolean;
 }
 
 interface SessionsBarProps {
@@ -250,6 +252,24 @@ function SessionChip({
             }}
             onClick={onSelect}
         >
+            {/*
+                WORKING IN THE BACKGROUND — one small breathing dot.
+                He asked for something «انيق وعصري وبسيط»: not a spinner, not a
+                badge, not a word. A 6px dot that pulses is readable at a glance
+                across a whole row of chips and says nothing when there is
+                nothing to say.
+            */}
+            {session.isRunning ? (
+                <span
+                    className="session-live-dot"
+                    aria-label="working"
+                    title="Joe is working here"
+                    style={{
+                        width: 6, height: 6, borderRadius: 999, flex: 'none',
+                        background: '#10b981',
+                    }}
+                />
+            ) : null}
             <span
                 style={{
                     fontSize: 12,

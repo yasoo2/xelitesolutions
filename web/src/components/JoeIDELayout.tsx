@@ -20,6 +20,8 @@ interface Session {
     preview?: string;
     timestamp: Date;
     isActive: boolean;
+    /** Joe is still working here, even from another conversation. */
+    isRunning?: boolean;
 }
 
 interface Message {
@@ -328,6 +330,48 @@ export default function JoeIDELayout({
         buildStatus: import('./WorkspacePanel').BuildStatusState | null;
     }>>(new Map());
 
+    /**
+     * Fold one event into the archived state of a session that is NOT on
+     * screen. Deliberately narrow: the panels a returning user needs to see
+     * are the live files, the log lines and the build status.
+     */
+    const recordForBackgroundSession = useCallback((event: any) => {
+        const sid = String(event?.sessionId || event?.data?.sessionId || '');
+        if (!sid || /^panel-/.test(sid) || sid === 'local_terminal') return;
+        const cur = panelArchive.current.get(sid)
+            || { liveFiles: [] as any[], logs: [] as string[], problems: [] as any[], buildStatus: null as any };
+
+        if (event.type === 'file_stream' && event.data?.file) {
+            const d = event.data;
+            const i = cur.liveFiles.findIndex((f: any) => f.file === d.file);
+            if (i === -1) {
+                cur.liveFiles = [...cur.liveFiles, {
+                    file: String(d.file), content: String(d.chunk || ''), done: !!d.done,
+                    label: d.label, bytes: d.bytes || 0, updatedAt: d.at || Date.now(),
+                }];
+            } else {
+                const next = cur.liveFiles.slice();
+                const f = next[i];
+                next[i] = {
+                    ...f,
+                    content: d.done ? String(d.chunk || f.content) : f.content + String(d.chunk || ''),
+                    done: !!d.done || f.done,
+                    label: d.label || f.label,
+                    updatedAt: d.at || Date.now(),
+                };
+                cur.liveFiles = next;
+            }
+        } else if (event.type === 'terminal_output' || event.type === 'log') {
+            const line = String(event.data?.line ?? event.data?.text ?? event.data?.chunk ?? '');
+            if (line) cur.logs = [...cur.logs, line].slice(-500);
+        } else if (event.type === 'build_status' && event.data) {
+            cur.buildStatus = event.data;
+        } else if (event.type === 'problems' && Array.isArray(event.data?.problems)) {
+            cur.problems = event.data.problems;
+        }
+        panelArchive.current.set(sid, cur);
+    }, []);
+
     useEffect(() => {
         const previous = sessionRef.current;
         if (previous === sessionId) return;
@@ -362,7 +406,23 @@ export default function JoeIDELayout({
         const unsubscribe = import('../services/socket').then(({ SocketService }) => {
             return SocketService.subscribe((event: any) => {
                 if (!event) return;
-                if (!belongsHere(event)) return;
+                /**
+                 * A BACKGROUND RUN IS RECORDED, NOT DISCARDED.
+                 *
+                 * This used to `return` on any event from another conversation
+                 * — correct about not PAINTING it, wrong about forgetting it.
+                 * The run kept going on the server while its logs and files
+                 * were dropped on the floor, so coming back showed the frozen
+                 * snapshot from the moment he left and the task looked dead.
+                 *
+                 * Now the event lands in that session's archive instead. When
+                 * he returns, the panels restore everything that happened
+                 * while he was away.
+                 */
+                if (!belongsHere(event)) {
+                    recordForBackgroundSession(event);
+                    return;
+                }
 
                 // SMART AUTO-OPEN: when a real task/tool STARTS, reveal the canvas so
                 // the user watches the work happen. We do NOT open on terminal_output

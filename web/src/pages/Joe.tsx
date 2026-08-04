@@ -12,6 +12,7 @@ import CommandComposer from '../components/CommandComposer';
 import { useSessionStore } from '../store/sessionStore';
 import { useSessionActions } from '../hooks/useSessionActions';
 import { SocketService } from '../services/socket';
+import { startTrackingRuns, subscribeRunningSessions } from '../services/runningSessions';
 import { api } from '../services/apiClient';
 import SettingsDialog from '../components/SettingsDialog';
 import GitHubConnectDialog from '../components/GitHubConnectDialog';
@@ -779,12 +780,33 @@ export default function Joe() {
         setTheme(prev => prev === 'dark' ? 'light' : 'dark');
     }, []);
 
+    /**
+     * WHICH CONVERSATIONS ARE STILL WORKING.
+     *
+     * Tracked in a registry that listens to EVERY session — deliberately
+     * outside the per-conversation guard, because "who is still busy" is a
+     * fact about all of them. Without it a background run was invisible and
+     * indistinguishable from a dead one.
+     */
+    const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+    useEffect(() => {
+        startTrackingRuns();
+        return subscribeRunningSessions(setRunningIds);
+    }, []);
+
     // Transform sessions for SessionsBar (Unified)
+    const isRunning = (id: string) => {
+        if (runningIds.has(id)) return true;
+        // The server writes the id in a few shapes («session-<id>»).
+        for (const r of runningIds) { if (r.includes(id) || id.includes(r)) return true; }
+        return false;
+    };
     const sessionsList = [...agentSessions, ...sessions].map(s => ({
         id: s.id,
         title: s.title,
         timestamp: new Date(),
-        isActive: s.id === activeSessionId
+        isActive: s.id === activeSessionId,
+        isRunning: isRunning(s.id),
     }));
 
     return (
