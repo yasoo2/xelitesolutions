@@ -807,6 +807,43 @@ body:not(.rtl) .joe-user-info {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
+/* A NAME NEEDS ROOM.
+   The shared rule above pins every button to a 28px square, which is right for
+   an icon and wrong for a word: the provider's name was clipped away and only
+   its logo showed. This button alone grows to fit its text. */
+.joe-chat-input-area .provider-btn {
+    width: auto !important;
+    min-width: 0 !important;
+    padding: 0 10px !important;
+    gap: 6px;
+}
+
+.joe-chat-input-area .provider-btn .provider-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .01em;
+    white-space: nowrap;
+    /* A name, written the way it is written. The base rule shouts every label
+       in capitals, which turns «Google Gemini» into «GOOGLE GEMINI» and eats
+       the toolbar. */
+    text-transform: none !important;
+}
+
+/* «free» is information, not a headline: one step smaller, light, and quiet
+   enough that the name still reads first. */
+.joe-chat-input-area .provider-btn .provider-free {
+    font-size: 9px;
+    font-weight: 300;
+    letter-spacing: .06em;
+    text-transform: lowercase;
+    opacity: .62;
+    line-height: 1;
+    padding: 1px 4px;
+    border-radius: 4px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+}
+
 /* Modern, calm status — a subtle static border, NO infinite neon pulse (that
    glowing pulse looked garish). Green = connected, muted = not connected. */
 .joe-chat-input-area .provider-btn.is-connected {
@@ -838,9 +875,12 @@ body:not(.rtl) .joe-user-info {
     height: 14px !important;
 }
 
-/* Hide provider label text - show only icon */
+/* THE NAME IS THE POINT — this rule used to read «Hide provider label text -
+   show only icon», and it is why the button showed a mark and nothing else no
+   matter what the markup said. Reported from the field: «زر المزود اريد ان
+   يكون كتابه وليس رموز». It shows. */
 .joe-chat-input-area .provider-btn .provider-label {
-    display: none !important;
+    display: inline !important;
 }
 
 /* Container for ALL actions (Tools + Send) */

@@ -4065,10 +4065,24 @@ export default function CommandComposer({
                       onClick={() => setShowProviders(true)}
                       title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
                     >
-                      {getProviderLogo(activeProvider)}
-                      <span className="provider-label" style={{ marginLeft: 6, fontSize: 12 }}>
-                        {(activeProvider === 'openai' ? 'OpenAI' : activeProvider === 'deepseek' ? 'DeepSeek' : activeProvider === 'openrouter' ? 'Router' : activeProvider === 'anthropic' ? 'Claude' : activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)).slice(0, 10)}
+                      {/*
+                        THE PROVIDER SAYS ITS NAME.
+                        It used to be a logo plus a label clipped to ten
+                        characters inside a 28px square — so «OpenRouter»
+                        became «Router» and the icon was all anyone could read.
+                        A name is clearer than a mark: the button now writes it
+                        out, and a free provider carries a small, light «free»
+                        beside it so the cost is visible without opening a panel.
+                        The ⚡ in «Groq ⚡» is stripped — a name, not decoration.
+                      */}
+                      <span className="provider-label">
+                        {String(providers[activeProvider]?.name || activeProvider)
+                          .replace(/[^\p{L}\p{N} .+-]/gu, '')
+                          .trim() || activeProvider}
                       </span>
+                      {providers[activeProvider]?.isFree ? (
+                        <span className="provider-free">free</span>
+                      ) : null}
                     </button>
                   );
                 })()}

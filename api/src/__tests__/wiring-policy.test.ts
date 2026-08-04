@@ -1537,3 +1537,49 @@ describe('showing a panel starts nothing', () => {
         expect(requestedFeatures(plain)).toEqual(['Posts', 'Stories', 'Reels', 'Ads platform']);
     });
 });
+
+/**
+ * A BUTTON THAT HIDES ITS LABEL IS A BUTTON WITH NO LABEL.
+ *
+ * Asked for from the field: «زر المزود اريد ان يكون كتابه وليس رموز … واذا كان
+ * مجاني فليكتب بجانبه free بخط صغير ورقيق». The markup HAD a label all along;
+ * a stylesheet rule literally titled «Hide provider label text - show only
+ * icon» removed it, and the shared 28×28 sizing left it nowhere to render even
+ * if it had not. Editing the component alone would have changed nothing on
+ * screen — which is exactly the mistake this file exists to prevent.
+ */
+describe('the provider button says its name', () => {
+    const CSS = () => fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'src', 'styles', 'joe-premium.css'), 'utf-8');
+
+    it('no stylesheet hides the label any more', () => {
+        const css = CSS();
+        // Read ONLY the .provider-label rule blocks. A slice that ran to the
+        // end of the file matched a `display:none` belonging to some other
+        // selector — a test that fails for the wrong reason is not a test.
+        const blocks = [...css.matchAll(/\.provider-label\s*\{([^}]*)\}/g)].map(m => m[1]);
+        expect(blocks.length).toBeGreaterThan(0);
+        for (const b of blocks) expect(b).not.toMatch(/display:\s*none/);
+        expect(blocks.some(b => /display:\s*inline/.test(b))).toBe(true);
+    });
+
+    it('and the button is free to grow past the icon square', () => {
+        expect(CSS()).toMatch(/\.joe-chat-input-area \.provider-btn \{[\s\S]{0,200}width: auto !important/);
+    });
+
+    it('the name comes from the provider, not from a hand-written list', () => {
+        const C = WEB('components', 'CommandComposer.tsx');
+        expect(C).toMatch(/providers\[activeProvider\]\?\.name/);
+        expect(C).toMatch(/providers\[activeProvider\]\?\.isFree \? \(/);
+        // the ten-character clip that turned «OpenRouter» into «Router»
+        expect(C).not.toMatch(/activeProvider\.slice\(1\)\)\.slice\(0, 10\)/);
+    });
+
+    it('«free» is smaller and lighter than the name, in the stylesheet itself', () => {
+        const css = CSS();
+        const free = css.slice(css.indexOf('.provider-btn .provider-free'), css.indexOf('.provider-btn .provider-free') + 400);
+        const size = Number((free.match(/font-size:\s*(\d+)px/) || [])[1]);
+        const weight = Number((free.match(/font-weight:\s*(\d+)/) || [])[1]);
+        expect(size).toBeLessThan(12);      // the name's 12px
+        expect(weight).toBeLessThan(600);   // the name's 600
+    });
+});
