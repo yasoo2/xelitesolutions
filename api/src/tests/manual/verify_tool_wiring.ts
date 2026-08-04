@@ -164,7 +164,19 @@ async function main() {
     check(`كل أقسام المتجر (${sections.length}) كُتبت كمكوّنات`, notWritten.length === 0, notWritten.join(','));
     check('…واستُوردت كلها في App.jsx', notImported.length === 0, notImported.join(','));
     check('…ورُسمت كلها فعلاً داخل الصفحة', notRendered.length === 0, notRendered.join(','));
-    const orphans = shipped.filter(c => !['Navbar', 'Footer', 'OrderButton', 'ProductView'].includes(c) && !sections.includes(c));
+    // The orphan rule used to carry a HARDCODED list of exceptions
+    // ('Navbar', 'Footer', 'OrderButton', 'ProductView'), so the first new
+    // component to ship — AdminPanel — was reported as thrown-away while
+    // App.jsx imported AND rendered it. A list of exceptions ages; the
+    // question does not. Ask it instead: is this component used by App.jsx or
+    // by another component that App.jsx uses?
+    const usedSomewhere = (c: string) => {
+        if (sections.includes(c)) return true;
+        if (appJsx.includes(`<${c} `) || appJsx.includes(`<${c}/>`)) return true;
+        return shipped.some(other => other !== c
+            && fs.readFileSync(path.join(compDir, `${other}.jsx`), 'utf-8').includes(`<${c} `));
+    };
+    const orphans = shipped.filter(c => !usedSomewhere(c));
     check('لا مكوّن يُكتب على القرص بلا استخدام (لا شيء يُرمى)', orphans.length === 0, orphans.join(','));
     check('ProductView مربوط بالمتجر: مكتوب ومستورد ومركّب فوق الصفحة',
         shipped.includes('ProductView') && appJsx.includes("import ProductView from './components/ProductView.jsx'")
