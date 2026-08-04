@@ -14,6 +14,7 @@ import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
 import { persistChatStores } from '../../api/chat-store';
 import { clarifyGate } from '../../core/orchestrator/clarify';
+import { composeAnswer } from '../../core/orchestrator/answerComposer';
 
 /**
  * Lessons Joe applies to every system HE builds — each line was paid for by a
@@ -186,7 +187,7 @@ export class AgentLoopService {
             // assistant message the frontend renders) plus 'run_finished' (stops the
             // loading spinner). sessionId is included both top-level and in data so
             // the frontend's session filter accepts it.
-            const answerText = AgentLoopService.extractAnswer(result);
+            const answerText = AgentLoopService.extractAnswer(result, language);
             const finalText = result.ok
                 ? (answerText || uiText('done', language))
                 : `⚠️ ${AgentLoopService.humanizeFailure(answerText, language) || uiText('failed', language)}`;
@@ -263,7 +264,15 @@ export class AgentLoopService {
             : `Could not complete the request — execution hit a technical error and stopped honestly.\nTechnical detail (for repair): ${t.slice(0, 400)}`;
     }
 
-    private static extractAnswer(result: { ok: boolean; result: any }): string {
+    static extractAnswer(result: { ok: boolean; result: any; steps?: any[] }, language?: string): string {
+        // THE WHOLE RUN ANSWERS, NOT ONLY ITS LAST STEP. Measured on a real
+        // two-step run of «افحص الروابط ثم اكتب تقريراً»: the findings lived in
+        // the first step, the second returned {success:true}, and the walk from
+        // the end printed `{"success":true}` into the chat as the reply.
+        if (result?.ok && Array.isArray(result.steps) && result.steps.length) {
+            const composed = composeAnswer(result.steps as any, language);
+            if (composed) return composed;
+        }
         const toText = (v: any): string => {
             if (v == null) return '';
             if (typeof v === 'string') return v.trim();
@@ -277,7 +286,14 @@ export class AgentLoopService {
                 // analysis surfaced as "done" and the whole report was discarded.
                 if (typeof v.summary === 'string' && v.summary.trim()) return v.summary.trim();
                 if (typeof v.message === 'string') return v.message.trim();
-                try { return JSON.stringify(v); } catch { return String(v); }
+                // An error IS worth showing (humanizeFailure wraps it); a
+                // structureless object is not. `{"success":true}` reached the
+                // chat as the entire reply of a two-step run — a JSON object
+                // printed where a sentence belongs. Nothing is invented in its
+                // place: an empty string lets the caller fall back to an honest
+                // «تم», or to another step that actually spoke.
+                if (typeof v.error === 'string' && v.error.trim()) return v.error.trim();
+                return '';
             }
             return String(v);
         };

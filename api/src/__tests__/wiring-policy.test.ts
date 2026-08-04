@@ -638,6 +638,31 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(SRC('orchestration', 'AgentOrchestrator.ts')).toContain('|| !knownIds.has(depId)');
     });
 
+    it('the whole run answers the user, and never in JSON', () => {
+        // Measured on a real two-step run of «افحص الروابط ثم اكتب تقريراً»:
+        // {"collect":{"content":"…3 روابط مكسورة…"},"report":{"success":true}}
+        // and the chat message was the string `{"success":true}` — the findings
+        // discarded, an object printed where a sentence belongs.
+        const { composeAnswer } = require('../core/orchestrator/answerComposer');
+        const { AgentLoopService } = require('../modules/services/AgentLoopService');
+        const steps = [
+            { id: 'collect', task: 'اقرأ نتائج الفحص', status: 'completed', result: { content: 'وجدتُ 3 روابط مكسورة' } },
+            { id: 'report', task: 'اكتب التقرير', status: 'completed', result: { success: true } },
+        ];
+        const answer = composeAnswer(steps, 'ar');
+        expect(answer).toContain('روابط مكسورة');
+        expect(answer).not.toMatch(/[{}]/);
+        // one speaking step still answers exactly as it always did
+        expect(composeAnswer([{ id: 'a', task: 'x', status: 'completed', result: { answer: 'الجواب' } }], 'ar')).toBe('الجواب');
+        // a run with nothing to say says what it DID, in the user's language
+        expect(composeAnswer([{ id: 'a', task: 'أنشئ المجلد', status: 'completed', result: { ok: true } }], 'ar'))
+            .toContain('أنشئ المجلد');
+        // and the function that builds the chat message really uses it
+        expect(AgentLoopService.extractAnswer({ ok: true, result: {}, steps }, 'ar')).toBe(answer);
+        // the old walk-backwards path must never stringify an object either
+        expect(AgentLoopService.extractAnswer({ ok: true, result: { a: { success: true } } }, 'ar')).not.toMatch(/[{}]/);
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([

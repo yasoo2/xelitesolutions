@@ -16,6 +16,7 @@ import { executionFirewall } from './AgentExecutionFirewall';
 import intelligentRouter from '../core/llm/intelligent-router';
 import { withDeadline, NODE_DEADLINE_MS, RUN_DEADLINE_MS } from '../shared/utils/deadline';
 import { repairMemory } from '../core/memory/repair-memory';
+import { RunStep } from '../core/orchestrator/answerComposer';
 
 /** Tools the PlanningEngine picks DETERMINISTICALLY. A node carrying one of
  *  these already knows exactly what to run and with which input, so it must be
@@ -75,6 +76,12 @@ export type AgentDAG = {
  */
 const MAX_RECOVERIES_PER_RUN = 3;
 
+/** The run's own story, in plan order — what each step was for and what it
+ *  produced. The answer the user reads is composed from this. */
+function runSteps(dag: AgentDAG): RunStep[] {
+  return dag.nodes.map(n => ({ id: n.id, task: n.task, tool: n.tool, status: n.status, result: n.result }));
+}
+
 export class AgentOrchestrator {
   private recoveriesUsed = 0;
   private memory: Map<string, ExecutionMemory> = new Map();
@@ -93,7 +100,7 @@ export class AgentOrchestrator {
   /**
    * Main entry point: Executes a high-level goal with REAL-TIME intelligence
    */
-  public async execute(goal: AgentGoal): Promise<{ ok: boolean; result: any }> {
+  public async execute(goal: AgentGoal): Promise<{ ok: boolean; result: any; steps?: RunStep[] }> {
     console.log(`[AgentOrchestrator] Starting REAL-TIME orchestration for goal: ${goal.goal}`);
     broadcastThinkingDetail(goal.id, `🧠 Initializing Autonomous Brain for goal: ${goal.goal}`);
 
@@ -199,7 +206,7 @@ export class AgentOrchestrator {
     traceId?: string,
     /** The user's request, verbatim — what the narration is about. */
     goalText?: string,
-  ): Promise<{ ok: boolean; result: any }> {
+  ): Promise<{ ok: boolean; result: any; steps?: RunStep[] }> {
     dag.status = "running";
     const completedNodes = new Set<string>();
     let iterations = 0;
@@ -610,7 +617,13 @@ export class AgentOrchestrator {
     }
 
     dag.status = "completed";
-    return { ok: true, result: memory.getResults() };
+    // The steps ride out WITH the result. The reply used to be built from the
+    // stepId->output map alone, walked backwards — so a run whose last step
+    // wrote a file answered the user with that step's status and threw the
+    // material away. The narrative order and each step's task are what make a
+    // whole-run answer possible; the map stays exactly as it was for every
+    // existing caller.
+    return { ok: true, result: memory.getResults(), steps: runSteps(dag) };
   }
 
   /**
