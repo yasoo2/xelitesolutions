@@ -1574,6 +1574,25 @@ describe('the provider button says its name', () => {
         expect(C).not.toMatch(/activeProvider\.slice\(1\)\)\.slice\(0, 10\)/);
     });
 
+    it('the name comes from the code, never from the browser cache', () => {
+        const C = WEB('components', 'CommandComposer.tsx');
+        // An older build wrote a translated HINT into `name`; the saved blob was
+        // merged over the defaults, so «ضع مفتاح gsk هنا Groq» survived every
+        // update. Settings are the user's; identity is the code's.
+        expect(C).toMatch(/const \{ name, nameKey, tagKey, \.\.\.userOwned \}/);
+        expect(C).toMatch(/name: DEFAULT_PROVIDERS\[k\]\.name/);
+        expect(C).toMatch(/DEFAULT_PROVIDERS\[activeProvider\]\?\.name/);
+    });
+
+    it('a provider that takes a key shows a key, not a sentence', () => {
+        const C = WEB('components', 'CommandComposer.tsx');
+        expect(C).toMatch(/PROVIDER_KEY_INFO\[activeProvider\]\?\.need/);
+        expect(C).toMatch(/className=\{`provider-key/);
+        const css = CSS();
+        const key = css.slice(css.indexOf('.provider-btn .provider-key'), css.indexOf('.provider-btn .provider-key') + 300);
+        expect(Number((key.match(/width:\s*(\d+)px/) || [])[1])).toBeLessThanOrEqual(12);
+    });
+
     it('«free» is smaller and lighter than the name, in the stylesheet itself', () => {
         const css = CSS();
         const free = css.slice(css.indexOf('.provider-btn .provider-free'), css.indexOf('.provider-btn .provider-free') + 400);

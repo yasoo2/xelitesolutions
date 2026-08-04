@@ -79,6 +79,10 @@ async function main() {
                 width: Math.round(b.getBoundingClientRect().width),
                 labelVisible: !!label && label.getBoundingClientRect().width > 0,
                 svgs: b.querySelectorAll('svg,img').length,
+                // Any icon still inside the button, and how big it is: a tiny
+                // KEY hint is wanted; a provider logo is not.
+                iconSizes: [...b.querySelectorAll('svg,img')].map(i => Math.round(i.getBoundingClientRect().width)),
+                keyIcons: b.querySelectorAll('.provider-key').length,
                 title: b.getAttribute('title') || '',
                 label: ls ? { size: parseFloat(ls.fontSize), weight: Number(ls.fontWeight), opacity: parseFloat(ls.opacity) } : null,
                 free: fs2 ? {
@@ -89,7 +93,11 @@ async function main() {
         });
         check('الزر موجود ويعرض نصاً', !!shot?.text, JSON.stringify(shot));
         check('النص مرئي فعلاً (له عرض على الشاشة)', !!shot?.labelVisible);
-        check('ولا رمز داخل الزر', shot?.svgs === 0, `${shot?.svgs} رمز`);
+        // A LOGO is out; a 10px key hint is exactly what was asked for
+        // («بدل انه ضع مفتاح قم بوضع مفتاح صغير بجانب الاسم»).
+        check('لا شعار مزوّد داخل الزر', (shot?.iconSizes || []).every((w: number) => w <= 12),
+            JSON.stringify(shot?.iconSizes));
+        check('ولا جملة تلميح داخل الاسم', !!shot?.text && shot.text.length <= 20 && !/مفتاح|key here|ضع/i.test(shot.text), shot?.text);
         check('والزر اتّسع لاسمه (تجاوز المربّع 28px القديم)', (shot?.width || 0) > 40, `${shot?.width}px`);
         check('والاسم غير مبتور', !!shot?.text && !/…|\.\.\.$/.test(shot.text), shot?.text);
 

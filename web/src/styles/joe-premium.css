@@ -831,6 +831,26 @@ body:not(.rtl) .joe-user-info {
 
 /* «free» is information, not a headline: one step smaller, light, and quiet
    enough that the name still reads first. */
+/* THE KEY IS A HINT, NOT A LOGO. Ten pixels, aligned to the text, and it must
+   beat the toolbar's blanket `svg { width: 14px !important }`. */
+.joe-chat-input-area .provider-btn .provider-key {
+    width: 10px !important;
+    height: 10px !important;
+    opacity: .45;
+    flex: none;
+}
+
+/* A key that is merely optional whispers; one that is REQUIRED speaks up. */
+.joe-chat-input-area .provider-btn .provider-key.is-optional {
+    opacity: .3;
+}
+
+/* …and once the key is actually saved, it stops nagging and turns green. */
+.joe-chat-input-area .provider-btn .provider-key.has-key {
+    opacity: .75;
+    color: #10b981;
+}
+
 .joe-chat-input-area .provider-btn .provider-free {
     font-size: 9px;
     font-weight: 300;

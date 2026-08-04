@@ -940,7 +940,23 @@ export default function CommandComposer({
       if (saved) {
         const parsed = JSON.parse(saved);
         Object.keys(parsed).forEach((k) => {
-          if (baseProviders[k]) baseProviders[k] = { ...baseProviders[k], ...parsed[k] };
+          if (!baseProviders[k]) return;
+          /**
+           * A PROVIDER'S NAME COMES FROM THE CODE, NEVER FROM THE CACHE.
+           *
+           * An older build wrote a translated HINT into `name`, and because
+           * the saved blob was merged on top of the defaults it survived
+           * every update — the button read «ضع مفتاح gsk هنا Groq» forever.
+           * The user's own settings (key, model, baseUrl) are theirs to keep;
+           * identity is ours, and it is restored on every load.
+           */
+          const { name, nameKey, tagKey, ...userOwned } = (parsed[k] || {}) as any;
+          baseProviders[k] = {
+            ...baseProviders[k], ...userOwned,
+            name: DEFAULT_PROVIDERS[k].name,
+            nameKey: DEFAULT_PROVIDERS[k].nameKey,
+            tagKey: DEFAULT_PROVIDERS[k].tagKey,
+          };
         });
       }
       // Never trust a persisted "verified/connected" flag across reloads — the dot
@@ -4076,10 +4092,31 @@ export default function CommandComposer({
                         The ⚡ in «Groq ⚡» is stripped — a name, not decoration.
                       */}
                       <span className="provider-label">
-                        {String(providers[activeProvider]?.name || activeProvider)
+                        {String(DEFAULT_PROVIDERS[activeProvider]?.name || activeProvider)
                           .replace(/[^\p{L}\p{N} .+-]/gu, '')
                           .trim() || activeProvider}
                       </span>
+                      {/*
+                        A KEY, NOT A SENTENCE.
+                        The hint used to be spelled out — «ضع مفتاح gsk هنا» —
+                        which is a paragraph inside a toolbar button. One small
+                        key glyph carries the same fact: this provider takes an
+                        API key. Solid when a key is REQUIRED, faded when it
+                        merely helps, absent when the provider needs none.
+                      */}
+                      {(() => {
+                        const need = PROVIDER_KEY_INFO[activeProvider]?.need;
+                        if (!need || need === 'keyless') return null;
+                        const hasKey = !!String(providers[activeProvider]?.apiKey || '').trim()
+                          && providers[activeProvider]?.apiKey !== 'free-mode';
+                        return (
+                          <Key
+                            size={10}
+                            className={`provider-key${need === 'optional' ? ' is-optional' : ''}${hasKey ? ' has-key' : ''}`}
+                            aria-label={need === 'optional' ? t('provKeyOptional', 'a key is optional') : t('provKeyNeeded', 'needs an API key')}
+                          />
+                        );
+                      })()}
                       {providers[activeProvider]?.isFree ? (
                         <span className="provider-free">free</span>
                       ) : null}
