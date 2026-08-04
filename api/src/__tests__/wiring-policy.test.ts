@@ -1633,3 +1633,38 @@ describe('the session title arrives during the conversation', () => {
         expect(J).toMatch(/if \(!mine\(msg\)\) return;/);
     });
 });
+
+/**
+ * THE «<>» VIEW LISTENED FOR AN EVENT NO BUILD EVER SENDS.
+ *
+ * «الرمز الذي بجنبه لا يعمل ابدا» — and «ابدا» was exact. The code view woke
+ * only on the socket message `diff`, broadcast by two surgical-edit paths in
+ * SystemTools and nothing else. Every BUILD writes its files with
+ * `file_stream`. On top of that Monaco was loaded from a CDN, so on a local,
+ * offline Joe there was no editor to show even when content arrived.
+ */
+describe('the code view is fed by what builds actually emit', () => {
+    it('file_stream reaches the code view', () => {
+        const S = WEB('services', 'socket.ts');
+        expect(S).toMatch(/msgType === 'file_stream'/);
+        expect(S).toMatch(/preview:code_diff[\s\S]{0,120}path: file/);
+    });
+
+    it('a build fills the tab; only an edit the user asked for takes the screen', () => {
+        const S = WEB('services', 'socket.ts');
+        expect(S).toMatch(/msgType === 'diff'[\s\S]{0,600}focus: true/);
+        expect(S).toMatch(/file_stream[\s\S]{0,900}focus: false/);
+        const P = WEB('components', 'PreviewPanel.tsx');
+        expect(P).toMatch(/if \(detail\.focus !== false\) setMode\('code'\)/);
+    });
+
+    it('and only a FINISHED file, never a half-streamed chunk', () => {
+        expect(WEB('services', 'socket.ts')).toMatch(/content !== undefined && d\.done/);
+    });
+
+    it('the editor ships with the app instead of being fetched from a CDN', () => {
+        const setup = WEB('monaco-setup.ts');
+        expect(setup).toMatch(/loader\.config\(\{ monaco \}\)/);
+        expect(WEB('main.tsx')).toMatch(/monaco-setup/);
+    });
+});

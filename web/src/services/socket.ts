@@ -355,7 +355,31 @@ async function connect() {
         const path = data?.data?.path;
         const content = data?.data?.content;
         if (path && content !== undefined) {
-          window.dispatchEvent(new CustomEvent('preview:code_diff', { detail: { path, content } }));
+          // An explicit surgical edit DOES deserve the screen — the user asked
+          // for that change and wants to see it.
+          window.dispatchEvent(new CustomEvent('preview:code_diff', { detail: { path, content, focus: true } }));
+        }
+      } else if (msgType === 'file_stream') {
+        /**
+         * THE «<>» VIEW LISTENED FOR AN EVENT NO BUILD EVER SENDS.
+         *
+         * It only ever woke on `diff`, which is broadcast by exactly two
+         * surgical-edit paths in SystemTools. Every BUILD — the React
+         * scaffolder, the API scaffolder, the page builder — writes its files
+         * with `file_stream`. So after a normal build the code tab sat empty
+         * forever: «الرمز الذي بجنبه لا يعمل ابدا». He was right, and it had
+         * never worked, not once.
+         *
+         * A finished file is a file worth showing; a half-streamed chunk is
+         * not, so only `done` frames land here.
+         */
+        const d = data?.data || {};
+        const file = d.file || d.path;
+        const content = d.chunk ?? d.content;
+        if (file && content !== undefined && d.done) {
+          // …but a build writing twenty files must NOT yank him to the code
+          // view twenty times. The content is loaded; «<>» is his to press.
+          window.dispatchEvent(new CustomEvent('preview:code_diff', { detail: { path: file, content: String(content), focus: false } }));
         }
       }
 

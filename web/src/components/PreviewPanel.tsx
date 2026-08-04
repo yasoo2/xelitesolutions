@@ -82,13 +82,17 @@ export default function PreviewPanel({
         };
 
         const handleCodeDiff = (e: CustomEvent) => {
-            const detail = e.detail as { path: string; content: string };
+            const detail = e.detail as { path: string; content: string; focus?: boolean };
             if (detail?.path && detail?.content !== undefined) {
-                setMode('code');
+                // Loading the code and SHOWING it are two different decisions.
+                // A surgical edit the user asked for takes the screen; a build
+                // writing its twentieth file just fills the tab quietly, so
+                // «<>» finally has something in it when he presses it.
+                if (detail.focus !== false) setMode('code');
                 setCodePath(detail.path);
                 setCodeContent(detail.content);
                 setBuildProgress(null);
-                onReady?.();
+                if (detail.focus !== false) onReady?.();
             }
         };
 

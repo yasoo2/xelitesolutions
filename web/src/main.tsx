@@ -4,6 +4,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { GOOGLE_CLIENT_ID } from './config';
 import App from './App';
+// The code viewer must work with the network unplugged — see monaco-setup.
+import './monaco-setup';
 
 const Login = lazy(() => import('./pages/Login'));
 
