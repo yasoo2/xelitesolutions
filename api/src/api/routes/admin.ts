@@ -141,30 +141,58 @@ router.get('/system/health', async (req, res) => {
         const memPercent = (usedMem / totalMem) * 100;
         const memInfo = `${(usedMem / 1024 / 1024 / 1024).toFixed(1)}GB/${(totalMem / 1024 / 1024 / 1024).toFixed(1)}GB (${memPercent.toFixed(1)}%)`;
 
-        const cpus = os.cpus();
-        let totalIdle = 0, totalTick = 0;
-        cpus.forEach(cpu => {
-            for (let type in cpu.times) {
-                totalTick += cpu.times[type as keyof typeof cpu.times];
+        // os.cpus() counters are CUMULATIVE SINCE BOOT, so dividing them once
+        // reports the average load since the machine started — a number that
+        // barely moves and is not what «CPU Usage» means to anyone reading it.
+        // Two samples 200ms apart give the load right now.
+        const sample = () => {
+            let idle = 0, tick = 0;
+            for (const cpu of os.cpus()) {
+                for (const type of Object.keys(cpu.times) as Array<keyof typeof cpu.times>) tick += cpu.times[type];
+                idle += cpu.times.idle;
             }
-            totalIdle += cpu.times.idle;
-        });
-        const cpuInfo = (((totalTick - totalIdle) / totalTick) * 100).toFixed(1);
+            return { idle, tick };
+        };
+        const a = sample();
+        await new Promise(r => setTimeout(r, 200));
+        const b = sample();
+        const dTick = b.tick - a.tick, dIdle = b.idle - a.idle;
+        const cpuInfo = (dTick > 0 ? ((dTick - dIdle) / dTick) * 100 : 0).toFixed(1);
 
+        /**
+         * DISK — measured, not parsed out of a shell.
+         *
+         * This ran `df -h / | awk 'NR==2{printf "%s/%s (%s)", $3,$2,$5}'`.
+         * On Windows — where Joe actually runs — Git-Bash's own df answers for
+         * the Git installation mount, whose Filesystem column contains a SPACE
+         * ("C:/Program Files/Git"), so awk's fields shifted by one and the
+         * dashboard proudly displayed «232G/Files/Git (44G)». A screenshot of
+         * that is what sent me here.
+         *
+         * fs.statfsSync is built into Node, works on Windows, Linux and macOS,
+         * needs no shell and cannot be mis-parsed.
+         */
         let diskInfo = 'Unknown';
         try {
-            const diskRes = await executionFirewall.runAsSystem(async () => {
-                return await ExecutionGateway.execute("df -h / | awk 'NR==2{printf \"%s/%s (%s)\", $3,$2,$5}'");
-            });
-            if (diskRes.data?.ok) diskInfo = (diskRes.data?.output || '').trim();
-        } catch { }
+            const st = fs.statfsSync(process.cwd());
+            const total = st.blocks * st.bsize;
+            const free = st.bfree * st.bsize;
+            const used = total - free;
+            const gb = (n: number) => `${(n / 1024 / 1024 / 1024).toFixed(0)}GB`;
+            if (total > 0) diskInfo = `${gb(used)}/${gb(total)} (${((used / total) * 100).toFixed(1)}%)`;
+        } catch (e: any) {
+            diskInfo = 'unavailable';
+        }
 
-        // Docker stats
+        // Docker stats — and an honest word when Docker is simply not installed,
+        // which is the normal case on a developer's laptop.
         let containers: any[] = [];
+        let dockerAvailable = false;
         try {
             const dockerRes = await executionFirewall.runAsSystem(async () => {
                 return await ExecutionGateway.execute('docker', ['ps', '--format', '{{json .}}']);
             });
+            dockerAvailable = !!dockerRes.data?.ok;
             if (dockerRes.data?.ok) {
                 containers = (dockerRes.data?.output || '').split('\n').map((l: string) => {
                     try { return JSON.parse(l); } catch { return null; }
@@ -173,24 +201,31 @@ router.get('/system/health', async (req, res) => {
         } catch { }
 
         // Systemd status
-        let apiServiceStatus = 'unknown';
-        try {
-            const serviceRes = await executionFirewall.runAsSystem(async () => {
-                return await ExecutionGateway.execute('systemctl', ['is-active', 'joe-api.service']);
-            });
-            apiServiceStatus = (serviceRes.data?.output || '').trim() || (serviceRes.data?.ok ? 'active' : 'inactive');
-        } catch { 
-            apiServiceStatus = 'inactive';
+        // systemd exists on Linux only. Asking for it on Windows and printing
+        // «inactive» says the API is down while it is answering this very
+        // request — a false alarm on the owner's own dashboard.
+        let apiServiceStatus = 'running (no service manager)';
+        if (process.platform === 'linux') {
+            try {
+                const serviceRes = await executionFirewall.runAsSystem(async () => {
+                    return await ExecutionGateway.execute('systemctl', ['is-active', 'joe-api.service']);
+                });
+                apiServiceStatus = (serviceRes.data?.output || '').trim() || (serviceRes.data?.ok ? 'active' : 'inactive');
+            } catch {
+                apiServiceStatus = 'inactive';
+            }
         }
 
-        // MongoDB stats
-        let dbStats: any = {};
+        // MongoDB stats. `{}` rendered as «N/A · 0 docs • 0 collections», which
+        // reads as «your database is empty» — it is not empty, it is ABSENT.
+        let dbStats: any = { connected: false, dataSize: null, documents: null, collections: null };
         try {
             if (mongoose.connection.readyState === 1) {
                 const admin = mongoose.connection.db!.admin();
                 const serverStatus = await admin.serverStatus();
                 const dbStatsRaw = await mongoose.connection.db!.stats();
                 dbStats = {
+                    connected: true,
                     collections: dbStatsRaw.collections,
                     documents: dbStatsRaw.objects,
                     dataSize: `${(dbStatsRaw.dataSize / 1024 / 1024).toFixed(1)} MB`,
@@ -211,6 +246,7 @@ router.get('/system/health', async (req, res) => {
                 platform: process.platform
             },
             containers,
+            dockerAvailable,
             apiService: {
                 name: 'joe-api.service',
                 status: apiServiceStatus

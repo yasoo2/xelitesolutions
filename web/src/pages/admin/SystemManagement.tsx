@@ -28,8 +28,10 @@ interface SystemHealth {
         platform: string;
     };
     containers: any[];
+    dockerAvailable?: boolean;
     apiService?: { name: string; status: string };
     database: {
+        connected?: boolean;
         collections?: number;
         documents?: number;
         dataSize?: string;
@@ -417,7 +419,7 @@ export default function SystemManagement() {
                         <div className="stat-card cpu">
                             <div className="stat-icon">
                                 <Activity size={18} color="#60a5fa" />
-                                <span className="stat-label">CPU Usage</span>
+                                <span className="stat-label">المعالج (الآن)</span>
                             </div>
                             <div className="stat-value" style={{ color: getHealthColor(parsePercent(health.system.cpu)) }}>
                                 {health.system.cpu}
@@ -435,12 +437,12 @@ export default function SystemManagement() {
                         <div className="stat-card memory">
                             <div className="stat-icon">
                                 <Clock size={18} color="#a78bfa" />
-                                <span className="stat-label">Memory</span>
+                                <span className="stat-label">الذاكرة</span>
                             </div>
                             <div className="stat-value" style={{ color: getHealthColor(parsePercent(health.system.memory)) }}>
                                 {health.system.memory}
                             </div>
-                            <div className="stat-sub">Active processes memory</div>
+                            <div className="stat-sub">ذاكرة النظام المستعملة (لا العمليات وحدها)</div>
                             <div className="progress-bar">
                                 <div className="progress-fill" style={{
                                     width: `${parsePercent(health.system.memory)}%`,
@@ -453,12 +455,12 @@ export default function SystemManagement() {
                         <div className="stat-card disk">
                             <div className="stat-icon">
                                 <Hash size={18} color="#f59e0b" />
-                                <span className="stat-label">Disk Usage</span>
+                                <span className="stat-label">القرص</span>
                             </div>
                             <div className="stat-value" style={{ color: getHealthColor(parsePercent(health.system.disk)) }}>
                                 {health.system.disk}
                             </div>
-                            <div className="stat-sub">Root filesystem</div>
+                            <div className="stat-sub">القرص الذي يعمل عليه جو</div>
                             <div className="progress-bar">
                                 <div className="progress-fill" style={{
                                     width: `${parsePercent(health.system.disk)}%`,
@@ -467,17 +469,23 @@ export default function SystemManagement() {
                             </div>
                         </div>
 
-                        {/* DB */}
+                        {/* DB — «N/A · 0 docs • 0 collections» read as an EMPTY database.
+                            It was never empty; it was absent. */}
                         <div className="stat-card db">
                             <div className="stat-icon">
-                                <Server size={18} color="#10b981" />
-                                <span className="stat-label">Database</span>
+                                <Server size={18} color={health.database.connected ? '#10b981' : '#f59e0b'} />
+                                <span className="stat-label">قاعدة البيانات</span>
                             </div>
-                            <div className="stat-value" style={{ color: '#10b981' }}>
-                                {health.database.dataSize || 'N/A'}
+                            <div className="stat-value" style={{
+                                color: health.database.connected ? '#10b981' : '#f59e0b',
+                                fontSize: health.database.connected ? undefined : '22px',
+                            }}>
+                                {health.database.connected ? (health.database.dataSize || '—') : 'غير متصلة'}
                             </div>
                             <div className="stat-sub">
-                                {health.database.documents || 0} docs • {health.database.collections || 0} collections
+                                {health.database.connected
+                                    ? `${health.database.documents ?? 0} مستند • ${health.database.collections ?? 0} مجموعة`
+                                    : 'جو يعمل محلياً بتخزين على القرص — MongoDB تلزم لسجلّ النشر والمستخدمين'}
                             </div>
                         </div>
                     </>
@@ -493,8 +501,10 @@ export default function SystemManagement() {
                     onClick={() => setExpandedSection(expandedSection === 'containers' ? null : 'containers')}>
                     <div className="section-header-left">
                         <Server size={18} color="#60a5fa" />
-                        <span className="section-title">Container Fleet</span>
-                        <span className="section-badge">{health?.containers?.length || 0} running</span>
+                        <span className="section-title">حاويات Docker</span>
+                        <span className="section-badge">
+                            {health?.dockerAvailable === false ? 'Docker غير مثبّت' : `${health?.containers?.length || 0} تعمل`}
+                        </span>
                         {health?.apiService && (
                             <span className="section-badge" style={{
                                 background: health.apiService.status === 'active' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
@@ -520,7 +530,9 @@ export default function SystemManagement() {
                             </div>
                         ) : (
                             <div style={{ color: 'var(--text-muted)', fontSize: '14px' }}>
-                                لا حاويات — إمّا أن Docker غير مثبّت هنا، أو أن جو يعمل مباشرة على الجهاز (وهذا الوضع الطبيعي محلياً).
+                                {health?.dockerAvailable === false
+                                    ? 'Docker غير مثبّت على هذا الجهاز — وهذا طبيعي محلياً؛ جو يعمل مباشرة بلا حاويات.'
+                                    : 'لا حاويات تعمل الآن.'}
                             </div>
                         )}
                     </div>
@@ -591,13 +603,13 @@ export default function SystemManagement() {
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>
                             <span style={{
                                 fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
-                                background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)',
+                                background: 'var(--sm-tint-2)', color: 'var(--text-muted)',
                                 fontFamily: 'monospace'
                             }}>Poll #{autoDeployStatus.pollCount || 0}</span>
                             {autoDeployStatus.lastPollTime && (
                                 <span style={{
                                     fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
-                                    background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)',
+                                    background: 'var(--sm-tint-2)', color: 'var(--text-muted)',
                                     fontFamily: 'monospace'
                                 }}>Last: {new Date(autoDeployStatus.lastPollTime).toLocaleTimeString()}</span>
                             )}
@@ -782,6 +794,25 @@ export default function SystemManagement() {
     return (
         <div className="system-management">
             <style>{`
+                /* THE PANEL WAS DARK-ONLY, and Joe ships a light theme.
+                   Every tint here was a hardcoded rgba(255,255,255,…) —
+                   invisible on a white card — or an var(--sm-inset) inset that
+                   became a black hole in light mode. The screenshot that
+                   started this batch showed a washed-out panel with an
+                   invisible progress track. These four tokens carry the
+                   difference, and they flip with the theme. */
+                .system-management {
+                    --sm-tint: rgba(255,255,255,0.02);
+                    --sm-tint-2: rgba(255,255,255,0.05);
+                    --sm-tint-3: rgba(255,255,255,0.08);
+                    --sm-inset: rgba(0,0,0,0.2);
+                }
+                html[data-theme="light"] .system-management {
+                    --sm-tint: rgba(28,40,35,0.03);
+                    --sm-tint-2: rgba(28,40,35,0.06);
+                    --sm-tint-3: rgba(28,40,35,0.10);
+                    --sm-inset: rgba(28,40,35,0.05);
+                }
                 .system-management {
                     min-height: 100vh;
                     background: var(--bg-dark);
@@ -852,7 +883,7 @@ export default function SystemManagement() {
                 .mgmt-tabs {
                     display: flex;
                     gap: 8px;
-                    background: rgba(255,255,255,0.02);
+                    background: var(--sm-tint);
                     padding: 6px;
                     border-radius: 16px;
                     border: 1px solid var(--border-color);
@@ -881,7 +912,7 @@ export default function SystemManagement() {
                     border: 1px solid var(--border-light);
                 }
                 .tab-btn:hover:not(.active) {
-                    background: rgba(255,255,255,0.05);
+                    background: var(--sm-tint-2);
                     color: var(--text-primary);
                 }
 
@@ -917,7 +948,7 @@ export default function SystemManagement() {
                 .stat-label { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
                 .stat-value { font-size: 36px; font-weight: 800; margin: 0; letter-spacing: -0.02em; }
                 .stat-sub { font-size: 13px; color: var(--text-muted); margin-top: 8px; }
-                .progress-bar { height: 6px; background: rgba(255,255,255,0.05); border-radius: 10px; margin-top: 16px; overflow: hidden; }
+                .progress-bar { height: 6px; background: var(--sm-tint-2); border-radius: 10px; margin-top: 16px; overflow: hidden; }
                 .progress-fill { height: 100%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1); }
 
                 .section-card { 
@@ -932,7 +963,7 @@ export default function SystemManagement() {
                     display: flex; 
                     align-items: center; 
                     justify-content: space-between;
-                    background: rgba(255,255,255,0.01);
+                    background: var(--sm-tint);
                     border-bottom: 1px solid var(--border-color);
                 }
                 .section-title { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-left: 12px; }
@@ -948,7 +979,7 @@ export default function SystemManagement() {
                 .container-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
                 .container-item { 
                     padding: 16px 20px; 
-                    background: rgba(0,0,0,0.2); 
+                    background: var(--sm-inset); 
                     border: 1px solid var(--border-color);
                     border-radius: 16px; 
                     display: flex; 
@@ -958,10 +989,10 @@ export default function SystemManagement() {
                 }
                 .container-item:hover {
                     border-color: var(--border-light);
-                    background: rgba(255,255,255,0.02);
+                    background: var(--sm-tint);
                 }
                 .section-header.clickable { cursor: pointer; user-select: none; }
-                .section-header.clickable:hover { background: rgba(255,255,255,0.03); }
+                .section-header.clickable:hover { background: var(--sm-tint-2); }
                 .db-offline-banner {
                     display: flex; align-items: flex-start; gap: 14px;
                     padding: 16px 20px; margin-bottom: 24px;
@@ -1067,7 +1098,7 @@ export default function SystemManagement() {
                 .dep-badge.failed { background: rgba(255,82,82,0.15); color: #ff5252; }
                 .dep-badge.building { background: rgba(52, 196, 139,0.15); color: var(--accent-primary); }
                 
-                .dep-commit { font-family: 'JetBrains Mono', monospace; color: var(--text-muted); margin-right: 16px; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 6px; font-size: 13px; }
+                .dep-commit { font-family: 'JetBrains Mono', monospace; color: var(--text-muted); margin-right: 16px; background: var(--sm-inset); padding: 4px 8px; border-radius: 6px; font-size: 13px; }
                 .dep-time { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
                 .dep-log-btn { 
                     background: var(--bg-secondary); 
@@ -1083,7 +1114,7 @@ export default function SystemManagement() {
                     font-weight: 600;
                     transition: all 0.2s;
                 }
-                .dep-log-btn:hover { background: rgba(255,255,255,0.08); border-color: var(--accent-primary); }
+                .dep-log-btn:hover { background: var(--sm-tint-3); border-color: var(--accent-primary); }
 
                 .admin-search-box {
                     position: relative;
@@ -1152,7 +1183,7 @@ export default function SystemManagement() {
                     transition: all 0.2s;
                 }
                 .role-toggle-btn.is-admin { border-color: rgba(255,82,82,0.3); color: #ff5252; }
-                .role-toggle-btn:hover { background: rgba(255,255,255,0.05); transform: translateY(-2px); }
+                .role-toggle-btn:hover { background: var(--sm-tint-2); transform: translateY(-2px); }
 
                 @keyframes spin { to { transform: rotate(360deg); } }
                 @keyframes pulse-glow {
@@ -1316,7 +1347,7 @@ export default function SystemManagement() {
                             boxShadow: '0 50px 100px -20px rgba(0, 0, 0, 0.7)'
                         }}
                     >
-                        <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
+                        <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--sm-tint)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                                 <div style={{ width: '36px', height: '36px', background: 'rgba(52, 196, 139, 0.1)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <Terminal size={20} color="var(--accent-primary)" />
@@ -1347,7 +1378,7 @@ export default function SystemManagement() {
                                         fontWeight: 600,
                                         transition: 'all 0.2s'
                                     }}
-                                    onMouseOver={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'var(--accent-primary)'; }}
+                                    onMouseOver={(e: any) => { e.currentTarget.style.background = 'var(--sm-tint-3)'; e.currentTarget.style.borderColor = 'var(--accent-primary)'; }}
                                     onMouseOut={(e: any) => { e.currentTarget.style.background = 'var(--bg-secondary)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
                                 >
                                     <Copy size={16} /> Copy Logs
