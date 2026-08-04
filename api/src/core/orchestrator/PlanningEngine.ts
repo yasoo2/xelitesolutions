@@ -1,5 +1,5 @@
 import { StructuredIntent } from '../intelligence/IntentParser';
-import { catalogueFor, registeredToolNames } from './toolCatalog';
+import { catalogueFor, registeredToolNames, capabilityRoute } from './toolCatalog';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { normalizeIntentText } from './promptNormalizer';
 import { compactHistoryForPrompt } from './history-compact';
@@ -501,12 +501,54 @@ Rules:
             }
         }
 
+        // [CAPABILITY ROUTER] Joe owns 151 tools; ranking them for the planner
+        // was worth nothing while requests never reached the planner. Measured:
+        // «دقّق السيو في موقعي» short-circuited to a spoken answer (a goal under
+        // 30 characters does), and «افحص الروابط المكسورة في موقعي» was claimed
+        // by the BUILD path below — Joe tried to BUILD a site in answer to a
+        // request to INSPECT one, while owning a broken-link checker.
+        //
+        // So the ranking decides here, before the builders, and only when the
+        // sentence carries an act verb AND one specialist wins clearly AND its
+        // required arguments can be filled from the sentence. Anything less
+        // falls through to exactly the paths that ran before.
+        // An EDIT of the open page always belongs to the page's own tool: «حط
+        // صورة في الأعلى» is not a request to analyse an image, and the edit
+        // path below has years of dialect handling in it. The router yields.
+        const editKey = String((context && context.sessionId) || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const pageIsOpen = !!((global as any).joePages && (global as any).joePages[editKey]);
+        const looksLikeEdit = /(اضف|أضف|ضيف|ضف|حط|خلي|خلّي|شيل|سوي|سوّي|غير|غيّر|عدل|عدّل|بدل|بدّل|احذف|امسح|كبر|كبّر|صغر|صغّر|رتب|رتّب|ركب|ركّب|جمل|جمّل|حسن|حسّن)/.test(String(intent.goal || ''))
+            || /\b(add|change|replace|remove|make it|set the)\b/i.test(String(intent.goal || ''));
+        const capable = (pageIsOpen && looksLikeEdit) ? null : capabilityRoute(String(intent.goal || ''), context);
+        if (capable) {
+            console.log(`[PlanningEngine] capability router -> ${capable.tool} (score ${capable.score}, runner-up ${capable.runnerUp || 'none'})`);
+            return {
+                id: `capability_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: capable.tool,
+                    description: intent.goal,
+                    tool: capable.tool,
+                    agent: capable.tool.startsWith('browser_') ? 'Browser' : 'Dev',
+                    input: capable.input,
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'medium', riskLevel: 'low' },
+            };
+        }
+
         // [BUILD FAST-PATH] "build/create a web page/site/app" -> ACTUALLY build it:
         // generate the code, write the file, and open it in the live preview. This is
         // deterministic (reliable even on weak free models) and makes Joe execute like
         // an engineering team instead of just replying with code text.
-        const buildVerb = /\b(build|create|make|develop|design|generate|code|scaffold)\b/.test(goalLower)
-            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو)/.test(probe);
+        // A QUESTION IS NOT AN ORDER. «ما هو أفضل تصميم لموقع مطعم؟» built a
+        // restaurant site: the sentence carries a build verb («تصميم») and a web
+        // noun («موقع»), and nothing asked whether the user was requesting work
+        // or asking about it. Interrogatives are answered, not executed.
+        const isQuestion = /[؟?]\s*$/.test(String(intent.goal || '').trim())
+            && /(^|\s)(ما|ماذا|لماذا|كيف|متى|اين|أين|هل|كم|ايهما|أيهما|من\s+هو|ما\s+هو|ما\s+هي)(\s|$)/.test(probe);
+        const buildVerb = !isQuestion && (/\b(build|create|make|develop|design|generate|code|scaffold)\b/.test(goalLower)
+            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو)/.test(probe));
         const webNoun = /\b(page|site|website|web ?app|landing|portfolio|dashboard|form|store|shop|html|ui|interface)\b/.test(goalLower)
             || /(صفحة|موقع|تطبيق|واجهة|متجر|لوحة|نموذج|بورتفوليو|معرض|هبوط)/.test(probe);
         // Route follow-up edits (add button / change colour / ...) to the SAME page.

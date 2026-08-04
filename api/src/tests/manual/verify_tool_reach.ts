@@ -130,6 +130,72 @@ async function main() {
         cleaned[1].tool === (TOOL_ALIASES['ls'] || 'ls') && all.includes(cleaned[1].tool), cleaned[1].tool);
     check('والاسم الصحيح يمرّ كما هو', cleaned[2].tool === 'read_file');
 
+
+    console.log('\n[6] ومن الفهرس إلى القرار: هل تصل الطلبات فعلاً إلى أدواتها؟');
+    /**
+     * Ranking 151 tools was worth nothing while the requests never reached the
+     * planner. Measured before this batch: «دقّق السيو في موقعي» went to a
+     * spoken answer (a goal under 30 characters short-circuits), and «افحص
+     * الروابط المكسورة في موقعي» was claimed by the BUILD path — Joe tried to
+     * BUILD a site in answer to a request to INSPECT one, while owning a
+     * broken-link checker. So the ranking now decides, before the builders.
+     */
+    const { PlanningEngine: PE } = require('../../core/orchestrator/PlanningEngine');
+    (global as any).joePages = { ...(global as any).joePages, default: { html: '<html></html>' } };
+    const plan = async (goal: string) => {
+        const p: any = await Promise.race([
+            PE.generatePlan({ intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } }),
+            new Promise(r => setTimeout(() => r({ steps: [{ tool: 'TIMEOUT' }] }), 6000)),
+        ]);
+        return p.steps.map((s: any) => s.tool).join('+');
+    };
+
+    const ROUTES: Array<[string, string]> = [
+        ['افحص الروابط المكسورة في موقعي', 'browser_check_links'],
+        ['دقّق السيو في موقعي', 'browser_seo_audit'],
+        ['حوّل الصفحة إلى PDF', 'browser_save_pdf'],
+        ['ترجم الموقع إلى الإنجليزية', 'browser_translate'],
+        ['دقّق التباين وإمكانية الوصول', 'browser_contrast_audit'],
+        ['لخّص محتوى الصفحة', 'browser_summarize'],
+        ['افحص الاستجابة على الجوال', 'browser_responsive_check'],
+    ];
+    const wrong: string[] = [];
+    for (const [goal, want] of ROUTES) {
+        const got = await plan(goal);
+        if (got !== want) wrong.push(`${goal} → ${got} (المتوقع ${want})`);
+    }
+    check(`كل طلب تفتيش يصل إلى أداته المتخصّصة (${ROUTES.length - wrong.length}/${ROUTES.length})`,
+        wrong.length === 0, wrong.join(' | '));
+
+    console.log('\n[7] ولم ينكسر شيء مما كان يعمل');
+    const KEEP: Array<[string, string]> = [
+        ['ابنِ متجر react للعطور', 'react_project'],
+        ['شغّل المشروع', 'project_run'],
+        ['انشر الموقع', 'deploy_pages'],
+        ['اعرض الطلبات', 'orders_read'],
+        ['شكراً لك', 'central_answer'],
+        ['كيف حالك اليوم؟', 'central_answer'],
+        ['اشرح لي ما هو React', 'central_answer'],
+    ];
+    const broke: string[] = [];
+    for (const [goal, want] of KEEP) {
+        const got = await plan(goal);
+        if (got !== want) broke.push(`${goal} → ${got} (كان ${want})`);
+    }
+    check(`المسارات القديمة كما هي (${KEEP.length - broke.length}/${KEEP.length})`, broke.length === 0, broke.join(' | '));
+
+    const question = await plan('ما هو أفضل تصميم لموقع مطعم؟');
+    check('والسؤال يُجاب لا يُنفَّذ — «ما هو أفضل تصميم لموقع مطعم؟» كان يبني مطعماً',
+        question === 'central_answer', question);
+
+    console.log('\n[8] ولا يُستدعى متخصّص لا نستطيع إطعامه');
+    const { capabilityRoute } = require('../../core/orchestrator/toolCatalog');
+    const noPage = capabilityRoute('دقّق السيو في الصفحة', { sessionId: 'a-session-with-nothing-in-it' });
+    check('بلا صفحة حيّة ولا رابط: لا توجيه (الأداة كانت سترد «url مطلوب» فقط)', noPage === null,
+        JSON.stringify(noPage));
+    const chat = capabilityRoute('ما رأيك في الألوان؟', { sessionId: 'default' });
+    check('وسؤال بلا فعل تنفيذي لا يُوجَّه إطلاقاً', chat === null, JSON.stringify(chat));
+
     console.log(`\n===== ${pass} passed, ${fail} failed =====`);
     process.exit(fail ? 1 : 0);
 }

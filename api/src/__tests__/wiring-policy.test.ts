@@ -541,6 +541,47 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(reached.size).toBeGreaterThan(90);      // was 26, for every request ever
     });
 
+    it('the ranking DECIDES, not just describes — inspect verbs reach their specialist', () => {
+        const { capabilityRoute } = require('../core/orchestrator/toolCatalog');
+        const g: any = global as any;
+        const before = g.joePages;
+        g.joePages = { ...(before || {}), default: { html: '<html></html>' } };
+        try {
+            const cases: Array<[string, string]> = [
+                ['افحص الروابط المكسورة في موقعي', 'browser_check_links'],
+                ['دقّق السيو في موقعي', 'browser_seo_audit'],
+                ['حوّل الصفحة إلى PDF', 'browser_save_pdf'],
+                ['دقّق التباين وإمكانية الوصول', 'browser_contrast_audit'],
+                ['افحص الاستجابة على الجوال', 'browser_responsive_check'],
+            ];
+            for (const [goal, want] of cases) {
+                expect({ goal, tool: capabilityRoute(goal, { sessionId: 'default' })?.tool }).toEqual({ goal, tool: want });
+            }
+            // an INSPECT verb must never land on a BUILDER
+            for (const [goal] of cases) {
+                const t = capabilityRoute(goal, { sessionId: 'default' })?.tool || '';
+                expect(t).not.toMatch(/_builder$|^react_project$|^web_page_builder$|^scaffold_/);
+            }
+        } finally { g.joePages = before; }
+    });
+
+    it('…and refuses when it cannot feed the tool, or when nobody asked for action', () => {
+        const { capabilityRoute } = require('../core/orchestrator/toolCatalog');
+        // no live page and no url in the sentence: the tool could only answer
+        // «url is required», so the router must decline
+        expect(capabilityRoute('دقّق السيو في الصفحة', { sessionId: 'nothing-here-at-all' })).toBeNull();
+        // a question is a question
+        expect(capabilityRoute('ما رأيك في الألوان؟', { sessionId: 'default' })).toBeNull();
+        expect(capabilityRoute('شكراً لك', { sessionId: 'default' })).toBeNull();
+    });
+
+    it('a question is answered, never executed', () => {
+        // «ما هو أفضل تصميم لموقع مطعم؟» carried a build verb and a web noun,
+        // so the BUILD path built a restaurant site in reply to a question.
+        expect(SRC('core', 'orchestrator', 'PlanningEngine.ts')).toContain('const isQuestion =');
+        expect(SRC('core', 'orchestrator', 'PlanningEngine.ts')).toMatch(/const buildVerb = !isQuestion/);
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([
