@@ -211,6 +211,11 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     // without this only Joe's reply would appear.
     try {
         broadcast({ type: 'user_input', sessionId, data: { text, sessionId, files: attachmentMeta() }, id: `uin-${Date.now()}` } as any);
+        // The panels listen for the RUN starting — that is when the workspace
+        // reveals itself and the live file list clears. They were listening
+        // for an event the server never sent; the auto-open only happened
+        // later, by luck, on the first tool.
+        broadcast({ type: 'run_started', sessionId, data: { sessionId, text: String(text || '').slice(0, 200) }, id: `run-${Date.now()}` } as any);
     } catch { /* non-fatal */ }
 
     try {

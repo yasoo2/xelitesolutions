@@ -335,6 +335,33 @@ export function broadcast(
 
 // [Wakil 6.0] Helper to broadcast thinking phase updates
 /**
+ * THE CREDENTIAL PROMPT — the feature the wiring audit found disconnected.
+ *
+ * The browser agent hits `missing_secret:<KEY>` when a step needs a password
+ * or an API key it does not have. The web UI carries a complete prompt for
+ * exactly that — sessionId, key, provider, label, reason, a form and a submit
+ * — waiting on an event called `secret_required`. Nothing in the server ever
+ * sent one. So the run reported a step error, the prompt never appeared, and
+ * a capability that was fully built on both sides simply never met.
+ */
+export function broadcastSecretRequired(sessionId: string, key: string, opts?: {
+  runId?: string; provider?: string; label?: string; reason?: string;
+}): void {
+  broadcast({
+    type: 'secret_required',
+    id: `secret_${sessionId}_${key}`,
+    sessionId,
+    data: {
+      sessionId, key,
+      runId: opts?.runId,
+      provider: opts?.provider,
+      label: opts?.label || key,
+      reason: opts?.reason || 'A step needs this credential to continue.',
+    },
+  } as any);
+}
+
+/**
  * Watch every event that leaves this server, without owning a socket.
  *
  * A build harness used to reach in and reassign `ws.broadcast` — which the

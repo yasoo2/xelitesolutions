@@ -158,7 +158,7 @@ export default function Joe() {
             // [FIX] The backend emits 'tool_started' / 'step_started' (NOT 'tool_start'),
             // and the tool NAME lives in msg.data.tool or msg.data.name ('execute:<tool>'),
             // not msg.tool. Extract it robustly so the panels auto-open correctly.
-            const isToolStart = msg.type === 'tool_start' || msg.type === 'tool_started' || msg.type === 'step_started';
+            const isToolStart = msg.type === 'tool_started' || msg.type === 'step_started';
             const toolName: string = msg.tool
                 || msg.data?.tool
                 || (typeof msg.data?.name === 'string' ? msg.data.name.replace(/^execute:/, '') : '')
@@ -184,7 +184,8 @@ export default function Joe() {
                 setWorkspaceTab('browser');
                 triggerUncollapse();
             }
-            if (msg.type === 'browser_screenshot' || msg.type === 'browser_update' || msg.type === 'browser_started' || msg.type === 'browser_opened') {
+            // Only the names the server actually broadcasts.
+            if (msg.type === 'browser_screenshot' || msg.type === 'stream_frame' || msg.type === 'browser_needs_user') {
                 setWorkspaceTab('browser');
                 triggerUncollapse();
             }

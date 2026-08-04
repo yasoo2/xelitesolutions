@@ -97,10 +97,13 @@ class AutoOpenManagerClass {
      */
     processStepEvent(event: { type: string; data?: any }) {
         // Direct browser activation events
+        // The server's real browser events. «browser_opened», «show_browser»
+        // and «browser_started» were listened for and never sent by anything —
+        // the panel opened only by luck, through the tool-name branch below.
         if (
-            event.type === 'browser_opened' ||
-            event.type === 'show_browser' ||
-            event.type === 'browser_started'
+            event.type === 'browser_screenshot' ||
+            event.type === 'stream_frame' ||
+            event.type === 'browser_needs_user'
         ) {
             this.triggerOpen('browser', event.data);
         }
@@ -125,7 +128,7 @@ class AutoOpenManagerClass {
         }
 
         // When preview is ready (matches both event types)
-        if (event.type === 'preview_ready' || event.type === 'preview_url' || event.type === 'build_progress') {
+        if (event.type === 'preview_ready' || event.type === 'build_progress') {
             const isBuild = event.type === 'build_progress';
             console.log(`[AutoOpenManager] ${isBuild ? 'Build progress' : 'Preview'} event received, switching tab`, event.type);
             this.triggerOpen('preview', event.data);

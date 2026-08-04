@@ -285,7 +285,7 @@ async function connect() {
         if (quietMode) {
           emitPhase('synthesizing');
         }
-      } else if (msgType === 'tool_start' || msgType === 'tool_started') {
+      } else if (msgType === 'tool_started') {   // the server's only name for it
         // BOTH names. The backend emits `tool_started`; this listened only for
         // `tool_start`, so it never matched once — the phase never reached
         // 'executing' and the live thinking panel had nothing to turn on for.
@@ -316,7 +316,7 @@ async function connect() {
         thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
         emitPhase('analyzing');
         taskTrackerListeners.forEach(cb => { try { cb([]); } catch { } });
-      } else if (msgType === 'task_tracker' || msgType === 'todo_update') {
+      } else if (msgType === 'todo_update') {   // 'task_tracker' was never a server event
         // [New] Receive task lists from the API (Unifying task_tracker and todo_update)
         const rawData = data?.data || [];
         const tasks = Array.isArray(rawData) ? rawData : (rawData.todos || []);
@@ -339,18 +339,16 @@ async function connect() {
         // [Flow Agent] Live build progress events for PreviewPanel overlay
         const progressData = data?.data || {};
         window.dispatchEvent(new CustomEvent('preview:build_progress', { detail: progressData }));
-      } else if (msgType === 'preview_ready' || msgType === 'preview_url') {
+      } else if (msgType === 'preview_ready') {   // 'preview_url' was never sent by anyone
         // [Preview Pipeline] When the API sends a preview URL, dispatch it to PreviewPanel
         const url = data?.data?.url || data?.url;
         if (url) {
           _lastPreviewUrl = url;
           window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url } }));
-        } else if (msgType === 'preview_url' && data?.data?.type === 'refresh') {
-          // If a refresh is requested but no new URL is provided, simply re-dispatch the last known URL
-          // so the Preview Panel triggers an auto-switch at the end of long builds
-          if (_lastPreviewUrl) {
-            window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url: _lastPreviewUrl } }));
-          }
+        } else if (data?.data?.type === 'refresh' && _lastPreviewUrl) {
+          // A refresh with no new url: re-dispatch the last one so the panel
+          // still switches at the end of a long build.
+          window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url: _lastPreviewUrl } }));
         }
       } else if (msgType === 'diff') {
         // [Code Preview] When a file is created or modified, notify the PreviewPanel

@@ -146,3 +146,59 @@ describe('a generated project imports and renders everything it writes', () => {
         }
     });
 });
+
+/**
+ * THE EVENT CONTRACT — the server and the UI must agree on names.
+ *
+ * The audit compared every WebSocket event the web app listens for against
+ * every event the server can actually broadcast, and found EIGHT names the
+ * UI waited on that nothing ever sent. Two mattered:
+ *
+ *   - `secret_required`: the browser agent hits «missing_secret:<KEY>» and
+ *     the UI carries a complete credential prompt for it. Nobody sent the
+ *     event, so the run reported an error and the prompt never appeared —
+ *     a feature fully built on both sides that simply never met.
+ *   - `run_started`: the panels reveal the workspace and clear the live file
+ *     list when a run begins. The server only ever sent `user_input`, so
+ *     that happened later, by luck, on the first tool.
+ *
+ * The rest were legacy synonyms (`tool_start`, `preview_url`,
+ * `browser_opened`, `browser_started`, `browser_update`, `show_browser`)
+ * pointing at events that never existed under those names.
+ */
+describe('the server and the UI agree on event names', () => {
+    const WEB = path.join(__dirname, '..', '..', '..', 'web', 'src');
+    const readAll = (dir: string): string => fs.readdirSync(dir, { withFileTypes: true })
+        .map(e => e.isDirectory() ? readAll(path.join(dir, e.name))
+            : /\.(ts|tsx)$/.test(e.name) ? fs.readFileSync(path.join(dir, e.name), 'utf-8') : '')
+        .join('\n');
+    const readApi = (dir: string): string => fs.readdirSync(dir, { withFileTypes: true })
+        .map(e => e.isDirectory() ? (e.name === 'node_modules' ? '' : readApi(path.join(dir, e.name)))
+            : /\.ts$/.test(e.name) ? fs.readFileSync(path.join(dir, e.name), 'utf-8') : '')
+        .join('\n');
+
+    // Client-side or client→server names: never broadcast BY the server.
+    const CLIENT_ONLY = new Set([
+        'connected', 'disconnected', 'terminal_input', 'terminal_resize', 'ping', 'pong',
+        'message', 'error',                       // socket-level envelopes
+    ]);
+
+    it('every event the UI listens for is one the server can really send', () => {
+        const web = readAll(WEB);
+        const api = readApi(path.join(__dirname, '..'));
+        const listened = [...new Set([...web.matchAll(/(?:event|msg|data)\.type === '([a-z_]+)'/g)].map(m => m[1]))]
+            .concat([...new Set([...web.matchAll(/msgType === '([a-z_]+)'/g)].map(m => m[1]))])
+            .filter(n => !CLIENT_ONLY.has(n));
+        const orphans = listened.filter(n => !api.includes(`'${n}'`));
+        expect(orphans).toEqual([]);
+    });
+
+    it('the credential prompt has a sender now', () => {
+        expect(SRC('api', 'ws.ts')).toContain("type: 'secret_required'");
+        expect(SRC('modules', 'browser', 'executor.ts')).toContain('broadcastSecretRequired(');
+    });
+
+    it('a run announces itself the moment it starts', () => {
+        expect(SRC('api', 'routes', 'run.ts')).toContain("type: 'run_started'");
+    });
+});

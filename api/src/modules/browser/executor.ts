@@ -608,6 +608,15 @@ export async function executePlannedActions(params: {
                   if (!secretValue) {
                     results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: `missing_secret:${secretKey}` });
                     broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'unknown', message: `missing_secret:${secretKey}` });
+                    // ASK for it. The prompt exists in the UI and was never
+                    // reached: the run only ever reported the error.
+                    try {
+                      const { broadcastSecretRequired } = require('../../api/ws');
+                      broadcastSecretRequired(sessionId, String(secretKey), {
+                        label: String(secretKey),
+                        reason: `الخطوة «${name}» تحتاج هذه البيانات للمتابعة.`,
+                      });
+                    } catch { /* the UI is optional; the error above still stands */ }
                     try {
                       broadcastBrowserEvent(sessionId, {
                         type: 'action_error',
@@ -674,6 +683,10 @@ export async function executePlannedActions(params: {
                 if (!secretValue) {
                   results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: `missing_secret:${secretKey}` });
                   broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'unknown', message: `missing_secret:${secretKey}` });
+                  try {
+                    const { broadcastSecretRequired } = require('../../api/ws');
+                    broadcastSecretRequired(sessionId, String(secretKey), { label: String(secretKey) });
+                  } catch { /* the UI is optional */ }
                   try {
                     broadcastBrowserEvent(sessionId, {
                       type: 'action_error',
