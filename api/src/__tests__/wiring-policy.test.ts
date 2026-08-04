@@ -838,6 +838,28 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(deploy).toMatch(/\$\{privateNote\}`/);   // it reaches the message the user reads
     });
 
+    it('a tool that apologises did not succeed', () => {
+        // Measured with every provider unreachable: central_answer,
+        // browser_summarize and browser_translate all returned ok:true carrying
+        // «تعذّر الوصول إلى محرّك الذكاء» as their answer. The step was marked
+        // completed, the run claimed success, and — because a completed node's
+        // result is what {{FROM:…}} hands to the next step — the apology was
+        // written into the user's report where the findings belong.
+        const { isApologyOnly } = require('../shared/utils/honestResult');
+        const { PROVIDER_FAILURE_PREFIX } = require('../core/llm/intelligent-router');
+        const apology = `${PROVIDER_FAILURE_PREFIX} (لم يستجب أي مزوّد).`;
+        expect(isApologyOnly({ message: apology })).toBe(true);
+        expect(isApologyOnly({ message: `📄 ملخّص الصفحة: ${apology}`, url: 'http://x' })).toBe(true);
+        // …but a real artifact keeps its success
+        expect(isApologyOnly({ message: apology, previewUrl: 'http://x/y', path: 'a/index.html' })).toBe(false);
+        expect(isApologyOnly({ message: '🔗 كل الروابط تعمل.' })).toBe(false);
+        // asked once, centrally, of every tool
+        expect(SRC('modules', 'services', 'ToolService.ts')).toContain('if (ok && isApologyOnly(output))');
+        // and a dead brain is not an answer to surface as one
+        expect(SRC('orchestration', 'AgentOrchestrator.ts'))
+            .toContain('if (isDirectAnswer && !isProviderFailure(result.error))');
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([

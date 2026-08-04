@@ -10,6 +10,7 @@ import { paintLine } from '../../core/terminal/paint';
 import { normalizeUrlForGoto } from '../../shared/utils/url';
 import { traceManager } from './TraceManager';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
+import { isApologyOnly, apologyText } from '../../shared/utils/honestResult';
 
 // Rate Limiting Logic (Ported) with periodic cleanup to prevent memory leaks
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
@@ -682,7 +683,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             };
             const { workspaceService } = require('./WorkspaceService');
             const res = contextWorkspaceId ? await workspaceService.runWithWorkspace(contextWorkspaceId, run) : await run();
-            const ok = !!res?.ok;
+            let ok = !!res?.ok;
             const output = res?.output ?? null;
             const artifacts = Array.isArray(res?.artifacts) ? res.artifacts : undefined;
             const toolLogs = Array.isArray(res?.logs) ? res.logs : [];
@@ -727,6 +728,19 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             logs.push(...toolLogs);
 
             let error = res?.error;
+            // A TOOL THAT APOLOGISES DID NOT SUCCEED. With every model provider
+            // unreachable, central_answer, browser_summarize and
+            // browser_translate all returned ok:true carrying «تعذّر الوصول إلى
+            // محرّك الذكاء» as their answer. The orchestrator then marked the
+            // step completed, the run claimed success, and any dependent step
+            // reading {{FROM:…}} received the apology AS ITS DATA. Asked once,
+            // here, of every tool: a real artifact keeps its success; an answer
+            // that is only the apology becomes the failure it always was.
+            if (ok && isApologyOnly(output)) {
+                ok = false;
+                error = apologyText(output);
+                logs.push('honest_result=apology_only');
+            }
             if (!ok && !error) {
                 error = 'Tool reported failure without an error message';
             } else if (error) {

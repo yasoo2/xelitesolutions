@@ -477,7 +477,15 @@ export class AgentOrchestrator {
           // A conversational / direct-answer node must NEVER spawn a diagnostic
           // recovery loop (the duplicated "neural thinking" the user reported).
           // Treat it as completed with whatever text we have and move on.
-          if (isDirectAnswer) {
+          if (isDirectAnswer && !isProviderFailure(result.error)) {
+            // …but «the brain is unreachable» is not an answer to surface as
+            // one. Marking it completed made the run claim success, and — since
+            // a completed node's result is what {{FROM:…}} hands to the next
+            // step — wrote «تعذّر الوصول إلى محرّك الذكاء» into the user's
+            // report file in the place where the findings belong. Measured in
+            // verify_honest_results.ts. A dead brain falls through to the
+            // failure path below, which ends the run honestly and without a
+            // recovery loop.
             const text = (typeof result.error === 'string' && result.error) ? result.error : 'تم.';
             node.status = "completed";
             node.result = text;
