@@ -4,6 +4,28 @@
  * Overrides: LLM7_BASE_URL, LLM7_MODEL, LLM7_API_KEY, LLM7_DISABLE=1
  */
 import OpenAI from 'openai';
+import fs from 'fs';
+import path from 'path';
+
+/** Where the refusals live between runs — beside Joe's other durable memory. */
+const BLOCKED_FILE = path.join(process.env.JOE_DATA_DIR || path.join(process.cwd(), 'data'), 'llm7-blocked.json');
+function loadBlockedModels(): string[] {
+    try {
+        const raw = JSON.parse(fs.readFileSync(BLOCKED_FILE, 'utf-8'));
+        // A refusal is not forever: a gateway can open a model up again, so the
+        // memory expires after a week rather than blacklisting it for good.
+        if (raw && Array.isArray(raw.models) && Date.now() - Number(raw.at || 0) < 7 * 24 * 3600_000) {
+            return raw.models.filter((m: any) => typeof m === 'string').slice(0, 200);
+        }
+    } catch { /* first run, or the file was removed on purpose */ }
+    return [];
+}
+function saveBlockedModels(set: Set<string>): void {
+    try {
+        fs.mkdirSync(path.dirname(BLOCKED_FILE), { recursive: true });
+        fs.writeFileSync(BLOCKED_FILE, JSON.stringify({ at: Date.now(), models: [...set] }, null, 2), 'utf-8');
+    } catch { /* read-only disk — the in-memory set still serves this run */ }
+}
 
 const LLM7_BASE_URL = (process.env.LLM7_BASE_URL || 'https://api.llm7.io/v1').trim();
 const PREFERRED_MODELS = [
@@ -23,7 +45,17 @@ export class LLM7Provider {
     private apiKey: string;
     private discovered: string[] | null = null;
     private discoveredAt = 0;
-    private blocked = new Set<string>();
+    /**
+     * Models this gateway has refused, REMEMBERED ACROSS RESTARTS.
+     *
+     * Measured in the field: every single run began «Inkling failed: 401,
+     * Inkling-Small failed: 401, L3-8B-Lunaris failed: 401, MiMo failed: 401,
+     * MiMo-Pro failed: 401» before a working model was reached — five dead
+     * HTTP calls per fallback, on the exact path Joe takes when Groq's quota
+     * is already gone and the user is waiting. The set was in memory only, so
+     * a restart forgot every refusal and paid for the lesson again.
+     */
+    private blocked = new Set<string>(loadBlockedModels());
     private cooldownUntil = 0; // set when the gateway returns 429 (global rate limit)
 
     constructor() {
@@ -105,7 +137,10 @@ export class LLM7Provider {
             } catch (error: any) {
                 lastErr = error;
                 const status = error?.status || 0;
-                if (status === 401 || status === 402 || status === 403) this.blocked.add(m);
+                if (status === 401 || status === 402 || status === 403) {
+                    this.blocked.add(m);
+                    saveBlockedModels(this.blocked);
+                }
                 if (status === 429) {
                     // Global rate limit — remember the cooldown so the router skips
                     // LLM7 entirely (via isAvailable) instead of retrying every model.

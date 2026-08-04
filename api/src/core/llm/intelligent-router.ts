@@ -1556,7 +1556,19 @@ export async function routeToModel(
                 // stared at a frozen run. 25s is enough for qwen to answer a
                 // short JSON prompt when free, and cheap to give up when not.
                 if (internalCall) {
-                    timeoutValue = Math.min(timeoutValue, 25_000);
+                    // …but the leash is MEASURED, not guessed. A machine whose
+                    // model needs 40s to load will never answer inside 25s, and
+                    // every internal call timing out is what moved this user's
+                    // whole load onto Groq until the daily quota died. The
+                    // warm-up timed a one-token prompt on THIS machine; six
+                    // times that (floor 25s, ceiling 90s) is a leash the
+                    // hardware can actually meet.
+                    const { localWarmupMs } = require('./local-brain');
+                    const measured = Number(localWarmupMs?.() || 0);
+                    const leash = measured > 0
+                        ? Math.min(90_000, Math.max(25_000, Math.round(measured * 6)))
+                        : 25_000;
+                    timeoutValue = Math.min(timeoutValue, leash);
                 }
             }
             if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)') {

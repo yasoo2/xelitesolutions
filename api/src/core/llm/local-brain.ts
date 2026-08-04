@@ -151,6 +151,22 @@ export function pickLocalModel(taskType?: string): string | undefined {
  * generation via Ollama's native /api/generate with keep_alive so the model
  * stays resident. Completely non-blocking / best-effort.
  */
+/**
+ * HOW SLOW IS THIS MACHINE, REALLY?
+ *
+ * The router gave every local call the same guessed leash — 25 seconds for an
+ * internal planning prompt. On the user's laptop qwen2.5-coder:7b never
+ * answered inside it, so EVERY internal call timed out, the local brain was
+ * paused for ten then twenty minutes, the whole load moved to Groq, and the
+ * daily quota died — after which a keyless gateway answered his builds. The
+ * leash was never measured against the machine it runs on.
+ *
+ * The warm-up already loads the model; it now TIMES that load and publishes
+ * the number, so the leash can follow the hardware instead of a guess.
+ */
+let _warmupMs = 0;
+export function localWarmupMs(): number { return _warmupMs; }
+
 export async function warmUpLocalBrain(): Promise<void> {
     const host = state.host || ollamaHost();
     if (!host) return;
@@ -169,12 +185,19 @@ export async function warmUpLocalBrain(): Promise<void> {
     if (models.size === 0) return;
 
     for (const model of models) {
+        const startedAt = Date.now();
         try {
-            await fetch(`${host}/api/generate`, {
+            const res = await fetch(`${host}/api/generate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ model, prompt: 'hi', stream: false, keep_alive: -1, options: { num_predict: 1 } }),
             }).catch(() => null);
+            // The CHAT/CODE model's own warm-up is the honest yardstick — the
+            // vision model's load says nothing about a planning call.
+            if (res?.ok && (model === state.chatModel || model === state.codeModel)) {
+                _warmupMs = Math.max(_warmupMs, Date.now() - startedAt);
+                console.info(`[LocalBrain] ⏱️ ${model} answered a one-token prompt in ${_warmupMs}ms — the router sizes its patience from this.`);
+            }
         } catch { /* best-effort */ }
     }
 }

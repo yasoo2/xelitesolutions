@@ -59,9 +59,27 @@ const STATUS_CACHE_MS = Number(process.env.GIT_STATUS_CACHE_MS || 5000);
 // instantly, and when the cache is old ONE background refresh runs — nobody
 // ever waits on git, and concurrent polls never stack refreshes.
 let _statusRefreshing = false;
+/**
+ * ADAPTIVE BACKOFF — measured, not guessed.
+ *
+ * The cache made the HTTP call instant, but the BACKGROUND refresh still ran
+ * every five seconds forever, and on the user's laptop one `git status` was
+ * measured at 0.5s, 1.4s, 2.1s and 3.2s while a build was running («SLOW
+ * EXECUTION … cmd=git status» in his log, over and over). A command that costs
+ * three seconds must not be run every five: the interval now follows the cost
+ * of the LAST refresh — eight times its duration, capped at two minutes — so a
+ * fast repository still refreshes every five seconds and a slow one (or a busy
+ * machine mid-build) stops competing with the work the user is waiting for.
+ */
+let _lastRefreshMs = 0;
+const STATUS_MAX_MS = Number(process.env.GIT_STATUS_MAX_MS || 120_000);
+function statusIntervalMs(): number {
+    return Math.min(STATUS_MAX_MS, Math.max(STATUS_CACHE_MS, _lastRefreshMs * 8));
+}
 async function refreshGitStatus(): Promise<void> {
     if (_statusRefreshing) return;
     _statusRefreshing = true;
+    const startedAt = Date.now();
     try {
         const result = await gitExec(['status', '--porcelain', '--branch']);
         if (!result.ok) {
@@ -77,14 +95,18 @@ async function refreshGitStatus(): Promise<void> {
             data: { initialized: true, branch: snap.branch, files: snap.files, ahead: snap.ahead, behind: snap.behind },
         };
     } finally {
+        _lastRefreshMs = Date.now() - startedAt;
         _statusRefreshing = false;
     }
 }
 
+/** Exposed for the proof: how long the last refresh cost, and the interval it earned. */
+export function _gitStatusPace() { return { lastRefreshMs: _lastRefreshMs, intervalMs: statusIntervalMs() }; }
+
 router.get('/status', authenticate as any, async (req: Request, res: Response) => {
     if (_statusCache) {
         res.json(_statusCache.data);
-        if (Date.now() - _statusCache.at >= STATUS_CACHE_MS) {
+        if (Date.now() - _statusCache.at >= statusIntervalMs()) {
             refreshGitStatus().catch(() => { /* next poll retries */ });
         }
         return;
