@@ -45,7 +45,10 @@ describe('"انشر / deploy" routes to permanent deployment, deterministically'
             + '\n2. Crash-loop guard … restart … server …'
             + '\n3. Failure taxonomy in updaters … deploy …';
         const p = await plan(injected);
-        expect(['web_page_builder', 'project_pipeline']).toContain(p.steps[0].tool);
+        // An admin dashboard is an APPLICATION, so react_project is the right
+        // landing now — what this test protects is that a BUILD request never
+        // becomes a deploy, whatever the injected block says.
+        expect(['web_page_builder', 'project_pipeline', 'react_project', 'api_project']).toContain(p.steps[0].tool);
         expect(p.steps[0].tool).not.toBe('deploy_pages');
         expect(p.steps[0].tool).not.toBe('project_run');
     });

@@ -968,6 +968,32 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(loop).toContain('ungroundedMessage(task, evidence)');
     });
 
+    it('an application request is not answered with a page — «شرائح عليها صور»', async () => {
+        // The user's verdict, measured: «ابني تطبيق خرائط شبيه بخرائط جوجل» came
+        // back as index.html + styles.css — a POSTER of a maps app. Five of six
+        // real system requests got a static page or just chat, while
+        // react_project and api_project sat unused.
+        const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
+        const tools = async (goal: string) => (await PlanningEngine.generatePlan(
+            { intent: { goal, complexity: 'high', riskLevel: 'low', rawIntent: {} } }))
+            .steps.map((s: any) => s.tool).join(' + ');
+
+        expect(await tools('ابني تطبيق خرائط شبيه بتطبيق خرائط جوجل')).toMatch(/react_project/);
+        expect(await tools('ابن لي نظام حجوزات عيادة مع لوحة تحكم للطبيب')).toMatch(/api_project \+ react_project/);
+        // …and a page request still gets a page
+        expect(await tools('ابنِ لي صفحة هبوط لمقهى')).toMatch(/web_page_builder/);
+        // the app depends on its backend, so it is wired to a server that exists
+        const sys = await PlanningEngine.generatePlan({
+            intent: { goal: 'اعمل تطبيق محادثة فوري بين المستخدمين', complexity: 'high', riskLevel: 'low', rawIntent: {} } });
+        const api = sys.steps.find((x: any) => x.tool === 'api_project');
+        const app = sys.steps.find((x: any) => x.tool === 'react_project');
+        expect(app.dependsOn).toContain(api.id);
+        // the classifier is deterministic — it holds when the brain is down
+        expect(PlanningEngine.classifyBuildScope('ابني تطبيق خرائط')).toBe('app');
+        expect(PlanningEngine.classifyBuildScope('نظام حجوزات مع تسجيل دخول')).toBe('system');
+        expect(PlanningEngine.classifyBuildScope('صفحة هبوط لمنتج')).toBe('page');
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([

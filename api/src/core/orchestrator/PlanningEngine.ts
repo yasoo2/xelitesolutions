@@ -69,6 +69,40 @@ export class PlanningEngine {
         return map[action] || null;
     }
 
+    /**
+     * A PAGE, AN APPLICATION, OR A SYSTEM WITH ITS OWN DATA.
+     *
+     * Decided from the user's own words and nothing else, so it is the same
+     * answer with the brain running or dead:
+     *
+     *   page   — one document. «صفحة هبوط», «بورتفوليو», «قائمة طعام».
+     *   app    — screens, state, interaction. «تطبيق», «لوحة تحكم», «محرّر»,
+     *            or anything compared to a real product («شبيه بخرائط جوجل»).
+     *   system — an app that OWNS data: accounts, a database, orders, bookings,
+     *            inventory, reports, roles. It gets a backend of its own.
+     */
+    static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
+        const g = String(goalRaw || '');
+        // Its own data, its own users → it needs a server and a database.
+        const dataSignals = /(تسجيل\s*دخول|تسجيل\s*الدخول|حسابات?|مستخدمين|صلاحيات|قاعدة\s*بيانات|قواعد\s*بيانات|حجوزات?|حجز|طلبات|مخزون|جرد|فواتير|فاتورة|تقارير|إحصائيات|احصائيات|نقاط\s*بيع|كاشير|رواتب|موظفين|عملاء|زبائن|اشتراكات|مدفوعات|دفع\s*إلكتروني|api|backend|قاعدة\s*البيانات|login|auth|database|users?|orders?|inventory|invoices?|reports?|bookings?|payments?|subscriptions?|crm|erp|pos)/i;
+        // Screens and behaviour rather than a single scroll.
+        const appSignals = /(تطبيق|نظام|منصّ?ة|برنامج|لوحة\s*تحكم|داشبورد|محرّ?ر|أداة\s*ويب|لعبة|محادثة|دردشة|شات|خرائط|خريطة|تتبّ?ع|حاسبة|مخطّ?ط|جدولة|مهامّ?|شبيه\s*ب|مثل\s*تطبيق|clone|dashboard|app\b|platform|system|editor|tracker|chat|map|game|planner|scheduler|calculator|todo|to-do|tasks?)/i;
+        // A single document, said outright.
+        const pageSignals = /(صفحة\s*(هبوط|واحدة)?|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|بروشور|قائمة\s*طعام|منيو|landing|portfolio|brochure|one[- ]?pager|resume|cv)/i;
+
+        const data = dataSignals.test(g);
+        const app = appSignals.test(g);
+        const page = pageSignals.test(g);
+
+        // «صفحة هبوط لتطبيق جوال» is a PAGE about an app, not an app: when the
+        // request names the document it wants, that wins over the subject it is
+        // about. Only owning data outranks it.
+        if (page && !data) return 'page';
+        if (data) return 'system';
+        if (app) return 'app';
+        return 'page';
+    }
+
     /** True when the request explicitly asks to SEARCH/look up something (a real
      *  search verb — not merely "open google"). Kept narrow on purpose so plain
      *  "افتح جوجل" stays an open, while "ابحث عن X" / "search for X" is a search. */
@@ -451,7 +485,18 @@ Rules:
             const fullish = /(متكامل|كامل|full[-\s]?stack|complete)/i.test(probe);
             const apiBuildVerb = /\b(build|create|make|develop|scaffold|generate)\b/.test(goalLower)
                 || /(ابن|ابني|انشئ|أنشئ|اصنع|طور|اعمل|سو)/.test(probe);
-            if (apiBuildVerb && apiNoun && !frontendNoun && !fullish) {
+            // …but «نظام إدارة مخزون مع تسجيل دخول وقاعدة بيانات» is not a request
+            // for a bare API. It says «نظام» and it owns data, so the scope
+            // classifier calls it a SYSTEM — a backend AND the app that uses it.
+            // Shipping only the server there is the same «half a thing» the user
+            // objected to, from the other end.
+            // «اعمل باك اند بقاعدة بيانات للمخزون» IS a bare backend ask, even
+            // though it owns data — the user named the server and nothing else.
+            // What turns it into a full system is naming the THING: an app, a
+            // system, a platform, a dashboard.
+            const namesAnApp = /(تطبيق|نظام|منصّ?ة|لوحة\s*تحكم|برنامج|\bapp\b|dashboard|platform|system)/i.test(probe);
+            const bareApiAsk = !namesAnApp;
+            if (apiBuildVerb && apiNoun && !frontendNoun && !fullish && bareApiAsk) {
                 return {
                     id: `apiproj_${Date.now()}`,
                     goal: intent.goal,
@@ -554,10 +599,14 @@ Rules:
             // node — which OPENED A BROWSER for a request to build a page.
             || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو)/.test(probe)
             || /قم\s*ب?(بناء|عمل|انشاء|إنشاء|تصميم|تطوير|صنع)/.test(probe)
-            || /(اريد|أريد|ابغى|أبغى|بدي|ودي)\s*(ب?بناء|عمل|انشاء|إنشاء|تصميم|موقع|صفحة|تطبيق|متجر)/.test(probe)
+            || /(اريد|أريد|ابغى|أبغى|بدي|ودي)\s*(ب?بناء|عمل|انشاء|إنشاء|تصميم|موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|أداة|اداة)/.test(probe)
             || /\b(بناء|تصميم|إنشاء|انشاء)\s+(موقع|صفحة|تطبيق|متجر|واجهة|لوحة)/.test(probe));
         const webNoun = /\b(page|site|website|web ?app|landing|portfolio|dashboard|form|store|shop|html|ui|interface)\b/.test(goalLower)
-            || /(صفحة|موقع|تطبيق|واجهة|متجر|لوحة|نموذج|بورتفوليو|معرض|هبوط)/.test(probe);
+            // «نظام نقاط بيع للمطاعم مع تقارير مبيعات» named no «موقع» and no
+            // «صفحة», so the build gate never opened and Joe just TALKED about it.
+            // A system, a platform, a dashboard and a tool are things people ask
+            // to have built, exactly like a site.
+            || /(صفحة|موقع|تطبيق|واجهة|متجر|لوحة|نموذج|بورتفوليو|معرض|هبوط|نظام|منصّ?ة|أداة|اداة|برنامج|بوابة|خدمة|محرّ?ر|مدوّ?نة|سيرة\s*ذاتية|منيو|قائمة\s*(?:طعام|أسعار|منتجات))/.test(probe);
         // Route follow-up edits (add button / change colour / ...) to the SAME page.
         const activeKey = String((context && context.sessionId) || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const hasActivePage = !!((global as any).joePages && (global as any).joePages[activeKey]);
@@ -696,6 +745,44 @@ Rules:
         // Recovery goals were bounced out of generatePlan at the very top — by the
         // time execution reaches here the goal is a genuine user request.
         if ((buildVerb && webNoun) || (hasActivePage && editIntent)) {
+            // A PAGE IS NOT AN APPLICATION.
+            //
+            // «ابني تطبيق خرائط شبيه بخرائط جوجل» produced index.html + styles.css
+            // — a POSTER of a maps app. Measured across six real requests, five
+            // came back as a static page or as chat: a chat app, a clinic booking
+            // system with a doctor's dashboard, a point-of-sale with reports.
+            // Joe owns react_project (a real Vite app) and api_project (a real
+            // Express + SQLite server) and almost never reached them.
+            //
+            // The scope is decided from the request itself, deterministically —
+            // no model needed, so it holds when the brain is down:
+            //   page   → one document: a landing page, a menu, a portfolio
+            //   app    → screens, state, interaction: a real React project
+            //   system → app + its own data: a backend, and the app wired to it
+            const scope = PlanningEngine.classifyBuildScope(probe);
+            if (scope !== 'page' && !(hasActivePage && editIntent)) {
+                const steps: any[] = [];
+                if (scope === 'system') {
+                    steps.push({
+                        id: 'backend', description: `الواجهة الخلفية وقاعدة البيانات لـ: ${intent.goal}`,
+                        tool: 'api_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [],
+                    });
+                }
+                steps.push({
+                    id: 'app', description: `تطبيق حقيقي لـ: ${intent.goal}`,
+                    tool: 'react_project', agent: 'Dev',
+                    // The app is built AFTER its API exists, so it is wired to a
+                    // backend that is really there rather than to a guess.
+                    input: { request: intent.goal }, dependsOn: scope === 'system' ? ['backend'] : [],
+                });
+                console.log(`[PlanningEngine] build scope = ${scope} -> ${steps.map(x => x.tool).join(' + ')}`);
+                return {
+                    id: `build_${scope}_${Date.now()}`,
+                    goal: intent.goal,
+                    steps,
+                    metadata: { complexity: 'high', riskLevel: 'medium' },
+                };
+            }
             return {
                 id: `build_${Date.now()}`,
                 goal: intent.goal,
