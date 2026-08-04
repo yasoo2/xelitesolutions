@@ -817,6 +817,27 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         }
     });
 
+    it('publishing reads what it publishes, and says what will not work', () => {
+        // The quietest failure in the product: a published page whose contact
+        // form posts to `localhost`. The visitor sees nothing wrong, the request
+        // goes to THEIR machine, the owner gets no message and no error, and
+        // neither ever finds out. Publishing never read the files it copied.
+        const { privateEndpointWarning, findPrivateEndpoints } = require('../shared/utils/privateEndpoints');
+        const fs = require('fs'); const os = require('os'); const path = require('path');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-'));
+        try {
+            fs.writeFileSync(path.join(dir, 'index.html'), `<form action="http://localhost:5002/api/public/forms/s"></form>`);
+            expect(findPrivateEndpoints(dir)).toHaveLength(1);
+            expect(privateEndpointWarning(dir)).toContain('PUBLIC_URL');
+            // a genuinely public site must produce silence, or the warning is noise
+            fs.writeFileSync(path.join(dir, 'index.html'), `<form action="https://joe.example.com/api/x"></form>`);
+            expect(privateEndpointWarning(dir)).toBe('');
+        } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* cleanup */ } }
+        const deploy = SRC('modules', 'tools', 'definitions', 'DeployPagesTool.ts');
+        expect(deploy).toContain('privateEndpointWarning(stage)');
+        expect(deploy).toMatch(/\$\{privateNote\}`/);   // it reaches the message the user reads
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([

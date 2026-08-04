@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as https from 'https';
+import { privateEndpointWarning } from '../../../shared/utils/privateEndpoints';
 
 /**
  * deploy_pages — permanent, FREE, keyless deployment to GitHub Pages.
@@ -178,8 +179,15 @@ export class DeployPagesTool implements ToolDefinition {
         // repo, so the user's working tree is never touched. Auth rides git_ops.
         say('⬆️ أنشر الملفات إلى فرع gh-pages…');
         const stage = fs.mkdtempSync(path.join(os.tmpdir(), `joe-pages-${Date.now()}-`));
+        // Read the files on their way OUT. An address that only resolves on this
+        // machine — the contact form's endpoint above all — turns into a form
+        // that submits into nothing for every visitor, with no error on either
+        // side. The publish proceeds; the warning travels with it.
+        let privateNote = '';
         try {
             fs.cpSync(outDir, stage, { recursive: true });
+            try { privateNote = privateEndpointWarning(stage); } catch { /* a warning must never block a publish */ }
+            if (privateNote) logs.push('private_endpoints_found=1');
             // .nojekyll so GitHub Pages serves files/underscored dirs verbatim.
             fs.writeFileSync(path.join(stage, '.nojekyll'), '');
             const gctx = { sessionId: context?.sessionId, workspaceId: context?.workspaceId };
@@ -215,11 +223,19 @@ export class DeployPagesTool implements ToolDefinition {
 
         const url = `https://${owner}.github.io/${repoName}/`;
         say(`✅ نُشر بشكل دائم: ${url} (قد يستغرق ظهوره أول مرة دقيقة أو دقيقتين)`);
+        // WHAT WAS ACTUALLY PUBLISHED. Until now nothing ever read the files on
+        // their way out, so a page could carry an address only this machine can
+        // reach — the contact form's endpoint among them — and the failure was
+        // silent on both sides: the visitor sees a form that submits to nothing,
+        // the owner sees no messages and no error. Publishing still happens;
+        // the user is simply told.
+        if (privateNote) say('⚠️ لكن في الملفات المنشورة عناوين محلّية لن تعمل عند الزوّار — التفاصيل في الرسالة.');
         return {
             ok: true,
             output: {
                 deployed: true, url, repo: `${owner}/${repoName}`, branch: 'gh-pages',
-                summary: `## 🚀 نُشر مشروعك بشكل دائم\nالرابط: **${url}**${publishNoteAr}\nمُستضاف مجاناً على GitHub Pages من فرع \`gh-pages\`. قد يحتاج ظهوره أول مرة دقيقة أو دقيقتين. أي تحديث لاحق: اطلب «انشر المشروع» مجدداً.`,
+                privateEndpoints: privateNote ? true : undefined,
+                summary: `## 🚀 نُشر مشروعك بشكل دائم\nالرابط: **${url}**${publishNoteAr}\nمُستضاف مجاناً على GitHub Pages من فرع \`gh-pages\`. قد يحتاج ظهوره أول مرة دقيقة أو دقيقتين. أي تحديث لاحق: اطلب «انشر المشروع» مجدداً.${privateNote}`,
             },
             logs,
         };
