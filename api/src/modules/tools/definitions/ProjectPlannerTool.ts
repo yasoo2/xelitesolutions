@@ -43,8 +43,14 @@ export class ProjectPlannerTool implements ToolDefinition {
     mockSupported = false;
 
     async execute(input: { projectDescription: string; analysis?: any }) {
-        const { projectDescription, analysis } = input;
+        const { projectDescription, analysis } = input || ({} as any);
         const logs: string[] = [];
+        // A missing required argument is a QUESTION, not a crash. The registry
+        // audit called every read-only tool with {} and six of them threw a raw
+        // TypeError — which is what the user sees when a planner omits a field.
+        if (!String(projectDescription || '').trim()) {
+            return { ok: false, error: 'project_planner needs projectDescription — describe the project to plan.', logs } as any;
+        }
 
         try {
             const planningPrompt = this.createPlanningPrompt(projectDescription, analysis);

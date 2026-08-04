@@ -40,7 +40,12 @@ export class PatternRecognitionTool extends BaseTool {
   };
 
   async execute(input: any) {
-    const { code, language, filePath } = input;
+    const { code, language, filePath } = input || {};
+    // A missing argument is a QUESTION, not a crash: the registry audit called
+    // this with {} and it threw «Cannot read properties of undefined».
+    if (!String(code || '').trim()) {
+      return { ok: false, error: 'pattern_recognize needs code to read.', logs: [] } as any;
+    }
     const detectedPatterns: Array<{ name: string; confidence: number; line: number }> = [];
     const suggestions: string[] = [];
     const antiPatterns: Array<{ name: string; severity: 'high' | 'medium' | 'low'; suggestion: string }> = [];

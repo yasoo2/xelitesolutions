@@ -152,7 +152,13 @@ export class ComplianceValidatorTool implements ToolDefinition {
     mockSupported = false;
 
     async execute(input: { content: string; standard: string }) {
-        const prompt = `Check ${input.standard} compliance for: ${input.content.slice(0, 500)}`;
+        // A missing argument is a QUESTION, not a crash — the registry audit
+        // called this with {} and it threw a raw TypeError, which is exactly
+        // what a user sees when a planner omits a field.
+        if (!String(input?.content || '').trim()) {
+            return { ok: false, error: 'compliance_validator needs content to check.', logs: [] };
+        }
+        const prompt = `Check ${input.standard || 'general'} compliance for: ${String(input.content).slice(0, 500)}`;
         try {
             const callLLM = getLLM();
             const response = await callLLM(prompt, [{ role: 'system', content: 'Return JSON report.' }]);
@@ -182,7 +188,11 @@ export class CostEstimatorTool implements ToolDefinition {
     mockSupported = true;
 
     async execute(input: { resources: string[]; traffic?: string }) {
-        const prompt = `Estimate costs for: ${input.resources.join(', ')}`;
+        const resources = Array.isArray(input?.resources) ? input.resources.filter(Boolean) : [];
+        if (!resources.length) {
+            return { ok: false, error: 'cloud_cost_estimator needs a resources list (e.g. ["EC2 t3.small", "RDS"]).', logs: [] };
+        }
+        const prompt = `Estimate costs for: ${resources.join(', ')}`;
         try {
             const callLLM = getLLM();
             const response = await callLLM(prompt, [{ role: 'system', content: 'Return JSON cost.' }]);
@@ -264,7 +274,10 @@ export class SelfConfidenceTool implements ToolDefinition {
     mockSupported = true;
 
     async execute(input: { content: string }) {
-        const prompt = `Confidence in: ${input.content.slice(0, 100)}`;
+        if (!String(input?.content || '').trim()) {
+            return { ok: false, error: 'self_confidence_evaluator needs content to judge.', logs: [] };
+        }
+        const prompt = `Confidence in: ${String(input.content).slice(0, 100)}`;
         try {
             const callLLM = getLLM();
             const response = await callLLM(prompt, [{ role: 'system', content: 'Return JSON score.' }]);

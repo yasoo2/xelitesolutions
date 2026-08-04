@@ -53,8 +53,14 @@ export class RequestAnalyzerTool implements ToolDefinition {
     mockSupported = false;
 
     async execute(input: { userRequest: string; context?: any }) {
-        const { userRequest, context } = input;
+        const { userRequest, context } = input || ({} as any);
         const logs: string[] = [];
+        // A missing required argument is a QUESTION, not a crash. The registry
+        // audit called every read-only tool with {} and six of them threw a raw
+        // TypeError — which is what the user sees when a planner omits a field.
+        if (!String(userRequest || '').trim()) {
+            return { ok: false, error: 'request_analyzer needs userRequest — pass the text to analyse.', logs } as any;
+        }
 
         try {
             logs.push(`Analyzing request: "${userRequest.slice(0, 100)}..."`);
