@@ -774,6 +774,44 @@ export function orderByCooldown<T extends { name: string }>(providers: T[]): T[]
 /** Does this error message describe a rate limit (as opposed to a dead provider)? */
 export const RATE_LIMIT_RE = /\b(429|rate.?limit(?:ed)?|too many requests)\b/i;
 
+/**
+ * THE DAY'S QUOTA RAN OUT — AND THE USER IS THE LAST TO KNOW.
+ *
+ * When the provider the user picked hits its daily limit, Joe quietly moves to
+ * the free/local mesh and keeps answering. That is the right behaviour and the
+ * wrong silence: the provider button still shows the dead provider, so the user
+ * believes they are still on it, cannot explain why answers changed character,
+ * and every new session starts by asking for a quota that is gone.
+ *
+ * One notice, once per cooldown window, saying what happened, what Joe switched
+ * to, and when the quota comes back. The panel acts on it by moving the button
+ * to «تلقائي» — the switch is real, not a message about a switch.
+ */
+const quotaAnnounced = new Map<string, number>();
+
+function announceQuotaSwitch(routeKey: string, provider: string, model: string, waitMs: number) {
+    const now = Date.now();
+    const until = now + waitMs;
+    // Once per window: a 429 storm must not become a notification storm.
+    const last = quotaAnnounced.get(routeKey) || 0;
+    if (last > now) return;
+    quotaAnnounced.set(routeKey, until);
+
+    const label = String(provider || '').trim() || 'المزوّد';
+    const mins = Math.max(1, Math.ceil(waitMs / 60_000));
+    const when = mins >= 60 ? `~${Math.round(mins / 60)} ساعة` : `~${mins} دقيقة`;
+    const message = `⚠️ انتهت حصّتك اليومية من **${label}**${model ? ` (${model})` : ''}.\n`
+        + `حوّلتُك تلقائياً إلى **الوضع التلقائي** — الذكاء المحلّي والمزوّدات المجانية — والعمل مستمرّ بلا انقطاع.\n`
+        + `تعود حصّة ${label} بعد ${when}، وعندها يمكنك اختياره مجدداً من زرّ المزوّدين.`;
+    try {
+        const { broadcast } = require('../../api/ws');
+        broadcast({
+            type: 'provider_quota',
+            data: { provider: label, model, switchTo: 'auto', minutes: mins, until, message },
+        });
+    } catch { /* the panel is a window, never a dependency */ }
+}
+
 // A 429 is not an outage — it is a timer. On a machine whose ONLY live brain is
 // rate-limited Groq (Ollama not running, no other keys), failing the whole build
 // the instant every provider errors means a 60-second speed bump kills 4 minutes
@@ -1154,6 +1192,7 @@ export async function routeToModel(
                     const waitMs = Math.min(retryAfterMsFrom(msg) || 5 * 60_000, CUSTOM_ROUTE_COOLDOWN_CAP_MS);
                     customRouteCooldownUntil.set(routeKey, Date.now() + waitMs);
                     console.warn(`[IntelligentRouter] 💰 Custom route ${cfgProvider}/${cfgModel} hit its quota — paused for ~${Math.ceil(waitMs / 60_000)}min (from the 429 itself). Free/local mesh carries the load meanwhile.`);
+                    announceQuotaSwitch(routeKey, cfgProvider, cfgModel, waitMs);
                 } else {
                     console.warn(`[IntelligentRouter] Custom route ${cfgProvider}/${cfgModel} failed once (${status || 'no status'}) but the key looks fine — it stays enabled and will be retried.`);
                 }

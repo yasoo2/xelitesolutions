@@ -1604,6 +1604,28 @@ export default function CommandComposer({
         }
       }
 
+      // THE DAY'S QUOTA RAN OUT — AND THE BUTTON STILL SAID OTHERWISE.
+      // When the chosen provider hits its daily limit Joe keeps working on the
+      // free/local mesh, but the provider button went on showing the dead
+      // provider: the user could not tell why answers changed character, and
+      // every new run still asked for a quota that was gone. The switch is made
+      // HERE, for real — the button moves to «تلقائي» and the reason is said
+      // once, in the conversation, in the user's own language.
+      if (msg.type === 'provider_quota') {
+        const d: any = msg?.data || {};
+        const target = String(d.switchTo || 'auto');
+        setActiveProvider(target);
+        setSelectedProvider(target);
+        try { localStorage.setItem('active_provider', target); } catch { /* private mode */ }
+        const noticeId = `quota:${d.provider || ''}:${d.until || Date.now()}`;
+        setEvents((prev: any[]) => (
+          prev.some((e: any) => e?.id === noticeId)
+            ? prev
+            : [...prev, { type: 'text', id: noticeId, data: String(d.message || 'انتهت حصّة المزوّد — تم التحويل إلى الوضع التلقائي.') }]
+        ));
+        return;
+      }
+
       if (msg.type === 'step_done') {
         const rid = typeof msg?.runId === 'string' ? msg.runId : typeof msg?.data?.runId === 'string' ? msg.data.runId : '';
         const name = String(msg?.data?.name || '');

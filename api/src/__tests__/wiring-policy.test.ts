@@ -25,6 +25,8 @@ import { TOOL_ALIASES } from '../modules/services/ToolService';
 
 const NAMES = tools.map((t: any) => t.name);
 const SRC = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
+/** The panel's own source — the other half of any wire that ends on screen. */
+const WEB = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'src', ...p), 'utf-8');
 const resolves = (n: string) => NAMES.includes(n) || NAMES.includes(TOOL_ALIASES[n] || '');
 
 describe('every name the system can utter reaches something real', () => {
@@ -858,6 +860,23 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         // and a dead brain is not an answer to surface as one
         expect(SRC('orchestration', 'AgentOrchestrator.ts'))
             .toContain('if (isDirectAnswer && !isProviderFailure(result.error))');
+    });
+
+    it('a spent daily quota is announced, and the button really moves', () => {
+        // Joe already survived a spent quota by moving to the free/local mesh —
+        // silently. The provider button went on showing the dead provider, so
+        // the user could not tell why answers changed, and every new run asked
+        // for a quota that was gone. Proven live against a real 429 in
+        // verify_quota_switch.ts; locked here so the three halves stay together.
+        const router = SRC('core', 'llm', 'intelligent-router.ts');
+        expect(router).toContain('announceQuotaSwitch(routeKey, cfgProvider, cfgModel, waitMs)');
+        expect(router).toContain("type: 'provider_quota'");
+        expect(router).toMatch(/const last = quotaAnnounced\.get\(routeKey\)/);   // once per window
+        const composer = WEB('components', 'CommandComposer.tsx');
+        expect(composer).toContain("msg.type === 'provider_quota'");
+        expect(composer).toContain('setActiveProvider(target)');
+        expect(composer).toContain('setSelectedProvider(target)');
+        expect(composer).toContain("localStorage.setItem('active_provider', target)");
     });
 
     it('a tool name the planner invents never reaches the executor', () => {
