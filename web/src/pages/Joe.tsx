@@ -186,8 +186,17 @@ export default function Joe() {
                 || (typeof msg.data?.name === 'string' ? msg.data.name.replace(/^execute:/, '') : '')
                 || (typeof msg.data?.tool?.name === 'string' ? msg.data.tool.name : '');
 
-            // Auto switch to terminal for command execution
-            if ((isToolStart && ['run_command', 'shell_execute', 'terminal_manager', 'npm_manager', 'npm_install', 'npm_build'].includes(toolName))) {
+            /**
+             * Auto switch to terminal for a command the USER's work is running.
+             *
+             * `terminal_manager` is NOT in this list any more: the terminal
+             * PANEL calls it on mount — four times on a cold page load — so
+             * opening Joe flashed the Terminal tab before the build had begun,
+             * and the Logs tab then took over a second later. Reported from
+             * the field: «في البداية قام بتشغيل الثيرمال ثم انتقل الى شاشة
+             * اللوغز». A panel booting itself is not a command to watch.
+             */
+            if ((isToolStart && ['run_command', 'shell_execute', 'npm_manager', 'npm_install', 'npm_build'].includes(toolName))) {
                 setWorkspaceTab('terminal');
                 triggerUncollapse();
             }

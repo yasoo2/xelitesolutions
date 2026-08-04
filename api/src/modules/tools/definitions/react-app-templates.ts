@@ -230,7 +230,14 @@ export async function apiList(api) {
     const r = await fetch(api, { headers: { Accept: 'application/json' } });
     if (!r.ok) return null;
     const d = await r.json();
-    const rows = Array.isArray(d) ? d : Array.isArray(d && d.items) ? d.items : Array.isArray(d && d.data) ? d.data : null;
+    // …including the feed's own «{ ok, posts }» — the shape the generated
+    // social server answers with. A reader that does not know its own
+    // server's shape returns null and the app quietly stays «local».
+    const rows = Array.isArray(d) ? d
+      : Array.isArray(d && d.items) ? d.items
+        : Array.isArray(d && d.data) ? d.data
+          : Array.isArray(d && d.posts) ? d.posts
+            : Array.isArray(d && d.rows) ? d.rows : null;
     return Array.isArray(rows) ? rows : null;
   } catch { return null; }
 }
@@ -1437,8 +1444,8 @@ const when = (iso) => {
   try {
     const diff = (Date.now() - new Date(iso).getTime()) / 1000;
     if (diff < 60) return ${T('الآن', 'now')};
-    if (diff < 3600) return Math.floor(diff / 60) + ${T("' د'", "'m'")};
-    if (diff < 86400) return Math.floor(diff / 3600) + ${T("' س'", "'h'")};
+    if (diff < 3600) return Math.floor(diff / 60) + ${T(' د', 'm')};
+    if (diff < 86400) return Math.floor(diff / 3600) + ${T(' س', 'h')};
     return new Date(iso).toLocaleDateString();
   } catch { return ''; }
 };
@@ -1496,11 +1503,11 @@ export default function SocialApp({ content }) {
       setPosts(prev => {
         const seen = new Set(prev.map(p => String(p.id)));
         const extra = remote
-          .filter(r => r && !seen.has(String(r.id)) && (r.text || r.body))
+          .filter(r => r && !seen.has(String(r.id)) && (r.text || r.body || r.image))
           .map(r => ({
             id: String(r.id), author: r.author || r.who || '—', handle: r.handle || '',
             text: r.text || r.body || '', image: r.image || null,
-            at: r.at || r.createdAt || new Date().toISOString(), likes: [], comments: [],
+            at: r.at || r.createdAt || new Date().toISOString(), likes: [], comments: [], remote: true,
           }));
         return extra.length ? [...extra, ...prev].sort((a, b) => String(b.at).localeCompare(String(a.at))) : prev;
       });
@@ -1542,7 +1549,14 @@ export default function SocialApp({ content }) {
     setPosts([post, ...posts]);
     setText(''); setImage(null);
     if (fileRef.current) fileRef.current.value = '';
-    apiCreate(content.api, { author: post.author, handle: post.handle, text: post.text, at: post.at });
+    // The server's own id replaces the local one, so the next poll recognises
+    // this post as already present instead of showing it twice.
+    apiCreate(content.api, { author: post.author, handle: post.handle, text: post.text, image: post.image, at: post.at })
+      .then((saved) => {
+        const id = saved && (saved.post ? saved.post.id : saved.id);
+        if (id) setPosts(cur => cur.map(p => (p.id === post.id ? { ...p, id: String(id) } : p)));
+      })
+      .catch(() => { /* offline — the local copy stands */ });
   };
 
   const toggleLike = (id) => setPosts(posts.map(p => (p.id !== id ? p : {

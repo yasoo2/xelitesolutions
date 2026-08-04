@@ -71,7 +71,19 @@ describe('the stream is live, not a post-hoc flood', () => {
 
 describe('the terminal opens when it should, and only then', () => {
     it('a command tool starting opens the terminal tab', () => {
-        expect(JOE).toMatch(/'run_command', 'shell_execute', 'terminal_manager'[\s\S]{0,120}setWorkspaceTab\('terminal'\)/);
+        // This asserted the literal list I happened to write, `terminal_manager`
+        // included — so it defended a bug. The terminal PANEL calls
+        // terminal_manager on mount, four times on a cold load, which flashed
+        // the Terminal tab before any build had begun («في البداية قام بتشغيل
+        // الثيرمال ثم انتقل الى شاشة اللوغز»). The PROPERTY is what matters: a
+        // command the user's work is running opens the terminal.
+        expect(JOE).toMatch(/'run_command', 'shell_execute'[\s\S]{0,160}setWorkspaceTab\('terminal'\)/);
+    });
+
+    it('…and a panel booting itself does not', () => {
+        const list = JOE.split('\n').find(l => l.includes('.includes(toolName)'));
+        expect(list).toBeTruthy();
+        expect(list).not.toContain('terminal_manager');
     });
 
     it('raw terminal_output NEVER steals the tab', () => {

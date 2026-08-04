@@ -109,6 +109,171 @@ function filePackageJson(name: string): string {
  * JSON file with the identical interface otherwise. The column is `details`
  * (not `desc` — a reserved SQL word that would refuse the CREATE TABLE).
  */
+/**
+ * A SOCIAL TABLE IS NOT A CATALOGUE WITH A NEW NAME.
+ *
+ * Measured in the field: the social build produced `/api/posts` whose columns
+ * were name/details/price and whose POST demanded an owner token. The feed
+ * sent {author, handle, text, at} — so every write answered 400, every read
+ * returned a shape the app could not parse, and the log still printed «full
+ * stack link». The link was decorative. A post has an author, a handle, a
+ * body and a picture, and in a social network the MEMBERS write it, so the
+ * write is public exactly like a visitor's order.
+ */
+export function isFeedResource(resource: string): boolean { return resource === 'posts'; }
+
+function filePostsDbJs(): string {
+    return `// The feed's data layer: node:sqlite when this Node has it (>= 22.5), a JSON
+// file with the SAME interface otherwise. Zero native dependencies either way.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+let db;
+
+if (process.env.JOE_FORCE_JSON_DB !== '1') {
+  try {
+    const { DatabaseSync } = await import('node:sqlite');
+    const conn = new DatabaseSync(path.join(HERE, 'data.db'));
+    conn.exec(\`CREATE TABLE IF NOT EXISTS posts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      author TEXT NOT NULL,
+      handle TEXT DEFAULT '',
+      text TEXT DEFAULT '',
+      image TEXT DEFAULT '',
+      at TEXT DEFAULT (datetime('now'))
+    )\`);
+    const rowOf = (r) => (r ? { id: r.id, author: r.author, handle: r.handle, text: r.text, image: r.image || null, at: r.at } : null);
+    db = {
+      backend: 'sqlite',
+      list: () => conn.prepare('SELECT * FROM posts ORDER BY id DESC LIMIT 500').all().map(rowOf),
+      get: (id) => rowOf(conn.prepare('SELECT * FROM posts WHERE id = ?').get(Number(id))),
+      create: ({ author, handle = '', text = '', image = '', at }) => {
+        const r = conn.prepare('INSERT INTO posts (author, handle, text, image, at) VALUES (?, ?, ?, ?, ?)')
+          .run(String(author), String(handle), String(text), String(image || ''), String(at || new Date().toISOString()));
+        return db.get(r.lastInsertRowid);
+      },
+      remove: (id) => conn.prepare('DELETE FROM posts WHERE id = ?').run(Number(id)).changes > 0,
+      count: () => Number(conn.prepare('SELECT COUNT(*) AS n FROM posts').get().n),
+    };
+  } catch { /* an older Node — the JSON backend below serves instead */ }
+}
+
+if (!db) {
+  const FILE = path.join(HERE, 'data.json');
+  const load = () => { try { return JSON.parse(fs.readFileSync(FILE, 'utf-8')); } catch { return { seq: 0, rows: [] }; } };
+  const save = (s) => fs.writeFileSync(FILE, JSON.stringify(s, null, 2));
+  db = {
+    backend: 'json',
+    list: () => load().rows.slice().reverse().slice(0, 500),
+    get: (id) => load().rows.find((r) => r.id === Number(id)) || null,
+    create: ({ author, handle = '', text = '', image = '', at }) => {
+      const s = load();
+      const row = { id: ++s.seq, author: String(author), handle: String(handle), text: String(text), image: image || null, at: at || new Date().toISOString() };
+      s.rows.push(row); save(s); return row;
+    },
+    remove: (id) => {
+      const s = load(); const before = s.rows.length;
+      s.rows = s.rows.filter((r) => r.id !== Number(id)); save(s);
+      return s.rows.length < before;
+    },
+    count: () => load().rows.length,
+  };
+}
+
+export { db };
+`;
+}
+
+function filePostsServerJs(brand: string): string {
+    return `// ${brand} — the feed's API. Members post; everyone reads.
+//   npm start            (port 4100)
+//   PORT=5050 npm start
+import express from 'express';
+import { db } from './db.js';
+
+const app = express();
+// A post can carry a downscaled photo as a data URL — the limit is generous
+// on purpose, and still bounded so one request cannot exhaust memory.
+app.use(express.json({ limit: '6mb' }));
+
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+  if (req.method === 'OPTIONS') return res.end();
+  next();
+});
+
+app.get('/api/health', (_req, res) => res.json({ ok: true, backend: db.backend, posts: db.count() }));
+
+// The feed. The response carries BOTH shapes on purpose: \`posts\` reads well
+// for a human with curl, and \`data\` is what the generated app parses.
+app.get('/api/posts', (_req, res) => {
+  const posts = db.list();
+  res.json({ ok: true, posts, data: posts });
+});
+
+app.post('/api/posts', (req, res) => {
+  const { author, handle, text, image, at } = req.body || {};
+  if (typeof author !== 'string' || !author.trim() || author.length > 60) {
+    return res.status(400).json({ ok: false, error: 'author_required' });
+  }
+  const body = typeof text === 'string' ? text : '';
+  if (!body.trim() && !image) return res.status(400).json({ ok: false, error: 'empty_post' });
+  if (body.length > 5000) return res.status(400).json({ ok: false, error: 'text_too_long' });
+  if (image !== undefined && image !== null && (typeof image !== 'string' || image.length > 4_000_000)) {
+    return res.status(400).json({ ok: false, error: 'bad_image' });
+  }
+  const post = db.create({
+    author: author.trim(),
+    handle: typeof handle === 'string' ? handle.slice(0, 30) : '',
+    text: body, image: image || '', at: typeof at === 'string' ? at : new Date().toISOString(),
+  });
+  res.status(201).json({ ok: true, post });
+});
+
+app.delete('/api/posts/:id', (req, res) => {
+  if (!db.remove(req.params.id)) return res.status(404).json({ ok: false, error: 'not_found' });
+  res.json({ ok: true });
+});
+
+const port = Number(process.env.PORT || 4100);
+app.listen(port, () => {
+  console.log(\`[api] feed listening on http://localhost:\${port} — backend: \${db.backend}, \${db.count()} posts\`);
+  console.log('[api] GET /api/posts · POST /api/posts · DELETE /api/posts/:id · GET /api/health');
+});
+`;
+}
+
+function filePostsReadme(brand: string): string {
+    return `# ${brand} — خادم الخيط
+
+خادم Express حقيقي فوق قاعدة بيانات حقيقية، بلا أي اعتماديات أصلية.
+
+\`\`\`bash
+npm install
+npm start          # المنفذ 4100
+\`\`\`
+
+| المسار | ماذا يفعل |
+|---|---|
+| \`GET /api/posts\` | كل المنشورات (الأحدث أولاً) |
+| \`POST /api/posts\` | نشر: \`{author, handle, text, image, at}\` |
+| \`DELETE /api/posts/:id\` | حذف منشور |
+| \`GET /api/health\` | حالة الخادم وعدد المنشورات |
+
+في شبكة اجتماعية **الأعضاء هم من ينشرون**، فالكتابة عامّة عن قصد — لا رمز
+مالك. هذا خادم محلي لمشروعك؛ قبل نشره على الإنترنت أضِف حسابات وصلاحيات.
+
+الإعجابات والتعليقات ما تزال محفوظة في متصفح كل مستخدم — لم أنقلها إلى
+الخادم بعد، وأقولها بدل ادّعاء المزامنة الكاملة.
+
+البيانات على القرص (\`data.db\` أو \`data.json\`) وتنجو من إعادة التشغيل.
+`;
+}
+
 function fileDbJs(resource: string): string {
     return `// The data layer: node:sqlite when this Node has it (>= 22.5), a JSON
 // file with the SAME interface otherwise. Zero native dependencies either
@@ -713,7 +878,19 @@ export class ApiProjectTool extends BaseTool {
         const ownerSalt = crypto.randomBytes(16).toString('hex');
         const ownerHash = crypto.scryptSync(ownerPassword, ownerSalt, 64).toString('hex');
 
-        const files: Record<string, string> = {
+        // A FEED IS ITS OWN SHAPE. The catalogue server (items + orders + an
+        // owner account) is right for a shop and wrong for a social network:
+        // it demanded an owner token for every post and stored name/details/
+        // price. A feed build gets a server whose columns and routes are the
+        // ones the app actually speaks.
+        const feed = isFeedResource(resource);
+        const files: Record<string, string> = feed ? {
+            'package.json': filePackageJson(brand),
+            'server.js': filePostsServerJs(brand),
+            'db.js': filePostsDbJs(),
+            'README.md': filePostsReadme(brand),
+            '.gitignore': 'node_modules\ndata.db\ndata.json\n',
+        } : {
             'package.json': filePackageJson(brand),
             'server.js': fileServerJs(resource, brand, path.basename(proj)),
             'db.js': fileDbJs(resource),

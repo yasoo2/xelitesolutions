@@ -62,7 +62,16 @@ export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number
 
     let browser: any = null;
     try {
-        browser = await chromium.launch(getChromiumLaunchOptions());
+        /**
+         * THE SELF-QA NEVER SHOWS A WINDOW.
+         *
+         * getChromiumLaunchOptions honours BROWSER_HEADED, which exists so the
+         * user can WATCH Joe drive a site when he asked for that. This audit is
+         * an internal check he did not ask to watch — reported from the field:
+         * «في اثناء البناء تم فتح المتصفح … بدون اي فائده». Headless is forced
+         * here regardless of the environment.
+         */
+        browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });
         const page = await browser.newPage();
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];

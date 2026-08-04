@@ -8,14 +8,23 @@ import path from 'path';
 import AdmZip from 'adm-zip';
 import { archiveProject, extractProject } from '../core/transfer/project-archive';
 
-let src: string, dest: string;
+let src: string, dest: string, sandbox: string;
 beforeEach(() => {
     src = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-exp-'));
-    dest = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-imp-'));
+    /**
+     * `dest` lives inside a PRIVATE parent, not directly in os.tmpdir().
+     *
+     * The zip-slip test proves nothing escaped by listing dest's parent. When
+     * that parent was the shared /tmp, any other suite creating a temp dir in
+     * the same instant counted as a "leak" and the gate went red at random.
+     * A private parent makes the check mean what it says.
+     */
+    sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-box-'));
+    dest = fs.mkdtempSync(path.join(sandbox, 'joe-imp-'));
 });
 afterEach(() => {
     fs.rmSync(src, { recursive: true, force: true });
-    fs.rmSync(dest, { recursive: true, force: true });
+    fs.rmSync(sandbox, { recursive: true, force: true });
 });
 
 function seedProject() {

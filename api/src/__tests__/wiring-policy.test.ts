@@ -1264,3 +1264,88 @@ describe('a social request gets a feed, not a messenger and not a brochure', () 
         expect(gap).toEqual(expect.arrayContaining(['Stories', 'Live streaming', 'Ads platform']));
     });
 });
+
+/**
+ * THE LINK TO THE SERVER MUST BE REAL, NOT DECORATIVE.
+ *
+ * The social build announced «مشروع كامل: واجهة + خادم» and shipped a server
+ * whose table was a CATALOGUE (name/details/price) behind an owner Bearer
+ * token. The feed app posts `{author, handle, text}` with no token, so every
+ * write was a 400 and every read was a shape the app could not parse — the
+ * badge quietly stayed "local" and nobody saw a line in the log.
+ *
+ * The invariant: when the front end is a feed, the server it ships with must
+ * accept THAT app's request and answer in a shape THAT app can read.
+ */
+describe('a feed ships with a feed server', () => {
+    const AP = () => SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+
+    it('a social request resolves to posts, and posts is recognised as a feed', () => {
+        const { apiResourceForKind, isFeedResource } = require('../modules/tools/definitions/ApiProjectTool');
+        // The resource is read from the REQUEST (the probe), not from the page
+        // kind — a social platform is not a restaurant or a store.
+        expect(apiResourceForKind('generic', true, 'ابنِ منصة تواصل اجتماعي فيها منشورات ومتابعين').resource).toBe('posts');
+        expect(isFeedResource('posts')).toBe(true);
+        expect(isFeedResource('products')).toBe(false);
+    });
+
+    it('its table carries a post, not a product', () => {
+        const t = AP();
+        expect(t).toMatch(/function filePostsDbJs/);
+        const feedDb = t.slice(t.indexOf('function filePostsDbJs'), t.indexOf('function filePostsServerJs'));
+        for (const col of ['author', 'handle', 'text', 'image']) expect(feedDb).toContain(col);
+        expect(feedDb).not.toMatch(/price TEXT/);
+    });
+
+    it('members post — the write is public, and the body is the app\'s body', () => {
+        const t = AP();
+        const srv = t.slice(t.indexOf('function filePostsServerJs'), t.indexOf('function filePostsReadme'));
+        expect(srv).toMatch(/app\.post\('\/api\/posts'/);
+        expect(srv).toMatch(/const \{ author, handle, text, image, at \} = req\.body/);
+        expect(srv).not.toMatch(/Bearer/);          // no owner token on a social feed
+        expect(srv).not.toMatch(/requireOwner/);
+        expect(srv).toMatch(/empty_post/);          // …but an empty post is still refused
+    });
+
+    it('the answer is a shape the generated app can actually read', () => {
+        const srv = AP();
+        expect(srv).toMatch(/res\.json\(\{ ok: true, posts, data: posts \}\)/);
+        const T = SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        expect(T).toMatch(/Array\.isArray\(d && d\.posts\) \? d\.posts/);
+        expect(T).toMatch(/Array\.isArray\(d && d\.rows\) \? d\.rows/);
+    });
+
+    it('the feed branch is the one that actually gets written to disk', () => {
+        const t = AP();
+        expect(t).toMatch(/const feed = isFeedResource\(resource\)/);
+        expect(t).toMatch(/'server\.js': filePostsServerJs\(brand\)/);
+        expect(t).toMatch(/'db\.js': filePostsDbJs\(\)/);
+    });
+});
+
+/**
+ * TWO THINGS THE USER WATCHED HAPPEN AND SHOULD NOT HAVE.
+ *
+ * «في البداية قام بتشغيل الثيرمال ثم انتقل الى شاشة اللوغز» — the terminal
+ * PANEL calls terminal_manager on mount, and that call was in the list of
+ * tools that yank the workspace to the Terminal tab. A panel booting itself
+ * is not a command worth watching.
+ *
+ * «في اثناء البناء تم فتح المتصفح … بدون اي فائده» — the self-QA honours
+ * BROWSER_HEADED, which exists for when the user ASKED to watch Joe drive a
+ * site. He did not ask to watch an internal check.
+ */
+describe('nothing opens on screen that the user did not ask for', () => {
+    it('a panel calling terminal_manager never steals the tab', () => {
+        const J = WEB('pages', 'Joe.tsx');
+        const line = J.split('\n').find(l => l.includes('setWorkspaceTab(\'terminal\')') === false && l.includes('.includes(toolName)'));
+        expect(line).toBeTruthy();
+        expect(line).not.toContain('terminal_manager');
+        expect(line).toContain('run_command');       // the real commands still do
+    });
+
+    it('the self-QA browser is headless whatever the environment says', () => {
+        const A = SRC('core', 'quality', 'app-audit.ts');
+        expect(A).toMatch(/chromium\.launch\(\{ \.\.\.getChromiumLaunchOptions\(\), headless: true \}\)/);
+    });
+});
