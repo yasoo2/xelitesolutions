@@ -202,3 +202,42 @@ describe('the server and the UI agree on event names', () => {
         expect(SRC('api', 'routes', 'run.ts')).toContain("type: 'run_started'");
     });
 });
+
+/**
+ * THE HTTP CONTRACT — the last seam.
+ *
+ * A `fetch` in the web app is a promise that a route exists. Probing a booted
+ * server proves nothing (Express answers 404 for a POST-only route asked with
+ * GET), so the map is read where it is declared: the mount table in app.ts and
+ * every `router.<method>('…')` in the files it mounts.
+ *
+ * The audit found one hole and it was real: `POST /api/audio/speech` — the
+ * voice mode's neural-speech request — had never been mounted. The client
+ * swallowed Express's «Cannot POST» as a failed request and fell back to
+ * browser speech, so the good half of the feature had simply never run once.
+ */
+describe('every URL the browser calls exists on the server', () => {
+    const { serverRoutes, uiPaths, unreachableUiPaths, routeRegex } = require('../tests/routeMap');
+
+    it('the map itself is real — a broken parser must not pass silently', () => {
+        const routes = serverRoutes();
+        expect(routes.length).toBeGreaterThan(100);
+        expect(uiPaths().length).toBeGreaterThan(40);
+        for (const known of ['/api/health', '/api/agent', '/api/sessions/abc/messages', '/api/audio/speech']) {
+            expect(routes.some((r: any) => routeRegex(r.path).test(known))).toBe(true);
+        }
+    });
+
+    it('no button in the UI calls a path nothing serves', () => {
+        expect(unreachableUiPaths().map((u: any) => `${u.path} ← ${u.file}`)).toEqual([]);
+    });
+
+    it('voice mode has a server half now, and it never fakes success', () => {
+        const audio = SRC('api', 'routes', 'audio.ts');
+        expect(SRC('api', 'app.ts')).toContain("apiRouter.use('/audio', audioRoutes)");
+        expect(audio).toContain("router.post('/speech'");
+        // no engine ⇒ 503 + a reason, so the client falls back at once
+        expect(audio).toContain('tts_unavailable');
+        expect(audio).toContain('res.status(503)');
+    });
+});

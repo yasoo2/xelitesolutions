@@ -866,6 +866,10 @@ export default function CommandComposer({
   const [isListening, setIsListening] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  // The server answers 503 when no speech engine is configured on this
+  // machine. Asking again for every single reply just delays the browser
+  // fallback each time, so the answer is remembered until the page reloads.
+  const serverTtsOff = useRef(false);
   const [status, setStatus] = useState<'idle' | 'thinking' | 'answering'>('idle');
   const [isThinking, setIsThinking] = useState(false);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
@@ -1227,7 +1231,7 @@ export default function CommandComposer({
     // 1. Try OpenAI TTS first
     try {
       const token = localStorage.getItem('token');
-      if (token) {
+      if (token && !serverTtsOff.current) {
         const res = await fetch(`${API}/audio/speech`, {
           method: 'POST',
           headers: {
@@ -1242,6 +1246,9 @@ export default function CommandComposer({
           setIsSpeaking(false);
           return;
         }
+        // 503 = this machine has no speech engine configured. That will not
+        // change mid-session, so stop asking and go straight to the browser.
+        if (res.status === 503) serverTtsOff.current = true;
         if (res.ok) {
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);

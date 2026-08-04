@@ -42,6 +42,7 @@ import pingDeployRoutes from './routes/ping-deploy';
 import buildRoutes from './routes/build';
 import sentinelRoutes from './routes/sentinel';
 import agentRoutes from './routes/agent';
+import audioRoutes from './routes/audio';
 
 import { authenticate } from './middleware/auth';
 
@@ -235,6 +236,8 @@ export const createApp = () => {
   apiRouter.use('/ping-deploy', pingDeployRoutes);
   apiRouter.use('/build', buildRoutes);
   apiRouter.use('/agent', agentRoutes);
+  // Voice mode has always asked for real speech here; now something answers.
+  apiRouter.use('/audio', audioRoutes);
 
   // Specific deployment endpoint
   apiRouter.post('/deploy-now', async (_req, res) => {
