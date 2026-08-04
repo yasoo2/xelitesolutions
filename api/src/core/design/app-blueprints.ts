@@ -469,6 +469,27 @@ export function requestedFeatures(requestRaw: string): string[] {
     for (const line of request.split(/\r?\n/)) {
         if (/^\s*[-•*–—]\s+\S/.test(line) || /^\s*\d+[.)]\s+\S/.test(line)) push(line);
     }
+    /**
+     * A LIST UNDER «Features:» IS A LIST, BULLETS OR NOT.
+     *
+     * Measured in the field: the same twelve-feature spec, pasted once with
+     * «- » and once without, produced a twelve-item gap list and then a
+     * ONE-item gap list. The features had not changed; only the punctuation
+     * had. Everything after a Features/المطلوب heading, one short item per
+     * line, counts — that is how people actually paste a spec.
+     */
+    if (out.length < 3) {
+        const head = request.match(/^[^\S\r\n]*(?:features?|requirements?|المطلوب|المميزات|الميزات)\s*:?[^\S\r\n]*$/im);
+        if (head) {
+            const after = request.slice((head.index || 0) + head[0].length).split(/\r?\n/);
+            for (const line of after) {
+                const t = line.trim();
+                if (!t) continue;                       // blank lines separate, they do not end the list
+                if (/[.!?؟]$/.test(t) || t.split(/\s+/).length > 7) break;   // prose again — the list is over
+                push(t);
+            }
+        }
+    }
     // «… with A, B and C» — the one-line form of the same list.
     if (out.length < 3) {
         const m = request.match(/\b(?:with|including|features?:?)\s+([^.\n]{10,300})/i);

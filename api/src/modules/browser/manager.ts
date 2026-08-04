@@ -209,6 +209,11 @@ type SessionState = {
 };
 
 const sessions = new Map<string, SessionState>();
+/**
+ * Sessions a live panel is currently WATCHING. Membership means «stream to me
+ * when a browser exists» — never «open one for me». See startStreaming.
+ */
+const watched = new Set<string>();
 
 /** True when a browser session is live on a REAL page (not blank/about:blank) —
  *  i.e. the user is currently looking at a loaded site. Used by the planner to
@@ -715,6 +720,8 @@ export async function getBrowserSession(sessionId: string) {
       const created = await createSession(sid);
       sessions.set(sid, created);
       ensureCleanupLoop();
+      // A panel may already be watching this id and waiting for exactly this.
+      try { resumeStreamingIfWatched(sid); } catch { /* streaming is best-effort */ }
       return created;
     } finally {
       pendingSessions.delete(sid);
@@ -732,18 +739,27 @@ export function setStreamMask(sessionId: string, maskLocators: Locator[]) {
   s.lastUsedAt = Date.now();
 }
 
+/**
+ * LOOKING AT THE PANEL IS NOT A REQUEST TO OPEN A BROWSER.
+ *
+ * This used to call getBrowserSession(), which LAUNCHES a real Chromium —
+ * so merely showing the Browser tab (or the workspace opening on it) started
+ * a browser the user never asked for, and with BROWSER_HEADED a window
+ * appeared on his desktop in the middle of a build: «في اثناء البناء تم فتح
+ * المتصفح … بدون اي فائده». It also began a JPEG capture loop at stream FPS
+ * against a blank page, for as long as the panel stayed open.
+ *
+ * The panel now ATTACHES to a browser that already exists. If none does, it
+ * shows its empty state and costs nothing; the first real navigation — the
+ * user typing a URL, or a browser tool running — creates the session, and
+ * `resumeStreamingIfWatched` starts the stream at that moment.
+ */
 export function startStreaming(sessionId: string) {
   const sid = String(sessionId || '').trim();
   if (!sid) return;
+  watched.add(sid);
   void (async () => {
-    let s = sessions.get(sid);
-    if (!s) {
-      try {
-        s = await getBrowserSession(sid);
-      } catch {
-        return;
-      }
-    }
+    const s = sessions.get(sid);
     if (!s || s.streaming) return;
     s.streaming = true;
     s.lastUsedAt = Date.now();
@@ -786,8 +802,22 @@ export function startStreaming(sessionId: string) {
   })();
 }
 
+/**
+ * A browser was just created for a session someone is WATCHING — start the
+ * stream now. This is the other half of the lazy panel: the frames begin the
+ * moment there is really something to show, not the moment a tab is drawn.
+ */
+/** How many browser sessions are actually alive — what a proof can count. */
+export function liveBrowserSessionCount(): number { return sessions.size; }
+
+export function resumeStreamingIfWatched(sessionId: string) {
+    const sid = String(sessionId || '').trim();
+    if (sid && watched.has(sid)) startStreaming(sid);
+}
+
 export function stopStreaming(sessionId: string) {
   const sid = String(sessionId || '').trim();
+  watched.delete(sid);
   const s = sessions.get(sid);
   if (!s) return;
   s.streaming = false;

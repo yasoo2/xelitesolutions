@@ -236,6 +236,29 @@ async function main() {
     const audit = fs.readFileSync(path.join(__dirname, '..', '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
     check('ومتصفح الفحص الذاتي لا يفتح نافذة أبداً', /headless: true/.test(audit));
 
+    console.log('\n[9] ورسالة البناء تصف الخادم الذي بُني فعلاً');
+    {
+        const msg = String(r?.output?.message || '');
+        check('لا حساب مالك ولا كلمة مرور — لا وجود لهما في خادم الخيط', !/كلمة المرور|Owner account/.test(msg), msg.slice(0, 120));
+        check('ولا وعد بجدول طلبات غير موجود', !/api\/orders/.test(msg));
+        check('ولا ادّعاء «محميّة» لكتابةٍ عامّة', !/Bearer|محميّة لك/.test(msg));
+        check('بل مسارات الخيط نفسها', /api\/posts\/:id\/like/.test(msg) && /api\/follows/.test(msg), msg.slice(0, 160));
+        check('والإثبات الحي نجح كخيط لا ككتالوج', r?.output?.proven === true, JSON.stringify({ proven: r?.output?.proven }));
+        check('ويقول بصراحة إن الهوية بلا كلمة مرور', /بلا كلمة مرور/.test(msg));
+    }
+
+    console.log('\n[10] وقائمة النواقص تُقرأ من الطلب ولو بلا شرطات');
+    {
+        const { requestedFeatures, uncoveredFeatures } = require('../../core/design/app-blueprints');
+        const plain = 'Build a next-generation social media platform.\n\nFeatures:\n\nPosts\nStories\nReels\nLive streaming\nGroups\nPages\nMessaging\nVideo calls\nAI moderation\nRecommendations\nAds platform\nCreator dashboard\n';
+        const feats = requestedFeatures(plain);
+        check('اثنتا عشرة ميزة تُقرأ من قائمة بلا شرطات', feats.length === 12, JSON.stringify(feats));
+        const gap = uncoveredFeatures(plain, 'social', true);
+        check('و«Posts» منفّذة فلا تُذكر', !gap.includes('Posts'));
+        check('و«Stories» و«Reels» و«Ads platform» تُذكر بالاسم',
+            ['Stories', 'Reels', 'Ads platform'].every(f => gap.includes(f)), JSON.stringify(gap));
+    }
+
     console.log(`\n===== ${pass} passed, ${fail} failed =====`);
     console.log(`(الخادم المولَّد: ${ROOT})`);
     process.exit(fail ? 1 : 0);

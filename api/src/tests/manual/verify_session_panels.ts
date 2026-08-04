@@ -29,6 +29,17 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'x';
 process.env.PERSISTENCE_MODE = 'JSON';
 process.env.OFFLINE_MODE = 'true';
 process.env.ENABLE_AUTH_BYPASS = 'true';
+/**
+ * A PROOF STARTS FROM AN EMPTY DESK.
+ *
+ * This read the repo's real chat store, so after a few runs the session bar
+ * held dozens of chips, each one squeezed until its title no longer rendered
+ * — and the proof failed with «session chip not clickable» on a machine whose
+ * only sin was having been used. Its own directory keeps the two sessions it
+ * creates the only two on screen.
+ */
+process.env.JOE_CHAT_STORE_DIR = require('fs').mkdtempSync(
+    require('path').join(require('os').tmpdir(), 'joe-panels-store-'));
 
 let pass = 0, fail = 0;
 const check = (name: string, ok: boolean, detail = '') => {
@@ -85,6 +96,28 @@ async function main() {
             }
         };
         await page.goto(`http://127.0.0.1:${port}/joe`, { waitUntil: 'networkidle' });
+        /**
+         * THE MODAL THAT ATE THE PROOF.
+         *
+         * The project-setup dialog opens whenever the workspace is not marked
+         * initialised, and it covers the session list — so this proof failed
+         * with «session chip not clickable» on a machine that simply had a
+         * fresh workspace. Marking the workspace initialised through the REAL
+         * endpoint is what a person does by clicking through it once; the
+         * text-button hunt below stays as the fallback.
+         */
+        await page.evaluate(async () => {
+            const tok = localStorage.getItem('token');
+            const list = await fetch('/api/workspaces', { headers: { Authorization: 'Bearer ' + tok } }).then(r => r.json()).catch(() => []);
+            const ws = Array.isArray(list) ? list[0] : (list?.workspaces || [])[0];
+            const id = ws && (ws._id || ws.id);
+            if (!id) return;
+            await fetch('/api/workspaces/' + id, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+                body: JSON.stringify({ projectInitialized: true }),
+            }).catch(() => { });
+        });
         await page.waitForTimeout(1500);
         await dismissOnboarding();
         check('واجهة جو فُتحت في متصفح حقيقي', await page.locator('body').isVisible());

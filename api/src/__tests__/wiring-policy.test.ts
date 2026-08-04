@@ -1462,3 +1462,78 @@ describe('the React head is publish-ready', () => {
         expect(A).toMatch(/l\?\.url \? ` ← \$\{String\(l\.url\)\.slice\(-60\)\}` : ''/);
     });
 });
+
+/**
+ * ONE RULE, EVERY ENFORCEMENT POINT.
+ *
+ * «ما زالت الثيرمال والمتصفح تفتحان اثناء البناء … تبا لك» — he was right,
+ * and the reason is the worst kind: I fixed ONE of THREE copies of the same
+ * auto-switch list, shipped it, and reported it fixed. Joe.tsx was corrected;
+ * CommandComposer.tsx and AutoOpenManager.ts kept firing. On top of that the
+ * workspace DEFAULTED to the terminal tab in three separate places, and the
+ * browser panel LAUNCHED a Chromium just by being shown.
+ *
+ * The invariant: showing a panel starts nothing, and a panel calling its own
+ * tool never steals the screen. Checked at EVERY point that can break it —
+ * that is the whole reason this file exists.
+ */
+describe('showing a panel starts nothing', () => {
+    const files: Array<[string, string]> = [
+        ['Joe.tsx', WEB('pages', 'Joe.tsx')],
+        ['CommandComposer.tsx', WEB('components', 'CommandComposer.tsx')],
+        ['AutoOpenManager.ts', WEB('services', 'AutoOpenManager.ts')],
+    ];
+
+    it('no tab-switch list anywhere treats terminal_manager as a command to watch', () => {
+        for (const [name, src] of files) {
+            for (const line of src.split('\n')) {
+                // The lists are single-line arrays of tool names.
+                if (!/\[\s*'[a-z_]+'\s*,/.test(line)) continue;
+                if (!/terminal|shell|npm/.test(line)) continue;
+                expect(`${name}: ${line.trim()}`).not.toMatch(/'terminal_manager'/);
+            }
+        }
+        // …and the one place it is named, it is named to be EXCLUDED.
+        expect(WEB('services', 'AutoOpenManager.ts')).toMatch(/const isPanelBoot = toolName === 'terminal_manager'/);
+    });
+
+    it('no workspace defaults to a tab that spawns something', () => {
+        const defaults: Array<[string, string]> = [
+            ['Joe.tsx', WEB('pages', 'Joe.tsx')],
+            ['JoeIDELayout.tsx', WEB('components', 'JoeIDELayout.tsx')],
+            ['WorkspacePanel.tsx', WEB('components', 'WorkspacePanel.tsx')],
+        ];
+        for (const [name, src] of defaults) {
+            const m = src.match(/useState<WorkspaceTab(?:\s*\|\s*[^>]+)?>\('(\w+)'\)|useState<'browser'[^>]*>\('(\w+)'\)/);
+            const initial = m && (m[1] || m[2]);
+            expect(`${name}=${initial}`).not.toMatch(/=(terminal|browser)$/);
+        }
+    });
+
+    it('watching the browser panel does not create a browser', () => {
+        const M = SRC('modules', 'browser', 'manager.ts');
+        const fn = M.slice(M.indexOf('export function startStreaming'), M.indexOf('export function liveBrowserSessionCount'));
+        expect(fn).not.toMatch(/getBrowserSession/);      // the launch that used to happen here
+        expect(fn).toMatch(/watched\.add\(sid\)/);
+        // …and the stream still begins the moment a real browser appears.
+        expect(M).toMatch(/resumeStreamingIfWatched\(sid\)/);
+    });
+
+    it('a design verb over an attached image builds without needing a model', () => {
+        const P = SRC('core', 'orchestrator', 'PlanningEngine.ts');
+        expect(P).toMatch(/imageOnly && WANTS_BUILD_RE\.test\(userPart\)/);
+        expect(P).toMatch(/design verb \+ attached image → build the page/);
+    });
+
+    it('a feed is not sold an owner account it does not have', () => {
+        const A = SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+        expect(A).toMatch(/if \(feed\) \{\s*\n\s*const feedMsg = isAr/);
+        expect(A).toMatch(/feed proof → post #/);
+    });
+
+    it('a plain newline list under «Features:» is still a list', () => {
+        const { requestedFeatures } = require('../core/design/app-blueprints');
+        const plain = 'Build a social platform.\n\nFeatures:\n\nPosts\nStories\nReels\nAds platform\n';
+        expect(requestedFeatures(plain)).toEqual(['Posts', 'Stories', 'Reels', 'Ads platform']);
+    });
+});

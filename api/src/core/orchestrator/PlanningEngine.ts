@@ -382,6 +382,41 @@ Rules:
         }
 
         /**
+         * [A DESIGN REQUEST OVER A PICTURE IS A BUILD — WITH OR WITHOUT A MODEL]
+         *
+         * «اريد تصميم مختلف لهذه الصوره» + the screenshot had no deterministic
+         * route: it relied on the semantic router, and when every provider is
+         * exhausted — which is exactly what the field log shows, Groq at its
+         * daily limit and the mesh 429ing — the plan fell through to a CHAT
+         * about the picture. Joe's determinism must not evaporate the moment
+         * the quota does. A build verb aimed at an attached IMAGE builds.
+         *
+         * «هل هذا التصميم جميل؟» is still an opinion: the guard above already
+         * requires a build verb in the user's own words.
+         */
+        if (/\[ATTACHED FILES/.test(rawGoal)) {
+            const userPart = rawGoal.split('[ATTACHED FILES')[0];
+            const attachSection = rawGoal.slice(rawGoal.indexOf('[ATTACHED FILES'));
+            const imageOnly = /—\s*image\//.test(attachSection) && !/—\s*(application|text)\//.test(attachSection);
+            if (imageOnly && WANTS_BUILD_RE.test(userPart)) {
+                console.log('[PlanningEngine] design verb + attached image → build the page (no model needed)');
+                return {
+                    id: `design_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'build_page',
+                        description: 'بناء صفحة انطلاقاً من التصميم المرفق',
+                        tool: 'web_page_builder',
+                        agent: 'Dev',
+                        input: { request: intent.goal },
+                        dependsOn: []
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' }
+                } as any;
+            }
+        }
+
+        /**
          * [IMAGE ANALYSIS IS AN ANSWER, NEVER A TOOL CIRCUS] «قم بتحليل هذه
          * الصوره» arriving with NO attachment block (the follow-up message
          * that lost its file, or a restart that emptied the memory) went to

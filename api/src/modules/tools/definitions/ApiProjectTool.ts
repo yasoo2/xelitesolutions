@@ -1098,6 +1098,43 @@ export class ApiProjectTool extends BaseTool {
                         // POST must be refused, and the owner's login must be
                         // what unlocks it. A guard nobody tested is a guard
                         // nobody has.
+                        /**
+                         * A FEED IS PROVED AS A FEED.
+                         *
+                         * This whole block interrogates a CATALOGUE: an owner
+                         * login, a locked write, an orders table. The feed
+                         * server has none of them by design — members post —
+                         * so a perfectly working feed answered «auth proof →
+                         * … owner login FAILED» and «live proof → FAILED», and
+                         * the message then handed the user an owner password
+                         * and endpoints that do not exist. A proof that asks
+                         * the wrong questions is worse than none: it lies in
+                         * both directions.
+                         */
+                        if (feed) {
+                            const wrote = await fetch(`${base}/api/posts`, {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    author: isAr ? 'إثبات حيّ' : 'Live proof', handle: '@joe',
+                                    text: isAr ? 'أول منشور — كُتب عبر HTTP حقيقي' : 'First post — written over real HTTP',
+                                }),
+                            }).then(r => r.json()).catch(() => null);
+                            createdId = Number(wrote?.post?.id || 0);
+                            const back: any = await fetch(`${base}/api/posts`).then(r => r.json()).catch(() => null);
+                            const row = Array.isArray(back?.posts) ? back.posts.find((p: any) => Number(p.id) === createdId) : null;
+                            // …and the social graph, which is what makes it a network.
+                            const liked: any = await fetch(`${base}/api/posts/${createdId}/like`, {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ handle: '@joe' }),
+                            }).then(r => r.json()).catch(() => null);
+                            const empty = await fetch(`${base}/api/posts`, {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ author: 'x', text: '   ' }),
+                            }).then(r => r.status).catch(() => 0);
+                            proven = createdId > 0 && !!row && liked?.count === 1 && empty === 400;
+                            term(`feed proof → post #${createdId} ${row ? 'written and read back' : 'NOT read back'}, like count ${liked?.count ?? '—'}, empty post → ${empty}`);
+                            term(`live proof → ${proven ? `OK (backend ${backend})` : 'FAILED'}`);
+                        } else {
                         const anon = await fetch(`${base}/api/${resource}`, {
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ name: 'anonymous-must-be-refused' }),
@@ -1127,6 +1164,7 @@ export class ApiProjectTool extends BaseTool {
                         proven = createdId > 0 && Array.isArray(listed?.[resource])
                             && listed[resource].some((r: any) => r.id === createdId);
                         term(`live proof → ${proven ? `OK (backend ${backend}, row #${createdId} written and read back)` : 'FAILED'}`);
+                        }
                     } else {
                         term('live proof → server did not come up');
                     }
@@ -1143,6 +1181,53 @@ export class ApiProjectTool extends BaseTool {
         persistJoeProjects();
 
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');
+        /**
+         * THE MESSAGE MUST DESCRIBE THE SERVER THAT WAS BUILT.
+         *
+         * The feed build printed an owner e-mail and password, «POST
+         * /api/orders», and «Protected … catalogue writes» — none of which
+         * exist in it. Handing someone a credential for an account that was
+         * never created is not a small slip; it is the build lying about its
+         * own shape. A feed gets a feed's message.
+         */
+        if (feed) {
+            const feedMsg = isAr
+                ? `🗄️ ${proven ? 'بُنيت واجهة خلفية كاملة وثبت عملها بنشر وقراءة حقيقيَّين' : 'بُنيت واجهة خلفية كاملة'} — «${brand}».
+
+📂 المسار: ${proj}
+${fileList}
+
+${proven
+                    ? `✅ الإثبات الحي: الخادم اشتغل فعلاً، ونُشر منشور رقم ${createdId} عبر HTTP حقيقي وقُرئ من القاعدة (${backend === 'sqlite' ? 'SQLite المدمجة' : 'مخزن JSON'})، والإعجاب سُجّل، والمنشور الفارغ رُفض.`
+                    : npmMissing ? '⚠️ npm غير متاح هنا — المشروع جاهز؛ ثبّته بنفسك: npm install ثم npm start.'
+                        : installed ? '⚠️ الخادم لم يثبت جاهزيته في المهلة — شغّله يدوياً: npm start.'
+                            : '⚠️ التثبيت لم يكتمل — جرّب npm install داخل المجلد.'}
+
+🧭 مسارات ${labelAr}:
+   GET/POST /api/posts · DELETE /api/posts/:id
+   POST /api/posts/:id/like · GET/POST /api/posts/:id/comments
+   GET/POST /api/follows · GET /api/health
+
+👥 لا يوجد حساب مالك هنا عن قصد: في شبكة اجتماعية **الأعضاء هم من ينشرون**،
+   فالكتابة عامّة. الهوية اسمٌ يكتبه المستخدم بلا كلمة مرور — ومع الاسم وحده
+   لا يستطيع الخادم منع أحد من انتحال صفة غيره. أضِف حسابات قبل النشر على الإنترنت.
+
+🧭 خطوات تالية — أرسل أيّ سطر كما هو:
+   • «شغّل المشروع» → أشغّل الخادم وأبقيه يعمل
+   • «عدّل …» → تعديل جراحي متحقق على ملفات الخادم`
+                : `🗄️ A feed backend${proven ? ', proven with a real HTTP post/read' : ''} — "${brand}".
+
+📂 Path: ${proj}
+${fileList}
+${proven ? `✅ Live proof: post #${createdId} written over real HTTP and read back (backend: ${backend}).` : ''}
+Public by design — members post: GET/POST /api/posts · POST /api/posts/:id/like · GET/POST /api/posts/:id/comments · GET/POST /api/follows
+No owner account: identity here is a name with no password. Add real accounts before putting this online.`;
+            return {
+                ok: true,
+                output: { message: feedMsg, path: proj, dir: path.basename(proj), resource, installed, proven, backend, files: Object.keys(files) },
+                logs,
+            } as any;
+        }
         const message = isAr
             ? `🗄️ ${proven ? 'بُنيت واجهة خلفية كاملة وثبت عملها بكتابة وقراءة حقيقيتين' : installed ? 'بُنيت واجهة خلفية كاملة وثُبتت حزمها' : 'بُنيت واجهة خلفية كاملة'} — «${brand}».
 

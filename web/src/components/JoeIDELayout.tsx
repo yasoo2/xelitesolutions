@@ -268,7 +268,9 @@ export default function JoeIDELayout({
     }, [onWorkspaceTabChange]);
 
     // Internal state for workspace tab if not controlled
-    const [internalWorkspaceTab, setInternalWorkspaceTab] = useState<WorkspaceTab>('terminal');
+    // 'logs', not 'terminal': showing a tab must never START anything. The
+    // terminal panel boots a shell the moment it mounts.
+    const [internalWorkspaceTab, setInternalWorkspaceTab] = useState<WorkspaceTab>('logs');
 
     const activeWorkspaceTab = workspaceTab ?? internalWorkspaceTab;
     const handleWorkspaceTabChange = useCallback((tab: WorkspaceTab) => {

@@ -63,7 +63,16 @@ export default function Joe() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems'>('terminal');
+    /**
+     * JOE OPENS ON THE LOGS, NOT ON A TERMINAL.
+     *
+     * The default was 'terminal', so every cold load MOUNTED the terminal
+     * panel — which boots a shell and calls terminal_manager four times before
+     * the user has asked for anything. That is the flash he reported twice:
+     * «في البداية قام بتشغيل الثيرمال ثم انتقل الى شاشة اللوغز». Logs is the
+     * tab a build streams into, and showing it starts no process at all.
+     */
+    const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems'>('logs');
     // The theme was hardcoded to 'dark' on every mount, so switching to light
     // lasted exactly until the next reload. Remember the choice, and fall back to
     // the operating system's preference the first time.

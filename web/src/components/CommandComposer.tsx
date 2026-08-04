@@ -1592,7 +1592,12 @@ export default function CommandComposer({
 
         // [AUTO-SWITCH] Dispatch workspace tab switch event based on tool type
         const toolName = name.startsWith('execute:') ? name.slice('execute:'.length) : name;
-        const shellTools = ['shell_execute', 'terminal_manager', 'npm_manager', 'npm_install', 'npm_build'];
+        // `terminal_manager` is NOT here: the terminal PANEL calls it on mount,
+        // so listing it made a panel booting itself yank the workspace to the
+        // Terminal tab. Removing it from Joe.tsx alone changed nothing — THIS
+        // copy of the list was still firing, which is why the flash survived a
+        // fix and a release. One rule, two enforcement points; both now agree.
+        const shellTools = ['shell_execute', 'run_command', 'npm_manager', 'npm_install', 'npm_build'];
         const browserTools = ['browser_open', 'browser_run', 'browser_vision', 'browser_action'];
         const previewTools = ['dev_server', 'website_full_pipeline', 'scaffold_project'];
         let targetTab: string | null = null;

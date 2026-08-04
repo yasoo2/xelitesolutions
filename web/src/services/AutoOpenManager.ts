@@ -48,13 +48,24 @@ class AutoOpenManagerClass {
      * Process AI tool usage - call this when AI uses a tool
      */
     processToolUsage(toolName: string, toolData?: any) {
-        // Terminal tools
+        /**
+         * Terminal tools — but NOT `terminal_manager`.
+         *
+         * The terminal PANEL calls terminal_manager on mount, so this rule
+         * made a panel booting itself yank the workspace to the Terminal tab.
+         * It is the third copy of the same list; removing it from Joe.tsx and
+         * CommandComposer.tsx changed nothing on screen because THIS one kept
+         * firing — and `includes('terminal')` matched it twice over. A live
+         * proof, not a reading, is what finally caught it.
+         */
+        const isPanelBoot = toolName === 'terminal_manager';
         if (
-            toolName === 'terminal_manager' ||
-            toolName === 'run_command' ||
-            toolName === 'execute_command' ||
-            toolName === 'shell' ||
-            toolName.includes('terminal')
+            !isPanelBoot && (
+                toolName === 'run_command' ||
+                toolName === 'execute_command' ||
+                toolName === 'shell' ||
+                toolName.includes('terminal')
+            )
         ) {
             this.triggerOpen('terminal', toolData);
         }

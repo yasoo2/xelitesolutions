@@ -561,7 +561,9 @@ export default function WorkspacePanel({
 }: WorkspacePanelProps) {
     const { t } = useTranslation();
     const [internalCollapsed, setInternalCollapsed] = useState(false);
-    const [internalTab, setInternalTab] = useState<WorkspaceTab>('browser');
+    // 'logs', not 'browser': the browser panel opens a real Chromium when it
+    // mounts, and a default must never do that.
+    const [internalTab, setInternalTab] = useState<WorkspaceTab>('logs');
 
     // Use external mobileCollapsed if provided, otherwise use internal state
     const isMobileCollapsed = mobileCollapsed !== undefined ? mobileCollapsed : internalCollapsed;
