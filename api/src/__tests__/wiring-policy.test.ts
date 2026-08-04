@@ -879,6 +879,26 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(composer).toContain("localStorage.setItem('active_provider', target)");
     });
 
+    it('independent steps run together — but never the ones sharing a live resource', () => {
+        // The plan modelled independence from the day it was a DAG; the executor
+        // awaited each node in turn and threw it away. Measured: three
+        // independent two-second steps took 6.1s, then 2.0s. Proven live in
+        // verify_parallel_execution.ts, including that the browser's three tools
+        // never overlap — one page, one at a time.
+        const orch = SRC('orchestration', 'AgentOrchestrator.ts');
+        expect(orch).toContain('const batch = pickParallelBatch(readyNodes)');
+        expect(orch).toMatch(/await Promise\.all\(batch\.map\(/);
+        expect(orch).toContain('const SERIAL_TOOLS =');
+        // the shared-resource families must all be in the serial class
+        for (const family of ['browser_', 'project_', 'react_project', 'api_project',
+            'web_page_builder', 'deploy_', 'git_', 'terminal_manager']) {
+            expect({ family, serial: new RegExp(family.replace('_', '_?')).test(orch.match(/const SERIAL_TOOLS = [^;]+/)![0]) })
+                .toEqual({ family, serial: true });
+        }
+        // and a written command no longer needs a model to be run
+        expect(orch).toContain("node.tool === 'shell_execute' && typeof nodeInput?.command === 'string'");
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([

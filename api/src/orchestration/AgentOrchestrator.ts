@@ -76,6 +76,37 @@ export type AgentDAG = {
  */
 const MAX_RECOVERIES_PER_RUN = 3;
 
+/**
+ * WHAT MAY NEVER OVERLAP.
+ *
+ * Independent steps run together, but some tools share ONE live thing: the
+ * browser session is a single page, a builder rewrites the same project folder,
+ * a deploy stages one tree, git has one index, a terminal has one cursor. Two of
+ * those at once is not speed, it is a corrupted project. They are listed rather
+ * than guessed, and anything not listed is free to run beside its siblings.
+ */
+const SERIAL_TOOLS = /^(?:browser_|user_browser$|project_|react_project$|api_project$|web_page_builder$|deploy_|import_project$|github_repo_manager$|git_|terminal_manager$|checkpoint)/;
+
+/** How many independent steps may be in flight at once. */
+const MAX_PARALLEL_NODES = Number(process.env.JOE_MAX_PARALLEL || 4);
+
+/**
+ * The next slice of ready work: either one step that must run alone, or up to
+ * MAX_PARALLEL_NODES steps that share nothing.
+ */
+function pickParallelBatch(ready: ExecutionNode[]): ExecutionNode[] {
+  if (!ready.length) return ready;
+  const isSerial = (n: ExecutionNode) => SERIAL_TOOLS.test(String(n.tool || '')) || n.agent === 'Browser';
+  if (isSerial(ready[0])) return [ready[0]];
+  const batch: ExecutionNode[] = [];
+  for (const n of ready) {
+    if (isSerial(n)) break;
+    batch.push(n);
+    if (batch.length >= Math.max(1, MAX_PARALLEL_NODES)) break;
+  }
+  return batch;
+}
+
 /** The run's own story, in plan order — what each step was for and what it
  *  produced. The answer the user reads is composed from this. */
 function runSteps(dag: AgentDAG): RunStep[] {
@@ -268,173 +299,221 @@ export class AgentOrchestrator {
         continue;
       }
 
-      for (const node of readyNodes) {
-        // [DECISION] Re-evaluate agent fit — EXCEPT for a browser node the
-        // PlanningEngine pinned deterministically (tool browser_run + agent
-        // Browser). Re-classification uses keyword guesses and demoted
-        // «ادخل صفحة جيت هاب وسجّل الدخول» to the Dev agent (GitHub/repo read
-        // as a coding task), which then ran browser_run as a bare tool and
-        // failed with actions_or_instruction_required. The planner's explicit
-        // browser routing always wins.
-        const pinnedBrowserNode = node.tool === 'browser_run' && node.agent === 'Browser';
-        if (!pinnedBrowserNode) {
-          const refinedAgentType = await this.selectOptimalAgent(node, memory);
-          if (refinedAgentType !== node.agent) {
-            broadcastThinkingDetail(memory.sessionId, `🔄 Shifted agent for "${node.task}" to ${refinedAgentType}`);
-            node.agent = refinedAgentType as AgentType;
+
+      /** Executes one node: agent fit, narration, the tool itself. No bookkeeping. */
+      const runNode = async (node: ExecutionNode): Promise<{ result: any; startTime: number; isDirectAnswer: boolean }> => {
+          // [DECISION] Re-evaluate agent fit — EXCEPT for a browser node the
+          // PlanningEngine pinned deterministically (tool browser_run + agent
+          // Browser). Re-classification uses keyword guesses and demoted
+          // «ادخل صفحة جيت هاب وسجّل الدخول» to the Dev agent (GitHub/repo read
+          // as a coding task), which then ran browser_run as a bare tool and
+          // failed with actions_or_instruction_required. The planner's explicit
+          // browser routing always wins.
+          const pinnedBrowserNode = node.tool === 'browser_run' && node.agent === 'Browser';
+          if (!pinnedBrowserNode) {
+            const refinedAgentType = await this.selectOptimalAgent(node, memory);
+            if (refinedAgentType !== node.agent) {
+              broadcastThinkingDetail(memory.sessionId, `🔄 Shifted agent for "${node.task}" to ${refinedAgentType}`);
+              node.agent = refinedAgentType as AgentType;
+            }
           }
-        }
 
-        // Keep the tool consistent with the resolved agent (no repo task -> browser).
-        // CRITICAL: never clobber a specific browser smart-tool (browser_summarize,
-        // browser_responsive_check, browser_smart_agent, ...) — those are chosen
-        // deterministically by PlanningEngine and executed directly below. Coercing
-        // them to the generic browser_run here is what made every smart-browser
-        // prompt fall through to a failed browser_run + "Recovery failed".
-        if (node.tool !== 'central_answer') {
-          const isSmartBrowserTool = typeof node.tool === 'string'
-            && node.tool.startsWith('browser_') && node.tool !== 'browser_run';
-          // Deterministic tools chosen by PlanningEngine (Google, the user's browser,
-          // file read/write, page builder) must NEVER be coerced to browser_run just
-          // because the agent got re-classified — that broke compound plans (e.g. the
-          // "send" node of a browse->email plan ran the browser instead of Gmail).
-          const isProtected = isSmartBrowserTool || (typeof node.tool === 'string' && DETERMINISTIC_TOOLS.includes(node.tool));
-          if (!isProtected) {
-            if (node.agent === 'Browser') { node.tool = 'browser_run'; }
-            else if (node.tool === 'browser_run') { node.tool = 'shell_execute'; }
+          // Keep the tool consistent with the resolved agent (no repo task -> browser).
+          // CRITICAL: never clobber a specific browser smart-tool (browser_summarize,
+          // browser_responsive_check, browser_smart_agent, ...) — those are chosen
+          // deterministically by PlanningEngine and executed directly below. Coercing
+          // them to the generic browser_run here is what made every smart-browser
+          // prompt fall through to a failed browser_run + "Recovery failed".
+          if (node.tool !== 'central_answer') {
+            const isSmartBrowserTool = typeof node.tool === 'string'
+              && node.tool.startsWith('browser_') && node.tool !== 'browser_run';
+            // Deterministic tools chosen by PlanningEngine (Google, the user's browser,
+            // file read/write, page builder) must NEVER be coerced to browser_run just
+            // because the agent got re-classified — that broke compound plans (e.g. the
+            // "send" node of a browse->email plan ran the browser instead of Gmail).
+            const isProtected = isSmartBrowserTool || (typeof node.tool === 'string' && DETERMINISTIC_TOOLS.includes(node.tool));
+            if (!isProtected) {
+              if (node.agent === 'Browser') { node.tool = 'browser_run'; }
+              else if (node.tool === 'browser_run') { node.tool = 'shell_execute'; }
+            }
           }
-        }
 
-        node.status = "running";
-        const startTime = Date.now();
-        console.log(`[AgentOrchestrator] Executing node: ${node.id} (${node.task})`);
-        /**
-         * THE AGENT SAYS, IN ITS OWN WORDS, WHAT IT IS DOING.
-         *
-         * This line used to be `🚀 Running: ${node.task} via ${node.agent}` — a
-         * template filled in from the plan, displayed under the heading
-         * "التفكير العصبي". It could have been written before the run started,
-         * which is what made it a simulated tool wearing a real one's name.
-         *
-         * Now the model is shown what just finished, INCLUDING whether it
-         * worked, and asked for one sentence. When it does not answer, or
-         * answers badly, nothing is shown — there is deliberately no fallback
-         * sentence, because a canned line under that heading is the exact fake
-         * this replaces. The step never waits on it beyond the timeout and
-         * never fails because of it.
-         */
-        stepNo++;
-        if (narrationEnabled()) {
-            const line = await narrate(
-                {
-                    goal: goalText || node.task,
-                    done: lastDone,
-                    next: { task: node.task, tool: node.tool },
-                    index: stepNo,
-                    total: dag.nodes.length,
-                    isArabic: /[ؠ-ٟٮ-ۓۺ-ۿ]/.test(String(goalText || '')),
-                },
-                (prompt) => routeToModel(
-                    [{ role: 'user', content: prompt }],
-                    undefined, undefined, undefined, undefined, undefined, undefined,
-                    { modelConfig: goalContext?.modelConfig, purpose: 'internal' },
-                ),
-            );
-            if (line.text) broadcastThinkingDetail(memory.sessionId, line.text);
-            else console.log(`[Narrator] no line for ${node.id} (${line.reject || 'rejected'})`);
-        }
+          node.status = "running";
+          const startTime = Date.now();
+          console.log(`[AgentOrchestrator] Executing node: ${node.id} (${node.task})`);
+          /**
+           * THE AGENT SAYS, IN ITS OWN WORDS, WHAT IT IS DOING.
+           *
+           * This line used to be `🚀 Running: ${node.task} via ${node.agent}` — a
+           * template filled in from the plan, displayed under the heading
+           * "التفكير العصبي". It could have been written before the run started,
+           * which is what made it a simulated tool wearing a real one's name.
+           *
+           * Now the model is shown what just finished, INCLUDING whether it
+           * worked, and asked for one sentence. When it does not answer, or
+           * answers badly, nothing is shown — there is deliberately no fallback
+           * sentence, because a canned line under that heading is the exact fake
+           * this replaces. The step never waits on it beyond the timeout and
+           * never fails because of it.
+           */
+          stepNo++;
+          if (narrationEnabled()) {
+              const line = await narrate(
+                  {
+                      goal: goalText || node.task,
+                      done: lastDone,
+                      next: { task: node.task, tool: node.tool },
+                      index: stepNo,
+                      total: dag.nodes.length,
+                      isArabic: /[ؠ-ٟٮ-ۓۺ-ۿ]/.test(String(goalText || '')),
+                  },
+                  (prompt) => routeToModel(
+                      [{ role: 'user', content: prompt }],
+                      undefined, undefined, undefined, undefined, undefined, undefined,
+                      { modelConfig: goalContext?.modelConfig, purpose: 'internal' },
+                  ),
+              );
+              if (line.text) broadcastThinkingDetail(memory.sessionId, line.text);
+              else console.log(`[Narrator] no line for ${node.id} (${line.reject || 'rejected'})`);
+          }
 
-        const isBrowserNode = node.agent === 'Browser' || node.tool === 'browser_run';
-        if (isBrowserNode) {
-          broadcast({
-            type: 'step_started',
-            data: {
-              sessionId: memory.sessionId,
-              tool: { name: 'browser_run', input: { task: node.task } }
-            },
-            sessionId: memory.sessionId
-          });
-        }
-
-        if (traceId) {
-            traceManager.logEvent(traceId, 'orchestrator', {
-                event: 'node_execution_started',
-                nodeId: node.id,
-                task: node.task,
-                agent: node.agent,
-                tool: node.tool,
-                input: node.input,
-                startTime
+          const isBrowserNode = node.agent === 'Browser' || node.tool === 'browser_run';
+          if (isBrowserNode) {
+            broadcast({
+              type: 'step_started',
+              data: {
+                sessionId: memory.sessionId,
+                tool: { name: 'browser_run', input: { task: node.task } }
+              },
+              sessionId: memory.sessionId
             });
-        }
-        
-        const agent = this.agents.get(node.agent);
-        let result;
-
-        const liveSessionId = goalContext?.sessionId || dag.id;
-        const executionContext = {
-            sessionId: liveSessionId,
-            workspaceId: goalContext?.workspaceId,
-            userId: goalContext?.userId,
-            userName: goalContext?.userName,
-            systemInstructions: goalContext?.systemInstructions,
-            traceId,
-            memory: memory.getHistory(),
-            modelConfig: goalContext?.modelConfig,
-            language: goalContext?.language,
-            // [PERSISTENT MEMORY] Forward the recalled user/project context so tools
-            // (central_answer, page builder) can personalise their output.
-            memoryContext: goalContext?.memoryContext,
-            // [LIVE VOICE] Tools accept onProgress/onThought (phase executor,
-            // project pipeline, …) but the orchestrator never provided them —
-            // every progress call was a silent no-op and a multi-phase build ran
-            // MUTE for minutes, looking frozen. Wire both to the same
-            // thinking_detail stream the panel already renders.
-            onProgress: (m: string) => { try { broadcastThinkingDetail(liveSessionId, m); } catch { /* panel optional */ } },
-            onThought: (m: string) => { try { broadcastThinkingDetail(liveSessionId, m); } catch { /* panel optional */ } },
-        };
-
-        const isDirectAnswer = node.tool === 'central_answer'
-          || /^(answering|respond to)\s*:/i.test(node.task || '');
-
-        // Resolve {{FROM:<nodeId>}} references so a later node can CONSUME an earlier
-        // node's output — e.g. write the browser's extracted data into a file. This
-        // is what makes the browser chain with the other tools in one request.
-        const nodeInput = this.resolveInputRefs(node.input, dag);
-
-        try {
-          // [WALL CLOCK] The stall detector only runs BETWEEN iterations — an
-          // await that hangs inside a tool froze the whole run invisibly. Every
-          // node now has a hard deadline; on expiry the node fails HONESTLY
-          // («deadline_exceeded») and the run moves on or ends with a reason.
-          // A full-project pipeline node runs many phases (installs, builds,
-          // QA) — it gets the RUN budget, not a single node's slice.
-          const nodeBudget = node.tool === 'project_pipeline' ? RUN_DEADLINE_MS : NODE_DEADLINE_MS;
-          const deadline = <T,>(p: Promise<T>) =>
-            withDeadline(p, nodeBudget, `node ${node.id} (${node.tool || node.agent || 'task'})`);
-          if (isDirectAnswer) {
-            const question = nodeInput?.question
-              || (node.task || '').replace(/^(answering|respond to)\s*:\s*/i, '').trim()
-              || node.task;
-            result = await deadline(executeTool('central_answer', { question }, executionContext));
-          } else if (node.tool === 'web_page_builder') {
-            // Deterministic build tool — run it directly so the weak-model tool-picker
-            // can't downgrade a "build a page" request back into a chat answer.
-            result = await deadline(executeTool('web_page_builder', nodeInput, executionContext));
-          } else if (typeof node.tool === 'string' && ((node.tool.startsWith('browser_') && node.tool !== 'browser_run') || DETERMINISTIC_TOOLS.includes(node.tool))) {
-            // Deterministic tools (browser smart-tools, Google account, user's own
-            // browser, file read/write) — run the exact tool directly so the weak-model
-            // tool-picker or a Dev agent can't mis-handle a node that already names its
-            // tool and carries a resolved input (e.g. write the browser's data to a file).
-            result = await deadline(executeTool(node.tool, nodeInput, executionContext));
-          } else if (agent) {
-            result = await deadline(agent.execute(node.task, nodeInput, executionContext));
-          } else {
-            result = await deadline(executeTool(node.tool, { ...nodeInput, context: memory.getHistory() }, executionContext));
           }
-        } catch (err: any) {
-          result = { ok: false, error: err.message };
-        }
+
+          if (traceId) {
+              traceManager.logEvent(traceId, 'orchestrator', {
+                  event: 'node_execution_started',
+                  nodeId: node.id,
+                  task: node.task,
+                  agent: node.agent,
+                  tool: node.tool,
+                  input: node.input,
+                  startTime
+              });
+          }
+        
+          const agent = this.agents.get(node.agent);
+          let result;
+
+          const liveSessionId = goalContext?.sessionId || dag.id;
+          const executionContext = {
+              sessionId: liveSessionId,
+              workspaceId: goalContext?.workspaceId,
+              userId: goalContext?.userId,
+              userName: goalContext?.userName,
+              systemInstructions: goalContext?.systemInstructions,
+              traceId,
+              memory: memory.getHistory(),
+              modelConfig: goalContext?.modelConfig,
+              language: goalContext?.language,
+              // [PERSISTENT MEMORY] Forward the recalled user/project context so tools
+              // (central_answer, page builder) can personalise their output.
+              memoryContext: goalContext?.memoryContext,
+              // [LIVE VOICE] Tools accept onProgress/onThought (phase executor,
+              // project pipeline, …) but the orchestrator never provided them —
+              // every progress call was a silent no-op and a multi-phase build ran
+              // MUTE for minutes, looking frozen. Wire both to the same
+              // thinking_detail stream the panel already renders.
+              onProgress: (m: string) => { try { broadcastThinkingDetail(liveSessionId, m); } catch { /* panel optional */ } },
+              onThought: (m: string) => { try { broadcastThinkingDetail(liveSessionId, m); } catch { /* panel optional */ } },
+          };
+
+          const isDirectAnswer = node.tool === 'central_answer'
+            || /^(answering|respond to)\s*:/i.test(node.task || '');
+
+          // Resolve {{FROM:<nodeId>}} references so a later node can CONSUME an earlier
+          // node's output — e.g. write the browser's extracted data into a file. This
+          // is what makes the browser chain with the other tools in one request.
+          const nodeInput = this.resolveInputRefs(node.input, dag);
+
+          try {
+            // [WALL CLOCK] The stall detector only runs BETWEEN iterations — an
+            // await that hangs inside a tool froze the whole run invisibly. Every
+            // node now has a hard deadline; on expiry the node fails HONESTLY
+            // («deadline_exceeded») and the run moves on or ends with a reason.
+            // A full-project pipeline node runs many phases (installs, builds,
+            // QA) — it gets the RUN budget, not a single node's slice.
+            const nodeBudget = node.tool === 'project_pipeline' ? RUN_DEADLINE_MS : NODE_DEADLINE_MS;
+            const deadline = <T,>(p: Promise<T>) =>
+              withDeadline(p, nodeBudget, `node ${node.id} (${node.tool || node.agent || 'task'})`);
+            if (isDirectAnswer) {
+              const question = nodeInput?.question
+                || (node.task || '').replace(/^(answering|respond to)\s*:\s*/i, '').trim()
+                || node.task;
+              result = await deadline(executeTool('central_answer', { question }, executionContext));
+            } else if (node.tool === 'web_page_builder') {
+              // Deterministic build tool — run it directly so the weak-model tool-picker
+              // can't downgrade a "build a page" request back into a chat answer.
+              result = await deadline(executeTool('web_page_builder', nodeInput, executionContext));
+            } else if (typeof node.tool === 'string' && ((node.tool.startsWith('browser_') && node.tool !== 'browser_run') || DETERMINISTIC_TOOLS.includes(node.tool))) {
+              // Deterministic tools (browser smart-tools, Google account, user's own
+              // browser, file read/write) — run the exact tool directly so the weak-model
+              // tool-picker or a Dev agent can't mis-handle a node that already names its
+              // tool and carries a resolved input (e.g. write the browser's data to a file).
+              result = await deadline(executeTool(node.tool, nodeInput, executionContext));
+            } else if (node.tool === 'shell_execute' && typeof nodeInput?.command === 'string' && nodeInput.command.trim()) {
+              // A COMMAND THAT IS ALREADY WRITTEN NEEDS NO ONE TO THINK ABOUT IT.
+              // shell_execute went through the Dev agent, which asks a model what
+              // to run — so a plan whose step already said `npm test` failed
+              // outright when no provider answered: «تعذّر الوصول إلى محرّك
+              // الذكاء» for work that needed no thinking at all. Measured. When
+              // the command is present it is executed; when it is not, the agent
+              // still does its job of working out what to run.
+              result = await deadline(executeTool('shell_execute', nodeInput, executionContext));
+            } else if (agent) {
+              result = await deadline(agent.execute(node.task, nodeInput, executionContext));
+            } else {
+              result = await deadline(executeTool(node.tool, { ...nodeInput, context: memory.getHistory() }, executionContext));
+            }
+          } catch (err: any) {
+            result = { ok: false, error: err.message };
+          }
+        return { result, startTime, isDirectAnswer };
+      };
+
+      /**
+       * FAN OUT WHAT DOES NOT DEPEND ON ANYTHING.
+       *
+       * The plan has modelled independence since the day it was a DAG, and the
+       * executor threw it away: `for (const node of readyNodes) { await … }`
+       * ran three unrelated steps one after another. Measured, three
+       * independent two-second steps took 6.1 seconds — the graph knew they
+       * could all start at once and nobody asked it.
+       *
+       * They start together now, up to a cap. What may NOT overlap is listed
+       * explicitly rather than guessed: everything that shares one live
+       * resource — the single browser page, the project workspace a builder
+       * rewrites, a deploy, a git tree, a terminal. Those still run alone, so
+       * speed is never bought with a corrupted project.
+       *
+       * Only the RUNNING is parallel. Every result is then handled in plan
+       * order by exactly the same code as before, so recovery, replanning and
+       * the honest failure paths behave identically.
+       */
+      const batch = pickParallelBatch(readyNodes);
+      if (batch.length > 1) {
+        broadcastThinkingDetail(memory.sessionId, `⚡ ${batch.length} خطوات مستقلّة — أنفّذها معاً`);
+      }
+      const batchResults = new Map<string, any>();
+      await Promise.all(batch.map(async (node) => {
+        const r = await runNode(node);
+        batchResults.set(node.id, r);
+      }));
+
+      for (const node of batch) {
+        const ran = batchResults.get(node.id);
+        let result: any = ran.result;
+        const startTime: number = ran.startTime;
+        const isDirectAnswer: boolean = ran.isDirectAnswer;
         
         if (result.ok) {
           // A retry that succeeds PROVES the repair worked — that is the only
