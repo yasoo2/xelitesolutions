@@ -1349,3 +1349,116 @@ describe('nothing opens on screen that the user did not ask for', () => {
         expect(A).toMatch(/chromium\.launch\(\{ \.\.\.getChromiumLaunchOptions\(\), headless: true \}\)/);
     });
 });
+
+/**
+ * A LIKE IS A SHARED FACT, NOT A BROWSER'S OPINION.
+ *
+ * The first feed kept hearts, threads and follows in localStorage. Two people
+ * looking at the same post saw two different numbers, and the generated README
+ * said so honestly — which made it honest, not finished. A social network
+ * whose social graph never leaves the device is a diary with a Follow button.
+ *
+ * The invariant: for a post that lives on the server, the SERVER's numbers
+ * win. Local copies are the offline fallback, never the source of truth.
+ */
+describe('the social graph lives on the server', () => {
+    const AP = () => SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+    const T = () => SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+
+    it('the server has somewhere to put them', () => {
+        const t = AP();
+        for (const table of ['CREATE TABLE IF NOT EXISTS likes', 'CREATE TABLE IF NOT EXISTS comments', 'CREATE TABLE IF NOT EXISTS follows']) {
+            expect(t).toContain(table);
+        }
+        // …and the JSON fallback carries the SAME interface, or a user on an
+        // older Node silently loses half the app.
+        for (const method of ['likesFor', 'toggleLike', 'commentsFor', 'addComment', 'following', 'toggleFollow']) {
+            expect(t.split(method).length - 1).toBeGreaterThanOrEqual(2);   // sqlite branch + json branch
+        }
+    });
+
+    it('and routes to reach them', () => {
+        const t = AP();
+        expect(t).toMatch(/app\.post\('\/api\/posts\/:id\/like'/);
+        expect(t).toMatch(/app\.post\('\/api\/posts\/:id\/comments'/);
+        expect(t).toMatch(/app\.get\('\/api\/follows'/);
+        expect(t).toMatch(/app\.post\('\/api\/follows'/);
+        // one request paints the whole feed — no N+1 per card
+        expect(t).toMatch(/likes: db\.likesFor\(p\.id\), comments: db\.commentsFor\(p\.id\)/);
+    });
+
+    it('a deleted post takes its hearts and its thread with it', () => {
+        const t = AP();
+        expect(t).toMatch(/DELETE FROM likes WHERE post_id/);
+        expect(t).toMatch(/DELETE FROM comments WHERE post_id/);
+        expect(t).toMatch(/s\.likes = s\.likes\.filter/);          // the JSON half too
+    });
+
+    it('the app calls them, and lets the server win', () => {
+        const t = T();
+        expect(t).toMatch(/apiPost\(content\.api, '\/' \+ encodeURIComponent\(id\) \+ '\/like'/);
+        expect(t).toMatch(/apiSibling\(content\.api, 'follows'\)/);
+        expect(t).toMatch(/Array\.isArray\(r\.likes\) \? r\.likes/);
+        expect(t).toMatch(/Array\.isArray\(r\.comments\) \? r\.comments/);
+    });
+
+    it('deleting reaches the server, or the next poll undoes it', () => {
+        const t = T();
+        expect(t).toMatch(/export async function apiDelete/);
+        expect(t).toMatch(/apiDelete\(content\.api, p\.id\)/);
+    });
+
+    it('the README states what identity still is — a name, not an account', () => {
+        const t = AP();
+        expect(t).toMatch(/بلا كلمة مرور/);
+        // and it no longer claims likes are browser-local, because they are not
+        expect(t).not.toMatch(/الإعجابات والتعليقات ما تزال محفوظة في متصفح/);
+    });
+});
+
+/**
+ * THE LOG MAY NOT PROMISE AN ENDPOINT THAT DOES NOT EXIST.
+ *
+ * Every full-stack build announced «…and writes orders to /api/orders»,
+ * derived by string surgery from whatever the resource happened to be. The
+ * feed server has no orders table, so the social build's log promised one
+ * that was never generated. Nothing failed out loud — it was simply untrue.
+ */
+describe('the full-stack claim matches the server that was built', () => {
+    it('a feed is not told it has an orders table', () => {
+        const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+        expect(R).toMatch(/const feedApi = \/\\\/api\\\/posts\$\/\.test\(apiLink\)/);
+        expect(R).toMatch(/apiLink && !feedApi \? apiLink\.replace/);
+        expect(R).toMatch(/reads and writes the LIVE feed at/);
+    });
+});
+
+/**
+ * A REACT BUILD SHIPS THE SAME HEAD AS EVERY OTHER PAGE.
+ *
+ * It did not, and the cost was invisible twice over: a page with no icon
+ * makes the browser probe /favicon.ico, that 404 became «1 خطأ كونسول» in
+ * Joe's OWN self-QA, and every clean React build was handed over at 85/100
+ * with no way to tell why. Shared on WhatsApp, the same link came up blank.
+ */
+describe('the React head is publish-ready', () => {
+    const R = () => SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+
+    it('the page declares its icon, so nothing probes a missing one', () => {
+        const r = R();
+        expect(r).toMatch(/<link rel="icon" type="image\/svg\+xml"/);
+        expect(r).toMatch(/faviconDataUri\(\{ brand: c\.brand/);
+        expect(r).toMatch(/fileIndexHtml\(content, \(palette as any\)\.hue \?\? 260\)/);
+    });
+
+    it('and carries the share card and theme colour', () => {
+        const r = R();
+        for (const tag of ['og:title', 'og:description', 'twitter:card', 'theme-color']) expect(r).toContain(tag);
+    });
+
+    it('a console error names the resource it came from', () => {
+        const A = SRC('core', 'quality', 'app-audit.ts');
+        expect(A).toMatch(/m\.location\(\)/);
+        expect(A).toMatch(/l\?\.url \? ` ← \$\{String\(l\.url\)\.slice\(-60\)\}` : ''/);
+    });
+});

@@ -96,8 +96,33 @@ async function main() {
         child.on('exit', () => { clearTimeout(t); resolve(null); });
     });
     check('the REAL server is up on 4100', !!apiSrv);
-    const unique = await fetch('http://127.0.0.1:4100/api/products', {
+    /**
+     * THE CATALOGUE IS LOCKED — and this proof had not noticed.
+     *
+     * It wrote the row anonymously, which was right before owner accounts
+     * landed and has answered 401 ever since. Four checks went red and stayed
+     * red, and a proof that lives red proves nothing. The write now goes
+     * through the SAME door the owner uses: the password the tool printed in
+     * chat, exchanged for a token at /api/auth/login. That also proves the
+     * credential in that message is real and usable.
+     */
+    const creds = String(apiRes.output?.message || '').match(/كلمة المرور:\s*(\S+)/);
+    const ownerEmail = String(apiRes.output?.ownerEmail || '');
+    const login: any = await fetch('http://127.0.0.1:4100/api/auth/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: ownerEmail, password: creds?.[1] || '' }),
+    }).then(r => r.json()).catch(() => null);
+    const token = String(login?.token || '');
+    check('the password Joe printed in chat really opens the API', token.split('.').length === 3, JSON.stringify(login).slice(0, 120));
+
+    const anon = await fetch('http://127.0.0.1:4100/api/products', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'anonymous-must-be-refused' }),
+    });
+    check('…and an anonymous write is still refused', anon.status === 401, String(anon.status));
+
+    const unique = await fetch('http://127.0.0.1:4100/api/products', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ name: 'عطر البرهان الحي', details: 'هذا الصف لا يوجد إلا في قاعدة البيانات', price: '77 ر.س' }),
     }).then(r => r.json());
     check('a UNIQUE row exists ONLY in the database', unique?.ok === true && unique.item.id > 0, JSON.stringify(unique).slice(0, 120));
@@ -152,7 +177,11 @@ async function main() {
     await p.waitForSelector('.order-note');
     const note = await p.evaluate(() => document.querySelector('.order-note')?.textContent || '');
     check('the page announced the order WITH its database id', /استلمنا طلبك رقم #\d+/.test(note) && note.includes('طقم الهدية'), note.slice(0, 90));
-    const orders = await fetch('http://127.0.0.1:4100/api/orders').then(r => r.json());
+    // Anyone may ORDER; only the owner may READ the orders — they carry
+    // customers' names and phone numbers. Both halves are checked here.
+    const ordersAnon = await fetch('http://127.0.0.1:4100/api/orders');
+    check('a stranger cannot read the customer list', ordersAnon.status === 401, String(ordersAnon.status));
+    const orders = await fetch('http://127.0.0.1:4100/api/orders', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json());
     check('the order is READABLE from the database over HTTP (item, customer, qty)',
         orders?.ok === true && orders.orders.some((o: any) => o.item === 'طقم الهدية' && o.customer === 'خالد التجريبي' && o.qty === 2),
         JSON.stringify(orders?.orders?.[0] || {}).slice(0, 140));

@@ -78,7 +78,19 @@ export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number
         const failedRequests: string[] = [];
         const heavyImages: string[] = [];
         page.on('pageerror', (e: any) => pageErrors.push(String(e).slice(0, 120)));
-        page.on('console', (m: any) => { if (m.type() === 'error') consoleErrors.push(String(m.text()).slice(0, 120)); });
+        /**
+         * A console error must name the RESOURCE, not just the complaint.
+         * «Failed to load resource: 404» told the reader nothing — not which
+         * file, not from where — so a finding that cost 15 points could not
+         * be acted on. Chromium carries the location; we print it.
+         */
+        page.on('console', (m: any) => {
+            if (m.type() !== 'error') return;
+            const where = (() => {
+                try { const l = m.location(); return l?.url ? ` ← ${String(l.url).slice(-60)}` : ''; } catch { return ''; }
+            })();
+            consoleErrors.push((String(m.text()).slice(0, 120) + where).slice(0, 180));
+        });
         page.on('response', (r: any) => {
             if (r.status() >= 400) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
             try {

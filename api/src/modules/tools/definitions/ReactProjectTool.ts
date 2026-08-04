@@ -455,14 +455,38 @@ export default defineConfig({
 `;
 }
 
-function fileIndexHtml(c: ReactContent): string {
+/**
+ * THE HEAD A REACT BUILD WAS SHIPPING WITHOUT.
+ *
+ * Plain HTML pages have carried a favicon, a theme-colour and share cards
+ * since the publish-ready pass; the React path never got them. Two costs,
+ * both silent:
+ *
+ *   • a page with no icon makes the browser probe /favicon.ico, which 404s —
+ *     and Joe's own self-QA then reported «1 خطأ كونسول» and docked 15 points
+ *     from EVERY React build the user ever received. He saw 85/100 on clean
+ *     work with no way to know why;
+ *   • shared on WhatsApp or X, the link came up blank.
+ */
+function fileIndexHtml(c: ReactContent, hue = 260): string {
+    const { faviconDataUri } = require('../../../core/design/logo');
+    const esc = (s: string) => String(s || '').replace(/"/g, '&quot;');
+    const h = ((Math.round(hue) % 360) + 360) % 360;
     return `<!DOCTYPE html>
 <html lang="${c.isArabic ? 'ar' : 'en'}" dir="${c.isArabic ? 'rtl' : 'ltr'}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${c.brand}</title>
-    <meta name="description" content="${c.tagline.replace(/"/g, '&quot;')}" />
+    <meta name="description" content="${esc(c.tagline)}" />
+    <link rel="icon" type="image/svg+xml" href="${faviconDataUri({ brand: c.brand, hue: h, isArabic: c.isArabic })}" />
+    <meta name="theme-color" content="hsl(${h},62%,50%)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="${esc(c.brand)}" />
+    <meta property="og:description" content="${esc(c.tagline)}" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="${esc(c.brand)}" />
+    <meta name="twitter:description" content="${esc(c.tagline)}" />
   </head>
   <body>
     <div id="root"></div>
@@ -2126,10 +2150,23 @@ export class ReactProjectTool extends BaseTool {
         };
         buildNavLinks();
         (content as any).api = apiLink;
-        // …and WRITES into it: visitor orders post to the API's orders table.
-        (content as any).ordersApi = apiLink ? apiLink.replace(/\/api\/[a-z]+$/, '/api/orders') : '';
+        /**
+         * …and WRITES into it: visitor orders post to the API's orders table.
+         *
+         * A FEED HAS NO ORDERS. The old line derived «/api/orders» from any
+         * resource and announced it for every build — so the social project's
+         * log promised a table its own server does not have. Nothing failed
+         * out loud; it was simply untrue, which is worse. The claim is now
+         * made only where the endpoint exists.
+         */
+        const feedApi = /\/api\/posts$/.test(apiLink);
+        (content as any).ordersApi = apiLink && !feedApi ? apiLink.replace(/\/api\/[a-z]+$/, '/api/orders') : '';
         (content as any).orderCta = isAr ? 'اطلب الآن' : 'Order now';
-        if (apiLink) term(`full-stack link: this app reads LIVE rows from ${apiLink} and writes orders to ${(content as any).ordersApi}`);
+        if (apiLink) {
+            term(feedApi
+                ? `full-stack link: this app reads and writes the LIVE feed at ${apiLink} — posts, likes, comments and follows are shared between everyone using it`
+                : `full-stack link: this app reads LIVE rows from ${apiLink} and writes orders to ${(content as any).ordersApi}`);
+        }
         // The app's form delivers into Joe's inbox while it runs next to Joe.
 
 
@@ -2265,7 +2302,7 @@ export class ReactProjectTool extends BaseTool {
         const files: Record<string, string> = {
             'package.json': filePackageJson(content.brand),
             'vite.config.js': fileViteConfig(),
-            'index.html': fileIndexHtml(content),
+            'index.html': fileIndexHtml(content, (palette as any).hue ?? 260),
             '.gitignore': 'node_modules\ndist\n',
             'src/main.jsx': fileMainJsx(),
             'src/App.jsx': multiPage ? fileMultiPageAppJsx(pages, isAr) : fileAppJsx(sections),

@@ -252,6 +252,50 @@ export async function apiCreate(api, row) {
     return await r.json().catch(() => row);
   } catch { return null; }
 }
+
+/**
+ * A sub-resource of the same API — «/12/like», «/12/comments». Anything that
+ * belongs to one row rather than to the collection.
+ */
+export async function apiPost(api, suffix, body) {
+  if (!api) return null;
+  try {
+    const r = await fetch(String(api).replace(/\\/+$/, '') + suffix, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+    });
+    if (!r.ok) return null;
+    return await r.json().catch(() => ({ ok: true }));
+  } catch { return null; }
+}
+
+/** A SIBLING collection on the same server: /api/posts → /api/follows. */
+export function apiSibling(api, name) {
+  if (!api) return null;
+  return String(api).replace(/\\/+$/, '').replace(/\\/[^/]+$/, '/' + name);
+}
+
+export async function apiGet(url) {
+  if (!url) return null;
+  try {
+    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+/**
+ * Delete on the server too. Without this a row deleted in the browser came
+ * BACK on the next poll — the list was local, the truth was remote, and the
+ * user watched his deletion undo itself.
+ */
+export async function apiDelete(api, id) {
+  if (!api || id === undefined || id === null) return null;
+  try {
+    const r = await fetch(String(api).replace(/\\/+$/, '') + '/' + encodeURIComponent(id), { method: 'DELETE' });
+    if (!r.ok) return null;
+    return await r.json().catch(() => ({ ok: true }));
+  } catch { return null; }
+}
 `;
 }
 
@@ -1438,7 +1482,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
 export function fileSocialAppJsx(isAr: boolean): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createStore, uid, apiList, apiCreate } from '../app/store.js';
+import { createStore, uid, apiList, apiCreate, apiPost, apiGet, apiDelete, apiSibling } from '../app/store.js';
 
 const when = (iso) => {
   try {
@@ -1492,7 +1536,14 @@ export default function SocialApp({ content }) {
   useEffect(() => { postStore.write(posts); }, [posts, postStore]);
   useEffect(() => { followStore.write(following); }, [following, followStore]);
 
-  // A real server makes this a network. Without one the app says so plainly.
+  /**
+   * A real server makes this a NETWORK. Without one the app says so plainly.
+   *
+   * The hearts, the threads and the follows come down with the posts, and
+   * for a post that lives on the server the server's numbers WIN: two people
+   * looking at the same post must see the same count. Local-only posts (no
+   * server, or one that went away) keep their own copies untouched.
+   */
   useEffect(() => {
     if (!content.api) return;
     let alive = true;
@@ -1501,21 +1552,42 @@ export default function SocialApp({ content }) {
       if (!alive || !remote) return;
       setServer(true);
       setPosts(prev => {
-        const seen = new Set(prev.map(p => String(p.id)));
-        const extra = remote
-          .filter(r => r && !seen.has(String(r.id)) && (r.text || r.body || r.image))
-          .map(r => ({
-            id: String(r.id), author: r.author || r.who || '—', handle: r.handle || '',
-            text: r.text || r.body || '', image: r.image || null,
-            at: r.at || r.createdAt || new Date().toISOString(), likes: [], comments: [], remote: true,
-          }));
-        return extra.length ? [...extra, ...prev].sort((a, b) => String(b.at).localeCompare(String(a.at))) : prev;
+        const byId = new Map(prev.map(p => [String(p.id), p]));
+        const merged = remote
+          .filter(r => r && (r.text || r.body || r.image))
+          .map(r => {
+            const id = String(r.id);
+            const local = byId.get(id);
+            byId.delete(id);
+            return {
+              ...(local || {}),
+              id, author: r.author || r.who || '—', handle: r.handle || '',
+              text: r.text || r.body || '', image: r.image || null,
+              at: r.at || r.createdAt || (local && local.at) || new Date().toISOString(),
+              likes: Array.isArray(r.likes) ? r.likes : (local ? local.likes : []),
+              comments: Array.isArray(r.comments) ? r.comments : (local ? local.comments : []),
+              remote: true,
+            };
+          });
+        const localOnly = [...byId.values()].filter(p => !p.remote);
+        return [...merged, ...localOnly].sort((a, b) => String(b.at).localeCompare(String(a.at)));
       });
     };
     pull();
     const t = setInterval(pull, 5000);
     return () => { alive = false; clearInterval(t); };
   }, [content.api]);
+
+  // Who I follow is shared too — open the app on another device and the same
+  // people are still followed.
+  useEffect(() => {
+    if (!content.api || !me) return;
+    let alive = true;
+    apiGet(apiSibling(content.api, 'follows') + '?follower=' + encodeURIComponent(me.handle))
+      .then(d => { if (alive && d && Array.isArray(d.following)) setFollowing(d.following); })
+      .catch(() => { /* offline — the local list stands */ });
+    return () => { alive = false; };
+  }, [content.api, me && me.handle]);
 
   if (!me) {
     return (
@@ -1559,22 +1631,51 @@ export default function SocialApp({ content }) {
       .catch(() => { /* offline — the local copy stands */ });
   };
 
-  const toggleLike = (id) => setPosts(posts.map(p => (p.id !== id ? p : {
-    ...p, likes: p.likes.includes(me.handle) ? p.likes.filter(h => h !== me.handle) : [...p.likes, me.handle],
-  })));
+  /**
+   * Optimistic first, then the server's answer. The heart flips instantly
+   * because a social app that waits on a round trip feels broken — and when
+   * the server replies it hands back the AUTHORITATIVE list of handles, so a
+   * like someone else added in the same second is not lost.
+   */
+  const toggleLike = (id) => {
+    setPosts(cur => cur.map(p => (p.id !== id ? p : {
+      ...p, likes: p.likes.includes(me.handle) ? p.likes.filter(h => h !== me.handle) : [...p.likes, me.handle],
+    })));
+    apiPost(content.api, '/' + encodeURIComponent(id) + '/like', { handle: me.handle })
+      .then(d => {
+        if (!d || !Array.isArray(d.likes)) return;
+        setPosts(cur => cur.map(p => (p.id !== id ? p : { ...p, likes: d.likes })));
+      })
+      .catch(() => { /* offline — the optimistic flip stands */ });
+  };
 
   const addComment = (id) => {
     const body = commentText.trim();
     if (!body) return;
-    setPosts(posts.map(p => (p.id !== id ? p : {
-      ...p, comments: [...p.comments, { id: uid(), author: me.name, handle: me.handle, text: body, at: new Date().toISOString() }],
-    })));
+    const local = { id: uid(), author: me.name, handle: me.handle, text: body, at: new Date().toISOString() };
+    setPosts(cur => cur.map(p => (p.id !== id ? p : { ...p, comments: [...p.comments, local] })));
     setCommentText('');
+    apiPost(content.api, '/' + encodeURIComponent(id) + '/comments', { author: me.name, handle: me.handle, text: body, at: local.at })
+      .then(d => {
+        const saved = d && d.comment;
+        if (!saved || !saved.id) return;
+        // Adopt the server's id so the next poll recognises this comment
+        // instead of showing it twice.
+        setPosts(cur => cur.map(p => (p.id !== id ? p : {
+          ...p, comments: p.comments.map(c => (c.id === local.id ? { ...c, id: String(saved.id) } : c)),
+        })));
+      })
+      .catch(() => { /* offline — the local comment stands */ });
   };
 
-  const toggleFollow = (handle) => setFollowing(
-    following.includes(handle) ? following.filter(h => h !== handle) : [...following, handle],
-  );
+  const toggleFollow = (handle) => {
+    setFollowing(cur => (cur.includes(handle) ? cur.filter(h => h !== handle) : [...cur, handle]));
+    const url = apiSibling(content.api, 'follows');
+    if (!url) return;
+    apiPost(url, '', { follower: me.handle, target: handle })
+      .then(d => { if (d && Array.isArray(d.list)) setFollowing(d.list); })
+      .catch(() => { /* offline — the local list stands */ });
+  };
 
   const visible = posts.filter(p => {
     if (tab === 'mine' && p.handle !== me.handle) return false;
@@ -1601,7 +1702,7 @@ export default function SocialApp({ content }) {
           <div className="stat"><b>{following.length}</b><span>{${T('أتابع', 'Following')}}</span></div>
         </div>
         <span className={'badge ' + (server ? 'on' : '')}>
-          {server ? ${T('متصل بالخادم — المنشورات مشتركة', 'Server connected — posts are shared')} : ${T('محلي على هذا الجهاز', 'Local to this device')}}
+          {server ? ${T('متصل بالخادم — المنشورات والإعجابات والتعليقات مشتركة', 'Server connected — posts, likes and comments are shared')} : ${T('محلي على هذا الجهاز', 'Local to this device')}}
         </span>
       </section>
 
@@ -1645,7 +1746,13 @@ export default function SocialApp({ content }) {
                     </button>
                   ) : (
                     <button className="btn tiny danger" type="button"
-                      onClick={() => { if (window.confirm(${T('حذف هذا المنشور؟', 'Delete this post?')})) setPosts(posts.filter(x => x.id !== p.id)); }}>{${T('حذف', 'Delete')}}</button>
+                      onClick={() => {
+                        if (!window.confirm(${T('حذف هذا المنشور؟', 'Delete this post?')})) return;
+                        setPosts(cur => cur.filter(x => x.id !== p.id));
+                        // …and on the server as well, or the next poll would
+                        // bring it back and undo the deletion in front of him.
+                        apiDelete(content.api, p.id).catch(() => { /* offline */ });
+                      }}>{${T('حذف', 'Delete')}}</button>
                   )}
                 </header>
                 {p.text ? <p className="post-text">{p.text}</p> : null}

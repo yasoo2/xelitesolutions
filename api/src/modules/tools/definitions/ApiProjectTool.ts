@@ -144,6 +144,22 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
       image TEXT DEFAULT '',
       at TEXT DEFAULT (datetime('now'))
     )\`);
+    // A like, a comment and a follow are SHARED FACTS. A feed where each
+    // browser keeps its own hearts is not a network — two people looking at
+    // the same post would see two different numbers. They live here instead.
+    conn.exec(\`CREATE TABLE IF NOT EXISTS likes (
+      post_id INTEGER NOT NULL, handle TEXT NOT NULL,
+      PRIMARY KEY (post_id, handle)
+    )\`);
+    conn.exec(\`CREATE TABLE IF NOT EXISTS comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      post_id INTEGER NOT NULL, author TEXT NOT NULL, handle TEXT DEFAULT '',
+      text TEXT NOT NULL, at TEXT DEFAULT (datetime('now'))
+    )\`);
+    conn.exec(\`CREATE TABLE IF NOT EXISTS follows (
+      follower TEXT NOT NULL, target TEXT NOT NULL,
+      PRIMARY KEY (follower, target)
+    )\`);
     const rowOf = (r) => (r ? { id: r.id, author: r.author, handle: r.handle, text: r.text, image: r.image || null, at: r.at } : null);
     db = {
       backend: 'sqlite',
@@ -154,15 +170,45 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
           .run(String(author), String(handle), String(text), String(image || ''), String(at || new Date().toISOString()));
         return db.get(r.lastInsertRowid);
       },
-      remove: (id) => conn.prepare('DELETE FROM posts WHERE id = ?').run(Number(id)).changes > 0,
+      remove: (id) => {
+        // A deleted post takes its hearts and its thread with it — no orphans.
+        conn.prepare('DELETE FROM likes WHERE post_id = ?').run(Number(id));
+        conn.prepare('DELETE FROM comments WHERE post_id = ?').run(Number(id));
+        return conn.prepare('DELETE FROM posts WHERE id = ?').run(Number(id)).changes > 0;
+      },
       count: () => Number(conn.prepare('SELECT COUNT(*) AS n FROM posts').get().n),
+
+      likesFor: (id) => conn.prepare('SELECT handle FROM likes WHERE post_id = ?').all(Number(id)).map((r) => r.handle),
+      toggleLike: (id, handle) => {
+        const has = conn.prepare('SELECT 1 AS n FROM likes WHERE post_id = ? AND handle = ?').get(Number(id), String(handle));
+        if (has) conn.prepare('DELETE FROM likes WHERE post_id = ? AND handle = ?').run(Number(id), String(handle));
+        else conn.prepare('INSERT INTO likes (post_id, handle) VALUES (?, ?)').run(Number(id), String(handle));
+        return { liked: !has, handles: db.likesFor(id) };
+      },
+      commentsFor: (id) => conn.prepare('SELECT * FROM comments WHERE post_id = ? ORDER BY id ASC').all(Number(id))
+        .map((c) => ({ id: String(c.id), author: c.author, handle: c.handle, text: c.text, at: c.at })),
+      addComment: (id, { author, handle = '', text, at }) => {
+        const r = conn.prepare('INSERT INTO comments (post_id, author, handle, text, at) VALUES (?, ?, ?, ?, ?)')
+          .run(Number(id), String(author), String(handle), String(text), String(at || new Date().toISOString()));
+        return db.commentsFor(id).find((c) => c.id === String(r.lastInsertRowid)) || null;
+      },
+      following: (follower) => conn.prepare('SELECT target FROM follows WHERE follower = ?').all(String(follower)).map((r) => r.target),
+      toggleFollow: (follower, target) => {
+        const has = conn.prepare('SELECT 1 AS n FROM follows WHERE follower = ? AND target = ?').get(String(follower), String(target));
+        if (has) conn.prepare('DELETE FROM follows WHERE follower = ? AND target = ?').run(String(follower), String(target));
+        else conn.prepare('INSERT INTO follows (follower, target) VALUES (?, ?)').run(String(follower), String(target));
+        return !has;
+      },
     };
   } catch { /* an older Node — the JSON backend below serves instead */ }
 }
 
 if (!db) {
   const FILE = path.join(HERE, 'data.json');
-  const load = () => { try { return JSON.parse(fs.readFileSync(FILE, 'utf-8')); } catch { return { seq: 0, rows: [] }; } };
+  const blank = { seq: 0, rows: [], likes: [], comments: [], cseq: 0, follows: [] };
+  const load = () => {
+    try { return { ...blank, ...JSON.parse(fs.readFileSync(FILE, 'utf-8')) }; } catch { return { ...blank }; }
+  };
   const save = (s) => fs.writeFileSync(FILE, JSON.stringify(s, null, 2));
   db = {
     backend: 'json',
@@ -175,10 +221,41 @@ if (!db) {
     },
     remove: (id) => {
       const s = load(); const before = s.rows.length;
-      s.rows = s.rows.filter((r) => r.id !== Number(id)); save(s);
+      s.rows = s.rows.filter((r) => r.id !== Number(id));
+      s.likes = s.likes.filter((l) => l.post_id !== Number(id));
+      s.comments = s.comments.filter((c) => c.post_id !== Number(id));
+      save(s);
       return s.rows.length < before;
     },
     count: () => load().rows.length,
+
+    likesFor: (id) => load().likes.filter((l) => l.post_id === Number(id)).map((l) => l.handle),
+    toggleLike: (id, handle) => {
+      const s = load();
+      const at = s.likes.findIndex((l) => l.post_id === Number(id) && l.handle === String(handle));
+      if (at >= 0) s.likes.splice(at, 1); else s.likes.push({ post_id: Number(id), handle: String(handle) });
+      save(s);
+      return { liked: at < 0, handles: s.likes.filter((l) => l.post_id === Number(id)).map((l) => l.handle) };
+    },
+    commentsFor: (id) => load().comments.filter((c) => c.post_id === Number(id))
+      .map((c) => ({ id: String(c.id), author: c.author, handle: c.handle, text: c.text, at: c.at })),
+    addComment: (id, { author, handle = '', text, at }) => {
+      const s = load();
+      const row = {
+        id: ++s.cseq, post_id: Number(id), author: String(author), handle: String(handle),
+        text: String(text), at: at || new Date().toISOString(),
+      };
+      s.comments.push(row); save(s);
+      return { id: String(row.id), author: row.author, handle: row.handle, text: row.text, at: row.at };
+    },
+    following: (follower) => load().follows.filter((f) => f.follower === String(follower)).map((f) => f.target),
+    toggleFollow: (follower, target) => {
+      const s = load();
+      const at = s.follows.findIndex((f) => f.follower === String(follower) && f.target === String(target));
+      if (at >= 0) s.follows.splice(at, 1); else s.follows.push({ follower: String(follower), target: String(target) });
+      save(s);
+      return at < 0;
+    },
   };
 }
 
@@ -210,8 +287,13 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, backend: db.backend, 
 
 // The feed. The response carries BOTH shapes on purpose: \`posts\` reads well
 // for a human with curl, and \`data\` is what the generated app parses.
+//
+// Every post arrives WITH its hearts and its thread, in one request. The app
+// polls this endpoint anyway, so a second round trip per post would buy
+// nothing but latency — and a feed that needed N+1 calls to show a like
+// count would fall over on the first busy day.
 app.get('/api/posts', (_req, res) => {
-  const posts = db.list();
+  const posts = db.list().map((p) => ({ ...p, likes: db.likesFor(p.id), comments: db.commentsFor(p.id) }));
   res.json({ ok: true, posts, data: posts });
 });
 
@@ -239,10 +321,57 @@ app.delete('/api/posts/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// A heart is a fact about a post, not about one browser. Toggling returns the
+// WHOLE list of handles so the caller never has to guess the new count.
+app.post('/api/posts/:id/like', (req, res) => {
+  const handle = String((req.body || {}).handle || '').trim();
+  if (!handle) return res.status(400).json({ ok: false, error: 'handle_required' });
+  if (!db.get(req.params.id)) return res.status(404).json({ ok: false, error: 'not_found' });
+  const { liked, handles } = db.toggleLike(req.params.id, handle);
+  res.json({ ok: true, liked, likes: handles, count: handles.length });
+});
+
+app.get('/api/posts/:id/comments', (req, res) => {
+  if (!db.get(req.params.id)) return res.status(404).json({ ok: false, error: 'not_found' });
+  res.json({ ok: true, comments: db.commentsFor(req.params.id) });
+});
+
+app.post('/api/posts/:id/comments', (req, res) => {
+  const { author, handle, text, at } = req.body || {};
+  if (typeof author !== 'string' || !author.trim()) return res.status(400).json({ ok: false, error: 'author_required' });
+  const body = typeof text === 'string' ? text.trim() : '';
+  if (!body) return res.status(400).json({ ok: false, error: 'empty_comment' });
+  if (body.length > 2000) return res.status(400).json({ ok: false, error: 'text_too_long' });
+  if (!db.get(req.params.id)) return res.status(404).json({ ok: false, error: 'not_found' });
+  const comment = db.addComment(req.params.id, {
+    author: author.trim(), handle: typeof handle === 'string' ? handle.slice(0, 30) : '',
+    text: body, at: typeof at === 'string' ? at : new Date().toISOString(),
+  });
+  res.status(201).json({ ok: true, comment });
+});
+
+// Following is shared too: open the app on a second device and the people you
+// follow are still the people you follow.
+app.get('/api/follows', (req, res) => {
+  const follower = String(req.query.follower || '').trim();
+  if (!follower) return res.status(400).json({ ok: false, error: 'follower_required' });
+  res.json({ ok: true, following: db.following(follower) });
+});
+
+app.post('/api/follows', (req, res) => {
+  const follower = String((req.body || {}).follower || '').trim();
+  const target = String((req.body || {}).target || '').trim();
+  if (!follower || !target) return res.status(400).json({ ok: false, error: 'follower_and_target_required' });
+  if (follower === target) return res.status(400).json({ ok: false, error: 'cannot_follow_self' });
+  const now = db.toggleFollow(follower, target);
+  res.json({ ok: true, following: now, list: db.following(follower) });
+});
+
 const port = Number(process.env.PORT || 4100);
 app.listen(port, () => {
   console.log(\`[api] feed listening on http://localhost:\${port} — backend: \${db.backend}, \${db.count()} posts\`);
-  console.log('[api] GET /api/posts · POST /api/posts · DELETE /api/posts/:id · GET /api/health');
+  console.log('[api] GET/POST /api/posts · DELETE /api/posts/:id · POST /api/posts/:id/like');
+  console.log('[api] GET/POST /api/posts/:id/comments · GET/POST /api/follows · GET /api/health');
 });
 `;
 }
@@ -259,16 +388,23 @@ npm start          # المنفذ 4100
 
 | المسار | ماذا يفعل |
 |---|---|
-| \`GET /api/posts\` | كل المنشورات (الأحدث أولاً) |
+| \`GET /api/posts\` | كل المنشورات (الأحدث أولاً) ومعها إعجاباتها وتعليقاتها |
 | \`POST /api/posts\` | نشر: \`{author, handle, text, image, at}\` |
-| \`DELETE /api/posts/:id\` | حذف منشور |
+| \`DELETE /api/posts/:id\` | حذف منشور — ومعه إعجاباته وتعليقاته |
+| \`POST /api/posts/:id/like\` | إعجاب/إلغاء: \`{handle}\` → \`{liked, likes, count}\` |
+| \`GET /api/posts/:id/comments\` | تعليقات منشور |
+| \`POST /api/posts/:id/comments\` | تعليق: \`{author, handle, text}\` |
+| \`GET /api/follows?follower=@me\` | من أتابع |
+| \`POST /api/follows\` | متابعة/إلغاء: \`{follower, target}\` |
 | \`GET /api/health\` | حالة الخادم وعدد المنشورات |
 
 في شبكة اجتماعية **الأعضاء هم من ينشرون**، فالكتابة عامّة عن قصد — لا رمز
 مالك. هذا خادم محلي لمشروعك؛ قبل نشره على الإنترنت أضِف حسابات وصلاحيات.
 
-الإعجابات والتعليقات ما تزال محفوظة في متصفح كل مستخدم — لم أنقلها إلى
-الخادم بعد، وأقولها بدل ادّعاء المزامنة الكاملة.
+الإعجاب والتعليق والمتابعة **حقائق مشتركة** ومحفوظة هنا لا في المتصفح: من
+يفتح التطبيق على جهاز آخر يرى العدد نفسه والخيط نفسه. الهوية ما تزال اسماً
+يكتبه المستخدم بلا كلمة مرور — ومع الاسم وحده لا يمكن للخادم أن يمنع أحداً
+من انتحال صفة غيره، فأضِف حسابات قبل النشر على الإنترنت.
 
 البيانات على القرص (\`data.db\` أو \`data.json\`) وتنجو من إعادة التشغيل.
 `;
