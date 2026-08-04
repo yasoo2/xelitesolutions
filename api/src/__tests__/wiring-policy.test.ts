@@ -899,6 +899,34 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(orch).toContain("node.tool === 'shell_execute' && typeof nodeInput?.command === 'string'");
     });
 
+    it('the mind never schedules work the tools cannot be fed', () => {
+        // 132 of 151 tools declare required arguments; the sanitiser filled
+        // three of them by hand. Measured on a sentence that CONTAINED the
+        // answer — «دقّق السيو في https://example.com» → browser_seo_audit with
+        // input {} → ok=false, «no_url». Right tool, argument in plain sight,
+        // and the intelligence layer already knew how to fill it.
+        const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
+        const filled = PlanningEngine.fillRequiredArgs(
+            [{ id: 'a', description: 'دقّق السيو', tool: 'browser_seo_audit', input: {}, dependsOn: [] }],
+            'دقّق السيو في https://example.com', {});
+        expect(filled[0].tool).toBe('browser_seo_audit');
+        expect(filled[0].input.url).toBe('https://example.com');
+        // what the planner chose is never overwritten
+        const kept = PlanningEngine.fillRequiredArgs(
+            [{ id: 'a', description: 'x', tool: 'browser_seo_audit', input: { url: 'https://chosen.example' }, dependsOn: [] }],
+            'دقّق السيو في https://other.example', {});
+        expect(kept[0].input.url).toBe('https://chosen.example');
+        // and an argument that genuinely is not there becomes a question, by name
+        const asked = PlanningEngine.fillRequiredArgs(
+            [{ id: 'a', description: 'املأ النموذج', tool: 'browser_fill_form', input: {}, dependsOn: [] }],
+            'املأ النموذج', {});
+        expect(asked[0].tool).toBe('central_answer');
+        expect(asked[0].input.question).toContain('fields');
+        // …wired into the real plan path, not a helper nobody calls
+        expect(SRC('core', 'orchestrator', 'PlanningEngine.ts'))
+            .toContain('PlanningEngine.fillRequiredArgs(steps as any, userGoal, context)');
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([

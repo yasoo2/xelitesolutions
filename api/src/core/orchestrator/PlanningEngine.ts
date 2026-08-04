@@ -1,5 +1,5 @@
 import { StructuredIntent } from '../intelligence/IntentParser';
-import { catalogueFor, registeredToolNames, capabilityRoute } from './toolCatalog';
+import { catalogueFor, registeredToolNames, capabilityRoute, inputForTool } from './toolCatalog';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { normalizeIntentText } from './promptNormalizer';
 import { compactHistoryForPrompt } from './history-compact';
@@ -1328,7 +1328,7 @@ Return ONLY a JSON array of steps:
                     agent: String(step.agent || 'General'),
                     input: step.input || {},
                     dependsOn: Array.isArray(step.dependsOn) ? step.dependsOn.map(String) : []
-                })), String(intent.goal || ''));
+                })), String(intent.goal || ''), context);
 
                 return {
                     id: `dag_${Date.now()}`,
@@ -1415,7 +1415,7 @@ Return ONLY a JSON array of steps:
      * recovery cycle. Every step now leaves planning with the inputs its
      * tool cannot run without.
      */
-    static sanitizeSteps<T extends { tool: string; description: string; input: any }>(steps: T[], goal: string): T[] {
+    static sanitizeSteps<T extends { tool: string; description: string; input: any }>(steps: T[], goal: string, context?: any): T[] {
         const userGoal = goal.split(/\n+\[(?:ATTACHED FILES|STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|RESPONSE LANGUAGE)/)[0].trim();
         // A planner is now shown a REAL catalogue, so a name outside it is a
         // hallucination rather than a gap. An unknown name used to travel all
@@ -1448,7 +1448,77 @@ Return ONLY a JSON array of steps:
             }
             if (!s.input.request) s.input.request = userGoal;
         }
-        return PlanningEngine.wireDataFlow(steps as any) as any;
+        return PlanningEngine.wireDataFlow(PlanningEngine.fillRequiredArgs(steps as any, userGoal, context) as any) as any;
+    }
+
+    /**
+     * THE MIND MAY NOT SCHEDULE WORK THE TOOLS CANNOT BE FED.
+     *
+     * 132 of the 151 tools declare required arguments. The sanitiser filled
+     * exactly three of them by hand, so for everything else a step that named
+     * the right tool and forgot its argument was scheduled anyway — and died at
+     * run time with a machine word. Measured, on a sentence that CONTAINED the
+     * answer:
+     *
+     *   «دقّق السيو في https://example.com»
+     *   plan: browser_seo_audit, input {}
+     *   result: ok=false, «no_url»
+     *
+     * The URL was in the user's own sentence. The tool was the right one. The
+     * intelligence layer already knew how to fill that argument — it does it
+     * for the capability router — and nobody connected the three.
+     *
+     * So every step is now checked against what its tool actually requires:
+     *   - what the planner wrote is never overwritten;
+     *   - a missing required argument is filled from the sentence, the open
+     *     page, or the session's project, by the same code the router uses;
+     *   - and when it truly cannot be found, the step is not scheduled to fail.
+     *     It becomes a question that names what is missing, because asking is
+     *     an answer and «no_url» is not.
+     */
+    static fillRequiredArgs<T extends { tool: string; description: string; input: any }>(steps: T[], goal: string, context?: any): T[] {
+        // Arguments the RUNTIME supplies, never the planner: ToolService puts the
+        // signed-in user, the workspace and the live session into every call.
+        // Counting them as «missing» turned a perfectly good browser step into a
+        // question asking the user for a session id — caught by the sanitizer's
+        // own older test, which is why it exists.
+        const RUNTIME_SUPPLIED = new Set(['sessionId', 'userId', 'workspaceId', 'context', '__userId', '__workspaceId']);
+        const { tools } = require('../../modules/tools/registry');
+        const byName = new Map<string, any>((tools as any[]).map(t => [t.name, t]));
+        for (const s of steps) {
+            const tool = byName.get(String(s.tool || ''));
+            const required: string[] = Array.isArray(tool?.inputSchema?.required) ? tool.inputSchema.required : [];
+            if (!required.length) continue;
+            s.input = s.input && typeof s.input === 'object' ? s.input : {};
+
+            const missing = () => required.filter(r => {
+                if (RUNTIME_SUPPLIED.has(r)) return false;
+                const v = (s.input as any)[r];
+                if (v === undefined || v === null) return true;
+                if (typeof v === 'string' && !v.trim()) return true;
+                if (Array.isArray(v) && !v.length) return true;
+                return false;
+            });
+            if (!missing().length) continue;
+
+            // The router's own filler: a URL from the sentence or the open page,
+            // the goal for a question/query/instruction.
+            try {
+                const filled = inputForTool(tool, `${s.description || ''} ${goal}`.trim(), context);
+                if (filled) for (const k of missing()) if (filled[k] !== undefined) (s.input as any)[k] = filled[k];
+            } catch { /* the filler is a helper, never a blocker */ }
+
+            const still = missing();
+            if (!still.length) continue;
+
+            console.warn(`[PlanningEngine] «${s.tool}» needs ${still.join(', ')} and nothing in the request provides it — asking instead of failing`);
+            s.tool = 'central_answer';
+            s.input = {
+                question: `${s.description || goal}\n\n(لأنفّذ هذه الخطوة أحتاج: ${still.join('، ')} — لم أجده في الطلب. اسأل المستخدم عنه بوضوح، بلغته، ولا تختلق قيمة.)`,
+                request: goal,
+            };
+        }
+        return steps;
     }
 
     /**
