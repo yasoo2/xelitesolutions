@@ -2480,8 +2480,20 @@ export class ReactProjectTool extends BaseTool {
             [/reviews?|ratings?|تقييمات|مراجعات/i, 'التقييمات والمراجعات', 'reviews and ratings'],
             [/unit\s*tests?|e2e|integration\s*tests?|اختبارات/i, 'حزمة الاختبارات', 'a test suite'],
         ];
+        // THE USER'S OWN LIST FIRST. The table above knows only the words I
+        // thought to write down; measured in the field, a request naming twelve
+        // features got ONE of them reported because «AI assistant» happened to
+        // be in my table and «Stories», «Reels», «Live streaming», «Groups»,
+        // «Ads platform» were not. The features are now read out of the request
+        // and reported verbatim; the table stays as a second source for the
+        // technology stack, which is rarely written as a bullet list.
+        const { uncoveredFeatures } = require('../../../core/design/app-blueprints');
+        const askedButMissing: string[] = appBp
+            ? uncoveredFeatures(request, appBp.engine, !!apiLink)
+            : [];
         const unmet = appBp
-            ? UNMET.filter(([re]) => re.test(request)).map(u => (isAr ? u[1] : u[2]))
+            ? [...askedButMissing, ...UNMET.filter(([re]) => re.test(request)).map(u => (isAr ? u[1] : u[2]))]
+                .filter((v, i, a) => a.indexOf(v) === i).slice(0, 24)
             : [];
         const unmetBlock = unmet.length
             ? (isAr

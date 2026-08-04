@@ -34,7 +34,7 @@ const slug = (s: string) => (String(s || '').toLowerCase()
 const js = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
 
 /** What this kind of business stores — the resource and its seed rows. */
-export function apiResourceForKind(kind: PageKind, isAr: boolean): {
+export function apiResourceForKind(kind: PageKind, isAr: boolean, probe?: string): {
     resource: string; labelAr: string; seeds: Array<{ name: string; details: string; price: string }>;
 } {
     if (kind === 'restaurant') {
@@ -62,6 +62,28 @@ export function apiResourceForKind(kind: PageKind, isAr: boolean): {
                 { name: 'Premium edition', details: 'Finer materials, finished by hand', price: '$69' },
             ],
         };
+    }
+    // THE SERVER MUST STORE WHAT THE APP TALKS ABOUT.
+    // Measured in the field: «social media platform … Messaging …» produced a
+    // chat app pointed at /api/items — a conversation reading a CATALOGUE.
+    // When the same request names an application, the resource is named after
+    // it, so the two halves of the full stack are about the same thing.
+    {
+        const { detectAppKind } = require('../../../core/design/app-blueprints');
+        const appKind = detectAppKind(String(probe || ''));
+        const BY_APP: Record<string, [string, string]> = {
+            chat: ['messages', 'الرسائل'], maps: ['places', 'الأماكن'], tasks: ['tasks', 'المهام'],
+            notes: ['notes', 'الملاحظات'], expenses: ['expenses', 'المصاريف'], inventory: ['items', 'الأصناف'],
+            booking: ['bookings', 'الحجوزات'], pos: ['sales', 'المبيعات'], crm: ['customers', 'العملاء'],
+            lms: ['enrolments', 'التسجيلات'], contacts: ['contacts', 'جهات الاتصال'], habits: ['habits', 'العادات'],
+        };
+        const named = appKind ? BY_APP[appKind] : null;
+        if (named) {
+            return {
+                resource: named[0], labelAr: named[1],
+                seeds: [],           // a real app starts empty — no fabricated rows
+            };
+        }
     }
     return {
         resource: 'items', labelAr: 'العناصر',
@@ -658,7 +680,7 @@ export class ApiProjectTool extends BaseTool {
 
         const kind = detectPageKind(request);
         const brand = brandFrom(request, isAr) || (isAr ? 'مشروعي' : 'MyApp');
-        const { resource, labelAr, seeds } = apiResourceForKind(kind, isAr);
+        const { resource, labelAr, seeds } = apiResourceForKind(kind, isAr, request);
         const dirName = `api-${slug(brand)}`;
         const { workspaceService } = require('../../services/WorkspaceService');
         const root = String(input?.root || workspaceService.getExplorerRoot());

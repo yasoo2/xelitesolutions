@@ -151,6 +151,49 @@ async function main() {
     check('ونسبة الحقوق لخرائط OpenStreetMap', /openstreetmap\.org\/copyright/.test(mapSrc));
     check('وإذا تعذّرت البلاطات يقولها صراحةً', /tileerror/.test(mapSrc));
 
+
+    console.log('\n[4b] وصدقٌ بكلمات المستخدم نفسه — لا بكلماتٍ حفظتُها أنا');
+    // The field request, verbatim: twelve features, one of them delivered.
+    const SOCIAL = `Build a next-generation social media platform.
+
+Features:
+
+- Posts
+- Stories
+- Reels
+- Live streaming
+- Groups
+- Pages
+- Messaging
+- Video calls
+- AI moderation
+- Recommendations
+- Ads platform
+- Creator dashboard`;
+    const { requestedFeatures, uncoveredFeatures } = require('../../core/design/app-blueprints');
+    const asked = requestedFeatures(SOCIAL);
+    check(`قرأتُ ${asked.length} ميزة من نصّ الطلب`, asked.length === 12, asked.join(' | '));
+    const gap = uncoveredFeatures(SOCIAL, 'chat', true);
+    check('و«Messaging» وحدها هي المُنفَّذة — والباقي يُعلَن', gap.length === 11 && !gap.includes('Messaging'), gap.join(' | '));
+    for (const owed of ['Stories', 'Reels', 'Live streaming', 'Ads platform', 'Creator dashboard']) {
+        check(`ويُسمّي «${owed}» كما كتبها المستخدم`, gap.includes(owed));
+    }
+    const social = await scaffold(SOCIAL, 'social-gap', { skipInstall: true });
+    check('ورسالة التسليم تحمل القائمة كاملة', /Stories/.test(social.message) && /Ads platform/.test(social.message),
+        social.message.slice(0, 200));
+
+    console.log('\n[4c] وخادم التطبيق يخزّن ما يتحدّث عنه التطبيق');
+    const { apiResourceForKind } = require('../../modules/tools/definitions/ApiProjectTool');
+    check('طلب فيه محادثة ⇒ مورد messages لا items',
+        apiResourceForKind('generic', false, SOCIAL).resource === 'messages',
+        apiResourceForKind('generic', false, SOCIAL).resource);
+    check('ونظام حجوزات ⇒ bookings',
+        apiResourceForKind('generic', true, 'نظام حجوزات عيادة').resource === 'bookings');
+    check('ومطعم يبقى dishes (لم أكسر القديم)',
+        apiResourceForKind('restaurant', true, 'موقع مطعم').resource === 'dishes');
+    check('وتطبيق حقيقي يبدأ فارغاً — بلا صفوف مفبركة',
+        apiResourceForKind('generic', false, SOCIAL).seeds.length === 0);
+
     if (FAST) {
         console.log('\n(FAST=1 — تُخطّي التثبيت والمتصفح)');
         console.log(`\n===== ${pass} passed, ${fail} failed =====`);

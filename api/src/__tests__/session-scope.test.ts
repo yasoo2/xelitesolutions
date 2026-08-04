@@ -157,3 +157,67 @@ describe('INVARIANT: no panel keeps another conversation’s state', () => {
         expect(branch).toMatch(/setDraftText\(''\)/);
     });
 });
+
+/**
+ * INVARIANT 4 (honesty), swept where it kept failing: the gap list must come
+ * from the REQUEST, not from a table of words I happened to anticipate.
+ *
+ * Measured in the field AFTER the first honesty fix: a request naming twelve
+ * features got exactly ONE of them reported as unbuilt, because «AI assistant»
+ * was in my table and «Stories», «Reels», «Live streaming», «Groups», «Pages»,
+ * «Video calls», «Ads platform», «Creator dashboard» were not.
+ */
+describe('INVARIANT: what was not built is named in the user’s own words', () => {
+    const SOCIAL = [
+        'Build a next-generation social media platform.', '', 'Features:', '',
+        '- Posts', '- Stories', '- Reels', '- Live streaming', '- Groups', '- Pages',
+        '- Messaging', '- Video calls', '- AI moderation', '- Recommendations',
+        '- Ads platform', '- Creator dashboard',
+    ].join('\n');
+
+    it('reads the features out of the request', () => {
+        const { requestedFeatures } = require('../core/design/app-blueprints');
+        expect(requestedFeatures(SOCIAL)).toEqual([
+            'Posts', 'Stories', 'Reels', 'Live streaming', 'Groups', 'Pages',
+            'Messaging', 'Video calls', 'AI moderation', 'Recommendations',
+            'Ads platform', 'Creator dashboard',
+        ]);
+    });
+
+    it('reports every feature the delivered engine does not cover', () => {
+        const { uncoveredFeatures } = require('../core/design/app-blueprints');
+        const gap = uncoveredFeatures(SOCIAL, 'chat', true);
+        expect(gap).toContain('Stories');
+        expect(gap).toContain('Ads platform');
+        expect(gap).toContain('Creator dashboard');
+        // …and never claims something IS missing when the engine delivers it
+        expect(gap).not.toContain('Messaging');
+        expect(gap.length).toBe(11);
+    });
+
+    it('the delivery message is built from that list, not only from the table', () => {
+        const R = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(R).toMatch(/uncoveredFeatures\(request, appBp\.engine/);
+        expect(R).toMatch(/askedButMissing/);
+    });
+});
+
+/**
+ * INVARIANT: the two halves of a full stack are about the same thing.
+ * A chat app was wired to /api/items — a conversation reading a catalogue.
+ */
+describe('INVARIANT: the server stores what the app talks about', () => {
+    const { apiResourceForKind } = require('../modules/tools/definitions/ApiProjectTool');
+    it('an app request names the resource after the app', () => {
+        expect(apiResourceForKind('generic', false, 'a platform with Messaging and video calls').resource).toBe('messages');
+        expect(apiResourceForKind('generic', true, 'نظام حجوزات عيادة').resource).toBe('bookings');
+        expect(apiResourceForKind('generic', true, 'نظام إدارة مخزون').resource).toBe('items');
+    });
+    it('and a presentation build keeps the resource it always had', () => {
+        expect(apiResourceForKind('restaurant', true, 'موقع مطعم').resource).toBe('dishes');
+        expect(apiResourceForKind('store', true, 'متجر').resource).toBe('products');
+    });
+    it('an application starts empty — no fabricated rows in its database', () => {
+        expect(apiResourceForKind('generic', true, 'تطبيق محادثة').seeds).toHaveLength(0);
+    });
+});

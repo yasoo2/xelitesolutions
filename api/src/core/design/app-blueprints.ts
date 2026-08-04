@@ -416,3 +416,74 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
         };
     }
 }
+
+/* ── what was asked for, in the user's own words ─────────────────────────── */
+
+/**
+ * THE GAP LIST MUST COME FROM THE REQUEST, NOT FROM A KEYWORD TABLE I WROTE.
+ *
+ * Measured in the field: a request listing twelve features — Posts, Stories,
+ * Reels, Live streaming, Groups, Pages, Messaging, Video calls, AI moderation,
+ * Recommendations, an Ads platform, a Creator dashboard — was answered with a
+ * chat app and an honesty block naming exactly ONE unbuilt thing, because my
+ * table happened to contain the words «AI assistant» and none of the others.
+ * A list of what I remembered to anticipate is not a list of what was asked.
+ *
+ * So the features are extracted from the request itself and reported in the
+ * user's own words. Anything the delivered engine does not cover is named.
+ */
+export function requestedFeatures(requestRaw: string): string[] {
+    const request = String(requestRaw || '')
+        .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
+    const out: string[] = [];
+    const push = (raw: string) => {
+        const s = raw.trim()
+            .replace(/^[-•*–—\d.)\s]+/, '')
+            .replace(/[.,;:؛،]+$/, '')
+            .trim();
+        if (s.length < 3 || s.length > 60) return;
+        // Section banners and prose lines are not features.
+        if (/^[=_-]{3,}$/.test(s)) return;
+        if (/^(features?|requirements?|tech\s*stack|output|goal|name|project|design|use|generate|build|create|the\s|it\s|and\s)/i.test(s) && !/^(build|create)\s+\w+\s+\w+/i.test(s)) return;
+        if (/\s(the|a|an|is|are|must|should|will|can)\s/i.test(s) && s.split(/\s+/).length > 6) return;
+        const key = s.toLowerCase();
+        if (out.some(o => o.toLowerCase() === key)) return;
+        out.push(s);
+    };
+    // Bulleted or numbered lines — the shape people actually write specs in.
+    for (const line of request.split(/\r?\n/)) {
+        if (/^\s*[-•*–—]\s+\S/.test(line) || /^\s*\d+[.)]\s+\S/.test(line)) push(line);
+    }
+    // «… with A, B and C» — the one-line form of the same list.
+    if (out.length < 3) {
+        const m = request.match(/\b(?:with|including|features?:?)\s+([^.\n]{10,300})/i);
+        if (m) for (const part of m[1].split(/,| and | و /i)) push(part);
+    }
+    return out.slice(0, 30);
+}
+
+/** What each engine genuinely delivers, in the words a request would use. */
+const ENGINE_COVERS: Record<AppEngine, RegExp> = {
+    map: /map|navigation|direction|route|distance|place|location|geo|gps|خريطة|خرائط|مسار|ملاحة|موقع|مسافة/i,
+    chat: /chat|messag|room|conversation|dm\b|inbox|محادث|رسائل|دردش|غرف/i,
+    weather: /weather|forecast|temperature|humidity|wind|طقس|توقّع|توقع|حرارة/i,
+    records: /list|record|crud|table|entry|entries|manage|track|inventory|booking|order|task|note|expense|customer|student|contact|report|search|filter|export|قائمة|سجل|إدارة|تتبع|حجز|طلب|مهمة|ملاحظة|مصروف|عميل|طالب|تقرير|بحث|تصدير/i,
+};
+
+/** Cross-cutting things the BACKEND covers when one was built alongside. */
+const BACKEND_COVERS = /login|sign\s*in|account|auth|password|database|db\b|api\b|rest\b|server|storage|persist|order|تسجيل\s*دخول|حساب|قاعدة\s*بيانات|خادم|واجهة\s*برمجية|طلبات/i;
+
+/**
+ * The features the delivery does NOT cover — named exactly as the user wrote
+ * them. An empty list means everything asked for is in the build.
+ */
+export function uncoveredFeatures(request: string, engine: AppEngine | null, hasBackend: boolean): string[] {
+    const asked = requestedFeatures(request);
+    if (!asked.length) return [];
+    const covers = engine ? ENGINE_COVERS[engine] : null;
+    return asked.filter(f => {
+        if (covers && covers.test(f)) return false;
+        if (hasBackend && BACKEND_COVERS.test(f)) return false;
+        return true;
+    });
+}
