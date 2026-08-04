@@ -23,10 +23,10 @@
  *             search, filter, totals, CSV — driven by a per-domain schema
  */
 
-export type AppEngine = 'map' | 'chat' | 'weather' | 'records';
+export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social';
 
 export type AppKind =
-    | 'maps' | 'chat' | 'weather'
+    | 'maps' | 'chat' | 'weather' | 'social'
     | 'tasks' | 'notes' | 'expenses' | 'inventory' | 'booking'
     | 'pos' | 'crm' | 'lms' | 'contacts' | 'habits' | 'generic';
 
@@ -78,6 +78,10 @@ export interface AppBlueprint {
 const KIND_DETECTORS: Array<[AppKind, RegExp]> = [
     ['maps', /خرائط|خريطة|خارطة|مواقع\s*جغرافي|ملاحة|تتبع\s*(المواقع|الموقع)|جي\s*بي\s*اس|\bmaps?\b|\bgps\b|navigation|geolocation|geo\s*app/i],
     ['weather', /طقس|الجو|درجات?\s*الحرارة|أحوال\s*جوية|weather|forecast|temperature app/i],
+    // A social network CONTAINS messaging, so it is tested before chat:
+    // «منصة تواصل اجتماعي … Messaging» is a feed with messages in it, not a
+    // messenger. Measured from the field request that produced a chat app.
+    ['social', /تواصل\s*اجتماعي|شبكة\s*اجتماعية|منشورات|تغريد|متابعين|social\s*(media|network|platform)|newsfeed|news\s*feed|timeline|posts?\s*and\s*(comments?|likes?)|followers?/i],
     ['chat', /محادث|دردش|شات|رسائل\s*(فورية|نصية)?|مراسلة|\bchat\b|messaging|messenger|instant\s*messages/i],
     ['pos', /نقاط\s*بيع|نقطة\s*بيع|كاشير|كاشيير|\bpos\b|point\s*of\s*sale|cash\s*register/i],
     ['booking', /حجوزات|حجز|مواعيد|موعد|عياد|مرضى|reservation|booking|appointment|clinic/i],
@@ -168,6 +172,17 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
             fields: [], metrics: [], deps: {},
             emptyHint: L('ابحث عن مدينة، أو اسمح بالوصول لموقعك لعرض طقسك الآن.',
                 'Search for a city, or allow location access to see your own weather.'),
+        };
+
+        case 'social': return {
+            kind, engine: 'social',
+            title: L('الخيط', 'The feed'),
+            lede: L('انشر، تابِع، أعجب، علّق — خيط حقيقي بحسابات حقيقية.',
+                'Post, follow, like and comment — a real feed with real accounts.'),
+            entityOne: L('منشور', 'post'), entityMany: L('المنشورات', 'Posts'),
+            fields: [], metrics: [], deps: {},
+            emptyHint: L('لا منشورات بعد — اكتب أول منشور، أو تابِع أحداً لترى منشوراته.',
+                'No posts yet — write the first one, or follow someone to see theirs.'),
         };
 
         case 'chat': return {
@@ -467,6 +482,7 @@ const ENGINE_COVERS: Record<AppEngine, RegExp> = {
     map: /map|navigation|direction|route|distance|place|location|geo|gps|خريطة|خرائط|مسار|ملاحة|موقع|مسافة/i,
     chat: /chat|messag|room|conversation|dm\b|inbox|محادث|رسائل|دردش|غرف/i,
     weather: /weather|forecast|temperature|humidity|wind|طقس|توقّع|توقع|حرارة/i,
+    social: /post|feed|timeline|like|comment|follow|profile|share|newsfeed|wall|منشور|منشورات|خيط|إعجاب|تعليق|متابع|ملف\s*شخصي|مشاركة/i,
     records: /list|record|crud|table|entry|entries|manage|track|inventory|booking|order|task|note|expense|customer|student|contact|report|search|filter|export|قائمة|سجل|إدارة|تتبع|حجز|طلب|مهمة|ملاحظة|مصروف|عميل|طالب|تقرير|بحث|تصدير/i,
 };
 

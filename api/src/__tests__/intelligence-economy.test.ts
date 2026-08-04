@@ -91,15 +91,36 @@ describe('retryAfterMsFrom reads the real Groq TPD message', () => {
  * then the mesh takes over. User-facing calls keep the generous window.
  */
 describe('internal calls never wait the full local window', () => {
-    it('the router caps the Local timeout for internal purpose', () => {
+    /**
+     * These used to pin the literal «25_000». That number was a GUESS, and on
+     * the user's laptop it meant every internal call timed out, the local
+     * brain was paused for ten then twenty minutes, and the whole load moved
+     * to Groq until the daily quota died. The leash is now measured from the
+     * machine's own warm-up — so the test states the PROPERTY (bounded, and
+     * bounded inside the Local branch only) instead of the old constant.
+     */
+    it('the router leashes the Local timeout for internal purpose', () => {
         const src = read('core', 'llm', 'intelligent-router.ts');
         expect(src).toContain('if (internalCall) {');
-        expect(src).toMatch(/internalCall\)\s*\{\s*\n\s*timeoutValue = Math\.min\(timeoutValue, 25_000\)/);
+        expect(src).toMatch(/localWarmupMs/);
+        expect(src).toMatch(/Math\.min\(90_000, Math\.max\(25_000/);   // floor and ceiling both stated
+        expect(src).toMatch(/timeoutValue = Math\.min\(timeoutValue, leash\)/);
+    });
+    it('the leash is sized by a REAL measurement of this machine', () => {
+        const brain = read('core', 'llm', 'local-brain.ts');
+        expect(brain).toMatch(/export function localWarmupMs/);
+        expect(brain).toMatch(/_warmupMs = Math\.max\(_warmupMs, Date\.now\(\) - startedAt\)/);
+        // …and with nothing measured it behaves exactly as it always did.
+        const leash = (measured: number) => (measured > 0 ? Math.min(90_000, Math.max(25_000, Math.round(measured * 6))) : 25_000);
+        expect(leash(0)).toBe(25_000);
+        expect(leash(1000)).toBe(25_000);
+        expect(leash(8000)).toBe(48_000);
+        expect(leash(60_000)).toBe(90_000);
     });
     it('the leash lives INSIDE the Local (Auto) branch — cloud timeouts untouched', () => {
         const src = read('core', 'llm', 'intelligent-router.ts');
         const local = src.indexOf("p.name === 'Local (Auto)'", src.indexOf('for (const p of orderedProviders)'));
-        const leash = src.indexOf('timeoutValue = Math.min(timeoutValue, 25_000)');
+        const leash = src.indexOf('timeoutValue = Math.min(timeoutValue, leash)');
         const keyless = src.indexOf("p.name === 'LLM7 (Keyless)'", local);
         expect(local).toBeGreaterThan(0);
         expect(leash).toBeGreaterThan(local);
@@ -114,8 +135,22 @@ describe('internal calls never wait the full local window', () => {
 describe('LLM7 remembers dead models', () => {
     it('401/402/403 add the model to the blocked set, and candidates skip it', () => {
         const src = read('core', 'llm', 'providers', 'llm7.ts');
-        expect(src).toContain('private blocked = new Set<string>()');
-        expect(src).toMatch(/status === 401 \|\| status === 402 \|\| status === 403\) this\.blocked\.add\(m\)/);
+        expect(src).toContain('private blocked = new Set<string>(loadBlockedModels())');
+        expect(src).toMatch(/status === 401 \|\| status === 402 \|\| status === 403\) \{/);
+        expect(src).toMatch(/this\.blocked\.add\(m\);/);
         expect(src).toMatch(/!this\.blocked\.has\(m\)/);
+    });
+
+    /**
+     * …and it remembers them ACROSS RESTARTS. Measured in the field: every run
+     * began with the same five 401s (Inkling, Inkling-Small, L3-8B-Lunaris,
+     * MiMo, MiMo-Pro) because the set lived in memory only — five dead calls
+     * on the exact path Joe takes when Groq's quota is already gone.
+     */
+    it('the refusals survive a restart, and expire after a week', () => {
+        const src = read('core', 'llm', 'providers', 'llm7.ts');
+        expect(src).toMatch(/llm7-blocked\.json/);
+        expect(src).toMatch(/saveBlockedModels\(this\.blocked\)/);
+        expect(src).toMatch(/7 \* 24 \* 3600_000/);
     });
 });

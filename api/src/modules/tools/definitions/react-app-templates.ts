@@ -68,7 +68,7 @@ ${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.fie
 /* ── the shell ───────────────────────────────────────────────────────────── */
 
 const ENGINE_COMPONENT: Record<AppBlueprint['engine'], string> = {
-    map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp',
+    map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp', social: 'SocialApp',
 };
 
 export function fileAppShellJsx(bp: AppBlueprint, isAr: boolean): string {
@@ -1347,6 +1347,35 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .day-icon{font-size:1.5rem}
 .day-temp{font-size:.9rem;color:var(--text-muted,#666)}
 .day-temp b{color:var(--text,#111)}
+
+/* the feed */
+.social-wrap{grid-template-columns:1fr}
+@media(min-width:900px){.social-wrap{grid-template-columns:260px 1fr;align-items:start}}
+.me-card{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.me-card b{display:block}
+.avatar{width:44px;height:44px;flex:none;border-radius:999px;display:grid;place-items:center;
+  background:var(--brand,#111);color:var(--on-brand,#fff);font-weight:800;font-size:1.1rem}
+.composer-card{display:grid;gap:10px;border:1px solid var(--border,#e5e5e5);border-radius:var(--radius,12px);padding:12px;margin-bottom:14px}
+.composer-card textarea{min-height:76px}
+.file-in{flex:1 1 200px;width:auto;padding:8px;min-height:auto;font-size:.85rem}
+.tabbtn{background:transparent;border:1px solid var(--border,#ddd);border-radius:999px;padding:8px 16px;
+  min-height:40px;font:inherit;color:inherit;cursor:pointer}
+.tabbtn.on{background:var(--brand,#111);color:var(--on-brand,#fff);border-color:transparent;font-weight:700}
+.feed{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.post{border:1px solid var(--border,#e5e5e5);border-radius:var(--radius,12px);padding:12px 14px;background:var(--bg,#fff)}
+.post-head{display:flex;align-items:center;gap:10px}
+.post-who{flex:1;min-width:0}
+.post-who b{display:block;line-height:1.2}
+.post-text{margin:10px 0 0;white-space:pre-wrap;word-break:break-word}
+.post-media{margin-top:10px;display:grid;gap:8px;justify-items:start}
+.post-media img{max-width:100%;border-radius:var(--radius,12px);display:block}
+.post-acts{display:flex;gap:8px;margin-top:10px}
+.act{background:transparent;border:1px solid var(--border,#ddd);border-radius:999px;padding:6px 14px;
+  min-height:36px;font:inherit;color:var(--text-muted,#666);cursor:pointer}
+.act.on{color:#e0245e;border-color:currentColor;font-weight:700}
+.comments{margin-top:10px;border-top:1px solid var(--border,#e5e5e5);padding-top:10px;display:grid;gap:8px}
+.comment{margin:0;font-size:.92rem}
+.comment b{margin-inline-end:6px}
 `;
 }
 
@@ -1371,6 +1400,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         chat: ['src/components/ChatApp.jsx', fileChatAppJsx(o.isArabic)],
         weather: ['src/components/WeatherApp.jsx', fileWeatherAppJsx(o.isArabic)],
         records: ['src/components/RecordsApp.jsx', fileRecordsAppJsx(o.isArabic)],
+        social: ['src/components/SocialApp.jsx', fileSocialAppJsx(o.isArabic)],
     };
     const [enginePath, engineSrc] = engineFile[bp.engine];
     return {
@@ -1384,4 +1414,254 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         [enginePath]: engineSrc,
         'src/styles/app.css': fileAppCss(),
     };
+}
+
+/* ── engine 5: social — a real feed, not a page about one ────────────────── */
+
+/**
+ * THE FIFTH ENGINE, and the honest half of «ابنِ منصة تواصل اجتماعي».
+ *
+ * A full social platform is ten systems (live video, ads, moderation at
+ * scale). This is the part that can be delivered as WORKING SOFTWARE and
+ * proven: an identity, a composer that takes text and a real image, a feed
+ * that persists, likes that count, comments that thread, following that
+ * filters, and a profile that shows your own posts. Everything else the user
+ * asked for is reported as NOT built — by name, in his own words.
+ */
+export function fileSocialAppJsx(isAr: boolean): string {
+    const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
+    return `import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createStore, uid, apiList, apiCreate } from '../app/store.js';
+
+const when = (iso) => {
+  try {
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return ${T('الآن', 'now')};
+    if (diff < 3600) return Math.floor(diff / 60) + ${T("' د'", "'m'")};
+    if (diff < 86400) return Math.floor(diff / 3600) + ${T("' س'", "'h'")};
+    return new Date(iso).toLocaleDateString();
+  } catch { return ''; }
+};
+
+/** A photo becomes a data URL the browser can keep — capped so storage survives. */
+const readImage = (file) => new Promise((resolve) => {
+  if (!file || !/^image\\//.test(file.type) || file.size > 3 * 1024 * 1024) return resolve(null);
+  const fr = new FileReader();
+  fr.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      // Downscale to 1280px wide: a phone photo would otherwise fill the
+      // whole localStorage quota with one post.
+      const scale = Math.min(1, 1280 / img.width);
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = () => resolve(null);
+    img.src = String(fr.result);
+  };
+  fr.onerror = () => resolve(null);
+  fr.readAsDataURL(file);
+});
+
+export default function SocialApp({ content }) {
+  const postStore = useMemo(() => createStore(content.storeKey + ':posts'), [content.storeKey]);
+  const followStore = useMemo(() => createStore(content.storeKey + ':following'), [content.storeKey]);
+
+  const [me, setMe] = useState(() => { try { return JSON.parse(localStorage.getItem(content.storeKey + ':me') || 'null'); } catch { return null; } });
+  const [draftName, setDraftName] = useState('');
+  const [posts, setPosts] = useState(() => postStore.read());
+  const [following, setFollowing] = useState(() => followStore.read());
+  const [text, setText] = useState('');
+  const [image, setImage] = useState(null);
+  const [tab, setTab] = useState('all');          // all | following | mine
+  const [query, setQuery] = useState('');
+  const [openComments, setOpenComments] = useState('');
+  const [commentText, setCommentText] = useState('');
+  const [server, setServer] = useState(false);
+  const fileRef = useRef(null);
+
+  useEffect(() => { postStore.write(posts); }, [posts, postStore]);
+  useEffect(() => { followStore.write(following); }, [following, followStore]);
+
+  // A real server makes this a network. Without one the app says so plainly.
+  useEffect(() => {
+    if (!content.api) return;
+    let alive = true;
+    const pull = async () => {
+      const remote = await apiList(content.api);
+      if (!alive || !remote) return;
+      setServer(true);
+      setPosts(prev => {
+        const seen = new Set(prev.map(p => String(p.id)));
+        const extra = remote
+          .filter(r => r && !seen.has(String(r.id)) && (r.text || r.body))
+          .map(r => ({
+            id: String(r.id), author: r.author || r.who || '—', handle: r.handle || '',
+            text: r.text || r.body || '', image: r.image || null,
+            at: r.at || r.createdAt || new Date().toISOString(), likes: [], comments: [],
+          }));
+        return extra.length ? [...extra, ...prev].sort((a, b) => String(b.at).localeCompare(String(a.at))) : prev;
+      });
+    };
+    pull();
+    const t = setInterval(pull, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, [content.api]);
+
+  if (!me) {
+    return (
+      <div className="wrap">
+        <section className="panel narrow">
+          <h2>{${T('من أنت؟', 'Who are you?')}}</h2>
+          <p className="muted">{${T('اسمك يظهر على منشوراتك — محفوظ على جهازك وحده.', 'Your name appears on your posts — kept on this device only.')}}</p>
+          <form className="toolbar" onSubmit={(e) => {
+            e.preventDefault();
+            const n = draftName.trim(); if (!n) return;
+            const who = { name: n.slice(0, 40), handle: '@' + n.trim().toLowerCase().replace(/[^a-z0-9\\u0621-\\u064A]+/g, '') .slice(0, 20) };
+            setMe(who);
+            try { localStorage.setItem(content.storeKey + ':me', JSON.stringify(who)); } catch { /* private mode */ }
+          }}>
+            <input className="search" value={draftName} onChange={e => setDraftName(e.target.value)} placeholder={${T('اسمك…', 'Your name…')}} autoFocus />
+            <button className="btn" type="submit">{${T('ادخل', 'Enter')}}</button>
+          </form>
+        </section>
+      </div>
+    );
+  }
+
+  const publish = async (e) => {
+    e.preventDefault();
+    const body = text.trim();
+    if (!body && !image) return;
+    const post = {
+      id: uid(), author: me.name, handle: me.handle, text: body, image,
+      at: new Date().toISOString(), likes: [], comments: [],
+    };
+    setPosts([post, ...posts]);
+    setText(''); setImage(null);
+    if (fileRef.current) fileRef.current.value = '';
+    apiCreate(content.api, { author: post.author, handle: post.handle, text: post.text, at: post.at });
+  };
+
+  const toggleLike = (id) => setPosts(posts.map(p => (p.id !== id ? p : {
+    ...p, likes: p.likes.includes(me.handle) ? p.likes.filter(h => h !== me.handle) : [...p.likes, me.handle],
+  })));
+
+  const addComment = (id) => {
+    const body = commentText.trim();
+    if (!body) return;
+    setPosts(posts.map(p => (p.id !== id ? p : {
+      ...p, comments: [...p.comments, { id: uid(), author: me.name, handle: me.handle, text: body, at: new Date().toISOString() }],
+    })));
+    setCommentText('');
+  };
+
+  const toggleFollow = (handle) => setFollowing(
+    following.includes(handle) ? following.filter(h => h !== handle) : [...following, handle],
+  );
+
+  const visible = posts.filter(p => {
+    if (tab === 'mine' && p.handle !== me.handle) return false;
+    if (tab === 'following' && !following.includes(p.handle) && p.handle !== me.handle) return false;
+    const n = query.trim().toLowerCase();
+    if (n && !(String(p.text).toLowerCase().includes(n) || String(p.author).toLowerCase().includes(n))) return false;
+    return true;
+  });
+
+  const mine = posts.filter(p => p.handle === me.handle).length;
+
+  return (
+    <div className="wrap social-wrap">
+      <section className="panel social-side">
+        <div className="me-card">
+          <div className="avatar" aria-hidden="true">{String(me.name).trim().charAt(0)}</div>
+          <div>
+            <b>{me.name}</b>
+            <p className="muted small">{me.handle}</p>
+          </div>
+        </div>
+        <div className="stats">
+          <div className="stat"><b>{mine}</b><span>{${T('منشوراتي', 'My posts')}}</span></div>
+          <div className="stat"><b>{following.length}</b><span>{${T('أتابع', 'Following')}}</span></div>
+        </div>
+        <span className={'badge ' + (server ? 'on' : '')}>
+          {server ? ${T('متصل بالخادم — المنشورات مشتركة', 'Server connected — posts are shared')} : ${T('محلي على هذا الجهاز', 'Local to this device')}}
+        </span>
+      </section>
+
+      <section className="panel social-main">
+        <form className="composer-card" onSubmit={publish}>
+          <textarea rows={3} value={text} onChange={e => setText(e.target.value)}
+            placeholder={${T('بم تفكّر؟', "What's on your mind?")}} aria-label={${T('نص المنشور', 'Post text')}} />
+          {image ? (
+            <div className="post-media">
+              <img src={image} alt={${T('صورة المنشور', 'Post image')}} />
+              <button className="btn tiny danger" type="button" onClick={() => { setImage(null); if (fileRef.current) fileRef.current.value = ''; }}>{${T('أزل الصورة', 'Remove photo')}}</button>
+            </div>
+          ) : null}
+          <div className="actions">
+            <input ref={fileRef} type="file" accept="image/*" className="file-in"
+              onChange={async (e) => setImage(await readImage(e.target.files && e.target.files[0]))} aria-label={${T('أضف صورة', 'Add a photo')}} />
+            <button className="btn" type="submit" disabled={!text.trim() && !image}>{${T('انشر', 'Post')}}</button>
+          </div>
+        </form>
+
+        <div className="toolbar">
+          {[['all', ${T('الكل', 'All')}], ['following', ${T('أتابعهم', 'Following')}], ['mine', ${T('منشوراتي', 'Mine')}]].map(([id, label]) => (
+            <button key={id} type="button" className={'tabbtn' + (tab === id ? ' on' : '')} aria-pressed={tab === id} onClick={() => setTab(id)}>{label}</button>
+          ))}
+          <input className="search" type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder={${T('ابحث في المنشورات…', 'Search posts…')}} />
+        </div>
+
+        {visible.length === 0 ? <p className="empty">{content.emptyHint}</p> : (
+          <ul className="feed">
+            {visible.map(p => (
+              <li className="post" key={p.id}>
+                <header className="post-head">
+                  <div className="avatar" aria-hidden="true">{String(p.author).trim().charAt(0)}</div>
+                  <div className="post-who">
+                    <b>{p.author}</b>
+                    <span className="muted small">{p.handle} · {when(p.at)}</span>
+                  </div>
+                  {p.handle !== me.handle ? (
+                    <button className={'btn tiny' + (following.includes(p.handle) ? ' ghost' : '')} type="button" onClick={() => toggleFollow(p.handle)}>
+                      {following.includes(p.handle) ? ${T('أتابعه', 'Following')} : ${T('تابِع', 'Follow')}}
+                    </button>
+                  ) : (
+                    <button className="btn tiny danger" type="button"
+                      onClick={() => { if (window.confirm(${T('حذف هذا المنشور؟', 'Delete this post?')})) setPosts(posts.filter(x => x.id !== p.id)); }}>{${T('حذف', 'Delete')}}</button>
+                  )}
+                </header>
+                {p.text ? <p className="post-text">{p.text}</p> : null}
+                {p.image ? <div className="post-media"><img src={p.image} alt="" /></div> : null}
+                <footer className="post-acts">
+                  <button className={'act' + (p.likes.includes(me.handle) ? ' on' : '')} type="button" onClick={() => toggleLike(p.id)}>
+                    ♥ {p.likes.length}
+                  </button>
+                  <button className="act" type="button" onClick={() => setOpenComments(openComments === p.id ? '' : p.id)}>
+                    💬 {p.comments.length}
+                  </button>
+                </footer>
+                {openComments === p.id ? (
+                  <div className="comments">
+                    {p.comments.map(c => (
+                      <p className="comment" key={c.id}><b>{c.author}</b> <span>{c.text}</span></p>
+                    ))}
+                    <form className="toolbar" onSubmit={(e) => { e.preventDefault(); addComment(p.id); }}>
+                      <input className="search" value={commentText} onChange={e => setCommentText(e.target.value)} placeholder={${T('اكتب تعليقاً…', 'Write a comment…')}} />
+                      <button className="btn tiny" type="submit" disabled={!commentText.trim()}>{${T('علّق', 'Comment')}}</button>
+                    </form>
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+`;
 }

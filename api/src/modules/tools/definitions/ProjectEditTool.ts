@@ -287,6 +287,7 @@ export class ProjectEditTool extends BaseTool {
         const ENGINE_ABILITY: Record<string, RegExp> = {
             map: /مسار|مسارات|طريق|الطرق|اتجاه|المسافة|مسافة|الوقت|كم\s*يبعد|ملاحة|تنقّل|تنقل|route|direction|distance|duration|navigat/i,
             records: /حقل|حقول|عمود|أعمدة|تصدير|بحث|فلتر|تصفية|إحصائ|احصائ|مجموع|field|column|export|filter|search|total/i,
+            social: /منشور|منشورات|خيط|إعجاب|تعليق|متابع|ملف\s*شخصي|post|feed|like|comment|follow|profile|timeline/i,
             chat: /غرف|غرفة|بحث|إشعار|مزامنة|room|search|sync/i,
             weather: /توقّع|توقع|أيام|رطوبة|رياح|فهرنهايت|مئوي|forecast|humidity|wind|fahrenheit|celsius/i,
         };
@@ -351,6 +352,8 @@ export class ProjectEditTool extends BaseTool {
                     map: ['المسارات: اكتب «من» و«إلى» واضغط «احسب المسار» — يُرسم الطريق الحقيقي على الخريطة مع المسافة بالكيلومترات والزمن بالدقائق (بيانات OSRM المفتوحة).',
                         'Directions: fill From and To, press "Get directions" — the real road route is drawn with distance in km and time in minutes (open OSRM data).'],
                     records: ['السجلات: إضافة وتعديل وحذف وبحث وتصفية وأرقام محسوبة وتصدير CSV.', 'Records: create, edit, delete, search, filter, computed totals and CSV export.'],
+                    social: ['الخيط: نشر نصّ وصورة، إعجاب وتعليقات، متابعة تُصفّي الخيط، وملف شخصي.',
+                        'The feed: post text and photos, likes and comments, following that filters, and a profile.'],
                     chat: ['المحادثة: غرف ورسائل دائمة وبحث ومزامنة مع الخادم إن وُجد.', 'Chat: rooms, durable messages, search and server sync when one exists.'],
                     weather: ['الطقس: بحث المدن، موقعك، توقّعات سبعة أيام، وتبديل الوحدة.', 'Weather: city search, your location, a seven-day forecast and a unit switch.'],
                 };

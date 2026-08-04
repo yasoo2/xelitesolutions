@@ -72,7 +72,7 @@ export function apiResourceForKind(kind: PageKind, isAr: boolean, probe?: string
         const { detectAppKind } = require('../../../core/design/app-blueprints');
         const appKind = detectAppKind(String(probe || ''));
         const BY_APP: Record<string, [string, string]> = {
-            chat: ['messages', 'الرسائل'], maps: ['places', 'الأماكن'], tasks: ['tasks', 'المهام'],
+            social: ['posts', 'المنشورات'], chat: ['messages', 'الرسائل'], maps: ['places', 'الأماكن'], tasks: ['tasks', 'المهام'],
             notes: ['notes', 'الملاحظات'], expenses: ['expenses', 'المصاريف'], inventory: ['items', 'الأصناف'],
             booking: ['bookings', 'الحجوزات'], pos: ['sales', 'المبيعات'], crm: ['customers', 'العملاء'],
             lms: ['enrolments', 'التسجيلات'], contacts: ['contacts', 'جهات الاتصال'], habits: ['habits', 'العادات'],

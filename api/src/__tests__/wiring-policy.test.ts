@@ -1217,3 +1217,50 @@ describe('the panels belong to a session', () => {
         expect(J).toMatch(/setPreviewUrl\(activeSessionId \? previewBySession\.current\.get\(activeSessionId\) : undefined\)/);
     });
 });
+
+/**
+ * THE FIFTH ENGINE — the honest half of «ابنِ منصة تواصل اجتماعي».
+ *
+ * A full social platform is ten systems. This is the part that can be
+ * delivered as WORKING SOFTWARE: identity, a composer with a real image, a
+ * feed that persists, likes that count, comments that thread, following that
+ * filters, a profile. Everything else stays on the gap list, by name.
+ */
+describe('a social request gets a feed, not a messenger and not a brochure', () => {
+    const { detectAppKind, blueprintFor, uncoveredFeatures } = require('../core/design/app-blueprints');
+
+    it('the domain is read from the request, in both languages', () => {
+        expect(detectAppKind('Build a next-generation social media platform with Posts and followers')).toBe('social');
+        expect(detectAppKind('ابنِ منصة تواصل اجتماعي فيها منشورات ومتابعين')).toBe('social');
+        // …and a pure messenger is still a messenger
+        expect(detectAppKind('اعمل تطبيق محادثة فوري بين المستخدمين')).toBe('chat');
+    });
+
+    it('the engine is a feed with its own blueprint', () => {
+        const bp = blueprintFor('social', 'منصة تواصل', true);
+        expect(bp.engine).toBe('social');
+        expect(bp.entityMany).toBe('المنشورات');
+    });
+
+    it('the feed template is a real program', () => {
+        const T = SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        expect(T).toMatch(/export function fileSocialAppJsx/);
+        expect(T).toMatch(/toggleLike/);
+        expect(T).toMatch(/addComment/);
+        expect(T).toMatch(/toggleFollow/);
+        expect(T).toMatch(/readImage/);           // a real photo, downscaled before storage
+        expect(T).toMatch(/createStore\(content\.storeKey \+ ':posts'\)/);
+        // and no invented people anywhere in it
+        for (const invented of ['سارة العتيبي', 'محمد الشهري', 'ليان القحطاني']) {
+            expect(T).not.toContain(invented);
+        }
+    });
+
+    it('its server stores posts, and what is still missing is named', () => {
+        const { apiResourceForKind } = require('../modules/tools/definitions/ApiProjectTool');
+        expect(apiResourceForKind('generic', false, 'a social network with posts and followers').resource).toBe('posts');
+        const gap = uncoveredFeatures('Build a social platform.\n\n- Posts\n- Stories\n- Live streaming\n- Ads platform', 'social', true);
+        expect(gap).not.toContain('Posts');
+        expect(gap).toEqual(expect.arrayContaining(['Stories', 'Live streaming', 'Ads platform']));
+    });
+});

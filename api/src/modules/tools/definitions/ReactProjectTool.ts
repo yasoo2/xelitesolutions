@@ -2447,6 +2447,10 @@ export class ReactProjectTool extends BaseTool {
                 ['طقس حيّ من open-meteo بلا مفتاح ولا حساب', 'بحث عن المدن + تحديد الموقع', 'توقّعات سبعة أيام', 'تبديل مئوي/فهرنهايت ومدن محفوظة'],
                 ['live weather from open-meteo — no key, no account', 'city search and geolocation', 'a seven-day forecast', 'a °C/°F switch and saved cities'],
             ],
+            social: [
+                ['خيط منشورات حقيقي: نشر نصّ وصورة', 'إعجاب وتعليقات تُحفظ', 'متابعة تُصفّي الخيط', 'ملف شخصي بمنشوراتك', 'حفظ دائم + مزامنة مع الخادم إن وُجد'],
+                ['a real feed: post text and a photo', 'likes and comments that persist', 'following that filters the feed', 'a profile with your own posts', 'durable storage and server sync when one exists'],
+            ],
             records: [
                 ['إضافة وتعديل وحذف السجلات فعلياً', 'تحقّق من الحقول المطلوبة قبل الحفظ', 'بحث وتصفية وترتيب فوري', 'أرقام محسوبة من بياناتك أنت', 'حفظ دائم + تصدير CSV + قراءة من خادم المشروع إن وُجد'],
                 ['create, edit and delete records for real', 'required-field validation before saving', 'instant search, filter and sort', 'numbers computed from YOUR rows', 'durable storage, CSV export, and reads from the project API when one exists'],

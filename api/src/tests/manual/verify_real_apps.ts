@@ -184,9 +184,16 @@ Features:
 
     console.log('\n[4c] وخادم التطبيق يخزّن ما يتحدّث عنه التطبيق');
     const { apiResourceForKind } = require('../../modules/tools/definitions/ApiProjectTool');
-    check('طلب فيه محادثة ⇒ مورد messages لا items',
-        apiResourceForKind('generic', false, SOCIAL).resource === 'messages',
+    // This assertion moved WITH the system, on purpose: when it was written the
+    // social engine did not exist and a «social media platform … Messaging»
+    // request was best served as a chat. Now it is a FEED, so its server must
+    // store posts. The pure messenger below still gets messages.
+    check('منصة تواصل ⇒ مورد posts',
+        apiResourceForKind('generic', false, SOCIAL).resource === 'posts',
         apiResourceForKind('generic', false, SOCIAL).resource);
+    check('وتطبيق محادثة خالص ⇒ مورد messages',
+        apiResourceForKind('generic', true, 'اعمل تطبيق محادثة فوري بين المستخدمين').resource === 'messages',
+        apiResourceForKind('generic', true, 'اعمل تطبيق محادثة فوري بين المستخدمين').resource);
     check('ونظام حجوزات ⇒ bookings',
         apiResourceForKind('generic', true, 'نظام حجوزات عيادة').resource === 'bookings');
     check('ومطعم يبقى dishes (لم أكسر القديم)',
@@ -277,6 +284,69 @@ Features:
     } finally {
         await browser.close();
     }
+
+
+    console.log('\n[8] المحرّك الخامس: خيط اجتماعي حقيقي — يُبنى ويُقاد في متصفح');
+    const socialBuild = await scaffold('ابنِ منصة تواصل اجتماعي فيها منشورات وإعجابات وتعليقات ومتابعين', 'live-social');
+    check('تطبيق الخيط: التثبيت والبناء نجحا', !!socialBuild.out?.built, JSON.stringify({ built: socialBuild.out?.built }));
+    const socialSrc = read(socialBuild.dir, 'src/components/SocialApp.jsx');
+    check('ومحرّكه SocialApp لا مكوّن دعائي', !!socialSrc && list(socialBuild.dir, 'src/components').includes('SocialApp.jsx'));
+    check('وبلا أشخاص مفبركين', !FABRICATIONS.some(x => socialSrc.includes(x)));
+
+    const srvS = await serve(path.join(socialBuild.dir, 'dist'), 4716);
+    const b2 = await chromium.launch();
+    try {
+        const pg = await b2.newPage();
+        const errs: string[] = [];
+        pg.on('console', (m: any) => { if (m.type() === 'error') errs.push(m.text().slice(0, 120)); });
+        await pg.goto('http://localhost:4716/', { waitUntil: 'networkidle' });
+        await pg.waitForTimeout(600);
+
+        check('يطلب هويتك أولاً', await pg.getByText('من أنت؟').first().isVisible());
+        await pg.locator('input.search').first().fill('يونس');
+        await pg.getByRole('button', { name: 'ادخل' }).click();
+        await pg.waitForTimeout(400);
+        check('ثم يفتح الخيط فارغاً بصدق', /لا منشورات بعد/.test(await pg.locator('.empty').first().innerText()));
+
+        await pg.locator('.composer-card textarea').fill('أول منشور حقيقي في هذا الخيط');
+        await pg.getByRole('button', { name: 'انشر' }).click();
+        await pg.waitForTimeout(400);
+        check('والنشر يُنشئ منشوراً باسمك', (await pg.locator('.post .post-text').first().innerText()).includes('أول منشور'));
+        check('وعدّاد منشوراتي صار 1', (await pg.locator('.social-side .stat b').first().innerText()).trim() === '1');
+
+        await pg.locator('.post .act').first().click();
+        await pg.waitForTimeout(250);
+        check('والإعجاب يُحتسب ويُبرز', (await pg.locator('.post .act.on').first().innerText()).includes('1'));
+
+        await pg.locator('.post .act').nth(1).click();
+        await pg.waitForTimeout(250);
+        await pg.locator('.comments input.search').fill('وأول تعليق');
+        await pg.getByRole('button', { name: 'علّق' }).click();
+        await pg.waitForTimeout(300);
+        check('والتعليق يُضاف تحت المنشور', (await pg.locator('.comment').first().innerText()).includes('وأول تعليق'));
+
+        await pg.reload({ waitUntil: 'networkidle' });
+        await pg.waitForTimeout(600);
+        check('وكل ذلك ينجو من إعادة التحميل',
+            (await pg.locator('.post .post-text').first().innerText()).includes('أول منشور')
+            && (await pg.locator('.post .act.on').count()) === 1);
+
+        await pg.getByRole('button', { name: 'أتابعهم' }).click();
+        await pg.waitForTimeout(300);
+        check('وتبويب «أتابعهم» يعمل ويُظهر منشوري', (await pg.locator('.post').count()) === 1);
+        await pg.getByRole('button', { name: 'الكل' }).click();
+        await pg.waitForTimeout(200);
+
+        check('ولا خطأ كونسول', errs.length === 0, errs.slice(0, 2).join(' | '));
+        await srvS.close();
+    } finally { await b2.close(); }
+
+    console.log('\n[9] وما لم يُبنَ من منصة التواصل يُقال بالاسم');
+    const socialGap = require('../../core/design/app-blueprints')
+        .uncoveredFeatures('Build a social platform.\n\n- Posts\n- Stories\n- Live streaming\n- Ads platform', 'social', true);
+    check('«Posts» مُنفَّذة فلا تُذكر', !socialGap.includes('Posts'));
+    check('و«Stories» و«Live streaming» و«Ads platform» تُذكر',
+        ['Stories', 'Live streaming', 'Ads platform'].every((x: string) => socialGap.includes(x)), socialGap.join(' | '));
 
     console.log(`\n===== ${pass} passed, ${fail} failed =====`);
     console.log(`(المشاريع المولَّدة: ${ROOT})`);
