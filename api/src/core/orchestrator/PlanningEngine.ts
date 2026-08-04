@@ -548,7 +548,14 @@ Rules:
         const isQuestion = /[؟?]\s*$/.test(String(intent.goal || '').trim())
             && /(^|\s)(ما|ماذا|لماذا|كيف|متى|اين|أين|هل|كم|ايهما|أيهما|من\s+هو|ما\s+هو|ما\s+هي)(\s|$)/.test(probe);
         const buildVerb = !isQuestion && (/\b(build|create|make|develop|design|generate|code|scaffold)\b/.test(goalLower)
-            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو)/.test(probe));
+            // «قم ببناء…» / «قم بعمل…» / «أريد بناء…» are how people actually ask.
+            // Field log: «قم ببناء صفحة جميله لشركة أدوية ومعدات طبية» matched no
+            // build verb, so with the brain unreachable it fell to the failover
+            // node — which OPENED A BROWSER for a request to build a page.
+            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو)/.test(probe)
+            || /قم\s*ب?(بناء|عمل|انشاء|إنشاء|تصميم|تطوير|صنع)/.test(probe)
+            || /(اريد|أريد|ابغى|أبغى|بدي|ودي)\s*(ب?بناء|عمل|انشاء|إنشاء|تصميم|موقع|صفحة|تطبيق|متجر)/.test(probe)
+            || /\b(بناء|تصميم|إنشاء|انشاء)\s+(موقع|صفحة|تطبيق|متجر|واجهة|لوحة)/.test(probe));
         const webNoun = /\b(page|site|website|web ?app|landing|portfolio|dashboard|form|store|shop|html|ui|interface)\b/.test(goalLower)
             || /(صفحة|موقع|تطبيق|واجهة|متجر|لوحة|نموذج|بورتفوليو|معرض|هبوط)/.test(probe);
         // Route follow-up edits (add button / change colour / ...) to the SAME page.

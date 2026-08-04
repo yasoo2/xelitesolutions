@@ -55,6 +55,13 @@ const CORPUS: Array<[string, RegExp]> = [
     // Building and editing — these must never be mistaken for a search.
     ['ابنِ لي موقعاً لمقهى اسمه الرصيف', /^(?:web_page_builder|react_project|project_pipeline)$/],
     ['اعمل لي متجر إلكتروني لبيع العطور', /^(?:web_page_builder|react_project|project_pipeline)$/],
+    // From the field log: no build verb matched «قم ببناء», so with the brain
+    // unreachable this fell to the failover node — which OPENED A BROWSER.
+    ['قم ببناء صفحة جميله لشركةادوية ومعدات طبية', /^(?:web_page_builder|react_project|project_pipeline)$/],
+    ['قم بعمل موقع لمطعم', /^(?:web_page_builder|react_project|project_pipeline)$/],
+    ['أريد بناء متجر إلكتروني', /^(?:web_page_builder|react_project|project_pipeline)$/],
+    ['بناء موقع لشركة محاماة', /^(?:web_page_builder|react_project|project_pipeline)$/],
+    ['ما رأيك في بناء المواقع؟', /^central_answer$/],
 
     // Ordinary questions — answered, never executed.
     ['ما الفرق بين React و Vue؟', /^central_answer$/],

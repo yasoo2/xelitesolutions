@@ -1458,12 +1458,21 @@ export async function routeToModel(
         // If not Groq or Groq fails, fall through to the Chain of Steel
     } catch (e: any) {
         console.warn(`[IntelligentRouter] Primary choice ${selectedModel.name} failed: ${e.message} `);
-        // A 429 (rate limit) or 413 means Groq is temporarily unusable — cool it
-        // down for the window the error itself names (a DAILY quota says "try
-        // again in 24m"; the default 60s had every call re-eating that 429).
-        if (/\b(429|rate limit|413)\b/i.test(String(e?.message || ''))) {
-            markProviderFailed('Groq (Free)', retryAfterMsFrom(String(e?.message || '')) || undefined);
+        // A 429 means the QUOTA is spent — cool the provider down for the window
+        // the error itself names.
+        //
+        // A 413 does NOT. «Request too large … Requested 31712, Limit 12000»
+        // says THIS request was too big; the provider is healthy and the key is
+        // fine. Treating it as a dead provider is what turned one oversized
+        // build prompt into a dead brain for the whole session — field log:
+        // «Dead-brain latch: all providers failed 36s ago», and the NEXT,
+        // perfectly ordinary request failed instantly without being tried.
+        const msg = String(e?.message || '');
+        const tooLarge = /\b413\b|request too large|reduce your message size/i.test(msg);
+        if (!tooLarge && /\b429\b|rate limit/i.test(msg)) {
+            markProviderFailed('Groq (Free)', retryAfterMsFrom(msg) || undefined);
         }
+        if (tooLarge) console.warn('[IntelligentRouter] 413 = this request was too big, not a dead provider — the route stays healthy.');
         if (RATE_LIMIT_RE.test(String(e?.message || ''))) sawRateLimit = true;
         lastError = e.message;
     }

@@ -123,7 +123,24 @@ export class AgentLoopService {
         }
         const attachBlock = formatAttachmentsBlock(options.attachments || []);
         if (attachBlock) blocks.push(attachBlock);
-        if (standing) blocks.push(`[STANDING USER INSTRUCTIONS — always apply to HOW you work]:\n${standing}`);
+        // INSTRUCTIONS ARE NOT THE REQUEST.
+        //
+        // These three blocks used to be concatenated INTO the goal, and the goal
+        // is what the planner plans, what the node's task says, and what the
+        // page builder is asked to BUILD. The field log shows the result
+        // verbatim: «Executing node: build_page (Building: قم ببناء صفحة جميله
+        // لشركة أدوية ومعدات طبية [RESPONSE LANGUAGE — NON-NEGOTIABLE]: … [ENGINEERING
+        // DISCIPLINE …])» — Joe was told to build the language contract. And the
+        // bulk of it is what blew the request past the provider's per-minute
+        // budget: «413 Request too large … Requested 31712, Limit 12000», which
+        // killed the build outright.
+        //
+        // They travel as INSTRUCTIONS now, in the run context, which
+        // CentralAnswerTool and the tools already read. The goal stays the
+        // user's own sentence — plus what they attached, because an attachment
+        // IS part of the request.
+        const instructionBlocks: string[] = [];
+        if (standing) instructionBlocks.push(`[STANDING USER INSTRUCTIONS — always apply to HOW you work]:\n${standing}`);
         // The user's language is a CONTRACT, not a hint: an Arabic question
         // answered in English (field-reported) reads as not being heard.
         // central_answer additionally measures and enforces this; the block
@@ -132,9 +149,10 @@ export class AgentLoopService {
         // Arabic sentence also triggers BiDi scrambling in some renderers.
         // The display fix is dir="auto"/unicode-bidi in the UI; the CONTENT
         // fix is writing the name in the reply's own script.
-        blocks.push(`[RESPONSE LANGUAGE — NON-NEGOTIABLE]: The user's language is ${languageName(language0)}. Write EVERY word of your reply in it. Personal names too: when replying in Arabic write names in Arabic script (Younes → يونس); never mix a Latin name into an Arabic sentence.`);
-        if (looksLikeEngineering) blocks.push(BUILD_DISCIPLINE);
+        instructionBlocks.push(`[RESPONSE LANGUAGE — NON-NEGOTIABLE]: The user's language is ${languageName(language0)}. Write EVERY word of your reply in it. Personal names too: when replying in Arabic write names in Arabic script (Younes → يونس); never mix a Latin name into an Arabic sentence.`);
+        if (looksLikeEngineering) instructionBlocks.push(BUILD_DISCIPLINE);
         const effectiveGoal = blocks.join('\n\n');
+        const runInstructions = instructionBlocks.join('\n\n');
         const traceId = options.traceId;
         const modelConfig = options.modelConfig;
         // One language for the whole run — the block above, uiText fallbacks,
@@ -185,7 +203,7 @@ export class AgentLoopService {
                 id: runId,
                 traceId,
                 goal: effectiveGoal,
-                context: { userId, userName, systemInstructions: standing, sessionId, modelConfig, memoryContext, language }
+                context: { userId, userName, systemInstructions: runInstructions, sessionId, modelConfig, memoryContext, language }
             }), RUN_DEADLINE_MS, 'run');
 
             // [FIX] Surface the final answer to the chat UI.

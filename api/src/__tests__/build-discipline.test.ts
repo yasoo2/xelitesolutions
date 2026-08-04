@@ -23,8 +23,17 @@ describe('BUILD_DISCIPLINE — the outage lessons, exported and injected', () =>
         expect(src).toMatch(/NEVER destructively reset over a connectivity error/);
     });
 
-    test('it is injected into the goal for engineering-looking runs', () => {
-        expect(src).toMatch(/if \(looksLikeEngineering\) blocks\.push\(BUILD_DISCIPLINE\)/);
+    test('it rides as an INSTRUCTION for engineering-looking runs — never inside the goal', () => {
+        // This test used to require the opposite, and that is how the defect
+        // survived: the block was pushed into the GOAL string, so the field log
+        // shows Joe being asked to BUILD it — «build_page (Building: قم ببناء
+        // صفحة … [ENGINEERING DISCIPLINE …])» — and the extra ~500 characters on
+        // every request are what pushed one build past the provider's limit
+        // («413 … Requested 31712, Limit 12000»). Instructions travel in the
+        // context the tools already read; the goal stays the user's sentence.
+        expect(src).toMatch(/if \(looksLikeEngineering\) instructionBlocks\.push\(BUILD_DISCIPLINE\)/);
+        expect(src).not.toMatch(/blocks\.push\(BUILD_DISCIPLINE\)/);
+        expect(src).toMatch(/systemInstructions: runInstructions/);
         // The gate recognizes Arabic build requests too — the user builds in Arabic.
         expect(src).toMatch(/سكربت|تشغيل/);
     });
