@@ -309,3 +309,85 @@ describe('every URL the browser calls exists on the server', () => {
         expect(audio).toContain('res.status(503)');
     });
 });
+
+/**
+ * WHO IS AN ADMIN — one rule, on the server, and the browser may not vote.
+ *
+ * Three ways in existed at once, and two of them belonged to the visitor:
+ *   - `count === 0 ? 'OWNER' : 'USER'` on every sign-up path, so the first
+ *     stranger to find a fresh public deployment owned it;
+ *   - `localStorage.admin === 'true'`, a value the visitor writes;
+ *   - two of the owner's personal email addresses compiled into the bundle
+ *     that ships to every browser.
+ */
+describe('admin is decided by the server, once', () => {
+    const authRoutes = SRC('api', 'routes', 'auth.ts');
+    const mw = SRC('api', 'middleware', 'auth.ts');
+    const WEB_SRC = path.join(__dirname, '..', '..', '..', 'web', 'src');
+    const webFile = (...p: string[]) => fs.readFileSync(path.join(WEB_SRC, ...p), 'utf-8');
+
+    it('no sign-up path hands ownership to whoever arrives first', () => {
+        expect(authRoutes).not.toMatch(/count\s*===\s*0\s*\?\s*'OWNER'/);
+        expect(authRoutes).not.toMatch(/isFirstUser\s*\|\|\s*\(adminEmail/);
+        // …they all go through the one decision instead
+        expect((authRoutes.match(/roleForNewAccount\(/g) || []).length).toBeGreaterThanOrEqual(3);
+        expect(mw).toContain('export function roleForNewAccount');
+    });
+
+    it('the decision itself: named wins, first-arrival does not', () => {
+        const { roleForNewAccount } = require('../api/middleware/auth');
+        const prev = process.env.SUPER_ADMIN_EMAILS;
+        process.env.SUPER_ADMIN_EMAILS = 'owner@joe.local';
+        try {
+            expect(roleForNewAccount({ email: 'owner@joe.local', isFirstUser: false, isLoopback: false })).toBe('OWNER');
+            expect(roleForNewAccount({ email: 'OWNER@JOE.LOCAL', isFirstUser: false, isLoopback: false })).toBe('OWNER');
+            expect(roleForNewAccount({ email: 'stranger@x.com', isFirstUser: true, isLoopback: false })).toBe('USER');
+            expect(roleForNewAccount({ email: 'stranger@x.com', isFirstUser: true, isLoopback: true })).toBe('USER');
+            delete process.env.SUPER_ADMIN_EMAILS;
+            // no allowlist: only the machine itself may bootstrap
+            expect(roleForNewAccount({ email: 'dev@joe.local', isFirstUser: true, isLoopback: true })).toBe('OWNER');
+            expect(roleForNewAccount({ email: 'dev@joe.local', isFirstUser: true, isLoopback: false })).toBe('USER');
+            expect(roleForNewAccount({ email: 'dev@joe.local', isFirstUser: false, isLoopback: true })).toBe('USER');
+        } finally {
+            if (prev === undefined) delete process.env.SUPER_ADMIN_EMAILS;
+            else process.env.SUPER_ADMIN_EMAILS = prev;
+        }
+    });
+
+    it('the browser never grants itself the panel', () => {
+        const main = webFile('main.tsx');
+        // the gate reads the signed token and nothing else
+        expect(main).toMatch(/const isAdmin = decoded\.role === 'SUPER_ADMIN' \|\| decoded\.role === 'OWNER';/);
+        const readers: string[] = [];
+        const walk = (dir: string) => {
+            for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, e.name);
+                if (e.isDirectory()) { walk(full); continue; }
+                if (!/\.(ts|tsx)$/.test(e.name)) continue;
+                const body = fs.readFileSync(full, 'utf-8');
+                // a comment may mention it; code may not READ it
+                if (/localStorage\.getItem\(\s*['"]admin['"]\s*\)/.test(body.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''))) {
+                    readers.push(e.name);
+                }
+            }
+        };
+        walk(WEB_SRC);
+        expect(readers).toEqual([]);
+    });
+
+    it('no personal email is compiled into the interface', () => {
+        const offenders: string[] = [];
+        const walk = (dir: string) => {
+            for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, e.name);
+                if (e.isDirectory()) { walk(full); continue; }
+                if (!/\.(ts|tsx)$/.test(e.name)) continue;
+                const code = fs.readFileSync(full, 'utf-8')
+                    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+                if (/['"][\w.+-]+@(gmail|hotmail|outlook|yahoo)\.com['"]/.test(code)) offenders.push(e.name);
+            }
+        };
+        walk(WEB_SRC);
+        expect(offenders).toEqual([]);
+    });
+});

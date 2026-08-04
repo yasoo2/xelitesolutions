@@ -73,11 +73,54 @@ export function authenticateOptional(req: Request, res: Response, next: NextFunc
   // No token and no bypass - continue without auth (optional auth)
   return next();
 }
-// Super admin emails loaded from environment variable (comma-separated) instead of hardcoded
-const SUPER_ADMIN_EMAILS: string[] = (() => {
-  const raw = process.env.SUPER_ADMIN_EMAILS || '';
+/**
+ * WHO OWNS THIS INSTALLATION — decided by the operator, not by a race.
+ *
+ * Every sign-up path used `count === 0 ? 'OWNER' : 'USER'`: whoever registered
+ * FIRST on an empty database became the owner, and OWNER is a super admin.
+ * Online that is a race against the whole internet — a scanner that finds a
+ * fresh deployment and POSTs /api/auth/register once owns the platform, and
+ * the real owner arrives to find himself an ordinary user. Worse, the
+ * «registration is closed» switch explicitly exempted the first user, so
+ * closing registration did not close this.
+ *
+ * The answer is an allowlist the operator sets in the environment. Order of
+ * arrival stops mattering. Read at call time, not at import time, so a test —
+ * or a restart with a new value — sees the truth.
+ */
+export function superAdminEmails(): string[] {
+  const raw = `${process.env.SUPER_ADMIN_EMAILS || ''},${process.env.ADMIN_EMAIL || ''}`;
   return raw.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-})();
+}
+
+/** True when the operator has named at least one owner for this installation. */
+export function ownersConfigured(): boolean {
+  return superAdminEmails().length > 0;
+}
+
+/**
+ * The role a brand-new account gets.
+ *
+ * - named in the allowlist          → OWNER, whenever they sign up;
+ * - allowlist set, not named        → USER, even if they are the very first;
+ * - NO allowlist at all and the request came from this machine → the old
+ *   first-user rule still applies, because a developer running Joe on a
+ *   laptop must be able to create an account and get in. A public deployment
+ *   without an allowlist can no longer mint an owner for a stranger.
+ */
+export function roleForNewAccount(input: { email: string; isFirstUser: boolean; isLoopback: boolean }): 'OWNER' | 'USER' {
+  const email = String(input.email || '').trim().toLowerCase();
+  if (email && superAdminEmails().includes(email)) return 'OWNER';
+  if (!ownersConfigured() && input.isFirstUser && input.isLoopback) return 'OWNER';
+  return 'USER';
+}
+
+/** Is this request from the machine Joe runs on? */
+export function isLoopbackRequest(req: Request): boolean {
+  const ip = String((req as any).ip || (req as any).socket?.remoteAddress || '');
+  return ip === '127.0.0.1' || ip === '::1'
+    || ip.startsWith('::ffff:127.0.0.1') || ip === 'localhost';
+}
 
 export function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
   const auth = (req as AuthenticatedRequest).auth;
@@ -86,7 +129,7 @@ export function requireSuperAdmin(req: Request, res: Response, next: NextFunctio
 
   const isAdmin = role === 'SUPER_ADMIN' ||
     role === 'OWNER' ||
-    SUPER_ADMIN_EMAILS.includes(email);
+    superAdminEmails().includes(email);
 
   if (!auth || !isAdmin) {
     console.warn(`[AUTH] requireSuperAdmin failed for: email=${email}, role=${role}`);

@@ -162,6 +162,39 @@ async function main() {
     // Font requests to Google are filtered above: no internet in this sandbox.
     const realErrors = errors.filter(e => !/Failed to load resource/.test(e));
     check('لا أخطاء JavaScript في وحدة التحكّم', realErrors.length === 0, realErrors.slice(0, 3).join(' | '));
+
+    console.log('\n[5] البوّابة: هل يفتحها زائر بسطر في وحدة التحكّم؟');
+    /**
+     * RequireSuperAdmin used to accept `localStorage.admin === 'true'` — a value
+     * that lives in the VISITOR'S browser — and two email addresses written
+     * into the bundle. Either one opened the panel's shell. Now only the signed
+     * role does. Both attacks are tried here, for real.
+     */
+    const asVisitor = async (setup: (p: any) => Promise<void>) => {
+        const c = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+        const plain = jwt.sign({ sub: 'visitor', role: 'USER', email: 'someone@example.com' }, process.env.JWT_SECRET!);
+        await c.addInitScript((tok) => localStorage.setItem('token', tok as string), plain);
+        const p = await c.newPage();
+        await setup(p);
+        await p.goto(`${base}/super-admin`, { waitUntil: 'domcontentloaded' });
+        await p.waitForTimeout(1200);
+        const url = p.url();
+        const panel = await p.$('.system-management');
+        await c.close();
+        return { url, sawPanel: !!panel };
+    };
+
+    const trick = await asVisitor(async (p) => {
+        await p.addInitScript(() => localStorage.setItem('admin', 'true'));
+    });
+    check("‏localStorage.admin='true' لم يعد يفتح شيئاً — يُطرد إلى /joe",
+        !trick.sawPanel && !/super-admin/.test(trick.url), `${trick.url} panel=${trick.sawPanel}`);
+
+    const bundleDir = path.join(__dirname, '..', '..', '..', '..', 'web', 'dist', 'assets');
+    const bundles = fs.readdirSync(bundleDir).filter(f => f.endsWith('.js'))
+        .map(f => fs.readFileSync(path.join(bundleDir, f), 'utf-8')).join('');
+    check('ولا بريد للمالك مكتوب داخل حزمة الجافاسكربت التي تصل كل زائر',
+        !/auraaluxury|younes\.sowady/.test(bundles));
     check('ولا طلب داخلي فاشل (خارج خطوط جوجل التي لا إنترنت لها هنا)',
         failedReqs.length === 0, failedReqs.slice(0, 3).join(' | '));
 

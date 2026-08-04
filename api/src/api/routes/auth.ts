@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { roleForNewAccount, isLoopbackRequest, ownersConfigured } from '../middleware/auth';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { User, validatePasswordStrength, MAX_FAILED_ATTEMPTS, LOCKOUT_DURATION_MS } from '../../shared/models/user';
@@ -28,16 +29,20 @@ router.post('/register', async (req: Request, res: Response) => {
   if (exists) return res.status(409).json({ error: 'Email already exists' });
   const userCount = await User.countDocuments();
   const isFirstUser = userCount === 0;
-  // Block registration if it's not open
+  const loopback = isLoopbackRequest(req);
+  // «Registration is closed» used to EXEMPT the first user, so it did not
+  // close the one door that hands out ownership. It closes it now — unless
+  // there is no owner allowlist AND the request is local, which is the
+  // developer creating their own account on their own laptop.
   const registrationOpen = process.env.REGISTRATION_OPEN === 'true';
   if (!registrationOpen) {
-    const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-    if (!isFirstUser && (!adminEmail || emailNormalized !== adminEmail)) {
+    const allowedNamed = ownersConfigured() && roleForNewAccount({ email: emailNormalized, isFirstUser, isLoopback: loopback }) === 'OWNER';
+    const localBootstrap = !ownersConfigured() && isFirstUser && loopback;
+    if (!allowedNamed && !localBootstrap) {
       return res.status(403).json({ error: 'Registration is currently closed' });
     }
   }
-  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const effectiveRole: any = isFirstUser || (adminEmail && emailNormalized === adminEmail) ? 'OWNER' : 'USER';
+  const effectiveRole: any = roleForNewAccount({ email: emailNormalized, isFirstUser, isLoopback: loopback });
   const user = await User.create({ email: emailNormalized, passwordHash, role: effectiveRole });
   return res.status(201).json({ id: user._id, email: user.email, role: user.role });
 });
@@ -207,7 +212,9 @@ router.post('/google', async (req: Request, res: Response) => {
     if (!user) {
       const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
       const count = await User.countDocuments();
-      const role = count === 0 ? 'OWNER' : 'USER';
+      // Signing in with Google is open to anyone with a Google account, so
+      // «first one wins» handed ownership to the first stranger who tried.
+      const role = roleForNewAccount({ email: emailNormalized, isFirstUser: count === 0, isLoopback: isLoopbackRequest(req) });
       user = await User.create({
         email: emailNormalized,
         passwordHash,
@@ -479,7 +486,9 @@ router.get('/callback', async (req: Request, res: Response) => {
     if (!user) {
       const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
       const count = await User.countDocuments();
-      const role = count === 0 ? 'OWNER' : 'USER';
+      // Signing in with Google is open to anyone with a Google account, so
+      // «first one wins» handed ownership to the first stranger who tried.
+      const role = roleForNewAccount({ email: emailNormalized, isFirstUser: count === 0, isLoopback: isLoopbackRequest(req) });
       user = await User.create({
         email: emailNormalized,
         passwordHash,

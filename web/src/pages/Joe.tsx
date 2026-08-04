@@ -111,13 +111,12 @@ export default function Joe() {
             try { role = JSON.parse(storedUser)?.role; } catch { }
         }
 
-        // Privilege follows the ROLE the signed token carries. It used to be
-        // overridden to SUPER_ADMIN for two email addresses hardcoded in the
-        // bundle, which meant the header could only ever display that one role —
-        // an owner was shown as a super admin. Keep the `admin` flag the older
-        // screens read, but derive it instead of hardcoding who gets it.
-        if (isPrivileged(role)) localStorage.setItem('admin', 'true');
-        else localStorage.removeItem('admin');
+        // Privilege follows the ROLE the signed token carries — and ONLY that.
+        // A mirror of it used to be kept in localStorage for older screens to
+        // read; every reader is gone now, because a flag the visitor can write
+        // is a flag that decides nothing. The stale value is cleared so no
+        // browser carries a leftover «admin» from an older build.
+        localStorage.removeItem('admin');
 
         setUserRole(role);
     }, [t, nav]);

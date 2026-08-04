@@ -129,13 +129,28 @@ function RequireSuperAdmin({ children }: { children: React.ReactNode }) {
   if (!token) return <Navigate to="/login" replace />;
 
   try {
+    /**
+     * THE GATE IS THE SIGNED TOKEN — nothing else.
+     *
+     * Two things used to open this route besides the token:
+     *
+     *   1. `localStorage.getItem('admin') === 'true'` — localStorage lives in
+     *      the VISITOR'S browser, so any visitor could type one line in the
+     *      console and walk in. The server still refused every request with
+     *      403, so no data leaked, but the shape of the whole control panel
+     *      was on display to anyone curious enough to try — and the decision
+     *      «is this person an admin?» was being asked of the person.
+     *   2. two email addresses written literally into this file, which ships
+     *      to every visitor's browser. Anyone could read the owner's personal
+     *      addresses out of the JS bundle, and changing who is an admin meant
+     *      rebuilding the frontend.
+     *
+     * The role in the JWT is signed by the server and cannot be edited by the
+     * holder; the server's own allowlist (SUPER_ADMIN_EMAILS) decides who
+     * carries that role. One rule, in one place, and it is the server's.
+     */
     const decoded: any = jwtDecode(token);
-    const email = decoded.email?.toLowerCase().trim() || '';
-    const isAdmin = decoded.role === 'SUPER_ADMIN' ||
-      decoded.role === 'OWNER' ||
-      email === 'info.auraaluxury@gmail.com' ||
-      email === 'younes.sowady2011@gmail.com' ||
-      localStorage.getItem('admin') === 'true';
+    const isAdmin = decoded.role === 'SUPER_ADMIN' || decoded.role === 'OWNER';
 
     if (!isAdmin) {
       return <Navigate to="/joe" replace />;

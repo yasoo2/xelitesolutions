@@ -78,7 +78,9 @@ export default function JoeHeader({
         };
     }, [menuOpen]);
 
-    const isAdmin = isPrivileged(role) || localStorage.getItem('admin') === 'true';
+    // The signed role decides, and only it: the `admin` localStorage flag was
+    // writable by any visitor, which made this a self-service promotion.
+    const isAdmin = isPrivileged(role);
 
     return (
         <header className="joe-header">
