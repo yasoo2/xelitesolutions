@@ -94,7 +94,13 @@ export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number
                 deadImgs: ([...document.images] as HTMLImageElement[]).filter(i => i.currentSrc && i.naturalWidth === 0).length,
                 deadLinks: [...document.querySelectorAll('a')].filter(a => {
                     const h = a.getAttribute('href');
-                    return h === '' || h === '#';
+                    if (h !== '' && h !== '#') return false;
+                    // A map library's zoom controls are real, working buttons
+                    // that happen to be anchors — reporting them as dead links
+                    // punished the first build that carried an actual map.
+                    if (a.getAttribute('role') === 'button') return false;
+                    if (a.closest('[class*="leaflet"], [class*="mapbox"], [class*="ol-control"]')) return false;
+                    return true;
                 }).length,
                 small,
                 h1s: document.querySelectorAll('h1').length,

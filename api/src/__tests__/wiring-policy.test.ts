@@ -1004,3 +1004,79 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(NAMES_ALL).toContain(out[1].tool);
     });
 });
+
+/**
+ * AN APPLICATION IS A PROGRAM — «كما قلت لك النظام فقط هو معرض صور وكلمات وليس
+ * تطبيقات حقيقية». The scope fix earned a real Vite project; this locks what
+ * goes INSIDE it. Measured before the fix: a maps app, a task manager, a chat
+ * app and a booking system produced byte-identical component lists (Hero,
+ * Features, Steps, Cta, Faq, Contact) plus a restaurant menu and two invented
+ * customers — and no map, no task, no message, no booking.
+ */
+describe('an application build ships a program, not a brochure', () => {
+    const { detectAppKind, blueprintFor } = require('../core/design/app-blueprints');
+
+    it('reads the domain from the request, without a model', () => {
+        expect(detectAppKind('ابني تطبيق خرائط شبيه بتطبيق خرائط جوجل')).toBe('maps');
+        expect(detectAppKind('اعمل لي برنامج إدارة مهام بسيط')).toBe('tasks');
+        expect(detectAppKind('اعمل تطبيق محادثة فوري بين المستخدمين')).toBe('chat');
+        expect(detectAppKind('ابن لي نظام حجوزات عيادة مع لوحة تحكم للطبيب')).toBe('booking');
+        expect(detectAppKind('ابني نظام إدارة مخزون')).toBe('inventory');
+        expect(detectAppKind('ابني تطبيق طقس')).toBe('weather');
+        // a presentation site is NOT an app — that path must keep working
+        expect(detectAppKind('ابنِ لي صفحة هبوط لمقهى')).toBeNull();
+        expect(detectAppKind('صمم لي قائمة طعام لمطعم')).toBeNull();
+        // and a page ABOUT an app is still a page
+        expect(detectAppKind('صفحة هبوط لتطبيق خرائط')).toBeNull();
+    });
+
+    it('a maps app really depends on a map library', () => {
+        expect(blueprintFor('maps', 'خرائط', true).deps.leaflet).toBeTruthy();
+        expect(blueprintFor('maps', 'خرائط', true).engine).toBe('map');
+    });
+
+    it('each domain carries its own schema — never a restaurant menu', () => {
+        const tasks = blueprintFor('tasks', 'مهام', true);
+        expect(tasks.fields.map((f: any) => f.key)).toEqual(['title', 'notes', 'priority', 'due', 'status']);
+        const booking = blueprintFor('booking', 'حجوزات', true);
+        expect(booking.fields.map((f: any) => f.key)).toEqual(expect.arrayContaining(['date', 'time', 'status']));
+        const inv = blueprintFor('inventory', 'مخزون', true);
+        expect(inv.metrics.some((m: any) => m.kind === 'sumProduct')).toBe(true);
+    });
+
+    it('the app templates carry real behaviour, and the scaffolder reaches them', () => {
+        const T = SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        // the map is a map
+        expect(T).toMatch(/tile\.openstreetmap\.org/);
+        expect(T).toMatch(/nominatim\.openstreetmap\.org\/search/);
+        expect(T).toMatch(/navigator\.geolocation\.getCurrentPosition/);
+        // the records engine really writes, validates and exports
+        expect(T).toMatch(/localStorage\.setItem/);
+        expect(T).toMatch(/f\.required && !String/);
+        expect(T).toMatch(/toCsv/);
+        // weather asks a real forecast service, with no key to fabricate
+        expect(T).toMatch(/api\.open-meteo\.com\/v1\/forecast/);
+        // …and the scaffolder actually branches to all of it
+        const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+        expect(R).toMatch(/detectAppKind\(request\)/);
+        expect(R).toMatch(/buildAppFiles\(appBp/);
+        // an app build must not emit one brochure component
+        expect(R).toMatch(/for \(const c of appBp \? \[\] : \['Navbar', \.\.\.sections, 'Footer'\]\)/);
+        expect(R).toMatch(/if \(!appBp\) files\['src\/components\/AdminPanel\.jsx'\]/);
+    });
+
+    it('no fabricated person, dish or pricing tier can reach an application', () => {
+        const T = SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        for (const invented of ['سارة العتيبي', 'محمد الشهري', 'ليان القحطاني', 'طبق اليوم', 'الإصدار الكلاسيكي']) {
+            expect(T).not.toContain(invented);
+        }
+        // and the app's content file describes a schema, never a marketing deck
+        expect(T).not.toMatch(/testimonials:\s*\[/);
+        expect(T).not.toMatch(/tiers:\s*\[/);
+    });
+
+    it('a real map library\'s own controls are not reported as dead links', () => {
+        const A = SRC('core', 'quality', 'app-audit.ts');
+        expect(A).toMatch(/class\*="leaflet"/);
+    });
+});

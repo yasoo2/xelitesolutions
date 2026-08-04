@@ -21,6 +21,8 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
+import { detectAppKind, blueprintFor, type AppBlueprint } from '../../../core/design/app-blueprints';
+import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { resolveImages } from '../../../core/design/images';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
@@ -2028,6 +2030,13 @@ export class ReactProjectTool extends BaseTool {
         // ships a menu, a store ships pricing — never the same generic three
         // sections for every request.
         const kind = detectPageKind(request);
+        // AND THE OTHER QUESTION, the one that was never asked: is this a site
+        // about something, or a PROGRAM? «تطبيق خرائط» used to come back as
+        // Hero + Features + FAQ with a restaurant menu attached and no map at
+        // all. When the request names an application, the section library is
+        // skipped entirely and a working app is generated instead.
+        const appKind = detectAppKind(request);
+        const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, isAr) : null;
         const family = familyFor(request, kind);
         const multiPage = wantsMultiPage(request);
         const pages = pagesForKind(kind);
@@ -2149,7 +2158,9 @@ export class ReactProjectTool extends BaseTool {
         // and licence bookkeeping every page build uses. skipInstall implies
         // a fully-offline scaffold (tests, air-gapped machines), so the photo
         // step is skipped with it; any live failure ships a clean no-image app.
-        if (!input?.skipInstall && !input?.skipImages) {
+        // An APPLICATION downloads no hero photograph: a map app needs tiles,
+        // not a stock picture of a road.
+        if (!appBp && !input?.skipInstall && !input?.skipImages) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🖼️ أبحث عن صورة حقيقية مرخّصة للبطل…' : '🖼️ Finding a real licensed hero photo…');
             const hero = await fetchHeroImage({
                 subject: `${content.tagline || content.brand}`,
@@ -2271,35 +2282,56 @@ export class ReactProjectTool extends BaseTool {
 :root[data-theme="light"]{color-scheme:light}`,
             'src/styles/base.css': fileBaseCss(family),
         };
+        // AN APPLICATION REPLACES ALL OF IT. Not one marketing section, not
+        // one fabricated customer, not one restaurant dish: the program, its
+        // storage, its schema and the engine its domain really needs. The
+        // palette, the fonts and the vite config above are kept — they are
+        // the parts a real app wants too.
+        if (appBp) {
+            for (const k of Object.keys(files)) {
+                if (k !== 'vite.config.js' && k !== 'src/styles/tokens.css') delete files[k];
+            }
+            const appFiles = buildAppFiles(appBp, {
+                brand: content.brand, isArabic: isAr, api: apiLink, storeKey: `${slug(content.brand)}-${appBp.kind}`,
+                brandColor: (palette as any).primary,
+            }, slug(content.brand));
+            for (const [rel, body] of Object.entries(appFiles)) files[rel] = body;
+            // The real Arabic webfaces travel with the app too — the faces are
+            // declared here because an app ships no base.css.
+            files['src/styles/app.css'] = `${familyFonts(family).faces}\nbody{font-family:${familyFonts(family).body}}\n${fileAppCss()}`;
+            fs.mkdirSync(path.join(proj, 'src', 'app'), { recursive: true });
+            term(`application build: ${appBp.kind} — engine «${appBp.engine}»${Object.keys(appBp.deps).length ? `, real dependencies: ${Object.keys(appBp.deps).join(', ')}` : ''}`);
+        }
         // Only the components this KIND actually uses are written — a
         // restaurant carries Menu.jsx, a store carries Pricing.jsx, and no
         // project ships dead files.
-        for (const c of ['Navbar', ...sections, 'Footer']) {
+        for (const c of appBp ? [] : ['Navbar', ...sections, 'Footer']) {
             const tpl = componentTemplates[c];
             if (tpl) files[`src/components/${c}.jsx`] = tpl();
         }
         // Menu/Products import OrderButton statically — ship it with them.
         // An unlinked app never renders it (ordersApi is ''), and the
         // bundler keeps the build green either way.
-        if (sections.includes('Menu') || sections.includes('Products') || multiPage) {
+        if (!appBp && (sections.includes('Menu') || sections.includes('Products') || multiPage)) {
             files['src/components/OrderButton.jsx'] = fileOrderButtonJsx();
         }
         // A shop ships REAL product pages — one URL per product, mounted
         // above everything so «#product/<slug>» works from a cold reload.
-        if (sections.includes('Products') || multiPage) {
+        if (!appBp && (sections.includes('Products') || multiPage)) {
             files['src/components/ProductView.jsx'] = fileProductViewJsx();
         }
         // The owner's dashboard: only an app WIRED to an API can have one, and
         // App.jsx imports it unconditionally, so the file must always exist —
         // it simply renders nothing when `content.api` is empty.
-        files['src/components/AdminPanel.jsx'] = fileAdminPanelJsx();
+        if (!appBp) files['src/components/AdminPanel.jsx'] = fileAdminPanelJsx();
         // The multi-page app swaps in a Navbar of real page Links.
-        if (multiPage) files['src/components/Navbar.jsx'] = fileMultiPageNavbarJsx();
+        if (!appBp && multiPage) files['src/components/Navbar.jsx'] = fileMultiPageNavbarJsx();
         // THE FILES, LIVE. Every file this build writes is streamed to the
         // Logs panel the moment it exists on disk — the same `file_stream`
         // event the page builder emits. Without it the panel opened on a
         // React build and showed nothing being built at all.
         for (const [rel, body] of Object.entries(files)) {
+            fs.mkdirSync(path.dirname(path.join(proj, rel)), { recursive: true });
             fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
             try {
                 broadcast({
@@ -2400,9 +2432,35 @@ export class ReactProjectTool extends BaseTool {
         }
 
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');
+        // What the app can actually DO — stated as capabilities, because the
+        // last delivery described a maps app that contained no map.
+        const ABILITIES: Record<string, [string[], string[]]> = {
+            map: [
+                ['خريطة حقيقية (Leaflet + OpenStreetMap) بتكبير وتحريك', 'بحث عن أي مكان بالاسم (Nominatim)', 'زر «موقعي» بتحديد GPS', 'النقر على الخريطة يثبّت علامة باسمها', 'أماكن محفوظة تبقى بعد إغلاق المتصفح + المسافة عنك'],
+                ['a real Leaflet + OpenStreetMap map', 'place search by name (Nominatim)', 'a working "my location" button', 'click the map to drop a named pin', 'saved places that survive a reload, with distance from you'],
+            ],
+            chat: [
+                ['غرف محادثة تُنشأ وتُحذف', 'رسائل محفوظة دائمة مع بحث', 'اسم المستخدم محفوظ على الجهاز', 'مزامنة حيّة مع الخادم إن وُجد — وإلا يقول بصراحة إنه محلي'],
+                ['rooms you create and remove', 'durable messages with search', 'a display name kept on the device', 'live sync with the server when one exists — and an honest "local only" badge when not'],
+            ],
+            weather: [
+                ['طقس حيّ من open-meteo بلا مفتاح ولا حساب', 'بحث عن المدن + تحديد الموقع', 'توقّعات سبعة أيام', 'تبديل مئوي/فهرنهايت ومدن محفوظة'],
+                ['live weather from open-meteo — no key, no account', 'city search and geolocation', 'a seven-day forecast', 'a °C/°F switch and saved cities'],
+            ],
+            records: [
+                ['إضافة وتعديل وحذف السجلات فعلياً', 'تحقّق من الحقول المطلوبة قبل الحفظ', 'بحث وتصفية وترتيب فوري', 'أرقام محسوبة من بياناتك أنت', 'حفظ دائم + تصدير CSV + قراءة من خادم المشروع إن وُجد'],
+                ['create, edit and delete records for real', 'required-field validation before saving', 'instant search, filter and sort', 'numbers computed from YOUR rows', 'durable storage, CSV export, and reads from the project API when one exists'],
+            ],
+        };
+        const appAbilities = appBp ? (ABILITIES[appBp.engine] || ABILITIES.records)[isAr ? 0 : 1] : [];
+        const appBlock = appBp
+            ? (isAr
+                ? `\n🧠 هذا تطبيق يعمل، لا صفحة تتحدث عنه — «${appBp.title}»:\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n`
+                : `\n🧠 A working application, not a page about one — "${appBp.title}":\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n`)
+            : '';
         const message = isAr
             ? `⚛️ ${built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
-
+${appBlock}
 ${audit ? `${require('../../../core/quality/app-audit').formatAudit(audit, true)}\n` : ''}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
 ${fileList}
@@ -2416,7 +2474,7 @@ ${built ? '✅ npm install + vite build نجحا — نسخة الإنتاج ج�
    • «شغّل خادم التطوير» → معاينة تطوير بتحديث حي
    • «انشر المشروع» → نسخة الإنتاج بصورها على رابط دائم`
             : `⚛️ ${built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
-
+${appBlock}
 📂 Path: ${proj}
 ${fileList}
 
