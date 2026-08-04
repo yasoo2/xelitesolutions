@@ -296,7 +296,8 @@ describe('the generated API ships locked, not open', () => {
         const salt = (seed.match(/salt: '([0-9a-f]{32})'/) || [])[1];
         const hash = (seed.match(/hash: '([0-9a-f]{128})'/) || [])[1];
         expect(crypto.scryptSync(password, salt, 64).toString('hex')).toBe(hash);
-        expect(seed).toContain(`email: '${email}'`);
+        // the seeder normalises before storing, so the literal is wrapped
+        expect(seed).toContain(`normalizeEmail('${email}')`);
     });
 
     it('the token secret never enters git, and no new dependency was added', () => {
@@ -320,5 +321,74 @@ describe('the generated API ships locked, not open', () => {
         expect(readme).toContain('/api/auth/login');
         expect(readme).toMatch(/عامّ للزوار/);
         expect(readme).toMatch(/محميّ بحسابك/);
+    });
+});
+
+/**
+ * THE OWNER'S DASHBOARD — locked, because it is the half that closes the lock.
+ *
+ * The generated API needs a token to change the catalogue and to read the
+ * orders. Without a screen, those credentials had nowhere to be typed but
+ * curl. And the first browser to try the screen found a defect the tests
+ * could not have: an Arabic brand minted `owner@مشروعي.local`, and an
+ * <input type="email"> PUNYCODES the domain — so the address the owner typed
+ * was never the address the API stored, and the only message was «wrong
+ * password».
+ */
+describe('the generated site carries the owner\'s dashboard', () => {
+    const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
+    let tmp = '', linked: any, plain: any;
+    beforeAll(async () => {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-owner-dash-'));
+        const api: any = await new ApiProjectTool().execute(
+            { request: 'ابنِ API لمتجر', skipInstall: true, root: tmp }, { sessionId: 'dash' });
+        linked = { api, site: await new ReactProjectTool().execute(
+            { request: 'ابنِ متجر react', skipInstall: true, root: tmp }, { sessionId: 'dash' }) };
+        plain = await new ReactProjectTool().execute(
+            { request: 'ابنِ صفحة هبوط لمكتب', skipInstall: true, root: tmp }, { sessionId: 'dash-plain' });
+    }, 120000);
+    afterAll(() => {
+        fs.rmSync(tmp, { recursive: true, force: true });
+        delete (global as any).joeProjects?.['dash'];
+        delete (global as any).joeProjects?.['dash-plain'];
+    });
+
+    it('the owner account is an address a BROWSER will send back unchanged', () => {
+        const email = (String(linked.api.output.message).match(/البريد:\s*(\S+)/) || [])[1] || '';
+        expect(email).toMatch(/^[\x21-\x7e]+$/);          // pure ASCII, no unicode domain
+        expect(email).toMatch(/^owner@[a-z0-9-]+\.local$/);
+    });
+
+    it('…and the API resolves both spellings anyway', () => {
+        const auth = fs.readFileSync(path.join(linked.api.output.path, 'auth.js'), 'utf-8');
+        expect(auth).toContain('domainToASCII');
+        expect(auth).toContain('export function normalizeEmail');
+        const server = fs.readFileSync(path.join(linked.api.output.path, 'server.js'), 'utf-8');
+        expect(server).toContain('db.userByEmail(normalizeEmail(email))');
+    });
+
+    it('a linked site ships the dashboard, mounts it, and offers the way in', () => {
+        const dir = linked.site.output.path;
+        const panel = fs.readFileSync(path.join(dir, 'src', 'components', 'AdminPanel.jsx'), 'utf-8');
+        expect(syntaxOk('AdminPanel.jsx', panel).ok).toBe(true);
+        expect(fs.readFileSync(path.join(dir, 'src', 'App.jsx'), 'utf-8')).toContain('<AdminPanel content={content} />');
+        expect(fs.readFileSync(path.join(dir, 'src', 'components', 'Footer.jsx'), 'utf-8')).toContain("href={(content.routeBase || '') === '/' ? '#/admin' : '#/admin'}");
+        expect(fs.readFileSync(path.join(dir, 'src', 'content.js'), 'utf-8')).toMatch(/api: 'http/);
+        // it reaches the real endpoints, with a token, and keeps it per brand
+        expect(panel).toContain("'/auth/login'");
+        expect(panel).toContain("authed('/orders')");
+        expect(panel).toContain("'Bearer ' + token");
+        expect(panel).toContain("'joe-admin-token:'");
+        // a rejected token signs you out instead of looping
+        expect(panel).toContain('res.status === 401');
+    });
+
+    it('an UNLINKED site renders none of it', () => {
+        const dir = plain.output.path;
+        expect(fs.readFileSync(path.join(dir, 'src', 'content.js'), 'utf-8')).toContain("api: ''");
+        // the file ships (App imports it unconditionally) but returns null
+        const panel = fs.readFileSync(path.join(dir, 'src', 'components', 'AdminPanel.jsx'), 'utf-8');
+        expect(panel).toContain('if (!content.api || !open) return null;');
+        expect(fs.readFileSync(path.join(dir, 'src', 'components', 'Footer.jsx'), 'utf-8')).toContain('content.api ?');
     });
 });

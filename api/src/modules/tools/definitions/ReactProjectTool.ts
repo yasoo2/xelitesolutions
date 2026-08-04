@@ -534,6 +534,7 @@ function fileMultiPageAppJsx(pages: AppPage[], isAr: boolean): string {
 import Navbar from './components/Navbar.jsx';
 import Footer from './components/Footer.jsx';
 import ProductView from './components/ProductView.jsx';
+import AdminPanel from './components/AdminPanel.jsx';
 ${comps.map(c => `import ${c} from './components/${c}.jsx';`).join('\n')}
 import { usePath } from './router.jsx';
 import { content } from './content.js';
@@ -549,6 +550,7 @@ export default function App() {
   const page = pages.find((p) => p.path === path);
   return (
     <>
+      <AdminPanel content={content} />
       <ProductView content={content} />
       <Navbar content={content} pages={pages} />
       <main>
@@ -602,13 +604,15 @@ function fileAppJsx(sections: string[]): string {
     const shop = sections.includes('Products');
     return `import React from 'react';
 ${comps.map(c => `import ${c} from './components/${c}.jsx';`).join('\n')}
-${shop ? "import ProductView from './components/ProductView.jsx';\n" : ''}import { content } from './content.js';
+${shop ? "import ProductView from './components/ProductView.jsx';\n" : ''}import AdminPanel from './components/AdminPanel.jsx';
+import { content } from './content.js';
 import { useReveal } from './reveal.js';
 
 export default function App() {
   useReveal();
   return (
     <>
+      <AdminPanel content={content} />
 ${shop ? '      <ProductView content={content} />\n' : ''}      <Navbar content={content} />
       <main>
 ${sections.map(c => `        <${c} content={content} />`).join('\n')}
@@ -1142,6 +1146,260 @@ export default function Testimonials({ content }) {
  * live order button. It is a view, not a modal pretending to be one: the
  * page beneath is inert while it is open, and Escape closes it.
  */
+
+/**
+ * THE OWNER'S DASHBOARD — the other half of the lock.
+ *
+ * The generated API grew real accounts: the catalogue can only be changed
+ * with a token, and the orders — which carry customers' names and phone
+ * numbers — can only be read with one. That closed the door and left the
+ * owner outside it: the credentials Joe prints in the chat had nowhere to be
+ * typed except `curl`. A feature is not finished when it exists; it is
+ * finished when the system REACHES it.
+ *
+ * So every app linked to an API ships a `#/admin` screen: sign in, read the
+ * orders, add / edit / delete rows, change the password. It is the same
+ * overlay pattern the product view uses, so it works on the single-page and
+ * multi-page builds alike, and an UNLINKED app never renders it at all.
+ *
+ * The token lives in localStorage under a per-brand key, so two Joe apps open
+ * in one browser do not overwrite each other's session.
+ */
+function fileAdminPanelJsx(): string {
+    return `import React, { useEffect, useState, useCallback } from 'react';
+
+const isAdminHash = () => /^#\\/?admin$/.test(String(window.location.hash || ''));
+const apiRoot = (content) => String(content.api || '').replace(/\\/api\\/[a-z]+$/, '/api');
+const resourceOf = (content) => String(content.api || '').split('/').filter(Boolean).pop() || 'items';
+
+export default function AdminPanel({ content }) {
+  const ar = content.isArabic !== false;
+  const root = apiRoot(content);
+  const resource = resourceOf(content);
+  const tokenKey = 'joe-admin-token:' + (content.brand || 'app');
+
+  const [open, setOpen] = useState(isAdminHash);
+  const [token, setToken] = useState(() => { try { return localStorage.getItem(tokenKey) || ''; } catch { return ''; } });
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [tab, setTab] = useState('orders');
+  const [orders, setOrders] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [draft, setDraft] = useState({ name: '', details: '', price: '' });
+  const [editing, setEditing] = useState(null);
+  const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    const onHash = () => setOpen(isAdminHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  useEffect(() => {
+    document.body.style.overflow = open ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
+
+  const authed = useCallback(async (path, init) => {
+    const res = await fetch(root + path, {
+      ...(init || {}),
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token, ...((init || {}).headers || {}) },
+    });
+    // An expired or rejected token means «sign in again», not «an error happened».
+    if (res.status === 401) { setToken(''); try { localStorage.removeItem(tokenKey); } catch {} }
+    return res;
+  }, [root, token, tokenKey]);
+
+  const load = useCallback(async () => {
+    if (!token) return;
+    setError('');
+    try {
+      const [o, r] = await Promise.all([
+        authed('/orders'),
+        fetch(root + '/' + resource),
+      ]);
+      if (o.ok) { const d = await o.json(); setOrders(d.orders || []); }
+      const d2 = await r.json().catch(() => null);
+      setRows((d2 && d2[resource]) || []);
+    } catch (e) {
+      setError(ar ? 'تعذّر الاتصال بالخادم — تأكّد أنه يعمل.' : 'Could not reach the server.');
+    }
+  }, [authed, root, resource, token, ar]);
+
+  useEffect(() => { if (open && token) load(); }, [open, token, load]);
+
+  const signIn = async (e) => {
+    e.preventDefault();
+    setBusy(true); setError('');
+    try {
+      const res = await fetch(root + '/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data && data.token) {
+        setToken(data.token);
+        try { localStorage.setItem(tokenKey, data.token); } catch {}
+        setPassword('');
+      } else if (res.status === 429) {
+        setError(ar ? 'محاولات كثيرة — انتظر قليلاً ثم أعد المحاولة.' : 'Too many attempts — wait a moment.');
+      } else {
+        setError(ar ? 'البريد أو كلمة المرور غير صحيحة.' : 'Wrong email or password.');
+      }
+    } catch (err) {
+      setError(ar ? 'تعذّر الاتصال بالخادم — هل هو يعمل؟' : 'Could not reach the server — is it running?');
+    }
+    setBusy(false);
+  };
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (!draft.name.trim()) return;
+    setBusy(true); setError(''); setNotice('');
+    const res = editing
+      ? await authed('/' + resource + '/' + editing, { method: 'PUT', body: JSON.stringify(draft) })
+      : await authed('/' + resource, { method: 'POST', body: JSON.stringify(draft) });
+    if (res.ok) {
+      setDraft({ name: '', details: '', price: '' });
+      setEditing(null);
+      setNotice(ar ? 'حُفظ.' : 'Saved.');
+      await load();
+    } else {
+      setError(ar ? 'لم يُحفظ — راجع الحقول.' : 'Not saved — check the fields.');
+    }
+    setBusy(false);
+  };
+
+  const remove = async (row) => {
+    if (!window.confirm((ar ? 'حذف: ' : 'Delete: ') + row.name + '?')) return;
+    const res = await authed('/' + resource + '/' + row.id, { method: 'DELETE' });
+    if (res.ok) await load();
+  };
+
+  const changePassword = async () => {
+    const current = window.prompt(ar ? 'كلمة المرور الحالية:' : 'Current password:');
+    if (!current) return;
+    const next = window.prompt(ar ? 'كلمة المرور الجديدة (8 محارف فأكثر):' : 'New password (8+ characters):');
+    if (!next) return;
+    const res = await authed('/auth/password', { method: 'POST', body: JSON.stringify({ current, next }) });
+    setNotice(res.ok
+      ? (ar ? 'تغيّرت كلمة المرور.' : 'Password changed.')
+      : (ar ? 'لم تتغيّر — تأكّد من كلمة المرور الحالية وطول الجديدة.' : 'Not changed — check the current password and the new length.'));
+  };
+
+  if (!content.api || !open) return null;
+
+  return (
+    <div className="admin-panel" role="dialog" aria-modal="true" aria-label={ar ? 'لوحة المالك' : 'Owner dashboard'}>
+      <div className="wrap admin-wrap">
+        <div className="admin-head">
+          <h1>{ar ? 'لوحة المالك' : 'Owner dashboard'}</h1>
+          <a className="btn btn-ghost" href={(content.routeBase || '') === '/' ? '#/' : '#'}>
+            {ar ? 'إغلاق' : 'Close'}
+          </a>
+        </div>
+
+        {!token ? (
+          <form className="admin-login" onSubmit={signIn}>
+            <p className="lede">
+              {ar ? 'ادخل ببيانات الحساب الذي أنشأه جو حين بنى الواجهة الخلفية.' : 'Sign in with the account Joe created when it built the backend.'}
+            </p>
+            <input type="email" dir="ltr" placeholder={ar ? 'البريد' : 'Email'} value={email}
+              onChange={(e) => setEmail(e.target.value)} required autoComplete="username" />
+            <input type="password" dir="ltr" placeholder={ar ? 'كلمة المرور' : 'Password'} value={password}
+              onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+            <button className="btn" type="submit" disabled={busy}>
+              {busy ? (ar ? 'جارٍ الدخول…' : 'Signing in…') : (ar ? 'دخول' : 'Sign in')}
+            </button>
+            {error ? <p className="admin-error">{error}</p> : null}
+          </form>
+        ) : (
+          <>
+            <div className="admin-tabs">
+              <button className={'btn btn-ghost' + (tab === 'orders' ? ' is-on' : '')} onClick={() => setTab('orders')}>
+                {ar ? 'الطلبات' : 'Orders'} ({orders.length})
+              </button>
+              <button className={'btn btn-ghost' + (tab === 'catalog' ? ' is-on' : '')} onClick={() => setTab('catalog')}>
+                {ar ? 'المحتوى' : 'Catalogue'} ({rows.length})
+              </button>
+              <button className="btn btn-ghost" onClick={changePassword}>{ar ? 'كلمة المرور' : 'Password'}</button>
+              <button className="btn btn-ghost admin-out" onClick={() => {
+                setToken(''); try { localStorage.removeItem(tokenKey); } catch {}
+              }}>{ar ? 'خروج' : 'Sign out'}</button>
+            </div>
+            {notice ? <p className="admin-notice">{notice}</p> : null}
+            {error ? <p className="admin-error">{error}</p> : null}
+
+            {tab === 'orders' ? (
+              orders.length ? (
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>{ar ? 'الطلب' : 'Item'}</th><th>{ar ? 'العدد' : 'Qty'}</th>
+                      <th>{ar ? 'العميل' : 'Customer'}</th><th>{ar ? 'الجوال' : 'Phone'}</th>
+                      <th>{ar ? 'الوقت' : 'When'}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.map((o) => (
+                      <tr key={o.id}>
+                        <td>{o.item}</td><td>{o.qty}</td><td>{o.customer}</td>
+                        <td dir="ltr">{o.phone || '—'}</td>
+                        <td className="admin-when">{String(o.created_at || '').replace('T', ' ').slice(0, 16)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : <p className="lede">{ar ? 'لا طلبات بعد.' : 'No orders yet.'}</p>
+            ) : (
+              <>
+                <form className="admin-row-form" onSubmit={save}>
+                  <input placeholder={ar ? 'الاسم' : 'Name'} value={draft.name}
+                    onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
+                  <input placeholder={ar ? 'الوصف' : 'Details'} value={draft.details}
+                    onChange={(e) => setDraft({ ...draft, details: e.target.value })} />
+                  <input placeholder={ar ? 'السعر' : 'Price'} value={draft.price}
+                    onChange={(e) => setDraft({ ...draft, price: e.target.value })} />
+                  <button className="btn" type="submit" disabled={busy}>
+                    {editing ? (ar ? 'تحديث' : 'Update') : (ar ? 'إضافة' : 'Add')}
+                  </button>
+                  {editing ? (
+                    <button className="btn btn-ghost" type="button"
+                      onClick={() => { setEditing(null); setDraft({ name: '', details: '', price: '' }); }}>
+                      {ar ? 'إلغاء' : 'Cancel'}
+                    </button>
+                  ) : null}
+                </form>
+                <table className="admin-table">
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.id}>
+                        <td>{r.name}</td>
+                        <td className="admin-when">{r.details}</td>
+                        <td>{r.price}</td>
+                        <td>
+                          <button className="btn btn-ghost" onClick={() => {
+                            setEditing(r.id);
+                            setDraft({ name: r.name || '', details: r.details || '', price: r.price || '' });
+                          }}>{ar ? 'تعديل' : 'Edit'}</button>
+                          <button className="btn btn-ghost admin-out" onClick={() => remove(r)}>{ar ? 'حذف' : 'Delete'}</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+`;
+}
+
 function fileProductViewJsx(): string {
     return `import React, { useEffect, useState } from 'react';
 import OrderButton from './OrderButton.jsx';
@@ -1456,6 +1714,13 @@ export default function Footer({ content }) {
       </div>
       <div className="wrap footer-bottom">
         <p>© {new Date().getFullYear()} {content.brand}</p>
+        {content.api ? (
+          <p className="owner-link">
+            <a href={(content.routeBase || '') === '/' ? '#/admin' : '#/admin'}>
+              {content.isArabic === false ? 'Owner' : 'دخول المالك'}
+            </a>
+          </p>
+        ) : null}
         {content.contact && (content.contact.instagram || content.contact.twitter) ? (
           <p className="socials">
             {content.contact.instagram ? <a href={'https://instagram.com/' + content.contact.instagram} target="_blank" rel="noopener noreferrer">Instagram</a> : null}
@@ -1645,6 +1910,29 @@ main > .section:nth-of-type(even):not(.band):not(.stats-band):not(.cta-band){bac
 .footer-links a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;min-height:32px}
 .footer-links a:hover{color:var(--brand)}
 .footer-bottom{border-top:1px solid var(--border);padding-top:16px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center}
+/* The owner's way in: present, quiet, and never mistaken for a visitor CTA. */
+.owner-link a{color:var(--muted);font-size:13px;text-decoration:none;border-bottom:1px dashed var(--border)}
+.owner-link a:hover{color:var(--accent)}
+.admin-panel{position:fixed;inset:0;z-index:80;background:var(--bg);overflow-y:auto;padding:32px 0}
+.admin-wrap{max-width:1000px}
+.admin-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
+.admin-head h1{margin:0;font-size:clamp(24px,4vw,34px)}
+.admin-login{display:grid;gap:12px;max-width:420px}
+.admin-login input,.admin-row-form input{padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--fg);font:inherit;font-size:15px;min-height:44px}
+.admin-login input:focus,.admin-row-form input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.admin-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+.admin-tabs .btn{min-height:44px}
+.admin-tabs .is-on{border-color:var(--accent);color:var(--accent)}
+.admin-out{color:#c0392b}
+.admin-error{color:#c0392b;font-size:14px;margin:8px 0 0}
+.admin-notice{color:var(--accent);font-size:14px;margin:0 0 12px}
+.admin-table{width:100%;border-collapse:collapse;margin-top:8px;font-size:15px}
+.admin-table th,.admin-table td{padding:12px 10px;border-bottom:1px solid var(--border);text-align:start;vertical-align:middle}
+.admin-table th{font-size:13px;color:var(--muted);font-weight:600}
+.admin-when{color:var(--muted);font-size:13px}
+.admin-row-form{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0 20px}
+.admin-row-form input{flex:1 1 180px;min-width:0}
+@media(max-width:640px){.admin-table th:nth-child(5),.admin-table td:nth-child(5){display:none}}
 .footer-bottom p{margin:0}
 .footer-bottom .credits{margin-inline-start:auto}
 .story-grid{display:grid;gap:clamp(24px,4vw,52px);align-items:center;grid-template-columns:1fr}
@@ -2000,6 +2288,10 @@ export class ReactProjectTool extends BaseTool {
         if (sections.includes('Products') || multiPage) {
             files['src/components/ProductView.jsx'] = fileProductViewJsx();
         }
+        // The owner's dashboard: only an app WIRED to an API can have one, and
+        // App.jsx imports it unconditionally, so the file must always exist —
+        // it simply renders nothing when `content.api` is empty.
+        files['src/components/AdminPanel.jsx'] = fileAdminPanelJsx();
         // The multi-page app swaps in a Navbar of real page Links.
         if (multiPage) files['src/components/Navbar.jsx'] = fileMultiPageNavbarJsx();
         // THE FILES, LIVE. Every file this build writes is streamed to the

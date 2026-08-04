@@ -268,7 +268,7 @@ function fileAuthJs(): string {
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, domainToASCII } from 'node:url';
 import { db } from './db.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -286,6 +286,22 @@ const SECRET = readSecret();
 const TTL_SECONDS = Number(process.env.API_TOKEN_TTL || 60 * 60 * 12);
 
 const b64 = (buf) => Buffer.from(buf).toString('base64url');
+
+/**
+ * One spelling for one address.
+ *
+ * A browser's <input type="email"> punycodes a unicode domain before your code
+ * ever sees it: «owner@مشروعي.local» arrives as «owner@xn--wgbfq9brn.local».
+ * Store and compare the ASCII form and the two spellings become one, so an
+ * owner can sign in from a browser, from curl, or from anything else.
+ */
+export function normalizeEmail(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  const at = s.lastIndexOf('@');
+  if (at < 1) return s;
+  const domain = domainToASCII(s.slice(at + 1)) || s.slice(at + 1);
+  return s.slice(0, at) + '@' + domain;
+}
 
 export function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   return { salt, hash: crypto.scryptSync(String(password), salt, 64).toString('hex') };
@@ -359,6 +375,7 @@ function fileSeedJs(
 ): string {
     return `// Idempotent seed: rows land ONCE, on the first boot of an empty database.
 import { db } from './db.js';
+import { normalizeEmail } from './auth.js';
 
 export function seed() {
   if (db.count() > 0) return 0;
@@ -378,7 +395,8 @@ ${seeds.map(s => `    { name: '${js(s.name)}', details: '${js(s.details)}', pric
  */
 export function seedOwner() {
   if (db.countUsers() > 0) return null;
-  const u = db.createUser({ email: '${js(owner.email)}', salt: '${owner.salt}', hash: '${owner.hash}', role: 'owner' });
+  // normalizeEmail so the stored spelling is the one a BROWSER will send.
+  const u = db.createUser({ email: normalizeEmail('${js(owner.email)}'), salt: '${owner.salt}', hash: '${owner.hash}', role: 'owner' });
   return u.email;
 }
 `;
@@ -391,7 +409,7 @@ function fileServerJs(resource: string, brand: string, dirName: string): string 
 import express from 'express';
 import { db } from './db.js';
 import { seed, seedOwner } from './seed.js';
-import { hashPassword, verifyPassword, signToken, requireAuth, throttleKey, isLocked, noteMiss, clearMisses } from './auth.js';
+import { hashPassword, verifyPassword, signToken, requireAuth, throttleKey, isLocked, noteMiss, clearMisses, normalizeEmail } from './auth.js';
 
 // THE LIVE BRIDGE to Joe: every new order is announced into the owner's
 // chat through Joe's existing public inbox — fire-and-forget, so the
@@ -431,11 +449,11 @@ app.post('/api/auth/login', (req, res) => {
   if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
     return res.status(400).json({ ok: false, error: 'email_and_password_required' });
   }
-  const key = throttleKey(req, email);
+  const key = throttleKey(req, normalizeEmail(email));
   const wait = isLocked(key);
   if (wait) return res.status(429).json({ ok: false, error: 'too_many_attempts', retry_after_seconds: wait });
 
-  const user = db.userByEmail(email.trim());
+  const user = db.userByEmail(normalizeEmail(email));
   // The same answer either way: a different message for an unknown email tells
   // an attacker which addresses are real.
   if (!user || !verifyPassword(password, user.salt, user.hash)) {
@@ -660,7 +678,15 @@ export class ApiProjectTool extends BaseTool {
         // The owner account. The password is generated HERE, hashed HERE with the
         // same scrypt the server uses, and only the hash reaches the disk — the
         // plaintext exists in one place: the message Joe writes in the chat.
-        const ownerEmail = `owner@${slug(brand)}.local`;
+        // The address must survive a BROWSER. `slug()` keeps Arabic letters, so a
+        // brand like «مشروعي» produced owner@مشروعي.local — and an
+        // <input type="email"> silently punycodes the domain, sending
+        // owner@xn--wgbfq9brn.local instead. The owner could never sign in to
+        // their own dashboard, and the login screen could only say «wrong
+        // password». Caught by driving the real form in a real browser.
+        const asciiSlug = String(brand || '').toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
+        const ownerEmail = `owner@${asciiSlug || 'joe'}.local`;
         const ownerPassword = crypto.randomBytes(9).toString('base64url');
         const ownerSalt = crypto.randomBytes(16).toString('hex');
         const ownerHash = crypto.scryptSync(ownerPassword, ownerSalt, 64).toString('hex');
