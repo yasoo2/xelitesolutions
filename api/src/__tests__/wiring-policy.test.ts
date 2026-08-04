@@ -391,3 +391,78 @@ describe('admin is decided by the server, once', () => {
         expect(offenders).toEqual([]);
     });
 });
+
+/**
+ * THE SETTINGS SCREEN is the panel's most dangerous page, so its guarantees
+ * are locked rather than remembered.
+ */
+describe('the environment editor stays narrow', () => {
+    const { ENV_SETTINGS, ENV_BY_KEY, isSettableEnvKey, validateEnvValue, maskEnvValue, isSecretSetting } =
+        require('../core/config/envRegistry');
+    const admin = SRC('api', 'routes', 'admin.ts');
+
+    it('only names Joe actually reads are editable — and only from the list', () => {
+        const api = fs.readFileSync(path.join(__dirname, '..', 'api', 'routes', 'admin.ts'), 'utf-8');
+        expect(api).toContain('isSettableEnvKey');
+        // the two that would hand over the process
+        expect(isSettableEnvKey('NODE_OPTIONS')).toBe(false);
+        expect(isSettableEnvKey('PATH')).toBe(false);
+        expect(isSettableEnvKey('LD_PRELOAD')).toBe(false);
+        expect(isSettableEnvKey('SUPER_ADMIN_EMAILS')).toBe(true);
+        expect(ENV_SETTINGS.length).toBeGreaterThan(20);
+    });
+
+    it('every editable key is one the codebase really reads', () => {
+        // A settings screen full of keys nothing consults is a screen of
+        // switches wired to nothing.
+        const read = (dir: string): string => fs.readdirSync(dir, { withFileTypes: true })
+            .map(e => e.isDirectory() ? (e.name === 'node_modules' ? '' : read(path.join(dir, e.name)))
+                : /\.ts$/.test(e.name) ? fs.readFileSync(path.join(dir, e.name), 'utf-8') : '').join('\n');
+        const src = read(path.join(__dirname, '..'));
+        const orphans = ENV_SETTINGS
+            .map((s: any) => s.key)
+            .filter((k: string) => !src.includes(`process.env.${k}`) && !src.includes(`process.env['${k}']`));
+        expect(orphans).toEqual([]);
+    });
+
+    it('a secret is a secret in ONE place — kind and flag cannot disagree', () => {
+        // They did: every API key declared `kind: 'secret'` while the mask
+        // checked a separate `secret: true` that the registry never set, so
+        // the panel served every key in the clear. Found by the live proof.
+        for (const key of ['GROQ_API_KEY', 'OPENAI_API_KEY', 'JWT_SECRET', 'MONGO_URI']) {
+            const s = ENV_BY_KEY.get(key);
+            expect(isSecretSetting(s)).toBe(true);
+            expect(maskEnvValue(s, 'super-secret-value-1234')).toEqual({ set: true, preview: '••••1234' });
+        }
+        expect(maskEnvValue(ENV_BY_KEY.get('PUBLIC_URL'), 'https://x.com'))
+            .toEqual({ set: true, preview: 'https://x.com' });
+    });
+
+    it('a value can never write a second assignment into .env', () => {
+        const s = ENV_BY_KEY.get('PUBLIC_URL');
+        expect(validateEnvValue(s, 'https://a.com\nENABLE_AUTH_BYPASS=true')).toBeTruthy();
+        expect(validateEnvValue(s, 'https://a.com')).toBeNull();
+        expect(validateEnvValue(ENV_BY_KEY.get('REGISTRATION_OPEN'), 'yes')).toBeTruthy();
+        expect(validateEnvValue(ENV_BY_KEY.get('PORT'), 'abc')).toBeTruthy();
+    });
+
+    it('the route keeps its three refusals and its owner gate', () => {
+        expect(admin).toContain('const requireOwner');
+        expect(admin).toContain("router.get('/env', requireOwner");
+        expect(admin).toContain("router.post('/env', requireOwner");
+        expect(admin).toContain('would_lock_you_out');
+        expect(admin).toContain('unsafe_in_production');
+        expect(admin).toContain('confirmation_required');
+        // and it must never log a value
+        expect(admin).not.toMatch(/logger\.(info|warn)\([^)]*clean\[/);
+    });
+
+    it('the file writer keeps mode 0600 and a backup', () => {
+        const w = SRC('core', 'config', 'envFile.ts');
+        expect(w).toContain('mode: 0o600');
+        expect(w).toContain('backup-');
+        // a commented-out assignment must not be silently reactivated: the
+        // match is anchored at the start of the line, before any '#'
+        expect(w).toMatch(/new RegExp\(`\^\\\\s\*\$\{key\}/);
+    });
+});

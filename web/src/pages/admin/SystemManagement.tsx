@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { API_URL } from '../../config';
 import { SocketService } from '../../services/socket';
+import { resolveIdentity } from '../../lib/userIdentity';
 import SentinelDashboard from './sentinel/SentinelDashboard';
 
 // ═══════════════════════════════════════════════
@@ -69,7 +70,22 @@ interface User {
     createdAt: string;
 }
 
-type Tab = 'dashboard' | 'deployments' | 'admins' | 'sentinel';
+interface EnvSetting {
+    key: string;
+    group: 'ownership' | 'ai' | 'local-brain' | 'storage' | 'runtime';
+    kind: string;
+    label: string;
+    hint: string;
+    live: boolean;
+    secret: boolean;
+    choices?: string[];
+    placeholder?: string;
+    confirm?: string;
+    set: boolean;
+    preview: string;
+}
+
+type Tab = 'dashboard' | 'deployments' | 'admins' | 'settings' | 'sentinel';
 
 export default function SystemManagement() {
     const { t } = useTranslation();
@@ -101,6 +117,15 @@ export default function SystemManagement() {
     // That is a normal state, not a failure — but it has to be SAID, or the
     // Deployments tab is an empty list with no explanation forever.
     const [dbOffline, setDbOffline] = useState(false);
+
+    // Settings (environment) — owner only; the server refuses everyone else.
+    const [envSettings, setEnvSettings] = useState<EnvSetting[] | null>(null);
+    const [envDrafts, setEnvDrafts] = useState<Record<string, string>>({});
+    const [envFile, setEnvFile] = useState('');
+    const [envSaving, setEnvSaving] = useState(false);
+    const [envMsg, setEnvMsg] = useState<{ ok: boolean; text: string } | null>(null);
+    const [envForbidden, setEnvForbidden] = useState(false);
+    const [isOwner, setIsOwner] = useState(false);
     const [autoDeployStatus, setAutoDeployStatus] = useState<{
         pollerActive: boolean;
         pollerEnabled: boolean;
@@ -112,6 +137,18 @@ export default function SystemManagement() {
         isDeploying: boolean;
     } | null>(null);
     const logEndRef = useRef<HTMLDivElement>(null);
+
+    /**
+     * The settings tab is for OWNERs. The server enforces that (403 for anyone
+     * else), and the tab is hidden rather than shown-and-then-denied.
+     *
+     * resolveIdentity() is the app's one JWT decoder — a hand-rolled
+     * `atob(token.split('.')[1])` cannot read a JWT at all: the payload is
+     * base64URL ('-' and '_', unpadded) and atob rejects both.
+     */
+    useEffect(() => {
+        setIsOwner(resolveIdentity().role === 'OWNER');
+    }, [token]);
 
     /**
      * LIVE LOGS — the feature that was fully built on both sides and never met.
@@ -227,9 +264,48 @@ export default function SystemManagement() {
             await Promise.all([fetchDeployments(), fetchAutoDeployStatus()]);
         } else if (activeTab === 'admins') {
             await fetchUsers();
+        } else if (activeTab === 'settings') {
+            await fetchEnv();
         }
         setLastRefresh(new Date());
         setLoading(false);
+    };
+
+    const fetchEnv = useCallback(async () => {
+        try {
+            const res = await fetch(`${API_URL}/admin/env`, { headers: { Authorization: `Bearer ${token}` } });
+            if (res.status === 403) { setEnvForbidden(true); setEnvSettings([]); return; }
+            setEnvForbidden(false);
+            if (res.ok) {
+                const data = await res.json();
+                setEnvSettings(data.settings || []);
+                setEnvFile(data.file || '');
+            }
+        } catch (e) { console.error(e); }
+    }, [token]);
+
+    const saveEnv = async (keys: string[], confirm?: string) => {
+        const changes: Record<string, string> = {};
+        for (const k of keys) if (k in envDrafts) changes[k] = envDrafts[k];
+        if (!Object.keys(changes).length) { setEnvMsg({ ok: false, text: 'لا تغييرات لحفظها.' }); return; }
+        setEnvSaving(true);
+        setEnvMsg(null);
+        try {
+            const res = await fetch(`${API_URL}/admin/env`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ changes, confirm }),
+            });
+            const data = await res.json().catch(() => null);
+            if (res.ok) {
+                setEnvMsg({ ok: true, text: data?.message || 'حُفظ.' });
+                setEnvDrafts(prev => { const next = { ...prev }; for (const k of keys) delete next[k]; return next; });
+                await fetchEnv();
+            } else {
+                setEnvMsg({ ok: false, text: data?.message || `تعذّر الحفظ (${res.status}).` });
+            }
+        } catch (e: any) { setEnvMsg({ ok: false, text: `خطأ في الشبكة: ${e.message}` }); }
+        setEnvSaving(false);
     };
 
     const fetchAutoDeployStatus = async () => {
@@ -244,7 +320,7 @@ export default function SystemManagement() {
     // Initial fetch when tab changes
     useEffect(() => {
         refreshAll();
-    }, [activeTab, fetchHealth, fetchDeployments, fetchUsers]);
+    }, [activeTab, fetchHealth, fetchDeployments, fetchUsers, fetchEnv]);
 
     // Background polling
     useEffect(() => {
@@ -791,6 +867,137 @@ export default function SystemManagement() {
         </motion.div>
     );
 
+    /**
+     * THE SETTINGS SCREEN — the most dangerous page in the product, so it is
+     * the narrowest. It edits a CLOSED LIST of names the server publishes; a
+     * secret can be written but never read back; and each row says honestly
+     * whether saving it takes effect now or waits for a restart.
+     */
+    const GROUP_TITLES: Record<string, { title: string; note: string }> = {
+        ownership: { title: '🔐 الملكية والأمان', note: 'من يملك هذا التنصيب، ومن يُسمح له بالتسجيل.' },
+        ai: { title: '🧠 مفاتيح الذكاء', note: 'تُكتب ولا تُقرأ: بعد الحفظ لا يعيدها الخادم لأي متصفّح.' },
+        'local-brain': { title: '💻 الدماغ المحلّي', note: 'نماذج تعمل على جهازك بلا إنترنت وبلا تكلفة.' },
+        storage: { title: '🗄️ التخزين', note: 'أين تعيش بياناتك ومشاريعك.' },
+        runtime: { title: '⚙️ التشغيل', note: 'المنفذ والعنوان العام والمتصفّح.' },
+    };
+
+    const renderSettings = () => {
+        if (envForbidden) {
+            return (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="tab-pane">
+                    <div className="db-offline-banner">
+                        <AlertTriangle size={18} />
+                        <div>
+                            <strong>هذه الشاشة للمالك وحده.</strong>
+                            <div>يمكنك إدارة النظام، لكن تعديل بيئة تشغيل جو محصور بمن عرّفه المشغّل في SUPER_ADMIN_EMAILS.</div>
+                        </div>
+                    </div>
+                </motion.div>
+            );
+        }
+        const groups = ['ownership', 'ai', 'local-brain', 'storage', 'runtime'] as const;
+        return (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="tab-pane">
+                <div className="env-intro">
+                    <div>
+                        <strong>إعدادات البيئة</strong>
+                        <div>تُكتب في <code>{envFile || '.env'}</code> بصلاحية 0600، مع نسخة احتياطية قبل كل تعديل. التعليقات وبقيّة المفاتيح لا تُمَسّ.</div>
+                    </div>
+                    <button className="dep-log-btn" onClick={fetchEnv}><RefreshCw size={14} /> تحديث</button>
+                </div>
+
+                {envMsg && (
+                    <div className={`env-msg ${envMsg.ok ? 'ok' : 'bad'}`}>
+                        {envMsg.ok ? <Shield size={16} /> : <AlertTriangle size={16} />} {envMsg.text}
+                    </div>
+                )}
+
+                {envSettings === null ? (
+                    <div className="section-card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                        <Loader2 size={20} className="spinning" /> يُحمَّل…
+                    </div>
+                ) : groups.map(g => {
+                    const rows = envSettings.filter(x => x.group === g);
+                    if (!rows.length) return null;
+                    const dirty = rows.filter(r => r.key in envDrafts).map(r => r.key);
+                    return (
+                        <div className="section-card" key={g}>
+                            <div className="section-header">
+                                <div className="section-header-left">
+                                    <span className="section-title">{GROUP_TITLES[g].title}</span>
+                                    <span className="env-note">{GROUP_TITLES[g].note}</span>
+                                </div>
+                                <button
+                                    className="btn-deploy-refined env-save"
+                                    disabled={!dirty.length || envSaving}
+                                    onClick={() => {
+                                        const needs = rows.find(r => dirty.includes(r.key) && r.confirm && envDrafts[r.key]);
+                                        if (needs && !window.confirm(
+                                            `${needs.label}: ${needs.hint}\n\nهل تريد المتابعة؟`)) return;
+                                        saveEnv(dirty, needs?.confirm);
+                                    }}
+                                >
+                                    {envSaving ? <Loader2 size={16} className="spinning" /> : null}
+                                    حفظ{dirty.length ? ` (${dirty.length})` : ''}
+                                </button>
+                            </div>
+                            <div className="section-body env-rows">
+                                {rows.map(r => (
+                                    <div className="env-row" key={r.key}>
+                                        <div className="env-label">
+                                            <div className="env-title">
+                                                {r.label}
+                                                {!r.live && <span className="env-badge restart">يحتاج إعادة تشغيل</span>}
+                                                {r.secret && <span className="env-badge secret">سرّي</span>}
+                                                {r.set && <span className="env-badge set">مضبوط</span>}
+                                            </div>
+                                            <code className="env-key">{r.key}</code>
+                                            <div className="env-hint">{r.hint}</div>
+                                        </div>
+                                        <div className="env-input">
+                                            {r.kind === 'choice' ? (
+                                                <select
+                                                    value={r.key in envDrafts ? envDrafts[r.key] : (r.secret ? '' : r.preview)}
+                                                    onChange={e => setEnvDrafts(p => ({ ...p, [r.key]: e.target.value }))}
+                                                >
+                                                    <option value="">—</option>
+                                                    {(r.choices || []).map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
+                                            ) : r.kind === 'boolean' ? (
+                                                <select
+                                                    value={r.key in envDrafts ? envDrafts[r.key] : (r.preview || '')}
+                                                    onChange={e => setEnvDrafts(p => ({ ...p, [r.key]: e.target.value }))}
+                                                >
+                                                    <option value="">—</option>
+                                                    <option value="true">مفعّل</option>
+                                                    <option value="false">معطّل</option>
+                                                </select>
+                                            ) : (
+                                                <input
+                                                    type="text"
+                                                    dir="ltr"
+                                                    value={r.key in envDrafts ? envDrafts[r.key] : (r.secret ? '' : r.preview)}
+                                                    placeholder={r.secret && r.set ? r.preview : (r.placeholder || '')}
+                                                    onChange={e => setEnvDrafts(p => ({ ...p, [r.key]: e.target.value }))}
+                                                />
+                                            )}
+                                            {r.key in envDrafts && (
+                                                <button className="dep-log-btn" title="تراجع"
+                                                    onClick={() => setEnvDrafts(p => { const n = { ...p }; delete n[r.key]; return n; })}>
+                                                    <RotateCcw size={13} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })}
+            </motion.div>
+        );
+    };
+
     return (
         <div className="system-management">
             <style>{`
@@ -991,6 +1198,49 @@ export default function SystemManagement() {
                     border-color: var(--border-light);
                     background: var(--sm-tint);
                 }
+                /* ── settings ─────────────────────────────────────────── */
+                .env-intro {
+                    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+                    background: var(--bg-card); border: 1px solid var(--border-color);
+                    border-radius: 16px; padding: 16px 24px; margin-bottom: 20px;
+                    font-size: 13px; color: var(--text-muted); line-height: 1.8;
+                }
+                .env-intro strong { color: var(--text-primary); font-size: 15px; }
+                .env-intro code { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--accent-primary); }
+                .env-msg {
+                    display: flex; align-items: center; gap: 10px;
+                    padding: 14px 20px; border-radius: 14px; margin-bottom: 20px;
+                    font-size: 14px; font-weight: 600;
+                }
+                .env-msg.ok { background: rgba(16,185,129,0.10); color: #10b981; border: 1px solid rgba(16,185,129,0.3); }
+                .env-msg.bad { background: rgba(239,68,68,0.10); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+                .env-note { font-size: 12px; color: var(--text-muted); margin-right: 12px; font-weight: 500; }
+                .env-save { padding: 8px 20px !important; font-size: 13px !important; border-radius: 10px !important; }
+                .env-save:disabled { opacity: 0.35; cursor: not-allowed; }
+                .env-rows { display: flex; flex-direction: column; gap: 4px; padding: 12px 24px 24px !important; }
+                .env-row {
+                    display: grid; grid-template-columns: minmax(220px, 1fr) minmax(240px, 1fr);
+                    gap: 24px; align-items: center; padding: 14px 0;
+                    border-bottom: 1px solid var(--border-color);
+                }
+                .env-row:last-child { border-bottom: none; }
+                .env-title { font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+                .env-key { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); display: block; margin: 4px 0; }
+                .env-hint { font-size: 12px; color: var(--text-muted); line-height: 1.7; }
+                .env-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+                .env-badge.restart { background: rgba(245,158,11,0.12); color: #f59e0b; }
+                .env-badge.secret { background: rgba(139,92,246,0.12); color: #8b5cf6; }
+                .env-badge.set { background: rgba(16,185,129,0.12); color: #10b981; }
+                .env-input { display: flex; align-items: center; gap: 8px; }
+                .env-input input, .env-input select {
+                    flex: 1; min-width: 0; padding: 10px 14px; border-radius: 10px;
+                    border: 1px solid var(--border-color); background: var(--sm-inset);
+                    color: var(--text-primary); font-size: 13px;
+                    font-family: 'JetBrains Mono', monospace;
+                }
+                .env-input input:focus, .env-input select:focus { outline: none; border-color: var(--accent-primary); }
+                @media (max-width: 900px) { .env-row { grid-template-columns: 1fr; gap: 10px; } }
+
                 .section-header.clickable { cursor: pointer; user-select: none; }
                 .section-header.clickable:hover { background: var(--sm-tint-2); }
                 .db-offline-banner {
@@ -1305,6 +1555,11 @@ export default function SystemManagement() {
                     <button className={`tab-btn ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>
                         <Shield size={16} /> Admins
                     </button>
+                    {isOwner && (
+                        <button className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
+                            <Shield size={16} /> الإعدادات
+                        </button>
+                    )}
                     <button className={`tab-btn ${activeTab === 'sentinel' ? 'active' : ''}`} onClick={() => setActiveTab('sentinel')}>
                         <ShieldAlert size={16} /> Sentinel <span style={{ padding: '2px 6px', background: '#ef4444', color: 'white', fontSize: '10px', borderRadius: '4px', marginLeft: '6px' }}>NEW</span>
                     </button>
@@ -1320,6 +1575,7 @@ export default function SystemManagement() {
                 {activeTab === 'dashboard' && renderDashboard()}
                 {activeTab === 'deployments' && renderDeployments()}
                 {activeTab === 'admins' && renderAdmins()}
+                {activeTab === 'settings' && renderSettings()}
                 {activeTab === 'sentinel' && <SentinelDashboard />}
             </AnimatePresence>
 

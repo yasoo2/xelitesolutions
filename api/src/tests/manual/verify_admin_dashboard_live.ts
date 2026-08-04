@@ -195,6 +195,42 @@ async function main() {
         .map(f => fs.readFileSync(path.join(bundleDir, f), 'utf-8')).join('');
     check('ولا بريد للمالك مكتوب داخل حزمة الجافاسكربت التي تصل كل زائر',
         !/auraaluxury|younes\.sowady/.test(bundles));
+
+    console.log('\n[6] تبويب الإعدادات: للمالك وحده، ويعرض ما يُعرض ويخفي ما يُخفى');
+    process.env.SUPER_ADMIN_EMAILS = 'owner@joe.local';
+    const openAs = async (role: string, email: string) => {
+        const c = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+        const tok = jwt.sign({ sub: role, role, email }, process.env.JWT_SECRET!);
+        await c.addInitScript((t) => localStorage.setItem('token', t as string), tok);
+        const p = await c.newPage();
+        await p.goto(`${base}/super-admin`, { waitUntil: 'domcontentloaded' });
+        await p.waitForSelector('.system-management', { timeout: 20000 });
+        await p.waitForTimeout(500);
+        return { c, p };
+    };
+
+    const admin = await openAs('SUPER_ADMIN', 'promoted@example.com');
+    const adminTabs = await admin.p.$$eval('.tab-btn', els => els.map(e => e.textContent?.trim() || ''));
+    check('المدير المُرقّى لا يرى تبويب الإعدادات أصلاً',
+        !adminTabs.some(t => t.includes('الإعدادات')), adminTabs.join(' | '));
+    await admin.c.close();
+
+    const own = await openAs('OWNER', 'owner@joe.local');
+    const ownerTabs = await own.p.$$eval('.tab-btn', els => els.map(e => e.textContent?.trim() || ''));
+    check('والمالك يراه', ownerTabs.some(t => t.includes('الإعدادات')), ownerTabs.join(' | '));
+
+    await own.p.click('.tab-btn:has-text("الإعدادات")');
+    await own.p.waitForSelector('.env-row', { timeout: 20000 });
+    const rows = await own.p.$$eval('.env-row', els => els.length);
+    check(`الشاشة تعرض المفاتيح المعروفة فقط (${rows} صفاً)`, rows >= 20, String(rows));
+    const keyText = await own.p.$$eval('.env-key', els => els.map(e => e.textContent?.trim()));
+    check('ولا حقل حرّ لكتابة اسم متغيّر — الأسماء معروضة لا مكتوبة',
+        keyText.includes('SUPER_ADMIN_EMAILS') && keyText.includes('GROQ_API_KEY')
+        && (await own.p.$$('input[name="key"], input[placeholder*="KEY"]')).length === 0,
+        keyText.slice(0, 3).join(', '));
+    const badges = await own.p.$$eval('.env-badge.restart', els => els.length);
+    check('والمفاتيح التي تحتاج إعادة تشغيل موسومة بذلك', badges > 0, String(badges));
+    await own.c.close();
     check('ولا طلب داخلي فاشل (خارج خطوط جوجل التي لا إنترنت لها هنا)',
         failedReqs.length === 0, failedReqs.slice(0, 3).join(' | '));
 

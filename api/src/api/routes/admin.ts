@@ -11,6 +11,9 @@ import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
 import { SystemConfig } from '../../shared/models/systemConfig';
+import { ENV_SETTINGS, ENV_BY_KEY, isSettableEnvKey, validateEnvValue, maskEnvValue, isSecretSetting } from '../../core/config/envRegistry';
+import { writeEnvChanges, pruneEnvBackups, envFilePath } from '../../core/config/envFile';
+import { superAdminEmails } from '../middleware/auth';
 
 const router = Router();
 
@@ -130,6 +133,121 @@ router.post('/settings/notifications', requireDb, async (req, res) => {
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
+});
+
+/**
+ * ── SETTINGS ───────────────────────────────────────────────────────────────
+ *
+ * The owner asked to set environment variables from the panel instead of
+ * hand-editing api/.env, which is the only practical way once Joe runs on a
+ * server nobody has a file manager on.
+ *
+ * This is the most dangerous screen in the product, so it is the narrowest:
+ *
+ *   - only an OWNER reaches it. A SUPER_ADMIN promoted from the Admins tab
+ *     can run the panel but cannot rewrite the environment the panel runs in;
+ *   - only names from the registry can be written. With a free key field,
+ *     `NODE_OPTIONS=--require /tmp/evil.js` is remote code execution on the
+ *     next boot, and nothing on screen would look wrong;
+ *   - secrets go IN and never come back out;
+ *   - and the two ways to lock yourself out — dropping your own address from
+ *     the owner list, or opening auth bypass in production — are refused.
+ */
+const requireOwner = (req: any, res: any, next: any) => {
+    const auth = req.auth || {};
+    const email = String(auth.email || '').toLowerCase().trim();
+    if (auth.role === 'OWNER' || (email && superAdminEmails().includes(email))) return next();
+    logger.warn(`[AdminAPI] env settings refused for ${email || '(no email)'} role=${auth.role}`);
+    return res.status(403).json({ ok: false, error: 'owner_only', message: 'إعدادات البيئة للمالك وحده.' });
+};
+
+router.get('/env', requireOwner, (_req, res) => {
+    res.json({
+        ok: true,
+        file: envFilePath(),
+        settings: ENV_SETTINGS.map(s => ({
+            key: s.key, group: s.group, kind: s.kind, label: s.label, hint: s.hint,
+            live: s.live, secret: isSecretSetting(s), choices: s.choices, placeholder: s.placeholder,
+            confirm: s.confirm,
+            ...maskEnvValue(s, process.env[s.key]),
+        })),
+    });
+});
+
+router.post('/env', requireOwner, (req, res) => {
+    const changes = (req.body && typeof req.body.changes === 'object' && req.body.changes) || {};
+    const confirm = String(req.body?.confirm || '');
+    const entries = Object.entries(changes as Record<string, any>);
+    if (!entries.length) return res.status(400).json({ ok: false, error: 'no_changes' });
+
+    // 1) names — the closed list, refused by name and not by shape
+    const unknown = entries.map(([k]) => k).filter(k => !isSettableEnvKey(k));
+    if (unknown.length) {
+        logger.warn(`[AdminAPI] refused unknown env keys: ${unknown.join(', ')}`);
+        return res.status(400).json({
+            ok: false, error: 'unknown_key', keys: unknown,
+            message: `مفاتيح غير معروفة ومرفوضة: ${unknown.join(', ')} — لا يمكن ضبط متغيّر خارج القائمة.`,
+        });
+    }
+
+    // 2) values
+    const clean: Record<string, string> = {};
+    for (const [key, value] of entries) {
+        const setting = ENV_BY_KEY.get(key)!;
+        const v = String(value ?? '').trim();
+        const bad = validateEnvValue(setting, v);
+        if (bad) return res.status(400).json({ ok: false, error: 'invalid_value', key, message: `${setting.label}: ${bad}` });
+        if (setting.confirm && v && confirm !== setting.confirm) {
+            return res.status(400).json({
+                ok: false, error: 'confirmation_required', key, confirm: setting.confirm,
+                message: `${setting.label}: هذا التغيير يحتاج تأكيداً صريحاً.`,
+            });
+        }
+        clean[key] = v;
+    }
+
+    // 3) the two doors that lock the owner out
+    const me = String((req as any).auth?.email || '').toLowerCase().trim();
+    if ('SUPER_ADMIN_EMAILS' in clean) {
+        const next = clean.SUPER_ADMIN_EMAILS.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+        const adminEmail = String(clean.ADMIN_EMAIL ?? process.env.ADMIN_EMAIL ?? '').toLowerCase().trim();
+        if (next.length && me && !next.includes(me) && adminEmail !== me) {
+            return res.status(400).json({
+                ok: false, error: 'would_lock_you_out',
+                message: `بريدك (${me}) ليس في القائمة الجديدة — الحفظ سيغلق اللوحة في وجهك. أضف بريدك أولاً.`,
+            });
+        }
+    }
+    const envAfter = clean.NODE_ENV ?? process.env.NODE_ENV;
+    if (clean.ENABLE_AUTH_BYPASS === 'true' && envAfter === 'production') {
+        return res.status(400).json({
+            ok: false, error: 'unsafe_in_production',
+            message: 'تجاوز المصادقة مرفوض في بيئة الإنتاج — يفتح النظام لكل زائر.',
+        });
+    }
+
+    // 4) write, then apply the ones Joe re-reads per use
+    const result = writeEnvChanges(clean);
+    pruneEnvBackups(10);
+    const appliedNow: string[] = [];
+    const needsRestart: string[] = [];
+    for (const key of Object.keys(clean)) {
+        const setting = ENV_BY_KEY.get(key)!;
+        if (setting.live) { process.env[key] = clean[key]; appliedNow.push(key); }
+        else needsRestart.push(key);
+    }
+    // Names only. A settings log that prints values is a second copy of every
+    // secret, in a file nobody remembers to protect.
+    logger.info(`[AdminAPI] env updated by ${me || '(unknown)'}: ${Object.keys(clean).join(', ')}`);
+
+    res.json({
+        ok: true,
+        updated: result.updated, added: result.added, backup: !!result.backup,
+        appliedNow, needsRestart,
+        message: needsRestart.length
+            ? `حُفظ. ${appliedNow.length} سرى فوراً، و${needsRestart.length} يحتاج إعادة تشغيل جو.`
+            : 'حُفظ وسرى فوراً — بلا إعادة تشغيل.',
+    });
 });
 
 router.get('/system/health', async (req, res) => {
