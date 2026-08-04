@@ -10,8 +10,16 @@ export interface TrackerTask {
     completedAt?: number;
 }
 
-export default function TaskTracker() {
+/**
+ * THE PROGRESS RING BELONGS TO ITS RUN. This component took no session at all,
+ * so the steps of a run in one chat were drawn over any chat that happened to
+ * be open. Same invariant as the Logs and the Preview: what displays a run is
+ * keyed by the run's session.
+ */
+export default function TaskTracker({ sessionId }: { sessionId?: string } = {}) {
     const { t } = useTranslation();
+    const activeSid = useRef<string | undefined>(sessionId);
+    useEffect(() => { activeSid.current = sessionId; }, [sessionId]);
     const [tasks, setTasks] = useState<TrackerTask[]>([]);
     const [visible, setVisible] = useState(false);
     const [elapsedMs, setElapsedMs] = useState(0);
@@ -39,8 +47,12 @@ export default function TaskTracker() {
             }
         });
 
-        // Reset on run_started
+        // Reset on run_started — and never on ANOTHER conversation's run.
         const unsubSocket = SocketService.subscribe((msg: any) => {
+            const sid = String(msg?.sessionId || msg?.data?.sessionId || '');
+            const mine = !sid || !activeSid.current || sid === activeSid.current
+                || sid.includes(activeSid.current) || activeSid.current.includes(sid);
+            if (!mine) return;
             if (msg.type === 'run_started') {
                 setTasks([]);
                 setVisible(false);
@@ -52,6 +64,13 @@ export default function TaskTracker() {
 
         return () => { unsub(); unsubSocket(); if (timerRef.current) clearInterval(timerRef.current); };
     }, []);
+
+    // Leaving a conversation takes its progress ring with it.
+    useEffect(() => {
+        setTasks([]); setVisible(false); setElapsedMs(0);
+        startTimeRef.current = 0;
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    }, [sessionId]);
 
     if (!visible || tasks.length === 0) return null;
 

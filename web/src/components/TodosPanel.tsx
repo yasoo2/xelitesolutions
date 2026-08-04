@@ -18,12 +18,24 @@ export default function TodosPanel({ sessionId, isCollapsed = false, onToggleCol
     const [todos, setTodos] = useState<TodoItem[]>([]);
     const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
+    /**
+     * THE LIST BELONGS TO ITS CONVERSATION. This component already ACCEPTED a
+     * sessionId and never once looked at it: every todo_update from any run was
+     * merged in, and nothing cleared on a session switch — so a second chat
+     * opened wearing the first one's task list. Found by sweeping the invariant
+     * «anything that displays a run must be keyed by the run's session», not by
+     * a bug report.
+     */
+    useEffect(() => { setTodos([]); setLastUpdated(null); }, [sessionId]);
+
     useEffect(() => {
         // Listen for todo updates from the socket
         const unsub = SocketService.subscribe((msg: any) => {
             if (msg.type === 'todo_update') {
                 const data = msg.data;
                 if (!data || !data.todos) return;
+                const sid = String(msg.sessionId || data.sessionId || '');
+                if (sid && sessionId && sid !== sessionId && !sid.includes(sessionId) && !sessionId.includes(sid)) return;
 
                 setTodos(prev => {
                     if (!data.merge) {
@@ -45,7 +57,7 @@ export default function TodosPanel({ sessionId, isCollapsed = false, onToggleCol
         });
 
         return () => unsub();
-    }, []);
+    }, [sessionId]);
 
     if (todos.length === 0) {
         return null; // Don't show the panel if there are no tasks

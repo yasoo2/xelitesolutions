@@ -1774,6 +1774,17 @@ export default function CommandComposer({
 
     if (prev && prev !== sessionId) {
       setEvents([]);
+      // THE ATTACHMENT AND THE HALF-TYPED LINE BELONG TO THE CHAT THEY WERE
+      // MADE IN. They survived a session switch, so a photo attached in one
+      // conversation was still riding the composer in the next one and would
+      // have been sent with a message that had nothing to do with it.
+      setAttachedFiles([]);
+      // `text` is what the visible box is bound to — `draftText` is the
+      // separate draft-mode buffer. Clearing only the latter left the typed
+      // line on screen in the next conversation, which the browser proof
+      // caught immediately.
+      setText('');
+      setDraftText('');
       setActiveRunId(null);
       setApproval(null);
       setSecretPrompt(null);
@@ -3850,7 +3861,7 @@ export default function CommandComposer({
                   variant="inline"
                   sessionId={sessionId}
                 />
-                <TaskTracker />
+                <TaskTracker sessionId={sessionId} />
               </div>
             )}
 

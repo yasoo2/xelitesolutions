@@ -35,6 +35,30 @@ export default function SentinelDashboard() {
     const [stats, setStats] = useState<Stats>(UNKNOWN);
     const [loaded, setLoaded] = useState(false);
     const [loadError, setLoadError] = useState('');
+    const [chainBusy, setChainBusy] = useState(false);
+    const [chainResult, setChainResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+    /** The real verification the server actually performs — no invented hash. */
+    const verifyChain = async () => {
+        setChainBusy(true); setChainResult(null);
+        try {
+            const res = await fetch(`${API_URL}/admin/sentinel/audit`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            });
+            const data = await res.json();
+            if (!res.ok || !data?.success) throw new Error(data?.error || `HTTP ${res.status}`);
+            const integrity = data.integrity || {};
+            const ok = integrity.valid === true || integrity.ok === true;
+            setChainResult({
+                ok,
+                text: ok
+                    ? `Chain intact — ${Array.isArray(data.data) ? data.data.length : 0} entries verified`
+                    : `Chain BROKEN${integrity.brokenAt ? ` at ${integrity.brokenAt}` : ''}`,
+            });
+        } catch (e: any) {
+            setChainResult({ ok: false, text: `Could not verify: ${String(e?.message || e).slice(0, 80)}` });
+        } finally { setChainBusy(false); }
+    };
 
     useEffect(() => {
         const auth = { Authorization: `Bearer ${localStorage.getItem('token')}` };
@@ -247,11 +271,29 @@ export default function SentinelDashboard() {
                         {activeTab === 'forensics' && (
                             <motion.div key="forensics" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                                 <div style={{ background: 'var(--bg-card)', padding: '24px', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
-                                    <h3>File Integrity Hash Checker</h3>
-                                    <p style={{ color: 'var(--text-muted)' }}>Validate system binaries against known good states.</p>
-                                    <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-                                        <input type="text" placeholder="Enter absolute file path (e.g., /usr/local/bin/backdoor)" style={{ flex: 1, padding: '12px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid var(--border-color)' }} />
-                                        <button style={{ padding: '12px 24px', borderRadius: '8px', background: 'var(--primary-color)', color: 'white', border: 'none', fontWeight: 600 }}>Analyze Hash</button>
+                                    {/* THIS CONTROL PROMISED SOMETHING THAT DID NOT EXIST.
+                                        Found by sweeping «every rendered control does
+                                        something»: an input and an «Analyze Hash» button with
+                                        no handler at all, on a SECURITY screen — the worst
+                                        place to fake a capability. There is no per-file hash
+                                        endpoint; what the server really offers is the audit
+                                        chain's own integrity verification, so that is what
+                                        this button now does, under its true name. */}
+                                    <h3>Audit Chain Integrity</h3>
+                                    <p style={{ color: 'var(--text-muted)' }}>Verify that the tamper-evident audit log has not been altered.</p>
+                                    <div style={{ display: 'flex', gap: '8px', marginTop: '16px', alignItems: 'center' }}>
+                                        <button
+                                            onClick={verifyChain}
+                                            disabled={chainBusy}
+                                            style={{ padding: '12px 24px', borderRadius: '8px', background: 'var(--primary-color)', color: 'white', border: 'none', fontWeight: 600, cursor: chainBusy ? 'not-allowed' : 'pointer', opacity: chainBusy ? 0.6 : 1 }}
+                                        >
+                                            {chainBusy ? 'Verifying…' : 'Verify chain'}
+                                        </button>
+                                        {chainResult && (
+                                            <span style={{ color: chainResult.ok ? 'var(--success-color, #22c55e)' : 'var(--danger-color, #ef4444)', fontWeight: 600 }}>
+                                                {chainResult.text}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </motion.div>

@@ -200,6 +200,32 @@ async function main() {
 
         // The panels are the subject; a missing optional asset is reported by
         // name rather than hidden behind a green tick.
+
+        console.log('\n[8] والعيوب الثلاثة التي كشفها المسح — في المتصفح نفسه');
+        // (a) the agent task list must not follow you into another chat
+        broadcast({ type: 'todo_update', sessionId: SESSION_A, data: { sessionId: SESSION_A, todos: [{ id: 't1', status: 'in_progress', content: 'مهمة الجلسة الأولى' }] } } as any);
+        await page.waitForTimeout(600);
+        check('قائمة مهام الجلسة الأولى ظهرت فيها', (await page.evaluate(() => document.body.innerText)).includes('مهمة الجلسة الأولى'));
+        await openSession(TITLE_B);
+        check('ولم تتبعنا إلى الجلسة الثانية', !(await page.evaluate(() => document.body.innerText)).includes('مهمة الجلسة الأولى'));
+        // …and an update fired into A while B is on screen stays out of B
+        broadcast({ type: 'todo_update', sessionId: SESSION_A, data: { sessionId: SESSION_A, todos: [{ id: 't2', status: 'pending', content: 'تسريب محتمل' }] } } as any);
+        await page.waitForTimeout(600);
+        check('وتحديثٌ من الأولى لا يقتحم الثانية', !(await page.evaluate(() => document.body.innerText)).includes('تسريب محتمل'));
+
+        // (b) the half-typed line must stay in the chat it was typed in
+        const composer = page.locator('textarea, input[type="text"]').first();
+        if (await composer.count()) {
+            await composer.fill('سطر نصف مكتوب في الجلسة الثانية');
+            await page.waitForTimeout(300);
+            await openSession(TITLE_A);
+            const carried = await page.evaluate(() => {
+                const el = document.querySelector('textarea') as HTMLTextAreaElement | null;
+                return el?.value || '';
+            });
+            check('والسطر نصف المكتوب لم ينتقل إلى المحادثة الأخرى', !carried.includes('نصف مكتوب'), carried.slice(0, 60));
+        }
+
         // The two /project-preview/ 404s are this proof's own invention — it
         // broadcasts preview URLs for projects that were never built, precisely
         // to watch WHICH url each session's frame loads. Anything else is real.
