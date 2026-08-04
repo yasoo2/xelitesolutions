@@ -19,6 +19,7 @@
  * Authority), POSTs a real row over real HTTP, reads it back, and only
  * then reports the API as working.
  */
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { BaseTool } from '../base';
@@ -147,6 +148,27 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
       note TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )\`);
+    // Accounts. The password NEVER lands here in the clear: only the scrypt
+    // salt and hash, and they are never selected into any response body.
+    conn.exec(\`CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      salt TEXT NOT NULL,
+      hash TEXT NOT NULL,
+      role TEXT DEFAULT 'owner',
+      created_at TEXT DEFAULT (datetime('now'))
+    )\`);
+    const userOf = (u) => (u ? { id: u.id, email: u.email, salt: u.salt, hash: u.hash, role: u.role, created_at: u.created_at } : null);
+    db.countUsers = () => Number(conn.prepare('SELECT COUNT(*) AS n FROM users').get().n);
+    db.userByEmail = (email) => userOf(conn.prepare('SELECT * FROM users WHERE email = ?').get(String(email).toLowerCase()));
+    db.userById = (id) => userOf(conn.prepare('SELECT * FROM users WHERE id = ?').get(Number(id)));
+    db.createUser = ({ email, salt, hash, role = 'owner' }) => {
+      const r = conn.prepare('INSERT INTO users (email, salt, hash, role) VALUES (?, ?, ?, ?)')
+        .run(String(email).toLowerCase(), String(salt), String(hash), String(role));
+      return db.userById(r.lastInsertRowid);
+    };
+    db.setPassword = (id, salt, hash) =>
+      conn.prepare('UPDATE users SET salt = ?, hash = ? WHERE id = ?').run(String(salt), String(hash), Number(id)).changes > 0;
   } catch { /* an older Node — the JSON backend below serves instead */ }
 }
 
@@ -156,8 +178,9 @@ if (!db) {
     try {
       const s = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
       s.orders = s.orders || []; s.oseq = s.oseq || 0;
+      s.users = s.users || []; s.useq = s.useq || 0;
       return s;
-    } catch { return { seq: 0, rows: [], oseq: 0, orders: [] }; }
+    } catch { return { seq: 0, rows: [], oseq: 0, orders: [], useq: 0, users: [] }; }
   };
   const save = (s) => fs.writeFileSync(FILE, JSON.stringify(s, null, 2));
   db = {
@@ -198,6 +221,25 @@ if (!db) {
       return order;
     },
     countOrders: () => load().orders.length,
+    countUsers: () => (load().users || []).length,
+    userByEmail: (email) => (load().users || []).find((u) => u.email === String(email).toLowerCase()) || null,
+    userById: (id) => (load().users || []).find((u) => u.id === Number(id)) || null,
+    createUser: ({ email, salt, hash, role = 'owner' }) => {
+      const s = load();
+      s.users = s.users || []; s.useq = s.useq || 0;
+      const user = { id: ++s.useq, email: String(email).toLowerCase(), salt: String(salt), hash: String(hash), role: String(role), created_at: new Date().toISOString() };
+      s.users.push(user);
+      save(s);
+      return user;
+    },
+    setPassword: (id, salt, hash) => {
+      const s = load();
+      const u = (s.users || []).find((x) => x.id === Number(id));
+      if (!u) return false;
+      u.salt = String(salt); u.hash = String(hash);
+      save(s);
+      return true;
+    },
   };
 }
 
@@ -205,7 +247,116 @@ export { db };
 `;
 }
 
-function fileSeedJs(seeds: Array<{ name: string; details: string; price: string }>): string {
+function fileAuthJs(): string {
+    return `
+/**
+ * auth.js — real accounts, with nothing but Node's own crypto.
+ *
+ * Until now every generated API was WIDE OPEN: anyone who could reach the port
+ * could rewrite the catalogue and read every visitor order — names and phone
+ * numbers included. This closes it without adding a single dependency:
+ *
+ *   - passwords are stored as scrypt(salt, 64) — never in the clear, never
+ *     reversible, and compared with timingSafeEqual so a wrong password takes
+ *     the same time as a right one;
+ *   - the session token is a real HS256 JWT, signed here and verified here;
+ *   - the signing secret is generated on FIRST boot and kept in .auth-secret
+ *     (mode 0600, gitignored), so tokens survive a restart and the secret
+ *     never enters the repository. Set API_JWT_SECRET to override it.
+ *   - failed logins are throttled per email+ip: five misses buy a lockout.
+ */
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { db } from './db.js';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const SECRET_FILE = path.join(HERE, '.auth-secret');
+
+function readSecret() {
+  const fromEnv = String(process.env.API_JWT_SECRET || '').trim();
+  if (fromEnv) return fromEnv;
+  try { return fs.readFileSync(SECRET_FILE, 'utf-8').trim(); } catch { /* first boot */ }
+  const made = crypto.randomBytes(48).toString('hex');
+  try { fs.writeFileSync(SECRET_FILE, made, { mode: 0o600 }); } catch { /* read-only disk: memory-only secret */ }
+  return made;
+}
+const SECRET = readSecret();
+const TTL_SECONDS = Number(process.env.API_TOKEN_TTL || 60 * 60 * 12);
+
+const b64 = (buf) => Buffer.from(buf).toString('base64url');
+
+export function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  return { salt, hash: crypto.scryptSync(String(password), salt, 64).toString('hex') };
+}
+
+export function verifyPassword(password, salt, hash) {
+  const want = Buffer.from(String(hash), 'hex');
+  const got = crypto.scryptSync(String(password), String(salt), 64);
+  return want.length === got.length && crypto.timingSafeEqual(want, got);
+}
+
+export function signToken(user) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payload = b64(JSON.stringify({ sub: user.id, email: user.email, role: user.role, iat: now, exp: now + TTL_SECONDS }));
+  const sig = b64(crypto.createHmac('sha256', SECRET).update(\`\${header}.\${payload}\`).digest());
+  return \`\${header}.\${payload}.\${sig}\`;
+}
+
+export function verifyToken(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) return null;
+  const [header, payload, sig] = parts;
+  const expect = b64(crypto.createHmac('sha256', SECRET).update(\`\${header}.\${payload}\`).digest());
+  // Length-checked before timingSafeEqual: it THROWS on a length mismatch,
+  // which would turn a forged token into a 500 instead of a 401.
+  if (sig.length !== expect.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf-8'));
+    if (!claims?.exp || claims.exp < Math.floor(Date.now() / 1000)) return null;
+    return claims;
+  } catch { return null; }
+}
+
+/** Five wrong passwords per email+ip buy a fifteen-minute lockout. */
+const misses = new Map();
+const LOCK_AFTER = 5;
+const LOCK_MS = 15 * 60 * 1000;
+export function throttleKey(req, email) { return \`\${String(email || '').toLowerCase()}|\${req.ip || ''}\`; }
+export function isLocked(key) {
+  const m = misses.get(key);
+  if (!m) return 0;
+  if (Date.now() - m.at > LOCK_MS) { misses.delete(key); return 0; }
+  return m.n >= LOCK_AFTER ? Math.ceil((LOCK_MS - (Date.now() - m.at)) / 1000) : 0;
+}
+export function noteMiss(key) {
+  const m = misses.get(key);
+  if (m && Date.now() - m.at <= LOCK_MS) { m.n += 1; } else { misses.set(key, { n: 1, at: Date.now() }); }
+}
+export function clearMisses(key) { misses.delete(key); }
+
+/** Express guard: a valid Bearer token, or 401 with a reason. */
+export function requireAuth(req, res, next) {
+  const header = String(req.headers.authorization || '');
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const claims = verifyToken(token);
+  if (!claims) return res.status(401).json({ ok: false, error: 'bad_token' });
+  const user = db.userById(claims.sub);
+  if (!user) return res.status(401).json({ ok: false, error: 'unknown_user' });
+  req.user = { id: user.id, email: user.email, role: user.role };
+  next();
+}
+`;
+}
+
+function fileSeedJs(
+    seeds: Array<{ name: string; details: string; price: string }>,
+    owner: { email: string; salt: string; hash: string },
+): string {
     return `// Idempotent seed: rows land ONCE, on the first boot of an empty database.
 import { db } from './db.js';
 
@@ -217,6 +368,19 @@ ${seeds.map(s => `    { name: '${js(s.name)}', details: '${js(s.details)}', pric
   for (const r of rows) db.create(r);
   return rows.length;
 }
+
+/**
+ * The owner account, seeded once. The password was generated when this project
+ * was scaffolded and shown to you IN THE CHAT — it is not stored here and not
+ * recoverable from these files: only its scrypt salt and hash are, and a hash
+ * cannot be turned back into a password. Change it any time with
+ * POST /api/auth/password.
+ */
+export function seedOwner() {
+  if (db.countUsers() > 0) return null;
+  const u = db.createUser({ email: '${js(owner.email)}', salt: '${owner.salt}', hash: '${owner.hash}', role: 'owner' });
+  return u.email;
+}
 `;
 }
 
@@ -226,7 +390,8 @@ function fileServerJs(resource: string, brand: string, dirName: string): string 
 //   PORT=5050 npm start  (any port)
 import express from 'express';
 import { db } from './db.js';
-import { seed } from './seed.js';
+import { seed, seedOwner } from './seed.js';
+import { hashPassword, verifyPassword, signToken, requireAuth, throttleKey, isLocked, noteMiss, clearMisses } from './auth.js';
 
 // THE LIVE BRIDGE to Joe: every new order is announced into the owner's
 // chat through Joe's existing public inbox — fire-and-forget, so the
@@ -248,7 +413,7 @@ app.use(express.json({ limit: '100kb' }));
 // The local previews live on other ports — they must be able to reach us.
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   if (req.method === 'OPTIONS') return res.end();
   next();
@@ -256,8 +421,50 @@ app.use((req, res, next) => {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, backend: db.backend, count: db.count(), orders: db.countOrders() }));
 
+// ── ACCOUNTS ───────────────────────────────────────────────────────────────
+// Public: reading the catalogue and placing an order (that is what visitors
+// do). Protected: everything that CHANGES the catalogue, and reading the
+// orders — those carry customers' names and phone numbers.
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body || {};
+  if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
+    return res.status(400).json({ ok: false, error: 'email_and_password_required' });
+  }
+  const key = throttleKey(req, email);
+  const wait = isLocked(key);
+  if (wait) return res.status(429).json({ ok: false, error: 'too_many_attempts', retry_after_seconds: wait });
+
+  const user = db.userByEmail(email.trim());
+  // The same answer either way: a different message for an unknown email tells
+  // an attacker which addresses are real.
+  if (!user || !verifyPassword(password, user.salt, user.hash)) {
+    noteMiss(key);
+    return res.status(401).json({ ok: false, error: 'bad_credentials' });
+  }
+  clearMisses(key);
+  res.json({ ok: true, token: signToken(user), user: { id: user.id, email: user.email, role: user.role } });
+});
+
+app.get('/api/auth/me', requireAuth, (req, res) => res.json({ ok: true, user: req.user }));
+
+app.post('/api/auth/password', requireAuth, (req, res) => {
+  const { current, next } = req.body || {};
+  if (typeof next !== 'string' || next.length < 8 || next.length > 200) {
+    return res.status(400).json({ ok: false, error: 'weak_password', message: 'at least 8 characters' });
+  }
+  const user = db.userById(req.user.id);
+  if (!user || typeof current !== 'string' || !verifyPassword(current, user.salt, user.hash)) {
+    return res.status(401).json({ ok: false, error: 'bad_credentials' });
+  }
+  const { salt, hash } = hashPassword(next);
+  db.setPassword(user.id, salt, hash);
+  res.json({ ok: true });
+});
+
 // Visitor ORDERS — the frontend's «اطلب الآن» writes real rows here.
-app.get('/api/orders', (_req, res) => res.json({ ok: true, orders: db.listOrders() }));
+// Reading them is the OWNER's business: names and phone numbers live here.
+app.get('/api/orders', requireAuth, (_req, res) => res.json({ ok: true, orders: db.listOrders() }));
 
 app.post('/api/orders', (req, res) => {
   const { item, qty, customer, phone, note } = req.body || {};
@@ -288,7 +495,7 @@ app.get('/api/${resource}/:id', (req, res) => {
   res.json({ ok: true, item: row });
 });
 
-app.post('/api/${resource}', (req, res) => {
+app.post('/api/${resource}', requireAuth, (req, res) => {
   const { name, details, price } = req.body || {};
   // Honest validation, bounded fields — an API that swallows garbage
   // corrupts its own database first and its user's trust second.
@@ -302,7 +509,7 @@ app.post('/api/${resource}', (req, res) => {
   res.status(201).json({ ok: true, item: db.create({ name: name.trim(), details, price }) });
 });
 
-app.put('/api/${resource}/:id', (req, res) => {
+app.put('/api/${resource}/:id', requireAuth, (req, res) => {
   const { name, details, price } = req.body || {};
   if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.length > 200)) {
     return res.status(400).json({ ok: false, error: 'bad_name' });
@@ -312,20 +519,23 @@ app.put('/api/${resource}/:id', (req, res) => {
   res.json({ ok: true, item: row });
 });
 
-app.delete('/api/${resource}/:id', (req, res) => {
+app.delete('/api/${resource}/:id', requireAuth, (req, res) => {
   if (!db.remove(req.params.id)) return res.status(404).json({ ok: false, error: 'not_found' });
   res.json({ ok: true });
 });
 
 const seeded = seed();
+const owner = seedOwner();
 const port = Number(process.env.PORT || 4100);
 app.listen(port, () => {
   console.log(\`[api] listening on http://localhost:\${port} — backend: \${db.backend}\${seeded ? \`, seeded \${seeded} rows\` : ''}\`);
+  if (owner) console.log(\`[api] owner account created: \${owner} — the password was shown once in Joe's chat.\`);
+  console.log('[api] public: GET catalogue, POST /api/orders · protected: catalogue writes + GET /api/orders');
 });
 `;
 }
 
-function fileReadme(brand: string, resource: string, labelAr: string): string {
+function fileReadme(brand: string, resource: string, labelAr: string, ownerEmail: string): string {
     return `# ${brand} — API
 
 خادم Express حقيقي فوق قاعدة بيانات حقيقية، **بلا أي اعتماديات أصلية**:
@@ -340,22 +550,55 @@ npm start          # المنفذ 4100
 PORT=5050 npm start
 \`\`\`
 
+## الحماية — ما هو عامّ وما هو لك وحدك
+
+| عامّ للزوار | محميّ بحسابك |
+|---|---|
+| \`GET /api/${resource}\` و \`/:id\` — تصفّح ${labelAr} | \`POST/PUT/DELETE /api/${resource}\` — أي تغيير |
+| \`POST /api/orders\` — إرسال طلب | \`GET /api/orders\` — قراءة الطلبات (فيها أسماء وأرقام) |
+| \`GET /api/health\` | \`GET /api/auth/me\` · \`POST /api/auth/password\` |
+
+حسابك: **${ownerEmail}** — وكلمة المرور ظهرت مرة واحدة في محادثة جو حين بُني
+المشروع. ليست مخزّنة في أي ملف هنا: الملفات تحمل بصمة scrypt فقط، ولا تُستَرجع
+منها كلمة المرور. لو ضاعت: احذف \`data.db\` (أو \`data.json\`) وأعد التشغيل
+ليُنشَأ الحساب من جديد… وستفقد البيانات معه، أو غيّرها قبل ذلك من
+\`POST /api/auth/password\`.
+
+مفتاح توقيع الرموز يُولَّد ذاتياً في \`.auth-secret\` (خارج git) عند أول تشغيل،
+فتبقى جلستك صالحة بعد إعادة التشغيل. لتثبيته بنفسك: \`API_JWT_SECRET=…\`.
+
 ## المسارات — ${labelAr}
 
 \`\`\`bash
 curl http://localhost:4100/api/health
 curl http://localhost:4100/api/${resource}
-curl -X POST http://localhost:4100/api/${resource} -H "Content-Type: application/json" -d '{"name":"جديد","details":"وصف","price":"50"}'
-curl -X PUT  http://localhost:4100/api/${resource}/1 -H "Content-Type: application/json" -d '{"price":"75"}'
-curl -X DELETE http://localhost:4100/api/${resource}/1
+
+# 1) سجّل الدخول واحصل على رمز
+TOKEN=$(curl -s -X POST http://localhost:4100/api/auth/login \\
+  -H "Content-Type: application/json" \\
+  -d '{"email":"${ownerEmail}","password":"كلمة-مرورك"}' | sed -n 's/.*"token":"\\([^"]*\\)".*/\\1/p')
+
+# 2) استعمله في كل ما يغيّر البيانات
+curl -X POST http://localhost:4100/api/${resource} -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" -d '{"name":"جديد","details":"وصف","price":"50"}'
+curl -X PUT  http://localhost:4100/api/${resource}/1 -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" -d '{"price":"75"}'
+curl -X DELETE http://localhost:4100/api/${resource}/1 -H "Authorization: Bearer $TOKEN"
 \`\`\`
 
 ## الطلبات — تكتبها واجهة المتجر/المطعم المربوطة تلقائياً
 
 \`\`\`bash
-curl http://localhost:4100/api/orders
-curl -X POST http://localhost:4100/api/orders -H "Content-Type: application/json" -d '{"item":"طقم الهدية","qty":2,"customer":"خالد","phone":"05xxxxxxxx"}'
+# الزائر يرسل طلبه بلا حساب — هذا هو المقصود
+curl -X POST http://localhost:4100/api/orders -H "Content-Type: application/json" \\
+  -d '{"item":"طقم الهدية","qty":2,"customer":"خالد","phone":"05xxxxxxxx"}'
+
+# وأنت وحدك تقرؤها
+curl http://localhost:4100/api/orders -H "Authorization: Bearer $TOKEN"
 \`\`\`
+
+ويمكنك دائماً قراءتها داخل محادثة جو بجملة «اعرض الطلبات» — يقرؤها من القاعدة
+مباشرة، فتعمل حتى والخادم متوقّف.
 
 البيانات محفوظة على القرص (\`data.db\` أو \`data.json\`) — تنجو من إعادة التشغيل.
 `;
@@ -414,13 +657,23 @@ export class ApiProjectTool extends BaseTool {
             ? `🗄️ أبني واجهة خلفية حقيقية بقاعدة بيانات: ${brand}`
             : `🗄️ Building a real backend with a database: ${brand}`);
 
+        // The owner account. The password is generated HERE, hashed HERE with the
+        // same scrypt the server uses, and only the hash reaches the disk — the
+        // plaintext exists in one place: the message Joe writes in the chat.
+        const ownerEmail = `owner@${slug(brand)}.local`;
+        const ownerPassword = crypto.randomBytes(9).toString('base64url');
+        const ownerSalt = crypto.randomBytes(16).toString('hex');
+        const ownerHash = crypto.scryptSync(ownerPassword, ownerSalt, 64).toString('hex');
+
         const files: Record<string, string> = {
             'package.json': filePackageJson(brand),
             'server.js': fileServerJs(resource, brand, path.basename(proj)),
             'db.js': fileDbJs(resource),
-            'seed.js': fileSeedJs(seeds),
-            'README.md': fileReadme(brand, resource, labelAr),
-            '.gitignore': 'node_modules\ndata.db\ndata.json\n',
+            'auth.js': fileAuthJs(),
+            'seed.js': fileSeedJs(seeds, { email: ownerEmail, salt: ownerSalt, hash: ownerHash }),
+            'README.md': fileReadme(brand, resource, labelAr, ownerEmail),
+            // .auth-secret holds the token-signing key: it must never be committed.
+            '.gitignore': 'node_modules\ndata.db\ndata.json\n.auth-secret\n',
         };
         // Streamed to the Logs panel as each file lands — a backend build is
         // watched the same way a frontend build is.
@@ -438,6 +691,7 @@ export class ApiProjectTool extends BaseTool {
         // ── the live proof: install, boot the REAL server, write and read a
         //    REAL row over REAL HTTP. Reported only as measured.
         let installed = false, proven = false, backend = '', createdId = 0, npmMissing = false;
+        let authProven = false, lockedOut = false, ordersLocked = false;
         if (!input?.skipInstall) {
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
@@ -478,8 +732,33 @@ export class ApiProjectTool extends BaseTool {
                         const base = `http://127.0.0.1:${port}`;
                         const health = await fetch(`${base}/api/health`).then(r => r.json()).catch(() => null);
                         backend = String(health?.backend || '');
-                        const made = await fetch(`${base}/api/${resource}`, {
+
+                        // The LOCK is proved before the write is: an anonymous
+                        // POST must be refused, and the owner's login must be
+                        // what unlocks it. A guard nobody tested is a guard
+                        // nobody has.
+                        const anon = await fetch(`${base}/api/${resource}`, {
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: 'anonymous-must-be-refused' }),
+                        }).then(r => r.status).catch(() => 0);
+                        lockedOut = anon === 401;
+                        const ordersAnon = await fetch(`${base}/api/orders`).then(r => r.status).catch(() => 0);
+                        ordersLocked = ordersAnon === 401;
+                        const wrongPass = await fetch(`${base}/api/auth/login`, {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: ownerEmail, password: 'definitely-not-the-password' }),
+                        }).then(r => r.status).catch(() => 0);
+                        const login = await fetch(`${base}/api/auth/login`, {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: ownerEmail, password: ownerPassword }),
+                        }).then(r => r.json()).catch(() => null);
+                        const token = String(login?.token || '');
+                        authProven = lockedOut && ordersLocked && wrongPass === 401 && token.split('.').length === 3;
+                        term(`auth proof → anonymous write ${anon}, orders ${ordersAnon}, wrong password ${wrongPass}, owner login ${token ? 'OK' : 'FAILED'}`);
+
+                        const made = await fetch(`${base}/api/${resource}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                             body: JSON.stringify({ name: isAr ? 'صف الإثبات الحي' : 'Live-proof row', details: 'written over real HTTP by Joe', price: '1' }),
                         }).then(r => r.json()).catch(() => null);
                         createdId = Number(made?.item?.id || 0);
@@ -515,7 +794,18 @@ ${proven
                     : installed ? '⚠️ الخادم لم يثبت جاهزيته في المهلة — شغّله يدوياً: npm start.'
                         : input?.skipInstall ? 'ℹ️ تخطيت التثبيت كما طُلب — شغّله: npm install ثم npm start.' : '⚠️ التثبيت لم يكتمل — جرّب npm install داخل المجلد.'}
 
-🧭 مسارات ${labelAr}: GET/POST /api/${resource} · GET/PUT/DELETE /api/${resource}/:id · GET /api/health
+🔐 حسابك (يظهر مرة واحدة — احفظه الآن):
+   البريد: ${ownerEmail}
+   كلمة المرور: ${ownerPassword}
+   ${authProven
+                ? 'تحقّقتُ حيّاً: كتابة بلا تسجيل دخول تُرفض بـ401، وقراءة الطلبات تُرفض، وكلمة مرور خاطئة تُرفض، ودخولك أنت نجح وأصدر رمزاً.'
+                : 'غيّرها متى شئت عبر POST /api/auth/password.'}
+   ⚠️ كلمة المرور ليست مخزّنة في أي ملف — الملفات تحمل بصمتها فقط (scrypt) ولا يمكن استرجاعها منها.
+
+🧭 مسارات ${labelAr}:
+   عامّة للزوار: GET /api/${resource} · GET /api/${resource}/:id · POST /api/orders · GET /api/health
+   محميّة لك: POST/PUT/DELETE /api/${resource} · GET /api/orders (فيها أسماء العملاء وأرقامهم)
+   الدخول: POST /api/auth/login ثم أرسل \`Authorization: Bearer <token>\`
    أمثلة curl جاهزة داخل README.md
 
 🧭 خطوات تالية — أرسل أيّ سطر كما هو:
@@ -527,11 +817,13 @@ ${proven
 📂 Path: ${proj}
 ${fileList}
 ${proven ? `✅ Live proof: row #${createdId} written over real HTTP and read back (backend: ${backend}).` : ''}
-Routes: GET/POST /api/${resource} · GET/PUT/DELETE /api/${resource}/:id · GET /api/health`;
+Owner account (shown once): ${ownerEmail} / ${ownerPassword}
+Public: GET /api/${resource} · POST /api/orders · GET /api/health
+Protected (Bearer token from POST /api/auth/login): catalogue writes · GET /api/orders`;
 
         return {
             ok: true,
-            output: { message, path: proj, dir: path.basename(proj), resource, installed, proven, backend, files: Object.keys(files) },
+            output: { message, path: proj, dir: path.basename(proj), resource, installed, proven, authProven, backend, ownerEmail, files: Object.keys(files) },
             logs,
         } as any;
     }

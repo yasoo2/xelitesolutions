@@ -124,10 +124,10 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         expect(res.ok).toBe(true);
         expect(res.output.resource).toBe('dishes');
         const proj = res.output.path;
-        for (const f of ['package.json', 'server.js', 'db.js', 'seed.js', 'README.md', '.gitignore']) {
+        for (const f of ['package.json', 'server.js', 'db.js', 'auth.js', 'seed.js', 'README.md', '.gitignore']) {
             expect(fs.existsSync(path.join(proj, f))).toBe(true);
         }
-        for (const f of ['server.js', 'db.js', 'seed.js']) {
+        for (const f of ['server.js', 'db.js', 'auth.js', 'seed.js']) {
             const gate = syntaxOk(f, fs.readFileSync(path.join(proj, f), 'utf-8'));
             expect(`${f}:${gate.ok}`).toBe(`${f}:true`);
         }
@@ -233,5 +233,92 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         const content2 = fs.readFileSync(path.join(plain.output.path, 'src', 'content.js'), 'utf-8');
         expect(content2).toContain("ordersApi: ''");
         delete (global as any).joeProjects?.['api-plain2'];
+    });
+});
+
+/**
+ * THE LOCK ON THE GENERATED API.
+ *
+ * Every backend scaffolded before this shipped with NO accounts: whoever could
+ * reach the port could rewrite the catalogue and read every visitor order —
+ * names and phone numbers included. This was the one item deliberately left to
+ * the end.
+ *
+ * What must stay true, forever: the visitor's path is open (browse, order),
+ * the owner's path is locked (catalogue writes, reading orders), the password
+ * never reaches the disk in the clear, and the generated project still needs
+ * no dependency beyond express — scrypt and HMAC are Node's own.
+ */
+describe('the generated API ships locked, not open', () => {
+    const crypto = require('crypto');
+    let proj = '', tmp = '', message = '';
+    beforeAll(async () => {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-api-auth-'));
+        const res: any = await new ApiProjectTool().execute(
+            { request: 'ابنِ API لمتجر', skipInstall: true, root: tmp }, { sessionId: 'api-auth' });
+        proj = res.output.path;
+        message = String(res.output.message || '');
+    });
+    afterAll(() => {
+        fs.rmSync(tmp, { recursive: true, force: true });
+        delete (global as any).joeProjects?.['api-auth'];
+    });
+    const read = (f: string) => fs.readFileSync(path.join(proj, f), 'utf-8');
+
+    it('what changes data is guarded; what visitors do is not', () => {
+        const server = read('server.js');
+        // locked
+        expect(server).toMatch(/app\.post\('\/api\/products', requireAuth/);
+        expect(server).toMatch(/app\.put\('\/api\/products\/:id', requireAuth/);
+        expect(server).toMatch(/app\.delete\('\/api\/products\/:id', requireAuth/);
+        expect(server).toMatch(/app\.get\('\/api\/orders', requireAuth/);
+        // open — the business itself
+        expect(server).toMatch(/app\.get\('\/api\/products', \(_req, res\)/);
+        expect(server).toMatch(/app\.post\('\/api\/orders', \(req, res\)/);
+        expect(server).toMatch(/app\.get\('\/api\/health', \(_req, res\)/);
+        // and the browser may actually send the header
+        expect(server).toContain("'Content-Type, Authorization'");
+    });
+
+    it('the password is shown ONCE in the chat and never written to disk', () => {
+        const password = (message.match(/كلمة المرور:\s*(\S+)/) || [])[1] || '';
+        const email = (message.match(/البريد:\s*(\S+)/) || [])[1] || '';
+        expect(password.length).toBeGreaterThan(8);
+        expect(email).toMatch(/^owner@/);
+        const onDisk = fs.readdirSync(proj)
+            .filter(f => fs.statSync(path.join(proj, f)).isFile())
+            .map(f => read(f)).join('\n');
+        expect(onDisk.includes(password)).toBe(false);
+
+        // …and the hash that IS on disk really is that password's — the seeded
+        // account must be one the owner can actually log into.
+        const seed = read('seed.js');
+        const salt = (seed.match(/salt: '([0-9a-f]{32})'/) || [])[1];
+        const hash = (seed.match(/hash: '([0-9a-f]{128})'/) || [])[1];
+        expect(crypto.scryptSync(password, salt, 64).toString('hex')).toBe(hash);
+        expect(seed).toContain(`email: '${email}'`);
+    });
+
+    it('the token secret never enters git, and no new dependency was added', () => {
+        expect(read('.gitignore')).toContain('.auth-secret');
+        expect(read('auth.js')).toContain("fs.writeFileSync(SECRET_FILE, made, { mode: 0o600 })");
+        expect(Object.keys(JSON.parse(read('package.json')).dependencies)).toEqual(['express']);
+        expect(read('auth.js')).toContain("import crypto from 'node:crypto'");
+    });
+
+    it('a forged token cannot crash the guard — length is checked before timingSafeEqual', () => {
+        const auth = read('auth.js');
+        expect(auth).toContain('if (sig.length !== expect.length) return null;');
+        expect(auth).toContain('crypto.timingSafeEqual');
+        // a wrong password and an unknown email must answer identically
+        expect(read('server.js')).toContain("if (!user || !verifyPassword(password, user.salt, user.hash))");
+    });
+
+    it('the README teaches the owner both halves in Arabic', () => {
+        const readme = read('README.md');
+        expect(readme).toContain('Authorization: Bearer');
+        expect(readme).toContain('/api/auth/login');
+        expect(readme).toMatch(/عامّ للزوار/);
+        expect(readme).toMatch(/محميّ بحسابك/);
     });
 });
