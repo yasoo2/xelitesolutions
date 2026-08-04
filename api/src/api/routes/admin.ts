@@ -16,9 +16,33 @@ const router = Router();
 
 router.use(authenticate, requireSuperAdmin);
 
+/**
+ * THE PANEL MUST NOT HANG WHEN THERE IS NO DATABASE.
+ *
+ * Half of this panel is backed by Mongoose (deployments, users, settings), and
+ * Joe runs locally with no MongoDB at all. Mongoose does not fail in that
+ * state — it BUFFERS, so `Deployment.find()` sat for a full ten seconds and
+ * then answered «buffering timed out after 10000ms» with a 500. Measured, not
+ * assumed: 10013ms. The panel polls that route every 15 seconds (every 3 while
+ * the log modal is open), so the Deployments tab spent its life stacking
+ * ten-second requests that could only fail.
+ *
+ * A missing database is a normal local state, not an error. It gets an
+ * immediate, named answer that the UI can explain to the user.
+ */
+const dbOnline = () => mongoose.connection.readyState === 1 && process.env.PERSISTENCE_MODE !== 'JSON';
+const requireDb = (_req: any, res: any, next: any) => {
+    if (dbOnline()) return next();
+    return res.status(503).json({
+        ok: false,
+        error: 'db_offline',
+        message: 'MongoDB غير متصلة — سجلّ النشر والمستخدمون والإعدادات تحتاجها. باقي اللوحة يعمل.',
+    });
+};
+
 // ... (Deployment routes remain same)
 
-router.get('/deployments', async (req, res) => {
+router.get('/deployments', requireDb, async (req, res) => {
     try {
         const list = await Deployment.find().sort({ createdAt: -1 }).limit(100);
         res.json(list);
@@ -27,7 +51,7 @@ router.get('/deployments', async (req, res) => {
     }
 });
 
-router.delete('/deployments/:id', async (req, res) => {
+router.delete('/deployments/:id', requireDb, async (req, res) => {
     try {
         await Deployment.findByIdAndDelete(req.params.id);
         res.json({ message: 'Deployment record deleted' });
@@ -36,7 +60,7 @@ router.delete('/deployments/:id', async (req, res) => {
     }
 });
 
-router.delete('/deployments', async (req, res) => {
+router.delete('/deployments', requireDb, async (req, res) => {
     try {
         await Deployment.deleteMany({});
         res.json({ message: 'All deployment records deleted' });
@@ -47,7 +71,7 @@ router.delete('/deployments', async (req, res) => {
 
 
 
-router.post('/rollback/:id', async (req, res) => {
+router.post('/rollback/:id', requireDb, async (req, res) => {
     try {
         const id = await deployManager.rollback(req.params.id);
         res.json({ id, message: 'Rollback started' });
@@ -82,25 +106,11 @@ router.post('/autodeploy/toggle', async (req, res) => {
 });
 
 // Safe container listing - uses Gateway
-router.get('/system/containers', async (req, res) => {
-    try {
-        const result = await executionFirewall.runAsSystem(async () => {
-            return await ExecutionGateway.execute('docker', ['ps', '--format', '{{json .}}']);
-        });
-        if (!result.data?.ok) throw new Error(result.data?.error || result.error);
+// GET /system/containers lived here and NOTHING called it: /system/health already
+// returns the same `docker ps` list, and that is what the panel renders. A second
+// copy of a shell call is a second thing to keep correct — it is gone.
 
-        const containers = (result.data?.output || '').trim().split('\n').map((l: string) => {
-            if (!l) return null;
-            try { return JSON.parse(l); } catch { return null; }
-        }).filter(Boolean);
-        res.json(containers);
-    } catch (e: any) {
-        logger.error(`[AdminAPI] Failed to fetch containers: ${e.message}`);
-        res.status(500).json({ error: 'Failed to list containers' });
-    }
-});
-
-router.get('/settings/notifications', async (req, res) => {
+router.get('/settings/notifications', requireDb, async (req, res) => {
     try {
         const config = await SystemConfig.findOne({ key: 'notification_settings' });
         res.json(config?.value || {});
@@ -109,7 +119,7 @@ router.get('/settings/notifications', async (req, res) => {
     }
 });
 
-router.post('/settings/notifications', async (req, res) => {
+router.post('/settings/notifications', requireDb, async (req, res) => {
     try {
         await SystemConfig.findOneAndUpdate(
             { key: 'notification_settings' },
@@ -253,7 +263,7 @@ router.post('/system/backup', async (req, res) => {
     }
 });
 
-router.get('/users', async (req, res) => {
+router.get('/users', requireDb, async (req, res) => {
     try {
         const { search, role } = req.query;
         let query: any = {};
@@ -280,7 +290,7 @@ router.get('/users', async (req, res) => {
     }
 });
 
-router.patch('/users/:id/role', async (req, res) => {
+router.patch('/users/:id/role', requireDb, async (req, res) => {
     try {
         const { role } = req.body;
         if (!['OWNER', 'ADMIN', 'USER', 'SUPER_ADMIN'].includes(role)) {
@@ -302,7 +312,7 @@ router.patch('/users/:id/role', async (req, res) => {
     }
 });
 
-router.post('/deploy', async (req, res) => {
+router.post('/deploy', requireDb, async (req, res) => {
     try {
         console.log('[AdminAPI] Received deploy request');
         const { deployManager } = await import('../../modules/services/DeployManager');

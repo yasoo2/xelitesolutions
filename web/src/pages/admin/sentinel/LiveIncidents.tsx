@@ -45,7 +45,7 @@ export default function LiveIncidents() {
         setExecutingMap(prev => ({ ...prev, [incidentId]: true }));
         try {
             const serverIdStr = serverId?._id || serverId;
-            const res = await fetch(`/api/admin/sentinel/actions/execute`, {
+            const res = await fetch(`${API_URL}/admin/sentinel/actions/execute`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

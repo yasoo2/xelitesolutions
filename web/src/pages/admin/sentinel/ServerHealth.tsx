@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Activity, Server, Cpu, HardDrive, ShieldAlert, Crosshair } from 'lucide-react';
+import { API_URL } from '../../../config';
 
 export default function ServerHealth() {
     const [telemetry, setTelemetry] = useState<any>(null);
@@ -9,7 +10,7 @@ export default function ServerHealth() {
     const fetchLive = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('/api/admin/sentinel/telemetry/live', {
+            const res = await fetch(`${API_URL}/admin/sentinel/telemetry/live`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
@@ -30,7 +31,7 @@ export default function ServerHealth() {
     const executeAction = async (serverId: string, actionType: string, target: string) => {
         try {
             const token = localStorage.getItem('token');
-            await fetch('/api/admin/sentinel/actions/execute', {
+            await fetch(`${API_URL}/admin/sentinel/actions/execute`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ serverId, actionType, target })

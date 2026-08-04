@@ -186,11 +186,44 @@ describe('the server and the UI agree on event names', () => {
     it('every event the UI listens for is one the server can really send', () => {
         const web = readAll(WEB);
         const api = readApi(path.join(__dirname, '..'));
-        const listened = [...new Set([...web.matchAll(/(?:event|msg|data)\.type === '([a-z_]+)'/g)].map(m => m[1]))]
-            .concat([...new Set([...web.matchAll(/msgType === '([a-z_]+)'/g)].map(m => m[1]))])
+        // The character class MUST allow ':'. It did not, and that is exactly
+        // how `admin:deployment_log` survived this lock: the super-admin panel
+        // waited on that name for live deployment logs while the server sent
+        // `admin:deploy_log` (a different name AND a different field), so not
+        // one line ever arrived — and this test could not even see the name to
+        // complain about it. Optional chaining (`msg?.type`) is matched too.
+        const listened = [...new Set([...web.matchAll(/(?:event|msg|data)\??\.type === '([a-z_:]+)'/g)].map(m => m[1]))]
+            .concat([...new Set([...web.matchAll(/msgType === '([a-z_:]+)'/g)].map(m => m[1]))])
             .filter(n => !CLIENT_ONLY.has(n));
+        expect(listened.some(n => n.includes(':'))).toBe(true);   // the namespaced ones are IN scope now
         const orphans = listened.filter(n => !api.includes(`'${n}'`));
         expect(orphans).toEqual([]);
+    });
+
+    it('the panel reads the FIELD the sender writes, not one that looks like it', () => {
+        // Half a name match is not a match: the listener took `msg.data.id`
+        // from an event whose payload is `{ deploymentId, log, ts }`.
+        const panel = fs.readFileSync(path.join(WEB, 'pages', 'admin', 'SystemManagement.tsx'), 'utf-8');
+        expect(panel).toContain('msg.data?.deploymentId');
+        expect(SRC('modules', 'services', 'DeployManager.ts')).toContain('deploymentId: deploymentId');
+    });
+
+    it('no web fetch hardcodes /api — the base is one import, in one place', () => {
+        // Three sentinel calls wrote `fetch('/api/...')` directly. They happen to
+        // work today because API_URL IS '/api', which is precisely what makes it
+        // the kind of bug that surfaces months later, in one panel only.
+        const offenders: string[] = [];
+        const walk = (dir: string) => {
+            for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, e.name);
+                if (e.isDirectory()) { walk(full); continue; }
+                if (!/\.(ts|tsx)$/.test(e.name)) continue;
+                const body = fs.readFileSync(full, 'utf-8');
+                if (/fetch\(\s*[`'"]\/api\//.test(body)) offenders.push(e.name);
+            }
+        };
+        walk(WEB);
+        expect(offenders).toEqual([]);
     });
 
     it('the credential prompt has a sender now', () => {

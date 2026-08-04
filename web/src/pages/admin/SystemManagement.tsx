@@ -4,12 +4,11 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Activity, Hash, Server, Shield,
-    RefreshCw, ArrowRight, ArrowLeft, Clock,
-    CheckCircle, ChevronDown, ChevronUp,
+    RefreshCw, ArrowRight, Clock,
+    ChevronDown, ChevronUp,
     Rocket, Search, UserPlus, UserMinus,
-    Database, Terminal, ExternalLink,
-    Loader2, MoreHorizontal, Trash2, Copy,
-    RotateCcw, Info, XCircle, ShieldAlert
+    Terminal, Loader2, Trash2, Copy,
+    RotateCcw, XCircle, ShieldAlert, AlertTriangle,
 } from 'lucide-react';
 import { API_URL } from '../../config';
 import { SocketService } from '../../services/socket';
@@ -29,6 +28,7 @@ interface SystemHealth {
         platform: string;
     };
     containers: any[];
+    apiService?: { name: string; status: string };
     database: {
         collections?: number;
         documents?: number;
@@ -95,6 +95,10 @@ export default function SystemManagement() {
     const [updatingUser, setUpdatingUser] = useState<string | null>(null);
 
     // Auto-deploy poller status
+    // Half this panel is Mongo-backed and Joe runs locally with no MongoDB.
+    // That is a normal state, not a failure — but it has to be SAID, or the
+    // Deployments tab is an empty list with no explanation forever.
+    const [dbOffline, setDbOffline] = useState(false);
     const [autoDeployStatus, setAutoDeployStatus] = useState<{
         pollerActive: boolean;
         pollerEnabled: boolean;
@@ -107,22 +111,37 @@ export default function SystemManagement() {
     } | null>(null);
     const logEndRef = useRef<HTMLDivElement>(null);
 
-    // WebSocket listener for live logs
+    /**
+     * LIVE LOGS — the feature that was fully built on both sides and never met.
+     *
+     * This listened for `admin:deployment_log` carrying `{ id, log }`. The
+     * server has always broadcast `admin:deploy_log` carrying
+     * `{ deploymentId, log, ts }` — a different NAME and a different FIELD, so
+     * not one line ever arrived. The log modal was filled by the 3-second
+     * poller alone, which is why it felt a beat behind reality.
+     *
+     * The status broadcast (`admin:deploy_status`) had no listener at all, so a
+     * deployment that finished stayed "BUILDING" on screen until the next poll.
+     */
     useEffect(() => {
         const unsubscribe = SocketService.subscribe((msg: any) => {
-            if (msg.type === 'admin:deployment_log') {
-                const { id, log } = msg.data;
-                setSelectedDep(prev => {
-                    if (prev && prev._id === id) {
-                        return { ...prev, logs: [...(prev.logs || []), log] };
-                    }
-                    return prev;
-                });
-                
-                // Also update the main deployments list if needed (though fetchDeployments usually handles this)
-                setDeployments(prev => prev.map(d => 
-                    d._id === id ? { ...d, logs: [...(d.logs || []), log] } : d
-                ));
+            if (msg?.type === 'admin:deploy_log') {
+                const id = String(msg.data?.deploymentId || '');
+                const log = String(msg.data?.log ?? '');
+                if (!id) return;
+                setSelectedDep(prev => (prev && prev._id === id
+                    ? { ...prev, logs: [...(prev.logs || []), log] } : prev));
+                setDeployments(prev => prev.map(d =>
+                    d._id === id ? { ...d, logs: [...(d.logs || []), log] } : d));
+            }
+            if (msg?.type === 'admin:deploy_status') {
+                const id = String(msg.data?._id || '');
+                const status = msg.data?.status as Deployment['status'];
+                const error = msg.data?.error ? String(msg.data.error) : undefined;
+                if (!id || !status) return;
+                setSelectedDep(prev => (prev && prev._id === id ? { ...prev, status, error } : prev));
+                setDeployments(prev => prev.map(d => (d._id === id ? { ...d, status, error } : d)));
+                if (status === 'SUCCESS' || status === 'FAILED') setIsDeploying(false);
             }
         });
         return () => unsubscribe();
@@ -168,6 +187,10 @@ export default function SystemManagement() {
             const res = await fetch(`${API_URL}/admin/deployments`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
+            // 503 db_offline is an ANSWER, not a failure: say so once and stop
+            // asking every three seconds for something that cannot exist.
+            if (res.status === 503) { setDbOffline(true); setDeployments([]); return; }
+            setDbOffline(false);
             if (res.ok) {
                 const data = await res.json();
                 setDeployments(data);
@@ -182,9 +205,11 @@ export default function SystemManagement() {
 
     const fetchUsers = useCallback(async () => {
         try {
-            const res = await fetch(`${API_URL}/admin/users?search=${userSearch}`, {
+            const res = await fetch(`${API_URL}/admin/users?search=${encodeURIComponent(userSearch)}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
+            if (res.status === 503) { setDbOffline(true); setUsers([]); return; }
+            setDbOffline(false);
             if (res.ok) {
                 const data = await res.json();
                 setUsers(data);
@@ -221,8 +246,10 @@ export default function SystemManagement() {
 
     // Background polling
     useEffect(() => {
-        // Fast polling (3s) if logs modal is open, otherwise standard polling (15s)
-        const pollRate = selectedDep ? 3000 : 15000;
+        // Live logs arrive over the socket now, so the poller is a SAFETY NET,
+        // not the source: 5s while a log modal is open, 15s otherwise — and a
+        // full minute when there is no database to ask.
+        const pollRate = dbOffline ? 60000 : selectedDep ? 5000 : 15000;
         const interval = setInterval(() => {
             if (activeTab === 'dashboard') fetchHealth();
             if (activeTab === 'deployments' || selectedDep) {
@@ -231,7 +258,7 @@ export default function SystemManagement() {
             }
         }, pollRate);
         return () => clearInterval(interval);
-    }, [activeTab, fetchHealth, fetchDeployments, selectedDep]);
+    }, [activeTab, fetchHealth, fetchDeployments, selectedDep, dbOffline]);
 
     // ═══════════════════════════════════════════════
     // ACTIONS
@@ -296,6 +323,49 @@ export default function SystemManagement() {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (res.ok) {
+                await fetchDeployments();
+            }
+        } catch (e) { console.error(e); }
+    };
+
+    /**
+     * ROLLBACK — `POST /admin/rollback/:id` has existed on the server the whole
+     * time, and no button in this panel ever called it. The icon for it was
+     * even imported and never rendered. A capability you cannot reach is a
+     * capability you do not have.
+     */
+    const handleRollback = async (dep: Deployment) => {
+        if (!window.confirm(`الرجوع إلى النشرة #${dep.commit?.slice(0, 7)}؟ سيبدأ نشر جديد بهذا الإصدار.`)) return;
+        setIsDeploying(true);
+        try {
+            const res = await fetch(`${API_URL}/admin/rollback/${dep._id}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json().catch(() => null);
+            if (res.ok) {
+                await fetchDeployments();
+                if (data?.id) setSelectedDep({
+                    _id: data.id, commit: dep.commit, status: 'STARTED', triggeredBy: 'rollback',
+                    startTime: new Date().toISOString(), logs: [`=== Rollback to ${dep.commit?.slice(0, 7)} ===`],
+                });
+            } else {
+                alert(`تعذّر الرجوع: ${data?.error || res.status}`);
+            }
+        } catch (e: any) { alert(`خطأ في الشبكة: ${e.message}`); }
+        finally { setIsDeploying(false); }
+    };
+
+    /** DELETE /admin/deployments/:id — likewise reachable now, one record at a time. */
+    const handleDeleteDeployment = async (dep: Deployment) => {
+        if (!window.confirm(`حذف سجلّ النشرة #${dep.commit?.slice(0, 7)}؟`)) return;
+        try {
+            const res = await fetch(`${API_URL}/admin/deployments/${dep._id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                setSelectedDep(prev => (prev?._id === dep._id ? null : prev));
                 await fetchDeployments();
             }
         } catch (e) { console.error(e); }
@@ -414,38 +484,68 @@ export default function SystemManagement() {
                 )}
             </div>
 
-            {/* Containers */}
+            {/* Containers — the header USED to toggle `expandedSection`, and the body
+                below ignored it completely: a control that did nothing, next to two
+                chevron icons that were imported and never rendered. It collapses for
+                real now, and an empty fleet says why instead of showing a void. */}
             <div className="section-card">
-                <div className="section-header" onClick={() => setExpandedSection(expandedSection === 'containers' ? null : 'containers')}>
+                <div className="section-header clickable"
+                    onClick={() => setExpandedSection(expandedSection === 'containers' ? null : 'containers')}>
                     <div className="section-header-left">
                         <Server size={18} color="#60a5fa" />
                         <span className="section-title">Container Fleet</span>
                         <span className="section-badge">{health?.containers?.length || 0} running</span>
+                        {health?.apiService && (
+                            <span className="section-badge" style={{
+                                background: health.apiService.status === 'active' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                                color: health.apiService.status === 'active' ? '#10b981' : '#ef4444',
+                            }}>{health.apiService.name}: {health.apiService.status}</span>
+                        )}
                     </div>
+                    {expandedSection === 'containers' ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                 </div>
-                {health?.containers && (
+                {expandedSection === 'containers' && (
                     <div className="section-body">
-                        <div className="container-grid">
-                            {health.containers.map((c: any, i: number) => (
-                                <div key={i} className="container-item">
-                                    <div className={`container-dot ${c.Status?.includes('Up') ? 'healthy' : 'unhealthy'}`}></div>
-                                    <div>
-                                        <div className="container-name">{c.Names}</div>
-                                        <div className="container-status">{c.Status}</div>
+                        {health?.containers?.length ? (
+                            <div className="container-grid">
+                                {health.containers.map((c: any, i: number) => (
+                                    <div key={i} className="container-item">
+                                        <div className={`container-dot ${c.Status?.includes('Up') ? 'healthy' : 'unhealthy'}`}></div>
+                                        <div>
+                                            <div className="container-name">{c.Names}</div>
+                                            <div className="container-status">{c.Status}</div>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div style={{ color: 'var(--text-muted)', fontSize: '14px' }}>
+                                لا حاويات — إمّا أن Docker غير مثبّت هنا، أو أن جو يعمل مباشرة على الجهاز (وهذا الوضع الطبيعي محلياً).
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
         </motion.div>
     );
 
+    /** A missing database is a normal local state — it gets a sentence, not a spinner. */
+    const renderDbBanner = () => (dbOffline ? (
+        <div className="db-offline-banner">
+            <AlertTriangle size={18} />
+            <div>
+                <strong>MongoDB غير متصلة على هذا الجهاز.</strong>
+                <div>سجلّ النشر والمستخدمون والإعدادات تحتاجها؛ أمّا لوحة النظام (المعالج والذاكرة والقرص والنسخ الاحتياطية) فتعمل كما هي.</div>
+            </div>
+        </div>
+    ) : null);
+
     const renderDeployments = () => (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="tab-pane">
+            {renderDbBanner()}
             <div className="deploy-actions" style={{ display: 'flex', gap: '12px' }}>
-                <button className="btn-deploy-refined" onClick={handleDeploy} disabled={isDeploying}>
+                <button className="btn-deploy-refined" onClick={handleDeploy} disabled={isDeploying || dbOffline}
+                    title={dbOffline ? 'يحتاج قاعدة بيانات لتسجيل النشرة' : 'Deploy Production'}>
                     {isDeploying ? <Loader2 size={20} className="spinning" /> : <Rocket size={20} />}
                     {isDeploying ? 'Processing Deployment...' : 'Deploy Production'}
                 </button>
@@ -584,11 +684,31 @@ export default function SystemManagement() {
                                     <div className="dep-meta">
                                         Triggered by <span style={{ color: 'var(--text-primary)' }}>{dep.triggeredBy}</span> • Duration: {dep.duration?.toFixed(1) || '?'}s
                                     </div>
+                                    {/* The server stores `error` on every failure; nothing ever showed it,
+                                        so a red FAILED badge was the whole explanation. */}
+                                    {dep.error && (
+                                        <div className="dep-error" title={dep.error}>
+                                            <AlertTriangle size={13} /> {dep.error.slice(0, 140)}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                            <button className="dep-log-btn" onClick={() => setSelectedDep(dep)}>
-                                <Terminal size={14} /> View Logs
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button className="dep-log-btn" onClick={() => setSelectedDep(dep)}>
+                                    <Terminal size={14} /> View Logs
+                                </button>
+                                {/* Rollback: reachable at last, and only where it means something. */}
+                                {dep.status === 'SUCCESS' && (
+                                    <button className="dep-log-btn" title="ارجع إلى هذا الإصدار"
+                                        onClick={() => handleRollback(dep)} disabled={isDeploying}>
+                                        <RotateCcw size={14} /> Rollback
+                                    </button>
+                                )}
+                                <button className="dep-log-btn danger" title="احذف هذا السجلّ"
+                                    onClick={() => handleDeleteDeployment(dep)}>
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
                         </div>
                     )) : (
                         <div className="empty-state" style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -603,6 +723,7 @@ export default function SystemManagement() {
 
     const renderAdmins = () => (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="tab-pane">
+            {renderDbBanner()}
             <div className="admin-search-box">
                 <Search size={20} className="search-icon" />
                 <input
@@ -839,6 +960,25 @@ export default function SystemManagement() {
                     border-color: var(--border-light);
                     background: rgba(255,255,255,0.02);
                 }
+                .section-header.clickable { cursor: pointer; user-select: none; }
+                .section-header.clickable:hover { background: rgba(255,255,255,0.03); }
+                .db-offline-banner {
+                    display: flex; align-items: flex-start; gap: 14px;
+                    padding: 16px 20px; margin-bottom: 24px;
+                    border: 1px solid rgba(245, 158, 11, 0.35);
+                    background: rgba(245, 158, 11, 0.08);
+                    color: #f59e0b; border-radius: 16px;
+                    font-size: 13px; line-height: 1.7;
+                }
+                .db-offline-banner strong { color: #fbbf24; display: block; margin-bottom: 2px; }
+                .db-offline-banner div div { color: var(--text-muted); }
+                .dep-error {
+                    display: flex; align-items: center; gap: 6px;
+                    margin-top: 6px; font-size: 12px; color: #ff8a80;
+                    font-family: 'JetBrains Mono', monospace;
+                }
+                .dep-log-btn.danger { color: #ff8a80; }
+                .dep-log-btn.danger:hover { border-color: #ff5252; background: rgba(255,82,82,0.08); }
                 .container-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
                 .container-dot.healthy { background: #00e676; box-shadow: 0 0 10px rgba(0, 230, 118, 0.4); }
                 .container-dot.unhealthy { background: #ff5252; box-shadow: 0 0 10px rgba(255, 82, 82, 0.4); }
