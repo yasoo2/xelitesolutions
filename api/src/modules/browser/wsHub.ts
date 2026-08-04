@@ -68,8 +68,19 @@ export async function canAccessBrowserSession(userId: string, sessionId: string)
     return canAccessSession(uid, sid);
   }
 
+  // A LOCAL SESSION ID NOBODY HAS CLAIMED YET BELONGS TO WHOEVER ASKS FIRST.
+  // Returning false here meant `browser_run` answered a bare «forbidden» to any
+  // request made before the browser PANEL had connected — «افتح جيت هاب وسجّل
+  // الدخول» simply refused, with no reason a person could read. Claiming is
+  // safe: it never takes a session that already has an owner, and ids that
+  // belong to the online model (a Mongo session id, or browser:<userId>) never
+  // reach this branch — they were verified above, against the database.
   const cur = ownerByBrowserSessionId.get(sid);
-  if (!cur) return false;
+  if (!cur) {
+    ownerByBrowserSessionId.set(sid, { userId: uid, at: Date.now() });
+    pruneOwners();
+    return true;
+  }
   if (cur.userId !== uid) return false;
   cur.at = Date.now();
   return true;

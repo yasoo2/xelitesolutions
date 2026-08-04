@@ -621,6 +621,18 @@ export async function createSession(sessionId: string) {
     });
   } catch { /* addInitScript unsupported -> non-fatal */ }
 
+  // EVERY browser skill sends a function into the page with page.evaluate, and a
+  // compiler that keeps function names wraps each one in a `__name(...)` helper
+  // the browser has never heard of. Measured on a real page: fourteen of the
+  // twenty-nine tools — the SEO audit, contrast, accessibility, extraction,
+  // click, form fill, autofix — all died with the same
+  // «ReferenceError: __name is not defined». Three audit modules already
+  // carried this shim privately; it belongs here, where every tool's page is
+  // born, so the toolbox works whatever compiled or ran it.
+  try {
+    await context.addInitScript('globalThis.__name = globalThis.__name || (function (f) { return f; });');
+  } catch { /* an old Playwright without addInitScript is not a reason to fail */ }
+
   context.setDefaultNavigationTimeout(cfg.navTimeoutMs);
   context.setDefaultTimeout(cfg.actionTimeoutMs);
   const page = persistentContext ? (context.pages()[0] || await context.newPage()) : await context.newPage();

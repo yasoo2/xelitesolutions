@@ -717,6 +717,27 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         }
     });
 
+    it('the browser skills survive the compiler and a poisoned tab', () => {
+        // Measured on a real page (verify_browser_tools_live.ts): FOURTEEN of the
+        // 29 browser tools died with «ReferenceError: __name is not defined» —
+        // the helper a name-keeping compiler wraps around every function sent
+        // into the page with page.evaluate. The shim belongs where every
+        // browser tool's page is born, not in three audit modules privately.
+        expect(SRC('modules', 'browser', 'manager.ts')).toContain('globalThis.__name = globalThis.__name');
+        expect(SRC('modules', 'browser', 'manager.ts')).toMatch(/context\.addInitScript\(/);
+        // One unreachable site used to make every LATER site unopenable: the tab
+        // sat on chrome-error and the next navigation was reported as
+        // «interrupted by another navigation».
+        const smart = SRC('modules', 'tools', 'definitions', 'BrowserSmartTools.ts');
+        expect(smart).toMatch(/interrupted by another navigation/);
+        expect(smart).toContain("page.goto('about:blank'");
+        // and «forbidden» is never the whole answer
+        expect(SRC('modules', 'tools', 'definitions', 'BrowserRunTool.ts'))
+            .toContain('هذه الجلسة تخصّ مستخدماً آخر');
+        expect(SRC('modules', 'tools', 'definitions', 'BrowserRunTool.ts'))
+            .toContain("context?.userId");
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([

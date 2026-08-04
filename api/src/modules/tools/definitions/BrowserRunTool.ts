@@ -153,12 +153,21 @@ export class BrowserRunTool extends BaseTool {
         const logs: string[] = [];
         const sid = String(input?.sessionId || '').trim();
         if (!sid) return { ok: false, error: 'sessionId_required', logs };
-        const userId = String(input?.userId || input?.__userId || '').trim();
+        // The signed-in user arrives in the CONTEXT; only some callers repeat it
+        // in the body. Reading the body alone made every direct call unauthorized.
+        const userId = String(input?.userId || input?.__userId || context?.userId || '').trim();
         const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
         if (!authBypass) {
             if (!userId) return { ok: false, error: 'unauthorized', logs };
             const allowed = await canAccessBrowserSession(userId, sid);
-            if (!allowed) return { ok: false, error: 'forbidden', logs };
+            // «forbidden» is not an answer a person can act on. Say whose
+            // session it is and what to do about it.
+            if (!allowed) return {
+                ok: false,
+                error: 'forbidden',
+                output: { message: 'هذه الجلسة تخصّ مستخدماً آخر — افتح لوحة المتصفّح في جلستك ثم أعد المحاولة.' },
+                logs,
+            };
         }
 
         const instructionText = String(input?.instructionText || '').trim();

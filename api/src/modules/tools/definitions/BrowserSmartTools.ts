@@ -46,7 +46,33 @@ async function openPage(sessionId: string, rawUrl?: string) {
     const target = normalizeUrl(rawUrl || '');
     if (target) {
         narrateAction(sessionId, 'goto', target);
-        await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        try {
+            await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        } catch (e: any) {
+            // A PAGE LEFT IN AN ERROR STATE POISONS THE NEXT REQUEST. The session
+            // reuses one tab: after a navigation that failed (no internet, a
+            // wrong domain), the tab sits on chrome-error://chromewebdata, and
+            // the NEXT goto comes back as «Navigation to <the new url> is
+            // interrupted by another navigation to chrome-error://chromewebdata»
+            // — a message that blames the new address for the old failure.
+            // Measured: one unreachable site made every later site unopenable.
+            const msg = String(e?.message || e);
+            const poisoned = /interrupted by another navigation|chrome-error:\/\//i.test(msg)
+                || /^chrome-error:/i.test(page.url() || '');
+            if (!poisoned) throw e;
+            // Clearing has to SETTLE before the retry, or the blank page's own
+            // navigation lands late and interrupts it in turn — the same error
+            // with a different culprit.
+            try { await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 8000 }); } catch { /* best effort */ }
+            await page.waitForTimeout(300);
+            try {
+                await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            } catch (again: any) {
+                if (!/interrupted by another navigation/i.test(String(again?.message || again))) throw again;
+                await page.waitForTimeout(700);
+                await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            }
+        }
         await page.waitForTimeout(600);
     }
     return { page, url: page.url() };
