@@ -95,12 +95,15 @@ async function main() {
     check('the terminal reported 2/3 real dish photos', logText.includes('2/3 real dish photos'), logText.split('\n').filter((l: string) => /photo/.test(l)).join(' | '));
     check('…and 2/2 real testimonial portraits', logText.includes('2/2 real portrait photos'), logText.split('\n').filter((l: string) => /portrait/.test(l)).join(' | '));
     const pubImages = fs.existsSync(path.join(proj, 'public', 'images')) ? fs.readdirSync(path.join(proj, 'public', 'images')) : [];
-    check('hero + 2 dishes + 2 portraits landed INSIDE the project (public/images)', pubImages.length === 5, pubImages.join(','));
+    // hero + 2 dishes + 2 testimonial portraits + 3 team portraits.
+    check('every fetched photograph landed INSIDE the project (public/images)', pubImages.length === 8, `${pubImages.length}: ${pubImages.join(',')}`);
     const content = fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8');
     // 2 dishes + 2 testimonials carry photos; the salad AND the (unused by
     // the restaurant, always serialized) 3 product rows stay null.
-    check('the salad serializes img: null while dishes AND testimonials carry photos',
-        (content.match(/img: \{ src: 'images\//g) || []).length === 4 && (content.match(/img: null/g) || []).length === 4);
+    const menuBlock = (content.match(/menu: \[[\s\S]*?\n  \],/) || [''])[0];
+    check('the salad serializes img: null while its two neighbours carry photos',
+        (menuBlock.match(/img: \{ src: 'images\//g) || []).length === 2 && (menuBlock.match(/img: null/g) || []).length === 1,
+        menuBlock.slice(0, 200));
     check('the shared source appears ONCE in the merged credits', (content.match(/landing\/shared-grill/g) || []).length === 1);
 
     console.log('\n[2] متصفح حقيقي يرى الصور مرسومة بالبكسل والصف الثالث نظيفاً');
@@ -118,8 +121,20 @@ async function main() {
 
     const { chromium } = require('playwright');
     const browser = await chromium.launch({ args: ['--no-sandbox'] });
+    // The page is long now (gallery, story, steps, team). Lazy images only
+    // decode near the viewport, so the proof walks the page like a visitor.
+    const loadAll = async (page: any) => page.evaluate(async () => {
+        for (let y = 0; y < document.body.scrollHeight; y += 400) {
+            window.scrollTo(0, y); await new Promise(r => setTimeout(r, 25));
+        }
+        window.scrollTo(0, 0);
+        await Promise.all(([...document.images] as HTMLImageElement[])
+            .map(i => (i.complete ? null : i.decode().catch(() => null))));
+        await new Promise(r => setTimeout(r, 300));
+    });
     const p = await browser.newPage();
     await p.goto(`http://127.0.0.1:${(site.address() as any).port}/`, { waitUntil: 'networkidle' });
+    await loadAll(p);
     const seen = await p.evaluate(() => {
         const thumbs = [...document.querySelectorAll('.menu-thumb')] as HTMLImageElement[];
         const items = [...document.querySelectorAll('.menu-item')];
@@ -144,7 +159,9 @@ async function main() {
     check('the salad row is a clean text row — no broken <img>', seen.saladHasNoThumb);
     check('the hero photo rendered too', seen.heroPainted);
     check('TWO testimonial avatars rendered real pixels', seen.avatarCount === 2 && seen.avatarsPainted, JSON.stringify(seen));
-    check('the footer carries the MERGED deduped credits (4 sources: shared grill, dish, 2 portraits)', seen.creditLinks === 4, seen.creditText);
+    // shared grill (hero + the grill dish, ONE line) + the other dish
+    // + 2 testimonial portraits + 3 team portraits.
+    check('the footer carries the MERGED deduped credits (7 sources)', seen.creditLinks === 7, seen.creditText);
     check('…and names the shared photographer once', (seen.creditText.match(/Shared Grill Photographer/g) || []).length === 1, seen.creditText);
 
     console.log('\n[3] تعديل جراحي: «أضف صورة لطبق السلطة» يجلب صورة حقيقية ويعاد البناء ويتحقق');
@@ -156,9 +173,15 @@ async function main() {
         { request: 'add a photo of fresh fruit bowl to the Season salad dish' }, { sessionId: 'dish-wire' });
     check('the edit succeeded AND the real vite build verified it', !!edit.ok && edit.output.buildVerified === true, JSON.stringify({ ok: edit.ok, bv: edit.output?.buildVerified, msg: String(edit.output?.message).slice(0, 120) }));
     const content2 = fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8');
-    check('ONLY the salad row gained the photo (no other row rewritten)', /\{ name: 'Season salad',[^\n]*?img: \{ src: 'images\//.test(content2) && (content2.match(/img: null/g) || []).length === 3 && (content2.match(/img: \{ src: 'images\//g) || []).length === 5);   // the 3 product rows stay null
+    const menuBlock2 = (content2.match(/menu: \[[\s\S]*?\n  \],/) || [''])[0];
+    check('ONLY the salad row gained the photo (no other row rewritten)',
+        /\{ name: 'Season salad',[^\n]*?img: \{ src: 'images\//.test(content2)
+        && (menuBlock2.match(/img: null/g) || []).length === 0
+        && (menuBlock2.match(/img: \{ src: 'images\//g) || []).length === 3,
+        menuBlock2.slice(0, 200));
     const p2 = await browser.newPage();
     await p2.goto(`http://127.0.0.1:${(site.address() as any).port}/`, { waitUntil: 'networkidle' });
+    await loadAll(p2);
     const seen2 = await p2.evaluate(() => {
         const thumbs = [...document.querySelectorAll('.menu-thumb')] as HTMLImageElement[];
         const salad = [...document.querySelectorAll('.menu-item')].find(li => /salad/i.test(li.textContent || ''));
@@ -170,7 +193,7 @@ async function main() {
         };
     });
     check('the browser now sees THREE painted dish thumbnails — the salad included', seen2.thumbCount === 3 && seen2.painted && seen2.saladHasThumb, JSON.stringify(seen2));
-    check('the new licence line reached the rebuilt footer (5 sources)', seen2.creditLinks === 5, String(seen2.creditLinks));
+    check('the new licence line reached the rebuilt footer (8 sources)', seen2.creditLinks === 8, String(seen2.creditLinks));
 
     console.log('\n[4] «تراجع» يسترجع الملف بايتاً ببايت');
     const undo: any = await new ProjectEditTool().execute({ request: 'تراجع عن آخر تعديل' }, { sessionId: 'dish-wire' });
@@ -190,6 +213,7 @@ async function main() {
     check('credits stay while other photos remain', content3.includes('landing'), content3.match(/credits: \[[\s\S]*?\],/)?.[0].slice(0, 80) || '');
     const p3 = await browser.newPage();
     await p3.goto(`http://127.0.0.1:${(site.address() as any).port}/`, { waitUntil: 'networkidle' });
+    await loadAll(p3);
     const seen3 = await p3.evaluate(() => {
         const thumbs = [...document.querySelectorAll('.menu-thumb')] as HTMLImageElement[];
         const grill = [...document.querySelectorAll('.menu-item')].find(li => /Mixed grill/i.test(li.textContent || ''));
@@ -237,6 +261,7 @@ async function main() {
     const b2 = await (require('playwright').chromium).launch({ args: ['--no-sandbox'] });
     const p5 = await b2.newPage();
     await p5.goto(`http://127.0.0.1:${(pub.address() as any).port}/`, { waitUntil: 'networkidle' });
+    await loadAll(p5);
     const seen5 = await p5.evaluate(() => ({
         hero: (document.querySelector('.hero-bg, .hero-photo') as HTMLImageElement | null)?.naturalWidth || 0,
         thumbs: [...document.querySelectorAll('.menu-thumb')].filter((t: any) => t.naturalWidth > 0).length,

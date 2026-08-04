@@ -350,8 +350,75 @@ async function main() {
         compareSeen.rows >= 4 && compareSeen.cols === 4 && compareSeen.yes > 0 && compareSeen.no > 0
         && compareSeen.scrolls && compareSeen.featured > 0, JSON.stringify(compareSeen));
 
+    console.log('\n[9] صفحة منتج بعنوان خاص، فريق بوجوه حقيقية، ولون ثانوي لكل عائلة');
+    // A FOURTH build: a shop WITH photographs, so a product page has a real
+    // photograph, a real price and a real URL of its own.
+    const shop: any = await new ReactProjectTool().execute(
+        { request: 'ابنِ متجر react للحقائب الجلدية', root }, { sessionId: 'du-d' });
+    check('the shop built for real', shop.output?.built === true && shop.output.audit?.score === 100,
+        JSON.stringify(shop.output?.audit).slice(0, 140));
+    const sD = await serve(path.join(shop.output.path, 'dist'));
+    const pD = await browser.newPage();
+    await pD.goto(sD.url, { waitUntil: 'networkidle' });
+    const link = await pD.evaluate(() => {
+        const a = document.querySelector('.products-grid .product-link') as HTMLAnchorElement | null;
+        return { href: a?.getAttribute('href') || '', text: (a?.textContent || '').trim() };
+    });
+    check('every product card links to its OWN url', /^#product\/.+/.test(link.href), JSON.stringify(link));
+    await pD.click('.products-grid .product-link');
+    await pD.waitForTimeout(350);
+    const view = await pD.evaluate(() => {
+        const v = document.querySelector('.product-view') as HTMLElement | null;
+        const photo = document.querySelector('.product-view-photo') as HTMLImageElement | null;
+        return {
+            open: !!v,
+            url: location.hash,
+            modal: v?.getAttribute('aria-modal') || '',
+            covers: v ? Math.round(v.getBoundingClientRect().height) >= window.innerHeight - 2 : false,
+            title: (document.querySelector('.product-view h1')?.textContent || '').trim(),
+            price: (document.querySelector('.product-view-price')?.textContent || '').trim(),
+            photoPainted: !!photo && photo.naturalWidth > 0,
+            back: !!document.querySelector('.product-back'),
+            bodyLocked: getComputedStyle(document.body).overflow === 'hidden',
+        };
+    });
+    check('the product PAGE opened at its own URL with the photo, the name and the price',
+        view.open && /^#product\//.test(view.url) && view.title.length > 1 && /\d/.test(view.price)
+        && view.photoPainted && view.covers && view.modal === 'true' && view.bodyLocked, JSON.stringify(view));
+    // A cold RELOAD of that url must land on the same product — the proof
+    // that this is a page and not a modal wearing a costume.
+    await pD.reload({ waitUntil: 'networkidle' });
+    const afterReload = await pD.evaluate(() => (document.querySelector('.product-view h1')?.textContent || '').trim());
+    check('a cold reload of the product url lands on the SAME product', afterReload === view.title, `${afterReload} vs ${view.title}`);
+    await pD.goBack({ waitUntil: 'networkidle' });
+    await pD.waitForTimeout(300);
+    const afterBack = await pD.evaluate(() => ({
+        closed: !document.querySelector('.product-view'),
+        unlocked: getComputedStyle(document.body).overflow !== 'hidden',
+    }));
+    check('the back button closes it and gives the page back', afterBack.closed && afterBack.unlocked, JSON.stringify(afterBack));
+
+    const teamSeen = await pC.evaluate(async () => {
+        // The portraits are lazy: they only decode once the section is near
+        // the viewport, exactly as a real visitor would meet them.
+        document.querySelector('#team')?.scrollIntoView();
+        await new Promise(r => setTimeout(r, 600));
+        const photos = [...document.querySelectorAll('.person-photo')] as HTMLImageElement[];
+        await Promise.all(photos.map(p => p.complete ? null : p.decode().catch(() => null)));
+        const icon = document.querySelector('.card-icon') || document.querySelector('.step-num');
+        return {
+            people: document.querySelectorAll('.person').length,
+            painted: photos.length > 0 && photos.every(p => p.naturalWidth > 0),
+            accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+            stepBg: icon ? getComputedStyle(icon as Element).backgroundColor : '',
+        };
+    });
+    check('the restaurant ships a TEAM with real portraits', teamSeen.people === 3 && teamSeen.painted, JSON.stringify(teamSeen));
+    check('the family names its own SECOND accent, and the numbers wear it',
+        teamSeen.accent.length > 3 && /rgb/.test(teamSeen.stepBg), JSON.stringify(teamSeen));
+
     await browser.close();
-    sA.close(); sB.close(); sC.close(); archive.close();
+    sA.close(); sB.close(); sC.close(); sD.close(); archive.close();
     fs.rmSync(root, { recursive: true, force: true });
     console.log(`\n===== ${pass} passed, ${fail} failed =====`);
     process.exit(fail ? 1 : 0);

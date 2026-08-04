@@ -323,7 +323,7 @@ describe('the hero archetypes and the sections that came with them', () => {
             // Nor is a location advertised without a real saved address.
             expect(hrefs).not.toContain('location');
             const ids = new Set(['menu', 'gallery', 'story', 'steps', 'testimonials', 'contact', 'cta',
-                'products', 'features', 'pricing', 'compare', 'faq', 'stats', 'location']);
+                'products', 'features', 'pricing', 'compare', 'team', 'faq', 'stats', 'location']);
             for (const h of hrefs) {
                 expect(ids.has(h)).toBe(true);
                 const comp = h[0].toUpperCase() + h.slice(1);
@@ -353,5 +353,86 @@ describe('the hero archetypes and the sections that came with them', () => {
         expect(hrefs.every(h => h.startsWith('#/'))).toBe(true);
         fs.rmSync(root, { recursive: true, force: true });
         delete (global as any).joeProjects?.['arch-mp'];
+    });
+});
+
+/**
+ * REAL PRODUCT PAGES, A TEAM, AND THE END OF THE DEP0190 WARNING.
+ *
+ * A shop whose products have no address of their own cannot be shared, sent
+ * in a message, or reloaded. The product view lives at «#product/<slug>» —
+ * «#/product/<slug>» when the hash router owns the address bar — so a cold
+ * reload lands on the same product and the back button really goes back.
+ */
+describe('product pages, the team, and the build command', () => {
+    let out: any, root: string;
+    beforeAll(async () => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-shop-'));
+        out = await new ReactProjectTool().execute(
+            { request: 'ابن لي متجر React للحقائب', root, skipInstall: true }, { sessionId: 'shop-t' });
+    });
+    afterAll(() => { fs.rmSync(root, { recursive: true, force: true }); delete (global as any).joeProjects?.['shop-t']; });
+
+    it('every product carries a slug, and the cards link to it', () => {
+        const content = fs.readFileSync(path.join(out.output.path, 'src', 'content.js'), 'utf-8');
+        const slugs = [...content.matchAll(/slug: '([^']+)'/g)].map(m => m[1]);
+        expect(slugs.length).toBeGreaterThanOrEqual(3);
+        expect(new Set(slugs).size).toBe(slugs.length);            // a url per product, never shared
+        const products = fs.readFileSync(path.join(out.output.path, 'src', 'components', 'Products.jsx'), 'utf-8');
+        expect(products).toContain("'#' + (content.routeBase || '') + 'product/' + p.slug");
+    });
+    it('the product view is a PAGE: its own url, a back link, Escape, and a locked page beneath', () => {
+        const view = fs.readFileSync(path.join(out.output.path, 'src', 'components', 'ProductView.jsx'), 'utf-8');
+        expect(view).toMatch(/\^#\\\/\?product\\\/\(\.\+\)\$/);     // both routing styles
+        expect(view).toContain("aria-modal=\"true\"");
+        expect(view).toContain("window.addEventListener('hashchange'");
+        expect(view).toContain("e.key === 'Escape'");
+        expect(view).toContain("document.body.style.overflow");
+        expect(view).toContain('product-back');
+        expect(syntaxOk('ProductView.jsx', view).ok).toBe(true);
+        // Mounted above everything, so a cold load of the url renders it.
+        expect(fs.readFileSync(path.join(out.output.path, 'src', 'App.jsx'), 'utf-8')).toContain('<ProductView content={content} />');
+    });
+    it('a MULTI-PAGE shop routes its products too', async () => {
+        const r2 = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-shop2-'));
+        const mp: any = await new ReactProjectTool().execute(
+            { request: 'ابن لي متجر React متعدد الصفحات للحقائب', root: r2, skipInstall: true }, { sessionId: 'shop-mp' });
+        expect(fs.readFileSync(path.join(mp.output.path, 'src', 'content.js'), 'utf-8')).toContain("routeBase: '/'");
+        const app = fs.readFileSync(path.join(mp.output.path, 'src', 'App.jsx'), 'utf-8');
+        expect(app).toContain('<ProductView content={content} />');
+        expect(app).toContain("path.startsWith('/product/')");      // the 404 stays out of its way
+        expect(syntaxOk('App.jsx', app).ok).toBe(true);
+        fs.rmSync(r2, { recursive: true, force: true });
+        delete (global as any).joeProjects?.['shop-mp'];
+    });
+    it('the team ships three people and never a broken avatar', async () => {
+        // The team belongs to the kinds with faces to show — a restaurant, a
+        // portfolio, a landing page. A shelf of bags is not one of them.
+        expect(sectionsForKind('store')).not.toContain('Team');
+        const r3 = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-team-'));
+        const rest: any = await new ReactProjectTool().execute(
+            { request: 'ابن لي مشروع React لمطعم', root: r3, skipInstall: true }, { sessionId: 'team-t' });
+        const team = fs.readFileSync(path.join(rest.output.path, 'src', 'components', 'Team.jsx'), 'utf-8');
+        expect(team).toContain('person-monogram');                  // the no-photo shape
+        expect(team).toContain('m.img');
+        expect(syntaxOk('Team.jsx', team).ok).toBe(true);
+        const content = fs.readFileSync(path.join(rest.output.path, 'src', 'content.js'), 'utf-8');
+        expect((content.match(/team: \[[\s\S]*?\n {2}\]/) || [''])[0].match(/name: '/g) || []).toHaveLength(3);
+        fs.rmSync(r3, { recursive: true, force: true });
+        delete (global as any).joeProjects?.['team-t'];
+    });
+    it('every family names a second accent, and the base sheet defaults one', () => {
+        const { familyCss } = require('../core/design/families');
+        for (const f of ['minimal', 'elegant', 'bold', 'warm']) expect(familyCss(f)).toContain('--accent:');
+        expect(fs.readFileSync(path.join(out.output.path, 'src', 'styles', 'base.css'), 'utf-8')).toContain('--accent:var(--brand-dark)');
+    });
+    it('npm is spawned DIRECTLY on Windows — no shell, so no DEP0190 warning', () => {
+        const engine = fs.readFileSync(path.join(__dirname, '..', 'kernel', 'ExecutionEngine.ts'), 'utf-8');
+        expect(engine).toContain("const WIN_CMD_SHIMS = new Set(['npm', 'npx', 'yarn', 'pnpm'])");
+        expect(engine).toMatch(/process\.platform === 'win32' && !rest\.shell && WIN_CMD_SHIMS\.has\(file\)/);
+        for (const t of ['ReactProjectTool', 'ApiProjectTool', 'ProjectEditTool', 'ImportProjectTool']) {
+            const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', `${t}.ts`), 'utf-8');
+            expect(src).not.toContain("shell: process.platform === 'win32'");
+        }
     });
 });

@@ -81,7 +81,7 @@ describe('named-row text edits — deterministic, no model', () => {
         const r: any = await edit('ضف منتج عطر الليل بسعر 300 بوصف رائحة شرقية فاخرة');
         expect(r.ok).toBe(true);
         const c = contentOf();
-        expect(c).toContain("{ name: 'عطر الليل', desc: 'رائحة شرقية فاخرة', price: '300 ر.س', img: null },");
+        expect(c).toContain("{ name: 'عطر الليل', desc: 'رائحة شرقية فاخرة', price: '300 ر.س', slug: 'عطر-الليل', img: null },");
         const { syntaxOk } = require('../modules/tools/definitions/ProjectEditTool');
         expect(syntaxOk('src/content.js', c).ok).toBe(true);
     });

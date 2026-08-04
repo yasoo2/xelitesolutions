@@ -150,7 +150,7 @@ async function main() {
         { request: 'add a product Night Rose for $120' }, { sessionId: 'store-wire' });
     check('the row add succeeded AND the real build verified it', !!addRow.ok && addRow.output.buildVerified === true, JSON.stringify({ ok: addRow.ok, bv: addRow.output?.buildVerified, msg: String(addRow.output?.message).slice(0, 120) }));
     const content3 = fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8');
-    const newRowM = content3.match(/\{ name: 'Night Rose', desc: '[^']+', price: '\$120', img: \{ src: '(images\/[^']+)'/);
+    const newRowM = content3.match(/\{ name: 'Night Rose', desc: '[^']+', price: '\$120', slug: 'night-rose', img: \{ src: '(images\/[^']+)'/);
     check('the new row carries name, inherited-format price AND a real fetched photo', !!newRowM, (content3.match(/\{ name: 'Night Rose'[^\n]*/) || ['(row missing)'])[0].slice(0, 140));
     check('…whose file landed in public/images', !!newRowM && fs.existsSync(path.join(proj, 'public', newRowM![1])));
     const p4 = await browser.newPage();

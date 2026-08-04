@@ -56,6 +56,7 @@ export function familyFor(request: string, kind: PageKind): DesignFamily {
 export function familyCss(f: DesignFamily): string {
     const blocks: Record<DesignFamily, string> = {
         minimal: `:root{
+  --accent:color-mix(in srgb,var(--brand) 55%,var(--text));
   --f-font:${familyFonts('minimal').body};
   --f-head:${familyFonts('minimal').head};
   --f-head-weight:700;
@@ -65,6 +66,7 @@ export function familyCss(f: DesignFamily): string {
   --f-photo-shadow:0 24px 60px -16px rgba(0,0,0,.25);
 }`,
         elegant: `:root{
+  --accent:color-mix(in srgb,var(--brand) 62%,#8a6a2f);
   --f-font:${familyFonts('elegant').body};
   --f-head:${familyFonts('elegant').head};
   --f-head-weight:700;
@@ -79,8 +81,10 @@ h1,h2{line-height:1.3}
 .cta-band{background:var(--surface);color:var(--text);border-block:1px solid var(--border)}
 .cta-band .btn-invert{background:var(--brand);color:var(--on-brand)}
 .hero{border-bottom:1px solid var(--border)}
+.hero-eyebrow{border-color:color-mix(in srgb,var(--accent) 45%,transparent);color:var(--accent)}
 .gallery-mosaic{gap:10px}`,
         bold: `:root{
+  --accent:color-mix(in srgb,var(--brand) 40%,#ff3d00);
   --f-font:${familyFonts('bold').body};
   --f-head:${familyFonts('bold').head};
   --f-head-weight:900;
@@ -94,8 +98,10 @@ h1,h2{line-height:1.3}
 .hero h1{font-size:clamp(2.4rem,6vw,4rem)}
 .cta-band{clip-path:polygon(0 8%,100% 0,100% 92%,0 100%);padding-block:clamp(64px,9vw,130px)}
 .hero{clip-path:polygon(0 0,100% 0,100% 92%,0 100%)}
-.perk{border:2px solid var(--text)}`,
+.perk{border:2px solid var(--text)}
+.card-icon{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}`,
         warm: `:root{
+  --accent:color-mix(in srgb,var(--brand) 55%,#e08a3c);
   --f-font:${familyFonts('warm').body};
   --f-head:${familyFonts('warm').head};
   --f-head-weight:700;
@@ -107,7 +113,8 @@ h1,h2{line-height:1.3}
 .card{border-color:color-mix(in srgb,var(--brand) 18%,var(--border))}
 .cta-band{border-radius:28px;width:min(100% - 2rem,1180px);margin-inline:auto}
 .hero{border-end-start-radius:56px;border-end-end-radius:56px}
-.gallery-mosaic img{border-radius:22px}`,
+.gallery-mosaic img{border-radius:22px}
+.step-num{background:var(--accent)}`,
     };
     return `/* joe-family:${f} */\n${blocks[f]}\n/* /joe-family */`;
 }

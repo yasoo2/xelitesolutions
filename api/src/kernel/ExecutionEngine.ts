@@ -52,6 +52,9 @@ export interface ExecutionSession {
  * CENTRAL PERFORMANCE ENGINE for all system execution.
  * Phase 2.1: High Performance Secure Execution.
  */
+/** The Windows executables that ship as .cmd shims rather than real .exe. */
+const WIN_CMD_SHIMS = new Set(['npm', 'npx', 'yarn', 'pnpm']);
+
 export class ExecutionEngine {
     private pty: any = null;
     private cache = new Map<string, { result: ExecutionResult, expires: number }>();
@@ -445,10 +448,16 @@ export class ExecutionEngine {
         onLine?: (line: string, stream: 'stdout' | 'stderr') => void;
     } = {}): { done: Promise<{ ok: boolean; exitCode: number | null; error?: string }>; kill: () => void; pid?: number } {
         const { onLine, ...rest } = options;
-        const child = spawn(file, args, {
+        // npm/npx/yarn/pnpm on Windows are .cmd shims. Running them through a
+        // SHELL works but Node 22+ answers with a DEP0190 deprecation warning
+        // on every build (it cannot escape the args safely). Naming the shim
+        // outright spawns it directly — no shell, no warning, and the
+        // arguments stay exactly as given.
+        const cmd = (process.platform === 'win32' && !rest.shell && WIN_CMD_SHIMS.has(file))
+            ? `${file}.cmd` : file;
+        const child = spawn(cmd, args, {
             cwd: rest.cwd || this.getWorkspaceRoot(),
             env: { ...process.env, ...rest.env },
-            // npm/npx on Windows are .cmd shims — callers there pass shell:true.
             shell: rest.shell !== undefined ? rest.shell : false,
         });
         const feed = (stream: 'stdout' | 'stderr') => (b: Buffer) => {

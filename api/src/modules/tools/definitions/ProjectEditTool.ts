@@ -460,7 +460,15 @@ export class ProjectEditTool extends BaseTool {
                 addCredits = got.credits;
                 logs.push(`row add: photo → ${got.note}`);
             } catch { /* the row ships clean without one */ }
-            const rowLine = `    { name: '${esc(name)}', desc: '${esc(desc)}', price: '${esc(price)}', img: ${img ? `{ src: '${esc(img.src)}', alt: '${esc(img.alt)}' }` : 'null'} },`;
+            // A product row carries a slug — it is the address of its own
+            // page. A row added later without one would link to nowhere.
+            const rowSlug = (String(name).toLowerCase()
+                .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'item';
+            // ONLY this array decides — a lazy scan would run past `menu: [`
+            // straight into `products: [`, and dishes would sprout urls.
+            const ownBlock = (body.match(new RegExp(`${menuArr}: \\[([\\s\\S]*?)\\n  \\],`)) || [])[1] || '';
+            const wantsSlug = /slug: '/.test(ownBlock);
+            const rowLine = `    { name: '${esc(name)}', desc: '${esc(desc)}', price: '${esc(price)}',${wantsSlug ? ` slug: '${esc(rowSlug)}',` : ''} img: ${img ? `{ src: '${esc(img.src)}', alt: '${esc(img.alt)}' }` : 'null'} },`;
             let next = body.replace(new RegExp(`(${menuArr}: \\[\\n[\\s\\S]*?)(\\n  \\],)`), (_m, a: string, b: string) => `${a}\n${rowLine}${b}`);
             for (const c of addCredits) {
                 if (c.source && !next.includes(esc(c.source))) {
@@ -556,6 +564,13 @@ export class ProjectEditTool extends BaseTool {
                     newLine = target.line.replace(/desc: '[^']*'/, `desc: '${esc(val)}'`);
                 } else {
                     newLine = target.line.replace(`name: '${target.name}'`, `name: '${esc(val)}'`);
+                    // The url follows the name: a renamed product keeps a
+                    // working page instead of a slug pointing at its old self.
+                    if (/slug: '/.test(newLine)) {
+                        const s2 = (String(val).toLowerCase()
+                            .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'item';
+                        newLine = newLine.replace(/slug: '[^']*'/, `slug: '${esc(s2)}'`);
+                    }
                 }
                 if (newLine !== target.line) {
                     const next = body.replace(target.line, newLine);
@@ -647,7 +662,7 @@ Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
             const { executionEngine } = require('../../../kernel/ExecutionEngine');
             buildVerified = (await executionEngine.runArgvStreaming('npm', ['run', 'build'], {
-                cwd: dir, timeout: 180_000, shell: process.platform === 'win32', env: { NO_COLOR: '1' },
+                cwd: dir, timeout: 180_000, env: { NO_COLOR: '1' },
             }).done).ok;
             if (!buildVerified) {
                 for (const t of touched) fs.writeFileSync(path.join(dir, t.file), t.before, 'utf-8');

@@ -236,7 +236,8 @@ describe('the offline scaffold ships clean rows and a conditional thumb', () => 
             expect(dish.ok).toBe(true);
             const after = contentOf();
             expect(after).toMatch(/\{ name: 'مشاوي مشكلة',[^\n]*?img: \{ src: 'images\//);
-            expect((after.match(/img: null/g) || []).length).toBe(9);  // 3 other dishes + 4 products + 2 testimonials untouched
+            // 3 other dishes + 4 products + 2 testimonials + the 3 team faces
+            expect((after.match(/img: null/g) || []).length).toBe(12);
             expect(((global as any).joeProjects['img-edit'].history || []).length).toBeGreaterThanOrEqual(2);
 
             // [3] archives empty → an HONEST refusal, nothing changed

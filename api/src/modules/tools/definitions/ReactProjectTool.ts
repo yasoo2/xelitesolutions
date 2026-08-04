@@ -63,6 +63,9 @@ interface ReactContent {
     steps: Array<{ title: string; text: string }>;
     /** The tier comparison matrix — built from `tiers`, never authored twice. */
     compareTitle: string;
+    /** The faces behind the work — real portraits through the avatar slot. */
+    teamTitle: string;
+    team: Array<{ name: string; role: string; photoSubject?: string; img?: { src: string; alt: string } | null }>;
     /** The location block. Renders ONLY from real business memory. */
     locationTitle: string;
     /** Kind-specific blocks — only the ones the kind's section list uses are rendered. */
@@ -221,12 +224,12 @@ export function heroLayoutFor(kind: PageKind, family: DesignFamily): 'overlay' |
 
 export function sectionsForKind(kind: PageKind): string[] {
     switch (kind) {
-        case 'restaurant': return ['Hero', 'Menu', 'Gallery', 'Story', 'Steps', 'Testimonials', 'Cta', 'Location', 'Contact'];
+        case 'restaurant': return ['Hero', 'Menu', 'Gallery', 'Story', 'Steps', 'Team', 'Testimonials', 'Cta', 'Location', 'Contact'];
         // Real product CARDS with photos and prices — a store sells things,
         // not subscription tiers. Pricing stays for app/dashboard kinds.
         case 'store': return ['Hero', 'Products', 'Gallery', 'Story', 'Steps', 'Testimonials', 'Cta', 'Faq', 'Location', 'Contact'];
-        case 'landing': return ['Hero', 'Features', 'Steps', 'Stats', 'Testimonials', 'Cta', 'Contact'];
-        case 'portfolio': return ['Hero', 'Features', 'Gallery', 'Story', 'Stats', 'Cta', 'Contact'];
+        case 'landing': return ['Hero', 'Features', 'Steps', 'Stats', 'Team', 'Testimonials', 'Cta', 'Contact'];
+        case 'portfolio': return ['Hero', 'Features', 'Gallery', 'Story', 'Team', 'Stats', 'Cta', 'Contact'];
         case 'dashboard':
         case 'app': return ['Hero', 'Features', 'Steps', 'Pricing', 'Compare', 'Cta', 'Faq', 'Contact'];
         case 'event': return ['Hero', 'Steps', 'Stats', 'Cta', 'Faq', 'Contact'];
@@ -292,6 +295,12 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
                     { title: 'اربط بياناتك', text: 'استورد ما لديك وابدأ من حيث توقفت.' },
                     { title: 'انطلق', text: 'تابع النتائج من لوحة واحدة واضحة.' }],
         compareTitle: 'مقارنة الباقات',
+        teamTitle: restaurant ? 'من يقف خلف المطبخ' : 'الفريق',
+        team: [
+            { name: 'ليان القحطاني', role: restaurant ? 'رئيسة الطهاة' : 'المؤسِّسة', photoSubject: 'professional woman portrait smiling' },
+            { name: 'فهد الدوسري', role: restaurant ? 'مدير الصالة' : 'قائد المنتج', photoSubject: 'professional man portrait' },
+            { name: 'ريم العنزي', role: restaurant ? 'مسؤولة الضيافة' : 'مسؤولة تجربة العملاء', photoSubject: 'young professional woman portrait' },
+        ],
         locationTitle: restaurant ? 'موقعنا وأوقات العمل' : 'أين تجدنا',
         menuTitle: 'قائمة الطعام',
         menu: [
@@ -376,6 +385,12 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
                     { title: 'Bring your data', text: 'Import what you have and pick up where you left off.' },
                     { title: 'Go', text: 'Follow the results from one clear dashboard.' }],
         compareTitle: 'Compare the plans',
+        teamTitle: restaurant ? 'Behind the kitchen' : 'The team',
+        team: [
+            { name: 'Layan Q.', role: restaurant ? 'Head chef' : 'Founder', photoSubject: 'professional woman portrait smiling' },
+            { name: 'Fahad D.', role: restaurant ? 'Floor manager' : 'Product lead', photoSubject: 'professional man portrait' },
+            { name: 'Reem A.', role: restaurant ? 'Host' : 'Customer experience', photoSubject: 'young professional woman portrait' },
+        ],
         locationTitle: restaurant ? 'Find us & opening hours' : 'Where to find us',
         menuTitle: 'The menu',
         menu: [
@@ -518,6 +533,7 @@ function fileMultiPageAppJsx(pages: AppPage[], isAr: boolean): string {
     return `import React from 'react';
 import Navbar from './components/Navbar.jsx';
 import Footer from './components/Footer.jsx';
+import ProductView from './components/ProductView.jsx';
 ${comps.map(c => `import ${c} from './components/${c}.jsx';`).join('\n')}
 import { usePath } from './router.jsx';
 import { content } from './content.js';
@@ -533,9 +549,10 @@ export default function App() {
   const page = pages.find((p) => p.path === path);
   return (
     <>
+      <ProductView content={content} />
       <Navbar content={content} pages={pages} />
       <main>
-        {page ? page.render(content) : (
+        {path.startsWith('/product/') ? null : page ? page.render(content) : (
           <section className="section"><div className="wrap">
             <h1>404</h1>
             <p>${isAr ? 'هذه الصفحة غير موجودة — عد إلى الرئيسية من القائمة.' : 'This page does not exist — head back home from the menu.'}</p>
@@ -582,16 +599,17 @@ export default function Navbar({ content, pages }) {
 /** App.jsx assembled from the KIND's section list — only what is used is imported. */
 function fileAppJsx(sections: string[]): string {
     const comps = ['Navbar', ...sections, 'Footer'];
+    const shop = sections.includes('Products');
     return `import React from 'react';
 ${comps.map(c => `import ${c} from './components/${c}.jsx';`).join('\n')}
-import { content } from './content.js';
+${shop ? "import ProductView from './components/ProductView.jsx';\n" : ''}import { content } from './content.js';
 import { useReveal } from './reveal.js';
 
 export default function App() {
   useReveal();
   return (
     <>
-      <Navbar content={content} />
+${shop ? '      <ProductView content={content} />\n' : ''}      <Navbar content={content} />
       <main>
 ${sections.map(c => `        <${c} content={content} />`).join('\n')}
       </main>
@@ -632,10 +650,17 @@ ${c.features.map(f => `    { title: '${js(f.title)}', text: '${js(f.text)}' },`)
 ${c.steps.map(t => `    { title: '${js(t.title)}', text: '${js(t.text)}' },`).join('\n')}
   ],
   compareTitle: '${js(c.compareTitle)}',
+  teamTitle: '${js(c.teamTitle)}',
+  team: [
+${c.team.map(t => `    { name: '${js(t.name)}', role: '${js(t.role)}', img: ${t.img ? `{ src: '${js(t.img.src)}', alt: '${js(t.img.alt)}' }` : 'null'} },`).join('\n')}
+  ],
   locationTitle: '${js(c.locationTitle)}',
   gallery: [
 ${c.gallery.map(g => `    { src: '${js(g.src)}', alt: '${js(g.alt)}' },`).join('\n')}
   ],
+  // '' on a single page, '/' when the hash router owns the address bar —
+  // the product URLs follow whichever this build uses.
+  routeBase: '${js((c as any).routeBase || '')}',
   // The navigation is built from the sections this app ACTUALLY has — a
   // restaurant's menu used to link to a #features anchor that never existed.
   navLinks: [
@@ -647,7 +672,7 @@ ${c.menu.map(m => `    { name: '${js(m.name)}', desc: '${js(m.desc)}', price: '$
   ],
   productsTitle: '${js(c.productsTitle)}',
   products: [
-${c.products.map(p => `    { name: '${js(p.name)}', desc: '${js(p.desc)}', price: '${js(p.price)}', img: ${p.img ? `{ src: '${js(p.img.src)}', alt: '${js(p.img.alt)}' }` : 'null'} },`).join('\n')}
+${c.products.map(p => `    { name: '${js(p.name)}', desc: '${js(p.desc)}', price: '${js(p.price)}', slug: '${js(slug(p.name))}', img: ${p.img ? `{ src: '${js(p.img.src)}', alt: '${js(p.img.alt)}' }` : 'null'} },`).join('\n')}
   ],
   pricingTitle: '${js(c.pricingTitle)}',
   tiers: [
@@ -960,10 +985,16 @@ export default function Products({ content }) {
     fetch(content.api).then((r) => r.json()).then((d) => {
       const fetched = d.products || d.dishes || d.items;
       if (!Array.isArray(fetched) || !fetched.length) return;
-      setRows(fetched.map((f) => ({
-        name: f.name, desc: f.details || '', price: f.price || '',
-        img: (content.products.find((p) => p.name === f.name) || {}).img || null,
-      })));
+      setRows(fetched.map((f) => {
+        const baked = content.products.find((p) => p.name === f.name) || {};
+        return {
+          name: f.name, desc: f.details || '', price: f.price || '',
+          // A live row still needs a URL of its own; the baked slug when the
+          // names match, a derived one otherwise.
+          slug: baked.slug || String(f.name).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, ''),
+          img: baked.img || null,
+        };
+      }));
       setLive(true);
     }).catch(() => { /* offline or published — the baked rows stand */ });
   }, []);
@@ -977,7 +1008,7 @@ export default function Products({ content }) {
               {p.img ? (
                 <img className="product-photo" src={p.img.src} alt={p.img.alt} loading="lazy" decoding="async" />
               ) : null}
-              <h3>{p.name}</h3>
+              <h3><a className="product-link" href={'#' + (content.routeBase || '') + 'product/' + p.slug}>{p.name}</a></h3>
               <p>{p.desc}</p>
               <div className="product-foot">
                 <strong className="product-price">{p.price}</strong>
@@ -1100,6 +1131,66 @@ export default function Testimonials({ content }) {
         </div>
       </div>
     </section>
+  );
+}
+`;
+}
+
+/**
+ * A REAL product page at its own URL — «#product/<slug>». Shareable, the
+ * back button works, a reload lands on the same product, and it carries the
+ * live order button. It is a view, not a modal pretending to be one: the
+ * page beneath is inert while it is open, and Escape closes it.
+ */
+function fileProductViewJsx(): string {
+    return `import React, { useEffect, useState } from 'react';
+import OrderButton from './OrderButton.jsx';
+
+// Both shapes are real: «#product/x» on a single-page app, «#/product/x»
+// when the hash router owns the address bar.
+const slugFromHash = () => {
+  const m = String(window.location.hash || '').match(/^#\\/?product\\/(.+)$/);
+  return m ? decodeURIComponent(m[1]) : '';
+};
+
+export default function ProductView({ content }) {
+  const [slug, setSlug] = useState(slugFromHash);
+  useEffect(() => {
+    const onHash = () => setSlug(slugFromHash());
+    const onKey = (e) => { if (e.key === 'Escape' && slugFromHash()) window.history.back(); };
+    window.addEventListener('hashchange', onHash);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('hashchange', onHash); window.removeEventListener('keydown', onKey); };
+  }, []);
+  // The page under it must not scroll while the product view is open.
+  useEffect(() => {
+    document.body.style.overflow = slug ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [slug]);
+  if (!slug) return null;
+  const p = (content.products || []).find((x) => x.slug === slug);
+  const ar = content.isArabic !== false;
+  return (
+    <div className="product-view" role="dialog" aria-modal="true" aria-label={p ? p.name : ''}>
+      <div className="wrap">
+        <a className="btn btn-ghost product-back" href={(content.routeBase || '') === '/' ? '#/products' : '#products'}>← {ar ? 'رجوع للمنتجات' : 'Back to products'}</a>
+        {!p ? (
+          <p className="lede">{ar ? 'لم نجد هذا المنتج.' : 'That product does not exist.'}</p>
+        ) : (
+          <div className="product-view-grid">
+            {p.img ? <img className="product-view-photo" src={p.img.src} alt={p.img.alt} /> : null}
+            <div>
+              <h1>{p.name}</h1>
+              <p className="lede">{p.desc}</p>
+              <p className="product-price product-view-price">{p.price}</p>
+              {content.ordersApi
+                ? <OrderButton item={p.name} content={content} />
+                : <a className="btn" href="#contact">{content.cta}</a>}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 `;
@@ -1231,6 +1322,36 @@ export default function Location({ content }) {
               {c.wa ? <a className="btn btn-ghost" href={c.wa} target="_blank" rel="noopener noreferrer">{ar ? 'واتساب' : 'WhatsApp'}</a> : null}
             </div>
           </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+`;
+}
+
+/** The faces behind the work — portraits when the archives answered, clean
+ *  monogram circles when they did not. Never a broken avatar. */
+function fileTeamJsx(): string {
+    return `import React from 'react';
+
+export default function Team({ content }) {
+  return (
+    <section className="section" id="team">
+      <div className="wrap">
+        <h2>{content.teamTitle}</h2>
+        <div className="grid-3">
+          {content.team.map((m) => (
+            <figure className="card person" key={m.name}>
+              {m.img
+                ? <img className="person-photo" src={m.img.src} alt={m.img.alt} loading="lazy" decoding="async" />
+                : <span className="person-monogram" aria-hidden="true">{String(m.name || '?').trim().charAt(0)}</span>}
+              <figcaption>
+                <strong>{m.name}</strong>
+                <span>{m.role}</span>
+              </figcaption>
+            </figure>
+          ))}
         </div>
       </div>
     </section>
@@ -1390,7 +1511,7 @@ function fileBaseCss(family: DesignFamily): string {
    4.43:1 there — a hair under AA. Pulling the brand toward the text colour
    darkens it on light themes and lightens it on dark ones, so it clears 4.5
    in both without ever leaving the palette. */
-:root{--price:color-mix(in srgb,var(--brand) 78%,var(--text))}
+:root{--price:color-mix(in srgb,var(--brand) 78%,var(--text));--accent:var(--brand-dark)}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--f-font);line-height:1.7}
 h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .wrap{width:min(100% - 2rem,1180px);margin-inline:auto}
@@ -1552,6 +1673,22 @@ main > .section:nth-of-type(even):not(.band):not(.stats-band):not(.cta-band){bac
 .location-address{font-size:1.15rem;font-weight:700;margin:0 0 6px}
 .location-hours{margin:0 0 6px;color:var(--text-muted)}
 .location-grid a{color:inherit}
+.product-link{color:inherit;text-decoration:none}
+.product-link:hover{color:var(--brand);text-decoration:underline}
+.product-view{position:fixed;inset:0;z-index:50;overflow:auto;background:var(--bg);padding-block:clamp(24px,5vw,60px);animation:productIn .25s ease}
+@keyframes productIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.product-view{animation:none}}
+.product-back{margin-bottom:22px}
+.product-view-grid{display:grid;gap:clamp(20px,4vw,46px);grid-template-columns:1fr;align-items:start}
+@media(min-width:900px){.product-view-grid{grid-template-columns:1.1fr 1fr}}
+.product-view-photo{width:100%;border-radius:var(--f-radius);box-shadow:var(--f-photo-shadow);object-fit:cover;aspect-ratio:4/3}
+.product-view h1{font-size:clamp(1.8rem,4vw,2.8rem);margin:0 0 10px}
+.product-view-price{font-size:1.6rem;margin:0 0 16px}
+.person{align-items:center;text-align:center;display:flex;flex-direction:column;gap:12px}
+.person-photo{width:96px;height:96px;border-radius:50%;object-fit:cover}
+.person-monogram{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;font-size:2.2rem;font-weight:800;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+.person figcaption{display:grid;gap:2px}
+.person figcaption span{color:var(--text-muted)}
 
 /* The family layer rides LAST on purpose. It used to sit at the top, where
    every rule it wrote below :root — the elegant flat band, the bold diagonal,
@@ -1657,16 +1794,17 @@ export class ReactProjectTool extends BaseTool {
         // navigation is built LATER, once it is known which sections will
         // actually render (see buildNavLinks below).
         content.heroLayout = heroLayoutFor(kind, family);
+        (content as any).routeBase = multiPage ? '/' : '';
         const SECTION_ANCHOR: Record<string, string> = {
             Features: 'features', Menu: 'menu', Products: 'products', Gallery: 'gallery', Story: 'story',
-            Steps: 'steps', Pricing: 'pricing', Compare: 'compare', Testimonials: 'testimonials',
+            Steps: 'steps', Pricing: 'pricing', Compare: 'compare', Team: 'team', Testimonials: 'testimonials',
             Faq: 'faq', Stats: 'stats', Location: 'location', Contact: 'contact',
         };
         const SECTION_LABEL: Record<string, [string, string]> = {
             Features: ['المميزات', 'Features'], Menu: ['القائمة', 'Menu'], Products: ['المنتجات', 'Products'],
             Gallery: ['المعرض', 'Gallery'], Story: [content.storyTitle, content.storyTitle],
             Steps: [content.stepsTitle, content.stepsTitle], Pricing: ['الأسعار', 'Pricing'],
-            Compare: ['المقارنة', 'Compare'], Testimonials: ['آراء العملاء', 'Reviews'],
+            Compare: ['المقارنة', 'Compare'], Team: [content.teamTitle, content.teamTitle], Testimonials: ['آراء العملاء', 'Reviews'],
             Faq: ['أسئلة شائعة', 'FAQ'], Stats: ['بالأرقام', 'Numbers'],
             Location: ['الموقع', 'Find us'], Contact: [content.contactTitle, content.contactTitle],
         };
@@ -1786,6 +1924,20 @@ export class ReactProjectTool extends BaseTool {
                 term(`gallery photos: ${shots.note}`);
             }
 
+            // The team's faces — the same avatar slot, a clean monogram when
+            // the archives had nobody.
+            if (sections.includes('Team') && content.team.length) {
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '👥 أجلب صور الفريق…' : '👥 Finding team portraits…');
+                const faces = await fetchCardImages({
+                    subjects: content.team.map(m => m.photoSubject || 'professional headshot portrait'),
+                    projDir: proj, hue: (palette as any).hue ?? 260, artifactDir: ARTIFACT_DIR,
+                    slot: 'avatar', label: 'team portrait',
+                });
+                content.team.forEach((m, i) => { m.img = faces.images[i] || null; });
+                content.credits = mergeCredits(content.credits, faces.credits);
+                term(`team portraits: ${faces.note}`);
+            }
+
             // Faces for the testimonials — the engine's avatar slot, whose
             // sizing and grounding were built for exactly this position.
             if (sections.includes('Testimonials') && content.testimonials.length) {
@@ -1808,7 +1960,7 @@ export class ReactProjectTool extends BaseTool {
         const componentTemplates: Record<string, () => string> = {
             Navbar: fileNavbarJsx, Hero: fileHeroJsx, Features: fileFeaturesJsx,
             Menu: fileMenuJsx, Products: fileProductsJsx, Gallery: fileGalleryJsx, Story: fileStoryJsx, Steps: fileStepsJsx,
-            Pricing: filePricingJsx, Compare: fileCompareJsx, Testimonials: fileTestimonialsJsx, Location: fileLocationJsx,
+            Pricing: filePricingJsx, Compare: fileCompareJsx, Team: fileTeamJsx, Testimonials: fileTestimonialsJsx, Location: fileLocationJsx,
             Faq: fileFaqJsx, Stats: fileStatsJsx, Cta: fileCtaJsx, Contact: fileContactJsx, Footer: fileFooterJsx,
         };
         const files: Record<string, string> = {
@@ -1841,8 +1993,13 @@ export class ReactProjectTool extends BaseTool {
         // Menu/Products import OrderButton statically — ship it with them.
         // An unlinked app never renders it (ordersApi is ''), and the
         // bundler keeps the build green either way.
-        if (sections.includes('Menu') || sections.includes('Products')) {
+        if (sections.includes('Menu') || sections.includes('Products') || multiPage) {
             files['src/components/OrderButton.jsx'] = fileOrderButtonJsx();
+        }
+        // A shop ships REAL product pages — one URL per product, mounted
+        // above everything so «#product/<slug>» works from a cold reload.
+        if (sections.includes('Products') || multiPage) {
+            files['src/components/ProductView.jsx'] = fileProductViewJsx();
         }
         // The multi-page app swaps in a Navbar of real page Links.
         if (multiPage) files['src/components/Navbar.jsx'] = fileMultiPageNavbarJsx();
@@ -1895,7 +2052,7 @@ export class ReactProjectTool extends BaseTool {
             const { executionEngine } = require('../../../kernel/ExecutionEngine');
             const run = async (cmd: string, args: string[], timeoutMs: number): Promise<number> => {
                 const h = executionEngine.runArgvStreaming(cmd, args, {
-                    cwd: proj, timeout: timeoutMs, shell: process.platform === 'win32',
+                    cwd: proj, timeout: timeoutMs,
                     env: { NO_COLOR: '1' },
                     onLine: (l: string) => term(`  ${l.slice(0, 200)}`),
                 });

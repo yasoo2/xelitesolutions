@@ -445,7 +445,7 @@ export class ApiProjectTool extends BaseTool {
             const { executionEngine } = require('../../../kernel/ExecutionEngine');
             const inst = await (async () => {
                 const h = executionEngine.runArgvStreaming('npm', ['install', '--no-audit', '--no-fund'], {
-                    cwd: proj, timeout: 240_000, shell: process.platform === 'win32', env: { NO_COLOR: '1' },
+                    cwd: proj, timeout: 240_000, env: { NO_COLOR: '1' },
                     onLine: (l: string) => term(`  ${l.slice(0, 200)}`),
                 });
                 const r = await h.done;

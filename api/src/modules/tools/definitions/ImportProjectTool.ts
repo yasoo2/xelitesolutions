@@ -85,7 +85,7 @@ export class ImportProjectTool extends BaseTool {
             const { executionEngine } = require('../../../kernel/ExecutionEngine');
             const code = await (async () => {
                 const h = executionEngine.runArgvStreaming('git', ['clone', '--depth', '1', url, dir], {
-                    timeout: 180_000, shell: process.platform === 'win32',
+                    timeout: 180_000,
                     onLine: (l: string) => term(`  ${l.slice(0, 160)}`),
                 });
                 const r = await h.done;
