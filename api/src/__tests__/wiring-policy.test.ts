@@ -755,6 +755,23 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
             .toContain("getWorkspaceRoot(input?.workspaceId || context?.workspaceId)");
     });
 
+    it('every frame of a run belongs to the person who started it', () => {
+        // Measured end to end with two signed-in users (verify_user_journey_browser.ts):
+        // the echo of the sentence the user TYPED, run_started, the thinking
+        // narration, step_started, tool_started, tool_done and department_status
+        // all resolved to «nobody» — and an event that belongs to nobody is
+        // delivered to everybody.
+        const ws = SRC('api', 'ws.ts');
+        // the owner is looked for everywhere an event names its run or session
+        expect(ws).toMatch(/const candidates = \[/);
+        expect(ws).toContain("trimId((ev as any)?.data?.runId)");
+        // …and the session is claimed at the door, before the first frame
+        expect(SRC('api', 'routes', 'run.ts')).toContain('registerSessionOwner(sessionId');
+        const toolSvc = SRC('modules', 'services', 'ToolService.ts');
+        expect(toolSvc).toContain("data: { tool: effectiveName, input: effectiveInput, sessionId: contextSessionId }");
+        expect(toolSvc).toContain("data: { tool: effectiveName, ok, sessionId: contextSessionId }");
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([

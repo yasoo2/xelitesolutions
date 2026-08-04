@@ -206,6 +206,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         }
     } catch { /* non-fatal */ }
 
+    // OWNERSHIP AT THE DOOR. The very first frames of a run — the echo of what
+    // the user typed, and the run_started the panels wait for — used to be
+    // emitted before anyone had claimed the session, so they resolved to
+    // «nobody» and were delivered to EVERY connected client: another signed-in
+    // user read the sentence you typed. Claim it here, before the first frame.
+    try {
+        const { registerSessionOwner } = require('../ws');
+        if (userId && userId !== 'anonymous') registerSessionOwner(sessionId, String(userId));
+    } catch { /* the wire is optional in tests */ }
+
     // Echo the user's message to the chat via WebSocket so it shows in the
     // conversation. The composer that posts here does not add it client-side, so
     // without this only Joe's reply would appear.

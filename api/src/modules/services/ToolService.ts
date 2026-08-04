@@ -668,7 +668,10 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             broadcast({
                 type: 'tool_started',
                 id: 'panel-terminal',
-                data: { tool: effectiveName, input: effectiveInput }
+                // Without the session this event belongs to nobody, and an event
+                // that belongs to nobody is delivered to everybody.
+                sessionId: contextSessionId,
+                data: { tool: effectiveName, input: effectiveInput, sessionId: contextSessionId }
             });
 
             const run = async () => {
@@ -740,7 +743,8 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             broadcast({
                 type: 'tool_done',
                 id: 'panel-terminal',
-                data: { tool: effectiveName, ok }
+                sessionId: contextSessionId,
+                data: { tool: effectiveName, ok, sessionId: contextSessionId }
             });
 
             return { ok, output, logs, artifacts, error };

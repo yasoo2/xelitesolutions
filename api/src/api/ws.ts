@@ -97,13 +97,21 @@ function resolveEventUserId(ev: LiveEvent) {
     return owner?.userId || '';
   }
 
-  const rid = trimId(ev.runId);
-  const runEntry = rid ? runOwnerByRunId.get(rid) : undefined;
-  if (runEntry?.userId) return runEntry.userId;
-
-  const sid = trimId((ev as any)?.data?.sessionId);
-  const sessionEntry = sid ? sessionOwnerBySessionId.get(sid) : undefined;
-  if (sessionEntry?.userId) return sessionEntry.userId;
+  // An event names its run or its session in one of several places, and Joe
+  // uses the run id AS a session id in others. Checking only `runId` and
+  // `data.sessionId` left step_started, tool_started, tool_done and
+  // department_status resolving to «nobody» — which means EVERY connected
+  // client, so a second signed-in user watched someone else's tools run.
+  const candidates = [
+    trimId(ev.runId),
+    trimId((ev as any)?.sessionId),
+    trimId((ev as any)?.data?.runId),
+    trimId((ev as any)?.data?.sessionId),
+  ].filter(Boolean);
+  for (const key of candidates) {
+    const owner = runOwnerByRunId.get(key)?.userId || sessionOwnerBySessionId.get(key)?.userId;
+    if (owner) return owner;
+  }
 
   if (t.startsWith('admin:')) return 'SUPER_ADMIN_ROLE';
   return '';
