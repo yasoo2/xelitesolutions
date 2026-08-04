@@ -20,6 +20,7 @@
 import fs from 'fs';
 import http from 'http';
 import path from 'path';
+import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 
 export interface AppAuditFinding {
     id: string;
@@ -61,7 +62,7 @@ export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number
 
     let browser: any = null;
     try {
-        browser = await chromium.launch({ args: ['--no-sandbox'] });
+        browser = await chromium.launch(getChromiumLaunchOptions());
         const page = await browser.newPage();
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];

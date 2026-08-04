@@ -508,10 +508,8 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
 
     let browser: any;
     try {
-        browser = await chromium.launch({
-            args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-            ...(process.env.BROWSER_EXECUTABLE_PATH ? { executablePath: process.env.BROWSER_EXECUTABLE_PATH } : {}),
-        });
+        const { getChromiumLaunchOptions } = require('../../modules/browser/manager');
+        browser = await chromium.launch(getChromiumLaunchOptions());
     } catch (e: any) {
         return { ...empty, skipped: `browser launch failed: ${e?.message || e}` };
     }

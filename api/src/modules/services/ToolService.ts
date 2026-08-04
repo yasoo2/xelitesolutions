@@ -711,6 +711,13 @@ export async function executeTool(name: string, input: any, context?: ToolContex
              */
             if (!(res as any)?.logsStreamedLive) {
                 // ONE message per line, addressed to every tab that wants it.
+                // Ownership is established where the work starts — the only place
+                // that knows both the session and the user. Without it every
+                // build log resolved to «nobody» and was broadcast to ALL.
+                try {
+                    const { registerSessionOwner } = require('../../api/ws');
+                    if (contextSessionId && effectiveContext?.userId) registerSessionOwner(contextSessionId, effectiveContext.userId);
+                } catch { /* ws optional in unit tests */ }
                 toolLogs.forEach((line: string) => broadcastTerminalLine(contextSessionId, paintLine(line) + '\r\n'));
             }
 

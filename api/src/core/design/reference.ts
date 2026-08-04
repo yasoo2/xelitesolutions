@@ -18,6 +18,7 @@
 
 import { Palette, paletteForHue, contrastRatio } from './design-system';
 import { normalizeIntentText } from '../orchestrator/promptNormalizer';
+import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 
 export interface ReferenceTokens {
     url: string;
@@ -211,10 +212,7 @@ export async function extractReference(url: string, timeoutMs = 25000): Promise<
 
     let browser: any;
     try {
-        browser = await chromium.launch({
-            args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-            ...(process.env.BROWSER_EXECUTABLE_PATH ? { executablePath: process.env.BROWSER_EXECUTABLE_PATH } : {}),
-        });
+        browser = await chromium.launch(getChromiumLaunchOptions());
     } catch (e: any) {
         return { ok: false, reason: `browser launch failed: ${e?.message || e}` };
     }

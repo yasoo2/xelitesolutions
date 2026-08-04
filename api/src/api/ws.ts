@@ -57,20 +57,44 @@ export function registerSessionOwner(sessionId: string, userId: string) {
   pruneOwners(sessionOwnerBySessionId);
 }
 
+/**
+ * FIRST OWNER WINS. This used to overwrite, and overwriting IS the hijack:
+ * a second signed-in user sends one `terminal_input` carrying someone else's
+ * terminal id, becomes its owner, and from that moment reads the output of a
+ * live shell on the owner's machine. Measured, before this line existed, in
+ * verify_browser_terminal_wiring.ts.
+ */
 export function registerTerminalOwner(terminalId: string, userId: string) {
   const tid = trimId(terminalId);
   const uid = trimId(userId);
   if (!tid || !uid) return;
+  const existing = terminalOwnerById.get(tid);
+  if (existing && existing.userId !== uid) return;      // never changes hands
   terminalOwnerById.set(tid, { userId: uid, at: Date.now() });
   pruneOwners(terminalOwnerById);
+}
+
+/** Who owns this terminal, if anyone. */
+export function terminalOwnerOf(terminalId: string): string {
+  return terminalOwnerById.get(trimId(terminalId))?.userId || '';
 }
 
 function resolveEventUserId(ev: LiveEvent) {
   const t = trimId(ev.type);
   if (t === 'terminal_output') {
-    const tid = trimId((ev as any).id);
-    const entry = tid ? terminalOwnerById.get(tid) : undefined;
-    return entry?.userId || '';
+    // A terminal line is addressed by its own id, by any of the tab ids it was
+    // fanned out to, or — for the shared «panel-terminal» stream that carries a
+    // build's logs — by the session it belongs to. Before this, that stream
+    // resolved to nobody and went to EVERY connected client: one user's build
+    // logs on another user's screen.
+    const ids = [trimId((ev as any).id), ...(Array.isArray((ev as any).ids) ? (ev as any).ids.map(trimId) : [])];
+    for (const tid of ids) {
+      const entry = tid ? terminalOwnerById.get(tid) : undefined;
+      if (entry?.userId) return entry.userId;
+    }
+    const sid = trimId((ev as any).sessionId || (ev as any)?.data?.sessionId);
+    const owner = sid ? sessionOwnerBySessionId.get(sid) : undefined;
+    return owner?.userId || '';
   }
 
   const rid = trimId(ev.runId);
@@ -171,6 +195,13 @@ export function attachWebSocket(server: Server) {
           const { id, data, serverId } = msg;
           const ts = Date.now();
           console.log(`[websocket.forward.received] sessionId=${id} ts=${ts} type=terminal_input`);
+          // Writing into a terminal that belongs to someone else runs commands
+          // in THEIR shell. Refused, not merely unreported.
+          const owner = terminalOwnerOf(id);
+          if (owner && userId && owner !== userId) {
+            console.warn(`[WS] refused terminal_input on ${id}: owned by another user`);
+            return;
+          }
           if (userId) registerTerminalOwner(id, userId);
           Promise.resolve(require('../modules/terminal/terminal-kernel')).then(({ terminalKernel }) => {
             console.log(`[websocket.forward.sent] sessionId=${id} ts=${Date.now()} target=kernel`);
@@ -179,6 +210,8 @@ export function attachWebSocket(server: Server) {
         }
         if (msg.type === 'terminal_resize') {
           const { id, cols, rows, serverId } = msg;
+          const rowner = terminalOwnerOf(id);
+          if (rowner && userId && rowner !== userId) return;
           if (userId) registerTerminalOwner(id, userId);
           Promise.resolve(require('../modules/terminal/terminal-kernel')).then(({ terminalKernel }) => {
             terminalKernel.resizeTerminal(id, cols, rows, serverId);
@@ -308,6 +341,13 @@ export function broadcast(
   // Fix: Ensure "undefined" string is treated as empty
   let targetUserId = authBypass ? '' : resolveEventUserId(normalized);
   if (targetUserId === 'undefined') targetUserId = '';
+  // An unaddressed event reaches everyone — acceptable for status chatter, never
+  // for a shell. A terminal line whose owner cannot be resolved is dropped
+  // rather than shown to whoever happens to be connected.
+  if (!authBypass && !targetUserId && normalized.type === 'terminal_output') {
+    console.warn(`[WS] dropped terminal_output with no resolvable owner (id=${(normalized as any).id})`);
+    return;
+  }
 
   console.log(`[WS] Broadcast type=${normalized.type} target=${targetUserId || 'ALL'} clients=${liveWssRef.clients.size}`);
   
@@ -392,7 +432,9 @@ export function observeBroadcasts(fn: (event: any) => void): () => void {
  */
 export function broadcastTerminalLine(sessionId: string | undefined, line: string): void {
     const ids = [String(sessionId || ''), 'local', 'default', 'panel-terminal'].filter(Boolean);
-    broadcast({ type: 'terminal_output', id: 'panel-terminal', ids, data: line } as any);
+    // `sessionId` rides along so the delivery filter can find the owner: the
+    // id is the shared panel stream, which belongs to nobody by itself.
+    broadcast({ type: 'terminal_output', id: 'panel-terminal', ids, sessionId, data: line } as any);
 }
 
 export function broadcastThinkingPhase(sessionId: string, phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle', detail?: string) {

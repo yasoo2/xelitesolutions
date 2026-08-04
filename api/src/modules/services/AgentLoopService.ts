@@ -1,6 +1,6 @@
 import { Run } from '../../shared/models/run';
 import { AgentOrchestrator } from '../../orchestration/AgentOrchestrator';
-import { broadcastThinkingDetail, broadcast } from '../../api/ws';
+import { broadcastThinkingDetail, broadcast, registerRunOwner, registerSessionOwner } from '../../api/ws';
 // [ARCHITECTURE] Required connections for self-healing pipeline (AGENTS.md)
 import { RepairTicketService, type RepairTicket } from './RepairTicketService';
 import { SelfFixService } from './SelfFixService';
@@ -155,6 +155,14 @@ export class AgentLoopService {
         } catch (e) {
             console.warn('[AgentLoopService] DB Persistence unavailable, using memory runId');
         }
+
+        // WHOSE RUN IS THIS? Both owner registries existed and neither was ever
+        // called, so every event this run emits — Joe's replies included —
+        // resolved to «nobody» and was delivered to EVERY connected client.
+        // Measured with two signed-in users in verify_browser_terminal_wiring.ts.
+        try {
+            if (userId) { registerRunOwner(runId, String(userId)); registerSessionOwner(sessionId, String(userId)); }
+        } catch { /* the wire is optional in tests */ }
 
         const orchestrator = new AgentOrchestrator();
 

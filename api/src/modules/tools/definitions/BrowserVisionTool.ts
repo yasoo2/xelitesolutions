@@ -3,6 +3,7 @@ import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import { chromium } from 'playwright';
 import path from 'path';
+import { getChromiumLaunchOptions } from '../../../modules/browser/manager';
 
 export class BrowserVisionTool extends BaseTool {
     name = 'browser_vision';
@@ -39,7 +40,7 @@ export class BrowserVisionTool extends BaseTool {
 
         let browser: any;
         try {
-            browser = await chromium.launch({ headless: true });
+            browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });
         } catch (e: any) {
             return {
                 ok: false,

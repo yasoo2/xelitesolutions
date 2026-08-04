@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 import { broadcast } from '../../../api/ws';
+import { getChromiumLaunchOptions } from '../../../modules/browser/manager';
 
 /**
  * ScreenshotTool - Captures screenshots of web pages for visual verification
@@ -86,10 +87,13 @@ export class ScreenshotTool extends BaseTool {
         let browser = null;
         try {
             logs.push(`Launching browser...`);
-            browser = await chromium.launch({
-                headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
-            });
+// One launcher for the whole product. These call sites each had their own
+// options, so a machine where Playwright's bundled build is missing (or
+// where BROWSER_CHANNEL/CHROMIUM_PATH points elsewhere) got a working
+// browser panel and a screenshot that died with «Executable doesn't exist».
+// getChromiumLaunchOptions resolves the executable and carries the
+// headless/sandbox settings the rest of Joe already honours.
+            browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });
 
             const context = await browser.newContext({
                 viewport: { width, height }

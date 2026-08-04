@@ -681,6 +681,42 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(SRC('modules', 'services', 'AgentLoopService.ts')).toContain('composeFailure(');
     });
 
+    it('a terminal never changes hands, and its output never sprays', () => {
+        // Measured with two signed-in users (verify_browser_terminal_wiring.ts):
+        // user B sent one `terminal_input` carrying A's terminal id, the owner
+        // map OVERWROTE, B's command ran in A's live shell and A's output began
+        // arriving on B's socket.
+        const ws = SRC('api', 'ws.ts');
+        expect(ws).toContain('if (existing && existing.userId !== uid) return;');
+        expect(ws).toContain('refused terminal_input on');
+        // an unowned shell line must be dropped, not shown to whoever is connected
+        expect(ws).toMatch(/dropped terminal_output with no resolvable owner/);
+        // the two owner registries that existed and were NEVER called
+        expect(SRC('modules', 'services', 'AgentLoopService.ts')).toContain('registerRunOwner(runId');
+        expect(SRC('modules', 'services', 'AgentLoopService.ts')).toContain('registerSessionOwner(sessionId');
+        expect(SRC('modules', 'services', 'ToolService.ts')).toContain('registerSessionOwner(contextSessionId');
+        // the panel's create call carries no userId — it must come from the context
+        expect(SRC('modules', 'tools', 'definitions', 'TaskInteractionTools.ts'))
+            .toContain("String(input?.userId || context?.userId || '').trim()");
+    });
+
+    it('one product, one browser launcher', () => {
+        // Each of these had its own launch options, so a machine without the
+        // bundled Chromium got a working browser panel and a screenshot tool
+        // that died with «Executable doesn't exist».
+        for (const f of [
+            ['modules', 'tools', 'definitions', 'ScreenshotTool.ts'],
+            ['modules', 'tools', 'definitions', 'BrowserVisionTool.ts'],
+            ['core', 'quality', 'app-audit.ts'],
+            ['core', 'quality', 'visual-audit.ts'],
+            ['core', 'quality', 'behaviour-audit.ts'],
+            ['core', 'design', 'reference.ts'],
+        ]) {
+            expect({ file: f.join('/'), uses: /getChromiumLaunchOptions/.test(SRC(...(f as [string]))) })
+                .toEqual({ file: f.join('/'), uses: true });
+        }
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([

@@ -68,7 +68,7 @@ export class TerminalManagerTool extends BaseTool {
     permissions: ToolPermission[] = ['execute'];
     sideEffects: ToolPermission[] = ['execute'];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const action = input.action;
         const id = input.id || 'default';
         const workDir = getWorkspaceRoot();
@@ -79,7 +79,11 @@ export class TerminalManagerTool extends BaseTool {
                     shell: input.shell,
                     cols: input.cols,
                     rows: input.rows,
-                    userId: typeof input?.userId === 'string' ? String(input.userId).trim() : ''
+                    // The panel's create call carries no userId — the route puts
+                    // the signed-in user in the CONTEXT. Reading only the body
+                    // meant a terminal was born with no owner, and an unowned
+                    // terminal's output went to every connected client.
+                    userId: String(input?.userId || context?.userId || '').trim()
                 });
 
                 if (result.existing) {
