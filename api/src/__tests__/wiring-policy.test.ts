@@ -927,6 +927,27 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
             .toContain('PlanningEngine.fillRequiredArgs(steps as any, userGoal, context)');
     });
 
+    it('the word «المتصفّح» does not mean «describe» — the field misroute', async () => {
+        // From the user's session log: «قم باستخدام المتصفح وافتح على جوجل وابحث
+        // عن دوله فلسطين» typed «قم باستخدام المتصفح عن د» into Google and
+        // finished with an IP address. Arabic has no \b, `صِ?ف` was unanchored,
+        // and «المتصفّح» contains «صف» — so the word BROWSER read as «describe»
+        // and the request went to the free-form agent instead of the search tool.
+        const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
+        const plan = async (goal: string) => (await PlanningEngine.generatePlan(
+            { intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } })).steps[0];
+
+        const s = await plan('قم باستخدام المتصفح وافتح على جوجل وابحث عن دوله فلسطين');
+        expect(s.tool).toBe('browser_search');
+        expect(String(s.input.query).trim()).toBe('دوله فلسطين');
+        // and the cases the fix must not eat
+        expect((await plan('افتح ويكيبيديا ولخّص عن ابن سينا')).tool).toBe('browser_run');
+        expect((await plan('سجّل الدخول على جيت هاب')).tool).toBe('browser_run');
+        // the deterministic search gate must come FIRST, as its own comment claims
+        const src = SRC('core', 'orchestrator', 'PlanningEngine.ts');
+        expect(src.indexOf('[SEARCH HAS PRIORITY]')).toBeLessThan(src.indexOf('[BROWSER AGENT FAST-PATH]'));
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([

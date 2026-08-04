@@ -917,6 +917,30 @@ Rules:
             }
         }
 
+        // ORDER IS THE POINT. This gate used to sit BELOW the ReAct fast-path
+        // while its own comment claimed priority — and the fast-path swallowed
+        // «…وابحث عن دوله فلسطين» because the sentence named a known site. An
+        // explicit search verb with no URL is a SEARCH; it is decided here,
+        // first, from the user's own words.
+        // [SEARCH HAS PRIORITY] A request with an explicit search verb ("ابحث عن X",
+        // "search for X") is a SEARCH — even when it's wrapped in "افتح المتصفح و…".
+        // The LLM classifier tends to latch onto the leading "افتح" and misroute the
+        // whole thing to a plain open, and it also corrupts names (نابلس->نبعلس). So
+        // we resolve search deterministically FIRST, from the user's own words, and
+        // send it to the VISIBLE search tool. Only when there's no explicit site URL.
+        if (looksBrowser && !urlMatch && PlanningEngine.hasSearchIntent(probe)) {
+            const q = PlanningEngine.extractSearchQuery(goalRaw) || PlanningEngine.extractSearchQuery(goalNorm);
+            if (q.length >= 2) {
+                console.log(`[PlanningEngine] search priority -> browser_search query="${q}"`);
+                return {
+                    id: `browser_search_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{ id: 'browser_smart', description: `Search (live typing): ${q}`, tool: 'browser_search', agent: 'Browser', input: { query: q, question: q, request: intent.goal }, dependsOn: [] }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
+        }
+
         // [BROWSER AGENT FAST-PATH] A request to LOG IN to a site, or to DO an
         // interactive action on a site (fill/post/book/order/send/subscribe…), needs
         // the closed-loop ReAct agent — not a one-shot search. Route it to the
@@ -937,7 +961,29 @@ Rules:
             // عن X من ويكيبيديا» must reach the ReAct read agent (which goes straight to
             // the article and summarises), NOT the one-shot search that types the whole
             // sentence into a search box.
-            const describeIntent = /(صِ?ف|وصف|اوصف|أوصف|انظر|أنظر|شاهد|اطّ?لع|اقرأ|لخّ?ص|ملخّ?ص|ماذا\s*(ترى|يوجد|فيها?)|ما\s*الذي\s*(تراه|فيها?)|ما\s*محتوى|من\s*هو|من\s*هي|ما\s*هو|ما\s*هي|أخبرني\s*(عن|بما)|اخبرني\s*(عن|بما)|describe|summari[sz]e|what\s*(do\s*you\s*)?see|what'?s\s*on|tell\s*me\s*(about|what)|who\s*is|what\s*is)/i.test(probe);
+            // ARABIC HAS NO \b, AND THAT COST A WHOLE FEATURE.
+            // `صِ?ف` unanchored matches inside «المتصفّح» — so the word BROWSER
+            // itself read as «describe». Field log: «قم باستخدام المتصفح وافتح
+            // على جوجل وابحث عن دوله فلسطين» matched describe («صف» inside
+            // المتصفح) + a known site («جوجل»), was routed to the free-form
+            // ReAct agent, and that agent typed the user's own instruction into
+            // Google's search box. Every Arabic verb here is now fenced by
+            // Arabic-letter lookarounds so it only matches as a WORD.
+            const AR = '\u0621-\u064A';
+            // The TRAILING guard is what kills «صف» inside «المتصفّح». The leading
+            // one must stay permissive, because Arabic glues its conjunctions and
+            // articles onto the word: «ولخّص» is «and summarise», and a strict
+            // letter-boundary rejected it — a fix that broke «افتح ويكيبيديا
+            // ولخّص عن ابن سينا» while repairing the search misroute. Both cases
+            // are in the proof.
+            const arWord = (...alts: string[]) => `(?<![${AR}])(?:و|ف|ول|فل|ال)?(?:${alts.join('|')})(?![${AR}])`;
+            const describeIntent = new RegExp(
+                `${arWord('صِ?ف', 'وصف', 'اوصف', 'أوصف', 'انظر', 'أنظر', 'شاهد', 'اطّ?لع', 'اقرأ', 'لخّ?ص', 'ملخّ?ص')}`
+                + `|ماذا\\s*(ترى|يوجد|فيها?)|ما\\s*الذي\\s*(تراه|فيها?)|ما\\s*محتوى`
+                + `|${arWord('من\\s*هو', 'من\\s*هي', 'ما\\s*هو', 'ما\\s*هي')}`
+                + `|أخبرني\\s*(عن|بما)|اخبرني\\s*(عن|بما)`
+                + `|\\bdescribe\\b|\\bsummari[sz]e\\b|what\\s*(do\\s*you\\s*)?see|what'?s\\s*on`
+                + `|tell\\s*me\\s*(about|what)|\\bwho\\s*is\\b|\\bwhat\\s*is\\b`, 'i').test(probe);
             // A named well-known site counts as a site reference too, so «سجّل الدخول
             // على جيت هاب» (no URL, no literal «موقع») still routes to the ReAct agent.
             // Content sites (Wikipedia) are included so «ادخل ويكيبيديا ولخّص عن X» routes here.
@@ -963,24 +1009,6 @@ Rules:
             }
         }
 
-        // [SEARCH HAS PRIORITY] A request with an explicit search verb ("ابحث عن X",
-        // "search for X") is a SEARCH — even when it's wrapped in "افتح المتصفح و…".
-        // The LLM classifier tends to latch onto the leading "افتح" and misroute the
-        // whole thing to a plain open, and it also corrupts names (نابلس->نبعلس). So
-        // we resolve search deterministically FIRST, from the user's own words, and
-        // send it to the VISIBLE search tool. Only when there's no explicit site URL.
-        if (looksBrowser && !urlMatch && PlanningEngine.hasSearchIntent(probe)) {
-            const q = PlanningEngine.extractSearchQuery(goalRaw) || PlanningEngine.extractSearchQuery(goalNorm);
-            if (q.length >= 2) {
-                console.log(`[PlanningEngine] search priority -> browser_search query="${q}"`);
-                return {
-                    id: `browser_search_${Date.now()}`,
-                    goal: intent.goal,
-                    steps: [{ id: 'browser_smart', description: `Search (live typing): ${q}`, tool: 'browser_search', agent: 'Browser', input: { query: q, question: q, request: intent.goal }, dependsOn: [] }],
-                    metadata: { complexity: 'medium', riskLevel: 'low' },
-                };
-            }
-        }
 
         if (looksBrowser) {
             try {
