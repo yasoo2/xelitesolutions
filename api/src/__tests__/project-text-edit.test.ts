@@ -105,3 +105,67 @@ describe('named-row text edits — deterministic, no model', () => {
         expect(contentOf()).toBe(c);
     });
 });
+
+/**
+ * THE FIELD FAILURE: «طلبت تعديل وفشل التعديل بالشكل الصحيح».
+ *
+ * «تعديل على المنتجات قم بزياده عطر اسمه البوس مع صوره له» matched no
+ * deterministic branch — the verb carried a «بـ» prefix and the thing added
+ * was «عطر», not the word «منتج» — so it fell to the model, which wrote an
+ * image path for a file that never existed.
+ */
+import { attachedImagePath, adoptLocalImage } from '../modules/tools/definitions/ProjectEditTool';
+
+describe('the phrasing that fell through to the model', () => {
+    let root: string, proj: string;
+    const contentOf = () => fs.readFileSync(path.join(proj, 'src', 'content.js'), 'utf-8');
+    beforeAll(async () => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-fieldfail-'));
+        const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
+        const res: any = await new ReactProjectTool().execute(
+            { request: 'ابنِ متجر react للعطور', root, skipInstall: true }, { sessionId: 'ff-t' });
+        proj = res.output.path;
+    });
+    afterAll(() => { fs.rmSync(root, { recursive: true, force: true }); delete (global as any).joeProjects?.['ff-t']; });
+
+    it('«قم بزياده عطر اسمه البوس» adds a real row — deterministically, no model', async () => {
+        const { ProjectEditTool } = require('../modules/tools/definitions/ProjectEditTool');
+        const res: any = await new ProjectEditTool().execute(
+            { request: 'تعديل على المنتجات قم بزياده عطر اسمه البوس مع صوره له' }, { sessionId: 'ff-t' });
+        expect(res.ok).toBe(true);
+        const row = contentOf().match(/\{ name: 'البوس',[^\n]*\},/)?.[0] || '';
+        expect(row).toContain("name: 'البوس'");
+        expect(row).toMatch(/slug: '[^']+'/);
+        // Offline here: no archive, so the row ships clean rather than lying.
+        expect(row).toContain('img: null');
+    });
+
+    it('an INVENTED image path is stripped, never shipped', async () => {
+        const poisoned = contentOf().replace(/(\{ name: 'البوس',[^\n]*?img: )null/, "$1{ src: 'images/boss.jpg', alt: 'البوس' }");
+        fs.writeFileSync(path.join(proj, 'src', 'content.js'), poisoned, 'utf-8');
+        const { ProjectEditTool } = require('../modules/tools/definitions/ProjectEditTool');
+        const res: any = await new ProjectEditTool().execute({ request: 'غيّر سعر البوس إلى 340' }, { sessionId: 'ff-t' });
+        expect(res.ok).toBe(true);
+        expect(contentOf()).not.toContain('images/boss.jpg');
+        expect(res.output.invented).toContain('images/boss.jpg');
+        expect(String(res.output.message)).toMatch(/مُختلَق/);
+    });
+
+    it('an attached photo is READ from the raw request and adopted into the project', () => {
+        const file = path.join(root, 'shot.png');
+        fs.writeFileSync(file, Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
+        const raw = `قم باضافه هذه الصوره الى منتج البوس\n\n[ATTACHED FILES]\n(raw file on disk at: ${file})`;
+        expect(attachedImagePath(raw)).toBe(file);
+        expect(attachedImagePath('no attachment here')).toBeNull();
+        const img = adoptLocalImage(file, proj, 'البوس')!;
+        expect(img.src).toMatch(/^images\/[a-f0-9]{32}\.png$/);
+        expect(fs.readFileSync(path.join(proj, 'public', img.src))).toEqual(fs.readFileSync(file));
+    });
+
+    it('the planner sends «أضف هذه الصورة إلى …» to project_edit, not to a chat about the file', async () => {
+        const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
+        const goal = `قم باضافه هذه الصوره الى منتج البوس\n\n[ATTACHED FILES — 1 file]\n(raw file on disk at: ${path.join(root, 'shot.png')})`;
+        const plan = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any });
+        expect(plan.steps[0].tool).toBe('project_edit');
+    });
+});

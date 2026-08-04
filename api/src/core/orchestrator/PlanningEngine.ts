@@ -267,6 +267,30 @@ Rules:
         const WANTS_BUILD_RE = /\b(build|create|implement|develop|scaffold|execute|apply|redesign)\b|\bdesign\s+(a|an|new|another|different|similar)\b|ابنِ|ابني|انشئ|أنشئ|اصنع|نفّ?ذ|طبّ?ق|صمّ?م(?![ء-ي])|أ?عد\s*تصميم|تصميم\s*(مختلف|جديد|آخر|اخر|مشابه|صفح|موقع|واجه)|حوّل|حول .*موقع|موقع من|صفحة من/i;
         if (/\[ATTACHED FILES/.test(rawGoal)) {
             const userPart = rawGoal.split('[ATTACHED FILES')[0];
+            // FIELD FAILURE: «قم باضافه هذه الصوره الى منتج البوس» with the
+            // photo attached landed here and Joe DESCRIBED the picture back
+            // instead of using it. Putting an attached image INTO the active
+            // project is an edit, not a conversation about a file.
+            // No lookbehind: the field wrote «قم باضافه هذه الصوره» — the verb
+            // carried a «بـ» prefix and a strict boundary refused the match.
+            const putsFileInProject = /(ضي?ف|أضف|اضف|إضاف[ةه]|اضاف[ةه]|حطّ?|ركّ?ب|بدّ?ل|غيّ?ر|استخدم|اجعل)[\s\S]{0,40}(هذه\s*الصور|الصور[ةه]|هالصور)|\b(add|use|set|replace|make)\b[\s\S]{0,40}\b(this\s+)?(photo|image|picture)\b/i.test(userPart);
+            const hasProject = !!((global as any).joeProjects || {})[String((intent as any)?.context?.sessionId || (intent as any)?.sessionId || '')]?.dir
+                || Object.keys((global as any).joeProjects || {}).length > 0;
+            if (putsFileInProject && hasProject) {
+                console.log('[PlanningEngine] attached image + «أضفها إلى …» → project_edit (the file is used, not described)');
+                return {
+                    id: `edit_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_edit',
+                        description: `Surgical edit of the active project: ${intent.goal}`,
+                        tool: 'project_edit',
+                        args: { request: rawGoal },
+                        dependencies: [],
+                    }],
+                    reasoning: 'attached image placed into the active project',
+                } as any;
+            }
             if (!WANTS_BUILD_RE.test(userPart)) {
                 console.log('[PlanningEngine] attachments present + no build verb → direct answer about the attached content');
                 return {

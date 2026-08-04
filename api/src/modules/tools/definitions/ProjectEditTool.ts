@@ -127,6 +127,40 @@ export function pickPhotoRow<T extends { name: string }>(rows: T[], request: str
         .sort((a, b) => b.hits - a.hits)[0]?.r || null;
 }
 
+/**
+ * The path of an image the user ATTACHED to this message. The run pipeline
+ * appends «(raw file on disk at: …)» to the goal for every attachment; when
+ * that file is a picture, it is the photograph the user means — no archive
+ * search can beat the one they just handed over.
+ */
+export function attachedImagePath(request: string): string | null {
+    const m = [...String(request || '').matchAll(/raw file on disk at:\s*([^)\n]+)\)/g)]
+        .map(x => x[1].trim())
+        .filter(p => /\.(jpe?g|png|webp|gif|avif)$/i.test(p));
+    for (const p of m) { try { if (fs.statSync(p).isFile()) return p; } catch { /* gone */ } }
+    return null;
+}
+
+/**
+ * Copy an attached photograph INTO the project (public/images) under a
+ * content-addressed name, exactly where the scaffolder puts archive photos,
+ * and answer with the row-ready { src, alt }. The user owns this file, so
+ * there is no licence line to write — inventing one would be a lie.
+ */
+export function adoptLocalImage(src: string, projDir: string, alt: string): { src: string; alt: string } | null {
+    try {
+        const buf = fs.readFileSync(src);
+        if (!buf.length) return null;
+        const crypto = require('crypto');
+        const hash = crypto.createHash('md5').update(buf).digest('hex').slice(0, 32);
+        const ext = (path.extname(src) || '.jpg').toLowerCase().replace('.jpeg', '.jpg');
+        const rel = `images/${hash}${ext}`;
+        fs.mkdirSync(path.join(projDir, 'public', 'images'), { recursive: true });
+        fs.writeFileSync(path.join(projDir, 'public', rel), buf);
+        return { src: rel, alt: String(alt || '').slice(0, 80) };
+    } catch { return null; }
+}
+
 const EDITABLE = /\.(jsx?|tsx?|mjs|css|html|json)$/i;
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'build']);
 
@@ -163,7 +197,11 @@ export class ProjectEditTool extends BaseTool {
 
     async execute(input: any, context?: any): Promise<ToolExecutionResult> {
         const logs: string[] = [];
-        const request = String(input?.request || '').trim()
+        // The RAW text keeps the attachment block: it carries the path of the
+        // photograph the user just handed over, and stripping it is exactly
+        // why «قم باضافه هذه الصوره» reached for an archive instead.
+        const rawRequest = String(input?.request || '');
+        const request = rawRequest.trim()
             .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '').trim();
         if (!request) return { ok: false, error: 'no_request', logs };
         const sessionId = context?.sessionId;
@@ -251,7 +289,10 @@ export class ProjectEditTool extends BaseTool {
         //    uses. No model writes code; the row edit is a regex on the
         //    serializer's own single-line format, gated and build-verified
         //    like every other edit — and «تراجع» undoes it.
-        const imageIntent = /(ضي?ف|أضف|اضف|حطّ?|ركّ?ب|غيّ?ر|بدّ?ل)[^.\n]{0,30}صور(ة|ه)|صور(ة|ه)\s*(جديدة|حقيقية)|\b(add|change|set|put)\b[^.\n]{0,30}\b(photo|image|picture)\b/i.test(request);
+        // «قم باضافه هذه الصوره…» — the masdar form «إضافة/اضافه» and a «بـ»
+        // prefix are how people actually write it; the old pattern only knew
+        // the imperative «أضف» and let the field request fall to the model.
+        const imageIntent = /(ضي?ف|أضف|اضف|إضاف[ةه]|اضاف[ةه]|حطّ?|ركّ?ب|غيّ?ر|بدّ?ل|استخدم|اجعل)[^.\n]{0,30}صور(ة|ه)|صور(ة|ه)\s*(جديدة|حقيقية)|\b(add|change|set|put|use)\b[^.\n]{0,30}\b(photo|image|picture)\b/i.test(request);
         const contentRel = 'src/content.js';
         const notes: string[] = [];
         const reEsc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -325,13 +366,30 @@ export class ProjectEditTool extends BaseTool {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? `🖼️ أجلب صورة حقيقية مرخّصة: ${subject.slice(0, 60)}`
                     : `🖼️ Fetching a real licensed photo: ${subject.slice(0, 60)}`);
+                // THE OWNER'S OWN PHOTOGRAPH WINS. When the message carried an
+                // attached image, that file IS the answer — searching an
+                // archive for a picture the user already handed over is the
+                // field failure «قم باضافه هذه الصوره الى منتج البوس», where
+                // Joe described the photo back instead of using it.
+                const attached = attachedImagePath(rawRequest);
+                let img: { src: string; alt: string } | null = null;
+                let credits: Array<{ creator: string; license: string; source: string }> = [];
+                if (attached) {
+                    img = adoptLocalImage(attached, dir, target?.name || 'صورة');
+                    logs.push(`image edit: adopted the ATTACHED file ${path.basename(attached)} → ${img?.src || 'failed'}`);
+                    if (img) notes.push(isAr ? '📎 استخدمت الصورة التي أرفقتها أنت — لا حاجة لأرشيف.' : '📎 Used the photo you attached — no archive needed.');
+                }
                 const { fetchCardImages } = require('./ReactProjectTool');
-                const got = await fetchCardImages({
-                    subjects: [subject], projDir: dir, hue: (buildPalette(request) as any).hue ?? 260,
-                    artifactDir: process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', slot, label: 'edit',
-                });
-                const img = got.images[0];
-                logs.push(`image edit: subject «${subject}» slot ${slot} → ${got.note}`);
+                if (!img) {
+                    const got = await fetchCardImages({
+                        subjects: [subject], projDir: dir, hue: (buildPalette(request) as any).hue ?? 260,
+                        artifactDir: process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', slot, label: 'edit',
+                    });
+                    img = got.images[0];
+                    credits = got.credits;
+                    logs.push(`image edit: subject «${subject}» slot ${slot} → ${got.note}`);
+                }
+                const got = { images: [img], credits };
                 if (!img) {
                     return {
                         ok: true,
@@ -421,16 +479,36 @@ export class ProjectEditTool extends BaseTool {
         //    BEFORE the text-edit branch on purpose: «بسعر 55» would
         //    otherwise read as a price edit on a row that does not exist yet.
         const rowNounM = request.match(/(?<![ء-ي])(?:ال)?(طبق|منتج)(?![ء-ي])|\b(dish|product)\b/i);
-        const addRowIntent = !!rowNounM && /((?<![ء-ي])(ضي?ف|أضف|اضف|حطّ?)(?![ء-ي])[^.\n]{0,15}(طبق|منتج))|\badd\b[^.\n]{0,25}\b(dish|product)\b/i.test(request);
+        // The field asked «تعديل على المنتجات قم بزياده عطر اسمه البوس» and
+        // nothing matched: the verb was «زيادة», and the thing being added was
+        // «عطر», not the word «منتج». The narrow pattern sent it to the model,
+        // which invented an image path. So a SECOND, broader reading: any
+        // add-verb + a named thing + a hint of WHICH list it belongs to.
+        // No lookbehind here on purpose: the field wrote «بزياده» — the verb
+        // carried a «بـ» prefix, and a strict word boundary refused it. The
+        // pair of conditions below (a NAMED thing + the list it belongs to)
+        // is what keeps this from firing on ordinary sentences.
+        const addVerb = /(ضي?ف|أضف|اضف|زد|زياد[ةه]|إضاف[ةه]|اضاف[ةه]|أدرج|ادرج)|\b(add|insert)\b/i.test(request);
+        const namedM = request.match(/(?:اسمه?|باسم|بعنوان|named?|called)\s+([^\n،.]{1,40})/i);
+        const listHintM = request.match(/(?<![ء-ي])(المنتجات|منتجات|products)(?![ء-ي])|(?<![ء-ي])(القائمة|المنيو|الأطباق|menu|dishes)(?![ء-ي])/i);
+        const addRowIntent = (!!rowNounM && /((?<![ء-ي])(ضي?ف|أضف|اضف|حطّ?)(?![ء-ي])[^.\n]{0,15}(طبق|منتج))|\badd\b[^.\n]{0,25}\b(dish|product)\b/i.test(request))
+            || (addVerb && !!namedM && !!listHintM);
         const delRowIntent = !!rowNounM && !addRowIntent && !/صور|photo|image|picture/i.test(request)
             && /((احذف|امسح|شيل|أزل|ازل)[^.\n]{0,20}(طبق|منتج))|\b(remove|delete)\b[^.\n]{0,25}\b(dish|product)\b/i.test(request);
-        const menuArr = /طبق|dish/i.test(rowNounM?.[0] || '') ? 'menu' : 'products';
+        // WHICH list: the row noun decides when it is there; otherwise the
+        // list the request named («على المنتجات» → products).
+        const menuArr = rowNounM
+            ? (/طبق|dish/i.test(rowNounM[0]) ? 'menu' : 'products')
+            : (listHintM && listHintM[2] ? 'menu' : 'products');
 
         if (!touched.length && addRowIntent && fs.existsSync(path.join(dir, contentRel))) {
             const body = fs.readFileSync(path.join(dir, contentRel), 'utf-8');
             const esc = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
-            const nameTail = ((request.match(/(?:(?<![ء-ي])(?:طبق|منتج)(?![ء-ي])|\b(?:dish|product)\b)\s+(.+)$/i) || [])[1] || '');
-            let name = nameTail.split(/\s+(?:بسعر|بوصف)/)[0].split(/\s+(?:price|for|at)\b/i)[0] || '';
+            // «… عطر اسمه البوس مع صورة له» → «البوس». The explicit «اسمه»
+            // capture wins; the old positional read stays the fallback.
+            const nameTail = (namedM?.[1] || '').trim()
+                || ((request.match(/(?:(?<![ء-ي])(?:طبق|منتج)(?![ء-ي])|\b(?:dish|product)\b)\s+(.+)$/i) || [])[1] || '');
+            let name = nameTail.split(/\s+(?:بسعر|بوصف|مع\s)/)[0].split(/\s+(?:price|for|at|with)\b/i)[0] || '';
             name = name.trim().replace(/^(جديد\s+|اسمه\s+|باسم\s+|called\s+|named\s+)/i, '').replace(/^[«"']|[»"'.،!؟]+$/g, '').trim();
             if (!name) {
                 return { ok: true, output: { message: isAr ? '➕ سمِّ العنصر الجديد — مثال: «ضف طبق كباب مشوي بسعر 55».' : '➕ Name the new item — e.g. "add a dish Grilled kebab for 55".' }, logs } as any;
@@ -450,7 +528,15 @@ export class ProjectEditTool extends BaseTool {
             // A REAL photo for the newcomer, best-effort like every photo step.
             let img: { src: string; alt: string } | null = null;
             let addCredits: Array<{ creator: string; license: string; source: string }> = [];
+            // The owner's OWN photograph, when they attached one, beats any
+            // archive — «ضف منتج … مع هذه الصورة» uses the file they sent.
+            const attachedForRow = attachedImagePath(rawRequest);
+            if (attachedForRow) {
+                img = adoptLocalImage(attachedForRow, dir, name);
+                if (img) logs.push(`row add: adopted the ATTACHED file → ${img.src}`);
+            }
             try {
+                if (img) throw { skip: true };
                 const { fetchCardImages } = require('./ReactProjectTool');
                 const got = await fetchCardImages({
                     subjects: [`${name} ${desc}`], projDir: dir, hue: (buildPalette(request) as any).hue ?? 260,
@@ -459,7 +545,7 @@ export class ProjectEditTool extends BaseTool {
                 img = got.images[0];
                 addCredits = got.credits;
                 logs.push(`row add: photo → ${got.note}`);
-            } catch { /* the row ships clean without one */ }
+            } catch (e: any) { if (!e?.skip) { /* the row ships clean without one */ } }
             // A product row carries a slug — it is the address of its own
             // page. A row added later without one would link to nowhere.
             const rowSlug = (String(name).toLowerCase()
@@ -654,6 +740,42 @@ Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits
             } as any;
         }
 
+        // ── ANTI-FABRICATION GATE ───────────────────────────────────────────
+        // A model-written patch once added a product row carrying
+        // `img: { src: 'images/boss.jpg' }` — a file that never existed. The
+        // build was green (it is just a string) and the shipped page asked
+        // the server for a photo that answered 404.
+        //
+        // So: every image reference this edit INTRODUCES must point at a file
+        // that is really on disk. An invented one is stripped back to `null`
+        // — the row survives, the lie does not — and the answer says so.
+        const invented: string[] = [];
+        for (const t of touched) {
+            // EVERY reference in a file this edit just wrote is checked, not
+            // only the new ones: a dangling path that slipped in earlier is
+            // still a 404 on the shipped page, and this is the moment to heal
+            // it rather than the next time someone notices.
+            const refsOf = (s: string) => new Set([...s.matchAll(/src: '((?:images|assets)\/[^']+)'/g)].map(m => m[1]));
+            const ghosts = [...refsOf(t.after)].filter(r => !fs.existsSync(path.join(dir, 'public', r)) && !fs.existsSync(path.join(dir, r)));
+            if (!ghosts.length) continue;
+            let repaired = t.after;
+            for (const g of ghosts) {
+                invented.push(g);
+                repaired = repaired.split(`{ src: '${g}', alt: `).join('@@JOE_GHOST@@')
+                    .replace(/@@JOE_GHOST@@[^}]*\}/g, 'null');
+            }
+            if (repaired !== t.after) {
+                t.after = repaired;
+                fs.writeFileSync(path.join(dir, t.file), repaired, 'utf-8');
+                logs.push(`anti-fabrication: ${ghosts.length} invented image path(s) stripped: ${ghosts.join(', ')}`);
+            }
+        }
+        if (invented.length) {
+            notes.push(isAr
+                ? `🚫 حذفت ${invented.length} مسار صورة مُختلَق (${invented.join('، ')}) — الملف غير موجود فعلاً. أرفق الصورة أو قل «ضف صورة لمنتج …» لأجلب واحدة حقيقية.`
+                : `🚫 Removed ${invented.length} invented image path(s) (${invented.join(', ')}) — no such file. Attach a photo or say "add a photo to …".`);
+        }
+
         // ── whole-project verification with the real build ──────────────────
         let buildVerified: boolean | null = null;
         if (fs.existsSync(path.join(dir, 'node_modules'))) {
@@ -689,6 +811,22 @@ Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits
             try { broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any); } catch { /* UI optional */ }
         }
 
+        // ── SELF-QA AFTER THE EDIT ──────────────────────────────────────────
+        // A green build only proves the code compiles. The field shipped an
+        // edit whose build was green and whose page asked the server for a
+        // photo that answered 404 — a real browser sees that in one second.
+        // Same audit the builder runs, same honest skip when it cannot.
+        let audit: any = null;
+        if (buildVerified === true && !input?.skipAudit) {
+            if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🔎 أفحص النتيجة في متصفح حقيقي…' : '🔎 Auditing the result in a real browser…');
+            try {
+                const { auditBuiltApp, formatAudit } = require('../../../core/quality/app-audit');
+                audit = await auditBuiltApp(path.join(dir, 'dist'));
+                if (audit && !audit.skipped) notes.push(formatAudit(audit, isAr));
+                logs.push(`self-QA after edit: ${audit?.skipped ? `skipped (${audit.skipped})` : `${audit?.score}/100`}`);
+            } catch (e: any) { logs.push(`self-QA after edit failed: ${String(e?.message || e).slice(0, 80)}`); }
+        }
+
         const stats = touched.map(t => {
             const d = diffSummary(t.before, t.after);
             return `   • ${t.file} (+${d.added} −${d.removed})`;
@@ -699,6 +837,6 @@ ${notes.length ? notes.join('\n') + '\n' : ''}${buildVerified === true ? '✅ vi
 
 🧭 «شغّل خادم التطوير» للمعاينة الحية · «تراجع» يسترجع الملفات السابقة`
             : `🔬 Surgical edit — ${touched.length} file(s):\n${stats}\n${notes.length ? notes.join('\n') + '\n' : ''}${buildVerified === true ? '✅ vite build passed after the edit.' : ''}`;
-        return { ok: true, output: { message, dir, touched: touched.map(t => t.file), refused, buildVerified }, logs } as any;
+        return { ok: true, output: { message, dir, touched: touched.map(t => t.file), refused, buildVerified, audit, invented }, logs } as any;
     }
 }
