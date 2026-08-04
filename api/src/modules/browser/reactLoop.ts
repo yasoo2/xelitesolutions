@@ -20,6 +20,7 @@
 import { getBrowserSession } from './manager';
 import { executePlannedActions } from './executor';
 import { broadcastBrowserEvent } from './wsHub';
+import { judgeAnswer, ungroundedMessage } from './grounding';
 
 /** Emit one live narration event to the session's panel (best-effort, never throws). */
 function emitAgentStep(sessionId: string, ev: {
@@ -394,6 +395,20 @@ export async function runReactBrowserTask(params: {
         const out = finish('done', true, 'أنجز الوكيل المهمة (مُتحقَّق من الصفحة).', action.answer, finalObs.url);
         out.verified = true; out.evidence = evidence;
         return out;
+      }
+      // AN ANSWER MUST BE ABOUT SOMETHING. Field log: asked to search for «دوله
+      // فلسطين», the loop finished with «حسناً، عنوان IP: 2a00:… الوقت: …» and
+      // the run reported success. The evidence needed to catch that was already
+      // in hand — the page's url, title and snippet — and nobody looked at it.
+      const verdict = judgeAnswer(String(action.answer || ''), task, evidence);
+      if (!verdict.grounded) {
+        const honest = ungroundedMessage(task, evidence);
+        console.warn(`[reactLoop] dropped an ungrounded answer (${verdict.reason}): ${String(action.answer || '').slice(0, 120)}`);
+        emitAgentStep(sessionId, { phase: 'result', step: n, ok: false, note: 'إجابة غير متعلّقة بالطلب — أُسقطت', url: finalObs.url });
+        chatDetail(chatSid, '⚠️ الجواب الذي كوّنه المتصفّح لم يكن عن طلبك — لم أنقله إليك');
+        const dropped = finish('unverified', false, honest, honest, finalObs.url);
+        dropped.verified = false; dropped.evidence = evidence;
+        return dropped;
       }
       emitAgentStep(sessionId, { phase: 'done', step: n, message: action.answer, url: finalObs.url });
       chatDetail(chatSid, `✅ أنهى المهمة${action.answer ? `: ${String(action.answer).slice(0, 120)}` : ''}`);

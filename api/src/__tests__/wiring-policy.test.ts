@@ -948,6 +948,26 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(src.indexOf('[SEARCH HAS PRIORITY]')).toBeLessThan(src.indexOf('[BROWSER AGENT FAST-PATH]'));
     });
 
+    it('an answer that is about nothing is dropped, not passed on', () => {
+        // Field log: asked to search for «دوله فلسطين», the browser loop finished
+        // with «حسناً، عنوان IP: 2a00:… الوقت: …» and the run reported SUCCESS.
+        // The evidence to catch it — the page's url, title and snippet — was
+        // already collected by that same loop and never looked at.
+        const { judgeAnswer } = require('../modules/browser/grounding');
+        const bad = judgeAnswer(
+            'حسناً، عنوان IP: 2a00:1d34:7472:3300:49f6:fd53:f5d6:e25c الوقت: 2026-08-04T15:38:54Z',
+            'ابحث عن دوله فلسطين', { url: 'https://www.google.com/search', title: 'Google' });
+        expect(bad.grounded).toBe(false);
+        // …and the guard must not reject real work
+        expect(judgeAnswer('فلسطين دولة في غرب آسيا وعاصمتها المعلنة القدس.',
+            'ابحث عن دوله فلسطين', { title: 'دولة فلسطين' }).grounded).toBe(true);
+        expect(judgeAnswer('تم تسجيل الدخول', 'سجّل الدخول على جيت هاب', {}).grounded).toBe(true);
+        // wired into the loop's own done-branch, not a helper nobody calls
+        const loop = SRC('modules', 'browser', 'reactLoop.ts');
+        expect(loop).toContain('judgeAnswer(String(action.answer || \'\'), task, evidence)');
+        expect(loop).toContain('ungroundedMessage(task, evidence)');
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([

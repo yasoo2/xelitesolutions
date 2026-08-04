@@ -13,10 +13,11 @@
  * hard-coded width that overflows a phone. A tool that reports «no issues» on
  * this page is not passing — it is blind.
  *
- * Every tool ends in one of four honest states, printed as a table:
+ * Every tool ends in one of five honest states, printed as a table:
  *
  *   ✅ عمل            — ran and returned something real about the page
  *   👤 ينتظر المستخدم — correctly says a human must act (extension, consent)
+ *   🧠 يحتاج نموذجاً  — needs a language model; this sandbox has none running
  *   🌐 يحتاج إنترنت   — needs the open internet, which this sandbox does not have
  *   ❌ فشل            — with the reason, verbatim
  *
@@ -34,7 +35,7 @@ process.env.OFFLINE_MODE = 'true';
 process.env.BROWSER_HEADLESS = 'true';
 process.env.BROWSER_NO_SANDBOX = 'true';
 
-type State = 'ok' | 'user' | 'net' | 'fail';
+type State = 'ok' | 'user' | 'net' | 'brain' | 'fail';
 const rows: Array<{ name: string; state: State; note: string; ms: number }> = [];
 
 const PAGE = `<!doctype html>
@@ -141,7 +142,12 @@ async function main() {
         browser_extract_data_: () => true,
     };
 
-    const NET_HINT = /ENOTFOUND|EAI_AGAIN|net::ERR_|ERR_NAME_NOT_RESOLVED|ERR_INTERNET|getaddrinfo|proxy|timeout of|Timeout .*exceeded|no internet|تعذّر الاتصال/i;
+    // «No model answered» is an environment limit here, not a broken tool: this
+// sandbox has no Ollama and no provider key. That these tools now FAIL instead
+// of returning an apology as a success is itself a fix (verify_honest_results),
+// so it is reported in its own column rather than counted against them.
+const BRAIN_HINT = /تعذّر الوصول إلى محرّك الذكاء|no provider|محرّك الذكاء/i;
+const NET_HINT = /ENOTFOUND|EAI_AGAIN|net::ERR_|ERR_NAME_NOT_RESOLVED|ERR_INTERNET|getaddrinfo|proxy|timeout of|Timeout .*exceeded|no internet|تعذّر الاتصال/i;
     const USER_HINT = /needsConnect|needsRepo|extension|الإضافة|consent|موافقة|not connected|غير متصل|install|ثبّت/i;
 
     for (const name of names) {
@@ -162,12 +168,13 @@ async function main() {
             if (judge && !judge(r.output, text)) { state = 'fail'; note = `عمل لكنه لم يجد ما في الصفحة: ${text.slice(0, 140)}`; }
             else if (USER_HINT.test(text) && !judge) { state = 'user'; note = String(r?.output?.message || '').slice(0, 90); }
             else { state = 'ok'; note = String(r?.output?.message || r?.output?.summary || '').replace(/\s+/g, ' ').slice(0, 90); }
-        } else if (NET_HINT.test(err)) { state = 'net'; note = err.slice(0, 90); }
+        } else if (BRAIN_HINT.test(err) || BRAIN_HINT.test(text)) { state = 'brain'; note = 'يحتاج نموذجاً — لا يوجد في هذه البيئة'; }
+        else if (NET_HINT.test(err)) { state = 'net'; note = err.slice(0, 90); }
         else if (USER_HINT.test(err) || USER_HINT.test(text)) { state = 'user'; note = err.slice(0, 90); }
         else { state = 'fail'; note = err.slice(0, 160) || text.slice(0, 160); }
 
         rows.push({ name, state, note, ms });
-        const icon = state === 'ok' ? '✅' : state === 'user' ? '👤' : state === 'net' ? '🌐' : '❌';
+        const icon = state === 'ok' ? '✅' : state === 'user' ? '👤' : state === 'net' ? '🌐' : state === 'brain' ? '🧠' : '❌';
         console.log(`${icon} ${name.padEnd(26)} ${String(ms).padStart(6)}ms  ${note}`);
     }
 
@@ -177,8 +184,9 @@ async function main() {
     const ok = rows.filter(r => r.state === 'ok').length;
     const user = rows.filter(r => r.state === 'user').length;
     const net = rows.filter(r => r.state === 'net').length;
+    const brain = rows.filter(r => r.state === 'brain').length;
     const bad = rows.filter(r => r.state === 'fail');
-    console.log(`\n===== عمل: ${ok} | ينتظر المستخدم: ${user} | يحتاج إنترنت: ${net} | فشل: ${bad.length} من ${rows.length} =====`);
+    console.log(`\n===== عمل: ${ok} | ينتظر المستخدم: ${user} | يحتاج نموذجاً: ${brain} | يحتاج إنترنت: ${net} | فشل: ${bad.length} من ${rows.length} =====`);
     for (const b of bad) console.log(`   ❌ ${b.name}: ${b.note}`);
     try {
         fs.writeFileSync(path.join(os.tmpdir(), 'joe-browser-tools-report.json'), JSON.stringify(rows, null, 2));
