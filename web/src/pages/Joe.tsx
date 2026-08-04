@@ -3,7 +3,7 @@
  * Comprehensive AI development environment
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import JoeIDELayout from '../components/JoeIDELayout';
@@ -143,12 +143,35 @@ export default function Joe() {
         setGhCommits([]);
     }, []);
 
+    /**
+     * THE PREVIEW BELONGS TO ITS SESSION. Opening a second chat used to show
+     * the FIRST conversation's built page, and a build still running there
+     * kept flipping this conversation's tabs. The URL is now filed under the
+     * session that produced it and restored when you return to it.
+     */
+    const previewBySession = useRef<Map<string, string>>(new Map());
+    useEffect(() => {
+        setPreviewUrl(activeSessionId ? previewBySession.current.get(activeSessionId) : undefined);
+    }, [activeSessionId]);
+
     // Socket subscription for auto-switching tabs
     useEffect(() => {
+        /** Is this event about the conversation currently on screen? */
+        const mine = (msg: any): boolean => {
+            const sid = String(msg?.sessionId || msg?.data?.sessionId || '');
+            if (!sid) return true;                       // global events (connection state)
+            const active = String(activeSessionId || '');
+            if (!active) return true;
+            if (sid === active || sid.includes(active) || active.includes(sid)) return true;
+            return /^panel-/.test(sid) || sid === 'local_terminal';
+        };
         const unsub = SocketService.subscribe((msg: any) => {
             // Connection status
             if (msg.type === 'connected') setIsConnected(true);
             if (msg.type === 'disconnected') setIsConnected(false);
+            // Everything below paints THIS conversation's panels — a run in
+            // another session must never steal its tabs or its preview.
+            if (!mine(msg)) return;
 
             const triggerUncollapse = () => {
                 window.dispatchEvent(new CustomEvent('joe:workspace-uncollapse'));
@@ -217,6 +240,7 @@ export default function Joe() {
 
                     if (isInternal) {
                         setPreviewUrl(url);
+                        if (activeSessionId) previewBySession.current.set(activeSessionId, url);
                         /**
                          * A PARTIAL preview (the page growing section by
                          * section) must NOT steal the tab: it fires seconds
@@ -259,6 +283,7 @@ export default function Joe() {
 
                     if (isSafeTool || isInternal) {
                         setPreviewUrl(url);
+                        if (activeSessionId) previewBySession.current.set(activeSessionId, url);
                         // Also switch to preview tab if we got a fresh URL
                         setWorkspaceTab('preview');
                         triggerUncollapse();

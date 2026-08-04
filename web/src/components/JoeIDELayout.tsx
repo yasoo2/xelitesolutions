@@ -305,11 +305,62 @@ export default function JoeIDELayout({
      */
     const [buildStatus, setBuildStatus] = useState<import('./WorkspacePanel').BuildStatusState | null>(null);
 
+    /**
+     * THE PANELS BELONG TO A SESSION — they are not one global surface.
+     *
+     * Reported from the field, and it was right: build in session one, open a
+     * SECOND chat, and its Logs and Preview still showed the first session's
+     * work. Worse, a run still going in session one kept writing into the
+     * panels of session two and flipping its tabs, because every panel event
+     * was applied to whatever conversation happened to be on screen.
+     *
+     * A session's panel state is now archived when you leave it and restored
+     * when you come back — and an event that names another session is ignored
+     * here rather than painted over the one you are reading.
+     */
+    const sessionRef = useRef<string | undefined>(sessionId);
+    const panelArchive = useRef<Map<string, {
+        liveFiles: import('./WorkspacePanel').LiveFile[];
+        logs: string[];
+        problems: any[];
+        buildStatus: import('./WorkspacePanel').BuildStatusState | null;
+    }>>(new Map());
+
     useEffect(() => {
+        const previous = sessionRef.current;
+        if (previous === sessionId) return;
+        // The state still on screen is the one being LEFT — archive it as it is.
+        if (previous) panelArchive.current.set(previous, { liveFiles, logs, problems, buildStatus });
+        sessionRef.current = sessionId;
+        const saved = sessionId ? panelArchive.current.get(sessionId) : undefined;
+        setLiveFiles(saved?.liveFiles || []);
+        setLogs(saved?.logs || []);
+        setProblems(saved?.problems || []);
+        setBuildStatus(saved?.buildStatus || null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId]);
+
+    useEffect(() => {
+        /**
+         * Does this event belong to the conversation on screen? Events with no
+         * session are global (connection state); panel-scoped ids (the shared
+         * terminal surface) are not sessions at all; and the server writes the
+         * id in several shapes («session-<id>»), so containment counts.
+         */
+        const belongsHere = (event: any): boolean => {
+            const sid = String(event?.sessionId || event?.data?.sessionId || '');
+            if (!sid) return true;
+            const active = String(sessionRef.current || '');
+            if (!active) return true;
+            if (sid === active || sid.includes(active) || active.includes(sid)) return true;
+            return /^panel-/.test(sid) || sid === 'local_terminal';
+        };
+
         // Subscribe to socket events for logs
         const unsubscribe = import('../services/socket').then(({ SocketService }) => {
             return SocketService.subscribe((event: any) => {
                 if (!event) return;
+                if (!belongsHere(event)) return;
 
                 // SMART AUTO-OPEN: when a real task/tool STARTS, reveal the canvas so
                 // the user watches the work happen. We do NOT open on terminal_output

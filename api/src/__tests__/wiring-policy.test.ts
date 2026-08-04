@@ -1183,3 +1183,37 @@ describe('what was not built is said out loud', () => {
         expect(T).toMatch(/Leaflet does not rotate its map/);
     });
 });
+
+/**
+ * A SECOND CHAT MUST NOT WEAR THE FIRST ONE'S BUILD.
+ *
+ * Reported from the field: run a build in session one, open a second chat,
+ * and its Logs and Preview still showed session one's work. The panel state
+ * was a single global value and every panel event was applied to whatever
+ * conversation happened to be on screen — so a run still going in session one
+ * kept writing into session two and flipping its tabs.
+ */
+describe('the panels belong to a session', () => {
+    it('panel state is archived per session and restored on return', () => {
+        const L = WEB('components', 'JoeIDELayout.tsx');
+        expect(L).toMatch(/panelArchive/);
+        expect(L).toMatch(/panelArchive\.current\.set\(previous/);
+        expect(L).toMatch(/setLiveFiles\(saved\?\.liveFiles \|\| \[\]\)/);
+    });
+
+    it('an event naming another session never paints this one', () => {
+        const L = WEB('components', 'JoeIDELayout.tsx');
+        expect(L).toMatch(/const belongsHere/);
+        expect(L).toMatch(/if \(!belongsHere\(event\)\) return;/);
+        const J = WEB('pages', 'Joe.tsx');
+        expect(J).toMatch(/const mine = \(msg: any\)/);
+        expect(J).toMatch(/if \(!mine\(msg\)\) return;/);
+    });
+
+    it('the preview URL is filed under the session that produced it', () => {
+        const J = WEB('pages', 'Joe.tsx');
+        expect(J).toMatch(/previewBySession/);
+        expect(J).toMatch(/previewBySession\.current\.set\(activeSessionId, url\)/);
+        expect(J).toMatch(/setPreviewUrl\(activeSessionId \? previewBySession\.current\.get\(activeSessionId\) : undefined\)/);
+    });
+});
