@@ -474,6 +474,14 @@ export default function MapApp({ content }) {
   const [pendingName, setPendingName] = useState('');
   const [me, setMe] = useState(null);
   const [tileError, setTileError] = useState(false);
+  // Directions: two endpoints, a real road route, and the two numbers people
+  // actually want — how far, and how long.
+  const [fromText, setFromText] = useState('');
+  const [toText, setToText] = useState('');
+  const [trip, setTrip] = useState(null);      // { km, minutes, from, to }
+  const [routing, setRouting] = useState(false);
+  const routeLine = useRef(null);
+  const routeEnds = useRef(null);
 
   useEffect(() => { store.write(places); }, [places, store]);
 
@@ -546,6 +554,64 @@ export default function MapApp({ content }) {
     );
   };
 
+  /** One place name → coordinates, through the same open gazetteer. */
+  const geocode = async (term) => {
+    const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=${lang}&q=' + encodeURIComponent(term);
+    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error('geocode');
+    const d = await r.json();
+    if (!Array.isArray(d) || !d.length) return null;
+    return { name: d[0].display_name, lat: Number(d[0].lat), lng: Number(d[0].lon) };
+  };
+
+  /**
+   * A REAL route on real roads — OSRM's public router, no key and no account.
+   * The line is the road geometry, and the two numbers are the ones people
+   * asked for: the distance and how long the drive takes.
+   */
+  const route = async (e) => {
+    e.preventDefault();
+    setRouting(true); setNote(''); setTrip(null);
+    try {
+      const a = fromText.trim() ? await geocode(fromText.trim()) : (me ? { ...me, name: ${T('موقعي', 'My location')} } : null);
+      if (!a) { setNote(${T('حدّد نقطة البداية، أو اضغط «موقعي» أولاً.', 'Set a starting point, or press "My location" first.')}); return; }
+      const b = await geocode(toText.trim());
+      if (!b) { setNote(${T('لم أجد الوجهة — جرّب اسماً أوضح.', 'Destination not found — try a clearer name.')}); return; }
+
+      const url = 'https://router.project-osrm.org/route/v1/driving/'
+        + a.lng + ',' + a.lat + ';' + b.lng + ',' + b.lat + '?overview=full&geometries=geojson';
+      const r = await fetch(url);
+      const d = await r.json();
+      const leg = d && d.routes && d.routes[0];
+      if (!leg) { setNote(${T('لا يوجد طريق بري بين النقطتين.', 'No road route between those points.')}); return; }
+
+      const line = leg.geometry.coordinates.map((c) => [c[1], c[0]]);
+      if (map.current) {
+        if (routeLine.current) routeLine.current.remove();
+        if (routeEnds.current) routeEnds.current.remove();
+        routeLine.current = L.polyline(line, { color: '#1a73e8', weight: 6, opacity: 0.85 }).addTo(map.current);
+        routeEnds.current = L.layerGroup([
+          L.marker([a.lat, a.lng]).bindPopup(a.name),
+          L.marker([b.lat, b.lng]).bindPopup(b.name),
+        ]).addTo(map.current);
+        map.current.fitBounds(routeLine.current.getBounds(), { padding: [40, 40] });
+      }
+      setTrip({
+        km: Math.round(leg.distance / 100) / 10,
+        minutes: Math.round(leg.duration / 60),
+        from: a.name.split(',')[0], to: b.name.split(',')[0],
+      });
+    } catch {
+      setNote(${T('تعذّر حساب المسار — تحقّق من اتصال الإنترنت.', 'Could not compute the route — check your connection.')});
+    } finally { setRouting(false); }
+  };
+
+  const clearRoute = () => {
+    if (routeLine.current) { routeLine.current.remove(); routeLine.current = null; }
+    if (routeEnds.current) { routeEnds.current.remove(); routeEnds.current = null; }
+    setTrip(null);
+  };
+
   const savePlace = (p, name) => {
     const row = { id: uid(), name: String(name || p.name || ${T('مكان', 'Place')}).slice(0, 80), lat: p.lat, lng: p.lng };
     setPlaces([row, ...places.filter(x => !(x.lat === row.lat && x.lng === row.lng))]);
@@ -561,6 +627,36 @@ export default function MapApp({ content }) {
           <button className="btn ghost" type="button" onClick={locate}>{${T('موقعي', 'My location')}}</button>
         </form>
         {note ? <p className="err" role="status">{note}</p> : null}
+
+        {/* Directions — from, to, a real road route, distance and duration. */}
+        <form className="trip" onSubmit={route}>
+          <h2 className="list-title">{${T('مسار التنقّل', 'Directions')}}</h2>
+          <label className="field">
+            <span>{${T('من', 'From')}}</span>
+            <input value={fromText} onChange={e => setFromText(e.target.value)}
+              placeholder={me ? ${T('اتركه فارغاً لتبدأ من موقعك', 'Leave empty to start from your location')} : ${T('نقطة البداية…', 'Starting point…')} } />
+          </label>
+          <label className="field">
+            <span>{${T('إلى', 'To')}}</span>
+            <input value={toText} onChange={e => setToText(e.target.value)} placeholder={${T('الوجهة…', 'Destination…')}} />
+          </label>
+          <div className="actions">
+            <button className="btn" type="submit" disabled={routing || !toText.trim()}>
+              {routing ? ${T('أحسب المسار…', 'Routing…')} : ${T('احسب المسار', 'Get directions')}}
+            </button>
+            {trip ? <button className="btn ghost" type="button" onClick={clearRoute}>{${T('امسح المسار', 'Clear route')}}</button> : null}
+          </div>
+          {trip ? (
+            <div className="trip-result" role="status">
+              <p className="trip-ends">{trip.from} ← {trip.to}</p>
+              <div className="trip-nums">
+                <span><b>{trip.km}</b> ${isAr ? 'كم' : 'km'}</span>
+                <span><b>{trip.minutes >= 60 ? Math.floor(trip.minutes / 60) + (${isAr ? "'س '" : "'h '"}) + (trip.minutes % 60) : trip.minutes}</b> ${isAr ? 'دقيقة' : 'min'}</span>
+              </div>
+              <p className="muted small">{${T('تقدير بالسيارة على الطرق الحقيقية — من OSRM.', 'Driving estimate on real roads — from OSRM.')}}</p>
+            </div>
+          ) : null}
+        </form>
 
         {results.length ? (
           <>
@@ -998,6 +1094,13 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .map-holder{min-height:420px;height:calc(100vh - 190px);border:1px solid var(--border,#e5e5e5);border-radius:var(--radius-lg,16px);overflow:hidden;z-index:0}
 .map-side{max-height:calc(100vh - 190px);overflow:auto}
 .pending{border:1px dashed var(--accent,#06c);border-radius:var(--radius,12px);padding:10px 12px;margin-bottom:12px}
+.trip{display:grid;gap:10px;border:1px solid var(--border,#e5e5e5);border-radius:var(--radius,12px);padding:12px;margin-bottom:14px}
+.trip .list-title{margin:0}
+.trip-result{border-top:1px solid var(--border,#e5e5e5);padding-top:10px}
+.trip-ends{margin:0 0 6px;font-weight:600}
+.trip-nums{display:flex;gap:18px;flex-wrap:wrap}
+.trip-nums b{font-size:1.5rem;color:var(--brand,#111);line-height:1}
+.trip-nums span{display:flex;align-items:baseline;gap:6px;color:var(--text-muted,#666)}
 .leaflet-container{font:inherit}
 
 /* the chat */

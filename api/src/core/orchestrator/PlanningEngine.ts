@@ -623,6 +623,13 @@ Rules:
         // by hasActivePage below, so they can never hijack a fresh build.
         const editIntent = /\b(add|change|modify|update|edit|remove|bigger|smaller|colou?r|button|background|header|footer|font|title|style|design|prettier|nicer)\b/i.test(goalLower)
             || /(أضف|اضف|إضافة|اضافة|غيّر|غير|تغيير|عدّل|عدل|تعديل|بدّل|بدل|تبديل|اجعل|احذف|حذف|كبّر|كبر|تكبير|صغّر|صغر|تصغير|حسّن|حسن|تحسين|تنسيق|تجميل|جمّل|امسح|أزل|ازل)/.test(probe)
+            // Typed by a human, not by a spell-checker: «اريد اعديل علىيه بان
+            // يعمل مسارات…» carried no verb this list knew, so the request fell
+            // through to the semantic router and came back as a NEW marketing
+            // page — while the React app it was about sat untouched on disk.
+            || /(?<![ء-ي])[اأي]?ع[دّ]?[يى]?ل(ه|ها|ين|وا)?(?![ء-ي])/.test(probe)
+            // A capability asked for in plain words is an edit too.
+            || /(اجعله|خليه|أريد(ه)?\s+(أن\s+)?ي|اريد(ه)?\s+(ان\s+)?ي|يعمل|يدعم|يحدّد|يحدد|يعرض|ميزة|ميزه|خاصية|خاصيه|إضافة\s*ميزة)/.test(probe)
             // The SHORT dialect verbs need Arabic boundaries — bare /خلي/ fires
             // inside «الداخلية» and /سوي/ inside «تساوي», turning ordinary
             // questions into page edits.
@@ -1311,6 +1318,54 @@ Rules:
             const routed = await PlanningEngine.classifyRequestIntent(intent.goal, { hasActivePage }, context);
             if (routed) {
                 console.log(`[PlanningEngine] semantic router -> ${routed.intent}${routed.repo ? ` (${routed.repo})` : ''}`);
+                // THE SESSION'S ACTIVE ARTIFACT DECIDES WHO EDITS IT. Measured
+                // in the field: right after a real React maps app was built,
+                // «اريد اعديل علىيه بان يعمل مسارات للتنقل» reached this router,
+                // came back as edit_page, and web_page_builder produced a
+                // BROCHURE about maps — pricing plans and a stock photograph —
+                // while the app itself was never opened. A project session's
+                // edits belong to the project editor, always.
+                {
+                    const pageEntry = (global as any).joePages?.[activeKey];
+                    const projEntry = (global as any).joeProjects?.[activeKey];
+                    const projectIsActive = !!projEntry
+                        && (!pageEntry || (Number(projEntry.updatedAt) || 0) > (Number(pageEntry.updatedAt) || 0));
+                    if (projectIsActive && routed.intent === 'edit_page') {
+                        return {
+                            id: `projedit_${Date.now()}`,
+                            goal: intent.goal,
+                            steps: [{
+                                id: 'project_edit',
+                                description: `Surgical edit of the active project: ${intent.goal}`,
+                                tool: 'project_edit', agent: 'Dev',
+                                input: { request: intent.goal }, dependsOn: [],
+                            }],
+                            metadata: { complexity: 'medium', riskLevel: 'low' },
+                        };
+                    }
+                    // …and a BUILD that only got this far is still scoped: an
+                    // application must not become a document because the
+                    // keyword paths missed it.
+                    if (routed.intent === 'build_page') {
+                        const scope = PlanningEngine.classifyBuildScope(probe);
+                        if (scope !== 'page') {
+                            const steps: any[] = [];
+                            if (scope === 'system') {
+                                steps.push({
+                                    id: 'backend', description: `الواجهة الخلفية وقاعدة البيانات لـ: ${intent.goal}`,
+                                    tool: 'api_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [],
+                                });
+                            }
+                            steps.push({
+                                id: 'app', description: `تطبيق حقيقي لـ: ${intent.goal}`,
+                                tool: 'react_project', agent: 'Dev',
+                                input: { request: intent.goal }, dependsOn: scope === 'system' ? ['backend'] : [],
+                            });
+                            console.log(`[PlanningEngine] semantic build scope = ${scope} -> ${steps.map(x => x.tool).join(' + ')}`);
+                            return { id: `build_${scope}_${Date.now()}`, goal: intent.goal, steps, metadata: { complexity: 'high', riskLevel: 'medium' } };
+                        }
+                    }
+                }
                 if (routed.intent === 'build_page' || routed.intent === 'edit_page') {
                     return {
                         id: `build_${Date.now()}`,

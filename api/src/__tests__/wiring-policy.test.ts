@@ -1080,3 +1080,49 @@ describe('an application build ships a program, not a brochure', () => {
         expect(A).toMatch(/class\*="leaflet"/);
     });
 });
+
+/**
+ * AN EDIT ON AN APPLICATION SESSION NEVER BECOMES A NEW BROCHURE.
+ *
+ * From the field log, one minute after a clean 100/100 maps build:
+ *   «اريد اعديل علىيه بان يعمب مسارات للتنقل من الى … مع ذكر المسافة والوقت»
+ *   → semantic router -> edit_page → web_page_builder → a static HTML page
+ *   about maps, with «خطة 1 — 10$ شهريا», while the React app was never opened.
+ */
+describe('the session\'s active artefact decides who edits it', () => {
+    const plan = async (goal: string, sessionId: string) => {
+        const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
+        const p = await PlanningEngine.generatePlan(
+            { intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } }, undefined, { sessionId });
+        return (p?.steps || []).map((s: any) => s.tool).join(' + ');
+    };
+    const g: any = global as any;
+    afterEach(() => { g.joeProjects = {}; g.joePages = {}; });
+
+    it('an edit on a project session goes to the project editor — typos and all', async () => {
+        g.joeProjects = { app1: { dir: '/tmp/x', type: 'react', updatedAt: Date.now() } };
+        g.joePages = {};
+        expect(await plan('اريد اعديل علىيه بان يعمب مسارات للتنقل من الى ويحدد مسار للتنقل على الخريطه مع ذكر المسافة وكم الوقت الذي نحتاجه', 'app1')).toBe('project_edit');
+        expect(await plan('ضف ميزة تحديد المسار على الخريطة', 'app1')).toBe('project_edit');
+        expect(await plan('اجعله يحدد الوقت اللازم للوصول', 'app1')).toBe('project_edit');
+    });
+
+    it('…and a page session still belongs to the page builder', async () => {
+        g.joeProjects = {};
+        g.joePages = { page1: { file: 'x.html', updatedAt: Date.now() } };
+        expect(await plan('غيّر لون الأزرار إلى الأخضر', 'page1')).toBe('web_page_builder');
+    });
+
+    it('the map engine carries real directions, and the editor can upgrade an app to them', () => {
+        const T = SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        expect(T).toMatch(/router\.project-osrm\.org\/route\/v1\/driving/);
+        expect(T).toMatch(/L\.polyline\(/);
+        expect(T).toMatch(/leg\.distance/);
+        expect(T).toMatch(/leg\.duration/);
+        // the upgrade path: regenerate from the blueprint, keep the storage key
+        const E = SRC('modules', 'tools', 'definitions', 'ProjectEditTool.ts');
+        expect(E).toMatch(/ENGINE_ABILITY/);
+        expect(E).toMatch(/buildAppFiles\(bp, \{[\s\S]{0,200}storeKey: appMeta\.storeKey/);
+        expect(E).toMatch(/app upgrade reverted/);
+    });
+});

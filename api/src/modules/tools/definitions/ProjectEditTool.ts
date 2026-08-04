@@ -258,6 +258,118 @@ export class ProjectEditTool extends BaseTool {
             } as any;
         }
 
+        /**
+         * [APPLICATION UPGRADE] The field case this exists for: right after a
+         * real React maps app was delivered, «اريد اعديل عليه بان يعمل مسارات
+         * للتنقل من الى … مع ذكر المسافة وكم الوقت» asked for a CAPABILITY, not
+         * for a line of CSS. Handing that to a diff editor means asking a weak
+         * model to write Leaflet routing code that must compile.
+         *
+         * A Joe application is generated deterministically from a blueprint, so
+         * the honest answer is to REGENERATE it at the current engine — the
+         * brand, the storage key and therefore the user's saved data all stay
+         * exactly as they were, and the build proves it compiles. Anything the
+         * engine cannot do falls through to the surgical editor below.
+         */
+        // One flag for the whole tool: a preview only ever refreshes off a
+        // build that really passed, on the upgrade path and the surgical one.
+        let buildVerified: boolean | null = null;
+        const appMeta = (() => {
+            try {
+                const src = fs.readFileSync(path.join(dir, 'src', 'content.js'), 'utf-8');
+                const g = (k: string) => (src.match(new RegExp(`\\n\\s*${k}:\\s*'([^']*)'`)) || [])[1] || '';
+                const kind = g('kind'), engine = g('engine'), storeKey = g('storeKey');
+                if (!kind || !engine || !storeKey) return null;
+                return { kind, engine, storeKey, brand: g('brand'), title: g('title'), entityOne: g('entityOne'), entityMany: g('entityMany'), api: g('api'), isArabic: /isArabic:\s*true/.test(src) };
+            } catch { return null; }
+        })();
+        /** What each engine can actually deliver — asked for in the user's own words. */
+        const ENGINE_ABILITY: Record<string, RegExp> = {
+            map: /مسار|مسارات|طريق|الطرق|اتجاه|المسافة|مسافة|الوقت|كم\s*يبعد|ملاحة|تنقّل|تنقل|route|direction|distance|duration|navigat/i,
+            records: /حقل|حقول|عمود|أعمدة|تصدير|بحث|فلتر|تصفية|إحصائ|احصائ|مجموع|field|column|export|filter|search|total/i,
+            chat: /غرف|غرفة|بحث|إشعار|مزامنة|room|search|sync/i,
+            weather: /توقّع|توقع|أيام|رطوبة|رياح|فهرنهايت|مئوي|forecast|humidity|wind|fahrenheit|celsius/i,
+        };
+        if (appMeta && ENGINE_ABILITY[appMeta.engine]?.test(request)) {
+            const { blueprintFor } = require('../../../core/design/app-blueprints');
+            const { buildAppFiles } = require('./react-app-templates');
+            const bp = blueprintFor(appMeta.kind, appMeta.title || request, appMeta.isArabic);
+            // The app keeps the name it was delivered under.
+            if (appMeta.title) bp.title = appMeta.title;
+            if (appMeta.entityOne) bp.entityOne = appMeta.entityOne;
+            if (appMeta.entityMany) bp.entityMany = appMeta.entityMany;
+            const slugName = String(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).name || 'app');
+            const fresh: Record<string, string> = buildAppFiles(bp, {
+                brand: appMeta.brand, isArabic: appMeta.isArabic, api: appMeta.api, storeKey: appMeta.storeKey,
+            }, slugName);
+            // The real webfont faces at the head of app.css belong to THIS
+            // build's design family — they are kept, not regenerated.
+            try {
+                const oldCss = fs.readFileSync(path.join(dir, 'src', 'styles', 'app.css'), 'utf-8');
+                const head = oldCss.split("/* An application's surface")[0];
+                if (head && head.includes('@font-face')) fresh['src/styles/app.css'] = head + "/* An application's surface" + fresh['src/styles/app.css'].split("/* An application's surface")[1];
+            } catch { /* no previous stylesheet — the fresh one stands */ }
+
+            const changed: Array<{ file: string; before: string }> = [];
+            let depsChanged = false;
+            for (const [rel, body] of Object.entries(fresh)) {
+                const abs = path.join(dir, rel);
+                const before = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8') : '';
+                if (before === body) continue;
+                if (rel === 'package.json') depsChanged = true;
+                fs.mkdirSync(path.dirname(abs), { recursive: true });
+                fs.writeFileSync(abs, body, 'utf-8');
+                changed.push({ file: rel, before });
+            }
+            if (changed.length) {
+                const { executionEngine } = require('../../../kernel/ExecutionEngine');
+                if (depsChanged) {
+                    if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '📦 أثبّت الحزم الجديدة…' : '📦 Installing the new packages…');
+                    await executionEngine.runArgvStreaming('npm', ['install', '--no-audit', '--no-fund'], { cwd: dir, timeout: 240_000, env: { NO_COLOR: '1' } }).done;
+                }
+                if (fs.existsSync(path.join(dir, 'node_modules'))) {
+                    if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🏗️ أتحقق بالبناء الحقيقي (vite build)…' : '🏗️ Verifying with the real build…');
+                    buildVerified = (await executionEngine.runArgvStreaming('npm', ['run', 'build'], { cwd: dir, timeout: 240_000, env: { NO_COLOR: '1' } }).done).ok;
+                    if (!buildVerified) {
+                        for (const c of changed) fs.writeFileSync(path.join(dir, c.file), c.before, 'utf-8');
+                        logs.push('app upgrade reverted — the rebuilt app did not compile');
+                        return {
+                            ok: true,
+                            output: { message: isAr ? '⚠️ رفضتُ الترقية: البناء فشل بعدها فأرجعتُ كل الملفات. مشروعك سليم كما كان.' : '⚠️ Upgrade refused: the rebuild failed, every file was restored.' },
+                            logs,
+                        } as any;
+                    }
+                }
+                const history = (entry?.history || []).concat(changed.map(c => ({ file: c.file, before: c.before, at: Date.now() }))).slice(-20);
+                projects[sessionKey] = { ...(entry || {}), dir, updatedAt: Date.now(), history, lastRequest: request.slice(0, 80) };
+                persistJoeProjects();
+                if (buildVerified === true) {
+                    const url = publicUrlFor(`/project-preview/${sessionKey}/index.html?v=${Date.now()}`);
+                    try { broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any); } catch { /* UI optional */ }
+                }
+                const ABILITY_NOTE: Record<string, [string, string]> = {
+                    map: ['المسارات: اكتب «من» و«إلى» واضغط «احسب المسار» — يُرسم الطريق الحقيقي على الخريطة مع المسافة بالكيلومترات والزمن بالدقائق (بيانات OSRM المفتوحة).',
+                        'Directions: fill From and To, press "Get directions" — the real road route is drawn with distance in km and time in minutes (open OSRM data).'],
+                    records: ['السجلات: إضافة وتعديل وحذف وبحث وتصفية وأرقام محسوبة وتصدير CSV.', 'Records: create, edit, delete, search, filter, computed totals and CSV export.'],
+                    chat: ['المحادثة: غرف ورسائل دائمة وبحث ومزامنة مع الخادم إن وُجد.', 'Chat: rooms, durable messages, search and server sync when one exists.'],
+                    weather: ['الطقس: بحث المدن، موقعك، توقّعات سبعة أيام، وتبديل الوحدة.', 'Weather: city search, your location, a seven-day forecast and a unit switch.'],
+                };
+                const note = (ABILITY_NOTE[appMeta.engine] || ['', ''])[isAr ? 0 : 1];
+                logs.push(`app upgrade: ${appMeta.kind}/${appMeta.engine} — ${changed.length} file(s) regenerated, build ${buildVerified === null ? 'skipped' : buildVerified ? 'OK' : 'FAILED'}`);
+                return {
+                    ok: true,
+                    output: {
+                        message: isAr
+                            ? `⚙️ حدّثتُ التطبيق نفسه — لا صفحة جديدة عنه.\n\n${note}\n\n📂 ${dir}\n${changed.map(c => `   • ${c.file}`).join('\n')}\n${buildVerified === true ? '\n✅ vite build نجح بعد الترقية — والمعاينة تحدّثت.' : ''}\n💾 بياناتك المحفوظة في التطبيق لم تُمَسّ.`
+                            : `⚙️ Upgraded the application itself — not a page about it.\n\n${note}\n\n📂 ${dir}\n${changed.map(c => `   • ${c.file}`).join('\n')}${buildVerified === true ? '\n✅ vite build passed.' : ''}`,
+                        dir, touched: changed.map(c => c.file), buildVerified,
+                    },
+                    logs,
+                } as any;
+            }
+            logs.push('app upgrade: the engine already carries this capability — nothing to regenerate');
+        }
+
         const touched: Array<{ file: string; before: string; after: string }> = [];
         const refused: string[] = [];
         const write = (rel: string, body: string) => {
@@ -778,7 +890,6 @@ Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits
         }
 
         // ── whole-project verification with the real build ──────────────────
-        let buildVerified: boolean | null = null;
         if (fs.existsSync(path.join(dir, 'node_modules'))) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🏗️ أتحقق بالبناء الحقيقي (vite build)…' : '🏗️ Verifying with the real build…');
             // Through the Single Execution Authority — a direct spawn here
