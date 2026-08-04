@@ -156,7 +156,12 @@ export class AgentOrchestrator {
 
     const rawPlan = await PlanningEngine.generatePlan({ intent, memory: memory?.getHistory() }, traceId, this.context);
 
-    const nodes: ExecutionNode[] = rawPlan.steps.map((step) => ({
+    // The graph the executor will actually schedule: unique ids, no dangling or
+    // cyclic edges, and every {{FROM:...}} reference declared as a real
+    // dependency so it resolves AFTER its producer ran. Applied here, not only
+    // inside sanitizeSteps, so the deterministic fast paths and the recovery
+    // planner get the same guarantee.
+    const nodes: ExecutionNode[] = PlanningEngine.wireDataFlow(rawPlan.steps as any).map((step: any) => ({
       id: step.id,
       traceId,
       agent: (step.agent as AgentType) || "General",
@@ -222,9 +227,16 @@ export class AgentOrchestrator {
 
       console.log(`[AgentOrchestrator] Step Iteration. Completed: ${completedNodes.size}/${dag.nodes.length}`);
       
-      const readyNodes = dag.nodes.filter(n => 
-        n.status === "pending" && 
-        n.dependencies.every(depId => completedNodes.has(depId))
+      // A dependency on a node that is not IN the graph can never be satisfied —
+      // the node would stay pending, the loop would see nothing ready, and after
+      // two replans the run ends with «Execution stopped» instead of doing the
+      // work. Plans leave PlanningEngine.wireDataFlow with no such edge, but
+      // recovery and stall merges drop nodes whose ids already exist, which can
+      // orphan an edge here. An unknown id counts as satisfied: run the step.
+      const knownIds = new Set(dag.nodes.map(n => n.id));
+      const readyNodes = dag.nodes.filter(n =>
+        n.status === "pending" &&
+        n.dependencies.every(depId => completedNodes.has(depId) || !knownIds.has(depId))
       );
 
       if (readyNodes.length === 0 && completedNodes.size < dag.nodes.length) {
@@ -619,7 +631,15 @@ export class AgentOrchestrator {
       if (typeof v === 'string') {
         return v.replace(/\{\{\s*FROM:([a-zA-Z0-9_-]+)\s*\}\}/g, (_m, id) => {
           const dep = (dag?.nodes || []).find((n: any) => n.id === id);
-          return dep ? textOf(dep.result) : '';
+          // Empty here means the reference pointed at a step that had not run —
+          // an empty file or an empty email, with nothing on screen to explain
+          // it. wireDataFlow declares every reference as a dependency so this
+          // cannot happen; if it ever does, it says so in the log.
+          if (!dep) { console.warn(`[AgentOrchestrator] {{FROM:${id}}} names no node in this plan — resolved to nothing`); return ''; }
+          if (dep.result === undefined && dep.status !== 'completed') {
+            console.warn(`[AgentOrchestrator] {{FROM:${id}}} read before «${id}» finished (status: ${dep.status}) — resolved to nothing`);
+          }
+          return textOf(dep.result);
         });
       }
       if (Array.isArray(v)) return v.map(walk);
@@ -709,7 +729,7 @@ export class AgentOrchestrator {
         memory: memory.getHistory()
     }, traceId, this.context);
 
-    const newNodes: ExecutionNode[] = (recoveryPlan.steps as any).map((step: any) => ({
+    const newNodes: ExecutionNode[] = PlanningEngine.wireDataFlow(recoveryPlan.steps as any).map((step: any) => ({
       id: step.id,
       traceId,
       agent: (step.agent as AgentType) || failedNode.agent || "General",

@@ -1288,6 +1288,8 @@ Constraints:
 ${catalogueFor(intent.goal)}
 - If nothing in the catalogue fits, use central_answer(question) — never invent a tool name.
 - Define explicit dependencies (dependsOn).
+- DATA FLOW: when a step needs what an earlier step PRODUCED, put {{FROM:<that step's id>}} inside its input where the data belongs — it is replaced with that step's real output at run time. Describing the data instead ("the results from step 1") passes nothing. Example: [{"id":"scan","tool":"link_checker",...},{"id":"report","tool":"write_file","input":{"path":"report.md","content":"# تقرير — {{FROM:scan}}"},"dependsOn":["scan"]}]
+- Any id you write inside {{FROM:...}} MUST also appear in that step's dependsOn.
 - Assign an agent to each node: Dev, Security, Browser, General.
 - DO NOT use static templates. Analyze the specific goal from a fresh perspective.
 - Provide a brief "reasoning" field for EACH step explaining why this path was chosen.${recoveryRules}
@@ -1446,6 +1448,133 @@ Return ONLY a JSON array of steps:
             }
             if (!s.input.request) s.input.request = userGoal;
         }
+        return PlanningEngine.wireDataFlow(steps as any) as any;
+    }
+
+    /**
+     * THE PLAN'S DATA FLOW — the difference between two steps and one job.
+     *
+     * The executor has always understood `{{FROM:<id>}}`: a placeholder inside a
+     * step's input that resolves to an earlier step's OUTPUT. But the planning
+     * prompt never taught it, so only two hand-written fast paths ever emitted
+     * one. Every plan the model wrote carried `dependsOn` as pure ORDERING —
+     * «افحص الروابط المكسورة ثم اكتب تقريراً بالنتيجة» became a scan whose
+     * findings were thrown away, followed by a write_file whose content was the
+     * words «تقرير بالنتائج». The second step never saw the first one's work.
+     *
+     * The prompt now teaches the syntax, and this pass makes the graph honest:
+     *
+     *   - ids are unique. `completedNodes` is a Set — two nodes sharing an id
+     *     make `size < nodes.length` true forever, and the run dies on the
+     *     iteration limit instead of finishing.
+     *   - a dependency on a step that does not exist is dropped. It could never
+     *     be satisfied: the node stays "pending", the loop sees no ready nodes,
+     *     and after two replans the run ends with «Execution stopped».
+     *   - a dependency that would close a cycle is dropped, for the same reason.
+     *   - a `{{FROM:x}}` reference IS a dependency and is declared as one.
+     *     Referencing a step without depending on it resolves the placeholder
+     *     BEFORE that step runs — an empty string, silently: an empty file, an
+     *     empty email. A reference to an id that does not exist at all is
+     *     retargeted to the step's own first dependency, or removed.
+     *   - and a step that depends on another yet never mentions it gets the
+     *     producer's output carried into it. Empty content slot: filled. A short
+     *     one (under 400 chars — a DESCRIPTION of the material, not the material
+     *     itself): appended to, never overwritten. A long one is the payload the
+     *     model authored and is left untouched.
+     *
+     * Idempotent by construction: the carry only fires when a step contains no
+     * reference at all, so running this twice cannot append twice.
+     */
+    static wireDataFlow<T extends { id?: string; tool?: string; input?: any; dependsOn?: any }>(steps: T[]): T[] {
+        const list = (Array.isArray(steps) ? steps : []).filter(s => s && typeof s === 'object');
+        if (list.length < 2) return steps;
+
+        const FROM = /\{\{\s*FROM:([a-zA-Z0-9_-]+)\s*\}\}/g;
+        const refsIn = (v: any, out: Set<string> = new Set()): Set<string> => {
+            if (typeof v === 'string') { for (const m of v.matchAll(FROM)) out.add(m[1]); }
+            else if (Array.isArray(v)) v.forEach(x => refsIn(x, out));
+            else if (v && typeof v === 'object') Object.values(v).forEach(x => refsIn(x, out));
+            return out;
+        };
+        const mapStrings = (v: any, f: (s: string) => string): any => {
+            if (typeof v === 'string') return f(v);
+            if (Array.isArray(v)) return v.map(x => mapStrings(x, f));
+            if (v && typeof v === 'object') {
+                const o: any = {}; for (const k of Object.keys(v)) o[k] = mapStrings(v[k], f); return o;
+            }
+            return v;
+        };
+
+        // 1. Unique ids. The first holder of a name keeps it, so references
+        //    written against it stay valid.
+        const used = new Set<string>();
+        list.forEach((s, i) => {
+            let id = String(s.id ?? '').trim() || `step_${i + 1}`;
+            if (used.has(id)) { let n = 2; while (used.has(`${id}_${n}`)) n++; id = `${id}_${n}`; }
+            used.add(id);
+            s.id = id;
+        });
+
+        // 2. Edges that can actually be scheduled: the target must exist, must
+        //    not be the step itself, and must not already depend on it.
+        const deps = new Map<string, string[]>(list.map(s => [String(s.id), [] as string[]]));
+        const dependsTransitively = (from: string, on: string, seen = new Set<string>()): boolean => {
+            if (from === on) return true;
+            if (seen.has(from)) return false;
+            seen.add(from);
+            return (deps.get(from) || []).some(d => dependsTransitively(d, on, seen));
+        };
+        const addEdge = (id: string, dep: string): boolean => {
+            if (!deps.has(dep) || dep === id) return false;
+            const mine = deps.get(id)!;
+            if (mine.includes(dep)) return true;
+            if (dependsTransitively(dep, id)) return false;   // would close a cycle
+            mine.push(dep);
+            return true;
+        };
+        for (const s of list) {
+            const declared = Array.isArray(s.dependsOn) ? s.dependsOn.map(String) : [];
+            for (const d of declared) addEdge(String(s.id), d);
+        }
+
+        // 3. Every reference is a real, declared, ordered edge — or it goes away.
+        for (const s of list) {
+            const id = String(s.id);
+            if (!s.input || typeof s.input !== 'object') continue;
+            for (const ref of refsIn(s.input)) {
+                if (deps.has(ref) && addEdge(id, ref)) continue;
+                const fallback = (deps.get(id) || [])[0];
+                // The id charset is [A-Za-z0-9_-] — nothing here needs escaping.
+                const placeholder = new RegExp(`\\{\\{\\s*FROM:${ref}\\s*\\}\\}`, 'g');
+                s.input = mapStrings(s.input, (str) => str.replace(placeholder, fallback ? `{{FROM:${fallback}}}` : ''));
+                if (fallback) console.warn(`[PlanningEngine] «${id}» referenced «${ref}» which is not usable — retargeted to «${fallback}»`);
+                else console.warn(`[PlanningEngine] «${id}» referenced «${ref}» which does not exist — reference removed`);
+            }
+        }
+
+        // 4. The carry: a step that depends on work it never mentions.
+        const CONTENT_KEYS = ['content', 'body', 'text', 'markdown', 'message'];
+        for (const s of list) {
+            const id = String(s.id);
+            const mine = deps.get(id) || [];
+            s.dependsOn = mine;
+            if (!mine.length) continue;
+            if (!s.input || typeof s.input !== 'object') { s.input = {}; }
+            if (refsIn(s.input).size) continue;                       // the plan already says it
+            const carried = mine.map(d => `{{FROM:${d}}}`).join('\n\n');
+
+            if (String(s.tool || '') === 'central_answer') {
+                const q = String(s.input.question || '').trim();
+                s.input.question = `${q}\n\n[نتيجة الخطوات السابقة — اعتمد عليها]\n${carried}`.trim();
+                continue;
+            }
+            const slot = CONTENT_KEYS.find(k => k in s.input) || (String(s.tool || '') === 'write_file' ? 'content' : null);
+            if (!slot) continue;
+            const existing = typeof s.input[slot] === 'string' ? s.input[slot] : '';
+            if (!existing.trim()) s.input[slot] = carried;
+            else if (existing.length < 400) s.input[slot] = `${existing}\n\n${carried}`;
+        }
+
         return steps;
     }
 }

@@ -582,6 +582,62 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(SRC('core', 'orchestrator', 'PlanningEngine.ts')).toMatch(/const buildVerb = !isQuestion/);
     });
 
+    it('a plan is one job, not two: a step that depends on another RECEIVES its output', () => {
+        // `dependsOn` used to be pure ordering — «افحص ثم اكتب تقريراً بالنتيجة»
+        // wrote the WORDS «تقرير بالنتائج» and threw the findings away, because
+        // the planning prompt never taught the {{FROM:id}} the executor
+        // understands. Proven live in verify_plan_dataflow.ts; locked here.
+        const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
+        expect(String(PlanningEngine.generateDynamicDag)).toContain('{{FROM:');
+
+        const wired = PlanningEngine.wireDataFlow([
+            { id: 'scan', tool: 'shell_execute', input: {}, dependsOn: [] },
+            { id: 'report', tool: 'write_file', input: { path: 'r.md', content: 'تقرير بالنتائج' }, dependsOn: ['scan'] },
+        ]);
+        expect(wired[1].input.content).toContain('{{FROM:scan}}');
+        // and the payload the planner authored itself is never overwritten
+        const authored = 'م'.repeat(500);
+        const kept = PlanningEngine.wireDataFlow([
+            { id: 'scan', tool: 'shell_execute', input: {}, dependsOn: [] },
+            { id: 'report', tool: 'write_file', input: { path: 'r.md', content: authored }, dependsOn: ['scan'] },
+        ]);
+        expect(kept[1].input.content).toBe(authored);
+    });
+
+    it('…and a broken graph is repaired instead of ending the run', () => {
+        const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
+        // a dependency on a step that does not exist froze the loop until
+        // «Execution stopped»; a cycle did the same; two steps sharing an id
+        // made the completed-set smaller than the graph forever.
+        const repaired = PlanningEngine.wireDataFlow([
+            { id: 'a', tool: 'central_answer', input: {}, dependsOn: ['ghost', 'a'] },
+            { id: 'a', tool: 'central_answer', input: {}, dependsOn: ['a'] },
+            { id: 'c', tool: 'central_answer', input: {}, dependsOn: ['a'] },
+        ]);
+        expect(new Set(repaired.map((s: any) => s.id)).size).toBe(3);
+        const done = new Set<string>();
+        for (let i = 0; i <= repaired.length; i++) {
+            const ready = repaired.filter((s: any) => !done.has(s.id) && s.dependsOn.every((d: string) => done.has(d)));
+            if (!ready.length) break;
+            ready.forEach((s: any) => done.add(s.id));
+        }
+        expect(done.size).toBe(3);
+        // a reference must be a declared dependency, or it resolves to nothing
+        const ref = PlanningEngine.wireDataFlow([
+            { id: 'scan', tool: 'shell_execute', input: {}, dependsOn: [] },
+            { id: 'save', tool: 'write_file', input: { path: 'r.md', content: '{{FROM:scan}}' }, dependsOn: [] },
+        ]);
+        expect(ref[1].dependsOn).toContain('scan');
+        // an unknown id is never written verbatim into the user's file
+        const ghost = PlanningEngine.wireDataFlow([
+            { id: 'a', tool: 'shell_execute', input: {}, dependsOn: [] },
+            { id: 'b', tool: 'write_file', input: { path: 'r.md', content: 'X{{FROM:nowhere}}Y' }, dependsOn: [] },
+        ]);
+        expect(ghost[1].input.content).toBe('XY');
+        // and the executor never stalls on an edge that names nothing
+        expect(SRC('orchestration', 'AgentOrchestrator.ts')).toContain('|| !knownIds.has(depId)');
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([
