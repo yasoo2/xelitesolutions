@@ -56,6 +56,11 @@ const AR_LEXICON: Array<[RegExp, string[]]> = [
     lex(`${AL}ذاكره|تذكر|احفظ|استرجع|${AL}معرفه`, ['memory', 'recall', 'remember', 'knowledge', 'store']),
     lex(`جيت|${AL}مستودع|${AL}فرع|كوميت|github|git|${AL}تغييرات`, ['git', 'repository', 'branch', 'commit', 'pull request', 'github', 'diff']),
     lex(`دوكر|${AL}حاويه|${AL}حاويات|كوبرنيتس|${AL}خادم|${AL}سيرفر|${AL}بنيه`, ['docker', 'container', 'kubernetes', 'server', 'infrastructure', 'terraform']),
+    // The terminal had no Arabic name at all: «ما آخر خطأ ظهر في الترمنال»
+
+    // matched nothing, so the planner was shown the core tools only and
+    // terminal_manager — the one tool that can READ the panel — was invisible.
+    lex(`${AL}طرفيه|${AL}طرفيات|ترمنال|تيرمنال|${AL}كونسول|سطر\\s*${AL}اوامر|${AL}شل`, ['terminal', 'console', 'shell', 'command', 'output', 'history']),
     lex(`${AL}تبعيات|${AL}حزم|${AL}مكتبه|npm|${AL}باكج|ثبت`, ['package', 'dependency', 'npm', 'install', 'library', 'audit']),
     lex(`${AL}وثائق|${AL}توثيق|اشرح|readme|${AL}دليل`, ['documentation', 'docs', 'readme', 'swagger', 'openapi']),
     lex(`${AL}روابط|${AL}رابط|${AL}مكسوره|${AL}معطله|${AL}لينك`, ['link', 'links', 'href', 'broken', 'anchor']),

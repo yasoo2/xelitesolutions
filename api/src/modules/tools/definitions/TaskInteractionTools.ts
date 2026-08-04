@@ -8,10 +8,10 @@ import { terminals, registerTerminal, removeTerminal } from '../terminal/Termina
 import { logger } from '../../../shared/utils/logger';
 import { terminalKernel } from '../../terminal/terminal-kernel';
 
-function getWorkspaceRoot() {
+function getWorkspaceRoot(workspaceId?: string) {
     try {
         const { workspaceService } = require('../../services/WorkspaceService');
-        return workspaceService.getActiveRoot();
+        return workspaceService.getActiveRoot(workspaceId);
     } catch {
         return process.cwd();
     }
@@ -49,9 +49,9 @@ function resolveToolPath(p: string) {
  */
 export class TerminalManagerTool extends BaseTool {
     name = 'terminal_manager';
-    description = 'Manage persistent interactive terminal sessions (create, read, write, kill, resize).';
+    description = 'Open a terminal, run a command in it, and READ its output — the live terminal panel, its history, and the last error it printed. Use for "read the terminal", "why did that command fail", "open a new terminal", "what did the console say".';
     version = '2.0.0';
-    tags = ['shell', 'terminal', 'persistent', 'interactive'];
+    tags = ['shell', 'terminal', 'console', 'command', 'output', 'history', 'error', 'persistent', 'interactive'];
     inputSchema = {
         type: 'object' as const,
         properties: {
@@ -71,12 +71,18 @@ export class TerminalManagerTool extends BaseTool {
     async execute(input: any, context?: any) {
         const action = input.action;
         const id = input.id || 'default';
-        const workDir = getWorkspaceRoot();
+        const workDir = getWorkspaceRoot(input?.workspaceId || context?.workspaceId);
 
         if (action === 'create') {
             try {
                 const result: any = await terminalKernel.createTerminal(id, {
                     shell: input.shell,
+                    // ONE WORLD. Measured: the panel's shell opened in Joe's own
+                    // source directory while shell_execute ran in the session's
+                    // workspace — `npm install` in the panel and a build asked of
+                    // Joe happened in two different folders, and an `rm` typed in
+                    // what looked like «my project» was standing in Joe's code.
+                    cwd: workDir,
                     cols: input.cols,
                     rows: input.rows,
                     // The panel's create call carries no userId — the route puts

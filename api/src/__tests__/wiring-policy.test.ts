@@ -738,6 +738,23 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
             .toContain("context?.userId");
     });
 
+    it('Joe can see the terminal, and it is the same world his tools work in', () => {
+        // Measured before the fix: «ما آخر خطأ ظهر في الترمنال» scored
+        // terminal_manager at ZERO — the one tool that can read the panel was
+        // invisible to the planner, so the question could only be answered from
+        // imagination. English scraped by at 7.8; Arabic found nothing.
+        const { selectToolsFor } = require('../core/orchestrator/toolCatalog');
+        for (const g of ['اقرأ ما في الطرفية', 'ما آخر خطأ ظهر في الترمنال', 'افتح طرفية جديدة', 'what did the terminal say']) {
+            const names = selectToolsFor(g, 12).map((t: any) => t.name);
+            expect({ g, sees: names.includes('terminal_manager') }).toEqual({ g, sees: true });
+        }
+        // and the panel's shell starts in the session's workspace, not in Joe's
+        // own source tree — proven live in verify_terminal_brain.ts
+        expect(SRC('modules', 'tools', 'definitions', 'TaskInteractionTools.ts')).toContain('cwd: workDir');
+        expect(SRC('modules', 'tools', 'definitions', 'TaskInteractionTools.ts'))
+            .toContain("getWorkspaceRoot(input?.workspaceId || context?.workspaceId)");
+    });
+
     it('a tool name the planner invents never reaches the executor', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         const out = PlanningEngine.sanitizeSteps([
