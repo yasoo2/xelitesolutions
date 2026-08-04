@@ -466,3 +466,88 @@ describe('the environment editor stays narrow', () => {
         expect(w).toMatch(/new RegExp\(`\^\\\\s\*\$\{key\}/);
     });
 });
+
+/**
+ * THE BRAIN MUST KNOW WHAT IT OWNS.
+ *
+ * The deepest wiring defect of all was not in a seam between two files — it
+ * was in the planner's own prompt, which listed SEVEN tool names, two of them
+ * aliases. With the ~21 more that keyword paths name directly, 26 of 151
+ * tools could ever be chosen and 125 could not be reached by any request in
+ * any language: every browser audit, the database tools, the translator, the
+ * load tester, the mobile and Go and Java builders. Registered, tested,
+ * locked — and invisible to the thing that decides.
+ *
+ * The catalogue is retrieved per goal now. These cases keep it honest: it
+ * must be built from the REGISTRY (never a literal list), it must stay small
+ * enough for a free-tier model, it must cross the Arabic/English boundary,
+ * and a name the planner invents must never reach the executor.
+ */
+describe('the planner is offered the whole toolbox, not a frozen list of seven', () => {
+    const { selectToolsFor, catalogueFor, CORE_TOOLS, scoreTool, goalTerms } = require('../core/orchestrator/toolCatalog');
+    const planner = SRC('core', 'orchestrator', 'PlanningEngine.ts');
+    const NAMES_ALL = tools.map((t: any) => t.name);
+
+    it('the frozen seven are gone and the catalogue comes from the registry', () => {
+        expect(planner).not.toMatch(/Use ONLY existing tools: shell_execute/);
+        expect(planner).toContain('catalogueFor(intent.goal)');
+        const cat = SRC('core', 'orchestrator', 'toolCatalog.ts');
+        expect(cat).toContain("import { tools } from '../../modules/tools/registry'");
+    });
+
+    it('every line it offers names a REAL tool with its REAL arguments', () => {
+        for (const goal of ['ترجم الموقع', 'audit my page performance', 'شغّل دوكر']) {
+            for (const line of catalogueFor(goal).split('\n').filter(Boolean)) {
+                const name = (line.match(/^- ([a-z0-9_]+)\(/) || [])[1];
+                expect(NAMES_ALL).toContain(name);
+                const tool: any = tools.find((t: any) => t.name === name);
+                const args = (line.match(/\(([^)]*)\)/) || [])[1] || '';
+                for (const a of args.split(',').map(x => x.trim().replace(/\?$/, '')).filter(Boolean)) {
+                    expect(Object.keys(tool.inputSchema?.properties || {})).toContain(a);
+                }
+            }
+        }
+    });
+
+    it('an Arabic request reaches the English-described specialist', () => {
+        const cases: Array<[string, string]> = [
+            ['ترجم الموقع إلى الإنجليزية', 'browser_translate'],
+            ['حلّل قاعدة البيانات وأنشئ ترحيل', 'db_schema_migrator'],
+            ['ابنِ تطبيق جوال', 'mobile_builder'],
+            ['دقّق السيو في موقعي', 'browser_seo_audit'],
+            ['أنشئ خط أنابيب CI', 'ci_generate_pipeline'],
+        ];
+        for (const [goal, want] of cases) {
+            const top = selectToolsFor(goal).filter((p: any) => p.score > 0).slice(0, 5).map((p: any) => p.name);
+            expect({ goal, top }).toEqual({ goal, top: expect.arrayContaining([want]) });
+        }
+    });
+
+    it('it stays affordable, and the core is always there', () => {
+        for (const goal of ['ترجم الموقع', 'ساعدني', 'build me a store and deploy it and test everything']) {
+            const cat = catalogueFor(goal);
+            expect(cat.length).toBeLessThan(8000);
+            const names = selectToolsFor(goal).map((p: any) => p.name);
+            for (const c of CORE_TOOLS) if (NAMES_ALL.includes(c)) expect(names).toContain(c);
+        }
+    });
+
+    it('reach is measured, not assumed: one corpus opens most of the toolbox', () => {
+        const corpus = ['ترجم الموقع', 'افحص الأمان', 'اختبر الأداء', 'ابنِ تطبيق جوال', 'راجع الكود',
+            'شغّل دوكر', 'دقّق الوصول', 'لقطة شاشة', 'الروابط المكسورة', 'وثائق swagger',
+            'اكتب اختبارات', 'خط أنابيب CI', 'ابحث في الملفات', 'حلّل التكلفة السحابية', 'اقرأ الطلبات'];
+        const reached = new Set<string>();
+        for (const g of corpus) for (const t of selectToolsFor(g)) reached.add(t.name);
+        expect(reached.size).toBeGreaterThan(90);      // was 26, for every request ever
+    });
+
+    it('a tool name the planner invents never reaches the executor', () => {
+        const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
+        const out = PlanningEngine.sanitizeSteps([
+            { id: 'a', tool: 'a_tool_that_never_existed', description: 'x', input: {}, dependsOn: [] },
+            { id: 'b', tool: 'ls', description: 'y', input: {}, dependsOn: [] },
+        ] as any, 'goal');
+        expect(out[0].tool).toBe('central_answer');
+        expect(NAMES_ALL).toContain(out[1].tool);
+    });
+});

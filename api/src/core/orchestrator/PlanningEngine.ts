@@ -1,4 +1,5 @@
 import { StructuredIntent } from '../intelligence/IntentParser';
+import { catalogueFor, registeredToolNames } from './toolCatalog';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { normalizeIntentText } from './promptNormalizer';
 import { compactHistoryForPrompt } from './history-compact';
@@ -1241,7 +1242,9 @@ Generate a dynamic Execution DAG (Directed Acyclic Graph) for the given goal.
 Entropy Seed: ${entropySeed} (Use this to explore different optimal paths if possible)
 
 Constraints:
-- Use ONLY existing tools: shell_execute, read_file, write_file, browser_run, grep_search, ls, npm_manager.
+- Use ONLY tools from THIS catalogue (name(args) — purpose). An argument ending with ? is optional:
+${catalogueFor(intent.goal)}
+- If nothing in the catalogue fits, use central_answer(question) — never invent a tool name.
 - Define explicit dependencies (dependsOn).
 - Assign an agent to each node: Dev, Security, Browser, General.
 - DO NOT use static templates. Analyze the specific goal from a fresh perspective.
@@ -1370,6 +1373,22 @@ Return ONLY a JSON array of steps:
      */
     static sanitizeSteps<T extends { tool: string; description: string; input: any }>(steps: T[], goal: string): T[] {
         const userGoal = goal.split(/\n+\[(?:ATTACHED FILES|STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|RESPONSE LANGUAGE)/)[0].trim();
+        // A planner is now shown a REAL catalogue, so a name outside it is a
+        // hallucination rather than a gap. An unknown name used to travel all
+        // the way to the executor and come back as «tool not found», which the
+        // recovery loop then tried to plan around. It is turned into an honest
+        // answer here instead — once, at the source.
+        const known = new Set(registeredToolNames());
+        const { TOOL_ALIASES } = require('../../modules/services/ToolService');
+        for (const s of steps) {
+            const name = String(s.tool || '').trim();
+            if (known.has(name)) continue;
+            const viaAlias = TOOL_ALIASES?.[name];
+            if (viaAlias && known.has(viaAlias)) { s.tool = viaAlias; continue; }
+            console.warn(`[PlanningEngine] planner named an unknown tool «${name}» — answering instead of pretending`);
+            s.tool = 'central_answer';
+            s.input = { question: s.description || userGoal };
+        }
         for (const s of steps) {
             s.input = s.input && typeof s.input === 'object' ? s.input : {};
             const t = String(s.tool || '');
