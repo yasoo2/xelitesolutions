@@ -160,5 +160,15 @@ export async function narrate(
  */
 export function narrationEnabled(): boolean {
     const v = String(process.env.JOE_NARRATION ?? '').trim().toLowerCase();
-    return v !== '0' && v !== 'false' && v !== 'off';
+    if (v === '0' || v === 'false' || v === 'off') return false;
+    // Narration is a DECORATION: one friendly line above a step. When the
+    // local brain is paused, that line would be bought from the metered
+    // provider — spending the day's quota, and the user's seconds, on
+    // something nobody asked for. The field log shows the cost plainly:
+    // «[Narrator] no line for … (timeout)» three times in one answer.
+    try {
+        const { isLocalBrainOpen } = require('../llm/intelligent-router');
+        if (typeof isLocalBrainOpen === 'function' && isLocalBrainOpen()) return false;
+    } catch { /* router not loaded (unit tests) — narrate as before */ }
+    return true;
 }

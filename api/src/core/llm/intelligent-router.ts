@@ -714,6 +714,52 @@ const DEAD_BRAIN_LATCH_MS = Math.max(0, parseInt(String(process.env.DEAD_BRAIN_L
 /** The local model timing out once means a 180s wait per walk; remember it and
  *  probe with a short timeout for a while instead. */
 let localTimedOutAt = 0;
+
+/* ── THE LOCAL BRAIN CIRCUIT BREAKER ──────────────────────────────────────
+ *
+ * Measured on the user's machine, one ordinary question: SEVEN calls went to
+ * the local brain (intent, plan, two internal reasonings, three narrations)
+ * and EVERY ONE of them timed out before falling to Groq. Shortening the
+ * wait was not enough — a dead engine was still being asked, over and over,
+ * at ~20 seconds a turn. Two minutes of a three-minute answer was spent
+ * waiting for a brain that never replies.
+ *
+ * So it gets a real breaker: two consecutive timeouts OPEN the circuit and
+ * the local brain is skipped outright for a window. When the window passes
+ * ONE short probe decides — a success closes the breaker and the local brain
+ * is primary again; another timeout re-opens it for twice as long, capped.
+ * A single success anywhere resets everything: this is a pause, never a ban.
+ */
+const LOCAL_TRIP_AFTER = Math.max(1, parseInt(String(process.env.LOCAL_BRAIN_TRIP_AFTER || '').trim(), 10) || 2);
+const LOCAL_BREAKER_BASE_MS = Math.max(30_000, parseInt(String(process.env.LOCAL_BRAIN_BREAKER_MS || '').trim(), 10) || 10 * 60_000);
+const LOCAL_BREAKER_MAX_MS = 30 * 60_000;
+const LOCAL_PROBE_TIMEOUT_MS = 8_000;
+let localConsecutiveTimeouts = 0;
+let localCircuitUntil = 0;
+let localBreakerWindowMs = 0;
+
+/** Is the local brain currently skipped? */
+export function isLocalBrainOpen(): boolean { return Date.now() < localCircuitUntil; }
+/** Half-open: the window passed but the last verdict was a timeout — probe short. */
+export function isLocalBrainProbing(): boolean { return !isLocalBrainOpen() && localConsecutiveTimeouts >= LOCAL_TRIP_AFTER; }
+/** Diagnostics and tests. */
+export function localBrainState(): { open: boolean; probing: boolean; consecutiveTimeouts: number; untilMs: number } {
+    return { open: isLocalBrainOpen(), probing: isLocalBrainProbing(), consecutiveTimeouts: localConsecutiveTimeouts, untilMs: Math.max(0, localCircuitUntil - Date.now()) };
+}
+export function noteLocalBrainTimeout(): void {
+    localTimedOutAt = Date.now();
+    localConsecutiveTimeouts += 1;
+    if (localConsecutiveTimeouts < LOCAL_TRIP_AFTER) return;
+    localBreakerWindowMs = Math.min(LOCAL_BREAKER_MAX_MS, localBreakerWindowMs ? localBreakerWindowMs * 2 : LOCAL_BREAKER_BASE_MS);
+    localCircuitUntil = Date.now() + localBreakerWindowMs;
+    console.warn(`[IntelligentRouter] 🧠 local brain PAUSED for ${Math.round(localBreakerWindowMs / 60000)}m — ${localConsecutiveTimeouts} consecutive timeouts. The mesh answers meanwhile; one short probe re-tests it after the window.`);
+}
+export function noteLocalBrainOk(): void {
+    if (localConsecutiveTimeouts || localCircuitUntil) console.info('[IntelligentRouter] 🧠 local brain answered — breaker reset, it is primary again.');
+    localConsecutiveTimeouts = 0; localCircuitUntil = 0; localBreakerWindowMs = 0; localTimedOutAt = 0;
+}
+/** Tests only. */
+export function resetLocalBrainBreaker(): void { localConsecutiveTimeouts = 0; localCircuitUntil = 0; localBreakerWindowMs = 0; localTimedOutAt = 0; }
 export function markProviderOk(name: string): void {
     recentlyFailedProviders.delete(name);
 }
@@ -1422,6 +1468,11 @@ export async function routeToModel(
 
     for (const p of orderedProviders) {
         try {
+            if (p.name === 'Local (Auto)' && isLocalBrainOpen()) {
+                const left = Math.max(1, Math.round((localCircuitUntil - Date.now()) / 1000));
+                console.info(`[IntelligentRouter] ⏭️ skipping the local brain (paused ${left}s more) — going straight to the mesh.`);
+                continue;
+            }
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
 
             // Dynamic Timeout: Optimized for speed
@@ -1444,6 +1495,10 @@ export async function routeToModel(
                 if (localTimedOutAt && Date.now() - localTimedOutAt < 300_000) {
                     timeoutValue = Math.min(timeoutValue, 20_000);
                 }
+                // Half-open: the pause expired, so this call IS the probe. It
+                // gets seconds, not minutes — a healthy engine answers a short
+                // prompt well inside that, and a dead one costs almost nothing.
+                if (isLocalBrainProbing()) timeoutValue = Math.min(timeoutValue, LOCAL_PROBE_TIMEOUT_MS);
                 // [INTELLIGENCE ECONOMY] Internal reasoning (intent/plan JSON)
                 // gets a LEASH, not the full local window: when Ollama is busy
                 // chewing a vision request, an internal planning call queued
@@ -1473,6 +1528,7 @@ export async function routeToModel(
                 console.info(`[IntelligentRouter] ✅ Success via ${p.name} `);
                 lastTotalFailureAt = 0; // the brain is alive — release the latch
                 markProviderOk(p.name); // clear any prior cooldown — it works again
+                if (p.name === 'Local (Auto)') noteLocalBrainOk();
                 if (!cacheDisabled && !hasSensitive && ans.length > 20) {
                     await LLMCacheTool.saveToCache(cacheKeyPayload, ans, selectedModel.model);
                 }
@@ -1487,7 +1543,7 @@ export async function routeToModel(
             // for that window, not for the default 60 seconds.
             markProviderFailed(p.name, retryAfterMsFrom(String(e?.message || '')) || undefined);
             if (RATE_LIMIT_RE.test(String(e?.message || ''))) sawRateLimit = true;
-            if (p.name === 'Local (Auto)' && /TIMEOUT/i.test(String(e?.message || ''))) localTimedOutAt = Date.now();
+            if (p.name === 'Local (Auto)' && /TIMEOUT/i.test(String(e?.message || ''))) noteLocalBrainTimeout();
             lastError = e.message;
         }
     }
