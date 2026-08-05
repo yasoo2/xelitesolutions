@@ -563,6 +563,31 @@ export class ExecutionEngine {
                 shell: options.shell !== undefined ? options.shell : false,
                 windowsHide: true,
             } as any);
+            /**
+             * A FAILED SPAWN IS NOT A SUCCESS — AND MUST NOT KILL ITS HOST.
+             *
+             * spawn() does NOT throw when the binary is missing. It returns a
+             * child with no pid and emits 'error' on a later tick, and an
+             * 'error' event with no listener is an uncaught exception: Joe
+             * ITSELF died the moment an updater could not be launched. With
+             * nothing left to answer the interface, «الخطوة 1 من 4» sat on the
+             * screen for half an hour — the failure was total and invisible at
+             * the same time. Measured, not guessed: pid is `undefined` here and
+             * this function used to return ok:true.
+             *
+             * Now the event is caught, written where the user can read it, and
+             * a missing binary is reported as the failure it is.
+             */
+            child.on('error', (e: any) => {
+                const line = `[X] تعذّر تشغيل ${file}: ${e?.message || e}\n`;
+                try { if (options.logFile) fs.appendFileSync(options.logFile, line); } catch { /* the log is a courtesy */ }
+                try { console.error(`[ExecutionEngine] runDetached(${file}) failed: ${e?.message || e}`); } catch { /* never fatal */ }
+            });
+            if (!child.pid) {
+                const error = `${file} — لم يبدأ (تعذّر العثور على البرنامج أو تشغيله)`;
+                try { if (options.logFile) fs.appendFileSync(options.logFile, `[X] ${error}\n`); } catch { /* best effort */ }
+                return { ok: false, error };
+            }
             child.unref();
             return { ok: true, pid: child.pid, logFile: options.logFile };
         } catch (e: any) {

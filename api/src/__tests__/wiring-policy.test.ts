@@ -1859,32 +1859,42 @@ it('the updater speaks where the interface can hear it', () => {
          * «لماذا زر تحديث جو لا يعمل بشكل صحيح ولا يظهر تقدم التحديث؟»
          *
          * PowerShell's Write-Host writes to the HOST, not to standard output.
-         * The updater is spawned detached, hidden and console-less, so all 66
-         * of its progress lines went nowhere: the log stayed empty and the
-         * overlay showed three motionless dots for two minutes. Both scripts
-         * now echo every line into the log file the UI reads, and the route is
-         * what tells them where it is.
+         * The updater runs detached, hidden and console-less, so all 66 of its
+         * progress lines went nowhere: the log stayed empty and the overlay
+         * showed three motionless dots.
+         *
+         * The first repair opened the log a SECOND time from inside PowerShell
+         * — two handles on one file from two processes — and on Windows that
+         * write failed inside a silent catch. Result: «نصف ساعه ولم يتم تحديث
+         * النظام», a card frozen on «الخطوة 1 من 4», and one line in the log.
+         *
+         * There is now ONE writer and ONE channel: the process's own standard
+         * output, which is the log file because Joe redirected it there. No
+         * sharing, no host, no window, nothing left to fail quietly.
          */
         const S = SRC('api', 'routes', 'system.ts');
         expect(S).toMatch(/JOE_UPDATE_LOG: UPDATE_LOG/);
         for (const f of ['update-joe.ps1', 'start-joe.ps1']) {
             const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', f), 'utf-8');
-            // It must WRITE to the log — and with sharing, because that same
-            // file is this process's own stdout. Add-Content could not, and the
-            // silent failure cost him a seven-minute overlay with one line in it.
-            expect(src).toMatch(/\$env:JOE_UPDATE_LOG/);
-            expect(src).toMatch(/FileShare\]::ReadWrite/);
+            expect(`${f}: ${/\[Console\]::Out\.WriteLine\(\$msg\)/.test(src) ? 'stdout' : 'nowhere'}`).toBe(`${f}: stdout`);
+            // The second handle must never come back.
+            expect(src).not.toMatch(/\[System\.IO\.File\]::Open\(\$env:JOE_UPDATE_LOG/);
             // and the progress lines actually go through it
             expect(`${f}: ${(src.match(/^\s*Say /gm) || []).length > 20 ? 'logs' : 'silent'}`).toBe(`${f}: logs`);
         }
     });
 
-    it('and an update with no output yet reads as running, not as idle', () => {
+    it('and an update with no output yet reads as running — but not forever', () => {
         const S = SRC('api', 'routes', 'system.ts');
-        expect(S).toMatch(/running: fresh && !tail\.includes\(DONE_MARK\)/);
+        // Silence early is normal. Silence past the threshold is a stall, and
+        // «running» must go false the moment it is one — a bar over a dead
+        // process is exactly what he watched for half an hour.
+        expect(S).toMatch(/running: !!startedAt && !finished && !failed && !stalled/);
+        expect(S).toMatch(/stalled = 'never_started'/);
         const U = WEB('components', 'UpdateJoeItem.tsx');
         expect(U).toMatch(/لم يصل أول سطر بعد/);
         expect(U).toMatch(/joe-update-clock/);
+        expect(U).toMatch(/التحديث متوقّف/);
     });
 
         it('and the overlay lives outside the menu that opened it', () => {
@@ -2183,12 +2193,19 @@ describe('the built system is ready for a domain', () => {
  * that says whether there IS an update, and a mark when one is waiting.
  */
 describe('the update button before, during and after', () => {
-    it('the progress lines can share the file with the process own stdout', () => {
+    it('the progress lines ARE the process own stdout — one writer, one channel', () => {
+        /**
+         * The sharing repair was not enough: two handles on one file from two
+         * processes still failed on his machine, silently, and cost him half
+         * an hour on «الخطوة 1 من 4». The log IS this process's stdout, so the
+         * only correct number of extra handles is zero.
+         */
         for (const f of ['update-joe.ps1', 'start-joe.ps1']) {
             const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', f), 'utf-8');
-            expect(`${f}: ${/FileShare\]::ReadWrite/.test(src) ? 'shares' : 'collides'}`).toBe(`${f}: shares`);
-            // Add-Content is the trap: read-only sharing on a file already open
+            expect(`${f}: ${/\[Console\]::Out\.WriteLine\(\$msg\)/.test(src) ? 'stdout' : 'nowhere'}`).toBe(`${f}: stdout`);
+            // Both traps: Add-Content's read-only share, and the second handle.
             expect(src).not.toMatch(/Add-Content -LiteralPath \$env:JOE_UPDATE_LOG/);
+            expect(src).not.toMatch(/\[System\.IO\.File\]::Open\(\$env:JOE_UPDATE_LOG/);
         }
     });
 

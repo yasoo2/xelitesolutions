@@ -42,11 +42,13 @@ function writeFakeUpdater(marker: string): string {
     const p = path.join(os.tmpdir(), `joe-fake-updater-${Date.now()}.sh`);
     fs.writeFileSync(p, [
         '#!/usr/bin/env bash',
-        // Like the real updater: says nothing for a moment, then reports through
-        // the log file it was handed — not through stdout, because on Windows
-        // PowerShell's Write-Host never reaches stdout at all.
+        // Like the real updater: says nothing for a moment, then reports on its
+        // OWN STANDARD OUTPUT — the channel Joe redirected into the log file.
+        // The scripts used to open that same log a second time from inside
+        // PowerShell, and on Windows that write failed inside a silent catch:
+        // one line, half an hour, «الخطوة 1 من 4». One writer, one channel.
         'sleep 2',
-        'say() { echo "$1"; [ -n "$JOE_UPDATE_LOG" ] && printf "%s\\n" "$1" >> "$JOE_UPDATE_LOG"; }',
+        'say() { echo "$1"; }',
         `say "${marker}"`,
         'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do say "خطوة $i من التحديث"; sleep 1; done',
         'say "[OK] التحديث اكتمل — جو يعود الآن."',

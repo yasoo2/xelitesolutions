@@ -25,7 +25,7 @@ import { createPortal } from 'react-dom';
 import { DownloadCloud, Copy, Check } from 'lucide-react';
 import { API_URL } from '../config';
 
-export type UpdatePhase = 'idle' | 'starting' | 'working' | 'restarting' | 'failed';
+export type UpdatePhase = 'idle' | 'starting' | 'working' | 'restarting' | 'failed' | 'stalled';
 
 type UpdateState = { phase: UpdatePhase; log: string; error: string; startedAt: number; lines: number; stage: string };
 
@@ -61,6 +61,22 @@ async function tick(): Promise<boolean> {
             return true;
         }
         if (d?.failed) { set({ phase: 'failed', error: 'انتهى التحديث بخطأ — التفاصيل في السجل أدناه.' }); return true; }
+        /**
+         * «نصف ساعه ولم يتم تحديث النظام» — AND THE BAR KEPT MOVING.
+         *
+         * The server can now say «it never started» and «it went silent», and
+         * a progress bar that cannot say «I stopped» is decoration. This is
+         * where the honest answer gets shown instead of an eternal step 1.
+         */
+        if (d?.stalled) {
+            set({
+                phase: 'stalled',
+                error: d.stalled === 'never_started'
+                    ? 'المحدِّث لم يكتب سطراً واحداً — يبدو أنه لم يبدأ أصلاً.'
+                    : `المحدِّث توقّف عن الكتابة منذ ${Math.round(Number(d.silentForMs || 0) / 60000)} دقيقة.`,
+            });
+            return true;
+        }
         set({ phase: 'working' });
     } catch {
         // The server is being rebuilt. This is expected, and is the signal.
@@ -228,11 +244,13 @@ export function SelfUpdateOverlay() {
 
     const done = STEPS.filter(st => stepClass(st.key, s) === 'done').length;
     const current = STEPS.find(st => stepClass(st.key, s) === 'now');
-    const percent = s.phase === 'failed' ? 100 : Math.min(96, Math.round(((done + 0.5) / STEPS.length) * 100));
+    // A stalled run is a stopped run: it gets the failure face, not a bar.
+    const bad = s.phase === 'failed' || s.phase === 'stalled';
+    const percent = bad ? 100 : Math.min(96, Math.round(((done + 0.5) / STEPS.length) * 100));
 
     return createPortal(
         <div className="joe-update-overlay" role="dialog" aria-live="polite" data-testid="update-overlay">
-            <div className={`joe-update-card${s.phase === 'failed' ? ' is-failed' : ''}`}>
+            <div className={`joe-update-card${bad ? ' is-failed' : ''}`} data-phase={s.phase}>
                 {/* ONE THING TO READ FIRST: what is happening, right now. The
                     old card led with a log box, so the eye landed on a
                     scrolling terminal and learned nothing. */}
@@ -241,17 +259,22 @@ export function SelfUpdateOverlay() {
                         <DownloadCloud size={20} />
                     </span>
                     <div className="joe-update-titles">
-                        <b>{s.phase === 'failed' ? 'تعذّر التحديث' : (current?.label || 'يبدأ التحديث')}</b>
+                        <b>
+                            {s.phase === 'failed' ? 'تعذّر التحديث'
+                                : s.phase === 'stalled' ? 'التحديث متوقّف'
+                                    : (current?.label || 'يبدأ التحديث')}
+                        </b>
                         <span>
                             {s.phase === 'failed' ? 'راجع التفاصيل بالأسفل'
-                                : s.phase === 'restarting' ? 'جو يعود الآن — ستُحدَّث الصفحة وحدها'
-                                    : `الخطوة ${Math.min(done + 1, STEPS.length)} من ${STEPS.length}`}
+                                : s.phase === 'stalled' ? `لا تقدّم منذ ${elapsed} — لن أدّعي غير ذلك`
+                                    : s.phase === 'restarting' ? 'جو يعود الآن — ستُحدَّث الصفحة وحدها'
+                                        : `الخطوة ${Math.min(done + 1, STEPS.length)} من ${STEPS.length}`}
                         </span>
                     </div>
-                    {s.startedAt && s.phase !== 'failed' ? <span className="joe-update-clock">{elapsed}</span> : null}
+                    {s.startedAt && !bad ? <span className="joe-update-clock">{elapsed}</span> : null}
                 </div>
 
-                {s.phase !== 'failed' && (
+                {!bad && (
                     <>
                         <div className="joe-update-bar" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
                             <span style={{ width: `${percent}%` }} />
@@ -267,7 +290,21 @@ export function SelfUpdateOverlay() {
                     </>
                 )}
 
-                {s.error && <p className="joe-update-error">{s.error}</p>}
+                {s.error && <p className="joe-update-error" data-testid="update-error">{s.error}</p>}
+
+                {/*
+                    A DEAD END IS NOT AN END. When the updater cannot be made
+                    to run, the one line that always works is right here to be
+                    copied — the same line he used to paste before this button
+                    existed, offered only when the button has failed him.
+                */}
+                {s.phase === 'stalled' && (
+                    <div className="joe-update-rescue" data-testid="update-rescue">
+                        <p>شغّله بنفسك في نافذة PowerShell وسترى السبب كاملاً:</p>
+                        <code dir="ltr">cd $HOME\Documents\xelitesolutions ; .\update-joe.ps1</code>
+                        <span>السجل بالأسفل يحمل اسم البرنامج والسكربت اللذين حاول جو تشغيلهما — انسخه كاملاً.</span>
+                    </div>
+                )}
 
                 {/*
                     THE SAME LINES HE USED TO WATCH IN POWERSHELL.
@@ -297,8 +334,17 @@ export function SelfUpdateOverlay() {
                     </pre>
                 </div>
 
-                {s.phase === 'failed' && (
-                    <button className="joe-update-close" onClick={() => set({ phase: 'idle' })}>إغلاق</button>
+                {bad && (
+                    <div className="joe-update-acts">
+                        <button
+                            className="joe-update-retry"
+                            data-testid="update-retry"
+                            onClick={() => { set({ phase: 'idle' }); void startSelfUpdate(); }}
+                        >
+                            حاول مرة أخرى
+                        </button>
+                        <button className="joe-update-close" onClick={() => set({ phase: 'idle' })}>إغلاق</button>
+                    </div>
                 )}
             </div>
         </div>,

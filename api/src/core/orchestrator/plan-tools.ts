@@ -419,22 +419,40 @@ export function unrunnableShellStep(command: any): string | null {
 
 /** Is this executable on PATH? Pure filesystem — no process is spawned to ask. */
 export function hasBinary(name: string): boolean {
+    return findBinary(name) !== null;
+}
+
+/**
+ * WHERE that binary is — the full path, or null.
+ *
+ * `hasBinary` answers yes/no, which is enough to reject a plan step and not
+ * enough to LAUNCH something: spawn resolves a bare name through PATH again,
+ * and when that lookup fails it does not throw — it kills the process that
+ * asked. Anything Joe spawns detached is resolved here first, so «not found»
+ * is an answer instead of a corpse.
+ */
+export function findBinary(name: string): string | null {
     const bin = String(name || '').trim();
-    if (!bin) return false;
+    if (!bin) return null;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const fs = require('fs');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const path = require('path');
+    // An absolute or relative path is not a PATH lookup at all.
+    if (bin.includes('/') || bin.includes('\\')) {
+        try { return fs.existsSync(bin) ? bin : null; } catch { return null; }
+    }
     const dirs = String(process.env.PATH || '').split(path.delimiter).filter(Boolean);
     const exts = process.platform === 'win32'
         ? String(process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';').filter(Boolean)
         : [''];
     for (const dir of dirs) {
         for (const ext of exts) {
-            try { if (fs.existsSync(path.join(dir, bin + ext))) return true; } catch { /* unreadable PATH entry */ }
+            const full = path.join(dir, bin + ext);
+            try { if (fs.existsSync(full)) return full; } catch { /* unreadable PATH entry */ }
         }
     }
-    return false;
+    return null;
 }
 
 /** The vocabulary block the planner prompt carries. */

@@ -5,6 +5,7 @@ import path from 'path';
 import { MonitoringTool } from '../../modules/tools/definitions/MonitoringTool';
 import { executionEngine } from '../../kernel/ExecutionEngine';
 import { isLoopbackRequest } from '../middleware/auth';
+import { findBinary } from '../../core/orchestrator/plan-tools';
 
 const router = express.Router();
 const monitor = new MonitoringTool(); // Use instance to access static metrics
@@ -51,6 +52,47 @@ const DONE_MARK = 'التحديث اكتمل';
 /** Set when THIS process started an update; a restart clears it, which is correct. */
 let startedAt = 0;
 let updaterPid = 0;
+
+/**
+ * HOW LONG SILENCE IS ALLOWED TO MEAN «WORKING».
+ *
+ * «نصف ساعه ولم يتم تحديث النظام» — and the interface said «الخطوة 1 من 4»
+ * the whole time, because the only thing it knew was that a file had been
+ * written to recently, and nothing had written to it at all.
+ *
+ * The updater's banner reaches the log in about two seconds. So a log holding
+ * nothing but Joe's own header after this long has ONE meaning: the updater
+ * never started. That is a different sentence from «still working», and the
+ * user is owed the true one.
+ */
+const neverStartedMs = () => Number(process.env.JOE_UPDATE_SILENT_MS || 40_000);
+/** …and once it IS talking, this much dead air means it is stuck, not busy. */
+const stalledMs = () => Number(process.env.JOE_UPDATE_STALL_MS || 6 * 60_000);
+
+/** Is that process still there? (signal 0 asks without touching it.) */
+function pidAlive(pid: number): boolean {
+    if (!pid) return false;
+    try { process.kill(pid, 0); return true; } catch (e: any) { return e?.code === 'EPERM'; }
+}
+
+/**
+ * HAS THE UPDATER ITSELF SAID ANYTHING?
+ *
+ * Joe writes the header and the two «what I am launching» lines, so counting
+ * lines would have Joe hearing its own voice and calling it progress. Only
+ * lines that are NOT Joe's count as the updater being alive and talking.
+ */
+function updaterSpoke(tail: string): boolean {
+    return tail.split('\n').some(l => {
+        const t = l.trim();
+        return !!t && !t.startsWith('[i] ') && !t.startsWith('[!] ') && !t.startsWith('بدأ التحديث');
+    });
+}
+
+/** Joe's own voice in the updater's log — always prefixed, never mistaken for progress. */
+function note(mark: '[i]' | '[!]', lines: string[]): void {
+    try { fs.appendFileSync(UPDATE_LOG, lines.map(l => `${mark} ${l}\n`).join('')); } catch { /* a courtesy */ }
+}
 
 /** Walk up to the checkout: the bundle runs from api/dist, the source from api/src/api/routes. */
 function repoRoot(): string {
@@ -147,21 +189,50 @@ router.get('/update/check', async (req, res) => {
 
 router.get('/update/status', (req, res) => {
     const tail = readTail();
-    let fresh = false;
-    try { fresh = Date.now() - fs.statSync(UPDATE_LOG).mtimeMs < 10 * 60 * 1000; } catch { /* never run */ }
+    const lines = tail ? tail.split('\n').filter(Boolean).length : 0;
+    let silentFor = Infinity;
+    try { silentFor = Date.now() - fs.statSync(UPDATE_LOG).mtimeMs; } catch { /* never run */ }
+    const finished = tail.includes(DONE_MARK);
+    const failed = tail.includes('[X]');
+    const age = startedAt ? Date.now() - startedAt : 0;
+
+    /**
+     * «نصف ساعه ولم يتم تحديث النظام» — AND THE SCREEN KEPT SAYING «STEP 1».
+     *
+     * The old rule was «the file was touched in the last ten minutes» → still
+     * running. After that it reported neither running, nor finished, nor
+     * failed — three noes the interface had no state for, so it showed the
+     * last thing it knew, forever. A progress bar that cannot say «I stopped»
+     * is not progress, it is decoration.
+     *
+     * There are now two distinct honest answers:
+     *   never_started — nothing but Joe's own header, well past the point the
+     *                   updater's banner should have arrived
+     *   stalled       — it spoke, then went silent for minutes
+     */
+    let stalled = '';
+    if (startedAt && !finished && !failed) {
+        if (!updaterSpoke(tail) && age > neverStartedMs()) stalled = 'never_started';
+        else if (silentFor > stalledMs()) stalled = 'silent';
+    }
+
     res.json({
         ok: true,
         allowed: selfUpdateEnabled() && isLoopbackRequest(req),
-        // "still working" means: it wrote recently and has not printed its last
-        // line. An update that has produced no output YET is still running —
-        // the old rule needed output to exist, so a silent start read as idle.
-        running: fresh && !tail.includes(DONE_MARK) && !tail.includes('[X]'),
-        finished: tail.includes(DONE_MARK),
-        failed: tail.includes('[X]'),
+        // "still working" means: it is talking, or it is young enough that
+        // silence is normal — and its process is still alive.
+        running: !!startedAt && !finished && !failed && !stalled,
+        finished,
+        failed,
+        // The one word the interface was missing.
+        stalled,
+        alive: pidAlive(updaterPid),
         startedAt,
         pid: updaterPid,
+        // seconds of dead air, so the overlay can be specific rather than vague
+        silentForMs: Number.isFinite(silentFor) ? Math.max(0, Math.round(silentFor)) : 0,
         // so the overlay can say «لم يصل سطر بعد» instead of showing three dots
-        lines: tail ? tail.split('\n').filter(Boolean).length : 0,
+        lines,
         // the coarse step, marked by the updater itself — visible even when
         // only a couple of lines have arrived
         stage: (tail.match(/\[STAGE\] (\w+)/g) || []).slice(-1)[0]?.replace('[STAGE] ', '') || '',
@@ -200,13 +271,58 @@ router.post('/update', (req, res) => {
      */
     try { fs.writeFileSync(UPDATE_LOG, `بدأ التحديث ${new Date().toLocaleString()}\n`); } catch { /* the log is a convenience */ }
     startedAt = Date.now();
+    updaterPid = 0;
 
-    const spawned = /\.ps1$/i.test(script)
-        ? executionEngine.runDetached('powershell.exe',
-            ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script],
-            { cwd: root, logFile: UPDATE_LOG, env: { JOE_UNATTENDED: '1', JOE_UPDATE_LOG: UPDATE_LOG } })
-        : executionEngine.runDetached(isWin ? script : '/bin/bash', isWin ? [] : [script],
-            { cwd: root, logFile: UPDATE_LOG, env: { JOE_UNATTENDED: '1', JOE_UPDATE_LOG: UPDATE_LOG } });
+    /**
+     * THE INTERPRETER IS FOUND BEFORE IT IS LAUNCHED.
+     *
+     * Handed a bare name like «powershell.exe», the process launcher resolves
+     * it through PATH itself, and when that lookup fails it does not throw —
+     * it emits an event that used to kill Joe outright. Resolving here means a
+     * missing interpreter is a sentence on the screen instead of a dead server
+     * behind a frozen bar, and it lets pwsh 7 stand in when Windows PowerShell
+     * is not on PATH.
+     */
+    let file = '';
+    let args: string[] = [];
+    let missing = '';
+    if (/\.ps1$/i.test(script)) {
+        const winPs = process.env.SystemRoot
+            ? path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+            : '';
+        const found = (winPs && fs.existsSync(winPs) ? winPs : '')
+            || findBinary('powershell.exe') || findBinary('powershell') || findBinary('pwsh');
+        if (!found) missing = 'PowerShell';
+        file = found || '';
+        args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script];
+    } else if (isWin) {
+        file = script;
+    } else {
+        const sh = findBinary('bash') || '/bin/bash';
+        if (!fs.existsSync(sh)) missing = 'bash';
+        file = sh;
+        args = [script];
+    }
+
+    if (missing) {
+        const message = `تعذّر العثور على ${missing} على هذا الجهاز — لا يمكن تشغيل المحدِّث تلقائياً.`;
+        try { fs.appendFileSync(UPDATE_LOG, `[X] ${message}\n`); } catch { /* best effort */ }
+        return res.status(500).json({ error: 'interpreter_missing', message });
+    }
+
+    /**
+     * WHAT WAS ATTEMPTED, WRITTEN BEFORE IT IS ATTEMPTED.
+     *
+     * When the updater says nothing at all, the log used to say nothing about
+     * it either — one header line and half an hour of silence, with no way to
+     * tell «PowerShell is missing» from «the script hung on line 3». Two lines
+     * cost nothing and turn the next screenshot into a diagnosis.
+     */
+    note('[i]', [`البرنامج: ${file}`, `السكربت: ${script}`]);
+
+    const spawned = executionEngine.runDetached(file, args, {
+        cwd: root, logFile: UPDATE_LOG, env: { JOE_UNATTENDED: '1', JOE_UPDATE_LOG: UPDATE_LOG },
+    });
 
     if (!spawned.ok) {
         // A failure to even start must be VISIBLE, not a silent empty overlay.
@@ -214,6 +330,34 @@ router.post('/update', (req, res) => {
         return res.status(500).json({ error: 'spawn_failed', message: spawned.error });
     }
     updaterPid = spawned.pid || 0;
+
+    /**
+     * THE WATCHDOG — because a process that starts and says nothing is the
+     * exact shape of the half-hour failure. If the updater's own banner has
+     * not arrived by now, the log SAYS SO, in the log the user can copy, and
+     * hands over the one line that always works.
+     */
+    setTimeout(() => {
+        try {
+            const tail = fs.readFileSync(UPDATE_LOG, 'utf-8');
+            if (updaterSpoke(tail)) return;   // it is talking; nothing to say
+            const alive = pidAlive(updaterPid);
+            /**
+             * [!] AND NOT [X]: this is Joe's diagnosis, not the updater's own
+             * failure. Marked as [X] it would be read as «the update failed»,
+             * and the interface would show a generic error instead of the one
+             * state that carries the explanation and the way out.
+             */
+            note('[!]', [
+                `المحدِّث لم يكتب أي سطر خلال ${Math.round(neverStartedMs() / 1000)} ثانية`
+                + ` — العملية ${alive ? `(${updaterPid}) ما زالت قائمة لكنها لا تتقدّم` : 'انتهت دون أن تبدأ'}.`,
+                `شغّله بنفسك في نافذة PowerShell لترى السبب كاملاً:`,
+                `cd ${root}`,
+                `${/\.ps1$/i.test(script) ? '.\\' + path.basename(script) : script}`,
+            ]);
+        } catch { /* the log is a courtesy, never a failure */ }
+    }, neverStartedMs()).unref?.();
+
     // Answer NOW: the updater is about to kill this very process.
     res.json({ ok: true, pid: spawned.pid, log: UPDATE_LOG });
 });
