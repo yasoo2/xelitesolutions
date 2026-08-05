@@ -128,10 +128,13 @@ async function main() {
         const before = await req('GET', `${base}/api/bookings`);
         const countBefore = (before.body?.bookings || []).length;
 
+        // Scoped past the PARENT panel («الأطباء»), which a clinic system now
+        // renders above the booking form — the first form on the page is no
+        // longer the one that adds a row.
         const addRow = async (who: string) => {
-            const inputs = page.locator('.panel form input, .panel form textarea, .panel form select');
-            await inputs.nth(0).fill(who);
-            await page.locator('.panel form button[type="submit"]').first().click();
+            const form = page.locator('section.panel:not(.rel-panel) form.form').first();
+            await form.locator('input, textarea, select').nth(0).fill(who);
+            await form.locator('button[type="submit"]').first().click();
             await page.waitForTimeout(900);
         };
         await addRow('حجز بلا تسجيل دخول');

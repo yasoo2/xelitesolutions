@@ -41,7 +41,8 @@ describe('the generated application is syntactically real', () => {
         expect(store).toMatch(/async function resolvedApi\(api\)/);
         expect(store).toMatch(/fetch\('\/api\/health'/);
         // and every call goes through it
-        for (const fn of ['apiList', 'apiCreate', 'apiPost', 'apiDelete', 'apiLogin', 'apiMe']) {
+        for (const fn of ['apiList', 'apiCreate', 'apiUpdate', 'apiPost', 'apiDelete', 'apiLogin', 'apiMe',
+            'apiListOn', 'apiCreateOn', 'apiDeleteOn']) {
             const i = store.indexOf(`function ${fn}(`);
             expect(`${fn}: ${store.slice(i, i + 500).includes('resolvedApi(') ? 'resolves' : 'hardcoded'}`)
                 .toBe(`${fn}: resolves`);

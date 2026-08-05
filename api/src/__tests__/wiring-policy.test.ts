@@ -2046,7 +2046,33 @@ describe('the server stores what the app sends', () => {
         const A = SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
         expect(A).toMatch(/export function apiColumnsForRequest/);
         expect(A).toMatch(/const columns = apiColumnsForRequest\(request\)/);
-        expect(A).toMatch(/'db\.js': fileDbJs\(resource, columns\)/);
+        expect(A).toMatch(/'db\.js': fileDbJs\(resource, columns, relation\)/);
+    });
+
+    /**
+     * …AND A SYSTEM MAY OWN MORE THAN ONE TABLE — «طبيب ← مواعيده».
+     *
+     * Wiring, not intent: the parent must be derived from the same blueprint,
+     * reach the database generator AND the server generator, and the interface
+     * must be able to see it. A relation that stops at any one of those four
+     * points is a column nobody can use.
+     */
+    it('a declared parent table reaches the database, the routes and the interface', () => {
+        const A = SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+        expect(A).toMatch(/export function apiRelationForRequest/);
+        expect(A).toMatch(/const relation = apiRelationForRequest\(request\)/);
+        expect(A).toMatch(/'server\.js': fileServerJs\(resource, brand, path\.basename\(proj\), relation\)/);
+        // the link is checked, never trusted
+        expect(A).toMatch(/return \{ error: 'unknown_' \+ c\.key \}/);
+        expect(A).toMatch(/error: 'has_children'/);
+
+        const B = SRC('core', 'design', 'app-blueprints.ts');
+        expect(B).toMatch(/export interface AppRelation/);
+        expect(B).toMatch(/relation\?: AppRelation/);
+
+        const C = SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        expect(C).toMatch(/const rel = content\.relation/);
+        expect(C).toMatch(/export async function apiListOn/);
     });
 
     it('and a column name can only ever be an SQL identifier', () => {

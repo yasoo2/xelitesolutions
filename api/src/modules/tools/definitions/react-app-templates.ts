@@ -61,6 +61,19 @@ ${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.fie
   ],
   statusField: '${q(bp.statusField || '')}',
   doneValue: '${q(bp.doneValue || '')}',
+  // The parent this app's rows belong to — «طبيب ← مواعيده». Null for a
+  // one-table app, and then the picker below simply never renders.
+  relation: ${bp.relation ? `{
+    resource: '${q(bp.relation.resource)}',
+    one: '${q(bp.relation.one)}',
+    many: '${q(bp.relation.many)}',
+    key: '${q(bp.relation.key)}',
+    labelKey: '${q(bp.relation.labelKey)}',
+    emptyHint: '${q(bp.relation.emptyHint)}',
+    fields: [
+${bp.relation.fields.map(f => `      { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
+    ],
+  }` : 'null'},
 };
 `;
 }
@@ -457,12 +470,96 @@ export function apiSibling(api, name) {
   return String(api).replace(/\\/+$/, '').replace(/\\/[^/]+$/, '/' + name);
 }
 
+/**
+ * THE PARENT COLLECTION, ON WHATEVER ORIGIN THIS BUILD IS RUNNING ON.
+ *
+ * apiSibling alone rewrites the DEV address, which is dead the moment the
+ * system is on a domain. These two go through the same one-question probe the
+ * main resource does, so «الأطباء» loads on localhost and on the real host
+ * with no second address baked into the bundle.
+ */
+export async function apiListOn(api, name) {
+  const url = apiSibling(await resolvedApi(api), name);
+  if (!url) return null;
+  try {
+    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const rows = Array.isArray(d) ? d
+      : Array.isArray(d && d[name]) ? d[name]
+        : Array.isArray(d && d.items) ? d.items
+          : Array.isArray(d && d.rows) ? d.rows : null;
+    return Array.isArray(rows) ? rows : null;
+  } catch { return null; }
+}
+
+export async function apiCreateOn(api, name, row) {
+  const url = apiSibling(await resolvedApi(api), name);
+  if (!url) return null;
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(row),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, status: r.status, needsAuth: r.status === 401, error: d.error || '' };
+    return { ok: true, item: d.item || row };
+  } catch { return null; }
+}
+
+export async function apiDeleteOn(api, name, id) {
+  const url = apiSibling(await resolvedApi(api), name);
+  if (!url || id === undefined || id === null || id === '') return null;
+  try {
+    const r = await fetch(trimSlash(url) + '/' + encodeURIComponent(id), { method: 'DELETE', headers: { ...authHeaders() } });
+    const d = await r.json().catch(() => ({}));
+    // 409 is the server refusing to orphan rows — the UI must SAY that, not
+    // pretend the delete happened.
+    if (!r.ok) return { ok: false, status: r.status, needsAuth: r.status === 401, error: d.error || '', count: d.count || 0 };
+    return { ok: true };
+  } catch { return null; }
+}
+
 export async function apiGet(url) {
   if (!url) return null;
   try {
     const r = await fetch(url, { headers: { Accept: 'application/json' } });
     if (!r.ok) return null;
     return await r.json();
+  } catch { return null; }
+}
+
+/**
+ * Trailing slashes, without a regex on purpose: an escaped pattern inside a
+ * GENERATED file is one backslash away from an unparseable bundle, and that is
+ * exactly how this shipped broken once already.
+ */
+function trimSlash(s) {
+  let x = String(s || '');
+  while (x.charAt(x.length - 1) === '/') x = x.slice(0, -1);
+  return x;
+}
+
+/**
+ * EDITING A ROW MUST REACH THE SERVER TOO.
+ *
+ * «حفظ التعديل» rewrote the row in this browser and nowhere else: the change
+ * looked saved, survived a reload (localStorage), and was gone the moment the
+ * app was opened anywhere else. Same failure as the silent 401 on create, one
+ * button along.
+ */
+export async function apiUpdate(api, id, patch) {
+  if (!api || id === undefined || id === null || id === '') return null;
+  try {
+    const r = await fetch(trimSlash(await resolvedApi(api)) + '/' + encodeURIComponent(id), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(patch || {}),
+    });
+    if (!r.ok) return { ok: false, status: r.status, needsAuth: r.status === 401 };
+    const d = await r.json().catch(() => ({}));
+    return { ok: true, item: d.item || null };
   } catch { return null; }
 }
 
@@ -489,7 +586,7 @@ export async function apiDelete(api, id) {
 export function fileRecordsAppJsx(isAr: boolean): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useMemo, useState } from 'react';
-import { createStore, uid, todayISO, computeMetric, toCsv, download, apiList, apiCreate } from '../app/store.js';
+import { createStore, uid, todayISO, computeMetric, toCsv, download, apiList, apiCreate, apiUpdate, apiDelete, apiListOn, apiCreateOn, apiDeleteOn } from '../app/store.js';
 
 const blank = (fields) => {
   const d = {};
@@ -503,6 +600,17 @@ export default function RecordsApp({ content }) {
   const primary = fields.find(f => f.primary) || fields[0];
   const statusField = fields.find(f => f.key === content.statusField);
 
+  /**
+   * THE SECOND TABLE — «طبيب ← مواعيده».
+   *
+   * A one-table app makes you retype the doctor's name on every appointment:
+   * misspelt on the third, unsearchable by the fifth, impossible to rename at
+   * all. Here the parent is a row of its own, picked from a list, and the
+   * link is a real foreign key the server refuses to leave dangling.
+   */
+  const rel = content.relation;
+  const parentStore = useMemo(() => createStore(content.storeKey + ':parents'), [content.storeKey]);
+
   const [rows, setRows] = useState(() => store.read());
   const [draft, setDraft] = useState(() => blank(fields));
   const [editing, setEditing] = useState('');
@@ -511,9 +619,30 @@ export default function RecordsApp({ content }) {
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState('new');
   const [server, setServer] = useState(false);
+  const [parents, setParents] = useState(() => (rel ? parentStore.read() : []));
+  const [parentDraft, setParentDraft] = useState(() => (rel ? blank(rel.fields) : {}));
+  const [parentError, setParentError] = useState('');
+  const [parentFilter, setParentFilter] = useState('');
 
   // Persist on every change — a reload never loses a row.
   useEffect(() => { store.write(rows); }, [rows, store]);
+  useEffect(() => { if (rel) parentStore.write(parents); }, [parents, parentStore, rel]);
+
+  // The parent list, from the server when there is one.
+  useEffect(() => {
+    if (!rel || !content.api) return undefined;
+    let alive = true;
+    (async () => {
+      const remote = await apiListOn(content.api, rel.resource);
+      if (!alive || !remote) return;
+      setParents(prev => {
+        const seen = new Set(prev.map(p => String(p.id)));
+        const extra = remote.filter(p => p && !seen.has(String(p.id)));
+        return extra.length ? [...extra.map(p => ({ ...p, id: String(p.id) })), ...prev] : prev;
+      });
+    })();
+    return () => { alive = false; };
+  }, [content.api, rel]);
 
   // A backend, if this project has one. Silence on failure: the local rows
   // are the truth, and the badge only claims a server that really answered.
@@ -532,24 +661,69 @@ export default function RecordsApp({ content }) {
     return () => { alive = false; };
   }, [content.api]);
 
-  const submit = (e) => {
+  /**
+   * A NEW PARENT, WITHOUT LEAVING THE PAGE.
+   *
+   * The id that comes back from the SERVER is the one kept — a local uid would
+   * name a row the server has never heard of, and every child bound to it
+   * would be refused with unknown_${'$'}{rel && rel.key}. That is the difference
+   * between a link and a number.
+   */
+  const addParent = async (e) => {
+    e.preventDefault();
+    const missing = rel.fields.filter(f => f.required && !String(parentDraft[f.key] || '').trim());
+    if (missing.length) { setParentError(${T('املأ الحقول المطلوبة: ', 'Required: ')} + missing.map(f => f.label).join('، ')); return; }
+    setParentError('');
+    const sent = await apiCreateOn(content.api, rel.resource, parentDraft);
+    if (sent && sent.needsAuth) setParentError(${T('حُفظ محلياً فقط — سجّل الدخول لحفظه على الخادم.', 'Saved locally only — sign in to store it on the server.')});
+    const id = sent && sent.ok && sent.item && sent.item.id ? String(sent.item.id) : uid();
+    setParents([{ ...parentDraft, id }, ...parents]);
+    setParentDraft(blank(rel.fields));
+  };
+
+  const removeParent = async (p) => {
+    const kids = rows.filter(r => String(r[rel.key] || '') === String(p.id)).length;
+    // The same rule the server enforces, said before the click costs anything.
+    if (kids) { setParentError(p[rel.labelKey] + ${T(' مرتبط بـ', ' still has ')} + kids + ${T(' سجلّاً — غيّرها أولاً.', ' rows — move them first.')}); return; }
+    if (!window.confirm(${T('حذف ', 'Delete ')} + (p[rel.labelKey] || rel.one) + '؟')) return;
+    setParentError('');
+    setParents(parents.filter(x => x.id !== p.id));
+    if (server) await apiDeleteOn(content.api, rel.resource, p.id);
+  };
+
+  const submit = async (e) => {
     e.preventDefault();
     const missing = fields.filter(f => f.required && !String(draft[f.key] || '').trim());
     if (missing.length) { setError(${T('املأ الحقول المطلوبة: ', 'Required: ')} + missing.map(f => f.label).join('، ')); return; }
     setError('');
     if (editing) {
-      setRows(rows.map(r => (r.id === editing ? { ...r, ...draft } : r)));
+      const patch = { ...draft };
+      setRows(rows.map(r => (r.id === editing ? { ...r, ...patch } : r)));
       setEditing('');
-    } else {
-      const row = { ...draft, id: uid(), createdAt: new Date().toISOString() };
-      setRows([row, ...rows]);
-      apiCreate(content.api, row);
+      setDraft(blank(fields));
+      // …and on the server, or the edit was only ever true in this browser.
+      const sent = await apiUpdate(content.api, editing, patch);
+      if (sent && sent.needsAuth) setError(${T('التعديل محليّ فقط — سجّل الدخول ليُحفظ على الخادم.', 'Edited locally only — sign in to save it on the server.')});
+      return;
     }
+    const local = { ...draft, id: uid(), createdAt: new Date().toISOString() };
+    setRows([local, ...rows]);
     setDraft(blank(fields));
+    const sent = await apiCreate(content.api, local);
+    if (sent && sent.needsAuth) { setError(${T('حُفظ محلياً فقط — سجّل الدخول لحفظه على الخادم.', 'Saved locally only — sign in to store it on the server.')}); return; }
+    // Adopt the server's id so a later edit or delete reaches the right row.
+    if (sent && sent.ok && sent.item && sent.item.id) {
+      const real = String(sent.item.id);
+      setRows(prev => prev.map(r => (r.id === local.id ? { ...r, ...sent.item, id: real } : r)));
+    }
   };
 
   const edit = (row) => { setEditing(row.id); setDraft({ ...blank(fields), ...row }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const remove = (row) => { if (window.confirm(${T('حذف هذا السجلّ؟', 'Delete this record?')})) setRows(rows.filter(r => r.id !== row.id)); };
+  const remove = async (row) => {
+    if (!window.confirm(${T('حذف هذا السجلّ؟', 'Delete this record?')})) return;
+    setRows(rows.filter(r => r.id !== row.id));
+    if (server) await apiDelete(content.api, row.id);
+  };
   const toggleDone = (row) => {
     if (!statusField || !content.doneValue) return;
     const next = row[statusField.key] === content.doneValue
@@ -558,18 +732,30 @@ export default function RecordsApp({ content }) {
     setRows(rows.map(r => (r.id === row.id ? { ...r, [statusField.key]: next } : r)));
   };
 
+  /** The parent's own name — from the list, or from what the server sent. */
+  const parentName = (row) => {
+    if (!rel) return '';
+    const id = String(row[rel.key] || '');
+    if (!id) return String(row.parent_label || '');
+    const p = parents.find(x => String(x.id) === id);
+    return p ? String(p[rel.labelKey] || '') : String(row.parent_label || '');
+  };
+
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     let list = rows.filter(r => {
       if (filter && String(r[content.statusField] || '') !== filter) return false;
+      if (rel && parentFilter && String(r[rel.key] || '') !== parentFilter) return false;
       if (!needle) return true;
+      // …and by the parent's name: «كل مواعيد د. سارة» is a search, not a join.
+      if (rel && parentName(r).toLowerCase().includes(needle)) return true;
       return fields.some(f => String(r[f.key] || '').toLowerCase().includes(needle));
     });
     list = [...list];
     if (sort === 'old') list.reverse();
     else if (sort === 'az') list.sort((a, b) => String(a[primary.key] || '').localeCompare(String(b[primary.key] || '')));
     return list;
-  }, [rows, query, filter, sort, fields, primary, content.statusField]);
+  }, [rows, query, filter, sort, fields, primary, content.statusField, rel, parentFilter, parents]);
 
   return (
     <div className="wrap">
@@ -580,7 +766,51 @@ export default function RecordsApp({ content }) {
             <span>{m.label}</span>
           </div>
         ))}
+        {rel ? (
+          <div className="stat">
+            <b>{parents.length}</b>
+            <span>{rel.many}</span>
+          </div>
+        ) : null}
       </section>
+
+      {rel ? (
+        <section className="panel rel-panel">
+          <h2>{rel.many}</h2>
+          <form className="form rel-form" onSubmit={addParent}>
+            {rel.fields.map(f => (
+              <label className="field" key={f.key}>
+                <span>{f.label}{f.required ? ' *' : ''}</span>
+                <input type={f.type === 'number' ? 'number' : f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : 'text'}
+                  value={parentDraft[f.key] || ''} onChange={e => setParentDraft({ ...parentDraft, [f.key]: e.target.value })} />
+              </label>
+            ))}
+            {parentError ? <p className="err" role="alert">{parentError}</p> : null}
+            <div className="actions">
+              <button className="btn" type="submit">{${T('أضف ', 'Add ')} + rel.one}</button>
+            </div>
+          </form>
+          {parents.length === 0 ? (
+            <p className="empty">{rel.emptyHint}</p>
+          ) : (
+            <ul className="rel-list">
+              {parents.map(p => {
+                const kids = rows.filter(r => String(r[rel.key] || '') === String(p.id)).length;
+                return (
+                  <li className={'rel-chip' + (parentFilter === String(p.id) ? ' on' : '')} key={p.id}>
+                    <button type="button" className="rel-pick"
+                      onClick={() => setParentFilter(parentFilter === String(p.id) ? '' : String(p.id))}>
+                      <b>{p[rel.labelKey] || rel.one}</b>
+                      <em>{kids} {content.entityMany}</em>
+                    </button>
+                    <button type="button" className="btn tiny danger" onClick={() => removeParent(p)}>{${T('حذف', 'Delete')}}</button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      ) : null}
 
       <section className="panel">
         <h2>{editing ? ${T('تعديل ', 'Edit ')} + content.entityOne : ${T('إضافة ', 'Add a ')} + content.entityOne}</h2>
@@ -600,6 +830,15 @@ export default function RecordsApp({ content }) {
               )}
             </label>
           ))}
+          {rel ? (
+            <label className="field">
+              <span>{rel.one}</span>
+              <select value={draft[rel.key] || ''} onChange={e => setDraft({ ...draft, [rel.key]: e.target.value })}>
+                <option value="">{${T('بلا ', 'No ')} + rel.one}</option>
+                {parents.map(p => <option key={p.id} value={String(p.id)}>{p[rel.labelKey] || rel.one}</option>)}
+              </select>
+            </label>
+          ) : null}
           {error ? <p className="err" role="alert">{error}</p> : null}
           <div className="actions">
             <button className="btn" type="submit">{editing ? ${T('حفظ التعديل', 'Save changes')} : ${T('أضف', 'Add')}}</button>
@@ -618,13 +857,22 @@ export default function RecordsApp({ content }) {
               {(statusField.options || []).map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           ) : null}
+          {rel ? (
+            <select value={parentFilter} onChange={e => setParentFilter(e.target.value)} aria-label={rel.many}>
+              <option value="">{${T('كل ', 'All ')} + rel.many}</option>
+              {parents.map(p => <option key={p.id} value={String(p.id)}>{p[rel.labelKey] || rel.one}</option>)}
+            </select>
+          ) : null}
           <select value={sort} onChange={e => setSort(e.target.value)} aria-label={${T('الترتيب', 'Sort')}}>
             <option value="new">{${T('الأحدث أولاً', 'Newest first')}}</option>
             <option value="old">{${T('الأقدم أولاً', 'Oldest first')}}</option>
             <option value="az">{${T('أبجدياً', 'A → Z')}}</option>
           </select>
           <button className="btn ghost" type="button" disabled={!rows.length}
-            onClick={() => download(content.storeKey + '.csv', toCsv(fields, visible))}>{${T('تصدير CSV', 'Export CSV')}}</button>
+            onClick={() => download(content.storeKey + '.csv',
+              rel
+                ? toCsv([...fields, { key: '__parent', label: rel.one }], visible.map(r => ({ ...r, __parent: parentName(r) })))
+                : toCsv(fields, visible))}>{${T('تصدير CSV', 'Export CSV')}}</button>
           <span className={'badge ' + (server ? 'on' : '')}>
             {server ? ${T('متصل بالخادم', 'Server connected')} : ${T('محلي على هذا الجهاز', 'Local to this device')}}
           </span>
@@ -640,11 +888,15 @@ export default function RecordsApp({ content }) {
               return (
                 <li className={'row' + (done ? ' done' : '')} key={row.id}>
                   <div className="row-main">
-                    <h3>{row[primary.key] || ${T('(بلا عنوان)', '(untitled)')}}</h3>
+                    <h3>
+                      {row[primary.key] || ${T('(بلا عنوان)', '(untitled)')}}
+                      {rel && parentName(row) ? <span className="row-parent">{parentName(row)}</span> : null}
+                    </h3>
                     <dl className="row-meta">
                       {fields.filter(f => f.key !== primary.key && String(row[f.key] || '').trim()).map(f => (
                         <div key={f.key}><dt>{f.label}</dt><dd>{String(row[f.key])}</dd></div>
                       ))}
+                      {rel && parentName(row) ? <div><dt>{rel.one}</dt><dd>{parentName(row)}</dd></div> : null}
                     </dl>
                   </div>
                   <div className="row-acts">
@@ -1521,6 +1773,20 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .row-meta dd{margin:0}
 .row-acts{display:flex;gap:6px;flex-wrap:wrap}
 .rows.compact .row{padding:10px 12px}
+
+/* the parent table — «الأطباء» above «المواعيد» */
+.rel-panel{background:var(--tint,#f8f8f8)}
+.rel-form{align-items:end}
+.rel-list{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.rel-chip{display:flex;align-items:center;gap:6px;border:1px solid var(--border,#e5e5e5);
+  border-radius:999px;padding:4px 6px 4px 4px;background:var(--bg,#fff)}
+.rel-chip.on{border-color:var(--brand,#111);box-shadow:0 0 0 1px var(--brand,#111) inset}
+.rel-pick{border:0;background:none;cursor:pointer;font:inherit;color:inherit;text-align:start;
+  padding:4px 10px;border-radius:999px;display:flex;flex-direction:column;gap:1px;line-height:1.25}
+.rel-pick b{font-size:.92rem}
+.rel-pick em{font-style:normal;font-size:.76rem;color:var(--text-muted,#666)}
+.row-parent{margin-inline-start:8px;font-size:.76rem;font-weight:500;vertical-align:middle;
+  color:var(--text-muted,#666);border:1px solid var(--border,#e5e5e5);border-radius:999px;padding:2px 9px}
 .muted{color:var(--text-muted,#666)}
 .small{font-size:.82rem}
 .empty{color:var(--text-muted,#666);background:var(--tint,#f6f6f6);border-radius:var(--radius,12px);padding:18px;text-align:center;margin:0}

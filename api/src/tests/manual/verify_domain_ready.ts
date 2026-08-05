@@ -127,9 +127,11 @@ async function main() {
             await page.locator('.auth-error').innerText().catch(() => ''));
 
         const before = ((await req('GET', `${base}/api/bookings`)).body?.bookings || []).length;
-        const inputs = page.locator('.panel form input, .panel form textarea, .panel form select');
-        await inputs.nth(0).fill('حجز من الدومين');
-        await page.locator('.panel form button[type="submit"]').first().click();
+        // Past the PARENT panel («الأطباء»), which a clinic renders above the
+        // booking form — the first form on the page adds a doctor, not a row.
+        const form = page.locator('section.panel:not(.rel-panel) form.form').first();
+        await form.locator('input, textarea, select').nth(0).fill('حجز من الدومين');
+        await form.locator('button[type="submit"]').first().click();
         await page.waitForTimeout(1200);
         const rows = (await req('GET', `${base}/api/bookings`)).body?.bookings || [];
         check('والصفّ وصل إلى قاعدة البيانات', rows.length === before + 1, `${rows.length} بدل ${before + 1}`);

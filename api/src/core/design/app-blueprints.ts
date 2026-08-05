@@ -53,6 +53,39 @@ export interface AppMetric {
     unit?: string;
 }
 
+/**
+ * A SECOND TABLE, AND THE LINE BETWEEN THEM — «علاقات بين أكثر من جدول
+ * (طبيب ← مواعيده)».
+ *
+ * Every system built so far owned exactly ONE table. That is enough for a
+ * notes app and nowhere near enough for a real system: a clinic's appointment
+ * belongs to a DOCTOR, an enrolment to a COURSE, an item to a SUPPLIER. With
+ * one table the doctor's name is retyped on every appointment — misspelt on
+ * the third one, unsearchable by the fifth, and impossible to rename at all.
+ *
+ * So a blueprint may declare a PARENT: its own rows, its own fields, and a
+ * foreign key on the child that points at it. The generated database creates
+ * both tables, the API serves both collections plus «this parent's children»,
+ * and the interface picks the parent from a list instead of asking anyone to
+ * type it again.
+ */
+export interface AppRelation {
+    /** Collection name — the table and the URL: 'providers', 'courses'. */
+    resource: string;
+    /** «طبيب» — one of them. */
+    one: string;
+    /** «الأطباء» — the collection, as a heading. */
+    many: string;
+    /** The foreign-key column added to the CHILD row: 'provider_id'. */
+    key: string;
+    /** Which parent field names it wherever a child refers to its parent. */
+    labelKey: string;
+    /** The parent's own fields — a real record, not a label. */
+    fields: AppField[];
+    /** What the picker says before any parent exists. */
+    emptyHint: string;
+}
+
 export interface AppBlueprint {
     kind: AppKind;
     engine: AppEngine;
@@ -66,6 +99,8 @@ export interface AppBlueprint {
     statusField?: string;
     doneValue?: string;
     metrics: AppMetric[];
+    /** The parent table this system's rows belong to, when it has one. */
+    relation?: AppRelation;
     /** Extra npm dependencies this engine really needs. */
     deps: Record<string, string>;
     /** What the app says when it has no rows yet — never fabricated rows. */
@@ -121,6 +156,13 @@ const KIND_DETECTORS: Array<[AppKind, RegExp]> = [
 const MANAGE_SIGNAL = /إدارة|ادارة|تتبّع|تتبع|تنظيم|أرشفة|ارشفة|تسجيل|متابعة|سجلّ|سجل\b|نظام|manage(ment)?|tracker|tracking|organiz|registry|records?\b/i;
 /** …and it is an application, not a document about one. */
 const APP_SIGNAL = /تطبيق|برنامج|نظام|منصّة|منصة|أداة|اداة|لوحة\s*تحكم|\bapp\b|application|system|platform|tool|dashboard/i;
+/**
+ * A booking system for a clinic calls its provider «طبيب» — that is the user's
+ * own example («طبيب ← مواعيده»). A salon's is «مقدّم الخدمة». The relation is
+ * the same shape either way; only the words change, and the words are what
+ * make the system feel like it was built for this business.
+ */
+const CLINIC_SIGNAL = /عياد|طبيب|أطباء|اطباء|طبّي|مرضى|مريض|أسنان|اسنان|مستشفى|clinic|doctor|dentist|patient|medical|hospital/i;
 /** A page ABOUT something wins over the subject it describes. */
 const PAGE_SIGNAL = /صفحة\s*(هبوط|تعريف)?|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|landing\s*page|portfolio|one\s*-?\s*pager|brochure/i;
 
@@ -320,9 +362,21 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
                 f(['sku', 'الرمز', 'SKU', 'text'], isAr),
                 f(['qty', 'الكمية', 'Quantity', 'number', undefined, ['required']], isAr),
                 f(['price', 'سعر الوحدة', 'Unit price', 'number'], isAr),
-                f(['supplier', 'المورّد', 'Supplier', 'text'], isAr),
                 f(['status', 'الحالة', 'Status', 'select', SELECT_AR_EN(['متوفر', 'قارب على النفاد', 'نفد'], ['In stock', 'Low', 'Out of stock'], isAr)], isAr),
             ],
+            // The supplier used to be a word typed on each item — so «الشركة
+            // المتحدة» and «الشركه المتحدة» were two suppliers, and a changed
+            // phone number had to be chased through the whole table.
+            relation: {
+                resource: 'suppliers', one: L('مورّد', 'supplier'), many: L('المورّدون', 'Suppliers'),
+                key: 'supplier_id', labelKey: 'name',
+                fields: [
+                    f(['name', 'اسم المورّد', 'Supplier', 'text', undefined, ['required', 'primary']], isAr),
+                    f(['phone', 'الهاتف', 'Phone', 'tel'], isAr),
+                    f(['email', 'البريد', 'Email', 'email'], isAr),
+                ],
+                emptyHint: L('لا مورّدين بعد — أضف أول مورّد ثم اربط به أصنافه.', 'No suppliers yet — add the first one, then link its items.'),
+            },
             statusField: 'status',
             metrics: [
                 { label: L('عدد الأصناف', 'Items'), kind: 'count' },
@@ -333,7 +387,9 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
             emptyHint: L('المخزون فارغ — أضف أول صنف.', 'The inventory is empty — add your first item.'),
         };
 
-        case 'booking': return {
+        case 'booking': {
+            const clinic = CLINIC_SIGNAL.test(request);
+            return {
             kind, engine: 'records',
             title: L('الحجوزات', 'Bookings'),
             lede: L('احجز، أكّد، وتابع مواعيد اليوم في لوحة واحدة.', 'Book, confirm and follow today\'s appointments in one board.'),
@@ -346,6 +402,23 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
                 f(['time', 'الوقت', 'Time', 'time'], isAr),
                 f(['status', 'الحالة', 'Status', 'select', SELECT_AR_EN(['بانتظار التأكيد', 'مؤكّد', 'ملغي'], ['Pending', 'Confirmed', 'Cancelled'], isAr)], isAr),
             ],
+            // «طبيب ← مواعيده»: the appointment belongs to a person who has a
+            // record of their own — a specialty, a phone, a name that can be
+            // corrected in ONE place and be right on every past booking.
+            relation: {
+                resource: 'providers',
+                one: clinic ? L('طبيب', 'doctor') : L('مقدّم الخدمة', 'provider'),
+                many: clinic ? L('الأطباء', 'Doctors') : L('مقدّمو الخدمة', 'Providers'),
+                key: 'provider_id', labelKey: 'name',
+                fields: [
+                    f(['name', clinic ? 'اسم الطبيب' : 'الاسم', clinic ? 'Doctor' : 'Name', 'text', undefined, ['required', 'primary']], isAr),
+                    f(['specialty', clinic ? 'التخصّص' : 'الاختصاص', clinic ? 'Specialty' : 'Speciality', 'text'], isAr),
+                    f(['phone', 'الهاتف', 'Phone', 'tel'], isAr),
+                ],
+                emptyHint: clinic
+                    ? L('لا أطباء بعد — أضف أول طبيب ثم احجز له موعداً.', 'No doctors yet — add the first one, then book them an appointment.')
+                    : L('لا مقدّمي خدمة بعد — أضف أولهم ثم احجز له موعداً.', 'No providers yet — add the first one, then book an appointment.'),
+            },
             statusField: 'status', doneValue: L('مؤكّد', 'Confirmed'),
             metrics: [
                 { label: L('كل الحجوزات', 'All bookings'), kind: 'count' },
@@ -354,7 +427,8 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
             ],
             deps: {},
             emptyHint: L('لا حجوزات بعد — أضف أول موعد.', 'No bookings yet — add the first appointment.'),
-        };
+            };
+        }
 
         case 'pos': return {
             kind, engine: 'records',
@@ -385,12 +459,23 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
             entityOne: L('عميل', 'customer'), entityMany: L('العملاء', 'Customers'),
             fields: [
                 f(['name', 'الاسم', 'Name', 'text', undefined, ['required', 'primary']], isAr),
-                f(['company', 'الجهة', 'Company', 'text'], isAr),
                 f(['phone', 'الهاتف', 'Phone', 'tel'], isAr),
                 f(['email', 'البريد', 'Email', 'email'], isAr),
                 f(['value', 'قيمة الصفقة', 'Deal value', 'number'], isAr),
                 f(['stage', 'المرحلة', 'Stage', 'select', SELECT_AR_EN(['عميل محتمل', 'تم التواصل', 'عرض سعر', 'مغلق'], ['Lead', 'Contacted', 'Proposal', 'Closed'], isAr)], isAr),
             ],
+            // Several contacts sit inside ONE company; the company is a record
+            // with an industry and a website, not a repeated string.
+            relation: {
+                resource: 'companies', one: L('جهة', 'company'), many: L('الجهات', 'Companies'),
+                key: 'company_id', labelKey: 'name',
+                fields: [
+                    f(['name', 'اسم الجهة', 'Company', 'text', undefined, ['required', 'primary']], isAr),
+                    f(['sector', 'القطاع', 'Sector', 'text'], isAr),
+                    f(['website', 'الموقع', 'Website', 'text'], isAr),
+                ],
+                emptyHint: L('لا جهات بعد — أضف أول جهة ثم اربط بها عملاءها.', 'No companies yet — add the first one, then link its people.'),
+            },
             statusField: 'stage', doneValue: L('مغلق', 'Closed'),
             metrics: [
                 { label: L('كل العملاء', 'All customers'), kind: 'count' },
@@ -408,10 +493,21 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
             entityOne: L('تسجيل', 'enrolment'), entityMany: L('التسجيلات', 'Enrolments'),
             fields: [
                 f(['student', 'الطالب', 'Student', 'text', undefined, ['required', 'primary']], isAr),
-                f(['course', 'المادة', 'Course', 'text', undefined, ['required']], isAr),
                 f(['grade', 'الدرجة', 'Grade', 'number'], isAr),
                 f(['status', 'الحالة', 'Status', 'select', SELECT_AR_EN(['مسجّل', 'منجز', 'منسحب'], ['Enrolled', 'Completed', 'Withdrawn'], isAr)], isAr),
             ],
+            // A course is taught once and enrolled in many times: it owns a
+            // teacher and a credit count, and the enrolment points at it.
+            relation: {
+                resource: 'courses', one: L('مادة', 'course'), many: L('المواد', 'Courses'),
+                key: 'course_id', labelKey: 'title',
+                fields: [
+                    f(['title', 'اسم المادة', 'Course', 'text', undefined, ['required', 'primary']], isAr),
+                    f(['teacher', 'المدرّس', 'Teacher', 'text'], isAr),
+                    f(['hours', 'الساعات', 'Credit hours', 'number'], isAr),
+                ],
+                emptyHint: L('لا مواد بعد — أضف أول مادة ثم سجّل فيها طلابك.', 'No courses yet — add the first one, then enrol students in it.'),
+            },
             statusField: 'status', doneValue: L('منجز', 'Completed'),
             metrics: [
                 { label: L('التسجيلات', 'Enrolments'), kind: 'count' },
@@ -557,7 +653,7 @@ const ENGINE_COVERS: Record<AppEngine, RegExp> = {
     chat: /chat|messag|room|conversation|dm\b|inbox|محادث|رسائل|دردش|غرف/i,
     weather: /weather|forecast|temperature|humidity|wind|طقس|توقّع|توقع|حرارة/i,
     social: /post|feed|timeline|like|comment|follow|profile|share|newsfeed|wall|منشور|منشورات|خيط|إعجاب|تعليق|متابع|ملف\s*شخصي|مشاركة/i,
-    records: /list|record|crud|table|entry|entries|manage|track|inventory|booking|order|task|note|expense|customer|student|contact|report|search|filter|export|قائمة|سجل|إدارة|تتبع|حجز|طلب|مهمة|ملاحظة|مصروف|عميل|طالب|تقرير|بحث|تصدير/i,
+    records: /list|record|crud|table|entry|entries|manage|track|inventory|booking|order|task|note|expense|customer|student|contact|report|search|filter|export|relation(ship)?s?|foreign\s*key|linked|belongs\s*to|قائمة|سجل|إدارة|تتبع|حجز|طلب|مهمة|ملاحظة|مصروف|عميل|طالب|تقرير|بحث|تصدير|علاقات?|ربط|جداول|مرتبط/i,
     // The shop covers the catalogue, the cart and the order — and deliberately
     // NOT payment gateways, shipping carriers or multi-vendor payouts, so a
     // «Shopify-like» request still gets an honest list of what was not built.

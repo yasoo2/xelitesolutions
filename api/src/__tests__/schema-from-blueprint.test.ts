@@ -34,12 +34,14 @@ describe('the schema follows the app, not a fixed guess', () => {
     });
 
     it('every column matches the blueprint the FRONTEND renders', () => {
-        // This is the whole point: one source of truth for both halves.
+        // This is the whole point: one source of truth for both halves — the
+        // blueprint's own fields, plus the link column when the blueprint
+        // declares a parent table («طبيب ← مواعيده»).
         const req = 'نظام حجز مواعيد لعيادة';
         const kind = detectAppKind(req)!;
         const bp = blueprintFor(kind, req, true);
         const keys = apiColumnsForRequest(req).map(c => c.key);
-        expect(keys).toEqual(bp.fields.map(f => f.key));
+        expect(keys).toEqual([...bp.fields.map(f => f.key), bp.relation!.key]);
     });
 
     it('a presentation site keeps the catalogue shape it really posts', () => {

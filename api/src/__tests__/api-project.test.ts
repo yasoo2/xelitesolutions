@@ -182,8 +182,12 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         expect(db).toContain("await import('node:sqlite')");
         expect(db).toContain('JOE_FORCE_JSON_DB');
         expect(db).toContain("backend: 'json'");
+        // Once per backend for the main table — and once per backend AGAIN for
+        // the parent table, because an inventory system links its items to a
+        // supplier («طبيب ← مواعيده», in its own domain).
+        expect(db).toContain('"resource":"suppliers"');
         for (const method of ['list:', 'get:', 'create:', 'update:', 'remove:', 'count:']) {
-            expect((db.match(new RegExp(method.replace(':', ': '), 'g')) || []).length).toBe(2);   // once per backend
+            expect((db.match(new RegExp(method.replace(':', ': '), 'g')) || []).length).toBe(4);
         }
         const server = fs.readFileSync(path.join(res.output.path, 'server.js'), 'utf-8');
         expect(server).toContain('/api/health');

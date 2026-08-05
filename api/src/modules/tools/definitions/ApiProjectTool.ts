@@ -111,7 +111,7 @@ export function apiResourceForKind(kind: PageKind, isAr: boolean, probe?: string
  * Presentation sites (a boutique, a restaurant menu) keep the catalogue shape:
  * their frontends are section builders that really do send name/details/price.
  */
-export interface ApiColumn { key: string; type: 'TEXT' | 'REAL'; required: boolean }
+export interface ApiColumn { key: string; type: 'TEXT' | 'REAL' | 'INT'; required: boolean }
 
 export const CATALOGUE_COLUMNS: ApiColumn[] = [
     { key: 'name', type: 'TEXT', required: true },
@@ -122,6 +122,63 @@ export const CATALOGUE_COLUMNS: ApiColumn[] = [
 /** SQL identifiers only — a field key is never interpolated unchecked. */
 const safeKey = (k: string) => String(k || '').replace(/[^a-zA-Z0-9_]/g, '').slice(0, 40);
 
+/** One blueprint field → one column. Shared by the child table and the parent. */
+function columnsFromFields(fields: any[]): ApiColumn[] {
+    return (fields || [])
+        .map((f: any) => ({
+            key: safeKey(f.key),
+            type: f.type === 'number' ? 'REAL' as const : 'TEXT' as const,
+            required: !!f.required,
+        }))
+        .filter((c: ApiColumn) => c.key && c.key !== 'id' && c.key !== 'created_at');
+}
+
+/**
+ * THE PARENT TABLE, AS THE SERVER SEES IT.
+ *
+ * A blueprint that declares a relation («طبيب ← مواعيده») gets a SECOND real
+ * table here: its own columns, its own CRUD, and a foreign key on the child
+ * that the API refuses to accept unless the parent it points at exists. That
+ * refusal is the whole point — a link that can dangle is not a relation.
+ */
+export interface ApiRelation {
+    /** The parent collection: its table name and its URL segment. */
+    resource: string;
+    /** The foreign-key column carried by the CHILD row. */
+    key: string;
+    /** Which parent column names it in a child's response. */
+    labelKey: string;
+    /** Arabic heading for the README and the chat message. */
+    labelAr: string;
+    columns: ApiColumn[];
+}
+
+/** A collection name is a SQL identifier and a URL segment — both, or neither. */
+const safeResource = (r: string) => String(r || '').replace(/[^a-zA-Z0-9_]/g, '').slice(0, 40);
+
+export function apiRelationForRequest(probe: string): ApiRelation | null {
+    try {
+        const { detectAppKind, blueprintFor } = require('../../../core/design/app-blueprints');
+        const kind = detectAppKind(String(probe || ''));
+        if (!kind) return null;
+        const bp = blueprintFor(kind, String(probe || ''), false);
+        if (bp.engine !== 'records' && bp.engine !== 'shop') return null;
+        if (!bp.relation) return null;
+        const resource = safeResource(bp.relation.resource);
+        const key = safeKey(bp.relation.key);
+        const labelKey = safeKey(bp.relation.labelKey);
+        const columns = columnsFromFields(bp.relation.fields);
+        if (!resource || !key || !columns.length) return null;
+        // The label must be a column that really exists, or a child would refer
+        // to its parent by a field the parent has not got.
+        if (!columns.some(c => c.key === labelKey)) return null;
+        const ar = blueprintFor(kind, String(probe || ''), true);
+        return { resource, key, labelKey, labelAr: String(ar?.relation?.many || resource), columns };
+    } catch {
+        return null;
+    }
+}
+
 export function apiColumnsForRequest(probe: string): ApiColumn[] {
     try {
         const { detectAppKind, blueprintFor } = require('../../../core/design/app-blueprints');
@@ -131,15 +188,16 @@ export function apiColumnsForRequest(probe: string): ApiColumn[] {
         // Only the engines that own ROWS have a table to shape. A map, a chat
         // and a feed have their own servers already.
         if (bp.engine !== 'records' && bp.engine !== 'shop') return CATALOGUE_COLUMNS;
-        const cols = (bp.fields || [])
-            .map((f: any) => ({
-                key: safeKey(f.key),
-                type: f.type === 'number' ? 'REAL' as const : 'TEXT' as const,
-                required: !!f.required,
-            }))
-            .filter((c: ApiColumn) => c.key && c.key !== 'id' && c.key !== 'created_at');
+        const cols = columnsFromFields(bp.fields);
         // A blueprint with no usable fields is not a schema; keep the catalogue.
-        return cols.length ? cols : CATALOGUE_COLUMNS;
+        if (!cols.length) return CATALOGUE_COLUMNS;
+        // The link itself is a column of the child, so validation, storage and
+        // the SELECT all treat it exactly like any other field.
+        const rel = apiRelationForRequest(probe);
+        if (rel && !cols.some(c => c.key === rel.key)) {
+            cols.push({ key: rel.key, type: 'INT', required: false });
+        }
+        return cols;
     } catch {
         return CATALOGUE_COLUMNS;
     }
@@ -459,8 +517,11 @@ npm start          # المنفذ 4100
 `;
 }
 
-function fileDbJs(resource: string, columns: ApiColumn[] = CATALOGUE_COLUMNS): string {
+function fileDbJs(resource: string, columns: ApiColumn[] = CATALOGUE_COLUMNS, relation: ApiRelation | null = null): string {
     const COLS = JSON.stringify(columns);
+    const REL = relation ? JSON.stringify({
+        resource: relation.resource, key: relation.key, labelKey: relation.labelKey, columns: relation.columns,
+    }) : 'null';
     return `// The data layer: node:sqlite when this Node has it (>= 22.5), a JSON
 // file with the SAME interface otherwise. Zero native dependencies either
 // way — and /api/health reports which backend you actually got.
@@ -478,7 +539,26 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
  */
 const COLS = ${COLS};
 const KEYS = COLS.map((c) => c.key);
-const cast = (c, v) => (c.type === 'REAL' ? Number(v || 0) : String(v ?? ''));
+/**
+ * INT is the link column: it holds the id of a row in the PARENT table, and an
+ * empty one means «not linked yet» — which is null, never 0, because 0 would
+ * be a claim to own a row that cannot exist.
+ */
+const cast = (c, v) => {
+  if (c.type === 'REAL') return Number(v || 0);
+  if (c.type === 'INT') return v === '' || v === null || v === undefined ? null : Number(v);
+  return String(v ?? '');
+};
+const sqlType = (c) => (c.type === 'INT' ? 'INTEGER' : c.type);
+const sqlDefault = (c) => (c.required ? 'NOT NULL' : c.type === 'INT' ? 'DEFAULT NULL' : "DEFAULT ''");
+
+/**
+ * THE PARENT TABLE — «طبيب ← مواعيده». Null for a one-table system, and then
+ * every line below that mentions it simply never runs.
+ */
+const REL = ${REL};
+const REL_COLS = REL ? REL.columns : [];
+const REL_KEYS = REL_COLS.map((c) => c.key);
 
 let db;
 
@@ -488,9 +568,15 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
     const conn = new DatabaseSync(path.join(HERE, 'data.db'));
     conn.exec(\`CREATE TABLE IF NOT EXISTS ${resource} (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      \${COLS.map((c) => \`\${c.key} \${c.type} \${c.required ? 'NOT NULL' : "DEFAULT ''"}\`).join(',\\n      ')},
+      \${COLS.map((c) => \`\${c.key} \${sqlType(c)} \${sqlDefault(c)}\`).join(',\\n      ')},
       created_at TEXT DEFAULT (datetime('now'))
     )\`);
+    // An existing database from an older build has no link column — add it
+    // rather than refusing to start on data the owner already has.
+    for (const c of COLS) {
+      try { conn.exec(\`ALTER TABLE ${resource} ADD COLUMN \${c.key} \${sqlType(c)} \${sqlDefault(c)}\`); }
+      catch { /* the column is already there — the normal case */ }
+    }
     const rowOf = (r) => {
       if (!r) return null;
       const out = { id: r.id };
@@ -558,6 +644,43 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
     };
     db.setPassword = (id, salt, hash) =>
       conn.prepare('UPDATE users SET salt = ?, hash = ? WHERE id = ?').run(String(salt), String(hash), Number(id)).changes > 0;
+
+    // ── the parent table, when this system has one ──────────────────────────
+    if (REL) {
+      conn.exec(\`CREATE TABLE IF NOT EXISTS \${REL.resource} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        \${REL_COLS.map((c) => \`\${c.key} \${sqlType(c)} \${sqlDefault(c)}\`).join(',\\n        ')},
+        created_at TEXT DEFAULT (datetime('now'))
+      )\`);
+      const prowOf = (r) => {
+        if (!r) return null;
+        const out = { id: r.id };
+        for (const k of REL_KEYS) out[k] = r[k];
+        out.created_at = r.created_at;
+        return out;
+      };
+      db.rel = {
+        list: () => conn.prepare('SELECT * FROM ' + REL.resource + ' ORDER BY id DESC LIMIT 500').all().map(prowOf),
+        get: (id) => prowOf(conn.prepare('SELECT * FROM ' + REL.resource + ' WHERE id = ?').get(Number(id))),
+        create: (body) => {
+          const r = conn.prepare(
+            'INSERT INTO ' + REL.resource + ' (' + REL_KEYS.join(', ') + ') VALUES (' + REL_KEYS.map(() => '?').join(', ') + ')',
+          ).run(...REL_COLS.map((c) => cast(c, (body || {})[c.key])));
+          return db.rel.get(r.lastInsertRowid);
+        },
+        update: (id, patch) => {
+          const cur = db.rel.get(id);
+          if (!cur) return null;
+          conn.prepare('UPDATE ' + REL.resource + ' SET ' + REL_KEYS.map((k) => k + ' = ?').join(', ') + ' WHERE id = ?')
+            .run(...REL_COLS.map((c) => cast(c, (patch || {})[c.key] !== undefined ? patch[c.key] : cur[c.key])), Number(id));
+          return db.rel.get(id);
+        },
+        remove: (id) => conn.prepare('DELETE FROM ' + REL.resource + ' WHERE id = ?').run(Number(id)).changes > 0,
+        count: () => Number(conn.prepare('SELECT COUNT(*) AS n FROM ' + REL.resource).get().n),
+      };
+      db.childrenOf = (id) => conn.prepare('SELECT * FROM ${resource} WHERE ' + REL.key + ' = ? ORDER BY id DESC LIMIT 500')
+        .all(Number(id)).map(rowOf);
+    }
   } catch { /* an older Node — the JSON backend below serves instead */ }
 }
 
@@ -568,8 +691,9 @@ if (!db) {
       const s = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
       s.orders = s.orders || []; s.oseq = s.oseq || 0;
       s.users = s.users || []; s.useq = s.useq || 0;
+      s.parents = s.parents || []; s.pseq = s.pseq || 0;
       return s;
-    } catch { return { seq: 0, rows: [], oseq: 0, orders: [], useq: 0, users: [] }; }
+    } catch { return { seq: 0, rows: [], oseq: 0, orders: [], useq: 0, users: [], pseq: 0, parents: [] }; }
   };
   const save = (s) => fs.writeFileSync(FILE, JSON.stringify(s, null, 2));
   db = {
@@ -631,6 +755,64 @@ if (!db) {
       return true;
     },
   };
+  if (REL) {
+    db.rel = {
+      list: () => load().parents.slice().reverse().slice(0, 500),
+      get: (id) => load().parents.find((p) => p.id === Number(id)) || null,
+      create: (body) => {
+        const s = load();
+        const row = { id: ++s.pseq };
+        for (const c of REL_COLS) row[c.key] = cast(c, (body || {})[c.key]);
+        row.created_at = new Date().toISOString();
+        s.parents.push(row);
+        save(s);
+        return row;
+      },
+      update: (id, patch) => {
+        const s = load();
+        const row = s.parents.find((p) => p.id === Number(id));
+        if (!row) return null;
+        for (const c of REL_COLS) if ((patch || {})[c.key] !== undefined) row[c.key] = cast(c, patch[c.key]);
+        save(s);
+        return row;
+      },
+      remove: (id) => {
+        const s = load();
+        const before = s.parents.length;
+        s.parents = s.parents.filter((p) => p.id !== Number(id));
+        save(s);
+        return s.parents.length < before;
+      },
+      count: () => load().parents.length,
+    };
+    db.childrenOf = (id) => load().rows.filter((r) => Number(r[REL.key]) === Number(id)).reverse().slice(0, 500);
+  }
+}
+
+/**
+ * THE LINK, READ BACK.
+ *
+ * A child that answers only \`provider_id: 3\` makes every screen fetch the
+ * parent table just to print a name. So every row that leaves this layer
+ * carries \`parent_label\` — the parent's own label field, or an empty string
+ * when the row is not linked yet. Written once here, so BOTH backends behave
+ * identically and no route has to remember to join.
+ */
+if (REL && db.rel && db.childrenOf) {
+  const rawList = db.list, rawGet = db.get, rawCreate = db.create, rawUpdate = db.update, rawKids = db.childrenOf;
+  const attach = (row) => {
+    if (!row) return row;
+    const id = row[REL.key];
+    const parent = id === null || id === undefined || id === '' ? null : db.rel.get(id);
+    row.parent_label = parent ? String(parent[REL.labelKey] ?? '') : '';
+    return row;
+  };
+  db.list = () => rawList().map(attach);
+  db.get = (id) => attach(rawGet(id));
+  db.create = (body) => attach(rawCreate(body));
+  db.update = (id, patch) => attach(rawUpdate(id, patch));
+  db.childrenOf = (id) => rawKids(id).map(attach);
+  db.relation = { resource: REL.resource, key: REL.key, labelKey: REL.labelKey, columns: REL_COLS };
 }
 
 export { db };
@@ -792,7 +974,81 @@ export function seedOwner() {
 `;
 }
 
-function fileServerJs(resource: string, brand: string, dirName: string): string {
+function fileServerJs(resource: string, brand: string, dirName: string, relation: ApiRelation | null = null): string {
+    /**
+     * THE PARENT'S OWN ROUTES.
+     *
+     * Reading is public — a visitor may see which doctors exist. Writing is the
+     * owner's, like every other write. And a parent that still has children
+     * cannot be deleted: answering 409 with the count is the difference between
+     * a relation and a decoration, and it behaves the same on SQLite and on the
+     * JSON store because the rule lives here, not in a database dialect.
+     */
+    const relRoutes = !relation ? '' : `
+// ── ${relation.resource}: the parent table, and the link back to ${resource} ──
+const validateRel = (body, partial) => {
+  const out = {};
+  for (const c of db.relation.columns) {
+    const v = (body || {})[c.key];
+    if (v === undefined || v === null || v === '') {
+      if (c.required && !partial) return { error: c.key + '_required' };
+      continue;
+    }
+    if (c.type === 'REAL') {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return { error: 'bad_' + c.key };
+      out[c.key] = n;
+    } else {
+      const str = String(v);
+      if (str.length > 2000) return { error: 'bad_' + c.key };
+      out[c.key] = str.trim();
+    }
+  }
+  return { value: out };
+};
+
+app.get('/api/${relation.resource}', (_req, res) => res.json({ ok: true, ${relation.resource}: db.rel.list() }));
+
+app.get('/api/${relation.resource}/:id', (req, res) => {
+  const row = db.rel.get(req.params.id);
+  if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
+  res.json({ ok: true, item: row });
+});
+
+// «مواعيد هذا الطبيب» — the whole reason the two tables are linked.
+app.get('/api/${relation.resource}/:id/${resource}', (req, res) => {
+  const parent = db.rel.get(req.params.id);
+  if (!parent) return res.status(404).json({ ok: false, error: 'not_found' });
+  res.json({ ok: true, parent, ${resource}: db.childrenOf(req.params.id) });
+});
+
+app.post('/api/${relation.resource}', requireAuth, (req, res) => {
+  const { value, error } = validateRel(req.body, false);
+  if (error) return res.status(400).json({ ok: false, error });
+  res.status(201).json({ ok: true, item: db.rel.create(value) });
+});
+
+app.put('/api/${relation.resource}/:id', requireAuth, (req, res) => {
+  const { value, error } = validateRel(req.body, true);
+  if (error) return res.status(400).json({ ok: false, error });
+  const row = db.rel.update(req.params.id, value);
+  if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
+  res.json({ ok: true, item: row });
+});
+
+app.delete('/api/${relation.resource}/:id', requireAuth, (req, res) => {
+  const kids = db.childrenOf(req.params.id).length;
+  // Deleting the parent would leave every child pointing at nothing. The
+  // owner is told exactly how many rows stand in the way.
+  if (kids) return res.status(409).json({ ok: false, error: 'has_children', count: kids });
+  if (!db.rel.remove(req.params.id)) return res.status(404).json({ ok: false, error: 'not_found' });
+  res.json({ ok: true });
+});
+`;
+    return fileServerJsBody(resource, brand, dirName, relation, relRoutes);
+}
+
+function fileServerJsBody(resource: string, brand: string, dirName: string, relation: ApiRelation | null, relRoutes: string): string {
     return `// ${brand} — a real Express API over a real database. Runs with:
 //   npm start            (port 4100)
 //   PORT=5050 npm start  (any port)
@@ -832,7 +1088,10 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, backend: db.backend, count: db.count(), orders: db.countOrders() }));
+app.get('/api/health', (_req, res) => res.json({
+  ok: true, backend: db.backend, count: db.count(), orders: db.countOrders(),
+  ${relation ? `${relation.resource}: db.rel.count(), relation: db.relation,` : ''}
+}));
 
 // ── ACCOUNTS ───────────────────────────────────────────────────────────────
 // Public: reading the catalogue and placing an order (that is what visitors
@@ -900,6 +1159,7 @@ app.post('/api/orders', (req, res) => {
   res.status(201).json({ ok: true, order });
 });
 
+${relRoutes}
 app.get('/api/${resource}', (_req, res) => res.json({ ok: true, ${resource}: db.list() }));
 
 app.get('/api/${resource}/:id', (req, res) => {
@@ -925,6 +1185,19 @@ const validate = (body, partial) => {
     if (c.type === 'REAL') {
       const n = Number(v);
       if (!Number.isFinite(n)) return { error: 'bad_' + c.key };
+      out[c.key] = n;
+    } else if (c.type === 'INT') {
+      /**
+       * THE LINK IS CHECKED, NOT TRUSTED.
+       *
+       * A foreign key that may point at a row which does not exist is not a
+       * relation — it is a number. An appointment for doctor #99 in a clinic
+       * with three doctors is refused here, with the name of the field that
+       * was wrong.
+       */
+      const n = Number(v);
+      if (!Number.isInteger(n) || n <= 0) return { error: 'bad_' + c.key };
+      if (db.relation && c.key === db.relation.key && !db.rel.get(n)) return { error: 'unknown_' + c.key };
       out[c.key] = n;
     } else {
       const str = String(v);
@@ -987,11 +1260,37 @@ app.listen(port, () => {
   console.log(\`[api] listening on http://localhost:\${port} — backend: \${db.backend}\${seeded ? \`, seeded \${seeded} rows\` : ''}\`);
   if (owner) console.log(\`[api] owner account created: \${owner} — the password was shown once in Joe's chat.\`);
   console.log('[api] public: GET catalogue, POST /api/orders · protected: catalogue writes + GET /api/orders');
+  ${relation
+            ? `console.log('[api] two linked tables: /api/${relation.resource} · /api/${relation.resource}/:id/${resource} — every ${resource} row carries parent_label');`
+            : ''}
 });
 `;
 }
 
-function fileReadme(brand: string, resource: string, labelAr: string, ownerEmail: string): string {
+function fileReadme(brand: string, resource: string, labelAr: string, ownerEmail: string, relation: ApiRelation | null = null): string {
+    const relDoc = !relation ? '' : `
+## جدولان مرتبطان — ${relation.labelAr} ← ${labelAr}
+
+لكل صفٍّ في \`${resource}\` حقل \`${relation.key}\` يشير إلى صفٍّ حقيقي في
+\`${relation.resource}\`. الربط **مُتحقَّق منه**: لو أشرت إلى صفٍّ غير موجود يردّ
+الخادم \`400 unknown_${relation.key}\`، ولو حاولت حذف أصلٍ له أبناء يردّ
+\`409 has_children\` مع عددهم — فلا يبقى صفٌّ معلّقاً بلا أصل.
+
+وكل صفٍّ يعود من الخادم يحمل \`parent_label\`: اسم أصله جاهزاً، بلا استعلام ثانٍ.
+
+\`\`\`bash
+# 1) أنشئ الأصل (يتطلّب رمزك)
+curl -X POST http://localhost:4100/api/${relation.resource} -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" -d '{"${relation.labelKey}":"…"}'
+
+# 2) اربط به صفّاً
+curl -X POST http://localhost:4100/api/${resource} -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" -d '{"${relation.key}":1, …}'
+
+# 3) اقرأ أبناء أصلٍ بعينه
+curl http://localhost:4100/api/${relation.resource}/1/${resource}
+\`\`\`
+`;
     return `# ${brand} — API
 
 خادم Express حقيقي فوق قاعدة بيانات حقيقية، **بلا أي اعتماديات أصلية**:
@@ -1055,7 +1354,7 @@ curl http://localhost:4100/api/orders -H "Authorization: Bearer $TOKEN"
 
 ويمكنك دائماً قراءتها داخل محادثة جو بجملة «اعرض الطلبات» — يقرؤها من القاعدة
 مباشرة، فتعمل حتى والخادم متوقّف.
-
+${relDoc}
 البيانات محفوظة على القرص (\`data.db\` أو \`data.json\`) — تنجو من إعادة التشغيل.
 `;
 }
@@ -1101,6 +1400,8 @@ export class ApiProjectTool extends BaseTool {
         // the catalogue shape — a booking table seeded with «Dish of the day»
         // would be noise pretending to be data.
         const columns = apiColumnsForRequest(request);
+        // The parent table, when this system has one — «طبيب ← مواعيده».
+        const relation = apiRelationForRequest(request);
         const isCatalogue = columns === CATALOGUE_COLUMNS;
         const seeds = isCatalogue ? catalogueSeeds : [];
         const dirName = `api-${slug(brand)}`;
@@ -1149,11 +1450,11 @@ export class ApiProjectTool extends BaseTool {
             '.gitignore': 'node_modules\ndata.db\ndata.json\n',
         } : {
             'package.json': filePackageJson(brand),
-            'server.js': fileServerJs(resource, brand, path.basename(proj)),
-            'db.js': fileDbJs(resource, columns),
+            'server.js': fileServerJs(resource, brand, path.basename(proj), relation),
+            'db.js': fileDbJs(resource, columns, relation),
             'auth.js': fileAuthJs(),
             'seed.js': fileSeedJs(seeds, { email: ownerEmail, salt: ownerSalt, hash: ownerHash }),
-            'README.md': fileReadme(brand, resource, labelAr, ownerEmail),
+            'README.md': fileReadme(brand, resource, labelAr, ownerEmail, relation),
             // .auth-secret holds the token-signing key: it must never be committed.
             '.gitignore': 'node_modules\ndata.db\ndata.json\n.auth-secret\n',
         };
@@ -1173,7 +1474,7 @@ export class ApiProjectTool extends BaseTool {
         // ── the live proof: install, boot the REAL server, write and read a
         //    REAL row over REAL HTTP. Reported only as measured.
         let installed = false, proven = false, backend = '', createdId = 0, npmMissing = false;
-        let authProven = false, lockedOut = false, ordersLocked = false;
+        let authProven = false, lockedOut = false, ordersLocked = false, relationProven = false;
         if (!input?.skipInstall) {
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
@@ -1275,16 +1576,102 @@ export class ApiProjectTool extends BaseTool {
                         authProven = lockedOut && ordersLocked && wrongPass === 401 && token.split('.').length === 3;
                         term(`auth proof → anonymous write ${anon}, orders ${ordersAnon}, wrong password ${wrongPass}, owner login ${token ? 'OK' : 'FAILED'}`);
 
+                        /**
+                         * THE PROOF MUST SPEAK THE SCHEMA IT JUST GENERATED.
+                         *
+                         * This posted {name, details, price} whatever the system
+                         * was — so a clinic, whose table requires a date, refused
+                         * it with 400 and the build reported «live proof →
+                         * FAILED» on a server that was working perfectly. A proof
+                         * that asks the wrong question lies in both directions.
+                         */
+                        const proofBody: Record<string, any> = isCatalogue
+                            ? { name: isAr ? 'صف الإثبات الحي' : 'Live-proof row', details: 'written over real HTTP by Joe', price: '1' }
+                            : (() => {
+                                const b: Record<string, any> = {};
+                                for (const c of columns) {
+                                    if (!c.required) continue;
+                                    b[c.key] = c.type === 'REAL' ? 1 : c.type === 'INT' ? undefined : (isAr ? 'صف الإثبات الحي' : 'Live-proof row');
+                                }
+                                return b;
+                            })();
                         const made = await fetch(`${base}/api/${resource}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                            body: JSON.stringify({ name: isAr ? 'صف الإثبات الحي' : 'Live-proof row', details: 'written over real HTTP by Joe', price: '1' }),
+                            body: JSON.stringify(proofBody),
                         }).then(r => r.json()).catch(() => null);
                         createdId = Number(made?.item?.id || 0);
                         const listed = await fetch(`${base}/api/${resource}`).then(r => r.json()).catch(() => null);
                         proven = createdId > 0 && Array.isArray(listed?.[resource])
                             && listed[resource].some((r: any) => r.id === createdId);
                         term(`live proof → ${proven ? `OK (backend ${backend}, row #${createdId} written and read back)` : 'FAILED'}`);
+                        // A REAL APP STARTS EMPTY. The catalogue keeps its proof
+                        // row (its seeds are the design, and the durability check
+                        // rides on it); a booking system does not open with a
+                        // fabricated appointment in it.
+                        if (!isCatalogue && createdId > 0) {
+                            await fetch(`${base}/api/${resource}/${createdId}`, {
+                                method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+                            }).catch(() => null);
+                        }
+
+                        /**
+                         * THE LINK IS PROVED LIKE EVERYTHING ELSE: BY USING IT.
+                         *
+                         * A parent is created, a child is bound to it, the child
+                         * is read back carrying the parent's name, the parent's
+                         * own children are listed, a dangling link is refused,
+                         * and deleting a parent that still has children is
+                         * refused. Six answers, all measured over real HTTP.
+                         */
+                        if (relation) {
+                            const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+                            const parentBody: Record<string, any> = {};
+                            parentBody[relation.labelKey] = isAr ? 'أصل الإثبات الحي' : 'Live-proof parent';
+                            const parent = await fetch(`${base}/api/${relation.resource}`, {
+                                method: 'POST', headers: auth, body: JSON.stringify(parentBody),
+                            }).then(r => r.json()).catch(() => null);
+                            const parentId = Number(parent?.item?.id || 0);
+
+                            const childBody: Record<string, any> = { [relation.key]: parentId };
+                            for (const c of columns) {
+                                if (c.key === relation.key) continue;
+                                if (c.required) childBody[c.key] = c.type === 'REAL' ? 1 : (isAr ? 'ابن الإثبات' : 'linked row');
+                            }
+                            const child = await fetch(`${base}/api/${resource}`, {
+                                method: 'POST', headers: auth, body: JSON.stringify(childBody),
+                            }).then(r => r.json()).catch(() => null);
+                            const childId = Number(child?.item?.id || 0);
+                            const label = String(child?.item?.parent_label || '');
+
+                            const kids: any = await fetch(`${base}/api/${relation.resource}/${parentId}/${resource}`)
+                                .then(r => r.json()).catch(() => null);
+                            const linked = Array.isArray(kids?.[resource]) && kids[resource].some((r: any) => Number(r.id) === childId);
+
+                            const dangling = await fetch(`${base}/api/${resource}`, {
+                                method: 'POST', headers: auth,
+                                body: JSON.stringify({ ...childBody, [relation.key]: 999999 }),
+                            }).then(r => r.status).catch(() => 0);
+                            const delBusy = await fetch(`${base}/api/${relation.resource}/${parentId}`, {
+                                method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+                            }).then(r => r.status).catch(() => 0);
+
+                            // A PROOF THAT LEAVES ITS RUBBISH BEHIND IS A MESS,
+                            // NOT A PROOF. The child goes, then the parent —
+                            // which also demonstrates the other half of the
+                            // rule: once nothing depends on it, it deletes.
+                            await fetch(`${base}/api/${resource}/${childId}`, {
+                                method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+                            }).catch(() => null);
+                            const delFreed = await fetch(`${base}/api/${relation.resource}/${parentId}`, {
+                                method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+                            }).then(r => r.status).catch(() => 0);
+
+                            relationProven = parentId > 0 && childId > 0 && label === parentBody[relation.labelKey]
+                                && linked && dangling === 400 && delBusy === 409 && delFreed === 200;
+                            term(`relation proof → parent #${parentId}, child #${childId}, parent_label ${label ? 'carried' : 'MISSING'}, children ${linked ? 'listed' : 'NOT listed'}, dangling link → ${dangling}, delete-with-children → ${delBusy}, delete-when-free → ${delFreed}`);
+                            proven = proven && relationProven;
+                        }
                         }
                     } else {
                         term('live proof → server did not come up');
@@ -1374,6 +1761,15 @@ ${proven
    محميّة لك: POST/PUT/DELETE /api/${resource} · GET /api/orders (فيها أسماء العملاء وأرقامهم)
    الدخول: POST /api/auth/login ثم أرسل \`Authorization: Bearer <token>\`
    أمثلة curl جاهزة داخل README.md
+${relation ? `
+🔗 جدولان مرتبطان — ${relation.labelAr} ← ${labelAr}:
+   كل ${labelAr} ينتمي إلى صفٍّ حقيقي في /api/${relation.resource} عبر \`${relation.key}\`،
+   ويعود من الخادم ومعه \`parent_label\` (اسم أصله) بلا استعلام ثانٍ.
+   GET /api/${relation.resource} · GET /api/${relation.resource}/:id/${resource}
+   POST/PUT/DELETE /api/${relation.resource} (محميّة لك)
+   ${relationProven
+                    ? 'تحقّقتُ حيّاً: رابط إلى صفٍّ غير موجود يُرفض بـ400، وحذف أصلٍ له أبناء يُرفض بـ409 مع عددهم — فلا يبقى صفٌّ يتيماً.'
+                    : 'الربط مُتحقَّق منه في الخادم: رابط لا وجود له يُرفض، وحذف أصلٍ له أبناء يُرفض.'}` : ''}
 
 🧭 خطوات تالية — أرسل أيّ سطر كما هو:
    • «شغّل المشروع» → أشغّل الخادم وأبقيه يعمل
@@ -1390,7 +1786,12 @@ Protected (Bearer token from POST /api/auth/login): catalogue writes · GET /api
 
         return {
             ok: true,
-            output: { message, path: proj, dir: path.basename(proj), resource, installed, proven, authProven, backend, ownerEmail, files: Object.keys(files) },
+            output: {
+                message, path: proj, dir: path.basename(proj), resource, installed, proven, authProven, backend, ownerEmail,
+                relation: relation ? { resource: relation.resource, key: relation.key, labelKey: relation.labelKey } : null,
+                relationProven,
+                files: Object.keys(files),
+            },
             logs,
         } as any;
     }
