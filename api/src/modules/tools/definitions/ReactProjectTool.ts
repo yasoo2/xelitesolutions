@@ -2507,7 +2507,27 @@ export class ReactProjectTool extends BaseTool {
         if (built && !input?.skipAudit) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🔎 أفحص البناء في متصفح حقيقي قبل التسليم…' : '🔎 Self-QA in a real browser…');
             const { auditBuiltApp } = require('../../../core/quality/app-audit');
-            audit = await auditBuiltApp(path.join(proj, 'dist'), { timeoutMs: 30_000 });
+            /**
+             * THE CHECK HAPPENS IN THE PANEL HE IS WATCHING — «كيف بدنا نصلح
+             * المتصفح». It used to run in a private headless browser: real,
+             * measured, and completely invisible, so «self-QA: 62/100» was a
+             * verdict with nothing behind it he could look at. It now borrows
+             * Joe's own browser session, which already streams to the Browser
+             * tab, and the tab is opened for him when the audit starts.
+             */
+            const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
+            try {
+                broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'self_qa' } } as any);
+            } catch { /* UI optional */ }
+            audit = await auditBuiltApp(path.join(proj, 'dist'), {
+                timeoutMs: 30_000,
+                watchSessionId: PANEL_BROWSER_SID,
+                onProgress: () => {
+                    if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                        ? '👁️ الفحص يجري الآن أمامك في لوحة المتصفح — كل ملاحظة مُعلَّمة بإطار أحمر على الصفحة'
+                        : '👁️ Watch it happen in the Browser panel — every finding is outlined on the page');
+                },
+            });
             term(audit.skipped
                 ? `self-QA: skipped (${audit.skipped})`
                 : `self-QA: ${audit.score}/100${audit.findings.length ? ` — ${audit.findings.map((f: any) => f.id).join(', ')}` : ' — clean'}`);

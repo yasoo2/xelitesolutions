@@ -98,3 +98,47 @@ describe('the app talks to ITS server, and to no other', () => {
         expect(store).toMatch(/Array\.isArray\(d && d\[named\]\)/);
     });
 });
+
+/**
+ * …AND THE CHECK IS VISIBLE — «كيف بدنا نصلح المتصفح».
+ *
+ * The self-QA forced headless (killing an OS window that used to pop up
+ * mid-build) and became invisible instead: «self-QA: 62/100» with nothing he
+ * could look at. It now borrows Joe's OWN browser panel — no desktop window,
+ * and no hidden process either. Live proof: verify_visible_audit.ts (15/15).
+ */
+describe('the self-QA runs where the user can watch it', () => {
+    const A = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
+
+    it('the audit can borrow a live browser session instead of launching one', () => {
+        expect(A).toMatch(/watchSessionId\?: string/);
+        expect(A).toMatch(/getBrowserSession/);
+        expect(A).toMatch(/borrowed = true/);
+    });
+
+    it('and never closes a browser it did not open', () => {
+        expect(A).toMatch(/if \(!borrowed\) \{ try \{ await browser\?\.close\(\)/);
+    });
+
+    it('its listeners come off a page that outlives the audit', () => {
+        expect(A).toMatch(/const unhook = \(\) =>/);
+        expect(A).toMatch(/page\.off\('console', onConsole\)/);
+    });
+
+    it('the findings are drawn on the page, then cleaned up', () => {
+        expect(A).toMatch(/data-joe-audit/);
+        expect(A).toMatch(/querySelectorAll\('\[data-joe-audit\]'\)\.forEach\(e => e\.remove\(\)\)/);
+    });
+
+    it('the build asks for the panel, and the interface opens it by name', () => {
+        const R = require('fs').readFileSync(
+            require('path').join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(R).toMatch(/watchSessionId: PANEL_BROWSER_SID/);
+        expect(R).toMatch(/type: 'panel_focus'/);
+        const W = require('fs').readFileSync(
+            require('path').join(__dirname, '..', '..', '..', 'web', 'src', 'services', 'AutoOpenManager.ts'), 'utf-8');
+        // Guessing «browser» out of an English sentence never fired for Arabic.
+        expect(W).toMatch(/event\.type === 'panel_focus'/);
+    });
+});

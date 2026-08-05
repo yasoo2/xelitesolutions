@@ -40,7 +40,10 @@ export function scoreOf(findings: AppAuditFinding[]): number {
     return Math.max(0, findings.reduce((s, f) => s - cost[f.severity], 100));
 }
 
-export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number }): Promise<AppAudit> {
+export async function auditBuiltApp(
+    distDir: string,
+    opts?: { timeoutMs?: number; watchSessionId?: string; onProgress?: (m: string) => void },
+): Promise<AppAudit> {
     const timeoutMs = opts?.timeoutMs ?? 30_000;
     if (!fs.existsSync(path.join(distDir, 'index.html'))) {
         return { skipped: 'no dist/index.html to audit', score: 0, findings: [] };
@@ -61,37 +64,64 @@ export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number
     const url = `http://127.0.0.1:${(srv.address() as any).port}/`;
 
     let browser: any = null;
+    let borrowed = false;
     try {
         /**
-         * THE SELF-QA NEVER SHOWS A WINDOW.
+         * THE AUDIT HAPPENS WHERE HE CAN SEE IT — «كيف بدنا نصلح المتصفح».
          *
-         * getChromiumLaunchOptions honours BROWSER_HEADED, which exists so the
-         * user can WATCH Joe drive a site when he asked for that. This audit is
-         * an internal check he did not ask to watch — reported from the field:
-         * «في اثناء البناء تم فتح المتصفح … بدون اي فائده». Headless is forced
-         * here regardless of the environment.
+         * Two field complaints, six weeks apart, that look contradictory and
+         * are not:
+         *   «في اثناء البناء تم فتح المتصفح … بدون اي فائده»  — an OS window
+         *      popped up on his desktop mid-build. Correctly killed: this
+         *      audit forced headless from that day on.
+         *   «تم تشغيل المتصفح ولكن لم يقم بما لازم القيام به» — and then
+         *      nothing was ever visible again. The build said «self-QA:
+         *      62/100 — console_errors, failed_requests» and he had no way to
+         *      see any of it happen.
+         *
+         * What he wants is neither: not a window on his desktop, and not an
+         * invisible process. It is Joe's OWN browser panel, which already
+         * exists and already streams frames to the interface. So the audit
+         * borrows that session when one is offered — the page loads in the
+         * panel, he watches it load, and the findings are drawn ON it.
+         *
+         * When there is no panel (a script, a test, a machine with no UI) it
+         * falls back to exactly what it did before: a private headless browser.
          */
-        browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });
-        const page = await browser.newPage();
+        let page: any = null;
+        if (opts?.watchSessionId) {
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                const { getBrowserSession } = require('../../modules/browser/manager');
+                const s = await getBrowserSession(opts.watchSessionId);
+                if (s?.page) { page = s.page; borrowed = true; opts.onProgress?.('watching'); }
+            } catch { /* no panel available — the private browser below serves */ }
+        }
+        if (!page) {
+            browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });
+            page = await browser.newPage();
+        }
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
         const heavyImages: string[] = [];
-        page.on('pageerror', (e: any) => pageErrors.push(String(e).slice(0, 120)));
+        const onPageError = (e: any) => pageErrors.push(String(e).slice(0, 120));
+        page.on('pageerror', onPageError);
         /**
          * A console error must name the RESOURCE, not just the complaint.
          * «Failed to load resource: 404» told the reader nothing — not which
          * file, not from where — so a finding that cost 15 points could not
          * be acted on. Chromium carries the location; we print it.
          */
-        page.on('console', (m: any) => {
+        const onConsole = (m: any) => {
             if (m.type() !== 'error') return;
             const where = (() => {
                 try { const l = m.location(); return l?.url ? ` ← ${String(l.url).slice(-60)}` : ''; } catch { return ''; }
             })();
             consoleErrors.push((String(m.text()).slice(0, 120) + where).slice(0, 180));
-        });
-        page.on('response', (r: any) => {
+        };
+        page.on('console', onConsole);
+        const onResponse = (r: any) => {
             if (r.status() >= 400) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
             try {
                 const len = Number(r.headers()['content-length'] || 0);
@@ -99,7 +129,14 @@ export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number
                     heavyImages.push(`${Math.round(len / 1024)}KB ${r.url().slice(-50)}`);
                 }
             } catch { /* headers optional */ }
-        });
+        };
+        page.on('response', onResponse);
+        // A borrowed panel page is long-lived: its listeners must not pile up
+        // one audit at a time.
+        const unhook = () => {
+            try { page.off('pageerror', onPageError); page.off('console', onConsole); page.off('response', onResponse); }
+            catch { /* the page may already be gone */ }
+        };
         await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
 
         // The declared webfont must actually LOAD — a stack that names Cairo
@@ -156,11 +193,65 @@ export async function auditBuiltApp(distDir: string, opts?: { timeoutMs?: number
         if (dom.fontLoaded === false) findings.push({ id: 'webfont_missing', severity: 'medium', detail: `الخط المعلن «${dom.declaredFont}» لم يُحمَّل فعلياً — ملفاته غائبة` });
         if (heavyImages.length) findings.push({ id: 'heavy_images', severity: 'low', detail: `${heavyImages.length} صورة ثقيلة (>400KB): ${heavyImages[0]}` });
 
+        /**
+         * AND HE SEES THE VERDICT ON THE PAGE ITSELF.
+         *
+         * A number in a log is not watching a check happen. When the audit is
+         * running in his own panel, the findings are painted onto the page for
+         * a few seconds — the score, and a red outline around every element
+         * that earned a deduction — so «62/100 — small_targets» stops being a
+         * word and becomes the three buttons it is actually talking about.
+         */
+        if (borrowed) {
+            try {
+                await page.evaluate(({ score, list }: any) => {
+                    document.querySelectorAll('[data-joe-audit]').forEach(e => e.remove());
+                    const mark = (sel: string) => document.querySelectorAll(sel).forEach((el: any) => {
+                        const r = el.getBoundingClientRect();
+                        if (!r.width || !r.height) return;
+                        const box = document.createElement('div');
+                        box.setAttribute('data-joe-audit', '1');
+                        box.style.cssText = `position:absolute;left:${r.left + scrollX}px;top:${r.top + scrollY}px;`
+                            + `width:${r.width}px;height:${r.height}px;border:2px solid #ef4444;border-radius:6px;`
+                            + 'pointer-events:none;z-index:2147483646;box-shadow:0 0 0 3px rgba(239,68,68,.18)';
+                        document.body.appendChild(box);
+                    });
+                    for (const id of list.map((f: any) => f.id)) {
+                        if (id === 'dead_images') mark('img');
+                        if (id === 'small_targets') mark('a.btn, button, .nav-links a');
+                        if (id === 'dead_links') mark('a[href=""], a[href="#"]');
+                    }
+                    const card = document.createElement('div');
+                    card.setAttribute('data-joe-audit', '1');
+                    card.dir = 'rtl';
+                    card.style.cssText = 'position:fixed;inset-inline-end:16px;top:16px;z-index:2147483647;'
+                        + 'background:rgba(2,6,23,.92);color:#e2e8f0;border:1px solid rgba(148,163,184,.3);'
+                        + 'border-radius:14px;padding:14px 16px;font:13px/1.7 system-ui,sans-serif;'
+                        + 'max-width:340px;box-shadow:0 18px 50px -12px rgba(0,0,0,.7)';
+                    const colour = score >= 90 ? '#34d399' : score >= 70 ? '#fbbf24' : '#f87171';
+                    card.innerHTML = `<div style="font-size:22px;font-weight:800;color:${colour}">${score}/100</div>`
+                        + '<div style="opacity:.75;margin-bottom:6px">فحص الجودة الذاتي — جو</div>'
+                        + (list.length
+                            ? '<ul style="margin:0;padding-inline-start:18px">'
+                            + list.map((f: any) => `<li>${String(f.detail).replace(/</g, '&lt;')}</li>`).join('')
+                            + '</ul>'
+                            : '<div style="color:#34d399">لا ملاحظات — نظيف تماماً.</div>');
+                    document.body.appendChild(card);
+                }, { score: scoreOf(findings), list: findings });
+                // Long enough for the frames to reach the panel and be read.
+                await page.waitForTimeout(3500);
+                await page.evaluate(() => document.querySelectorAll('[data-joe-audit]').forEach(e => e.remove()));
+            } catch { /* the overlay is a courtesy — never a failed audit */ }
+        }
+        unhook();
+
         return { score: scoreOf(findings), findings };
     } catch (e: any) {
         return { skipped: `browser failed (${String(e?.message || e).slice(0, 80)})`, score: 0, findings: [] };
     } finally {
-        try { await browser?.close(); } catch { /* already gone */ }
+        // Only a browser WE launched is ours to close — closing the panel's
+        // would take his own browser down with the audit.
+        if (!borrowed) { try { await browser?.close(); } catch { /* already gone */ } }
         srv.close();
     }
 }

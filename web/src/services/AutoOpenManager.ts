@@ -124,6 +124,19 @@ class AutoOpenManagerClass {
             this.processToolUsage(event.data.tool.name || event.data.tool, event.data.tool.input);
         }
 
+        /**
+         * A PANEL THE SERVER ASKS FOR BY NAME.
+         *
+         * Everything else here GUESSES from wording — «browser» appearing in an
+         * English detail line. So the self-QA, which announces itself in Arabic
+         * («الفحص يجري الآن أمامك في لوحة المتصفح»), opened nothing at all and
+         * the check ran where he could not see it. When the server knows which
+         * panel matters, it says so instead of hoping a keyword lands.
+         */
+        if (event.type === 'panel_focus' && typeof event.data?.panel === 'string') {
+            this.triggerOpen(event.data.panel as PanelType, event.data);
+        }
+
         // Detect browser tasks from thinking details
         if (event.type === 'thinking_detail' && typeof event.data?.detail === 'string') {
             const detailLower = event.data.detail.toLowerCase();
