@@ -677,6 +677,41 @@ Rules:
             // the page's own tool (instant restore, no model call).
             || /(تراجع|استرجع|(ارجع|أرجع|رجّع)[^.\n]{0,20}نسخ|نسخ(ة|ه)\s*(السابق|القديم|رقم)|اعرض\s*النسخ|إصدار\s*سابق|\bundo\b|\brollback\b|\brevert\b|version\s*history)/i.test(probe);
 
+        /**
+         * [UI REPAIR FAST-PATH] «اريده ان يصلح ui لاي نظام ولاي صفحة عندما
+         * يطلب منه».
+         *
+         * «أصلح واجهة المشروع» is not an ordinary edit: it is a measured loop —
+         * audit in a real browser, repair the source deterministically, rebuild,
+         * measure again — and routing it to the generic editor would hand a
+         * whole-project accessibility pass to a model one string at a time.
+         *
+         * Gated on an ACTIVE PROJECT so it can never hijack a fresh build, and
+         * on the words meaning the interface ITSELF rather than one element of
+         * it: «أصلح الزر» stays a surgical edit, «أصلح الواجهة» is this.
+         */
+        {
+            const repairVerb = /(أصلح|اصلح|صلّح|صحّح|عالج|رقّع|حسّن|حسن|fix|repair|improve|clean\s*up)/i.test(probe);
+            const uiWhole = /(الواجهة|واجهة\s*(المشروع|النظام|التطبيق|الموقع)|\bui\b|\bux\b|الوصولية|إمكانية\s*الوصول|accessibility|a11y|جودة\s*الواجهة|مشاكل\s*الواجهة|كل\s*(المشاكل|الملاحظات))/i.test(probe);
+            const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+            const activeProject = ((global as any).joeProjects || {})[sessionKey]?.dir;
+            if (repairVerb && uiWhole && activeProject) {
+                return {
+                    id: `ui_fix_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'browser_ui_fix',
+                        description: 'قياس الواجهة في متصفح حقيقي، وإصلاح مصدرها، وإعادة القياس',
+                        tool: 'browser_ui_fix',
+                        agent: 'Dev',
+                        input: { projectDir: activeProject },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
+        }
+
         // [REACT PROJECT FAST-PATH] An EXPLICIT framework request — «مشروع
         // React», «تطبيق Vite», «SPA» — gets a real scaffolded project with a
         // verified build, not a static page. Explicit only: a plain «ابن لي
