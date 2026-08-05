@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useMonacoReady } from '../monaco-setup';
 import { DiffEditor } from '@monaco-editor/react';
 import { X, GitBranch } from 'lucide-react';
 
@@ -20,6 +21,8 @@ export default function DiffViewer({
     onClose
 }: DiffViewerProps) {
     const [theme, setTheme] = useState<'vs-dark' | 'light'>('vs-dark');
+    // Monaco arrives with this view, not with the page — see monaco-setup.
+    const monacoReady = useMonacoReady();
 
     useEffect(() => {
         const updateTheme = () => {
@@ -72,8 +75,11 @@ export default function DiffViewer({
                 )}
             </div>
 
-            {/* Monaco Diff Editor */}
+            {/* Monaco Diff Editor — loaded with this view, not with the page */}
             <div style={{ flex: 1 }}>
+                {!monacoReady ? (
+                    <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--text-muted)' }}>…</div>
+                ) : (
                 <DiffEditor
                     height="100%"
                     original={originalContent}
@@ -94,6 +100,7 @@ export default function DiffViewer({
                     }}
                     loading={<div style={{ color: 'var(--text-muted)', padding: 20 }}>Loading Diff Viewer...</div>}
                 />
+                )}
             </div>
         </div>
     );

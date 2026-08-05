@@ -17,6 +17,7 @@ import {
     Code
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
+import { useMonacoReady } from '../monaco-setup';
 
 type DeviceType = 'desktop' | 'tablet' | 'mobile';
 type PreviewMode = 'web' | 'code';
@@ -46,6 +47,8 @@ export default function PreviewPanel({
 }: PreviewPanelProps) {
     const { t } = useTranslation();
     const [mode, setMode] = useState<PreviewMode>('web');
+    // The editor is fetched the first time this panel shows code — never at boot.
+    const monacoReady = useMonacoReady(mode === 'code');
     const [previewUrl, setPreviewUrl] = useState(initialUrl || '');
     const [inputUrl, setInputUrl] = useState(initialUrl || '');
     
@@ -394,6 +397,9 @@ export default function PreviewPanel({
                 {mode === 'code' ? (
                     codePath ? (
                         <div style={{ flex: 1, width: '100%', height: '100%' }}>
+                            {!monacoReady ? (
+                                <div style={{ padding: 16, fontSize: 12, opacity: .6 }}>…</div>
+                            ) : (
                             <Editor
                                 height="100%"
                                 language={getLanguage(codePath)}
@@ -409,6 +415,7 @@ export default function PreviewPanel({
                                     padding: { top: 16 }
                                 }}
                             />
+                            )}
                         </div>
                     ) : (
                         <EmptyState 

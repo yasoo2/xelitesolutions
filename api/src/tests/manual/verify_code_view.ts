@@ -120,7 +120,18 @@ async function main() {
             .some(f => fs.readFileSync(path.join(distDir, 'assets', f), 'utf-8').includes('monaco-editor'));
         check('محرّر مونَكو مُضمَّن في الحزمة لا مجلوب من الإنترنت', bundled);
         const setup = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'web', 'src', 'monaco-setup.ts'), 'utf-8');
-        check('واللودر مُوجَّه إلى النسخة المحلية', /loader\.config\(\{ monaco \}\)/.test(setup));
+        check('واللودر مُوجَّه إلى النسخة المحلية', /loader as any\)\.config\(\{ monaco \}\)|loader\.config\(\{ monaco \}\)/.test(setup));
+        // …and it is fetched WITH the code view, not with the page. The editor
+        // used to sit in the entry chunk: 3,994 kB downloaded on every visit for
+        // a panel most visits never open. Measured here so it cannot creep back.
+        const entry = fs.readdirSync(path.join(distDir, 'assets'))
+            .filter(f => /^index-.*\.js$/.test(f))
+            .map(f => fs.statSync(path.join(distDir, 'assets', f)).size);
+        const biggestEntry = Math.max(0, ...entry);
+        check('وحزمة الإقلاع لا تحمل المحرّر معها',
+            biggestEntry > 0 && biggestEntry < 700_000, `${Math.round(biggestEntry / 1024)} كيلوبايت`);
+        check('والمحرّر في حزمة مستقلة تُطلب عند الحاجة',
+            fs.readdirSync(path.join(distDir, 'assets')).some(f => /^editor\.main-.*\.js$/.test(f)));
         const cdnCalls = requests.filter(u => /jsdelivr|unpkg|cdn\./i.test(u));
         check('ولم يُطلب من أي شبكة خارجية', cdnCalls.length === 0, JSON.stringify(cdnCalls.slice(0, 3)));
 

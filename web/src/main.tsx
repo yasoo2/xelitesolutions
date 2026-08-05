@@ -5,7 +5,9 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { GOOGLE_CLIENT_ID } from './config';
 import App from './App';
 // The code viewer must work with the network unplugged — see monaco-setup.
-import './monaco-setup';
+// It is deliberately NOT imported here: importing it eagerly put the whole
+// editor (≈3 MB) into the entry chunk, so every visit paid for a panel most
+// visits never open. Each code view loads it on demand instead.
 
 const Login = lazy(() => import('./pages/Login'));
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useMonacoReady } from '../monaco-setup';
 import Editor, { loader } from '@monaco-editor/react';
 
 // Configure loader to use local files or CDN properly if needed
@@ -15,6 +16,8 @@ interface CodeEditorProps {
 
 export default function CodeEditor({ code, language = 'javascript', onChange, readOnly = false, theme: initialTheme = 'vs-dark', showMinimap = true }: CodeEditorProps) {
   const [theme, setTheme] = useState(initialTheme);
+  // Monaco arrives with this component, not with the page — see monaco-setup.
+  const monacoReady = useMonacoReady();
 
   useEffect(() => {
     const updateTheme = () => {
@@ -56,6 +59,14 @@ export default function CodeEditor({ code, language = 'javascript', onChange, re
       roundedSelection: true,
     });
   };
+
+  if (!monacoReady) {
+    return (
+      <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>
+        …
+      </div>
+    );
+  }
 
   return (
     <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>

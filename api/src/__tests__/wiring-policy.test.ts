@@ -1672,8 +1672,26 @@ describe('the code view is fed by what builds actually emit', () => {
 
     it('the editor ships with the app instead of being fetched from a CDN', () => {
         const setup = WEB('monaco-setup.ts');
-        expect(setup).toMatch(/loader\.config\(\{ monaco \}\)/);
-        expect(WEB('main.tsx')).toMatch(/monaco-setup/);
+        expect(setup).toMatch(/\.config\(\{ monaco \}\)/);
+        /**
+         * …and it arrives WITH the code view, never with the page.
+         *
+         * Importing this from main.tsx put the whole editor in the entry chunk:
+         * a measured 3,994 kB downloaded on every visit for a panel most visits
+         * never open, which is what kept vite printing «chunks are larger than
+         * 2000 kB». Every consumer waits for ensureMonaco() before mounting an
+         * <Editor> — mounting one earlier is exactly what sends it to the CDN.
+         */
+        expect(setup).toMatch(/export function ensureMonaco/);
+        // a dynamic import, inside the on-demand function — that is what moves
+        // it out of the entry chunk
+        const fn = setup.slice(setup.indexOf('export function ensureMonaco'));
+        expect(fn).toMatch(/import\('monaco-editor'\)/);
+        expect(WEB('main.tsx')).not.toMatch(/^import '\.\/monaco-setup'/m);
+        for (const f of ['PreviewPanel.tsx', 'CodeEditor.tsx', 'DiffViewer.tsx']) {
+            expect(`${f}: ${WEB('components', f).includes('useMonacoReady') ? 'waits' : 'mounts blind'}`)
+                .toBe(`${f}: waits`);
+        }
     });
 });
 
