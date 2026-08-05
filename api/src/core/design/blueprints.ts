@@ -48,8 +48,38 @@ export function detectPageKind(request: string, probe?: string): PageKind {
     let canonical = '';
     try { canonical = normalizeIntentText(own); } catch { /* optional */ }
     const text = `${own}\n${canonical}\n${probe || ''}`;
-    for (const [kind, re] of DETECTORS) if (re.test(text)) return kind;
-    return 'generic';
+
+    /**
+     * THE SUBJECT OUTRANKS THE FEATURE, AND POSITION IS HOW WE TELL.
+     *
+     * This list was first-match-wins, and `dashboard` sits at the top of it.
+     * Measured on the user's own request:
+     *
+     *   "Build a world-class e-commerce platform similar to Shopify.
+     *    Features: … Analytics …"        →  detectPageKind = 'dashboard'
+     *
+     * The word «Analytics», one bullet among fourteen, outranked «e-commerce»
+     * in the opening sentence. So the store blueprint — the product grid, the
+     * working cart, the checkout, all of it already built and already tested —
+     * never fired for the one request that most obviously needed it. Any
+     * Shopify-like brief asks for analytics, so EVERY e-commerce request was
+     * losing its shop.
+     *
+     * Order in a list is not a statement about importance; where a word appears
+     * in the user's sentence is. The kind whose keyword lands EARLIEST wins,
+     * and the list order only breaks a tie. That reads «لوحة تحكم لمتجري» as a
+     * dashboard and «متجر إلكتروني مع تحليلات» as a store — both correct, and
+     * for the same reason.
+     */
+    let best: { kind: PageKind; at: number; rank: number } | null = null;
+    DETECTORS.forEach(([kind, re], rank) => {
+        const m = text.match(re);
+        if (!m || m.index === undefined) return;
+        if (!best || m.index < best.at || (m.index === best.at && rank < best.rank)) {
+            best = { kind, at: m.index, rank };
+        }
+    });
+    return best ? (best as { kind: PageKind }).kind : 'generic';
 }
 
 /** The sections a good example of each kind actually has. */
