@@ -2063,3 +2063,31 @@ describe('the generated app can sign in to its own server', () => {
         expect(T()).toMatch(/const TOKEN_KEY = 'joe:auth:' \+/);
     });
 });
+
+/**
+ * A SYSTEM THAT ONLY WORKS ON THE MACHINE THAT BUILT IT IS NOT DELIVERED.
+ *
+ * «حتى يتم نقله الى دومين والعمل مباشره». Two things stopped that, and both
+ * were invisible locally: an absolute http://localhost:4100 baked into the
+ * bundle, and an interface and API living in two processes on two ports.
+ */
+describe('the built system is ready for a domain', () => {
+    it('the API address is a question asked at runtime, not a constant', () => {
+        const T = SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        expect(T).toMatch(/async function resolvedApi\(api\)/);
+        expect(T).toMatch(/fetch\('\/api\/health'/);
+    });
+
+    it('the server serves the built interface, and never eats an API route', () => {
+        const A = SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+        expect(A).toMatch(/express\.static\(PUBLIC/);
+        expect(A).toMatch(/req\.path\.startsWith\('\/api\/'\)\) return next\(\)/);
+    });
+
+    it('and the interface is packaged INTO the server when both exist', () => {
+        const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+        expect(R).toMatch(/fs\.cpSync\(path\.join\(proj, 'dist'\), target, \{ recursive: true \}\)/);
+        // only when this session really built an API — never inventing a target
+        expect(R).toMatch(/prevEntry\?\.type === 'api' && prevEntry\?\.dir && fs\.existsSync\(prevEntry\.dir\)/);
+    });
+});

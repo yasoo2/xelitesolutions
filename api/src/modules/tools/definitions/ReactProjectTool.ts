@@ -2478,6 +2478,30 @@ export class ReactProjectTool extends BaseTool {
             }
         }
 
+        /**
+         * ONE FOLDER, ONE PROCESS, ONE ORIGIN — ready for a domain.
+         *
+         * «حتى يتم نقله الى دومين والعمل مباشره». A built interface on one port
+         * and its API on another is not something anyone can deploy: it needs
+         * CORS, two processes and an address baked into the bundle. When this
+         * session already built the API, the compiled interface is copied into
+         * the server's public/ — which that server now serves — so the whole
+         * system is a single folder you upload and start.
+         */
+        if (built && prevEntry?.type === 'api' && prevEntry?.dir && fs.existsSync(prevEntry.dir)) {
+            try {
+                const target = path.join(prevEntry.dir, 'public');
+                fs.rmSync(target, { recursive: true, force: true });
+                fs.cpSync(path.join(proj, 'dist'), target, { recursive: true });
+                term(`packaged: the built interface now lives in ${path.basename(prevEntry.dir)}/public — one origin, one «npm start»`);
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                    ? '📦 حزمتُ الواجهة داخل الخادم — مجلد واحد جاهز للرفع على دومين'
+                    : '📦 Packaged the interface inside the server — one folder, ready for a domain');
+            } catch (e: any) {
+                term(`packaging skipped: ${e?.message || e}`);
+            }
+        }
+
         // ── SELF-QA: a REAL browser measures the build before delivery ──────
         let audit: any = null;
         if (built && !input?.skipAudit) {

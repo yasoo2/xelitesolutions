@@ -334,7 +334,7 @@ const authHeaders = () => {
 
 /** The server's own login. Returns { ok, error } — never throws at the UI. */
 export async function apiLogin(api, email, password) {
-  const url = apiSibling(api, 'auth/login');
+  const url = apiSibling(await resolvedApi(api), 'auth/login');
   if (!url) return { ok: false, error: 'no_server' };
   try {
     const r = await fetch(url, {
@@ -352,7 +352,7 @@ export function apiLogout() { setToken(''); }
 
 /** Is the token still good? A server restart invalidates nothing else visibly. */
 export async function apiMe(api) {
-  const url = apiSibling(api, 'auth/me');
+  const url = apiSibling(await resolvedApi(api), 'auth/me');
   if (!url || !getToken()) return null;
   try {
     const r = await fetch(url, { headers: { ...authHeaders() } });
@@ -362,11 +362,48 @@ export async function apiMe(api) {
   } catch { return null; }
 }
 
+/**
+ * WHERE THE API REALLY IS — «حتى يتم نقله الى دومين والعمل مباشره».
+ *
+ * The build baked an absolute http://localhost:4100/... into the bundle. On a
+ * developer's machine that is right; on a domain it is a dead address, so the
+ * whole system stopped working the moment it was deployed — the one thing the
+ * user asked for by name.
+ *
+ * The answer is not a guess about hostnames (a packaged single-process build
+ * runs on localhost too). It is a question, asked once: does THIS origin serve
+ * the API? If /api/health answers here, everything is relative and the system
+ * works on any domain, port or path. If it does not, the dev address stands.
+ */
+let apiBaseOnce = null;
+async function resolvedApi(api) {
+  if (!api) return '';
+  if (!apiBaseOnce) {
+    apiBaseOnce = (async () => {
+      const tail = String(api).split('/api/')[1];
+      if (!tail || typeof fetch !== 'function' || typeof location === 'undefined') return api;
+      try {
+        const r = await fetch('/api/health', { headers: { Accept: 'application/json' } });
+        if (r.ok) return '/api/' + tail;
+      } catch { /* not served here — the dev address stands */ }
+      return api;
+    })();
+  }
+  const base = await apiBaseOnce;
+  // Same origin: rebuild whatever was asked for — the resource or a sibling
+  // like «/api/orders» — against the relative base. Written with plain string
+  // work on purpose: an escaped regex inside a generated file is one backslash
+  // away from an unparseable bundle, and that is exactly how this shipped
+  // broken the first time.
+  if (String(base).charAt(0) === '/') return '/api/' + String(api).split('/api/')[1];
+  return api;
+}
+
 /** Best-effort server sync. Any failure keeps the local rows — never a crash. */
 export async function apiList(api) {
   if (!api) return null;
   try {
-    const r = await fetch(api, { headers: { Accept: 'application/json' } });
+    const r = await fetch(await resolvedApi(api), { headers: { Accept: 'application/json' } });
     if (!r.ok) return null;
     const d = await r.json();
     // …including the feed's own «{ ok, posts }» — the shape the generated
@@ -384,7 +421,7 @@ export async function apiList(api) {
 export async function apiCreate(api, row) {
   if (!api) return null;
   try {
-    const r = await fetch(api, {
+    const r = await fetch(await resolvedApi(api), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(row),
@@ -404,7 +441,7 @@ export async function apiCreate(api, row) {
 export async function apiPost(api, suffix, body) {
   if (!api) return null;
   try {
-    const r = await fetch(String(api).replace(/\\/+$/, '') + suffix, {
+    const r = await fetch(String(await resolvedApi(api)).replace(/\\/+$/, '') + suffix, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body || {}),
@@ -437,7 +474,7 @@ export async function apiGet(url) {
 export async function apiDelete(api, id) {
   if (!api || id === undefined || id === null) return null;
   try {
-    const r = await fetch(String(api).replace(/\\/+$/, '') + '/' + encodeURIComponent(id), {
+    const r = await fetch(String(await resolvedApi(api)).replace(/\\/+$/, '') + '/' + encodeURIComponent(id), {
       method: 'DELETE', headers: { ...authHeaders() },
     });
     if (!r.ok) return null;

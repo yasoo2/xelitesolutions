@@ -797,6 +797,9 @@ function fileServerJs(resource: string, brand: string, dirName: string): string 
 //   npm start            (port 4100)
 //   PORT=5050 npm start  (any port)
 import express from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { db } from './db.js';
 import { seed, seedOwner } from './seed.js';
 import { hashPassword, verifyPassword, signToken, requireAuth, throttleKey, isLocked, noteMiss, clearMisses, normalizeEmail } from './auth.js';
@@ -814,6 +817,8 @@ function notifyJoe(order) {
     body: JSON.stringify({ fields, page: 'orders-api' }),
   }).catch(() => { /* Joe offline — the order is safe in OUR database */ });
 }
+
+const HERE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(express.json({ limit: '100kb' }));
@@ -952,6 +957,32 @@ app.delete('/api/${resource}/:id', requireAuth, (req, res) => {
 const seeded = seed();
 const owner = seedOwner();
 const port = Number(process.env.PORT || 4100);
+/**
+ * THE WHOLE SYSTEM ON ONE ORIGIN — «حتى يتم نقله الى دومين والعمل مباشره».
+ *
+ * A built interface in public/ is served by THIS server, so the site and its
+ * API share one origin, one port and one process. That is what makes the
+ * system deployable: upload the folder, run npm start behind your domain,
+ * and it works — no CORS, no second port, no address baked into the bundle.
+ * Without public/ the server is exactly what it was: an API on its own.
+ */
+{
+  const PUBLIC = path.join(HERE_DIR, 'public');
+  if (fs.existsSync(path.join(PUBLIC, 'index.html'))) {
+    app.use(express.static(PUBLIC, { index: false, maxAge: '1h' }));
+    // Anything that is not an API route is the single-page app. Assets are
+    // handled above, so a miss here means a route inside the interface.
+    // (A plain middleware rather than a path regex: an escaped pattern inside
+    // a generated file is one backslash away from an unparseable server, and
+    // the syntax gate caught exactly that.)
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
+      res.sendFile(path.join(PUBLIC, 'index.html'));
+    });
+    console.log('[api] serving the built interface from public/ — one origin, ready for a domain');
+  }
+}
+
 app.listen(port, () => {
   console.log(\`[api] listening on http://localhost:\${port} — backend: \${db.backend}\${seeded ? \`, seeded \${seeded} rows\` : ''}\`);
   if (owner) console.log(\`[api] owner account created: \${owner} — the password was shown once in Joe's chat.\`);
