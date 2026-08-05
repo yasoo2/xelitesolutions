@@ -46,11 +46,24 @@ function Say {
     #  جو بنفسه لا تحتاج مشاركة ملفات ولا مضيفاً ولا نافذة.
     # ============================================================
     if ($env:JOE_UNATTENDED -eq '1') {
+        # القناة الأولى: المخرَج القياسي — وجّهه جو إلى ملفٍ يخصّه وحده.
+        $wrote = $false
         try {
             [Console]::Out.WriteLine($msg)
             [Console]::Out.Flush()
-        } catch {
-            try { Write-Output $msg } catch { }
+            $wrote = $true
+        } catch { }
+        # القناة الثانية: ملفُّنا نحن، وحدنا نكتب فيه — تُستعمل فقط إن تعطّلت
+        # الأولى. قناتان في ملفين مختلفين: لا مقبضان على ملفٍ واحد أبداً، ولا
+        # صمتٌ إن سقطت إحداهما.
+        if (-not $wrote -and $env:JOE_UPDATE_LOG) {
+            try {
+                $fs = [System.IO.File]::Open($env:JOE_UPDATE_LOG, [System.IO.FileMode]::Append,
+                    [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($msg + "`r`n")
+                $fs.Write($bytes, 0, $bytes.Length)
+                $fs.Flush(); $fs.Close()
+            } catch { }
         }
     } elseif ($color) {
         Write-Host $msg -ForegroundColor $color

@@ -1877,8 +1877,9 @@ it('the updater speaks where the interface can hear it', () => {
         for (const f of ['update-joe.ps1', 'start-joe.ps1']) {
             const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', f), 'utf-8');
             expect(`${f}: ${/\[Console\]::Out\.WriteLine\(\$msg\)/.test(src) ? 'stdout' : 'nowhere'}`).toBe(`${f}: stdout`);
-            // The second handle must never come back.
-            expect(src).not.toMatch(/\[System\.IO\.File\]::Open\(\$env:JOE_UPDATE_LOG/);
+            // The script's own file is a FALLBACK on a DIFFERENT file — used
+            // only when the first channel fails, never alongside it.
+            expect(src).toMatch(/if \(-not \$wrote -and \$env:JOE_UPDATE_LOG\)/);
             // and the progress lines actually go through it
             expect(`${f}: ${(src.match(/^\s*Say /gm) || []).length > 20 ? 'logs' : 'silent'}`).toBe(`${f}: logs`);
         }
@@ -2203,9 +2204,9 @@ describe('the update button before, during and after', () => {
         for (const f of ['update-joe.ps1', 'start-joe.ps1']) {
             const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', f), 'utf-8');
             expect(`${f}: ${/\[Console\]::Out\.WriteLine\(\$msg\)/.test(src) ? 'stdout' : 'nowhere'}`).toBe(`${f}: stdout`);
-            // Both traps: Add-Content's read-only share, and the second handle.
             expect(src).not.toMatch(/Add-Content -LiteralPath \$env:JOE_UPDATE_LOG/);
-            expect(src).not.toMatch(/\[System\.IO\.File\]::Open\(\$env:JOE_UPDATE_LOG/);
+            // The file write survives only as a FALLBACK, on its own file.
+            expect(src).toMatch(/if \(-not \$wrote -and \$env:JOE_UPDATE_LOG\)/);
         }
     });
 

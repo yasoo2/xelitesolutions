@@ -48,6 +48,19 @@ router.post('/metrics/track', async (req, res) => {
  * JOE_SELF_UPDATE=0 removes it entirely.
  */
 const UPDATE_LOG = path.join(os.tmpdir(), 'joe-self-update.log');
+/**
+ * TWO CHANNELS, TWO FILES, NEITHER ABLE TO SILENCE THE OTHER.
+ *
+ * The updater can speak two ways: on its own standard output (which Joe
+ * redirects into a file) and by writing a file itself. Pointing BOTH at one
+ * file put two writers from two processes on one handle, and on Windows that
+ * failed inside a silent catch — one line, half an hour, «الخطوة 1 من 4».
+ *
+ * They are separate files now. The child's stdout lands here; anything the
+ * script writes itself lands in UPDATE_LOG; the status route shows both. If
+ * either channel breaks, the other still carries the progress.
+ */
+const UPDATE_OUT = path.join(os.tmpdir(), 'joe-self-update.out');
 const DONE_MARK = 'التحديث اكتمل';
 /** Set when THIS process started an update; a restart clears it, which is correct. */
 let startedAt = 0;
@@ -110,11 +123,29 @@ function selfUpdateEnabled(): boolean {
     return String(process.env.JOE_SELF_UPDATE ?? '1') !== '0';
 }
 
-function readTail(limit = 8000): string {
+function readFileTail(file: string, limit: number): string {
     try {
-        const raw = fs.readFileSync(UPDATE_LOG, 'utf-8');
+        const raw = fs.readFileSync(file, 'utf-8');
         return raw.length > limit ? raw.slice(-limit) : raw;
     } catch { return ''; }
+}
+
+/** Both channels, in one readable transcript. */
+function readTail(limit = 8000): string {
+    const own = readFileTail(UPDATE_LOG, limit);
+    const streamed = readFileTail(UPDATE_OUT, limit);
+    if (!streamed.trim()) return own;
+    if (!own.trim()) return streamed;
+    return `${own}${own.endsWith('\n') ? '' : '\n'}${streamed}`;
+}
+
+/** The newest write across both files — silence means BOTH are silent. */
+function silentForMs(): number {
+    let newest = 0;
+    for (const f of [UPDATE_LOG, UPDATE_OUT]) {
+        try { newest = Math.max(newest, fs.statSync(f).mtimeMs); } catch { /* not written yet */ }
+    }
+    return newest ? Date.now() - newest : Infinity;
 }
 
 /**
@@ -190,8 +221,7 @@ router.get('/update/check', async (req, res) => {
 router.get('/update/status', (req, res) => {
     const tail = readTail();
     const lines = tail ? tail.split('\n').filter(Boolean).length : 0;
-    let silentFor = Infinity;
-    try { silentFor = Date.now() - fs.statSync(UPDATE_LOG).mtimeMs; } catch { /* never run */ }
+    const silentFor = silentForMs();
     const finished = tail.includes(DONE_MARK);
     const failed = tail.includes('[X]');
     const age = startedAt ? Date.now() - startedAt : 0;
@@ -270,6 +300,9 @@ router.post('/update', (req, res) => {
      * are told where it is.
      */
     try { fs.writeFileSync(UPDATE_LOG, `بدأ التحديث ${new Date().toLocaleString()}\n`); } catch { /* the log is a convenience */ }
+    // The streamed channel starts empty too, or the last run's output would be
+    // read as this one's progress.
+    try { fs.writeFileSync(UPDATE_OUT, ''); } catch { /* the log is a convenience */ }
     startedAt = Date.now();
     updaterPid = 0;
 
@@ -321,7 +354,13 @@ router.post('/update', (req, res) => {
     note('[i]', [`البرنامج: ${file}`, `السكربت: ${script}`]);
 
     const spawned = executionEngine.runDetached(file, args, {
-        cwd: root, logFile: UPDATE_LOG, env: { JOE_UNATTENDED: '1', JOE_UPDATE_LOG: UPDATE_LOG },
+        // The child's own stdout goes to ITS file; the script writes to the
+        // other one; Joe's remarks (an exit code, a failure) go with the script's
+        // so they read in order. No two writers ever share a handle.
+        outFile: UPDATE_OUT,
+        noteFile: UPDATE_LOG,
+        cwd: root,
+        env: { JOE_UNATTENDED: '1', JOE_UPDATE_LOG: UPDATE_LOG },
     });
 
     if (!spawned.ok) {
@@ -339,8 +378,7 @@ router.post('/update', (req, res) => {
      */
     setTimeout(() => {
         try {
-            const tail = fs.readFileSync(UPDATE_LOG, 'utf-8');
-            if (updaterSpoke(tail)) return;   // it is talking; nothing to say
+            if (updaterSpoke(readTail())) return;   // it is talking; nothing to say
             const alive = pidAlive(updaterPid);
             /**
              * [!] AND NOT [X]: this is Joe's diagnosis, not the updater's own

@@ -36,18 +36,60 @@ describe('a spawn that fails is a failure, not a silence', () => {
     });
 
     it('the reason reaches the log the user can read', () => {
-        expect(E).toMatch(/appendFileSync\(options\.logFile/);
+        expect(E).toMatch(/const note = \(line: string\)/);
+    });
+
+    it('a child that dies silently still leaves its exit code behind', () => {
+        // «العملية انتهت دون أن تبدأ» was the end of the diagnosis on his
+        // machine: created, silent, gone, and no record of why.
+        expect(E).toMatch(/child\.on\('exit'/);
+        expect(E).toMatch(/رمز الخروج/);
+    });
+
+    it('and a detached child is not ALSO asked to hide a window it cannot have', () => {
+        // DETACHED_PROCESS with CREATE_NO_WINDOW is a contradiction Windows is
+        // documented not to accept; the observed result was a process that
+        // started, wrote nothing, and died.
+        expect(E).toMatch(/windowsHide: options\.windowsHide === true/);
     });
 });
 
-describe('the updater speaks on ONE channel — the one Joe redirected', () => {
+describe('two channels, so neither can silence the other', () => {
+    const S = read('api', 'src', 'api', 'routes', 'system.ts');
+
+    it('the streamed output and the script\'s own file are DIFFERENT files', () => {
+        expect(S).toMatch(/const UPDATE_OUT = /);
+        expect(S).toMatch(/outFile: UPDATE_OUT/);
+        expect(S).toMatch(/noteFile: UPDATE_LOG/);
+        expect(S).not.toMatch(/logFile: UPDATE_LOG,/);
+    });
+
+    it('and the status route reads both', () => {
+        expect(S).toMatch(/function readTail/);
+        expect(S).toMatch(/readFileTail\(UPDATE_OUT, limit\)/);
+        // silence must mean BOTH are silent, not just one
+        expect(S).toMatch(/for \(const f of \[UPDATE_LOG, UPDATE_OUT\]\)/);
+    });
+
+    it('the script prefers stdout and falls back to its own file', () => {
+        for (const script of ['update-joe.ps1', 'start-joe.ps1']) {
+            const s = read(script);
+            expect(`${script}: ${/\$wrote = \$true/.test(s) ? 'has-fallback' : 'single-channel'}`)
+                .toBe(`${script}: has-fallback`);
+            expect(s).toMatch(/if \(-not \$wrote -and \$env:JOE_UPDATE_LOG\)/);
+        }
+    });
+});
+
+describe('the updater speaks on a channel that cannot fail silently', () => {
     for (const script of ['update-joe.ps1', 'start-joe.ps1']) {
         it(`${script}: Say writes to standard output when Joe runs it`, () => {
             const s = read(script);
             expect(s).toMatch(/\[Console\]::Out\.WriteLine\(\$msg\)/);
-            // The second handle is what failed silently on Windows for half an
-            // hour. It must not come back.
-            expect(s).not.toMatch(/\[System\.IO\.File\]::Open\(\$env:JOE_UPDATE_LOG/);
+            // Its own file survives only as a fallback — and it is now a
+            // DIFFERENT file from the one Joe streams into, so the two writers
+            // that failed silently on Windows can never meet again.
+            expect(s).toMatch(/if \(-not \$wrote -and \$env:JOE_UPDATE_LOG\)/);
         });
 
         it(`${script}: chcp is not called in a window that does not exist`, () => {

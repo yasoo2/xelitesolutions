@@ -128,6 +128,28 @@ async function main() {
     check('وجو نفسه ما زال يعمل بعد فشل التشغيل', alive.status === 200);
     try { fs.unlinkSync(probeLog); } catch { /* fine */ }
 
+    /**
+     * HIS EXACT FAILURE, REPRODUCED.
+     *
+     * The log from his machine said «العملية انتهت دون أن تبدأ»: PowerShell was
+     * found, was launched, produced not one byte, and died. That was as far as
+     * the diagnosis could go, because nothing recorded WHY. An exit code is one
+     * line and it is the whole difference.
+     */
+    console.log('\n[2b] عملية تموت فوراً وبصمت — الرمز يُكتب، لا يُبتلع');
+    const dies = path.join(os.tmpdir(), `joe-dies-${Date.now()}.sh`);
+    fs.writeFileSync(dies, '#!/usr/bin/env bash\nexit 42\n', { mode: 0o755 });
+    const dieLog = path.join(os.tmpdir(), `joe-die-log-${Date.now()}.log`);
+    const dieOut = path.join(os.tmpdir(), `joe-die-out-${Date.now()}.log`);
+    const died = executionEngine.runDetached('/bin/bash', [dies], { noteFile: dieLog, outFile: dieOut });
+    check('التشغيل نجح فعلاً — المشكلة ليست في الإقلاع', died.ok === true && Number(died.pid) > 0, JSON.stringify(died));
+    await new Promise(r => setTimeout(r, 1200));
+    const dieText = fs.existsSync(dieLog) ? fs.readFileSync(dieLog, 'utf-8') : '';
+    check('ورمز الخروج مكتوب في السجل بلغة مفهومة', /رمز الخروج 42/.test(dieText), dieText.slice(0, 200) || 'لا سجل');
+    check('ومخرجات العملية في ملفها المنفصل — لا مقبضان على ملف واحد',
+        fs.existsSync(dieOut) && !fs.readFileSync(dieOut, 'utf-8').includes('رمز الخروج'));
+    for (const f of [dies, dieLog, dieOut]) { try { fs.unlinkSync(f); } catch { /* fine */ } }
+
     console.log('\n[3] مفسِّر مفقود: جواب فوري باسمه، لا شريط أبديّ');
     await close(srv);
     const ghostPs1 = path.join(os.tmpdir(), 'joe-ghost-updater.ps1');

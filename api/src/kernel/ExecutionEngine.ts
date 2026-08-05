@@ -35,6 +35,13 @@ export interface ExecutionOptions {
     detached?: boolean;
     stdio?: 'ignore' | 'pipe' | 'inherit';
     sessionId?: string;
+    /**
+     * Windows only, and deliberately OFF for detached children: asking for
+     * DETACHED_PROCESS and CREATE_NO_WINDOW together is asking the OS to
+     * reconcile two contradictory instructions, and the observed result was a
+     * process that started, wrote nothing and died.
+     */
+    windowsHide?: boolean;
 }
 
 export interface ExecutionSession {
@@ -542,16 +549,30 @@ export class ExecutionEngine {
      * Output goes to a file rather than a pipe, which is also what lets the UI
      * show the update's progress after the socket it asked over has died.
      */
-    runDetached(file: string, args: string[], options: ExecutionOptions & { logFile?: string } = {}): { ok: boolean; pid?: number; logFile?: string; error?: string } {
+    runDetached(
+        file: string,
+        args: string[],
+        options: ExecutionOptions & { logFile?: string; outFile?: string; noteFile?: string } = {},
+    ): { ok: boolean; pid?: number; logFile?: string; error?: string } {
+        // Where the child's OWN stdout/stderr land. Kept separate from any file
+        // the child writes to itself: two writers on one file is precisely the
+        // shape that failed silently on Windows.
+        const streamTo = options.outFile || options.logFile;
+        // Where Joe's own remarks go — the exit code, a failure to launch.
+        const noteTo = options.noteFile || options.logFile;
         let out: number | 'ignore' = 'ignore';
         try {
-            if (options.logFile) {
-                fs.mkdirSync(path.dirname(options.logFile), { recursive: true });
+            if (streamTo) {
+                fs.mkdirSync(path.dirname(streamTo), { recursive: true });
                 // append: the caller usually writes a header line first, and
                 // truncating here would throw it away.
-                out = fs.openSync(options.logFile, 'a');
+                out = fs.openSync(streamTo, 'a');
             }
         } catch { out = 'ignore'; }
+        const note = (line: string) => {
+            try { if (noteTo) fs.appendFileSync(noteTo, line.endsWith('\n') ? line : `${line}\n`); }
+            catch { /* the log is a courtesy, never a failure */ }
+        };
         try {
             const child = spawn(file, args, {
                 cwd: options.cwd || this.getWorkspaceRoot(),
@@ -561,7 +582,18 @@ export class ExecutionEngine {
                 // keypress nobody can give it.
                 stdio: ['ignore', out, out],
                 shell: options.shell !== undefined ? options.shell : false,
-                windowsHide: true,
+                /**
+                 * NOT HIDDEN — BECAUSE DETACHED ALREADY MEANS NO CONSOLE.
+                 *
+                 * A detached child is created with DETACHED_PROCESS, and
+                 * Windows documents CREATE_NO_WINDOW as invalid together with
+                 * it. Asking for both is asking the OS to reconcile two
+                 * contradictory instructions, and on his machine the result was
+                 * a process that was created, produced not one byte, and died:
+                 * «العملية انتهت دون أن تبدأ», twice, deterministically.
+                 * There is no window to hide when there is no console.
+                 */
+                windowsHide: options.windowsHide === true,
             } as any);
             /**
              * A FAILED SPAWN IS NOT A SUCCESS — AND MUST NOT KILL ITS HOST.
@@ -579,15 +611,33 @@ export class ExecutionEngine {
              * a missing binary is reported as the failure it is.
              */
             child.on('error', (e: any) => {
-                const line = `[X] تعذّر تشغيل ${file}: ${e?.message || e}\n`;
-                try { if (options.logFile) fs.appendFileSync(options.logFile, line); } catch { /* the log is a courtesy */ }
+                note(`[X] تعذّر تشغيل ${file}: ${e?.message || e}`);
                 try { console.error(`[ExecutionEngine] runDetached(${file}) failed: ${e?.message || e}`); } catch { /* never fatal */ }
             });
             if (!child.pid) {
                 const error = `${file} — لم يبدأ (تعذّر العثور على البرنامج أو تشغيله)`;
-                try { if (options.logFile) fs.appendFileSync(options.logFile, `[X] ${error}\n`); } catch { /* best effort */ }
+                note(`[X] ${error}`);
                 return { ok: false, error };
             }
+            /**
+             * A DEATH WITH A NUMBER ON IT.
+             *
+             * «العملية انتهت دون أن تبدأ» was as far as the diagnosis could go:
+             * the child was created, wrote nothing, and vanished — and nothing
+             * anywhere recorded WHY. An exit code is one line and it is the
+             * difference between «it died» and «it died with 0xC0000142». The
+             * listener holds no handle of its own, so it cannot keep this
+             * process alive; it simply speaks if the child dies while Joe is
+             * still here to hear it.
+             */
+            const startedAt = Date.now();
+            child.on('exit', (code: number | null, signal: string | null) => {
+                const secs = Math.round((Date.now() - startedAt) / 1000);
+                if (code === 0) return;   // a clean finish needs no remark
+                note(`[!] ${path.basename(file)} انتهى بعد ${secs} ثانية`
+                    + ` — رمز الخروج ${code === null ? `(إشارة ${signal})` : code}`
+                    + (code !== null && code !== 0 ? ` (0x${(code >>> 0).toString(16)})` : ''));
+            });
             child.unref();
             return { ok: true, pid: child.pid, logFile: options.logFile };
         } catch (e: any) {

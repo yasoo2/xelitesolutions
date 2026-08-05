@@ -30,6 +30,7 @@ process.env.ENABLE_AUTH_BYPASS = 'true';
 process.env.JOE_CHAT_STORE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-upd-store-'));
 
 const UPDATE_LOG = path.join(os.tmpdir(), 'joe-self-update.log');
+const UPDATE_OUT = path.join(os.tmpdir(), 'joe-self-update.out');
 
 let pass = 0, fail = 0;
 const check = (name: string, ok: boolean, detail = '') => {
@@ -208,8 +209,14 @@ async function main() {
         const logText = await page.locator('.joe-console-body').innerText();
         check('السطر الذي كتبه المحدِّث نفسه ظاهر', logText.includes(marker), logText.slice(0, 120));
         check('والتقدّم يتوالى سطراً بعد سطر', /خطوة 2 من التحديث/.test(logText), logText.slice(-160));
-        const onDisk = fs.readFileSync(UPDATE_LOG, 'utf-8');
-        check('وهو نفسه ما في ملف السجل على القرص', onDisk.includes(marker));
+        // TWO CHANNELS ON DISK, ON PURPOSE: the child's own output goes to
+        // one file and anything the script writes itself to another, because
+        // pointing both at ONE file put two writers on one handle — the exact
+        // shape that failed silently on Windows for half an hour.
+        const onDisk = [UPDATE_LOG, UPDATE_OUT]
+            .map(f => { try { return fs.readFileSync(f, 'utf-8'); } catch { return ''; } })
+            .join('\n');
+        check('وهو نفسه ما على القرص — في إحدى القناتين', onDisk.includes(marker), onDisk.slice(-200));
 
         // The copy button must really put the log on the clipboard.
         await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
