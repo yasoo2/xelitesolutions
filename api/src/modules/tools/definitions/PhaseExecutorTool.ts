@@ -146,13 +146,14 @@ export class PhaseExecutorTool implements ToolDefinition {
                 // `{action:'status'}` and git_ops declares `operation`, so the
                 // renamed tool still failed on its first real run. Speak the
                 // tool's own vocabulary.
-                const toolArgs = adaptPlannedArgs(toolName, {
-                    ...(task.args || {}),
-                    ...(task.input || {}),
-                });
+                // The session goes in BEFORE the adapter runs: an audit with no
+                // address is completed from what THIS session just built, and
+                // the adapter cannot find that without knowing whose it is.
+                const planned: any = { ...(task.args || {}), ...(task.input || {}) };
+                if (executionContext.sessionId && typeof planned.sessionId !== 'string') planned.sessionId = executionContext.sessionId;
+                if (executionContext.workspaceId && typeof planned.workspaceId !== 'string') planned.workspaceId = executionContext.workspaceId;
 
-                if (executionContext.sessionId && typeof (toolArgs as any).sessionId !== 'string') (toolArgs as any).sessionId = executionContext.sessionId;
-                if (executionContext.workspaceId && typeof (toolArgs as any).workspaceId !== 'string') (toolArgs as any).workspaceId = executionContext.workspaceId;
+                const toolArgs = adaptPlannedArgs(toolName, planned);
 
                 try {
                     const toolResult = await executeTool(toolName, toolArgs, {

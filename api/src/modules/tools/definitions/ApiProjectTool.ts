@@ -390,7 +390,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, backend: db.backend, posts: db.count() }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, backend: db.backend, posts: db.count(), joe: 'api_project', resource: 'posts' }));
 
 // The feed. The response carries BOTH shapes on purpose: \`posts\` reads well
 // for a human with curl, and \`data\` is what the generated app parses.
@@ -1088,8 +1088,22 @@ app.use((req, res, next) => {
   next();
 });
 
+/**
+ * HEALTH SAYS WHOSE HEALTH IT IS.
+ *
+ * The built interface asks one question to find its API: «does THIS origin
+ * answer /api/health?». Measured in the field, that question was too generous
+ * — Joe's own preview route serves the app from Joe's server, Joe answers
+ * /api/health too, and the store cheerfully rewired itself to Joe's API and
+ * got «GET /api/products 404» twice on every load. The catalogue was empty and
+ * the self-QA scored it 62/100 for failed requests.
+ *
+ * So the answer carries a name now: this server's own resource. An origin that
+ * does not claim THIS resource is not this system's server.
+ */
 app.get('/api/health', (_req, res) => res.json({
   ok: true, backend: db.backend, count: db.count(), orders: db.countOrders(),
+  joe: 'api_project', resource: '${resource}',
   ${relation ? `${relation.resource}: db.rel.count(), relation: db.relation,` : ''}
 }));
 

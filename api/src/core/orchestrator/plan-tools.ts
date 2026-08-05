@@ -345,8 +345,47 @@ const REQUIRED_DEFAULTS: Record<string, Record<string, any>> = {
     shell_execute: { command: 'npm run build' },
 };
 
+/**
+ * AN AUDIT WITH NO ADDRESS AUDITS WHAT THIS SESSION JUST BUILT.
+ *
+ * «كوالتي تاسكس لا تعمل بشكل صحيح» — and it could not: the Quality phase was
+ * planned as `browser_ui_audit` with `args: {}`, so the very first thing the
+ * tool did was answer `no_url`. Every system build ended at 2/3 for that one
+ * missing string, and the self-repair that followed sent a browser agent off
+ * to «generate a URL» on the open web.
+ *
+ * The interface built moments earlier is already served, live, at this
+ * session's own preview route. That is the address, and it is knowable without
+ * asking anybody.
+ */
+function builtPreviewUrl(sessionId: string): string {
+    const key = String(sessionId || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (!key) return '';
+    try {
+        const entry = ((global as any).joeProjects || {})[key];
+        if (!entry?.dir) return '';
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const fs = require('fs');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const path = require('path');
+        // dist/ and only dist/: that is exactly what the preview route serves,
+        // and an address it cannot serve is no better than no address at all.
+        if (!fs.existsSync(path.join(entry.dir, 'dist', 'index.html'))) return '';
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { publicUrlFor } = require('../../shared/utils/publicUrl');
+        return publicUrlFor(`/project-preview/${key}/index.html?v=${Date.now()}`);
+    } catch { return ''; }
+}
+
+/** The browser tools that audit or read a page and cannot invent their own address. */
+const NEEDS_BUILT_URL = new Set(['browser_ui_audit', 'browser_screenshot', 'browser_extract', 'browser_open']);
+
 export function adaptPlannedArgs(toolName: string, args: any): any {
     const out: any = { ...(args || {}) };
+    if (NEEDS_BUILT_URL.has(toolName) && !String(out.url || '').trim()) {
+        const url = builtPreviewUrl(out.sessionId || (args || {}).sessionId || '');
+        if (url) out.url = url;
+    }
     let schema: any = null;
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires

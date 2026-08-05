@@ -395,9 +395,24 @@ async function resolvedApi(api) {
     apiBaseOnce = (async () => {
       const tail = String(api).split('/api/')[1];
       if (!tail || typeof fetch !== 'function' || typeof location === 'undefined') return api;
+      const resource = String(tail).split('/')[0].split('?')[0];
       try {
         const r = await fetch('/api/health', { headers: { Accept: 'application/json' } });
-        if (r.ok) return '/api/' + tail;
+        /**
+         * «DOES THIS ORIGIN ANSWER /api/health» WAS TOO GENEROUS A QUESTION.
+         *
+         * Measured in the field: the built store, opened inside Joe's own
+         * preview, asked it — and Joe answered, because Joe has a health
+         * endpoint too. The app rewired itself to Joe's API and every load
+         * produced «GET /api/products 404» twice. An empty catalogue, and a
+         * self-QA that scored the build 62/100 for failed requests.
+         *
+         * The right question names the system: this origin must claim OUR
+         * resource. Anything else is a different server that merely shares a
+         * common path.
+         */
+        const d = r.ok ? await r.json().catch(() => null) : null;
+        if (d && d.resource === resource) return '/api/' + tail;
       } catch { /* not served here — the dev address stands */ }
       return api;
     })();
@@ -412,21 +427,41 @@ async function resolvedApi(api) {
   return api;
 }
 
-/** Best-effort server sync. Any failure keeps the local rows — never a crash. */
+/** The collection's own name, taken from the address it lives at. */
+function resourceOf(api) {
+  const tail = String(api || '').split('/api/')[1] || '';
+  return tail.split('/')[0].split('?')[0];
+}
+
+/**
+ * THE APP COULD NOT READ ITS OWN SERVER.
+ *
+ * The generated API answers with the collection's NAME — «{ ok, products }»,
+ * «{ ok, bookings }» — and this reader knew four fixed keys: items, data,
+ * posts, rows. So «products» matched nothing, the reader returned null, and
+ * every store, every booking system, every CRM Joe has ever built quietly
+ * stayed «local to this device» with a working database sitting right there.
+ * The badge said local, the catalogue was empty, and nothing anywhere was in
+ * error. Measured live: a real server holding a real product, and a screen
+ * showing «No products yet».
+ *
+ * The address already carries the answer: /api/products means the key is
+ * «products». It is read from there first, and the fixed names remain as
+ * fallbacks for the shapes that really do use them.
+ */
 export async function apiList(api) {
   if (!api) return null;
   try {
     const r = await fetch(await resolvedApi(api), { headers: { Accept: 'application/json' } });
     if (!r.ok) return null;
     const d = await r.json();
-    // …including the feed's own «{ ok, posts }» — the shape the generated
-    // social server answers with. A reader that does not know its own
-    // server's shape returns null and the app quietly stays «local».
+    const named = resourceOf(api);
     const rows = Array.isArray(d) ? d
-      : Array.isArray(d && d.items) ? d.items
-        : Array.isArray(d && d.data) ? d.data
-          : Array.isArray(d && d.posts) ? d.posts
-            : Array.isArray(d && d.rows) ? d.rows : null;
+      : (named && Array.isArray(d && d[named])) ? d[named]
+        : Array.isArray(d && d.items) ? d.items
+          : Array.isArray(d && d.data) ? d.data
+            : Array.isArray(d && d.posts) ? d.posts
+              : Array.isArray(d && d.rows) ? d.rows : null;
     return Array.isArray(rows) ? rows : null;
   } catch { return null; }
 }
