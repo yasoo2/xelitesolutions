@@ -1758,3 +1758,89 @@ describe('a run keeps going while you read another conversation', () => {
         expect(reduced.length).toBeGreaterThan(0);
     });
 });
+
+/**
+ * NOTHING TO PASTE, AND NOTHING TO REMEMBER.
+ *
+ * «هذه ليش كل مرة لازم احطها على البورشال.. بدي طريقة ما احطها ولا مرة».
+ *
+ * Two separate wires had to exist for that sentence to be answered honestly:
+ *
+ *  1. the backup dance around `git pull` became the updater's own job. It
+ *     rests on one exact fact — git can only delete files it TRACKS — so the
+ *     guard asks git what it is holding instead of copying gigabytes blindly.
+ *     Proven against real git in data-guard.test.ts.
+ *  2. the update itself became a button. Which makes this the most dangerous
+ *     route in the app: it stops the server, rebuilds it from GitHub and
+ *     starts it again. It is therefore refused unless the request came from
+ *     the machine Joe runs on, read from the socket and never from a header.
+ */
+describe('Joe updates himself, and only from his own machine', () => {
+    const ROOT = (f: string) => fs.readFileSync(path.join(__dirname, '..', '..', '..', f), 'utf-8');
+
+    it.each(['update-joe.ps1', 'update-joe.sh'])('%s protects your files before it pulls, and after', (f) => {
+        const src = ROOT(f);
+        expect(src).toMatch(/joe-data-guard\.js/);
+        const snap = src.indexOf('snapshot');
+        const pull = src.indexOf('git pull origin main');
+        const restore = src.indexOf('restore');
+        expect(snap).toBeGreaterThan(-1);
+        expect(pull).toBeGreaterThan(-1);
+        expect(snap).toBeLessThan(pull);     // saved before git can take anything
+        expect(restore).toBeGreaterThan(pull); // and put back after it did
+    });
+
+    it.each(['update-joe.ps1', 'start-joe.ps1'])('%s never waits for a keypress nobody can give', (f) => {
+        const src = ROOT(f);
+        // Spawned detached from the button, stdin is closed: a Read-Host there
+        // hangs the update forever. Only the helper may call it, and only when
+        // a human is actually watching.
+        const offenders = src.split('\n')
+            .filter(l => l.includes('Read-Host'))
+            .filter(l => !/^\s*#/.test(l))                 // comments explain, they do not run
+            .filter(l => !/\bWait-ForUser\b|\$msg/.test(l)); // the helper's own line
+        expect(offenders).toEqual([]);
+        expect(src).toMatch(/JOE_UNATTENDED/);
+        expect(src).toMatch(/Wait-ForUser "/);              // and it is actually used
+    });
+
+    it('the route refuses anyone who is not on this machine', () => {
+        const S = SRC('api', 'routes', 'system.ts');
+        const post = S.slice(S.indexOf("router.post('/update'"));
+        expect(post).toMatch(/if \(!isLoopbackRequest\(req\)\)/);
+        // the refusal comes BEFORE anything is spawned
+        expect(post.indexOf('isLoopbackRequest')).toBeLessThan(post.indexOf('runDetached'));
+        // and the UI is told, so the button never renders for a stranger
+        expect(S).toMatch(/allowed: selfUpdateEnabled\(\) && isLoopbackRequest\(req\)/);
+    });
+
+    it('the updater outlives the server it is about to kill', () => {
+        const E = SRC('kernel', 'ExecutionEngine.ts');
+        const fn = E.slice(E.indexOf('runDetached('));
+        expect(fn).toMatch(/detached: true/);
+        expect(fn).toMatch(/child\.unref\(\)/);
+        // output to a file, because no pipe reader will survive
+        expect(fn).toMatch(/stdio: \['ignore', out, out\]/);
+    });
+
+    it('the button asks the server whether it should exist at all', () => {
+        const U = WEB('components', 'UpdateJoeItem.tsx');
+        expect(U).toMatch(/system\/update\/status/);
+        expect(U).toMatch(/if \(!allowed\) return null;/);
+        // and it is wired into a real menu, not left in the file unused
+        const H = WEB('components', 'JoeHeader.tsx');
+        expect(H).toMatch(/<UpdateJoeItem /);
+        expect(H).toMatch(/<SelfUpdateOverlay \/>/);
+    });
+
+    it('and the overlay lives outside the menu that opened it', () => {
+        const H = WEB('components', 'JoeHeader.tsx');
+        // a dropdown unmounts when it closes; an update that dies with it is
+        // worse than no button. The overlay sits after the menu block, and the
+        // run itself is kept in a module-level store.
+        expect(H.indexOf('<SelfUpdateOverlay />')).toBeGreaterThan(H.indexOf('{menuOpen && ('));
+        const U = WEB('components', 'UpdateJoeItem.tsx');
+        expect(U).toMatch(/let state: UpdateState/);
+        expect(U).toMatch(/export function subscribeSelfUpdate/);
+    });
+});

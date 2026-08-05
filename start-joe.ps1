@@ -15,6 +15,14 @@ $env:ENABLE_AUTH_BYPASS = "true"   # مستخدم واحد: الأدوات تع�
 $env:AUTO_APPROVE_ALL = "1"        # موافقة تلقائية على تنفيذ الأدوات
 $env:NODE_ENV = "development"
 
+# لا تسأل أحداً حين لا يوجد أحد: حين يشغّل جو نفسه من زر «تحديث جو» داخل
+# الواجهة تكون العملية منفصلة بلا نافذة، وأي Read-Host هناك يعلّق التحديث
+# للأبد بانتظار ضغطة لا يستطيع أحد إعطاءها.
+function Wait-ForUser($msg) {
+    if ($env:JOE_UNATTENDED -eq '1') { Write-Host $msg -ForegroundColor DarkGray }
+    else { Read-Host $msg | Out-Null }
+}
+
 # --- متصفح جو ---
 # متصفح جو الداخلي (الذي يبحث ويتصفّح تلقائياً) يستخدم Chromium المرفق — موثوق ولا
 # يتعارض مع متصفحك المفتوح. أمّا "متصفحك الشخصي الحقيقي" داخل جو فيأتي عبر إضافة
@@ -116,7 +124,7 @@ Write-Host "============================================" -ForegroundColor Cyan
 $node = Get-Command node -ErrorAction SilentlyContinue
 if (-not $node) {
     Write-Host "[X] Node.js غير مثبّت. ثبّته من https://nodejs.org ثم أعد المحاولة." -ForegroundColor Red
-    Read-Host "اضغط Enter للخروج"
+    Wait-ForUser "اضغط Enter للخروج"
     exit 1
 }
 
@@ -151,7 +159,7 @@ function Sync-Dependencies {
 }
 
 if (-not (Sync-Dependencies -dir $apiDir -label "1/3")) {
-    Pop-Location; Read-Host "اضغط Enter للخروج"; exit 1
+    Pop-Location; Wait-ForUser "اضغط Enter للخروج"; exit 1
 }
 
 # [1b/3] تثبيت محرّك المتصفح (Chromium) الذي يستخدمه جو للتصفّح — مرّة واحدة فقط.
@@ -173,7 +181,7 @@ Write-Host "`n[2/3] Building API..." -ForegroundColor Yellow
 npm run build
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[X] فشل البناء. راجع الأخطاء أعلاه." -ForegroundColor Red
-    Pop-Location; Read-Host "اضغط Enter للخروج"; exit 1
+    Pop-Location; Wait-ForUser "اضغط Enter للخروج"; exit 1
 }
 Write-Host "[2/3] API built OK" -ForegroundColor Green
 
@@ -199,6 +207,10 @@ if (Test-Path $webDir) {
     }
     Pop-Location
 }
+
+# العلامة التي يقرأها زر «تحديث جو» في الواجهة ليعرف أن البناء انتهى وأن
+# الخادم على وشك العودة. تُطبع بعد البناء لا قبله، وإلا أعلنّا نجاحاً لم يحدث.
+Write-Host "[OK] التحديث اكتمل — جو يعود الآن."
 
 # [3/3] التشغيل مع إعادة تشغيل تلقائية + حارس حلقة الانهيار
 # إن انهار جو فور الإقلاع ثلاث مرات متتالية (أقل من 15 ثانية لكل محاولة) فالعطل
@@ -238,7 +250,7 @@ while ($true) {
         Write-Host "      2) اقرأ رسالة الخطأ أعلاه (مثل Cannot find module '...' = تبعية ناقصة)" -ForegroundColor Yellow
         Write-Host "      3) ثم أعد التشغيل: .\update-joe.ps1" -ForegroundColor Yellow
         Write-Host "============================================" -ForegroundColor Red
-        Read-Host "اضغط Enter للخروج"
+        Wait-ForUser "اضغط Enter للخروج"
         exit 1
     }
 

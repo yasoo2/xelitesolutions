@@ -505,6 +505,53 @@ export class ExecutionEngine {
         return { done, kill: () => { try { child.kill(); } catch { /* already gone */ } }, pid: child.pid };
     }
 
+    /**
+     * A PROCESS THAT OUTLIVES THIS ONE.
+     *
+     * There is exactly one job that needs it: Joe updating himself. The updater
+     * stops the server on port 5002, rebuilds, and starts it again — so it
+     * cannot be a child of the server it is about to kill, and it cannot write
+     * to a pipe nobody will be alive to read.
+     *
+     * `detached` has been declared in ExecutionOptions all along and honoured
+     * nowhere: every path here spawns an attached child and awaits it. An
+     * option with no implementation is the exact failure the wiring policy
+     * exists to catch, so it gets a real method instead of a silent flag.
+     *
+     * Output goes to a file rather than a pipe, which is also what lets the UI
+     * show the update's progress after the socket it asked over has died.
+     */
+    runDetached(file: string, args: string[], options: ExecutionOptions & { logFile?: string } = {}): { ok: boolean; pid?: number; logFile?: string; error?: string } {
+        let out: number | 'ignore' = 'ignore';
+        try {
+            if (options.logFile) {
+                fs.mkdirSync(path.dirname(options.logFile), { recursive: true });
+                // append: the caller usually writes a header line first, and
+                // truncating here would throw it away.
+                out = fs.openSync(options.logFile, 'a');
+            }
+        } catch { out = 'ignore'; }
+        try {
+            const child = spawn(file, args, {
+                cwd: options.cwd || this.getWorkspaceRoot(),
+                env: { ...process.env, ...options.env },
+                detached: true,
+                // stdin closed: a detached updater must never sit waiting on a
+                // keypress nobody can give it.
+                stdio: ['ignore', out, out],
+                shell: options.shell !== undefined ? options.shell : false,
+                windowsHide: true,
+            } as any);
+            child.unref();
+            return { ok: true, pid: child.pid, logFile: options.logFile };
+        } catch (e: any) {
+            return { ok: false, error: e?.message || 'spawn_failed' };
+        } finally {
+            // The parent's copy of the descriptor is not needed; the child holds its own.
+            if (typeof out === 'number') { try { fs.closeSync(out); } catch { /* already closed */ } }
+        }
+    }
+
     private async runArgvInternal(file: string, args: string[], options: ExecutionOptions = {}): Promise<any> {
         return new Promise((resolve) => {
             const child = spawn(file, args, {

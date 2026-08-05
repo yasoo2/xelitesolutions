@@ -14,9 +14,25 @@
 $ErrorActionPreference = "Continue"
 Set-Location $PSScriptRoot
 
+# لا تسأل أحداً حين لا يوجد أحد: حين يشغّل جو نفسه من زر «تحديث جو» داخل
+# الواجهة تكون العملية منفصلة بلا نافذة، وأي Read-Host هناك يعلّق التحديث
+# للأبد بانتظار ضغطة لا يستطيع أحد إعطاءها.
+function Wait-ForUser($msg) {
+    if ($env:JOE_UNATTENDED -eq '1') { Write-Host $msg -ForegroundColor DarkGray }
+    else { Read-Host $msg | Out-Null }
+}
+
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  تحديث جو وتشغيله" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
+
+# --- [0/4] حماية ملفاتك -----------------------------------------------------
+# كنتَ تُطالَب بنسخ مجلد uploads يدوياً قبل كل تحديث وإرجاعه بعده. خطوة أمان
+# يجب أن يتذكّرها الإنسان ليست خطوة أمان. صارت آلية: السكربت يسأل git عن
+# ملفاتك التي يمسكها فيحفظها وحدها (وغالباً لا يمسك أياً منها، فلا تكلفة)،
+# ثم يعيد بعد السحب كل ملف اختفى. لا شيء عليك أن تكتبه.
+$guard = Join-Path $PSScriptRoot "scripts\joe-data-guard.js"
+if (Test-Path $guard) { node $guard snapshot }
 
 # --- [1/4] سحب آخر تحديث ---------------------------------------------------
 Write-Host "`n[1/4] سحب آخر تحديث من GitHub..." -ForegroundColor Yellow
@@ -51,10 +67,13 @@ if ($isNetworkFailure) {
     git reset --hard origin/main
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[X] تعذّر التحديث. تحقّق من اتصال الإنترنت ثم أعد المحاولة." -ForegroundColor Red
-        Read-Host "اضغط Enter للخروج"
+        Wait-ForUser "اضغط Enter للخروج"
         exit 1
     }
 }
+
+# إرجاع أي ملف من ملفاتك حذفه السحب — قبل أي شيء آخر، حتى لو فشل الباقي.
+if (Test-Path $guard) { node $guard restore }
 
 # --- [2/4] التحقق من نجاح السحب --------------------------------------------
 $after = (git rev-parse --short HEAD 2>$null)
@@ -121,7 +140,7 @@ if (-not (Test-Path $startScript)) {
     # بلا هذا الفحص تظهر رسالة غامضة عن "module could not be loaded" لا تدل على السبب.
     Write-Host "[X] لم أجد start-joe.ps1 بجوار هذا السكربت." -ForegroundColor Red
     Write-Host "    تأكّد أنك تشغّل update-joe.ps1 من داخل مجلد المشروع." -ForegroundColor Yellow
-    Read-Host "اضغط Enter للخروج"
+    Wait-ForUser "اضغط Enter للخروج"
     exit 1
 }
 

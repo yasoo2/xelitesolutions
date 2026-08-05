@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Bot, MessageSquare, Settings, Moon, Sun, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield, ChevronDown } from 'lucide-react';
 import { resolveIdentity, nameFromEmail, initialsFrom, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
 import JoeMark from './JoeMark';
+import UpdateJoeItem, { SelfUpdateOverlay } from './UpdateJoeItem';
 
 interface JoeHeaderProps {
     userAvatar?: string;
@@ -199,9 +200,18 @@ export default function JoeHeader({
                                     <span>{t('systemManagement', 'إدارة النظام')}</span>
                                 </button>
                             )}
+
+                            {/* «بدي طريقة ما احطها ولا مرة» — the update, without
+                                a terminal. It renders itself only when the server
+                                confirms the request came from this machine. */}
+                            <UpdateJoeItem onBefore={() => setMenuOpen(false)} />
                         </div>
                     )}
                 </div>
+
+                {/* Outside the dropdown on purpose: the update must survive the
+                    menu closing. */}
+                <SelfUpdateOverlay />
             </div>
         </header>
     );
