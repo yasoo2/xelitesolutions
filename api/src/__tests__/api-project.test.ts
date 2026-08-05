@@ -187,7 +187,12 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         }
         const server = fs.readFileSync(path.join(res.output.path, 'server.js'), 'utf-8');
         expect(server).toContain('/api/health');
-        expect(server).toContain("error: 'name_required'");
+        // Validation is now driven by the SCHEMA this server was built with, so
+        // the literal «name_required» is composed at runtime from the required
+        // column. What must hold is the rule, not the spelling: a required field
+        // that is missing is refused with a 400 that names it.
+        expect(server).toContain("if (c.required && !partial) return { error: c.key + '_required' };");
+        expect(server).toContain('res.status(400).json({ ok: false, error })');
         expect(server).toContain('404');
     });
 

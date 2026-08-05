@@ -1978,3 +1978,43 @@ describe('the biggest request gets the strongest route', () => {
         expect(D).toMatch(/have\.has\(root\)/);   // already declared = a different bug
     });
 });
+
+/**
+ * THE TWO HALVES OF A FULL STACK MUST AGREE ABOUT THE DATA.
+ *
+ * A generated backend stored name/details/price whatever the system was, so a
+ * clinic app posting {name, phone, service, date, time, status} had five of
+ * six fields dropped — silently, answered with 201 Created. Both halves are
+ * now generated from ONE blueprint.
+ */
+describe('the server stores what the app sends', () => {
+    it('the schema comes from the same blueprint the interface renders', () => {
+        const A = SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+        expect(A).toMatch(/export function apiColumnsForRequest/);
+        expect(A).toMatch(/const columns = apiColumnsForRequest\(request\)/);
+        expect(A).toMatch(/'db\.js': fileDbJs\(resource, columns\)/);
+    });
+
+    it('and a column name can only ever be an SQL identifier', () => {
+        // the keys are interpolated into CREATE TABLE and INSERT
+        const A = SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+        expect(A).toMatch(/const safeKey = \(k: string\) => String\(k \|\| ''\)\.replace\(\/\[\^a-zA-Z0-9_\]\/g, ''\)/);
+    });
+
+    it('the routes validate the schema they were built with, not three fixed names', () => {
+        const A = SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+        expect(A).toMatch(/for \(const c of db\.columns\)/);
+        expect(A).toMatch(/if \(c\.required && !partial\) return \{ error: c\.key \+ '_required' \}/);
+        // both write routes go through it
+        expect(A).toMatch(/const \{ value, error \} = validate\(req\.body, false\)/);
+        expect(A).toMatch(/const \{ value, error \} = validate\(req\.body, true\)/);
+    });
+
+    it('and a presentation site keeps the shape its frontend really posts', () => {
+        const A = SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+        expect(A).toMatch(/return CATALOGUE_COLUMNS;/);
+        // seeds belong to the catalogue only — a booking table seeded with
+        // «Dish of the day» would be noise pretending to be data
+        expect(A).toMatch(/const seeds = isCatalogue \? catalogueSeeds : \[\]/);
+    });
+});

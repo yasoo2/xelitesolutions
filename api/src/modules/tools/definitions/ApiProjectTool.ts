@@ -96,6 +96,55 @@ export function apiResourceForKind(kind: PageKind, isAr: boolean, probe?: string
     };
 }
 
+/**
+ * THE SERVER MUST STORE THE FIELDS THE APP ACTUALLY SENDS.
+ *
+ * Every generated backend used to store name/details/price — whatever the
+ * system was about. So a clinic's React app posted
+ * {name, phone, service, date, time, status} and the database kept `name`.
+ * Five of six fields were dropped on the floor, silently, on every save. The
+ * two halves of the full stack agreed on the resource's NAME and on nothing
+ * else, which is exactly the «شغل كلام» this keeps being accused of.
+ *
+ * The columns now come from the same blueprint the frontend renders from, so
+ * a booking system's table has date/time/status and a CRM's has the customer.
+ * Presentation sites (a boutique, a restaurant menu) keep the catalogue shape:
+ * their frontends are section builders that really do send name/details/price.
+ */
+export interface ApiColumn { key: string; type: 'TEXT' | 'REAL'; required: boolean }
+
+export const CATALOGUE_COLUMNS: ApiColumn[] = [
+    { key: 'name', type: 'TEXT', required: true },
+    { key: 'details', type: 'TEXT', required: false },
+    { key: 'price', type: 'TEXT', required: false },
+];
+
+/** SQL identifiers only — a field key is never interpolated unchecked. */
+const safeKey = (k: string) => String(k || '').replace(/[^a-zA-Z0-9_]/g, '').slice(0, 40);
+
+export function apiColumnsForRequest(probe: string): ApiColumn[] {
+    try {
+        const { detectAppKind, blueprintFor } = require('../../../core/design/app-blueprints');
+        const kind = detectAppKind(String(probe || ''));
+        if (!kind) return CATALOGUE_COLUMNS;
+        const bp = blueprintFor(kind, String(probe || ''), false);
+        // Only the engines that own ROWS have a table to shape. A map, a chat
+        // and a feed have their own servers already.
+        if (bp.engine !== 'records' && bp.engine !== 'shop') return CATALOGUE_COLUMNS;
+        const cols = (bp.fields || [])
+            .map((f: any) => ({
+                key: safeKey(f.key),
+                type: f.type === 'number' ? 'REAL' as const : 'TEXT' as const,
+                required: !!f.required,
+            }))
+            .filter((c: ApiColumn) => c.key && c.key !== 'id' && c.key !== 'created_at');
+        // A blueprint with no usable fields is not a schema; keep the catalogue.
+        return cols.length ? cols : CATALOGUE_COLUMNS;
+    } catch {
+        return CATALOGUE_COLUMNS;
+    }
+}
+
 function filePackageJson(name: string): string {
     return JSON.stringify({
         name: `api-${slug(name)}`, private: true, version: '0.1.0', type: 'module',
@@ -410,7 +459,8 @@ npm start          # المنفذ 4100
 `;
 }
 
-function fileDbJs(resource: string): string {
+function fileDbJs(resource: string, columns: ApiColumn[] = CATALOGUE_COLUMNS): string {
+    const COLS = JSON.stringify(columns);
     return `// The data layer: node:sqlite when this Node has it (>= 22.5), a JSON
 // file with the SAME interface otherwise. Zero native dependencies either
 // way — and /api/health reports which backend you actually got.
@@ -420,6 +470,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * The columns of this system, taken from the same blueprint the interface is
+ * built from — so what the app sends is what the database keeps. A fixed
+ * name/details/price table silently dropped every other field on every save.
+ */
+const COLS = ${COLS};
+const KEYS = COLS.map((c) => c.key);
+const cast = (c, v) => (c.type === 'REAL' ? Number(v || 0) : String(v ?? ''));
+
 let db;
 
 if (process.env.JOE_FORCE_JSON_DB !== '1') {
@@ -428,26 +488,32 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
     const conn = new DatabaseSync(path.join(HERE, 'data.db'));
     conn.exec(\`CREATE TABLE IF NOT EXISTS ${resource} (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      details TEXT DEFAULT '',
-      price TEXT DEFAULT '',
+      \${COLS.map((c) => \`\${c.key} \${c.type} \${c.required ? 'NOT NULL' : "DEFAULT ''"}\`).join(',\\n      ')},
       created_at TEXT DEFAULT (datetime('now'))
     )\`);
-    const rowOf = (r) => (r ? { id: r.id, name: r.name, details: r.details, price: r.price, created_at: r.created_at } : null);
+    const rowOf = (r) => {
+      if (!r) return null;
+      const out = { id: r.id };
+      for (const k of KEYS) out[k] = r[k];
+      out.created_at = r.created_at;
+      return out;
+    };
     db = {
       backend: 'sqlite',
+      columns: COLS,
       list: () => conn.prepare('SELECT * FROM ${resource} ORDER BY id DESC LIMIT 500').all().map(rowOf),
       get: (id) => rowOf(conn.prepare('SELECT * FROM ${resource} WHERE id = ?').get(Number(id))),
-      create: ({ name, details = '', price = '' }) => {
-        const r = conn.prepare('INSERT INTO ${resource} (name, details, price) VALUES (?, ?, ?)')
-          .run(String(name), String(details), String(price));
+      create: (body) => {
+        const r = conn.prepare(
+          'INSERT INTO ${resource} (' + KEYS.join(', ') + ') VALUES (' + KEYS.map(() => '?').join(', ') + ')',
+        ).run(...COLS.map((c) => cast(c, (body || {})[c.key])));
         return db.get(r.lastInsertRowid);
       },
       update: (id, patch) => {
         const cur = db.get(id);
         if (!cur) return null;
-        conn.prepare('UPDATE ${resource} SET name = ?, details = ?, price = ? WHERE id = ?')
-          .run(String(patch.name ?? cur.name), String(patch.details ?? cur.details), String(patch.price ?? cur.price), Number(id));
+        conn.prepare('UPDATE ${resource} SET ' + KEYS.map((k) => k + ' = ?').join(', ') + ' WHERE id = ?')
+          .run(...COLS.map((c) => cast(c, (patch || {})[c.key] !== undefined ? patch[c.key] : cur[c.key])), Number(id));
         return db.get(id);
       },
       remove: (id) => conn.prepare('DELETE FROM ${resource} WHERE id = ?').run(Number(id)).changes > 0,
@@ -508,11 +574,14 @@ if (!db) {
   const save = (s) => fs.writeFileSync(FILE, JSON.stringify(s, null, 2));
   db = {
     backend: 'json',
+    columns: COLS,
     list: () => load().rows.slice().reverse().slice(0, 500),
     get: (id) => load().rows.find((r) => r.id === Number(id)) || null,
-    create: ({ name, details = '', price = '' }) => {
+    create: (body) => {
       const s = load();
-      const row = { id: ++s.seq, name: String(name), details: String(details), price: String(price), created_at: new Date().toISOString() };
+      const row = { id: ++s.seq };
+      for (const c of COLS) row[c.key] = cast(c, (body || {})[c.key]);
+      row.created_at = new Date().toISOString();
       s.rows.push(row);
       save(s);
       return row;
@@ -521,9 +590,7 @@ if (!db) {
       const s = load();
       const row = s.rows.find((r) => r.id === Number(id));
       if (!row) return null;
-      if (patch.name !== undefined) row.name = String(patch.name);
-      if (patch.details !== undefined) row.details = String(patch.details);
-      if (patch.price !== undefined) row.price = String(patch.price);
+      for (const c of COLS) if ((patch || {})[c.key] !== undefined) row[c.key] = cast(c, patch[c.key]);
       save(s);
       return row;
     },
@@ -836,26 +903,43 @@ app.get('/api/${resource}/:id', (req, res) => {
   res.json({ ok: true, item: row });
 });
 
+/**
+ * Honest validation, bounded fields, and the SAME fields the interface sends.
+ * The route used to name name/details/price by hand, so a system whose app
+ * posts {date, time, status} had them rejected or dropped. It now validates
+ * the schema this server was actually built with.
+ */
+const validate = (body, partial) => {
+  const out = {};
+  for (const c of db.columns) {
+    const v = (body || {})[c.key];
+    if (v === undefined || v === null || v === '') {
+      if (c.required && !partial) return { error: c.key + '_required' };
+      continue;
+    }
+    if (c.type === 'REAL') {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return { error: 'bad_' + c.key };
+      out[c.key] = n;
+    } else {
+      const str = String(v);
+      if (str.length > 2000) return { error: 'bad_' + c.key };
+      out[c.key] = str.trim();
+    }
+  }
+  return { value: out };
+};
+
 app.post('/api/${resource}', requireAuth, (req, res) => {
-  const { name, details, price } = req.body || {};
-  // Honest validation, bounded fields — an API that swallows garbage
-  // corrupts its own database first and its user's trust second.
-  if (typeof name !== 'string' || !name.trim() || name.length > 200) {
-    return res.status(400).json({ ok: false, error: 'name_required' });
-  }
-  if ((details !== undefined && (typeof details !== 'string' || details.length > 1000))
-    || (price !== undefined && (typeof price !== 'string' || price.length > 40))) {
-    return res.status(400).json({ ok: false, error: 'bad_fields' });
-  }
-  res.status(201).json({ ok: true, item: db.create({ name: name.trim(), details, price }) });
+  const { value, error } = validate(req.body, false);
+  if (error) return res.status(400).json({ ok: false, error });
+  res.status(201).json({ ok: true, item: db.create(value) });
 });
 
 app.put('/api/${resource}/:id', requireAuth, (req, res) => {
-  const { name, details, price } = req.body || {};
-  if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.length > 200)) {
-    return res.status(400).json({ ok: false, error: 'bad_name' });
-  }
-  const row = db.update(req.params.id, { name, details, price });
+  const { value, error } = validate(req.body, true);   // a patch may be partial
+  if (error) return res.status(400).json({ ok: false, error });
+  const row = db.update(req.params.id, value);
   if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
   res.json({ ok: true, item: row });
 });
@@ -981,7 +1065,13 @@ export class ApiProjectTool extends BaseTool {
 
         const kind = detectPageKind(request);
         const brand = brandFrom(request, isAr) || (isAr ? 'مشروعي' : 'MyApp');
-        const { resource, labelAr, seeds } = apiResourceForKind(kind, isAr, request);
+        const { resource, labelAr, seeds: catalogueSeeds } = apiResourceForKind(kind, isAr, request);
+        // The schema follows the app's own blueprint. Seeds only make sense for
+        // the catalogue shape — a booking table seeded with «Dish of the day»
+        // would be noise pretending to be data.
+        const columns = apiColumnsForRequest(request);
+        const isCatalogue = columns === CATALOGUE_COLUMNS;
+        const seeds = isCatalogue ? catalogueSeeds : [];
         const dirName = `api-${slug(brand)}`;
         const { workspaceService } = require('../../services/WorkspaceService');
         const root = String(input?.root || workspaceService.getExplorerRoot());
@@ -1029,7 +1119,7 @@ export class ApiProjectTool extends BaseTool {
         } : {
             'package.json': filePackageJson(brand),
             'server.js': fileServerJs(resource, brand, path.basename(proj)),
-            'db.js': fileDbJs(resource),
+            'db.js': fileDbJs(resource, columns),
             'auth.js': fileAuthJs(),
             'seed.js': fileSeedJs(seeds, { email: ownerEmail, salt: ownerSalt, hash: ownerHash }),
             'README.md': fileReadme(brand, resource, labelAr, ownerEmail),
