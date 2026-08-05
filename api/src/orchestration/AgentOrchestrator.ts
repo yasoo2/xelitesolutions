@@ -1,4 +1,5 @@
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { unrunnableShellStep } from '../core/orchestrator/plan-tools';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { executeTool } from '../modules/services/ToolService';
 import { broadcastThinkingDetail, broadcast } from '../api/ws';
@@ -441,6 +442,29 @@ export class AgentOrchestrator {
           // node's output — e.g. write the browser's extracted data into a file. This
           // is what makes the browser chain with the other tools in one request.
           const nodeInput = this.resolveInputRefs(node.input, dag);
+
+          /**
+           * A STEP NOBODY COULD EVER RUN IS NOT A FAILURE TO RETRY.
+           *
+           * Field log: `git --version` answered exit=0, and the very next step
+           * was «Install Git if it is not installed» → `sudo apt-get install
+           * git -y` — a Linux package manager, on Windows, with sudo. The
+           * allowlist blocked it, the node failed, it was retried, and the run
+           * ended at «Max retries reached for node: install_git».
+           *
+           * Recognising the impossibility costs one regex and saves the run.
+           */
+          const shellish = node.tool === 'shell_execute' || node.tool === 'terminal_manager';
+          const impossible = shellish ? unrunnableShellStep((nodeInput as any)?.command) : null;
+          if (impossible) {
+            console.log(`[AgentOrchestrator] ⏭️ skipping ${node.id}: ${impossible}`);
+            broadcastThinkingDetail(memory.sessionId, `⏭️ ${node.task} — ${impossible}`);
+            return {
+              result: { ok: true, output: { skipped: true, reason: impossible }, logs: [impossible] },
+              startTime,
+              isDirectAnswer: false,
+            };
+          }
 
           try {
             // [WALL CLOCK] The stall detector only runs BETWEEN iterations — an

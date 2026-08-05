@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolPermission } from '../types';
 
 import { callLLM } from '../../../core/llm';
+import { plannerToolPrompt, sanitisePlanPhases } from '../../../core/orchestrator/plan-tools';
 
 /**
  * ProjectPlannerTool - creates an execution plan only.
@@ -69,6 +70,26 @@ export class ProjectPlannerTool implements ToolDefinition {
             }
 
             plan = this.validatePlan(plan, projectDescription);
+
+            /**
+             * THE PLAN IS CODE THE SYSTEM IS ABOUT TO RUN.
+             *
+             * Telling the model the vocabulary makes it mostly obey; it does not
+             * make it obey always, and «mostly» is how an eight-phase build ends
+             * at 0/8. Every tool name is snapped onto a real tool here, and
+             * anything that cannot be is dropped with a written reason — before
+             * the executor ever sees it.
+             */
+            const clean = sanitisePlanPhases(plan.phases, plan.projectName);
+            plan.phases = clean.phases;
+            clean.notes.forEach(n => logs.push(n));
+
+            // A plan with nothing runnable in it is not a plan. The deterministic
+            // fallback names only tools that exist, so it always executes.
+            if (clean.executableTasks === 0) {
+                logs.push('[plan] لم يبق في الخطة أي عمل قابل للتنفيذ — رجعتُ إلى خطة مضمونة بأدوات حقيقية.');
+                plan = this.validatePlan(this.fallbackPlan(projectDescription, analysis), projectDescription);
+            }
             logs.push(`Plan created: ${plan.totalPhases} phases, ${plan.estimatedDuration}`);
             logs.push('Planner-only mode: generated tasks were not executed.');
 
@@ -98,7 +119,24 @@ export class ProjectPlannerTool implements ToolDefinition {
     }
 
     private createPlanningPrompt(projectDescription: string, analysis?: any) {
-        return `Create a realistic software engineering execution plan for this project.\n\nPROJECT:\n${projectDescription}\n\n${analysis ? `ANALYSIS:\n${JSON.stringify(analysis, null, 2)}\n` : ''}\nReturn ONLY JSON with: projectName, projectVibe, totalPhases, estimatedDuration, phases, dependencies.\nEach phase must include: phaseNumber, name, description, tasks, verificationTask, deliverables, estimatedTime.\nTasks must include: task, tool, args, priority, realisticMinutes.\nDo not claim that anything was executed. The plan is for controlled orchestrator execution later.\nInclude build, browser QA, visual QA, and self-healing verification tasks where relevant.`;
+        // The vocabulary comes FIRST. Without it the model plans like a manager
+        // — «Create project repository → Git», «Set up board → Jira» — and the
+        // build dies on task one with unknown_tool. Telling it what this machine
+        // can do is the difference between a plan and a wish.
+        return `Create a realistic software engineering execution plan for this project.
+
+${plannerToolPrompt()}
+
+PROJECT:
+${projectDescription}
+
+${analysis ? `ANALYSIS:\n${JSON.stringify(analysis, null, 2)}\n` : ''}
+Return ONLY JSON with: projectName, projectVibe, totalPhases, estimatedDuration, phases, dependencies.
+Each phase must include: phaseNumber, name, description, tasks, verificationTask, deliverables, estimatedTime.
+Tasks must include: task, tool, args, priority, realisticMinutes.
+Every phase must produce something that EXISTS on disk when it finishes — code, a config, a test, a document.
+Do not claim that anything was executed. The plan is for controlled orchestrator execution later.
+Include build, browser QA, visual QA, and self-healing verification tasks where relevant.`;
     }
 
     private parsePlan(response: string) {

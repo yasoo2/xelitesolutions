@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolPermission } from '../types';
 
 import { executeTool } from '../../services/ToolService';
+import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs } from '../../../core/orchestrator/plan-tools';
 
 /**
  * PhaseExecutorTool - Executes a single phase from a project plan.
@@ -89,22 +90,66 @@ export class PhaseExecutorTool implements ToolDefinition {
 
             for (let i = 0; i < tasks.length; i++) {
                 const task = tasks[i];
-                const toolName = String(task.tool || '').trim();
+                const askedFor = String(task.tool || '').trim();
                 const taskDesc = String(task.task || task.description || `Task ${i + 1}`);
 
-                if (!toolName || toolName === 'manual') {
+                if (!askedFor || askedFor === 'manual') {
                     logs.push(`[PhaseExecutor] Task ${i + 1}: "${taskDesc}" — skipped (manual/no tool)`);
                     results.push({ task: taskDesc, tool: 'manual', ok: true });
                     completedCount++;
                     continue;
                 }
 
+                /**
+                 * DEFENCE IN DEPTH — the planner already snaps names onto real
+                 * tools, but a phase can reach this executor from anywhere (a
+                 * repair ticket, a hand-written plan, an older stored plan), and
+                 * the field log that motivated this reads:
+                 *
+                 *   Task 1/2: "Create project repository" — executing tool: Git
+                 *   ❌ Task 1 failed: Git — unknown_tool: "Git"
+                 *
+                 * A name nobody can execute is a defect of the PLAN. Executing it
+                 * cannot be attempted, so it is not counted as an attempt that
+                 * failed: it is recorded, skipped, and the build carries on.
+                 */
+                const resolved = resolvePlannedTool(askedFor);
+                if (!resolved.tool) {
+                    logs.push(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — «${askedFor}» ليست أداة في هذا النظام` +
+                        `${(resolved as any).why === 'not_software' ? ' (عمل تنظيمي بشري)' : ''}. تخطّيتُها ولم أوقف البناء.`);
+                    results.push({ task: taskDesc, tool: 'manual', ok: true });
+                    completedCount++;
+                    continue;
+                }
+                const toolName = resolved.tool;
+                if (toolName !== askedFor) {
+                    logs.push(`[PhaseExecutor] ↪️ «${askedFor}» تعني ${toolName} — نفّذتُ الأداة الحقيقية.`);
+                }
+
+                // The same run also tried `sudo apt-get install git -y` on
+                // Windows, moments after `git --version` answered exit 0. An
+                // impossible command is not a task that failed; it is a task
+                // that was never possible, and retrying it burns the run.
+                if (toolName === 'shell_execute' || toolName === 'terminal_manager') {
+                    const why = unrunnableShellStep((task.args || task.input || {}).command);
+                    if (why) {
+                        logs.push(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${why}`);
+                        results.push({ task: taskDesc, tool: 'manual', ok: true });
+                        completedCount++;
+                        continue;
+                    }
+                }
+
                 logs.push(`[PhaseExecutor] Task ${i + 1}/${totalTasks}: "${taskDesc}" — executing tool: ${toolName}`);
 
-                const toolArgs = {
+                // A plan's arguments are model-written too: «Git» came with
+                // `{action:'status'}` and git_ops declares `operation`, so the
+                // renamed tool still failed on its first real run. Speak the
+                // tool's own vocabulary.
+                const toolArgs = adaptPlannedArgs(toolName, {
                     ...(task.args || {}),
                     ...(task.input || {}),
-                };
+                });
 
                 if (executionContext.sessionId && typeof (toolArgs as any).sessionId !== 'string') (toolArgs as any).sessionId = executionContext.sessionId;
                 if (executionContext.workspaceId && typeof (toolArgs as any).workspaceId !== 'string') (toolArgs as any).workspaceId = executionContext.workspaceId;
@@ -164,7 +209,10 @@ export class PhaseExecutorTool implements ToolDefinition {
 
             if (phase.verificationTask && allOk) {
                 const vTask = phase.verificationTask;
-                const vToolName = String(vTask.tool || 'shell_execute').trim();
+                // Same law as the tasks: a verification step that names a tool
+                // nobody has verifies nothing. project_detect always exists and
+                // answers the only question that matters — is it really there?
+                const vToolName = resolvePlannedTool(String(vTask.tool || '').trim()).tool || 'project_detect';
                 const vTaskDesc = String(vTask.task || 'Verify phase output');
                 logs.push(`[PhaseExecutor] 🧪 Running verification: "${vTaskDesc}" with ${vToolName}`);
 

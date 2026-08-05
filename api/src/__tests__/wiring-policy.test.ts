@@ -1844,3 +1844,83 @@ describe('Joe updates himself, and only from his own machine', () => {
         expect(U).toMatch(/export function subscribeSelfUpdate/);
     });
 });
+
+/**
+ * A PLAN IS CODE THE SYSTEM IS ABOUT TO RUN.
+ *
+ * The field log:
+ *
+ *   [pipeline] plan ready: E-commerce Platform — 8 phases
+ *   Task 1/2: "Create project repository" — executing tool: Git
+ *   ❌ Task 1 failed: Git — unknown_tool: "Git"
+ *   Task 2/2: "Set up project management board" — executing tool: Jira
+ *   ❌ Task 2 failed: Jira — unknown_tool: "Jira"
+ *   ⛔ أتوقف بصدق عند 0/8 مراحل
+ *
+ * This file has forbidden an alias that points at nothing since the wiring
+ * audit. It did not cover what a MODEL writes — and the planner asked a model
+ * to name tools without ever telling it which tools exist. The same law now
+ * covers the plan, at both ends of it.
+ */
+describe('a plan may only name tools that exist', () => {
+    it('the planner is handed the vocabulary before it is asked to plan', () => {
+        const P = SRC('modules', 'tools', 'definitions', 'ProjectPlannerTool.ts');
+        expect(P).toMatch(/plannerToolPrompt\(\)/);
+        // and the catalogue reaches the prompt BEFORE the project description,
+        // or the model has already decided how to think by the time it reads it
+        const prompt = P.slice(P.indexOf('createPlanningPrompt'));
+        expect(prompt.indexOf('plannerToolPrompt()')).toBeLessThan(prompt.indexOf('PROJECT:'));
+    });
+
+    it('and whatever it returns is snapped onto real tools before it is stored', () => {
+        const P = SRC('modules', 'tools', 'definitions', 'ProjectPlannerTool.ts');
+        expect(P).toMatch(/sanitisePlanPhases\(plan\.phases/);
+        // a plan with nothing runnable falls back to one that always runs
+        expect(P).toMatch(/executableTasks === 0[\s\S]{0,200}fallbackPlan/);
+    });
+
+    it('the executor checks again, because a phase can arrive from anywhere', () => {
+        const E = SRC('modules', 'tools', 'definitions', 'PhaseExecutorTool.ts');
+        expect(E).toMatch(/resolvePlannedTool\(askedFor\)/);
+        // an unrunnable name is skipped, never counted as a failed attempt
+        expect(E).toMatch(/if \(!resolved\.tool\)[\s\S]{0,400}completedCount\+\+;[\s\S]{0,40}continue;/);
+        // and the verification step cannot name a ghost either
+        expect(E).toMatch(/resolvePlannedTool\(String\(vTask\.tool[\s\S]{0,60}\|\| 'project_detect'/);
+    });
+
+    it('the arguments are translated too, not just the name', () => {
+        // «Git» came with {action:'status'}; git_ops declares `operation`.
+        // Renaming the tool and leaving the args is a rename that still fails.
+        const E = SRC('modules', 'tools', 'definitions', 'PhaseExecutorTool.ts');
+        expect(E).toMatch(/adaptPlannedArgs\(toolName/);
+    });
+
+    it('a step nobody could run is recognised before it is attempted', () => {
+        // `sudo apt-get install git -y`, on Windows, right after git answered.
+        const O = SRC('..', 'src', 'orchestration', 'AgentOrchestrator.ts');
+        expect(O).toMatch(/unrunnableShellStep/);
+        const E = SRC('modules', 'tools', 'definitions', 'PhaseExecutorTool.ts');
+        expect(E).toMatch(/unrunnableShellStep/);
+    });
+
+    it('the replacement for a dead phase does not itself need a model', () => {
+        // The first version wrote the fallback document with ai_write_file and
+        // died with «تعذّر الوصول إلى محرّك الذكاء» — the same hole, one layer
+        // down. Everything the document says is already known.
+        const T = SRC('core', 'orchestrator', 'plan-tools.ts');
+        const fallback = T.slice(T.indexOf('runnable.length === 0'));
+        expect(fallback.slice(0, 1600)).toMatch(/tool: 'write_file'/);
+        // the prose above it names ai_write_file to explain why it is gone —
+        // what matters is that no TASK is given that tool here
+        expect(fallback.slice(0, 1600)).not.toMatch(/tool: 'ai_write_file'/);
+    });
+
+    it('and the registry is read lazily, or the cycle kills the process', () => {
+        // registry → definitions → PhaseExecutorTool → plan-tools → registry.
+        // Reading it at module load passed under Jest and threw «Cannot access
+        // 'tools' before initialization» the first time a real process booted.
+        const T = SRC('core', 'orchestrator', 'plan-tools.ts');
+        expect(T).not.toMatch(/^import \{ tools \}/m);
+        expect(T).toMatch(/function registered\(\): Set<string>/);
+    });
+});
