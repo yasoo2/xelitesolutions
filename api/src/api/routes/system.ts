@@ -75,6 +75,64 @@ function readTail(limit = 8000): string {
     } catch { return ''; }
 }
 
+/**
+ * IS THERE ANYTHING TO UPDATE TO?
+ *
+ * «اريد تغير الاسم تحديث متاح، وعند وجود تحديث جديد يجب ان تظهر علامة على
+ * الزر ليعرف المستخدم ان هناك تحديث جديد».
+ *
+ * Answered by git, not by a guess: fetch the remote branch quietly and count
+ * the commits between HEAD and it. The fetch costs a network round trip, so it
+ * runs at most every ten minutes and the answer is cached — the UI can ask as
+ * often as it likes.
+ */
+let lastCheck = { at: 0, behind: 0, current: '', latest: '', ok: false };
+let checking = false;
+
+async function refreshUpdateCheck(force = false): Promise<void> {
+    const TEN_MIN = 10 * 60 * 1000;
+    if (checking) return;
+    if (!force && Date.now() - lastCheck.at < TEN_MIN) return;
+    checking = true;
+    try {
+        const root = repoRoot();
+        const run = (args: string[]) => executionEngine.runArgv('git', args, { cwd: root, timeout: 25_000 });
+        await run(['fetch', 'origin', 'main', '--quiet']);
+        const behind = await run(['rev-list', '--count', 'HEAD..origin/main']);
+        const head = await run(['rev-parse', '--short', 'HEAD']);
+        const remote = await run(['rev-parse', '--short', 'origin/main']);
+        const n = parseInt(String(behind?.output || '').trim(), 10);
+        lastCheck = {
+            at: Date.now(),
+            behind: Number.isFinite(n) ? n : 0,
+            current: String(head?.output || '').trim(),
+            latest: String(remote?.output || '').trim(),
+            // A failed fetch (offline) must not be reported as «up to date».
+            ok: behind?.ok === true,
+        };
+    } catch {
+        lastCheck = { ...lastCheck, at: Date.now(), ok: false };
+    } finally {
+        checking = false;
+    }
+}
+
+router.get('/update/check', async (req, res) => {
+    if (!isLoopbackRequest(req)) return res.status(403).json({ error: 'local_only' });
+    // Answer from cache immediately; refresh in the background for the next ask.
+    void refreshUpdateCheck(String(req.query.force || '') === '1');
+    res.json({
+        ok: true,
+        available: lastCheck.ok && lastCheck.behind > 0,
+        behind: lastCheck.behind,
+        current: lastCheck.current,
+        latest: lastCheck.latest,
+        checkedAt: lastCheck.at,
+        // «we could not ask» is not «nothing new» — the UI must not claim either
+        known: lastCheck.ok,
+    });
+});
+
 router.get('/update/status', (req, res) => {
     const tail = readTail();
     let fresh = false;
@@ -92,6 +150,9 @@ router.get('/update/status', (req, res) => {
         pid: updaterPid,
         // so the overlay can say «لم يصل سطر بعد» instead of showing three dots
         lines: tail ? tail.split('\n').filter(Boolean).length : 0,
+        // the coarse step, marked by the updater itself — visible even when
+        // only a couple of lines have arrived
+        stage: (tail.match(/\[STAGE\] (\w+)/g) || []).slice(-1)[0]?.replace('[STAGE] ', '') || '',
         log: tail,
     });
 });

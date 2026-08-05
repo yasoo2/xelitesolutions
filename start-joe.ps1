@@ -39,7 +39,23 @@ function Say {
     param([string]$msg, [string]$color)
     if ($color) { Write-Host $msg -ForegroundColor $color } else { Write-Host $msg }
     if ($env:JOE_UPDATE_LOG) {
-        try { Add-Content -LiteralPath $env:JOE_UPDATE_LOG -Value $msg -Encoding UTF8 -ErrorAction Stop } catch { }
+        # ============================================================
+        #  لماذا بقي السجل فارغاً رغم إضافة Say؟
+        #
+        #  ملف السجل نفسه هو المخرَج القياسي لهذه العملية — فتحه جو ومرّره
+        #  إليها. و Add-Content يفتح الملف بمشاركة قراءة فقط، فيصطدم بالمقبض
+        #  المفتوح أصلاً ويرمي استثناءً نبتلعه بصمت. النتيجة: سطر الترويسة
+        #  وحده، وسبعُ دقائق من النقاط أمام المستخدم.
+        #
+        #  الفتح بمشاركة قراءة وكتابة يسمح للقلمين أن يكتبا في الورقة نفسها.
+        # ============================================================
+        try {
+            $fs = [System.IO.File]::Open($env:JOE_UPDATE_LOG, [System.IO.FileMode]::Append,
+                [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($msg + "`r`n")
+            $fs.Write($bytes, 0, $bytes.Length)
+            $fs.Flush(); $fs.Close()
+        } catch { }
     }
 }
 
@@ -238,6 +254,7 @@ if (Test-Path $webDir) {
 
 # العلامة التي يقرأها زر «تحديث جو» في الواجهة ليعرف أن البناء انتهى وأن
 # الخادم على وشك العودة. تُطبع بعد البناء لا قبله، وإلا أعلنّا نجاحاً لم يحدث.
+Say "[STAGE] starting"
 Say "[OK] التحديث اكتمل — جو يعود الآن."
 
 # [3/3] التشغيل مع إعادة تشغيل تلقائية + حارس حلقة الانهيار

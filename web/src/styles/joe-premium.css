@@ -3759,3 +3759,18 @@ body:not(.rtl) .joe-user-info {
 
 /* The elapsed clock in the update overlay — a number that moves. */
 .joe-update-clock { margin-inline-start: auto; font-size: 12px; opacity: .6; font-variant-numeric: tabular-nums; }
+
+/* «تحديث متاح» — a small mark on the row, and the same green on the account
+   chip so the user sees it without opening the menu. */
+.joe-user-menu-item.has-update { color: #10b981; }
+.joe-update-dot { width: 7px; height: 7px; border-radius: 999px; background: #10b981; margin-inline-start: auto; flex: none; }
+.joe-user-trigger .joe-update-dot { position: absolute; top: 4px; inset-inline-end: 4px; margin: 0; box-shadow: 0 0 0 2px var(--joe-surface, #0f172a); }
+
+/* The named steps of a running update. */
+.joe-update-steps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.joe-update-steps li { display: flex; align-items: center; gap: 9px; font-size: 12.5px; opacity: .45; }
+.joe-update-steps li .joe-step-dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; flex: none; }
+.joe-update-steps li.done { opacity: .75; }
+.joe-update-steps li.done .joe-step-dot { background: #10b981; }
+.joe-update-steps li.now { opacity: 1; font-weight: 600; }
+.joe-update-steps li.now .joe-step-dot { background: #10b981; animation: joeSessionBreath 1.6s ease-in-out infinite; }

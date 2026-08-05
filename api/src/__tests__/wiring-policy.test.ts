@@ -1869,7 +1869,11 @@ it('the updater speaks where the interface can hear it', () => {
         expect(S).toMatch(/JOE_UPDATE_LOG: UPDATE_LOG/);
         for (const f of ['update-joe.ps1', 'start-joe.ps1']) {
             const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', f), 'utf-8');
-            expect(src).toMatch(/Add-Content -LiteralPath \$env:JOE_UPDATE_LOG/);
+            // It must WRITE to the log — and with sharing, because that same
+            // file is this process's own stdout. Add-Content could not, and the
+            // silent failure cost him a seven-minute overlay with one line in it.
+            expect(src).toMatch(/\$env:JOE_UPDATE_LOG/);
+            expect(src).toMatch(/FileShare\]::ReadWrite/);
             // and the progress lines actually go through it
             expect(`${f}: ${(src.match(/^\s*Say /gm) || []).length > 20 ? 'logs' : 'silent'}`).toBe(`${f}: logs`);
         }
@@ -2139,5 +2143,57 @@ describe('the built system is ready for a domain', () => {
         expect(R).toMatch(/fs\.cpSync\(path\.join\(proj, 'dist'\), target, \{ recursive: true \}\)/);
         // only when this session really built an API — never inventing a target
         expect(R).toMatch(/prevEntry\?\.type === 'api' && prevEntry\?\.dir && fs\.existsSync\(prevEntry\.dir\)/);
+    });
+});
+
+/**
+ * THE UPDATE BUTTON TELLS THE TRUTH, BEFORE AND DURING.
+ *
+ * His screenshot: «جو يعود الآن…» for 7:44 minutes with ONE line in the log —
+ * the header the server itself wrote. Say() was appending with Add-Content,
+ * which opens the file sharing READ only, and that same file is the process's
+ * own stdout, held open by the handle Joe passed it. Every append threw and
+ * was swallowed. He also asked for two things the button never had: a name
+ * that says whether there IS an update, and a mark when one is waiting.
+ */
+describe('the update button before, during and after', () => {
+    it('the progress lines can share the file with the process own stdout', () => {
+        for (const f of ['update-joe.ps1', 'start-joe.ps1']) {
+            const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', f), 'utf-8');
+            expect(`${f}: ${/FileShare\]::ReadWrite/.test(src) ? 'shares' : 'collides'}`).toBe(`${f}: shares`);
+            // Add-Content is the trap: read-only sharing on a file already open
+            expect(src).not.toMatch(/Add-Content -LiteralPath \$env:JOE_UPDATE_LOG/);
+        }
+    });
+
+    it('and the updater names the step it is on', () => {
+        const up = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'update-joe.ps1'), 'utf-8');
+        for (const stage of ['pulling', 'stopping', 'building']) expect(up).toContain(`[STAGE] ${stage}`);
+        expect(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'start-joe.ps1'), 'utf-8')).toContain('[STAGE] starting');
+        expect(SRC('api', 'routes', 'system.ts')).toMatch(/stage: \(tail\.match/);
+    });
+
+    it('«تحديث متاح» is answered by git, never guessed', () => {
+        const S = SRC('api', 'routes', 'system.ts');
+        expect(S).toMatch(/rev-list', '--count', 'HEAD\.\.origin\/main'/);
+        // a failed fetch is not «up to date»
+        expect(S).toMatch(/known: lastCheck\.ok/);
+        expect(S).toMatch(/available: lastCheck\.ok && lastCheck\.behind > 0/);
+    });
+
+    it('and the mark is visible without opening anything', () => {
+        const U = WEB('components', 'UpdateJoeItem.tsx');
+        expect(U).toMatch(/export function useUpdateAvailable/);
+        expect(U).toMatch(/available \? 'تحديث متاح' : 'تحديث جو'/);
+        const H = WEB('components', 'JoeHeader.tsx');
+        expect(H).toMatch(/useUpdateAvailable\(\)/);
+        expect(H).toMatch(/updateAvailable \? <span className="joe-update-dot"/);
+    });
+
+    it('and a running update names its four steps', () => {
+        const U = WEB('components', 'UpdateJoeItem.tsx');
+        expect(U).toMatch(/const STEPS = \[/);
+        for (const s of ['pulling', 'stopping', 'building', 'starting']) expect(U).toContain(`'${s}'`);
+        expect(U).toMatch(/joe-update-steps/);
     });
 });

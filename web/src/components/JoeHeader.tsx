@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Bot, MessageSquare, Settings, Moon, Sun, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield, ChevronDown } from 'lucide-react';
 import { resolveIdentity, nameFromEmail, initialsFrom, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
 import JoeMark from './JoeMark';
-import UpdateJoeItem, { SelfUpdateOverlay } from './UpdateJoeItem';
+import UpdateJoeItem, { SelfUpdateOverlay, useUpdateAvailable } from './UpdateJoeItem';
 
 interface JoeHeaderProps {
     userAvatar?: string;
@@ -64,6 +64,7 @@ export default function JoeHeader({
     // The avatar opens a dropdown holding settings / theme / system management.
     // Closes on any outside click or Escape.
     const [menuOpen, setMenuOpen] = useState(false);
+    const { available: updateAvailable } = useUpdateAvailable();
     const menuRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         if (!menuOpen) return;
@@ -161,6 +162,9 @@ export default function JoeHeader({
                             </div>
                         )}
                         <ChevronDown size={14} className="joe-user-chevron" />
+                        {/* Visible without opening anything: there is a newer
+                            Joe waiting. */}
+                        {updateAvailable ? <span className="joe-update-dot" aria-label="تحديث متاح" /> : null}
                     </button>
 
                     {menuOpen && (

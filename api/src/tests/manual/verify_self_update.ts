@@ -175,6 +175,12 @@ async function main() {
         // The menu closed on click. The overlay must not have died with it.
         check('والقائمة أُغلقت والطبقة باقية', await page.locator('.joe-user-menu').count() === 0 && await overlay.isVisible());
 
+        console.log('\n[5] والطبقة تُسمّي الخطوة الجارية، وتبقى صادقة قبل وصول أول سطر');
+        // «لا يوجد اي شيء يفيد المستخدم ان تحديث يجري الان» — the four named
+        // steps answer that even when the log itself is thin.
+        check('الخطوات الأربع معروضة بالاسم', await page.locator('.joe-update-steps li').count() === 4);
+        check('وواحدة منها معلَّمة كجارية الآن', await page.locator('.joe-update-steps li.now').count() === 1,
+            await page.locator('.joe-update-steps').innerText().catch(() => ''));
         console.log('\n[5] والطبقة صادقة قبل وصول أول سطر، ثم تعرض مخرجات العملية نفسها');
         // The updater is deliberately silent for its first two seconds — like
         // the real one, whose first step is a network pull. What he saw here

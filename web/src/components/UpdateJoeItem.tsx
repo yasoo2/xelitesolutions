@@ -27,9 +27,9 @@ import { API_URL } from '../config';
 
 export type UpdatePhase = 'idle' | 'starting' | 'working' | 'restarting' | 'failed';
 
-type UpdateState = { phase: UpdatePhase; log: string; error: string; startedAt: number; lines: number };
+type UpdateState = { phase: UpdatePhase; log: string; error: string; startedAt: number; lines: number; stage: string };
 
-let state: UpdateState = { phase: 'idle', log: '', error: '', startedAt: 0, lines: 0 };
+let state: UpdateState = { phase: 'idle', log: '', error: '', startedAt: 0, lines: 0, stage: '' };
 const listeners = new Set<(s: UpdateState) => void>();
 let timer: number | null = null;
 let wentAway = false;
@@ -53,7 +53,7 @@ async function tick(): Promise<boolean> {
         const d = await r.json();
         // The log arrives whole each tick; an empty one is meaningful too — it
         // means the updater has started and not spoken yet.
-        if (typeof d?.log === 'string') set({ log: d.log, lines: Number(d.lines || 0) });
+        if (typeof d?.log === 'string') set({ log: d.log, lines: Number(d.lines || 0), stage: String(d.stage || '') });
         if (wentAway) {
             // it died and came back — that, and only that, means a new Joe
             set({ phase: 'restarting' });
@@ -73,7 +73,7 @@ async function tick(): Promise<boolean> {
 export async function startSelfUpdate() {
     if (state.phase !== 'idle' && state.phase !== 'failed') return;
     wentAway = false;
-    set({ phase: 'starting', log: '', error: '', startedAt: Date.now(), lines: 0 });
+    set({ phase: 'starting', log: '', error: '', startedAt: Date.now(), lines: 0, stage: '' });
     try {
         const r = await fetch(`${apiBase()}/system/update`, { method: 'POST' });
         if (!r.ok) {
@@ -97,6 +97,47 @@ export function subscribeSelfUpdate(l: (s: UpdateState) => void): () => void {
     return () => { listeners.delete(l); };
 }
 
+/**
+ * IS THERE A NEW JOE WAITING?
+ *
+ * «عند وجود تحديث جديد يجب ان تظهر علامة على الزر». Asked of git through the
+ * server, cached there, and re-asked every ten minutes — so the marker means
+ * «there really are commits you do not have», never «probably».
+ */
+export function useUpdateAvailable(): { available: boolean; behind: number } {
+    const [state, setState] = useState({ available: false, behind: 0 });
+    useEffect(() => {
+        let alive = true;
+        const ask = () => fetch(`${apiBase()}/system/update/check`)
+            .then(r => r.json())
+            .then(d => { if (alive) setState({ available: !!d?.available, behind: Number(d?.behind || 0) }); })
+            .catch(() => { /* offline, or an older server: no claim either way */ });
+        ask();
+        const id = window.setInterval(ask, 10 * 60 * 1000);
+        return () => { alive = false; window.clearInterval(id); };
+    }, []);
+    return state;
+}
+
+/** The four things an update does, in the order it does them. */
+const STEPS = [
+    { key: 'pulling', label: 'سحب التحديث من GitHub' },
+    { key: 'stopping', label: 'إيقاف النسخة القديمة' },
+    { key: 'building', label: 'بناء الخادم والواجهة' },
+    { key: 'starting', label: 'تشغيل جو من جديد' },
+];
+
+function stepClass(key: string, s: UpdateState): string {
+    const order = STEPS.map(x => x.key);
+    // The updater names its own stage; before the first mark, the first step is
+    // the one under way — which is true, and better than showing nothing.
+    const current = s.stage || (s.phase === 'restarting' ? 'starting' : 'pulling');
+    const i = order.indexOf(key), n = order.indexOf(current);
+    if (i < n) return 'done';
+    if (i === n) return 'now';
+    return '';
+}
+
 export function useSelfUpdateAllowed(): boolean {
     const [allowed, setAllowed] = useState(false);
     useEffect(() => {
@@ -113,16 +154,22 @@ export function useSelfUpdateAllowed(): boolean {
 /** The menu row. Safe to unmount — it owns nothing. */
 export default function UpdateJoeItem({ onBefore }: { onBefore?: () => void }) {
     const allowed = useSelfUpdateAllowed();
+    const { available, behind } = useUpdateAvailable();
     if (!allowed) return null;
     return (
         <button
-            className="joe-user-menu-item"
+            className={`joe-user-menu-item${available ? ' has-update' : ''}`}
             role="menuitem"
             data-testid="update-joe"
             onClick={() => { onBefore?.(); void startSelfUpdate(); }}
+            title={available ? `${behind} تحديث جديد على GitHub` : undefined}
         >
             <DownloadCloud size={16} />
-            <span>تحديث جو</span>
+            {/* The name tells the truth about the moment: there is something to
+                take, or there is not. «تحديث جو» on a machine that is already
+                current invited a two-minute rebuild for nothing. */}
+            <span>{available ? 'تحديث متاح' : 'تحديث جو'}</span>
+            {available ? <span className="joe-update-dot" aria-label="تحديث جديد" /> : null}
         </button>
     );
 }
@@ -161,9 +208,21 @@ export function SelfUpdateOverlay() {
                     {s.phase !== 'failed' && s.startedAt ? <span className="joe-update-clock">{elapsed}</span> : null}
                 </div>
                 {s.phase !== 'failed' && (
-                    <p className="joe-update-note">
-                        ملفاتك محفوظة تلقائياً — لا حاجة لنسخ شيء يدوياً. ستُحدَّث الصفحة وحدها عند انتهاء التحديث.
-                    </p>
+                    <>
+                        {/* The named step. Even when the log is thin, this says
+                            what is happening right now — «لا يوجد اي شيء يفيد
+                            المستخدم ان تحديث يجري الان» was about this. */}
+                        <ol className="joe-update-steps">
+                            {STEPS.map(st => (
+                                <li key={st.key} className={stepClass(st.key, s)}>
+                                    <span className="joe-step-dot" />{st.label}
+                                </li>
+                            ))}
+                        </ol>
+                        <p className="joe-update-note">
+                            ملفاتك محفوظة تلقائياً — لا حاجة لنسخ شيء يدوياً. ستُحدَّث الصفحة وحدها عند انتهاء التحديث.
+                        </p>
+                    </>
                 )}
                 {s.error && <p className="joe-update-error">{s.error}</p>}
                 <pre className="joe-update-log" ref={logRef} dir={s.log ? 'ltr' : 'rtl'}>

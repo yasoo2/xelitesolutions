@@ -55,7 +55,23 @@ function Say {
     param([string]$msg, [string]$color)
     if ($color) { Write-Host $msg -ForegroundColor $color } else { Write-Host $msg }
     if ($env:JOE_UPDATE_LOG) {
-        try { Add-Content -LiteralPath $env:JOE_UPDATE_LOG -Value $msg -Encoding UTF8 -ErrorAction Stop } catch { }
+        # ============================================================
+        #  لماذا بقي السجل فارغاً رغم إضافة Say؟
+        #
+        #  ملف السجل نفسه هو المخرَج القياسي لهذه العملية — فتحه جو ومرّره
+        #  إليها. و Add-Content يفتح الملف بمشاركة قراءة فقط، فيصطدم بالمقبض
+        #  المفتوح أصلاً ويرمي استثناءً نبتلعه بصمت. النتيجة: سطر الترويسة
+        #  وحده، وسبعُ دقائق من النقاط أمام المستخدم.
+        #
+        #  الفتح بمشاركة قراءة وكتابة يسمح للقلمين أن يكتبا في الورقة نفسها.
+        # ============================================================
+        try {
+            $fs = [System.IO.File]::Open($env:JOE_UPDATE_LOG, [System.IO.FileMode]::Append,
+                [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($msg + "`r`n")
+            $fs.Write($bytes, 0, $bytes.Length)
+            $fs.Flush(); $fs.Close()
+        } catch { }
     }
 }
 
@@ -80,6 +96,7 @@ $guard = Join-Path $PSScriptRoot "scripts\joe-data-guard.js"
 if (Test-Path $guard) { node $guard snapshot }
 
 # --- [1/4] سحب آخر تحديث ---------------------------------------------------
+Say "[STAGE] pulling"
 Say "`n[1/4] سحب آخر تحديث من GitHub..." Yellow
 
 $before = (git rev-parse --short HEAD 2>$null)
@@ -135,6 +152,7 @@ if ($before -eq $after) {
 
 # --- [3/4] إيقاف نسخة جو القديمة -------------------------------------------
 # بدون هذه الخطوة يبقى الخادم القديم محمّلاً في الذاكرة، فتظن أن التحديث لم يعمل.
+Say "[STAGE] stopping"
 Say "`n[3/4] إيقاف نسخة جو القديمة (المنفذ 5002)..." Yellow
 
 $stopped = 0
@@ -175,6 +193,7 @@ if ($stopped -gt 0) {
 
 # --- [4/4] البناء والتشغيل --------------------------------------------------
 # start-joe.ps1 يتكفّل ببناء الخادم والواجهة معاً ثم تشغيل جو.
+Say "[STAGE] building"
 Say "`n[4/4] بناء جو وتشغيله..." Yellow
 Say "      بعد ظهور رابط التشغيل، افتح المتصفح واضغط Ctrl+Shift+R" DarkGray
 Say "      (تحديث قوي حتى لا يعرض المتصفح واجهة قديمة من ذاكرته)`n" DarkGray
