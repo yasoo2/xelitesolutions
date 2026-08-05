@@ -48,6 +48,9 @@ router.post('/metrics/track', async (req, res) => {
  */
 const UPDATE_LOG = path.join(os.tmpdir(), 'joe-self-update.log');
 const DONE_MARK = 'التحديث اكتمل';
+/** Set when THIS process started an update; a restart clears it, which is correct. */
+let startedAt = 0;
+let updaterPid = 0;
 
 /** Walk up to the checkout: the bundle runs from api/dist, the source from api/src/api/routes. */
 function repoRoot(): string {
@@ -79,10 +82,16 @@ router.get('/update/status', (req, res) => {
     res.json({
         ok: true,
         allowed: selfUpdateEnabled() && isLoopbackRequest(req),
-        // "still working" means: it wrote recently and has not printed its last line.
-        running: fresh && tail.length > 0 && !tail.includes(DONE_MARK) && !tail.includes('[X]'),
+        // "still working" means: it wrote recently and has not printed its last
+        // line. An update that has produced no output YET is still running —
+        // the old rule needed output to exist, so a silent start read as idle.
+        running: fresh && !tail.includes(DONE_MARK) && !tail.includes('[X]'),
         finished: tail.includes(DONE_MARK),
         failed: tail.includes('[X]'),
+        startedAt,
+        pid: updaterPid,
+        // so the overlay can say «لم يصل سطر بعد» instead of showing three dots
+        lines: tail ? tail.split('\n').filter(Boolean).length : 0,
         log: tail,
     });
 });
@@ -105,16 +114,33 @@ router.post('/update', (req, res) => {
         || (isWin ? path.join(root, 'update-joe.ps1') : path.join(root, 'update-joe.sh'));
     if (!fs.existsSync(script)) return res.status(500).json({ error: 'updater_missing', script });
 
-    try { fs.writeFileSync(UPDATE_LOG, `بدأ التحديث ${new Date().toISOString()}\n`); } catch { /* the log is a convenience */ }
+    /**
+     * THE PROGRESS HE COULD NOT SEE.
+     *
+     * PowerShell's Write-Host writes to the HOST, not to standard output. The
+     * updater is spawned detached, hidden and console-less, so all 66 of its
+     * progress lines went nowhere: the log stayed empty and the overlay showed
+     * three dots for two minutes. «لا يظهر تقدم التحديث» was exact.
+     *
+     * The scripts now echo every line into this file as well, which is why they
+     * are told where it is.
+     */
+    try { fs.writeFileSync(UPDATE_LOG, `بدأ التحديث ${new Date().toLocaleString()}\n`); } catch { /* the log is a convenience */ }
+    startedAt = Date.now();
 
     const spawned = /\.ps1$/i.test(script)
         ? executionEngine.runDetached('powershell.exe',
             ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script],
-            { cwd: root, logFile: UPDATE_LOG, env: { JOE_UNATTENDED: '1' } })
+            { cwd: root, logFile: UPDATE_LOG, env: { JOE_UNATTENDED: '1', JOE_UPDATE_LOG: UPDATE_LOG } })
         : executionEngine.runDetached(isWin ? script : '/bin/bash', isWin ? [] : [script],
-            { cwd: root, logFile: UPDATE_LOG, env: { JOE_UNATTENDED: '1' } });
+            { cwd: root, logFile: UPDATE_LOG, env: { JOE_UNATTENDED: '1', JOE_UPDATE_LOG: UPDATE_LOG } });
 
-    if (!spawned.ok) return res.status(500).json({ error: 'spawn_failed', message: spawned.error });
+    if (!spawned.ok) {
+        // A failure to even start must be VISIBLE, not a silent empty overlay.
+        try { fs.appendFileSync(UPDATE_LOG, `[X] تعذّر تشغيل المحدِّث: ${spawned.error}\n`); } catch { /* best effort */ }
+        return res.status(500).json({ error: 'spawn_failed', message: spawned.error });
+    }
+    updaterPid = spawned.pid || 0;
     // Answer NOW: the updater is about to kill this very process.
     res.json({ ok: true, pid: spawned.pid, log: UPDATE_LOG });
 });

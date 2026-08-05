@@ -1851,7 +1851,36 @@ describe('Joe updates himself, and only from his own machine', () => {
         expect(H).toMatch(/<SelfUpdateOverlay \/>/);
     });
 
-    it('and the overlay lives outside the menu that opened it', () => {
+it('the updater speaks where the interface can hear it', () => {
+        /**
+         * «لماذا زر تحديث جو لا يعمل بشكل صحيح ولا يظهر تقدم التحديث؟»
+         *
+         * PowerShell's Write-Host writes to the HOST, not to standard output.
+         * The updater is spawned detached, hidden and console-less, so all 66
+         * of its progress lines went nowhere: the log stayed empty and the
+         * overlay showed three motionless dots for two minutes. Both scripts
+         * now echo every line into the log file the UI reads, and the route is
+         * what tells them where it is.
+         */
+        const S = SRC('api', 'routes', 'system.ts');
+        expect(S).toMatch(/JOE_UPDATE_LOG: UPDATE_LOG/);
+        for (const f of ['update-joe.ps1', 'start-joe.ps1']) {
+            const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', f), 'utf-8');
+            expect(src).toMatch(/Add-Content -LiteralPath \$env:JOE_UPDATE_LOG/);
+            // and the progress lines actually go through it
+            expect(`${f}: ${(src.match(/^\s*Say /gm) || []).length > 20 ? 'logs' : 'silent'}`).toBe(`${f}: logs`);
+        }
+    });
+
+    it('and an update with no output yet reads as running, not as idle', () => {
+        const S = SRC('api', 'routes', 'system.ts');
+        expect(S).toMatch(/running: fresh && !tail\.includes\(DONE_MARK\)/);
+        const U = WEB('components', 'UpdateJoeItem.tsx');
+        expect(U).toMatch(/لم يصل أول سطر بعد/);
+        expect(U).toMatch(/joe-update-clock/);
+    });
+
+        it('and the overlay lives outside the menu that opened it', () => {
         const H = WEB('components', 'JoeHeader.tsx');
         // a dropdown unmounts when it closes; an update that dies with it is
         // worse than no button. The overlay sits after the menu block, and the

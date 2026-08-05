@@ -27,9 +27,9 @@ import { API_URL } from '../config';
 
 export type UpdatePhase = 'idle' | 'starting' | 'working' | 'restarting' | 'failed';
 
-type UpdateState = { phase: UpdatePhase; log: string; error: string };
+type UpdateState = { phase: UpdatePhase; log: string; error: string; startedAt: number; lines: number };
 
-let state: UpdateState = { phase: 'idle', log: '', error: '' };
+let state: UpdateState = { phase: 'idle', log: '', error: '', startedAt: 0, lines: 0 };
 const listeners = new Set<(s: UpdateState) => void>();
 let timer: number | null = null;
 let wentAway = false;
@@ -51,7 +51,9 @@ async function tick(): Promise<boolean> {
     try {
         const r = await fetch(`${apiBase()}/system/update/status`, { cache: 'no-store' });
         const d = await r.json();
-        if (typeof d?.log === 'string' && d.log) set({ log: d.log });
+        // The log arrives whole each tick; an empty one is meaningful too — it
+        // means the updater has started and not spoken yet.
+        if (typeof d?.log === 'string') set({ log: d.log, lines: Number(d.lines || 0) });
         if (wentAway) {
             // it died and came back — that, and only that, means a new Joe
             set({ phase: 'restarting' });
@@ -71,7 +73,7 @@ async function tick(): Promise<boolean> {
 export async function startSelfUpdate() {
     if (state.phase !== 'idle' && state.phase !== 'failed') return;
     wentAway = false;
-    set({ phase: 'starting', log: '', error: '' });
+    set({ phase: 'starting', log: '', error: '', startedAt: Date.now(), lines: 0 });
     try {
         const r = await fetch(`${apiBase()}/system/update`, { method: 'POST' });
         if (!r.ok) {
@@ -128,8 +130,17 @@ export default function UpdateJoeItem({ onBefore }: { onBefore?: () => void }) {
 /** Mounted beside the menu, not inside it, so closing the menu cannot kill the run. */
 export function SelfUpdateOverlay() {
     const [s, setS] = useState<UpdateState>(state);
+    const [now, setNow] = useState(Date.now());
     const logRef = useRef<HTMLPreElement | null>(null);
     useEffect(() => subscribeSelfUpdate(setS), []);
+    // one tick a second, only while an update is on screen
+    useEffect(() => {
+        if (s.phase === 'idle') return;
+        const id = window.setInterval(() => setNow(Date.now()), 1000);
+        return () => window.clearInterval(id);
+    }, [s.phase]);
+    const secs = s.startedAt ? Math.max(0, Math.round((now - s.startedAt) / 1000)) : 0;
+    const elapsed = secs < 60 ? `${secs} ثانية` : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} دقيقة`;
     useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [s.log]);
 
     if (s.phase === 'idle') return null;
@@ -144,6 +155,10 @@ export function SelfUpdateOverlay() {
                         {s.phase === 'restarting' && 'جو يعود الآن…'}
                         {s.phase === 'failed' && 'تعذّر التحديث'}
                     </span>
+                    {/* A number that moves is the difference between «it is
+                        working» and «it is stuck» — the overlay used to show
+                        three motionless dots for two minutes. */}
+                    {s.phase !== 'failed' && s.startedAt ? <span className="joe-update-clock">{elapsed}</span> : null}
                 </div>
                 {s.phase !== 'failed' && (
                     <p className="joe-update-note">
@@ -151,7 +166,9 @@ export function SelfUpdateOverlay() {
                     </p>
                 )}
                 {s.error && <p className="joe-update-error">{s.error}</p>}
-                <pre className="joe-update-log" ref={logRef} dir="ltr">{s.log || '…'}</pre>
+                <pre className="joe-update-log" ref={logRef} dir={s.log ? 'ltr' : 'rtl'}>
+                    {s.log || 'بدأ التحديث — لم يصل أول سطر بعد. أوّل خطوة (سحب التحديث من GitHub) قد تأخذ لحظات.'}
+                </pre>
                 {s.phase === 'failed' && (
                     <button className="joe-update-close" onClick={() => set({ phase: 'idle' })}>إغلاق</button>
                 )}

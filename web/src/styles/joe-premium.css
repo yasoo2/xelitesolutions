@@ -3756,3 +3756,6 @@ body:not(.rtl) .joe-user-info {
 }
 
 .joe-update-close:hover { background: rgba(148, 163, 184, 0.12); }
+
+/* The elapsed clock in the update overlay — a number that moves. */
+.joe-update-clock { margin-inline-start: auto; font-size: 12px; opacity: .6; font-variant-numeric: tabular-nums; }

@@ -42,9 +42,14 @@ function writeFakeUpdater(marker: string): string {
     const p = path.join(os.tmpdir(), `joe-fake-updater-${Date.now()}.sh`);
     fs.writeFileSync(p, [
         '#!/usr/bin/env bash',
-        `echo "${marker}"`,
-        'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do echo "خطوة $i من التحديث"; sleep 1; done',
-        'echo "[OK] التحديث اكتمل — جو يعود الآن."',
+        // Like the real updater: says nothing for a moment, then reports through
+        // the log file it was handed — not through stdout, because on Windows
+        // PowerShell's Write-Host never reaches stdout at all.
+        'sleep 2',
+        'say() { echo "$1"; [ -n "$JOE_UPDATE_LOG" ] && printf "%s\\n" "$1" >> "$JOE_UPDATE_LOG"; }',
+        `say "${marker}"`,
+        'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do say "خطوة $i من التحديث"; sleep 1; done',
+        'say "[OK] التحديث اكتمل — جو يعود الآن."',
         // proves the child outlives its parent: it is still alive well after
         // the server that spawned it is gone
         `echo "ما زلت حياً بعد موت الخادم" >> "${path.join(os.tmpdir(), 'joe-orphan-proof.txt')}"`,
@@ -170,7 +175,18 @@ async function main() {
         // The menu closed on click. The overlay must not have died with it.
         check('والقائمة أُغلقت والطبقة باقية', await page.locator('.joe-user-menu').count() === 0 && await overlay.isVisible());
 
-        console.log('\n[5] وما تعرضه هو مخرجات العملية نفسها');
+        console.log('\n[5] والطبقة صادقة قبل وصول أول سطر، ثم تعرض مخرجات العملية نفسها');
+        // The updater is deliberately silent for its first two seconds — like
+        // the real one, whose first step is a network pull. What he saw here
+        // was «…» and nothing else, for two minutes.
+        const early = await overlay.innerText();
+        check('تقول إن التحديث بدأ ولم يصل سطر بعد', /لم يصل أول سطر بعد/.test(early), early.slice(0, 120));
+        check('ومعها عدّاد وقت يتحرّك', await page.locator('.joe-update-clock').count() === 1);
+        const t1 = await page.locator('.joe-update-clock').innerText();
+        await page.waitForTimeout(2500);
+        const t2 = await page.locator('.joe-update-clock').innerText();
+        check('والعدّاد تقدّم فعلاً', t1 !== t2, `${t1} → ${t2}`);
+
         await page.waitForTimeout(3500);
         const logText = await page.locator('.joe-update-log').innerText();
         check('السطر الذي كتبه المحدِّث نفسه ظاهر', logText.includes(marker), logText.slice(0, 120));

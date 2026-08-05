@@ -15,11 +15,30 @@ $env:ENABLE_AUTH_BYPASS = "true"   # مستخدم واحد: الأدوات تع�
 $env:AUTO_APPROVE_ALL = "1"        # موافقة تلقائية على تنفيذ الأدوات
 $env:NODE_ENV = "development"
 
+# ============================================================
+#  السطر الذي تراه في زر «تحديث جو» داخل الواجهة.
+#
+#  Write-Host يكتب إلى «مضيف» PowerShell لا إلى المخرَج القياسي. وحين يشغّل
+#  جو نفسه من الزر تكون العملية منفصلة بلا نافذة ولا مضيف، فتذهب كل أسطر
+#  التقدّم إلى العدم: السجل يبقى فارغاً والمستخدم يرى نقاطاً فقط. هذا هو
+#  سبب «لا يظهر تقدم التحديث» بالحرف.
+#
+#  فالآن كل سطر يُكتب مرّتين: على الشاشة كما كان، وفي ملف السجل الذي تقرأه
+#  الواجهة — بترميز UTF8 صراحةً حتى تصل العربية سليمة.
+# ============================================================
+function Say {
+    param([string]$msg, [string]$color)
+    if ($color) { Write-Host $msg -ForegroundColor $color } else { Write-Host $msg }
+    if ($env:JOE_UPDATE_LOG) {
+        try { Add-Content -LiteralPath $env:JOE_UPDATE_LOG -Value $msg -Encoding UTF8 -ErrorAction Stop } catch { }
+    }
+}
+
 # لا تسأل أحداً حين لا يوجد أحد: حين يشغّل جو نفسه من زر «تحديث جو» داخل
 # الواجهة تكون العملية منفصلة بلا نافذة، وأي Read-Host هناك يعلّق التحديث
 # للأبد بانتظار ضغطة لا يستطيع أحد إعطاءها.
 function Wait-ForUser($msg) {
-    if ($env:JOE_UNATTENDED -eq '1') { Write-Host $msg -ForegroundColor DarkGray }
+    if ($env:JOE_UNATTENDED -eq '1') { Say $msg DarkGray }
     else { Read-Host $msg | Out-Null }
 }
 
@@ -41,9 +60,9 @@ $env:BROWSER_HEADED = "0"            # بلا نافذة خارجية — كل �
 $secretsFile = "$PSScriptRoot\joe-secrets.ps1"
 if (Test-Path $secretsFile) {
     . $secretsFile
-    Write-Host "[secrets] تم تحميل joe-secrets.ps1" -ForegroundColor Green
+    Say "[secrets] تم تحميل joe-secrets.ps1" Green
 } else {
-    Write-Host "[secrets] لا يوجد joe-secrets.ps1 (انسخ joe-secrets.example.ps1 واملأه لتفعيل Google)." -ForegroundColor DarkYellow
+    Say "[secrets] لا يوجد joe-secrets.ps1 (انسخ joe-secrets.example.ps1 واملأه لتفعيل Google)." DarkYellow
 }
 
 # --- دماغ Groq السحابي (مجاني وسريع، Llama 3.3 70B) ---
@@ -51,10 +70,10 @@ if (Test-Path $secretsFile) {
 # أولاً (خلال ثوانٍ) قبل أي نموذج محلي، فيعمل الوكيل بذكاء عالٍ رغم ضعف الجهاز. النموذج
 # المحلي (إن وُجد) يبقى احتياطاً عند انقطاع الإنترنت. لا نُجبر «المحلي الحصري» حينها.
 if ($env:GROQ_API_KEY -and $env:GROQ_API_KEY.Trim().StartsWith("gsk_")) {
-    Write-Host "[brain] Groq متصل — الدماغ الأساسي (Llama 3.3 70B، سريع وذكي). المحلي احتياطي." -ForegroundColor Green
+    Say "[brain] Groq متصل — الدماغ الأساسي (Llama 3.3 70B، سريع وذكي). المحلي احتياطي." Green
     $env:LOCAL_LLM_STRICT = "0"
 } elseif ($env:GROQ_API_KEY) {
-    Write-Host "[brain] تحذير: GROQ_API_KEY موجود لكنه لا يبدأ بـ gsk_ — تأكّد أنك نسخت المفتاح كاملاً." -ForegroundColor DarkYellow
+    Say "[brain] تحذير: GROQ_API_KEY موجود لكنه لا يبدأ بـ gsk_ — تأكّد أنك نسخت المفتاح كاملاً." DarkYellow
 }
 
 # --- دماغ الذكاء المحلي (Ollama) — يُكتشف تلقائياً إن كان يعمل ---
@@ -85,7 +104,7 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
         if (-not $env:LOCAL_VISION_MODEL) {
             $available2 = @($tags.models | ForEach-Object { $_.name })
             $visionPick = $available2 | Where-Object { $_ -match 'llava|moondream|vision|minicpm-v|bakllava' } | Select-Object -First 1
-            if ($visionPick) { $env:LOCAL_VISION_MODEL = $visionPick; Write-Host "[vision] نموذج رؤية متصل: $visionPick" -ForegroundColor Green }
+            if ($visionPick) { $env:LOCAL_VISION_MODEL = $visionPick; Say "[vision] نموذج رؤية متصل: $visionPick" Green }
         }
         # استخدم Ollama حصرياً حتى لا يضيّع جو الوقت في مزوّدين مجّانيين فاشلين، مع مهلة
         # كافية لأول طلب (تحميل النموذج) ثم يبقى محمّلاً.
@@ -95,13 +114,13 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
             # Groq is the primary brain; Ollama is only the OFFLINE backup. Do NOT
             # claim "exclusive local" here — that misled into thinking Joe runs on
             # the slow local model when Groq (fast) is actually first.
-            Write-Host "[brain] Ollama جاهز كاحتياط للطوارئ فقط — Groq هو الأساسي (النموذج المحلي: $($env:LOCAL_LLM_MODEL))" -ForegroundColor DarkGray
+            Say "[brain] Ollama جاهز كاحتياط للطوارئ فقط — Groq هو الأساسي (النموذج المحلي: $($env:LOCAL_LLM_MODEL))" DarkGray
         } else {
-            Write-Host "[brain] Ollama متصل — سيستخدمه جو حصرياً (النموذج: $($env:LOCAL_LLM_MODEL))" -ForegroundColor Green
+            Say "[brain] Ollama متصل — سيستخدمه جو حصرياً (النموذج: $($env:LOCAL_LLM_MODEL))" Green
         }
     } catch {
-        Write-Host "[brain] Ollama غير مُشغّل — سيعمل جو على الذكاء المجاني عبر الإنترنت." -ForegroundColor DarkYellow
-        Write-Host "        (لجهاز خفيف بلا كرت شاشة، الأسرع: ollama pull qwen2.5:3b — قرارات أسرع بلا تجمّد)" -ForegroundColor DarkGray
+        Say "[brain] Ollama غير مُشغّل — سيعمل جو على الذكاء المجاني عبر الإنترنت." DarkYellow
+        Say "        (لجهاز خفيف بلا كرت شاشة، الأسرع: ollama pull qwen2.5:3b — قرارات أسرع بلا تجمّد)" DarkGray
     }
 }
 
@@ -115,15 +134,15 @@ $env:USE_USER_BROWSER_PROFILE = "0"
 
 $apiDir = "$PSScriptRoot\api"
 
-Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "  JOE - Local Free-AI Mode (no API key)" -ForegroundColor Cyan
-Write-Host "  http://localhost:5002/joe" -ForegroundColor Green
-Write-Host "============================================" -ForegroundColor Cyan
+Say "============================================" Cyan
+Say "  JOE - Local Free-AI Mode (no API key)" Cyan
+Say "  http://localhost:5002/joe" Green
+Say "============================================" Cyan
 
 # التحقق من وجود Node
 $node = Get-Command node -ErrorAction SilentlyContinue
 if (-not $node) {
-    Write-Host "[X] Node.js غير مثبّت. ثبّته من https://nodejs.org ثم أعد المحاولة." -ForegroundColor Red
+    Say "[X] Node.js غير مثبّت. ثبّته من https://nodejs.org ثم أعد المحاولة." Red
     Wait-ForUser "اضغط Enter للخروج"
     exit 1
 }
@@ -144,17 +163,17 @@ function Sync-Dependencies {
     $storedHash = if (Test-Path $stampFile) { (Get-Content $stampFile -Raw -ErrorAction SilentlyContinue).Trim() } else { "" }
     $needInstall = (-not (Test-Path (Join-Path $dir "node_modules"))) -or ($storedHash -ne $currentHash)
     if (-not $needInstall) {
-        Write-Host "`n[$label] Dependencies up to date." -ForegroundColor Green
+        Say "`n[$label] Dependencies up to date." Green
         return $true
     }
-    Write-Host "`n[$label] Dependencies changed (or first run) — installing... قد يأخذ دقائق" -ForegroundColor Yellow
+    Say "`n[$label] Dependencies changed (or first run) — installing... قد يأخذ دقائق" Yellow
     npm install --no-audit --no-fund --legacy-peer-deps
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "[X] فشل تثبيت التبعيات في $dir. راجع الأخطاء أعلاه." -ForegroundColor Red
+        Say "[X] فشل تثبيت التبعيات في $dir. راجع الأخطاء أعلاه." Red
         return $false
     }
     Set-Content -Path $stampFile -Value $currentHash -NoNewline
-    Write-Host "[$label] Dependencies installed." -ForegroundColor Green
+    Say "[$label] Dependencies installed." Green
     return $true
 }
 
@@ -166,24 +185,24 @@ if (-not (Sync-Dependencies -dir $apiDir -label "1/3")) {
 # نعلّم بملف صغير حتى لا يُعاد التثبيت كل تشغيل. بدونه قد تظهر رسالة browser_launch_failed.
 $pwMarker = "$apiDir\.playwright-chromium-installed"
 if (-not (Test-Path $pwMarker)) {
-    Write-Host "`n[1b/3] Installing Joe's browser engine (Chromium) — first run only, قد يأخذ دقيقة..." -ForegroundColor Yellow
+    Say "`n[1b/3] Installing Joe's browser engine (Chromium) — first run only, قد يأخذ دقيقة..." Yellow
     npx playwright install chromium
     if ($LASTEXITCODE -eq 0) {
         New-Item -ItemType File -Path $pwMarker -Force | Out-Null
-        Write-Host "[1b/3] Browser engine ready" -ForegroundColor Green
+        Say "[1b/3] Browser engine ready" Green
     } else {
-        Write-Host "[!] تعذّر تثبيت Chromium الآن (قد يكون انقطاع إنترنت). سيُعاد المحاولة في التشغيل القادم." -ForegroundColor Red
+        Say "[!] تعذّر تثبيت Chromium الآن (قد يكون انقطاع إنترنت). سيُعاد المحاولة في التشغيل القادم." Red
     }
 }
 
 # [2/3] بناء الـ API (تظهر الأخطاء إن وُجدت)
-Write-Host "`n[2/3] Building API..." -ForegroundColor Yellow
+Say "`n[2/3] Building API..." Yellow
 npm run build
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "[X] فشل البناء. راجع الأخطاء أعلاه." -ForegroundColor Red
+    Say "[X] فشل البناء. راجع الأخطاء أعلاه." Red
     Pop-Location; Wait-ForUser "اضغط Enter للخروج"; exit 1
 }
-Write-Host "[2/3] API built OK" -ForegroundColor Green
+Say "[2/3] API built OK" Green
 
 Pop-Location
 
@@ -196,21 +215,21 @@ if (Test-Path $webDir) {
     # نفس درس الـ API: تبعيات الواجهة تتغيّر مع التحديثات (مثل xterm-addon-search)
     # وتخطّي التثبيت يُفشل البناء ويُبقي واجهة قديمة تعمل بصمت.
     if (-not (Sync-Dependencies -dir $webDir -label "2b/3")) {
-        Write-Host "[!] تعذّر تثبيت تبعيات الواجهة — سيُحاول البناء بما هو موجود." -ForegroundColor Red
+        Say "[!] تعذّر تثبيت تبعيات الواجهة — سيُحاول البناء بما هو موجود." Red
     }
-    Write-Host "`n[2b/3] Building Web UI (ensures the latest frontend fixes are live)..." -ForegroundColor Yellow
+    Say "`n[2b/3] Building Web UI (ensures the latest frontend fixes are live)..." Yellow
     npm run build
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "[!] Web build failed - starting with the last successful build." -ForegroundColor Red
+        Say "[!] Web build failed - starting with the last successful build." Red
     } else {
-        Write-Host "[2b/3] Web UI built OK" -ForegroundColor Green
+        Say "[2b/3] Web UI built OK" Green
     }
     Pop-Location
 }
 
 # العلامة التي يقرأها زر «تحديث جو» في الواجهة ليعرف أن البناء انتهى وأن
 # الخادم على وشك العودة. تُطبع بعد البناء لا قبله، وإلا أعلنّا نجاحاً لم يحدث.
-Write-Host "[OK] التحديث اكتمل — جو يعود الآن."
+Say "[OK] التحديث اكتمل — جو يعود الآن."
 
 # [3/3] التشغيل مع إعادة تشغيل تلقائية + حارس حلقة الانهيار
 # إن انهار جو فور الإقلاع ثلاث مرات متتالية (أقل من 15 ثانية لكل محاولة) فالعطل
@@ -220,7 +239,7 @@ $restartCount = 0
 $fastCrashes = 0
 while ($true) {
     $restartCount++
-    Write-Host "`n[3/3] Starting Joe (attempt #$restartCount)  ->  http://localhost:5002/joe" -ForegroundColor Yellow
+    Say "`n[3/3] Starting Joe (attempt #$restartCount)  ->  http://localhost:5002/joe" Yellow
     Push-Location $apiDir
     $startedAt = Get-Date
     node dist/index.js
@@ -233,7 +252,7 @@ while ($true) {
     # علاج ذاتي: أول انهيار سريع سببه الأشيع تبعية ناقصة بعد تحديث —
     # نعيد التثبيت مرة واحدة تلقائياً قبل إعادة المحاولة بدل انتظار المستخدم.
     if ($fastCrashes -eq 1) {
-        Write-Host "`n[heal] انهيار سريع — أعيد تثبيت التبعيات احتياطاً (العلاج الأشيع)..." -ForegroundColor Yellow
+        Say "`n[heal] انهيار سريع — أعيد تثبيت التبعيات احتياطاً (العلاج الأشيع)..." Yellow
         Push-Location $apiDir
         npm install --no-audit --no-fund --legacy-peer-deps
         if ($LASTEXITCODE -eq 0) {
@@ -243,17 +262,17 @@ while ($true) {
     }
 
     if ($fastCrashes -ge 3) {
-        Write-Host "`n============================================" -ForegroundColor Red
-        Write-Host "[X] جو انهار $fastCrashes مرات متتالية فور الإقلاع — التوقف عن إعادة المحاولة." -ForegroundColor Red
-        Write-Host "    السبب الأرجح: تبعيات ناقصة أو ملف تالف. جرّب بالترتيب:" -ForegroundColor Yellow
-        Write-Host "      1) cd $apiDir ; npm install --no-audit --no-fund --legacy-peer-deps" -ForegroundColor Yellow
-        Write-Host "      2) اقرأ رسالة الخطأ أعلاه (مثل Cannot find module '...' = تبعية ناقصة)" -ForegroundColor Yellow
-        Write-Host "      3) ثم أعد التشغيل: .\update-joe.ps1" -ForegroundColor Yellow
-        Write-Host "============================================" -ForegroundColor Red
+        Say "`n============================================" Red
+        Say "[X] جو انهار $fastCrashes مرات متتالية فور الإقلاع — التوقف عن إعادة المحاولة." Red
+        Say "    السبب الأرجح: تبعيات ناقصة أو ملف تالف. جرّب بالترتيب:" Yellow
+        Say "      1) cd $apiDir ; npm install --no-audit --no-fund --legacy-peer-deps" Yellow
+        Say "      2) اقرأ رسالة الخطأ أعلاه (مثل Cannot find module '...' = تبعية ناقصة)" Yellow
+        Say "      3) ثم أعد التشغيل: .\update-joe.ps1" Yellow
+        Say "============================================" Red
         Wait-ForUser "اضغط Enter للخروج"
         exit 1
     }
 
-    Write-Host "`n[!] Joe stopped (exit code: $exitCode). Restarting in 3 seconds... (اضغط Ctrl+C للإيقاف)" -ForegroundColor Red
+    Say "`n[!] Joe stopped (exit code: $exitCode). Restarting in 3 seconds... (اضغط Ctrl+C للإيقاف)" Red
     Start-Sleep -Seconds 3
 }
