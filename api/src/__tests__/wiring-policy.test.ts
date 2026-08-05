@@ -2018,3 +2018,48 @@ describe('the server stores what the app sends', () => {
         expect(A).toMatch(/const seeds = isCatalogue \? catalogueSeeds : \[\]/);
     });
 });
+
+/**
+ * AN APP THAT CANNOT SIGN IN TO ITS OWN SERVER SAVES NOTHING.
+ *
+ * The generated backend protects every write with requireAuth — it must, or a
+ * stranger writes to your database. The generated frontend sent NO token, so
+ * every «add» answered 401, the failure was swallowed, and the row lived in
+ * one browser. It looked saved and was not.
+ */
+describe('the generated app can sign in to its own server', () => {
+    const T = () => SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+
+    it('every write carries the token', () => {
+        const store = T().slice(T().indexOf('export function fileAppStoreJs'));
+        for (const fn of ['apiCreate', 'apiPost', 'apiDelete']) {
+            const body = store.slice(store.indexOf(`export async function ${fn}`), store.indexOf(`export async function ${fn}`) + 700);
+            expect(`${fn} sends no Authorization header`).toBeTruthy();
+            expect(body).toMatch(/\.\.\.authHeaders\(\)/);
+        }
+    });
+
+    it('and 401 is reported as «sign in», not as «no server»', () => {
+        // the difference is the whole reason a row silently failed to save
+        expect(T()).toMatch(/needsAuth: r\.status === 401/);
+    });
+
+    it('the shell offers the sign-in, and only when a server exists', () => {
+        const t = T();
+        expect(t).toMatch(/function SignIn\(\{ api \}\)/);
+        expect(t).toMatch(/if \(!api\) return null;/);
+        expect(t).toMatch(/<SignIn api=\{content\.api\} \/>/);
+    });
+
+    it('the session survives a reload and can be ended', () => {
+        const t = T();
+        expect(t).toMatch(/localStorage\.setItem\(TOKEN_KEY, t\)/);
+        expect(t).toMatch(/export function apiLogout\(\) \{ setToken\(''\); \}/);
+        // and a token the server no longer accepts is dropped, not kept forever
+        expect(t).toMatch(/if \(r\.status === 401\) setToken\(''\)/);
+    });
+
+    it('and one Joe-built system never borrows another\'s session', () => {
+        expect(T()).toMatch(/const TOKEN_KEY = 'joe:auth:' \+/);
+    });
+});

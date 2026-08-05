@@ -74,9 +74,91 @@ const ENGINE_COMPONENT: Record<AppBlueprint['engine'], string> = {
 
 export function fileAppShellJsx(bp: AppBlueprint, isAr: boolean): string {
     const C = ENGINE_COMPONENT[bp.engine];
+    const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useState } from 'react';
 import ${C} from './components/${C}.jsx';
 import { content } from './content.js';
+import { apiLogin, apiLogout, apiMe, getToken } from './app/store.js';
+
+/**
+ * SIGNING IN TO YOUR OWN SYSTEM.
+ *
+ * The server protects every write — it must, or a stranger could write to your
+ * database. The app sent no token, so «add» answered 401 and the row lived in
+ * this browser only: it looked saved and was not. This is the missing half.
+ *
+ * It appears only when there IS a server to sign in to, and it never blocks
+ * the app: signed out, everything still works locally and says so.
+ */
+function SignIn({ api }) {
+  const [user, setUser] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { let alive = true; apiMe(api).then(u => { if (alive) setUser(u); }); return () => { alive = false; }; }, [api]);
+
+  if (!api) return null;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true); setError('');
+    const r = await apiLogin(api, email.trim(), password);
+    setBusy(false);
+    if (!r.ok) {
+      setError(r.error === 'no_server'
+        ? ${T('لا يمكن الوصول إلى الخادم.', 'The server cannot be reached.')}
+        : ${T('البريد أو كلمة المرور غير صحيحة.', 'Wrong email or password.')});
+      return;
+    }
+    setUser(r.user); setOpen(false); setPassword('');
+  };
+
+  if (user) {
+    return (
+      <div className="auth-chip">
+        <span className="auth-dot" aria-hidden="true" />
+        <span className="auth-who">{user.email}</span>
+        <button type="button" onClick={() => { apiLogout(); setUser(null); }}>
+          {${T('خروج', 'Sign out')}}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button type="button" className="auth-open" onClick={() => setOpen(true)}>
+        {${T('دخول المالك', 'Owner sign-in')}}
+      </button>
+      {open ? (
+        <div className="auth-back" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+          <form className="auth-card" onSubmit={submit}>
+            <b>{${T('دخول المالك', 'Owner sign-in')}}</b>
+            <p className="auth-note">
+              {${T('بيانات الدخول ظهرت مرة واحدة عند بناء النظام. بدون تسجيل الدخول يعمل التطبيق محلياً فقط ولا يُحفظ على الخادم.', 'Your credentials were shown once when the system was built. Signed out, the app works locally only and nothing is saved on the server.')}}
+            </p>
+            <label><span>{${T('البريد', 'Email')}}</span>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required />
+            </label>
+            <label><span>{${T('كلمة المرور', 'Password')}}</span>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required />
+            </label>
+            {error ? <p className="auth-error">{error}</p> : null}
+            <div className="auth-actions">
+              <button type="button" onClick={() => setOpen(false)}>{${T('إلغاء', 'Cancel')}}</button>
+              <button type="submit" className="primary" disabled={busy}>
+                {busy ? ${T('جارٍ…', 'Signing in…')} : ${T('دخول', 'Sign in')}}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+    </>
+  );
+}
 
 /** The application shell: identity, theme, and the program itself. */
 export default function App() {
@@ -102,6 +184,7 @@ export default function App() {
             <h1 className="app-name">{content.brand}</h1>
             <span className="app-sub">{content.title}</span>
           </div>
+          <SignIn api={content.api} />
           <button className="icon-btn" onClick={() => setDark(v => !v)}
             aria-label={${isAr ? "'تبديل الوضع الليلي'" : "'Toggle dark mode'"}} title={${isAr ? "'تبديل الوضع'" : "'Toggle theme'"}}>
             {dark ? '☀︎' : '☾'}
@@ -224,6 +307,61 @@ export function download(name, text, type) {
   document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/**
+ * THE APP HAD NO WAY TO SIGN IN TO ITS OWN SERVER.
+ *
+ * The generated backend protects every write with requireAuth — correctly, or
+ * any stranger could write to your database. The generated FRONTEND sent no
+ * token at all, so every «add» hit 401, apiCreate swallowed it, and the row
+ * lived in the browser only. A reload on another machine showed nothing. It
+ * looked saved. It was not — the exact failure this project keeps refusing.
+ *
+ * The token is kept per app, so two Joe-built systems on the same machine do
+ * not borrow each other's session.
+ */
+const TOKEN_KEY = 'joe:auth:' + (typeof location !== 'undefined' ? location.pathname : '');
+
+export function getToken() {
+  try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; }
+}
+function setToken(t) {
+  try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch { /* private mode */ }
+}
+const authHeaders = () => {
+  const t = getToken();
+  return t ? { Authorization: 'Bearer ' + t } : {};
+};
+
+/** The server's own login. Returns { ok, error } — never throws at the UI. */
+export async function apiLogin(api, email, password) {
+  const url = apiSibling(api, 'auth/login');
+  if (!url) return { ok: false, error: 'no_server' };
+  try {
+    const r = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.token) return { ok: false, error: d.error || 'bad_credentials' };
+    setToken(d.token);
+    return { ok: true, user: d.user };
+  } catch { return { ok: false, error: 'no_server' }; }
+}
+
+export function apiLogout() { setToken(''); }
+
+/** Is the token still good? A server restart invalidates nothing else visibly. */
+export async function apiMe(api) {
+  const url = apiSibling(api, 'auth/me');
+  if (!url || !getToken()) return null;
+  try {
+    const r = await fetch(url, { headers: { ...authHeaders() } });
+    if (!r.ok) { if (r.status === 401) setToken(''); return null; }
+    const d = await r.json().catch(() => null);
+    return d && d.user ? d.user : null;
+  } catch { return null; }
+}
+
 /** Best-effort server sync. Any failure keeps the local rows — never a crash. */
 export async function apiList(api) {
   if (!api) return null;
@@ -247,10 +385,15 @@ export async function apiCreate(api, row) {
   if (!api) return null;
   try {
     const r = await fetch(api, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(row),
     });
-    if (!r.ok) return null;
-    return await r.json().catch(() => row);
+    // 401 is not «no server» — it is «you are not signed in», and the
+    // difference is the whole reason a row silently failed to save.
+    if (!r.ok) return { ok: false, status: r.status, needsAuth: r.status === 401 };
+    const d = await r.json().catch(() => ({}));
+    return { ok: true, item: d.item || row };
   } catch { return null; }
 }
 
@@ -262,7 +405,9 @@ export async function apiPost(api, suffix, body) {
   if (!api) return null;
   try {
     const r = await fetch(String(api).replace(/\\/+$/, '') + suffix, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body || {}),
     });
     if (!r.ok) return null;
     return await r.json().catch(() => ({ ok: true }));
@@ -292,7 +437,9 @@ export async function apiGet(url) {
 export async function apiDelete(api, id) {
   if (!api || id === undefined || id === null) return null;
   try {
-    const r = await fetch(String(api).replace(/\\/+$/, '') + '/' + encodeURIComponent(id), { method: 'DELETE' });
+    const r = await fetch(String(api).replace(/\\/+$/, '') + '/' + encodeURIComponent(id), {
+      method: 'DELETE', headers: { ...authHeaders() },
+    });
     if (!r.ok) return null;
     return await r.json().catch(() => ({ ok: true }));
   } catch { return null; }
@@ -1428,6 +1575,23 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .comments{margin-top:10px;border-top:1px solid var(--border,#e5e5e5);padding-top:10px;display:grid;gap:8px}
 .comment{margin:0;font-size:.92rem}
 .comment b{margin-inline-end:6px}
+
+/* Owner sign-in — quiet until it is needed. */
+.auth-open { font-size: 12px; padding: 6px 12px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+.auth-open:hover { background: var(--line); }
+.auth-chip { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
+.auth-chip button { font-size: 11px; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+.auth-who { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .8; }
+.auth-dot { width: 7px; height: 7px; border-radius: 999px; background: #10b981; flex: none; }
+.auth-back { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 20px; background: rgba(2,6,23,.55); }
+.auth-card { width: min(380px, 100%); display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.auth-card label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.auth-card input { padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: inherit; font: inherit; }
+.auth-note { margin: 0; font-size: 11.5px; line-height: 1.7; opacity: .7; }
+.auth-error { margin: 0; font-size: 12px; color: #f87171; }
+.auth-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.auth-actions button { padding: 8px 16px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; font-size: 12.5px; }
+.auth-actions .primary { background: var(--accent, #2563eb); border-color: transparent; color: #fff; }
 `;
 }
 
