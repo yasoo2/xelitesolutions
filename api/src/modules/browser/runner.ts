@@ -6,6 +6,7 @@ import { planNextStep } from '../../core/llm';
 import { executePlannedActions } from './executor';
 import { getBrowserSession, stopSession, touchSession, screenshotSessionJpeg } from './manager';
 import { getSessionRunConfig, setSessionSecretEncrypted } from '../services/secrets';
+import { agentSearchUrl } from './challenge';
 
 const cfg = DEFAULT_BROWSER_CONFIG;
 
@@ -350,7 +351,9 @@ function fallbackActionsFromInstruction(text: string): Planned['actions'] {
 
     if (q) {
       if (wantsGoogle) {
-        actions.push({ type: 'goto', url: `https://www.google.com/search?q=${encodeURIComponent(q)}` });
+        // The AGENT searches where automation is welcome — google.com/search answers
+        // a robot with /sorry/, and that wall is what stopped his runs dead.
+        actions.push({ type: 'goto', url: agentSearchUrl(q) });
       } else {
         // DEFAULT TO DUCKDUCKGO TO AVOID CAPTCHAS
         actions.push({ type: 'goto', url: `https://duckduckgo.com/?q=${encodeURIComponent(q)}` });

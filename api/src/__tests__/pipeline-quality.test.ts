@@ -142,3 +142,53 @@ describe('the self-QA runs where the user can watch it', () => {
         expect(W).toMatch(/event\.type === 'panel_focus'/);
     });
 });
+
+/**
+ * A HUMAN CHECK IS NOT A DEAD END — «عاده ما يتوقف المتصفح اثبت انه انت بشري».
+ *
+ * Joe does not defeat these walls: no solver, no fingerprint spoofing, no
+ * pretending to be a person. It stops provoking them (the agent no longer
+ * scrapes google.com/search, which is what /sorry/ answers), detects one when
+ * it appears anyway, hands the panel to the human who IS one, and resumes the
+ * same task the moment it clears. Live proof: verify_human_check.ts (18/18).
+ */
+describe('a human check is handed to the human, not defeated', () => {
+    const C = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'modules', 'browser', 'challenge.ts'), 'utf-8');
+
+    it('the walls are recognised by URL and by wording', () => {
+        expect(C).toMatch(/sorry\\\/index/);
+        expect(C).toMatch(/unusual traffic/);
+        expect(C).toMatch(/cdn-cgi\\\/challenge-platform/);
+    });
+
+    it('and a reCAPTCHA widget inside a real page is NOT one', () => {
+        // A rescue that fires on every contact form is a nuisance.
+        expect(C).toMatch(/length < 1200/);
+    });
+
+    it('the loop waits for the human instead of dying at a checkbox', () => {
+        const L = require('fs').readFileSync(
+            require('path').join(__dirname, '..', 'modules', 'browser', 'reactLoop.ts'), 'utf-8');
+        expect(L).toMatch(/const wall = await detectChallenge\(page\)/);
+        expect(L).toMatch(/waitForHumanToClear/);
+        // …and when nobody clears it, it stops honestly.
+        expect(L).toMatch(/لم يُستكمل التحقّق/);
+    });
+
+    it('the agent searches where automation is welcome', () => {
+        expect(C).toMatch(/export function agentSearchUrl/);
+        for (const f of ['modules/browser/runner.ts', 'modules/tools/definitions/BrowserRunTool.ts',
+            'orchestration/agents/BrowserAgent.ts', 'modules/services/ToolService.ts']) {
+            const src = require('fs').readFileSync(require('path').join(__dirname, '..', f), 'utf-8');
+            expect(`${f}: ${/google\.com\/search\?q=\$\{encodeURIComponent/.test(src) ? 'scrapes' : 'clean'}`)
+                .toBe(`${f}: clean`);
+        }
+    });
+
+    it('and nothing here solves a CAPTCHA', () => {
+        // The line this project will not cross, kept as a gate so it stays uncrossed.
+        expect(C).not.toMatch(/2captcha|anti-?captcha|capmonster|solveRecaptcha|deathbycaptcha/i);
+        expect(C).not.toMatch(/puppeteer-extra-plugin-stealth|navigator\.webdriver\s*=/i);
+    });
+});

@@ -6,6 +6,7 @@ import { canAccessBrowserSession } from '../../browser/wsHub';
 import { getSessionSecret, getUserSecret } from '../../services/secrets';
 import path from 'path';
 import fs from 'fs';
+import { agentSearchUrl } from '../../browser/challenge';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 
@@ -195,11 +196,11 @@ export class BrowserRunTool extends BaseTool {
             } else if (tLower.includes('جوجل') || tLower.includes('غوغل') || tLower.includes('google')) {
                 const queryMatch = instructionText.match(/(?:عن|about|for)\s+(.+)/i);
                 const query = queryMatch ? queryMatch[1].trim() : instructionText;
-                targetUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+                targetUrl = agentSearchUrl(query);
             } else if (tLower.includes('ويكيبيديا') || tLower.includes('wikipedia')) {
                 targetUrl = `https://ar.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(instructionText)}`;
             } else {
-                targetUrl = `https://www.google.com/search?q=${encodeURIComponent(instructionText)}`;
+                targetUrl = agentSearchUrl(instructionText);
             }
             actions = [{ type: 'goto', url: targetUrl }, { type: 'wait', ms: 3000 }];
         }

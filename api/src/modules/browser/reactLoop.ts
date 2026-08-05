@@ -21,6 +21,7 @@ import { getBrowserSession } from './manager';
 import { executePlannedActions } from './executor';
 import { broadcastBrowserEvent } from './wsHub';
 import { judgeAnswer, ungroundedMessage } from './grounding';
+import { detectChallenge, waitForHumanToClear } from './challenge';
 
 /** Emit one live narration event to the session's panel (best-effort, never throws). */
 function emitAgentStep(sessionId: string, ev: {
@@ -320,6 +321,35 @@ export async function runReactBrowserTask(params: {
       emitAgentStep(sessionId, { phase: 'act', step: n, action: `يتجاوز نافذة الموافقة («${dismissed}»)` });
       await settle(page);
     }
+    /**
+     * A HUMAN CHECK IS NOT A DEAD END — «عاده ما يتوقف المتصفح اثبت انه انت
+     * بشري وليس روبوت».
+     *
+     * The agent used to walk into google.com/sorry and keep reasoning about a
+     * page that would never answer it: the run died at a checkbox. Joe does
+     * not defeat these walls — it notices them, hands the panel to the person
+     * who IS human (control is already there), waits, and resumes the same
+     * task the moment the wall is gone.
+     */
+    {
+        const wall = await detectChallenge(page);
+        if (wall) {
+            chatDetail(chatSid, `🙋 ${wall.message} تحكّم بالمتصفح في اللوحة وأكمِل التحقّق — أتابع فور انتهائك.`);
+            emitAgentStep(sessionId, { phase: 'needs_user', step: n, message: wall.message, url: wall.url });
+            const handoff = await waitForHumanToClear(page, wall, {
+                sessionId,
+                onNote: (m) => chatDetail(chatSid, m),
+            });
+            if (!handoff.cleared) {
+                const msg = `${wall.message} لم يُستكمل التحقّق، فتوقّفت بدل الادّعاء بأنني أكملت المهمة.`;
+                emitAgentStep(sessionId, { phase: 'needs_user', step: n, message: msg, url: wall.url });
+                chatPhase(chatSid, 'idle', '');
+                return finish('needs_user', false, msg, undefined, wall.url);
+            }
+            await settle(page);
+        }
+    }
+
     const observation = await observePage(page);
     emitAgentStep(sessionId, { phase: 'observe', step: n, url: observation.url, title: observation.title, elementCount: observation.elements.length });
     chatDetail(chatSid, `👁 يراقب الصفحة${observation.title ? `: ${observation.title.slice(0, 50)}` : ''} (${observation.elements.length} عنصر)`);

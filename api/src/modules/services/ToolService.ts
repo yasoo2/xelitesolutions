@@ -11,6 +11,7 @@ import { normalizeUrlForGoto } from '../../shared/utils/url';
 import { traceManager } from './TraceManager';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { isApologyOnly, apologyText } from '../../shared/utils/honestResult';
+import { agentSearchUrl } from '../browser/challenge';
 
 // Rate Limiting Logic (Ported) with periodic cleanup to prevent memory leaks
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
@@ -286,7 +287,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         const query = effectiveInput.query || effectiveInput.q || effectiveInput.input || '';
         if (!Array.isArray(effectiveInput.actions)) effectiveInput.actions = [];
         if (query) {
-            effectiveInput.actions.unshift({ type: 'goto', url: `https://www.google.com/search?q=${encodeURIComponent(query)}` });
+            effectiveInput.actions.unshift({ type: 'goto', url: agentSearchUrl(query) });
             effectiveInput.actions.push({ type: 'wait', ms: 2000 });
         } else {
             effectiveInput.actions.push({ type: 'goto', url: 'https://www.google.com' });

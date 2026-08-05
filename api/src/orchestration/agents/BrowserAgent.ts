@@ -4,6 +4,7 @@ import { runReactBrowserTask, renderObservation, type Decider, type ReactAction,
 import { executePlannedActions } from '../../modules/browser/executor';
 import { LocalProvider } from '../../core/llm/providers/local';
 import { normalizeIntentText } from '../../core/orchestrator/promptNormalizer';
+import { agentSearchUrl } from '../../modules/browser/challenge';
 
 /** Sites that BLOCK automated login/signup (bot detection / CAPTCHA / 2FA).
  *  For a login OR account-creation task on one of these, driving the form with
@@ -423,7 +424,7 @@ export function deriveStartUrl(task: string): string | undefined {
     // A generic lookup with no named site → Google the subject. (No \b around the
     // Arabic alternatives — JS word boundaries are ASCII-only and would never match.)
     if (hasSubject && /(?:\b(?:search|find)\b)|بحث|ابحث|ملخص|لخّ?ص|معلومات|من\s*هو|ما\s*هو|من\s*هي|ما\s*هي/i.test(t)) {
-        return `https://www.google.com/search?q=${encodeURIComponent(subject)}`;
+        return agentSearchUrl(subject);
     }
     return undefined;
 }
