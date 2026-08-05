@@ -1838,7 +1838,16 @@ describe('Joe updates himself, and only from his own machine', () => {
     it('the updater outlives the server it is about to kill', () => {
         const E = SRC('kernel', 'ExecutionEngine.ts');
         const fn = E.slice(E.indexOf('runDetached('));
-        expect(fn).toMatch(/detached: true/);
+        /**
+         * Detached on POSIX, where it means setsid() and is what buys the
+         * survival. NOT on Windows, where it means DETACHED_PROCESS — a child
+         * with no console at all, which powershell.exe cannot start in: it
+         * exited immediately with status 0 having run nothing. Windows does
+         * not kill children with their parent anyway, so the survival is free
+         * there.
+         */
+        expect(fn).toMatch(/process\.platform !== 'win32'/);
+        expect(fn).toMatch(/detached: detach/);
         expect(fn).toMatch(/child\.unref\(\)/);
         // output to a file, because no pipe reader will survive
         expect(fn).toMatch(/stdio: \['ignore', out, out\]/);
@@ -1877,9 +1886,9 @@ it('the updater speaks where the interface can hear it', () => {
         for (const f of ['update-joe.ps1', 'start-joe.ps1']) {
             const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', f), 'utf-8');
             expect(`${f}: ${/\[Console\]::Out\.WriteLine\(\$msg\)/.test(src) ? 'stdout' : 'nowhere'}`).toBe(`${f}: stdout`);
-            // The script's own file is a FALLBACK on a DIFFERENT file — used
-            // only when the first channel fails, never alongside it.
-            expect(src).toMatch(/if \(-not \$wrote -and \$env:JOE_UPDATE_LOG\)/);
+            // Its own file first (no inherited handle to depend on), standard
+            // output — a DIFFERENT file — as the fallback.
+            expect(src).toMatch(/if \(-not \$wrote\) \{/);
             // and the progress lines actually go through it
             expect(`${f}: ${(src.match(/^\s*Say /gm) || []).length > 20 ? 'logs' : 'silent'}`).toBe(`${f}: logs`);
         }
@@ -2204,9 +2213,9 @@ describe('the update button before, during and after', () => {
         for (const f of ['update-joe.ps1', 'start-joe.ps1']) {
             const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', f), 'utf-8');
             expect(`${f}: ${/\[Console\]::Out\.WriteLine\(\$msg\)/.test(src) ? 'stdout' : 'nowhere'}`).toBe(`${f}: stdout`);
+            // Add-Content's read-only share was the original trap.
             expect(src).not.toMatch(/Add-Content -LiteralPath \$env:JOE_UPDATE_LOG/);
-            // The file write survives only as a FALLBACK, on its own file.
-            expect(src).toMatch(/if \(-not \$wrote -and \$env:JOE_UPDATE_LOG\)/);
+            expect(src).toMatch(/if \(-not \$wrote\) \{/);
         }
     });
 

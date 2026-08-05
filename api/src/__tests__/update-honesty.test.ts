@@ -52,6 +52,15 @@ describe('a spawn that fails is a failure, not a silence', () => {
         // started, wrote nothing, and died.
         expect(E).toMatch(/windowsHide: options\.windowsHide === true/);
     });
+
+    it('…and on Windows it is not detached at all — a console host needs a console', () => {
+        // DETACHED_PROCESS leaves the child with no console, and powershell.exe
+        // cannot start its host without one: it exits immediately with status
+        // 0, having run nothing. Windows does not kill children with their
+        // parent, so the updater still outlives the server it is about to kill.
+        expect(E).toMatch(/process\.platform !== 'win32'/);
+        expect(E).toMatch(/detached: detach/);
+    });
 });
 
 describe('two channels, so neither can silence the other', () => {
@@ -71,12 +80,12 @@ describe('two channels, so neither can silence the other', () => {
         expect(S).toMatch(/for \(const f of \[UPDATE_LOG, UPDATE_OUT\]\)/);
     });
 
-    it('the script prefers stdout and falls back to its own file', () => {
+    it('the script writes its own file first and falls back to stdout', () => {
         for (const script of ['update-joe.ps1', 'start-joe.ps1']) {
             const s = read(script);
             expect(`${script}: ${/\$wrote = \$true/.test(s) ? 'has-fallback' : 'single-channel'}`)
                 .toBe(`${script}: has-fallback`);
-            expect(s).toMatch(/if \(-not \$wrote -and \$env:JOE_UPDATE_LOG\)/);
+            expect(s).toMatch(/if \(-not \$wrote\) \{/);
         }
     });
 });
@@ -85,11 +94,13 @@ describe('the updater speaks on a channel that cannot fail silently', () => {
     for (const script of ['update-joe.ps1', 'start-joe.ps1']) {
         it(`${script}: Say writes to standard output when Joe runs it`, () => {
             const s = read(script);
+            // Its OWN file is the primary channel: it depends on no handle
+            // inherited across a process boundary, no host and no window.
+            // Standard output — a different file — is the fallback, so the two
+            // writers that failed silently on Windows can never meet again.
+            expect(s).toMatch(/\[System\.IO\.File\]::Open\(\$env:JOE_UPDATE_LOG/);
+            expect(s).toMatch(/if \(-not \$wrote\) \{/);
             expect(s).toMatch(/\[Console\]::Out\.WriteLine\(\$msg\)/);
-            // Its own file survives only as a fallback — and it is now a
-            // DIFFERENT file from the one Joe streams into, so the two writers
-            // that failed silently on Windows can never meet again.
-            expect(s).toMatch(/if \(-not \$wrote -and \$env:JOE_UPDATE_LOG\)/);
         });
 
         it(`${script}: chcp is not called in a window that does not exist`, () => {

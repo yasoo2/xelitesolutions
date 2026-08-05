@@ -574,10 +574,30 @@ export class ExecutionEngine {
             catch { /* the log is a courtesy, never a failure */ }
         };
         try {
+            /**
+             * DETACHED EVERYWHERE EXCEPT WINDOWS — AND WINDOWS IS WHY.
+             *
+             * On POSIX `detached` means setsid(), which is exactly what lets an
+             * updater outlive the server it is about to kill. On Windows it
+             * means DETACHED_PROCESS: the child gets NO CONSOLE AT ALL. And
+             * powershell.exe is a console host — with no console its host
+             * cannot initialise, so it exits immediately, having run nothing,
+             * WITH STATUS 0.
+             *
+             * That is precisely what his machine reported: found, launched,
+             * not one byte written, gone — and no exit code note, because the
+             * status was «success». Windows does not kill children when a
+             * parent is terminated (no job object is involved), so on Windows
+             * the child outlives Joe without being detached at all. It simply
+             * inherits the console it needs.
+             */
+            const detach = options.detached !== undefined
+                ? options.detached
+                : process.platform !== 'win32';
             const child = spawn(file, args, {
                 cwd: options.cwd || this.getWorkspaceRoot(),
                 env: { ...process.env, ...options.env },
-                detached: true,
+                detached: detach,
                 // stdin closed: a detached updater must never sit waiting on a
                 // keypress nobody can give it.
                 stdio: ['ignore', out, out],
@@ -633,10 +653,20 @@ export class ExecutionEngine {
             const startedAt = Date.now();
             child.on('exit', (code: number | null, signal: string | null) => {
                 const secs = Math.round((Date.now() - startedAt) / 1000);
-                if (code === 0) return;   // a clean finish needs no remark
+                /**
+                 * EVEN A ZERO IS NEWS.
+                 *
+                 * The first version of this line skipped code 0 — «a clean
+                 * finish needs no remark» — and that silence cost a whole
+                 * round: the updater was exiting 0 in about a second, having
+                 * done nothing, and the log said only that it had ended. «It
+                 * succeeded immediately» is the most damning sentence there is
+                 * for a process that should take two minutes, and it must be
+                 * written down.
+                 */
                 note(`[!] ${path.basename(file)} انتهى بعد ${secs} ثانية`
                     + ` — رمز الخروج ${code === null ? `(إشارة ${signal})` : code}`
-                    + (code !== null && code !== 0 ? ` (0x${(code >>> 0).toString(16)})` : ''));
+                    + (code ? ` (0x${(code >>> 0).toString(16)})` : ''));
             });
             child.unref();
             return { ok: true, pid: child.pid, logFile: options.logFile };
