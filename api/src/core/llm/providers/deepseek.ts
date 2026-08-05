@@ -24,7 +24,7 @@ export class DeepSeekProvider {
             });
             console.info('[DeepSeek] Provider initialized with API key');
         } else {
-            console.warn('[DeepSeek] No API key found. Operating in FREE MODE via Pollinations Proxy.');
+            /* No key is not a fault here: DeepSeek answers through the free proxy. */
         }
     }
 

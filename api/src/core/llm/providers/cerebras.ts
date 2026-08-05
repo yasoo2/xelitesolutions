@@ -1,3 +1,4 @@
+import { noteMissingKey } from '../../../shared/startup-notes';
 /**
  * Cerebras Provider
  * One of the strongest FREE LLM providers (2026): ultra-fast inference on custom
@@ -32,7 +33,7 @@ export class CerebrasProvider {
             });
             console.info('[Cerebras] Provider initialized with API key (FREE, ultra-fast)');
         } else {
-            console.warn('[Cerebras] No API key found. Set CEREBRAS_API_KEY for a free, ultra-fast provider.');
+            noteMissingKey('Cerebras', 'CEREBRAS_API_KEY');
         }
     }
 

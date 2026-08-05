@@ -1686,7 +1686,10 @@ describe('the code view is fed by what builds actually emit', () => {
         // a dynamic import, inside the on-demand function — that is what moves
         // it out of the entry chunk
         const fn = setup.slice(setup.indexOf('export function ensureMonaco'));
-        expect(fn).toMatch(/import\('monaco-editor'\)/);
+        expect(fn).toMatch(/import\('monaco-editor\/esm\/vs\/editor\/editor\.api'\)/);
+        // the EDITOR, not the whole IDE: no language services means no 7 MB
+        // TypeScript worker and no hundred language chunks in the build log
+        expect(fn).not.toMatch(/monaco-editor\/esm\/vs\/language\//);
         expect(WEB('main.tsx')).not.toMatch(/^import '\.\/monaco-setup'/m);
         for (const f of ['PreviewPanel.tsx', 'CodeEditor.tsx', 'DiffViewer.tsx']) {
             expect(`${f}: ${WEB('components', f).includes('useMonacoReady') ? 'waits' : 'mounts blind'}`)

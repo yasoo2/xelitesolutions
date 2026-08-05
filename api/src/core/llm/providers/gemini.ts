@@ -1,3 +1,4 @@
+import { noteMissingKey } from '../../../shared/startup-notes';
 /**
  * Google Gemini Provider
  * Uses OpenAI-compatible API endpoint for Gemini models
@@ -30,7 +31,7 @@ export class GeminiProvider {
             });
             console.info('[Gemini] Provider initialized with API key');
         } else {
-            console.warn('[Gemini] No API key found. Set GOOGLE_API_KEY in environment.');
+            noteMissingKey('Gemini', 'GOOGLE_API_KEY');
         }
     }
 

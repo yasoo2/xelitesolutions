@@ -472,12 +472,33 @@ export class ExecutionEngine {
             if (!/[\s"&|<>^()%!]/.test(v)) return v;
             return `"${v.replace(/"/g, '""')}"`;
         };
-        const finalArgs = needsShell ? args.map(quoteForCmd) : args;
-        const child = spawn(cmd, finalArgs, {
-            cwd: rest.cwd || this.getWorkspaceRoot(),
-            env: { ...process.env, ...rest.env },
-            shell: rest.shell !== undefined ? rest.shell : needsShell,
-        });
+        /**
+         * WHY THE COMMAND LINE IS JOINED RATHER THAN PASSED AS ARGV.
+         *
+         * Node 22 prints on every boot:
+         *   [DEP0190] Passing args to a child process with shell option true
+         *   can lead to security vulnerabilities, as the arguments are not
+         *   escaped, only concatenated.
+         *
+         * It is right: with `shell: true` node concatenates argv with no
+         * quoting at all. We already quote each argument for cmd.exe above —
+         * that is what quoteForCmd exists for — so building the line ourselves
+         * both removes the warning from the user's log and leaves the quoting
+         * with the code that understands the shell it is quoting for.
+         */
+        const useShell = rest.shell !== undefined ? rest.shell : needsShell;
+        const line = useShell ? [quoteForCmd(cmd), ...args.map(quoteForCmd)].join(' ') : '';
+        const child = useShell
+            ? spawn(line, [], {
+                cwd: rest.cwd || this.getWorkspaceRoot(),
+                env: { ...process.env, ...rest.env },
+                shell: true,
+            })
+            : spawn(cmd, args, {
+                cwd: rest.cwd || this.getWorkspaceRoot(),
+                env: { ...process.env, ...rest.env },
+                shell: false,
+            });
         const feed = (stream: 'stdout' | 'stderr') => (b: Buffer) => {
             if (!onLine) return;
             String(b).split(/\r?\n/).filter(Boolean).forEach(l => { try { onLine(l, stream); } catch { /* observer errors never kill the child */ } });

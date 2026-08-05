@@ -1,6 +1,8 @@
 import dotenv from 'dotenv';
 
-dotenv.config();
+// quiet: dotenv 17 prints a banner and a rotating «tip:» on every boot. Joe's
+// startup log is read by a human looking for real information.
+dotenv.config({ quiet: true } as any);
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -19,9 +21,10 @@ const defaultMongoUri = isProd ? 'mongodb://mongo:27017/joe' : 'mongodb://localh
 const rawMongoUri = process.env.MONGO_URI || '';
 const mongoUri = (rawMongoUri && rawMongoUri.trim()) ? rawMongoUri.trim() : defaultMongoUri;
 
-console.info(`[Config] NODE_ENV: ${process.env.NODE_ENV}`);
-console.info(`[Config] MONGO_URI (Source): ${rawMongoUri ? 'ENV' : 'DEFAULT'}`);
-console.info(`[Config] Resolved MONGO_URI: ${mongoUri.replace(/:([^@/]+)@/, ':****@')}`); // Redact password if present
+// One line, not three: the same three facts, and a startup log a human reads
+// instead of scrolls. The password is still redacted, which was the only part
+// that ever mattered here.
+console.info(`[Config] env=${process.env.NODE_ENV || 'development'} · mongo=${rawMongoUri ? 'ENV' : 'DEFAULT'} → ${mongoUri.replace(/:([^@/]+)@/, ':****@')}`);
 
 if (/^mongodb\+srv:\/\//i.test(mongoUri)) {
   throw new Error('Mongo Atlas (mongodb+srv) is disabled for this deployment. Use MongoDB Docker (mongodb://...).');

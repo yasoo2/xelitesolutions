@@ -1,3 +1,4 @@
+import { noteMissingKey } from '../../../shared/startup-notes';
 /**
  * Mistral AI Provider
  * Strong FREE tier (2026): broad model access, ~1B tokens/month on the free plan,
@@ -32,7 +33,7 @@ export class MistralProvider {
             });
             console.info('[Mistral] Provider initialized with API key (FREE tier)');
         } else {
-            console.warn('[Mistral] No API key found. Set MISTRAL_API_KEY for a free provider.');
+            noteMissingKey('Mistral', 'MISTRAL_API_KEY');
         }
     }
 

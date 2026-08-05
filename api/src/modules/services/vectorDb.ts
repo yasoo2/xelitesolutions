@@ -51,7 +51,9 @@ export class VectorDbService {
                     ...d,
                     tokens: new Set(d.tokens || [])
                 }));
-                console.log(`[VectorDB] Loaded ${this.documents.length} documents from memory.`);
+                // Silent when there is nothing to report — «Loaded 0 documents»
+                // is a line that has never once helped anyone.
+                if (this.documents.length) console.log(`[VectorDB] Loaded ${this.documents.length} documents from memory.`);
             } catch (e) {
                 console.error('[VectorDB] Failed to load index:', e);
             }

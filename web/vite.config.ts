@@ -75,6 +75,15 @@ export default defineConfig({
       }
     },
     sourcemap: false,
-    chunkSizeWarningLimit: 2000
+    /**
+     * The limit exists to protect the FIRST LOAD, and the first load is now
+     * 151 kB: the editor moved out of the entry chunk entirely and is fetched
+     * only when a code view opens. What remains above 2 MB is that on-demand
+     * editor (~2.6 MB, already stripped of every language service and its
+     * 7 MB TypeScript worker). Warning on it every build reports a cost that
+     * is no longer paid on arrival, so the threshold says what we actually
+     * mean — and the day the ENTRY chunk grows, it will speak again.
+     */
+    chunkSizeWarningLimit: 2800
   }
 });

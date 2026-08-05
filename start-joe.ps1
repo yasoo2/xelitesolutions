@@ -7,6 +7,15 @@
 # ============================================================
 
 # --- الوضع المحلي أحادي المستخدم (بلا قاعدة بيانات وبلا تسجيل دخول) ---
+# مخرجات node بترميز UTF-8: بدون هذه الأسطر تصل العربية والرموز مشوّهة
+# إلى الطرفية («ظأبي╕ JSON Persistence mode»).
+try {
+    $null = chcp 65001
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+} catch { }
+$env:GIT_REDIRECT_STDERR = '2>&1'
+
 $env:PORT = "5002"
 $env:JWT_SECRET = "dev-secret-joe-local"
 $env:PERSISTENCE_MODE = "JSON"     # حفظ في ملفات JSON بدل MongoDB

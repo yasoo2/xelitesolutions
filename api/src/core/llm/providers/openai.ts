@@ -1,3 +1,4 @@
+import { noteMissingKey } from '../../../shared/startup-notes';
 import OpenAI from 'openai';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
@@ -14,7 +15,7 @@ export class OpenAIProvider {
             });
             console.info('[OpenAI] Provider initialized with API key');
         } else {
-            console.warn('[OpenAI] No valid API key found. Set OPENAI_API_KEY in environment.');
+            noteMissingKey('OpenAI', 'OPENAI_API_KEY');
         }
     }
 

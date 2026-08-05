@@ -130,8 +130,15 @@ async function main() {
         const biggestEntry = Math.max(0, ...entry);
         check('وحزمة الإقلاع لا تحمل المحرّر معها',
             biggestEntry > 0 && biggestEntry < 700_000, `${Math.round(biggestEntry / 1024)} كيلوبايت`);
+        // The chunk's NAME follows whichever monaco entry point we import — it
+        // was editor.main, it is editor.api now that the language services are
+        // gone. What must hold is that the editor is a chunk of its own and a
+        // large one, i.e. it is not sitting in the entry.
+        const assets = fs.readdirSync(path.join(distDir, 'assets'));
+        const editorChunk = assets.filter(f => /^editor\.api|^editor\.main/.test(f) && f.endsWith('.js'))
+            .map(f => fs.statSync(path.join(distDir, 'assets', f)).size);
         check('والمحرّر في حزمة مستقلة تُطلب عند الحاجة',
-            fs.readdirSync(path.join(distDir, 'assets')).some(f => /^editor\.main-.*\.js$/.test(f)));
+            editorChunk.some(sz => sz > 500_000), assets.filter(f => /editor/.test(f)).join(', '));
         const cdnCalls = requests.filter(u => /jsdelivr|unpkg|cdn\./i.test(u));
         check('ولم يُطلب من أي شبكة خارجية', cdnCalls.length === 0, JSON.stringify(cdnCalls.slice(0, 3)));
 
