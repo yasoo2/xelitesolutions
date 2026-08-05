@@ -117,10 +117,22 @@ async function refreshUpdateCheck(force = false): Promise<void> {
     }
 }
 
+// Warm on boot, so the very first question already has a real answer.
+setTimeout(() => { void refreshUpdateCheck(true); }, 3000).unref?.();
+
 router.get('/update/check', async (req, res) => {
     if (!isLoopbackRequest(req)) return res.status(403).json({ error: 'local_only' });
-    // Answer from cache immediately; refresh in the background for the next ask.
-    void refreshUpdateCheck(String(req.query.force || '') === '1');
+    /**
+     * A COLD CACHE MUST NOT ANSWER «NOTHING NEW».
+     *
+     * The first call used to return the empty cache and refresh in the
+     * background, so the button reported «up to date» before anyone had asked
+     * git anything — and since the interface only re-asked every ten minutes,
+     * the label never changed. «الاسم لم يتغير على الزر» was the visible end
+     * of that: a feature that could not be seen.
+     */
+    if (!lastCheck.at || String(req.query.force || '') === '1') await refreshUpdateCheck(true);
+    else void refreshUpdateCheck(false);
     res.json({
         ok: true,
         available: lastCheck.ok && lastCheck.behind > 0,

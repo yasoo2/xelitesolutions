@@ -221,6 +221,9 @@ if (-not (Test-Path $pwMarker)) {
 }
 
 # [2/3] بناء الـ API (تظهر الأخطاء إن وُجدت)
+if ($env:JOE_SKIP_BUILD -eq "1") {
+    Say "[2/3] لا تغييرات — أستخدم البناء الحالي." DarkGray
+} else {
 Say "`n[2/3] Building API..." Yellow
 npm run build
 if ($LASTEXITCODE -ne 0) {
@@ -228,6 +231,7 @@ if ($LASTEXITCODE -ne 0) {
     Pop-Location; Wait-ForUser "اضغط Enter للخروج"; exit 1
 }
 Say "[2/3] API built OK" Green
+}
 
 Pop-Location
 

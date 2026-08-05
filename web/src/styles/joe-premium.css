@@ -3673,89 +3673,6 @@ body:not(.rtl) .joe-user-info {
     .session-live-dot { animation: none; opacity: .95; }
 }
 
-/* ============================================================
-   تحديث جو من داخل جو — «بدي طريقة ما احطها ولا مرة»
-   طبقة هادئة تغطّي الشاشة أثناء التحديث وتعرض السجل الحقيقي،
-   لأن الخادم نفسه يُعاد بناؤه وليس هناك ما يُنقر عليه في تلك اللحظة.
-   ============================================================ */
-.joe-update-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(2, 6, 23, 0.72);
-    backdrop-filter: blur(6px);
-    padding: 24px;
-}
-
-.joe-update-card {
-    width: min(680px, 100%);
-    max-height: 80vh;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 20px;
-    border-radius: 16px;
-    background: var(--joe-surface, #0f172a);
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-    color: var(--joe-text, #e2e8f0);
-}
-
-.joe-update-head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 15px;
-    font-weight: 600;
-}
-
-.joe-update-head svg { color: #10b981; }
-
-.joe-update-note {
-    margin: 0;
-    font-size: 12.5px;
-    line-height: 1.7;
-    opacity: 0.72;
-}
-
-.joe-update-error {
-    margin: 0;
-    font-size: 12.5px;
-    color: #f87171;
-}
-
-.joe-update-log {
-    flex: 1;
-    min-height: 140px;
-    overflow: auto;
-    margin: 0;
-    padding: 12px;
-    border-radius: 10px;
-    background: rgba(15, 23, 42, 0.75);
-    border: 1px solid rgba(148, 163, 184, 0.14);
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 11.5px;
-    line-height: 1.65;
-    white-space: pre-wrap;
-    word-break: break-word;
-    text-align: left;
-}
-
-.joe-update-close {
-    align-self: flex-end;
-    padding: 7px 16px;
-    border-radius: 9px;
-    border: 1px solid rgba(148, 163, 184, 0.25);
-    background: transparent;
-    color: inherit;
-    font-size: 12.5px;
-    cursor: pointer;
-}
-
-.joe-update-close:hover { background: rgba(148, 163, 184, 0.12); }
 
 /* The elapsed clock in the update overlay — a number that moves. */
 .joe-update-clock { margin-inline-start: auto; font-size: 12px; opacity: .6; font-variant-numeric: tabular-nums; }
@@ -3774,3 +3691,103 @@ body:not(.rtl) .joe-user-info {
 .joe-update-steps li.done .joe-step-dot { background: #10b981; }
 .joe-update-steps li.now { opacity: 1; font-weight: 600; }
 .joe-update-steps li.now .joe-step-dot { background: #10b981; animation: joeSessionBreath 1.6s ease-in-out infinite; }
+
+/* ============================================================
+   تحديث جو — «تصميم القائمة بشع جداً»، فأُعيد بناؤها.
+   بطاقة واحدة تُقرأ من أعلى إلى أسفل: ماذا يجري الآن، كم قطعنا،
+   الخطوات بالاسم، ثم السجل الحقيقي في صندوق يُنسَخ بضغطة.
+   ============================================================ */
+.joe-update-overlay {
+    position: fixed; inset: 0; z-index: 9000;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: rgba(2, 6, 23, .62);
+    backdrop-filter: blur(10px);
+    animation: joeUpdIn .18s ease-out;
+}
+@keyframes joeUpdIn { from { opacity: 0 } to { opacity: 1 } }
+
+.joe-update-card {
+    width: min(620px, 100%); max-height: 86vh;
+    display: flex; flex-direction: column; gap: 16px;
+    padding: 22px;
+    border-radius: 20px;
+    background: var(--joe-surface, #0f172a);
+    border: 1px solid rgba(148, 163, 184, .18);
+    box-shadow: 0 30px 70px rgba(0, 0, 0, .5);
+    color: var(--joe-text, #e2e8f0);
+}
+.joe-update-card.is-failed { border-color: rgba(248, 113, 113, .4); }
+
+/* — what is happening, right now — */
+.joe-update-hero { display: flex; align-items: center; gap: 14px; }
+.joe-update-ring {
+    width: 44px; height: 44px; flex: none; border-radius: 14px;
+    display: grid; place-items: center; color: #10b981;
+    background: rgba(16, 185, 129, .12);
+    border: 1px solid rgba(16, 185, 129, .28);
+}
+.is-failed .joe-update-ring { color: #f87171; background: rgba(248,113,113,.12); border-color: rgba(248,113,113,.3); }
+.joe-update-titles { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.joe-update-titles b { font-size: 15px; font-weight: 650; }
+.joe-update-titles span { font-size: 12px; opacity: .6; }
+.joe-update-clock { margin-inline-start: auto; font-size: 12.5px; opacity: .55; font-variant-numeric: tabular-nums; }
+
+/* — how far along — */
+.joe-update-bar { height: 4px; border-radius: 999px; background: rgba(148,163,184,.16); overflow: hidden; }
+.joe-update-bar > span {
+    display: block; height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, #10b981, #34d399);
+    transition: width .5s ease;
+}
+
+/* — the steps, by name — */
+.joe-update-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.joe-update-steps li { display: flex; align-items: center; gap: 10px; font-size: 13px; opacity: .42; }
+.joe-update-steps li .joe-step-dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; flex: none; }
+.joe-update-steps li.done { opacity: .8; }
+.joe-update-steps li.done .joe-step-dot { background: #10b981; }
+.joe-update-steps li.now { opacity: 1; font-weight: 650; }
+.joe-update-steps li.now .joe-step-dot { background: #10b981; animation: joeSessionBreath 1.6s ease-in-out infinite; }
+
+.joe-update-note { margin: 0; font-size: 12px; line-height: 1.7; opacity: .6; }
+.joe-update-error { margin: 0; font-size: 12.5px; color: #f87171; }
+
+/* — the console: the same lines PowerShell used to show — */
+.joe-console {
+    display: flex; flex-direction: column; min-height: 0; flex: 1;
+    border-radius: 14px; overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, .16);
+    background: rgba(2, 6, 23, .55);
+}
+.joe-console-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    background: rgba(148, 163, 184, .07);
+    border-bottom: 1px solid rgba(148, 163, 184, .12);
+}
+.joe-console-title { font-size: 12px; font-weight: 600; opacity: .8; }
+.joe-console-count { font-size: 11px; opacity: .45; font-variant-numeric: tabular-nums; }
+.joe-console-copy {
+    margin-inline-start: auto;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 8px;
+    border: 1px solid rgba(148, 163, 184, .22);
+    background: transparent; color: inherit; cursor: pointer;
+    font-size: 11.5px; transition: background .15s ease, color .15s ease;
+}
+.joe-console-copy:hover:not(:disabled) { background: rgba(148, 163, 184, .14); }
+.joe-console-copy:disabled { opacity: .35; cursor: default; }
+.joe-console-copy svg { color: #10b981; }
+.joe-console-body {
+    margin: 0; padding: 12px 14px; overflow: auto; min-height: 150px; max-height: 34vh;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11.5px; line-height: 1.75;
+    white-space: pre-wrap; word-break: break-word; text-align: left;
+    color: #cbd5e1;
+}
+.joe-update-close {
+    align-self: flex-end; padding: 8px 18px; border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, .25);
+    background: transparent; color: inherit; font-size: 12.5px; cursor: pointer;
+}
+.joe-update-close:hover { background: rgba(148, 163, 184, .12); }

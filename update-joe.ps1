@@ -193,8 +193,25 @@ if ($stopped -gt 0) {
 
 # --- [4/4] البناء والتشغيل --------------------------------------------------
 # start-joe.ps1 يتكفّل ببناء الخادم والواجهة معاً ثم تشغيل جو.
-Say "[STAGE] building"
-Say "`n[4/4] بناء جو وتشغيله..." Yellow
+# ============================================================
+#  لا تُعِد بناء ما لم يتغيّر.
+#
+#  «بطيء جدا» — وكان محقاً: كل ضغطة على الزر تعيد بناء الخادم والواجهة
+#  حتى حين لا يجلب السحب أي جديد، أي دقيقتان مقابل لا شيء. حين يكون
+#  الهاش كما هو والبناء السابق موجوداً، نتخطّى البناء ونشغّل مباشرة.
+# ============================================================
+$skipBuild = ($before -eq $after) -and
+             (Test-Path (Join-Path $PSScriptRoot "api\dist\index.js")) -and
+             (Test-Path (Join-Path $PSScriptRoot "web\dist\index.html"))
+if ($skipBuild) {
+    $env:JOE_SKIP_BUILD = "1"
+    Say "[STAGE] building"
+    Say "`n[4/4] لا جديد — أتخطّى البناء وأشغّل جو مباشرة." Green
+} else {
+    Remove-Item Env:\JOE_SKIP_BUILD -ErrorAction SilentlyContinue
+    Say "[STAGE] building"
+    Say "`n[4/4] بناء جو وتشغيله..." Yellow
+}
 Say "      بعد ظهور رابط التشغيل، افتح المتصفح واضغط Ctrl+Shift+R" DarkGray
 Say "      (تحديث قوي حتى لا يعرض المتصفح واجهة قديمة من ذاكرته)`n" DarkGray
 

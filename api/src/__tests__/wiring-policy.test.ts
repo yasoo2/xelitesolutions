@@ -2184,13 +2184,49 @@ describe('the update button before, during and after', () => {
     it('and the mark is visible without opening anything', () => {
         const U = WEB('components', 'UpdateJoeItem.tsx');
         expect(U).toMatch(/export function useUpdateAvailable/);
-        expect(U).toMatch(/available \? 'تحديث متاح' : 'تحديث جو'/);
+        // three states now, not two — «متاح» / «محدَّث» / «لم نستطع السؤال»
+        expect(U).toMatch(/const label = available/);
         const H = WEB('components', 'JoeHeader.tsx');
         expect(H).toMatch(/useUpdateAvailable\(\)/);
         expect(H).toMatch(/updateAvailable \? <span className="joe-update-dot"/);
     });
 
-    it('and a running update names its four steps', () => {
+it('the row says which of the three states it is in', () => {
+        /**
+         * «الاسم لم يتغير على الزر» — and it could not. The first check hit a
+         * COLD cache that had never asked git, so it answered «nothing new»,
+         * and the interface then waited ten minutes before asking again. The
+         * label was frozen on the one word that means «we do not know».
+         */
+        const S = SRC('api', 'routes', 'system.ts');
+        expect(S).toMatch(/if \(!lastCheck\.at \|\| String\(req\.query\.force \|\| ''\) === '1'\) await refreshUpdateCheck\(true\)/);
+        const U = WEB('components', 'UpdateJoeItem.tsx');
+        expect(U).toMatch(/تحديث متاح/);
+        expect(U).toMatch(/جو محدَّث/);
+    });
+
+    it('and a running update is a card, not a wall of log', () => {
+        const U = WEB('components', 'UpdateJoeItem.tsx');
+        expect(U).toMatch(/joe-update-hero/);      // what is happening, first
+        expect(U).toMatch(/joe-update-bar/);       // how far along
+        expect(U).toMatch(/joe-update-steps/);     // the steps by name
+        // …and the PowerShell output he asked to keep, in its own box, copyable
+        expect(U).toMatch(/joe-console-body/);
+        expect(U).toMatch(/data-testid="copy-log"/);
+        expect(U).toMatch(/navigator\.clipboard\.writeText\(text\)/);
+        // a clipboard API that is unavailable must not cost him the button
+        expect(U).toMatch(/document\.execCommand\('copy'\)/);
+    });
+
+    it('and a pull that brought nothing does not rebuild for two minutes', () => {
+        const up = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'update-joe.ps1'), 'utf-8');
+        expect(up).toMatch(/\$skipBuild = \(\$before -eq \$after\)/);
+        expect(up).toMatch(/JOE_SKIP_BUILD/);
+        expect(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'start-joe.ps1'), 'utf-8'))
+            .toMatch(/\$env:JOE_SKIP_BUILD -eq "1"/);
+    });
+
+        it('and a running update names its four steps', () => {
         const U = WEB('components', 'UpdateJoeItem.tsx');
         expect(U).toMatch(/const STEPS = \[/);
         for (const s of ['pulling', 'stopping', 'building', 'starting']) expect(U).toContain(`'${s}'`);

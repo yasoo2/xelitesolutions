@@ -22,7 +22,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { DownloadCloud } from 'lucide-react';
+import { DownloadCloud, Copy, Check } from 'lucide-react';
 import { API_URL } from '../config';
 
 export type UpdatePhase = 'idle' | 'starting' | 'working' | 'restarting' | 'failed';
@@ -104,13 +104,13 @@ export function subscribeSelfUpdate(l: (s: UpdateState) => void): () => void {
  * server, cached there, and re-asked every ten minutes — so the marker means
  * «there really are commits you do not have», never «probably».
  */
-export function useUpdateAvailable(): { available: boolean; behind: number } {
-    const [state, setState] = useState({ available: false, behind: 0 });
+export function useUpdateAvailable(): { available: boolean; behind: number; known: boolean } {
+    const [state, setState] = useState({ available: false, behind: 0, known: false });
     useEffect(() => {
         let alive = true;
         const ask = () => fetch(`${apiBase()}/system/update/check`)
             .then(r => r.json())
-            .then(d => { if (alive) setState({ available: !!d?.available, behind: Number(d?.behind || 0) }); })
+            .then(d => { if (alive) setState({ available: !!d?.available, behind: Number(d?.behind || 0), known: !!d?.known }); })
             .catch(() => { /* offline, or an older server: no claim either way */ });
         ask();
         const id = window.setInterval(ask, 10 * 60 * 1000);
@@ -154,21 +154,30 @@ export function useSelfUpdateAllowed(): boolean {
 /** The menu row. Safe to unmount — it owns nothing. */
 export default function UpdateJoeItem({ onBefore }: { onBefore?: () => void }) {
     const allowed = useSelfUpdateAllowed();
-    const { available, behind } = useUpdateAvailable();
+    const { available, behind, known } = useUpdateAvailable();
     if (!allowed) return null;
+    /**
+     * THREE STATES, AND THE NAME SAYS WHICH ONE.
+     *
+     * «الاسم لم يتغير على الزر» — and it could not: the first answer came from
+     * a cold cache that had never asked git, so it always read «nothing new»,
+     * and the row said «تحديث جو» forever. The server now answers for real,
+     * and the row shows what it answered: something waiting, nothing waiting,
+     * or (offline) an honest «I could not ask».
+     */
+    const label = available ? `تحديث متاح${behind > 1 ? ` · ${behind}` : ''}`
+        : known ? 'جو محدَّث — أعد البناء'
+            : 'تحديث جو';
     return (
         <button
             className={`joe-user-menu-item${available ? ' has-update' : ''}`}
             role="menuitem"
             data-testid="update-joe"
             onClick={() => { onBefore?.(); void startSelfUpdate(); }}
-            title={available ? `${behind} تحديث جديد على GitHub` : undefined}
+            title={available ? `${behind} تحديث جديد على GitHub` : known ? 'نسختك على آخر إصدار' : undefined}
         >
             <DownloadCloud size={16} />
-            {/* The name tells the truth about the moment: there is something to
-                take, or there is not. «تحديث جو» on a machine that is already
-                current invited a two-minute rebuild for nothing. */}
-            <span>{available ? 'تحديث متاح' : 'تحديث جو'}</span>
+            <span>{label}</span>
             {available ? <span className="joe-update-dot" aria-label="تحديث جديد" /> : null}
         </button>
     );
@@ -186,32 +195,67 @@ export function SelfUpdateOverlay() {
         const id = window.setInterval(() => setNow(Date.now()), 1000);
         return () => window.clearInterval(id);
     }, [s.phase]);
+    const [copied, setCopied] = useState(false);
+    /**
+     * Copy the whole log. navigator.clipboard needs a secure context, and Joe
+     * runs on plain http://localhost — which browsers DO treat as secure, but
+     * a stray configuration should not cost him the button, so there is a
+     * textarea fallback that has worked since forever.
+     */
+    const copyLog = async () => {
+        const text = s.log || '';
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch { /* nothing more to try */ }
+            document.body.removeChild(ta);
+        }
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1600);
+    };
     const secs = s.startedAt ? Math.max(0, Math.round((now - s.startedAt) / 1000)) : 0;
     const elapsed = secs < 60 ? `${secs} ثانية` : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} دقيقة`;
     useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [s.log]);
 
     if (s.phase === 'idle') return null;
+
+    const done = STEPS.filter(st => stepClass(st.key, s) === 'done').length;
+    const current = STEPS.find(st => stepClass(st.key, s) === 'now');
+    const percent = s.phase === 'failed' ? 100 : Math.min(96, Math.round(((done + 0.5) / STEPS.length) * 100));
+
     return createPortal(
         <div className="joe-update-overlay" role="dialog" aria-live="polite" data-testid="update-overlay">
-            <div className="joe-update-card">
-                <div className="joe-update-head">
-                    <DownloadCloud size={18} />
-                    <span>
-                        {s.phase === 'starting' && 'يبدأ التحديث…'}
-                        {s.phase === 'working' && 'جارٍ تحديث جو…'}
-                        {s.phase === 'restarting' && 'جو يعود الآن…'}
-                        {s.phase === 'failed' && 'تعذّر التحديث'}
+            <div className={`joe-update-card${s.phase === 'failed' ? ' is-failed' : ''}`}>
+                {/* ONE THING TO READ FIRST: what is happening, right now. The
+                    old card led with a log box, so the eye landed on a
+                    scrolling terminal and learned nothing. */}
+                <div className="joe-update-hero">
+                    <span className="joe-update-ring" aria-hidden="true">
+                        <DownloadCloud size={20} />
                     </span>
-                    {/* A number that moves is the difference between «it is
-                        working» and «it is stuck» — the overlay used to show
-                        three motionless dots for two minutes. */}
-                    {s.phase !== 'failed' && s.startedAt ? <span className="joe-update-clock">{elapsed}</span> : null}
+                    <div className="joe-update-titles">
+                        <b>{s.phase === 'failed' ? 'تعذّر التحديث' : (current?.label || 'يبدأ التحديث')}</b>
+                        <span>
+                            {s.phase === 'failed' ? 'راجع التفاصيل بالأسفل'
+                                : s.phase === 'restarting' ? 'جو يعود الآن — ستُحدَّث الصفحة وحدها'
+                                    : `الخطوة ${Math.min(done + 1, STEPS.length)} من ${STEPS.length}`}
+                        </span>
+                    </div>
+                    {s.startedAt && s.phase !== 'failed' ? <span className="joe-update-clock">{elapsed}</span> : null}
                 </div>
+
                 {s.phase !== 'failed' && (
                     <>
-                        {/* The named step. Even when the log is thin, this says
-                            what is happening right now — «لا يوجد اي شيء يفيد
-                            المستخدم ان تحديث يجري الان» was about this. */}
+                        <div className="joe-update-bar" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
+                            <span style={{ width: `${percent}%` }} />
+                        </div>
                         <ol className="joe-update-steps">
                             {STEPS.map(st => (
                                 <li key={st.key} className={stepClass(st.key, s)}>
@@ -219,15 +263,40 @@ export function SelfUpdateOverlay() {
                                 </li>
                             ))}
                         </ol>
-                        <p className="joe-update-note">
-                            ملفاتك محفوظة تلقائياً — لا حاجة لنسخ شيء يدوياً. ستُحدَّث الصفحة وحدها عند انتهاء التحديث.
-                        </p>
+                        <p className="joe-update-note">ملفاتك محفوظة تلقائياً. لا تُغلق جو حتى تعود الصفحة وحدها.</p>
                     </>
                 )}
+
                 {s.error && <p className="joe-update-error">{s.error}</p>}
-                <pre className="joe-update-log" ref={logRef} dir={s.log ? 'ltr' : 'rtl'}>
-                    {s.log || 'بدأ التحديث — لم يصل أول سطر بعد. أوّل خطوة (سحب التحديث من GitHub) قد تأخذ لحظات.'}
-                </pre>
+
+                {/*
+                    THE SAME LINES HE USED TO WATCH IN POWERSHELL.
+                    «يجب ان تظهر اللوغز … في صندوق جميل ويوجد اشارة نسخ لكل
+                    الكود» — so: a real console, always visible, scrolling
+                    itself, and one button that takes the whole thing.
+                */}
+                <div className="joe-console">
+                    <div className="joe-console-bar">
+                        <span className="joe-console-title">سجل التحديث</span>
+                        {s.lines ? <span className="joe-console-count">{s.lines} سطر</span> : null}
+                        <button
+                            type="button"
+                            className="joe-console-copy"
+                            data-testid="copy-log"
+                            onClick={copyLog}
+                            title="نسخ السجل كاملاً"
+                            aria-label="نسخ السجل كاملاً"
+                            disabled={!s.log}
+                        >
+                            {copied ? <Check size={14} /> : <Copy size={14} />}
+                            <span>{copied ? 'نُسخ' : 'نسخ'}</span>
+                        </button>
+                    </div>
+                    <pre className="joe-console-body" ref={logRef} dir="ltr">
+                        {s.log || 'بدأ التحديث — لم يصل أول سطر بعد.'}
+                    </pre>
+                </div>
+
                 {s.phase === 'failed' && (
                     <button className="joe-update-close" onClick={() => set({ phase: 'idle' })}>إغلاق</button>
                 )}

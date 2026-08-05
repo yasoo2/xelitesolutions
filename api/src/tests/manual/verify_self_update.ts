@@ -165,7 +165,12 @@ async function main() {
         await page.waitForTimeout(500);
         const item = page.locator('[data-testid="update-joe"]');
         check('عنصر «تحديث جو» ظاهر في القائمة', await item.count() > 0 && await item.isVisible());
-        check('ونصّه عربي مفهوم، لا رمز', (await item.innerText().catch(() => '')).includes('تحديث جو'));
+        // The row now says WHICH of the three states it is in — «تحديث متاح»
+        // when git has something for you, «جو محدَّث» when it does not, and
+        // «تحديث جو» while we could not ask. Any of them is a real answer; the
+        // old assertion demanded the one that means «we do not know».
+        const rowText = await item.innerText().catch(() => '');
+        check('ونصّه يقول حالة حقيقية بالعربية', /تحديث متاح|جو محدَّث|تحديث جو/.test(rowText), rowText);
 
         await item.click();
         await page.waitForTimeout(1200);
@@ -179,6 +184,10 @@ async function main() {
         // «لا يوجد اي شيء يفيد المستخدم ان تحديث يجري الان» — the four named
         // steps answer that even when the log itself is thin.
         check('الخطوات الأربع معروضة بالاسم', await page.locator('.joe-update-steps li').count() === 4);
+        check('وشريط تقدّم يتقدّم', await page.locator('.joe-update-bar > span').count() === 1);
+        // «يجب ان تظهر اللوغز … في صندوق جميل ويوجد اشارة نسخ» — visible, not folded.
+        check('وصندوق السجل ظاهر لا مطوي', await page.locator('.joe-console-body').isVisible());
+        check('وفيه زر نسخ', await page.locator('[data-testid="copy-log"]').count() === 1);
         check('وواحدة منها معلَّمة كجارية الآن', await page.locator('.joe-update-steps li.now').count() === 1,
             await page.locator('.joe-update-steps').innerText().catch(() => ''));
         console.log('\n[5] والطبقة صادقة قبل وصول أول سطر، ثم تعرض مخرجات العملية نفسها');
@@ -194,11 +203,19 @@ async function main() {
         check('والعدّاد تقدّم فعلاً', t1 !== t2, `${t1} → ${t2}`);
 
         await page.waitForTimeout(3500);
-        const logText = await page.locator('.joe-update-log').innerText();
+        const logText = await page.locator('.joe-console-body').innerText();
         check('السطر الذي كتبه المحدِّث نفسه ظاهر', logText.includes(marker), logText.slice(0, 120));
         check('والتقدّم يتوالى سطراً بعد سطر', /خطوة 2 من التحديث/.test(logText), logText.slice(-160));
         const onDisk = fs.readFileSync(UPDATE_LOG, 'utf-8');
         check('وهو نفسه ما في ملف السجل على القرص', onDisk.includes(marker));
+
+        // The copy button must really put the log on the clipboard.
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+        await page.locator('[data-testid="copy-log"]').click();
+        await page.waitForTimeout(400);
+        check('وزر النسخ يؤكّد النسخ', /نُسخ/.test(await page.locator('[data-testid="copy-log"]').innerText()));
+        const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''));
+        check('والسجل كاملاً صار في الحافظة', String(clip).includes(marker), String(clip).slice(0, 80));
 
         console.log('\n[6] وحين يموت الخادم أثناء التحديث');
         // closeAllConnections أولاً: المتصفح يمسك اتصالاً حياً وسوكِتاً، و
@@ -206,7 +223,7 @@ async function main() {
         (srv as any).closeAllConnections?.();
         await new Promise<void>(r => { srv.close(() => r()); setTimeout(r, 3000); });
         await page.waitForTimeout(4000);
-        const head = await page.locator('.joe-update-head').innerText();
+        const head = await page.locator('.joe-update-titles').innerText();
         check('الطبقة تقول: جو يعود الآن', head.includes('يعود'), head);
 
         console.log('\n[7] وحين يعود، تُحدَّث الصفحة وحدها');
