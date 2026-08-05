@@ -17,6 +17,81 @@ import { executeTool } from '../../services/ToolService';
  * executes each phase with verification tasks, auto build checks after code
  * phases, and the repair-ticket/self-fix loop when a phase fails.
  */
+
+/**
+ * THE DETERMINISTIC SPINE OF A BUILD.
+ *
+ * Shaped like a planner result so everything downstream — the phase executor,
+ * the verification tasks, the repair ticket, the delivery report — is
+ * unchanged. What changes is who decides: the request, not a model.
+ *
+ *   system → its own data: an Express + SQLite server, then a React app wired
+ *            to it, then a check that both really exist
+ *   app    → screens and state: a React app and the same check
+ *   page   → one document: the page builder, which does that well
+ *
+ * Returns null when nothing deterministic fits, and the model plans as before.
+ */
+export function buildSpine(scope: 'page' | 'app' | 'system', request: string): any | null {
+    const phase = (n: number, name: string, tasks: any[], verification: any, deliverables: string[]) => ({
+        phaseNumber: n, name, description: name, tasks,
+        verificationTask: verification, deliverables, estimatedTime: '—',
+    });
+    const detect = { task: 'Verify what is really on disk', tool: 'project_detect', args: {} };
+
+    if (scope === 'system') {
+        return {
+            ok: true,
+            output: {
+                projectName: request.split('\n')[0].slice(0, 60) || 'project',
+                projectVibe: 'Deterministic engineering spine',
+                totalPhases: 3,
+                estimatedDuration: '—',
+                autoExecuted: false,
+                executionPolicy: 'planner_only',
+                deterministic: true,
+                phases: [
+                    phase(1, 'Backend & database', [
+                        { task: 'Build the API server and its database', tool: 'api_project', args: { request }, priority: 'high' },
+                    ], detect, ['A running Express + SQLite API']),
+                    phase(2, 'Application', [
+                        // built AFTER the API exists, so it is wired to a
+                        // backend that is really there rather than to a guess
+                        { task: 'Build the application and wire it to the API', tool: 'react_project', args: { request }, priority: 'high' },
+                    ], detect, ['A real React application, installed and built']),
+                    phase(3, 'Quality', [
+                        { task: 'Audit the built interface in a real browser', tool: 'browser_ui_audit', args: {}, priority: 'medium' },
+                    ], detect, ['A measured quality report']),
+                ],
+                dependencies: { phase2: ['phase1'], phase3: ['phase2'] },
+            },
+            logs: [],
+        };
+    }
+    if (scope === 'app') {
+        return {
+            ok: true,
+            output: {
+                projectName: request.split('\n')[0].slice(0, 60) || 'project',
+                projectVibe: 'Deterministic engineering spine',
+                totalPhases: 2, estimatedDuration: '—', autoExecuted: false,
+                executionPolicy: 'planner_only', deterministic: true,
+                phases: [
+                    phase(1, 'Application', [
+                        { task: 'Build the application', tool: 'react_project', args: { request }, priority: 'high' },
+                    ], detect, ['A real React application, installed and built']),
+                    phase(2, 'Quality', [
+                        { task: 'Audit the built interface in a real browser', tool: 'browser_ui_audit', args: {}, priority: 'medium' },
+                    ], detect, ['A measured quality report']),
+                ],
+                dependencies: { phase2: ['phase1'] },
+            },
+            logs: [],
+        };
+    }
+    return null;
+}
+
 export class ProjectPipelineTool implements ToolDefinition {
     name = 'project_pipeline';
     version = '1.0.0';
@@ -60,7 +135,31 @@ export class ProjectPipelineTool implements ToolDefinition {
         // 1 — Plan. The planner is planner-only by architecture law; it returns
         // phases and never executes anything itself.
         say('[pipeline] planning the project phases…');
-        const plannerResult = await executeTool('project_planner', { projectDescription: request }, context);
+
+        /**
+         * THE BIGGEST REQUEST MUST NOT GET THE WEAKEST ROUTE.
+         *
+         * «Build a world-class e-commerce platform similar to Shopify» came
+         * here, and here the plan was written by a language model that named
+         * whatever tools it imagined. Meanwhile the SAME request classifies as
+         * scope=system, and the deterministic route for scope=system builds a
+         * real Express + SQLite server and a real React application wired to
+         * it. The ambitious request got generic file-writing; the modest one
+         * got the real engines. That inversion is the defect.
+         *
+         * So the spine of the plan is now decided by the request itself, with
+         * no model involved — which also means it works when every provider is
+         * down. The model is still consulted for anything BEYOND the spine.
+         */
+        const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
+        const scope: 'page' | 'app' | 'system' = PlanningEngine.classifyBuildScope(request);
+        const spine = buildSpine(scope, request);
+        if (spine) {
+            say(`[pipeline] النطاق «${scope}» — أبني بالمحرّكات الحقيقية: ${spine.output.phases
+                .flatMap((p: any) => p.tasks.map((t: any) => t.tool)).join(' → ')}`);
+        }
+
+        const plannerResult = spine || await executeTool('project_planner', { projectDescription: request }, context);
         const phases = plannerResult?.output?.phases;
         if (!Array.isArray(phases) || phases.length === 0) {
             return { ok: false, error: plannerResult?.error || 'planner returned no phases', logs };

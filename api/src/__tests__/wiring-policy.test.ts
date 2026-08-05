@@ -1924,3 +1924,57 @@ describe('a plan may only name tools that exist', () => {
         expect(T).toMatch(/function registered\(\): Set<string>/);
     });
 });
+
+/**
+ * ANY PROMPT MUST PRODUCE A SYSTEM THAT RUNS.
+ *
+ * «اريد ان يبني نظام كامل شامل … واذا لم يستطع بناء اي جزء منه ان يذهب الى
+ * الانترنت وينزل اي اداة تساعده في البناء».
+ *
+ * Three wires, and the first one is the reason the other two mattered: the
+ * pipeline that handled the BIGGEST requests never called the engines that
+ * build real software.
+ */
+describe('the biggest request gets the strongest route', () => {
+    it('the pipeline decides its spine from the request, with no model', () => {
+        const P = SRC('modules', 'tools', 'definitions', 'ProjectPipelineTool.ts');
+        expect(P).toMatch(/classifyBuildScope\(request\)/);
+        expect(P).toMatch(/const plannerResult = spine \|\| await executeTool\('project_planner'/);
+        // …and the spine names the real engines, in the order that wires them
+        const spine = P.slice(P.indexOf('export function buildSpine'), P.indexOf('export class ProjectPipelineTool'));
+        expect(spine.indexOf("'api_project'")).toBeLessThan(spine.indexOf("'react_project'"));
+        expect(spine).toMatch(/browser_ui_audit/);
+    });
+
+    it('a store is a shop engine, and every engine it names is rendered', () => {
+        const T = SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        expect(T).toMatch(/export function fileShopAppJsx/);
+        expect(T).toMatch(/shop: \['src\/components\/ShopApp\.jsx', fileShopAppJsx/);
+        expect(T).toMatch(/shop: 'ShopApp'/);   // the shell imports and mounts it
+    });
+
+    it('the shop can take an order, or says it could not', () => {
+        const T = SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        const shop = T.slice(T.indexOf('export function fileShopAppJsx'));
+        expect(shop).toMatch(/apiSibling\(content\.api, 'orders'\)/);
+        // an order that reached nobody is never reported as received
+        expect(shop).toMatch(/لم يصل إلى المتجر بعد/);
+    });
+
+    it('a build that names its missing package fetches it and finishes', () => {
+        const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+        expect(R).toMatch(/missingPackagesFrom\(lastLog, declared\)/);
+        expect(R).toMatch(/npm', \['install', '--no-audit', '--no-fund', \.\.\.missing\]/);
+        // exactly one retry — a broken project must not loop
+        const heal = R.slice(R.indexOf('missingPackagesFrom'));
+        expect((heal.slice(0, 1400).match(/npm', \['run', 'build'\]/g) || []).length).toBe(1);
+        expect(R).toMatch(/the build stays unfinished, honestly/);
+    });
+
+    it('and it never installs our own files, builtins or URLs', () => {
+        const D = SRC('core', 'project', 'dependency-healer.ts');
+        expect(D).toMatch(/if \(s\.startsWith\('\.'\)/);
+        expect(D).toMatch(/BUILTINS\.has\(root\)/);
+        expect(D).toMatch(/have\.has\(root\)/);   // already declared = a different bug
+    });
+});

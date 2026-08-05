@@ -2411,11 +2411,15 @@ export class ReactProjectTool extends BaseTool {
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
             const { executionEngine } = require('../../../kernel/ExecutionEngine');
+            // The build's own words are kept — they are what names the missing
+            // package when a build stops one `npm install` short of finishing.
+            let lastLog = '';
             const run = async (cmd: string, args: string[], timeoutMs: number): Promise<number> => {
+                lastLog = '';
                 const h = executionEngine.runArgvStreaming(cmd, args, {
                     cwd: proj, timeout: timeoutMs,
                     env: { NO_COLOR: '1' },
-                    onLine: (l: string) => term(`  ${l.slice(0, 200)}`),
+                    onLine: (l: string) => { lastLog += l + '\n'; term(`  ${l.slice(0, 200)}`); },
                 });
                 const r = await h.done;
                 if (r.exitCode === null) return -1;                       // could not start (npm missing)
@@ -2429,9 +2433,48 @@ export class ReactProjectTool extends BaseTool {
             term(`npm install → ${installed ? 'OK' : `exit ${inst}`}`);
             if (installed) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🏗️ أبني نسخة الإنتاج (vite build)…' : '🏗️ Building for production (vite build)…');
-                const b = await run('npm', ['run', 'build'], 180_000);
+                let b = await run('npm', ['run', 'build'], 180_000);
                 built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
                 term(`vite build → ${built ? 'OK (dist/index.html)' : `exit ${b}`}`);
+
+                /**
+                 * A BUILD THAT NAMES ITS MISSING TOOL IS NOT A FAILED BUILD.
+                 *
+                 * «واذا لم يستطع بناء اي جزء منه ان يذهب الى الانترنت وينزل اي
+                 * اداة تساعده في البناء ويكمل البناء».
+                 *
+                 * Vite says «Failed to resolve import "recharts"» and stops.
+                 * That is a shopping list, not a verdict: fetch what it named,
+                 * build once more, and the system is delivered instead of
+                 * abandoned. Bounded on purpose — only names the bundler itself
+                 * reported, never one already declared, and exactly one retry,
+                 * so a genuinely broken project cannot loop.
+                 */
+                if (!built) {
+                    const { missingPackagesFrom } = require('../../../core/project/dependency-healer');
+                    let declared: string[] = [];
+                    try {
+                        const pkg = JSON.parse(fs.readFileSync(path.join(proj, 'package.json'), 'utf-8'));
+                        declared = [...Object.keys(pkg.dependencies || {}), ...Object.keys(pkg.devDependencies || {})];
+                    } catch { /* a project without a readable manifest has nothing declared */ }
+                    const missing: string[] = missingPackagesFrom(lastLog, declared);
+                    if (missing.length) {
+                        term(`build is missing ${missing.length} package(s): ${missing.join(', ')} — fetching them`);
+                        if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                            ? `📥 البناء ينقصه: ${missing.join('، ')} — أنزّلها وأكمل`
+                            : `📥 The build needs ${missing.join(', ')} — fetching and continuing`);
+                        const got = await run('npm', ['install', '--no-audit', '--no-fund', ...missing], 240_000);
+                        if (got === 0) {
+                            b = await run('npm', ['run', 'build'], 180_000);
+                            built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
+                            term(`vite build (after fetching ${missing.join(', ')}) → ${built ? 'OK' : `exit ${b}`}`);
+                        } else {
+                            // No network, or npm refused. Say which, and do not
+                            // pretend the build succeeded.
+                            term(`could not fetch ${missing.join(', ')} (npm exit ${got}) — the build stays unfinished, honestly`);
+                        }
+                    }
+                }
             }
         }
 

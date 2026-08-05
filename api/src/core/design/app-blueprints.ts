@@ -23,10 +23,10 @@
  *             search, filter, totals, CSV — driven by a per-domain schema
  */
 
-export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social';
+export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social' | 'shop';
 
 export type AppKind =
-    | 'maps' | 'chat' | 'weather' | 'social'
+    | 'maps' | 'chat' | 'weather' | 'social' | 'store'
     | 'tasks' | 'notes' | 'expenses' | 'inventory' | 'booking'
     | 'pos' | 'crm' | 'lms' | 'contacts' | 'habits' | 'generic';
 
@@ -83,6 +83,28 @@ const KIND_DETECTORS: Array<[AppKind, RegExp]> = [
     // messenger. Measured from the field request that produced a chat app.
     ['social', /تواصل\s*اجتماعي|شبكة\s*اجتماعية|منشورات|تغريد|متابعين|social\s*(media|network|platform)|newsfeed|news\s*feed|timeline|posts?\s*and\s*(comments?|likes?)|followers?/i],
     ['chat', /محادث|دردش|شات|رسائل\s*(فورية|نصية)?|مراسلة|\bchat\b|messaging|messenger|instant\s*messages/i],
+    /**
+     * A SHOP IS A SHOP, EVEN WHEN IT ASKS FOR EVERYTHING ELSE TOO.
+     *
+     * «Build a world-class e-commerce platform similar to Shopify … Inventory
+     * management … Analytics» used to detect as `inventory`, because a store
+     * manages stock and the inventory pattern was tested first. It produced a
+     * stock-list CRUD: no products, no cart, nothing anyone could buy from.
+     * The store is the SUBJECT; inventory is one of its features, so it is
+     * tested before inventory and before point-of-sale.
+     */
+    /**
+     * NARROW ON PURPOSE. «متجر عطور فاخر» is a BOUTIQUE'S WEBSITE — a
+     * presentation site with product cards, which the section builder already
+     * does beautifully, and turning it into a shop application regressed nine
+     * measured builds the moment a broad /متجر/ pattern landed here. What
+     * makes it an application is the TRANSACTION: a cart, a checkout, an
+     * online store, a marketplace, a platform — said outright.
+     */
+    // Arabic carries case endings: «متجراً إلكترونياً» is «متجر إلكتروني» to
+    // any reader and to no naive regex — the first live run of this engine
+    // detected null on the user's own sentence for exactly that reason.
+    ['store', /متجر\S{0,2}\s*(إلكترون|الكترون|أونلاين|اونلاين|رقم)|تجار[ةه]\S{0,2}\s*(إلكترون|الكترون)|منصّ?[ةه]\S{0,2}\s*(تجار|بيع|تسوّ?ق)|نظام\s*متجر|تطبيق\s*متجر|سلّ?[ةه]\s*(ال)?(مشتريات|شراء|تسوّ?ق)|عرب[ةه]\s*(ال)?تسوّ?ق|بواب[ةه]\s*دفع|e-?commerce|ecommerce|marketplace|shopify|woocommerce|magento|storefront|\bcheckout\b|shopping\s*cart|online\s*(store|shop|selling|marketplace)/i],
     ['pos', /نقاط\s*بيع|نقطة\s*بيع|كاشير|كاشيير|\bpos\b|point\s*of\s*sale|cash\s*register/i],
     ['booking', /حجوزات|حجز|مواعيد|موعد|عياد|مرضى|reservation|booking|appointment|clinic/i],
     ['inventory', /مخزون|جرد|مستودع|أصناف|اصناف|inventory|stock|warehouse/i],
@@ -255,6 +277,37 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
             ],
             deps: {},
             emptyHint: L('لا مصاريف مسجّلة — أضف أول عملية.', 'Nothing logged yet — add your first entry.'),
+        };
+
+        /**
+         * THE SHOP ENGINE — the one kind that must be able to SELL.
+         *
+         * Everything a records app has (rows, search, totals) plus the three
+         * things that make it a store and that no CRUD screen has: a product
+         * grid a customer reads, a cart that survives a reload, and a checkout
+         * that writes a REAL order to the server's /api/orders. Without those
+         * three it is an inventory list with prices on it.
+         */
+        case 'store': return {
+            kind, engine: 'shop',
+            title: L('المتجر', 'Store'),
+            lede: L('اعرض منتجاتك، واستقبل طلبات حقيقية من زبائنك.', 'Show your products and take real orders from your customers.'),
+            entityOne: L('منتج', 'product'), entityMany: L('المنتجات', 'Products'),
+            fields: [
+                f(['name', 'اسم المنتج', 'Product', 'text', undefined, ['required', 'primary']], isAr),
+                f(['price', 'السعر', 'Price', 'number', undefined, ['required']], isAr),
+                f(['category', 'التصنيف', 'Category', 'text'], isAr),
+                f(['description', 'الوصف', 'Description', 'textarea'], isAr),
+                f(['image', 'رابط الصورة', 'Image URL', 'text'], isAr),
+                f(['stock', 'المخزون', 'Stock', 'number'], isAr),
+            ],
+            metrics: [
+                { label: L('عدد المنتجات', 'Products'), kind: 'count' },
+                { label: L('قيمة المعروض', 'Catalogue value'), kind: 'sumProduct', field: 'stock', field2: 'price' },
+                { label: L('متوسط السعر', 'Average price'), kind: 'avg', field: 'price' },
+            ],
+            deps: {},
+            emptyHint: L('لا منتجات بعد — أضف أول منتج من لوحة التاجر.', 'No products yet — add the first one from the merchant panel.'),
         };
 
         case 'inventory': return {
@@ -505,6 +558,10 @@ const ENGINE_COVERS: Record<AppEngine, RegExp> = {
     weather: /weather|forecast|temperature|humidity|wind|طقس|توقّع|توقع|حرارة/i,
     social: /post|feed|timeline|like|comment|follow|profile|share|newsfeed|wall|منشور|منشورات|خيط|إعجاب|تعليق|متابع|ملف\s*شخصي|مشاركة/i,
     records: /list|record|crud|table|entry|entries|manage|track|inventory|booking|order|task|note|expense|customer|student|contact|report|search|filter|export|قائمة|سجل|إدارة|تتبع|حجز|طلب|مهمة|ملاحظة|مصروف|عميل|طالب|تقرير|بحث|تصدير/i,
+    // The shop covers the catalogue, the cart and the order — and deliberately
+    // NOT payment gateways, shipping carriers or multi-vendor payouts, so a
+    // «Shopify-like» request still gets an honest list of what was not built.
+    shop: /product|catalog(ue)?|cart|checkout|order|price|pricing|stock|inventory|category|categories|search|storefront|shop|store|منتج|منتجات|كتالوج|سلة|طلب|طلبات|سعر|أسعار|مخزون|تصنيف|تصنيفات|بحث|متجر/i,
 };
 
 /** Cross-cutting things the BACKEND covers when one was built alongside. */

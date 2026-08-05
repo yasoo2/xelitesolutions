@@ -69,6 +69,7 @@ ${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.fie
 
 const ENGINE_COMPONENT: Record<AppBlueprint['engine'], string> = {
     map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp', social: 'SocialApp',
+    shop: 'ShopApp',
 };
 
 export function fileAppShellJsx(bp: AppBlueprint, isAr: boolean): string {
@@ -1452,6 +1453,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         weather: ['src/components/WeatherApp.jsx', fileWeatherAppJsx(o.isArabic)],
         records: ['src/components/RecordsApp.jsx', fileRecordsAppJsx(o.isArabic)],
         social: ['src/components/SocialApp.jsx', fileSocialAppJsx(o.isArabic)],
+        shop: ['src/components/ShopApp.jsx', fileShopAppJsx(o.isArabic)],
     };
     const [enginePath, engineSrc] = engineFile[bp.engine];
     return {
@@ -1463,7 +1465,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         'src/content.js': fileAppContentJs(bp, o),
         'src/app/store.js': fileAppStoreJs(),
         [enginePath]: engineSrc,
-        'src/styles/app.css': fileAppCss(),
+        'src/styles/app.css': fileAppCss() + (bp.engine === 'shop' ? fileShopCss() : ''),
     };
 }
 
@@ -1784,5 +1786,300 @@ export default function SocialApp({ content }) {
     </div>
   );
 }
+`;
+}
+
+/* ── engine 6: shop — a storefront that can actually take an order ───────── */
+
+/**
+ * THE SIXTH ENGINE, and the answer to «هل انت فاقد للذاكره».
+ *
+ * The product grid and the cart WERE built — in the static page builder. A
+ * React store had neither, and «e-commerce platform» detected as `inventory`,
+ * so the one request that most obviously needed a shop got a stock list with
+ * prices on it: nothing to browse, nothing to add, nothing anyone could buy.
+ *
+ * Three things separate a shop from a records app, and all three are here:
+ *   1. a CATALOGUE a customer reads — cards with a photo, a price, a category
+ *      filter and a search box
+ *   2. a CART that survives a reload — quantities, a running total, a badge
+ *   3. a CHECKOUT that writes a REAL order to the server's /api/orders, so the
+ *      merchant reads it in Joe's inbox rather than in a toast that vanishes
+ *
+ * Plus the merchant's own side: add a product, and it goes to the catalogue
+ * endpoint so it is there for the next visitor, not just in this browser.
+ */
+export function fileShopAppJsx(isAr: boolean): string {
+    const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
+    return `import React, { useEffect, useMemo, useState } from 'react';
+import { createStore, uid, computeMetric, apiList, apiCreate, apiPost, apiSibling } from '../app/store.js';
+
+const money = (n) => {
+  const v = Number(n || 0);
+  return (Math.round(v * 100) / 100).toLocaleString();
+};
+
+export default function ShopApp({ content }) {
+  const catalogue = useMemo(() => createStore(content.storeKey + ':products'), [content.storeKey]);
+  const basket = useMemo(() => createStore(content.storeKey + ':cart'), [content.storeKey]);
+
+  const [products, setProducts] = useState(() => catalogue.read());
+  const [cart, setCart] = useState(() => basket.read());
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('');
+  const [open, setOpen] = useState(false);
+  const [merchant, setMerchant] = useState(false);
+  const [draft, setDraft] = useState({ name: '', price: '', category: '', description: '', image: '', stock: '' });
+  const [notice, setNotice] = useState('');
+  const [order, setOrder] = useState({ customer: '', phone: '', note: '' });
+  const [server, setServer] = useState(false);
+
+  useEffect(() => { catalogue.write(products); }, [products, catalogue]);
+  useEffect(() => { basket.write(cart); }, [cart, basket]);
+
+  // The catalogue lives on the server when this project has one. Failure is
+  // silent and local rows stay the truth — the badge never claims a server
+  // that did not answer.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const remote = await apiList(content.api);
+      if (!alive || !remote) return;
+      setServer(true);
+      setProducts(prev => {
+        const seen = new Set(prev.map(p => String(p.id)));
+        const extra = remote.filter(p => p && !seen.has(String(p.id)));
+        return extra.length ? [...extra.map(p => ({ ...p, id: String(p.id || uid()) })), ...prev] : prev;
+      });
+    })();
+    return () => { alive = false; };
+  }, [content.api]);
+
+  const categories = useMemo(() => {
+    const set = new Set(products.map(p => String(p.category || '').trim()).filter(Boolean));
+    return [...set];
+  }, [products]);
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return products.filter(p => {
+      if (category && String(p.category || '') !== category) return false;
+      if (!needle) return true;
+      return [p.name, p.description, p.category].some(v => String(v || '').toLowerCase().includes(needle));
+    });
+  }, [products, query, category]);
+
+  const lines = useMemo(
+    () => cart.map(c => ({ ...c, product: products.find(p => String(p.id) === String(c.id)) })).filter(l => l.product),
+    [cart, products],
+  );
+  const total = useMemo(() => lines.reduce((s, l) => s + Number(l.product.price || 0) * l.qty, 0), [lines]);
+  const count = useMemo(() => cart.reduce((s, c) => s + c.qty, 0), [cart]);
+
+  const add = (product) => {
+    setCart(prev => {
+      const found = prev.find(c => String(c.id) === String(product.id));
+      return found
+        ? prev.map(c => (String(c.id) === String(product.id) ? { ...c, qty: c.qty + 1 } : c))
+        : [...prev, { id: String(product.id), qty: 1 }];
+    });
+    setNotice(${T('أُضيف إلى السلة: ', 'Added to cart: ')} + product.name);
+    setTimeout(() => setNotice(''), 2200);
+  };
+  const setQty = (id, qty) => setCart(prev => (qty <= 0
+    ? prev.filter(c => String(c.id) !== String(id))
+    : prev.map(c => (String(c.id) === String(id) ? { ...c, qty } : c))));
+
+  /**
+   * A REAL ORDER, or an honest refusal.
+   *
+   * With a backend the order becomes a row the merchant reads. Without one it
+   * is kept in this browser and SAID SO — never a "thank you for your order"
+   * for an order that went nowhere.
+   */
+  const [placing, setPlacing] = useState(false);
+  const [placed, setPlaced] = useState('');
+  const checkout = async (e) => {
+    e.preventDefault();
+    if (!lines.length) return;
+    if (!String(order.customer || '').trim()) { setNotice(${T('اكتب اسمك أولاً.', 'Your name, first.')}); return; }
+    setPlacing(true);
+    const items = lines.map(l => l.product.name + ' ×' + l.qty).join('، ');
+    const endpoint = apiSibling(content.api, 'orders');
+    const sent = endpoint ? await apiPost(endpoint, '', {
+      item: items, qty: count, customer: order.customer, phone: order.phone,
+      note: (order.note || '') + ' — ' + ${T('الإجمالي: ', 'Total: ')} + money(total),
+    }) : null;
+    setPlacing(false);
+    if (sent) {
+      setPlaced(${T('وصل طلبك إلى المتجر. سنتواصل معك.', 'Your order reached the store. We will be in touch.')});
+      setCart([]);
+      setOrder({ customer: '', phone: '', note: '' });
+    } else {
+      setPlaced(${T('لا يوجد خادم متصل، فحُفظ الطلب في هذا المتصفح فقط — لم يصل إلى المتجر بعد.', 'No server is connected, so the order is saved in this browser only — it has not reached the store.')});
+    }
+    setTimeout(() => setPlaced(''), 6000);
+  };
+
+  const addProduct = (e) => {
+    e.preventDefault();
+    if (!String(draft.name || '').trim()) return;
+    const product = { ...draft, id: uid(), createdAt: new Date().toISOString() };
+    setProducts([product, ...products]);
+    apiCreate(content.api, product);
+    setDraft({ name: '', price: '', category: '', description: '', image: '', stock: '' });
+  };
+
+  return (
+    <div className="wrap">
+      <section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
+        {content.metrics.map((m, i) => (
+          <div className="stat" key={i}><b>{computeMetric(m, products)}</b><span>{m.label}</span></div>
+        ))}
+        <div className="stat"><b>{count}</b><span>{${T('في السلة', 'In cart')}}</span></div>
+      </section>
+
+      <section className="panel shop-bar">
+        <input
+          className="grow" value={query} onChange={e => setQuery(e.target.value)}
+          placeholder={${T('ابحث عن منتج…', 'Search products…')}} aria-label={${T('بحث', 'Search')}}
+        />
+        <select value={category} onChange={e => setCategory(e.target.value)} aria-label={${T('التصنيف', 'Category')}}>
+          <option value="">{${T('كل التصنيفات', 'All categories')}}</option>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <button type="button" className="primary" data-cart-open onClick={() => setOpen(true)}>
+          {${T('السلة', 'Cart')}} <span data-cart-count className="badge">{count}</span>
+        </button>
+        <button type="button" onClick={() => setMerchant(v => !v)}>
+          {merchant ? ${T('عرض المتجر', 'View store')} : ${T('لوحة التاجر', 'Merchant panel')}}
+        </button>
+        {server ? <span className="tag live">{${T('متصل بالخادم', 'Server connected')}}</span> : null}
+      </section>
+
+      {notice ? <p className="notice" role="status">{notice}</p> : null}
+
+      {merchant ? (
+        <section className="panel">
+          <h2>{${T('أضف منتجاً', 'Add a product')}}</h2>
+          <form className="grid-form" onSubmit={addProduct}>
+            {content.fields.map(f => (
+              <label key={f.key}>
+                <span>{f.label}</span>
+                {f.type === 'textarea'
+                  ? <textarea value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />
+                  : <input
+                      type={f.type === 'number' ? 'number' : 'text'}
+                      value={draft[f.key] || ''}
+                      onChange={e => setDraft({ ...draft, [f.key]: e.target.value })}
+                    />}
+              </label>
+            ))}
+            <button className="primary" type="submit">{${T('حفظ المنتج', 'Save product')}}</button>
+          </form>
+        </section>
+      ) : null}
+
+      {visible.length === 0 ? (
+        <p className="empty">{content.emptyHint}</p>
+      ) : (
+        <section className="products" aria-label={${T('المنتجات', 'Products')}}>
+          {visible.map(p => (
+            <article className="product" key={p.id}>
+              {p.image ? <img src={p.image} alt={p.name} loading="lazy" /> : <div className="product-noimg" aria-hidden="true" />}
+              <h3>{p.name}</h3>
+              {p.category ? <span className="tag">{p.category}</span> : null}
+              {p.description ? <p>{p.description}</p> : null}
+              <div className="product-foot">
+                <b>{money(p.price)}</b>
+                <button type="button" className="primary" onClick={() => add(p)}>
+                  {${T('أضف إلى السلة', 'Add to cart')}}
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
+
+      {open ? (
+        <aside className="cart-panel" role="dialog" aria-label={${T('السلة', 'Cart')}}>
+          <header>
+            <b>{${T('سلتك', 'Your cart')}}</b>
+            <button type="button" onClick={() => setOpen(false)} aria-label={${T('إغلاق', 'Close')}}>×</button>
+          </header>
+          {lines.length === 0 ? <p className="empty">{${T('السلة فارغة.', 'Your cart is empty.')}}</p> : (
+            <>
+              <ul className="cart-lines">
+                {lines.map(l => (
+                  <li key={l.id}>
+                    <span className="cart-name">{l.product.name}</span>
+                    <span className="qty">
+                      <button type="button" onClick={() => setQty(l.id, l.qty - 1)} aria-label={${T('إنقاص', 'Decrease')}}>−</button>
+                      <b>{l.qty}</b>
+                      <button type="button" onClick={() => setQty(l.id, l.qty + 1)} aria-label={${T('زيادة', 'Increase')}}>+</button>
+                    </span>
+                    <span>{money(Number(l.product.price || 0) * l.qty)}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="cart-total"><span>{${T('الإجمالي', 'Total')}}</span><b>{money(total)}</b></p>
+              <form className="grid-form" onSubmit={checkout}>
+                <label><span>{${T('الاسم', 'Name')}}</span>
+                  <input value={order.customer} onChange={e => setOrder({ ...order, customer: e.target.value })} required />
+                </label>
+                <label><span>{${T('الهاتف', 'Phone')}}</span>
+                  <input value={order.phone} onChange={e => setOrder({ ...order, phone: e.target.value })} />
+                </label>
+                <label><span>{${T('ملاحظة', 'Note')}}</span>
+                  <input value={order.note} onChange={e => setOrder({ ...order, note: e.target.value })} />
+                </label>
+                <button className="primary" type="submit" disabled={placing}>
+                  {placing ? ${T('يُرسل…', 'Sending…')} : ${T('أرسل الطلب', 'Place the order')}}
+                </button>
+              </form>
+            </>
+          )}
+          {placed ? <p className="notice" role="status">{placed}</p> : null}
+        </aside>
+      ) : null}
+    </div>
+  );
+}
+`;
+}
+
+/**
+ * The shop's own styling. The app CSS covers panels, forms and stats; a
+ * storefront additionally needs a product grid that reads like a catalogue and
+ * a cart that slides over the page instead of pushing it around.
+ */
+export function fileShopCss(): string {
+    return `
+.shop-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.shop-bar .grow { flex: 1 1 220px; }
+.badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 999px; background: rgba(255,255,255,.22); font-size: 12px; font-weight: 700; }
+.products { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); margin-top: 18px; }
+.product { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 16px;
+  background: var(--surface); border: 1px solid var(--line); }
+.product img, .product-noimg { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; background: var(--line); }
+.product h3 { margin: 0; font-size: 15px; }
+.product p { margin: 0; font-size: 13px; opacity: .75; line-height: 1.6; }
+.product-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.product-foot b { font-size: 16px; }
+.tag { align-self: flex-start; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--line); }
+.tag.live { background: rgba(16,185,129,.15); color: #059669; }
+.cart-panel { position: fixed; inset-block: 0; inset-inline-end: 0; width: min(400px, 92vw); z-index: 60;
+  display: flex; flex-direction: column; gap: 12px; padding: 18px; overflow: auto;
+  background: var(--surface); border-inline-start: 1px solid var(--line); box-shadow: 0 0 40px rgba(0,0,0,.25); }
+.cart-panel header { display: flex; align-items: center; justify-content: space-between; }
+.cart-panel header button { border: 0; background: transparent; font-size: 22px; cursor: pointer; color: inherit; }
+.cart-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.cart-lines li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; font-size: 14px; }
+.cart-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qty { display: inline-flex; align-items: center; gap: 8px; }
+.qty button { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--line); background: transparent; cursor: pointer; color: inherit; }
+.cart-total { display: flex; justify-content: space-between; font-size: 15px; padding-top: 10px; border-top: 1px solid var(--line); }
+.notice { margin: 10px 0 0; font-size: 13px; padding: 8px 12px; border-radius: 10px; background: rgba(16,185,129,.12); }
 `;
 }
