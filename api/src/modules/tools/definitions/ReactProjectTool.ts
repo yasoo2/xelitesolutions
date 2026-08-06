@@ -1720,7 +1720,7 @@ export default function Footer({ content }) {
         </div>
         {(content.navLinks || []).length ? (
           <nav className="footer-col">
-            <h4>{content.isArabic === false ? 'Sections' : 'الأقسام'}</h4>
+            <h3>{content.isArabic === false ? 'Sections' : 'الأقسام'}</h3>
             <ul className="footer-links">
               {content.navLinks.map((l) => (
                 <li key={l.href}><a href={l.href}>{l.label}</a></li>
@@ -1730,7 +1730,7 @@ export default function Footer({ content }) {
         ) : null}
         {c && (c.phone || c.email || c.address || c.hours) ? (
           <div className="footer-col">
-            <h4>{content.contactTitle}</h4>
+            <h3>{content.contactTitle}</h3>
             <ul className="footer-links">
               {c.phone ? <li><a href={'tel:' + c.phone}>{c.phone}</a></li> : null}
               {c.email ? <li><a href={'mailto:' + c.email}>{c.email}</a></li> : null}
@@ -1815,7 +1815,11 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .site-header{position:sticky;top:0;background:color-mix(in srgb,var(--surface) 84%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);z-index:10}
 .header-inner{display:flex;align-items:center;gap:20px;min-height:64px}
 .brand{font-weight:800;font-size:1.2rem;color:var(--text);text-decoration:none;margin-inline-end:auto;display:inline-flex;align-items:center;min-height:44px;min-width:44px}
-.nav-links{display:flex;gap:10px}
+/* Wrap, never overflow. Measured by the deep self-QA at 390px: the un-wrapped
+   strip pushed the whole page into horizontal scroll (mobile_overflow), which
+   is the one layout defect a visitor feels immediately on a phone. */
+.header-inner{flex-wrap:wrap}
+.nav-links{display:flex;gap:10px;flex-wrap:wrap;min-width:0}
 .nav-links a{color:var(--text);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;min-height:44px;padding:0 8px}
 .nav-links a:hover{color:var(--brand)}
 .theme-toggle{background:none;border:1px solid var(--border);border-radius:10px;min-width:44px;min-height:44px;cursor:pointer;color:var(--text)}
@@ -1824,13 +1828,13 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .hero::before{width:440px;height:440px;background:color-mix(in srgb,var(--brand) 55%,transparent);top:-150px;inset-inline-end:-130px;opacity:.5}
 .hero::after{width:360px;height:360px;background:color-mix(in srgb,var(--brand-dark) 55%,transparent);bottom:-170px;inset-inline-start:-110px;opacity:.35}
 .hero .wrap{position:relative;z-index:1}
-.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand);border:1px solid color-mix(in srgb,var(--brand) 30%,transparent);padding:6px 16px;border-radius:999px;font-weight:700;font-size:.92rem;margin-bottom:18px}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;background:color-mix(in srgb,var(--brand) 12%,transparent);color:color-mix(in srgb,var(--brand) 42%,var(--text));border:1px solid color-mix(in srgb,var(--brand) 30%,transparent);padding:6px 16px;border-radius:999px;font-weight:700;font-size:.92rem;margin-bottom:18px}
 .hero h1{font-size:clamp(2.2rem,5.5vw,3.8rem);line-height:1.18;margin:0 0 14px}
 .hero-ctas{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
 .btn-ghost{background:transparent;color:var(--brand);border:2px solid color-mix(in srgb,var(--brand) 45%,transparent)}
 .btn-ghost:hover{background:color-mix(in srgb,var(--brand) 10%,transparent)}
 .lede{color:var(--text-muted);font-size:1.15rem;max-width:60ch}
-.btn{display:inline-block;background:var(--brand);color:var(--on-brand);padding:12px 24px;border-radius:var(--f-btn-radius);border:0;text-decoration:none;font:inherit;font-weight:700;cursor:pointer;margin-top:14px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;background:var(--brand);color:var(--on-brand);padding:12px 24px;border-radius:var(--f-btn-radius);border:0;text-decoration:none;font:inherit;font-weight:700;cursor:pointer;margin-top:14px}
 .btn{transition:transform .25s ease,box-shadow .25s ease,background .25s ease}
 .btn:hover{background:var(--brand-dark);transform:translateY(-2px);box-shadow:0 10px 24px -10px color-mix(in srgb,var(--brand) 55%,transparent)}
 .grid-3{display:grid;gap:22px;grid-template-columns:1fr}
@@ -1846,7 +1850,10 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .band{background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:var(--on-brand)}
 .band h2{margin-top:0}
 form{display:grid;gap:12px;max-width:520px}
-input,textarea{padding:12px 14px;border:var(--f-border-w) solid var(--border);border-radius:var(--f-radius-sm);font:inherit;background:var(--surface);color:var(--text)}
+/* A thumb needs 44px. Measured at 390px by the deep self-QA: these fields
+   came out at 39px and were six of the six mobile_tap_targets findings —
+   the tables screen had already learned this; the site form had not. */
+input,textarea,select{padding:12px 14px;min-height:44px;border:var(--f-border-w) solid var(--border);border-radius:var(--f-radius-sm);font:inherit;background:var(--surface);color:var(--text)}
 textarea{min-height:120px}
 .form-note{background:color-mix(in srgb,#fff 18%,transparent);padding:14px;border-radius:12px}
 .site-footer{border-top:1px solid var(--border);padding-block:28px;color:var(--text-muted)}
@@ -1931,11 +1938,14 @@ main > .section:nth-of-type(even):not(.band):not(.stats-band):not(.cta-band){bac
 .shot:hover img{transform:scale(1.06)}
 .footer-cols{display:grid;gap:26px;grid-template-columns:1fr;padding-bottom:22px}
 @media(min-width:760px){.footer-cols{grid-template-columns:1.6fr 1fr 1fr}}
-.footer-col h4{margin:0 0 10px;font-size:1rem;color:var(--text)}
+.footer-col h3{margin:0 0 10px;font-size:1rem;color:var(--text)}
 .footer-brand{font-weight:800;font-size:1.15rem;color:var(--text);margin:0 0 6px}
 .footer-blurb{margin:0;max-width:38ch}
 .footer-links{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.footer-links a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;min-height:32px}
+/* 44px, not 32. Measured at 390px: «القائمة» 45x32, «حكايتنا» 42x32 — six
+   footer links a thumb keeps missing, and the only place in the build
+   still shipping a 32px target. */
+.footer-links a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;min-height:44px}
 .footer-links a:hover{color:var(--brand)}
 .footer-bottom{border-top:1px solid var(--border);padding-top:16px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center}
 /* The owner's way in: present, quiet, and never mistaken for a visitor CTA. */

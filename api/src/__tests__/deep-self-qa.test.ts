@@ -206,6 +206,77 @@ describe('the camera does not edit the page it is filming', () => {
     });
 });
 
+describe('and the first thing it measured was Joe’s own work', () => {
+    /**
+     * The hour the deep audit went live it put a build through three widths
+     * and found four defects that had shipped in every React site Joe has
+     * ever produced. They are fixed, and measured clean afterwards
+     * (verify_app_audit.ts, 11/11: «the clean build has no findings of its
+     * own — including at phone and tablet width, with its forms filled in»).
+     */
+    const R = () => read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+
+    it('the header no longer drags the whole page sideways on a phone', () => {
+        const r = R();
+        expect(r).toMatch(/\.header-inner\{flex-wrap:wrap\}/);
+        expect(r).toMatch(/\.nav-links\{display:flex;gap:10px;flex-wrap:wrap;min-width:0\}/);
+    });
+
+    it('the hero eyebrow clears AA instead of missing it by 0.1', () => {
+        // Measured 4.4:1 where 4.5 is required — brand ink on its own tint.
+        expect(R()).toMatch(/\.hero-eyebrow\{[^}]*color:color-mix\(in srgb,var\(--brand\) 42%,var\(--text\)\)/);
+    });
+
+    it('a thumb can hit the footer links and the form fields', () => {
+        const r = R();
+        expect(r).toMatch(/\.footer-links a\{[^}]*min-height:44px\}/);
+        expect(r).toMatch(/input,textarea,select\{padding:12px 14px;min-height:44px/);
+        expect(r).toMatch(/\.btn\{display:inline-flex;align-items:center;justify-content:center;min-height:44px/);
+    });
+
+    it('and the footer headings are one level down, not two', () => {
+        const r = R();
+        expect(r).toMatch(/<h3>\{content\.contactTitle\}<\/h3>/);
+        expect(r).toMatch(/\.footer-col h3\{/);
+        expect(r).not.toMatch(/<h4>\{content\.contactTitle\}<\/h4>/);
+    });
+});
+
+describe('a measurement it cannot make honestly, it does not make', () => {
+    it('text over a gradient or a photo is SKIPPED, never scored 1.05:1', () => {
+        /**
+         * Joe's own hero came back at «1.05:1 — طاولتك جاهزة الليلة», which was
+         * not a defect: the walk reads backgroundColor and the band's colour
+         * lives in backgroundImage, so white-on-gradient measured as
+         * white-on-white. A false blocker is the thing he was shown before and
+         * the thing this must never produce.
+         */
+        const u = read('core', 'quality', 'ui-inspection.ts');
+        expect(u).toMatch(/if \(st\.backgroundImage && st\.backgroundImage !== 'none'\) return null;/);
+        expect(u).toMatch(/if \(!bgc\) \{ skipped\+\+; continue; \}/);
+        expect(u).toMatch(/metrics\.contrastUnmeasurable = c\.skipped;/);
+    });
+
+    it('an inline link in a sentence is not a tap target', () => {
+        expect(read('core', 'quality', 'ui-inspection.ts'))
+            .toMatch(/if \(el\.tagName === 'A' && \/\^inline\$\/\.test\(getComputedStyle\(el\)\.display\)\) return;/);
+    });
+
+    it('and a form is exercised once per audit, not once per route', () => {
+        // A hash route does not rebuild the document: re-sending the SAME form
+        // changes nothing, and «nothing changed» is how this audit says «dead».
+        const b = read('core', 'quality', 'behaviour-audit.ts');
+        expect(b).toMatch(/if \(opts\.seenForms\.has\(key\)\) \{ metrics\.formsRepeated/);
+        expect(read('core', 'quality', 'app-audit.ts')).toMatch(/const seenForms = new Set<string>\(\);/);
+    });
+
+    it('and every finding names what it is talking about', () => {
+        const u = read('core', 'quality', 'ui-inspection.ts');
+        expect(u).toMatch(/mobileTinyNames\.slice\(0, 3\)/);
+        expect(u).toMatch(/sample: 'h' \+ levels\[i - 1\] \+ ' ← h' \+ levels\[i\]/);
+    });
+});
+
 describe('and the report counts what was actually done', () => {
     it('pages, controls, forms, fields and viewports — all measured', () => {
         const ar = formatAudit({

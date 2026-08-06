@@ -381,7 +381,8 @@ export async function auditBuiltApp(
          * a build that was supposed to take two.
          */
         const walkUntil = Date.now() + Math.max(45_000, timeoutMs * 2);
-        const probeOpts = () => ({ eyes, budgetMs: Math.max(6000, walkUntil - Date.now()) });
+        const seenForms = new Set<string>();
+        const probeOpts = () => ({ eyes, budgetMs: Math.max(6000, walkUntil - Date.now()), seenForms });
         try { mergeProbe(await probeControls(page, probeOpts()), '/'); } catch { /* the controls are what is under test */ }
 
         // Every other page the app offers, audited as a page in its own right.

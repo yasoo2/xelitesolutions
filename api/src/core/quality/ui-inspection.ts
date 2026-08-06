@@ -49,16 +49,33 @@ function measureContrast() {
     var hi = Math.max(L1, L2), lo = Math.min(L1, L2);
     return (hi + 0.05) / (lo + 0.05);
   };
-  var effBg = function (el: any): any[] {
+  /**
+   * The effective background — or NOTHING, when it cannot honestly be reduced
+   * to one colour.
+   *
+   * Measured on Joe's own build: white hero copy over a radial-gradient band
+   * came back as «1.05:1», because this walk reads backgroundColor only and
+   * the gradient lives in backgroundImage. Reporting a 1.05 that is really
+   * fine is exactly the false blocker he was shown before. A photo or a
+   * gradient behind text is unmeasurable from computed styles, so it is
+   * SKIPPED and said to be skipped, never scored.
+   */
+  var effBg = function (el: any): any[] | null {
     var node = el;
-    while (node) { var bg = parse(getComputedStyle(node).backgroundColor); if (bg[3] > 0) return bg; node = node.parentElement; }
+    while (node) {
+      var st = getComputedStyle(node);
+      if (st.backgroundImage && st.backgroundImage !== 'none') return null;
+      var bg = parse(st.backgroundColor);
+      if (bg[3] > 0) return bg;
+      node = node.parentElement;
+    }
     return [255, 255, 255, 1];
   };
   var visible = function (el: any) {
     var r = el.getBoundingClientRect(), st = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none' && parseFloat(st.opacity) > 0.1;
   };
-  var seen: any = {}, fails: any[] = [], checked = 0;
+  var seen: any = {}, fails: any[] = [], checked = 0, skipped = 0;
   var els: any[] = Array.prototype.slice.call(document.querySelectorAll('p,span,a,li,h1,h2,h3,h4,button,label,td,th,div'));
   for (var i = 0; i < els.length; i++) {
     var el = els[i];
@@ -68,7 +85,9 @@ function measureContrast() {
     checked++;
     var st = getComputedStyle(el);
     var fg = parse(st.color); if (fg[3] === 0) continue;
-    var rt = ratio(fg, effBg(el));
+    var bgc = effBg(el);
+    if (!bgc) { skipped++; continue; }          // a gradient or a photo: unmeasurable
+    var rt = ratio(fg, bgc);
     var size = parseFloat(st.fontSize) || 16, bold = (parseInt(st.fontWeight, 10) || 400) >= 700;
     var min = (size >= 24 || (size >= 18.66 && bold)) ? 3 : 4.5;
     if (rt < min) {
@@ -84,7 +103,7 @@ function measureContrast() {
     }
     if (checked > 400) break;
   }
-  return { checked: checked, fails: fails.slice(0, 12) };
+  return { checked: checked, skipped: skipped, fails: fails.slice(0, 12) };
 }
 
 /* ------------------------------------------------------------------- a11y  */
@@ -105,7 +124,9 @@ function measureA11y() {
   var hiddenFocus = q('[aria-hidden="true"] a, [aria-hidden="true"] button, [aria-hidden="true"] input').length;
   if (hiddenFocus) issues.push({ code: 'aria_hidden_focusable', severity: 'major', count: hiddenFocus });
   var levels = q('h1,h2,h3,h4,h5,h6').map(function (h: any) { return parseInt(h.tagName[1], 10); });
-  for (var i = 1; i < levels.length; i++) { if (levels[i] - levels[i - 1] > 1) { issues.push({ code: 'heading_skip', severity: 'minor' }); break; } }
+  for (var i = 1; i < levels.length; i++) {
+    if (levels[i] - levels[i - 1] > 1) { issues.push({ code: 'heading_skip', severity: 'minor', sample: 'h' + levels[i - 1] + ' ← h' + levels[i] }); break; }
+  }
   // An image with no alt is invisible to a screen reader and to a search engine.
   var noAlt: any[] = [], boxes: any[] = [];
   q('img').forEach(function (im: any) {
@@ -145,12 +166,26 @@ function measureResponsive(vw: number) {
       boxes.push({ x: Math.max(0, Math.round(r.left)), y: Math.round(r.top), width: Math.min(vw, Math.round(r.width)), height: Math.round(r.height), label: 'wider than the screen' });
     }
   });
-  var tiny = 0, tinyBoxes: any[] = [];
+  var tiny = 0, tinyBoxes: any[] = [], tinyNames: string[] = [];
   Array.prototype.slice.call(document.querySelectorAll('a[href],button,input,select,[role="button"]')).forEach(function (el: any) {
     var r = el.getBoundingClientRect();
+    /**
+     * A LINK INSIDE A SENTENCE IS NOT A TAP TARGET.
+     *
+     * WCAG's target-size rule exempts a control whose size is determined by
+     * the text it sits in — «اقرأ سياستنا هنا» is 19px tall because the line
+     * is, and padding it to 44px would break the paragraph. Counting those was
+     * the difference between a real finding and six of them.
+     */
+    if (el.tagName === 'A' && /^inline$/.test(getComputedStyle(el).display)) return;
     if (r.width > 0 && r.height > 0 && (r.width < 40 || r.height < 40)) {
       tiny++;
-      if (tinyBoxes.length < 8) tinyBoxes.push({ x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), label: 'tap target < 40px' });
+      if (tinyBoxes.length < 8) {
+        tinyBoxes.push({ x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), label: 'tap target < 40px' });
+        var cls = (el.getAttribute('class') || '').split(/\s+/).slice(0, 2).filter(Boolean).join('.');
+        var say = (el.textContent || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 20);
+        tinyNames.push(el.tagName.toLowerCase() + (cls ? '.' + cls : '') + (say ? ' «' + say + '»' : '') + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
+      }
     }
   });
   var smallFonts = 0;
@@ -160,7 +195,7 @@ function measureResponsive(vw: number) {
   });
   return {
     scrollW: scrollW, overflowX: scrollW > vw + 2, wide: wide, boxes: boxes,
-    tiny: tiny, tinyBoxes: tinyBoxes, smallFonts: smallFonts,
+    tiny: tiny, tinyBoxes: tinyBoxes, tinyNames: tinyNames, smallFonts: smallFonts,
     hasViewportMeta: !!document.querySelector('meta[name="viewport"]'),
   };
 }
@@ -184,6 +219,7 @@ export async function inspectUi(
     try {
         const c: any = await evalInPage(page, measureContrast);
         metrics.contrastChecked = c.checked;
+        metrics.contrastUnmeasurable = c.skipped;
         metrics.contrastFails = c.fails.length;
         if (c.fails.length) {
             metrics.contrastWorst = c.fails.map((f: any) => `${f.ratio}:1 «${f.text}»`).slice(0, 3);
@@ -210,7 +246,7 @@ export async function inspectUi(
             duplicate_ids: { ar: 'معرّفات id مكرّرة — تكسر الروابط و aria', en: 'Duplicate element ids — they break anchors and aria', hint: 'make every id unique' },
             positive_tabindex: { ar: 'tabindex موجب يفسد ترتيب التنقّل بلوحة المفاتيح', en: 'A positive tabindex breaks keyboard tab order', hint: 'use tabindex="0" and let the DOM order decide' },
             aria_hidden_focusable: { ar: 'عنصر تفاعلي داخل aria-hidden — يُركَّز عليه ولا يُقرأ', en: 'A focusable control inside aria-hidden — reachable but unreadable', hint: 'remove aria-hidden or take the control out of it' },
-            heading_skip: { ar: 'ترتيب العناوين يتخطّى مستوى (h1 ثم h3)', en: 'Heading levels skip a step (h1 then h3)', hint: 'go down one level at a time' },
+            heading_skip: { ar: 'ترتيب العناوين يتخطّى مستوى', en: 'Heading levels skip a step', hint: 'go down one level at a time' },
             images_without_alt: { ar: 'صور بلا نص بديل', en: 'Images with no alt text', hint: 'every <img> needs alt="" or a real description' },
             inputs_without_labels: { ar: 'حقول إدخال بلا اسم يقرؤه أحد', en: 'Form fields with no accessible name', hint: 'add a <label for> or an aria-label' },
         };
@@ -229,6 +265,7 @@ export async function inspectUi(
     const perWidth: Record<string, any> = {};
     let overflowAt = '';
     let mobileTiny = 0, mobileFonts = 0, hasViewportMeta = true;
+    let mobileTinyNames: string[] = [];
     for (const vp of VIEWPORTS) {
         try {
             await page.setViewportSize({ width: vp.w, height: vp.h });
@@ -243,7 +280,7 @@ export async function inspectUi(
                 await eyes?.mark(page, r.boxes, { note: `تمرير أفقي على ${vp.w}px`, holdMs: 1200 });
             }
             if (vp.name === 'mobile') {
-                mobileTiny = r.tiny; mobileFonts = r.smallFonts;
+                mobileTiny = r.tiny; mobileFonts = r.smallFonts; mobileTinyNames = r.tinyNames || [];
                 if (r.tinyBoxes?.length) await eyes?.mark(page, r.tinyBoxes, { note: 'أهداف لمس أصغر من 44px', tone: 'warn', holdMs: 1000 });
             }
         } catch { /* one width failing must not lose the others */ }
@@ -277,8 +314,9 @@ export async function inspectUi(
     if (mobileTiny > 0) {
         findings.push({
             code: 'mobile_tap_targets', severity: mobileTiny >= 6 ? 'major' : 'minor',
-            ar: `${mobileTiny} هدف لمس أصغر من 40px على الجوّال — يصعب ضغطه بالإصبع`,
-            en: `${mobileTiny} tap target(s) under 40px on a phone — hard to hit with a thumb`,
+            // Named, not counted: «6 targets» is a number nobody can act on.
+            ar: `${mobileTiny} هدف لمس أصغر من 40px على الجوّال — يصعب ضغطه بالإصبع${mobileTinyNames.length ? `: ${mobileTinyNames.slice(0, 3).join('، ')}` : ''}`,
+            en: `${mobileTiny} tap target(s) under 40px on a phone — hard to hit with a thumb${mobileTinyNames.length ? `: ${mobileTinyNames.slice(0, 3).join(', ')}` : ''}`,
             hint: 'min-height:44px and min-width:44px on buttons and nav links',
         });
     }
@@ -290,6 +328,7 @@ export async function inspectUi(
             hint: 'never go under 12px for body copy',
         });
     }
+    metrics.mobileTinyNames = mobileTinyNames;
     metrics.uiFindings = findings.length;
     return { findings, metrics };
 }

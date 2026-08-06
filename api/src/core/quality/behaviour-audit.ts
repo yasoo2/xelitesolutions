@@ -369,6 +369,16 @@ export interface ProbeOptions {
     budgetMs?: number;
     /** Fill and submit the forms for real. On by default. */
     fillForms?: boolean;
+    /**
+     * A form is exercised ONCE per audit, not once per route.
+     *
+     * A hash route does not rebuild the document, so the contact form on page
+     * two is the SAME form — already filled, already submitted. Re-sending it
+     * changes nothing, and «nothing changed» is how this audit says «dead». The
+     * caller passes one set for the whole walk and the same form is never
+     * accused twice.
+     */
+    seenForms?: Set<string>;
     onProgress?: (m: string) => void;
 }
 
@@ -529,7 +539,9 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
     let filled: FormResult[] = [];
     if (opts?.fillForms !== false) {
         try {
-            const r = await probeForms(page, { eyes, budgetMs: Math.max(6000, deadline - Date.now()) });
+            const r = await probeForms(page, {
+                eyes, budgetMs: Math.max(6000, deadline - Date.now()), seenForms: opts?.seenForms,
+            });
             filled = r.forms;
             Object.assign(metrics, r.metrics);
         } catch { /* a form that fights back is a finding, not a crash */ }
@@ -574,7 +586,7 @@ function valueFor(type: string, tag: string): string {
  */
 export async function probeForms(
     page: any,
-    opts?: { eyes?: AuditEyes; budgetMs?: number; maxForms?: number },
+    opts?: { eyes?: AuditEyes; budgetMs?: number; maxForms?: number; seenForms?: Set<string> },
 ): Promise<{ forms: FormResult[]; metrics: Record<string, any> }> {
     const eyes = opts?.eyes || new AuditEyes({});
     const deadline = Date.now() + Math.max(4000, opts?.budgetMs ?? 30_000);
@@ -594,6 +606,13 @@ export async function probeForms(
 
     for (const f of forms) {
         if (Date.now() > deadline) break;
+        // Its identity, not its position: the same form on a second route is
+        // the same form, and it has already been filled in and sent.
+        const key = `${f.label}|${f.fields.map((x: any) => x.type).join(',')}`;
+        if (opts?.seenForms) {
+            if (opts.seenForms.has(key)) { metrics.formsRepeated = (metrics.formsRepeated || 0) + 1; continue; }
+            opts.seenForms.add(key);
+        }
         let filledCount = 0;
         await eyes.say(page, `تعبئة النموذج: ${f.label}`);
         for (const fld of f.fields) {
