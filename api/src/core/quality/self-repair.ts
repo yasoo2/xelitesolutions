@@ -102,12 +102,16 @@ export async function repairAndRebuild(
         return { changed, refused, repairs: plan.repairs, built: true, reverted: false };
     }
 
+    // Through the doctor: if this rebuild fails for a reason that has nothing
+    // to do with the repair — a package the project was always missing — it is
+    // healed and retried rather than costing the user a correct repair.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { executionEngine } = require('../../kernel/ExecutionEngine');
-    const r = await executionEngine.runArgvStreaming('npm', ['run', 'build'], {
-        cwd: dir, timeout: opts.timeoutMs ?? 240_000, env: { NO_COLOR: '1' },
+    const { runDoctored } = require('./log-doctor');
+    const r = await runDoctored('npm', ['run', 'build'], {
+        cwd: dir, timeoutMs: opts.timeoutMs ?? 240_000,
         onLine: (l: string) => say(`  ${l.slice(0, 200)}`),
-    }).done;
+        onNote: say,
+    });
 
     if (r.ok === true) return { changed, refused, repairs: plan.repairs, built: true, reverted: false };
 

@@ -2408,6 +2408,7 @@ export class ReactProjectTool extends BaseTool {
 
         // ── prove it compiles: npm install + vite build, streamed live ──────
         let installed = false, built = false, npmMissing = false;
+        let buildDiagnosis: any = null;
         if (!input?.skipInstall) {
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
@@ -2452,27 +2453,30 @@ export class ReactProjectTool extends BaseTool {
                  * so a genuinely broken project cannot loop.
                  */
                 if (!built) {
-                    const { missingPackagesFrom } = require('../../../core/project/dependency-healer');
-                    let declared: string[] = [];
-                    try {
-                        const pkg = JSON.parse(fs.readFileSync(path.join(proj, 'package.json'), 'utf-8'));
-                        declared = [...Object.keys(pkg.dependencies || {}), ...Object.keys(pkg.devDependencies || {})];
-                    } catch { /* a project without a readable manifest has nothing declared */ }
-                    const missing: string[] = missingPackagesFrom(lastLog, declared);
-                    if (missing.length) {
-                        term(`build is missing ${missing.length} package(s): ${missing.join(', ')} — fetching them`);
-                        if (sessionId) broadcastThinkingDetail(sessionId, isAr
-                            ? `📥 البناء ينقصه: ${missing.join('، ')} — أنزّلها وأكمل`
-                            : `📥 The build needs ${missing.join(', ')} — fetching and continuing`);
-                        const got = await run('npm', ['install', '--no-audit', '--no-fund', ...missing], 240_000);
-                        if (got === 0) {
+                    // The diagnosis is no longer limited to missing packages:
+                    // the log doctor reads the build's own words, names what is
+                    // wrong, applies the one remedy that fits, and retries once.
+                    // A cause it cannot fix safely comes back NAMED — in Arabic
+                    // — instead of as a wall of English for him to decode.
+                    const { diagnose, applyRemedy } = require('../../../core/quality/log-doctor');
+                    const d = diagnose({ exitCode: b, log: lastLog, cwd: proj, timedOut: b === -2 });
+                    if (d) {
+                        term(`build diagnosis: ${d.id} (${d.fixable ? 'fixable' : 'needs a human'})`);
+                        if (sessionId) broadcastThinkingDetail(sessionId, `🩺 ${d.ar}`);
+                        buildDiagnosis = d;
+                    }
+                    if (d?.fixable) {
+                        const remedy = await applyRemedy(d, proj, async (c: string, a: string[], t: number) => ({
+                            exitCode: await run(c, a, t),
+                        }));
+                        term(`build remedy: ${remedy.note}`);
+                        if (remedy.applied) {
                             b = await run('npm', ['run', 'build'], 180_000);
                             built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
-                            term(`vite build (after fetching ${missing.join(', ')}) → ${built ? 'OK' : `exit ${b}`}`);
-                        } else {
-                            // No network, or npm refused. Say which, and do not
-                            // pretend the build succeeded.
-                            term(`could not fetch ${missing.join(', ')} (npm exit ${got}) — the build stays unfinished, honestly`);
+                            term(`vite build (after: ${remedy.note}) → ${built ? 'OK' : `exit ${b}`}`);
+                            if (built) buildDiagnosis = { ...d, healed: true, note: remedy.note };
+                        } else if (sessionId) {
+                            broadcastThinkingDetail(sessionId, `⚠️ ${remedy.note}`);
                         }
                     }
                 }
@@ -2680,7 +2684,9 @@ ${audit ? `${require('../../../core/quality/app-audit').formatAudit(audit, true)
 📂 المسار: ${proj}
 ${fileList}
 
-${built ? '✅ npm install + vite build نجحا — نسخة الإنتاج جاهزة في dist/ والمعاينة الحية فُتحت تلقائياً.' : npmMissing ? '⚠️ npm غير متاح هنا — المشروع جاهز، ثبّته بنفسك: npm install ثم npm run dev.' : installed ? '✅ الحزم مثبتة.' : input?.skipInstall ? 'ℹ️ تخطيت التثبيت كما طُلب.' : '⚠️ التثبيت لم يكتمل — جرّب: npm install داخل المجلد.'}
+${buildDiagnosis ? (buildDiagnosis.healed
+                ? `🩺 تعثّر البناء أول مرة، فشخّصتُه وعالجتُه: ${buildDiagnosis.note} — ثم اكتمل.\n`
+                : `🩺 البناء تعثّر، والسبب بالضبط: ${buildDiagnosis.ar}\n`) : ''}${built ? '✅ npm install + vite build نجحا — نسخة الإنتاج جاهزة في dist/ والمعاينة الحية فُتحت تلقائياً.' : npmMissing ? '⚠️ npm غير متاح هنا — المشروع جاهز، ثبّته بنفسك: npm install ثم npm run dev.' : installed ? '✅ الحزم مثبتة.' : input?.skipInstall ? 'ℹ️ تخطيت التثبيت كما طُلب.' : '⚠️ التثبيت لم يكتمل — جرّب: npm install داخل المجلد.'}
 
 🧭 خطوات تالية — أرسل أيّ سطر كما هو:
    • «عدّل المحتوى: …» → تعديل جراحي متحقق بالبناء (والمعاينة تتحدث فوراً)

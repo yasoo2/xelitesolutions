@@ -2036,13 +2036,21 @@ describe('the biggest request gets the strongest route', () => {
     });
 
     it('a build that names its missing package fetches it and finishes', () => {
+        // The healing generalised: the build no longer knows only about missing
+        // packages, it hands its log to the doctor, which names every cause it
+        // can prove and acts on the ones it can act on safely.
         const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
-        expect(R).toMatch(/missingPackagesFrom\(lastLog, declared\)/);
-        expect(R).toMatch(/npm', \['install', '--no-audit', '--no-fund', \.\.\.missing\]/);
+        expect(R).toMatch(/const \{ diagnose, applyRemedy \} = require\('\.\.\/\.\.\/\.\.\/core\/quality\/log-doctor'\)/);
+        expect(R).toMatch(/const d = diagnose\(\{ exitCode: b, log: lastLog, cwd: proj/);
+        expect(R).toMatch(/if \(d\?\.fixable\)/);
+        const D = SRC('core', 'quality', 'log-doctor.ts');
+        expect(D).toMatch(/missingPackagesFrom\(log, declared\)/);
+        expect(D).toMatch(/'npm', \['install', '--no-audit', '--no-fund', \.\.\.pkgs\]/);
         // exactly one retry — a broken project must not loop
-        const heal = R.slice(R.indexOf('missingPackagesFrom'));
+        const heal = R.slice(R.indexOf('const d = diagnose('));
         expect((heal.slice(0, 1400).match(/npm', \['run', 'build'\]/g) || []).length).toBe(1);
-        expect(R).toMatch(/the build stays unfinished, honestly/);
+        // and a cause with no safe remedy is stated, not papered over
+        expect(R).toMatch(/البناء تعثّر، والسبب بالضبط/);
     });
 
     it('and it never installs our own files, builtins or URLs', () => {
