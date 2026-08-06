@@ -8,11 +8,19 @@
  *   · it was sized for a page, not for a chat;
  *   · and it overlapped its container's border on both sides.
  *
- * Measured here in a real browser, against the real chat container:
+ * The first version of this proof measured the card against its IMMEDIATE
+ * PARENT only — and passed, while his screenshot still showed the card crossing
+ * the chat's border. It could not have seen the fault: the overflow was BORN in
+ * that parent (a `width: 100%` column sharing a flex row with a 30px avatar), so
+ * card-vs-parent was always 0. The measurement now walks the WHOLE chain up to
+ * the viewport and names whichever element crosses its own container.
+ *
+ * Measured in a real browser:
  *
  *   [1] with steps arriving, the card is OPEN — the details are visible
  *   [2] it never exceeds the width it was given
- *   [3] it does not cross its container's edges
+ *   [3] no element between the card and the viewport crosses its container,
+ *       and the card stays inside the CHAT's borders
  *   [4] and a long goal line is truncated instead of stretching the card
  *
  * Run:  JWT_SECRET=x npx tsx src/tests/manual/verify_neural_card_fits.ts
@@ -91,6 +99,26 @@ async function main() {
         const c = card.getBoundingClientRect();
         const p = parent.getBoundingClientRect();
         const cs = getComputedStyle(card);
+        const name = (el: HTMLElement) =>
+            `${el.tagName.toLowerCase()}${(el.className || '').toString().trim() ? '.' + (el.className || '').toString().trim().split(/\s+/).join('.') : ''}`;
+
+        // Every element from the card up to <body>, measured against ITS OWN
+        // container. One offender anywhere on this chain is what he sees.
+        const chain: any[] = [];
+        let el: HTMLElement | null = card;
+        while (el && el !== document.body && chain.length < 20) {
+            const par = el.parentElement as HTMLElement | null;
+            if (!par) break;
+            const r = el.getBoundingClientRect(), pr = par.getBoundingClientRect();
+            chain.push({
+                el: name(el), parent: name(par),
+                over: Math.max(Math.round(pr.left - r.left), Math.round(r.right - pr.right)),
+                w: Math.round(r.width), pw: Math.round(pr.width),
+            });
+            el = par;
+        }
+        const chat = document.querySelector('.joe-chat-messages') as HTMLElement | null;
+        const cr = chat?.getBoundingClientRect();
         return {
             open: !!card.querySelector('.jt-timeline'),
             steps: card.querySelectorAll('.jt-step').length,
@@ -100,6 +128,19 @@ async function main() {
             scrollW: card.scrollWidth, clientW: card.clientWidth,
             headline: (card.querySelector('.nc-line') as HTMLElement | null)?.getBoundingClientRect().width || 0,
             bodyOverflowX: document.body.scrollWidth - document.body.clientWidth,
+            chain,
+            worst: chain.reduce((a, b) => (b.over > a.over ? b : a), { el: '—', over: -9999 }),
+            chatW: cr ? Math.round(cr.width) : 0,
+            outOfChatStart: cr ? Math.round(cr.left - c.left) : 0,
+            outOfChatEnd: cr ? Math.round(c.right - cr.right) : 0,
+            // The card should end exactly where a normal reply ends — it lives
+            // in the SAME column, not in a wider one of its own.
+            rowGapEnd: (() => {
+                const row = card.closest('.joe-message') as HTMLElement | null;
+                if (!row) return 0;
+                const rr = row.getBoundingClientRect();
+                return Math.round(Math.abs(rr.right - c.right));
+            })(),
         };
     });
     check('البطاقة ظاهرة', !!m, 'لا بطاقة');
@@ -113,13 +154,22 @@ async function main() {
     check('وbox-sizing يمنع الحشوة من دفعها', m.boxSizing === 'border-box', m.boxSizing);
     check('ولا تفيض أفقياً داخل نفسها', m.scrollW <= m.clientW + 1, `${m.scrollW} ≤ ${m.clientW}`);
 
-    console.log('\n[3] ولا تتداخل مع الحدود');
+    console.log('\n[3] ولا تتداخل مع الحدود — لا هي ولا أيّ حاوية فوقها');
+    for (const link of m.chain) console.log(`   ↳ ${link.el} داخل ${link.parent}: ${link.w}px/${link.pw}px — تجاوز ${link.over}px`);
     check('لا تخرج من الحافة الأولى', m.overflowStart <= 1, `${m.overflowStart}px`);
     check('ولا من الحافة الثانية', m.overflowEnd <= 1, `${m.overflowEnd}px`);
+    // The fault his screenshot showed was BORN one level above the card, where
+    // the old proof could not see it.
+    check('ولا أيّ حاوية بين البطاقة والصفحة تتجاوز حدّها',
+        m.worst.over <= 1, `${m.worst.el} تتجاوز ${m.worst.over}px`);
+    check('والبطاقة داخل حدود الدردشة نفسها',
+        m.outOfChatStart <= 1 && m.outOfChatEnd <= 1,
+        `بداية ${m.outOfChatStart}px · نهاية ${m.outOfChatEnd}px (الدردشة ${m.chatW}px)`);
     check('والصفحة نفسها لا تنزلق أفقياً', m.bodyOverflowX <= 1, `${m.bodyOverflowX}px`);
 
     console.log('\n[4] وعنوان طويل يُقصّ ولا يمدّها');
     check('سطر العنوان داخل البطاقة', m.headline > 0 && m.headline <= m.cardW, `${Math.round(m.headline)} ≤ ${m.cardW}`);
+    check('وتنتهي حيث ينتهي أيّ ردّ عادي — نفس عمود المحادثة', m.rowGapEnd <= 2, `فرق ${m.rowGapEnd}px`);
 
     await browser.close();
     await new Promise<void>(r => server.close(() => r()));

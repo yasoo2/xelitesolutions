@@ -377,7 +377,16 @@ export default function ChatPanel({
                 {(isLoading || thinkingPhase !== 'idle') && (
                     <div className="joe-message assistant">
                         <div className="joe-message-avatar ai"><JoeMark size={24} /></div>
-                        <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px' }}>
+                        {/* THE 42 PIXELS.
+                            This column used to be `width: 100%` — 100% of the
+                            MESSAGE ROW, which also carries a 30px avatar and a
+                            12px gap. Being `min-width: auto` it never gave those
+                            42px back, so it ran past the row and the card's right
+                            border crossed the chat's own: «الحدود متداخلة».
+                            It is the same column every other message uses now
+                            (`flex: 1; min-width: 0`), so the card lines up with
+                            the replies instead of hanging over them. */}
+                        <div className="joe-message-content" style={{ gap: '8px' }}>
                             <NeuralThinkingIndicator
                                 visible={isLoading || thinkingPhase !== 'idle'}
                                 phase={thinkingPhase}

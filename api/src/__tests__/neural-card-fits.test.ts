@@ -11,6 +11,8 @@ import path from 'path';
 const WEB = path.join(__dirname, '..', '..', '..', 'web', 'src', 'components');
 const CARD = () => fs.readFileSync(path.join(WEB, 'NeuralThinkingIndicator.tsx'), 'utf-8');
 const VIEW = () => fs.readFileSync(path.join(WEB, 'NeuralTraceView.tsx'), 'utf-8');
+const CHAT = () => fs.readFileSync(path.join(WEB, 'ChatPanel.tsx'), 'utf-8');
+const CSS = () => fs.readFileSync(path.join(WEB, '..', 'styles', 'joe-premium.css'), 'utf-8');
 
 describe('the card opens instead of hiding what it has', () => {
     it('one step is enough — it no longer waits for four', () => {
@@ -71,5 +73,42 @@ describe('and it fits the chat it lives in', () => {
     it('and a long step wraps instead of widening it', () => {
         const view = VIEW();
         expect(view).toMatch(/\.jt-text \{ flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; \}/);
+    });
+});
+
+/**
+ * THE 42 PIXELS — «نفس المشكلة… الحدود متداخلة كما تلاحظ بالصورة».
+ *
+ * The card itself was already `width: 100%; min-width: 0` inside its parent, and
+ * measured 667px inside a 667px parent — which is why the first proof passed
+ * while the screenshot still showed an overlap. The overflow was BORN in that
+ * parent: a `width: 100%` column sharing the message row with a 30px avatar and
+ * a 12px gap, at `min-width: auto`, so it never gave those 42px back and pushed
+ * the card past the chat's own border into the Logs panel.
+ */
+describe('the column the card lives in is the column every reply lives in', () => {
+    it('the thinking row uses joe-message-content, not a width:100% column of its own', () => {
+        const chat = CHAT();
+        const at = chat.indexOf('<NeuralThinkingIndicator');
+        expect(at).toBeGreaterThan(0);
+        // The wrapper immediately above the indicator.
+        const before = chat.slice(Math.max(0, at - 700), at);
+        const wrapper = before.slice(before.lastIndexOf('<div '));
+        expect(wrapper).toMatch(/className="joe-message-content"/);
+        expect(wrapper).not.toMatch(/width: '100%'/);
+    });
+
+    it('and that column is allowed to shrink — flex:1 with min-width:0', () => {
+        const css = CSS();
+        const rule = css.slice(css.indexOf('.joe-message-content {'), css.indexOf('.joe-message-content {') + 200);
+        expect(rule).toMatch(/flex: 1;/);
+        expect(rule).toMatch(/min-width: 0;/);
+    });
+
+    it('the composer copy of the card can shrink too', () => {
+        const composer = fs.readFileSync(path.join(WEB, 'CommandComposer.tsx'), 'utf-8');
+        const at = composer.indexOf('<NeuralThinkingIndicator');
+        const wrapper = composer.slice(Math.max(0, at - 400), at);
+        expect(wrapper.slice(wrapper.lastIndexOf('<div '))).toMatch(/minWidth: 0/);
     });
 });

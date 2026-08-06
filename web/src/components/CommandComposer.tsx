@@ -3875,7 +3875,7 @@ export default function CommandComposer({
                 duplicated twice" the user reported. Only show it when this composer
                 also owns the history. */}
             {!hideHistory && status === 'thinking' && (
-              <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0, maxWidth: '100%', gap: '8px' }}>
                 <NeuralThinkingIndicator
                   visible={true}
                   phase={thinkingPhase}
