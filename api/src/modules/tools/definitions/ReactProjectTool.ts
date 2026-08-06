@@ -2598,6 +2598,7 @@ export class ReactProjectTool extends BaseTool {
                     ? 'self-QA: the Browser panel is attached — the audit runs where you can see it'
                     : 'self-QA: no Browser panel attached — running anyway, the findings are in the message');
             } catch { /* the hub is optional — never block a build on it */ }
+            let auditVisible = false;
             audit = await auditBuiltApp(path.join(proj, 'dist'), {
                 timeoutMs: 30_000,
                 watchSessionId: PANEL_BROWSER_SID,
@@ -2609,16 +2610,38 @@ export class ReactProjectTool extends BaseTool {
                  */
                 onProgress: (where: string) => {
                     if (!sessionId) return;
-                    if (where === 'private') {
-                        broadcastThinkingDetail(sessionId, isAr
+                    if (where.startsWith('private')) {
+                        /**
+                         * WITH THE REASON. «لم يتحرك متصفح جو … كل شي وهمي»:
+                         * knowing the panel was not used is worth little if the
+                         * cause stays inside a swallowed exception on his
+                         * machine — a rejected saved cookie, a locked profile,
+                         * a headed mode Chromium will not give.
+                         */
+                        auditVisible = false;
+                        const why = where.slice('private'.length).replace(/^:/, '').trim();
+                        broadcastThinkingDetail(sessionId, (isAr
                             ? '🔒 تعذّر استعمال لوحة المتصفّح — الفحص يجري في متصفّح خاصّ، والنتيجة كاملة في الرسالة (لا شيء لتشاهده الآن)'
-                            : '🔒 The Browser panel could not be used — the audit is running in a private browser; the full result is in the message (nothing to watch)');
-                        term('self-QA: panel not borrowed — running in a private browser');
+                            : '🔒 The Browser panel could not be used — the audit is running in a private browser; the full result is in the message (nothing to watch)')
+                            + (why ? (isAr ? `\n   السبب: ${why}` : `\n   Reason: ${why}`) : ''));
+                        term(`self-QA: panel not borrowed — running in a private browser${why ? `: ${why}` : ''}`);
                         return;
                     }
-                    broadcastThinkingDetail(sessionId, isAr
-                        ? '👁️ الفحص يجري الآن أمامك في لوحة المتصفح — كل ملاحظة مُعلَّمة بإطار أحمر على الصفحة'
-                        : '👁️ Watch it happen in the Browser panel — every finding is outlined on the page');
+                    if (where === 'watching') {
+                        auditVisible = true;
+                        broadcastThinkingDetail(sessionId, isAr
+                            ? '👁️ الفحص يجري الآن أمامك في لوحة المتصفح — كل ملاحظة مُعلَّمة بإطار أحمر على الصفحة'
+                            : '👁️ Watch it happen in the Browser panel — every finding is outlined on the page');
+                        return;
+                    }
+                    // …and the later steps only speak when there is really
+                    // something on screen. Telling him to look at a private
+                    // browser is the same white rectangle with a caption.
+                    if (where === 'pressing' && auditVisible) {
+                        broadcastThinkingDetail(sessionId, isAr
+                            ? '🖱️ أضغط الآن كل زرّ ورابط في الصفحة أمامك'
+                            : '🖱️ Pressing every button and link on the page, in front of you');
+                    }
                 },
             });
             term(audit.skipped

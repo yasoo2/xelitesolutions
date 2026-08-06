@@ -59,27 +59,78 @@ describe('the browser is awake before the audit needs it', () => {
     });
 });
 
+/**
+ * «لم يتحرك متصفح جو … كل شي وهمي» — and the second half of that run: the
+ * honest «🔒 the panel could not be used» was followed three seconds later by
+ * «👁️ Watch it happen in the Browser panel». The audit emits a second progress
+ * event when it starts pressing controls, and the handler treated anything that
+ * was not the word «private» as an invitation.
+ *
+ * Under both lines: on his machine the panel session failed to start EVERY run,
+ * and the reason died inside `catch { }`.
+ */
+describe('the panel browser is not allowed to stay dead', () => {
+    it('a launch the machine refuses falls back to a bare headless one', () => {
+        const m = read('modules', 'browser', 'manager.ts');
+        expect(m).toMatch(/async function launchPlainChromium\(\): Promise<Browser>/);
+        const fn = m.slice(m.indexOf('async function launchPlainChromium'), m.indexOf('async function launchPlainChromium') + 1200);
+        expect(fn).toMatch(/const bare: LaunchOptions = \{ headless: true \};/);
+        expect(fn).toMatch(/browser_launch_failed/);
+        // Both branches of createSession go through it — persistent profiles included.
+        expect(m).toMatch(/browser = await launchPlainChromium\(\);\s*\n\s*persistentContext = null;/);
+    });
+
+    it('and a saved login state Chromium rejects is dropped, not fatal', () => {
+        const m = read('modules', 'browser', 'manager.ts');
+        // storageState is validated by Playwright: one stale cookie used to kill
+        // the session at creation, on every run, for ever.
+        expect(m).toMatch(/context = await browser!\.newContext\(\{ \.\.\.baseContextOpts, \.\.\.\(savedState \? \{ storageState: savedState \} : \{\}\) \}\);/);
+        const rescue = m.slice(m.indexOf('} catch (e: any) {\n      if (!savedState) throw e;'), m.indexOf('} catch (e: any) {\n      if (!savedState) throw e;') + 700);
+        expect(rescue).toMatch(/context = await browser!\.newContext\(baseContextOpts\);/);
+        expect(rescue).toMatch(/fs\.unlinkSync\(sessionStateFile/);
+    });
+
+    it('and the borrow failure carries its reason out of the catch', () => {
+        const a = read('core', 'quality', 'app-audit.ts');
+        expect(a).not.toMatch(/\} catch \{ \/\* no panel available/);
+        expect(a).toMatch(/borrowError = String\(e\?\.message \|\| e\)\.slice\(0, 300\);/);
+        expect(a).toMatch(/onProgress\?\.\(borrowError \? `private:\$\{borrowError\}` : 'private'\)/);
+    });
+});
+
 describe('and he is never invited to watch a browser he cannot see', () => {
     it('the audit says which browser it landed in', () => {
         const a = read('core', 'quality', 'app-audit.ts');
         expect(a).toMatch(/opts\.onProgress\?\.\('watching'\)/);
         // The private-browser fallback announces itself instead of running mute.
         const fb = a.slice(a.indexOf('if (!page) {'), a.indexOf('if (!page) {') + 900);
-        expect(fb).toMatch(/onProgress\?\.\('private'\)/);
+        expect(fb).toMatch(/onProgress\?\.\(borrowError \? `private:/);
     });
 
-    it('and the build repeats it honestly in both languages', () => {
+    it('and the build repeats it honestly in both languages, with the reason', () => {
         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
         expect(r).toMatch(/onProgress: \(where: string\) => \{/);
-        expect(r).toMatch(/if \(where === 'private'\)/);
+        expect(r).toMatch(/if \(where\.startsWith\('private'\)\)/);
         expect(r).toMatch(/تعذّر استعمال لوحة المتصفّح/);
         expect(r).toMatch(/The Browser panel could not be used/);
         expect(r).toMatch(/nothing to watch/);
+        expect(r).toMatch(/السبب: \$\{why\}/);
+        expect(r).toMatch(/Reason: \$\{why\}/);
+    });
+
+    it('and nothing AFTER it invites him to watch — «👁️» three seconds later was a lie', () => {
+        const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+        // The audit emits 'pressing' as well as 'watching' / 'private'.
+        expect(r).toMatch(/if \(where === 'watching'\) \{\s*\n\s*auditVisible = true;/);
+        expect(r).toMatch(/if \(where === 'pressing' && auditVisible\)/);
+        expect(r).toMatch(/auditVisible = false;/);
+        const a = read('core', 'quality', 'app-audit.ts');
+        expect(a).toMatch(/onProgress\?\.\('pressing'\)/);
     });
 
     it('and so does the repair command', () => {
         const p = read('modules', 'tools', 'definitions', 'ProjectRepairTool.ts');
-        expect(p).toMatch(/where === 'private'/);
+        expect(p).toMatch(/where\.startsWith\('private'\)/);
         expect(p).toMatch(/تعذّر استعمال لوحة المتصفّح/);
     });
 });

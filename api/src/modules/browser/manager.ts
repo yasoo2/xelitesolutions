@@ -502,6 +502,42 @@ function ensureCleanupLoop() {
   } catch { }
 }
 
+/**
+ * THE PANEL'S BROWSER IS NOT ALLOWED TO STAY DEAD.
+ *
+ * «لم يتحرك متصفح جو … كل شي وهمي». The audit's own private fallback launches
+ * with the SAME executable and nearly the same options as this — so when the
+ * panel session cannot start while the private one can, the difference is one
+ * of the extras: a headed mode the machine will not give, a flag Chromium
+ * rejects, a profile that is locked. Every one of those used to end as a throw
+ * that nobody printed, and the panel he was told to watch stayed white forever.
+ *
+ * Configured options first; a bare headless launch second. Losing a preference
+ * is a smaller failure than losing the browser.
+ */
+async function launchPlainChromium(): Promise<Browser> {
+  const first = getChromiumLaunchOptions();
+  try {
+    return await chromium.launch(first);
+  } catch (e1: any) {
+    const bare: LaunchOptions = { headless: true };
+    if (first.executablePath) bare.executablePath = first.executablePath;
+    try {
+      const b = await chromium.launch(bare);
+      try { console.log(`[BrowserManager] Configured launch failed (${String(e1?.message || e1).slice(0, 120)}) — recovered with a bare headless launch.`); } catch { }
+      return b;
+    } catch (e2: any) {
+      // The engine really is not there. Say exactly how to fix it.
+      throw new Error(
+        `browser_launch_failed: ${e1?.message || e1} | bare: ${e2?.message || e2}. ` +
+        `تعذّر تشغيل متصفح Joe. شغّل هذا الأمر مرة واحدة داخل مجلد النظام: ` +
+        `"npx playwright install chromium" ثم أعد التشغيل. ` +
+        `(يمكن أيضاً ضبط BROWSER_EXECUTABLE_PATH على مسار Chrome/Chromium مثبّت لديك.)`
+      );
+    }
+  }
+}
+
 export async function createSession(sessionId: string) {
   const cfg = DEFAULT_BROWSER_CONFIG;
   const viewport = getBrowserViewport();
@@ -620,26 +656,28 @@ export async function createSession(sessionId: string) {
       try { console.log(`[BrowserManager] Persistent profile launched: ${usedDir} (${usedWhat})`); } catch { }
     } catch (e: any) {
       const m = String(e?.message || e);
-      if (m.startsWith('browser_profile_locked')) throw e; // pass the actionable message through
-      throw new Error(
-        `browser_launch_failed: ${m}. ` +
-        `تعذّر تشغيل متصفح جو بملف التعريف الدائم. تأكّد من تثبيت Google Chrome، ` +
-        `أو أزل USE_SYSTEM_CHROME لاستخدام Chromium المرفق.`
-      );
+      /**
+       * A locked or unusable PROFILE is not a reason to have no browser.
+       * It used to be: the throw travelled up to the audit, which caught it
+       * silently and ran somewhere he could not see — «كل شي وهمي». Joe now
+       * opens a profile-less browser instead and says what it cost (saved
+       * logins), which is a loss he can see and act on.
+       */
+      try {
+        browser = await launchPlainChromium();
+        persistentContext = null;
+        console.log(`[BrowserManager] Persistent profile unavailable (${m.slice(0, 140)}) — running without it; saved logins are not available this run.`);
+      } catch {
+        if (m.startsWith('browser_profile_locked')) throw e; // pass the actionable message through
+        throw new Error(
+          `browser_launch_failed: ${m}. ` +
+          `تعذّر تشغيل متصفح جو بملف التعريف الدائم. تأكّد من تثبيت Google Chrome، ` +
+          `أو أزل USE_SYSTEM_CHROME لاستخدام Chromium المرفق.`
+        );
+      }
     }
   } else {
-    try {
-      browser = await chromium.launch(getChromiumLaunchOptions());
-    } catch (e: any) {
-      // The browser engine isn't installed / can't launch. Give an actionable hint
-      // instead of a raw error so the user knows exactly how to fix it.
-      throw new Error(
-        `browser_launch_failed: ${e?.message || e}. ` +
-        `تعذّر تشغيل متصفح Joe. شغّل هذا الأمر مرة واحدة داخل مجلد النظام: ` +
-        `"npx playwright install chromium" ثم أعد التشغيل. ` +
-        `(يمكن أيضاً ضبط BROWSER_EXECUTABLE_PATH على مسار Chrome/Chromium مثبّت لديك.)`
-      );
-    }
+    browser = await launchPlainChromium();
   }
 
   if (!browser && !persistentContext) throw new Error('browser_connection_failed_after_retries');
@@ -663,7 +701,7 @@ export async function createSession(sessionId: string) {
   // Opt-in for users behind a TLS-inspecting corporate proxy (their proxy signs
   // pages with a CA the bundled Chromium doesn't trust). Default OFF.
   const ignoreHttpsErrors = (parseBool(process.env.BROWSER_IGNORE_HTTPS_ERRORS) ?? false);
-  const context = persistentContext ?? await browser!.newContext({
+  const baseContextOpts = {
     viewport: { width: viewport.w, height: viewport.h },
     locale: 'ar',
     userAgent: selectedUA,
@@ -671,8 +709,33 @@ export async function createSession(sessionId: string) {
     extraHTTPHeaders: {
       'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
     },
-    ...(savedState ? { storageState: savedState } : {}),
-  });
+  };
+  /**
+   * AND A STALE LOGIN STATE IS NOT A REASON TO HAVE NO BROWSER EITHER.
+   *
+   * `storageState` is validated by Playwright: a cookie written by an older
+   * Chromium — a `sameSite` it no longer accepts, a field it now requires —
+   * makes newContext() THROW. The state decrypts fine, so the loader's own
+   * guard never fires, and the session dies at creation. On a machine that has
+   * one saved bad cookie that is EVERY run, for ever: the panel connects, the
+   * audit falls back to a private browser, and the page never appears.
+   */
+  let context: BrowserContext;
+  if (persistentContext) {
+    context = persistentContext;
+  } else {
+    try {
+      context = await browser!.newContext({ ...baseContextOpts, ...(savedState ? { storageState: savedState } : {}) });
+    } catch (e: any) {
+      if (!savedState) throw e;
+      context = await browser!.newContext(baseContextOpts);
+      try {
+        console.log(`[BrowserManager] Saved login state for ${sessionId} was rejected (${String(e?.message || e).slice(0, 140)}) — starting clean; you may need to sign in again.`);
+      } catch { }
+      // A state the browser refuses is a state that must not be tried again.
+      try { fs.unlinkSync(sessionStateFile(String(sessionId || '').trim())); } catch { /* already gone */ }
+    }
+  }
 
   // Apply Stealth (best-effort external plugin, if present)
   try {

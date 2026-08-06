@@ -101,6 +101,7 @@ export async function auditBuiltApp(
          * falls back to exactly what it did before: a private headless browser.
          */
         let page: any = null;
+        let borrowError = '';
         if (opts?.watchSessionId) {
             try {
                 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -125,8 +126,21 @@ export async function auditBuiltApp(
                      */
                     try { resumeStreamingIfWatched(opts.watchSessionId); } catch { /* streaming is a bonus */ }
                     opts.onProgress?.('watching');
+                } else {
+                    borrowError = 'the panel session opened without a page';
                 }
-            } catch { /* no panel available — the private browser below serves */ }
+            } catch (e: any) {
+                /**
+                 * AND THE REASON IS NEVER SWALLOWED AGAIN.
+                 *
+                 * This catch was `catch { }`. On his machine the panel session
+                 * failed to start on EVERY run — a stale saved cookie, a locked
+                 * profile, a headed mode Chromium would not give — and the only
+                 * thing he ever saw was a white rectangle and a log line saying
+                 * the browser had been opened: «كل شي وهمي».
+                 */
+                borrowError = String(e?.message || e).slice(0, 300);
+            }
         }
         if (!page) {
             browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });
@@ -137,7 +151,7 @@ export async function auditBuiltApp(
              * somewhere else entirely, and the white rectangle explained
              * nothing. If he cannot watch it, he is told he cannot watch it.
              */
-            opts?.onProgress?.('private');
+            opts?.onProgress?.(borrowError ? `private:${borrowError}` : 'private');
         }
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];

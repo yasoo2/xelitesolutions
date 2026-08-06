@@ -99,13 +99,18 @@ export class ProjectRepairTool extends BaseTool {
         say(isAr ? '🔎 أعيد القياس على البناء الحالي…' : '🔎 Re-measuring the current build…');
         const before = await auditBuiltApp(dist, {
             timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
-            onProgress: (where: string) => say(where === 'private'
-                ? (isAr
-                    ? '🔒 تعذّر استعمال لوحة المتصفّح — القياس يجري في متصفّح خاصّ، والنتيجة كاملة في الرسالة'
-                    : '🔒 The Browser panel could not be used — measuring in a private browser; the full result is in the message')
-                : (isAr
-                    ? '👁️ القياس يجري الآن أمامك في لوحة المتصفّح'
-                    : '👁️ Watch it happen in the Browser panel')),
+            onProgress: (where: string) => {
+                if (where.startsWith('private')) {
+                    const why = where.slice('private'.length).replace(/^:/, '').trim();
+                    say((isAr
+                        ? '🔒 تعذّر استعمال لوحة المتصفّح — القياس يجري في متصفّح خاصّ، والنتيجة كاملة في الرسالة'
+                        : '🔒 The Browser panel could not be used — measuring in a private browser; the full result is in the message')
+                        + (why ? (isAr ? `\n   السبب: ${why}` : `\n   Reason: ${why}`) : ''));
+                    term(`repair: panel not borrowed${why ? ` — ${why}` : ''}`);
+                    return;
+                }
+                if (where === 'watching') say(isAr ? '👁️ القياس يجري الآن أمامك في لوحة المتصفّح' : '👁️ Watch it happen in the Browser panel');
+            },
         });
         if (before.skipped) {
             return { ok: false, error: `audit_skipped: ${before.skipped}`, logs } as any;
