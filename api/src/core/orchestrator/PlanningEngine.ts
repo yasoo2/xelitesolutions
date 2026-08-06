@@ -93,8 +93,20 @@ export class PlanningEngine {
     /** Does this request ask for something to EXIST afterwards? */
     static looksLikeBuild(goalRaw: string): boolean {
         const g = String(goalRaw || '');
+        /**
+         * «بنِ» IS THE SAME VERB AS «ابنِ».
+         *
+         * His request, verbatim: «بنِ نظاماً لمشتل نباتات: النباتات والموردون
+         * والطلبيات». Every noun matched; not one verb did — the list carried
+         * «ابن» and «ابني» and nothing for the bare imperative «بنِ», which is
+         * how the verb is most often written. So the build gate stayed shut, a
+         * planner LLM was asked for a DAG instead, Groq's daily quota was
+         * already spent, and a request that needed NO model at all died with
+         * «تعذّر الوصول إلى محرّك الذكاء». One missing alef.
+         */
         const verb = /\b(build|create|make|develop|generate|scaffold|implement|code)\b/i.test(g)
-            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو|برمج)/.test(g);
+            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو|برمج|شيّ?د|أقم|اقم)/.test(g)
+            || /(^|\s)بنِ?\s/.test(g);
         const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game)\b/i.test(g)
             || /(موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|واجهة|أداة|اداة|برنامج|بوابة|خدمة)/.test(g);
         return verb && noun;
@@ -103,7 +115,16 @@ export class PlanningEngine {
     static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
         const g = String(goalRaw || '');
         // Its own data, its own users → it needs a server and a database.
-        const dataSignals = /(تسجيل\s*دخول|تسجيل\s*الدخول|حسابات?|مستخدمين|صلاحيات|قاعدة\s*بيانات|قواعد\s*بيانات|حجوزات?|حجز|طلبات|مخزون|جرد|فواتير|فاتورة|تقارير|إحصائيات|احصائيات|نقاط\s*بيع|كاشير|رواتب|موظفين|عملاء|زبائن|اشتراكات|مدفوعات|دفع\s*إلكتروني|api|backend|قاعدة\s*البيانات|login|auth|database|users?|orders?|inventory|invoices?|reports?|bookings?|payments?|subscriptions?|crm|erp|pos)/i;
+        /**
+         * ARABIC PLURALS THE LIST DID NOT KNOW.
+         *
+         * «بنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات» — a system
+         * with SUPPLIERS and ORDERS, which is a database by definition. The
+         * list carried «طلبات» and matched neither «الطلبيات» nor «الموردون»,
+         * so the scope came back «app» and he would have received a front-end
+         * with nowhere to put a supplier.
+         */
+        const dataSignals = /(تسجيل\s*دخول|تسجيل\s*الدخول|حسابات?|مستخدمين|صلاحيات|قاعدة\s*بيانات|قواعد\s*بيانات|حجوزات?|حجز|طلبات|طلبيّ?ات|مخزون|جرد|فواتير|فاتورة|تقارير|إحصائيات|احصائيات|نقاط\s*بيع|كاشير|رواتب|موظفين|عملاء|زبائن|مورّ?دي?ن|مورّ?دون|اشتراكات|مدفوعات|دفع\s*إلكتروني|api|backend|قاعدة\s*البيانات|login|auth|database|users?|orders?|suppliers?|vendors?|inventory|invoices?|reports?|bookings?|payments?|subscriptions?|crm|erp|pos)/i;
         // Screens and behaviour rather than a single scroll.
         const appSignals = /(تطبيق|نظام|منصّ?ة|برنامج|لوحة\s*تحكم|داشبورد|محرّ?ر|أداة\s*ويب|لعبة|محادثة|دردشة|شات|خرائط|خريطة|تتبّ?ع|حاسبة|مخطّ?ط|جدولة|مهامّ?|شبيه\s*ب|مثل\s*تطبيق|clone|dashboard|app\b|platform|system|editor|tracker|chat|map|game|planner|scheduler|calculator|todo|to-do|tasks?)/i;
         // A single document, said outright.
@@ -651,7 +672,11 @@ Rules:
             // Field log: «قم ببناء صفحة جميله لشركة أدوية ومعدات طبية» matched no
             // build verb, so with the brain unreachable it fell to the failover
             // node — which OPENED A BROWSER for a request to build a page.
-            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو)/.test(probe)
+            // «بنِ نظاماً…» — the bare imperative, and the one that cost him a
+            // whole run: every noun matched, no verb did, and the request went
+            // to a planner LLM whose quota was gone.
+            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو|شيّ?د|أقم|اقم)/.test(probe)
+            || /(^|\s)بنِ?\s/.test(probe)
             || /قم\s*ب?(بناء|عمل|انشاء|إنشاء|تصميم|تطوير|صنع)/.test(probe)
             || /(اريد|أريد|ابغى|أبغى|بدي|ودي)\s*(ب?بناء|عمل|انشاء|إنشاء|تصميم|موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|أداة|اداة)/.test(probe)
             || /\b(بناء|تصميم|إنشاء|انشاء)\s+(موقع|صفحة|تطبيق|متجر|واجهة|لوحة)/.test(probe));
@@ -1746,6 +1771,44 @@ Return ONLY a JSON array of steps:
             }
         } catch (err) {
             console.error('[PlanningEngine] Dynamic DAG generation failed:', err);
+        }
+
+        /**
+         * A BUILD MUST NOT DIE BECAUSE A PLANNER RAN OUT OF QUOTA.
+         *
+         * From his log, in full: the DAG planner reached Groq, Groq answered
+         * «429 … tokens per day (TPD): Limit 100000, Used 100000», every
+         * keyless provider was dead (401/418/402), the local brain had timed
+         * out — and a request to BUILD A SYSTEM ended with «تعذّر الوصول إلى
+         * محرّك الذكاء». Nothing in that build needed a model: the scaffolder,
+         * the database, the CRUD, the screens and the self-QA are all
+         * deterministic. Only the ROUTE to them went through an LLM.
+         *
+         * So when planning fails and the goal is a build, the builders take it.
+         * This is the same rescue the talk-only plan already gets — it just has
+         * to survive the planner being unreachable, not merely wrong.
+         */
+        if (looksLikeBuildRequest(String(intent.goal || ''))) {
+            console.warn('[PlanningEngine] the planner was unreachable for a BUILD — using the real builders, which need no model.');
+            const scope = PlanningEngine.classifyBuildScope(String(intent.goal || ''));
+            const rescue: any[] = [];
+            if (scope === 'system') {
+                rescue.push({
+                    id: 'backend', description: `الواجهة الخلفية وقاعدة البيانات لـ: ${intent.goal}`,
+                    tool: 'api_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [],
+                });
+            }
+            rescue.push({
+                id: 'app', description: `تطبيق حقيقي لـ: ${intent.goal}`,
+                tool: scope === 'page' ? 'web_page_builder' : 'react_project', agent: 'Dev',
+                input: { request: intent.goal }, dependsOn: scope === 'system' ? ['backend'] : [],
+            });
+            return {
+                id: `build_offline_${Date.now()}`,
+                goal: intent.goal,
+                steps: rescue,
+                metadata: { complexity: 'high', riskLevel: 'medium' },
+            };
         }
 
         // Emergency Fallback (Dynamic but minimal)
