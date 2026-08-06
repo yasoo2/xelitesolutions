@@ -95,6 +95,12 @@ async function main() {
     try { fs.mkdirSync(projectsDir, { recursive: true }); } catch { }
   }
 
+  // Before the door opens: if this process is configured as if strangers can
+  // reach it while the single-user switches are still on, say so — and refuse
+  // rather than serve everyone with every permission.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require('../shared/go-live').assertSafeToServe();
+
   server.listen(config.port, '0.0.0.0', () => {
     logger.info({ port: config.port }, 'API server listening and WebSocket attached');
 

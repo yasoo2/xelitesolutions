@@ -165,9 +165,16 @@ async function main() {
     check('وإن نجح فقد تغيّر المصدر فعلاً', edit?.ok !== true || afterEdit !== before);
     check('والمشروع ما زال يُبنى', fs.existsSync(path.join(appDir, 'dist', 'index.html')));
 
-    console.log('\n[B4] نقطة استرجاع: التراجع يعيد الملفات فعلاً');
-    const undo: any = await executeTool('project_undo', { projectDir: appDir }).catch(() => null);
-    check('أداة التراجع أجابت بوضوح', undo === null || typeof undo?.ok === 'boolean', JSON.stringify(undo?.error || '').slice(0, 100));
+    console.log('\n[B4] والتراجع: موجود للصفحات، وغائب لمشاريع React — يُقال لا يُخفى');
+    // The first version of this section called a tool named `project_undo` and
+    // accepted «null or a boolean» as a pass. That asserts nothing: the tool has
+    // never existed. A check that cannot fail is worse than no check, because it
+    // reports coverage it does not have.
+    const P0 = fs.readFileSync(path.join(__dirname, '..', '..', 'core', 'orchestrator', 'PlanningEngine.ts'), 'utf-8');
+    check('«تراجع» جملة معروفة للمخطِّط', /تراجع\|استرجع/.test(P0));
+    const toolNames = new Set(all.map(t => t.name));
+    check('ولا أداة باسم project_undo تُدّعى', !toolNames.has('project_undo'));
+    console.log('   ⚠️ ثغرة مسمّاة: تاريخ النسخ يعمل للصفحات عبر أداتها، ولا يوجد استرجاع لمشاريع React بعد.');
 
     console.log('\n[B5] الطرفية: أمر فاشل يُشخَّص ويُعالَج');
     const { runDoctored } = await import('../../core/quality/log-doctor');
@@ -193,6 +200,44 @@ async function main() {
     const { persistJoeProjects } = await import('../../api/page-store');
     persistJoeProjects();
     check('حُفظت خريطة المشاريع بلا خطأ', true);
+
+    console.log('\n[B8] وصندوق النماذج يستقبل رسالة حقيقية ويعيدها للمالك');
+    const { appendSubmission, listSubmissions } = await import('../../api/form-inbox');
+    const site = `sweep-${Date.now()}`;
+    appendSubmission(site, { name: 'يونس', message: 'أريد موعداً' }, 'contact');
+    const rows = listSubmissions([site]);
+    check('الرسالة سُجّلت فعلاً', rows.length === 1, String(rows.length));
+    check('وتحمل ما أُرسل لا شيئاً مخترعاً', rows[0]?.fields?.name === 'يونس', JSON.stringify(rows[0]?.fields || {}));
+    check('ولا تختلط برسائل موقع آخر', listSubmissions(['site-that-never-existed']).length === 0);
+    const box: any = await executeTool('form_inbox', { site });
+    check('والأداة تقرأها للمالك', box?.ok === true, String(box?.error || ''));
+
+    console.log('\n[B9] ونقاط الاستئناف تنجو من انقطاع البناء');
+    const { checkpointKey, saveCheckpointSection, loadCheckpoint, clearCheckpoint } = await import('../../core/resume/checkpoint');
+    const artifacts = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-cp-'));
+    const cpKey = checkpointKey(sessionId, 'موقع خدمات', 'react');
+    saveCheckpointSection(artifacts, cpKey, 'موقع خدمات', 'hero', '<section>بطل</section>', 'البطل');
+    const loaded: any = loadCheckpoint(artifacts, cpKey);
+    check('القسم المحفوظ يُقرأ بعد «إعادة التشغيل»', !!loaded && JSON.stringify(loaded).includes('بطل'), JSON.stringify(loaded || '').slice(0, 100));
+    clearCheckpoint(artifacts, cpKey);
+    check('ويُمسح عند اكتمال العمل', !loadCheckpoint(artifacts, cpKey));
+    fs.rmSync(artifacts, { recursive: true, force: true });
+
+    console.log('\n[B10] والنشر لا يدّعي ما لم يحدث');
+    const publish: any = await executeTool('deploy_pages', { cwd: appDir })
+        .catch((e: any) => ({ ok: false, error: String(e?.message || e) }));
+    check('أداة النشر أجابت بوضوح', typeof publish?.ok === 'boolean', JSON.stringify(publish?.error || '').slice(0, 120));
+    // Without a GitHub token it MUST refuse and say why, not report a success.
+    check('وبلا ربط GitHub ترفض وتقول السبب — لا تدّعي نشراً',
+        publish?.ok === true || /GitHub|توكن|token/i.test(String(publish?.error || '')), String(publish?.error || '').slice(0, 120));
+
+    console.log('\n[B11] وجاهزية الإطلاق العام مفحوصة آلياً — لا بملاحظة في رأس أحد');
+    const { goLiveCheck, looksPublic } = await import('../../shared/go-live');
+    check('جهازه اليوم ليس عاماً', looksPublic({ PUBLIC_URL: 'http://localhost:5002' } as any) === false);
+    const wouldBlock = goLiveCheck({ JOE_PUBLIC: '1', ENABLE_AUTH_BYPASS: 'true', AUTO_APPROVE_ALL: '1', JWT_SECRET: 'x' } as any);
+    check('ويوم يصير عاماً تُذكر الموانع بالاسم', wouldBlock.blockers.length >= 3, String(wouldBlock.blockers.length));
+    check('ويرفض جو الإقلاع بها بدل الاكتفاء بالتحذير',
+        /رفضتُ التشغيل كخادم عام/.test(fs.readFileSync(path.join(__dirname, '..', '..', 'shared', 'go-live.ts'), 'utf-8')));
 
     /* ══════════════ C. WHAT THIS SWEEP DOES NOT COVER ══════════════ */
     console.log('\n[C] وما لا يغطّيه هذا الفحص — يُقال ولا يُدّعى:');
