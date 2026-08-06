@@ -2935,9 +2935,34 @@ export class ReactProjectTool extends BaseTool {
             return lines.join('\n') + '\n';
         })();
 
+        /**
+         * AND THE SIZE OF WHAT WAS NOT BUILT.
+         *
+         * «Build a world-class e-commerce platform similar to Shopify.
+         * Features: Multi-vendor marketplace · AI product generation ·
+         * Inventory · Payments · Shipping · Coupons · Loyalty · Mobile app ·
+         * Analytics · Support · Marketing automation · SEO · Multi-language ·
+         * Multi-currency» — answered with a single-table store, and a message
+         * that listed its files, its score, its design family and five next
+         * commands without mentioning the other thirteen features once.
+         *
+         * Not a lie. An omission the size of the request.
+         */
+        const scopeBlock = (() => {
+            try {
+                const { scopeReport, formatScope } = require('../../../core/quality/scope-audit');
+                const dirs = [proj, ...(apiDir ? [apiDir] : [])];
+                const r = scopeReport(request, dirs);
+                if (r.missing.length) {
+                    term(`scope: ${r.built.length}/${r.requested.length} named capabilities are in the build — missing: ${r.missing.map((c: any) => c.id).join(', ')}`);
+                }
+                return formatScope(r, isAr);
+            } catch { return ''; }
+        })();
+
         const message = isAr
             ? `⚛️ ${blockers.length ? 'بُني مشروع React وتجمّع — لكنه سُلّم بعيوب باقية' : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
-${appBlock}
+${scopeBlock}${appBlock}
 ${qaBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
 ${fileList}
@@ -2953,7 +2978,7 @@ ${buildDiagnosis ? (buildDiagnosis.healed
    • «شغّل خادم التطوير» → معاينة تطوير بتحديث حي
    • «انشر المشروع» → نسخة الإنتاج بصورها على رابط دائم`
             : `⚛️ ${blockers.length ? 'A React project that compiles — delivered WITH open defects' : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
-${appBlock}
+${scopeBlock}${appBlock}
 ${qaBlock}📂 Path: ${proj}
 ${fileList}
 
