@@ -29,8 +29,19 @@
 import fs from 'fs';
 import path from 'path';
 
-/** Where the note is left. Next to the other things Joe remembers. */
+/**
+ * Where the note is left. Next to the other things Joe remembers.
+ *
+ * `JOE_CRASH_LOG` names the file outright — for a deployment whose working
+ * directory is not the repository, and for tests, which must never reach for
+ * `process.chdir()`: it moves the WHOLE process, and a Jest worker shares that
+ * process with every other suite it is scheduled beside. One such test in this
+ * repository quietly broke an unrelated path-containment suite the moment the
+ * scheduler paired them.
+ */
 export function crashLogPath(): string {
+    const override = String(process.env.JOE_CRASH_LOG || '').trim();
+    if (override) return override;
     const isApiDir = path.basename(process.cwd()) === 'api';
     const root = isApiDir ? process.cwd() : path.join(process.cwd(), 'api');
     return path.join(root, 'data', 'crash.log');

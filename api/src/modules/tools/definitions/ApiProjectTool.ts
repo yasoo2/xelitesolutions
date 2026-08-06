@@ -1397,7 +1397,9 @@ export class ApiProjectTool extends BaseTool {
             .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '').trim();
         if (!request) return { ok: false, error: 'no_request', logs };
         const sessionId = context?.sessionId;
-        const isAr = /[؀-ۿ]/.test(request);
+        const uiLang = String(context?.language || '').toLowerCase();
+        // Same rule as the React builder: the user's language, not the prompt's script.
+        const isAr = uiLang ? uiLang.startsWith('ar') : /[؀-ۿ]/.test(request);
         try { broadcast({ type: 'build_started', sessionId, data: { tool: 'api_project', sessionId } } as any); } catch { /* UI optional */ }
 
         const term = (line: string) => {

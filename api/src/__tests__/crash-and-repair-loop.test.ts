@@ -23,16 +23,18 @@ import { crashLogPath, noteActivity, writeCrashNote } from '../shared/crash-log'
 const ORCH = () => fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
 
 describe('every death leaves a note', () => {
-    const prev = process.cwd();
+    // NOT process.chdir(): a Jest worker is one process shared with other
+    // suites, and moving its working directory broke an unrelated
+    // path-containment test the first time the scheduler paired them.
+    const prevEnv = process.env.JOE_CRASH_LOG;
     let work = '';
 
     beforeEach(() => {
         work = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-crashlog-'));
-        fs.mkdirSync(path.join(work, 'api'), { recursive: true });
-        process.chdir(path.join(work, 'api'));
+        process.env.JOE_CRASH_LOG = path.join(work, 'api', 'data', 'crash.log');
     });
     afterEach(() => {
-        process.chdir(prev);
+        if (prevEnv === undefined) delete process.env.JOE_CRASH_LOG; else process.env.JOE_CRASH_LOG = prevEnv;
         try { fs.rmSync(work, { recursive: true, force: true }); } catch { /* best effort */ }
     });
 
@@ -67,6 +69,11 @@ describe('every death leaves a note', () => {
 
     it('lives beside the other things Joe remembers', () => {
         expect(crashLogPath().replace(/\\/g, '/')).toMatch(/api\/data\/crash\.log$/);
+        // …and with nothing overridden it is derived from the process itself.
+        const saved = process.env.JOE_CRASH_LOG;
+        delete process.env.JOE_CRASH_LOG;
+        expect(crashLogPath().replace(/\\/g, '/')).toMatch(/api\/data\/crash\.log$/);
+        process.env.JOE_CRASH_LOG = saved;
     });
 });
 

@@ -2321,6 +2321,43 @@ const money = (n) => {
   return (Math.round(v * 100) / 100).toLocaleString();
 };
 
+/**
+ * AN IMAGE ADDRESS A VISITOR CAN ACTUALLY FETCH.
+ *
+ * A row typed by the owner can hold anything in its image field — and one
+ * really did: «"C:/Users/home/OneDrive/Pictures/Screenshots/rMdx….jpg"»,
+ * quotation marks and all, pasted from a file browser. The catalogue rendered
+ * it, every card showed a broken-image icon, and the server answered 404 for
+ * a path that exists on exactly one computer on earth.
+ *
+ * The build-time guard cannot help here: these values arrive from the DATABASE
+ * at runtime. So the card asks the same question the builder does, and shows
+ * its placeholder instead of a broken picture.
+ */
+const webImage = (raw) => {
+  let v = String(raw ?? '').trim();
+  while (v && (v[0] === '"' || v[0] === "'")) v = v.slice(1);
+  while (v && (v[v.length - 1] === '"' || v[v.length - 1] === "'")) v = v.slice(0, -1);
+  v = v.trim();
+  if (!v) return '';
+  const low = v.toLowerCase();
+  // Plain string work, no regex: this file is GENERATED from a template
+  // literal, and every backslash in a pattern is one collapse away from an
+  // unparseable bundle. Not a theory: the first version of this helper used
+  // patterns, every escape in them was eaten on the way out, and the store
+  // shipped a file that would not parse. The syntax gate caught it.
+  if (low.indexOf('data:') === 0 || low.indexOf('http://') === 0
+    || low.indexOf('https://') === 0 || low.indexOf('//') === 0) return v;
+  const BACKSLASH = String.fromCharCode(92);
+  if (low.indexOf('file:') === 0) return '';
+  if (v.indexOf(BACKSLASH) >= 0) return '';
+  if (v.length > 2 && v[1] === ':') return '';
+  for (const root of ['/home/', '/users/', '/root/', '/var/', '/tmp/', '/mnt/']) {
+    if (low.indexOf(root) === 0) return '';
+  }
+  return v;
+};
+
 export default function ShopApp({ content }) {
   const catalogue = useMemo(() => createStore(content.storeKey + ':products'), [content.storeKey]);
   const basket = useMemo(() => createStore(content.storeKey + ':cart'), [content.storeKey]);
@@ -2488,7 +2525,7 @@ export default function ShopApp({ content }) {
         <section className="products" aria-label={${T('المنتجات', 'Products')}}>
           {visible.map(p => (
             <article className="product" key={p.id}>
-              {p.image ? <img src={p.image} alt={p.name} loading="lazy" /> : <div className="product-noimg" aria-hidden="true" />}
+              {webImage(p.image) ? <img src={webImage(p.image)} alt={p.name} loading="lazy" /> : <div className="product-noimg" aria-hidden="true" />}
               <h3>{p.name}</h3>
               {p.category ? <span className="tag">{p.category}</span> : null}
               {p.description ? <p>{p.description}</p> : null}

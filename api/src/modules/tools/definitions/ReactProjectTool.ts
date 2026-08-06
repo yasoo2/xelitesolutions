@@ -2040,7 +2040,21 @@ export class ReactProjectTool extends BaseTool {
             .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '').trim();
         if (!request) return { ok: false, error: 'no_request', logs };
         const sessionId = context?.sessionId;
-        const isAr = /[؀-ۿ]/.test(request);
+        /**
+         * THE INTERFACE'S LANGUAGE IS THE USER'S, NOT THE PROMPT'S.
+         *
+         * He types Arabic all day and reads nothing else. He wrote ONE request
+         * in English — «Build a world-class e-commerce platform» — and Joe
+         * delivered him a store whose every word is English: «Owner sign-in»,
+         * «Add to cart», «All categories». Unusable, from a request he made in
+         * good faith.
+         *
+         * The script of one sentence is a weak signal about a PERSON. The
+         * session already carries the language he actually uses; it decides,
+         * and the prompt's own script only breaks a tie when it does not.
+         */
+        const uiLang = String(context?.language || '').toLowerCase();
+        const isAr = uiLang ? uiLang.startsWith('ar') : /[؀-ۿ]/.test(request);
         try { broadcast({ type: 'build_started', sessionId, data: { tool: 'react_project', sessionId } } as any); } catch { /* UI optional */ }
 
         const term = (line: string) => {
