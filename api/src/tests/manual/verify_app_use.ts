@@ -135,7 +135,7 @@ async function main() {
 
     console.log('\n[7] وتعريف «زر ميت» واحد في النظام — لا اثنان');
     const A = fs.readFileSync(path.join(__dirname, '..', '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
-    check('فحص React يستعمل المسبار نفسه', /import \{ probeControls, judgeBehaviour \}/.test(A));
+    check('فحص React يستعمل المسبار نفسه', /import \{ probeControls, judgeBehaviour, FormResult, ControlResult \}/.test(A));
     check('ولا يعيد الحكم بنفسه', /judgeBehaviour\(allControls/.test(A));
     const B = fs.readFileSync(path.join(__dirname, '..', '..', 'core', 'quality', 'behaviour-audit.ts'), 'utf-8');
     check('وباني HTML القديم ما زال يمرّ من الطريق نفسه', /const probe = await probeControls\(page\)/.test(B));

@@ -91,7 +91,27 @@ describe('a finding is a sentence, not a slug', () => {
 
     it('says how much was really pressed, on how many pages', () => {
         const text = formatAudit(audit([{ id: 'x', severity: 'low', detail: 'y' }], 90), true);
-        expect(text).toMatch(/1 صفحة, 4 زر مضغوط فعلاً|1 صفحة، 4 زر مضغوط فعلاً/);
+        expect(text).toMatch(/1 صفحة، 4 عنصر مضغوط/);
+    });
+
+    it('…and how many forms were filled in and sent, and at how many widths', () => {
+        // «تعبئه النماذج» and «فحص ui»: both are countable, so both are counted.
+        const deep = formatAudit({
+            score: 84, findings: [{ id: 'low_contrast', severity: 'low', detail: 'تباين ضعيف' }],
+            routes: ['/', '#/admin'], pressed: 31, formsFilled: 2, fieldsFilled: 9,
+            viewports: ['390x844', '820x1180', '1280x900'],
+        }, true);
+        expect(deep).toContain('2 صفحة');
+        expect(deep).toContain('31 عنصر مضغوط');
+        expect(deep).toContain('2 نموذج معبّأ ومُرسل');
+        expect(deep).toContain('9 حقل');
+        expect(deep).toContain('3 مقاسات شاشة');
+        const en = formatAudit({
+            score: 84, findings: [], routes: ['/'], pressed: 31, formsFilled: 2, fieldsFilled: 9,
+            viewports: ['390x844', '820x1180', '1280x900'],
+        }, false);
+        expect(en).toContain('2 form(s) filled and submitted');
+        expect(en).toContain('3 viewport(s)');
     });
 
     it('and a clean run says so without inventing findings', () => {

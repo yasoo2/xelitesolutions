@@ -21,7 +21,9 @@ import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { getChromiumLaunchOptions } from '../../modules/browser/manager';
-import { probeControls, judgeBehaviour } from './behaviour-audit';
+import { probeControls, judgeBehaviour, FormResult, ControlResult } from './behaviour-audit';
+import { AuditEyes } from './audit-eyes';
+import { inspectUi } from './ui-inspection';
 
 export interface AppAuditFinding {
     id: string;
@@ -53,6 +55,13 @@ export interface AppAudit {
     routes?: string[];
     pressed?: number;
     dead?: string[];
+    /** …how many forms were really filled in and sent, and at how many widths. */
+    formsFilled?: number;
+    fieldsFilled?: number;
+    forms?: FormResult[];
+    viewports?: string[];
+    /** Every control, with what actually changed — what a proof can read. */
+    controls?: ControlResult[];
 }
 
 /** 100 minus what the findings earn — the same finding always costs the same. */
@@ -337,17 +346,43 @@ export async function auditBuiltApp(
         }).catch(() => []);
 
         const allControls: any[] = [];
-        const behaviourMetrics: Record<string, any> = { pressed: 0, dead: 0, deadAnchors: 0, keyboardUnreachable: 0, keyboardUnreachableSamples: [], formsWithoutValidation: 0 };
-        const mergeProbe = (p: { controls: any[]; metrics: Record<string, any> }, route: string) => {
+        const allForms: FormResult[] = [];
+        const behaviourMetrics: Record<string, any> = {
+            pressed: 0, dead: 0, deadAnchors: 0, keyboardUnreachable: 0, keyboardUnreachableSamples: [],
+            formsWithoutValidation: 0, formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0,
+        };
+        const mergeProbe = (p: { controls: any[]; metrics: Record<string, any>; forms?: FormResult[] }, route: string) => {
             for (const c of p.controls) allControls.push({ ...c, label: route === '/' ? c.label : `${route} ${c.label}` });
             behaviourMetrics.deadAnchors += p.metrics.deadAnchors || 0;
             behaviourMetrics.formsWithoutValidation += p.metrics.formsWithoutValidation || 0;
             behaviourMetrics.keyboardUnreachable += p.metrics.keyboardUnreachable || 0;
             behaviourMetrics.keyboardUnreachableSamples.push(...(p.metrics.keyboardUnreachableSamples || []));
+            for (const k of ['formsFilled', 'fieldsFilled', 'formsDeadSubmit', 'formsValidated', 'formsReloaded']) {
+                behaviourMetrics[k] += p.metrics[k] || 0;
+            }
+            for (const f of p.forms || []) allForms.push({ ...f, label: route === '/' ? f.label : `${route} ${f.label}` });
         };
 
+        /**
+         * AND HE WATCHES IT HAPPEN — «لا يوجد موشر وتحديد بالاحمر».
+         *
+         * The eyes only exist when the audit is running in his panel. They move
+         * the real mouse to each control, outline it in red while it is pressed,
+         * and stream `cursor_move` / `highlight_boxes` to the panel — the two
+         * events the panel has been able to render since the day it was written,
+         * and which no audit had ever sent.
+         */
+        const eyes = new AuditEyes({ watchSessionId: borrowed ? opts?.watchSessionId : undefined });
+
         opts?.onProgress?.('pressing');
-        try { mergeProbe(await probeControls(page), '/'); } catch { /* the controls are what is under test */ }
+        /**
+         * ONE budget for the whole walk, not one per page. Five routes × a
+         * per-page budget is how a self-check turns into a five-minute stall on
+         * a build that was supposed to take two.
+         */
+        const walkUntil = Date.now() + Math.max(45_000, timeoutMs * 2);
+        const probeOpts = () => ({ eyes, budgetMs: Math.max(6000, walkUntil - Date.now()) });
+        try { mergeProbe(await probeControls(page, probeOpts()), '/'); } catch { /* the controls are what is under test */ }
 
         // Every other page the app offers, audited as a page in its own right.
         const brokenRoutes: string[] = [];
@@ -361,16 +396,41 @@ export async function auditBuiltApp(
                 if (d2.deadLinks) dom.deadLinks += d2.deadLinks;
                 if (d2.small.length) dom.small.push(...d2.small.map((s: string) => `${r} ${s}`));
                 if (d2.h1s !== 1) brokenRoutes.push(`${r} (h1=${d2.h1s})`);
-                mergeProbe(await probeControls(page), r);
+                mergeProbe(await probeControls(page, probeOpts()), r);
             } catch (e: any) {
                 brokenRoutes.push(`${r} (${String(e?.message || e).slice(0, 40)})`);
             }
         }
         if (routes.length) { try { await page.goto(url, { waitUntil: 'load', timeout: 15_000 }); } catch { /* home is optional now */ } }
 
+        /**
+         * AND THE UI ITSELF IS INSPECTED — «وفحص ui».
+         *
+         * Colours against WCAG, structure against a screen reader, and the same
+         * page re-laid-out at 390px and 820px with every element that spills off
+         * the screen outlined where he can see it. Joe owned tools that did all
+         * three; his own builds were never put through any of them.
+         */
+        opts?.onProgress?.('inspecting');
+        let ui: { findings: any[]; metrics: Record<string, any> } = { findings: [], metrics: {} };
+        try {
+            const desktop = page.viewportSize?.() || { width: 1280, height: 900 };
+            ui = await inspectUi(page, {
+                eyes, restore: desktop,
+                // The panel draws every frame at the size the session declares;
+                // without this the phone screenshot arrives in a desktop frame.
+                onViewport: (w, h) => {
+                    if (!borrowed || !opts?.watchSessionId) return;
+                    try { require('../../modules/browser/manager').setSessionViewport(opts.watchSessionId, w, h); } catch { /* cosmetic */ }
+                },
+            });
+        } catch { /* the inspection is additive — never the reason a build fails */ }
+        try { await eyes.clear(page); } catch { /* the overlay removes itself with the page */ }
+
         behaviourMetrics.pressed = allControls.filter(c => c.kind !== 'anchor').length;
         behaviourMetrics.dead = allControls.filter(c => c.kind !== 'anchor' && !c.worked).length;
         const behaviour = judgeBehaviour(allControls, behaviourMetrics, []);
+        behaviour.findings.push(...ui.findings);
 
         const findings: AppAuditFinding[] = [];
         if (pageErrors.length) findings.push({ id: 'page_errors', severity: 'high', detail: `${pageErrors.length} خطأ صفحة: ${pageErrors[0]}`, detailEn: `${pageErrors.length} page error(s): ${pageErrors[0]}` });
@@ -448,6 +508,11 @@ export async function auditBuiltApp(
             routes: ['/', ...routes],
             pressed: behaviourMetrics.pressed,
             dead: allControls.filter(c => c.kind !== 'anchor' && !c.worked).map(c => c.label),
+            formsFilled: behaviourMetrics.formsFilled,
+            fieldsFilled: behaviourMetrics.fieldsFilled,
+            forms: allForms,
+            viewports: ui.metrics.viewports || [],
+            controls: allControls,
         };
     } catch (e: any) {
         return { skipped: `browser failed (${String(e?.message || e).slice(0, 80)})`, score: 0, findings: [] };
@@ -468,9 +533,21 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
     // «كل الأزرار حية» used to be printed by an audit that never pressed one.
     // The claim is now the count of what was actually pressed, on how many pages.
     const pages = (a.routes || []).length || 1;
+    /**
+     * AND THE SCOPE NAMES EVERY KIND OF WORK THAT WAS DONE.
+     *
+     * «هل يستخدمها كلها» — the answer has to be countable, not adjectival. So:
+     * how many pages, how many controls actually pressed, how many forms
+     * actually filled in and sent, and at how many widths the layout was
+     * re-measured. Each of those four numbers is produced by something that
+     * really happened in the browser.
+     */
+    const widths = (a.viewports || []).length;
     const scope = isAr
-        ? `(${pages} صفحة، ${a.pressed || 0} زر مضغوط فعلاً)`
-        : `(${pages} page(s), ${a.pressed || 0} control(s) pressed)`;
+        ? `(${pages} صفحة، ${a.pressed || 0} عنصر مضغوط، ${a.formsFilled || 0} نموذج معبّأ ومُرسل`
+        + `${a.fieldsFilled ? ` (${a.fieldsFilled} حقل)` : ''}${widths ? `، ${widths} مقاسات شاشة` : ''})`
+        : `(${pages} page(s), ${a.pressed || 0} control(s) pressed, ${a.formsFilled || 0} form(s) filled and submitted`
+        + `${a.fieldsFilled ? ` (${a.fieldsFilled} fields)` : ''}${widths ? `, ${widths} viewport(s)` : ''})`;
     if (!a.findings.length) {
         return isAr
             ? `🔎 فحص الجودة الذاتي في متصفح حقيقي ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.`

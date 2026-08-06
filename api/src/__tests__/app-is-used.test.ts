@@ -22,8 +22,8 @@ const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p
 describe('one definition of a dead control', () => {
     it('the React audit borrows the probe instead of growing its own', () => {
         const A = read('core', 'quality', 'app-audit.ts');
-        expect(A).toMatch(/import \{ probeControls, judgeBehaviour \} from '\.\/behaviour-audit'/);
-        expect(A).toMatch(/await probeControls\(page\)/);
+        expect(A).toMatch(/import \{ probeControls, judgeBehaviour, FormResult, ControlResult \} from '\.\/behaviour-audit'/);
+        expect(A).toMatch(/await probeControls\(page, probeOpts\(\)\)/);
         expect(A).toMatch(/judgeBehaviour\(allControls, behaviourMetrics/);
     });
 
@@ -70,12 +70,12 @@ describe('the message stops claiming what was never checked', () => {
     it('says how many pages were opened and how many controls were pressed', () => {
         const clean = formatAudit({ score: 100, findings: [], routes: ['/', '#/about'], pressed: 7 }, true);
         expect(clean).toContain('2 صفحة');
-        expect(clean).toContain('7 زر مضغوط');
+        expect(clean).toContain('7 عنصر مضغوط');
         const bad = formatAudit({
             score: 70, findings: [{ id: 'dead_controls', severity: 'high', detail: 'زر ميت' }],
             routes: ['/'], pressed: 3,
         }, true);
-        expect(bad).toContain('3 زر مضغوط');
+        expect(bad).toContain('3 عنصر مضغوط');
         expect(bad).toContain('زر ميت');
     });
 });

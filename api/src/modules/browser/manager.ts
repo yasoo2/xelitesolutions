@@ -441,6 +441,22 @@ async function captureJpeg(
       type: 'jpeg',
       quality: opts.quality,
       animations: 'disabled',
+      /**
+       * THE STREAM MUST NOT EDIT THE PAGE IT IS FILMING.
+       *
+       * Playwright's default `caret: 'hide'` writes
+       * `style="caret-color: transparent !important"` onto every input before
+       * the shot and strips it afterwards. At stream FPS that is a DOM
+       * mutation six times a second — and the self-QA decides «this button is
+       * dead» by comparing the DOM before and after a click. Measured on an
+       * idle page with nothing clicked: the body fingerprint flipped between
+       * two values in 11 of 25 samples, so on any page with a form the verdict
+       * on a dead button was part coin-flip.
+       *
+       * A blinking caret costs one JPEG artefact. A camera that rewrites the
+       * subject costs the measurement.
+       */
+      caret: 'initial',
       timeout: opts.timeoutMs,
       mask: opts.mask && opts.mask.length ? opts.mask : undefined,
     });
@@ -1043,6 +1059,32 @@ export function warmBrowserSession(sessionId: string): void {
     void getBrowserSession(sid)
         .then(() => { try { resumeStreamingIfWatched(sid); } catch { /* streaming is a bonus */ } })
         .catch(() => { /* the audit will launch its own — exactly as before */ });
+}
+
+/**
+ * THE PANEL MUST KNOW THE PAGE GOT NARROWER.
+ *
+ * Every frame is broadcast with `s.viewport` as its declared size, and the
+ * client draws the JPEG into a canvas of exactly that size. So when the self-QA
+ * re-lays the app out at 390px to check it on a phone — which is the whole
+ * point of a responsive pass he can watch — a stale viewport would stretch a
+ * phone-shaped screenshot across a desktop-shaped canvas and show him a smear.
+ *
+ * Returns what the viewport WAS, so the caller can put it back; it is the
+ * user's own browser, borrowed, and it goes home the size it arrived.
+ */
+export function setSessionViewport(sessionId: string, w: number, h: number): { w: number; h: number } | null {
+  const s = sessions.get(String(sessionId || '').trim());
+  if (!s) return null;
+  const was = { w: s.viewport.w, h: s.viewport.h };
+  if (w > 0 && h > 0) s.viewport = { w: Math.round(w), h: Math.round(h) };
+  return was;
+}
+
+/** The size the panel currently believes it is showing. */
+export function sessionViewport(sessionId: string): { w: number; h: number } | null {
+  const s = sessions.get(String(sessionId || '').trim());
+  return s ? { w: s.viewport.w, h: s.viewport.h } : null;
 }
 
 export function stopStreaming(sessionId: string) {

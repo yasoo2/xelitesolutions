@@ -2725,8 +2725,13 @@ export class ReactProjectTool extends BaseTool {
                     // browser is the same white rectangle with a caption.
                     if (where === 'pressing' && auditVisible) {
                         broadcastThinkingDetail(sessionId, isAr
-                            ? '🖱️ أضغط الآن كل زرّ ورابط في الصفحة أمامك'
-                            : '🖱️ Pressing every button and link on the page, in front of you');
+                            ? '🖱️ أضغط الآن كل زرّ وقائمة ورابط أمامك — والمؤشّر يتحرّك والعنصر المفحوص محدَّد بالأحمر'
+                            : '🖱️ Pressing every button, menu and link in front of you — the pointer moves and the element under test is outlined in red');
+                    }
+                    if (where === 'inspecting' && auditVisible) {
+                        broadcastThinkingDetail(sessionId, isAr
+                            ? '📐 والآن فحص الواجهة نفسها: تباين الألوان، بنية الوصولية، وإعادة قياس الصفحة على مقاس الجوّال واللوحي'
+                            : '📐 Now the interface itself: colour contrast, accessibility structure, and the page re-measured at phone and tablet width');
                     }
                 },
             });

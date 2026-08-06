@@ -1,0 +1,227 @@
+/**
+ * «لا اريد فقط حركات بسيطة»
+ *
+ * The self-QA opened one page, at one width, pressed at most fourteen things,
+ * COUNTED the forms without typing into any of them, and sent the panel not a
+ * single one of the two events the panel has always known how to draw. His
+ * five complaints were five separate defects, and these are the gates that
+ * hold each fix down.
+ *
+ * Proven live in a real browser with a real WebSocket client reading what the
+ * panel received (verify_deep_self_qa.ts, 27/27): 236 pointer moves, 65 red
+ * outlines, 41 clicks, 34 controls over 4 pages, 8 forms filled with 24 real
+ * field values, and 3 viewports — with the dead button still reported dead.
+ */
+import fs from 'fs';
+import path from 'path';
+import { judgeBehaviour } from '../core/quality/behaviour-audit';
+import { formatAudit } from '../core/quality/app-audit';
+import { VIEWPORTS } from '../core/quality/ui-inspection';
+
+const SRC = path.join(__dirname, '..');
+const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
+
+describe('the pointer moves and the element under test is outlined', () => {
+    const E = () => read('core', 'quality', 'audit-eyes.ts');
+
+    it('the audit emits the two events the panel has always been able to draw', () => {
+        // They existed since the panel was written and ONLY the agent's executor
+        // ever sent them — which is precisely «لا يوجد موشر وتحديد بالاحمر».
+        const e = E();
+        expect(e).toMatch(/type: 'cursor_move', x: px, y: py/);
+        expect(e).toMatch(/type: 'highlight_boxes', boxes:/);
+        expect(e).toMatch(/type: 'action_feedback', event: 'click'/);
+        expect(e).toMatch(/broadcastBrowserEvent/);
+    });
+
+    it('and moves the REAL mouse, so a hover menu actually opens', () => {
+        expect(E()).toMatch(/await page\.mouse\.move\(px, py\)/);
+    });
+
+    it('the overlay lives OUTSIDE <body>, where the fingerprint cannot see it', () => {
+        // A pointer drawn into the body would make every dead button look alive:
+        // the verdict is a before/after hash of body's markup and node counts.
+        const e = E();
+        expect(e).toMatch(/document\.documentElement\.appendChild\(host\)/);
+        expect(e).toMatch(/attachShadow\(\{ mode: 'open' \}\)/);
+        expect(e).not.toMatch(/document\.body\.appendChild\(host\)/);
+    });
+
+    it('and it is a FUNCTION — a string is never invoked by Playwright', () => {
+        // Measured: page.evaluate('(o) => {…}') evaluates to a function object
+        // and returns undefined. The whole overlay painted nothing, silently,
+        // because the call was `.catch(() => {})`.
+        const e = E();
+        expect(e).toMatch(/function paintEye\(o: any\) \{/);
+        expect(e).toMatch(/export async function evalInPage/);
+        expect(e).toMatch(/__name is not defined/);
+        expect(e).not.toMatch(/const PAINT = `/);
+    });
+
+    it('and the page is handed back with nothing of ours on it', () => {
+        expect(E()).toMatch(/function wipeEye\(\)/);
+        expect(read('core', 'quality', 'app-audit.ts')).toMatch(/await eyes\.clear\(page\)/);
+    });
+});
+
+describe('every menu, every route — not fourteen buttons', () => {
+    const B = () => read('core', 'quality', 'behaviour-audit.ts');
+
+    it('the ceiling is time, not a hard-coded fourteen', () => {
+        const b = B();
+        expect(b).toMatch(/const MAX_CONTROLS = 40;/);
+        expect(b).toMatch(/const DEFAULT_BUDGET_MS = 60_000;/);
+        expect(b).toMatch(/if \(Date\.now\(\) > deadline\) \{ budgetHit = true; break; \}/);
+    });
+
+    it('menus are catalogued FIRST — what they hide is invisible until they open', () => {
+        const b = B();
+        expect(b).toMatch(/\[aria-haspopup\], \[aria-expanded\], \.menu-toggle/);
+        expect(b).toMatch(/\.hamburger/);
+        expect(b).toMatch(/forEach\(el => push\(el, 'menu'\)\)/);
+        expect(b.indexOf("push(el, 'menu')")).toBeLessThan(b.indexOf("push(el, 'button')"));
+    });
+
+    it('and an in-app route is a control, while someone else’s site is not', () => {
+        const b = B();
+        expect(b).toMatch(/querySelectorAll\('a\[href\^="#\/"\]'\)\.forEach\(el => push\(el, 'link'\)\)/);
+    });
+
+    it('the stamps from the last page are wiped — a hash route never reloads', () => {
+        // This cost 34 controls: every element still carried `data-joe-ctl`, the
+        // dedupe guard skipped them all, and routes 2-4 pressed nothing.
+        const b = B();
+        expect(b).toMatch(/querySelectorAll\('\[data-joe-ctl\]'\)\.forEach\(el => el\.removeAttribute\('data-joe-ctl'\)\)/);
+        expect(b).toMatch(/querySelectorAll\('\[data-joe-fld\]'\)\.forEach/);
+    });
+
+    it('and the whole walk shares one budget instead of one per page', () => {
+        expect(read('core', 'quality', 'app-audit.ts')).toMatch(/const walkUntil = Date\.now\(\) \+ Math\.max\(45_000, timeoutMs \* 2\)/);
+    });
+});
+
+describe('the forms are filled in and sent, not counted', () => {
+    const B = () => read('core', 'quality', 'behaviour-audit.ts');
+
+    it('every field is typed into by its declared type', () => {
+        const b = B();
+        expect(b).toMatch(/export async function probeForms/);
+        expect(b).toMatch(/await el\.fill\(valueFor\(fld\.type, fld\.tag\), \{ timeout: 2500 \}\)/);
+        expect(b).toMatch(/await el\.selectOption\(fld\.options\[0\]/);
+        expect(b).toMatch(/await el\.check\(\{ timeout: 2000, force: true \}\)/);
+        for (const t of ['email', 'tel', 'date', 'password', 'url']) expect(b).toMatch(new RegExp(`case '${t}'`));
+    });
+
+    it('and sent through the button a visitor would press', () => {
+        const b = B();
+        expect(b).toMatch(/const sub = await page\.\$\(f\.submitSel\)/);
+        expect(b).toMatch(/form\.requestSubmit \? form\.requestSubmit\(\) : form\.submit\(\)/);
+    });
+
+    it('a full form that does nothing on submit is a critical finding', () => {
+        // The finding that could not exist before: nothing was ever typed, so
+        // «submit is dead» and «submit works» measured identically.
+        const j = judgeBehaviour([], { formsDeadSubmit: 2 }, []);
+        const f = j.findings.find(x => x.code === 'form_dead_submit')!;
+        expect(f).toBeTruthy();
+        expect(f.severity).toBe('critical');
+        expect(f.ar).toContain('عُبِّئ');
+        expect(f.en).toContain('filled in completely and submitted');
+    });
+
+    it('while a form the browser correctly refuses is not accused of anything', () => {
+        expect(judgeBehaviour([], { formsValidated: 3, formsDeadSubmit: 0 }, []).findings
+            .some(f => f.code === 'form_dead_submit')).toBe(false);
+    });
+
+    it('and Playwright takes ONE argument — two threw, and the forms vanished', () => {
+        const b = B();
+        expect(b).toMatch(/findForms, \{ maxForms: opts\?\.maxForms \?\? MAX_FORMS, maxFields: MAX_FIELDS_PER_FORM \}/);
+        expect(b).toMatch(/metrics\.formsError = String\(e\?\.message \|\| e\)/);
+    });
+});
+
+describe('the interface itself is inspected — «وفحص ui»', () => {
+    const U = () => read('core', 'quality', 'ui-inspection.ts');
+
+    it('at a phone width and a tablet width, then back to where it was', () => {
+        expect(VIEWPORTS.map(v => v.w)).toEqual([390, 820]);
+        const u = U();
+        expect(u).toMatch(/await page\.setViewportSize\(\{ width: vp\.w, height: vp\.h \}\)/);
+        expect(u).toMatch(/await page\.setViewportSize\(opts\.restore\)/);
+    });
+
+    it('and the panel is told the page got narrower, or it draws a smear', () => {
+        expect(read('modules', 'browser', 'manager.ts')).toMatch(/export function setSessionViewport/);
+        expect(read('core', 'quality', 'app-audit.ts')).toMatch(/setSessionViewport\(opts\.watchSessionId, w, h\)/);
+    });
+
+    it('contrast is WCAG arithmetic, not a guess about colour names', () => {
+        const u = U();
+        expect(u).toMatch(/0\.2126 \* a\[0\] \+ 0\.7152 \* a\[1\] \+ 0\.0722 \* a\[2\]/);
+        expect(u).toMatch(/\(size >= 24 \|\| \(size >= 18\.66 && bold\)\) \? 3 : 4\.5/);
+        expect(u).toMatch(/code: 'low_contrast'/);
+    });
+
+    it('and the structural checks a screen reader would fail on', () => {
+        const u = U();
+        for (const c of ['images_without_alt', 'inputs_without_labels', 'duplicate_ids', 'aria_hidden_focusable']) {
+            expect(u).toContain(c);
+        }
+        expect(u).toMatch(/code: 'mobile_overflow'/);
+        expect(u).toMatch(/code: 'mobile_tap_targets'/);
+        expect(u).toMatch(/code: 'no_viewport_meta'/);
+    });
+
+    it('every failing element is OUTLINED, not just listed', () => {
+        const u = U();
+        expect((u.match(/eyes\?\.mark\(/g) || []).length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('and the findings reach the delivery message', () => {
+        const a = read('core', 'quality', 'app-audit.ts');
+        expect(a).toMatch(/behaviour\.findings\.push\(\.\.\.ui\.findings\)/);
+        expect(a).toMatch(/opts\?\.onProgress\?\.\('inspecting'\)/);
+    });
+});
+
+describe('the camera does not edit the page it is filming', () => {
+    it('the stream no longer hides the caret, which rewrote every input', () => {
+        /**
+         * Measured on an IDLE page with nothing clicked: the body fingerprint
+         * flipped between two values in 11 of 25 samples, because Playwright's
+         * default `caret: 'hide'` writes `caret-color: transparent !important`
+         * into every input before each shot and strips it after. At stream FPS
+         * the audit's «did this click change anything?» was part coin-flip on
+         * any page with a form. 0/25 after the fix.
+         */
+        const m = read('modules', 'browser', 'manager.ts');
+        expect(m).toMatch(/caret: 'initial'/);
+        expect(m).toMatch(/THE STREAM MUST NOT EDIT THE PAGE IT IS FILMING/);
+    });
+
+    it('and the fingerprint ignores it even if some other camera does it', () => {
+        expect(read('core', 'quality', 'behaviour-audit.ts'))
+            .toMatch(/replace\(\/caret-color:\\s\*transparent\\s\*!important;\?\\s\*\/gi, ''\)/);
+    });
+});
+
+describe('and the report counts what was actually done', () => {
+    it('pages, controls, forms, fields and viewports — all measured', () => {
+        const ar = formatAudit({
+            score: 91, findings: [], routes: ['/', '#/a', '#/b'], pressed: 34,
+            formsFilled: 8, fieldsFilled: 24, viewports: ['390x844', '820x1180', '1280x720'],
+        }, true);
+        expect(ar).toContain('3 صفحة');
+        expect(ar).toContain('34 عنصر مضغوط');
+        expect(ar).toContain('8 نموذج معبّأ ومُرسل');
+        expect(ar).toContain('24 حقل');
+        expect(ar).toContain('3 مقاسات شاشة');
+    });
+
+    it('and a run with no forms does not claim a field it never typed', () => {
+        const ar = formatAudit({ score: 100, findings: [], routes: ['/'], pressed: 4 }, true);
+        expect(ar).toContain('0 نموذج معبّأ ومُرسل');
+        expect(ar).not.toContain('حقل');
+    });
+});

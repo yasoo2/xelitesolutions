@@ -16,6 +16,14 @@
  * not open is reported as not audited rather than as passing.
  */
 
+import { AuditEyes, boxOf, evalInPage } from './audit-eyes';
+
+/** What the strip over the outlined element calls it, in his language. */
+const KIND_AR: Record<string, string> = {
+    menu: 'قائمة', summary: 'مطويّة', submit: 'إرسال', tab: 'تبويب',
+    button: 'زر', link: 'رابط', anchor: 'مرساة',
+};
+
 export interface BehaviourFinding {
     code: string;
     severity: 'critical' | 'major' | 'minor';
@@ -26,9 +34,19 @@ export interface BehaviourFinding {
 
 export interface ControlResult {
     label: string;
-    kind: 'button' | 'summary' | 'anchor' | 'submit' | 'tab';
+    kind: 'button' | 'summary' | 'anchor' | 'submit' | 'tab' | 'menu' | 'link';
     worked: boolean;
     /** What changed, for the report — 'dom', 'open', 'scroll', 'validation', ''. */
+    effect: string;
+}
+
+/** One form, actually filled in and actually sent. */
+export interface FormResult {
+    /** What a human would call it — its heading, its submit button, or its id. */
+    label: string;
+    fields: number;
+    filled: number;
+    /** 'submitted' | 'validation' | 'reload' | '' (nothing happened at all). */
     effect: string;
 }
 
@@ -41,8 +59,21 @@ export interface BehaviourAudit {
     metrics: Record<string, any>;
 }
 
-const MAX_CONTROLS = 14;
+/**
+ * HOW MUCH OF THE APP GETS USED.
+ *
+ * «المتصفح يقوم بعده تجارب بسيطة فقط … لا اريد فقط حركات بسيطة». It was 14 —
+ * a number chosen when the audit had eight seconds and pressed one page. The
+ * real limit was never the count; it is TIME, and a budget says so honestly:
+ * press everything, in order, until the budget runs out, and report how far
+ * it got instead of stopping at an arbitrary fourteenth button.
+ */
+const MAX_CONTROLS = 40;
+const DEFAULT_BUDGET_MS = 60_000;
 const SETTLE_MS = 320;
+/** Forms are filled for real. This is how many, and how big, per page. */
+const MAX_FORMS = 6;
+const MAX_FIELDS_PER_FORM = 14;
 
 /** Runs in the page: catalogue everything a visitor could press. */
 function findControls(limit: number) {
@@ -60,16 +91,40 @@ function findControls(limit: number) {
         return t || aria || el.tagName.toLowerCase();
     };
 
+    /**
+     * WIPE LAST PAGE'S STAMPS FIRST.
+     *
+     * A hash route does not reload the document, so every element still carried
+     * the `data-joe-ctl` handle from the previous pass — and the dedupe guard
+     * below then found nothing at all to press on routes two, three and four.
+     * Measured as «10 controls across 4 pages» when it should have been forty.
+     */
+    document.querySelectorAll('[data-joe-ctl]').forEach(el => el.removeAttribute('data-joe-ctl'));
+
     const out: Array<{ sel: string; kind: string; label: string; href?: string }> = [];
     const push = (el: Element, kind: string) => {
         if (out.length >= limit || !vis(el)) return;
+        if (el.hasAttribute('data-joe-ctl')) return;    // claimed by an earlier group
         // A stable per-run handle: index into a list we also stamp on the element.
         const id = `joe-ctl-${out.length}`;
         el.setAttribute('data-joe-ctl', id);
         out.push({ sel: `[data-joe-ctl="${id}"]`, kind, label: label(el), href: (el as HTMLAnchorElement).href });
     };
 
-    // details/summary first — the cheapest correct accordion, and easy to verify.
+    /**
+     * MENUS FIRST — «تجريب جميع القوائم».
+     *
+     * A burger, a dropdown trigger, a disclosure: the controls that HIDE the
+     * rest of the interface. Pressing them before anything else is not tidiness
+     * — everything behind them is invisible to the probe until they open, so a
+     * navigation menu that never opened meant its links were never even
+     * catalogued.
+     */
+    document.querySelectorAll(
+        '[aria-haspopup], [aria-expanded], .menu-toggle, .nav-toggle, .hamburger, .burger, '
+        + '[data-menu], [class*="dropdown"] > button, nav button, header button',
+    ).forEach(el => push(el, 'menu'));
+    // details/summary — the cheapest correct accordion, and easy to verify.
     document.querySelectorAll('details > summary').forEach(el => push(el, 'summary'));
     // Anything that submits.
     document.querySelectorAll('form button[type="submit"], form input[type="submit"], form button:not([type])').forEach(el => push(el, 'submit'));
@@ -78,16 +133,75 @@ function findControls(limit: number) {
     // Ordinary buttons — the cart, the counter, the toggle.
     document.querySelectorAll('button, [role="button"]').forEach(el => {
         if (el.closest('form')) return;                 // already covered as submit
-        if (el.hasAttribute('data-joe-ctl')) return;
         push(el, 'button');
     });
-    // In-page navigation.
+    /**
+     * AND THE ROUTES INSIDE THE APP.
+     *
+     * A hash-router link changes the whole screen without leaving the document
+     * — the single most consequential thing a visitor can click — and the probe
+     * used to skip every one of them. Only in-app routes: sending the audit to
+     * someone else's website mid-build is not a measurement of this build.
+     */
+    document.querySelectorAll('a[href^="#/"]').forEach(el => push(el, 'link'));
+    // In-page navigation (checked without clicking, further down).
     document.querySelectorAll('a[href^="#"]').forEach(el => {
         const h = (el.getAttribute('href') || '').slice(1);
-        if (!h) return;
+        if (!h || h.startsWith('/')) return;
         push(el, 'anchor');
     });
     return out;
+}
+
+/** Runs in the page: catalogue the forms, field by field, for real filling. */
+function findForms(o: { maxForms: number; maxFields: number }) {
+    const maxForms = o.maxForms, maxFields = o.maxFields;
+    // Same reason as the controls above: a hash route keeps the old stamps.
+    document.querySelectorAll('[data-joe-form]').forEach(el => el.removeAttribute('data-joe-form'));
+    document.querySelectorAll('[data-joe-fld]').forEach(el => el.removeAttribute('data-joe-fld'));
+    const forms: Array<{
+        sel: string; label: string;
+        fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[] }>;
+        hasSubmit: boolean; submitSel: string;
+    }> = [];
+    const vis = (el: Element) => {
+        const r = (el as HTMLElement).getBoundingClientRect();
+        const cs = getComputedStyle(el as HTMLElement);
+        return r.width > 2 && r.height > 2 && cs.visibility !== 'hidden' && cs.display !== 'none';
+    };
+    const all = Array.from(document.querySelectorAll('form'));
+    for (let i = 0; i < all.length && forms.length < maxForms; i++) {
+        const f = all[i] as HTMLFormElement;
+        if (!vis(f)) continue;
+        const fid = `joe-form-${forms.length}`;
+        f.setAttribute('data-joe-form', fid);
+        const fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[] }> = [];
+        const raw = Array.from(f.querySelectorAll('input,textarea,select'));
+        for (const el of raw) {
+            if (fields.length >= maxFields) break;
+            const h = el as HTMLInputElement;
+            const type = (h.getAttribute('type') || (el.tagName === 'TEXTAREA' ? 'textarea' : el.tagName === 'SELECT' ? 'select' : 'text')).toLowerCase();
+            if (['hidden', 'submit', 'button', 'image', 'reset', 'file'].includes(type)) continue;
+            if (h.disabled || h.readOnly) continue;
+            if (!vis(el)) continue;
+            const did = `joe-fld-${forms.length}-${fields.length}`;
+            el.setAttribute('data-joe-fld', did);
+            const options = el.tagName === 'SELECT'
+                ? Array.from((el as HTMLSelectElement).options).map(o => o.value).filter(v => v !== '')
+                : [];
+            fields.push({ sel: `[data-joe-fld="${did}"]`, tag: el.tagName.toLowerCase(), type, required: h.required === true, options: options.slice(0, 20) });
+        }
+        const submit = f.querySelector('button[type="submit"],input[type="submit"],button:not([type])');
+        let submitSel = '';
+        if (submit) { submit.setAttribute('data-joe-sub', fid); submitSel = `[data-joe-sub="${fid}"]`; }
+        // Its name, the way a person would say it: the submit's words, a legend,
+        // a heading above it, or — last — the id nobody reads.
+        const label = ((submit as HTMLElement)?.innerText
+            || (f.querySelector('legend,h1,h2,h3,h4') as HTMLElement)?.innerText
+            || f.getAttribute('aria-label') || f.getAttribute('name') || f.id || 'form').trim().replace(/\s+/g, ' ').slice(0, 40);
+        forms.push({ sel: `[data-joe-form="${fid}"]`, label, fields, hasSubmit: !!submit, submitSel });
+    }
+    return forms;
 }
 
 /** Runs in the page: a cheap fingerprint of everything a click could change. */
@@ -110,9 +224,22 @@ function snapshot() {
         if (r.width > 2 && r.height > 2) visible++;
     }
     const text = document.body.innerText || '';
+    /**
+     * …AND THE FINGERPRINT IGNORES WHAT THE CAMERA WROTE.
+     *
+     * Belt and braces for the caret bug above: any screenshot tool that hides
+     * the text caret does it by writing `caret-color: transparent !important`
+     * into every input's inline style. If one lands between the two snapshots,
+     * a button that did nothing looks like a button that changed the DOM.
+     * Joe's own streamer no longer does this; a normalised hash means no other
+     * camera can either.
+     */
+    const html = (document.body.innerHTML || '').slice(0, 200000)
+        .replace(/caret-color:\s*transparent\s*!important;?\s*/gi, '')
+        .replace(/\sstyle="\s*"/gi, '');
     return {
         text: hash(text),
-        html: hash((document.body.innerHTML || '').slice(0, 200000)),
+        html: hash(html),
         nodes: document.querySelectorAll('body *').length,
         visible, openDetails, active,
         scroll: Math.round(window.scrollY),
@@ -226,9 +353,31 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
  * It takes a page rather than a URL on purpose, so the clicking can happen in
  * the panel he is watching.
  */
-export async function probeControls(page: any): Promise<{ controls: ControlResult[]; metrics: Record<string, any> }> {
+export interface ProbeOptions {
+    /**
+     * SHOW HIM THE CHECK.
+     *
+     * With a panel session the pointer travels to each control, the control is
+     * outlined in red while it is pressed, and the panel's action list names
+     * every step — which is what «لا يوجد موشر وتحديد بالاحمر» was asking for.
+     * Without one, the probe behaves exactly as it always did.
+     */
+    watchSessionId?: string;
+    eyes?: AuditEyes;
+    /** How many controls at most (default 40) and how long at most (60s). */
+    maxControls?: number;
+    budgetMs?: number;
+    /** Fill and submit the forms for real. On by default. */
+    fillForms?: boolean;
+    onProgress?: (m: string) => void;
+}
+
+export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ controls: ControlResult[]; metrics: Record<string, any>; forms?: FormResult[] }> {
     const controls: ControlResult[] = [];
     const metrics: Record<string, any> = {};
+    const eyes = opts?.eyes || new AuditEyes({ watchSessionId: opts?.watchSessionId });
+    const limit = Math.max(1, Math.min(200, opts?.maxControls ?? MAX_CONTROLS));
+    const deadline = Date.now() + Math.max(4000, opts?.budgetMs ?? DEFAULT_BUDGET_MS);
     {
         /**
          * The functions below are compiled by esbuild before they are handed to
@@ -239,7 +388,7 @@ export async function probeControls(page: any): Promise<{ controls: ControlResul
          */
         await page.evaluate('globalThis.__name = globalThis.__name || (function (f) { return f; });').catch(() => { });
         const list: Array<{ sel: string; kind: string; label: string; href?: string }> =
-            await page.evaluate(findControls, MAX_CONTROLS);
+            await evalInPage(page, findControls, limit);
         metrics.controlsFound = list.length;
 
         // Anchors are checked without clicking: the question is whether the
@@ -259,8 +408,10 @@ export async function probeControls(page: any): Promise<{ controls: ControlResul
         const deadAnchors = anchorTargets.filter(a => !a.exists);
         metrics.deadAnchors = deadAnchors.length;
 
+        let budgetHit = false;
         for (const c of list) {
             if (c.kind === 'anchor') continue;                       // handled above
+            if (Date.now() > deadline) { budgetHit = true; break; }
             let effect = '';
             try {
                 const el = await page.$(c.sel);
@@ -295,11 +446,31 @@ export async function probeControls(page: any): Promise<{ controls: ControlResul
                 await page.evaluate(() => {
                     if (document.documentElement.scrollHeight > window.innerHeight + 160) window.scrollBy(0, 120);
                 }).catch(() => { });
+                /**
+                 * THE POINTER GOES THERE, AND THE ELEMENT IS OUTLINED IN RED.
+                 *
+                 * This happens BEFORE the `before` snapshot on purpose: whatever
+                 * the eyes draw is present in both fingerprints, so it can never
+                 * be mistaken for something the click did. (The overlay also
+                 * lives outside <body>, which the fingerprint reads — belt and
+                 * braces, because a self-check that fakes its own evidence is
+                 * worse than no self-check.)
+                 *
+                 * The mouse that travels is the REAL mouse. A menu that opens on
+                 * hover opens here, which is the only reason its items can be
+                 * catalogued at all.
+                 */
+                await eyes.lookAt(page, await boxOf(page, c.sel), {
+                    note: `${KIND_AR[c.kind] || 'عنصر'}: ${c.label}`.slice(0, 64),
+                    moveMouse: true,
+                });
+                if (c.kind === 'menu') await page.waitForTimeout(220).catch(() => { });
                 // Snapshot AFTER scrolling into view. Taken before, the audit's own
                 // scroll is indistinguishable from the click's effect, and a cart
                 // button that really did increment its badge was reported as
                 // "scroll" — a true measurement of the wrong thing.
                 const before = await page.evaluate(snapshot).catch(() => null);
+                await eyes.press(page);
                 // force:true so an overlay does not turn "covered" into "broken".
                 await el.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
                 await page.waitForTimeout(SETTLE_MS);
@@ -315,6 +486,7 @@ export async function probeControls(page: any): Promise<{ controls: ControlResul
             } catch { /* the control itself is what is under test */ }
             controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload', effect });
         }
+        metrics.budgetExhausted = budgetHit;
 
         // Does an empty required form actually refuse? Native validation counts.
         const forms = await page.evaluate(() => {
@@ -352,7 +524,142 @@ export async function probeControls(page: any): Promise<{ controls: ControlResul
         metrics.keyboardUnreachable = keyboardUnreachable.length;
         (metrics as any).keyboardUnreachableSamples = keyboardUnreachable;
     }
-    return { controls, metrics };
+
+    /* ---- and now the forms are actually FILLED IN and actually SENT ---- */
+    let filled: FormResult[] = [];
+    if (opts?.fillForms !== false) {
+        try {
+            const r = await probeForms(page, { eyes, budgetMs: Math.max(6000, deadline - Date.now()) });
+            filled = r.forms;
+            Object.assign(metrics, r.metrics);
+        } catch { /* a form that fights back is a finding, not a crash */ }
+    }
+    return { controls, metrics, forms: filled };
+}
+
+/** What a value should be, given the field's own declared type. */
+function valueFor(type: string, tag: string): string {
+    const today = new Date();
+    const iso = today.toISOString().slice(0, 10);
+    switch (type) {
+        case 'email': return 'joe.qa@example.com';
+        case 'tel': return '0555123456';
+        case 'number': case 'range': return '3';
+        case 'date': return iso;
+        case 'month': return iso.slice(0, 7);
+        case 'week': return `${today.getFullYear()}-W20`;
+        case 'time': return '12:30';
+        case 'datetime-local': return `${iso}T12:30`;
+        case 'password': return 'JoeQa!2468';
+        case 'url': return 'https://example.com';
+        case 'color': return '#3b82f6';
+        case 'textarea': return 'رسالة اختبار من فحص الجودة الذاتي في جو — Joe self-QA test message.';
+        default: return tag === 'textarea' ? 'Joe self-QA test message' : 'Joe QA';
+    }
+}
+
+/**
+ * FILL THE FORM. SEND IT. SAY WHAT HAPPENED.
+ *
+ * «وتعبئه النماذج» — and until now the audit COUNTED forms. It counted their
+ * fields, counted the required ones, and never typed a character into any of
+ * them. So a contact form wired to nothing, an «add vendor» screen whose POST
+ * 500s, and a sign-in that silently swallows the password all measured
+ * identically to a working one.
+ *
+ * Every field is filled by its declared type through the real keyboard and
+ * the real select, the real submit button is pressed, and the outcome is one
+ * of four honest answers: it went through, it correctly refused, it reloaded
+ * the page (which loses the message), or absolutely nothing happened.
+ */
+export async function probeForms(
+    page: any,
+    opts?: { eyes?: AuditEyes; budgetMs?: number; maxForms?: number },
+): Promise<{ forms: FormResult[]; metrics: Record<string, any> }> {
+    const eyes = opts?.eyes || new AuditEyes({});
+    const deadline = Date.now() + Math.max(4000, opts?.budgetMs ?? 30_000);
+    const out: FormResult[] = [];
+    const metrics: Record<string, any> = { formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0 };
+
+    let forms: any[] = [];
+    try {
+        forms = await evalInPage(page, findForms, { maxForms: opts?.maxForms ?? MAX_FORMS, maxFields: MAX_FIELDS_PER_FORM }) || [];
+    } catch (e: any) {
+        // Never silent: a probe that cannot see the forms must say so, or the
+        // report claims «0 forms» about a page full of them.
+        metrics.formsError = String(e?.message || e).slice(0, 120);
+        return { forms: out, metrics };
+    }
+    metrics.formsSeen = forms.length;
+
+    for (const f of forms) {
+        if (Date.now() > deadline) break;
+        let filledCount = 0;
+        await eyes.say(page, `تعبئة النموذج: ${f.label}`);
+        for (const fld of f.fields) {
+            if (Date.now() > deadline) break;
+            try {
+                const el = await page.$(fld.sel);
+                if (!el) continue;
+                await el.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
+                await eyes.lookAt(page, await boxOf(page, fld.sel), { note: `${fld.type}`, tone: 'warn', moveMouse: true });
+                if (fld.tag === 'select') {
+                    if (!fld.options.length) continue;
+                    await el.selectOption(fld.options[0], { timeout: 2000 });
+                } else if (fld.type === 'checkbox' || fld.type === 'radio') {
+                    await el.check({ timeout: 2000, force: true });
+                } else {
+                    // A real fill: the page's own input/change handlers run.
+                    await el.fill(valueFor(fld.type, fld.tag), { timeout: 2500 });
+                }
+                filledCount++;
+            } catch { /* one stubborn field must not lose the whole form */ }
+        }
+        metrics.fieldsFilled += filledCount;
+        if (filledCount) metrics.formsFilled++;
+
+        // …and sent, through the button a visitor would press.
+        let effect = '';
+        try {
+            const before = await page.evaluate(snapshot).catch(() => null);
+            const stillInvalid = await page.evaluate((sel: string) => {
+                const form = document.querySelector(sel) as HTMLFormElement | null;
+                return !!form && typeof form.checkValidity === 'function' && !form.checkValidity();
+            }, f.sel).catch(() => false);
+            if (f.submitSel) {
+                await eyes.lookAt(page, await boxOf(page, f.submitSel), { note: `إرسال: ${f.label}`, moveMouse: true });
+                await eyes.press(page);
+                const sub = await page.$(f.submitSel);
+                await sub?.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
+            } else {
+                await page.evaluate((sel: string) => {
+                    const form = document.querySelector(sel) as HTMLFormElement | null;
+                    if (form) (form.requestSubmit ? form.requestSubmit() : form.submit());
+                }, f.sel).catch(() => { });
+            }
+            await page.waitForTimeout(650);
+            const after = await page.evaluate(snapshot).catch(() => null);
+            effect = changed(before, after);
+            if (effect === 'navigation') {
+                effect = 'reload';
+                await page.goBack({ timeout: 5000 }).catch(() => { });
+                await page.waitForTimeout(250);
+            } else if (!effect && stillInvalid) {
+                // The browser refused it — which is the behaviour that was asked
+                // for, not a dead form.
+                effect = 'validation';
+            } else if (effect) {
+                effect = 'submitted';
+            }
+        } catch { /* the form is what is under test */ }
+
+        if (effect === 'submitted') { /* counted by presence in the list */ }
+        else if (effect === 'validation') metrics.formsValidated++;
+        else if (effect === 'reload') metrics.formsReloaded++;
+        else if (f.fields.length) metrics.formsDeadSubmit++;
+        out.push({ label: f.label, fields: f.fields.length, filled: filledCount, effect });
+    }
+    return { forms: out, metrics };
 }
 
 /* ---- judgement, on what actually happened ------------------------------ */
@@ -408,6 +715,22 @@ export function judgeBehaviour(
             ar: `النموذج يعيد تحميل الصفحة عند الإرسال بدل معالجته — الرسالة تضيع`,
             en: 'The form reloads the page on submit instead of handling it — the message is lost',
             hint: 'addEventListener("submit", e => { e.preventDefault(); ... }) and show a success state',
+        });
+    }
+    /**
+     * A FORM THAT WAS FILLED IN AND SENT, AND NOTHING HAPPENED.
+     *
+     * This is the finding the old audit could not produce at all: it never
+     * typed into a field, so «submit does nothing» and «submit works» were the
+     * same measurement. It is separate from `dead_controls` on purpose — an
+     * empty form's submit button correctly refuses, and that is not this.
+     */
+    if ((metrics.formsDeadSubmit || 0) > 0) {
+        findings.push({
+            code: 'form_dead_submit', severity: 'critical',
+            ar: `${metrics.formsDeadSubmit} نموذج عُبِّئ بالكامل وأُرسل ولم يحدث شيء إطلاقاً — لا رسالة نجاح ولا خطأ`,
+            en: `${metrics.formsDeadSubmit} form(s) were filled in completely and submitted, and nothing happened at all — no success state, no error`,
+            hint: 'handle the submit event: send the data, then show a success or an error the visitor can see',
         });
     }
     if (metrics.formsWithoutValidation > 0) {
