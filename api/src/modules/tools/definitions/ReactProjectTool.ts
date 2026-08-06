@@ -2548,19 +2548,64 @@ export class ReactProjectTool extends BaseTool {
          * the server's public/ — which that server now serves — so the whole
          * system is a single folder you upload and start.
          */
-        if (built && prevEntry?.type === 'api' && prevEntry?.dir && fs.existsSync(prevEntry.dir)) {
+        const apiDir = (prevEntry?.type === 'api' && prevEntry?.dir && fs.existsSync(prevEntry.dir)) ? String(prevEntry.dir) : '';
+        /** Copy the freshly built interface into the API server's public/. */
+        const packageIntoApi = (announce: boolean) => {
+            if (!apiDir) return false;
             try {
-                const target = path.join(prevEntry.dir, 'public');
+                const target = path.join(apiDir, 'public');
                 fs.rmSync(target, { recursive: true, force: true });
                 fs.cpSync(path.join(proj, 'dist'), target, { recursive: true });
-                term(`packaged: the built interface now lives in ${path.basename(prevEntry.dir)}/public — one origin, one «npm start»`);
-                if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                term(`packaged: the built interface now lives in ${path.basename(apiDir)}/public — one origin, one «npm start»`);
+                if (announce && sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? '📦 حزمتُ الواجهة داخل الخادم — مجلد واحد جاهز للرفع على دومين'
                     : '📦 Packaged the interface inside the server — one folder, ready for a domain');
+                return true;
             } catch (e: any) {
                 term(`packaging skipped: ${e?.message || e}`);
+                return false;
             }
-        }
+        };
+        const packaged = built ? packageIntoApi(true) : false;
+
+        /**
+         * AND THE AUDIT GOES WHERE THE SYSTEM LIVES.
+         *
+         * His delivery said «⛔ it does NOT work properly — 2 blocking
+         * findings», and both of them were one 404 on `/api/health`. Nothing
+         * was broken: the app asks its own origin, once, whether it serves the
+         * API — and the audit was serving a FOLDER, which cannot answer. The
+         * interface had already been packaged into its API server two lines
+         * above; that server answers the question, serves the catalogue from
+         * the real database, and is what he will actually deploy.
+         *
+         * So it is started for the measurement and stopped after it. If it
+         * will not start, the static folder still gets audited — a build is
+         * never blocked on its own audit.
+         */
+        let liveServer: { url: string; stop: () => void } | null = null;
+        const bootPackagedServer = async (): Promise<typeof liveServer> => {
+            if (!packaged || !apiDir || !fs.existsSync(path.join(apiDir, 'node_modules'))) return null;
+            const port = 4600 + Math.floor(Math.random() * 300);
+            try {
+                const { executionEngine } = require('../../../kernel/ExecutionEngine');
+                let up: (v: boolean) => void = () => { /* set below */ };
+                const listening = new Promise<boolean>(r => { up = r; });
+                const timer = setTimeout(() => up(false), 15_000);
+                const child = executionEngine.runArgvStreaming(process.execPath, ['server.js'], {
+                    cwd: apiDir, env: { PORT: String(port), NODE_NO_WARNINGS: '1' },
+                    onLine: (l: string) => { term(`  ${l.slice(0, 160)}`); if (/listening on/.test(l)) up(true); },
+                });
+                child.done.then(() => up(false));
+                const ok = await listening;
+                clearTimeout(timer);
+                if (!ok) { try { child.kill(); } catch { /* already gone */ } return null; }
+                return { url: `http://127.0.0.1:${port}/`, stop: () => { try { child.kill(); } catch { /* already gone */ } } };
+            } catch (e: any) {
+                term(`self-QA: could not start the packaged server (${String(e?.message || e).slice(0, 120)}) — auditing the folder instead`);
+                return null;
+            }
+        };
 
         // ── SELF-QA: a REAL browser measures the build before delivery ──────
         let audit: any = null;
@@ -2599,9 +2644,17 @@ export class ReactProjectTool extends BaseTool {
                     : 'self-QA: no Browser panel attached — running anyway, the findings are in the message');
             } catch { /* the hub is optional — never block a build on it */ }
             let auditVisible = false;
+            liveServer = await bootPackagedServer();
+            if (liveServer) {
+                term(`self-QA: measuring the RUNNING system at ${liveServer.url} — its API answers, so the catalogue is real`);
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                    ? '🔌 أفحص النظام وهو يعمل — الواجهة داخل خادمها، والبيانات من قاعدتها الحقيقية'
+                    : '🔌 Measuring the system while it RUNS — the interface inside its server, the data from its real database');
+            }
             audit = await auditBuiltApp(path.join(proj, 'dist'), {
                 timeoutMs: 30_000,
                 watchSessionId: PANEL_BROWSER_SID,
+                ...(liveServer ? { serveUrl: liveServer.url } : {}),
                 /**
                  * And the invitation matches reality. When the audit cannot
                  * borrow the panel it runs in a private browser — and telling
@@ -2669,8 +2722,13 @@ export class ReactProjectTool extends BaseTool {
                     : '🛠️ Repairing what I can fix myself, then rebuilding before delivery…');
                 const cycle = await repairAndRebuild(proj, { onLine: term, isArabic: isAr });
                 if (cycle.changed.length && cycle.built) {
+                    // The repair rebuilt dist/ — the packaged copy inside the
+                    // server is now the OLD interface. Measuring that would
+                    // credit the repair with a page it did not produce.
+                    if (packaged) packageIntoApi(false);
                     const after = await auditBuiltApp(path.join(proj, 'dist'), {
                         timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
+                        ...(liveServer ? { serveUrl: liveServer.url } : {}),
                     });
                     term(`self-repair: ${audit.score} → ${after.score}/100 (${cycle.changed.length} file(s))`);
                     if (!after.skipped && after.score >= audit.score) {
@@ -2684,6 +2742,12 @@ export class ReactProjectTool extends BaseTool {
                 } else if (cycle.reverted) {
                     term('self-repair: reverted — the project is exactly as it was');
                 }
+            }
+            // The measurement is over; the system he deploys is his to start.
+            if (liveServer) {
+                liveServer.stop();
+                term('self-QA: stopped the server that was started for the measurement');
+                liveServer = null;
             }
         }
 

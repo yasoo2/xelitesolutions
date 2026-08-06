@@ -47,7 +47,29 @@ export function scoreOf(findings: AppAuditFinding[]): number {
 
 export async function auditBuiltApp(
     distDir: string,
-    opts?: { timeoutMs?: number; watchSessionId?: string; onProgress?: (m: string) => void },
+    opts?: {
+        timeoutMs?: number; watchSessionId?: string; onProgress?: (m: string) => void;
+        /**
+         * AUDIT THE SYSTEM, NOT THE FOLDER.
+         *
+         * His store was measured on a bare static server and marked broken:
+         *
+         *     ⛔ Delivered, but it does NOT work properly — 2 blocking findings
+         *        • 3 console errors: 404 ← http://127.0.0.1:57701/api/health
+         *        • 1 file did not arrive: 404 /api/health
+         *
+         * Nothing was broken. The app asks its own origin one question at
+         * startup — «do you serve my API?» — and a folder cannot answer it.
+         * The build had ALREADY packaged that interface inside its API server,
+         * where the question answers itself; the audit just never went there.
+         *
+         * Give this the address of the running system and the audit measures
+         * the real thing: the API answers, the catalogue loads from the real
+         * database, and a 404 on /api/health becomes what it should always
+         * have been — a genuine defect.
+         */
+        serveUrl?: string;
+    },
 ): Promise<AppAudit> {
     const timeoutMs = opts?.timeoutMs ?? 30_000;
     if (!fs.existsSync(path.join(distDir, 'index.html'))) {
@@ -57,6 +79,11 @@ export async function auditBuiltApp(
     try { chromium = require('playwright').chromium; }
     catch { return { skipped: 'playwright not installed', score: 0, findings: [] }; }
 
+    /**
+     * When the system is already running somewhere, audit THERE. The static
+     * server below exists only for a build that has no server of its own.
+     */
+    const givenUrl = String(opts?.serveUrl || '').trim();
     const srv = http.createServer((req, res) => {
         const rel = decodeURIComponent(String(req.url || '/').split('?')[0]).replace(/^\/+/, '') || 'index.html';
         const file = path.join(distDir, rel);
@@ -65,8 +92,8 @@ export async function auditBuiltApp(
         res.writeHead(200, { 'content-type': type });
         res.end(fs.readFileSync(file));
     });
-    await new Promise<void>(r => srv.listen(0, '127.0.0.1', () => r()));
-    const url = `http://127.0.0.1:${(srv.address() as any).port}/`;
+    if (!givenUrl) await new Promise<void>(r => srv.listen(0, '127.0.0.1', () => r()));
+    const url = givenUrl || `http://127.0.0.1:${(srv.address() as any).port}/`;
 
     let browser: any = null;
     let borrowed = false;
@@ -183,11 +210,21 @@ export async function auditBuiltApp(
             // console error with the URL only in the location. It was costing a
             // clean build 15 points for a file the browser invented a request for.
             if (/favicon\.ico/i.test(String(m.text()) + where)) return;
+            /**
+             * AND THE APP'S OWN «DO YOU SERVE MY API?» IS NOT A DEFECT OF THE
+             * APP. On a static folder that question CANNOT be answered — the
+             * folder has no server — and its 404 cost his working store two
+             * blocking findings and 15 points. When the audit runs against the
+             * real system (serveUrl), the same 404 counts in full, because
+             * there it means the API really is missing.
+             */
+            if (!givenUrl && /\/api\/health/.test(String(m.text()) + where)) return;
             consoleErrors.push((String(m.text()).slice(0, 120) + where).slice(0, 180));
         };
         page.on('console', onConsole);
         const onResponse = (r: any) => {
-            if (r.status() >= 400 && !/favicon\.ico/i.test(r.url())) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
+            if (r.status() >= 400 && !/favicon\.ico/i.test(r.url())
+                && !(!givenUrl && /\/api\/health/.test(r.url()))) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
             try {
                 const len = Number(r.headers()['content-length'] || 0);
                 if (len > 400_000 && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(r.url())) {
