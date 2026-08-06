@@ -75,8 +75,12 @@ describe('and the builder turns it into real tables', () => {
     const A = () => read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
 
     it('the model is derived at build time and logged', () => {
-        expect(A()).toMatch(/const model = deriveDataModel\(request\);/);
-        expect(A()).toMatch(/data model: \$\{dataModelDomain\(request\)\}/);
+        // The derivation moved behind the designer: a known domain still wins,
+        // and anything outside the six is designed by a constrained model.
+        expect(A()).toMatch(/const model = await designDataModel\(request, \{ onNote: \(n: string\) => term\(n\) \}\);/);
+        const d = fs.readFileSync(path.join(SRC, 'core', 'design', 'schema-designer.ts'), 'utf-8');
+        expect(d).toMatch(/const known = deriveDataModel\(request\);/);
+        expect(d).toMatch(/data model: a known domain matched/);
     });
 
     it('entities.js is written only when there is a model', () => {

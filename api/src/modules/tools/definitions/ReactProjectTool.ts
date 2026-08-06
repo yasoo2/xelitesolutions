@@ -2376,7 +2376,17 @@ export class ReactProjectTool extends BaseTool {
              * cannot drift apart — and only when this session really has that
              * server to talk to.
              */
-            const tableModel = apiLink ? require('../../../core/design/data-model').deriveDataModel(request) : [];
+            /**
+             * The model the SERVER was built from, not a second guess at it.
+             * When a request falls outside the known domains the design comes
+             * from the LLM — asking it again here would be slower and free to
+             * disagree with the tables that actually exist.
+             */
+            const tableModel = apiLink
+                ? (Array.isArray(prevEntry?.model) && prevEntry.model.length
+                    ? prevEntry.model
+                    : require('../../../core/design/data-model').deriveDataModel(request))
+                : [];
             if (tableModel.length) term(`admin screens: ${tableModel.map((e: any) => e.key).join(', ')}`);
             const appFiles = buildAppFiles(appBp, {
                 brand: content.brand, isArabic: isAr, api: apiLink, storeKey: `${slug(content.brand)}-${appBp.kind}`,

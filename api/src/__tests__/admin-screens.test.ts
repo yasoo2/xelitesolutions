@@ -81,7 +81,11 @@ describe('every table becomes a screen', () => {
 describe('and the builder wires them without breaking what was there', () => {
     it('only when this session really has a server to talk to', () => {
         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
-        expect(r).toMatch(/const tableModel = apiLink \? require\('\.\.\/\.\.\/\.\.\/core\/design\/data-model'\)\.deriveDataModel\(request\) : \[\];/);
+        // …and from the model the SERVER was built from, so the screens and the
+        // tables cannot disagree when an LLM designed them.
+        expect(r).toMatch(/const tableModel = apiLink/);
+        expect(r).toMatch(/Array\.isArray\(prevEntry\?\.model\) && prevEntry\.model\.length/);
+        expect(r).toMatch(/deriveDataModel\(request\)\)/);
         expect(r).toMatch(/model: tableModel,/);
     });
 

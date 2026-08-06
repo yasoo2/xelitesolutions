@@ -1632,10 +1632,21 @@ export class ApiProjectTool extends BaseTool {
          * Empty for anything that does not clearly name a domain — a plain
          * store keeps behaving exactly as it does today.
          */
-        const { deriveDataModel, dataModelDomain, describeModel } = require('../../../core/design/data-model');
-        const model = deriveDataModel(request);
+        const { describeModel } = require('../../../core/design/data-model');
+        /**
+         * AND WHEN NO DOMAIN MATCHES, THE MODEL DESIGNS ONE.
+         *
+         * Six hand-written domains is a ceiling with his name on it: a
+         * veterinary clinic, a freight system, a gym — anything else fell back
+         * to one table and waited for me to add a seventh domain by hand. The
+         * model is let in exactly here, where it is trustworthy on his laptop:
+         * it DESCRIBES the tables under a constrained decoder, a strict
+         * validator refuses anything unsafe, and the deterministic generator
+         * builds it. Every failure lands on the six domains.
+         */
+        const { designDataModel } = require('../../../core/design/schema-designer');
+        const model = await designDataModel(request, { onNote: (n: string) => term(n) });
         if (model.length) {
-            term(`data model: ${dataModelDomain(request)} — ${model.length} table(s): ${model.map((e: any) => e.key).join(', ')}`);
             if (sessionId) broadcastThinkingDetail(sessionId, describeModel(model, isAr));
         }
         const isCatalogue = columns === CATALOGUE_COLUMNS;
@@ -1972,7 +1983,14 @@ export class ApiProjectTool extends BaseTool {
         const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
         // resource + port ride along so a LATER react build in this session
         // can link itself to this API (the full-stack chain).
-        projects[sessionKey] = { dir: proj, type: 'api', brand, resource, port: 4100, updatedAt: Date.now(), lastRequest: request.slice(0, 80) };
+        // The model rides along: the interface builder generates one admin screen
+        // per table from the SAME design, and asking the LLM a second time for
+        // the same answer would be both slower and free to disagree with itself.
+        projects[sessionKey] = {
+            dir: proj, type: 'api', brand, resource, port: 4100, updatedAt: Date.now(),
+            lastRequest: request.slice(0, 80),
+            ...(model.length ? { model } : {}),
+        };
         persistJoeProjects();
 
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');
