@@ -313,7 +313,7 @@ export function repairProjectFiles(
             const r = repairHtmlShell(text, opts);
             text = r.text; merge(r.repairs);
         } else if (/\.(jsx|tsx)$/.test(lower)) {
-            for (const fix of [repairImagesAlt, repairInputLabels, repairDeadLinks, repairHeadings, repairLazyImages]) {
+            for (const fix of [repairImagesAlt, repairInputLabels, repairDeadLinks, repairHeadings, repairLazyImages, repairKeyboardControls]) {
                 const r = fix(text);
                 text = r.text; merge(r.repairs);
             }
@@ -443,6 +443,41 @@ export function repairLazyImages(code: string): RepairedFile {
     }
     const repairs: Repair[] = [];
     add(repairs, 'heavy_images', 'أجّلتُ تحميل الصور غير الظاهرة أولاً (lazy + decoding=async)', count);
+    return { text, repairs };
+}
+
+/* ── a control a keyboard can actually reach ─────────────────────────────── */
+
+/**
+ * A `<div onClick>` LOOKS like a button and behaves like one for a mouse. For
+ * the Tab key it does not exist at all: it is not focusable, so a keyboard or
+ * switch-device user can never trigger it. The behaviour audit has reported
+ * this for months under `keyboard_unreachable` and nothing ever fixed it.
+ *
+ * The repair is exact and safe: make it announce itself as a button, put it in
+ * the tab order, and let Enter/Space do what the mouse does. The existing click
+ * handler is not touched — it is invoked through the element's own click().
+ */
+export function repairKeyboardControls(code: string): RepairedFile {
+    let text = String(code || '');
+    let count = 0;
+    const KEY = 'onKeyDown={(e) => { if (e.key === \'Enter\' || e.key === \' \') { e.preventDefault(); e.currentTarget.click(); } }}';
+    for (const tag of ['div', 'span', 'li']) {
+        for (const at of tagPositions(text, tag)) {
+            const span = tagSpan(text, at);
+            if (!/\bonClick\s*=/.test(span)) continue;
+            if (/\btabIndex\s*=/.test(span)) continue;      // already reachable
+            const attrs = [
+                /\brole\s*=/.test(span) ? '' : 'role="button"',
+                'tabIndex={0}',
+                /\bonKeyDown\s*=/.test(span) ? '' : KEY,
+            ].filter(Boolean).join(' ');
+            text = injectAttr(text, at, tag, attrs);
+            count++;
+        }
+    }
+    const repairs: Repair[] = [];
+    add(repairs, 'keyboard_unreachable', 'جعلتُ العناصر القابلة للنقر تصلها لوحة المفاتيح (Tab ثم Enter/Space)', count);
     return { text, repairs };
 }
 

@@ -197,6 +197,47 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
         }
         await page.waitForTimeout(500);
 
+        const probe = await probeControls(page);
+        controls.push(...probe.controls);
+        Object.assign(metrics, probe.metrics);
+
+        metrics.jsErrors = jsErrors.length;
+        await page.close();
+    } catch (e: any) {
+        try { await browser.close(); } catch { }
+        return { ...empty, skipped: `behaviour audit failed: ${e?.message || e}` };
+    }
+    try { await browser.close(); } catch { }
+
+    const judged = judgeBehaviour(controls, metrics, jsErrors);
+    findings.push(...judged.findings);
+    return { ran: true, score: judged.score, findings, controls, metrics };
+}
+
+/**
+ * PRESS WHAT A VISITOR WOULD PRESS — on a page that is ALREADY OPEN.
+ *
+ * Split out of auditBehaviour so the React path can use the same definition of
+ * «this button does nothing» instead of growing a second one. It matters more
+ * than it looks: for months the single-file HTML builder pressed every control
+ * before delivery while React projects — the newer and more capable front —
+ * were handed over with their buttons never once clicked.
+ *
+ * It takes a page rather than a URL on purpose, so the clicking can happen in
+ * the panel he is watching.
+ */
+export async function probeControls(page: any): Promise<{ controls: ControlResult[]; metrics: Record<string, any> }> {
+    const controls: ControlResult[] = [];
+    const metrics: Record<string, any> = {};
+    {
+        /**
+         * The functions below are compiled by esbuild before they are handed to
+         * the browser, and esbuild names them with a `__name` helper that exists
+         * in Node and not in the page. Without this line every evaluate throws
+         * «__name is not defined» — which is exactly how the React audit was
+         * found pressing zero buttons while reporting that it had run.
+         */
+        await page.evaluate('globalThis.__name = globalThis.__name || (function (f) { return f; });').catch(() => { });
         const list: Array<{ sel: string; kind: string; label: string; href?: string }> =
             await page.evaluate(findControls, MAX_CONTROLS);
         metrics.controlsFound = list.length;
@@ -293,17 +334,19 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
         }).catch(() => []);
         metrics.keyboardUnreachable = keyboardUnreachable.length;
         (metrics as any).keyboardUnreachableSamples = keyboardUnreachable;
-
-        metrics.jsErrors = jsErrors.length;
-        await page.close();
-    } catch (e: any) {
-        try { await browser.close(); } catch { }
-        return { ...empty, skipped: `behaviour audit failed: ${e?.message || e}` };
     }
-    try { await browser.close(); } catch { }
+    return { controls, metrics };
+}
 
-    /* ---- judgement, on what actually happened ------------------------------ */
+/* ---- judgement, on what actually happened ------------------------------ */
 
+/** The verdict, kept separate so both audits reach it by the same road. */
+export function judgeBehaviour(
+    controls: ControlResult[],
+    metrics: Record<string, any>,
+    jsErrors: string[] = [],
+): { score: number; findings: BehaviourFinding[] } {
+    const findings: BehaviourFinding[] = [];
     const pressable = controls.filter(c => c.kind !== 'anchor');
     const dead = pressable.filter(c => !c.worked);
     metrics.pressed = pressable.length;
@@ -369,9 +412,7 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
     }
 
     const penalty: Record<BehaviourFinding['severity'], number> = { critical: 30, major: 14, minor: 5 };
-    const score = Math.max(0, 100 - findings.reduce((s, f) => s + penalty[f.severity], 0));
-
-    return { ran: true, score, findings, controls, metrics };
+    return { score: Math.max(0, 100 - findings.reduce((s, f) => s + penalty[f.severity], 0)), findings };
 }
 
 /** What the model is told to fix, in the same shape as the visual repair brief. */

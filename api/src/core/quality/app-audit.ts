@@ -21,6 +21,7 @@ import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { getChromiumLaunchOptions } from '../../modules/browser/manager';
+import { probeControls, judgeBehaviour } from './behaviour-audit';
 
 export interface AppAuditFinding {
     id: string;
@@ -32,6 +33,10 @@ export interface AppAudit {
     skipped?: string;
     score: number;
     findings: AppAuditFinding[];
+    /** Which pages were opened, and how many controls were actually pressed. */
+    routes?: string[];
+    pressed?: number;
+    dead?: string[];
 }
 
 /** 100 minus what the findings earn — the same finding always costs the same. */
@@ -118,11 +123,15 @@ export async function auditBuiltApp(
             const where = (() => {
                 try { const l = m.location(); return l?.url ? ` ← ${String(l.url).slice(-60)}` : ''; } catch { return ''; }
             })();
+            // Chrome asks every site for /favicon.ico and reports the miss as a
+            // console error with the URL only in the location. It was costing a
+            // clean build 15 points for a file the browser invented a request for.
+            if (/favicon\.ico/i.test(String(m.text()) + where)) return;
             consoleErrors.push((String(m.text()).slice(0, 120) + where).slice(0, 180));
         };
         page.on('console', onConsole);
         const onResponse = (r: any) => {
-            if (r.status() >= 400) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
+            if (r.status() >= 400 && !/favicon\.ico/i.test(r.url())) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
             try {
                 const len = Number(r.headers()['content-length'] || 0);
                 if (len > 400_000 && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(r.url())) {
@@ -137,12 +146,15 @@ export async function auditBuiltApp(
             try { page.off('pageerror', onPageError); page.off('console', onConsole); page.off('response', onResponse); }
             catch { /* the page may already be gone */ }
         };
+        // A page that pops a confirm() would hang the audit the moment a button
+        // is pressed — and buttons are pressed now.
+        page.on('dialog', (d: any) => d.dismiss().catch(() => { }));
         await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
 
         // The declared webfont must actually LOAD — a stack that names Cairo
         // while serving no file is the exact costume this audit was born from.
         await page.evaluate(() => (document as any).fonts?.ready);
-        const dom = await page.evaluate(() => {
+        const inspect = () => page.evaluate(() => {
             const controls = [...document.querySelectorAll('a.btn, button, .nav-links a')] as HTMLElement[];
             const small = controls.filter(c => {
                 const r = c.getBoundingClientRect();
@@ -172,6 +184,7 @@ export async function auditBuiltApp(
                 })(),
             };
         });
+        const dom = await inspect();
 
         let toggleWorks = true;
         if (dom.hasToggle) {
@@ -180,6 +193,66 @@ export async function auditBuiltApp(
             const bg2 = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
             toggleWorks = bg2 !== dom.bg;
         }
+
+        /**
+         * AND NOW THE PART THAT WAS NEVER HERE: THE APP IS USED.
+         *
+         * Everything above this line looks at a page. None of it presses
+         * anything, and none of it leaves the home route. So a React build
+         * could ship with a «أضف إلى السلة» button wired to nothing and a
+         * second page that throws on load, and this audit would call it
+         * 100/100 — truthfully, about the wrong question.
+         *
+         * The single-file HTML builder has clicked its controls for months.
+         * The React path — the newer and far more capable one — never did.
+         * It uses the SAME probe now, so «this button does nothing» has one
+         * definition in the system rather than two.
+         */
+        const routes: string[] = await page.evaluate(() => {
+            const out = new Set<string>();
+            document.querySelectorAll('a[href]').forEach(a => {
+                const h = (a.getAttribute('href') || '').trim();
+                if (/^#\/.+/.test(h)) out.add(h);                       // hash router
+                else if (/^\/?[\w-]+\.html$/i.test(h)) out.add(h.replace(/^\//, ''));   // multi-file
+            });
+            return [...out].slice(0, 5);
+        }).catch(() => []);
+
+        const allControls: any[] = [];
+        const behaviourMetrics: Record<string, any> = { pressed: 0, dead: 0, deadAnchors: 0, keyboardUnreachable: 0, keyboardUnreachableSamples: [], formsWithoutValidation: 0 };
+        const mergeProbe = (p: { controls: any[]; metrics: Record<string, any> }, route: string) => {
+            for (const c of p.controls) allControls.push({ ...c, label: route === '/' ? c.label : `${route} ${c.label}` });
+            behaviourMetrics.deadAnchors += p.metrics.deadAnchors || 0;
+            behaviourMetrics.formsWithoutValidation += p.metrics.formsWithoutValidation || 0;
+            behaviourMetrics.keyboardUnreachable += p.metrics.keyboardUnreachable || 0;
+            behaviourMetrics.keyboardUnreachableSamples.push(...(p.metrics.keyboardUnreachableSamples || []));
+        };
+
+        opts?.onProgress?.('pressing');
+        try { mergeProbe(await probeControls(page), '/'); } catch { /* the controls are what is under test */ }
+
+        // Every other page the app offers, audited as a page in its own right.
+        const brokenRoutes: string[] = [];
+        for (const r of routes) {
+            const target = r.startsWith('#') ? url + r : url + r;
+            try {
+                await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) });
+                await page.waitForTimeout(500);
+                const d2 = await inspect();
+                if (d2.deadImgs) dom.deadImgs += d2.deadImgs;
+                if (d2.deadLinks) dom.deadLinks += d2.deadLinks;
+                if (d2.small.length) dom.small.push(...d2.small.map((s: string) => `${r} ${s}`));
+                if (d2.h1s !== 1) brokenRoutes.push(`${r} (h1=${d2.h1s})`);
+                mergeProbe(await probeControls(page), r);
+            } catch (e: any) {
+                brokenRoutes.push(`${r} (${String(e?.message || e).slice(0, 40)})`);
+            }
+        }
+        if (routes.length) { try { await page.goto(url, { waitUntil: 'load', timeout: 15_000 }); } catch { /* home is optional now */ } }
+
+        behaviourMetrics.pressed = allControls.filter(c => c.kind !== 'anchor').length;
+        behaviourMetrics.dead = allControls.filter(c => c.kind !== 'anchor' && !c.worked).length;
+        const behaviour = judgeBehaviour(allControls, behaviourMetrics, []);
 
         const findings: AppAuditFinding[] = [];
         if (pageErrors.length) findings.push({ id: 'page_errors', severity: 'high', detail: `${pageErrors.length} خطأ صفحة: ${pageErrors[0]}` });
@@ -192,6 +265,13 @@ export async function auditBuiltApp(
         if (dom.hasToggle && !toggleWorks) findings.push({ id: 'theme_toggle_dead', severity: 'medium', detail: 'زر الوضع الليلي لا يغيّر الألوان فعلياً' });
         if (dom.fontLoaded === false) findings.push({ id: 'webfont_missing', severity: 'medium', detail: `الخط المعلن «${dom.declaredFont}» لم يُحمَّل فعلياً — ملفاته غائبة` });
         if (heavyImages.length) findings.push({ id: 'heavy_images', severity: 'low', detail: `${heavyImages.length} صورة ثقيلة (>400KB): ${heavyImages[0]}` });
+        if (brokenRoutes.length) findings.push({ id: 'broken_routes', severity: 'high', detail: `${brokenRoutes.length} صفحة لم تُفتح أو بلا عنوان رئيسي: ${brokenRoutes[0]}` });
+        // Behaviour speaks in its own vocabulary; it is translated here rather
+        // than re-judged, so the two audits never disagree about a dead button.
+        const asSeverity = { critical: 'high', major: 'medium', minor: 'low' } as const;
+        for (const f of behaviour.findings) {
+            findings.push({ id: f.code, severity: asSeverity[f.severity], detail: f.ar });
+        }
 
         /**
          * AND HE SEES THE VERDICT ON THE PAGE ITSELF.
@@ -245,7 +325,12 @@ export async function auditBuiltApp(
         }
         unhook();
 
-        return { score: scoreOf(findings), findings };
+        return {
+            score: scoreOf(findings), findings,
+            routes: ['/', ...routes],
+            pressed: behaviourMetrics.pressed,
+            dead: allControls.filter(c => c.kind !== 'anchor' && !c.worked).map(c => c.label),
+        };
     } catch (e: any) {
         return { skipped: `browser failed (${String(e?.message || e).slice(0, 80)})`, score: 0, findings: [] };
     } finally {
@@ -259,9 +344,19 @@ export async function auditBuiltApp(
 /** The verdict, formatted for the chat — findings named, never buried. */
 export function formatAudit(a: AppAudit, isAr: boolean): string {
     if (a.skipped) return isAr ? `🔎 فحص الجودة الذاتي: تخطيته (${a.skipped}).` : `🔎 Self-QA skipped (${a.skipped}).`;
-    if (!a.findings.length) return isAr ? '🔎 فحص الجودة الذاتي في متصفح حقيقي: 100/100 — صفر أخطاء، كل الصور مرسومة، كل الأزرار حية.' : '🔎 Self-QA in a real browser: 100/100 — clean.';
+    // «كل الأزرار حية» used to be printed by an audit that never pressed one.
+    // The claim is now the count of what was actually pressed, on how many pages.
+    const pages = (a.routes || []).length || 1;
+    const scope = isAr
+        ? `(${pages} صفحة، ${a.pressed || 0} زر مضغوط فعلاً)`
+        : `(${pages} page(s), ${a.pressed || 0} control(s) pressed)`;
+    if (!a.findings.length) {
+        return isAr
+            ? `🔎 فحص الجودة الذاتي في متصفح حقيقي ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.`
+            : `🔎 Self-QA in a real browser ${scope}: 100/100 — clean.`;
+    }
     const lines = a.findings.map(f => `   • ${f.detail}`).join('\n');
     return isAr
-        ? `🔎 فحص الجودة الذاتي في متصفح حقيقي: ${a.score}/100 — وجدت:\n${lines}`
-        : `🔎 Self-QA: ${a.score}/100:\n${lines}`;
+        ? `🔎 فحص الجودة الذاتي في متصفح حقيقي ${scope}: ${a.score}/100 — وجدت:\n${lines}`
+        : `🔎 Self-QA ${scope}: ${a.score}/100:\n${lines}`;
 }
