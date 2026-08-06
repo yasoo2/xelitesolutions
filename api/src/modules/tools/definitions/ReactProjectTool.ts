@@ -2562,6 +2562,24 @@ export class ReactProjectTool extends BaseTool {
             try {
                 broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'self_qa' } } as any);
             } catch { /* UI optional */ }
+            /**
+             * …AND THEN WAIT FOR HIM TO ACTUALLY BE LOOKING.
+             *
+             * Focusing the panel and starting the audit in the same tick is a
+             * promise the interface cannot keep: the browser tab is a lazily
+             * loaded chunk that must download, mount and open a socket first.
+             * From his own timestamps the panel attached TWENTY-THREE seconds
+             * into a twenty-nine second audit — he was shown the last six.
+             *
+             * Four seconds at most, and not one millisecond if nobody is there.
+             */
+            try {
+                const { waitForPanelWatcher } = require('../../browser/wsHub');
+                const watching = await waitForPanelWatcher(PANEL_BROWSER_SID, 4000);
+                term(watching
+                    ? 'self-QA: the Browser panel is attached — the audit runs where you can see it'
+                    : 'self-QA: no Browser panel attached — running anyway, the findings are in the message');
+            } catch { /* the hub is optional — never block a build on it */ }
             audit = await auditBuiltApp(path.join(proj, 'dist'), {
                 timeoutMs: 30_000,
                 watchSessionId: PANEL_BROWSER_SID,

@@ -104,9 +104,28 @@ export async function auditBuiltApp(
         if (opts?.watchSessionId) {
             try {
                 // eslint-disable-next-line @typescript-eslint/no-var-requires
-                const { getBrowserSession } = require('../../modules/browser/manager');
+                const { getBrowserSession, resumeStreamingIfWatched } = require('../../modules/browser/manager');
                 const s = await getBrowserSession(opts.watchSessionId);
-                if (s?.page) { page = s.page; borrowed = true; opts.onProgress?.('watching'); }
+                if (s?.page) {
+                    page = s.page; borrowed = true;
+                    /**
+                     * AND START THE STREAM, BECAUSE NOBODY ELSE WILL.
+                     *
+                     * The panel attaches BEFORE this line runs — that is the
+                     * whole point of waiting for it — and `onFirstClient` fires
+                     * `startStreaming` at that moment, when there is no browser
+                     * session yet and therefore nothing to stream. The session
+                     * is born HERE, one line above, and until this call nobody
+                     * told the streamer it exists.
+                     *
+                     * Measured before this line: 47 frames reached a watching
+                     * panel during an eight-second audit, and ZERO of them in
+                     * its first third. He was shown the end of a thing he was
+                     * promised he could watch.
+                     */
+                    try { resumeStreamingIfWatched(opts.watchSessionId); } catch { /* streaming is a bonus */ }
+                    opts.onProgress?.('watching');
+                }
             } catch { /* no panel available — the private browser below serves */ }
         }
         if (!page) {

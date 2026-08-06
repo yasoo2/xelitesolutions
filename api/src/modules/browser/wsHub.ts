@@ -162,6 +162,34 @@ export function attachBrowserWss(wss: WebSocketServer, hooks?: BrowserWssHooks) 
   });
 }
 
+/** How many panels are attached to this browser stream right now. */
+export function panelWatcherCount(sessionId: string): number {
+  return clientsBySession.get(sessionId)?.size || 0;
+}
+
+/**
+ * WAIT FOR THE EYE BEFORE STARTING THE SHOW.
+ *
+ * «👁️ شاهدها تحدث في لوحة المتصفّح» — and he saw almost nothing. His log,
+ * in order: `panel_focus` is broadcast, the interface then LAZY-LOADS the
+ * EmbeddedBrowser chunk, mounts it, and opens a websocket… while the audit,
+ * started in the same tick, is already navigating and pressing controls.
+ * Measured from his timestamps: the panel attached twenty-three seconds into
+ * a twenty-nine-second audit. He was shown the last six seconds of it.
+ *
+ * So the audit waits for a watcher — briefly, and never more than the budget:
+ * if nobody is looking (the panel is closed, he is on another tab) it starts
+ * immediately, because a build must not hang on an audience.
+ */
+export async function waitForPanelWatcher(sessionId: string, budgetMs = 4000): Promise<boolean> {
+  const deadline = Date.now() + Math.max(0, budgetMs);
+  while (Date.now() < deadline) {
+    if (panelWatcherCount(sessionId) > 0) return true;
+    await new Promise(r => setTimeout(r, 120));
+  }
+  return panelWatcherCount(sessionId) > 0;
+}
+
 export function broadcastBrowserEvent(sessionId: string, ev: BrowserWsEvent) {
   const sid = String(sessionId || '').trim();
   if (!sid) return;
