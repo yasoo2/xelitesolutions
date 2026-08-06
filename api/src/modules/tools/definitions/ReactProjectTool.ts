@@ -2724,10 +2724,53 @@ export class ReactProjectTool extends BaseTool {
                 ? `\n🧠 هذا تطبيق يعمل، لا صفحة تتحدث عنه — «${appBp.title}»:\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n${unmetBlock}`
                 : `\n🧠 A working application, not a page about one — "${appBp.title}":\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n${unmetBlock}`)
             : '';
+        /**
+         * «ولكن جو لم يصنع أي شيء ظاهر من هذه الخطوات نهائياً».
+         *
+         * Sixty-two seconds of his run went into three steps:
+         *
+         *     🔎 Self-QA in a real browser…                              29s
+         *     👁️ Watch it happen in the Browser panel…                    9s
+         *     🛠️ Repairing what I can fix myself, then rebuilding…       24s
+         *
+         * …and the message he received never mentioned any of it. Not because
+         * the work was lost — the ARABIC branch of this message reports the
+         * score, every finding in words, and every repair. The ENGLISH branch
+         * went straight from the file list to «npm install + vite build
+         * succeeded». Two branches of one message that were never the same
+         * message, and his request happened to take the silent one.
+         *
+         * The section is built ONCE now, in his language, and both branches
+         * carry it — including what SURVIVED the repair, because a score of
+         * 67/100 means findings are still there and he is entitled to know
+         * which.
+         */
+        const qaBlock = (() => {
+            if (!audit) return '';
+            const lines: string[] = [require('../../../core/quality/app-audit').formatAudit(audit, isAr)];
+            if (selfRepair) {
+                lines.push(isAr
+                    ? `🛠️ وأصلحتُ ما وجدتُه بنفسي قبل التسليم: ${selfRepair.before}/100 ← ${selfRepair.after}/100 (${selfRepair.files.length} ملف)`
+                    : `🛠️ Repaired before delivery: ${selfRepair.before}/100 → ${selfRepair.after}/100 (${selfRepair.files.length} file(s))`);
+                for (const r of selfRepair.repairs) lines.push(`   • ${r.detail}${r.count > 1 ? ` (${r.count})` : ''}`);
+                for (const f of selfRepair.files) lines.push(`   • ${isAr ? 'عُدّل' : 'edited'}: ${f}`);
+                const left = (audit.findings || []);
+                if (left.length) {
+                    lines.push(isAr
+                        ? `⚠️ وما زال قائماً بعد الإصلاح — لم أُخفِه:`
+                        : `⚠️ Still there after the repair — not hidden:`);
+                    for (const f of left) lines.push(`   • ${f.detail}`);
+                } else {
+                    lines.push(isAr ? '✅ ولم يبقَ شيء من الملاحظات.' : '✅ Nothing left from the findings.');
+                }
+            }
+            return lines.join('\n') + '\n';
+        })();
+
         const message = isAr
             ? `⚛️ ${built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
 ${appBlock}
-${audit ? `${require('../../../core/quality/app-audit').formatAudit(audit, true)}\n` : ''}${selfRepair ? `🛠️ وأصلحتُ ما وجدتُه بنفسي قبل التسليم: ${selfRepair.before}/100 ← ${selfRepair.after}/100 (${selfRepair.files.length} ملف)\n${selfRepair.repairs.map((r: any) => `   • ${r.detail}${r.count > 1 ? ` (${r.count})` : ''}`).join('\n')}\n` : ''}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
+${qaBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
 ${fileList}
 
@@ -2743,7 +2786,7 @@ ${buildDiagnosis ? (buildDiagnosis.healed
    • «انشر المشروع» → نسخة الإنتاج بصورها على رابط دائم`
             : `⚛️ ${built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
 ${appBlock}
-📂 Path: ${proj}
+${qaBlock}📂 Path: ${proj}
 ${fileList}
 
 ${built ? '✅ npm install + vite build succeeded — the production build is in dist/.' : npmMissing ? '⚠️ npm is not available here — run npm install && npm run dev yourself.' : ''}`;

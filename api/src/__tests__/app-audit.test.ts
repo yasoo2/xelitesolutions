@@ -36,7 +36,17 @@ describe('the wiring — every green build gets measured', () => {
         expect(src.slice(at - 400, at)).toContain('built && !input?.skipAudit');
         expect(src).toContain('self-QA:');
         expect(src).toContain('lastAudit');
-        expect(src).toContain('formatAudit(audit, true)');
+        /**
+         * …and the verdict is formatted in the USER'S language and carried by
+         * BOTH branches of the delivery message. This line used to pin
+         * `formatAudit(audit, true)` — hardcoded Arabic — which was half the
+         * defect: the English branch of that message reported no audit at all,
+         * so a build asked for in English spent a minute measuring itself and
+         * told the user nothing.
+         */
+        expect(src).toContain('formatAudit(audit, isAr)');
+        expect(src).not.toContain('formatAudit(audit, true)');
+        expect((src.match(/\$\{qaBlock\}/g) || []).length).toBe(2);
     });
     it('a missing dist is an honest skip', async () => {
         const { auditBuiltApp } = require('../core/quality/app-audit');
