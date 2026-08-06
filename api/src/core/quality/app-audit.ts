@@ -26,7 +26,23 @@ import { probeControls, judgeBehaviour } from './behaviour-audit';
 export interface AppAuditFinding {
     id: string;
     severity: 'high' | 'medium' | 'low';
+    /** The sentence, in Arabic. */
     detail: string;
+    /**
+     * …AND IN ENGLISH.
+     *
+     * The English delivery message read: «⛔ Delivered, but it does NOT work
+     * properly — 2 blocking finding(s) remain: • 3 خطأ كونسول: Failed to load
+     * resource…». The behaviour audit had carried both languages for months;
+     * these eleven findings were Arabic-only, and the message printed them
+     * into whatever language it was written in.
+     */
+    detailEn?: string;
+}
+
+/** The finding in the reader's language, never in the other one. */
+export function findingText(f: AppAuditFinding, isAr: boolean): string {
+    return (isAr ? f.detail : (f.detailEn || f.detail)) || '';
 }
 
 export interface AppAudit {
@@ -357,22 +373,22 @@ export async function auditBuiltApp(
         const behaviour = judgeBehaviour(allControls, behaviourMetrics, []);
 
         const findings: AppAuditFinding[] = [];
-        if (pageErrors.length) findings.push({ id: 'page_errors', severity: 'high', detail: `${pageErrors.length} خطأ صفحة: ${pageErrors[0]}` });
-        if (consoleErrors.length) findings.push({ id: 'console_errors', severity: 'high', detail: `${consoleErrors.length} خطأ كونسول: ${consoleErrors[0]}` });
-        if (failedRequests.length) findings.push({ id: 'failed_requests', severity: 'high', detail: `${failedRequests.length} ملف لم يصل: ${failedRequests[0]}` });
-        if (dom.deadImgs) findings.push({ id: 'dead_images', severity: 'high', detail: `${dom.deadImgs} صورة لم تُرسم` });
-        if (dom.deadLinks) findings.push({ id: 'dead_links', severity: 'medium', detail: `${dom.deadLinks} رابط ميت (href فارغ أو #)` });
-        if (dom.small.length) findings.push({ id: 'small_targets', severity: 'medium', detail: `${dom.small.length} هدف لمس أصغر من 40px: ${dom.small[0]}` });
-        if (dom.h1s !== 1) findings.push({ id: 'h1_count', severity: 'low', detail: `عدد h1 = ${dom.h1s} (المطلوب 1)` });
-        if (dom.hasToggle && !toggleWorks) findings.push({ id: 'theme_toggle_dead', severity: 'medium', detail: 'زر الوضع الليلي لا يغيّر الألوان فعلياً' });
-        if (dom.fontLoaded === false) findings.push({ id: 'webfont_missing', severity: 'medium', detail: `الخط المعلن «${dom.declaredFont}» لم يُحمَّل فعلياً — ملفاته غائبة` });
-        if (heavyImages.length) findings.push({ id: 'heavy_images', severity: 'low', detail: `${heavyImages.length} صورة ثقيلة (>400KB): ${heavyImages[0]}` });
-        if (brokenRoutes.length) findings.push({ id: 'broken_routes', severity: 'high', detail: `${brokenRoutes.length} صفحة لم تُفتح أو بلا عنوان رئيسي: ${brokenRoutes[0]}` });
+        if (pageErrors.length) findings.push({ id: 'page_errors', severity: 'high', detail: `${pageErrors.length} خطأ صفحة: ${pageErrors[0]}`, detailEn: `${pageErrors.length} page error(s): ${pageErrors[0]}` });
+        if (consoleErrors.length) findings.push({ id: 'console_errors', severity: 'high', detail: `${consoleErrors.length} خطأ كونسول: ${consoleErrors[0]}`, detailEn: `${consoleErrors.length} console error(s): ${consoleErrors[0]}` });
+        if (failedRequests.length) findings.push({ id: 'failed_requests', severity: 'high', detail: `${failedRequests.length} ملف لم يصل: ${failedRequests[0]}`, detailEn: `${failedRequests.length} request(s) never arrived: ${failedRequests[0]}` });
+        if (dom.deadImgs) findings.push({ id: 'dead_images', severity: 'high', detail: `${dom.deadImgs} صورة لم تُرسم`, detailEn: `${dom.deadImgs} image(s) never rendered` });
+        if (dom.deadLinks) findings.push({ id: 'dead_links', severity: 'medium', detail: `${dom.deadLinks} رابط ميت (href فارغ أو #)`, detailEn: `${dom.deadLinks} dead link(s) (empty href or #)` });
+        if (dom.small.length) findings.push({ id: 'small_targets', severity: 'medium', detail: `${dom.small.length} هدف لمس أصغر من 40px: ${dom.small[0]}`, detailEn: `${dom.small.length} tap target(s) under 40px: ${dom.small[0]}` });
+        if (dom.h1s !== 1) findings.push({ id: 'h1_count', severity: 'low', detail: `عدد h1 = ${dom.h1s} (المطلوب 1)`, detailEn: `${dom.h1s} <h1> headings (exactly 1 expected)` });
+        if (dom.hasToggle && !toggleWorks) findings.push({ id: 'theme_toggle_dead', severity: 'medium', detail: 'زر الوضع الليلي لا يغيّر الألوان فعلياً', detailEn: 'The dark-mode toggle does not actually change any colour' });
+        if (dom.fontLoaded === false) findings.push({ id: 'webfont_missing', severity: 'medium', detail: `الخط المعلن «${dom.declaredFont}» لم يُحمَّل فعلياً — ملفاته غائبة`, detailEn: `The declared webfont "${dom.declaredFont}" never loaded — its files are missing` });
+        if (heavyImages.length) findings.push({ id: 'heavy_images', severity: 'low', detail: `${heavyImages.length} صورة ثقيلة (>400KB): ${heavyImages[0]}`, detailEn: `${heavyImages.length} heavy image(s) (>400KB): ${heavyImages[0]}` });
+        if (brokenRoutes.length) findings.push({ id: 'broken_routes', severity: 'high', detail: `${brokenRoutes.length} صفحة لم تُفتح أو بلا عنوان رئيسي: ${brokenRoutes[0]}`, detailEn: `${brokenRoutes.length} page(s) did not open or have no main heading: ${brokenRoutes[0]}` });
         // Behaviour speaks in its own vocabulary; it is translated here rather
         // than re-judged, so the two audits never disagree about a dead button.
         const asSeverity = { critical: 'high', major: 'medium', minor: 'low' } as const;
         for (const f of behaviour.findings) {
-            findings.push({ id: f.code, severity: asSeverity[f.severity], detail: f.ar });
+            findings.push({ id: f.code, severity: asSeverity[f.severity], detail: f.ar, detailEn: f.en });
         }
 
         /**
@@ -460,7 +476,7 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
             ? `🔎 فحص الجودة الذاتي في متصفح حقيقي ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.`
             : `🔎 Self-QA in a real browser ${scope}: 100/100 — clean.`;
     }
-    const lines = a.findings.map(f => `   • ${f.detail}`).join('\n');
+    const lines = a.findings.map(f => `   • ${findingText(f, isAr)}`).join('\n');
     return isAr
         ? `🔎 فحص الجودة الذاتي في متصفح حقيقي ${scope}: ${a.score}/100 — وجدت:\n${lines}`
         : `🔎 Self-QA ${scope}: ${a.score}/100:\n${lines}`;

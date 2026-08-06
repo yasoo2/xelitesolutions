@@ -21,8 +21,10 @@
 export interface Repair {
     /** Machine id, matched to the audit finding it answers. */
     id: string;
-    /** What was done, in Arabic, for the report he reads. */
+    /** What was done, in Arabic. */
     detail: string;
+    /** …and in English, for the message written in English. */
+    detailEn?: string;
     count: number;
 }
 
@@ -31,8 +33,35 @@ export interface RepairedFile {
     repairs: Repair[];
 }
 
+/**
+ * …AND IN ENGLISH, FOR THE SAME REASON THE FINDINGS ARE.
+ *
+ * His English delivery read: «🛠️ Repaired before delivery: 89/100 → 97/100 ·
+ * ربطتُ كل حقل إدخال باسمه المعروض». Every repair sentence lived in one
+ * language and was printed into whichever message asked for it.
+ */
+export const REPAIR_EN: Record<string, string> = {
+    html_lang: 'Added the document language and direction to the <html> tag',
+    meta_missing: 'Added the missing viewport/charset meta tags',
+    title_missing: 'Gave the page a real title',
+    dead_images: 'Added alt text to images that had none',
+    unlabeled_inputs: 'Linked every input to its visible label (aria-label)',
+    dead_links: 'Turned links carrying a click handler into real buttons (they had no destination)',
+    h1_count: 'Kept exactly one main heading and demoted the rest',
+    low_contrast: 'Raised text contrast to at least 4.5:1 (WCAG AA)',
+    heavy_images: 'Deferred off-screen images (lazy + decoding=async)',
+    keyboard_unreachable: 'Made clickable elements reachable by keyboard (Tab, then Enter/Space)',
+    small_targets: 'Widened tap targets to at least 44px',
+    responsive: 'Stopped horizontal scrolling and fitted media and tables to small screens',
+};
+
+/** The repair in the reader's language. */
+export function repairText(r: { id: string; detail: string; detailEn?: string }, isAr: boolean): string {
+    return (isAr ? r.detail : (r.detailEn || REPAIR_EN[r.id] || r.detail)) || '';
+}
+
 const add = (list: Repair[], id: string, detail: string, count: number) => {
-    if (count > 0) list.push({ id, detail, count });
+    if (count > 0) list.push({ id, detail, detailEn: REPAIR_EN[id], count });
 };
 
 /* ── the document shell ──────────────────────────────────────────────────── */
@@ -303,7 +332,7 @@ export function repairTapTargets(css: string): RepairedFile {
     if (text.includes('إصلاح جو: أهداف اللمس')) return { text, repairs: [] };
     return {
         text: text + TAP_TARGET_CSS,
-        repairs: [{ id: 'small_targets', detail: 'وسّعتُ أهداف اللمس إلى 44 بكسل على الأقل', count: 1 }],
+        repairs: [{ id: 'small_targets', detail: 'وسّعتُ أهداف اللمس إلى 44 بكسل على الأقل', detailEn: REPAIR_EN.small_targets, count: 1 }],
     };
 }
 
@@ -533,6 +562,6 @@ export function repairResponsive(css: string): RepairedFile {
     if (text.includes('إصلاح جو: التجاوب')) return { text, repairs: [] };
     return {
         text: text + RESPONSIVE_CSS,
-        repairs: [{ id: 'responsive', detail: 'منعتُ التمرير الأفقي وضبطتُ الوسائط والجداول على الشاشات الصغيرة', count: 1 }],
+        repairs: [{ id: 'responsive', detail: 'منعتُ التمرير الأفقي وضبطتُ الوسائط والجداول على الشاشات الصغيرة', detailEn: REPAIR_EN.responsive, count: 1 }],
     };
 }

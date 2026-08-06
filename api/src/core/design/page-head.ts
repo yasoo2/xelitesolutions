@@ -103,6 +103,73 @@ export function brandFrom(request: string, _isArabic?: boolean): string {
 }
 
 /**
+ * AND WHEN HE NAMES NO BRAND — «MyApp» IS NOT A NAME.
+ *
+ * Every unnamed English request produced the same three words: «MyApp», in the
+ * title, in the header, in the folder name (`api-myapp`), in the owner's email
+ * (`owner@myapp.local`). It is what a placeholder looks like when it ships,
+ * and it made two different builds share one folder — and one database.
+ *
+ * The request itself carries a subject: «an online store for coffee», «مطعم
+ * للمشاوي», «e-commerce platform similar to Shopify». Take that subject and
+ * say what the thing IS. Deterministic, no model, and «MyApp» stays only for a
+ * request that truly says nothing.
+ */
+const SUBJECT_PATTERNS: RegExp[] = [
+    /\bfor\s+(?:an?\s+|my\s+|the\s+)?([A-Za-z][A-Za-z' -]{2,24})\b/i,
+    /\b(?:selling|sells|that sells)\s+([A-Za-z][A-Za-z' -]{2,24})\b/i,
+    /\b(?:store|shop|site|website|app|platform)\s+(?:for|about)\s+([A-Za-z][A-Za-z' -]{2,24})\b/i,
+    /(?:لبيع|لـ|ل)\s*(?:ال)?([\u0600-\u06FF]{3,20})/,
+    /(?:متجر|مطعم|موقع|تطبيق|منصة|منصّة)\s+(?:ال)?([\u0600-\u06FF]{3,20})/,
+];
+
+/** Words that are the request's grammar, never its subject. */
+const NOT_A_SUBJECT = /^(the|a|an|my|our|your|me|us|complete|production|ready|world|class|simple|modern|new|real|full|code|features?|website|site|page|app|application|platform|store|shop|business|company|project|مشروع|موقع|متجر|تطبيق|منصة|منصّة|شركة|صفحة)$/i;
+
+const KIND_WORD: Record<string, { ar: string; en: string }> = {
+    store: { ar: 'متجر', en: 'Store' },
+    restaurant: { ar: 'مطعم', en: 'Kitchen' },
+    portfolio: { ar: 'أعمال', en: 'Studio' },
+    landing: { ar: 'منصة', en: 'Works' },
+    dashboard: { ar: 'لوحة', en: 'Dashboard' },
+    blog: { ar: 'مدونة', en: 'Journal' },
+    generic: { ar: 'مشروع', en: 'Works' },
+};
+
+const titleCase = (s: string) => s.trim().split(/\s+/).slice(0, 2)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+
+export function brandFallback(request: string, isArabic: boolean, kind = 'generic'): string {
+    const req = String(request || '');
+    const word = KIND_WORD[kind] || KIND_WORD.generic;
+    // A marketplace names itself, and it says so before any «platform X»
+    // pattern can shave a word off «تجارة إلكترونية» and call it a subject.
+    if (/\b(e-?commerce|marketplace)\b|تجارة إ?لكترونية|سوق إ?لكتروني/i.test(req)) {
+        return isArabic ? 'سوق التجارة' : 'Commerce Hub';
+    }
+    let subject = '';
+    for (const re of SUBJECT_PATTERNS) {
+        const m = req.match(re);
+        // «for my business» is grammar all the way through: every word of a
+        // candidate must be tested, not the phrase as one string.
+        const candidate = (m?.[1] || '').trim().split(/\s+/)
+            .filter(w => !NOT_A_SUBJECT.test(w)).join(' ').trim();
+        if (candidate.length >= 3) { subject = candidate; break; }
+    }
+    if (!subject) return isArabic ? 'مشروعي' : 'MyApp';
+    if (isArabic) {
+        // «للقهوة» hands back «لقهوة» unless the article is peeled off both
+        // times — and «متجر القهوة» is what a signboard says, not «متجر قهوة».
+        const bare = subject.replace(/^(لل|ال|ل)/, '');
+        if (bare.length < 3) return 'مشروعي';
+        return `${word.ar} ال${bare}`;
+    }
+    const titled = titleCase(subject);
+    // Two words already read like a name; a third would be padding.
+    return titled.includes(' ') ? titled : `${titled} ${word.en}`;
+}
+
+/**
  * The document title.
  *
  * Never the request. Brand first when there is one, because that is what a

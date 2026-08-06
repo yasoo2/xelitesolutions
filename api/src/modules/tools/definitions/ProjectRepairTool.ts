@@ -142,6 +142,10 @@ export class ProjectRepairTool extends BaseTool {
         const remaining = ((gained ? after : before).findings || []) as any[];
         const blockers = remaining.filter(f => f.severity === 'high');
 
+        // «• 3 خطأ كونسول» inside an English message: the findings carry both
+        // languages now, and this picks the reader's.
+        const { findingText } = require('../../../core/quality/app-audit');
+        const said = (f: any) => findingText(f, isAr);
         const lines: string[] = [];
         lines.push(gained
             ? (isAr ? `🛠️ أصلحتُ ما أستطيع: ${before.score}/100 ← ${after.score}/100 (${cycle.changed.length} ملف)`
@@ -151,13 +155,13 @@ export class ProjectRepairTool extends BaseTool {
         for (const f of cycle.changed) lines.push(`   • ${isAr ? 'عُدّل' : 'edited'}: ${f}`);
         if (blockers.length) {
             lines.push(isAr ? `⛔ وما زال لا يعمل كما ينبغي — ${blockers.length} عطل جوهري:` : `⛔ Still not working properly — ${blockers.length} blocking finding(s):`);
-            for (const f of blockers) lines.push(`   • ${f.detail}`);
+            for (const f of blockers) lines.push(`   • ${said(f)}`);
             lines.push(isAr
                 ? '   ↳ هذه لا أستطيع إصلاحها وحدي — أخبرني بما تريده فيها بالضبط.'
                 : '   ↳ These I cannot fix alone — tell me exactly what you want done about them.');
         } else if (remaining.length) {
             lines.push(isAr ? '⚠️ بقيت ملاحظات غير جوهرية:' : '⚠️ Non-blocking findings remain:');
-            for (const f of remaining) lines.push(`   • ${f.detail}`);
+            for (const f of remaining) lines.push(`   • ${said(f)}`);
         } else {
             lines.push(isAr ? '✅ ولم يبقَ شيء.' : '✅ Nothing left.');
         }

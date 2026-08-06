@@ -24,7 +24,7 @@ import fs from 'fs';
 import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
-import { brandFrom } from '../../../core/design/page-head';
+import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
@@ -1410,7 +1410,7 @@ export class ApiProjectTool extends BaseTool {
         };
 
         const kind = detectPageKind(request);
-        const brand = brandFrom(request, isAr) || (isAr ? 'مشروعي' : 'MyApp');
+        const brand = brandFrom(request, isAr) || brandFallback(request, isAr, kind);
         const { resource, labelAr, seeds: catalogueSeeds } = apiResourceForKind(kind, isAr, request);
         // The schema follows the app's own blueprint. Seeds only make sense for
         // the catalogue shape — a booking table seeded with «Dish of the day»
@@ -1429,6 +1429,35 @@ export class ApiProjectTool extends BaseTool {
         if (fs.existsSync(proj) && ((global as any).joeProjects || {})[sessionKey]?.dir !== proj) {
             const suffix = sessionKey.replace(/[^a-zA-Z0-9]/g, '').slice(-4).toLowerCase() || Date.now().toString(36).slice(-4);
             proj = path.join(root, `${dirName}-${suffix}`);
+        }
+        /**
+         * A NEW BUILD DOES NOT INHERIT AN OLD DATABASE.
+         *
+         * From his delivery:
+         *
+         *     Owner account: owner@myapp.local — the password is the OLD one.
+         *     This project was built over an existing database, so the account
+         *     was not re-created and a fresh password would not work.
+         *
+         * That paragraph is honest, and it should never have needed to exist.
+         * A build lands on `api-<brand>`, and «MyApp» is the brand of every
+         * unnamed English request — so his second build inherited the first
+         * one's data.db: its rows, its owner, and a password he no longer had.
+         * A password that cannot be used is not a credential, it is an
+         * apology.
+         *
+         * A fresh build gets a fresh folder. The old one is left exactly where
+         * it is — its data is his, and deleting it silently would be worse
+         * than reusing it.
+         */
+        let inheritedFrom = '';
+        if (fs.existsSync(path.join(proj, 'data.db'))) {
+            inheritedFrom = proj;
+            for (let n = 2; n < 50; n++) {
+                const candidate = path.join(root, `${path.basename(proj)}-${n}`);
+                if (!fs.existsSync(path.join(candidate, 'data.db'))) { proj = candidate; break; }
+            }
+            term(`fresh build: ${path.basename(inheritedFrom)} already carries a database — building in ${path.basename(proj)} instead, and leaving the old one untouched`);
         }
         fs.mkdirSync(proj, { recursive: true });
 

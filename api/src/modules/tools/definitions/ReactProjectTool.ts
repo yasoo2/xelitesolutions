@@ -19,7 +19,7 @@ import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
-import { brandFrom } from '../../../core/design/page-head';
+import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { detectAppKind, blueprintFor, type AppBlueprint } from '../../../core/design/app-blueprints';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
@@ -243,7 +243,7 @@ export function sectionsForKind(kind: PageKind): string[] {
 
 /** Content derived from the request — deterministic, never blocks on a model. */
 function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic'): ReactContent {
-    const brand = brandFrom(request, isAr) || (isAr ? 'مشروعي' : 'MyApp');
+    const brand = brandFrom(request, isAr) || brandFallback(request, isAr, kind);
     const subject = request.replace(/(ابنِ|ابني|انشئ|أنشئ|اصنع|اعمل|سوي|مشروع|تطبيق|موقع|react|ريأكت|رياكت|vite|فيت|لي|جديد|build|create|make|app|project|site)/gi, ' ')
         .replace(/\s+/g, ' ').trim();
     const restaurant = kind === 'restaurant';
@@ -2906,11 +2906,14 @@ export class ReactProjectTool extends BaseTool {
         const qaBlock = (() => {
             if (!audit) return '';
             const lines: string[] = [];
+            // «• 3 خطأ كونسول» inside an English delivery. The findings carry
+            // both languages now; the message must pick the reader's.
+            const say = (f: any) => require('../../../core/quality/app-audit').findingText(f, isAr);
             if (blockers.length) {
                 lines.push(isAr
                     ? `⛔ سلّمتُه وهو **لا يعمل كما ينبغي** — ${blockers.length} عطل جوهري باقٍ:`
                     : `⛔ Delivered, but it does NOT work properly — ${blockers.length} blocking finding(s) remain:`);
-                for (const f of blockers) lines.push(`   • ${f.detail}`);
+                for (const f of blockers) lines.push(`   • ${say(f)}`);
                 lines.push(isAr
                     ? `   ↳ قل «أصلح ما تبقّى» وسأفتح المتصفّح على هذه بالذات.`
                     : `   ↳ Say «أصلح ما تبقّى» / "fix what is left" and I will open the browser on exactly these.`);
@@ -2920,14 +2923,15 @@ export class ReactProjectTool extends BaseTool {
                 lines.push(isAr
                     ? `🛠️ وأصلحتُ ما وجدتُه بنفسي قبل التسليم: ${selfRepair.before}/100 ← ${selfRepair.after}/100 (${selfRepair.files.length} ملف)`
                     : `🛠️ Repaired before delivery: ${selfRepair.before}/100 → ${selfRepair.after}/100 (${selfRepair.files.length} file(s))`);
-                for (const r of selfRepair.repairs) lines.push(`   • ${r.detail}${r.count > 1 ? ` (${r.count})` : ''}`);
+                const { repairText } = require('../../../core/quality/ui-repair');
+                for (const r of selfRepair.repairs) lines.push(`   • ${repairText(r, isAr)}${r.count > 1 ? ` (${r.count})` : ''}`);
                 for (const f of selfRepair.files) lines.push(`   • ${isAr ? 'عُدّل' : 'edited'}: ${f}`);
                 const left = (audit.findings || []);
                 if (left.length) {
                     lines.push(isAr
                         ? `⚠️ وما زال قائماً بعد الإصلاح — لم أُخفِه:`
                         : `⚠️ Still there after the repair — not hidden:`);
-                    for (const f of left) lines.push(`   • ${f.detail}`);
+                    for (const f of left) lines.push(`   • ${say(f)}`);
                 } else {
                     lines.push(isAr ? '✅ ولم يبقَ شيء من الملاحظات.' : '✅ Nothing left from the findings.');
                 }

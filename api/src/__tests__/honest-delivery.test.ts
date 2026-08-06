@@ -60,7 +60,10 @@ describe('and the message leads with it', () => {
         const src = SRC();
         const at = src.indexOf('const blockers =');
         const block = src.slice(at, at + 2200);
-        expect(block).toMatch(/for \(const f of blockers\) lines\.push\(`   • \$\{f\.detail\}`\)/);
+        // …in the language of the message it lands in: an English delivery
+        // reading out «• 3 خطأ كونسول» was the same defect one layer down.
+        expect(block).toMatch(/for \(const f of blockers\) lines\.push\(`   • \$\{say\(f\)\}`\)/);
+        expect(block).toMatch(/findingText\(f, isAr\)/);
     });
 
     it('and offers the one command that acts on exactly those', () => {

@@ -55,7 +55,11 @@ async function main() {
     const findings = (audit?.findings || []) as any[];
     console.log(`   ℹ️ ملاحظات: ${findings.length ? findings.map(f => f.id).join(', ') : 'لا شيء (نظيف)'}`);
     if (findings.length) {
-        const missing = findings.filter(f => !message.includes(String(f.detail)));
+        // The ENGLISH message must carry the ENGLISH sentence — «• 3 خطأ كونسول»
+        // inside an English delivery is what this line now refuses.
+        const missing = findings.filter(f => !message.includes(String(f.detailEn || f.detail)));
+        for (const f of findings) check(`  وبالإنجليزية لا بالعربية: ${f.id}`,
+            !!f.detailEn && message.includes(String(f.detailEn)), String(f.detail).slice(0, 50));
         check('كل ملاحظة ظهرت بنصّها الكامل', missing.length === 0,
             missing.map(f => f.id).join(', '));
         check('ولم تُختصر إلى قائمة رموز', !/console_errors, failed_requests/.test(message));
@@ -69,6 +73,10 @@ async function main() {
     if (repaired) {
         check('يقول الدرجة قبل وبعد', /\d+\/100 → \d+\/100/.test(message));
         check('ويسمّي الملفات التي عدّلها', /edited: /.test(message));
+        // …and says what it repaired IN ENGLISH — «ربطتُ كل حقل إدخال» inside
+        // an English delivery is the same defect one layer down.
+        check('وجُمَل الإصلاح إنجليزية لا عربية', !/[\u0600-\u06FF]/.test(message),
+            (message.split('\n').find(l => /[\u0600-\u06FF]/.test(l)) || '').slice(0, 90));
         check('ويقول ما بقي بعد الإصلاح أو أنه لم يبقَ شيء',
             /Still there after the repair|Nothing left from the findings/.test(message));
     } else {
@@ -83,7 +91,7 @@ async function main() {
         check('والعنوان لا يدّعي أكثر ممّا استحقّ', /delivered WITH open defects/.test(message), message.slice(0, 70));
         const warnAt = message.indexOf('does NOT work properly');
         check('والاعتراف قبل قائمة الملفات', warnAt >= 0 && warnAt < message.indexOf('📂 Path'), `${warnAt}`);
-        for (const f of blockers) check(`ومُسمّى: ${f.id}`, message.includes(String(f.detail)), String(f.detail).slice(0, 60));
+        for (const f of blockers) check(`ومُسمّى: ${f.id}`, message.includes(String(f.detailEn || f.detail)), String(f.detailEn || f.detail).slice(0, 60));
         check('ويعرض الأمر الذي يعالجها', /fix what is left|أصلح ما تبقّى/.test(message));
     } else {
         check('بناء نظيف — ولا إنذار مُختلق', !/does NOT work properly/.test(message));
