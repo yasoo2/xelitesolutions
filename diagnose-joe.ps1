@@ -16,6 +16,16 @@
 $ErrorActionPreference = "Continue"
 Set-Location $PSScriptRoot
 
+# لماذا ظهر التقرير الأول كطلاسم («ظـظـظـ… ╪ز╪┤╪«┘è╪╡»)؟
+# node يكتب بترميز UTF-8، وصفحة ترميز الطرفية في ويندوز ليست 65001 افتراضياً،
+# فيُقرأ كل حرف عربي بايتاً بايتاً. هذه الأسطر الثلاثة تجعل الشاشة والملف
+# يقرآن نفس الترميز الذي يكتب به جو.
+try { chcp 65001 > $null } catch { }
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+} catch { }
+
 $report = Join-Path $PSScriptRoot "joe-browser-diagnosis.txt"
 if (Test-Path $report) { Remove-Item $report -Force -ErrorAction SilentlyContinue }
 
@@ -27,8 +37,11 @@ Write-Host ""
 Set-Location (Join-Path $PSScriptRoot "api")
 
 # ts-node هو ما تستعمله بقية سكربتات المستودع، فلا حاجة لتنزيل أي شيء جديد.
-& npx ts-node --transpile-only src/tests/manual/diagnose_browser.ts 2>&1 |
-    Tee-Object -FilePath $report
+# النتيجة تُعرض على الشاشة وتُكتب بترميز UTF-8 صريح — لا Tee-Object، لأنه يكتب
+# بالترميز الافتراضي للنظام فيخرج الملف طلاسم.
+$output = & npx ts-node --transpile-only src/tests/manual/diagnose_browser.ts 2>&1 |
+    ForEach-Object { $line = "$_"; Write-Host $line; $line }
+$output | Out-File -FilePath $report -Encoding utf8
 
 Set-Location $PSScriptRoot
 

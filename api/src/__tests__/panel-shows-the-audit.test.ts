@@ -85,9 +85,33 @@ describe('the panel browser is not allowed to stay dead', () => {
         // storageState is validated by Playwright: one stale cookie used to kill
         // the session at creation, on every run, for ever.
         expect(m).toMatch(/context = await browser!\.newContext\(\{ \.\.\.baseContextOpts, \.\.\.\(savedState \? \{ storageState: savedState \} : \{\}\) \}\);/);
-        const rescue = m.slice(m.indexOf('} catch (e: any) {\n      if (!savedState) throw e;'), m.indexOf('} catch (e: any) {\n      if (!savedState) throw e;') + 700);
+        const at = m.indexOf('if (!savedState) throw Object.assign(e,');
+        expect(at).toBeGreaterThan(0);
+        const rescue = m.slice(at, at + 700);
         expect(rescue).toMatch(/context = await browser!\.newContext\(baseContextOpts\);/);
         expect(rescue).toMatch(/fs\.unlinkSync\(sessionStateFile/);
+    });
+
+    it('and every failure inside the SERVER leaves a note with the stage it died at', () => {
+        const m = read('modules', 'browser', 'manager.ts');
+        // His machine passes the standalone diagnosis while the same audit
+        // inside the server falls back to a private browser: the reason has to
+        // survive on disk, or it never reaches anyone.
+        expect(m).toMatch(/export function browserErrorLogPath\(\): string/);
+        expect(m).toMatch(/browser-errors\.log/);
+        expect(m).toMatch(/export function noteBrowserFailure\(sessionId: string, stage: string, err: any\): void/);
+        expect(m).toMatch(/stage=\$\{stage\}/);
+        expect(m).toMatch(/noteBrowserFailure\(sid, String\(e\?\.joeStage \|\| 'create'\), e\);/);
+        // …and the stages are really tagged, not invented at the end.
+        expect(m).toMatch(/joeStage: 'launch'/);
+        expect(m).toMatch(/joeStage: e\?\.joeStage \|\| 'newContext'/);
+        expect(m).toMatch(/joeStage: e\?\.joeStage \|\| 'newPage'/);
+        // A diagnostic log must not become a disk leak.
+        expect(m).toMatch(/const BROWSER_LOG_MAX = 64 \* 1024;/);
+        // And the diagnosis reads it FIRST.
+        const d = read('tests', 'manual', 'diagnose_browser.ts');
+        expect(d).toMatch(/browserErrorLogPath\(\)/);
+        expect(d).toMatch(/ما سجّله خادم جو نفسه أثناء البناء/);
     });
 
     it('and the borrow failure carries its reason out of the catch', () => {

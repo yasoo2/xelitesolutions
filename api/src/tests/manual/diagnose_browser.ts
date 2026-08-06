@@ -40,6 +40,32 @@ async function main() {
     line('  تشخيص متصفّح جو — أرسل هذا التقرير كما هو');
     line('══════════════════════════════════════════════════════════════════════');
 
+    /**
+     * FIRST: what the RUNNING SERVER already wrote down.
+     *
+     * His machine passed every step of this diagnosis while the same audit
+     * inside the server fell back to a private browser on every build — so the
+     * fault lives in that process, and no standalone check can see it. Every
+     * failed session creation there is now recorded with the stage it died at.
+     */
+    head('٠) ما سجّله خادم جو نفسه أثناء البناء');
+    try {
+        const mgr0 = await import('../../modules/browser/manager');
+        const logFile = mgr0.browserErrorLogPath();
+        info(`الملف: ${logFile}`);
+        if (fs.existsSync(logFile)) {
+            const lines = fs.readFileSync(logFile, 'utf-8').split('\n').filter(Boolean);
+            if (!lines.length) ok('الملف موجود وفارغ — لم تفشل أي جلسة متصفّح داخل الخادم.');
+            else {
+                bad(`${lines.length} فشلاً مسجّلاً — آخر ${Math.min(6, lines.length)}:`);
+                for (const l of lines.slice(-6)) line(`     ${l}`);
+                problems.push(`server recorded ${lines.length} browser session failure(s) — see the lines above`);
+            }
+        } else {
+            info('لا ملف بعد — إمّا لم تفشل جلسة داخل الخادم، أو لم تُشغّل بناءً منذ التحديث.');
+        }
+    } catch (e: any) { bad(`تعذّرت قراءة سجلّ الأخطاء: ${fullError(e)}`); }
+
     head('١) الجهاز');
     info(`node ${process.version} · ${process.platform} ${os.release()} · ${os.arch()}`);
     info(`cwd: ${process.cwd()}`);

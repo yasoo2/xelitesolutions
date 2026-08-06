@@ -141,6 +141,15 @@ export async function auditBuiltApp(
                  */
                 borrowError = String(e?.message || e).slice(0, 300);
             }
+            // …and written down where a later diagnosis can read it, because the
+            // failure happens inside the SERVER process, which no standalone
+            // check can enter.
+            if (borrowError) {
+                try {
+                    // eslint-disable-next-line @typescript-eslint/no-var-requires
+                    require('../../modules/browser/manager').noteBrowserFailure(opts.watchSessionId, 'audit-borrow', borrowError);
+                } catch { /* the log is a bonus, never a blocker */ }
+            }
         }
         if (!page) {
             browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });

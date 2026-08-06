@@ -133,6 +133,26 @@ async function main() {
         /if \(where === 'pressing' && auditVisible\)/.test(R) && /auditVisible = false;/.test(R));
     check('وحدث «watching» وحده يرفع الراية', /if \(where === 'watching'\) \{\s*\n\s*auditVisible = true;/.test(R));
 
+    console.log('\n[5] وكل فشل داخل الخادم يترك أثراً على القرص — مع المرحلة التي مات فيها');
+    /**
+     * His machine passes this whole file standalone; the failure only happens
+     * INSIDE the running server. A note on disk is the only way that reason
+     * ever reaches me — the diagnosis reads it first.
+     */
+    const logFile = path.join(SANDBOX, 'browser-errors.log');
+    process.env.JOE_BROWSER_ERROR_LOG = logFile;
+    check('مسار السجلّ قابل للتوجيه', mgr.browserErrorLogPath() === logFile, mgr.browserErrorLogPath());
+    mgr.noteBrowserFailure('panel-browser', 'newContext', new Error('Cookie should have a url or a domain/path pair'));
+    const written = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf-8') : '';
+    check('الفشل مكتوب', /session=panel-browser/.test(written), written.slice(0, 120));
+    check('ومعه المرحلة', /stage=newContext/.test(written), written.slice(0, 160));
+    check('ومعه نصّ الخطأ', /Cookie should have a url/.test(written), written.slice(0, 200));
+    // A log is a diagnostic, not a disk leak.
+    for (let i = 0; i < 400; i++) mgr.noteBrowserFailure('panel-browser', 'launch', new Error('x'.repeat(500)));
+    const size = fs.statSync(logFile).size;
+    check('ولا ينمو بلا حدّ', size <= 64 * 1024 + 1024, `${Math.round(size / 1024)}KB`);
+    delete process.env.JOE_BROWSER_ERROR_LOG;
+
     try { fs.rmSync(SANDBOX, { recursive: true, force: true }); } catch { /* best effort */ }
     console.log(`\n===== ${pass} passed, ${fail} failed =====`);
     process.exit(fail ? 1 : 0);

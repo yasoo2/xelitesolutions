@@ -503,6 +503,44 @@ function ensureCleanupLoop() {
 }
 
 /**
+ * AND WHEN IT DIES ANYWAY, IT LEAVES A NOTE.
+ *
+ * His machine passed every step of the standalone diagnosis — Chromium up in
+ * 271ms, panel session up in 856ms, the audit BORROWING the panel — while the
+ * same audit inside the running server fell back to a private browser on every
+ * build. So the fault is not the machine; it is something the server process
+ * does that a fresh process does not, and no screenshot can show me that.
+ *
+ * Every failure to create a browser session is now written to
+ * `api/data/browser-errors.log` WITH THE STAGE it died at, and the diagnosis
+ * reads that file first. One build then one command, and the reason is on the
+ * table instead of in a guess.
+ */
+export function browserErrorLogPath(): string {
+  const override = String(process.env.JOE_BROWSER_ERROR_LOG || '').trim();
+  if (override) return override;
+  const isApiDir = path.basename(process.cwd()) === 'api';
+  const root = isApiDir ? process.cwd() : path.join(process.cwd(), 'api');
+  return path.join(root, 'data', 'browser-errors.log');
+}
+
+const BROWSER_LOG_MAX = 64 * 1024;
+
+export function noteBrowserFailure(sessionId: string, stage: string, err: any): void {
+  const entry = `[${new Date().toISOString()}] session=${sessionId} stage=${stage} :: `
+    + String(err?.message || err || 'unknown').replace(/\s+/g, ' ').slice(0, 600) + '\n';
+  try { console.error(`[BrowserManager] ${stage} failed for ${sessionId}: ${String(err?.message || err).slice(0, 200)}`); } catch { }
+  try {
+    const file = browserErrorLogPath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    let prev = '';
+    try { prev = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : ''; } catch { prev = ''; }
+    const next = (prev + entry);
+    fs.writeFileSync(file, next.length > BROWSER_LOG_MAX ? next.slice(next.length - BROWSER_LOG_MAX) : next, 'utf-8');
+  } catch { /* a log that cannot be written must not break a build */ }
+}
+
+/**
  * THE PANEL'S BROWSER IS NOT ALLOWED TO STAY DEAD.
  *
  * «لم يتحرك متصفح جو … كل شي وهمي». The audit's own private fallback launches
@@ -528,12 +566,12 @@ async function launchPlainChromium(): Promise<Browser> {
       return b;
     } catch (e2: any) {
       // The engine really is not there. Say exactly how to fix it.
-      throw new Error(
+      throw Object.assign(new Error(
         `browser_launch_failed: ${e1?.message || e1} | bare: ${e2?.message || e2}. ` +
         `تعذّر تشغيل متصفح Joe. شغّل هذا الأمر مرة واحدة داخل مجلد النظام: ` +
         `"npx playwright install chromium" ثم أعد التشغيل. ` +
         `(يمكن أيضاً ضبط BROWSER_EXECUTABLE_PATH على مسار Chrome/Chromium مثبّت لديك.)`
-      );
+      ), { joeStage: 'launch' });
     }
   }
 }
@@ -727,7 +765,7 @@ export async function createSession(sessionId: string) {
     try {
       context = await browser!.newContext({ ...baseContextOpts, ...(savedState ? { storageState: savedState } : {}) });
     } catch (e: any) {
-      if (!savedState) throw e;
+      if (!savedState) throw Object.assign(e, { joeStage: e?.joeStage || 'newContext' });
       context = await browser!.newContext(baseContextOpts);
       try {
         console.log(`[BrowserManager] Saved login state for ${sessionId} was rejected (${String(e?.message || e).slice(0, 140)}) — starting clean; you may need to sign in again.`);
@@ -801,7 +839,8 @@ export async function createSession(sessionId: string) {
 
   context.setDefaultNavigationTimeout(cfg.navTimeoutMs);
   context.setDefaultTimeout(cfg.actionTimeoutMs);
-  const page = persistentContext ? (context.pages()[0] || await context.newPage()) : await context.newPage();
+  const page: Page = await (persistentContext ? (context.pages()[0] ? Promise.resolve(context.pages()[0]) : context.newPage()) : context.newPage())
+    .catch((e: any) => { throw Object.assign(e, { joeStage: e?.joeStage || 'newPage' }); });
 
   const state: SessionState = {
     browser,
@@ -878,7 +917,11 @@ export async function getBrowserSession(sessionId: string) {
   if (inFlight) return inFlight;
   const creation = (async () => {
     try {
-      const created = await createSession(sid);
+      const created = await createSession(sid).catch((e: any) => {
+        // The note his next build will leave behind — with the STAGE it died at.
+        noteBrowserFailure(sid, String(e?.joeStage || 'create'), e);
+        throw e;
+      });
       sessions.set(sid, created);
       ensureCleanupLoop();
       // A panel may already be watching this id and waiting for exactly this.
