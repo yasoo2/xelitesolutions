@@ -1,13 +1,27 @@
 /**
  * NeuralThinkingIndicator
- * A calm, modern "Joe is thinking" indicator with an optional reasoning log.
- * Visibility is driven ENTIRELY by the `visible` prop (which the parent computes
- * per active session), so it never leaks from one session into another.
+ * Joe at work, shown live. Visibility is driven ENTIRELY by the `visible` prop
+ * (which the parent computes per active session), so it never leaks from one
+ * session into another.
+ *
+ * Two shapes, chosen by how much there is to show:
+ *   · a single morphing line for a short answer, with a «6 steps ▾» chip that
+ *     opens the rest on demand — the chat stays a conversation;
+ *   · the full phase timeline for a build, because when Joe works for a minute
+ *     and a half the interesting question is what he spent it on.
+ *
+ * The steps themselves now arrive with their timestamps (SocketService keeps
+ * them as structure, not strings) and are sealed into the session's history
+ * when the run ends — so this card disappearing no longer destroys the record.
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SocketService } from '../services/socket';
 import { useTranslation } from 'react-i18next';
+import { ChevronDown } from 'lucide-react';
+import type { NeuralTrace, TraceStep } from '../lib/neuralTrace';
+import { formatDuration } from '../lib/neuralTrace';
+import { TraceTimeline, useTraceStyles, useUiDir } from './NeuralTraceView';
 
 interface NeuralThinkingIndicatorProps {
   phase?: 'analyzing' | 'synthesizing' | 'executing' | 'idle';
@@ -26,45 +40,84 @@ const phaseLabels: Record<string, { key: string; color: string }> = {
   idle: { key: 'thinkingAnalyzing', color: '#34c48b' },
 };
 
+/** Above this many steps the single line stops being honest about the work. */
+const TIMELINE_THRESHOLD = 4;
+
 export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, variant = 'inline', sessionId }: NeuralThinkingIndicatorProps) {
   const { t } = useTranslation();
+  useTraceStyles();
+  const uiDir = useUiDir();
   const [currentPhase, setCurrentPhase] = useState(phase);
   const [status, setStatus] = useState('');
-  const [details, setDetails] = useState<string[]>([]);
+  const [steps, setSteps] = useState<TraceStep[]>([]);
+  /** null = follow the step count; true/false = he decided. */
+  const [expanded, setExpanded] = useState<boolean | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const bottomRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef(sessionId);
   useEffect(() => { activeSessionRef.current = sessionId; }, [sessionId]);
 
   useEffect(() => {
-    const unsubDetails = SocketService.subscribeThinkingDetails((newDetails) => setDetails(newDetails));
+    const unsubSteps = SocketService.subscribeThinkingSteps((s) => setSteps(s));
     const unsubPhase = SocketService.subscribeThinkingPhase((p: any, evSid?: string) => {
       if (evSid && activeSessionRef.current && evSid !== activeSessionRef.current) return;
       setCurrentPhase(p);
     });
     const unsubStatus = SocketService.subscribeThinkingStatus((s: string) => setStatus(s));
-    return () => { unsubDetails(); unsubPhase(); unsubStatus(); };
+    return () => { unsubSteps(); unsubPhase(); unsubStatus(); };
   }, []);
 
   // Clear all reasoning state the moment the active session changes, so the
   // previous session's thinking never shows in the new one.
   useEffect(() => {
-    setDetails([]);
+    setSteps([]);
     setStatus('');
     setCurrentPhase('idle');
+    setExpanded(null);
   }, [sessionId]);
 
+  // The elapsed counter has to tick on its own — no event arrives just because
+  // a second passed.
   useEffect(() => {
-    if (visible && details.length > 0) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [details, visible]);
+    if (!visible) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [visible]);
+
+  const showTimeline = expanded === null ? steps.length >= TIMELINE_THRESHOLD : expanded;
+
+  useEffect(() => {
+    if (visible && showTimeline && steps.length > 0) bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [steps, visible, showTimeline]);
+
+  // A live trace: the same object a sealed one is, ending "now".
+  const liveTrace: NeuralTrace | null = useMemo(() => {
+    if (!steps.length) return null;
+    return {
+      id: 'live',
+      sessionId: sessionId || 'live',
+      startedAt: SocketService.getRunStartedAt() || steps[0].at,
+      endedAt: Math.max(now, steps[steps.length - 1].at),
+      steps,
+    };
+  }, [steps, now, sessionId]);
 
   // Single source of truth: the parent decides (per session) when to show us.
   if (!visible) return null;
 
   const current = phaseLabels[currentPhase] || phaseLabels.analyzing;
-  const hasLog = details.length > 0;
+  const sec = t('traceSecond', 's');
+  const elapsed = liveTrace ? Math.max(0, liveTrace.endedAt - liveTrace.startedAt) : 0;
+  // The single line shows the newest thing Joe said, whichever stream said it.
+  const headline = status || (steps.length ? steps[steps.length - 1].text : '') || t(current.key);
+  const canExpand = steps.length > 0;
 
   return (
-    <div className={`neural-card ${variant} ${hasLog ? 'has-log' : ''}`} dir="auto">
+    <div
+      className={`jt neural-card ${variant} ${showTimeline ? 'has-log' : ''}`}
+      dir={uiDir}
+      style={{ ['--jt-accent' as any]: current.color }}
+    >
       <style>{`
         .neural-card {
           --nc: ${current.color};
@@ -100,12 +153,37 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
 
         .nc-label {
           font-size: 13px; font-weight: 700; color: var(--nc);
-          letter-spacing: .2px; display: inline-flex; align-items: baseline; gap: 2px;
+          letter-spacing: .2px; min-width: 0; flex: 1 1 auto;
+          display: flex; align-items: baseline; gap: 6px;
         }
-        .nc-status { color: var(--joe-text-secondary, #9aa8a2); font-weight: 500; font-size: 12px; }
+        /* The headline is REPLACED as Joe moves on; a cross-fade makes that a
+           transition rather than a flicker. */
+        .nc-line {
+          min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          animation: nc-swap .28s ease-out;
+        }
+        @keyframes nc-swap { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
         .nc-dots i { animation: nc-blink 1.4s infinite both; }
         .nc-dots i:nth-child(2){ animation-delay: .2s; } .nc-dots i:nth-child(3){ animation-delay: .4s; }
         @keyframes nc-blink { 0%,80%,100% { opacity: .2; } 40% { opacity: 1; } }
+
+        .nc-elapsed {
+          flex: none; font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+          color: var(--joe-text-muted, #6e7178);
+        }
+        /* «6 steps ▾» — the whole log, one keystroke away, never in the way. */
+        .nc-chip {
+          flex: none; display: inline-flex; align-items: center; gap: 4px;
+          font: inherit; font-size: 10.5px; font-weight: 600;
+          color: var(--nc); background: color-mix(in srgb, var(--nc) 12%, transparent);
+          border: 1px solid color-mix(in srgb, var(--nc) 22%, transparent);
+          border-radius: 999px; padding: 2px 8px; cursor: pointer;
+          font-variant-numeric: tabular-nums; transition: background .18s ease;
+        }
+        .nc-chip:hover { background: color-mix(in srgb, var(--nc) 20%, transparent); }
+        .nc-chip:focus-visible { outline: 2px solid var(--nc); outline-offset: 2px; }
+        .nc-chip svg { transition: transform .22s cubic-bezier(.22,1,.36,1); }
+        .nc-chip[aria-expanded="true"] svg { transform: rotate(180deg); }
 
         /* thin animated progress shimmer under the header */
         .nc-track { height: 2px; border-radius: 2px; margin-top: 8px; overflow: hidden; background: color-mix(in srgb, var(--nc) 14%, transparent); }
@@ -114,38 +192,51 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           animation: nc-sweep 1.5s ease-in-out infinite; }
         @keyframes nc-sweep { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
 
+        /* The log used to live in a 140px box behind a 3px scrollbar. It now gets
+           room to be read, and still cannot swallow the conversation. */
         .nc-log {
-          margin-top: 9px; padding-top: 8px; display: flex; flex-direction: column; gap: 3px;
-          max-height: 140px; overflow-y: auto; scrollbar-width: thin;
+          margin-top: 9px; padding-top: 8px;
+          max-height: min(44vh, 420px); overflow-y: auto; overscroll-behavior: contain;
+          scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--nc) 40%, transparent) transparent;
           border-top: 1px solid color-mix(in srgb, var(--nc) 14%, transparent);
         }
-        .nc-log::-webkit-scrollbar { width: 3px; }
-        .nc-log::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--nc) 30%, transparent); border-radius: 4px; }
-        .nc-log .ln {
-          font-size: 11.5px; line-height: 1.5; color: var(--joe-text-secondary, #9aa8a2);
-          white-space: pre-wrap; word-break: break-word; opacity: 0; animation: nc-fade .3s ease-out forwards;
-          padding-inline-start: 12px; position: relative;
+        .nc-log::-webkit-scrollbar { width: 7px; }
+        .nc-log::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--nc) 30%, transparent); border-radius: 8px; }
+        .nc-log::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--nc) 55%, transparent); }
+
+        @media (prefers-reduced-motion: reduce) {
+          .nc-orb .core, .nc-orb::after, .nc-track > i, .nc-dots i, .nc-line, .neural-card { animation: none !important; }
+          .nc-chip svg { transition: none !important; }
         }
-        .nc-log .ln::before { content: ""; position: absolute; inset-inline-start: 0; top: .55em; width: 5px; height: 5px; border-radius: 50%; background: color-mix(in srgb, var(--nc) 40%, transparent); }
-        .nc-log .ln:last-child { color: var(--joe-text-primary, #e9eeeb); font-weight: 600; }
-        .nc-log .ln:last-child::before { background: var(--nc); box-shadow: 0 0 6px var(--nc); }
-        @keyframes nc-fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
-        @media (prefers-reduced-motion: reduce) { .nc-orb .core, .nc-orb::after, .nc-track > i, .nc-dots i { animation: none !important; } }
       `}</style>
 
       <div className="neural-head">
         <span className="nc-orb"><span className="core" /></span>
         <span className="nc-label">
-          {status || t(current.key)}
-          <span className="nc-dots"><i>.</i><i>.</i><i>.</i></span>
+          {/* dir="auto" on the LINE, not on the card: a headline like
+              «جاري تنفيذ: react project» mixes scripts and used to reorder. */}
+          <span className="nc-line" dir="auto" key={headline}>{headline}</span>
+          {!showTimeline && <span className="nc-dots"><i>.</i><i>.</i><i>.</i></span>}
         </span>
+        {elapsed >= 1000 && <span className="nc-elapsed">{formatDuration(elapsed, sec)}</span>}
+        {canExpand && (
+          <button
+            type="button"
+            className="nc-chip"
+            aria-expanded={showTimeline}
+            onClick={() => setExpanded(!showTimeline)}
+          >
+            {t('traceSteps', '{{count}} steps', { count: steps.length })}
+            <ChevronDown size={11} />
+          </button>
+        )}
       </div>
 
-      {!hasLog && <div className="nc-track"><i /></div>}
+      {!showTimeline && <div className="nc-track"><i /></div>}
 
-      {hasLog && (
+      {showTimeline && liveTrace && (
         <div className="nc-log">
-          {details.map((line, i) => (<div key={i} className="ln">{line}</div>))}
+          <TraceTimeline trace={liveTrace} live />
           <div ref={bottomRef} />
         </div>
       )}

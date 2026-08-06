@@ -1,5 +1,6 @@
 import { API_URL, WS_URL } from '../config';
 import { AutoOpenManager } from './AutoOpenManager';
+import { saveTrace, type NeuralTrace, type TraceStep } from '../lib/neuralTrace';
 
 const __DEV__ = import.meta.env.DEV;
 
@@ -34,6 +35,54 @@ const thinkingPhaseListeners: Set<(phase: string, sessionId?: string) => void> =
 // [Wakil 6.0] Deep Reasoning State
 let thinkingDetails: string[] = [];
 const thinkingDetailsListeners: Set<(details: string[]) => void> = new Set();
+
+// The same reasoning, kept as STRUCTURE rather than strings: every line carries
+// the moment it arrived and the phase that was running, so the indicator can
+// show measured durations and the trace can outlive the run. `thinkingDetails`
+// above stays exactly as it was — nothing that already reads it changes.
+let thinkingSteps: TraceStep[] = [];
+const thinkingStepsListeners: Set<(steps: TraceStep[]) => void> = new Set();
+let runStartedAt = 0;
+let runSessionId = '';
+/** Fires when a run ends and its trace has been written to the session's history. */
+const traceSealedListeners: Set<(trace: NeuralTrace) => void> = new Set();
+
+function pushStep(text: string, kind: 'status' | 'detail', sessionId: string) {
+    const clean = String(text || '').trim();
+    if (!clean) return;
+    const last = thinkingSteps[thinkingSteps.length - 1];
+    // A status headline is REPLACED in place while it is on screen, so the same
+    // text arriving twice is one event, not two steps.
+    if (last && last.text === clean) return;
+    if (!runStartedAt) { runStartedAt = Date.now(); runSessionId = sessionId; }
+    if (sessionId && !runSessionId) runSessionId = sessionId;
+    thinkingSteps.push({ text: clean, at: Date.now(), phase: thinkingPhase, kind });
+    thinkingStepsListeners.forEach(cb => { try { cb([...thinkingSteps]); } catch { } });
+}
+
+/**
+ * The run is over: write what Joe did into the session's history so the chat
+ * can show a receipt for it forever, then clear the live state.
+ */
+function sealTrace() {
+    const steps = thinkingSteps;
+    thinkingSteps = [];
+    const startedAt = runStartedAt;
+    const sid = runSessionId;
+    runStartedAt = 0;
+    runSessionId = '';
+    thinkingStepsListeners.forEach(cb => { try { cb([]); } catch { } });
+    if (!steps.length || !sid) return;
+    const trace: NeuralTrace = {
+        id: `tr_${sid}_${startedAt || steps[0].at}`,
+        sessionId: sid,
+        startedAt: startedAt || steps[0].at,
+        endedAt: Date.now(),
+        steps,
+    };
+    saveTrace(trace);
+    traceSealedListeners.forEach(cb => { try { cb(trace); } catch { } });
+}
 
 // [ELITE SPEC] Thinking Status (Short human-friendly status like "Navigating...")
 let thinkingStatus = '';
@@ -261,6 +310,10 @@ async function connect() {
           if (detail !== undefined) {
             thinkingStatus = detail || ''; // Allow empty string to clear
             thinkingStatusListeners.forEach(cb => { try { cb(thinkingStatus); } catch { } });
+            // The headline is the ONLY thing many runs ever show — his own
+            // screenshot is one line, «جاري تنفيذ: react project». A trace that
+            // recorded details alone would be empty for exactly those runs.
+            if (thinkingStatus) pushStep(thinkingStatus, 'status', evSid);
           }
         }
       } else if (msgType === 'thinking_detail') {
@@ -268,6 +321,7 @@ async function connect() {
         if (detail && typeof detail === 'string') {
           thinkingDetails.push(detail);
           thinkingDetailsListeners.forEach(cb => { try { cb([...thinkingDetails]); } catch { } });
+          pushStep(detail, 'detail', evSid);
         }
       }
 
@@ -294,21 +348,34 @@ async function connect() {
           emitPhase('executing');
         }
       } else if (msgType === 'run_finished' || msgType === 'text') {
-        if (quietMode) {
-          quietMode = false;
-          thinkingStatus = '';
-          emitPhase('idle');
-          thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
-        }
+        // A finished run is not a thinking run — whether or not quiet mode was
+        // ever entered. Returning to idle used to be conditional on `quietMode`,
+        // which is only set by `user_input` / `step_started`; a run driven purely
+        // by `thinking_phase` events therefore never came back, and the card sat
+        // on screen saying «جو ينفّذ» after the answer had already arrived.
+        quietMode = false;
+        thinkingStatus = '';
+        emitPhase('idle');
+        thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
+        // Sealed on the way out, whatever ended the run. The steps were about to
+        // be dropped on the floor here — that is precisely why the chat kept the
+        // answer and lost the work that produced it.
+        sealTrace();
       } else if (msgType === 'thought') {
         // [Wakil 6.0] Matrix-style thought logs
         const text = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
         if (text) {
           thinkingDetails.push(text);
           thinkingDetailsListeners.forEach(cb => { try { cb([...thinkingDetails]); } catch { } });
+          pushStep(text, 'detail', evSid);
         }
       } else if (msgType === 'run_started') {
         // Reset state and immediately activate 'analyzing' phase for neural indicator
+        // A run that starts while another is still open seals the open one first,
+        // rather than letting two runs share one trace.
+        sealTrace();
+        runStartedAt = Date.now();
+        runSessionId = evSid;
         thinkingDetails = [];
         thinkingStatus = '';
         taskTrackerData = []; // Reset tasks on new run
@@ -573,6 +640,20 @@ export const SocketService = {
     cb([...thinkingDetails]);
     thinkingDetailsListeners.add(cb);
     return () => { thinkingDetailsListeners.delete(cb); };
+  },
+  /** The same stream with timestamps and phases — what the timeline renders. */
+  subscribeThinkingSteps(cb: (steps: TraceStep[]) => void) {
+    cb([...thinkingSteps]);
+    thinkingStepsListeners.add(cb);
+    return () => { thinkingStepsListeners.delete(cb); };
+  },
+  /** Fires once per finished run, after the trace is written to the session. */
+  subscribeTraceSealed(cb: (trace: NeuralTrace) => void) {
+    traceSealedListeners.add(cb);
+    return () => { traceSealedListeners.delete(cb); };
+  },
+  getRunStartedAt() {
+    return runStartedAt;
   },
   subscribeThinkingStatus(cb: (status: string) => void) {
     cb(thinkingStatus);

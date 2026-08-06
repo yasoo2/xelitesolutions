@@ -72,6 +72,34 @@ history — re-run it after adding tools.
 5. Nodes run with deadlines; deterministic tools bypass the tool-picker;
    `purpose:'internal'` calls go local-first (intelligence economy).
 
+## الأثر العصبي في الدردشة | The neural trace
+
+What Joe shows while he works is now an object with a life after the run.
+
+- `api/src/api/ws.ts` — `broadcastThinkingPhase` (the headline that is replaced
+  in place) and `broadcastThinkingDetail` (the reasoning stream). Unchanged.
+- `web/src/services/socket.ts` — keeps them as **structure**: every line gets
+  the wall clock and the phase that was running (`TraceStep`). On
+  `run_finished` / `text` the run is **sealed** into a `NeuralTrace` and stored
+  under its session. A finished run always returns to `idle`, quiet mode or not.
+- `web/src/lib/neuralTrace.ts` — the store (`localStorage`, 30 per session, 14
+  days), the measured durations, the phase grouping, and `attachTraces`, which
+  pairs each sealed run with the assistant reply that followed it **by time**:
+  the live path mints its own message id and the reload path reads the stored
+  one, so ids can never match — the clock can.
+- `web/src/components/NeuralTraceView.tsx` — the timeline, the proportional
+  phase ribbon, and the receipt kept in the chat
+  («فكّرتُ ونفّذت · ٨ خطوات · ١:١٢ · ▾»). The rail mirrors with the UI
+  **language** (`<html dir>` stays ltr by design); every LINE carries
+  `dir="auto"` so mixed Arabic/Latin keeps its own order.
+- `web/src/components/NeuralThinkingIndicator.tsx` — one line for a short
+  answer, the full timeline from four steps up, either way switchable by the
+  «N steps ▾» chip.
+
+Locks: `api/src/__tests__/neural-trace.test.ts` +
+`api/src/tests/manual/verify_neural_trace.ts` (real Chromium, real server,
+including a full page reload).
+
 ## نظام الجودة | The quality law
 
 Every capability ships with: a Jest lock in `api/src/__tests__/` AND a wire

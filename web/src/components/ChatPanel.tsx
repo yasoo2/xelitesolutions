@@ -5,6 +5,8 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
+import { NeuralTraceReceipt } from './NeuralTraceView';
+import { attachTraces, loadTraces, type NeuralTrace } from '../lib/neuralTrace';
 import JoeMark from './JoeMark';
 import { composeGreeting } from '../lib/greetings';
 import { resolveIdentity } from '../lib/userIdentity';
@@ -103,6 +105,20 @@ export default function ChatPanel({
         setThinkingPhase('idle');
     }, [sessionId]);
 
+    // THE RECEIPT. Every run Joe finished in this session left a sealed trace
+    // behind; this pairs each one with the reply it produced, so the work stays
+    // in the chat after the live card is gone — including after a reload.
+    const [traces, setTraces] = useState<NeuralTrace[]>(() => loadTraces(sessionId));
+    useEffect(() => { setTraces(loadTraces(sessionId)); }, [sessionId]);
+    useEffect(() => {
+        const unsub = SocketService.subscribeTraceSealed((trace) => {
+            if (activeSessionRef.current && trace.sessionId !== activeSessionRef.current) return;
+            setTraces(loadTraces(activeSessionRef.current));
+        });
+        return () => unsub();
+    }, []);
+    const traceFor = React.useMemo(() => attachTraces(messages, traces), [messages, traces]);
+
     // Auto scroll to bottom
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -197,6 +213,12 @@ export default function ChatPanel({
                                 {msg.role === 'assistant' ? <JoeMark size={24} /> : 'U'}
                             </div>
                             <div className="joe-message-content">
+                                {/* What Joe did before he answered — collapsed to one
+                                    line, and kept. It sits ABOVE the reply because
+                                    that is the order it happened in. */}
+                                {msg.role === 'assistant' && traceFor.has(msg.id) && (
+                                    <NeuralTraceReceipt trace={traceFor.get(msg.id)!} />
+                                )}
                                 {/* dir="auto" + per-block auto direction below: a Latin
                                     name («Younes») inside an Arabic sentence scrambled
                                     the visual word order (BiDi), field-reported. Each
