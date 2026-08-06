@@ -2366,14 +2366,37 @@ export class ReactProjectTool extends BaseTool {
             for (const k of Object.keys(files)) {
                 if (k !== 'vite.config.js' && k !== 'src/styles/tokens.css') delete files[k];
             }
+            /**
+             * AND THE SYSTEM'S OTHER TABLES BECOME SCREENS.
+             *
+             * The backend carries vendors, customers, coupons and shipments
+             * now; without this they are reachable only by `curl`, which is a
+             * database with a URL, not a system anyone can run. The screens are
+             * generated from the SAME model the server was — the two halves
+             * cannot drift apart — and only when this session really has that
+             * server to talk to.
+             */
+            const tableModel = apiLink ? require('../../../core/design/data-model').deriveDataModel(request) : [];
+            if (tableModel.length) term(`admin screens: ${tableModel.map((e: any) => e.key).join(', ')}`);
             const appFiles = buildAppFiles(appBp, {
                 brand: content.brand, isArabic: isAr, api: apiLink, storeKey: `${slug(content.brand)}-${appBp.kind}`,
                 brandColor: (palette as any).primary,
+                model: tableModel,
             }, slug(content.brand));
             for (const [rel, body] of Object.entries(appFiles)) files[rel] = body;
-            // The real Arabic webfaces travel with the app too — the faces are
-            // declared here because an app ships no base.css.
-            files['src/styles/app.css'] = `${familyFonts(family).faces}\nbody{font-family:${familyFonts(family).body}}\n${fileAppCss()}`;
+            /**
+             * The real Arabic webfaces travel with the app too — the faces are
+             * declared here because an app ships no base.css.
+             *
+             * They are PREPENDED, not substituted. This line used to rebuild the
+             * stylesheet from `fileAppCss()` alone and threw away everything the
+             * engine had added to it: the shop's product grid, and — measured in
+             * a real browser — the whole system-tables screen, which rendered
+             * edge-to-edge with unstyled inputs while the page above it was
+             * centred.
+             */
+            files['src/styles/app.css'] = `${familyFonts(family).faces}\nbody{font-family:${familyFonts(family).body}}\n`
+                + (appFiles['src/styles/app.css'] || fileAppCss());
             fs.mkdirSync(path.join(proj, 'src', 'app'), { recursive: true });
             term(`application build: ${appBp.kind} — engine «${appBp.engine}»${Object.keys(appBp.deps).length ? `, real dependencies: ${Object.keys(appBp.deps).join(', ')}` : ''}`);
         }

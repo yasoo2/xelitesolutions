@@ -31,6 +31,15 @@ export interface AppBuildOptions {
     storeKey: string;
     /** The build's brand colour — used for the favicon and the theme colour. */
     brandColor?: string;
+    /**
+     * THE REST OF THE SYSTEM'S TABLES, AS SCREENS.
+     *
+     * The backend learned to carry vendors, customers, coupons and shipments;
+     * without this they were reachable only by `curl`, which is not a system
+     * anyone can run. Empty for a build with one collection — and then not a
+     * single line of the admin screen is generated.
+     */
+    model?: Array<{ key: string; ar: string; en: string; fields: any[]; belongsTo?: { entity: string; key: string } | null }>;
 }
 
 /* ── content.js — the app's own shape, nothing borrowed from a brochure ──── */
@@ -85,12 +94,12 @@ const ENGINE_COMPONENT: Record<AppBlueprint['engine'], string> = {
     shop: 'ShopApp',
 };
 
-export function fileAppShellJsx(bp: AppBlueprint, isAr: boolean): string {
+export function fileAppShellJsx(bp: AppBlueprint, isAr: boolean, hasTables = false): string {
     const C = ENGINE_COMPONENT[bp.engine];
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useState } from 'react';
 import ${C} from './components/${C}.jsx';
-import { content } from './content.js';
+${hasTables ? "import TablesAdmin from './components/TablesAdmin.jsx';\n" : ''}import { content } from './content.js';
 import { apiLogin, apiLogout, apiMe, getToken } from './app/store.js';
 
 /**
@@ -206,7 +215,7 @@ export default function App() {
       </header>
       <main className="app-main">
         <${C} content={content} />
-      </main>
+${hasTables ? '        <TablesAdmin api={content.api} />\n' : ''}      </main>
       <footer className="app-foot">
         <span>{content.brand}</span>
         <span className="dot">•</span>
@@ -339,6 +348,15 @@ export function getToken() {
 }
 function setToken(t) {
   try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch { /* private mode */ }
+  /**
+   * AND THE REST OF THE PAGE HEARS IT.
+   *
+   * Measured in a real browser: after a successful sign-in the admin screens
+   * still showed «sign in as the owner to add anything» — writing worked, and
+   * the page said it would not. A token read once at mount is a token that
+   * never changes.
+   */
+  try { window.dispatchEvent(new CustomEvent('joe:auth', { detail: { signedIn: !!t } })); } catch { /* no window */ }
 }
 const authHeaders = () => {
   const t = getToken();
@@ -541,6 +559,19 @@ export async function apiCreateOn(api, name, row) {
     if (!r.ok) return { ok: false, status: r.status, needsAuth: r.status === 401, error: d.error || '' };
     return { ok: true, item: d.item || row };
   } catch { return null; }
+}
+
+export async function apiUpdateOn(api, name, id, patch) {
+  const base = apiSibling(await resolvedApi(api), name);
+  if (!base) return { ok: false, error: 'no_server' };
+  try {
+    const r = await fetch(base + '/' + id, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(patch || {}),
+    });
+    const d = await r.json().catch(() => ({}));
+    return r.ok ? { ok: true, row: d.row } : { ok: false, error: d.error || 'save_failed' };
+  } catch { return { ok: false, error: 'no_server' }; }
 }
 
 export async function apiDeleteOn(api, name, id) {
@@ -1948,6 +1979,284 @@ export function fileAppPackageJson(name: string, bp: AppBlueprint): string {
  * EVERY file of a working application. The caller adds the palette tokens and
  * the vite config it already owns; everything here is the program.
  */
+
+/**
+ * EVERY TABLE, AS A SCREEN — «قل ابنِ المدفوعات وأبنيها فوق هذا النظام».
+ *
+ * The backend learned to carry the rest of the system: vendors, customers,
+ * coupons, shipments — doctors, patients, appointments. Reachable only by
+ * `curl`, that is a database with a URL, not a system anyone can run. This is
+ * the other half: one screen per table, driven by the SAME model the server
+ * was generated from, so the two halves cannot drift apart.
+ *
+ * It is deliberately one generic component rather than four hand-written ones:
+ * a table nobody wrote by hand is a table nobody forgot to update.
+ */
+export function fileTablesAdminJsx(model: any[], isAr: boolean): string {
+    const MODEL = JSON.stringify(model.map(e => ({
+        key: e.key, label: isAr ? e.ar : e.en,
+        fields: (e.fields || []).map((f: any) => ({
+            key: f.key, type: f.type, required: !!f.required,
+            label: (isAr ? f.ar : f.en) || f.key,
+        })),
+        belongsTo: e.belongsTo || null,
+    })));
+    const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
+    return `import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { apiListOn, apiCreateOn, apiDeleteOn, apiUpdateOn, getToken } from '../app/store.js';
+
+/** The system's tables, exactly as the server declares them. */
+export const TABLES = ${MODEL};
+
+/** The server answers in machine words; the screen must not. */
+function human(error, table) {
+  const e = String(error || '');
+  if (!e) return ${T('تعذّر الحفظ.', 'Could not save.')};
+  if (e.endsWith('_not_found')) {
+    return ${T('السطر المرتبط غير موجود — اختر واحداً من القائمة.', 'The linked row does not exist — pick one from the list.')};
+  }
+  if (e.endsWith('_required')) {
+    const field = e.slice(0, -('_required'.length));
+    const f = (table.fields || []).find((x) => x.key === field);
+    return ${T('حقل مطلوب: ', 'Required field: ')} + ((f && f.label) || field);
+  }
+  if (e === 'no_server') return ${T('لا يمكن الوصول إلى الخادم.', 'The server cannot be reached.')};
+  if (e === 'save_failed' || e === 'unauthorized') {
+    return ${T('سجّل الدخول كمالك أولاً — الكتابة محميّة.', 'Sign in as the owner first — writing is protected.')};
+  }
+  return e;
+}
+
+function TableView({ api, table, parentRows }) {
+  const [rows, setRows] = useState([]);
+  const [draft, setDraft] = useState({});
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(0);
+
+  const reload = useCallback(async () => {
+    const list = await apiListOn(api, table.key);
+    setRows(Array.isArray(list) ? list : []);
+  }, [api, table.key]);
+  useEffect(() => { reload(); }, [reload]);
+
+  const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true); setError('');
+    const r = editing
+      ? await apiUpdateOn(api, table.key, editing, draft)
+      : await apiCreateOn(api, table.key, draft);
+    setBusy(false);
+    if (!r || r.ok === false) { setError(human(r && r.error, table)); return; }
+    setDraft({}); setEditing(0);
+    reload();
+  };
+
+  const remove = async (id) => {
+    setError('');
+    const r = await apiDeleteOn(api, table.key, id);
+    if (r && r.ok === false) { setError(human(r.error, table)); return; }
+    reload();
+  };
+
+  const edit = (row) => {
+    const d = {};
+    for (const f of table.fields) d[f.key] = row[f.key] ?? '';
+    setDraft(d); setEditing(row.id);
+  };
+
+  return (
+    <section className="tbl" aria-label={table.label}>
+      <div className="tbl-head">
+        <h3>{table.label}</h3>
+        <span className="tbl-count">{rows.length}</span>
+      </div>
+
+      <form className="tbl-form" onSubmit={submit}>
+        {table.fields.map((f) => (
+          f.key === (table.belongsTo && table.belongsTo.key) ? (
+            <label key={f.key} className="tbl-field">
+              <span>{f.label}</span>
+              <select value={draft[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>
+                <option value="">{${T('— بلا ربط —', '— not linked —')}}</option>
+                {(parentRows || []).map((p) => (
+                  <option key={p.id} value={p.id}>{p.name || p.title || p.code || ('#' + p.id)}</option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label key={f.key} className="tbl-field">
+              <span>{f.label}{f.required ? ' *' : ''}</span>
+              <input
+                type={f.type === 'REAL' ? 'number' : 'text'}
+                step={f.type === 'REAL' ? 'any' : undefined}
+                value={draft[f.key] ?? ''}
+                onChange={(e) => set(f.key, e.target.value)}
+                required={!!f.required}
+              />
+            </label>
+          )
+        ))}
+        <div className="tbl-actions">
+          <button type="submit" className="primary" disabled={busy}>
+            {busy ? ${T('جارٍ…', 'Saving…')} : editing ? ${T('حفظ التعديل', 'Save changes')} : ${T('إضافة', 'Add')}}
+          </button>
+          {editing ? (
+            <button type="button" onClick={() => { setDraft({}); setEditing(0); }}>{${T('إلغاء', 'Cancel')}}</button>
+          ) : null}
+        </div>
+      </form>
+      {error ? <p className="tbl-error" role="alert">{error}</p> : null}
+
+      {rows.length ? (
+        <div className="tbl-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                {table.fields.map((f) => <th key={f.key}>{f.label}</th>)}
+                <th aria-label={${T('إجراءات', 'actions')}}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.id}</td>
+                  {table.fields.map((f) => <td key={f.key}>{String(r[f.key] ?? '')}</td>)}
+                  <td className="tbl-row-actions">
+                    <button type="button" onClick={() => edit(r)}>{${T('تعديل', 'Edit')}}</button>
+                    <button type="button" onClick={() => remove(r.id)}>{${T('حذف', 'Delete')}}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="tbl-empty">{${T('لا صفوف بعد — أضف أول واحد من الأعلى.', 'No rows yet — add the first one above.')}}</p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The whole administration surface: one tab per table, and the parent's rows
+ * handed to the child so a link is CHOSEN from real rows, never typed as an id
+ * that may not exist.
+ */
+export default function TablesAdmin({ api }) {
+  const [active, setActive] = useState(TABLES[0] ? TABLES[0].key : '');
+  const [parents, setParents] = useState({});
+  const [signedIn, setSignedIn] = useState(() => !!getToken());
+  useEffect(() => {
+    const sync = () => setSignedIn(!!getToken());
+    window.addEventListener('joe:auth', sync);
+    window.addEventListener('storage', sync);
+    return () => { window.removeEventListener('joe:auth', sync); window.removeEventListener('storage', sync); };
+  }, []);
+
+  const table = useMemo(() => TABLES.find((t) => t.key === active) || TABLES[0], [active]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const needed = TABLES.filter((t) => t.belongsTo).map((t) => t.belongsTo.entity);
+      const out = {};
+      for (const key of [...new Set(needed)]) {
+        const rows = await apiListOn(api, key);
+        out[key] = Array.isArray(rows) ? rows : [];
+      }
+      if (alive) setParents(out);
+    })();
+    return () => { alive = false; };
+  }, [api, active]);
+
+  if (!api || !TABLES.length || !table) return null;
+
+  return (
+    <section className="admin-tables">
+      <h2>${isAr ? 'إدارة النظام' : 'System administration'}</h2>
+      {signedIn ? null : (
+        <p className="tbl-note">{${T('القراءة متاحة للجميع؛ للإضافة والتعديل سجّل الدخول كمالك من الأعلى.', 'Anyone can read; sign in as the owner above to add or change anything.')}}</p>
+      )}
+      <div className="tbl-tabs" role="tablist">
+        {TABLES.map((t) => (
+          <button
+            key={t.key} type="button" role="tab"
+            aria-selected={t.key === active}
+            className={t.key === active ? 'active' : ''}
+            onClick={() => setActive(t.key)}
+          >{t.label}</button>
+        ))}
+      </div>
+      <TableView
+        key={table.key}
+        api={api}
+        table={table}
+        parentRows={table.belongsTo ? (parents[table.belongsTo.entity] || []) : []}
+      />
+    </section>
+  );
+}
+`;
+}
+
+/** The screens' own styles — plain, readable, and theme-aware like the rest. */
+export function fileTablesAdminCss(): string {
+    return `
+/* ── system tables ─────────────────────────────────────────────────────── */
+/* The engine's own content sits inside the page container; a section that
+   skips it runs edge to edge and reads as a different page. Measured in a real
+   browser: «System administration» sat flush against the window while
+   everything above it was centred in 1180px. */
+.admin-tables {
+  max-width: var(--maxw, 1180px); margin: 32px auto 0; padding: 0 16px 8px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.admin-tables > h2 { margin: 0; font-size: 20px; }
+.tbl-note { margin: 0; color: var(--muted); font-size: 14px; }
+.tbl-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.tbl-tabs button {
+  min-height: 44px; padding: 8px 16px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 15px;
+}
+.tbl-tabs button.active { background: var(--brand); color: #fff; border-color: transparent; }
+.tbl {
+  display: flex; flex-direction: column; gap: 12px;
+  background: var(--card, #fff); border: 1px solid var(--line, #e5e5e5);
+  border-radius: var(--radius, 12px); padding: 16px;
+}
+.tbl-head { display: flex; align-items: baseline; gap: 10px; }
+.tbl-head h3 { margin: 0; font-size: 17px; }
+.tbl-count {
+  min-width: 26px; padding: 2px 8px; border-radius: 999px; text-align: center;
+  background: var(--chip); color: var(--muted); font-size: 13px;
+}
+.tbl-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.tbl-field { display: flex; flex-direction: column; gap: 4px; min-width: 160px; flex: 1 1 160px; }
+.tbl-field span { font-size: 13px; color: var(--muted); }
+.tbl-field input, .tbl-field select {
+  min-height: 44px; padding: 8px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 15px;
+}
+.tbl-actions { display: flex; gap: 8px; }
+.tbl-actions button, .tbl-row-actions button {
+  min-height: 44px; padding: 8px 16px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 15px;
+}
+.tbl-actions .primary { background: var(--brand); color: #fff; border-color: transparent; }
+.tbl-error { margin: 0; color: #b3261e; font-size: 14px; }
+.tbl-empty { margin: 0; color: var(--muted); font-size: 14px; }
+.tbl-scroll { overflow-x: auto; }
+.tbl-scroll table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tbl-scroll th, .tbl-scroll td { padding: 10px; text-align: start; border-bottom: 1px solid var(--line); }
+.tbl-scroll th { color: var(--muted); font-weight: 600; }
+.tbl-row-actions { display: flex; gap: 6px; }
+`;
+}
+
 export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: string): Record<string, string> {
     const engineFile: Record<AppBlueprint['engine'], [string, string]> = {
         map: ['src/components/MapApp.jsx', fileMapAppJsx(o.isArabic)],
@@ -1963,11 +2272,13 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         'index.html': fileAppIndexHtml(bp, o),
         '.gitignore': 'node_modules\ndist\n',
         'src/main.jsx': fileAppMainJsx(),
-        'src/App.jsx': fileAppShellJsx(bp, o.isArabic),
+        'src/App.jsx': fileAppShellJsx(bp, o.isArabic, !!(o.model && o.model.length)),
         'src/content.js': fileAppContentJs(bp, o),
         'src/app/store.js': fileAppStoreJs(),
         [enginePath]: engineSrc,
-        'src/styles/app.css': fileAppCss() + (bp.engine === 'shop' ? fileShopCss() : ''),
+        ...(o.model && o.model.length ? { 'src/components/TablesAdmin.jsx': fileTablesAdminJsx(o.model, o.isArabic) } : {}),
+        'src/styles/app.css': fileAppCss() + (bp.engine === 'shop' ? fileShopCss() : '')
+            + (o.model && o.model.length ? fileTablesAdminCss() : ''),
     };
 }
 
