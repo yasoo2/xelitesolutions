@@ -1489,6 +1489,11 @@ export class ApiProjectTool extends BaseTool {
         //    REAL row over REAL HTTP. Reported only as measured.
         let installed = false, proven = false, backend = '', createdId = 0, npmMissing = false;
         let authProven = false, lockedOut = false, ordersLocked = false, relationProven = false;
+        /** Did THIS boot create the owner, or was one already in the database? */
+        let ownerCreated = false;
+        /** Did the server actually come up? «Booted but the proof failed» and
+         *  «never started» are different facts and used to print the same line. */
+        let booted = false;
         if (!input?.skipInstall) {
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
@@ -1519,11 +1524,27 @@ export class ApiProjectTool extends BaseTool {
                         cwd: proj, env: { PORT: String(port), NODE_NO_WARNINGS: '1' },
                         onLine: (l: string) => {
                             term(`  ${l.slice(0, 200)}`);
+                            /**
+                             * THE ACCOUNT MAY ALREADY EXIST — AND THEN THE NEW
+                             * PASSWORD IS FICTION.
+                             *
+                             * seedOwner() creates the owner ONCE, on an empty
+                             * database. Rebuild the same project over the same
+                             * data.db and it correctly does nothing — while
+                             * this tool has already minted a fresh password and
+                             * is about to print it. That is exactly what his log
+                             * showed: «owner login FAILED», and the message
+                             * handed him the credential anyway.
+                             *
+                             * The server says which of the two happened. Listen.
+                             */
+                            if (/owner account created/.test(l)) ownerCreated = true;
                             if (/listening on/.test(l)) upResolve(true);
                         },
                     });
                     child!.done.then(() => upResolve(false));
                     const up = await upPromise;
+                    booted = up;
                     clearTimeout(upTimer);
                     if (up) {
                         const base = `http://127.0.0.1:${port}`;
@@ -1759,16 +1780,26 @@ ${fileList}
 ${proven
                 ? `✅ الإثبات الحي: الخادم اشتغل فعلاً، وكُتب صف رقم ${createdId} عبر HTTP حقيقي وقُرئ من القاعدة (${backend === 'sqlite' ? 'SQLite المدمجة' : 'مخزن JSON'}) — والبيانات محفوظة على القرص وتنجو من إعادة التشغيل.`
                 : npmMissing ? '⚠️ npm غير متاح هنا — المشروع جاهز؛ ثبّته بنفسك: npm install ثم npm start.'
-                    : installed ? '⚠️ الخادم لم يثبت جاهزيته في المهلة — شغّله يدوياً: npm start.'
-                        : input?.skipInstall ? 'ℹ️ تخطيت التثبيت كما طُلب — شغّله: npm install ثم npm start.' : '⚠️ التثبيت لم يكتمل — جرّب npm install داخل المجلد.'}
+                    : booted ? '⚠️ الخادم اشتغل فعلاً، لكن الإثبات الحيّ لم يكتمل — لم أستطع تسجيل الدخول بحساب المالك (غالباً لأن القاعدة موجودة من بناء سابق). التفاصيل في السطر «auth proof» أعلاه، والملفات سليمة.'
+                        : installed ? '⚠️ الخادم لم يثبت جاهزيته في المهلة — شغّله يدوياً: npm start.'
+                            : input?.skipInstall ? 'ℹ️ تخطيت التثبيت كما طُلب — شغّله: npm install ثم npm start.' : '⚠️ التثبيت لم يكتمل — جرّب npm install داخل المجلد.'}
 
-🔐 حسابك (يظهر مرة واحدة — احفظه الآن):
+${authProven || ownerCreated || !installed
+                ? `🔐 حسابك (يظهر مرة واحدة — احفظه الآن):
    البريد: ${ownerEmail}
    كلمة المرور: ${ownerPassword}
    ${authProven
-                ? 'تحقّقتُ حيّاً: كتابة بلا تسجيل دخول تُرفض بـ401، وقراءة الطلبات تُرفض، وكلمة مرور خاطئة تُرفض، ودخولك أنت نجح وأصدر رمزاً.'
-                : 'غيّرها متى شئت عبر POST /api/auth/password.'}
-   ⚠️ كلمة المرور ليست مخزّنة في أي ملف — الملفات تحمل بصمتها فقط (scrypt) ولا يمكن استرجاعها منها.
+                    ? 'تحقّقتُ حيّاً: كتابة بلا تسجيل دخول تُرفض بـ401، وقراءة الطلبات تُرفض، وكلمة مرور خاطئة تُرفض، ودخولك أنت نجح وأصدر رمزاً.'
+                    : 'لم أستطع التحقّق من الدخول حيّاً هذه المرة — جرّبها، وإن رُفضت فغيّرها عبر POST /api/auth/password.'}
+   ⚠️ كلمة المرور ليست مخزّنة في أي ملف — الملفات تحمل بصمتها فقط (scrypt) ولا يمكن استرجاعها منها.`
+                : `🔐 حسابك: ${ownerEmail} — وكلمة المرور هي **القديمة**، لا واحدة جديدة.
+   هذا المشروع بُني فوق قاعدة بيانات موجودة من قبل، فالحساب فيها لم يُنشأ من جديد
+   (وهذا صحيح: إنشاؤه ثانيةً كان سيمحو مالكها). ولذلك رفض الخادم دخولي بكلمة
+   مرور جديدة — ولن أسلّمك كلمةً أعلم أنها لا تعمل.
+   • تذكر القديمة؟ استخدمها.
+   • نسيتها؟ احذف data.db (أو data.json) داخل المجلد وأعد التشغيل — يُنشأ حساب
+     جديد وتُطبع كلمته، وستفقد بيانات القاعدة معه.
+   • أو غيّرها وأنت داخل: POST /api/auth/password.`}
 
 🧭 مسارات ${labelAr}:
    عامّة للزوار: GET /api/${resource} · GET /api/${resource}/:id · POST /api/orders · GET /api/health
@@ -1794,7 +1825,9 @@ ${relation ? `
 📂 Path: ${proj}
 ${fileList}
 ${proven ? `✅ Live proof: row #${createdId} written over real HTTP and read back (backend: ${backend}).` : ''}
-Owner account (shown once): ${ownerEmail} / ${ownerPassword}
+${authProven || ownerCreated || !installed
+                ? `Owner account (shown once): ${ownerEmail} / ${ownerPassword}`
+                : `Owner account: ${ownerEmail} — the password is the OLD one. This project was built over an existing database, so the account was not re-created and a fresh password would not work. Delete data.db to start over, or change it from inside with POST /api/auth/password.`}
 Public: GET /api/${resource} · POST /api/orders · GET /api/health
 Protected (Bearer token from POST /api/auth/login): catalogue writes · GET /api/orders`;
 
