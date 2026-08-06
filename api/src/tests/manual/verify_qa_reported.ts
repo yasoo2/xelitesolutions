@@ -75,6 +75,21 @@ async function main() {
         check('ولا يدّعي إصلاحاً لم يقع', !/Repaired before delivery/.test(message));
     }
 
+    console.log('\n[5] وإن بقي عطل جوهري — تُعلن الرسالة ذلك في صدرها');
+    const blockers = ((audit?.findings || []) as any[]).filter(f => f.severity === 'high');
+    console.log(`   ℹ️ أعطال جوهرية باقية: ${blockers.length ? blockers.map(f => f.id).join(', ') : 'لا شيء'}`);
+    if (blockers.length) {
+        check('الرسالة تبدأ بالاعتراف لا بالإنجاز', /does NOT work properly/.test(message));
+        check('والعنوان لا يدّعي أكثر ممّا استحقّ', /delivered WITH open defects/.test(message), message.slice(0, 70));
+        const warnAt = message.indexOf('does NOT work properly');
+        check('والاعتراف قبل قائمة الملفات', warnAt >= 0 && warnAt < message.indexOf('📂 Path'), `${warnAt}`);
+        for (const f of blockers) check(`ومُسمّى: ${f.id}`, message.includes(String(f.detail)), String(f.detail).slice(0, 60));
+        check('ويعرض الأمر الذي يعالجها', /fix what is left|أصلح ما تبقّى/.test(message));
+    } else {
+        check('بناء نظيف — ولا إنذار مُختلق', !/does NOT work properly/.test(message));
+        check('والعنوان يقول ما حدث بلا تهويل', /verified to compile/.test(message), message.slice(0, 70));
+    }
+
     console.log('\n--- الرسالة كما ستصل إليه ---');
     console.log(message.split('\n').slice(0, 22).join('\n'));
 

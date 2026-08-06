@@ -2763,9 +2763,40 @@ export class ReactProjectTool extends BaseTool {
          * 67/100 means findings are still there and he is entitled to know
          * which.
          */
+        /**
+         * A DELIVERY THAT KNOWS IT IS BROKEN MUST SAY SO FIRST.
+         *
+         * His build was handed over at 67/100 with `failed_requests` still
+         * open — the `%22C:/Users/…jpg%22 404` he was looking at on screen —
+         * under a headline that read «A full React project, scaffolded AND
+         * verified to compile». Verified to COMPILE, yes. Nobody claimed it
+         * worked, and nobody said it did not.
+         *
+         * A score is a poor gate: 67 is not meaningfully different from 71.
+         * What is not a matter of degree is a HIGH-severity finding — a page
+         * error, a console error, a file that never arrived, an image that
+         * never drew. Any one of those surviving the self-repair means the
+         * thing does not work, and the message leads with that instead of
+         * burying it under a list of filenames.
+         */
+        const blockers = ((audit?.findings || []) as any[]).filter(f => f.severity === 'high');
+        if (blockers.length) {
+            term(`self-QA: DELIVERED WITH ${blockers.length} BLOCKING FINDING(S) — ${blockers.map(f => f.id).join(', ')}`);
+        }
+
         const qaBlock = (() => {
             if (!audit) return '';
-            const lines: string[] = [require('../../../core/quality/app-audit').formatAudit(audit, isAr)];
+            const lines: string[] = [];
+            if (blockers.length) {
+                lines.push(isAr
+                    ? `⛔ سلّمتُه وهو **لا يعمل كما ينبغي** — ${blockers.length} عطل جوهري باقٍ:`
+                    : `⛔ Delivered, but it does NOT work properly — ${blockers.length} blocking finding(s) remain:`);
+                for (const f of blockers) lines.push(`   • ${f.detail}`);
+                lines.push(isAr
+                    ? `   ↳ قل «أصلح ما تبقّى» وسأفتح المتصفّح على هذه بالذات.`
+                    : `   ↳ Say «أصلح ما تبقّى» / "fix what is left" and I will open the browser on exactly these.`);
+            }
+            lines.push(require('../../../core/quality/app-audit').formatAudit(audit, isAr));
             if (selfRepair) {
                 lines.push(isAr
                     ? `🛠️ وأصلحتُ ما وجدتُه بنفسي قبل التسليم: ${selfRepair.before}/100 ← ${selfRepair.after}/100 (${selfRepair.files.length} ملف)`
@@ -2786,7 +2817,7 @@ export class ReactProjectTool extends BaseTool {
         })();
 
         const message = isAr
-            ? `⚛️ ${built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
+            ? `⚛️ ${blockers.length ? 'بُني مشروع React وتجمّع — لكنه سُلّم بعيوب باقية' : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
 ${appBlock}
 ${qaBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
@@ -2802,7 +2833,7 @@ ${buildDiagnosis ? (buildDiagnosis.healed
    • «تراجع» → استرجاع آخر تعديل بايتاً ببايت
    • «شغّل خادم التطوير» → معاينة تطوير بتحديث حي
    • «انشر المشروع» → نسخة الإنتاج بصورها على رابط دائم`
-            : `⚛️ ${built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
+            : `⚛️ ${blockers.length ? 'A React project that compiles — delivered WITH open defects' : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
 ${appBlock}
 ${qaBlock}📂 Path: ${proj}
 ${fileList}
