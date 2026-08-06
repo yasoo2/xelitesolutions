@@ -893,3 +893,101 @@ export function imagesToMarkers(html: string, dir: string): { html: string; conv
     }
     return { html: out, converted };
 }
+
+/**
+ * A PICTURE ADDRESS A VISITOR CAN ACTUALLY FETCH.
+ *
+ * From his build, served by his own Joe:
+ *
+ *     GET /project-preview/6a72…/%22C:/Users/home/OneDrive/Pictures/
+ *         Screenshots/rMdxgLDt1aCSm5wlwOc9wfydlWaylEfbvu3of2u3.jpg%22  404
+ *
+ * Decoded, the `src` in the built application was:
+ *
+ *     "C:/Users/home/OneDrive/Pictures/Screenshots/rMdx….jpg"
+ *
+ * — a path on HIS laptop, with its quotation marks still attached, written
+ * into an app that anyone was meant to open. Two defects in one string: a
+ * value that kept the quotes it was quoted with, and a filesystem path used
+ * as a web address. Neither can ever load for anybody, including him: the
+ * preview server answered 404, because there is nothing at that URL.
+ *
+ * Pages are protected by groundImageSrcs, which resolves every local src
+ * against the artifact directory. React projects had no equivalent, and this
+ * is it — applied to the CONTENT before it is rendered, where the value is
+ * still a string and not yet a JSX expression.
+ */
+export function isUnservableImageSrc(raw: string): boolean {
+    const v = String(raw || '').trim();
+    if (!v) return false;                       // empty is handled elsewhere
+    if (/^(data:|https?:|\/\/)/i.test(v)) return false;
+    if (/^file:/i.test(v)) return true;         // file:///C:/… — a local file, said outright
+    if (/^[a-z]:[\\/]/i.test(v)) return true;   // C:\… or C:/… — a Windows drive
+    if (/^\\\\/.test(v)) return true;           // \\server\share — a network mount
+    if (/\\/.test(v)) return true;              // any backslash: never a URL path separator
+    // POSIX home/system roots. `/artifacts/…`, `/images/…` and every other
+    // app-relative path stay exactly as they are.
+    if (/^\/(home|Users|root|var|tmp|mnt|opt|private)\//.test(v)) return true;
+    return false;
+}
+
+/** The same address with the quotes someone left on it removed. */
+export function unquoteSrc(raw: string): string {
+    let v = String(raw ?? '').trim();
+    // Both literal and percent-encoded, because the value reached the browser
+    // as %22C:/Users…%22 — encoded on the way out, still quoted underneath.
+    for (let i = 0; i < 3; i++) {
+        const before = v;
+        v = v.replace(/^(?:%22|%27|["'`])+/, '').replace(/(?:%22|%27|["'`])+$/, '').trim();
+        if (v === before) break;
+    }
+    return v;
+}
+
+export interface ImageSrcVerdict { src: string; changed: boolean; why?: string }
+
+/**
+ * Clean one image address, or refuse it.
+ *
+ * `fallback` is what replaces an address no visitor can fetch — a gradient
+ * from gradientPlaceholder, so the layout keeps its shape and nothing pretends
+ * a photograph is there.
+ */
+export function safeImageSrc(raw: string, fallback: string): ImageSrcVerdict {
+    const original = String(raw ?? '');
+    const unquoted = unquoteSrc(original);
+    if (!unquoted) return { src: fallback, changed: original !== fallback, why: 'empty' };
+    if (isUnservableImageSrc(unquoted)) {
+        return { src: fallback, changed: true, why: `local path: ${unquoted.slice(0, 60)}` };
+    }
+    return { src: unquoted, changed: unquoted !== original, why: unquoted !== original ? 'quoted' : undefined };
+}
+
+/**
+ * Walk an assembled content object and clean every image address in it.
+ * Returns what was changed, so the build can SAY it rather than quietly
+ * shipping a gradient where the user expected their photograph.
+ */
+export function sanitizeContentImages(content: any, hue: number): string[] {
+    const notes: string[] = [];
+    const fix = (holder: any, key: string, subject: string) => {
+        if (!holder || typeof holder[key] !== 'string') return;
+        const verdict = safeImageSrc(holder[key], gradientPlaceholder(subject || 'image', hue));
+        if (!verdict.changed) return;
+        holder[key] = verdict.src;
+        if (verdict.why) notes.push(verdict.why);
+    };
+    const walk = (node: any, subject: string, depth = 0) => {
+        if (!node || typeof node !== 'object' || depth > 6) return;
+        if (Array.isArray(node)) { node.forEach(n => walk(n, subject, depth + 1)); return; }
+        for (const [k, v] of Object.entries(node)) {
+            if (v && typeof v === 'object') {
+                // { src, alt } is the shape every image in this content uses.
+                if (typeof (v as any).src === 'string') fix(v, 'src', String((v as any).alt || k));
+                walk(v, String((node as any).name || (node as any).title || subject), depth + 1);
+            }
+        }
+    };
+    walk(content, String(content?.brand || 'image'));
+    return notes;
+}

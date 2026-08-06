@@ -24,7 +24,7 @@ import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { detectAppKind, blueprintFor, type AppBlueprint } from '../../../core/design/app-blueprints';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
-import { resolveImages } from '../../../core/design/images';
+import { resolveImages, sanitizeContentImages } from '../../../core/design/images';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
@@ -2293,6 +2293,29 @@ export class ReactProjectTool extends BaseTool {
         // The photographs have answered — the navigation is recomputed so a
         // gallery that stayed empty never gets advertised in the menu.
         buildNavLinks();
+
+        /**
+         * AND NO ADDRESS THAT ONLY EXISTS ON THIS LAPTOP GOES INTO THE APP.
+         *
+         * His preview server, answering his own build:
+         *
+         *     GET /project-preview/…/%22C:/Users/home/OneDrive/Pictures/
+         *         Screenshots/rMdx….jpg%22   404
+         *
+         * A path on his machine, quotation marks still attached, written into
+         * an application meant to be opened by anyone. Pages have been guarded
+         * by groundImageSrcs for months; React projects were not, and every
+         * image here is a string in `content` right up to this point — which is
+         * the last moment it can be checked as a value rather than as JSX.
+         */
+        const badSrcs = sanitizeContentImages(content, (palette as any).hue ?? 260);
+        if (badSrcs.length) {
+            term(`self-repair: ${badSrcs.length} image address(es) could not be served to a visitor — replaced`);
+            for (const why of badSrcs.slice(0, 4)) term(`  • ${why}`);
+            term(isAr
+                ? `🖼️ ${badSrcs.length} عنوان صورة كان يشير إلى ملف على جهازك لا إلى الويب — استبدلته بتدرّج لوني بدل صورة مكسورة.`
+                : `🖼️ ${badSrcs.length} image address pointed at a file on your machine, not the web — replaced with a gradient instead of a broken image.`);
+        }
 
         const componentTemplates: Record<string, () => string> = {
             Navbar: fileNavbarJsx, Hero: fileHeroJsx, Features: fileFeaturesJsx,

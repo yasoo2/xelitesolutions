@@ -55,7 +55,10 @@ describe('the preview loop is WIRED, end to end', () => {
     });
     it('a built react_project announces preview_ready through the route', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
-        const at = src.indexOf('/project-preview/');
+        // Anchor on the URL being BUILT, not on the first mention of the route:
+        // a comment that quoted a preview URL moved this anchor hundreds of
+        // lines away and failed a wiring that had not changed at all.
+        const at = src.indexOf('publicUrlFor(`/project-preview/');
         expect(at).toBeGreaterThan(0);
         expect(src.slice(at - 400, at + 200)).toContain("type: 'preview_ready'");
         expect(src.slice(at - 400, at + 200)).toContain('if (built)');   // an unbuilt scaffold has nothing to show
