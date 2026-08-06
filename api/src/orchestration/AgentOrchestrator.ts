@@ -574,9 +574,31 @@ export class AgentOrchestrator {
           // A retry that succeeds PROVES the repair worked — that is the only
           // moment a cure is worth remembering. Recording at plan time would
           // memorize guesses; recording here memorizes verified medicine.
-          if ((node.retryCount || 0) > 0 && node.lastError && node.repairNote) {
+          /**
+           * …AND A CURE MADE OF PROSE IS NOT A CURE.
+           *
+           * From his log: `central_answer was called without a question` came
+           * back with «a repair that worked for this same error before (proven
+           * 2x)» whose entire content was `central_answer: Formulate a
+           * question… | project_planner: Re-plan…`. Nothing in it had ever
+           * repaired anything: an answering tool always "succeeds", so a step
+           * that failed for a real reason and was then re-run as an essay
+           * taught Joe that essays are medicine — and it prescribed them again.
+           *
+           * A repair is only remembered when at least one step in it actually
+           * DID something.
+           */
+          const curedByDoing = String(node.repairNote || '')
+            .split('|')
+            .some(part => {
+              const tool = part.split(':')[0].trim();
+              return tool && !PlanningEngine.ANSWER_ONLY.has(tool);
+            });
+          if ((node.retryCount || 0) > 0 && node.lastError && node.repairNote && curedByDoing) {
             repairMemory.recordRepair(node.lastError, node.repairNote)
               .catch((e) => console.warn('[RepairMemory] record failed:', e?.message));
+          } else if ((node.retryCount || 0) > 0 && node.repairNote && !curedByDoing) {
+            console.warn('[RepairMemory] not remembering a repair made only of answers — nothing in it did anything.');
           }
           lastDone = { task: node.task, ok: true, summary: undefined };
           node.status = "completed";

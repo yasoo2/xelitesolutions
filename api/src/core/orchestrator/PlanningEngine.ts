@@ -81,6 +81,25 @@ export class PlanningEngine {
      *   system — an app that OWNS data: accounts, a database, orders, bookings,
      *            inventory, reports, roles. It gets a backend of its own.
      */
+    /**
+     * Tools that can only ANSWER. None of them puts a file on disk, so a plan
+     * made entirely of them has built nothing, whatever it reports.
+     */
+    static readonly ANSWER_ONLY = new Set([
+        'central_answer', 'ask_user', 'echo', 'multi_agent_debate',
+        'ambiguity_resolver', 'self_confidence_evaluator', 'request_analyzer',
+    ]);
+
+    /** Does this request ask for something to EXIST afterwards? */
+    static looksLikeBuild(goalRaw: string): boolean {
+        const g = String(goalRaw || '');
+        const verb = /\b(build|create|make|develop|generate|scaffold|implement|code)\b/i.test(g)
+            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو|برمج)/.test(g);
+        const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game)\b/i.test(g)
+            || /(موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|واجهة|أداة|اداة|برنامج|بوابة|خدمة)/.test(g);
+        return verb && noun;
+    }
+
     static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
         const g = String(goalRaw || '');
         // Its own data, its own users → it needs a server and a database.
@@ -636,7 +655,24 @@ Rules:
             || /قم\s*ب?(بناء|عمل|انشاء|إنشاء|تصميم|تطوير|صنع)/.test(probe)
             || /(اريد|أريد|ابغى|أبغى|بدي|ودي)\s*(ب?بناء|عمل|انشاء|إنشاء|تصميم|موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|أداة|اداة)/.test(probe)
             || /\b(بناء|تصميم|إنشاء|انشاء)\s+(موقع|صفحة|تطبيق|متجر|واجهة|لوحة)/.test(probe));
+        /**
+         * THE ENGLISH LIST WAS NEVER BROUGHT UP TO THE ARABIC ONE.
+         *
+         * His request, verbatim: «Build a world-class e-commerce PLATFORM
+         * similar to Shopify … Multi-vendor MARKETPLACE … Mobile APP …
+         * Generate complete production-ready code.»
+         *
+         * `buildVerb` matched on «build». `webNoun` did not match ANYTHING:
+         * platform, marketplace, e-commerce and a bare «app» were all missing,
+         * while the Arabic branch below has known «نظام», «منصّة», «أداة» and
+         * «برنامج» for months. So the build gate stayed shut, the request fell
+         * through to the generic planner, and Joe answered a request for a
+         * production-ready platform with FIFTEEN nodes of `central_answer` —
+         * «Good evening, Younes. I'll outline the optimal project structure…».
+         * Not one file was written.
+         */
         const webNoun = /\b(page|site|website|web ?app|landing|portfolio|dashboard|form|store|shop|html|ui|interface)\b/.test(goalLower)
+            || /\b(platform|marketplace|e-?commerce|storefront|system|app|application|software|tool|service|portal|panel|admin|backend|api|saas|crm|erp|pos|blog|editor|tracker|planner|scheduler|booking|marketplace|network|clone)\b/.test(goalLower)
             // «نظام نقاط بيع للمطاعم مع تقارير مبيعات» named no «موقع» and no
             // «صفحة», so the build gate never opened and Joe just TALKED about it.
             // A system, a platform, a dashboard and a tool are things people ask
@@ -1558,6 +1594,8 @@ Rules:
      */
     private static async generateDynamicDag(intent: StructuredIntent, memory: any, context?: any): Promise<ExecutionPlan> {
         console.log(`[PlanningEngine] Generating REAL-TIME DAG for: ${intent.goal}`);
+        const ANSWER_ONLY_TOOLS = PlanningEngine.ANSWER_ONLY;
+        const looksLikeBuildRequest = PlanningEngine.looksLikeBuild;
 
         const isRecovery = /^fix and continue:/i.test(String(intent.goal || '').trim());
         // Compacted, never raw: one completed page-builder node used to drag an
@@ -1622,6 +1660,51 @@ Return ONLY a JSON array of steps:
                     input: step.input || {},
                     dependsOn: Array.isArray(step.dependsOn) ? step.dependsOn.map(String) : []
                 })), String(intent.goal || ''), context);
+
+                /**
+                 * A REQUEST TO BUILD IS NOT ANSWERED BY TALKING ABOUT BUILDING.
+                 *
+                 * His run, verbatim, against «Build a world-class e-commerce
+                 * platform … Generate complete production-ready code»:
+                 *
+                 *     Executing node: define_project_structure   → central_answer
+                 *     Executing node: generate_auth_system       → central_answer
+                 *     Executing node: create_multi_vendor_marketplace → central_answer
+                 *     «Good evening, Younes. As we embark on building …»
+                 *
+                 * Fifteen nodes, six essays, and not one file on disk. Worse,
+                 * an essay always "succeeds", so the failed step's repair got
+                 * stamped as a PROVEN cure and replayed on the next unrelated
+                 * error («proven 2x» in his log).
+                 *
+                 * A plan that answers a BUILD with nothing but answering tools
+                 * is not a plan. It is refused here, and the deterministic
+                 * builders take the request instead.
+                 */
+                const talkOnly = steps.length > 0 && steps.every((st: any) =>
+                    ANSWER_ONLY_TOOLS.has(String(st.tool || '')));
+                if (talkOnly && looksLikeBuildRequest(String(intent.goal || ''))) {
+                    console.warn(`[PlanningEngine] the model planned ${steps.length} talking step(s) for a BUILD — refused; using the real builders.`);
+                    const scope = PlanningEngine.classifyBuildScope(String(intent.goal || ''));
+                    const real: any[] = [];
+                    if (scope === 'system') {
+                        real.push({
+                            id: 'backend', description: `الواجهة الخلفية وقاعدة البيانات لـ: ${intent.goal}`,
+                            tool: 'api_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [],
+                        });
+                    }
+                    real.push({
+                        id: 'app', description: `تطبيق حقيقي لـ: ${intent.goal}`,
+                        tool: scope === 'page' ? 'web_page_builder' : 'react_project', agent: 'Dev',
+                        input: { request: intent.goal }, dependsOn: scope === 'system' ? ['backend'] : [],
+                    });
+                    return {
+                        id: `build_rescue_${Date.now()}`,
+                        goal: intent.goal,
+                        steps: real,
+                        metadata: { complexity: 'high', riskLevel: 'medium' },
+                    };
+                }
 
                 return {
                     id: `dag_${Date.now()}`,
