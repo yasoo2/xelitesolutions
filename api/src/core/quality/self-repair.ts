@@ -26,7 +26,10 @@ import { repairProjectFiles, type Repair } from './ui-repair';
 /** Every source file a UI repair could possibly touch, relative to the project. */
 export function collectSources(dir: string): Record<string, string> {
     const out: Record<string, string> = {};
-    const skip = new Set(['node_modules', 'dist', '.git', 'public', 'fonts']);
+    // `.joe-versions` holds the snapshots that make «تراجع» possible. Repairing
+    // the files INSIDE them would rewrite history — every restore would hand
+    // back a past that had been quietly edited, which is worse than no history.
+    const skip = new Set(['node_modules', 'dist', '.git', 'public', 'fonts', '.joe-versions']);
     const walk = (abs: string, rel: string, depth: number) => {
         if (depth > 6) return;
         let entries: fs.Dirent[] = [];
@@ -82,6 +85,18 @@ export async function repairAndRebuild(
     const isArabic = opts.isArabic ?? /[؀-ۿ]/.test(Object.values(sources).join('\n').slice(0, 20_000));
     const plan = repairProjectFiles(sources, { isArabic } as any);
     if (!Object.keys(plan.files).length) return { ...empty, skipped: 'nothing_to_repair' };
+
+    /**
+     * BEFORE THE FIRST BYTE IS WRITTEN, THE PROJECT IS PUT ASIDE.
+     *
+     * The revert below undoes a repair that failed to BUILD. It cannot undo a
+     * repair that built perfectly and that he simply did not want — and that is
+     * the ordinary case: Joe changed his files, correctly, and he wants them
+     * back. A snapshot costs a directory copy of the source and buys «تراجع».
+     */
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { snapshotProject } = require('../project/versions');
+    try { snapshotProject(dir, 'قبل الإصلاح الذاتي'); } catch { /* never blocks the repair */ }
 
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { syntaxOk } = require('../../modules/tools/definitions/ProjectEditTool');

@@ -163,7 +163,10 @@ export function adoptLocalImage(src: string, projDir: string, alt: string): { sr
 }
 
 const EDITABLE = /\.(jsx?|tsx?|mjs|css|html|json)$/i;
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'build']);
+// `.joe-versions` is the project's own history. An editor that can see into it
+// would offer the model yesterday's copy of App.jsx as a file to change — and a
+// rewritten past is worse than no past at all.
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'build', '.joe-versions']);
 
 function listFiles(dir: string, base = ''): string[] {
     const out: string[] = [];
@@ -312,6 +315,13 @@ export class ProjectEditTool extends BaseTool {
             } catch { /* no previous stylesheet — the fresh one stands */ }
 
             const changed: Array<{ file: string; before: string }> = [];
+            // A surgical edit already reverts itself when the BUILD fails. What
+            // it could never do is give him back a change that compiled fine and
+            // that he simply did not want. One snapshot before the first write,
+            // and «تراجع» works for projects the way it always has for pages.
+            try { require('../../../core/project/versions').snapshotProject(dir, 'قبل التعديل'); }
+            catch { /* protection must never break what it protects */ }
+
             let depsChanged = false;
             for (const [rel, body] of Object.entries(fresh)) {
                 const abs = path.join(dir, rel);

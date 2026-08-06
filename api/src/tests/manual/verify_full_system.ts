@@ -165,16 +165,23 @@ async function main() {
     check('وإن نجح فقد تغيّر المصدر فعلاً', edit?.ok !== true || afterEdit !== before);
     check('والمشروع ما زال يُبنى', fs.existsSync(path.join(appDir, 'dist', 'index.html')));
 
-    console.log('\n[B4] والتراجع: موجود للصفحات، وغائب لمشاريع React — يُقال لا يُخفى');
-    // The first version of this section called a tool named `project_undo` and
-    // accepted «null or a boolean» as a pass. That asserts nothing: the tool has
-    // never existed. A check that cannot fail is worse than no check, because it
-    // reports coverage it does not have.
+    console.log('\n[B4] والتراجع صار حقيقياً للمشاريع أيضاً — الثغرة التي سمّاها هذا الفحص أُغلقت');
+    // The first version of this section called a tool that did not exist and
+    // accepted «null or a boolean» as a pass — a check that cannot fail. It was
+    // rewritten to name the gap instead, and now the gap is closed: the same
+    // assertion that reported it is what verifies it is gone.
     const P0 = fs.readFileSync(path.join(__dirname, '..', '..', 'core', 'orchestrator', 'PlanningEngine.ts'), 'utf-8');
     check('«تراجع» جملة معروفة للمخطِّط', /تراجع\|استرجع/.test(P0));
     const toolNames = new Set(all.map(t => t.name));
-    check('ولا أداة باسم project_undo تُدّعى', !toolNames.has('project_undo'));
-    console.log('   ⚠️ ثغرة مسمّاة: تاريخ النسخ يعمل للصفحات عبر أداتها، ولا يوجد استرجاع لمشاريع React بعد.');
+    check('وأداة project_undo موجودة ومسجّلة', toolNames.has('project_undo'));
+    const undoList: any = await executeTool('project_undo', { projectDir: appDir, list: true });
+    check('وتقرأ تاريخ المشروع الحقيقي', undoList?.ok === true, String(undoList?.error || ''));
+    check('والتعديل الجراحي ترك نسخة يمكن الرجوع إليها',
+        (undoList?.output?.versions || []).length > 0,
+        JSON.stringify((undoList?.output?.versions || []).map((v: any) => v.label)));
+    const undone: any = await executeTool('project_undo', { projectDir: appDir });
+    check('والتراجع الفعلي نجح وأعاد البناء',
+        undone?.ok === true && undone?.output?.rebuilt !== false, String(undone?.error || ''));
 
     console.log('\n[B5] الطرفية: أمر فاشل يُشخَّص ويُعالَج');
     const { runDoctored } = await import('../../core/quality/log-doctor');

@@ -678,6 +678,38 @@ Rules:
             || /(تراجع|استرجع|(ارجع|أرجع|رجّع)[^.\n]{0,20}نسخ|نسخ(ة|ه)\s*(السابق|القديم|رقم)|اعرض\s*النسخ|إصدار\s*سابق|\bundo\b|\brollback\b|\brevert\b|version\s*history)/i.test(probe);
 
         /**
+         * [UNDO FAST-PATH] «تراجع» on a PROJECT goes to the project's own
+         * history, not to the page tool's.
+         *
+         * The rollback sentence has always been recognised — and always routed
+         * to the page builder, which is where version history lived. A session
+         * whose active project is a React app would have its «تراجع» answered by
+         * a tool that knows nothing about it. Projects have snapshots of their
+         * own now, taken before every edit and every self-repair.
+         */
+        {
+            const undoVerb = /(تراجع|ارجع|أرجع|رجّع|استرجع|\bundo\b|\brollback\b|\brevert\b)/i.test(probe);
+            const listVerb = /(اعرض|أظهر|اظهر|ما\s*هي)\s*(النسخ|الإصدارات|الاصدارات)|\bversions?\b|version\s*history/i.test(probe);
+            const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+            const active = ((global as any).joeProjects || {})[sessionKey];
+            if ((undoVerb || listVerb) && active?.dir) {
+                return {
+                    id: `undo_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_undo',
+                        description: listVerb ? 'عرض النسخ المحفوظة للمشروع' : 'إرجاع المشروع إلى نسخته السابقة وإعادة بنائه',
+                        tool: 'project_undo',
+                        agent: 'Dev',
+                        input: { projectDir: active.dir, ...(listVerb && !undoVerb ? { list: true } : {}) },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'low', riskLevel: 'low' },
+                };
+            }
+        }
+
+        /**
          * [UI REPAIR FAST-PATH] «اريده ان يصلح ui لاي نظام ولاي صفحة عندما
          * يطلب منه».
          *
