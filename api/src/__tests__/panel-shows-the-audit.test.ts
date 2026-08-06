@@ -1,0 +1,85 @@
+/**
+ * «مازال يفتح المتصفح دون عمل شيء — لاحظ الصورة»
+ *
+ * His screenshot, taken the moment «🔎 Self-QA in a real browser…» appeared:
+ * the Browser panel open and «connected · 1280×720», the URL bar reading «No
+ * page loaded», the viewport blank white.
+ *
+ * Nothing was broken — Chromium was still STARTING. Measured live: the first
+ * frame that actually showed the audited page arrived 3853ms after the audit
+ * began, and his audits run for ~29 seconds on a machine slower than the one
+ * that measured it. He was invited to watch, and given a white rectangle.
+ *
+ * Two things are pinned here:
+ *   1. the browser is woken during `npm install`, so the panel paints the page
+ *      instead of the launch (3853ms → 204ms, measured in
+ *      verify_panel_shows_the_audit.ts);
+ *   2. and when the panel CANNOT be borrowed, he is told so — an invitation to
+ *      watch a private headless browser is the same white rectangle with a
+ *      caption.
+ */
+import fs from 'fs';
+import path from 'path';
+
+const SRC = path.join(__dirname, '..');
+const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
+
+describe('the browser is awake before the audit needs it', () => {
+    it('the manager can warm a session without opening a second one', () => {
+        const m = read('modules', 'browser', 'manager.ts');
+        expect(m).toMatch(/export function warmBrowserSession\(sessionId: string\): void/);
+        // A warm-up must never duplicate a live session, and never throw into a build.
+        const fn = m.slice(m.indexOf('export function warmBrowserSession'), m.indexOf('export function warmBrowserSession') + 500);
+        expect(fn).toMatch(/if \(!sid \|\| sessions\.has\(sid\) \|\| pendingSessions\.has\(sid\)\) return;/);
+        expect(fn).toMatch(/\.catch\(\(\) =>/);
+        expect(fn).toMatch(/resumeStreamingIfWatched\(sid\)/);
+    });
+
+    it('and the build wakes it BEFORE npm install, not when the audit starts', () => {
+        const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+        const warmAt = r.indexOf('warmBrowserSession(PANEL_BROWSER_SID)');
+        const installAt = r.indexOf("run('npm', ['install'");
+        const auditAt = r.indexOf('audit = await auditBuiltApp');
+        expect(warmAt).toBeGreaterThan(0);
+        expect(warmAt).toBeLessThan(installAt);
+        expect(installAt).toBeLessThan(auditAt);
+    });
+
+    it('and a build that was told to skip the audit does not open a browser at all', () => {
+        const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+        const at = r.indexOf('warmBrowserSession(PANEL_BROWSER_SID)');
+        expect(r.slice(at - 400, at)).toMatch(/if \(!input\?\.skipAudit\) \{/);
+    });
+
+    it('and «أصلح ما تبقّى» warms it too — it audits within seconds of starting', () => {
+        const p = read('modules', 'tools', 'definitions', 'ProjectRepairTool.ts');
+        expect(p).toMatch(/warmBrowserSession\(PANEL_BROWSER_SID\)/);
+        // …before the first MEASUREMENT (the import above it is not the audit).
+        expect(p.indexOf('warmBrowserSession')).toBeLessThan(p.indexOf('await auditBuiltApp(dist'));
+    });
+});
+
+describe('and he is never invited to watch a browser he cannot see', () => {
+    it('the audit says which browser it landed in', () => {
+        const a = read('core', 'quality', 'app-audit.ts');
+        expect(a).toMatch(/opts\.onProgress\?\.\('watching'\)/);
+        // The private-browser fallback announces itself instead of running mute.
+        const fb = a.slice(a.indexOf('if (!page) {'), a.indexOf('if (!page) {') + 900);
+        expect(fb).toMatch(/onProgress\?\.\('private'\)/);
+    });
+
+    it('and the build repeats it honestly in both languages', () => {
+        const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+        expect(r).toMatch(/onProgress: \(where: string\) => \{/);
+        expect(r).toMatch(/if \(where === 'private'\)/);
+        expect(r).toMatch(/تعذّر استعمال لوحة المتصفّح/);
+        expect(r).toMatch(/The Browser panel could not be used/);
+        expect(r).toMatch(/nothing to watch/);
+    });
+
+    it('and so does the repair command', () => {
+        const p = read('modules', 'tools', 'definitions', 'ProjectRepairTool.ts');
+        expect(p).toMatch(/where === 'private'/);
+        expect(p).toMatch(/تعذّر استعمال لوحة المتصفّح/);
+    });
+});

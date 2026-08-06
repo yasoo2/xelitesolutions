@@ -85,6 +85,9 @@ export class ProjectRepairTool extends BaseTool {
         // Open the panel and WAIT for it, exactly as the builder does: a repair
         // he was told he could watch must not be over before he can look.
         try { broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'repair' } } as any); } catch { /* UI optional */ }
+        // Chromium starts while the panel is still downloading its chunk, so
+        // the first frame he sees is the page and not four white seconds.
+        try { require('../../browser/manager').warmBrowserSession(PANEL_BROWSER_SID); } catch { /* the audit launches its own */ }
         try {
             const { waitForPanelWatcher } = require('../../browser/wsHub');
             const watching = await waitForPanelWatcher(PANEL_BROWSER_SID, 4000);
@@ -94,7 +97,16 @@ export class ProjectRepairTool extends BaseTool {
         } catch { /* the hub is optional */ }
 
         say(isAr ? '🔎 أعيد القياس على البناء الحالي…' : '🔎 Re-measuring the current build…');
-        const before = await auditBuiltApp(dist, { timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID });
+        const before = await auditBuiltApp(dist, {
+            timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
+            onProgress: (where: string) => say(where === 'private'
+                ? (isAr
+                    ? '🔒 تعذّر استعمال لوحة المتصفّح — القياس يجري في متصفّح خاصّ، والنتيجة كاملة في الرسالة'
+                    : '🔒 The Browser panel could not be used — measuring in a private browser; the full result is in the message')
+                : (isAr
+                    ? '👁️ القياس يجري الآن أمامك في لوحة المتصفّح'
+                    : '👁️ Watch it happen in the Browser panel')),
+        });
         if (before.skipped) {
             return { ok: false, error: `audit_skipped: ${before.skipped}`, logs } as any;
         }

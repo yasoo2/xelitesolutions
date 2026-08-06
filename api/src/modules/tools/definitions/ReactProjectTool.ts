@@ -2465,6 +2465,24 @@ export class ReactProjectTool extends BaseTool {
                 if (r.exitCode === 124 && r.error === 'timeout') return -2;
                 return r.exitCode;
             };
+            /**
+             * WAKE THE BROWSER NOW, NOT WHEN HE IS WATCHING IT.
+             *
+             * This build ends in a self-QA that needs Chromium. Launching it
+             * only when the audit starts is what he photographed: an open
+             * Browser panel, «No page loaded», a white viewport — the browser
+             * was starting, and the first seconds of the check he was invited
+             * to watch had nothing to show. `npm install` takes ~19s here;
+             * the launch costs nothing inside it.
+             */
+            if (!input?.skipAudit) {
+                try {
+                    const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
+                    const { warmBrowserSession } = require('../../browser/manager');
+                    warmBrowserSession(PANEL_BROWSER_SID);
+                    term('self-QA: warming the browser now so the audit has something to show from its first second');
+                } catch { /* the audit launches its own — exactly as before */ }
+            }
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '📦 أثبّت الحزم (npm install)…' : '📦 Installing packages (npm install)…');
             const inst = await run('npm', ['install', '--no-audit', '--no-fund'], 240_000);
             npmMissing = inst === -1;
@@ -2583,8 +2601,22 @@ export class ReactProjectTool extends BaseTool {
             audit = await auditBuiltApp(path.join(proj, 'dist'), {
                 timeoutMs: 30_000,
                 watchSessionId: PANEL_BROWSER_SID,
-                onProgress: () => {
-                    if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                /**
+                 * And the invitation matches reality. When the audit cannot
+                 * borrow the panel it runs in a private browser — and telling
+                 * him to «watch it happen» in front of a white rectangle is
+                 * how «مازال يفتح المتصفح دون عمل شيء» gets written twice.
+                 */
+                onProgress: (where: string) => {
+                    if (!sessionId) return;
+                    if (where === 'private') {
+                        broadcastThinkingDetail(sessionId, isAr
+                            ? '🔒 تعذّر استعمال لوحة المتصفّح — الفحص يجري في متصفّح خاصّ، والنتيجة كاملة في الرسالة (لا شيء لتشاهده الآن)'
+                            : '🔒 The Browser panel could not be used — the audit is running in a private browser; the full result is in the message (nothing to watch)');
+                        term('self-QA: panel not borrowed — running in a private browser');
+                        return;
+                    }
+                    broadcastThinkingDetail(sessionId, isAr
                         ? '👁️ الفحص يجري الآن أمامك في لوحة المتصفح — كل ملاحظة مُعلَّمة بإطار أحمر على الصفحة'
                         : '👁️ Watch it happen in the Browser panel — every finding is outlined on the page');
                 },

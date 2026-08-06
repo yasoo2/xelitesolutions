@@ -913,6 +913,32 @@ export function resumeStreamingIfWatched(sessionId: string) {
     if (sid && watched.has(sid)) startStreaming(sid);
 }
 
+/**
+ * START CHROMIUM BEFORE HE IS ASKED TO WATCH IT — «مازال يفتح المتصفح دون عمل شيء».
+ *
+ * His screenshot was taken at «🔎 Self-QA in a real browser…»: the panel said
+ * «connected · 1280×720», the URL bar said «No page loaded», and the viewport
+ * was white. Nothing was broken — the browser was still STARTING. Measured
+ * here: the first frame that actually showed the audited page arrived 3.8s
+ * after the audit began, and that is a fast Linux box with a warm disk.
+ *
+ * The launch does not have to happen then. A build that ends in a self-QA
+ * knows from its first second that it will need a browser, and it spends the
+ * minute before it running `npm install` and `vite build`. So the session is
+ * created THERE, in parallel with work that was happening anyway — no extra
+ * browser, the same one, merely already awake when the audit arrives.
+ *
+ * Fire-and-forget by contract: a build must never fail, stall, or say anything
+ * different because a warm-up did not work out.
+ */
+export function warmBrowserSession(sessionId: string): void {
+    const sid = String(sessionId || '').trim();
+    if (!sid || sessions.has(sid) || pendingSessions.has(sid)) return;
+    void getBrowserSession(sid)
+        .then(() => { try { resumeStreamingIfWatched(sid); } catch { /* streaming is a bonus */ } })
+        .catch(() => { /* the audit will launch its own — exactly as before */ });
+}
+
 export function stopStreaming(sessionId: string) {
   const sid = String(sessionId || '').trim();
   watched.delete(sid);

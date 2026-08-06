@@ -131,6 +131,13 @@ export async function auditBuiltApp(
         if (!page) {
             browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });
             page = await browser.newPage();
+            /**
+             * AND SAY SO. A silent fallback is what produced «مازال يفتح
+             * المتصفح دون عمل شيء»: the panel was opened for him, the audit ran
+             * somewhere else entirely, and the white rectangle explained
+             * nothing. If he cannot watch it, he is told he cannot watch it.
+             */
+            opts?.onProgress?.('private');
         }
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
