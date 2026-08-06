@@ -313,16 +313,162 @@ export function repairProjectFiles(
             const r = repairHtmlShell(text, opts);
             text = r.text; merge(r.repairs);
         } else if (/\.(jsx|tsx)$/.test(lower)) {
-            for (const fix of [repairImagesAlt, repairInputLabels, repairDeadLinks, repairHeadings]) {
+            for (const fix of [repairImagesAlt, repairInputLabels, repairDeadLinks, repairHeadings, repairLazyImages]) {
                 const r = fix(text);
                 text = r.text; merge(r.repairs);
             }
         } else if (lower.endsWith('.css')) {
-            const r = repairTapTargets(text);
-            text = r.text; merge(r.repairs);
+            // Tokens first: contrast is decided in the palette, and the two
+            // appended blocks must not sit between a token and its block.
+            for (const fix of [repairContrast, repairTapTargets, repairResponsive]) {
+                const r = fix(text);
+                text = r.text; merge(r.repairs);
+            }
         }
 
         if (text !== original) out[rel] = text;
     }
     return { files: out, repairs: all };
+}
+
+/* ── colour: contrast that a person can actually read ────────────────────── */
+
+/** #rgb / #rrggbb → [r,g,b], or null for anything else (var(), rgba(), a name). */
+export function parseHex(raw: string): [number, number, number] | null {
+    const m = String(raw || '').trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (!m) return null;
+    const h = m[1].length === 3 ? m[1].split('').map(c => c + c).join('') : m[1];
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+const toHex = (rgb: [number, number, number]) =>
+    '#' + rgb.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+
+/** WCAG relative luminance. */
+export function luminance([r, g, b]: [number, number, number]): number {
+    const f = (v: number) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+
+/** WCAG contrast ratio, 1..21. */
+export function contrastRatio(a: [number, number, number], b: [number, number, number]): number {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * Move a foreground toward black or away from it — whichever direction the
+ * background demands — until it clears the threshold. Deterministic, bounded,
+ * and it stops at the first passing value so the design shifts as little as
+ * the requirement allows.
+ */
+export function fixForeground(fg: [number, number, number], bg: [number, number, number], min = 4.5): [number, number, number] {
+    if (contrastRatio(fg, bg) >= min) return fg;
+    const darken = luminance(bg) > 0.5;                 // light background → darker text
+    let out: [number, number, number] = [...fg] as any;
+    for (let step = 0; step < 100; step++) {
+        out = out.map(v => (darken ? v * 0.96 : v + (255 - v) * 0.04)) as any;
+        if (contrastRatio(out, bg) >= min) break;
+    }
+    return out;
+}
+
+/**
+ * CONTRAST, IN THE TOKENS THE WHOLE DESIGN IS BUILT FROM.
+ *
+ * Joe's builds declare their palette once — `--text-muted`, `--bg`, `--surface`
+ * — and every component reads it. So the readable fix is one line in one file,
+ * not a hunt through components. The audit has been reporting «/month contrast»
+ * and similar for months; this is the answer to it.
+ *
+ * Only the foreground tokens move, and only as far as 4.5:1 requires. The
+ * brand colour is deliberately left alone: it is an identity, not a text
+ * colour, and darkening someone's brand without asking is not a repair.
+ */
+export function repairContrast(css: string): RepairedFile {
+    const repairs: Repair[] = [];
+    let count = 0;
+
+    // Each block is judged against ITS OWN background, so a dark theme is read
+    // as a dark theme instead of being measured against the light one. The
+    // rewrite happens in a single pass: an earlier version matched blocks with
+    // `(?:^|})` and so ATE every second block as another block's opening brace
+    // — the dark palette was silently skipped.
+    const text = String(css || '').replace(/[^{}]*\{[^{}]*\}/g, (block) => {
+        const bgRaw = block.match(/--(?:bg|surface)\s*:\s*(#[0-9a-fA-F]{3,6})/);
+        if (!bgRaw) return block;
+        const bg = parseHex(bgRaw[1]);
+        if (!bg) return block;
+        let next = block;
+        for (const token of ['text-muted', 'text', 'on-tint', 'brand-text']) {
+            const m = next.match(new RegExp(`--${token}\\s*:\\s*(#[0-9a-fA-F]{3,6})`));
+            if (!m) continue;
+            const fg = parseHex(m[1]);
+            if (!fg) continue;
+            // Body text is held to 4.5; a muted secondary is still text.
+            if (contrastRatio(fg, bg) >= 4.5) continue;
+            const fixed = toHex(fixForeground(fg, bg, 4.5));
+            next = next.replace(m[0], `--${token}: ${fixed}`);
+            count++;
+        }
+        return next;
+    });
+    add(repairs, 'low_contrast', 'رفعتُ تباين ألوان النصوص إلى 4.5:1 على الأقل (WCAG AA)', count);
+    return { text, repairs };
+}
+
+/* ── performance: the bytes and the paint ────────────────────────────────── */
+
+/**
+ * IMAGES THAT BLOCK THE FIRST PAINT.
+ *
+ * Every image below the fold that loads eagerly competes with the one the user
+ * is actually looking at. `loading="lazy"` and `decoding="async"` are one
+ * attribute each and they are free — but the FIRST image on a page is usually
+ * the hero, and lazy-loading a hero delays the very thing being measured. So
+ * the first img in a file is left eager on purpose.
+ */
+export function repairLazyImages(code: string): RepairedFile {
+    let text = String(code || '');
+    let count = 0;
+    const positions = tagPositions(text, 'img');   // latest first
+    // …so the LAST element of this reversed list is the first image in the file.
+    const skipFirst = positions.length ? positions[positions.length - 1] : -1;
+    for (const at of positions) {
+        if (at === skipFirst) continue;
+        const span = tagSpan(text, at);
+        if (/\bloading\s*=/.test(span)) continue;
+        text = injectAttr(text, at, 'img', 'loading="lazy" decoding="async"');
+        count++;
+    }
+    const repairs: Repair[] = [];
+    add(repairs, 'heavy_images', 'أجّلتُ تحميل الصور غير الظاهرة أولاً (lazy + decoding=async)', count);
+    return { text, repairs };
+}
+
+/* ── responsive: the page fits the phone it is opened on ─────────────────── */
+
+export const RESPONSIVE_CSS = `
+/* ── إصلاح جو: التجاوب ──────────────────────────────────────────────────
+   قيست الصفحة على 390×844 فخرجت عن حدّ الشاشة أفقياً. هذه القواعد تمنع
+   التمرير الأفقي من مصدره: الوسائط لا تتجاوز عرض حاويتها، والجداول
+   والشيفرة تمرّر داخل صندوقها بدل دفع الصفحة كلها. */
+html, body { max-width: 100%; overflow-x: hidden; }
+img, video, canvas, svg, iframe { max-width: 100%; height: auto; }
+table, pre, code { max-width: 100%; overflow-x: auto; }
+/* كلمة طويلة واحدة (رابط، بريد) كانت تكفي لتوسيع الصفحة كلها. */
+p, h1, h2, h3, li, td, dd { overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  /* شبكات ثابتة الأعمدة تُجبَر على عمود واحد على الجوال. */
+  .products, .stats, .days, .rows { grid-template-columns: 1fr !important; }
+}
+`;
+
+export function repairResponsive(css: string): RepairedFile {
+    const text = String(css || '');
+    if (text.includes('إصلاح جو: التجاوب')) return { text, repairs: [] };
+    return {
+        text: text + RESPONSIVE_CSS,
+        repairs: [{ id: 'responsive', detail: 'منعتُ التمرير الأفقي وضبطتُ الوسائط والجداول على الشاشات الصغيرة', count: 1 }],
+    };
 }

@@ -124,7 +124,11 @@ function scheduleSessionSave(sessionId: string, delayMs = 2500) {
    BROWSER_PERSISTENT_PROFILE=1 (uses the bundled Chromium as a persistent profile).
    ============================================================ */
 export function isPersistentBrowserMode(): boolean {
-  return (parseBool(process.env.USE_SYSTEM_CHROME) ?? false) || (parseBool(process.env.BROWSER_PERSISTENT_PROFILE) ?? false);
+  return (parseBool(process.env.USE_SYSTEM_CHROME) ?? false)
+    || (parseBool(process.env.BROWSER_PERSISTENT_PROFILE) ?? false)
+    // Asking for the user's real profile IS asking for a persistent one; the
+    // flag used to be silently inert unless one of the two above was also set.
+    || (parseBool(process.env.USE_USER_BROWSER_PROFILE) ?? false);
 }
 
 /** True when Joe should inherit the user's REAL browser profile (their existing
@@ -169,6 +173,86 @@ export function getBrowserProfileDir(sessionId: string): string {
     || path.join(process.env.USERPROFILE || os.homedir() || '.', '.joe', 'chrome-profiles');
   const safe = crypto.createHash('sha256').update(String(sessionId || 'default')).digest('hex').slice(0, 32);
   return path.join(base, safe);
+}
+
+/* ============================================================
+   HIS REAL BROWSER, WITHOUT ASKING HIM TO CLOSE IT.
+   ============================================================
+   Chrome guards a profile directory with a single-process lock: while his
+   window is open, nothing else may open the same «User Data» folder. That one
+   fact is why USE_USER_BROWSER_PROFILE has been pinned to "0" — the feature
+   worked only if he first closed the browser he was using, which is no feature
+   at all.
+
+   A profile is not, however, only a folder that is locked. The part that
+   carries his LOGINS is a handful of small files, and copying them into a
+   folder Joe owns produces a Chrome that opens already signed in — beside his
+   own window, not instead of it. The copy is made on his machine, by his own
+   OS user, and never leaves it: Chrome's cookie key lives in «Local State»
+   sealed by the OS to that same user, so this works there and nowhere else,
+   which is exactly the property that makes it safe.
+
+   Caches are deliberately left behind. They are the bulk of a profile and none
+   of the value.
+   ============================================================ */
+const CLONE_PROFILE_FILES = [
+  'Cookies', 'Cookies-journal',
+  'Login Data', 'Login Data For Account',
+  'Web Data', 'Preferences', 'Secure Preferences', 'Trust Tokens',
+];
+// «Network» is where Chrome has kept the cookie jar since v96; «Local Storage»
+// is where half the web keeps its session token. IndexedDB is left out on
+// purpose — it can be gigabytes of offline app data and holds no login.
+const CLONE_PROFILE_DIRS = ['Network', 'Local Storage'];
+const CACHE_DIR_RE = /[\\/](Cache|Code Cache|GPUCache|ScriptCache|DawnCache|Service Worker|Extension State|blob_storage)([\\/]|$)/i;
+
+/**
+ * Copy the login-bearing parts of the user's real profile into a directory Joe
+ * can open while their browser stays running. Returns the new user-data-dir.
+ */
+export function cloneRealBrowserProfile(real: { userDataDir: string; name: string }): string {
+  const profileName = (process.env.BROWSER_PROFILE_NAME || 'Default').trim() || 'Default';
+  const key = crypto.createHash('sha256').update(`${real.userDataDir}|${profileName}`).digest('hex').slice(0, 16);
+  const dest = process.env.BROWSER_PROFILE_CLONE_DIR
+    || path.join(process.env.USERPROFILE || os.homedir() || '.', '.joe', 'real-profile-clones', key);
+  const destProfile = path.join(dest, 'Default');
+  fs.mkdirSync(destProfile, { recursive: true });
+  // Chrome asks its first-run questions once per user-data-dir; this answers them.
+  try { fs.writeFileSync(path.join(dest, 'First Run'), ''); } catch { /* optional */ }
+
+  const copy = (from: string, to: string): boolean => {
+    try {
+      const st = fs.statSync(from);
+      if (st.isDirectory()) {
+        fs.cpSync(from, to, {
+          recursive: true, force: true,
+          filter: (s: string) => {
+            if (CACHE_DIR_RE.test(s)) return false;
+            // One oversized blob inside a profile is never a credential.
+            try { const st2 = fs.statSync(s); if (st2.isFile() && st2.size > 64 * 1024 * 1024) return false; } catch { /* keep */ }
+            return true;
+          },
+        });
+        return true;
+      }
+      if (st.size > 256 * 1024 * 1024) return false;   // a profile file that big is a cache in disguise
+      fs.copyFileSync(from, to);
+      return true;
+    } catch { return false; }
+  };
+
+  // «Local State» holds the key the cookies are encrypted with — without it the
+  // copied cookie jar is unreadable noise, and the clone signs in to nothing.
+  copy(path.join(real.userDataDir, 'Local State'), path.join(dest, 'Local State'));
+  const src = path.join(real.userDataDir, profileName);
+  for (const f of CLONE_PROFILE_FILES) copy(path.join(src, f), path.join(destProfile, f));
+  for (const d of CLONE_PROFILE_DIRS) copy(path.join(src, d), path.join(destProfile, d));
+  return dest;
+}
+
+/** A locked profile is his own browser being open — the normal case, not an error. */
+function isProfileLockError(msg: string): boolean {
+  return /ProcessSingleton|SingletonLock|already (running|in use)|cannot create|being used|profile appears to be in use|failed to create a unique/i.test(msg);
 }
 
 // ---- Consent: Joe must ask before driving the user's local browser profile ----
@@ -501,25 +585,39 @@ export async function createSession(sessionId: string) {
       // USE_SYSTEM_CHROME picks installed Chrome. Falls back to bundled Chromium.
       const wantChannel = real?.channel || ((parseBool(process.env.USE_SYSTEM_CHROME) ?? false) ? 'chrome' : '');
       if (wantChannel) { persistentOpts.channel = wantChannel; delete persistentOpts.executablePath; }
+      let usedDir = profileDir;
+      let usedWhat = real ? `user's real ${real.name} — inherits login` : (parseBool(process.env.USE_SYSTEM_CHROME) ?? false) ? 'system Chrome' : 'bundled Chromium';
       try {
         persistentContext = await chromium.launchPersistentContext(profileDir, persistentOpts);
       } catch (inner: any) {
         const msg = String(inner?.message || inner || '');
-        // A locked profile means the user's own browser is currently open on it.
-        if (real && /ProcessSingleton|SingletonLock|already (running|in use)|cannot create|being used|profile appears to be in use|failed to create a unique/i.test(msg)) {
-          throw new Error(
-            `browser_profile_locked: متصفحك (${real.name}) مفتوح حالياً بنفس الحساب، ولا يمكن لجو استخدامه في آنٍ واحد. ` +
-            `أغلق نوافذ ${real.name} كلها ثم أعد المحاولة — سيفتح جو بنفس حسابك تلقائياً بلا تسجيل دخول.`
-          );
+        // His browser is open on that profile. That used to end the attempt and
+        // ask him to close it; now it just means Joe opens a copy beside it.
+        if (real && isProfileLockError(msg) && (parseBool(process.env.BROWSER_CLONE_LOCKED_PROFILE) ?? true)) {
+          const clone = cloneRealBrowserProfile(real);
+          try {
+            persistentContext = await chromium.launchPersistentContext(clone, persistentOpts);
+            usedDir = clone;
+            usedWhat = `copy of the user's real ${real.name} — logins carried over, their own window untouched`;
+          } catch (second: any) {
+            throw new Error(
+              `browser_profile_locked: متصفحك (${real.name}) مفتوح، وتعذّر أيضاً فتح نسخة من ملفك الشخصي ` +
+              `(${String(second?.message || second).slice(0, 160)}). أغلق نوافذ ${real.name} ثم أعد المحاولة، ` +
+              `أو استخدم زر «🧩 متصفحي» عبر إضافة Joe Browser Connector.`
+            );
+          }
+        } else {
+          // channel not installed -> retry with the bundled Chromium (dedicated profile only).
+          delete persistentOpts.channel;
+          const exe = findChromiumExecutable(); if (exe) persistentOpts.executablePath = exe;
+          const fallbackDir = real ? getBrowserProfileDir(sessionId) : profileDir;
+          if (real) fs.mkdirSync(fallbackDir, { recursive: true });
+          persistentContext = await chromium.launchPersistentContext(fallbackDir, persistentOpts);
+          usedDir = fallbackDir;
+          usedWhat = 'bundled Chromium (dedicated profile)';
         }
-        // channel not installed -> retry with the bundled Chromium (dedicated profile only).
-        delete persistentOpts.channel;
-        const exe = findChromiumExecutable(); if (exe) persistentOpts.executablePath = exe;
-        const fallbackDir = real ? getBrowserProfileDir(sessionId) : profileDir;
-        if (real) fs.mkdirSync(fallbackDir, { recursive: true });
-        persistentContext = await chromium.launchPersistentContext(fallbackDir, persistentOpts);
       }
-      try { console.log(`[BrowserManager] Persistent profile launched: ${profileDir} (${real ? `user's real ${real.name} — inherits login` : (parseBool(process.env.USE_SYSTEM_CHROME) ?? false) ? 'system Chrome' : 'bundled Chromium'})`); } catch { }
+      try { console.log(`[BrowserManager] Persistent profile launched: ${usedDir} (${usedWhat})`); } catch { }
     } catch (e: any) {
       const m = String(e?.message || e);
       if (m.startsWith('browser_profile_locked')) throw e; // pass the actionable message through

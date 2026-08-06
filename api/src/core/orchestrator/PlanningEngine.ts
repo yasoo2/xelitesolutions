@@ -1263,7 +1263,14 @@ Rules:
         const agentIntent = /(تحليل\s*شامل|تقرير\s*شامل|حلّ?ل\s*الصفحة\s*بالكامل|وكيل\s*ذكي|smart\s*agent|full\s*analysis|analyze\s*(the\s*)?page|فحص\s*شامل|كل\s*شيء\s*عن\s*الصفحة)/i.test(probe);
         const autofixIntent = /(أصلح|اصلح|إصلاح\s*تلقائي|autofix|auto-?fix|صحّح\s*الصفحة|رقّع|عالج\s*المشاكل|fix\s*(the\s*)?(page|issues))/i.test(probe);
         if (urlMatch && (autofixIntent || agentIntent || summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent || readIntent || contrastIntent || a11yIntent || metaIntent || translateIntent || responsiveIntent || findIntent || designIntent || clickIntent || fullshotIntent)) {
-            const tool = autofixIntent ? 'browser_autofix'
+            // «أصلح واجهة https://…» — a page Joe does NOT own gets the CSS
+            // patch tool, not the generic autofix: it measures, applies live,
+            // measures again, and hands over a file instead of claiming it
+            // changed a server it cannot write to.
+            const uiRepairIntent = /(أصلح|اصلح|صلّح|حسّن|حسن|عالج|fix|repair|improve)/i.test(probe)
+                && /(الواجهة|التصميم|\bui\b|\bux\b|css|التباين|contrast|التجاوب|responsive|الجوال|mobile|الوصولية|accessibility)/i.test(probe);
+            const tool = uiRepairIntent ? 'browser_page_fix'
+                : autofixIntent ? 'browser_autofix'
                 : agentIntent ? 'browser_smart_agent'
                 : clickIntent ? 'browser_click'
                 : fullshotIntent ? 'browser_fullpage_shot'
