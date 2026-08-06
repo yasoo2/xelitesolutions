@@ -604,28 +604,40 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             const needsWorkspace = perms.length > 0 || effects.length > 0;
             const needsUser = perms.length > 0 || effects.length > 0;
             const sid = String(effectiveContext.sessionId || (effectiveInput as any)?.sessionId || '').trim();
-            if ((needsWorkspace && !contextWorkspaceId) || (needsUser && !effectiveContext.userId)) {
-                try {
-                    const m = await import('mongoose');
-                    const mongoose: any = (m as any).default || m;
-                    if (sid && mongoose?.Types?.ObjectId?.isValid?.(sid) && mongoose?.connection?.readyState === 1) {
-                        const { Session } = await import('../../shared/models/session');
-                        const sess: any = await Session.findById(sid).select({ userId: 1, workspaceId: 1 }).lean();
-                        if (sess) {
-                            const resolvedUserId = normalizeUserId(sess.userId);
-                            const resolvedWorkspaceId = normalizeUserId(sess.workspaceId);
-                            if (!effectiveContext.userId && resolvedUserId) {
-                                effectiveContext.userId = resolvedUserId;
-                                if (typeof (effectiveInput as any).__userId !== 'string') (effectiveInput as any).__userId = resolvedUserId;
-                            }
-                            if (!contextWorkspaceId && resolvedWorkspaceId) {
-                                contextWorkspaceId = resolvedWorkspaceId;
-                                effectiveContext.workspaceId = resolvedWorkspaceId;
-                                if (typeof (effectiveInput as any).__workspaceId !== 'string') (effectiveInput as any).__workspaceId = resolvedWorkspaceId;
-                            }
-                        }
-                    }
-                } catch { }
+            /**
+             * THE SESSION IS READ ONCE — TO FILL WHAT IS MISSING, AND TO CHECK
+             * WHO IS ASKING.
+             *
+             * The lookup used to run only when userId or workspaceId was absent,
+             * and it only ever FILLED them. It never compared a supplied userId
+             * against the session's owner — so a caller who knew (or guessed)
+             * somebody else's sessionId could pass their own userId, satisfy
+             * «needsUser», and have the workspace resolved to that session's
+             * workspace. Their files, under someone else's name.
+             *
+             * Invisible today: Joe runs single-user with the bypass on. Load
+             * bearing the moment he serves anyone else, which is the whole point
+             * of running this path before that day rather than after it.
+             */
+            const { resolveSessionIdentity } = await import('./session-identity');
+            const owner = sid ? await resolveSessionIdentity(sid) : null;
+            if (owner) {
+                const resolvedUserId = normalizeUserId(owner.userId);
+                const resolvedWorkspaceId = normalizeUserId(owner.workspaceId);
+                const asked = normalizeUserId(effectiveContext.userId);
+                if (resolvedUserId && asked && asked !== resolvedUserId) {
+                    logs.push('blocked=1 reason=session_forbidden');
+                    return { ok: false, error: 'session_forbidden', logs };
+                }
+                if (!effectiveContext.userId && resolvedUserId) {
+                    effectiveContext.userId = resolvedUserId;
+                    if (typeof (effectiveInput as any).__userId !== 'string') (effectiveInput as any).__userId = resolvedUserId;
+                }
+                if (!contextWorkspaceId && resolvedWorkspaceId) {
+                    contextWorkspaceId = resolvedWorkspaceId;
+                    effectiveContext.workspaceId = resolvedWorkspaceId;
+                    if (typeof (effectiveInput as any).__workspaceId !== 'string') (effectiveInput as any).__workspaceId = resolvedWorkspaceId;
+                }
             }
             if (needsWorkspace && !contextWorkspaceId) {
                 logs.push('blocked=1 reason=workspace_required');
