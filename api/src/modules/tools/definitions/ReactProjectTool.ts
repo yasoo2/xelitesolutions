@@ -28,6 +28,7 @@ import { resolveImages } from '../../../core/design/images';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
+import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
 
 const slug = (s: string) => (String(s || '').toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'app';
@@ -2504,6 +2505,7 @@ export class ReactProjectTool extends BaseTool {
 
         // ── SELF-QA: a REAL browser measures the build before delivery ──────
         let audit: any = null;
+        let selfRepair: { before: number; after: number; files: string[]; repairs: any[] } | null = null;
         if (built && !input?.skipAudit) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🔎 أفحص البناء في متصفح حقيقي قبل التسليم…' : '🔎 Self-QA in a real browser…');
             const { auditBuiltApp } = require('../../../core/quality/app-audit');
@@ -2531,6 +2533,44 @@ export class ReactProjectTool extends BaseTool {
             term(audit.skipped
                 ? `self-QA: skipped (${audit.skipped})`
                 : `self-QA: ${audit.score}/100${audit.findings.length ? ` — ${audit.findings.map((f: any) => f.id).join(', ')}` : ' — clean'}`);
+
+            /**
+             * AND WHAT IT FINDS, IT FIXES — before delivery, not on request.
+             *
+             * Until now this measured the build and handed it over exactly as
+             * measured: «self-QA: 62/100 — dead_links, small_targets», with the
+             * repair machinery sitting one function away, reachable only if the
+             * user happened to know to say «أصلح الواجهة». Reading a defect
+             * report was being treated as his job.
+             *
+             * Only findings a deterministic edit can actually answer trigger
+             * this — a rebuild costs him half a minute, and spending it on
+             * console errors nobody can auto-fix would be theatre. And the
+             * second score is measured, never assumed: if the repair did not
+             * help, the first number stands and says so.
+             */
+            if (!audit.skipped && worthRepairing(audit.findings)) {
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                    ? '🛠️ وجدتُ ما أستطيع إصلاحه بنفسي — أصلحه وأعيد البناء قبل أن أسلّمك…'
+                    : '🛠️ Repairing what I can fix myself, then rebuilding before delivery…');
+                const cycle = await repairAndRebuild(proj, { onLine: term, isArabic: isAr });
+                if (cycle.changed.length && cycle.built) {
+                    const after = await auditBuiltApp(path.join(proj, 'dist'), {
+                        timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
+                    });
+                    term(`self-repair: ${audit.score} → ${after.score}/100 (${cycle.changed.length} file(s))`);
+                    if (!after.skipped && after.score >= audit.score) {
+                        selfRepair = { before: audit.score, after: after.score, files: cycle.changed, repairs: cycle.repairs };
+                        audit = after;
+                    } else {
+                        // The measurement did not improve. The honest thing is to
+                        // keep the first verdict rather than publish the flatter one.
+                        term(`self-repair: no measured gain — keeping the original verdict (${audit.score}/100)`);
+                    }
+                } else if (cycle.reverted) {
+                    term('self-repair: reverted — the project is exactly as it was');
+                }
+            }
         }
 
         // Remember the project so «عدل …» routes to the SURGICAL editor and
@@ -2636,7 +2676,7 @@ export class ReactProjectTool extends BaseTool {
         const message = isAr
             ? `⚛️ ${built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
 ${appBlock}
-${audit ? `${require('../../../core/quality/app-audit').formatAudit(audit, true)}\n` : ''}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
+${audit ? `${require('../../../core/quality/app-audit').formatAudit(audit, true)}\n` : ''}${selfRepair ? `🛠️ وأصلحتُ ما وجدتُه بنفسي قبل التسليم: ${selfRepair.before}/100 ← ${selfRepair.after}/100 (${selfRepair.files.length} ملف)\n${selfRepair.repairs.map((r: any) => `   • ${r.detail}${r.count > 1 ? ` (${r.count})` : ''}`).join('\n')}\n` : ''}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
 ${fileList}
 

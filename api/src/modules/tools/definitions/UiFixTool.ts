@@ -21,29 +21,7 @@ import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
-import { repairProjectFiles } from '../../../core/quality/ui-repair';
-import { syntaxOk } from './ProjectEditTool';
-
-/** Every source file a UI repair could possibly touch, relative to the project. */
-function collectSources(dir: string): Record<string, string> {
-    const out: Record<string, string> = {};
-    const skip = new Set(['node_modules', 'dist', '.git', 'public', 'fonts']);
-    const walk = (abs: string, rel: string, depth: number) => {
-        if (depth > 6) return;
-        let entries: fs.Dirent[] = [];
-        try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { return; }
-        for (const e of entries) {
-            if (skip.has(e.name)) continue;
-            const childAbs = path.join(abs, e.name);
-            const childRel = rel ? `${rel}/${e.name}` : e.name;
-            if (e.isDirectory()) { walk(childAbs, childRel, depth + 1); continue; }
-            if (!/\.(html|jsx|tsx|css)$/i.test(e.name)) continue;
-            try { out[childRel] = fs.readFileSync(childAbs, 'utf-8'); } catch { /* unreadable */ }
-        }
-    };
-    walk(dir, '', 0);
-    return out;
-}
+import { repairAndRebuild } from '../../../core/quality/self-repair';
 
 export class UiFixTool extends BaseTool {
     name = 'browser_ui_fix';
@@ -95,59 +73,30 @@ export class UiFixTool extends BaseTool {
         }
         term(`ui_fix: before → ${before.score}/100 (${before.findings.map((f: any) => f.id).join(', ') || 'clean'})`);
 
-        // ── 2/3: repair the SOURCE, gate every file, write only what parses ──
+        // ── 2/3/4: repair the SOURCE, gate every file, rebuild, revert on failure.
+        // The cycle itself lives in core/quality/self-repair so the build path
+        // and this tool cannot drift into two different disciplines.
         if (sessionId) broadcastThinkingDetail(sessionId, '🛠️ أصلح المصدر نفسه — لا الصفحة المعروضة…');
-        const sources = collectSources(dir);
-        const isArabic = /[؀-ۿ]/.test(Object.values(sources).join('\n').slice(0, 20_000));
-        const plan = repairProjectFiles(sources, { isArabic, brand: undefined } as any);
+        if (sessionId) broadcastThinkingDetail(sessionId, '🏗️ ثم أعيد البناء للتحقّق أن الإصلاح لم يكسر شيئاً…');
+        const cycle = await repairAndRebuild(dir, { onLine: term });
+        const written = cycle.changed;
+        const refused = cycle.refused;
+        const plan = { repairs: cycle.repairs };
 
-        const written: string[] = [];
-        const refused: string[] = [];
-        for (const [rel, text] of Object.entries(plan.files)) {
-            const gate = syntaxOk(rel, text);
-            if (!gate.ok) {
-                // A repair that breaks the build is not a repair. It is dropped,
-                // named, and the rest still land.
-                refused.push(`${rel}: ${gate.error}`);
-                continue;
-            }
-            try { fs.writeFileSync(path.join(dir, rel), text, 'utf-8'); written.push(rel); }
-            catch (e: any) { refused.push(`${rel}: ${e?.message || e}`); }
-        }
-        term(`ui_fix: repaired ${written.length} file(s)${refused.length ? `, refused ${refused.length}` : ''}`);
-        for (const r of refused) term(`  ⚠️ ${r}`);
-
-        if (!written.length) {
-            const msg = `🔎 قِستُ الواجهة: ${before.score}/100 — ولم أجد في المصدر ما أصلحه بأمان.\n`
-                + `${formatAudit(before, true)}\n\n`
-                + (refused.length ? `⚠️ رفضتُ ${refused.length} تعديلاً لأنه كان سيكسر البناء.` : 'الملاحظات المتبقّية تحتاج قراراً منك — قل لي أيّها أعالج.');
-            return { ok: true, output: { message: msg, before: before.score, after: before.score, changed: [] }, logs } as any;
-        }
-
-        // ── 4: the real build. A repair that does not compile is reverted. ──
-        const backup: Record<string, string> = {};
-        for (const rel of written) backup[rel] = sources[rel];
-        let built = true;
-        if (fs.existsSync(path.join(dir, 'node_modules'))) {
-            if (sessionId) broadcastThinkingDetail(sessionId, '🏗️ أعيد البناء للتحقّق أن الإصلاح لم يكسر شيئاً…');
-            const { executionEngine } = require('../../../kernel/ExecutionEngine');
-            const r = await executionEngine.runArgvStreaming('npm', ['run', 'build'], {
-                cwd: dir, timeout: 240_000, env: { NO_COLOR: '1' },
-                onLine: (l: string) => term(`  ${l.slice(0, 200)}`),
-            }).done;
-            built = r.ok === true;
-        }
-        if (!built) {
-            for (const [rel, text] of Object.entries(backup)) {
-                try { fs.writeFileSync(path.join(dir, rel), text, 'utf-8'); } catch { /* best effort */ }
-            }
-            term('ui_fix: build FAILED after repair — every change reverted');
+        if (!cycle.built) {
             return {
                 ok: false,
                 error: 'build_failed_after_repair',
                 output: { message: '⚠️ الإصلاح كسر البناء، فأرجعتُ كل ملف كما كان. لم يتغيّر شيء في مشروعك.' },
                 logs,
             } as any;
+        }
+
+        if (!written.length) {
+            const msg = `🔎 قِستُ الواجهة: ${before.score}/100 — ولم أجد في المصدر ما أصلحه بأمان.\n`
+                + `${formatAudit(before, true)}\n\n`
+                + (refused.length ? `⚠️ رفضتُ ${refused.length} تعديلاً لأنه كان سيكسر البناء.` : 'الملاحظات المتبقّية تحتاج قراراً منك — قل لي أيّها أعالج.');
+            return { ok: true, output: { message: msg, before: before.score, after: before.score, changed: [] }, logs } as any;
         }
 
         // ── 5: measure again. The number is the claim. ──

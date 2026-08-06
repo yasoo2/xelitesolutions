@@ -115,11 +115,15 @@ describe('the repair loop is wired end to end', () => {
     });
 
     it('a repair that breaks the build is reverted whole', () => {
+        // The cycle moved into core/quality/self-repair so the build path and
+        // this tool cannot drift apart; the property is asserted where it lives
+        // now, plus the tool still refusing to report success on a failed build.
         const T = read('modules', 'tools', 'definitions', 'UiFixTool.ts');
-        expect(T).toMatch(/if \(!built\)/);
+        expect(T).toMatch(/if \(!cycle\.built\)/);
         expect(T).toMatch(/error: 'build_failed_after_repair'/);
-        // …and every file passes the syntax gate before it is even written.
-        expect(T).toMatch(/const gate = syntaxOk\(rel, text\)/);
+        const S = read('core', 'quality', 'self-repair.ts');
+        expect(S).toMatch(/const gate = syntaxOk\(rel, text\)/);
+        expect(S).toMatch(/reverted: true/);
     });
 
     it('and it is registered, so the planner can actually reach it', () => {
