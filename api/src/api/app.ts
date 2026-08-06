@@ -119,7 +119,28 @@ export const createApp = () => {
   });
 
   app.use(express.json({ limit: '50mb' }));
-  app.use(morgan('dev'));
+  /**
+   * THE POLL LINES THAT DROWNED THE REASON.
+   *
+   * `/git/status` and `/health` are polled on timers by the interface. The
+   * WORK behind them is already gone — the status is served from a cached
+   * snapshot with an adaptive background refresh — but morgan still printed a
+   * line for every one of them, and his terminal was pages of
+   * `GET /api/git/status 304` between anything worth reading. Joe now writes
+   * the reason he died into that same terminal; it must be findable.
+   *
+   * Only the boring outcomes are silenced: any status ≥ 400 on these routes
+   * still prints, because a poll that started FAILING is news.
+   */
+  const QUIET_POLLS = /^\/api\/(git\/status|health)$/;
+  app.use(morgan('dev', {
+    // `originalUrl`, NOT `path`: morgan decides at response time, by which
+    // point `app.use('/api', apiRouter)` has stripped its mount prefix and
+    // `req.path` reads «/health». Measured, after the first version of this
+    // silenced nothing at all.
+    skip: (req, res) => QUIET_POLLS.test(String((req as any).originalUrl || (req as any).url || '').split('?')[0])
+      && res.statusCode < 400,
+  }));
 
   // [HARDENING] Global Sanitization Middleware
 

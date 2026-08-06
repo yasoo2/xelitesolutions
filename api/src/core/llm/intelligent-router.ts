@@ -758,12 +758,59 @@ export function noteLocalBrainTimeout(): void {
     localCircuitUntil = Date.now() + localBreakerWindowMs;
     console.warn(`[IntelligentRouter] 🧠 local brain PAUSED for ${Math.round(localBreakerWindowMs / 60000)}m — ${localConsecutiveTimeouts} consecutive timeouts. The mesh answers meanwhile; one short probe re-tests it after the window.`);
 }
+/**
+ * PATIENCE THAT IS MEASURED, NOT GUESSED — AND THAT LEARNS.
+ *
+ * The leash for internal reasoning was `warm-up × 6`, and the warm-up times a
+ * ONE-TOKEN prompt. On his laptop that read 1491ms, so every internal call got
+ * 25 seconds to produce a page of planning JSON from a 7B model on a CPU. It
+ * timed out, twice, the breaker opened, and from then on the whole run — intent,
+ * plan, every internal reasoning — went to Groq until the daily quota died:
+ *
+ *     🧠 local brain PAUSED for 20m — 3 consecutive timeouts
+ *     [Groq] API call failed: 429 — Rate limit reached …
+ *
+ * A model that WOULD have answered in forty seconds was declared dead because
+ * of how long we were willing to wait. So the leash now also learns: every
+ * successful local call feeds an average, and every timeout raises the floor
+ * for the next attempt. Being wrong about the wait costs one slow call, not a
+ * day of quota.
+ */
+let localObservedMs = 0;
+let localLeashFloorMs = 0;
+const LOCAL_LEASH_MIN_MS = 30_000;
+const LOCAL_LEASH_MAX_MS = 120_000;
+
+/** A local call finished — remember how long this machine really takes. */
+export function noteLocalDuration(ms: number): void {
+    const v = Math.max(0, Math.round(ms));
+    if (!v) return;
+    localObservedMs = localObservedMs ? Math.round(localObservedMs * 0.6 + v * 0.4) : v;
+}
+
+/** The leash an internal call gets, from this machine's own numbers. */
+export function internalLeashMs(warmupMs = 0): number {
+    const fromWarmup = warmupMs > 0 ? warmupMs * 6 : 0;
+    const fromObserved = localObservedMs > 0 ? localObservedMs * 2 : 0;
+    return Math.min(LOCAL_LEASH_MAX_MS, Math.max(LOCAL_LEASH_MIN_MS, localLeashFloorMs, fromWarmup, fromObserved));
+}
+
+/** We gave up at `usedMs` — next time wait longer before calling it dead. */
+export function noteInternalLeashTimeout(usedMs: number): void {
+    localLeashFloorMs = Math.min(LOCAL_LEASH_MAX_MS, Math.max(localLeashFloorMs, Math.round(Math.max(1, usedMs) * 1.5)));
+}
+
+/** Diagnostics and tests. */
+export function localLeashState(): { observedMs: number; floorMs: number; leashMs: number } {
+    return { observedMs: localObservedMs, floorMs: localLeashFloorMs, leashMs: internalLeashMs(0) };
+}
+
 export function noteLocalBrainOk(): void {
     if (localConsecutiveTimeouts || localCircuitUntil) console.info('[IntelligentRouter] 🧠 local brain answered — breaker reset, it is primary again.');
     localConsecutiveTimeouts = 0; localCircuitUntil = 0; localBreakerWindowMs = 0; localTimedOutAt = 0;
 }
 /** Tests only. */
-export function resetLocalBrainBreaker(): void { localConsecutiveTimeouts = 0; localCircuitUntil = 0; localBreakerWindowMs = 0; localTimedOutAt = 0; }
+export function resetLocalBrainBreaker(): void { localConsecutiveTimeouts = 0; localCircuitUntil = 0; localBreakerWindowMs = 0; localTimedOutAt = 0; localObservedMs = 0; localLeashFloorMs = 0; }
 export function markProviderOk(name: string): void {
     recentlyFailedProviders.delete(name);
 }
@@ -1502,6 +1549,31 @@ export async function routeToModel(
         }
     }
 
+    /**
+     * AND WHEN THE LOCAL BRAIN IS PAUSED, INTERNAL REASONING STILL DOES NOT
+     * SPEND THE ANSWER'S QUOTA.
+     *
+     * His log, three lines apart:
+     *
+     *     💰 internal reasoning → local brain first (daily quota reserved for the final answer)
+     *     ⏭️ skipping the local brain (paused 589s more) — going straight to the mesh
+     *     🔄 Attempting provider: Groq (Free)... ✅
+     *
+     * «The mesh» went straight to the very quota the line above says is being
+     * reserved, and kept going until `429 Rate limit reached`. A paused local
+     * brain is a reason to use the KEYLESS gateways for internal work — they
+     * are slower and that is fine, nobody is reading intent JSON — not a reason
+     * to abandon the economy the moment it is needed.
+     */
+    if (internalCall && !isLocalBrainReady()) {
+        const groqIdx = meshProviders.findIndex(p => p.name === 'Groq (Free)');
+        if (groqIdx >= 0 && meshProviders.length > 1) {
+            const [groq] = meshProviders.splice(groqIdx, 1);
+            meshProviders.push(groq);   // still available — but last, not first
+            console.info('[IntelligentRouter] 💰 local brain unavailable — internal reasoning goes to the keyless mesh; Groq stays for the answer.');
+        }
+    }
+
     // Two passes at most: if the first pass fails and at least one failure was a
     // RATE LIMIT (a timer, not an outage), wait until the earliest cooldown expires
     // — bounded by RATE_LIMIT_PATIENCE_MS — and try the mesh once more. This is the
@@ -1519,6 +1591,9 @@ export async function routeToModel(
     }
 
     for (const p of orderedProviders) {
+        // Outside the try on purpose: the catch needs to know how long we were
+        // willing to wait before we called the engine dead.
+        let lastTimeoutUsed = 0;
         try {
             if (p.name === 'Local (Auto)' && isLocalBrainOpen()) {
                 const left = Math.max(1, Math.round((localCircuitUntil - Date.now()) / 1000));
@@ -1568,11 +1643,7 @@ export async function routeToModel(
                     // times that (floor 25s, ceiling 90s) is a leash the
                     // hardware can actually meet.
                     const { localWarmupMs } = require('./local-brain');
-                    const measured = Number(localWarmupMs?.() || 0);
-                    const leash = measured > 0
-                        ? Math.min(90_000, Math.max(25_000, Math.round(measured * 6)))
-                        : 25_000;
-                    timeoutValue = Math.min(timeoutValue, leash);
+                    timeoutValue = Math.min(timeoutValue, internalLeashMs(Number(localWarmupMs?.() || 0)));
                 }
             }
             if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)') {
@@ -1583,8 +1654,13 @@ export async function routeToModel(
                 timeoutValue = 6000;
             }
 
+            lastTimeoutUsed = timeoutValue;
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), timeoutValue));
+            const attemptStartedAt = Date.now();
             const rawAns = await Promise.race([p.run(), timeoutPromise]) as string;
+            // How long this machine really takes is the only honest input to
+            // how long we should be willing to wait for it next time.
+            if (p.name === 'Local (Auto)') noteLocalDuration(Date.now() - attemptStartedAt);
 
             const ans = cleanOutput(rawAns);
 
@@ -1607,7 +1683,12 @@ export async function routeToModel(
             // for that window, not for the default 60 seconds.
             markProviderFailed(p.name, retryAfterMsFrom(String(e?.message || '')) || undefined);
             if (RATE_LIMIT_RE.test(String(e?.message || ''))) sawRateLimit = true;
-            if (p.name === 'Local (Auto)' && /TIMEOUT/i.test(String(e?.message || ''))) noteLocalBrainTimeout();
+            if (p.name === 'Local (Auto)' && /TIMEOUT/i.test(String(e?.message || ''))) {
+                // Our patience may have been the fault, not the engine. Raise the
+                // floor before counting this against the breaker.
+                if (internalCall) noteInternalLeashTimeout(lastTimeoutUsed);
+                noteLocalBrainTimeout();
+            }
             lastError = e.message;
         }
     }

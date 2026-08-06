@@ -103,24 +103,39 @@ describe('internal calls never wait the full local window', () => {
         const src = read('core', 'llm', 'intelligent-router.ts');
         expect(src).toContain('if (internalCall) {');
         expect(src).toMatch(/localWarmupMs/);
-        expect(src).toMatch(/Math\.min\(90_000, Math\.max\(25_000/);   // floor and ceiling both stated
-        expect(src).toMatch(/timeoutValue = Math\.min\(timeoutValue, leash\)/);
+        expect(src).toMatch(/timeoutValue = Math\.min\(timeoutValue, internalLeashMs\(/);
     });
     it('the leash is sized by a REAL measurement of this machine', () => {
         const brain = read('core', 'llm', 'local-brain.ts');
         expect(brain).toMatch(/export function localWarmupMs/);
         expect(brain).toMatch(/_warmupMs = Math\.max\(_warmupMs, Date\.now\(\) - startedAt\)/);
-        // …and with nothing measured it behaves exactly as it always did.
-        const leash = (measured: number) => (measured > 0 ? Math.min(90_000, Math.max(25_000, Math.round(measured * 6))) : 25_000);
-        expect(leash(0)).toBe(25_000);
-        expect(leash(1000)).toBe(25_000);
-        expect(leash(8000)).toBe(48_000);
-        expect(leash(60_000)).toBe(90_000);
+        /**
+         * …and the FORMULA moved on, because the old one was measured wrong in
+         * the field: `warm-up × 6` with a 25s floor read his 1491ms one-token
+         * probe as «25 seconds is plenty», and a 7B model on a CPU cannot write
+         * a page of planning JSON in 25 seconds. Every internal call timed out,
+         * the breaker opened, and the load moved to Groq until 429.
+         *
+         * The property is now stated against the real function rather than a
+         * copy of the constant: half a minute at minimum, more for a slow
+         * starter, never absurd — and it LEARNS from what the machine does.
+         */
+        const { internalLeashMs, noteInternalLeashTimeout, resetLocalBrainBreaker } =
+            require('../core/llm/intelligent-router');
+        resetLocalBrainBreaker();
+        expect(internalLeashMs(0)).toBeGreaterThanOrEqual(30_000);
+        expect(internalLeashMs(1491)).toBeGreaterThanOrEqual(30_000);
+        expect(internalLeashMs(20_000)).toBeGreaterThan(internalLeashMs(2_000));
+        expect(internalLeashMs(600_000)).toBeLessThanOrEqual(120_000);
+        const before = internalLeashMs(1491);
+        noteInternalLeashTimeout(before);
+        expect(internalLeashMs(1491)).toBeGreaterThan(before);
+        resetLocalBrainBreaker();
     });
     it('the leash lives INSIDE the Local (Auto) branch — cloud timeouts untouched', () => {
         const src = read('core', 'llm', 'intelligent-router.ts');
         const local = src.indexOf("p.name === 'Local (Auto)'", src.indexOf('for (const p of orderedProviders)'));
-        const leash = src.indexOf('timeoutValue = Math.min(timeoutValue, leash)');
+        const leash = src.indexOf('timeoutValue = Math.min(timeoutValue, internalLeashMs(');
         const keyless = src.indexOf("p.name === 'LLM7 (Keyless)'", local);
         expect(local).toBeGreaterThan(0);
         expect(leash).toBeGreaterThan(local);
