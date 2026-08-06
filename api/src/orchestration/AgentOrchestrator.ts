@@ -78,6 +78,28 @@ export type AgentDAG = {
 const MAX_RECOVERIES_PER_RUN = 3;
 
 /**
+ * A REPAIR FOR ONE STEP IS NOT A NEW PROJECT.
+ *
+ * From his run: `init` failed, and the repair came back with TWENTY-ONE nodes.
+ * Its third step failed with «File not found», and THAT repair came back with
+ * twenty-seven. Fifty steps, minutes of provider quota, and a Groq 429 — all
+ * of it hunting a configuration file that never existed, invented by a planner
+ * from the words «missing URL».
+ */
+const MAX_REPAIR_NODES = 6;
+
+/** The shape of a failure, ignoring the parts that change between attempts. */
+function errorSignature(text: string): string {
+    return String(text || '')
+        .toLowerCase()
+        .replace(/\d+/g, '#')                       // ports, timestamps, counts
+        .replace(/[a-z]:\\[^\s"']+|\/[^\s"']{8,}/g, '§')  // paths
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 160);
+}
+
+/**
  * WHAT MAY NEVER OVERLAP.
  *
  * Independent steps run together, but some tools share ONE live thing: the
@@ -116,6 +138,8 @@ function runSteps(dag: AgentDAG): RunStep[] {
 
 export class AgentOrchestrator {
   private recoveriesUsed = 0;
+  /** Failures already sent to the planner once, by shape. */
+  private readonly repairedSignatures = new Set<string>();
   private memory: Map<string, ExecutionMemory> = new Map();
   private agents: Map<AgentType, BaseAgent> = new Map();
   private context?: Record<string, any>;
@@ -840,6 +864,25 @@ export class AgentOrchestrator {
         (error && typeof error === 'object') ? ((error as any).message || JSON.stringify(error)) : (error ?? '')
     ).slice(0, 1500);
 
+    /**
+     * THE SAME FAILURE TWICE IS NOT A NEW PROBLEM.
+     *
+     * His run, in order: `no_url` → a 21-node repair → «File not found» → a
+     * 27-node repair → «File not found» again. The second plan was the first
+     * plan's hallucination re-derived from the same words. A planner that just
+     * failed to repair a failure will not repair it better on the second
+     * reading of the identical text.
+     */
+    const signature = errorSignature(errorText);
+    if (signature && this.repairedSignatures.has(signature)) {
+        console.error(`[AgentOrchestrator] Same failure shape twice — refusing to re-plan: ${signature}`);
+        if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_refused_repeat', nodeId: failedNode.id, signature });
+        broadcastThinkingDetail(memory.sessionId,
+            `⛔ نفس العطل تكرّر بعد الإصلاح — لن أعيد التخطيط لنفس السبب. أتوقّف بصدق: ${errorText.slice(0, 160)}`);
+        return { recovered: false, newNodes: [] };
+    }
+    if (signature) this.repairedSignatures.add(signature);
+
     // Scar tissue: if Joe beat this exact class of error before, the proven cure
     // rides into the planning prompt. The planner still thinks — the memory is a
     // strong lead, not a script — but it starts from experience, not from zero.
@@ -862,9 +905,20 @@ export class AgentOrchestrator {
         memory: memory.getHistory()
     }, traceId, this.context);
 
-    const newNodes: ExecutionNode[] = PlanningEngine.wireDataFlow(
+    const planned: any[] = PlanningEngine.wireDataFlow(
       PlanningEngine.fillRequiredArgs(recoveryPlan.steps as any, recoveryGoal, this.context) as any,
-    ).map((step: any) => ({
+    );
+    // Twenty-one nodes to repair one step is not a repair. Keep the head of the
+    // plan — the steps that actually address the failure come first — and say
+    // out loud that the rest was dropped.
+    const kept = planned.slice(0, MAX_REPAIR_NODES);
+    if (planned.length > kept.length) {
+        console.warn(`[AgentOrchestrator] Repair plan had ${planned.length} nodes — kept ${kept.length}.`);
+        broadcastThinkingDetail(memory.sessionId,
+            `✂️ خطة الإصلاح عادت بـ${planned.length} خطوة لعطل واحد — أبقيتُ أول ${kept.length} وأسقطتُ الباقي.`);
+    }
+
+    const newNodes: ExecutionNode[] = kept.map((step: any) => ({
       id: step.id,
       traceId,
       agent: (step.agent as AgentType) || failedNode.agent || "General",

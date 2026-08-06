@@ -317,5 +317,23 @@ while ($true) {
     }
 
     Say "`n[!] Joe stopped (exit code: $exitCode). Restarting in 3 seconds... (اضغط Ctrl+C للإيقاف)" Red
+
+    # لماذا توقّف؟ تسع محاولات مرّت في سجلّ حقيقي دون سطر واحد يقول السبب.
+    # جو صار يكتب سبب كل موت في data/crash.log، وهذا يعرضه هنا — حيث ينظر
+    # المستخدم فعلاً — بدل أن يضيع مع الشاشة التي محتها المحاولة التالية.
+    $crashLog = Join-Path $apiDir "data\crash.log"
+    if (Test-Path $crashLog) {
+        $stamp = (Get-Item $crashLog).LastWriteTime
+        if ($stamp -ge $startedAt) {
+            Say "`n--- سبب التوقّف (من $crashLog) ---" Yellow
+            Get-Content $crashLog -Tail 20 | ForEach-Object { Say "    $_" Red }
+            Say "--- نهاية السبب ---`n" Yellow
+        } else {
+            Say "    (لا سجلّ انهيار جديد — التوقّف جاء من خارج جو: إغلاق يدوي أو نفاد ذاكرة)" Yellow
+        }
+    } else {
+        Say "    (لا يوجد data\crash.log بعد — إن تكرّر التوقّف فأرسل آخر ٣٠ سطراً من هذه الشاشة)" Yellow
+    }
+
     Start-Sleep -Seconds 3
 }

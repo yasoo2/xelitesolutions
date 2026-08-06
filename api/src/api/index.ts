@@ -81,6 +81,14 @@ async function ensureOwnerFromEnv() {
 }
 
 async function main() {
+  // BEFORE anything else can throw: nine restarts in his terminal and not one
+  // line saying why. Every death is written to data/crash.log from here on,
+  // and a rejected promise inside one tool no longer takes the server with it.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { installCrashRecorder, crashLogPath, noteActivity } = require('../shared/crash-log');
+  installCrashRecorder(logger);
+  noteActivity('startup');
+
   logger.info('🚀 JOE API STARTUP INITIATED...');
 
   const app = createApp();
@@ -102,7 +110,8 @@ async function main() {
   require('../shared/go-live').assertSafeToServe();
 
   server.listen(config.port, '0.0.0.0', () => {
-    logger.info({ port: config.port }, 'API server listening and WebSocket attached');
+    noteActivity('serving');
+    logger.info({ port: config.port, crashLog: crashLogPath() }, 'API server listening and WebSocket attached');
 
     // Local Brain: detect installed Ollama models, choose a fast chat model +
     // the strongest coding model, and warm them up so the first request is fast.
