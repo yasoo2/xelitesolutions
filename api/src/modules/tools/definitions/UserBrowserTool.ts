@@ -1,4 +1,4 @@
-import { ToolDefinition } from '../types';
+import { ToolDefinition, ToolPermission } from '../types';
 import { sendCommand, isExtensionConnected } from '../../extension/gateway';
 import { config } from '../../../shared/config';
 
@@ -29,7 +29,7 @@ export class UserBrowserTool implements ToolDefinition {
     required: ['action'],
   };
   get parameters() { return this.inputSchema; }
-  outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+  outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
   async execute(input: any, context?: any) {
     const userId = ctxUser(context);

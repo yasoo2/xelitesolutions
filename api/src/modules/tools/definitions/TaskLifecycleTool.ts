@@ -20,7 +20,7 @@ export class TaskLifecycleTool extends BaseTool {
         required: ['action']
     };
     outputSchema = { type: 'object' as const, properties: { success: { type: 'boolean' } } };
-    permissions: ToolPermission[] = [];
+    permissions: ToolPermission[] = ['write'];   // it MUTATES task state
     sideEffects: ToolPermission[] = [];
 
     async execute(input: any) {

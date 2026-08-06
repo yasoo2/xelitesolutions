@@ -183,11 +183,18 @@ export class JoeAgent {
             }
         };
 
+        // `browser_subagent` has never existed in the registry. The task named
+        // it, the plan carried it, and — being optional — it failed silently
+        // every single run: a «Visual Verification Loop» that verified nothing.
+        // Found by sweeping every `tool: '…'` in the codebase against the
+        // registry. browser_ui_fix is the tool this was reaching for: it audits
+        // the session's built project in a real browser and repairs what it
+        // measures, with the score before and after.
         const browserTest: LoopTask = {
             name: 'Visual Verification Loop (Joe Eye)',
             phase: 'test',
-            tool: 'browser_subagent',
-            args: { task: "Verify the rendered UI locally. Use your 'Joe Eye' to ensure visual perfection and elite design adherence." },
+            tool: 'browser_ui_fix',
+            args: {},
             required: false
         };
 

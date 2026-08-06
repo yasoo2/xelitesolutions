@@ -1,4 +1,4 @@
-import { ToolDefinition } from '../types';
+import { ToolDefinition, ToolPermission } from '../types';
 
 /**
  * LoggerTool - Structured logging with levels and rotation
@@ -55,7 +55,7 @@ export class LoggerTool implements ToolDefinition {
         }
     };
 
-    permissions = [];
+    permissions: ToolPermission[] = ['write'];   // it WRITES log files and rotates them
     sideEffects = ['write' as const];
     rateLimitPerMinute = 100;
     auditFields = ['action', 'level'];

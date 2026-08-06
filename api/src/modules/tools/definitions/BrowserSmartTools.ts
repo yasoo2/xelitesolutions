@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { ToolDefinition } from '../types';
+import { ToolDefinition, ToolPermission } from '../types';
 import { getBrowserSession, withBrowserConcurrency, startStreaming, isPersistentBrowserMode, hasBrowserConsent, grantBrowserConsent } from '../../browser/manager';
 import { broadcastBrowserEvent } from '../../browser/wsHub';
 import { routeToModel } from '../../../core/llm/intelligent-router';
@@ -161,7 +161,7 @@ export class BrowserExtractDataTool implements ToolDefinition {
     tags = ['browser', 'web', 'extract', 'data', 'scrape', 'csv'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const }, selector: { type: 'string' as const } }, required: ['url'] };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -228,7 +228,7 @@ export class BrowserCheckLinksTool implements ToolDefinition {
     tags = ['browser', 'web', 'links', 'audit', 'qa'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const }, limit: { type: 'number' as const } }, required: ['url'] };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -272,7 +272,7 @@ export class BrowserPerformanceTool implements ToolDefinition {
     tags = ['browser', 'web', 'performance', 'speed', 'audit'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -326,7 +326,7 @@ export class BrowserSEOAuditTool implements ToolDefinition {
     tags = ['browser', 'web', 'seo', 'audit', 'meta'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -378,7 +378,7 @@ export class BrowserConsoleScanTool implements ToolDefinition {
     tags = ['browser', 'web', 'errors', 'console', 'qa', 'debug'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -428,7 +428,7 @@ export class BrowserSavePdfTool implements ToolDefinition {
     tags = ['browser', 'web', 'pdf', 'export'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet', 'write']; sideEffects: ToolPermission[] = ['write']; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -463,7 +463,7 @@ export class BrowserReadabilityTool implements ToolDefinition {
     tags = ['browser', 'web', 'readability', 'article', 'extract'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -512,7 +512,7 @@ export class BrowserContrastAuditTool implements ToolDefinition {
     tags = ['browser', 'web', 'accessibility', 'contrast', 'wcag', 'audit'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -578,7 +578,7 @@ export class BrowserA11yDeepTool implements ToolDefinition {
     tags = ['browser', 'web', 'accessibility', 'a11y', 'aria', 'audit'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -640,7 +640,7 @@ export class BrowserExtractMetaTool implements ToolDefinition {
     tags = ['browser', 'web', 'meta', 'seo', 'structured-data', 'extract'];
     inputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const } }, required: ['url'] };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -699,7 +699,7 @@ export class BrowserCompareTool implements ToolDefinition {
     };
     get parameters() { return this.inputSchema; }
     outputSchema = { type: 'object' as const };
-    permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -838,7 +838,7 @@ export class BrowserSummarizeTool implements ToolDefinition {
     };
     get parameters() { return this.inputSchema; }
     outputSchema = { type: 'object' as const };
-    permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -900,7 +900,7 @@ export class BrowserUIAuditTool implements ToolDefinition {
     };
     get parameters() { return this.inputSchema; }
     outputSchema = { type: 'object' as const };
-    permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -1019,7 +1019,7 @@ export class BrowserFillFormTool implements ToolDefinition {
     };
     get parameters() { return this.inputSchema; }
     outputSchema = { type: 'object' as const };
-    permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -1111,7 +1111,7 @@ export class BrowserTranslateTool implements ToolDefinition {
         required: ['url'],
     };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -1172,7 +1172,7 @@ export class BrowserResponsiveCheckTool implements ToolDefinition {
         required: ['url'],
     };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -1265,7 +1265,7 @@ export class BrowserFindTextTool implements ToolDefinition {
         required: ['url', 'query'],
     };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -1350,7 +1350,7 @@ export class BrowserDesignTokensTool implements ToolDefinition {
         required: ['url'],
     };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -1428,7 +1428,7 @@ export class BrowserClickTool implements ToolDefinition {
         required: ['url'],
     };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -1513,7 +1513,7 @@ export class BrowserFullPageShotTool implements ToolDefinition {
         required: ['url'],
     };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet', 'write']; sideEffects: ToolPermission[] = ['write']; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -1559,7 +1559,7 @@ export class BrowserSmartAgentTool implements ToolDefinition {
         required: ['url'],
     };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -1700,7 +1700,7 @@ export class BrowserAutofixTool implements ToolDefinition {
         required: ['url'],
     };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet', 'write']; sideEffects: ToolPermission[] = ['write']; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -1822,7 +1822,7 @@ export class BrowserConsentTool implements ToolDefinition {
         required: [],
     };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = true;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = true;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -1857,7 +1857,7 @@ export class BrowserSearchTool implements ToolDefinition {
         required: ['query'],
     };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
@@ -2021,7 +2021,7 @@ export class BrowserOpenTool implements ToolDefinition {
         required: [],
     };
     get parameters() { return this.inputSchema; }
-    outputSchema = { type: 'object' as const }; permissions = []; sideEffects = []; rateLimitPerMinute = 0; auditFields = []; mockSupported = false;
+    outputSchema = { type: 'object' as const }; permissions: ToolPermission[] = ['internet']; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);

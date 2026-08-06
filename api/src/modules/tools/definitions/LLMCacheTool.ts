@@ -1,4 +1,4 @@
-import { ToolDefinition } from '../types';
+import { ToolDefinition, ToolPermission } from '../types';
 import crypto from 'crypto';
 
 /**
@@ -44,7 +44,7 @@ export class LLMCacheTool implements ToolDefinition {
         }
     };
 
-    permissions = [];
+    permissions: ToolPermission[] = ['write'];   // it WRITES cache entries — the name-based default guessed «read»
     sideEffects = [];
     rateLimitPerMinute = 200;
     auditFields = ['action'];

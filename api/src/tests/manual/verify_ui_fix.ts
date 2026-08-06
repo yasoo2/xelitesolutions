@@ -56,8 +56,8 @@ async function main() {
         '<main className="app-main">',
         `<main className="app-main">
         <img src="/broken-on-purpose.png" />
-        <a href="#" className="btn">رابط ميت</a>
-        <a href="" className="btn">رابط ميت آخر</a>
+        <a href="#" className="btn" onClick={(e) => { e.currentTarget.textContent = 'تمّ'; }}>زرّ متنكّر</a>
+        <a href="" className="btn">رابط بلا وجهة</a>
         <h1>عنوان رئيسي ثانٍ</h1>`,
     ), 'utf-8');
     const html = path.join(dir, 'index.html');
@@ -84,7 +84,13 @@ async function main() {
     console.log('\n[3] وما غُيّر هو المصدر — لا الصفحة المعروضة');
     const appNow = fs.readFileSync(shell, 'utf-8');
     check('الصورة نالت نصاً بديلاً', /<img[^>]*\salt=/.test(appNow));
-    check('والروابط الميتة صارت أزراراً', !/href="#"/.test(appNow) && !/href=""/.test(appNow), appNow.match(/href="[#]?"/)?.[0] || '');
+    // A dead link becomes a button only when it already has a handler — a
+    // placeholder converted into a handler-less <button> traded one finding for
+    // a worse one, and the audit measured the trade at 92 → 84.
+    check('الرابط الذي يحمل معالجاً صار زراً حقيقياً',
+        /<button type="button" className="btn" onClick=/.test(appNow) && !/href="#"/.test(appNow),
+        (appNow.match(/<(?:a|button)[^\n]*زرّ متنكّر/) || [''])[0]);
+    check('والرابط بلا وجهة تُرك كما هو', /<a href="" className="btn">رابط بلا وجهة<\/a>/.test(appNow));
     // Counted as ELEMENTS, not as text: App.jsx explains itself in a comment
     // that mentions <h1> in prose, and prose is not markup.
     check('والعنوان الرئيسي الزائد صار فرعياً', /<h2>عنوان رئيسي ثانٍ<\/h2>/.test(appNow), 'لم يُخفَّض');
@@ -103,8 +109,12 @@ async function main() {
 
     console.log('\n[5] والملاحظات التي عولجت اختفت من القياس');
     const gone = (out.remaining || []).map((f: any) => f.id);
-    check('لم تعد الروابط الميتة ضمن الملاحظات', !gone.includes('dead_links'), gone.join(', '));
+    // `dead_links` is EXPECTED to survive: the placeholder was left on purpose,
+    // and the audit keeps naming it so a human can say where it should point.
+    // What must be gone is the duplicate heading — a defect with one right answer.
     check('ولا تعدّد العناوين الرئيسية', !gone.includes('h1_count'), gone.join(', '));
+    check('والرابط بلا وجهة ما زال مذكوراً — لا يُخفى بعد أن تُرك',
+        gone.includes('dead_links'), gone.join(', '));
 
     console.log('\n[6] وتشغيلها مرة ثانية لا يغيّر شيئاً — الإصلاح لا يتكرّر');
     const before2 = fs.readFileSync(shell, 'utf-8');

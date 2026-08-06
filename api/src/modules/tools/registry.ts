@@ -1,5 +1,5 @@
 
-import { ToolDefinition } from './types';
+import { ToolDefinition, ToolPermission } from './types';
 import { BrowserRunTool } from './definitions/BrowserRunTool';
 import { UiFixTool } from './definitions/UiFixTool';
 import { PageFixTool } from './definitions/PageFixTool';
@@ -321,6 +321,61 @@ const baseTools: ToolDefinition[] = [
   ...revivedTools
 ].filter(Boolean) as any as ToolDefinition[];
 
+/* ============================================================
+   THE CONTRACT IS ENFORCED HERE, NOT HOPED FOR.
+   ============================================================
+   A full-registry sweep found 51 tools declaring `permissions = []` — a
+   copy-pasted placeholder that had spread across whole files. It is not a
+   cosmetic gap: ToolService computes
+
+       needsWorkspace = perms.length > 0 || effects.length > 0
+       needsUser      = perms.length > 0 || effects.length > 0
+
+   so a tool with an empty permission list skips the workspace check AND the
+   user check entirely. Every browser tool, the page builder and the form inbox
+   were running unattributed — invisible today because this machine runs with
+   ENABLE_AUTH_BYPASS, and a real hole the moment Joe serves anyone else.
+
+   The same sweep found 29 tools with `rateLimitPerMinute = 0`, which the
+   limiter reads as «no limit at all».
+
+   Each of those has been declared properly at its source. This pass is the
+   guarantee that the next one cannot slip through quietly: an under-declared
+   tool is given a conservative default and NAMED in the log, so the fix is a
+   line of output away instead of a security review away.
+   ============================================================ */
+const PERMISSION_HINTS: Array<[RegExp, ToolPermission[]]> = [
+  [/^browser_|^user_browser$|^google_account$|search|crawl|fetch|http|download/i, ['internet']],
+  [/write|edit|delete|deploy|publish|scaffold|builder|install|manager|state/i, ['write']],
+  [/./, ['read']],
+];
+const VALID_PERMISSIONS = new Set<ToolPermission>(['read', 'write', 'deploy', 'delete', 'execute', 'internet']);
+const DEFAULT_RATE_LIMIT = 30;
+
+/** Names of tools this pass had to repair — reported once, not once each. */
+export const contractDefaults: { permissions: string[]; rateLimit: string[]; unknown: string[] } =
+  { permissions: [], rateLimit: [], unknown: [] };
+
+function enforceContract(t: any): void {
+  const perms: any[] = Array.isArray(t.permissions) ? t.permissions : [];
+  const bad = perms.filter(p => !VALID_PERMISSIONS.has(p));
+  if (bad.length) {
+    contractDefaults.unknown.push(`${t.name}:${bad.join('/')}`);
+    t.permissions = perms.filter(p => VALID_PERMISSIONS.has(p));
+  }
+  if (!Array.isArray(t.permissions) || t.permissions.length === 0) {
+    const guess = (PERMISSION_HINTS.find(([re]) => re.test(String(t.name))) || [null, ['read']])[1] as ToolPermission[];
+    t.permissions = [...guess];
+    contractDefaults.permissions.push(`${t.name}→${guess.join('/')}`);
+  }
+  if (!Array.isArray(t.sideEffects)) t.sideEffects = [];
+  t.sideEffects = t.sideEffects.filter((p: any) => VALID_PERMISSIONS.has(p));
+  if (typeof t.rateLimitPerMinute !== 'number' || t.rateLimitPerMinute <= 0) {
+    contractDefaults.rateLimit.push(String(t.name));
+    t.rateLimitPerMinute = DEFAULT_RATE_LIMIT;
+  }
+}
+
 // De-duplicate by tool name (keep first occurrence) so the registry stays
 // consistent even if a name is ever registered twice.
 export const tools: ToolDefinition[] = (() => {
@@ -333,9 +388,18 @@ export const tools: ToolDefinition[] = (() => {
       console.warn(`[ToolRegistry] Duplicate tool name skipped: ${name}`);
       continue;
     }
+    enforceContract(t as any);
     seen.add(name);
     unique.push(t);
   }
   console.info(`[ToolRegistry] Registered ${unique.length} tools (${revivedTools.filter(Boolean).length} revived).`);
+  // One line, not one per tool — a log he cannot read is a log he will not read.
+  if (contractDefaults.unknown.length) console.warn(`[ToolRegistry] dropped unknown permissions: ${contractDefaults.unknown.join(', ')}`);
+  if (contractDefaults.permissions.length) {
+    console.warn(`[ToolRegistry] ${contractDefaults.permissions.length} tool(s) declared no permissions — defaulted: ${contractDefaults.permissions.join(', ')}`);
+  }
+  if (contractDefaults.rateLimit.length) {
+    console.warn(`[ToolRegistry] ${contractDefaults.rateLimit.length} tool(s) had no rate limit — set to ${DEFAULT_RATE_LIMIT}/min: ${contractDefaults.rateLimit.join(', ')}`);
+  }
   return unique;
 })();
