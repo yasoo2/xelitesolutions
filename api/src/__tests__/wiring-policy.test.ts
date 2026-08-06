@@ -2089,7 +2089,7 @@ describe('the server stores what the app sends', () => {
         const A = SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
         expect(A).toMatch(/export function apiRelationForRequest/);
         expect(A).toMatch(/const relation = apiRelationForRequest\(request\)/);
-        expect(A).toMatch(/'server\.js': fileServerJs\(resource, brand, path\.basename\(proj\), relation\)/);
+        expect(A).toMatch(/'server\.js': fileServerJs\(resource, brand, path\.basename\(proj\), relation, model\)/);
         // the link is checked, never trusted
         expect(A).toMatch(/return \{ error: 'unknown_' \+ c\.key \}/);
         expect(A).toMatch(/error: 'has_children'/);

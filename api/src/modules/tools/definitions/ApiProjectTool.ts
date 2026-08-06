@@ -819,6 +819,205 @@ export { db };
 `;
 }
 
+/**
+ * THE REST OF THE SYSTEM'S TABLES.
+ *
+ * `db.js` owns the primary collection and its one optional parent — that is
+ * where a store's products live, and it stays exactly as it is. A PLATFORM
+ * needs more: vendors, customers, coupons, shipments; doctors, patients,
+ * appointments. This module is generated beside it, from the model derived
+ * from the request, and gives every entity the same three things db.js gives
+ * the first one: a real table, real CRUD, and a foreign key that REFUSES to
+ * point at a row that does not exist.
+ *
+ * Same dual backend as db.js: node:sqlite when this Node has it, a JSON file
+ * with the same interface otherwise. Zero native dependencies either way.
+ */
+function fileEntitiesJs(entities: any[]): string {
+    const MODEL = JSON.stringify(entities.map(e => ({
+        key: e.key,
+        fields: e.fields.map((f: any) => ({ key: f.key, type: f.type, required: !!f.required })),
+        belongsTo: e.belongsTo || null,
+    })));
+    return `// The system's other tables — generated from the model Joe derived from your
+// request. Each one has its own CRUD, its own validation, and a foreign key
+// that is checked before a row is written.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const MODEL = ${MODEL};
+
+const cast = (c, v) => {
+  if (c.type === 'REAL') return Number(v || 0);
+  if (c.type === 'INT') return v === '' || v === null || v === undefined ? null : Number(v);
+  return String(v ?? '');
+};
+const sqlType = (c) => (c.type === 'INT' ? 'INTEGER' : c.type);
+const sqlDefault = (c) => (c.required ? 'NOT NULL' : c.type === 'INT' ? 'DEFAULT NULL' : "DEFAULT ''");
+
+/** What a row must carry to be written at all. */
+function validate(entity, body, tables) {
+  const b = body || {};
+  for (const f of entity.fields) {
+    const v = b[f.key];
+    if (f.required && (v === undefined || v === null || String(v).trim() === '')) {
+      return { error: f.key + '_required' };
+    }
+    if (v !== undefined && f.type !== 'REAL' && String(v).length > 500) return { error: 'too_long_' + f.key };
+  }
+  // A link that can dangle is not a relation.
+  const rel = entity.belongsTo;
+  if (rel) {
+    const raw = b[rel.key];
+    if (raw !== undefined && raw !== null && String(raw) !== '') {
+      const parent = tables[rel.entity];
+      if (!parent) return { error: 'unknown_parent_table' };
+      if (!parent.get(raw)) return { error: rel.key + '_not_found' };
+    }
+  }
+  return null;
+}
+
+let store;
+if (process.env.JOE_FORCE_JSON_DB !== '1') {
+  try {
+    const { DatabaseSync } = await import('node:sqlite');
+    const conn = new DatabaseSync(path.join(HERE, 'data.db'));
+    const tables = {};
+    for (const e of MODEL) {
+      conn.exec('CREATE TABLE IF NOT EXISTS ' + e.key + ' (id INTEGER PRIMARY KEY AUTOINCREMENT, '
+        + e.fields.map((f) => f.key + ' ' + sqlType(f) + ' ' + sqlDefault(f)).join(', ')
+        + ", created_at TEXT DEFAULT (datetime('now')))");
+      for (const f of e.fields) {
+        try { conn.exec('ALTER TABLE ' + e.key + ' ADD COLUMN ' + f.key + ' ' + sqlType(f) + ' ' + sqlDefault(f)); }
+        catch { /* already there — the normal case */ }
+      }
+    }
+    for (const e of MODEL) {
+      const keys = e.fields.map((f) => f.key);
+      tables[e.key] = {
+        entity: e,
+        list: () => conn.prepare('SELECT * FROM ' + e.key + ' ORDER BY id DESC LIMIT 500').all(),
+        get: (id) => conn.prepare('SELECT * FROM ' + e.key + ' WHERE id = ?').get(Number(id)) || null,
+        create: (body) => {
+          const r = conn.prepare('INSERT INTO ' + e.key + ' (' + keys.join(', ') + ') VALUES ('
+            + keys.map(() => '?').join(', ') + ')').run(...e.fields.map((f) => cast(f, (body || {})[f.key])));
+          return tables[e.key].get(r.lastInsertRowid);
+        },
+        update: (id, patch) => {
+          const cur = tables[e.key].get(id);
+          if (!cur) return null;
+          const next = {};
+          for (const f of e.fields) next[f.key] = (patch || {})[f.key] === undefined ? cur[f.key] : cast(f, patch[f.key]);
+          conn.prepare('UPDATE ' + e.key + ' SET ' + keys.map((k) => k + ' = ?').join(', ') + ' WHERE id = ?')
+            .run(...keys.map((k) => next[k]), Number(id));
+          return tables[e.key].get(id);
+        },
+        remove: (id) => conn.prepare('DELETE FROM ' + e.key + ' WHERE id = ?').run(Number(id)).changes > 0,
+        count: () => conn.prepare('SELECT COUNT(*) AS n FROM ' + e.key).get().n,
+      };
+    }
+    store = { backend: 'sqlite', tables };
+  } catch { /* no node:sqlite here — the JSON store below is the same interface */ }
+}
+
+if (!store) {
+  const FILE = path.join(HERE, 'entities.json');
+  const load = () => {
+    try { return JSON.parse(fs.readFileSync(FILE, 'utf-8')); } catch { return { rows: {}, seq: {} }; }
+  };
+  const save = (s) => { try { fs.writeFileSync(FILE, JSON.stringify(s, null, 2)); } catch { /* read-only disk */ } };
+  const tables = {};
+  for (const e of MODEL) {
+    tables[e.key] = {
+      entity: e,
+      list: () => (load().rows[e.key] || []).slice().reverse().slice(0, 500),
+      get: (id) => (load().rows[e.key] || []).find((r) => r.id === Number(id)) || null,
+      create: (body) => {
+        const s = load();
+        s.rows[e.key] = s.rows[e.key] || []; s.seq[e.key] = s.seq[e.key] || 0;
+        const row = { id: ++s.seq[e.key] };
+        for (const f of e.fields) row[f.key] = cast(f, (body || {})[f.key]);
+        row.created_at = new Date().toISOString();
+        s.rows[e.key].push(row);
+        save(s);
+        return row;
+      },
+      update: (id, patch) => {
+        const s = load();
+        const row = (s.rows[e.key] || []).find((r) => r.id === Number(id));
+        if (!row) return null;
+        for (const f of e.fields) if ((patch || {})[f.key] !== undefined) row[f.key] = cast(f, patch[f.key]);
+        save(s);
+        return row;
+      },
+      remove: (id) => {
+        const s = load();
+        const before = (s.rows[e.key] || []).length;
+        s.rows[e.key] = (s.rows[e.key] || []).filter((r) => r.id !== Number(id));
+        save(s);
+        return (s.rows[e.key] || []).length < before;
+      },
+      count: () => (load().rows[e.key] || []).length,
+    };
+  }
+  store = { backend: 'json', tables };
+}
+
+export const entities = store;
+
+/** Counts for /api/health — one number per table, measured not assumed. */
+export function entityCounts() {
+  const out = {};
+  for (const key of Object.keys(store.tables)) out[key] = store.tables[key].count();
+  return out;
+}
+
+/**
+ * Mounts /api/<entity> for every table: reading is public (a catalogue is
+ * meant to be read), writing is the owner's business — exactly the rule the
+ * primary collection already follows.
+ */
+export function mountEntities(app, requireAuth) {
+  for (const key of Object.keys(store.tables)) {
+    const t = store.tables[key];
+    app.get('/api/' + key, (_req, res) => res.json({ ok: true, [key]: t.list() }));
+    app.get('/api/' + key + '/:id', (req, res) => {
+      const row = t.get(req.params.id);
+      if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
+      res.json({ ok: true, row });
+    });
+    app.post('/api/' + key, requireAuth, (req, res) => {
+      const bad = validate(t.entity, req.body, store.tables);
+      if (bad) return res.status(400).json({ ok: false, ...bad });
+      res.status(201).json({ ok: true, row: t.create(req.body) });
+    });
+    app.put('/api/' + key + '/:id', requireAuth, (req, res) => {
+      const bad = validate(t.entity, { ...(t.get(req.params.id) || {}), ...(req.body || {}) }, store.tables);
+      if (bad) return res.status(400).json({ ok: false, ...bad });
+      const row = t.update(req.params.id, req.body);
+      if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
+      res.json({ ok: true, row });
+    });
+    app.delete('/api/' + key + '/:id', requireAuth, (req, res) => {
+      if (!t.remove(req.params.id)) return res.status(404).json({ ok: false, error: 'not_found' });
+      res.json({ ok: true });
+    });
+    // The children of one parent, as their own address.
+    const rel = t.entity.belongsTo;
+    if (rel) {
+      app.get('/api/' + rel.entity + '/:id/' + key, (req, res) => {
+        const rows = t.list().filter((r) => String(r[rel.key]) === String(Number(req.params.id)));
+        res.json({ ok: true, [key]: rows });
+      });
+    }
+  }
+}
+`;
+}
+
 function fileAuthJs(): string {
     return `
 /**
@@ -974,7 +1173,7 @@ export function seedOwner() {
 `;
 }
 
-function fileServerJs(resource: string, brand: string, dirName: string, relation: ApiRelation | null = null): string {
+function fileServerJs(resource: string, brand: string, dirName: string, relation: ApiRelation | null = null, model: any[] = []): string {
     /**
      * THE PARENT'S OWN ROUTES.
      *
@@ -1045,10 +1244,10 @@ app.delete('/api/${relation.resource}/:id', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 `;
-    return fileServerJsBody(resource, brand, dirName, relation, relRoutes);
+    return fileServerJsBody(resource, brand, dirName, relation, relRoutes, model);
 }
 
-function fileServerJsBody(resource: string, brand: string, dirName: string, relation: ApiRelation | null, relRoutes: string): string {
+function fileServerJsBody(resource: string, brand: string, dirName: string, relation: ApiRelation | null, relRoutes: string, model: any[] = []): string {
     return `// ${brand} — a real Express API over a real database. Runs with:
 //   npm start            (port 4100)
 //   PORT=5050 npm start  (any port)
@@ -1059,6 +1258,7 @@ import { fileURLToPath } from 'node:url';
 import { db } from './db.js';
 import { seed, seedOwner } from './seed.js';
 import { hashPassword, verifyPassword, signToken, requireAuth, throttleKey, isLocked, noteMiss, clearMisses, normalizeEmail } from './auth.js';
+${model.length ? "import { mountEntities, entityCounts } from './entities.js';" : ''}
 
 // THE LIVE BRIDGE to Joe: every new order is announced into the owner's
 // chat through Joe's existing public inbox — fire-and-forget, so the
@@ -1105,6 +1305,7 @@ app.get('/api/health', (_req, res) => res.json({
   ok: true, backend: db.backend, count: db.count(), orders: db.countOrders(),
   joe: 'api_project', resource: '${resource}',
   ${relation ? `${relation.resource}: db.rel.count(), relation: db.relation,` : ''}
+  ${model.length ? 'tables: entityCounts(),' : ''}
 }));
 
 // ── ACCOUNTS ───────────────────────────────────────────────────────────────
@@ -1173,7 +1374,10 @@ app.post('/api/orders', (req, res) => {
   res.status(201).json({ ok: true, order });
 });
 
-${relRoutes}
+${model.length ? `// The rest of the system's tables — vendors, customers, coupons…
+// Reading is public; writing is the owner's, exactly like the catalogue.
+mountEntities(app, requireAuth);
+` : ''}${relRoutes}
 app.get('/api/${resource}', (_req, res) => res.json({ ok: true, ${resource}: db.list() }));
 
 app.get('/api/${resource}/:id', (req, res) => {
@@ -1418,6 +1622,22 @@ export class ApiProjectTool extends BaseTool {
         const columns = apiColumnsForRequest(request);
         // The parent table, when this system has one — «طبيب ← مواعيده».
         const relation = apiRelationForRequest(request);
+        /**
+         * AND THE REST OF THE SYSTEM'S TABLES.
+         *
+         * One table was the ceiling: «multi-vendor marketplace, inventory,
+         * shipping, coupons…» answered with `products` and `orders`. The model
+         * derived here gives vendors, customers, coupons and shipments their
+         * own tables, their own CRUD and a foreign key that refuses to dangle.
+         * Empty for anything that does not clearly name a domain — a plain
+         * store keeps behaving exactly as it does today.
+         */
+        const { deriveDataModel, dataModelDomain, describeModel } = require('../../../core/design/data-model');
+        const model = deriveDataModel(request);
+        if (model.length) {
+            term(`data model: ${dataModelDomain(request)} — ${model.length} table(s): ${model.map((e: any) => e.key).join(', ')}`);
+            if (sessionId) broadcastThinkingDetail(sessionId, describeModel(model, isAr));
+        }
         const isCatalogue = columns === CATALOGUE_COLUMNS;
         const seeds = isCatalogue ? catalogueSeeds : [];
         const dirName = `api-${slug(brand)}`;
@@ -1495,8 +1715,9 @@ export class ApiProjectTool extends BaseTool {
             '.gitignore': 'node_modules\ndata.db\ndata.json\n',
         } : {
             'package.json': filePackageJson(brand),
-            'server.js': fileServerJs(resource, brand, path.basename(proj), relation),
+            'server.js': fileServerJs(resource, brand, path.basename(proj), relation, model),
             'db.js': fileDbJs(resource, columns, relation),
+            ...(model.length ? { 'entities.js': fileEntitiesJs(model) } : {}),
             'auth.js': fileAuthJs(),
             'seed.js': fileSeedJs(seeds, { email: ownerEmail, salt: ownerSalt, hash: ownerHash }),
             'README.md': fileReadme(brand, resource, labelAr, ownerEmail, relation),
@@ -1832,6 +2053,9 @@ ${authProven || ownerCreated || !installed
      جديد وتُطبع كلمته، وستفقد بيانات القاعدة معه.
    • أو غيّرها وأنت داخل: POST /api/auth/password.`}
 
+${model.length ? `🗂️ جداول النظام (${model.length}) — لكلٍّ منها CRUD كامل ومسار خاص:
+${model.map((e: any) => `   • ${e.ar} → /api/${e.key}${e.belongsTo ? ` (مرتبط بـ ${e.belongsTo.entity} عبر ${e.belongsTo.key} — رابط لا يتدلّى)` : ''}`).join('\n')}
+` : ''}
 🧭 مسارات ${labelAr}:
    عامّة للزوار: GET /api/${resource} · GET /api/${resource}/:id · POST /api/orders · GET /api/health
    محميّة لك: POST/PUT/DELETE /api/${resource} · GET /api/orders (فيها أسماء العملاء وأرقامهم)
@@ -1859,7 +2083,9 @@ ${proven ? `✅ Live proof: row #${createdId} written over real HTTP and read ba
 ${authProven || ownerCreated || !installed
                 ? `Owner account (shown once): ${ownerEmail} / ${ownerPassword}`
                 : `Owner account: ${ownerEmail} — the password is the OLD one. This project was built over an existing database, so the account was not re-created and a fresh password would not work. Delete data.db to start over, or change it from inside with POST /api/auth/password.`}
-Public: GET /api/${resource} · POST /api/orders · GET /api/health
+${model.length ? `System tables (${model.length}), each with full CRUD:
+${model.map((e: any) => `   • ${e.en} → /api/${e.key}${e.belongsTo ? ` (linked to ${e.belongsTo.entity} by ${e.belongsTo.key} — a key that cannot dangle)` : ''}`).join('\n')}
+` : ''}Public: GET /api/${resource} · POST /api/orders · GET /api/health
 Protected (Bearer token from POST /api/auth/login): catalogue writes · GET /api/orders`;
 
         return {

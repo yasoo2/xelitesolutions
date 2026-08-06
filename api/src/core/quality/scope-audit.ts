@@ -57,7 +57,9 @@ export const CAPABILITIES: Capability[] = [
     {
         id: 'multi_vendor', ar: 'سوق متعدّد البائعين', en: 'multi-vendor marketplace',
         ask: /multi[- ]?vendor|marketplace|multi[- ]?seller|متعدد(ة)? البائعين|سوق إلكتروني|تجّار/i,
-        evidence: /vendor_?id|seller_?id|\/api\/vendors|\bvendors\s*\(|VendorDashboard|merchant_?id/i,
+        // A generated data model declares its tables — «{"key":"vendors"…}» in
+        // entities.js is a real table with real CRUD, not a mention of a word.
+        evidence: /vendor_?id|seller_?id|\/api\/vendors|"key":"vendors"|\bvendors\s*\(|VendorDashboard|merchant_?id/i,
     },
     {
         id: 'ai_generation', ar: 'توليد المنتجات بالذكاء الاصطناعي', en: 'AI product generation',
@@ -67,7 +69,7 @@ export const CAPABILITIES: Capability[] = [
     {
         id: 'inventory', ar: 'إدارة المخزون', en: 'inventory management',
         ask: /\binventory\b|\bstock\b|المخزون|إدارة المخزون/i,
-        evidence: /'stock'|"stock"|stock:\s|stock_?(quantity|level|count)|\/api\/inventory|quantity_?on_?hand/i,
+        evidence: /'stock'|"stock"|stock:\s|stock_?(quantity|level|count)|"key":"movements"|\/api\/inventory|quantity_?on_?hand/i,
     },
     {
         id: 'payments', ar: 'المدفوعات', en: 'payments',
@@ -77,12 +79,12 @@ export const CAPABILITIES: Capability[] = [
     {
         id: 'shipping', ar: 'الشحن', en: 'shipping',
         ask: /\bshipping\b|\bdelivery\b|\bfulfilment\b|\bfulfillment\b|الشحن|التوصيل/i,
-        evidence: /\bshipping\b|\bshipment|\/api\/shipping|tracking_?number/i,
+        evidence: /"key":"shipments"|\/api\/shipping|tracking_?number|\bshipment_/i,
     },
     {
         id: 'coupons', ar: 'الكوبونات والخصومات', en: 'coupons and discounts',
         ask: /\bcoupons?\b|\bdiscounts?\b|\bpromo\b|كوبون|خصومات|أكواد خصم/i,
-        evidence: /\bcoupons?\b|promo_?code|discount_?code|\/api\/coupons/i,
+        evidence: /"key":"coupons"|promo_?code|discount_?code|\/api\/coupons/i,
     },
     {
         id: 'loyalty', ar: 'برنامج الولاء', en: 'loyalty program',
