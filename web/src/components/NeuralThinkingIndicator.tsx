@@ -40,8 +40,16 @@ const phaseLabels: Record<string, { key: string; color: string }> = {
   idle: { key: 'thinkingAnalyzing', color: '#34c48b' },
 };
 
-/** Above this many steps the single line stops being honest about the work. */
-const TIMELINE_THRESHOLD = 4;
+/**
+ * OPEN, NOT SHUT.
+ *
+ * «القائمة مغلقة ويجب أن تكون مفتوحة لنرى التفاصيل داخلها» — and he is right:
+ * the whole reason this card exists is the steps inside it. It used to stay a
+ * single line until FOUR of them had arrived, so a run showing «3 steps ▾»
+ * hid everything it had. One step is enough to be worth seeing; the chip is
+ * still there to fold it away when he wants the conversation back.
+ */
+const TIMELINE_THRESHOLD = 1;
 
 export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, variant = 'inline', sessionId }: NeuralThinkingIndicatorProps) {
   const { t } = useTranslation();
@@ -127,18 +135,30 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           background:
             linear-gradient(180deg, color-mix(in srgb, var(--nc) 8%, transparent), transparent),
             var(--joe-bg-panel, rgba(22,26,30,0.85));
-          padding: 9px 13px;
+          padding: 8px 11px;
+          /* It lives INSIDE a chat bubble: it takes the width it is given and
+             not one pixel more. Without box-sizing the padding pushed it past
+             its container's border — visible in his screenshot as a card
+             overlapping the frame on both sides. */
+          box-sizing: border-box;
+          width: 100%;
           backdrop-filter: blur(10px);
           overflow: hidden;
           max-width: 100%;
+          min-width: 0;
           margin-bottom: 8px;
-          box-shadow: 0 6px 22px -12px color-mix(in srgb, var(--nc) 60%, transparent);
+          /* A softer, tighter shadow: the old one bled 22px past the card and
+             read as a glow crossing the chat's own border. */
+          box-shadow: 0 3px 12px -8px color-mix(in srgb, var(--nc) 45%, transparent);
           animation: nc-in .35s cubic-bezier(0.22,1,0.36,1);
         }
         .neural-card.bubble { margin-bottom: 0; }
         @keyframes nc-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
-        .neural-head { display: flex; align-items: center; gap: 10px; }
+        /* min-width:0 all the way down, or a long goal line («Initializing
+           Autonomous Brain for goal: Build a world-class e-commerce pl…»)
+           refuses to shrink and stretches the card past the chat. */
+        .neural-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 
         /* soft breathing orb */
         .nc-orb { position: relative; width: 16px; height: 16px; flex: none; }
@@ -152,7 +172,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
         @keyframes nc-breathe { 0%,100% { transform: scale(.82); } 50% { transform: scale(1.05); } }
 
         .nc-label {
-          font-size: 13px; font-weight: 700; color: var(--nc);
+          font-size: 12px; font-weight: 700; color: var(--nc);
           letter-spacing: .2px; min-width: 0; flex: 1 1 auto;
           display: flex; align-items: baseline; gap: 6px;
         }
@@ -196,7 +216,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
            room to be read, and still cannot swallow the conversation. */
         .nc-log {
           margin-top: 9px; padding-top: 8px;
-          max-height: min(44vh, 420px); overflow-y: auto; overscroll-behavior: contain;
+          max-height: min(34vh, 300px); overflow-y: auto; overscroll-behavior: contain;
           scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--nc) 40%, transparent) transparent;
           border-top: 1px solid color-mix(in srgb, var(--nc) 14%, transparent);
         }

@@ -171,7 +171,9 @@ describe('the three defects behind the complaint are closed in the UI', () => {
         const ind = read('components', 'NeuralThinkingIndicator.tsx');
         expect(ind).not.toMatch(/max-height:\s*140px/);
         expect(ind).not.toMatch(/scrollbar\s*\{\s*width:\s*3px/);
-        expect(ind).toMatch(/max-height:\s*min\(44vh,\s*420px\)/);
+        // …and it is CHAT-sized, not page-sized: 44vh made the card taller than
+        // the conversation it sits in — «حجمها غير ملائم لدردشة جو».
+        expect(ind).toMatch(/max-height:\s*min\(34vh,\s*300px\)/);
     });
 
     it('every trace line resolves its own direction', () => {

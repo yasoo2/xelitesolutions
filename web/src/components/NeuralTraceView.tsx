@@ -52,8 +52,10 @@ const TRACE_CSS = `
 .jt { --jt-line: color-mix(in srgb, var(--jt-accent, #34c48b) 26%, transparent); }
 
 /* ── the timeline ───────────────────────────────────────────────── */
-.jt-timeline { display: flex; flex-direction: column; gap: 2px; }
-.jt-group { position: relative; padding-inline-start: 22px; }
+/* Inside a chat bubble: never wider than what it was given, and a long
+   line wraps instead of pushing the card past the conversation's border. */
+.jt-timeline { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%; }
+.jt-group { position: relative; padding-inline-start: 20px; min-width: 0; }
 .jt-group::before {
   content: ""; position: absolute; inset-inline-start: 6px; top: 14px; bottom: 2px; width: 1.5px;
   background: linear-gradient(180deg, var(--jt-line), color-mix(in srgb, var(--jt-line) 18%, transparent));
@@ -75,8 +77,8 @@ const TRACE_CSS = `
   text-transform: none; color: var(--joe-text-muted, #6e7178); font-variant-numeric: tabular-nums;
 }
 .jt-step {
-  display: flex; align-items: baseline; gap: 8px;
-  font-size: 12px; line-height: 1.65; color: var(--joe-text-secondary, #a2a5ad);
+  display: flex; align-items: baseline; gap: 8px; min-width: 0;
+  font-size: 11.5px; line-height: 1.55; color: var(--joe-text-secondary, #a2a5ad);
   padding: 1.5px 0; position: relative;
 }
 .jt-step::before {
