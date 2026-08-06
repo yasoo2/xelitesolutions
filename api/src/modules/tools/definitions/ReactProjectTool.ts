@@ -2586,7 +2586,17 @@ export class ReactProjectTool extends BaseTool {
             // database from disk, and the inbox bridge resolves the owner,
             // even after this react build took the session's project slot.
             ...(apiLink ? { linkedApi: apiLink, linkedApiDir: prevEntry.dir } : {}),
-            ...(audit && !audit.skipped ? { lastAudit: { score: audit.score, at: Date.now() } } : {}),
+            // The findings ride along, not just the number: the Quality phase
+            // reports THIS audit instead of opening a second browser over the
+            // same page, and a score with no findings would be a worse report
+            // than the one it replaces.
+            ...(audit && !audit.skipped ? {
+                lastAudit: {
+                    score: audit.score, at: Date.now(),
+                    findings: (audit.findings || []).slice(0, 12)
+                        .map((f: any) => ({ severity: f.severity, message: String(f.message || f.what || '').slice(0, 200) })),
+                },
+            } : {}),
         };
         persistJoeProjects();
 

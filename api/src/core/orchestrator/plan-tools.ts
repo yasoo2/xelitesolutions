@@ -358,7 +358,7 @@ const REQUIRED_DEFAULTS: Record<string, Record<string, any>> = {
  * session's own preview route. That is the address, and it is knowable without
  * asking anybody.
  */
-function builtPreviewUrl(sessionId: string): string {
+export function builtPreviewUrl(sessionId: string): string {
     const key = String(sessionId || '').replace(/[^a-zA-Z0-9._-]/g, '_');
     if (!key) return '';
     try {
@@ -377,14 +377,59 @@ function builtPreviewUrl(sessionId: string): string {
     } catch { return ''; }
 }
 
+/** How long a builder's in-browser audit stands for the app it measured. */
+export const FRESH_AUDIT_MS = 10 * 60_000;
+
+/** Did the builder already audit this session's app in a real browser, recently? */
+export function hasFreshBuilderAudit(sessionId: string): boolean {
+    const key = String(sessionId || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (!key) return false;
+    const at = Number(((global as any).joeProjects || {})[key]?.lastAudit?.at || 0);
+    return at > 0 && (Date.now() - at) < FRESH_AUDIT_MS;
+}
+
+/**
+ * WHY there is no address — because `no_url` explains nothing.
+ *
+ * From his own machine: `❌ Quality (tasks: 0/1) — Error: no_url`, while the
+ * app was being served at that session's preview route at that very second.
+ * Three different failures print that same word, and the one line that could
+ * have told us which was which said nothing at all.
+ */
+export function whyNoBuiltUrl(sessionId: string): string {
+    const key = String(sessionId || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (!key) return 'no_url: لا معرّف جلسة مع الطلب — لا أعرف أيّ مشروع أفحص.';
+    const entry = ((global as any).joeProjects || {})[key];
+    if (!entry?.dir) return `no_url: لا مشروع مبنيّ مسجّل لهذه الجلسة (${key}) — ابنِ أولاً ثم افحص.`;
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const fs = require('fs');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const path = require('path');
+        const dist = path.join(String(entry.dir), 'dist', 'index.html');
+        if (!fs.existsSync(dist)) return `no_url: المشروع مسجّل في ${entry.dir} لكن لا يوجد dist/index.html — البناء لم يكتمل.`;
+    } catch (e: any) {
+        return `no_url: تعذّر فحص مجلّد المشروع — ${e?.message || e}`;
+    }
+    return 'no_url: العنوان تعذّر تكوينه رغم وجود البناء.';
+}
+
 /** The browser tools that audit or read a page and cannot invent their own address. */
 const NEEDS_BUILT_URL = new Set(['browser_ui_audit', 'browser_screenshot', 'browser_extract', 'browser_open']);
 
 export function adaptPlannedArgs(toolName: string, args: any): any {
     const out: any = { ...(args || {}) };
     if (NEEDS_BUILT_URL.has(toolName) && !String(out.url || '').trim()) {
-        const url = builtPreviewUrl(out.sessionId || (args || {}).sessionId || '');
-        if (url) out.url = url;
+        const sid = out.sessionId || (args || {}).sessionId || '';
+        // …unless the builder ALREADY audited this app in a real browser
+        // moments ago. Filling in the address here is what sent the Quality
+        // phase to open a second browser over a page that had just been
+        // measured — «يشغل المتصفح دون فائدة». Left empty, the audit tool
+        // reports the builder's own findings instead of re-opening anything.
+        if (!(toolName === 'browser_ui_audit' && hasFreshBuilderAudit(sid))) {
+            const url = builtPreviewUrl(sid);
+            if (url) out.url = url;
+        }
     }
     let schema: any = null;
     try {

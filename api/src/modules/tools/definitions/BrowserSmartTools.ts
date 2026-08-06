@@ -904,9 +904,51 @@ export class BrowserUIAuditTool implements ToolDefinition {
 
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
-        const url = input?.url || input?.link || '';
+        let url = input?.url || input?.link || '';
         const ar = isAr(String(input?.request || input?.instruction || '')) || true; // default Arabic UI
-        if (!url) return { ok: false, error: 'no_url' };
+        const logs: string[] = [];
+
+        /**
+         * «ما زال يشغل المتصفح والكيو-إيه بواسطة المتصفح دون فائدة»
+         *
+         * Two faults, one symptom. The pipeline's Quality phase plans this tool
+         * with `args: {}` and the address was completed one layer up, in the
+         * planner's adapter — so any caller that did not go through that layer
+         * arrived here with nothing and got the word `no_url`.
+         *
+         * And when it DID arrive with an address, it opened a browser to
+         * re-audit an application the builder had audited in a real browser
+         * seconds earlier. A second, weaker pass over the same page is the
+         * "browser that opens and does nothing" he keeps watching.
+         *
+         * So: an audit with no address audits what THIS session built — and if
+         * the builder already measured it moments ago, it reports that instead
+         * of opening anything.
+         */
+        if (!url) {
+            const chatSid = String(context?.sessionId || '');
+            const key = chatSid.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const entry = key ? ((global as any).joeProjects || {})[key] : null;
+            const fresh = entry?.lastAudit && (Date.now() - Number(entry.lastAudit.at || 0)) < 10 * 60_000
+                ? entry.lastAudit : null;
+            if (fresh) {
+                return {
+                    ok: true,
+                    output: {
+                        url: '', score: Number(fresh.score) || 0, reused: true,
+                        issues: Array.isArray(fresh.findings) ? fresh.findings : [],
+                        summary: ar
+                            ? `أعدتُ نتيجة الفحص الحيّ الذي أجراه البنّاء قبل قليل في متصفّح حقيقي: ${fresh.score}/100 — لم أفتح المتصفّح مرّة ثانية على نفس الصفحة.`
+                            : `Reusing the live audit the builder ran moments ago in a real browser: ${fresh.score}/100 — no second browser pass over the same page.`,
+                    },
+                    logs: ['[ui_audit] reused the builder\'s fresh in-browser audit — no second browser run'],
+                };
+            }
+            const { builtPreviewUrl, whyNoBuiltUrl } = require('../../../core/orchestrator/plan-tools');
+            url = builtPreviewUrl(chatSid);
+            if (url) logs.push(`[ui_audit] no address given — auditing what this session built: ${url}`);
+            else return { ok: false, error: whyNoBuiltUrl(chatSid) };
+        }
         try {
             return await withBrowserConcurrency(async () => {
                 const s = await getBrowserSession(sessionId);
@@ -989,7 +1031,7 @@ export class BrowserUIAuditTool implements ToolDefinition {
                     const message = `🔎 تدقيق واجهة الصفحة: ${page.url()}\n\nالدرجة: ${score}/100 (🔴 ${crit} · 🟡 ${warn} · 🔵 ${info})\n\n${lines}`;
                     narrateAction(sessionId, 'ui_audit', `الدرجة ${score}/100`);
                     narrateFinal(sessionId, true, `تدقيق الواجهة — الدرجة ${score}/100 (${audit.issues.length} ملاحظة)`);
-                    return { ok: true, output: { message, score, issues: audit.issues, counts: audit.counts, url: page.url(), screenshot: shot } };
+                    return { ok: true, output: { message, score, issues: audit.issues, counts: audit.counts, url: page.url(), screenshot: shot }, logs };
                 } finally {
                     try { page.off('console', onErr); page.off('pageerror', onPageErr); } catch { }
                 }

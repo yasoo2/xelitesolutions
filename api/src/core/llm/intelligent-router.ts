@@ -11,6 +11,7 @@ import { GeminiProvider } from './providers/gemini';
 import { OpenRouterProvider } from './providers/openrouter';
 import { pickLocalModel, isLocalBrainReady } from './local-brain';
 import OpenAI from 'openai';
+import { parseFirstJson } from '../../shared/utils/json';
 
 let hack: any = pollinationsProvider;
 let openrouter: any = openRouterProvider;
@@ -253,8 +254,8 @@ Return exactly this JSON structure:
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userMessage }
                 ]);
-                const jsonMatch = result.match(/\{[\s\S]*\}/);
-                if (jsonMatch) return JSON.parse(jsonMatch[0]);
+                const parsed = parseFirstJson<any>(result);
+                if (parsed) return parsed;
             }
             return analyzeTask(userMessage, history);
         }
@@ -267,9 +268,12 @@ Return exactly this JSON structure:
             { role: 'user', content: userMessage }
         ]);
 
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            const analysis = JSON.parse(jsonMatch[0]);
+        // A greedy `/\{[\s\S]*\}/` reached for the LAST brace in the reply, so a
+        // model that added one sentence after its JSON produced
+        // «Unexpected non-whitespace character after JSON» on every single run
+        // and the analysis was silently discarded.
+        const analysis = parseFirstJson<any>(responseText);
+        if (analysis) {
             return { ...analysis, estimatedTokens: userMessage.length * 10 };
         }
     } catch (err) {
