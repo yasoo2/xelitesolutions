@@ -877,6 +877,34 @@ Rules:
             // one built a THIRD copy of the app from scratch instead of
             // improving the one the session already had.
             const fixOrGrow = /(لا\s*يعمل|ما\s*(يشتغل|بيشتغل)|فيه\s*(مشكلة|خلل)|معطّ?ل|عطل|خطأ\s*في|غير\s*كاف|لا\s*يكفي|حوّ?له\s*إلى|طوّ?ره|حسّ?نه)|(not\s*working|does\s*not\s*work|doesn'?t\s*work|is\s*broken|not\s*sufficient|insufficient|not\s*enough|transform\s*it|turn\s*it\s*into|convert\s*it\s*into|improve\s*it|upgrade\s*it)/i.test(probe);
+            /**
+             * «أصلح ما تبقّى» — THE COMMAND THE DELIVERY MESSAGE OFFERS.
+             *
+             * When a build is handed over with defects still open, its message
+             * ends with «قل ‹أصلح ما تبقّى› وسأفتح المتصفّح على هذه بالذات».
+             * That sentence was a promise with nothing behind it until this
+             * route existed: the phrase fell through to the surgical editor,
+             * which asks a model to rewrite text it was never told about.
+             *
+             * It is deterministic on purpose — a repair that re-measures in a
+             * real browser needs no planning, only doing.
+             */
+            const repairRemaining = /(أصلح|اصلح|صلّ?ح)\s*(لي\s*)?(ما\s*)?(تبقّ?ى|بقي|المتبقّ?ي|الباقي|العيوب|الأعطال)/.test(probe)
+                || /\bfix\s+(what(?:'?s| is)\s+left|the\s+(rest|remaining|defects|blockers))\b/i.test(probe);
+            if (repairRemaining && !!projEntry) {
+                return {
+                    id: `projrepair_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_repair',
+                        description: `Re-audit and repair what is still broken in the active project`,
+                        tool: 'project_repair', agent: 'Dev',
+                        input: {}, dependsOn: [],
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
+
             if (projectNewer && (editIntent || fixOrGrow) && !(buildVerb && webNoun)) {
                 return {
                     id: `projedit_${Date.now()}`,

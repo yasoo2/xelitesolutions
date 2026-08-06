@@ -4,6 +4,7 @@ import { BrowserRunTool } from './definitions/BrowserRunTool';
 import { UiFixTool } from './definitions/UiFixTool';
 import { PageFixTool } from './definitions/PageFixTool';
 import { ProjectUndoTool } from './definitions/ProjectUndoTool';
+import { ProjectRepairTool } from './definitions/ProjectRepairTool';
 import { BrowserSummarizeTool, BrowserUIAuditTool, BrowserFillFormTool, BrowserCompareTool, BrowserExtractDataTool, BrowserCheckLinksTool, BrowserPerformanceTool, BrowserSEOAuditTool, BrowserConsoleScanTool, BrowserSavePdfTool, BrowserReadabilityTool, BrowserContrastAuditTool, BrowserA11yDeepTool, BrowserExtractMetaTool, BrowserTranslateTool, BrowserResponsiveCheckTool, BrowserFindTextTool, BrowserDesignTokensTool, BrowserClickTool, BrowserFullPageShotTool, BrowserSmartAgentTool, BrowserAutofixTool, BrowserConsentTool, BrowserSearchTool, BrowserOpenTool } from './definitions/BrowserSmartTools';
 import { GoogleAccountTool } from './definitions/GoogleAccountTool';
 import { UserBrowserTool } from './definitions/UserBrowserTool';
@@ -227,6 +228,7 @@ const baseTools: ToolDefinition[] = [
   // …and the same repair for a page Joe does NOT own: a live CSS patch.
   new PageFixTool(),
   new ProjectUndoTool(),
+  new ProjectRepairTool(),
   new BrowserFillFormTool(),
   new BrowserCompareTool(),
   new BrowserExtractDataTool(),
