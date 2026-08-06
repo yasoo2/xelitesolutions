@@ -278,6 +278,23 @@ export async function probeControls(page: any): Promise<{ controls: ControlResul
                     if (blocked) { controls.push({ label: c.label, kind: 'submit', worked: true, effect: 'validation' }); continue; }
                 }
                 await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => { });
+                /**
+                 * GIVE THE CONTROL A STATE IN WHICH IT COULD POSSIBLY SHOW.
+                 *
+                 * «إلى الأعلى» pressed while the page is already at the top does
+                 * nothing — not because the handler is missing, but because
+                 * there is nothing to undo. The integration sweep caught this as
+                 * a score going DOWN after a correct repair: making a mouse-only
+                 * tile keyboard-reachable exposed it to the probe, and the probe
+                 * then called a working button dead.
+                 *
+                 * A fair test puts the system where the behaviour can manifest.
+                 * A small nudge does that for anything scroll-driven and is
+                 * invisible to everything else.
+                 */
+                await page.evaluate(() => {
+                    if (document.documentElement.scrollHeight > window.innerHeight + 160) window.scrollBy(0, 120);
+                }).catch(() => { });
                 // Snapshot AFTER scrolling into view. Taken before, the audit's own
                 // scroll is indistinguishable from the click's effect, and a cart
                 // button that really did increment its badge was reported as

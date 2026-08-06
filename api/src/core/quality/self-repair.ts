@@ -97,9 +97,24 @@ export async function repairAndRebuild(
     for (const r of refused) say(`  ⚠️ ${r}`);
     if (!changed.length) return { ...empty, refused, skipped: 'all_refused' };
 
-    if (!fs.existsSync(path.join(dir, 'node_modules'))) {
-        // Nothing to rebuild with; the source is still correct on disk.
-        return { changed, refused, repairs: plan.repairs, built: true, reverted: false };
+    /**
+     * A MISSING node_modules IS NOT A REASON TO SKIP THE VERIFICATION.
+     *
+     * This used to return `built: true` without building anything whenever the
+     * packages were absent — which means a repair that broke the project would
+     * be written, reported as verified, and never caught. The integration sweep
+     * found it: node_modules deleted, the cycle answered «built», and nothing
+     * had run. The doctor exists precisely to install what is missing and then
+     * build, so the only honest skip left is a project with no build script.
+     */
+    let hasBuildScript = false;
+    try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'));
+        hasBuildScript = !!pkg?.scripts?.build;
+    } catch { /* no manifest — nothing to run */ }
+    if (!hasBuildScript) {
+        say('self-repair: no build script — the repaired source is on disk, unverified by a build');
+        return { changed, refused, repairs: plan.repairs, built: true, reverted: false, skipped: 'no_build_script' };
     }
 
     // Through the doctor: if this rebuild fails for a reason that has nothing

@@ -70,6 +70,13 @@ export async function auditBuiltApp(
 
     let browser: any = null;
     let borrowed = false;
+    /**
+     * Taking the listeners back off is not tidiness — it is correctness.
+     * A borrowed panel page lives for the whole session, so a listener left
+     * behind by an audit that threw is still counting console errors from
+     * whatever the user browses next, and the audit after it inherits them.
+     */
+    let detach: () => void = () => { /* nothing hooked yet */ };
     try {
         /**
          * THE AUDIT HAPPENS WHERE HE CAN SEE IT — «كيف بدنا نصلح المتصفح».
@@ -142,13 +149,22 @@ export async function auditBuiltApp(
         page.on('response', onResponse);
         // A borrowed panel page is long-lived: its listeners must not pile up
         // one audit at a time.
-        const unhook = () => {
-            try { page.off('pageerror', onPageError); page.off('console', onConsole); page.off('response', onResponse); }
-            catch { /* the page may already be gone */ }
-        };
+        // The real unhook is installed below, once every listener exists; this
+        // keeps the reference in scope for the `finally` that must run it even
+        // when the audit throws halfway through.
+        const unhook = () => detach();
         // A page that pops a confirm() would hang the audit the moment a button
-        // is pressed — and buttons are pressed now.
-        page.on('dialog', (d: any) => d.dismiss().catch(() => { }));
+        // is pressed — and buttons are pressed now. Named, because on a BORROWED
+        // panel page an anonymous listener is one that can never be taken off,
+        // and the panel outlives every audit that touches it.
+        const onDialog = (d: any) => d.dismiss().catch(() => { });
+        page.on('dialog', onDialog);
+        detach = () => {
+            try {
+                page.off('pageerror', onPageError); page.off('console', onConsole);
+                page.off('response', onResponse); page.off('dialog', onDialog);
+            } catch { /* the page may already be gone */ }
+        };
         await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
 
         // The declared webfont must actually LOAD — a stack that names Cairo
@@ -334,6 +350,9 @@ export async function auditBuiltApp(
     } catch (e: any) {
         return { skipped: `browser failed (${String(e?.message || e).slice(0, 80)})`, score: 0, findings: [] };
     } finally {
+        // Whatever happened — clean return, throw, or timeout — the panel page
+        // goes back to the user with no listeners of ours left on it.
+        detach();
         // Only a browser WE launched is ours to close — closing the panel's
         // would take his own browser down with the audit.
         if (!borrowed) { try { await browser?.close(); } catch { /* already gone */ } }

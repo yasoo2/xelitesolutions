@@ -70,8 +70,12 @@ async function main() {
     // nothing would let every assertion below pass while testing air.
     const marker = (pristine.match(/<main[^>]*>/) || [])[0] || '';
     check('نقطة الحقن موجودة فعلاً في المشروع المُولَّد', !!marker, pristine.slice(0, 120));
+    // A link that is really a button wearing the wrong tag — the only dead link
+    // this repair may touch. A placeholder with no handler is deliberately left
+    // alone now: converting it produced a dead BUTTON, and the audit measured
+    // the cost of that trade at 92 → 84.
     fs.writeFileSync(shell, pristine.replace(marker, `${marker}
-        <a href="#" className="btn">رابط ميت</a>
+        <a href="#" className="btn" onClick={(e) => { e.currentTarget.textContent = 'تمّ'; }}>زرّ متنكّر</a>
         <div className="tile" onClick={() => window.scrollTo(0, 0)}>إلى الأعلى</div>`), 'utf-8');
     check('وكُسر المشروع عمداً', fs.readFileSync(shell, 'utf-8') !== pristine);
 
@@ -84,7 +88,9 @@ async function main() {
     check('ولم تُرجَع التعديلات', cycle.reverted === false);
 
     const now = fs.readFileSync(shell, 'utf-8');
-    check('الرابط الميت صار زراً حقيقياً', !/href="#"/.test(now), (now.match(/href="[^"]*"/g) || []).join(' '));
+    check('الرابط الذي يحمل معالجاً صار زراً حقيقياً',
+        /<button type="button" className="btn" onClick=/.test(now) && !/href="#"/.test(now),
+        (now.match(/<(?:a|button)[^\n]*زرّ متنكّر/) || [''])[0]);
     check('والعنصر النقري صار تصله لوحة المفاتيح', /tabIndex=\{0\}/.test(now));
     check('و dist أُعيد بناؤه فعلاً', fs.existsSync(path.join(dir, 'dist', 'index.html'))
         && fs.statSync(path.join(dir, 'dist', 'index.html')).mtimeMs > 0);
@@ -96,8 +102,11 @@ async function main() {
     // exactly why the cycle runs one.
     const poison = path.join(dir, 'src', 'components', 'Poison.jsx');
     fs.mkdirSync(path.dirname(poison), { recursive: true });
+    // It also carries something repairable, so the cycle really reaches the
+    // rebuild — a file with nothing to fix would stop before it, and the revert
+    // path would never be exercised.
     fs.writeFileSync(poison, 'import missing from "./nope-does-not-exist.js";\n'
-        + 'export default function Poison(){ return (<a href="#">{String(missing)}</a>); }\n', 'utf-8');
+        + 'export default function Poison(){ return (<a href="#" onClick={() => console.log(missing)}>سام</a>); }\n', 'utf-8');
     const withPoison = fs.readFileSync(shell, 'utf-8');
     const marker2 = (withPoison.match(/<main[^>]*>/) || [])[0] || '';
     fs.writeFileSync(shell, `import Poison from './components/Poison.jsx';\n`

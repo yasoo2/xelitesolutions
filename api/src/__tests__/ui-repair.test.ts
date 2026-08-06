@@ -56,9 +56,26 @@ describe('the JSX fixers survive real JSX', () => {
         expect(repairImagesAlt(has).text).toBe(has);
     });
 
-    it('dead links become real buttons, opening AND closing together', () => {
-        const r = repairDeadLinks('<a href="#" className="btn">اضغط</a><a href="/real">حقيقي</a>');
-        expect(r.text).toBe('<button type="button" className="btn">اضغط</button><a href="/real">حقيقي</a>');
+    /**
+     * This used to convert EVERY href="#" into a <button>, on the standard
+     * advice that a control which does not navigate is a button. The day the
+     * audit began pressing controls, the price showed up as a measurement:
+     * 92 → 85. One finding had been traded for a worse one — a dead link became
+     * a dead BUTTON — and the report called it a repair.
+     */
+    it('a link that already has a handler becomes the button it always was', () => {
+        const r = repairDeadLinks('<a href="#" className="btn" onClick={go}>اضغط</a><a href="/real">حقيقي</a>');
+        expect(r.text).toBe('<button type="button" className="btn" onClick={go}>اضغط</button><a href="/real">حقيقي</a>');
+        expect(r.repairs[0]).toMatchObject({ id: 'dead_links', count: 1 });
+    });
+
+    it('and a placeholder with no handler is left alone, not turned into a dead button', () => {
+        const src = '<a href="#" className="btn">اضغط</a>';
+        const r = repairDeadLinks(src);
+        expect(r.text).toBe(src);
+        // …and it is not claimed as a repair either: the audit still reports it,
+        // where it belongs — «ما زال قائماً، يحتاج قراراً منك».
+        expect(r.repairs).toEqual([]);
     });
 
     it('only the first h1 stays, and prose in a comment is not an element', () => {
@@ -81,7 +98,7 @@ describe('a whole project, in one pass', () => {
             'index.html': '<html><head></head><body></body></html>',
             'src/App.jsx': 'export default function App(){return (<div>'
                 + '<img src="/a.png" />'
-                + '<a href="#" onClickCapture={undefined}>x</a>'
+                + '<a href="#" onClick={go}>x</a>'
                 + '</div>);}',
             'src/styles/app.css': 'body{}',
         };

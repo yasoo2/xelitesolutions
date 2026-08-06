@@ -209,22 +209,51 @@ export function repairInputLabels(code: string): RepairedFile {
  * counting `</a>` from the top of the file closes anchors nobody converted.
  */
 export function repairDeadLinks(code: string): RepairedFile {
+    let text = String(code || '');
     let count = 0;
-    const text = String(code || '').replace(
-        /<a\b([^>]*?)>((?:(?!<\/?a\b)[\s\S])*?)<\/a>/g,
-        (whole, attrs: string, body: string, offset: number, full: string) => {
-            // An opening tag carrying an arrow function is not safely readable
-            // by this pattern; leave it exactly as it is rather than guess.
-            if (attrs.includes('=>')) return whole;
-            if (insideComment(full, offset)) return whole;   // prose, not markup
-            if (!/href=(["'])\s*#?\s*\1/.test(attrs)) return whole;
-            count++;
-            const stripped = attrs.replace(/\s*href=(["'])\s*#?\s*\1/, '');
-            return `<button type="button"${stripped}>${body}</button>`;
-        },
-    );
+    let leftAlone = 0;
+    /**
+     * The tag is read with the brace-aware reader rather than a regex. `[^>]*?`
+     * stops at the first `>` — and `onClick={() => window.print()}` contains
+     * one, inside the arrow. The integration sweep caught exactly that: the one
+     * link that SHOULD have become a button was the one the pattern could not
+     * see, because it carried the handler that qualified it.
+     */
+    for (const at of tagPositions(text, 'a')) {          // reversed: edits do not shift
+        const span = tagSpan(text, at);
+        if (!/href=(["'])\s*#?\s*\1/.test(span)) continue;
+        /**
+         * A DEAD LINK MUST NOT BECOME A DEAD BUTTON.
+         *
+         * The standard advice — «if it does not navigate, it is a button» —
+         * assumes the button DOES something. This repair used to apply it
+         * unconditionally, and the day the audit began pressing controls the
+         * cost showed up as a number: 92 → 85. One finding, `dead_links`, had
+         * been traded for a worse one, `dead_controls`, and the report called
+         * the trade a repair.
+         *
+         * So the conversion now happens only where it is true: an anchor that
+         * already carries a click handler really is a button wearing the wrong
+         * tag. A placeholder with no handler and no destination is not something
+         * this code can invent an answer for — it is left exactly as it is, and
+         * the audit keeps naming it for the person who knows where it should go.
+         */
+        if (!/\bonClick\s*=/.test(span)) { leftAlone++; continue; }
+        const open = at + span.length;
+        const close = text.indexOf('</a>', open);
+        if (close === -1) { leftAlone++; continue; }
+        const body = text.slice(open, close);
+        if (/<a\b/.test(body)) { leftAlone++; continue; }        // nested anchors: not ours to reshape
+        const attrs = span.slice(2, -1).replace(/\s*href=(["'])\s*#?\s*\1/, '');
+        text = text.slice(0, at) + `<button type="button"${attrs}>` + body + '</button>' + text.slice(close + 4);
+        count++;
+    }
     const repairs: Repair[] = [];
-    add(repairs, 'dead_links', 'حوّلتُ الروابط الميتة (href فارغ أو #) إلى أزرار حقيقية', count);
+    add(repairs, 'dead_links', 'حوّلتُ الروابط التي تحمل معالج نقر إلى أزرار حقيقية (كانت روابط بلا وجهة)', count);
+    // What was left alone is NOT listed as a repair — it is not one. The audit
+    // still reports `dead_links`, and it lands where it belongs: «ما زال قائماً
+    // — يحتاج قراراً منك».
+    void leftAlone;
     return { text, repairs };
 }
 
