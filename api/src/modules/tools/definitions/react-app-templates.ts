@@ -18,6 +18,7 @@
  * program, and `vite build` proves it.
  */
 import type { AppBlueprint } from '../../../core/design/app-blueprints';
+import { ROLES } from '../../../core/design/roles';
 
 /** Escape for a JS single-quoted literal inside generated source. */
 const q = (s: string) => String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
@@ -94,13 +95,19 @@ const ENGINE_COMPONENT: Record<AppBlueprint['engine'], string> = {
     shop: 'ShopApp',
 };
 
-export function fileAppShellJsx(bp: AppBlueprint, isAr: boolean, hasTables = false): string {
+export function fileAppShellJsx(bp: AppBlueprint, isAr: boolean, hasTables = false, hasApi = false): string {
     const C = ENGINE_COMPONENT[bp.engine];
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
+    const roleLabels = ROLES.map(r => `  ${r.key}: '${q(isAr ? r.ar : r.en)}',`).join('\n');
     return `import React, { useEffect, useState } from 'react';
 import ${C} from './components/${C}.jsx';
-${hasTables ? "import TablesAdmin from './components/TablesAdmin.jsx';\n" : ''}import { content } from './content.js';
+${hasTables ? "import TablesAdmin from './components/TablesAdmin.jsx';\n" : ''}${hasApi ? "import Accounts from './components/Accounts.jsx';\n" : ''}import { content } from './content.js';
 import { apiLogin, apiLogout, apiMe, getToken } from './app/store.js';
+
+/** What each role is CALLED, so the chip says «موظّف» and not «staff». */
+const ROLE_LABEL = {
+${roleLabels}
+};
 
 /**
  * SIGNING IN TO YOUR OWN SYSTEM.
@@ -143,6 +150,8 @@ function SignIn({ api }) {
       <div className="auth-chip">
         <span className="auth-dot" aria-hidden="true" />
         <span className="auth-who">{user.email}</span>
+        {/* A system a team uses must say WHICH member is looking. */}
+        <span className="auth-role">{ROLE_LABEL[user.role] || user.role}</span>
         <button type="button" onClick={() => { apiLogout(); setUser(null); }}>
           {${T('خروج', 'Sign out')}}
         </button>
@@ -153,14 +162,14 @@ function SignIn({ api }) {
   return (
     <>
       <button type="button" className="auth-open" onClick={() => setOpen(true)}>
-        {${T('دخول المالك', 'Owner sign-in')}}
+        {${T('تسجيل الدخول', 'Sign in')}}
       </button>
       {open ? (
         <div className="auth-back" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
           <form className="auth-card" onSubmit={submit}>
-            <b>{${T('دخول المالك', 'Owner sign-in')}}</b>
+            <b>{${T('تسجيل الدخول', 'Sign in')}}</b>
             <p className="auth-note">
-              {${T('بيانات الدخول ظهرت مرة واحدة عند بناء النظام. بدون تسجيل الدخول يعمل التطبيق محلياً فقط ولا يُحفظ على الخادم.', 'Your credentials were shown once when the system was built. Signed out, the app works locally only and nothing is saved on the server.')}}
+              {${T('حساب المالك ظهر مرة واحدة عند بناء النظام، وحسابات الفريق يصنعها المالك من شاشة «الحسابات والصلاحيات». بدون تسجيل الدخول يعمل التطبيق محلياً فقط ولا يُحفظ على الخادم.', 'The owner account was shown once when the system was built; team accounts are created by the owner from «Accounts and permissions». Signed out, the app works locally only and nothing is saved on the server.')}}
             </p>
             <label><span>{${T('البريد', 'Email')}}</span>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required />
@@ -215,7 +224,7 @@ export default function App() {
       </header>
       <main className="app-main">
         <${C} content={content} />
-${hasTables ? '        <TablesAdmin api={content.api} />\n' : ''}      </main>
+${hasTables ? '        <TablesAdmin api={content.api} />\n' : ''}${hasApi ? '        <Accounts api={content.api} />\n' : ''}      </main>
       <footer className="app-foot">
         <span>{content.brand}</span>
         <span className="dot">•</span>
@@ -426,11 +435,33 @@ export function download(name, text, type) {
  */
 const TOKEN_KEY = 'joe:auth:' + (typeof location !== 'undefined' ? location.pathname : '');
 
+/**
+ * AND WHICH ROLE THAT TOKEN CARRIES.
+ *
+ * A system a team uses has three kinds of person in it, and the screen must
+ * know which one is looking: an accountant who cannot write should not be
+ * shown an «add» button that will only ever answer 403. The role is kept
+ * beside the token and refreshed from the server on every mount, so a demotion
+ * reaches the screen without a sign-out.
+ */
+const ROLE_KEY = TOKEN_KEY + ':role';
+
 export function getToken() {
   try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; }
 }
-function setToken(t) {
-  try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch { /* private mode */ }
+export function getRole() {
+  try { return getToken() ? (localStorage.getItem(ROLE_KEY) || '') : ''; } catch { return ''; }
+}
+/** May the person at this screen change anything on the server? */
+export function canWriteNow() { const r = getRole(); return !!getToken() && r !== 'viewer'; }
+/** Is this the owner — the only one with an accounts screen? */
+export function isOwnerNow() { return !!getToken() && getRole() === 'owner'; }
+
+function setToken(t, role) {
+  try {
+    if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY);
+    if (t && role) localStorage.setItem(ROLE_KEY, String(role)); else localStorage.removeItem(ROLE_KEY);
+  } catch { /* private mode */ }
   /**
    * AND THE REST OF THE PAGE HEARS IT.
    *
@@ -439,7 +470,7 @@ function setToken(t) {
    * the page said it would not. A token read once at mount is a token that
    * never changes.
    */
-  try { window.dispatchEvent(new CustomEvent('joe:auth', { detail: { signedIn: !!t } })); } catch { /* no window */ }
+  try { window.dispatchEvent(new CustomEvent('joe:auth', { detail: { signedIn: !!t, role: t ? String(role || '') : '' } })); } catch { /* no window */ }
 }
 const authHeaders = () => {
   const t = getToken();
@@ -457,12 +488,12 @@ export async function apiLogin(api, email, password) {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.token) return { ok: false, error: d.error || 'bad_credentials' };
-    setToken(d.token);
+    setToken(d.token, d.user && d.user.role);
     return { ok: true, user: d.user };
   } catch { return { ok: false, error: 'no_server' }; }
 }
 
-export function apiLogout() { setToken(''); }
+export function apiLogout() { setToken('', ''); }
 
 /** Is the token still good? A server restart invalidates nothing else visibly. */
 export async function apiMe(api) {
@@ -470,10 +501,78 @@ export async function apiMe(api) {
   if (!url || !getToken()) return null;
   try {
     const r = await fetch(url, { headers: { ...authHeaders() } });
-    if (!r.ok) { if (r.status === 401) setToken(''); return null; }
+    if (!r.ok) { if (r.status === 401) setToken('', ''); return null; }
     const d = await r.json().catch(() => null);
+    // The role is re-read HERE, not remembered: an owner who demoted somebody
+    // an hour ago must see that person's screen change on their next visit.
+    if (d && d.user && d.user.role !== getRole()) setToken(getToken(), d.user.role);
     return d && d.user ? d.user : null;
   } catch { return null; }
+}
+
+/**
+ * WHY THE SERVER SAID NO.
+ *
+ * Three refusals mean three different things and one of them is not an error
+ * at all: «sign in», «you may not write», «that row is not yours». A screen
+ * that shows the same sentence for all three teaches the wrong lesson.
+ */
+export function refusalOf(res) {
+  if (!res || res.ok) return '';
+  if (res.status === 401 || res.needsAuth) return 'auth';
+  if (res.error === 'read_only') return 'read_only';
+  if (res.error === 'not_your_row') return 'not_your_row';
+  if (res.status === 403) return 'forbidden';
+  return '';
+}
+
+// ── THE TEAM — the owner's own accounts screen ───────────────────────────────
+export async function apiUsers(api) {
+  const url = apiSibling(await resolvedApi(api), 'auth/users');
+  if (!url || !getToken()) return null;
+  try {
+    const r = await fetch(url, { headers: { ...authHeaders() } });
+    if (!r.ok) return null;
+    const d = await r.json().catch(() => null);
+    return d && Array.isArray(d.users) ? d.users : null;
+  } catch { return null; }
+}
+
+export async function apiAddUser(api, email, role) {
+  const url = apiSibling(await resolvedApi(api), 'auth/users');
+  if (!url) return { ok: false, error: 'no_server' };
+  try {
+    const r = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ email, role }),
+    });
+    const d = await r.json().catch(() => ({}));
+    // The generated password comes back exactly once, and this is the once.
+    return r.ok ? { ok: true, user: d.user, password: d.password || '' } : { ok: false, error: d.error || 'failed' };
+  } catch { return { ok: false, error: 'no_server' }; }
+}
+
+export async function apiSetRole(api, id, role) {
+  const url = apiSibling(await resolvedApi(api), 'auth/users');
+  if (!url) return { ok: false, error: 'no_server' };
+  try {
+    const r = await fetch(url + '/' + encodeURIComponent(id), {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ role }),
+    });
+    const d = await r.json().catch(() => ({}));
+    return r.ok ? { ok: true, user: d.user } : { ok: false, error: d.error || 'failed' };
+  } catch { return { ok: false, error: 'no_server' }; }
+}
+
+export async function apiRemoveUser(api, id) {
+  const url = apiSibling(await resolvedApi(api), 'auth/users');
+  if (!url) return { ok: false, error: 'no_server' };
+  try {
+    const r = await fetch(url + '/' + encodeURIComponent(id), { method: 'DELETE', headers: { ...authHeaders() } });
+    const d = await r.json().catch(() => ({}));
+    return r.ok ? { ok: true } : { ok: false, error: d.error || 'failed' };
+  } catch { return { ok: false, error: 'no_server' }; }
 }
 
 /**
@@ -559,7 +658,10 @@ function resourceOf(api) {
 export async function apiList(api) {
   if (!api) return null;
   try {
-    const r = await fetch(await resolvedApi(api), { headers: { Accept: 'application/json' } });
+    // The token goes WITH the read: an employee's list is his own rows, and
+    // the server can only scope it if it knows who is asking. A visitor sends
+    // nothing and still gets the whole shelf, which is the shop.
+    const r = await fetch(await resolvedApi(api), { headers: { Accept: 'application/json', ...authHeaders() } });
     if (!r.ok) return null;
     const d = await r.json();
     const named = resourceOf(api);
@@ -582,8 +684,12 @@ export async function apiCreate(api, row) {
       body: JSON.stringify(row),
     });
     // 401 is not «no server» — it is «you are not signed in», and the
-    // difference is the whole reason a row silently failed to save.
-    if (!r.ok) return { ok: false, status: r.status, needsAuth: r.status === 401 };
+    // difference is the whole reason a row silently failed to save. 403 is a
+    // third answer again: signed in, and not allowed.
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      return { ok: false, status: r.status, needsAuth: r.status === 401, error: (e && e.error) || '' };
+    }
     const d = await r.json().catch(() => ({}));
     // The catalogue route answers an "item", a generated table a "row".
     // Knowing only one of them meant the server's real id was never adopted,
@@ -627,7 +733,7 @@ export async function apiListOn(api, name) {
   const url = apiSibling(await resolvedApi(api), name);
   if (!url) return null;
   try {
-    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+    const r = await fetch(url, { headers: { Accept: 'application/json', ...authHeaders() } });
     if (!r.ok) return null;
     const d = await r.json();
     const rows = Array.isArray(d) ? d
@@ -715,7 +821,10 @@ export async function apiUpdate(api, id, patch) {
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(patch || {}),
     });
-    if (!r.ok) return { ok: false, status: r.status, needsAuth: r.status === 401 };
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      return { ok: false, status: r.status, needsAuth: r.status === 401, error: (e && e.error) || '' };
+    }
     const d = await r.json().catch(() => ({}));
     return { ok: true, item: d.item || d.row || null };
   } catch { return null; }
@@ -744,13 +853,29 @@ export async function apiDelete(api, id) {
 export function fileRecordsAppJsx(isAr: boolean): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useMemo, useState } from 'react';
-import { createStore, uid, todayISO, computeMetric, toCsv, download, apiList, apiCreate, apiUpdate, apiDelete, apiListOn, apiCreateOn, apiDeleteOn, pickImage, cardFor, imageOf } from '../app/store.js';
+import { createStore, uid, todayISO, computeMetric, toCsv, download, apiList, apiCreate, apiUpdate, apiDelete, apiListOn, apiCreateOn, apiDeleteOn, refusalOf, pickImage, cardFor, imageOf } from '../app/store.js';
 
 const blank = (fields) => {
   const d = {};
   for (const f of fields) d[f.key] = f.type === 'date' ? todayISO() : f.type === 'select' ? (f.options && f.options[0]) || '' : '';
   return d;
 };
+
+/**
+ * WHY THE SERVER REFUSED — in the words of the person it refused.
+ *
+ * There are three refusals now, not one. «Sign in» is right for a stranger and
+ * wrong for the accountant who IS signed in and may not write, and wronger
+ * still for the employee reaching for a colleague's row. A single sentence for
+ * all three sends the reader to fix the wrong thing.
+ */
+function whyLocal(sent) {
+  const code = refusalOf(sent);
+  if (code === 'read_only') return ${T('لم يُحفظ على الخادم — حسابك للاطّلاع فقط.', 'Not saved on the server — your account is read-only.')};
+  if (code === 'not_your_row') return ${T('لم يُحفظ — هذا الصف ليس لك.', 'Not saved — that row is not yours.')};
+  if (code === 'auth' || code === 'forbidden') return ${T('حُفظ محلياً فقط — سجّل الدخول لحفظه على الخادم.', 'Saved locally only — sign in to store it on the server.')};
+  return '';
+}
 
 export default function RecordsApp({ content }) {
   const store = useMemo(() => createStore(content.storeKey + ':rows'), [content.storeKey]);
@@ -835,7 +960,7 @@ export default function RecordsApp({ content }) {
     if (missing.length) { setParentError(${T('املأ الحقول المطلوبة: ', 'Required: ')} + missing.map(f => f.label).join('، ')); return; }
     setParentError('');
     const sent = await apiCreateOn(content.api, rel.resource, parentDraft);
-    if (sent && sent.needsAuth) setParentError(${T('حُفظ محلياً فقط — سجّل الدخول لحفظه على الخادم.', 'Saved locally only — sign in to store it on the server.')});
+    if (whyLocal(sent)) setParentError(whyLocal(sent));
     const id = sent && sent.ok && sent.item && sent.item.id ? String(sent.item.id) : uid();
     setParents([{ ...parentDraft, id }, ...parents]);
     setParentDraft(blank(rel.fields));
@@ -863,14 +988,14 @@ export default function RecordsApp({ content }) {
       setDraft(blank(fields));
       // …and on the server, or the edit was only ever true in this browser.
       const sent = await apiUpdate(content.api, editing, patch);
-      if (sent && sent.needsAuth) setError(${T('التعديل محليّ فقط — سجّل الدخول ليُحفظ على الخادم.', 'Edited locally only — sign in to save it on the server.')});
+      if (whyLocal(sent)) setError(whyLocal(sent));
       return;
     }
     const local = { ...draft, id: uid(), createdAt: new Date().toISOString() };
     setRows([local, ...rows]);
     setDraft(blank(fields));
     const sent = await apiCreate(content.api, local);
-    if (sent && sent.needsAuth) { setError(${T('حُفظ محلياً فقط — سجّل الدخول لحفظه على الخادم.', 'Saved locally only — sign in to store it on the server.')}); return; }
+    if (whyLocal(sent)) { setError(whyLocal(sent)); return; }
     // Adopt the server's id so a later edit or delete reaches the right row.
     if (sent && sent.ok && sent.item && sent.item.id) {
       const real = String(sent.item.id);
@@ -2092,6 +2217,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .auth-chip { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
 .auth-chip button { font-size: 11px; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
 .auth-who { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .8; }
+.auth-role { padding: 2px 8px; border-radius: 999px; background: var(--chip); border: 1px solid var(--line); font-size: 11px; white-space: nowrap; }
 .auth-dot { width: 7px; height: 7px; border-radius: 999px; background: #10b981; flex: none; }
 .auth-back { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 20px; background: rgba(2,6,23,.55); }
 .auth-card { width: min(380px, 100%); display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
@@ -2144,7 +2270,7 @@ export function fileTablesAdminJsx(model: any[], isAr: boolean): string {
     })));
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { apiListOn, apiCreateOn, apiDeleteOn, apiUpdateOn, getToken, pickImage, cardFor } from '../app/store.js';
+import { apiListOn, apiCreateOn, apiDeleteOn, apiUpdateOn, getToken, canWriteNow, pickImage, cardFor } from '../app/store.js';
 
 /** Which columns hold a picture — the same rule the server and the app use. */
 const IMAGE_COL = /(^|_)(image|photo|picture|img)$/;
@@ -2165,13 +2291,18 @@ function human(error, table) {
     return ${T('حقل مطلوب: ', 'Required field: ')} + ((f && f.label) || field);
   }
   if (e === 'no_server') return ${T('لا يمكن الوصول إلى الخادم.', 'The server cannot be reached.')};
+  // The three refusals of a system a team uses — three different sentences,
+  // because «it did not save» teaches nobody anything.
+  if (e === 'read_only') return ${T('حسابك للاطّلاع فقط — لا يملك صلاحية التغيير.', 'Your account is read-only — it may not change anything.')};
+  if (e === 'not_your_row') return ${T('هذا الصف ليس لك — لا يعدّله إلا صاحبه أو المالك.', 'That row is not yours — only its author or the owner may change it.')};
+  if (e === 'forbidden') return ${T('لا صلاحية لحسابك على هذا الإجراء.', 'Your account is not allowed to do that.')};
   if (e === 'save_failed' || e === 'unauthorized') {
-    return ${T('سجّل الدخول كمالك أولاً — الكتابة محميّة.', 'Sign in as the owner first — writing is protected.')};
+    return ${T('سجّل الدخول أولاً — الكتابة محميّة.', 'Sign in first — writing is protected.')};
   }
   return e;
 }
 
-function TableView({ api, table, parentRows }) {
+function TableView({ api, table, parentRows, mayWrite }) {
   const [rows, setRows] = useState([]);
   const [draft, setDraft] = useState({});
   const [error, setError] = useState('');
@@ -2183,6 +2314,18 @@ function TableView({ api, table, parentRows }) {
     setRows(Array.isArray(list) ? list : []);
   }, [api, table.key]);
   useEffect(() => { reload(); }, [reload]);
+  /**
+   * SIGNING IN CHANGES WHAT THIS LIST IS.
+   *
+   * An employee's list is his own rows, and the server scopes it by the token
+   * that arrives with the request. A list fetched before the sign-in is the
+   * anonymous one — the whole shelf — and it would sit there looking correct.
+   */
+  useEffect(() => {
+    const again = () => { reload(); };
+    window.addEventListener('joe:auth', again);
+    return () => window.removeEventListener('joe:auth', again);
+  }, [reload]);
 
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
 
@@ -2218,6 +2361,7 @@ function TableView({ api, table, parentRows }) {
         <span className="tbl-count">{rows.length}</span>
       </div>
 
+      {mayWrite ? (
       <form className="tbl-form" onSubmit={submit}>
         {table.fields.map((f) => (
           f.key === (table.belongsTo && table.belongsTo.key) ? (
@@ -2268,6 +2412,7 @@ function TableView({ api, table, parentRows }) {
           ) : null}
         </div>
       </form>
+      ) : null}
       {error ? <p className="tbl-error" role="alert">{error}</p> : null}
 
       {rows.length ? (
@@ -2277,7 +2422,7 @@ function TableView({ api, table, parentRows }) {
               <tr>
                 <th>#</th>
                 {table.fields.map((f) => <th key={f.key}>{f.label}</th>)}
-                <th aria-label={${T('إجراءات', 'actions')}}></th>
+                {mayWrite ? <th aria-label={${T('إجراءات', 'actions')}}></th> : null}
               </tr>
             </thead>
             <tbody>
@@ -2291,10 +2436,12 @@ function TableView({ api, table, parentRows }) {
                       ? (r[f.key] ? <img className="tbl-pic" src={String(r[f.key])} alt="" loading="lazy" /> : '—')
                       : String(r[f.key] ?? '')}</td>
                   ))}
+                  {mayWrite ? (
                   <td className="tbl-row-actions">
                     <button type="button" onClick={() => edit(r)}>{${T('تعديل', 'Edit')}}</button>
                     <button type="button" onClick={() => remove(r.id)}>{${T('حذف', 'Delete')}}</button>
                   </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -2315,9 +2462,16 @@ function TableView({ api, table, parentRows }) {
 export default function TablesAdmin({ api }) {
   const [active, setActive] = useState(TABLES[0] ? TABLES[0].key : '');
   const [parents, setParents] = useState({});
+  /**
+   * SIGNED IN IS NOT THE SAME AS ALLOWED.
+   *
+   * An accountant signs in and may not write a thing; the screen must say so
+   * instead of offering buttons that can only answer 403.
+   */
   const [signedIn, setSignedIn] = useState(() => !!getToken());
+  const [mayWrite, setMayWrite] = useState(() => canWriteNow());
   useEffect(() => {
-    const sync = () => setSignedIn(!!getToken());
+    const sync = () => { setSignedIn(!!getToken()); setMayWrite(canWriteNow()); };
     window.addEventListener('joe:auth', sync);
     window.addEventListener('storage', sync);
     return () => { window.removeEventListener('joe:auth', sync); window.removeEventListener('storage', sync); };
@@ -2344,9 +2498,11 @@ export default function TablesAdmin({ api }) {
   return (
     <section className="admin-tables">
       <h2>${isAr ? 'إدارة النظام' : 'System administration'}</h2>
-      {signedIn ? null : (
-        <p className="tbl-note">{${T('القراءة متاحة للجميع؛ للإضافة والتعديل سجّل الدخول كمالك من الأعلى.', 'Anyone can read; sign in as the owner above to add or change anything.')}}</p>
-      )}
+      {!signedIn ? (
+        <p className="tbl-note">{${T('القراءة متاحة للجميع؛ للإضافة والتعديل سجّل الدخول من الأعلى.', 'Anyone can read; sign in above to add or change anything.')}}</p>
+      ) : !mayWrite ? (
+        <p className="tbl-note">{${T('حسابك للاطّلاع فقط — ترى كل شيء ولا تغيّر شيئاً.', 'Your account is read-only — you see everything and change nothing.')}}</p>
+      ) : null}
       <div className="tbl-tabs" role="tablist">
         {TABLES.map((t) => (
           <button
@@ -2361,11 +2517,236 @@ export default function TablesAdmin({ api }) {
         key={table.key}
         api={api}
         table={table}
+        mayWrite={mayWrite}
         parentRows={table.belongsTo ? (parents[table.belongsTo.entity] || []) : []}
       />
     </section>
   );
 }
+`;
+}
+
+/**
+ * «نظام يستعمله فريق» — THE OWNER'S ACCOUNTS SCREEN.
+ *
+ * The server has known three roles since this batch; without this screen the
+ * only way to use them would be curl, and a business owner does not own curl.
+ * It renders for the owner ONLY — and not because hiding it is security (the
+ * server answers 403 to everybody else regardless), but because a button that
+ * can only fail is a lie about what the screen can do.
+ */
+export function fileAccountsJsx(isAr: boolean): string {
+    const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
+    const roleRows = ROLES.map(r => `  { key: '${r.key}', label: '${q(isAr ? r.ar : r.en)}', note: '${q(isAr ? r.noteAr : r.noteEn)}' },`).join('\n');
+    return `import React, { useEffect, useState } from 'react';
+import { apiUsers, apiAddUser, apiSetRole, apiRemoveUser, isOwnerNow } from '../app/store.js';
+
+/** The three roles the server knows — same names, same order, one source. */
+const ROLES = [
+${roleRows}
+];
+
+const REFUSALS = {
+  last_owner: ${T('لا يمكن ترك النظام بلا مالك.', 'A system cannot be left with no owner.')},
+  cannot_delete_self: ${T('لا تستطيع حذف حسابك أنت.', 'You cannot delete your own account.')},
+  email_taken: ${T('هذا البريد مستعمل في حساب آخر.', 'That email already belongs to an account.')},
+  bad_email: ${T('البريد غير صالح.', 'That is not a valid email.')},
+  bad_role: ${T('دور غير معروف.', 'Unknown role.')},
+  forbidden: ${T('هذه الشاشة للمالك وحده.', 'This screen is the owner’s only.')},
+  no_server: ${T('لا يمكن الوصول إلى الخادم.', 'The server cannot be reached.')},
+};
+
+export default function Accounts({ api }) {
+  const [owner, setOwner] = useState(() => isOwnerNow());
+  const [users, setUsers] = useState([]);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('staff');
+  const [made, setMade] = useState(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // The role can change under this screen — a sign-in, a sign-out, or the
+  // owner demoting himself somewhere else. Listening beats reading once.
+  useEffect(() => {
+    const sync = () => setOwner(isOwnerNow());
+    window.addEventListener('joe:auth', sync);
+    window.addEventListener('storage', sync);
+    return () => { window.removeEventListener('joe:auth', sync); window.removeEventListener('storage', sync); };
+  }, []);
+
+  const reload = async () => {
+    const list = await apiUsers(api);
+    setUsers(Array.isArray(list) ? list : []);
+  };
+  useEffect(() => { if (owner) reload(); else setUsers([]); }, [api, owner]);
+
+  if (!api || !owner) return null;
+
+  const say = (code) => REFUSALS[code] || ${T('تعذّر تنفيذ الطلب.', 'That did not work.')};
+
+  const add = async (e) => {
+    e.preventDefault();
+    setBusy(true); setError(''); setMade(null);
+    const r = await apiAddUser(api, email.trim(), role);
+    setBusy(false);
+    if (!r.ok) { setError(say(r.error)); return; }
+    // Shown ONCE — the server keeps only a scrypt hash of it.
+    setMade({ email: r.user.email, password: r.password });
+    setEmail('');
+    reload();
+  };
+
+  const change = async (u, next) => {
+    setError('');
+    const r = await apiSetRole(api, u.id, next);
+    if (!r.ok) { setError(say(r.error)); return; }
+    reload();
+  };
+
+  const remove = async (u) => {
+    const sure = window.confirm(${T('حذف حساب ', 'Delete the account ')} + u.email + '؟');
+    if (!sure) return;
+    setError('');
+    const r = await apiRemoveUser(api, u.id);
+    if (!r.ok) { setError(say(r.error)); return; }
+    reload();
+  };
+
+  return (
+    <section className="accounts">
+      <h2>{${T('الحسابات والصلاحيات', 'Accounts and permissions')}}</h2>
+      <ul className="role-legend">
+        {ROLES.map((r) => (
+          <li key={r.key}><b>{r.label}</b> — {r.note}</li>
+        ))}
+      </ul>
+
+      <form className="acc-form" onSubmit={add}>
+        <label className="acc-field">
+          <span>{${T('بريد الحساب الجديد', 'New account’s email')}}</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
+            placeholder="name@example.com" autoComplete="off" />
+        </label>
+        <label className="acc-field">
+          <span>{${T('الدور', 'Role')}}</span>
+          <select value={role} onChange={(e) => setRole(e.target.value)}>
+            {ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+          </select>
+        </label>
+        <button type="submit" className="primary" disabled={busy}>
+          {busy ? ${T('جارٍ…', 'Working…')} : ${T('أنشئ الحساب', 'Create account')}}
+        </button>
+      </form>
+
+      {made ? (
+        <div className="acc-made" role="status">
+          <b>{${T('كلمة المرور تظهر مرة واحدة — انسخها الآن:', 'The password is shown once — copy it now:')}}</b>
+          <code>{made.email}</code>
+          <code>{made.password}</code>
+          <p>{${T('لم تُحفظ في أي مكان — الخادم يحمل بصمتها فقط، ولا يمكن استرجاعها.', 'It is stored nowhere — the server keeps only its hash, and it cannot be read back.')}}</p>
+          <button type="button" onClick={() => setMade(null)}>{${T('أخفِها', 'Hide')}}</button>
+        </div>
+      ) : null}
+
+      {error ? <p className="acc-error">{error}</p> : null}
+
+      {users.length ? (
+        <div className="acc-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>{${T('البريد', 'Email')}}</th>
+                <th>{${T('الدور', 'Role')}}</th>
+                <th>{${T('إجراءات', 'Actions')}}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id}>
+                  <td>{u.email}</td>
+                  <td>
+                    <select value={u.role} onChange={(e) => change(u, e.target.value)}
+                      aria-label={${T('دور ', 'Role of ')} + u.email}>
+                      {ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <button type="button" className="danger" onClick={() => remove(u)}>
+                      {${T('حذف', 'Delete')}}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="acc-empty">{${T('لا حسابات بعد غير حسابك.', 'No accounts yet besides your own.')}}</p>
+      )}
+    </section>
+  );
+}
+`;
+}
+
+/** The accounts screen's styles — the same quiet surface as the tables. */
+export function fileAccountsCss(): string {
+    return `
+/* ── accounts and permissions ──────────────────────────────────────────── */
+.accounts {
+  max-width: var(--maxw, 1180px); margin: 32px auto 0; padding: 0 16px 8px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.accounts > h2 { margin: 0; font-size: 20px; }
+.role-legend { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 6px; }
+.role-legend li { color: var(--muted); font-size: 14px; line-height: 1.7; }
+.role-legend b { color: var(--text); }
+.acc-form {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+  background: var(--card, #fff); border: 1px solid var(--line, #e5e5e5);
+  border-radius: var(--radius, 12px); padding: 16px;
+}
+.acc-field { display: flex; flex-direction: column; gap: 4px; min-width: 200px; flex: 1 1 200px; }
+.acc-field span { font-size: 13px; color: var(--muted); }
+.acc-field input, .acc-field select {
+  min-height: 44px; padding: 8px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 15px;
+}
+.acc-form button {
+  min-height: 44px; padding: 8px 18px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 15px;
+}
+.acc-form .primary { background: var(--brand); color: #fff; border-color: transparent; }
+.acc-made {
+  display: flex; flex-direction: column; gap: 8px; padding: 14px 16px;
+  border: 1px solid var(--brand); border-radius: var(--radius, 12px); background: var(--chip);
+}
+.acc-made code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px;
+  padding: 8px 10px; border-radius: 8px; background: var(--card); border: 1px solid var(--line);
+  overflow-wrap: anywhere; direction: ltr; text-align: start;
+}
+.acc-made p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.7; }
+.acc-made button {
+  align-self: flex-start; min-height: 44px; padding: 6px 16px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 14px;
+}
+.acc-error { margin: 0; color: #96271b; font-size: 14px; }
+[data-theme="dark"] .acc-error { color: #ff9f93; }
+.acc-empty { margin: 0; color: var(--muted); font-size: 14px; }
+.acc-scroll { overflow-x: auto; }
+.acc-scroll table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.acc-scroll th, .acc-scroll td { padding: 10px; text-align: start; border-bottom: 1px solid var(--line); }
+.acc-scroll th { color: var(--muted); font-weight: 600; }
+.acc-scroll select {
+  min-height: 44px; padding: 6px 10px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 14px;
+}
+.acc-scroll .danger {
+  min-height: 44px; padding: 6px 14px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--line); background: transparent; color: #96271b; font-size: 14px;
+}
+[data-theme="dark"] .acc-scroll .danger { color: #ff9f93; }
 `;
 }
 
@@ -2438,13 +2819,17 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         'index.html': fileAppIndexHtml(bp, o),
         '.gitignore': 'node_modules\ndist\n',
         'src/main.jsx': fileAppMainJsx(),
-        'src/App.jsx': fileAppShellJsx(bp, o.isArabic, !!(o.model && o.model.length)),
+        'src/App.jsx': fileAppShellJsx(bp, o.isArabic, !!(o.model && o.model.length), !!o.api),
         'src/content.js': fileAppContentJs(bp, o),
         'src/app/store.js': fileAppStoreJs(),
         [enginePath]: engineSrc,
         ...(o.model && o.model.length ? { 'src/components/TablesAdmin.jsx': fileTablesAdminJsx(o.model, o.isArabic) } : {}),
+        // The accounts screen ships whenever there IS a server to have accounts
+        // on; it renders for the owner only, and returns null for everybody else.
+        ...(o.api ? { 'src/components/Accounts.jsx': fileAccountsJsx(o.isArabic) } : {}),
         'src/styles/app.css': fileAppCss() + (bp.engine === 'shop' ? fileShopCss() : '')
-            + (o.model && o.model.length ? fileTablesAdminCss() : ''),
+            + (o.model && o.model.length ? fileTablesAdminCss() : '')
+            + (o.api ? fileAccountsCss() : ''),
     };
 }
 

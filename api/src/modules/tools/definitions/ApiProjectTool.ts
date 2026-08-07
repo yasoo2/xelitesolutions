@@ -26,6 +26,7 @@ import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
+import { ROLES, describeRoles } from '../../../core/design/roles';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
 
@@ -569,6 +570,7 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
     conn.exec(\`CREATE TABLE IF NOT EXISTS ${resource} (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       \${COLS.map((c) => \`\${c.key} \${sqlType(c)} \${sqlDefault(c)}\`).join(',\\n      ')},
+      owner_id INTEGER DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     )\`);
     // An existing database from an older build has no link column — add it
@@ -577,22 +579,31 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
       try { conn.exec(\`ALTER TABLE ${resource} ADD COLUMN \${c.key} \${sqlType(c)} \${sqlDefault(c)}\`); }
       catch { /* the column is already there — the normal case */ }
     }
+    // WHOSE ROW THIS IS. A database written before this system had a team has
+    // no such column; every row in it stays the house's, which is the owner's.
+    try { conn.exec('ALTER TABLE ${resource} ADD COLUMN owner_id INTEGER DEFAULT NULL'); }
+    catch { /* already there — the normal case */ }
     const rowOf = (r) => {
       if (!r) return null;
       const out = { id: r.id };
       for (const k of KEYS) out[k] = r[k];
+      out.owner_id = r.owner_id ?? null;
       out.created_at = r.created_at;
       return out;
     };
     db = {
       backend: 'sqlite',
       columns: COLS,
-      list: () => conn.prepare('SELECT * FROM ${resource} ORDER BY id DESC LIMIT 500').all().map(rowOf),
+      list: (ownerId) => (ownerId === undefined || ownerId === null
+        ? conn.prepare('SELECT * FROM ${resource} ORDER BY id DESC LIMIT 500').all()
+        : conn.prepare('SELECT * FROM ${resource} WHERE owner_id = ? ORDER BY id DESC LIMIT 500').all(Number(ownerId))
+      ).map(rowOf),
       get: (id) => rowOf(conn.prepare('SELECT * FROM ${resource} WHERE id = ?').get(Number(id))),
-      create: (body) => {
+      create: (body, ownerId) => {
         const r = conn.prepare(
-          'INSERT INTO ${resource} (' + KEYS.join(', ') + ') VALUES (' + KEYS.map(() => '?').join(', ') + ')',
-        ).run(...COLS.map((c) => cast(c, (body || {})[c.key])));
+          'INSERT INTO ${resource} (' + KEYS.concat('owner_id').join(', ') + ') VALUES ('
+          + KEYS.concat('owner_id').map(() => '?').join(', ') + ')',
+        ).run(...COLS.map((c) => cast(c, (body || {})[c.key])), ownerId === undefined || ownerId === null ? null : Number(ownerId));
         return db.get(r.lastInsertRowid);
       },
       update: (id, patch) => {
@@ -644,28 +655,44 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
     };
     db.setPassword = (id, salt, hash) =>
       conn.prepare('UPDATE users SET salt = ?, hash = ? WHERE id = ?').run(String(salt), String(hash), Number(id)).changes > 0;
+    // ── THE TEAM ───────────────────────────────────────────────────────────
+    // Salt and hash never leave this file. The accounts screen shows who
+    // exists, not what would let somebody become them.
+    db.listUsers = () => conn.prepare('SELECT id, email, role, created_at FROM users ORDER BY id').all()
+      .map((u) => ({ id: u.id, email: u.email, role: u.role, created_at: u.created_at }));
+    db.setRole = (id, role) => conn.prepare('UPDATE users SET role = ? WHERE id = ?').run(String(role), Number(id)).changes > 0;
+    db.removeUser = (id) => conn.prepare('DELETE FROM users WHERE id = ?').run(Number(id)).changes > 0;
+    db.countOwners = () => Number(conn.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'owner'").get().n);
 
     // ── the parent table, when this system has one ──────────────────────────
     if (REL) {
       conn.exec(\`CREATE TABLE IF NOT EXISTS \${REL.resource} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         \${REL_COLS.map((c) => \`\${c.key} \${sqlType(c)} \${sqlDefault(c)}\`).join(',\\n        ')},
+        owner_id INTEGER DEFAULT NULL,
         created_at TEXT DEFAULT (datetime('now'))
       )\`);
+      try { conn.exec('ALTER TABLE ' + REL.resource + ' ADD COLUMN owner_id INTEGER DEFAULT NULL'); }
+      catch { /* already there — the normal case */ }
       const prowOf = (r) => {
         if (!r) return null;
         const out = { id: r.id };
         for (const k of REL_KEYS) out[k] = r[k];
+        out.owner_id = r.owner_id ?? null;
         out.created_at = r.created_at;
         return out;
       };
       db.rel = {
-        list: () => conn.prepare('SELECT * FROM ' + REL.resource + ' ORDER BY id DESC LIMIT 500').all().map(prowOf),
+        list: (ownerId) => (ownerId === undefined || ownerId === null
+          ? conn.prepare('SELECT * FROM ' + REL.resource + ' ORDER BY id DESC LIMIT 500').all()
+          : conn.prepare('SELECT * FROM ' + REL.resource + ' WHERE owner_id = ? ORDER BY id DESC LIMIT 500').all(Number(ownerId))
+        ).map(prowOf),
         get: (id) => prowOf(conn.prepare('SELECT * FROM ' + REL.resource + ' WHERE id = ?').get(Number(id))),
-        create: (body) => {
+        create: (body, ownerId) => {
           const r = conn.prepare(
-            'INSERT INTO ' + REL.resource + ' (' + REL_KEYS.join(', ') + ') VALUES (' + REL_KEYS.map(() => '?').join(', ') + ')',
-          ).run(...REL_COLS.map((c) => cast(c, (body || {})[c.key])));
+            'INSERT INTO ' + REL.resource + ' (' + REL_KEYS.concat('owner_id').join(', ') + ') VALUES ('
+            + REL_KEYS.concat('owner_id').map(() => '?').join(', ') + ')',
+          ).run(...REL_COLS.map((c) => cast(c, (body || {})[c.key])), ownerId === undefined || ownerId === null ? null : Number(ownerId));
           return db.rel.get(r.lastInsertRowid);
         },
         update: (id, patch) => {
@@ -699,12 +726,15 @@ if (!db) {
   db = {
     backend: 'json',
     columns: COLS,
-    list: () => load().rows.slice().reverse().slice(0, 500),
+    list: (ownerId) => load().rows.slice().reverse()
+      .filter((r) => ownerId === undefined || ownerId === null || Number(r.owner_id) === Number(ownerId))
+      .slice(0, 500),
     get: (id) => load().rows.find((r) => r.id === Number(id)) || null,
-    create: (body) => {
+    create: (body, ownerId) => {
       const s = load();
       const row = { id: ++s.seq };
       for (const c of COLS) row[c.key] = cast(c, (body || {})[c.key]);
+      row.owner_id = ownerId === undefined || ownerId === null ? null : Number(ownerId);
       row.created_at = new Date().toISOString();
       s.rows.push(row);
       save(s);
@@ -754,15 +784,36 @@ if (!db) {
       save(s);
       return true;
     },
+    // ── THE TEAM — the same four answers the SQLite backend gives ──────────
+    listUsers: () => (load().users || []).map((u) => ({ id: u.id, email: u.email, role: u.role, created_at: u.created_at })),
+    setRole: (id, role) => {
+      const s = load();
+      const u = (s.users || []).find((x) => x.id === Number(id));
+      if (!u) return false;
+      u.role = String(role);
+      save(s);
+      return true;
+    },
+    removeUser: (id) => {
+      const s = load();
+      const before = (s.users || []).length;
+      s.users = (s.users || []).filter((u) => u.id !== Number(id));
+      save(s);
+      return s.users.length < before;
+    },
+    countOwners: () => (load().users || []).filter((u) => u.role === 'owner').length,
   };
   if (REL) {
     db.rel = {
-      list: () => load().parents.slice().reverse().slice(0, 500),
+      list: (ownerId) => load().parents.slice().reverse()
+        .filter((p) => ownerId === undefined || ownerId === null || Number(p.owner_id) === Number(ownerId))
+        .slice(0, 500),
       get: (id) => load().parents.find((p) => p.id === Number(id)) || null,
-      create: (body) => {
+      create: (body, ownerId) => {
         const s = load();
         const row = { id: ++s.pseq };
         for (const c of REL_COLS) row[c.key] = cast(c, (body || {})[c.key]);
+        row.owner_id = ownerId === undefined || ownerId === null ? null : Number(ownerId);
         row.created_at = new Date().toISOString();
         s.parents.push(row);
         save(s);
@@ -892,21 +943,27 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
     for (const e of MODEL) {
       conn.exec('CREATE TABLE IF NOT EXISTS ' + e.key + ' (id INTEGER PRIMARY KEY AUTOINCREMENT, '
         + e.fields.map((f) => f.key + ' ' + sqlType(f) + ' ' + sqlDefault(f)).join(', ')
-        + ", created_at TEXT DEFAULT (datetime('now')))");
+        + ", owner_id INTEGER DEFAULT NULL, created_at TEXT DEFAULT (datetime('now')))");
       for (const f of e.fields) {
         try { conn.exec('ALTER TABLE ' + e.key + ' ADD COLUMN ' + f.key + ' ' + sqlType(f) + ' ' + sqlDefault(f)); }
         catch { /* already there — the normal case */ }
       }
+      // Whose row this is — added to databases written before the team existed.
+      try { conn.exec('ALTER TABLE ' + e.key + ' ADD COLUMN owner_id INTEGER DEFAULT NULL'); }
+      catch { /* already there — the normal case */ }
     }
     for (const e of MODEL) {
       const keys = e.fields.map((f) => f.key);
       tables[e.key] = {
         entity: e,
-        list: () => conn.prepare('SELECT * FROM ' + e.key + ' ORDER BY id DESC LIMIT 500').all(),
+        list: (ownerId) => (ownerId === undefined || ownerId === null
+          ? conn.prepare('SELECT * FROM ' + e.key + ' ORDER BY id DESC LIMIT 500').all()
+          : conn.prepare('SELECT * FROM ' + e.key + ' WHERE owner_id = ? ORDER BY id DESC LIMIT 500').all(Number(ownerId))),
         get: (id) => conn.prepare('SELECT * FROM ' + e.key + ' WHERE id = ?').get(Number(id)) || null,
-        create: (body) => {
-          const r = conn.prepare('INSERT INTO ' + e.key + ' (' + keys.join(', ') + ') VALUES ('
-            + keys.map(() => '?').join(', ') + ')').run(...e.fields.map((f) => cast(f, (body || {})[f.key])));
+        create: (body, ownerId) => {
+          const r = conn.prepare('INSERT INTO ' + e.key + ' (' + keys.concat('owner_id').join(', ') + ') VALUES ('
+            + keys.concat('owner_id').map(() => '?').join(', ') + ')')
+            .run(...e.fields.map((f) => cast(f, (body || {})[f.key])), ownerId === undefined || ownerId === null ? null : Number(ownerId));
           return tables[e.key].get(r.lastInsertRowid);
         },
         update: (id, patch) => {
@@ -936,13 +993,16 @@ if (!store) {
   for (const e of MODEL) {
     tables[e.key] = {
       entity: e,
-      list: () => (load().rows[e.key] || []).slice().reverse().slice(0, 500),
+      list: (ownerId) => (load().rows[e.key] || []).slice().reverse()
+        .filter((r) => ownerId === undefined || ownerId === null || Number(r.owner_id) === Number(ownerId))
+        .slice(0, 500),
       get: (id) => (load().rows[e.key] || []).find((r) => r.id === Number(id)) || null,
-      create: (body) => {
+      create: (body, ownerId) => {
         const s = load();
         s.rows[e.key] = s.rows[e.key] || []; s.seq[e.key] = s.seq[e.key] || 0;
         const row = { id: ++s.seq[e.key] };
         for (const f of e.fields) row[f.key] = cast(f, (body || {})[f.key]);
+        row.owner_id = ownerId === undefined || ownerId === null ? null : Number(ownerId);
         row.created_at = new Date().toISOString();
         s.rows[e.key].push(row);
         save(s);
@@ -979,40 +1039,58 @@ export function entityCounts() {
 }
 
 /**
- * Mounts /api/<entity> for every table: reading is public (a catalogue is
- * meant to be read), writing is the owner's business — exactly the rule the
- * primary collection already follows.
+ * Mounts /api/<entity> for every table.
+ *
+ * Reading is public — a catalogue is meant to be read, and a visitor with no
+ * account still sees the whole shelf. But a SIGNED-IN read is a different
+ * question: an employee asks «which of these are mine?», and the answer is
+ * scoped to the rows he wrote. Writing needs an account that may write, and
+ * an employee may only ever touch his own row: 403 «not_your_row», never a
+ * quiet success on somebody else's data.
+ *
+ * Every rule here comes from auth.js — this file decides nothing on its own.
  */
-export function mountEntities(app, requireAuth) {
+export function mountEntities(app, guards) {
+  const { requireAuth, optionalAuth, requireWrite, scopeOf, mayTouch } = guards;
   for (const key of Object.keys(store.tables)) {
     const t = store.tables[key];
-    app.get('/api/' + key, (_req, res) => res.json({ ok: true, [key]: t.list() }));
-    app.get('/api/' + key + '/:id', (req, res) => {
+    app.get('/api/' + key, optionalAuth, (req, res) => res.json({ ok: true, [key]: t.list(scopeOf(req)) }));
+    app.get('/api/' + key + '/:id', optionalAuth, (req, res) => {
       const row = t.get(req.params.id);
       if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
+      const mine = scopeOf(req);
+      if (mine !== null && Number(row.owner_id) !== Number(mine)) return res.status(404).json({ ok: false, error: 'not_found' });
       res.json({ ok: true, row });
     });
-    app.post('/api/' + key, requireAuth, (req, res) => {
+    app.post('/api/' + key, requireAuth, requireWrite, (req, res) => {
       const bad = validate(t.entity, req.body, store.tables);
       if (bad) return res.status(400).json({ ok: false, ...bad });
-      res.status(201).json({ ok: true, row: t.create(req.body) });
+      // The owner of a new row is the ACCOUNT that wrote it — never a value
+      // out of the body, which anyone could put there.
+      res.status(201).json({ ok: true, row: t.create(req.body, req.user.id) });
     });
-    app.put('/api/' + key + '/:id', requireAuth, (req, res) => {
-      const bad = validate(t.entity, { ...(t.get(req.params.id) || {}), ...(req.body || {}) }, store.tables);
+    app.put('/api/' + key + '/:id', requireAuth, requireWrite, (req, res) => {
+      const cur = t.get(req.params.id);
+      if (!cur) return res.status(404).json({ ok: false, error: 'not_found' });
+      if (!mayTouch(req, cur)) return res.status(403).json({ ok: false, error: 'not_your_row' });
+      const bad = validate(t.entity, { ...cur, ...(req.body || {}) }, store.tables);
       if (bad) return res.status(400).json({ ok: false, ...bad });
       const row = t.update(req.params.id, req.body);
       if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
       res.json({ ok: true, row });
     });
-    app.delete('/api/' + key + '/:id', requireAuth, (req, res) => {
+    app.delete('/api/' + key + '/:id', requireAuth, requireWrite, (req, res) => {
+      const cur = t.get(req.params.id);
+      if (!cur) return res.status(404).json({ ok: false, error: 'not_found' });
+      if (!mayTouch(req, cur)) return res.status(403).json({ ok: false, error: 'not_your_row' });
       if (!t.remove(req.params.id)) return res.status(404).json({ ok: false, error: 'not_found' });
       res.json({ ok: true });
     });
     // The children of one parent, as their own address.
     const rel = t.entity.belongsTo;
     if (rel) {
-      app.get('/api/' + rel.entity + '/:id/' + key, (req, res) => {
-        const rows = t.list().filter((r) => String(r[rel.key]) === String(Number(req.params.id)));
+      app.get('/api/' + rel.entity + '/:id/' + key, optionalAuth, (req, res) => {
+        const rows = t.list(scopeOf(req)).filter((r) => String(r[rel.key]) === String(Number(req.params.id)));
         res.json({ ok: true, [key]: rows });
       });
     }
@@ -1140,6 +1218,82 @@ export function requireAuth(req, res, next) {
   req.user = { id: user.id, email: user.email, role: user.role };
   next();
 }
+
+/**
+ * A TOKEN IF THERE IS ONE — and no 401 when there is not.
+ *
+ * The catalogue is public: a visitor must be able to read it without an
+ * account, and that must not change. But a SIGNED-IN request is a different
+ * question — «which of these rows are mine?» — and the answer needs to know
+ * who is asking. So reading routes take this instead of requireAuth: the
+ * anonymous visitor still gets the whole shelf, and an employee gets his own.
+ */
+export function optionalAuth(req, _res, next) {
+  const header = String(req.headers.authorization || '');
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (token) {
+    const claims = verifyToken(token);
+    const user = claims && db.userById(claims.sub);
+    if (user) req.user = { id: user.id, email: user.email, role: user.role };
+  }
+  next();
+}
+
+/**
+ * WHO MAY DO WHAT — once, for the whole system.
+ *
+ * The role is re-read from the database on every request (see requireAuth
+ * above), never trusted from the token alone: demoting somebody must take
+ * effect the moment you press the button, not twelve hours later when their
+ * token expires.
+ */
+export const ROLES = ${JSON.stringify(ROLES.map(r => ({
+        key: r.key, ar: r.ar, en: r.en, write: r.write, ownRowsOnly: r.ownRowsOnly, manageUsers: r.manageUsers,
+    })))};
+
+/** An unknown role is the LEAST privileged one, never the most. */
+const specOf = (role) => ROLES.find((r) => r.key === String(role || '').toLowerCase())
+  || ROLES.find((r) => r.key === 'viewer');
+
+export function canWrite(role) { return !!specOf(role).write; }
+export function ownRowsOnly(role) { return !!specOf(role).ownRowsOnly; }
+export function canManageUsers(role) { return !!specOf(role).manageUsers; }
+export function isRole(key) { return ROLES.some((r) => r.key === String(key || '').toLowerCase()); }
+
+/** The guard for a route only some roles may reach. */
+export function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ ok: false, error: 'auth_required' });
+    if (!roles.includes(req.user.role)) return res.status(403).json({ ok: false, error: 'forbidden', need: roles });
+    next();
+  };
+}
+
+/** Writing at all. A viewer is refused here, once, for every table there is. */
+export function requireWrite(req, res, next) {
+  if (!req.user) return res.status(401).json({ ok: false, error: 'auth_required' });
+  if (!canWrite(req.user.role)) return res.status(403).json({ ok: false, error: 'read_only' });
+  next();
+}
+
+/** Whose rows this request may see. \`null\` means everyone's. */
+export function scopeOf(req) {
+  return req.user && ownRowsOnly(req.user.role) ? req.user.id : null;
+}
+
+/**
+ * May this request TOUCH this row?
+ *
+ * A row with no owner_id was written before this system had a team — it is the
+ * house's row, and the house is the owner. An employee does not inherit it by
+ * accident.
+ */
+export function mayTouch(req, row) {
+  if (!req.user || !canWrite(req.user.role)) return false;
+  if (!ownRowsOnly(req.user.role)) return true;
+  if (!row || row.owner_id === null || row.owner_id === undefined || row.owner_id === '') return false;
+  return Number(row.owner_id) === Number(req.user.id);
+}
 `;
 }
 
@@ -1209,7 +1363,7 @@ const validateRel = (body, partial) => {
   return { value: out };
 };
 
-app.get('/api/${relation.resource}', (_req, res) => res.json({ ok: true, ${relation.resource}: db.rel.list() }));
+app.get('/api/${relation.resource}', optionalAuth, (req, res) => res.json({ ok: true, ${relation.resource}: db.rel.list(scopeOf(req)) }));
 
 app.get('/api/${relation.resource}/:id', (req, res) => {
   const row = db.rel.get(req.params.id);
@@ -1224,13 +1378,16 @@ app.get('/api/${relation.resource}/:id/${resource}', (req, res) => {
   res.json({ ok: true, parent, ${resource}: db.childrenOf(req.params.id) });
 });
 
-app.post('/api/${relation.resource}', requireAuth, (req, res) => {
+app.post('/api/${relation.resource}', requireAuth, requireWrite, (req, res) => {
   const { value, error } = validateRel(req.body, false);
   if (error) return res.status(400).json({ ok: false, error });
-  res.status(201).json({ ok: true, item: db.rel.create(value) });
+  res.status(201).json({ ok: true, item: db.rel.create(value, req.user.id) });
 });
 
-app.put('/api/${relation.resource}/:id', requireAuth, (req, res) => {
+app.put('/api/${relation.resource}/:id', requireAuth, requireWrite, (req, res) => {
+  const cur = db.rel.get(req.params.id);
+  if (!cur) return res.status(404).json({ ok: false, error: 'not_found' });
+  if (!mayTouch(req, cur)) return res.status(403).json({ ok: false, error: 'not_your_row' });
   const { value, error } = validateRel(req.body, true);
   if (error) return res.status(400).json({ ok: false, error });
   const row = db.rel.update(req.params.id, value);
@@ -1238,7 +1395,9 @@ app.put('/api/${relation.resource}/:id', requireAuth, (req, res) => {
   res.json({ ok: true, item: row });
 });
 
-app.delete('/api/${relation.resource}/:id', requireAuth, (req, res) => {
+app.delete('/api/${relation.resource}/:id', requireAuth, requireWrite, (req, res) => {
+  const parent = db.rel.get(req.params.id);
+  if (parent && !mayTouch(req, parent)) return res.status(403).json({ ok: false, error: 'not_your_row' });
   const kids = db.childrenOf(req.params.id).length;
   // Deleting the parent would leave every child pointing at nothing. The
   // owner is told exactly how many rows stand in the way.
@@ -1255,12 +1414,16 @@ function fileServerJsBody(resource: string, brand: string, dirName: string, rela
 //   npm start            (port 4100)
 //   PORT=5050 npm start  (any port)
 import express from 'express';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db } from './db.js';
 import { seed, seedOwner } from './seed.js';
-import { hashPassword, verifyPassword, signToken, requireAuth, throttleKey, isLocked, noteMiss, clearMisses, normalizeEmail } from './auth.js';
+import {
+  hashPassword, verifyPassword, signToken, requireAuth, throttleKey, isLocked, noteMiss, clearMisses, normalizeEmail,
+  optionalAuth, requireRole, requireWrite, scopeOf, mayTouch, isRole, ROLES,
+} from './auth.js';
 ${model.length ? "import { mountEntities, entityCounts } from './entities.js';" : ''}
 
 // THE LIVE BRIDGE to Joe: every new order is announced into the owner's
@@ -1354,6 +1517,67 @@ app.post('/api/auth/password', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ── THE TEAM ───────────────────────────────────────────────────────────────
+// A system with one account is a system for one person. These four routes are
+// how a business gets a counter clerk who cannot read the owner's rows and an
+// accountant who cannot change anything — without ever handing out the
+// owner's password, because a password is not a role.
+//
+// Only the owner reaches them: requireRole('owner') answers 403 to everybody
+// else, including a staff account that guessed the address.
+const ownerOnly = [requireAuth, requireRole('owner')];
+
+app.get('/api/auth/users', ...ownerOnly, (_req, res) =>
+  res.json({ ok: true, users: db.listUsers(), roles: ROLES }));
+
+app.post('/api/auth/users', ...ownerOnly, (req, res) => {
+  const { email, role, password } = req.body || {};
+  if (typeof email !== 'string' || email.indexOf('@') < 1 || email.length > 160) {
+    return res.status(400).json({ ok: false, error: 'bad_email' });
+  }
+  const want = String(role || 'staff').toLowerCase();
+  if (!isRole(want)) return res.status(400).json({ ok: false, error: 'bad_role' });
+  if (password !== undefined && (typeof password !== 'string' || password.length < 8 || password.length > 200)) {
+    return res.status(400).json({ ok: false, error: 'weak_password', message: 'at least 8 characters' });
+  }
+  const mail = normalizeEmail(email);
+  if (db.userByEmail(mail)) return res.status(409).json({ ok: false, error: 'email_taken' });
+  // No password given: one is MADE here and returned exactly once. It is
+  // stored only as a scrypt hash, so this response is the only time anybody
+  // — including the owner — will ever see it.
+  const pass = typeof password === 'string' ? password : crypto.randomBytes(9).toString('base64url');
+  const { salt, hash } = hashPassword(pass);
+  const user = db.createUser({ email: mail, salt, hash, role: want });
+  res.status(201).json({
+    ok: true,
+    user: { id: user.id, email: user.email, role: user.role },
+    password: typeof password === 'string' ? undefined : pass,
+  });
+});
+
+app.put('/api/auth/users/:id', ...ownerOnly, (req, res) => {
+  const target = db.userById(req.params.id);
+  if (!target) return res.status(404).json({ ok: false, error: 'not_found' });
+  const want = String((req.body || {}).role || '').toLowerCase();
+  if (!isRole(want)) return res.status(400).json({ ok: false, error: 'bad_role' });
+  // The last owner may not demote himself: a system nobody can administer is
+  // a system whose accounts screen is locked forever.
+  if (target.role === 'owner' && want !== 'owner' && db.countOwners() <= 1) {
+    return res.status(409).json({ ok: false, error: 'last_owner' });
+  }
+  db.setRole(target.id, want);
+  res.json({ ok: true, user: { id: target.id, email: target.email, role: want } });
+});
+
+app.delete('/api/auth/users/:id', ...ownerOnly, (req, res) => {
+  const target = db.userById(req.params.id);
+  if (!target) return res.status(404).json({ ok: false, error: 'not_found' });
+  if (Number(target.id) === Number(req.user.id)) return res.status(409).json({ ok: false, error: 'cannot_delete_self' });
+  if (target.role === 'owner' && db.countOwners() <= 1) return res.status(409).json({ ok: false, error: 'last_owner' });
+  db.removeUser(target.id);
+  res.json({ ok: true });
+});
+
 // Visitor ORDERS — the frontend's «اطلب الآن» writes real rows here.
 // Reading them is the OWNER's business: names and phone numbers live here.
 app.get('/api/orders', requireAuth, (_req, res) => res.json({ ok: true, orders: db.listOrders() }));
@@ -1380,14 +1604,17 @@ app.post('/api/orders', (req, res) => {
 });
 
 ${model.length ? `// The rest of the system's tables — vendors, customers, coupons…
-// Reading is public; writing is the owner's, exactly like the catalogue.
-mountEntities(app, requireAuth);
+// Reading is public; writing needs an account, and an employee only ever
+// touches his own rows. Every rule comes from auth.js.
+mountEntities(app, { requireAuth, optionalAuth, requireWrite, scopeOf, mayTouch });
 ` : ''}${relRoutes}
-app.get('/api/${resource}', (_req, res) => res.json({ ok: true, ${resource}: db.list() }));
+app.get('/api/${resource}', optionalAuth, (req, res) => res.json({ ok: true, ${resource}: db.list(scopeOf(req)) }));
 
-app.get('/api/${resource}/:id', (req, res) => {
+app.get('/api/${resource}/:id', optionalAuth, (req, res) => {
   const row = db.get(req.params.id);
   if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
+  const mine = scopeOf(req);
+  if (mine !== null && Number(row.owner_id) !== Number(mine)) return res.status(404).json({ ok: false, error: 'not_found' });
   res.json({ ok: true, item: row });
 });
 
@@ -1431,13 +1658,17 @@ const validate = (body, partial) => {
   return { value: out };
 };
 
-app.post('/api/${resource}', requireAuth, (req, res) => {
+app.post('/api/${resource}', requireAuth, requireWrite, (req, res) => {
   const { value, error } = validate(req.body, false);
   if (error) return res.status(400).json({ ok: false, error });
-  res.status(201).json({ ok: true, item: db.create(value) });
+  // Whoever wrote the row owns it — read from the account, never from the body.
+  res.status(201).json({ ok: true, item: db.create(value, req.user.id) });
 });
 
-app.put('/api/${resource}/:id', requireAuth, (req, res) => {
+app.put('/api/${resource}/:id', requireAuth, requireWrite, (req, res) => {
+  const cur = db.get(req.params.id);
+  if (!cur) return res.status(404).json({ ok: false, error: 'not_found' });
+  if (!mayTouch(req, cur)) return res.status(403).json({ ok: false, error: 'not_your_row' });
   const { value, error } = validate(req.body, true);   // a patch may be partial
   if (error) return res.status(400).json({ ok: false, error });
   const row = db.update(req.params.id, value);
@@ -1445,7 +1676,10 @@ app.put('/api/${resource}/:id', requireAuth, (req, res) => {
   res.json({ ok: true, item: row });
 });
 
-app.delete('/api/${resource}/:id', requireAuth, (req, res) => {
+app.delete('/api/${resource}/:id', requireAuth, requireWrite, (req, res) => {
+  const cur = db.get(req.params.id);
+  if (!cur) return res.status(404).json({ ok: false, error: 'not_found' });
+  if (!mayTouch(req, cur)) return res.status(403).json({ ok: false, error: 'not_your_row' });
   if (!db.remove(req.params.id)) return res.status(404).json({ ok: false, error: 'not_found' });
   res.json({ ok: true });
 });
@@ -1563,6 +1797,33 @@ curl -X PUT  http://localhost:4100/api/${resource}/1 -H "Authorization: Bearer $
   -H "Content-Type: application/json" -d '{"price":"75"}'
 curl -X DELETE http://localhost:4100/api/${resource}/1 -H "Authorization: Bearer $TOKEN"
 \`\`\`
+
+## الفريق — ثلاثة أدوار، لا واحد
+
+النظام لم يعد لشخص واحد. الحسابات تُصنع من داخله، ولا تُسلَّم كلمة مرورك لأحد:
+
+${describeRoles(true)}
+
+\`\`\`bash
+# أنشئ حساب موظّف — كلمة مروره تُولَّد وتظهر في هذا الرد مرة واحدة فقط
+curl -X POST http://localhost:4100/api/auth/users -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" -d '{"email":"clerk@${ownerEmail.split('@')[1] || 'joe.local'}","role":"staff"}'
+
+curl http://localhost:4100/api/auth/users -H "Authorization: Bearer $TOKEN"      # من في النظام
+curl -X PUT http://localhost:4100/api/auth/users/2 -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" -d '{"role":"viewer"}'                      # غيّر دوره
+curl -X DELETE http://localhost:4100/api/auth/users/2 -H "Authorization: Bearer $TOKEN"
+\`\`\`
+
+القواعد التي يفرضها الخادم نفسه — لا الواجهة:
+
+- كل صفٍّ يُكتب يحمل \`owner_id\` مأخوذاً من **الحساب**، لا من جسم الطلب.
+- الموظّف يرى صفوفه هو فقط (\`GET\` برمزه)، ومحاولة تعديل صفّ غيره تُجاب **403 not_your_row**.
+- المُطّلِع تُجاب كتابته **403 read_only** — قراءةً فقط.
+- الزائر بلا حساب ما زال يرى الرفّ كاملاً: هذا هو المتجر، ولم يتغيّر.
+- الصفوف المكتوبة قبل وجود الفريق (\`owner_id\` فارغ) تبقى للمالك — لا يرثها أحد.
+- تغيير الدور يسري فوراً على الرمز القائم: الدور يُقرأ من القاعدة في كل طلب.
+- ولا يمكن حذف آخر مالك ولا تنزيله (**409 last_owner**)، ولا حذف الحساب لنفسه.
 
 ## الطلبات — تكتبها واجهة المتجر/المطعم المربوطة تلقائياً
 
@@ -2102,6 +2363,13 @@ ${model.map((e: any) => `   • ${e.ar} → /api/${e.key}${e.belongsTo ? ` (مر
    محميّة لك: POST/PUT/DELETE /api/${resource} · GET /api/orders (فيها أسماء العملاء وأرقامهم)
    الدخول: POST /api/auth/login ثم أرسل \`Authorization: Bearer <token>\`
    أمثلة curl جاهزة داخل README.md
+
+👥 فريقك — النظام لم يعد لشخص واحد:
+${describeRoles(true)}
+   إنشاء حساب: POST /api/auth/users {email, role} — كلمة مروره تُولَّد وتظهر **مرة واحدة**
+   الأدوار: GET · PUT · DELETE /api/auth/users — للمالك وحده (غيره يُجاب 403)
+   ⚠️ الموظّف لا يرى صفوف غيره ولا يلمسها (403 not_your_row)، والصفوف المكتوبة
+      قبل وجود الفريق تبقى للمالك — لا يرثها أحد بالصدفة.
 ${relation ? `
 🔗 جدولان مرتبطان — ${relation.labelAr} ← ${labelAr}:
    كل ${labelAr} ينتمي إلى صفٍّ حقيقي في /api/${relation.resource} عبر \`${relation.key}\`،
@@ -2127,7 +2395,12 @@ ${authProven || ownerCreated || !installed
 ${model.length ? `System tables (${model.length}), each with full CRUD:
 ${model.map((e: any) => `   • ${e.en} → /api/${e.key}${e.belongsTo ? ` (linked to ${e.belongsTo.entity} by ${e.belongsTo.key} — a key that cannot dangle)` : ''}`).join('\n')}
 ` : ''}Public: GET /api/${resource} · POST /api/orders · GET /api/health
-Protected (Bearer token from POST /api/auth/login): catalogue writes · GET /api/orders`;
+Protected (Bearer token from POST /api/auth/login): catalogue writes · GET /api/orders
+
+Team — three roles, accounts made from inside the system:
+${describeRoles(false)}
+   POST /api/auth/users {email, role} — the password is generated and shown ONCE.
+   GET · PUT · DELETE /api/auth/users — owner only (403 for anybody else).`;
 
         return {
             ok: true,

@@ -93,17 +93,21 @@ describe('and the builder turns it into real tables', () => {
         expect(gen).toMatch(/A link that can dangle is not a relation/);
         // Required fields are refused, not stored empty.
         expect(gen).toMatch(/return \{ error: f\.key \+ '_required' \};/);
-        // Reading public, writing owner-only — the rule the catalogue follows.
-        expect(gen).toMatch(/app\.get\('\/api\/' \+ key, \(_req, res\)/);
-        expect(gen).toMatch(/app\.post\('\/api\/' \+ key, requireAuth,/);
-        expect(gen).toMatch(/app\.delete\('\/api\/' \+ key \+ '\/:id', requireAuth,/);
+        // Reading is public but SCOPED when there is a token, writing needs an
+        // account that may write, and a row is only its author's to change.
+        expect(gen).toMatch(/app\.get\('\/api\/' \+ key, optionalAuth, \(req, res\) => res\.json\(\{ ok: true, \[key\]: t\.list\(scopeOf\(req\)\) \}\)\)/);
+        expect(gen).toMatch(/app\.post\('\/api\/' \+ key, requireAuth, requireWrite,/);
+        expect(gen).toMatch(/app\.delete\('\/api\/' \+ key \+ '\/:id', requireAuth, requireWrite,/);
+        expect(gen).toMatch(/if \(!mayTouch\(req, cur\)\) return res\.status\(403\)\.json\(\{ ok: false, error: 'not_your_row' \}\);/);
+        // The owner of a new row comes from the ACCOUNT, never from the body.
+        expect(gen).toMatch(/t\.create\(req\.body, req\.user\.id\)/);
         // Both backends, exactly like db.js.
         expect(gen).toMatch(/backend: 'sqlite'/);
         expect(gen).toMatch(/backend: 'json'/);
     });
 
     it('the server mounts them and counts them in /api/health', () => {
-        expect(A()).toMatch(/mountEntities\(app, requireAuth\);/);
+        expect(A()).toMatch(/mountEntities\(app, \{ requireAuth, optionalAuth, requireWrite, scopeOf, mayTouch \}\);/);
         expect(A()).toMatch(/tables: entityCounts\(\),/);
         // …and a build with no model imports nothing that does not exist.
         expect(A()).toMatch(/\$\{model\.length \? "import \{ mountEntities, entityCounts \} from '\.\/entities\.js';" : ''\}/);

@@ -34,7 +34,11 @@ describe('every table becomes a screen', () => {
 
     it('reading is public and writing goes through the owner’s token', () => {
         const src = jsx();
-        expect(src).toMatch(/import \{ apiListOn, apiCreateOn, apiDeleteOn, apiUpdateOn, getToken, pickImage, cardFor \}/);
+        expect(src).toMatch(/import \{ apiListOn, apiCreateOn, apiDeleteOn, apiUpdateOn, getToken, canWriteNow, pickImage, cardFor \}/);
+        // Signed in is not the same as allowed: an account that may not write
+        // is shown no form and no row buttons, instead of buttons that 403.
+        expect(src).toMatch(/const \[mayWrite, setMayWrite\] = useState\(\(\) => canWriteNow\(\)\);/);
+        expect(src).toMatch(/\{mayWrite \? \(\n\s*<form className="tbl-form"/);
         expect(src).toMatch(/apiCreateOn\(api, table\.key, draft\)/);
         expect(src).toMatch(/apiUpdateOn\(api, table\.key, editing, draft\)/);
         expect(src).toMatch(/apiDeleteOn\(api, table\.key, id\)/);
@@ -98,7 +102,7 @@ describe('and the builder wires them without breaking what was there', () => {
     it('the shell renders them, and a build without a model imports nothing', () => {
         const t = read('modules', 'tools', 'definitions', 'react-app-templates.ts');
         expect(t).toMatch(/\$\{hasTables \? "import TablesAdmin from '\.\/components\/TablesAdmin\.jsx';/);
-        expect(t).toMatch(/'src\/App\.jsx': fileAppShellJsx\(bp, o\.isArabic, !!\(o\.model && o\.model\.length\)\)/);
+        expect(t).toMatch(/'src\/App\.jsx': fileAppShellJsx\(bp, o\.isArabic, !!\(o\.model && o\.model\.length\), !!o\.api\)/);
         expect(t).toMatch(/\.\.\.\(o\.model && o\.model\.length \? \{ 'src\/components\/TablesAdmin\.jsx'/);
     });
 

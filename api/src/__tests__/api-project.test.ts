@@ -281,8 +281,10 @@ describe('the generated API ships locked, not open', () => {
         expect(server).toMatch(/app\.put\('\/api\/products\/:id', requireAuth/);
         expect(server).toMatch(/app\.delete\('\/api\/products\/:id', requireAuth/);
         expect(server).toMatch(/app\.get\('\/api\/orders', requireAuth/);
-        // open — the business itself
-        expect(server).toMatch(/app\.get\('\/api\/products', \(_req, res\)/);
+        // open — the business itself. The token is READ when it is there, so a
+        // signed-in employee gets his own rows, and a visitor still gets the
+        // whole shelf: optionalAuth never answers 401.
+        expect(server).toMatch(/app\.get\('\/api\/products', optionalAuth, \(req, res\) => res\.json\(\{ ok: true, products: db\.list\(scopeOf\(req\)\) \}\)\)/);
         expect(server).toMatch(/app\.post\('\/api\/orders', \(req, res\)/);
         expect(server).toMatch(/app\.get\('\/api\/health', \(_req, res\)/);
         // and the browser may actually send the header

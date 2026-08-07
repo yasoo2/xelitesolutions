@@ -2162,13 +2162,47 @@ describe('the generated app can sign in to its own server', () => {
     it('the session survives a reload and can be ended', () => {
         const t = T();
         expect(t).toMatch(/localStorage\.setItem\(TOKEN_KEY, t\)/);
-        expect(t).toMatch(/export function apiLogout\(\) \{ setToken\(''\); \}/);
+        expect(t).toMatch(/export function apiLogout\(\) \{ setToken\('', ''\); \}/);
         // and a token the server no longer accepts is dropped, not kept forever
-        expect(t).toMatch(/if \(r\.status === 401\) setToken\(''\)/);
+        expect(t).toMatch(/if \(r\.status === 401\) setToken\('', ''\)/);
     });
 
     it('and one Joe-built system never borrows another\'s session', () => {
         expect(T()).toMatch(/const TOKEN_KEY = 'joe:auth:' \+/);
+    });
+});
+
+/**
+ * A ROLE THE INTERFACE CANNOT EXPRESS IS A ROLE NOBODY WILL EVER USE.
+ *
+ * The server has known owner/staff/viewer since this batch. Without a screen,
+ * the only way to make an employee account would be curl — and a nursery owner
+ * does not own curl. THE WIRING POLICY: the system must REACH the feature.
+ */
+describe('the team reaches the roles', () => {
+    const T = () => SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
+
+    it('the accounts screen is written into the project whenever a server exists', () => {
+        expect(T()).toMatch(/\.\.\.\(o\.api \? \{ 'src\/components\/Accounts\.jsx': fileAccountsJsx\(o\.isArabic\) \} : \{\}\)/);
+        expect(T()).toMatch(/\+ \(o\.api \? fileAccountsCss\(\) : ''\)/);
+    });
+
+    it('and the shell imports it and renders it', () => {
+        const t = T();
+        expect(t).toMatch(/\$\{hasApi \? "import Accounts from '\.\/components\/Accounts\.jsx';/);
+        expect(t).toMatch(/\$\{hasApi \? '        <Accounts api=\{content\.api\} \/>/);
+        expect(t).toMatch(/'src\/App\.jsx': fileAppShellJsx\(bp, o\.isArabic, !!\(o\.model && o\.model\.length\), !!o\.api\)/);
+    });
+
+    it('the screen refuses to render for anybody but the owner', () => {
+        expect(T()).toMatch(/const \[owner, setOwner\] = useState\(\(\) => isOwnerNow\(\)\);/);
+        expect(T()).toMatch(/if \(!api \|\| !owner\) return null;/);
+    });
+
+    it('and the API tool tells the owner the roles exist', () => {
+        const a = SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+        expect(a).toContain('👥 فريقك — النظام لم يعد لشخص واحد:');
+        expect(a).toMatch(/POST \/api\/auth\/users \{email, role\}/);
     });
 });
 
