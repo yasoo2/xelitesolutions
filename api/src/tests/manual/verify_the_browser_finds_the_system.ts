@@ -134,6 +134,24 @@ async function main() {
             deep.status === 200 && deep.body.includes('<h1>'), `status ${deep.status}`);
         const health = await get(`http://127.0.0.1:${port}/api/health`);
         check('وواجهة البرمجة لم تُكسَر بالتغيير', health.status === 200 && /"ok":true/.test(health.body), String(health.status));
+
+        // ── «Groups Pages Messaging Ads» — لم تعد اعتذاراً ─────────────────
+        console.log('\n[1b] وأربع من ميزاته الاثنتي عشرة صارت جداول حقيقية');
+        for (const table of ['groups', 'pages', 'messages', 'ads']) {
+            const r = await get(`http://127.0.0.1:${port}/api/${table}`);
+            check(`‏/api/${table} يجيب فعلاً`, r.status === 200 && r.body.includes(table), `${r.status} ${r.body.slice(0, 60)}`);
+        }
+        const guard = await new Promise<{ status: number }>((resolve) => {
+            const req2 = require('http').request(
+                { hostname: '127.0.0.1', port, path: '/api/groups', method: 'POST', headers: { 'Content-Type': 'application/json' } },
+                (res: any) => { res.resume(); res.on('end', () => resolve({ status: res.statusCode || 0 })); });
+            req2.on('error', () => resolve({ status: 0 }));
+            req2.end(JSON.stringify({ name: 'اقتحام' }));
+        });
+        check('والكتابة فيها محميّة بحساب (401 بلا رمز)', guard.status === 401, String(guard.status));
+        const me = await get(`http://127.0.0.1:${port}/api/auth/me`);
+        check('ونظام الموجز صار له حسابات حقيقية — لا «اسم بلا كلمة مرور»',
+            me.status === 401, `${me.status} (401 = المسار موجود ومحميّ)`);
     }
     try { child.kill(); } catch { /* already gone */ }
 

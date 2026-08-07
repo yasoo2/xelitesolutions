@@ -308,12 +308,40 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
         return !has;
       },
     };
+
+    // ── ACCOUNTS ─────────────────────────────────────────────────────────
+    // The same store the catalogue systems use: scrypt salt and hash only,
+    // and never selected into any response body.
+    conn.exec(\`CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      salt TEXT NOT NULL,
+      hash TEXT NOT NULL,
+      role TEXT DEFAULT 'owner',
+      created_at TEXT DEFAULT (datetime('now'))
+    )\`);
+    const userOf = (u) => (u ? { id: u.id, email: u.email, salt: u.salt, hash: u.hash, role: u.role, created_at: u.created_at } : null);
+    db.countUsers = () => Number(conn.prepare('SELECT COUNT(*) AS n FROM users').get().n);
+    db.userByEmail = (email) => userOf(conn.prepare('SELECT * FROM users WHERE email = ?').get(String(email).toLowerCase()));
+    db.userById = (id) => userOf(conn.prepare('SELECT * FROM users WHERE id = ?').get(Number(id)));
+    db.createUser = ({ email, salt, hash, role = 'owner' }) => {
+      const r = conn.prepare('INSERT INTO users (email, salt, hash, role) VALUES (?, ?, ?, ?)')
+        .run(String(email).toLowerCase(), String(salt), String(hash), String(role));
+      return db.userById(r.lastInsertRowid);
+    };
+    db.setPassword = (id, salt, hash) =>
+      conn.prepare('UPDATE users SET salt = ?, hash = ? WHERE id = ?').run(String(salt), String(hash), Number(id)).changes > 0;
+    db.listUsers = () => conn.prepare('SELECT id, email, role, created_at FROM users ORDER BY id').all()
+      .map((u) => ({ id: u.id, email: u.email, role: u.role, created_at: u.created_at }));
+    db.setRole = (id, role) => conn.prepare('UPDATE users SET role = ? WHERE id = ?').run(String(role), Number(id)).changes > 0;
+    db.removeUser = (id) => conn.prepare('DELETE FROM users WHERE id = ?').run(Number(id)).changes > 0;
+    db.countOwners = () => Number(conn.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'owner'").get().n);
   } catch { /* an older Node — the JSON backend below serves instead */ }
 }
 
 if (!db) {
   const FILE = path.join(HERE, 'data.json');
-  const blank = { seq: 0, rows: [], likes: [], comments: [], cseq: 0, follows: [] };
+  const blank = { seq: 0, rows: [], likes: [], comments: [], cseq: 0, follows: [], users: [], useq: 0 };
   const load = () => {
     try { return { ...blank, ...JSON.parse(fs.readFileSync(FILE, 'utf-8')) }; } catch { return { ...blank }; }
   };
@@ -365,6 +393,41 @@ if (!db) {
       return at < 0;
     },
   };
+  // The JSON twin of the accounts store — the same nine answers.
+  const users = () => (load().users || []);
+  db.countUsers = () => users().length;
+  db.userByEmail = (email) => users().find((u) => u.email === String(email).toLowerCase()) || null;
+  db.userById = (id) => users().find((u) => u.id === Number(id)) || null;
+  db.createUser = ({ email, salt, hash, role = 'owner' }) => {
+    const s2 = load();
+    s2.users = s2.users || []; s2.useq = s2.useq || 0;
+    const user = { id: ++s2.useq, email: String(email).toLowerCase(), salt: String(salt), hash: String(hash), role: String(role), created_at: new Date().toISOString() };
+    s2.users.push(user); save(s2);
+    return user;
+  };
+  db.setPassword = (id, salt, hash) => {
+    const s2 = load();
+    const u = (s2.users || []).find((x) => x.id === Number(id));
+    if (!u) return false;
+    u.salt = String(salt); u.hash = String(hash); save(s2);
+    return true;
+  };
+  db.listUsers = () => users().map((u) => ({ id: u.id, email: u.email, role: u.role, created_at: u.created_at }));
+  db.setRole = (id, role) => {
+    const s2 = load();
+    const u = (s2.users || []).find((x) => x.id === Number(id));
+    if (!u) return false;
+    u.role = String(role); save(s2);
+    return true;
+  };
+  db.removeUser = (id) => {
+    const s2 = load();
+    const before = (s2.users || []).length;
+    s2.users = (s2.users || []).filter((u) => u.id !== Number(id));
+    save(s2);
+    return s2.users.length < before;
+  };
+  db.countOwners = () => users().filter((u) => u.role === 'owner').length;
 }
 
 export { db };
@@ -403,15 +466,22 @@ const SERVE_PACKAGED_UI = `
 }
 `;
 
-function filePostsServerJs(brand: string): string {
+function filePostsServerJs(brand: string, model: any[] = []): string {
     return `// ${brand} — the feed's API. Members post; everyone reads.
 //   npm start            (port 4100)
 //   PORT=5050 npm start
 import express from 'express';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db } from './db.js';
+import { seedOwner } from './seed.js';
+import {
+  hashPassword, verifyPassword, signToken, requireAuth, throttleKey, isLocked, noteMiss, clearMisses, normalizeEmail,
+  optionalAuth, requireRole, requireWrite, scopeOf, mayTouch, isRole, ROLES,
+} from './auth.js';
+${model.length ? "import { mountEntities, entityCounts } from './entities.js';" : ''}
 
 const HERE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -512,10 +582,104 @@ app.post('/api/follows', (req, res) => {
   res.json({ ok: true, following: now, list: db.following(follower) });
 });
 
+${model.length ? `// ── THE REST OF THE PLATFORM ──────────────────────────────────────────────
+// Groups, pages, messages, ad campaigns: real tables with real CRUD, the
+// same guards every other system Joe builds uses. Reading is public — that
+// is what a social platform is — and writing needs an account.
+mountEntities(app, { requireAuth, optionalAuth, requireWrite, scopeOf, mayTouch });
+` : ''}
+// ── ACCOUNTS ───────────────────────────────────────────────────────────────
+// The README used to say «identity here is a name with no password. Add real
+// accounts before putting this online.» That sentence was a to-do list handed
+// to the owner. These are the accounts.
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body || {};
+  if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
+    return res.status(400).json({ ok: false, error: 'email_and_password_required' });
+  }
+  const key = throttleKey(req, normalizeEmail(email));
+  const wait = isLocked(key);
+  if (wait) return res.status(429).json({ ok: false, error: 'too_many_attempts', retry_after_seconds: wait });
+  const user = db.userByEmail(normalizeEmail(email));
+  if (!user || !verifyPassword(password, user.salt, user.hash)) {
+    noteMiss(key);
+    return res.status(401).json({ ok: false, error: 'bad_credentials' });
+  }
+  clearMisses(key);
+  res.json({ ok: true, token: signToken(user), user: { id: user.id, email: user.email, role: user.role } });
+});
+
+app.get('/api/auth/me', requireAuth, (req, res) => res.json({ ok: true, user: req.user }));
+
+app.post('/api/auth/password', requireAuth, (req, res) => {
+  const { current, next } = req.body || {};
+  if (typeof next !== 'string' || next.length < 8 || next.length > 200) {
+    return res.status(400).json({ ok: false, error: 'weak_password', message: 'at least 8 characters' });
+  }
+  const user = db.userById(req.user.id);
+  if (!user || typeof current !== 'string' || !verifyPassword(current, user.salt, user.hash)) {
+    return res.status(401).json({ ok: false, error: 'bad_credentials' });
+  }
+  const { salt, hash } = hashPassword(next);
+  db.setPassword(user.id, salt, hash);
+  res.json({ ok: true });
+});
+
+const ownerOnly = [requireAuth, requireRole('owner')];
+
+app.get('/api/auth/users', ...ownerOnly, (_req, res) =>
+  res.json({ ok: true, users: db.listUsers(), roles: ROLES }));
+
+app.post('/api/auth/users', ...ownerOnly, (req, res) => {
+  const { email, role, password } = req.body || {};
+  if (typeof email !== 'string' || email.indexOf('@') < 1 || email.length > 160) {
+    return res.status(400).json({ ok: false, error: 'bad_email' });
+  }
+  const want = String(role || 'staff').toLowerCase();
+  if (!isRole(want)) return res.status(400).json({ ok: false, error: 'bad_role' });
+  if (password !== undefined && (typeof password !== 'string' || password.length < 8 || password.length > 200)) {
+    return res.status(400).json({ ok: false, error: 'weak_password', message: 'at least 8 characters' });
+  }
+  const mail = normalizeEmail(email);
+  if (db.userByEmail(mail)) return res.status(409).json({ ok: false, error: 'email_taken' });
+  const pass = typeof password === 'string' ? password : crypto.randomBytes(9).toString('base64url');
+  const { salt, hash } = hashPassword(pass);
+  const user = db.createUser({ email: mail, salt, hash, role: want });
+  res.status(201).json({
+    ok: true,
+    user: { id: user.id, email: user.email, role: user.role },
+    password: typeof password === 'string' ? undefined : pass,
+  });
+});
+
+app.put('/api/auth/users/:id', ...ownerOnly, (req, res) => {
+  const target = db.userById(req.params.id);
+  if (!target) return res.status(404).json({ ok: false, error: 'not_found' });
+  const want = String((req.body || {}).role || '').toLowerCase();
+  if (!isRole(want)) return res.status(400).json({ ok: false, error: 'bad_role' });
+  if (target.role === 'owner' && want !== 'owner' && db.countOwners() <= 1) {
+    return res.status(409).json({ ok: false, error: 'last_owner' });
+  }
+  db.setRole(target.id, want);
+  res.json({ ok: true, user: { id: target.id, email: target.email, role: want } });
+});
+
+app.delete('/api/auth/users/:id', ...ownerOnly, (req, res) => {
+  const target = db.userById(req.params.id);
+  if (!target) return res.status(404).json({ ok: false, error: 'not_found' });
+  if (Number(target.id) === Number(req.user.id)) return res.status(409).json({ ok: false, error: 'cannot_delete_self' });
+  if (target.role === 'owner' && db.countOwners() <= 1) return res.status(409).json({ ok: false, error: 'last_owner' });
+  db.removeUser(target.id);
+  res.json({ ok: true });
+});
+
+const owner = seedOwner();
 const port = Number(process.env.PORT || 4100);
 ${SERVE_PACKAGED_UI}
 app.listen(port, () => {
   console.log(\`[api] feed listening on http://localhost:\${port} — backend: \${db.backend}, \${db.count()} posts\`);
+  if (owner) console.log(\`[api] owner account created: \${owner} — the password was shown once in Joe's chat.\`);
+  ${model.length ? "console.log('[api] platform tables: ' + Object.keys(entityCounts()).join(', ') + ' — full CRUD, owner-guarded writes');" : ''}
   console.log('[api] GET/POST /api/posts · DELETE /api/posts/:id · POST /api/posts/:id/like');
   console.log('[api] GET/POST /api/posts/:id/comments · GET/POST /api/follows · GET /api/health');
 });
@@ -2028,11 +2192,24 @@ export class ApiProjectTool extends BaseTool {
         // ones the app actually speaks.
         const feed = isFeedResource(resource);
         const files: Record<string, string> = feed ? {
+            /**
+             * A FEED IS NOT THE WHOLE PLATFORM — «Groups Pages Messaging Ads».
+             *
+             * His twelve-feature request produced ONE table and a paragraph
+             * listing eleven things Joe had not built. Four of the twelve are
+             * rows with fields and a lifecycle, and the machinery to serve
+             * them has existed for weeks — the feed branch simply never used
+             * it. It does now: the same entity tables, the same accounts, the
+             * same roles as every other system Joe builds.
+             */
             'package.json': filePackageJson(brand),
-            'server.js': filePostsServerJs(brand),
+            'server.js': filePostsServerJs(brand, model),
             'db.js': filePostsDbJs(),
+            ...(model.length ? { 'entities.js': fileEntitiesJs(model) } : {}),
+            'auth.js': fileAuthJs(),
+            'seed.js': fileSeedJs([], { email: ownerEmail, salt: ownerSalt, hash: ownerHash }),
             'README.md': filePostsReadme(brand),
-            '.gitignore': 'node_modules\ndata.db\ndata.json\n',
+            '.gitignore': 'node_modules\ndata.db\ndata.json\n.auth-secret\n',
         } : {
             'package.json': filePackageJson(brand),
             'server.js': fileServerJs(resource, brand, path.basename(proj), relation, model),

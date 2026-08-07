@@ -97,3 +97,45 @@ describe('a repair is what the SECOND measurement says it is', () => {
         expect(r).toMatch(/moved \? '' : \(isAr \? 'حاولتُ: ' : 'tried: '\)/);
     });
 });
+
+describe('twelve features, and the model matched none of the six domains', () => {
+    const { deriveDataModel, dataModelDomain } = require('../core/design/data-model');
+
+    it('a social platform now has groups, pages, messages and ads', () => {
+        const m = deriveDataModel('Build a next-generation social media platform');
+        expect(m.map((e: any) => e.key)).toEqual(['groups', 'pages', 'messages', 'ads']);
+        expect(dataModelDomain('social media platform')).toBe('social');
+    });
+
+    it('and «منصة تواصل اجتماعي» reaches the same tables', () => {
+        expect(deriveDataModel('ابنِ منصة تواصل اجتماعي').map((e: any) => e.key))
+            .toEqual(['groups', 'pages', 'messages', 'ads']);
+    });
+
+    it('every one of them is a real row, not a label', () => {
+        for (const e of deriveDataModel('social network')) {
+            expect(e.fields.length).toBeGreaterThanOrEqual(3);
+            expect(e.fields.some((f: any) => f.required)).toBe(true);
+            expect(e.key).toMatch(/^[a-z0-9_]+$/);
+        }
+    });
+
+    it('the feed server mounts them, and carries real accounts', () => {
+        const a = fs.readFileSync(path.join(SRC, 'modules', 'tools', 'definitions', 'ApiProjectTool.ts'), 'utf-8');
+        const feed = a.slice(a.indexOf('function filePostsServerJs'), a.indexOf('function fileDbJs'));
+        expect(feed).toContain('mountEntities(app, { requireAuth, optionalAuth, requireWrite, scopeOf, mayTouch });');
+        expect(feed).toContain("app.post('/api/auth/login'");
+        expect(feed).toContain('const ownerOnly = [requireAuth, requireRole(\'owner\')];');
+        expect(feed).toContain('const owner = seedOwner();');
+    });
+
+    it('and its database knows what an account is', () => {
+        const a = fs.readFileSync(path.join(SRC, 'modules', 'tools', 'definitions', 'ApiProjectTool.ts'), 'utf-8');
+        const db = a.slice(a.indexOf('function filePostsDbJs'), a.indexOf('function filePostsServerJs'));
+        for (const fn of ['db.userByEmail', 'db.createUser', 'db.listUsers', 'db.countOwners', 'db.setRole']) {
+            expect(db).toContain(fn);
+        }
+        // Both backends, or the feature exists only on modern Node.
+        expect((db.match(/db\.countOwners/g) || []).length).toBe(2);
+    });
+});

@@ -1326,7 +1326,12 @@ describe('a feed ships with a feed server', () => {
     it('the feed branch is the one that actually gets written to disk', () => {
         const t = AP();
         expect(t).toMatch(/const feed = isFeedResource\(resource\)/);
-        expect(t).toMatch(/'server\.js': filePostsServerJs\(brand\)/);
+        expect(t).toMatch(/'server\.js': filePostsServerJs\(brand, model\)/);
+        // …and a feed is no longer a feed ALONE: groups, pages, messages and
+        // ads are real tables, and the system has real accounts instead of
+        // «identity here is a name with no password».
+        expect(t).toMatch(/'auth\.js': fileAuthJs\(\),\n\s*'seed\.js': fileSeedJs\(\[\]/);
+        expect(t).toMatch(/\.\.\.\(model\.length \? \{ 'entities\.js': fileEntitiesJs\(model\) \} : \{\}\),\n\s*'auth\.js'/);
         expect(t).toMatch(/'db\.js': filePostsDbJs\(\)/);
     });
 });

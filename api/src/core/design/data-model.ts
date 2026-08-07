@@ -148,6 +148,47 @@ const DOMAINS: Array<{ id: string; ask: RegExp; entities: ModelEntity[] }> = [
         ],
     },
     {
+        /**
+         * «Posts Stories Reels Live streaming Groups Pages Messaging Video
+         * calls AI moderation Recommendations Ads platform Creator dashboard»
+         *
+         * Twelve features, and the model matched NONE of the six domains — so
+         * the build produced one table (`posts`) and a paragraph listing
+         * eleven things it had not built. Four of those twelve are rows with
+         * fields and a lifecycle, which is exactly what this system is good
+         * at: a group, a page, a message, an ad campaign. They stop being an
+         * apology and become tables with real CRUD and real screens.
+         *
+         * The other eight — Stories, Reels, live streaming, video calls, AI
+         * moderation, recommendations — are media pipelines and models, not
+         * rows. They stay in the «not built» list, honestly, where they belong.
+         */
+        id: 'social',
+        ask: /\b(social (media|network|platform)|feed|community platform)\b|شبكة اجتماعية|تواصل اجتماعي|منصّ?ة تواصل/i,
+        entities: [
+            {
+                key: 'groups', ar: 'المجموعات', en: 'groups',
+                fields: [T('name', 'الاسم', 'name', true), T('description', 'الوصف', 'description'),
+                    T('privacy', 'الخصوصية', 'privacy'), N('members', 'عدد الأعضاء', 'members')],
+            },
+            {
+                key: 'pages', ar: 'الصفحات', en: 'pages',
+                fields: [T('name', 'الاسم', 'name', true), T('category', 'التصنيف', 'category'),
+                    T('description', 'الوصف', 'description'), N('followers', 'المتابعون', 'followers')],
+            },
+            {
+                key: 'messages', ar: 'الرسائل', en: 'messages',
+                fields: [T('sender', 'المُرسِل', 'sender', true), T('recipient', 'المستقبِل', 'recipient', true),
+                    T('body', 'النص', 'body', true), T('sent_at', 'وقت الإرسال', 'sent at')],
+            },
+            {
+                key: 'ads', ar: 'الإعلانات', en: 'ads',
+                fields: [T('title', 'العنوان', 'title', true), N('budget', 'الميزانية', 'budget'),
+                    T('audience', 'الجمهور', 'audience'), T('status', 'الحالة', 'status')],
+            },
+        ],
+    },
+    {
         id: 'booking',
         ask: /\b(booking|reservations?|appointments?)\b|حجوزات|حجز موعد|مواعيد/i,
         entities: [
