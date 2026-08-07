@@ -722,6 +722,29 @@ export function apiSibling(api, name) {
 }
 
 /**
+ * …AND THE SIBLING OF THE ADDRESS THAT REALLY ANSWERS.
+ *
+ * Measured in his own social build:
+ *
+ *   2 console error(s): net::ERR_CONNECTION_REFUSED
+ *     ← http://localhost:4100/api/follows?follower=%40joeqa
+ *
+ * \`apiSibling\` alone takes a sibling of the address BAKED AT BUILD TIME. The
+ * system was running on another port — and on a domain it would be running on
+ * a domain — so «follow» reached a machine that was not there. Worse, the
+ * origin probe cannot rescue it afterwards: it asks «do you serve /api/
+ * follows?» and this server's health answers «I serve posts», so the dev
+ * address stood.
+ *
+ * The origin is resolved from the app's OWN primary resource — the question
+ * that CAN be answered — and the sibling is taken from that. One line, and
+ * every collection on the server becomes reachable wherever it is deployed.
+ */
+export async function apiSiblingLive(api, name) {
+  return apiSibling(await resolvedApi(api), name);
+}
+
+/**
  * THE PARENT COLLECTION, ON WHATEVER ORIGIN THIS BUILD IS RUNNING ON.
  *
  * apiSibling alone rewrites the DEV address, which is dead the moment the
@@ -2025,7 +2048,13 @@ h1,h2,h3{margin:0 0 8px;line-height:1.25}
 p{margin:0 0 8px}
 .app{display:flex;flex-direction:column;min-height:100%}
 .app-bar{position:sticky;top:0;z-index:20;background:var(--surface,#fff);border-bottom:1px solid var(--border,#e5e5e5)}
-.app-bar-in{max-width:var(--maxw,1180px);margin:0 auto;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.app-bar-in{max-width:var(--maxw,1180px);margin:0 auto;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+/* A FLEX OR GRID CHILD DEFAULTS TO min-width:auto — it refuses to shrink below
+   its own content, so ONE wide child pushes the whole document sideways.
+   Measured at 390px: «Horizontal scrolling — div, div.app, header.app-bar,
+   div.app-bar-in, main.app-main, div.wrap.social-wrap»: not six defects, one
+   defect seen from six heights. */
+.app-bar-in>*{min-width:0}
 .app-id{display:flex;align-items:baseline;gap:10px;min-width:0}
 /* The app's own name measured 3.25:1 against the bar — brand ink on a
    brand-tinted surface. Leaning it toward the page's text clears AA in
@@ -2040,6 +2069,7 @@ p{margin:0 0 8px}
 .app-foot{max-width:var(--maxw,1180px);margin:0 auto;padding:16px;color:var(--text-muted,#666);font-size:13px;display:flex;gap:8px;flex-wrap:wrap}
 .dot{opacity:.5}
 .wrap{max-width:var(--maxw,1180px);margin:0 auto;padding:16px;display:grid;gap:16px}
+.wrap>*{min-width:0}
 
 .stats{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 .stat{background:var(--surface,#fff);border:1px solid var(--border,#e5e5e5);border-radius:var(--radius,12px);padding:14px 16px}
@@ -2185,15 +2215,20 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 /* the feed */
 .social-wrap{grid-template-columns:1fr}
 @media(min-width:900px){.social-wrap{grid-template-columns:260px 1fr;align-items:start}}
+.social-wrap>*{min-width:0}
 .me-card{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 .me-card b{display:block}
 .avatar{width:44px;height:44px;flex:none;border-radius:999px;display:grid;place-items:center;
   background:var(--brand,#111);color:var(--on-brand,#fff);font-weight:800;font-size:1.1rem}
 .composer-card{display:grid;gap:10px;border:1px solid var(--border,#e5e5e5);border-radius:var(--radius,12px);padding:12px;margin-bottom:14px}
 .composer-card textarea{min-height:76px}
-.file-in{flex:1 1 200px;width:auto;padding:8px;min-height:auto;font-size:.85rem}
+/* min-height:auto measured 298x40 and earned «hard to hit with a thumb».
+   A file picker is a control like any other: 44px, like the rest.
+   (No backtick in this comment: it lives inside a template literal, and
+   one backtick ends the literal and the export stops being a function.) */
+.file-in{flex:1 1 200px;width:auto;padding:8px;min-height:44px;font-size:.85rem}
 .tabbtn{background:transparent;border:1px solid var(--border,#ddd);border-radius:999px;padding:8px 16px;
-  min-height:40px;font:inherit;color:inherit;cursor:pointer}
+  min-height:44px;font:inherit;color:inherit;cursor:pointer}
 .tabbtn.on{background:var(--brand,#111);color:var(--on-brand,#fff);border-color:transparent;font-weight:700}
 .feed{list-style:none;margin:0;padding:0;display:grid;gap:12px}
 .post{border:1px solid var(--border,#e5e5e5);border-radius:var(--radius,12px);padding:12px 14px;background:var(--bg,#fff)}
@@ -2205,7 +2240,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .post-media img{max-width:100%;border-radius:var(--radius,12px);display:block}
 .post-acts{display:flex;gap:8px;margin-top:10px}
 .act{background:transparent;border:1px solid var(--border,#ddd);border-radius:999px;padding:6px 14px;
-  min-height:36px;font:inherit;color:var(--text-muted,#666);cursor:pointer}
+  /* 36px measured 53x40 on a phone and earned «hard to hit with a thumb»
+     twice in the same report. WCAG asks for 44, so the button IS 44. */
+  min-height:44px;font:inherit;color:var(--text-muted,#666);cursor:pointer}
 .act.on{color:#e0245e;border-color:currentColor;font-weight:700}
 .comments{margin-top:10px;border-top:1px solid var(--border,#e5e5e5);padding-top:10px;display:grid;gap:8px}
 .comment{margin:0;font-size:.92rem}
@@ -2848,7 +2885,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
 export function fileSocialAppJsx(isAr: boolean): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createStore, uid, apiList, apiCreate, apiPost, apiGet, apiDelete, apiSibling } from '../app/store.js';
+import { createStore, uid, apiList, apiCreate, apiPost, apiGet, apiDelete, apiSiblingLive } from '../app/store.js';
 
 const when = (iso) => {
   try {
@@ -2949,9 +2986,12 @@ export default function SocialApp({ content }) {
   useEffect(() => {
     if (!content.api || !me) return;
     let alive = true;
-    apiGet(apiSibling(content.api, 'follows') + '?follower=' + encodeURIComponent(me.handle))
-      .then(d => { if (alive && d && Array.isArray(d.following)) setFollowing(d.following); })
-      .catch(() => { /* offline — the local list stands */ });
+    (async () => {
+      const base = await apiSiblingLive(content.api, 'follows');
+      if (!base || !alive) return;
+      const d = await apiGet(base + '?follower=' + encodeURIComponent(me.handle));
+      if (alive && d && Array.isArray(d.following)) setFollowing(d.following);
+    })().catch(() => { /* offline — the local list stands */ });
     return () => { alive = false; };
   }, [content.api, me && me.handle]);
 
@@ -3034,13 +3074,12 @@ export default function SocialApp({ content }) {
       .catch(() => { /* offline — the local comment stands */ });
   };
 
-  const toggleFollow = (handle) => {
+  const toggleFollow = async (handle) => {
     setFollowing(cur => (cur.includes(handle) ? cur.filter(h => h !== handle) : [...cur, handle]));
-    const url = apiSibling(content.api, 'follows');
+    const url = await apiSiblingLive(content.api, 'follows');
     if (!url) return;
-    apiPost(url, '', { follower: me.handle, target: handle })
-      .then(d => { if (d && Array.isArray(d.list)) setFollowing(d.list); })
-      .catch(() => { /* offline — the local list stands */ });
+    const d = await apiPost(url, '', { follower: me.handle, target: handle }).catch(() => null);
+    if (d && Array.isArray(d.list)) setFollowing(d.list);   // offline: the local list stands
   };
 
   const visible = posts.filter(p => {
@@ -3176,7 +3215,7 @@ export default function SocialApp({ content }) {
 export function fileShopAppJsx(isAr: boolean): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useMemo, useState } from 'react';
-import { createStore, uid, computeMetric, apiList, apiCreate, apiPost, apiSibling } from '../app/store.js';
+import { createStore, uid, computeMetric, apiList, apiCreate, apiPost, apiSiblingLive } from '../app/store.js';
 
 const money = (n) => {
   const v = Number(n || 0);
@@ -3306,7 +3345,7 @@ export default function ShopApp({ content }) {
     if (!String(order.customer || '').trim()) { setNotice(${T('اكتب اسمك أولاً.', 'Your name, first.')}); return; }
     setPlacing(true);
     const items = lines.map(l => l.product.name + ' ×' + l.qty).join('، ');
-    const endpoint = apiSibling(content.api, 'orders');
+    const endpoint = await apiSiblingLive(content.api, 'orders');
     const sent = endpoint ? await apiPost(endpoint, '', {
       item: items, qty: count, customer: order.customer, phone: order.phone,
       note: (order.note || '') + ' — ' + ${T('الإجمالي: ', 'Total: ')} + money(total),

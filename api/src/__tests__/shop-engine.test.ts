@@ -87,7 +87,9 @@ describe('the shop the scaffolder writes', () => {
     });
 
     it('and a checkout that writes a REAL order to the server', () => {
-        expect(shop).toMatch(/apiSibling\(content\.api, 'orders'\)/);
+        // The sibling is taken from the RESOLVED origin, never from the dev
+        // address baked at build time — that is what a domain gets.
+        expect(shop).toMatch(/await apiSiblingLive\(content\.api, 'orders'\)/);
         expect(shop).toMatch(/apiPost\(endpoint, ''/);
     });
 

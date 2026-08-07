@@ -2708,7 +2708,7 @@ export class ReactProjectTool extends BaseTool {
 
         // ── SELF-QA: a REAL browser measures the build before delivery ──────
         let audit: any = null;
-        let selfRepair: { before: number; after: number; files: string[]; repairs: any[] } | null = null;
+        let selfRepair: { before: number; after: number; files: string[]; repairs: any[]; fixed: string[] } | null = null;
         if (built && !input?.skipAudit) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🔎 أفحص البناء في متصفح حقيقي قبل التسليم…' : '🔎 Self-QA in a real browser…');
             const { auditBuiltApp } = require('../../../core/quality/app-audit');
@@ -2836,7 +2836,27 @@ export class ReactProjectTool extends BaseTool {
                     });
                     term(`self-repair: ${audit.score} → ${after.score}/100 (${cycle.changed.length} file(s))`);
                     if (!after.skipped && after.score >= audit.score) {
-                        selfRepair = { before: audit.score, after: after.score, files: cycle.changed, repairs: cycle.repairs };
+                        /**
+                         * WHICH FINDINGS ACTUALLY WENT AWAY.
+                         *
+                         * From his own delivery: «Repaired before delivery:
+                         * 55/100 → 55/100 (5 file(s))» followed by six repairs
+                         * listed as done — «Widened tap targets to at least
+                         * 44px», «Stopped horizontal scrolling», «Raised text
+                         * contrast» — and then the SAME six findings under
+                         * «Still there after the repair». Five files edited,
+                         * nothing fixed, six accomplishments announced.
+                         *
+                         * The repairs are what was ATTEMPTED. What was achieved
+                         * is the difference between the two measurements, and
+                         * that is what the report may claim.
+                         */
+                        const beforeIds = (audit.findings || []).map((f: any) => f.id);
+                        const afterIds = (after.findings || []).map((f: any) => f.id);
+                        selfRepair = {
+                            before: audit.score, after: after.score, files: cycle.changed, repairs: cycle.repairs,
+                            fixed: beforeIds.filter((id: string) => !afterIds.includes(id)),
+                        };
                         audit = after;
                     } else {
                         // The measurement did not improve. The honest thing is to
@@ -3024,11 +3044,31 @@ export class ReactProjectTool extends BaseTool {
             }
             lines.push(require('../../../core/quality/app-audit').formatAudit(audit, isAr));
             if (selfRepair) {
-                lines.push(isAr
-                    ? `🛠️ وأصلحتُ ما وجدتُه بنفسي قبل التسليم: ${selfRepair.before}/100 ← ${selfRepair.after}/100 (${selfRepair.files.length} ملف)`
-                    : `🛠️ Repaired before delivery: ${selfRepair.before}/100 → ${selfRepair.after}/100 (${selfRepair.files.length} file(s))`);
+                /**
+                 * A REPAIR IS WHAT THE SECOND MEASUREMENT SAYS IT IS.
+                 *
+                 * Editing five files and announcing six fixes while the score
+                 * and every finding stay exactly where they were is not a
+                 * report — it is a press release. What moved is claimed; what
+                 * was merely tried is named as an attempt.
+                 */
+                const moved = selfRepair.after > selfRepair.before || selfRepair.fixed.length > 0;
+                lines.push(moved
+                    ? (isAr
+                        ? `🛠️ وأصلحتُ ما وجدتُه بنفسي قبل التسليم: ${selfRepair.before}/100 ← ${selfRepair.after}/100 (${selfRepair.files.length} ملف)`
+                        : `🛠️ Repaired before delivery: ${selfRepair.before}/100 → ${selfRepair.after}/100 (${selfRepair.files.length} file(s))`)
+                    : (isAr
+                        ? `🛠️ جرّبتُ الإصلاح الذاتي على ${selfRepair.files.length} ملف — **ولم تتغيّر النتيجة** (${selfRepair.before}/100)، ولم تزُل أيّ ملاحظة. لن أعدّ محاولةً إنجازاً:`
+                        : `🛠️ Self-repair touched ${selfRepair.files.length} file(s) — **and changed nothing** (${selfRepair.before}/100): not one finding went away. An attempt is not an achievement:`));
                 const { repairText } = require('../../../core/quality/ui-repair');
-                for (const r of selfRepair.repairs) lines.push(`   • ${repairText(r, isAr)}${r.count > 1 ? ` (${r.count})` : ''}`);
+                for (const r of selfRepair.repairs) {
+                    lines.push(`   • ${moved ? '' : (isAr ? 'حاولتُ: ' : 'tried: ')}${repairText(r, isAr)}${r.count > 1 ? ` (${r.count})` : ''}`);
+                }
+                if (moved && selfRepair.fixed.length) {
+                    lines.push(isAr
+                        ? `   ✅ وزالت فعلاً: ${selfRepair.fixed.join('، ')}`
+                        : `   ✅ Actually gone: ${selfRepair.fixed.join(', ')}`);
+                }
                 for (const f of selfRepair.files) lines.push(`   • ${isAr ? 'عُدّل' : 'edited'}: ${f}`);
                 const left = (audit.findings || []);
                 if (left.length) {

@@ -1405,7 +1405,7 @@ describe('the social graph lives on the server', () => {
     it('the app calls them, and lets the server win', () => {
         const t = T();
         expect(t).toMatch(/apiPost\(content\.api, '\/' \+ encodeURIComponent\(id\) \+ '\/like'/);
-        expect(t).toMatch(/apiSibling\(content\.api, 'follows'\)/);
+        expect(t).toMatch(/await apiSiblingLive\(content\.api, 'follows'\)/);
         expect(t).toMatch(/Array\.isArray\(r\.likes\) \? r\.likes/);
         expect(t).toMatch(/Array\.isArray\(r\.comments\) \? r\.comments/);
     });
@@ -2030,7 +2030,7 @@ describe('the biggest request gets the strongest route', () => {
     it('the shop can take an order, or says it could not', () => {
         const T = SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
         const shop = T.slice(T.indexOf('export function fileShopAppJsx'));
-        expect(shop).toMatch(/apiSibling\(content\.api, 'orders'\)/);
+        expect(shop).toMatch(/await apiSiblingLive\(content\.api, 'orders'\)/);
         // an order that reached nobody is never reported as received
         expect(shop).toMatch(/لم يصل إلى المتجر بعد/);
     });

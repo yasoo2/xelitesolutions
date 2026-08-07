@@ -124,6 +124,13 @@ function findControls(limit: number) {
          */
         if (el.getAttribute('aria-selected') === 'true' || el.getAttribute('aria-current') === 'true'
             || el.getAttribute('aria-current') === 'page') return;
+        /**
+         * `aria-pressed` says the same thing in the other vocabulary, and the
+         * feed's own filter uses it: «All» is the tab that is already on, so
+         * pressing it changes nothing — and the report read «Unresponsive
+         * controls: "All"» on a filter that works perfectly.
+         */
+        if (el.getAttribute('aria-pressed') === 'true') return;
         if (el.hasAttribute('data-joe-ctl')) return;    // claimed by an earlier group
         // A stable per-run handle: index into a list we also stamp on the element.
         const id = `joe-ctl-${out.length}`;
@@ -536,17 +543,29 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
 
         // Does an empty required form actually refuse? Native validation counts.
         const forms = await page.evaluate(() => {
-            const out: Array<{ fields: number; required: number; hasSubmit: boolean }> = [];
+            const out: Array<{ fields: number; required: number; hasSubmit: boolean; guarded: boolean }> = [];
             document.querySelectorAll('form').forEach(f => {
                 const fields = f.querySelectorAll('input,textarea,select').length;
                 const required = f.querySelectorAll('[required]').length;
-                const hasSubmit = !!f.querySelector('button[type="submit"],input[type="submit"],button:not([type])');
-                out.push({ fields, required, hasSubmit });
+                const submit = f.querySelector('button[type="submit"],input[type="submit"],button:not([type])');
+                const hasSubmit = !!submit;
+                /**
+                 * A DISABLED SUBMIT IS VALIDATION.
+                 *
+                 * Refusing to see that produced a real false blocker: the feed's
+                 * composer keeps «Post» disabled until there is text OR a photo,
+                 * which is exactly right — a picture with no caption is a post,
+                 * and `required` on the textarea would have FORBIDDEN it. The
+                 * audit called it «a form that can be submitted empty» and took
+                 * eight points off a build for being correct.
+                 */
+                const guarded = !!submit && (submit as HTMLButtonElement).disabled === true;
+                out.push({ fields, required, hasSubmit, guarded });
             });
             return out;
         }).catch(() => []);
         metrics.forms = forms.length;
-        metrics.formsWithoutValidation = forms.filter((f: any) => f.fields > 0 && f.required === 0).length;
+        metrics.formsWithoutValidation = forms.filter((f: any) => f.fields > 0 && f.required === 0 && !f.guarded).length;
 
         // Fake buttons: things wired to a click but unreachable by keyboard.
         // A <div onclick> LOOKS identical to a button and works with a mouse —
