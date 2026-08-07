@@ -101,9 +101,19 @@ function findControls(limit: number) {
      */
     document.querySelectorAll('[data-joe-ctl]').forEach(el => el.removeAttribute('data-joe-ctl'));
 
-    const out: Array<{ sel: string; kind: string; label: string; href?: string }> = [];
+    const out: Array<{ sel: string; kind: string; label: string; href?: string; disabled?: boolean }> = [];
     const push = (el: Element, kind: string) => {
         if (out.length >= limit || !vis(el)) return;
+        /**
+         * A DISABLED CONTROL IS NOT A BROKEN ONE.
+         *
+         * Measured on his own app: «تصدير CSV» carries `disabled={!rows.length}`
+         * and the list was empty, so the click did nothing — correctly — and the
+         * probe reported «أزرار لا تستجيب: تصدير CSV». A false blocker about a
+         * button doing exactly what it was told is worse than not checking it.
+         */
+        const dis = (el as HTMLButtonElement).disabled === true || el.getAttribute('aria-disabled') === 'true';
+        if (dis) return;
         if (el.hasAttribute('data-joe-ctl')) return;    // claimed by an earlier group
         // A stable per-run handle: index into a list we also stamp on the element.
         const id = `joe-ctl-${out.length}`;
@@ -481,11 +491,22 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // "scroll" — a true measurement of the wrong thing.
                 const before = await page.evaluate(snapshot).catch(() => null);
                 await eyes.press(page);
+                /**
+                 * …AND A DOWNLOAD IS AN EFFECT.
+                 *
+                 * «تصدير CSV» hands the visitor a file and changes not one node
+                 * of the page. Judged by the DOM alone it is indistinguishable
+                 * from a button wired to nothing.
+                 */
+                let downloaded = false;
+                const onDownload = () => { downloaded = true; };
+                page.on('download', onDownload);
                 // force:true so an overlay does not turn "covered" into "broken".
                 await el.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
                 await page.waitForTimeout(SETTLE_MS);
+                try { page.off('download', onDownload); } catch { /* page may be gone */ }
                 const after = await page.evaluate(snapshot).catch(() => null);
-                effect = changed(before, after);
+                effect = downloaded ? 'download' : changed(before, after);
                 // A submit that reloads the page proves the form is NOT handled —
                 // an unhandled submit is the browser's default, not a feature.
                 if (c.kind === 'submit' && effect === 'navigation') effect = 'reload';

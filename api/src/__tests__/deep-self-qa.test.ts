@@ -234,6 +234,23 @@ describe('and the first thing it measured was Joe’s own work', () => {
         expect(r).toMatch(/\.btn\{display:inline-flex;align-items:center;justify-content:center;min-height:44px/);
     });
 
+    it('the app’s own star is a real required attribute, not decoration', () => {
+        // «العنوان *» with no `required` on the input: the finding «نموذج بلا
+        // أي حقل مطلوب» appeared on every build he ever ran, and the repair
+        // pass could not hold it because the generator re-emitted it.
+        const t = read('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        expect((t.match(/required=\{!!f\.required\}/g) || []).length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('and its small buttons and its own name were measured too', () => {
+        const t = read('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        expect(t).toMatch(/\.btn\.tiny\{padding:6px 12px;min-height:44px/);
+        expect(t).toMatch(/\.app-name\{[^}]*color:color-mix\(in srgb,var\(--brand,#111\) 45%,var\(--text,#111\)\)/);
+        // «حذف» measured 3.29:1 — the last WCAG failure left in the app.
+        expect(t).toMatch(/\.btn\.danger\{background:transparent;color:#96271b/);
+        expect(t).toMatch(/\[data-theme="dark"\] \.btn\.danger/);
+    });
+
     it('and the footer headings are one level down, not two', () => {
         const r = R();
         expect(r).toMatch(/<h3>\{content\.contactTitle\}<\/h3>/);
@@ -260,6 +277,21 @@ describe('a measurement it cannot make honestly, it does not make', () => {
     it('an inline link in a sentence is not a tap target', () => {
         expect(read('core', 'quality', 'ui-inspection.ts'))
             .toMatch(/if \(el\.tagName === 'A' && \/\^inline\$\/\.test\(getComputedStyle\(el\)\.display\)\) return;/);
+    });
+
+    it('a control the app DISABLED is not reported as broken', () => {
+        // Measured on his own build: «تصدير CSV» carries disabled={!rows.length}
+        // and the list was empty, so the probe called a correctly-disabled
+        // button «لا يستجيب».
+        const b = read('core', 'quality', 'behaviour-audit.ts');
+        expect(b).toMatch(/A DISABLED CONTROL IS NOT A BROKEN ONE/);
+        expect(b).toMatch(/\(el as HTMLButtonElement\)\.disabled === true \|\| el\.getAttribute\('aria-disabled'\) === 'true'/);
+    });
+
+    it('and a click that hands over a FILE counts as an effect', () => {
+        const b = read('core', 'quality', 'behaviour-audit.ts');
+        expect(b).toMatch(/page\.on\('download', onDownload\)/);
+        expect(b).toMatch(/effect = downloaded \? 'download' : changed\(before, after\)/);
     });
 
     it('and a form is exercised once per audit, not once per route', () => {

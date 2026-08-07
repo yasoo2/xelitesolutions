@@ -884,14 +884,20 @@ export default function RecordsApp({ content }) {
           {fields.map(f => (
             <label className={'field' + (f.type === 'textarea' ? ' wide' : '')} key={f.key}>
               <span>{f.label}{f.required ? ' *' : ''}</span>
+              {/* The star in the label was DECORATION: the field said «العنوان *»
+                  and carried no required attribute, so the browser let the form
+                  be submitted empty. The self-QA reported it on every build
+                  («نموذج بلا أي حقل مطلوب») and the repair pass could not fix
+                  what the generator kept re-emitting. */}
               {f.type === 'textarea' ? (
-                <textarea rows={3} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />
+                <textarea rows={3} required={!!f.required} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />
               ) : f.type === 'select' ? (
-                <select value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })}>
+                <select required={!!f.required} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })}>
                   {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
               ) : (
                 <input type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'time' ? 'time' : f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : 'text'}
+                  required={!!f.required}
                   value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />
               )}
             </label>
@@ -1780,7 +1786,10 @@ p{margin:0 0 8px}
 .app-bar{position:sticky;top:0;z-index:20;background:var(--surface,#fff);border-bottom:1px solid var(--border,#e5e5e5)}
 .app-bar-in{max-width:var(--maxw,1180px);margin:0 auto;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .app-id{display:flex;align-items:baseline;gap:10px;min-width:0}
-.app-name{font-size:1.05rem;font-weight:800;margin:0;color:var(--brand,#111)}
+/* The app's own name measured 3.25:1 against the bar — brand ink on a
+   brand-tinted surface. Leaning it toward the page's text clears AA in
+   both themes without losing the hue. */
+.app-name{font-size:1.05rem;font-weight:800;margin:0;color:color-mix(in srgb,var(--brand,#111) 45%,var(--text,#111))}
 .app-sub{color:var(--text-muted,#666);font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 44px, not 38: the audit measures touch targets and it was right to. */
 .icon-btn{border:1px solid var(--border,#ddd);background:var(--surface,#fff);color:inherit;border-radius:999px;
@@ -1818,8 +1827,15 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .btn:hover{filter:brightness(1.08)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn.ghost{background:transparent;color:inherit;border-color:var(--border,#ddd)}
-.btn.tiny{padding:6px 12px;min-height:36px;font-size:.85rem;font-weight:500}
-.btn.danger{background:transparent;color:#c0392b;border-color:currentColor}
+/* 44px: «منجز» 51x36, «تعديل» 59x36, «حذف» 55x36 — three targets a thumb
+   keeps missing, measured by the deep self-QA at 390px. */
+.btn.tiny{padding:6px 12px;min-height:44px;font-size:.85rem;font-weight:500}
+/* #c0392b measured 3.29:1 on the card — the last WCAG failure in the app.
+   A darker red keeps the warning read at a glance and clears 4.5:1; the
+   dark theme gets a lighter one, since the same ink on a dark card fails
+   the other way. */
+.btn.danger{background:transparent;color:#96271b;border-color:currentColor}
+[data-theme="dark"] .btn.danger,.dark .btn.danger{color:#ff9f93}
 
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .toolbar .search{flex:1 1 200px;width:auto}
