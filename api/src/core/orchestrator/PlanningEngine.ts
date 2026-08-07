@@ -280,6 +280,29 @@ Rules:
     /**
      * Generate a dynamic multi-step execution DAG based on intent and optional memory
      */
+    /** A plan built from what the TOOLS say they do — or null, honestly. */
+    static capabilityPlan(intent: any): any | null {
+        try {
+            const { capableTools } = require('./capability-match');
+            const capable = capableTools(String(intent?.goal || ''), 3);
+            if (!capable.length) return null;
+            console.log(`[PlanningEngine] capability match -> ${capable.map((c: any) => c.name).join(', ')}`);
+            return {
+                id: `capable_${Date.now()}`,
+                goal: intent.goal,
+                steps: capable.slice(0, 2).map((c: any, i: number) => ({
+                    id: `capable_${i}`,
+                    description: `${c.name} — matched on: ${c.why.join(', ')}`,
+                    tool: c.name,
+                    agent: 'General',
+                    input: { request: intent.goal, question: intent.goal, query: intent.goal },
+                    dependsOn: i === 0 ? [] : ['capable_0'],
+                })),
+                metadata: { complexity: 'medium', riskLevel: 'low', matchedBy: 'capability' },
+            };
+        } catch { return null; }
+    }
+
     static async generatePlan(params: { intent: StructuredIntent, memory?: any }, traceId?: string, context?: any): Promise<ExecutionPlan> {
         const { intent, memory } = params;
         // Language-universal understanding: `probe` = the user's original words PLUS
@@ -1635,6 +1658,23 @@ Rules:
                 metadata: { complexity: 'low', riskLevel: 'low' }
             };
         }
+
+        /**
+         * BEFORE THE MODEL — ASK THE TOOLS WHAT THEY ARE FOR.
+         *
+         * «جو غبي ومحدود جدا في التفكير والتنفيذ». Measured: 72 tools
+         * registered, 24 names anywhere in this file — 48 capabilities no plan
+         * could reach. Everything the hand-written routes do not cover fell to
+         * generateDynamicDag, which asks a model; and his logs read «CRITICAL:
+         * All LLM providers failed» over and over, so the plan collapsed to
+         * central_answer and Joe looked stupid because it WAS.
+         *
+         * The routes above stay — hand-checked and better. This catches only
+         * what they drop, from what every tool already says about itself, and
+         * declines when nothing scores. It widens the reach; it never hijacks.
+         */
+        const byCapability = PlanningEngine.capabilityPlan(intent);
+        if (byCapability) return byCapability;
 
         return PlanningEngine.generateDynamicDag(intent, memory, context);
     }
