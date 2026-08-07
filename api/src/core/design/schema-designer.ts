@@ -184,6 +184,34 @@ export async function designDataModel(
         return listed;
     }
 
+    /**
+     * AND THEN THE GENERAL PATH — «يجب ان نجد طريقه اخرى».
+     *
+     * He is right that adding a domain per prompt is not a plan: «هذا يعني ان
+     * يجب ان اطور جو لالاف الميزات … وهذا غير ممكن». Everything above this
+     * line is a whitelist — six domains, forty nouns — and a whitelist of the
+     * world has no end.
+     *
+     * This reads the request by the SHAPE of its words: what a noun looks
+     * like, what a gerund looks like, which suffixes mark a person, a payment,
+     * an appointment, a container. It has never heard of a veterinary clinic
+     * or a car rental and it builds both, because that list grows with a
+     * language and not with the world.
+     *
+     * It runs BEFORE the model, not after: it costs nothing, works with every
+     * provider rate-limited, and never invents a table it cannot give columns.
+     */
+    const { inferModel } = require('./entity-inference');
+    const inferred = inferModel(request);
+    if (inferred.entities.length >= 2) {
+        const valid = validateDesign(inferred.entities);
+        if (valid && valid.length >= 2) {
+            opts?.onNote?.(`data model: inferred from the request's own words — ${valid.map(e => e.key).join(', ')}`
+                + (inferred.capabilities.length ? ` (not tables: ${inferred.capabilities.slice(0, 4).join(', ')})` : ''));
+            return valid;
+        }
+    }
+
     if (String(process.env.JOE_AI_SCHEMA || '1') === '0') return [];
 
     try {
