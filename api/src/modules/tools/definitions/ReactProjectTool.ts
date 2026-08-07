@@ -2674,7 +2674,32 @@ export class ReactProjectTool extends BaseTool {
                 const ok = await listening;
                 clearTimeout(timer);
                 if (!ok) { try { child.kill(); } catch { /* already gone */ } return null; }
-                return { url: `http://127.0.0.1:${port}/`, stop: () => { try { child.kill(); } catch { /* already gone */ } } };
+                /**
+                 * «LISTENING» IS NOT «SERVING» — and the difference cost a
+                 * whole audit.
+                 *
+                 * A feed server printed «listening on», answered its API
+                 * perfectly, and returned 404 for «/» because it served no
+                 * public/ at all. The audit was handed that address and spent
+                 * thirty seconds grading Express's 404 page: 41/100, six
+                 * findings, zero of them about the product.
+                 *
+                 * So the front door is KNOCKED ON before the address is handed
+                 * over. A server that does not answer its own root is not the
+                 * place to measure an interface.
+                 */
+                const url = `http://127.0.0.1:${port}/`;
+                let door = 0;
+                for (let i = 0; i < 12 && door !== 200; i++) {
+                    try { door = (await fetch(url, { redirect: 'follow' })).status; }
+                    catch { await new Promise(r => setTimeout(r, 250)); }
+                }
+                if (door !== 200) {
+                    term(`self-QA: the server listens but answered ${door || 'nothing'} at «/» — it serves no interface, so the audit measures the built folder instead`);
+                    try { child.kill(); } catch { /* already gone */ }
+                    return null;
+                }
+                return { url, stop: () => { try { child.kill(); } catch { /* already gone */ } } };
             } catch (e: any) {
                 term(`self-QA: could not start the packaged server (${String(e?.message || e).slice(0, 120)}) — auditing the folder instead`);
                 return null;

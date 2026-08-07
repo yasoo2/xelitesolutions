@@ -218,6 +218,8 @@ export async function auditBuiltApp(
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
         const heavyImages: string[] = [];
+        /** Set only when the address the audit was given refused its own root. */
+        let frontDoor: { url: string; status: number; recovered: boolean } | null = null;
         const onPageError = (e: any) => pageErrors.push(String(e).slice(0, 120));
         page.on('pageerror', onPageError);
         /**
@@ -307,7 +309,47 @@ export async function auditBuiltApp(
                 page.off('response', onResponse); page.off('dialog', onDialog);
             } catch { /* the page may already be gone */ }
         };
-        await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
+        /**
+         * DID I EVEN LAND ON THE SYSTEM? — «انه بدائي وفاشل».
+         *
+         * His «social media platform» build was graded 41/100 with six
+         * findings: no <h1>, no <main>, no viewport meta, horizontal scroll at
+         * 390px, 0 controls pressed, 0 forms filled. Every one of them was
+         * true — of EXPRESS'S 404 PAGE. The packaged feed server did not serve
+         * public/ (fixed at the cause), so «/» answered 404, and the auditor
+         * walked into an error page and reviewed its typography.
+         *
+         * A browser that behaves intelligently with any system asks this
+         * question FIRST, and then does two things no naive one does:
+         *
+         *   1. it says the truth about the SYSTEM — the front door is shut —
+         *      as one blocking finding, instead of six invented ones;
+         *   2. it does not give up: it falls back to serving the built
+         *      interface itself, so the report is still about the product.
+         */
+        const landing = await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
+        const doorStatus = Number(landing?.status?.() || 0);
+        if (doorStatus >= 400) {
+            frontDoor = { url, status: doorStatus, recovered: false };
+            // The running system refused its own root. Measure the interface
+            // anyway — from the folder, which is the thing that was built.
+            if (givenUrl) {
+                await new Promise<void>(r => srv.listen(0, '127.0.0.1', () => r()));
+                const fallback = `http://127.0.0.1:${(srv.address() as any).port}/`;
+                try {
+                    const second = await page.goto(fallback, { waitUntil: 'networkidle', timeout: timeoutMs });
+                    if (Number(second?.status?.() || 0) < 400) {
+                        frontDoor.recovered = true;
+                        // Everything counted while standing on the error page
+                        // belonged to the error page, not to the product.
+                        consoleErrors.length = 0;
+                        failedRequests.length = 0;
+                        pageErrors.length = 0;
+                        opts?.onProgress?.('recovered');
+                    }
+                } catch { /* the folder could not be served either — reported below */ }
+            }
+        }
 
         // The declared webfont must actually LOAD — a stack that names Cairo
         // while serving no file is the exact costume this audit was born from.
@@ -465,6 +507,38 @@ export async function auditBuiltApp(
         behaviour.findings.push(...ui.findings);
 
         const findings: AppAuditFinding[] = [];
+        /**
+         * THE SYSTEM'S FRONT DOOR — said once, plainly, and FIRST.
+         *
+         * This is a defect of the system, not of the interface: the server is
+         * running and answering its API, and refuses the address a visitor
+         * types. Left unsaid, it disguises itself as six cosmetic complaints
+         * about a page nobody built.
+         */
+        if (frontDoor) {
+            findings.push({
+                id: 'server_root_dead', severity: 'high',
+                detail: `الخادم يعمل لكنه أجاب ${frontDoor.status} على «/» — الواجهة غير مخدومة من الخادم، فالنظام مغلق عند بابه`
+                    + (frontDoor.recovered ? '. قِستُ الواجهة من مجلد البناء بدلاً منه، والنتائج أدناه عنها هي.' : ''),
+                detailEn: `The server runs but answered ${frontDoor.status} at "/" — it never serves the interface, so the system is shut at its front door`
+                    + (frontDoor.recovered ? '. Measured the built folder instead; everything below is about that.' : ''),
+            });
+        }
+        /**
+         * AND A PAGE WITH NOTHING ON IT IS NOT A PAGE WITH GOOD TYPOGRAPHY.
+         *
+         * «0 عنصر مضغوط، 0 نموذج» on an application build is the loudest fact
+         * in the report and it used to be a parenthesis. If the audit found no
+         * control and no form at all, that IS the finding — grading contrast
+         * on such a page is how an error page scored 41/100.
+         */
+        if (!allControls.length && !allForms.length) {
+            findings.push({
+                id: 'empty_page', severity: 'high',
+                detail: 'لا زر ولا رابط ولا نموذج على الصفحة — هذه ليست واجهة تطبيق، ولم أقِس شكلها لأن لا شيء فيها ليُقاس',
+                detailEn: 'Not one button, link or form on the page — this is not an application interface, and there was nothing to measure',
+            });
+        }
         if (pageErrors.length) findings.push({ id: 'page_errors', severity: 'high', detail: `${pageErrors.length} خطأ صفحة: ${pageErrors[0]}`, detailEn: `${pageErrors.length} page error(s): ${pageErrors[0]}` });
         if (consoleErrors.length) findings.push({ id: 'console_errors', severity: 'high', detail: `${consoleErrors.length} خطأ كونسول: ${consoleErrors[0]}`, detailEn: `${consoleErrors.length} console error(s): ${consoleErrors[0]}` });
         if (failedRequests.length) findings.push({ id: 'failed_requests', severity: 'high', detail: `${failedRequests.length} ملف لم يصل: ${failedRequests[0]}`, detailEn: `${failedRequests.length} request(s) never arrived: ${failedRequests[0]}` });
@@ -481,6 +555,20 @@ export async function auditBuiltApp(
         const asSeverity = { critical: 'high', major: 'medium', minor: 'low' } as const;
         for (const f of behaviour.findings) {
             findings.push({ id: f.code, severity: asSeverity[f.severity], detail: f.ar, detailEn: f.en });
+        }
+
+        /**
+         * AND IF THE PRODUCT WAS NEVER REACHED, NOTHING ELSE HERE IS TRUE.
+         *
+         * Everything measured on an error page describes the error page. The
+         * honest report is ONE finding — the door is shut — not that Express's
+         * 404 has no <main> landmark. This is the difference between a browser
+         * that reports and a browser that understands what it is looking at.
+         */
+        if (frontDoor && !frontDoor.recovered) {
+            const door = findings.filter(f => f.id === 'server_root_dead');
+            findings.length = 0;
+            findings.push(...door);
         }
 
         /**
@@ -555,7 +643,10 @@ export async function auditBuiltApp(
         // Only a browser WE launched is ours to close — closing the panel's
         // would take his own browser down with the audit.
         if (!borrowed) { try { await browser?.close(); } catch { /* already gone */ } }
-        srv.close();
+        // The callback form is not decoration: closing a server that never
+        // listened (the serveUrl path) emits an 'error' with no listener, and
+        // an unhandled 'error' takes the process with it.
+        srv.close(() => { /* not listening is a fine way to be closed */ });
     }
 }
 

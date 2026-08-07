@@ -371,12 +371,49 @@ export { db };
 `;
 }
 
+/**
+ * THE FRONT DOOR — the block that makes a folder a SYSTEM.
+ *
+ * Measured on his own «social media platform» build: the interface was
+ * packaged into the server's public/ («📦 Packaged the interface inside the
+ * server»), the audit booted that server, asked for «/», and got **404** —
+ * because only the catalogue server had ever served static files. The feed
+ * server had none. So the whole system's front door was shut: on the audit's
+ * browser, and on his domain the moment he uploaded the folder.
+ *
+ * One block, both servers, one behaviour. A server that carries an interface
+ * must serve it, whatever kind of system it is.
+ */
+const SERVE_PACKAGED_UI = `
+{
+  const PUBLIC = path.join(HERE_DIR, 'public');
+  if (fs.existsSync(path.join(PUBLIC, 'index.html'))) {
+    app.use(express.static(PUBLIC, { index: false, maxAge: '1h' }));
+    // Anything that is not an API route is the single-page app. Assets are
+    // handled above, so a miss here means a route inside the interface.
+    // (A plain middleware rather than a path regex: an escaped pattern inside
+    // a generated file is one backslash away from an unparseable server, and
+    // the syntax gate caught exactly that.)
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
+      res.sendFile(path.join(PUBLIC, 'index.html'));
+    });
+    console.log('[api] serving the built interface from public/ — one origin, ready for a domain');
+  }
+}
+`;
+
 function filePostsServerJs(brand: string): string {
     return `// ${brand} — the feed's API. Members post; everyone reads.
 //   npm start            (port 4100)
 //   PORT=5050 npm start
 import express from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { db } from './db.js';
+
+const HERE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 // A post can carry a downscaled photo as a data URL — the limit is generous
@@ -476,6 +513,7 @@ app.post('/api/follows', (req, res) => {
 });
 
 const port = Number(process.env.PORT || 4100);
+${SERVE_PACKAGED_UI}
 app.listen(port, () => {
   console.log(\`[api] feed listening on http://localhost:\${port} — backend: \${db.backend}, \${db.count()} posts\`);
   console.log('[api] GET/POST /api/posts · DELETE /api/posts/:id · POST /api/posts/:id/like');
@@ -1695,24 +1733,11 @@ const port = Number(process.env.PORT || 4100);
  * system deployable: upload the folder, run npm start behind your domain,
  * and it works — no CORS, no second port, no address baked into the bundle.
  * Without public/ the server is exactly what it was: an API on its own.
+ *
+ * The block itself lives in ONE place and is shared with the feed server,
+ * which for months did not have it — and answered 404 at its own front door.
  */
-{
-  const PUBLIC = path.join(HERE_DIR, 'public');
-  if (fs.existsSync(path.join(PUBLIC, 'index.html'))) {
-    app.use(express.static(PUBLIC, { index: false, maxAge: '1h' }));
-    // Anything that is not an API route is the single-page app. Assets are
-    // handled above, so a miss here means a route inside the interface.
-    // (A plain middleware rather than a path regex: an escaped pattern inside
-    // a generated file is one backslash away from an unparseable server, and
-    // the syntax gate caught exactly that.)
-    app.use((req, res, next) => {
-      if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
-      res.sendFile(path.join(PUBLIC, 'index.html'));
-    });
-    console.log('[api] serving the built interface from public/ — one origin, ready for a domain');
-  }
-}
-
+${SERVE_PACKAGED_UI}
 app.listen(port, () => {
   console.log(\`[api] listening on http://localhost:\${port} — backend: \${db.backend}\${seeded ? \`, seeded \${seeded} rows\` : ''}\`);
   if (owner) console.log(\`[api] owner account created: \${owner} — the password was shown once in Joe's chat.\`);
