@@ -85,7 +85,10 @@ describe('and the builder wires them without breaking what was there', () => {
         // tables cannot disagree when an LLM designed them.
         expect(r).toMatch(/const tableModel = apiLink/);
         expect(r).toMatch(/Array\.isArray\(prevEntry\?\.model\) && prevEntry\.model\.length/);
-        expect(r).toMatch(/deriveDataModel\(request\)\)/);
+        // …and when neither the session nor a known domain has one, the tables
+        // the user listed in his own sentence («: النباتات والموردون»).
+        expect(r).toMatch(/deriveDataModel\(request\)\.length/);
+        expect(r).toMatch(/named-entities'\)\.namedEntities\(request\)/);
         expect(r).toMatch(/model: tableModel,/);
     });
 

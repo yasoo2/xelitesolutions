@@ -2395,7 +2395,11 @@ export class ReactProjectTool extends BaseTool {
             const tableModel = apiLink
                 ? (Array.isArray(prevEntry?.model) && prevEntry.model.length
                     ? prevEntry.model
-                    : require('../../../core/design/data-model').deriveDataModel(request))
+                    // …and the same fallback the server uses: a known domain,
+                    // then the tables he listed in his own sentence.
+                    : (require('../../../core/design/data-model').deriveDataModel(request).length
+                        ? require('../../../core/design/data-model').deriveDataModel(request)
+                        : require('../../../core/design/named-entities').namedEntities(request)))
                 : [];
             if (tableModel.length) term(`admin screens: ${tableModel.map((e: any) => e.key).join(', ')}`);
             const appFiles = buildAppFiles(appBp, {

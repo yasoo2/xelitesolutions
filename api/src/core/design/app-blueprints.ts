@@ -205,11 +205,40 @@ const SELECT_AR_EN = (ar: string[], en: string[], isAr: boolean) => (isAr ? ar :
 /** The subject of the request, cleaned of the build verbs — used to name a
  *  generic app after what the user actually asked to manage. */
 export function subjectOf(request: string): string {
-    return String(request || '')
+    /**
+     * WHAT IT IS CALLED — NOT THE FIRST FORTY CHARACTERS OF THE REQUEST.
+     *
+     * His build shipped with this on screen, as the app's own subtitle:
+     *
+     *     «اً لمشتل نباتات: النباتات والموردون والط»
+     *
+     * Three faults in one string, all visible in the screenshot he sent:
+     *   · «نظاماً» minus «نظام» leaves the case ending «اً» stranded in front;
+     *   · the colon and the table list belong to the DATABASE, not to the name;
+     *   · and slice(0, 40) cut «والطلبيات» in half.
+     */
+    const head = String(request || '')
         .replace(/\n[\s\S]*$/, '')
-        .replace(/(ابنِ|ابني|ابن|أنشئ|انشئ|اصنع|اعمل|سوّي|سوي|صمّم|صمم|طوّر|طور|أريد|اريد|أرغب|قم\s*ب|من\s*فضلك|لي\b|لنا\b)/g, ' ')
+        .split(/[:：]/)[0]                                   // the list after «:» is the tables
+        // `\b` is defined by `\w`, which holds no Arabic letter — «لي\b» never
+        // matched, which is why «ابن لي متجراً» kept its «لي».
+        .replace(/(ابنِ|ابني|ابن|أنشئ|انشئ|اصنع|اعمل|سوّي|سوي|صمّم|صمم|طوّر|طور|أريد|اريد|أرغب|قم\s*ب|من\s*فضلك)/g, ' ')
+        .replace(/(^|\s)(لي|لنا)(?=\s|$)/g, ' ')
         .replace(/(تطبيق|برنامج|نظام|منصّة|منصة|أداة|اداة|موقع|مشروع|بسيط|جديد|كامل|احترافي|react|رياكت|ريأكت|vite|build|create|make|app|system|platform|project|simple|full)/gi, ' ')
-        .replace(/\s+/g, ' ').trim().slice(0, 40);
+        // The accusative ending left behind by «نظاماً» / «موقعاً» / «تطبيقاً».
+        .replace(/(^|\s)(اً|ًا|ا)(?=\s|$)/g, ' ')
+        .replace(/\s+/g, ' ').trim()
+        // «لمشتل نباتات» is «مشتل نباتات» with a preposition glued on.
+        .replace(/^ل(?=[ء-ي]{3,})/, '')
+        // …and the English articles the verb strip leaves behind.
+        .replace(/^(?:a|an|the|for|me|us|my|our)\s+/i, '')
+        .replace(/\s+(?:a|an|the|for)$/i, '');
+
+    if (head.length <= 40) return head;
+    // Cut at a space, never through a word — «والط» is not a name.
+    const cut = head.slice(0, 40);
+    const lastSpace = cut.lastIndexOf(' ');
+    return (lastSpace > 12 ? cut.slice(0, lastSpace) : cut).trim();
 }
 
 export function blueprintFor(kind: AppKind, request: string, isAr: boolean): AppBlueprint {

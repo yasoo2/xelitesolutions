@@ -1649,6 +1649,24 @@ export class ApiProjectTool extends BaseTool {
         if (model.length) {
             if (sessionId) broadcastThinkingDetail(sessionId, describeModel(model, isAr));
         }
+        /**
+         * AND A TABLE HE NAMED THAT THE SYSTEM ALREADY OWNS IS SAID OUT LOUD.
+         *
+         * He asked for «النباتات والموردون والطلبيات». Orders is not generated,
+         * because every API this tool builds already serves `/api/orders` — a
+         * second table with that name is a table nobody can reach. Silently
+         * dropping the word would read as «you ignored a third of my request».
+         */
+        const { alreadyOwned } = require('../../../core/design/named-entities');
+        const owned: string[] = alreadyOwned(request);
+        if (owned.length) {
+            term(`data model: ${owned.join(', ')} — already served by the built-in table, not regenerated`);
+            if (sessionId) {
+                broadcastThinkingDetail(sessionId, isAr
+                    ? `ℹ️ ${owned.join(' و')} موجودة أصلاً في النظام (جدول مدمج على /api/orders) — لم أُكرّرها`
+                    : `ℹ️ ${owned.join(', ')} already exists as a built-in table (/api/orders) — not duplicated`);
+            }
+        }
         const isCatalogue = columns === CATALOGUE_COLUMNS;
         const seeds = isCatalogue ? catalogueSeeds : [];
         const dirName = `api-${slug(brand)}`;

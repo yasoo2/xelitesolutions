@@ -21,6 +21,7 @@
  */
 import type { ModelEntity } from './data-model';
 import { deriveDataModel } from './data-model';
+import { namedEntities } from './named-entities';
 
 /** The shape the model is constrained to. Small on purpose — it must fit a 7B. */
 export const ENTITY_SCHEMA: Record<string, any> = {
@@ -61,8 +62,17 @@ const MAX_ENTITIES = 5;
 const MAX_FIELDS = 8;
 /** A table name is a SQL identifier and a URL segment — both, or neither. */
 const SAFE = /^[a-z][a-z0-9_]{1,30}$/;
-/** Names that would collide with what the generator already owns. */
-const RESERVED = new Set(['orders', 'users', 'products', 'health', 'auth', 'api', 'sqlite_master']);
+/**
+ * Names that would collide with what the generator already owns.
+ *
+ * Exported because the list-reader needs the SAME rule: «الطلبيات» in his
+ * sentence produced a real `orders` table that the base server's own
+ * `POST /api/orders` then shadowed — every write came back
+ * «{"ok":false,"error":"item_required"}» from a route the entity never owned.
+ * A second table wearing an existing route's name is worse than no table.
+ */
+export const RESERVED_TABLES = new Set(['orders', 'users', 'products', 'items', 'health', 'auth', 'api', 'sqlite_master']);
+const RESERVED = RESERVED_TABLES;
 
 /**
  * The validator. It is deliberately harsher than the schema: a shape can be
@@ -154,6 +164,26 @@ export async function designDataModel(
     // The deterministic domains are BETTER than a model guess when they match:
     // they are hand-checked, and they cost nothing.
     if (known.length) { opts?.onNote?.(`data model: a known domain matched — ${known.map(e => e.key).join(', ')}`); return known; }
+
+    /**
+     * AND BEFORE ANY MODEL IS ASKED — READ WHAT HE ACTUALLY WROTE.
+     *
+     * «ابنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات». He listed the
+     * tables himself, after a colon, separated by «و». That build produced a
+     * generic «إضافة سجلّ» form with العنوان/التفاصيل/قيمة, because «مشتل» is
+     * not one of the six domains and every provider was rate-limited that
+     * minute — so the model was never reached and the list was never read.
+     *
+     * Needing a 70-billion-parameter model to parse a list a human typed is
+     * not intelligence, it is dependence. This costs nothing, works offline,
+     * and declines whenever it is not sure.
+     */
+    const listed = namedEntities(request);
+    if (listed.length) {
+        opts?.onNote?.(`data model: read from the request itself — ${listed.map(e => e.key).join(', ')}`);
+        return listed;
+    }
+
     if (String(process.env.JOE_AI_SCHEMA || '1') === '0') return [];
 
     try {
