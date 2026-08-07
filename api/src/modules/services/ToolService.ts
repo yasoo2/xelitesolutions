@@ -9,6 +9,7 @@ import { redactSecretsFromString } from '../../shared/utils/redaction';
 import { paintLine } from '../../core/terminal/paint';
 import { normalizeUrlForGoto } from '../../shared/utils/url';
 import { traceManager } from './TraceManager';
+import { isArabicReply, say } from '../../shared/reply-language';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { isApologyOnly, apologyText } from '../../shared/utils/honestResult';
 import { agentSearchUrl } from '../browser/challenge';
@@ -519,16 +520,30 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     // [ELITE SYNC] Broadcast tool-specific thinking status
     if (contextSessionId) {
         const { broadcastThinkingPhase } = require('../../api/ws');
+        /**
+         * AND IN THE LANGUAGE HE ASKED IN — «يجب ان تكون النتيجة والذكاء
+         * العصبي كلها انجليزية».
+         *
+         * Every line below was hardcoded Arabic, so an English prompt in
+         * English mode produced «جاري تنفيذ: api project…» directly above
+         * «🗄️ Building a real backend with a database» — two languages, one
+         * request. The rule the build tools already follow lives in one file
+         * now, and the trace follows it too.
+         */
+        const isAr = isArabicReply({
+            language: (context as any)?.language,
+            text: `${String((input as any)?.request || '')} ${String((input as any)?.prompt || '')}`,
+        });
         let status = '';
-        if (effectiveName === 'browser_run') status = 'جاري استخدام المتصفح...';
-        else if (effectiveName === 'web_search') status = 'جاري البحث في الويب...';
-        else if (effectiveName === 'scaffold_project' || effectiveName === 'scaffold_full_stack') status = 'جاري إنشاء هيكل المشروع...';
-        else if (effectiveName === 'npm_manager') status = 'جاري معالجة المكتبات...';
-        else if (effectiveName === 'git_ops') status = 'جاري تحديث المستودع...';
-        else if (effectiveName === 'write_file' || effectiveName === 'file_edit') status = 'جاري كتابة الكود...';
-        else if (effectiveName === 'read_file' || effectiveName === 'inspect_directory') status = 'جاري مراجعة الملفات...';
-        else if (effectiveName === 'analyze_codebase') status = 'جاري تحليل بنية المشروع...';
-        else if (effectiveName === 'web_page_builder') status = 'جاري تصميم الصفحة وبناؤها...';
+        if (effectiveName === 'browser_run') status = say(isAr, 'جاري استخدام المتصفح...', 'Using the browser…');
+        else if (effectiveName === 'web_search') status = say(isAr, 'جاري البحث في الويب...', 'Searching the web…');
+        else if (effectiveName === 'scaffold_project' || effectiveName === 'scaffold_full_stack') status = say(isAr, 'جاري إنشاء هيكل المشروع...', 'Scaffolding the project…');
+        else if (effectiveName === 'npm_manager') status = say(isAr, 'جاري معالجة المكتبات...', 'Working through the packages…');
+        else if (effectiveName === 'git_ops') status = say(isAr, 'جاري تحديث المستودع...', 'Updating the repository…');
+        else if (effectiveName === 'write_file' || effectiveName === 'file_edit') status = say(isAr, 'جاري كتابة الكود...', 'Writing the code…');
+        else if (effectiveName === 'read_file' || effectiveName === 'inspect_directory') status = say(isAr, 'جاري مراجعة الملفات...', 'Reading the files…');
+        else if (effectiveName === 'analyze_codebase') status = say(isAr, 'جاري تحليل بنية المشروع...', 'Analysing the project structure…');
+        else if (effectiveName === 'web_page_builder') status = say(isAr, 'جاري تصميم الصفحة وبناؤها...', 'Designing and building the page…');
 
         /**
          * EVERY tool announces itself, not eight of them.
@@ -544,7 +559,9 @@ export async function executeTool(name: string, input: any, context?: ToolContex
          */
         if (!status) {
             const pretty = String(effectiveName || '').replace(/[_-]+/g, ' ').trim();
-            status = pretty ? `جاري تنفيذ: ${pretty}…` : 'جاري التنفيذ…';
+            status = pretty
+                ? say(isAr, `جاري تنفيذ: ${pretty}…`, `Running: ${pretty}…`)
+                : say(isAr, 'جاري التنفيذ…', 'Running…');
         }
         broadcastThinkingPhase(contextSessionId, 'executing', status);
     }

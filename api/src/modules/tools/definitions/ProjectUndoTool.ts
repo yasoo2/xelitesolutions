@@ -11,6 +11,7 @@
  * is a project that lies about itself in the preview panel.
  */
 import fs from 'fs';
+import { isArabicReply, say } from '../../../shared/reply-language';
 import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
@@ -44,6 +45,7 @@ export class ProjectUndoTool extends BaseTool {
     async execute(input: any, context?: any): Promise<ToolExecutionResult> {
         const logs: string[] = [];
         const sessionId = context?.sessionId || input?.sessionId;
+        const isAr = isArabicReply({ language: (context as any)?.language, text: String((input as any)?.request || '') });
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const term = (line: string) => {
             logs.push(line);
@@ -74,7 +76,7 @@ export class ProjectUndoTool extends BaseTool {
             } as any;
         }
 
-        if (sessionId) broadcastThinkingDetail(sessionId, '↩️ أرجع المشروع إلى نسخته السابقة…');
+        if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '↩️ أرجع المشروع إلى نسخته السابقة…', '↩️ Rolling the project back to its previous version…'));
         const res = restoreVersion(dir, input?.versionId ? String(input.versionId) : undefined);
         if (!res.ok) {
             return { ok: false, error: res.error || 'restore_failed', logs } as any;
@@ -85,7 +87,7 @@ export class ProjectUndoTool extends BaseTool {
         let rebuilt = true;
         let buildNote = '';
         if (fs.existsSync(path.join(dir, 'node_modules')) && fs.existsSync(path.join(dir, 'package.json'))) {
-            if (sessionId) broadcastThinkingDetail(sessionId, '🏗️ وأعيد البناء ليطابق ما رجعنا إليه…');
+            if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '🏗️ وأعيد البناء ليطابق ما رجعنا إليه…', '🏗️ …and rebuilding so the output matches what we rolled back to'));
             const { runDoctored } = require('../../../core/quality/log-doctor');
             const r = await runDoctored('npm', ['run', 'build'], {
                 cwd: dir, timeoutMs: 240_000,

@@ -17,6 +17,7 @@
  * measures one. If the score did not move, it says so.
  */
 import fs from 'fs';
+import { isArabicReply, say } from '../../../shared/reply-language';
 import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
@@ -48,6 +49,7 @@ export class UiFixTool extends BaseTool {
     async execute(input: any, context?: any): Promise<ToolExecutionResult> {
         const logs: string[] = [];
         const sessionId = context?.sessionId || input?.sessionId;
+        const isAr = isArabicReply({ language: (context as any)?.language, text: String((input as any)?.request || '') });
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const term = (line: string) => {
             logs.push(line);
@@ -65,7 +67,7 @@ export class UiFixTool extends BaseTool {
         const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
 
         try { broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'ui_fix' } } as any); } catch { /* UI optional */ }
-        if (sessionId) broadcastThinkingDetail(sessionId, '🔎 أقيس الواجهة قبل الإصلاح — في المتصفح أمامك…');
+        if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '🔎 أقيس الواجهة قبل الإصلاح — في المتصفح أمامك…', '🔎 Measuring the interface before the repair — in the browser in front of you…'));
 
         const before = await auditBuiltApp(distDir, { timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID });
         if (before.skipped) {
@@ -76,8 +78,8 @@ export class UiFixTool extends BaseTool {
         // ── 2/3/4: repair the SOURCE, gate every file, rebuild, revert on failure.
         // The cycle itself lives in core/quality/self-repair so the build path
         // and this tool cannot drift into two different disciplines.
-        if (sessionId) broadcastThinkingDetail(sessionId, '🛠️ أصلح المصدر نفسه — لا الصفحة المعروضة…');
-        if (sessionId) broadcastThinkingDetail(sessionId, '🏗️ ثم أعيد البناء للتحقّق أن الإصلاح لم يكسر شيئاً…');
+        if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '🛠️ أصلح المصدر نفسه — لا الصفحة المعروضة…', '🛠️ Repairing the source itself — not the rendered page…'));
+        if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '🏗️ ثم أعيد البناء للتحقّق أن الإصلاح لم يكسر شيئاً…', '🏗️ Then rebuilding, to prove the repair broke nothing…'));
         const cycle = await repairAndRebuild(dir, { onLine: term });
         const written = cycle.changed;
         const refused = cycle.refused;
@@ -100,7 +102,7 @@ export class UiFixTool extends BaseTool {
         }
 
         // ── 5: measure again. The number is the claim. ──
-        if (sessionId) broadcastThinkingDetail(sessionId, '🔎 أقيس مرة أخرى بعد الإصلاح…');
+        if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '🔎 أقيس مرة أخرى بعد الإصلاح…', '🔎 Measuring again, after the repair…'));
         const after = await auditBuiltApp(distDir, { timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID });
         term(`ui_fix: after → ${after.score}/100 (${after.findings.map((f: any) => f.id).join(', ') || 'clean'})`);
 

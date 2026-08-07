@@ -1,4 +1,5 @@
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { isArabicReply, say } from '../shared/reply-language';
 import { unrunnableShellStep } from '../core/orchestrator/plan-tools';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { executeTool } from '../modules/services/ToolService';
@@ -143,6 +144,17 @@ export class AgentOrchestrator {
   private memory: Map<string, ExecutionMemory> = new Map();
   private agents: Map<AgentType, BaseAgent> = new Map();
   private context?: Record<string, any>;
+
+  /**
+   * WHICH LANGUAGE THIS RUN ANSWERS IN.
+   *
+   * «عند وضع بروميت بالانجليزية … يجب ان تكون النتيجة والذكاء العصبي كلها
+   * انجليزية». The interface's setting wins; with none, the goal's own script
+   * decides. Same rule as every build tool, from the one file that holds it.
+   */
+  private replyIsArabic(memory?: any): boolean {
+    return isArabicReply({ language: this.context?.language, text: String(memory?.goalText || '') });
+  }
 
   constructor() {
     // Register specialized agents
@@ -556,7 +568,7 @@ export class AgentOrchestrator {
        */
       const batch = pickParallelBatch(readyNodes);
       if (batch.length > 1) {
-        broadcastThinkingDetail(memory.sessionId, `⚡ ${batch.length} خطوات مستقلّة — أنفّذها معاً`);
+        broadcastThinkingDetail(memory.sessionId, say(this.replyIsArabic(memory), `⚡ ${batch.length} خطوات مستقلّة — أنفّذها معاً`, `⚡ ${batch.length} independent steps — running them together`));
       }
       const batchResults = new Map<string, any>();
       await Promise.all(batch.map(async (node) => {
@@ -913,7 +925,7 @@ export class AgentOrchestrator {
         const known = errorText ? repairMemory.recallRepair(errorText) : null;
         if (known) {
             rememberedCure = `\n[A REPAIR THAT WORKED FOR THIS SAME ERROR BEFORE (proven ${known.wins}x) — prefer it unless the context clearly differs]:\n${known.repair}`;
-            broadcastThinkingDetail(memory.sessionId, `🧠 أعرف هذا الخطأ — العلاج الذي نجح سابقاً: ${known.repair.slice(0, 120)}`);
+            broadcastThinkingDetail(memory.sessionId, say(this.replyIsArabic(memory), `🧠 أعرف هذا الخطأ — العلاج الذي نجح سابقاً: ${known.repair.slice(0, 120)}`, `🧠 I know this failure — the repair that worked before: ${known.repair.slice(0, 120)}`));
         }
     } catch { /* memory is a bonus, never a blocker */ }
 

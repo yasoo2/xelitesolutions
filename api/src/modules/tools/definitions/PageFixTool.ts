@@ -19,6 +19,7 @@
  * preview is a demonstration, and both say exactly what they are.
  */
 import fs from 'fs';
+import { isArabicReply, say } from '../../../shared/reply-language';
 import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
@@ -117,6 +118,7 @@ export class PageFixTool extends BaseTool {
     async execute(input: any, context?: any): Promise<ToolExecutionResult> {
         const logs: string[] = [];
         const sessionId = context?.sessionId || input?.sessionId;
+        const isAr = isArabicReply({ language: (context as any)?.language, text: String((input as any)?.request || '') });
         const raw = String(input?.url || input?.link || '').trim();
         if (!raw) return { ok: false, error: 'no_url', logs } as any;
         const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
@@ -130,7 +132,7 @@ export class PageFixTool extends BaseTool {
         return await withBrowserConcurrency(async () => {
             const s = await getBrowserSession(PANEL_BROWSER_SID);
             const page = s.page;
-            if (sessionId) broadcastThinkingDetail(sessionId, `🔎 أفتح الصفحة وأقيس عيوبها أمامك: ${url}`);
+            if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, `🔎 أفتح الصفحة وأقيس عيوبها أمامك: ${url}`, `🔎 Opening the page and measuring its defects in front of you: ${url}`));
             await page.goto(url, { waitUntil: 'load', timeout: 45_000 });
             await page.waitForTimeout(600);
 
@@ -246,7 +248,7 @@ export class PageFixTool extends BaseTool {
             }
 
             // ── 3: apply it live, so the difference is SEEN, not described ──
-            if (sessionId) broadcastThinkingDetail(sessionId, '🎨 أطبّق الرقعة أمامك الآن — انظر الفرق في اللوحة');
+            if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '🎨 أطبّق الرقعة أمامك الآن — انظر الفرق في اللوحة', '🎨 Applying the patch in front of you now — watch the panel'));
             await page.addStyleTag({ content: patch });
             await page.waitForTimeout(1800);
 
