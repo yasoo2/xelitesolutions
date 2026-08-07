@@ -36,7 +36,10 @@ describe('a borrowed panel page is handed back clean', () => {
 
     it('every listener the audit adds is named, so it can be taken off', () => {
         const a = A();
-        expect(a).toMatch(/const onDialog = \(d: any\) => d\.dismiss/);
+        // Named, not anonymous — on a BORROWED panel page an anonymous listener
+        // can never be taken off. (It answers «yes» now rather than dismissing:
+        // a tester who cancels every confirm calls «حذف» broken.)
+        expect(a).toMatch(/const onDialog = \(d: any\) => \{/);
         expect(a).toMatch(/page\.off\('dialog', onDialog\)/);
         for (const ev of ['pageerror', 'console', 'response']) {
             expect(a).toMatch(new RegExp(`page\\.off\\('${ev}'`));

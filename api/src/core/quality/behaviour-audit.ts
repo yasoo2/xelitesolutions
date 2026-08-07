@@ -114,6 +114,16 @@ function findControls(limit: number) {
          */
         const dis = (el as HTMLButtonElement).disabled === true || el.getAttribute('aria-disabled') === 'true';
         if (dis) return;
+        /**
+         * …AND NEITHER IS A TAB THAT IS ALREADY OPEN.
+         *
+         * «النباتات» is the first tab and the selected one. Pressing it selects
+         * what is already selected, nothing changes, and the probe reported it
+         * as a dead control. Selecting the current thing IS doing nothing —
+         * correctly.
+         */
+        if (el.getAttribute('aria-selected') === 'true' || el.getAttribute('aria-current') === 'true'
+            || el.getAttribute('aria-current') === 'page') return;
         if (el.hasAttribute('data-joe-ctl')) return;    // claimed by an earlier group
         // A stable per-run handle: index into a list we also stamp on the element.
         const id = `joe-ctl-${out.length}`;
@@ -320,7 +330,12 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
             jsErrors.push(t.slice(0, 140));
         });
         // A page that pops a confirm() on click would hang the audit forever.
-        page.on('dialog', (d: any) => d.dismiss().catch(() => { }));
+        // The same rule as the app audit: answer YES, or every confirm-guarded
+        // button is measured as dead. beforeunload alone is dismissed.
+        page.on('dialog', (d: any) => {
+            const kind = (() => { try { return String(d.type()); } catch { return ''; } })();
+            return (kind === 'beforeunload' ? d.dismiss() : d.accept('Joe QA')).catch(() => { });
+        });
         // Same rule as the visual audit: a navigation that failed leaves the
         // browser's own error page on screen, and clicking ITS buttons and
         // reporting a score would be a measurement of nothing.

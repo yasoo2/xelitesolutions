@@ -1840,7 +1840,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .toolbar .search{flex:1 1 200px;width:auto}
 .badge{margin-inline-start:auto;font-size:.8rem;color:var(--text-muted,#666);border:1px dashed var(--border,#ddd);border-radius:999px;padding:4px 12px}
-.badge.on{color:#1e8e3e;border-style:solid;border-color:currentColor}
+/* #1e8e3e measured 4.21:1 against the panel — a tenth under AA. */
+.badge.on{color:#15722f;border-style:solid;border-color:currentColor}
+[data-theme="dark"] .badge.on{color:#6ee7a2}
 
 .rows{list-style:none;margin:0;padding:0;display:grid;gap:10px}
 .row{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;

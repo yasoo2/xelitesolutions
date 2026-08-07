@@ -244,11 +244,26 @@ export async function auditBuiltApp(
              * there it means the API really is missing.
              */
             if (!givenUrl && /\/api\/health/.test(String(m.text()) + where)) return;
+            /**
+             * AND «401 Unauthorized» IS NOT A BROKEN BUILD.
+             *
+             * Measured on his own run: the audit filled the form and pressed
+             * «أضف»; the app saved locally, tried to sync, and the server
+             * refused because the audit never signed in — which is exactly what
+             * the server is FOR. The app even says so on screen («حُفظ محلياً
+             * فقط — سجّل الدخول»). It cost the build two blocking findings and
+             * fifteen points each, for behaving correctly.
+             *
+             * 404 and 500 still count in full: those are real.
+             */
+            if (/\b40[13]\b|Unauthorized|Forbidden/i.test(String(m.text()))) return;
             consoleErrors.push((String(m.text()).slice(0, 120) + where).slice(0, 180));
         };
         page.on('console', onConsole);
         const onResponse = (r: any) => {
-            if (r.status() >= 400 && !/favicon\.ico/i.test(r.url())
+            // 401/403: the audit is signed out on purpose — see onConsole above.
+            if (r.status() >= 400 && r.status() !== 401 && r.status() !== 403
+                && !/favicon\.ico/i.test(r.url())
                 && !(!givenUrl && /\/api\/health/.test(r.url()))) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
             try {
                 const len = Number(r.headers()['content-length'] || 0);
@@ -268,7 +283,23 @@ export async function auditBuiltApp(
         // is pressed — and buttons are pressed now. Named, because on a BORROWED
         // panel page an anonymous listener is one that can never be taken off,
         // and the panel outlives every audit that touches it.
-        const onDialog = (d: any) => d.dismiss().catch(() => { });
+        /**
+         * THE AUDIT ANSWERS «YES».
+         *
+         * This was `d.dismiss()` — the audit clicked «حذف», the app asked «حذف
+         * هذا السجلّ؟», and the audit said NO. Nothing changed, so the probe
+         * reported «أزرار لا تستجيب: حذف» on every build with a confirm on it.
+         * A tester who cancels every dialog is not testing the button; he is
+         * testing the cancel path and calling the button broken.
+         *
+         * beforeunload stays dismissed: accepting it navigates away from the
+         * page being measured.
+         */
+        const onDialog = (d: any) => {
+            const kind = (() => { try { return String(d.type()); } catch { return ''; } })();
+            const p = kind === 'beforeunload' ? d.dismiss() : d.accept('Joe QA');
+            return p.catch(() => { });
+        };
         page.on('dialog', onDialog);
         detach = () => {
             try {

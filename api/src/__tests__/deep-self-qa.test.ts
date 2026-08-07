@@ -249,6 +249,8 @@ describe('and the first thing it measured was Joe’s own work', () => {
         // «حذف» measured 3.29:1 — the last WCAG failure left in the app.
         expect(t).toMatch(/\.btn\.danger\{background:transparent;color:#96271b/);
         expect(t).toMatch(/\[data-theme="dark"\] \.btn\.danger/);
+        // «متصل بالخادم» measured 4.21:1 — a tenth under AA.
+        expect(t).toMatch(/\.badge\.on\{color:#15722f/);
     });
 
     it('and the footer headings are one level down, not two', () => {
@@ -286,6 +288,36 @@ describe('a measurement it cannot make honestly, it does not make', () => {
         const b = read('core', 'quality', 'behaviour-audit.ts');
         expect(b).toMatch(/A DISABLED CONTROL IS NOT A BROKEN ONE/);
         expect(b).toMatch(/\(el as HTMLButtonElement\)\.disabled === true \|\| el\.getAttribute\('aria-disabled'\) === 'true'/);
+    });
+
+    it('the audit answers YES to a confirm — «حذف» was never testable otherwise', () => {
+        /**
+         * His run: «أزرار لا تستجيب: «النباتات»، «حذف»». The delete button asks
+         * «حذف هذا السجلّ؟» and the audit's dialog handler was `d.dismiss()` —
+         * it said NO, nothing changed, and the button was called broken. A
+         * tester who cancels every dialog is testing the cancel path.
+         */
+        for (const f of ['app-audit.ts', 'behaviour-audit.ts']) {
+            const src = read('core', 'quality', f);
+            expect(src).toMatch(/d\.accept\('Joe QA'\)/);
+            expect(src).toMatch(/kind === 'beforeunload'/);
+            expect(src).not.toMatch(/\(d: any\) => d\.dismiss\(\)/);
+        }
+    });
+
+    it('and a tab that is already open is not a dead control', () => {
+        expect(read('core', 'quality', 'behaviour-audit.ts'))
+            .toMatch(/aria-selected'\) === 'true' \|\| el\.getAttribute\('aria-current'\)/);
+    });
+
+    it('a 401 while the audit is signed out is the app’s own rule, not a defect', () => {
+        // His run lost 30 points to two findings that said the server correctly
+        // refused an unauthenticated write the audit itself provoked.
+        const a = read('core', 'quality', 'app-audit.ts');
+        expect(a).toMatch(/\\b40\[13\]\\b\|Unauthorized\|Forbidden/);
+        expect(a).toMatch(/r\.status\(\) !== 401 && r\.status\(\) !== 403/);
+        // …and 404/500 still cost what they always cost.
+        expect(a).toMatch(/if \(r\.status\(\) >= 400 && r\.status\(\) !== 401/);
     });
 
     it('and a click that hands over a FILE counts as an effect', () => {
