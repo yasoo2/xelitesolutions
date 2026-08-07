@@ -52,12 +52,16 @@ export function oneOf(entity: ModelEntity, isAr: boolean): string {
     return SINGULAR_EN[entity.key] || entity.en.replace(/ies$/, 'y').replace(/s$/, '');
 }
 
+/** The columns that hold a picture, wherever they came from. */
+export const IMAGE_KEY = /(^|_)(image|photo|picture|img)$/;
+
 /** A database column becomes a form field of the right SHAPE. */
 function asField(f: ModelField, isAr: boolean, primary: boolean): AppField {
     const label = (isAr ? f.ar : f.en) || f.key;
     // A note is a paragraph; a price is a number; a date is a date picker.
     const type: AppField['type'] =
-        f.type === 'REAL' || f.type === 'INT' ? 'number'
+        IMAGE_KEY.test(f.key) ? 'image'
+            : f.type === 'REAL' || f.type === 'INT' ? 'number'
             : /(^|_)(note|notes|description|details|address)$/.test(f.key) ? 'textarea'
                 : /(^|_)email$/.test(f.key) ? 'email'
                     : /(^|_)(phone|tel|mobile)$/.test(f.key) ? 'tel'
@@ -98,8 +102,9 @@ export function blueprintFromEntity(base: AppBlueprint, e: ModelEntity, isAr: bo
     const one = oneOf(e, isAr);
     const many = isAr ? e.ar : e.en;
     // The first non-link column names the row wherever it is listed.
-    const primaryKey = (e.fields.find(f => f.required && !/_id$/.test(f.key))
-        || e.fields.find(f => !/_id$/.test(f.key)))?.key;
+    // A picture never titles the row it belongs to.
+    const named = (f: ModelField) => !/_id$/.test(f.key) && !IMAGE_KEY.test(f.key);
+    const primaryKey = (e.fields.find(f => f.required && named(f)) || e.fields.find(named))?.key;
     const fields = e.fields
         .filter(f => !/_id$/.test(f.key))          // a link is chosen on the tables screen
         .map(f => asField(f, isAr, f.key === primaryKey));

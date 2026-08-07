@@ -33,6 +33,18 @@ const check = (name: string, ok: boolean, detail = '') => {
 
 const HIS_WORDS = 'ابنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات مع صور نباتات وثيم اخضر جميل للنظام';
 
+/** A REAL 900x600 photograph on disk — not a stub, so the shrink is measurable. */
+async function makePhoto(file: string) {
+    const { chromium } = require('playwright');
+    const { getChromiumLaunchOptions } = require('../../modules/browser/manager');
+    const b = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });
+    const p = await b.newPage({ viewport: { width: 900, height: 600 } });
+    await p.setContent('<body style="margin:0"><div style="width:900px;height:600px;'
+        + 'background:linear-gradient(135deg,#0b5d2e,#7ec850 60%,#f4d35e)"></div></body>');
+    await p.screenshot({ path: file });
+    await b.close();
+}
+
 async function main() {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-system-'));
     process.env.JOE_CHAT_STORE_DIR = path.join(root, 'store');
@@ -64,9 +76,12 @@ async function main() {
         /entityOne: 'نبتة'/.test(contentJs) && /entityMany: 'النباتات'/.test(contentJs),
         (contentJs.match(/entityOne: '[^']*'/) || [''])[0]);
     check('وحقولُه أعمدة الجدول نفسها',
-        ['name', 'price', 'quantity', 'description'].every(k => contentJs.includes(`key: '${k}'`))
+        ['name', 'image', 'price', 'quantity', 'description'].every(k => contentJs.includes(`key: '${k}'`))
         && !contentJs.includes("key: 'title'") && !contentJs.includes("key: 'details'"),
         (contentJs.match(/key: '[a-z_]+'/g) || []).join(','));
+    check('وفيه حقل صورة حقيقي — «مع صور نباتات»',
+        /key: 'image', label: 'الصورة', type: 'image'/.test(contentJs),
+        (contentJs.match(/key: 'image'[^}]*/) || [''])[0]);
     check('والسعر رقم والوصف فقرة',
         /key: 'price', label: 'السعر', type: 'number'/.test(contentJs)
         && /key: 'description', label: 'الوصف', type: 'textarea'/.test(contentJs));
@@ -129,9 +144,21 @@ async function main() {
         const signedIn = await page.evaluate('!!document.querySelector(".auth-chip")').catch(() => false);
         check('دخول المالك من الصفحة', signedIn === true);
 
-        // …then add a real plant through the real form.
+        /**
+         * …then add a real plant through the real form — WITH A REAL PHOTOGRAPH.
+         *
+         * A 900x600 PNG is written to disk, chosen through the file input, and
+         * the app shrinks it in the browser. What lands in sqlite must be a
+         * real JPEG data URL, smaller than what was picked.
+         */
+        const photo = path.join(root, 'plant.png');
+        await makePhoto(photo);
+        const picked = fs.statSync(photo).size;
+
         const form = page.locator('form.form');
-        await form.locator('input,textarea').first().fill('نخيل برحي').catch(() => { });
+        await form.locator('input[type="file"]').setInputFiles(photo).catch(() => { });
+        await page.waitForTimeout(700);
+        await form.locator('input:not([type="file"]):not([type="number"]),textarea').first().fill('نخيل برحي').catch(() => { });
         const nums = form.locator('input[type="number"]');
         await nums.nth(0).fill('120').catch(() => { });
         await nums.nth(1).fill('8').catch(() => { });
@@ -152,6 +179,44 @@ async function main() {
             'JSON.parse(JSON.stringify(Array.from(document.querySelectorAll(".rows .row h3")).map(function(h){return h.textContent.trim();})))',
         ).catch(() => []);
         check('وظهرت في قائمة الصفحة', (shown as string[]).some(t => t.includes('نخيل برحي')), (shown as string[]).join(' · '));
+
+        console.log('\n[5] والصورة — صورة حقيقية في قاعدة بيانات حقيقية');
+        const saved = String((list.find((r: any) => r.name === 'نخيل برحي') || {}).image || '');
+        console.log(`   ℹ️ اخترتُ ${Math.round(picked / 1024)}KB → حُفظ ${Math.round(saved.length / 1024)}KB · ${saved.slice(0, 34)}…`);
+        check('الصورة وصلت القاعدة', saved.startsWith('data:image/jpeg;base64,'), saved.slice(0, 40) || 'فارغة');
+        check('وصُغِّرت في المتصفّح قبل الحفظ', saved.length > 800 && saved.length < picked,
+            `${saved.length} حرفاً مقابل ${picked} بايت`);
+
+        // …and it is DRAWN, not printed.
+        const pics: any = await page.evaluate(
+            'JSON.parse(JSON.stringify(Array.from(document.querySelectorAll(".row-pic")).map(function(i){'
+            + 'return { w: i.naturalWidth, h: i.naturalHeight, kind: String(i.src).slice(0, 22) };})))',
+        ).catch(() => []);
+        console.log(`   ℹ️ ${JSON.stringify(pics)}`);
+        check('ومرسومة في القائمة بأبعاد حقيقية',
+            Array.isArray(pics) && pics.some((p: any) => p.w > 0 && p.h > 0),
+            JSON.stringify(pics));
+
+        // …and rung four: a row with NO picture still shows one.
+        const tok = await fetch(`${base}/api/auth/login`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ email, password: pw }),
+        }).then(r => r.json()).then((j: any) => j?.token || '').catch(() => '');
+        const fallback: any = await fetch(`${base}/api/plants`, {
+            method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${tok}` },
+            body: JSON.stringify({ name: 'صبّار', price: 40 }),
+        }).then(r => r.json()).catch(() => null);
+        check('وصفٌّ بلا صورة يُقبل', fallback?.ok === true, JSON.stringify(fallback || {}).slice(0, 120));
+        await page.reload({ waitUntil: 'networkidle' }).catch(() => { });
+        await page.waitForTimeout(900);
+        const both: any = await page.evaluate(
+            'JSON.parse(JSON.stringify(Array.from(document.querySelectorAll(".row-pic")).map(function(i){'
+            + 'return { w: i.naturalWidth, svg: String(i.src).indexOf("svg") > 0 };})))',
+        ).catch(() => []);
+        console.log(`   ℹ️ ${JSON.stringify(both)}`);
+        check('ومع ذلك له صورة — بطاقة مصمّمة من اسمه',
+            Array.isArray(both) && both.length >= 2 && both.some((p: any) => p.svg === true),
+            JSON.stringify(both));
         check('ولا خطأ JavaScript في الصفحة', errors.length === 0, errors.join(' | ').slice(0, 140));
 
         await page.screenshot({ path: path.join(root, 'nursery.png') });

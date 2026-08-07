@@ -30,7 +30,12 @@ export type AppKind =
     | 'tasks' | 'notes' | 'expenses' | 'inventory' | 'booking'
     | 'pos' | 'crm' | 'lms' | 'contacts' | 'habits' | 'generic';
 
-export type FieldType = 'text' | 'textarea' | 'number' | 'date' | 'time' | 'select' | 'tel' | 'email';
+/**
+ * `image` is a real picture, not a text box with a URL in it: the app picks a
+ * file, shrinks it in the browser, and stores the picture itself — so a photo
+ * works offline, survives a reload, and needs no upload endpoint anywhere.
+ */
+export type FieldType = 'text' | 'textarea' | 'number' | 'date' | 'time' | 'select' | 'tel' | 'email' | 'image';
 
 export interface AppField {
     key: string;

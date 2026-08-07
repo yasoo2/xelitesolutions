@@ -40,8 +40,12 @@ describe('the first table becomes the application', () => {
 
     it('and its fields are the table’s own columns, in the right shape', () => {
         const bp = blueprintFromEntity(base(), plants(), true);
-        expect(bp.fields.map(f => f.key)).toEqual(['name', 'price', 'quantity', 'description']);
-        expect(bp.fields.map(f => f.label)).toEqual(['الاسم', 'السعر', 'الكمية', 'الوصف']);
+        expect(bp.fields.map(f => f.key)).toEqual(['name', 'image', 'price', 'quantity', 'description']);
+        expect(bp.fields.map(f => f.label)).toEqual(['الاسم', 'الصورة', 'السعر', 'الكمية', 'الوصف']);
+        // «مع صور نباتات»: the picture is a real input, and never the column
+        // that titles the row.
+        expect(bp.fields.find(f => f.key === 'image')!.type).toBe('image');
+        expect(bp.fields.find(f => f.key === 'image')!.primary).toBeUndefined();
         // A price is a number, a description is a paragraph, a name is required
         // AND the one that titles the row wherever it is listed.
         expect(bp.fields.find(f => f.key === 'price')!.type).toBe('number');

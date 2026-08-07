@@ -34,7 +34,7 @@ describe('every table becomes a screen', () => {
 
     it('reading is public and writing goes through the owner’s token', () => {
         const src = jsx();
-        expect(src).toMatch(/import \{ apiListOn, apiCreateOn, apiDeleteOn, apiUpdateOn, getToken \}/);
+        expect(src).toMatch(/import \{ apiListOn, apiCreateOn, apiDeleteOn, apiUpdateOn, getToken, pickImage, cardFor \}/);
         expect(src).toMatch(/apiCreateOn\(api, table\.key, draft\)/);
         expect(src).toMatch(/apiUpdateOn\(api, table\.key, editing, draft\)/);
         expect(src).toMatch(/apiDeleteOn\(api, table\.key, id\)/);

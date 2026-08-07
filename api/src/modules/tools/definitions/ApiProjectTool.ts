@@ -865,7 +865,10 @@ function validate(entity, body, tables) {
     if (f.required && (v === undefined || v === null || String(v).trim() === '')) {
       return { error: f.key + '_required' };
     }
-    if (v !== undefined && f.type !== 'REAL' && String(v).length > 500) return { error: 'too_long_' + f.key };
+    // A picture is stored AS the picture, so the ordinary text cap would refuse
+    // every photo. It gets its own, still bounded.
+    var cap = /(^|_)(image|photo|picture|img)$/.test(f.key) ? 800000 : 500;
+    if (v !== undefined && f.type !== 'REAL' && String(v).length > cap) return { error: 'too_long_' + f.key };
   }
   // A link that can dangle is not a relation.
   const rel = entity.belongsTo;
@@ -1277,7 +1280,9 @@ function notifyJoe(order) {
 const HERE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
-app.use(express.json({ limit: '100kb' }));
+// 100kb refused every row that carried a photo — and the picture IS the row's
+// data now, not a link to somewhere else.
+app.use(express.json({ limit: '4mb' }));
 
 // The local previews live on other ports — they must be able to reach us.
 app.use((req, res, next) => {

@@ -321,6 +321,89 @@ export function toCsv(fields, rows) {
   return '\\uFEFF' + head + '\\n' + body;
 }
 
+/**
+ * A PICTURE FOR EVERY ROW — «مع صور نباتات».
+ *
+ * Two halves, and neither needs a server, an upload endpoint or an account:
+ *
+ *   pickImage  — the file the owner chose, drawn into a canvas at most 480px
+ *                on its long edge and re-encoded as JPEG. A 4MB phone photo
+ *                becomes ~40KB, which fits in a database row and in a page.
+ *   cardFor    — and when there is no picture, a DESIGNED one: the first
+ *                letter of the row's own name on a gradient derived from that
+ *                name. Instant, offline, and never the wrong picture — which
+ *                a search result can easily be.
+ */
+export function pickImage(file, maxEdge) {
+  return new Promise(function (resolve) {
+    // indexOf, not a regex: a backslash inside the template literal that
+    // GENERATES this file is eaten by the literal itself, so a pattern anchored
+    // on the MIME prefix silently lost its escape and stopped parsing. Plain
+    // string work cannot lose anything.
+    if (!file || String(file.type || '').indexOf('image/') !== 0) { resolve(''); return; }
+    var reader = new FileReader();
+    reader.onerror = function () { resolve(''); };
+    reader.onload = function () {
+      var img = new Image();
+      img.onerror = function () { resolve(''); };
+      img.onload = function () {
+        var edge = maxEdge || 480;
+        var scale = Math.min(1, edge / Math.max(img.width || 1, img.height || 1));
+        var w = Math.max(1, Math.round((img.width || 1) * scale));
+        var h = Math.max(1, Math.round((img.height || 1) * scale));
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        var ctx = c.getContext('2d');
+        if (!ctx) { resolve(''); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        try { resolve(c.toDataURL('image/jpeg', 0.72)); } catch (e) { resolve(''); }
+      };
+      img.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/** A stable hue from the row's own name — the same plant is always the same colour. */
+function hueOf(text) {
+  var h = 0;
+  var s = String(text || '');
+  for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) % 360; }
+  return h;
+}
+
+/** The designed card: the row's first letter on its own gradient. */
+export function cardFor(name, brandHue) {
+  var raw = String(name || '').trim();
+  var label = raw.charAt(0) || '\u2022';
+  // An empty draft is not a red plant: with no name yet there is no colour to
+  // derive, so the card is a quiet slate that fills in as the name is typed.
+  var empty = !raw;
+  var h = typeof brandHue === 'number' ? (brandHue + hueOf(name) % 40) % 360 : hueOf(name);
+  var sat = empty ? '10%' : '62%';
+  var sat2 = empty ? '8%' : '58%';
+  if (empty) h = 214;
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240">'
+    + '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
+    + '<stop offset="0" stop-color="hsl(' + h + ',' + sat + ',' + (empty ? '76%' : '52%') + ')"/>'
+    + '<stop offset="1" stop-color="hsl(' + ((h + 34) % 360) + ',' + sat2 + ',' + (empty ? '62%' : '34%') + ')"/>'
+    + '</linearGradient></defs>'
+    + '<rect width="320" height="240" fill="url(#g)"/>'
+    + '<circle cx="270" cy="34" r="76" fill="rgba(255,255,255,.10)"/>'
+    + '<circle cx="34" cy="214" r="58" fill="rgba(0,0,0,.10)"/>'
+    + '<text x="160" y="150" text-anchor="middle" font-family="system-ui,sans-serif"'
+    + ' font-size="110" font-weight="800" fill="rgba(255,255,255,.92)">'
+    + label.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</text></svg>';
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+
+/** What a row should SHOW: its own picture, or the card designed for its name. */
+export function imageOf(row, key, nameKey, brandHue) {
+  var src = String((row || {})[key] || '').trim();
+  if (src) return src;
+  return cardFor((row || {})[nameKey], brandHue);
+}
+
 export function download(name, text, type) {
   const blob = new Blob([text], { type: type || 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -661,7 +744,7 @@ export async function apiDelete(api, id) {
 export function fileRecordsAppJsx(isAr: boolean): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useMemo, useState } from 'react';
-import { createStore, uid, todayISO, computeMetric, toCsv, download, apiList, apiCreate, apiUpdate, apiDelete, apiListOn, apiCreateOn, apiDeleteOn } from '../app/store.js';
+import { createStore, uid, todayISO, computeMetric, toCsv, download, apiList, apiCreate, apiUpdate, apiDelete, apiListOn, apiCreateOn, apiDeleteOn, pickImage, cardFor, imageOf } from '../app/store.js';
 
 const blank = (fields) => {
   const d = {};
@@ -673,6 +756,8 @@ export default function RecordsApp({ content }) {
   const store = useMemo(() => createStore(content.storeKey + ':rows'), [content.storeKey]);
   const fields = content.fields;
   const primary = fields.find(f => f.primary) || fields[0];
+  // The column that holds a picture, if this collection has one.
+  const imageField = fields.find(f => f.type === 'image');
   const statusField = fields.find(f => f.key === content.statusField);
 
   /**
@@ -898,7 +983,24 @@ export default function RecordsApp({ content }) {
                   be submitted empty. The self-QA reported it on every build
                   («نموذج بلا أي حقل مطلوب») and the repair pass could not fix
                   what the generator kept re-emitting. */}
-              {f.type === 'textarea' ? (
+              {f.type === 'image' ? (
+                <div className="pic-pick">
+                  <img className="pic-preview" src={draft[f.key] || cardFor(draft[primary.key])} alt="" />
+                  <div className="pic-acts">
+                    <input type="file" accept="image/*" aria-label={f.label}
+                      onChange={async e => {
+                        const file = e.target.files && e.target.files[0];
+                        const data = await pickImage(file, 480);
+                        if (data) setDraft({ ...draft, [f.key]: data });
+                        e.target.value = '';
+                      }} />
+                    {draft[f.key] ? (
+                      <button className="btn tiny ghost" type="button"
+                        onClick={() => setDraft({ ...draft, [f.key]: '' })}>${T('أزل الصورة', 'Remove photo')}</button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : f.type === 'textarea' ? (
                 <textarea rows={3} required={!!f.required} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />
               ) : f.type === 'select' ? (
                 <select required={!!f.required} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })}>
@@ -953,7 +1055,7 @@ export default function RecordsApp({ content }) {
             onClick={() => download(content.storeKey + '.csv',
               rel
                 ? toCsv([...fields, { key: '__parent', label: rel.one }], visible.map(r => ({ ...r, __parent: parentName(r) })))
-                : toCsv(fields, visible))}>{${T('تصدير CSV', 'Export CSV')}}</button>
+                : toCsv(fields.filter(f => f.type !== 'image'), visible))}>{${T('تصدير CSV', 'Export CSV')}}</button>
           <span className={'badge ' + (server ? 'on' : '')}>
             {server ? ${T('متصل بالخادم', 'Server connected')} : ${T('محلي على هذا الجهاز', 'Local to this device')}}
           </span>
@@ -968,13 +1070,18 @@ export default function RecordsApp({ content }) {
               const done = statusField && content.doneValue && row[statusField.key] === content.doneValue;
               return (
                 <li className={'row' + (done ? ' done' : '')} key={row.id}>
+                  {imageField ? (
+                    <img className="row-pic" loading="lazy"
+                      src={imageOf(row, imageField.key, primary.key)}
+                      alt={String(row[primary.key] || '')} />
+                  ) : null}
                   <div className="row-main">
                     <h3>
                       {row[primary.key] || ${T('(بلا عنوان)', '(untitled)')}}
                       {rel && parentName(row) ? <span className="row-parent">{parentName(row)}</span> : null}
                     </h3>
                     <dl className="row-meta">
-                      {fields.filter(f => f.key !== primary.key && String(row[f.key] || '').trim()).map(f => (
+                      {fields.filter(f => f.type !== 'image' && f.key !== primary.key && String(row[f.key] || '').trim()).map(f => (
                         <div key={f.key}><dt>{f.label}</dt><dd>{String(row[f.key])}</dd></div>
                       ))}
                       {rel && parentName(row) ? <div><dt>{rel.one}</dt><dd>{parentName(row)}</dd></div> : null}
@@ -1865,6 +1972,13 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .row-meta dt{color:var(--text-muted,#666)}
 .row-meta dd{margin:0}
 .row-acts{display:flex;gap:6px;flex-wrap:wrap}
+/* a picture for every row — «مع صور نباتات» */
+.row-pic{width:88px;height:66px;flex:none;object-fit:cover;border-radius:10px;border:1px solid var(--border,#e5e5e5);background:var(--tint,#f4f4f4)}
+.pic-pick{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.pic-preview{width:112px;height:84px;object-fit:cover;border-radius:12px;border:1px solid var(--border,#e5e5e5);background:var(--tint,#f4f4f4)}
+.pic-acts{display:flex;flex-direction:column;gap:6px;min-width:0}
+.pic-acts input[type=file]{font-size:.82rem;padding:8px;min-height:44px;border:1px dashed var(--border,#ddd);border-radius:10px;background:transparent;max-width:100%}
+.tbl-pic{width:52px;height:40px;object-fit:cover;border-radius:8px;border:1px solid var(--line,#e5e5e5);display:block}
 .rows.compact .row{padding:10px 12px}
 
 /* the parent table — «الأطباء» above «المواعيد» */
@@ -2030,7 +2144,10 @@ export function fileTablesAdminJsx(model: any[], isAr: boolean): string {
     })));
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { apiListOn, apiCreateOn, apiDeleteOn, apiUpdateOn, getToken } from '../app/store.js';
+import { apiListOn, apiCreateOn, apiDeleteOn, apiUpdateOn, getToken, pickImage, cardFor } from '../app/store.js';
+
+/** Which columns hold a picture — the same rule the server and the app use. */
+const IMAGE_COL = /(^|_)(image|photo|picture|img)$/;
 
 /** The system's tables, exactly as the server declares them. */
 export const TABLES = ${MODEL};
@@ -2114,6 +2231,21 @@ function TableView({ api, table, parentRows }) {
               </select>
             </label>
           ) : (
+            IMAGE_COL.test(f.key) ? (
+              <label key={f.key} className="tbl-field">
+                <span>{f.label}</span>
+                <div className="pic-pick">
+                  <img className="pic-preview" src={draft[f.key] || cardFor(draft.name || draft.title || f.label)} alt="" />
+                  <input type="file" accept="image/*" aria-label={f.label}
+                    onChange={async (e) => {
+                      const file = e.target.files && e.target.files[0];
+                      const data = await pickImage(file, 480);
+                      if (data) set(f.key, data);
+                      e.target.value = '';
+                    }} />
+                </div>
+              </label>
+            ) : (
             <label key={f.key} className="tbl-field">
               <span>{f.label}{f.required ? ' *' : ''}</span>
               <input
@@ -2124,6 +2256,7 @@ function TableView({ api, table, parentRows }) {
                 required={!!f.required}
               />
             </label>
+            )
           )
         ))}
         <div className="tbl-actions">
@@ -2151,7 +2284,13 @@ function TableView({ api, table, parentRows }) {
               {rows.map((r) => (
                 <tr key={r.id}>
                   <td>{r.id}</td>
-                  {table.fields.map((f) => <td key={f.key}>{String(r[f.key] ?? '')}</td>)}
+                  {table.fields.map((f) => (
+                    /* A picture rendered as text is four thousand characters of
+                       base64 inside one cell — measured, and unreadable. */
+                    <td key={f.key}>{IMAGE_COL.test(f.key)
+                      ? (r[f.key] ? <img className="tbl-pic" src={String(r[f.key])} alt="" loading="lazy" /> : '—')
+                      : String(r[f.key] ?? '')}</td>
+                  ))}
                   <td className="tbl-row-actions">
                     <button type="button" onClick={() => edit(r)}>{${T('تعديل', 'Edit')}}</button>
                     <button type="button" onClick={() => remove(r.id)}>{${T('حذف', 'Delete')}}</button>

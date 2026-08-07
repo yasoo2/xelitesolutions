@@ -101,8 +101,15 @@ function fieldsFor(n: Noun): ModelField[] {
             return [T('name', 'الاسم', 'name', true), T('phone', 'الهاتف', 'phone'),
                 T('email', 'البريد', 'email'), T('notes', 'ملاحظات', 'notes')];
         case 'thing':
-            return [T('name', 'الاسم', 'name', true), N('price', 'السعر', 'price'),
-                I('quantity', 'الكمية', 'quantity'), T('description', 'الوصف', 'description')];
+            /**
+             * «مع صور نباتات» — a nursery without a picture of the plant is a
+             * spreadsheet. Anything you sell, grow or stock gets an image
+             * column; people and transactions do not, because nobody asks for
+             * a photograph of an invoice.
+             */
+            return [T('name', 'الاسم', 'name', true), T('image', 'الصورة', 'photo'),
+                N('price', 'السعر', 'price'), I('quantity', 'الكمية', 'quantity'),
+                T('description', 'الوصف', 'description')];
         case 'deal':
             return [T('reference', 'المرجع', 'reference', true), N('amount', 'المبلغ', 'amount'),
                 I('quantity', 'الكمية', 'quantity'), T('status', 'الحالة', 'status')];
