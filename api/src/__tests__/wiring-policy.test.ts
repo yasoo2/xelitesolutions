@@ -1059,7 +1059,7 @@ describe('an application build ships a program, not a brochure', () => {
         // …and the scaffolder actually branches to all of it
         const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
         expect(R).toMatch(/detectAppKind\(request\)/);
-        expect(R).toMatch(/buildAppFiles\(appBp/);
+        expect(R).toMatch(/buildAppFiles\(runBp/);
         // an app build must not emit one brochure component
         expect(R).toMatch(/for \(const c of appBp \? \[\] : \['Navbar', \.\.\.sections, 'Footer'\]\)/);
         expect(R).toMatch(/if \(!appBp\) files\['src\/components\/AdminPanel\.jsx'\]/);

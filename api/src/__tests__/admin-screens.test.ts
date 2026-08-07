@@ -89,7 +89,10 @@ describe('and the builder wires them without breaking what was there', () => {
         // the user listed in his own sentence («: النباتات والموردون»).
         expect(r).toMatch(/deriveDataModel\(request\)\.length/);
         expect(r).toMatch(/named-entities'\)\.namedEntities\(request\)/);
-        expect(r).toMatch(/model: tableModel,/);
+        // The app itself manages the FIRST table now; the admin screens carry
+        // the rest, so «النباتات» is never rendered twice.
+        expect(r).toMatch(/model: adminModel,/);
+        expect(r).toMatch(/adminModel = tableModel\.slice\(1\)/);
     });
 
     it('the shell renders them, and a build without a model imports nothing', () => {

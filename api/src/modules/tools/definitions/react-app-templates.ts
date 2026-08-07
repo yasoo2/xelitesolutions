@@ -430,7 +430,13 @@ async function resolvedApi(api) {
          * common path.
          */
         const d = r.ok ? await r.json().catch(() => null) : null;
-        if (d && d.resource === resource) return '/api/' + tail;
+        // The primary collection names itself in "resource"; every other table
+        // of this system is listed in "tables". Without the second half, an app
+        // built to manage «plants» never recognised its own server and kept the
+        // dev address — dead the moment the system moved to a domain.
+        const mine = !!d && (d.resource === resource
+          || (d.tables && Object.prototype.hasOwnProperty.call(d.tables, resource)));
+        if (mine) return '/api/' + tail;
       } catch { /* not served here — the dev address stands */ }
       return api;
     })();
@@ -496,7 +502,10 @@ export async function apiCreate(api, row) {
     // difference is the whole reason a row silently failed to save.
     if (!r.ok) return { ok: false, status: r.status, needsAuth: r.status === 401 };
     const d = await r.json().catch(() => ({}));
-    return { ok: true, item: d.item || row };
+    // The catalogue route answers an "item", a generated table a "row".
+    // Knowing only one of them meant the server's real id was never adopted,
+    // so the next edit or delete went to /api/plants/<local-uid> and 404'd.
+    return { ok: true, item: d.item || d.row || row };
   } catch { return null; }
 }
 
@@ -625,7 +634,7 @@ export async function apiUpdate(api, id, patch) {
     });
     if (!r.ok) return { ok: false, status: r.status, needsAuth: r.status === 401 };
     const d = await r.json().catch(() => ({}));
-    return { ok: true, item: d.item || null };
+    return { ok: true, item: d.item || d.row || null };
   } catch { return null; }
 }
 

@@ -2401,11 +2401,38 @@ export class ReactProjectTool extends BaseTool {
                         ? require('../../../core/design/data-model').deriveDataModel(request)
                         : require('../../../core/design/named-entities').namedEntities(request)))
                 : [];
-            if (tableModel.length) term(`admin screens: ${tableModel.map((e: any) => e.key).join(', ')}`);
-            const appFiles = buildAppFiles(appBp, {
-                brand: content.brand, isArabic: isAr, api: apiLink, storeKey: `${slug(content.brand)}-${appBp.kind}`,
+            /**
+             * AND THE APP MANAGES THE FIRST TABLE, NOT A GENERIC «سجلّ».
+             *
+             * Measured on his own build: «إضافة سجلّ — العنوان · التفاصيل ·
+             * قيمة» sat on top, and his real النباتات/الموردون were a second
+             * screen underneath. The generic schema is what the blueprint falls
+             * back to when it cannot tell WHAT is being managed — and by this
+             * line the system's tables are already known, because the server
+             * was generated from them a minute ago.
+             *
+             * Only for the fallback kind: a maps app, a chat, a shop already
+             * know exactly what they manage and must not be overwritten.
+             */
+            let runBp = appBp;
+            let appApi = apiLink;
+            let adminModel = tableModel;
+            if (tableModel.length && appBp.kind === 'generic' && appBp.engine === 'records') {
+                const { blueprintFromEntity, apiFor } = require('../../../core/design/entity-app');
+                const lead = tableModel[0];
+                const derived = blueprintFromEntity(appBp, lead, isAr);
+                if (derived !== appBp) {
+                    runBp = derived;
+                    appApi = apiFor(apiLink, lead.key) || apiLink;
+                    adminModel = tableModel.slice(1);          // never the same table twice
+                    term(`application: managing «${lead.key}» itself — ${derived.fields.map((f: any) => f.key).join(', ')}`);
+                }
+            }
+            if (adminModel.length) term(`admin screens: ${adminModel.map((e: any) => e.key).join(', ')}`);
+            const appFiles = buildAppFiles(runBp, {
+                brand: content.brand, isArabic: isAr, api: appApi, storeKey: `${slug(content.brand)}-${runBp.kind}`,
                 brandColor: (palette as any).primary,
-                model: tableModel,
+                model: adminModel,
             }, slug(content.brand));
             for (const [rel, body] of Object.entries(appFiles)) files[rel] = body;
             /**
