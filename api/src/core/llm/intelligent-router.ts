@@ -1674,8 +1674,28 @@ export async function routeToModel(
                 }
                 return ans;
             }
-            // Empty/too-short answer counts as a soft failure — cool it down too so we
-            // don't keep waiting on a gateway that returns nothing useful.
+            /**
+             * AND IT SAYS SO — «CRITICAL: All LLM providers failed» with no
+             * reason under it was the loudest silence in his logs.
+             *
+             * Every HARD failure prints a line («DuckAI … 418», «Pollinations
+             * … too short»). A SOFT failure — the provider answered, but with
+             * nothing usable — printed NOTHING. So his own field log reads:
+             *
+             *     [brain] Groq متصل — الدماغ الأساسي (Llama 3.3 70B)
+             *     [IntelligentRouter] 🔄 Attempting provider: Groq (Free)...
+             *     [IntelligentRouter] 🔄 Attempting provider: LLM7 (Keyless)...
+             *
+             * Groq was tried and abandoned between those two lines, and never
+             * said why. He has been reading «all providers failed» for weeks
+             * with the reason hidden — for the ONE provider he actually pays
+             * attention to, because it is his primary brain.
+             *
+             * A failure that does not name itself cannot be fixed by anyone.
+             */
+            console.warn(`[IntelligentRouter] ${p.name} answered but the reply was unusable `
+                + `(${rawAns == null ? 'null' : `${String(rawAns).length} raw → ${ans.length} clean`} chars) `
+                + `— counted as a failure and cooled down.`);
             markProviderFailed(p.name);
         } catch (e: any) {
             console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message} `);
