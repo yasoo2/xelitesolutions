@@ -251,8 +251,17 @@ export interface Inference {
     capabilities: string[];
 }
 
+/**
+ * The identifier this phrase would get, in either script — the same rule
+ * `inferModel` uses below, exported so a caller reading a list the user typed
+ * gets exactly the keys the inferred path would have produced.
+ */
+export function keyForPhrase(phrase: string): string {
+    return /[A-Za-z]/.test(phrase) ? keyOf(phrase) : keyFromArabic(phrase);
+}
+
 /** Words that are never a table of their own, in any domain. */
-const NEVER = new Set([
+export const NEVER = new Set([
     'orders', 'users', 'products', 'items', 'health', 'auth', 'api', 'sqlite_master',
     'apps', 'systems', 'platforms', 'websites', 'sites', 'pages_of', 'databases', 'features',
 ]);

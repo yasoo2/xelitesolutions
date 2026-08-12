@@ -2,6 +2,7 @@ import { ToolDefinition, ToolPermission } from '../types';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import { workspaceService } from '../../services/WorkspaceService';
 import { isPortOpen } from '../../../shared/utils/network';
+import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -94,6 +95,11 @@ export class ProjectRunTool implements ToolDefinition {
     async execute(input: any, context?: any) {
         const logs: string[] = [];
         const say = (m: string) => { logs.push(m); context?.onProgress?.(m); };
+        // The run lines land in the same trace as the build's — so they follow
+        // the same language. There is no request text here, so the interface's
+        // setting is the only evidence, and English is what «unset» means for a
+        // machine-shaped line like «dev-server on port 4300».
+        const isAr = isArabicReply({ language: context?.language });
         // [AUDIT INTEGRATION] «شغّل المشروع» right after a scaffold/import
         // used to start the WORKSPACE ROOT, not the project the session just
         // created — the two stores never talked. The session's active
@@ -122,7 +128,9 @@ export class ProjectRunTool implements ToolDefinition {
         const detected = input?.command
             ? { command: String(input.command), kind: 'override', expectPort: port }
             : detectStart(cwd, port);
-        say(`▶️ أُشغّل المشروع (${detected.kind}) على المنفذ ${port}…`);
+        say(pick(isAr,
+            `▶️ أُشغّل المشروع (${detected.kind}) على المنفذ ${port}…`,
+            `▶️ Starting the project (${detected.kind}) on port ${port}…`));
 
         // Detached start through the sanctioned gateway — never child_process.
         const res = await ExecutionGateway.execute(detected.command, [], {
@@ -152,7 +160,9 @@ export class ProjectRunTool implements ToolDefinition {
         if (pid) RUNNING.set(key, { pid, port: livePort || port, cwd, command: detected.command, startedAt: Date.now() });
 
         if (!livePort) {
-            say('⏳ بدأ الخادم لكنه لم يستجب بعد — قد يحتاج وقتاً أطول على جهاز ضعيف.');
+            say(pick(isAr,
+                '⏳ بدأ الخادم لكنه لم يستجب بعد — قد يحتاج وقتاً أطول على جهاز ضعيف.',
+                '⏳ The server started but has not answered yet — a slower machine may need longer.'));
             return {
                 ok: true,
                 output: { url: `http://localhost:${port}/`, port, ready: false, pid, note: 'started_not_confirmed' },
@@ -161,7 +171,9 @@ export class ProjectRunTool implements ToolDefinition {
         }
 
         const url = `http://localhost:${livePort}/`;
-        say(`✅ المشروع يعمل الآن — المعاينة الحية: ${url}`);
+        say(pick(isAr,
+            `✅ المشروع يعمل الآن — المعاينة الحية: ${url}`,
+            `✅ The project is running — live preview: ${url}`));
         // The preview panel opens automatically on this event.
         try {
             const { broadcast } = require('../../ws');

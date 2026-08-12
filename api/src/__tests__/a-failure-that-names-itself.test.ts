@@ -24,15 +24,15 @@ describe('every way a provider can fail says so out loud', () => {
         expect(SRC).toMatch(/console\.warn\(`\[IntelligentRouter\] \$\{p\.name\} failed or timed out: \$\{e\.message\}/);
     });
 
-    it('and a SOFT failure — an empty or too-short reply — no longer passes in silence', () => {
-        expect(SRC).toMatch(/console\.warn\(`\[IntelligentRouter\] \$\{p\.name\} answered but the reply was unusable/);
+    it('and a SOFT failure — a reply with no words in it — no longer passes in silence', () => {
+        expect(SRC).toMatch(/console\.warn\(`\[IntelligentRouter\] \$\{p\.name\} answered but the reply carried no words at all/);
         // It reports the sizes, so «empty» and «two characters» are told apart.
         expect(SRC).toContain('raw → ');
         expect(SRC).toContain('clean');
     });
 
     it('the log line sits with the markProviderFailed it explains', () => {
-        const at = SRC.indexOf('answered but the reply was unusable');
+        const at = SRC.indexOf('answered but the reply carried no words at all');
         const mark = SRC.indexOf('markProviderFailed(p.name);', at);
         expect(at).toBeGreaterThan(-1);
         expect(mark - at).toBeLessThan(600);

@@ -236,6 +236,37 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         normalizeUserId((effectiveInput as any)?.__userId);
     const effectiveContext: ToolContext = { ...(context || {}), workspaceId: contextWorkspaceId, userId: contextUserId };
 
+    /**
+     * EVERY PIPELINE LINE IN HIS LOG WAS PRINTED TWICE.
+     *
+     *     [11:01:29 PM] ⚙️ المرحلة 1/3 — Backend & database
+     *     …six minutes of real work…
+     *     [11:07:29 PM] ⚙️ المرحلة 1/3 — Backend & database
+     *
+     * A tool that speaks live does two things with one line: hands it to
+     * `context.onProgress` as it happens, and keeps it in `logs` for the
+     * record. The post-run flush below then broadcasts `logs` again — so the
+     * whole build replays itself at the end, out of order with reality and
+     * timestamped to the moment it finished.
+     *
+     * There is already a flag for this, `logsStreamedLive`, and exactly ONE
+     * tool of the dozens that stream remembers to set it. A flag every author
+     * must remember is a list of tools that behave, which is the same disease
+     * one floor down: it grows with the codebase and is wrong by default.
+     *
+     * So nothing is declared. The line that was already spoken is REMEMBERED
+     * as it goes past, and the flush skips what the user has already read.
+     * That is a fact about this run, not a promise about a tool.
+     */
+    const spokenLive = new Set<string>();
+    const outerProgress = (effectiveContext as any).onProgress;
+    if (typeof outerProgress === 'function') {
+        (effectiveContext as any).onProgress = (m: string) => {
+            try { spokenLive.add(String(m)); } catch { /* a message that cannot be a key is simply not deduped */ }
+            return outerProgress(m);
+        };
+    }
+
     if (contextWorkspaceId && typeof (effectiveInput as any).__workspaceId !== 'string') {
         (effectiveInput as any).__workspaceId = contextWorkspaceId;
     }
@@ -752,7 +783,9 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                     const { registerSessionOwner } = require('../../api/ws');
                     if (contextSessionId && effectiveContext?.userId) registerSessionOwner(contextSessionId, effectiveContext.userId);
                 } catch { /* ws optional in unit tests */ }
-                toolLogs.forEach((line: string) => broadcastTerminalLine(contextSessionId, paintLine(line) + '\r\n'));
+                toolLogs
+                    .filter((line: string) => !spokenLive.has(String(line)))
+                    .forEach((line: string) => broadcastTerminalLine(contextSessionId, paintLine(line) + '\r\n'));
             }
 
             logs.push(...toolLogs);

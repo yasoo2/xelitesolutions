@@ -22,6 +22,7 @@
 import type { ModelEntity } from './data-model';
 import { deriveDataModel } from './data-model';
 import { namedEntities } from './named-entities';
+import { declaredTables } from './declared-tables';
 
 /** The shape the model is constrained to. Small on purpose — it must fit a 7B. */
 export const ENTITY_SCHEMA: Record<string, any> = {
@@ -80,7 +81,24 @@ const RESERVED = RESERVED_TABLES;
  * to something nobody declared, forty columns nobody asked for.
  */
 export function validateDesign(raw: any): ModelEntity[] | null {
-    const list = Array.isArray(raw?.entities) ? raw.entities : null;
+    /**
+     * TWO SHAPES REACH THIS VALIDATOR, AND IT ONLY EVER READ ONE.
+     *
+     * The model answers `{ entities: [...] }` with `label_ar` / `label_en`,
+     * because that is the JSON schema it was constrained to. The two readers
+     * that need no model — the shape inference and the declaration reader —
+     * hand over a plain ARRAY of ModelEntity with `ar` / `en`.
+     *
+     * `Array.isArray(raw?.entities)` is `false` for an array, so every call
+     * from those two returned null and fell through to the language model.
+     * The offline path existed, was tested in isolation, and was unreachable
+     * in the one function that calls it — which is how his log came back
+     * «a known domain matched» on a request that declared its own tables.
+     * Found by running it, not by reading it.
+     */
+    const list: any[] | null = Array.isArray(raw) ? raw
+        : Array.isArray(raw?.entities) ? raw.entities
+            : null;
     if (!list || !list.length) return null;
 
     const out: ModelEntity[] = [];
@@ -97,8 +115,11 @@ export function validateDesign(raw: any): ModelEntity[] | null {
             const type = ['TEXT', 'REAL', 'INT'].includes(String(f?.type)) ? String(f.type) : 'TEXT';
             fields.push({
                 key: fk, type: type as any, required: !!f?.required,
-                ar: String(f?.label_ar || fk).slice(0, 40),
-                en: String(f?.label_en || fk).slice(0, 40),
+                // Both spellings, because both shapes reach here: `label_ar`
+                // from the model's constrained JSON, `ar` from the readers
+                // that build a ModelEntity directly.
+                ar: String(f?.label_ar || f?.ar || fk).slice(0, 40),
+                en: String(f?.label_en || f?.en || fk).slice(0, 40),
             });
             fieldSeen.add(fk);
         }
@@ -108,8 +129,8 @@ export function validateDesign(raw: any): ModelEntity[] | null {
         seen.add(key);
         out.push({
             key,
-            ar: String(e?.label_ar || key).slice(0, 40),
-            en: String(e?.label_en || key).slice(0, 40),
+            ar: String(e?.label_ar || e?.ar || key).slice(0, 40),
+            en: String(e?.label_en || e?.en || key).slice(0, 40),
             fields,
         });
     }
@@ -119,7 +140,7 @@ export function validateDesign(raw: any): ModelEntity[] | null {
     // survived validation, and it must have a column to live in.
     const names = new Set(out.map(e => e.key));
     for (let i = 0; i < out.length; i++) {
-        const declared = String((list[i] as any)?.belongs_to || '').trim().toLowerCase();
+        const declared = String((list[i] as any)?.belongs_to || (list[i] as any)?.belongsTo?.entity || '').trim().toLowerCase();
         if (!declared || !names.has(declared) || declared === out[i].key) continue;
         const fkKey = `${declared.replace(/s$/, '')}_id`;
         if (!SAFE.test(fkKey)) continue;
@@ -160,6 +181,27 @@ export async function designDataModel(
     request: string,
     opts?: { onNote?: (note: string) => void; timeoutMs?: number },
 ): Promise<ModelEntity[]> {
+    /**
+     * WHAT HE WROTE DOWN COMES FIRST — BEFORE ANY RECOGNITION.
+     *
+     *     Tables: animals, vaccinations, doctors, appointments, invoices
+     *     → data model: a known domain matched — doctors, patients, appointments
+     *
+     * The word «clinic» hit a hand-written domain and the domain outranked the
+     * sentence: three named tables dropped, one invented. A keyword the system
+     * recognises is a guess about what he means; a list he typed under the word
+     * «Tables» is not a guess at all, and nothing in this file has standing to
+     * overrule it.
+     */
+    const declared = declaredTables(request);
+    if (declared.length) {
+        const valid = validateDesign(declared);
+        if (valid && valid.length >= 2) {
+            opts?.onNote?.(`data model: the request declares its tables — ${valid.map(e => e.key).join(', ')}`);
+            return valid;
+        }
+    }
+
     const known = deriveDataModel(request);
     // The deterministic domains are BETTER than a model guess when they match:
     // they are hand-checked, and they cost nothing.

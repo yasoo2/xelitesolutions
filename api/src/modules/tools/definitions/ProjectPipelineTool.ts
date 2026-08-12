@@ -1,5 +1,6 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import { executeTool } from '../../services/ToolService';
+import { isArabicReply, say as pick } from '../../../shared/reply-language';
 
 /**
  * ProjectPipelineTool — the production bridge to the canonical pipeline.
@@ -132,6 +133,24 @@ export class ProjectPipelineTool implements ToolDefinition {
 
         const say = (m: string) => { logs.push(m); context?.onProgress?.(m); };
 
+        /**
+         * ONE RUN, ONE LANGUAGE — AND THE PIPELINE WAS STILL DEAF TO IT.
+         *
+         * His English prompt, with Joe switched to English, produced a trace
+         * in two languages at once:
+         *
+         *     [pipeline] plan ready: Build a complete system … — 3 phases
+         *     ⚙️ المرحلة 1/3 — Backend & database
+         *     ✅ اكتملت المرحلة 1/3 وتحقَّقت
+         *     ▶️ أُشغّل النظام لتراه حيّاً…
+         *
+         * The rule lives in one file now; this tool simply never asked it.
+         * Worse, the delivery report below defaulted to `'ar'` when the
+         * interface said nothing, so silence meant Arabic — which is a guess
+         * about the reader, not a fact. The request's own script is the fact.
+         */
+        const isAr = isArabicReply({ language: context?.language, text: request });
+
         // 1 — Plan. The planner is planner-only by architecture law; it returns
         // phases and never executes anything itself.
         say('[pipeline] planning the project phases…');
@@ -155,8 +174,11 @@ export class ProjectPipelineTool implements ToolDefinition {
         const scope: 'page' | 'app' | 'system' = PlanningEngine.classifyBuildScope(request);
         const spine = buildSpine(scope, request);
         if (spine) {
-            say(`[pipeline] النطاق «${scope}» — أبني بالمحرّكات الحقيقية: ${spine.output.phases
-                .flatMap((p: any) => p.tasks.map((t: any) => t.tool)).join(' → ')}`);
+            const engines = spine.output.phases
+                .flatMap((p: any) => p.tasks.map((t: any) => t.tool)).join(' → ');
+            say(pick(isAr,
+                `[pipeline] النطاق «${scope}» — أبني بالمحرّكات الحقيقية: ${engines}`,
+                `[pipeline] scope «${scope}» — building with the real engines: ${engines}`));
         }
 
         const plannerResult = spine || await executeTool('project_planner', { projectDescription: request }, context);
@@ -178,6 +200,9 @@ export class ProjectPipelineTool implements ToolDefinition {
             workspaceId: context?.workspaceId || context?.sessionId || 'default',
             plannerResult,
             modelConfig: context?.modelConfig,
+            // The phase announcements are the loudest lines in the trace, and
+            // they were the ones speaking the wrong language.
+            language: isAr ? 'ar' : 'en',
             // The live voice: phase-by-phase progress reaches the same panel
             // stream the orchestrator wired into this tool's context.
             onProgress: (m: string) => say(m),
@@ -201,16 +226,19 @@ export class ProjectPipelineTool implements ToolDefinition {
         let liveUrl = '';
         if (verified) {
             try {
-                say('▶️ أُشغّل النظام لتراه حيّاً…');
-                const runRes = await executeTool('project_run', {}, context);
+                say(pick(isAr, '▶️ أُشغّل النظام لتراه حيّاً…', '▶️ Starting the system so you can see it live…'));
+                // …and it speaks the run's language, not the interface default.
+                const runRes = await executeTool('project_run', {}, { ...context, language: isAr ? 'ar' : 'en' });
                 if (runRes?.ok && runRes.output?.url) liveUrl = String(runRes.output.url);
             } catch (e: any) {
-                say(`ℹ️ اكتمل البناء، لكن التشغيل التلقائي تعثّر: ${e?.message || e}`);
+                say(pick(isAr,
+                    `ℹ️ اكتمل البناء، لكن التشغيل التلقائي تعثّر: ${e?.message || e}`,
+                    `ℹ️ The build finished, but starting it automatically failed: ${e?.message || e}`));
             }
         }
 
         const summary = this.buildDeliveryReport({
-            language: String(context?.language || 'ar').toLowerCase().startsWith('ar') ? 'ar' : 'en',
+            language: isAr ? 'ar' : 'en',
             projectName: String(plannerResult.output.projectName || 'project'),
             phases, pipeline, done, total, verified, liveUrl,
         });

@@ -662,6 +662,42 @@ const failedCustomRoutes = new Set<string>();
 export const customRouteCooldownUntil = new Map<string, number>();
 const CUSTOM_ROUTE_COOLDOWN_CAP_MS = 30 * 60_000;
 
+/**
+ * IS THIS AN ANSWER, OR IS IT NOTHING?
+ *
+ * The mesh used to decide with `ans.length > 2`, and that number cost him a
+ * whole evening. The provider-verify probe asks every provider «Reply with
+ * the single word: OK». Every provider replies `OK`. `OK` is two characters.
+ * So the mesh read four CORRECT answers as four failures, cooled every
+ * provider down for answering, and printed the loudest line in his log:
+ *
+ *     Groq (Free) answered but the reply was unusable (2 raw → 2 clean chars)
+ *     LLM7 (Keyless) … (2 raw → 2 clean chars)
+ *     DeepSeek (Pollinations) … (2 raw → 2 clean chars)
+ *     Local (Auto) … (2 raw → 2 clean chars)
+ *
+ * — and then the total-failure line, on a mesh where nothing had failed.
+ *
+ * — while the SAME Groq key answered the SAME probe in 255 ms on the direct
+ * route, which never had this gate. Four independent engines agreeing on the
+ * right answer is not four outages; it is one bad constant. And the damage
+ * did not stay in the settings page: the cooldowns are global, so pressing
+ * «verify» poisoned the brain for every request that followed it.
+ *
+ * A length is a guess about the world — «answers are longer than two» — and
+ * guesses about the world are the disease he named. A SHAPE is a fact about
+ * the text. A reply carrying a letter, in any script, or a digit, says
+ * something: `OK`, `لا`, `42`. A reply that is a JSON body says something
+ * even when empty: `[]` is «no tools needed». Only whitespace and bare
+ * punctuation say nothing — at any length.
+ */
+export function isUsableAnswer(text: any): boolean {
+    const s = String(text ?? '').trim();
+    if (!s) return false;
+    if (/[\p{L}\p{N}]/u.test(s)) return true;
+    return /^[[{][\s\S]*[\]}]$/.test(s);
+}
+
 // Remembers FREE-mesh providers that just failed or timed out, so we skip them for
 // a short cooldown instead of paying a full (often long) round-trip through a dead
 // gateway on EVERY request. Example: DuckAI returns 418 and Pollinations returns
@@ -1334,7 +1370,7 @@ export async function routeToModel(
             name: 'Pollinations (Forced)',
             run: async () => {
                 const res = await pollinationsProvider.chatComplete(effectiveMessages, 'gpt-4o', 3, tools);
-                if (!res || res.length < 5) throw new Error('Pollinations response too short');
+                if (!isUsableAnswer(res)) throw new Error('Pollinations answered with nothing usable');
                 return res;
             }
         });
@@ -1351,7 +1387,7 @@ export async function routeToModel(
                 const localModel = pickLocalModel(taskAnalysis?.type);
                 // Pass onPartial so the local brain streams tokens live to the panel.
                 const res = await localProvider.chatComplete(flatMessages, localModel, onPartial);
-                if (!res || res.length < 2) throw new Error('Local response too short');
+                if (!isUsableAnswer(res)) throw new Error('Local answered with nothing usable');
                 return res;
             }
         });
@@ -1414,7 +1450,7 @@ export async function routeToModel(
             name: 'HuggingFace (Free)',
             run: async () => {
                 const res = await huggingfaceProvider.chatComplete(flatMessages);
-                if (!res || res.length < 2) throw new Error('HuggingFace response too short');
+                if (!isUsableAnswer(res)) throw new Error('HuggingFace answered with nothing usable');
                 return res;
             }
         });
@@ -1437,7 +1473,7 @@ export async function routeToModel(
             name: 'LLM7 (Keyless)',
             run: async () => {
                 const res = await llm7Provider.chatComplete(effectiveMessages, undefined, tools);
-                if (!res || res.length < 2) throw new Error('LLM7 response too short');
+                if (!isUsableAnswer(res)) throw new Error('LLM7 answered with nothing usable');
                 return res;
             }
         });
@@ -1449,7 +1485,7 @@ export async function routeToModel(
             name: 'DuckAI (Keyless)',
             run: async () => {
                 const res = await duckAIProvider.chatComplete(flatMessages, undefined, tools);
-                if (!res || res.length < 2) throw new Error('DuckAI response too short');
+                if (!isUsableAnswer(res)) throw new Error('DuckAI answered with nothing usable');
                 return res;
             }
         });
@@ -1467,7 +1503,7 @@ export async function routeToModel(
             name: 'Pollinations (Backup)',
             run: async () => {
                 const res = await pollinationsProvider.chatComplete(flatMessages, 'openai', 3, tools);
-                if (!res || res.length < 5) throw new Error('Pollinations response too short');
+                if (!isUsableAnswer(res)) throw new Error('Pollinations answered with nothing usable');
                 return res;
             }
         });
@@ -1664,7 +1700,7 @@ export async function routeToModel(
 
             const ans = cleanOutput(rawAns);
 
-            if (ans && ans.length > 2) {
+            if (isUsableAnswer(ans)) {
                 console.info(`[IntelligentRouter] ✅ Success via ${p.name} `);
                 lastTotalFailureAt = 0; // the brain is alive — release the latch
                 markProviderOk(p.name); // clear any prior cooldown — it works again
@@ -1693,8 +1729,8 @@ export async function routeToModel(
              *
              * A failure that does not name itself cannot be fixed by anyone.
              */
-            console.warn(`[IntelligentRouter] ${p.name} answered but the reply was unusable `
-                + `(${rawAns == null ? 'null' : `${String(rawAns).length} raw → ${ans.length} clean`} chars) `
+            console.warn(`[IntelligentRouter] ${p.name} answered but the reply carried no words at all `
+                + `(${rawAns == null ? 'null' : `${String(rawAns).length} raw → ${ans.length} clean`} chars: ${JSON.stringify(ans.slice(0, 40))}) `
                 + `— counted as a failure and cooled down.`);
             markProviderFailed(p.name);
         } catch (e: any) {
@@ -1891,5 +1927,6 @@ export default {
     generateActionPlan,
     suggestCorrection,
     verifyProviderDirect,
+    isUsableAnswer,
     MODELS
 };

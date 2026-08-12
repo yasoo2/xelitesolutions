@@ -29,12 +29,28 @@ describe('the orchestrator gives every tool a live voice', () => {
 });
 
 describe('the canonical pipeline narrates phase by phase', () => {
-    test('each phase is announced, completion and failure alike, in Arabic', () => {
-        expect(loop).toMatch(/voice\(`⚙️ المرحلة \$\{/);
-        expect(loop).toMatch(/voice\(`✅ اكتملت المرحلة/);
-        expect(loop).toMatch(/voice\(`⚠️ تعثرت المرحلة/);
-        expect(loop).toMatch(/voice\(`⛔ لم ينجح الإصلاح الذاتي — أتوقف بصدق/);
-        expect(loop).toMatch(/voice\(`🔧 نجح الإصلاح الذاتي/);
+    /**
+     * These five lines used to be hardcoded Arabic, and that is what leaked
+     * «⚙️ المرحلة 1/3 — Backend & database» into his English run in English
+     * mode. They are still announced — every one of them — but now in the
+     * language of the run, so the assertion is that BOTH sentences exist.
+     */
+    test('each phase is announced, completion and failure alike, in the run\'s language', () => {
+        expect(loop).toMatch(/voice\(pick\(isAr,\s*\n\s*`⚙️ المرحلة \$\{/);
+        expect(loop).toMatch(/`⚙️ Phase \$\{n\}\/\$\{totalPhases\}/);
+        expect(loop).toMatch(/`✅ اكتملت المرحلة/);
+        expect(loop).toMatch(/`✅ Phase \$\{n\}\/\$\{totalPhases\} completed and verified`/);
+        expect(loop).toMatch(/`⚠️ تعثرت المرحلة/);
+        expect(loop).toMatch(/`⚠️ Phase \$\{n\} stumbled/);
+        expect(loop).toMatch(/`⛔ لم ينجح الإصلاح الذاتي — أتوقف بصدق/);
+        expect(loop).toMatch(/`⛔ Self-healing did not work/);
+        expect(loop).toMatch(/`🔧 نجح الإصلاح الذاتي/);
+        expect(loop).toMatch(/`🔧 Self-healing worked/);
+    });
+
+    test('and the language is the RUN\'s, handed down by the caller — not a default', () => {
+        expect(loop).toMatch(/const isAr = isArabicReply\(\{\s*\n\s*language: opts\.language,/);
+        expect(pipeTool).toMatch(/language: isAr \? 'ar' : 'en',/);
     });
 
     test('the voice reaches the phase executor context so per-task progress flows', () => {
