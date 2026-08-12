@@ -377,6 +377,35 @@ Rules:
         // "repair" was a paragraph of prose; a failed search step matched the web
         // search fast-path and re-ran the identical failing search with zero
         // analysis. Recovery is planned from the error, by the real planner, always.
+        /**
+         * A ROUTE THAT SAW ONE CLAUSE MUST NOT CLAIM THE WHOLE SENTENCE.
+         *
+         * Measured end to end: «حلّل المستودع، ثم راجع الكود، ثم اضغط الملفات»
+         * hit the repo-analysis fast-path on its FIRST clause and returned a
+         * single github_repo_manager step. The other two tasks — which the
+         * user wrote down, in order — vanished. The chain sits below the
+         * hand-written routes by design, and it never got to see this.
+         *
+         * So a request that names its own sequence is checked first. It defers
+         * to the hand-written routes for anything that is really a BUILD:
+         * those are hand-checked, richer, and «ابنِ متجراً ثم أضف صفحة» is
+         * better served by them than by two generic steps.
+         */
+        const BUILDERS = new Set(['react_project', 'api_project', 'web_page_builder', 'project_pipeline', 'scaffold_project']);
+        try {
+            const { capabilityChain, hasExplicitSequence } = require('./capability-match');
+            const goalText = String(intent.goal || '');
+            // Only an explicit «ثم»/«then» — a newline is layout, not order.
+            const early = hasExplicitSequence(goalText) ? capabilityChain(goalText, 5) : [];
+            if (early.length >= 2 && !early.some((c: any) => BUILDERS.has(c.name))) {
+                const chained = PlanningEngine.capabilityPlan(intent);
+                if (chained && chained.metadata?.matchedBy === 'capability-chain') {
+                    console.log('[PlanningEngine] multi-task request — the chain outranks a single-clause route');
+                    return chained;
+                }
+            }
+        } catch { /* the registry is optional — every route below still stands */ }
+
         if (/^fix and continue:/i.test(String(intent.goal || '').trim())) {
             return PlanningEngine.generateDynamicDag(intent, memory, context);
         }

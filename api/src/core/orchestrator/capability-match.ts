@@ -212,3 +212,20 @@ export function capabilityChain(request: string, max = 5): ChainStep[] {
     }
     return chain.length >= 2 ? chain : [];
 }
+
+/**
+ * AN EXPLICIT «THEN» — and nothing weaker.
+ *
+ * Measured: letting the chain outrank the hand-written routes on ANY split
+ * broke four of them, because a new line is how people write ONE request
+ * across several lines — his own «Features:» list is twelve lines and one
+ * request. A newline is layout; «ثم» is order.
+ *
+ * So the chain may only outrank a hand-checked route when the user actually
+ * said «and then».
+ */
+const EXPLICIT = /(?:^|\s)(?:ثمّ?|بعد\s*ذلك|وبعدها|وبعد\s*ذلك|then|after\s+that|finally)(?:\s|$)/i;
+
+export function hasExplicitSequence(request: string): boolean {
+    return EXPLICIT.test(String(request || ''));
+}
