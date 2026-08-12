@@ -2124,6 +2124,8 @@ export class ReactProjectTool extends BaseTool {
         // API's URL, the list components ask it for the LIVE rows at runtime,
         // and any failure (API stopped, published copy) keeps the baked rows.
         const prevEntry = ((global as any).joeProjects || {})[sessionKey];
+        /** The tables this system really declares — the terminal asks for each by name. */
+        let systemTables: string[] = [];
         const apiLink = prevEntry?.type === 'api' && prevEntry?.resource
             ? `http://localhost:${prevEntry.port || 4100}/api/${prevEntry.resource}` : '';
         // The hero's second CTA points at the kind's main content — an
@@ -2429,6 +2431,9 @@ export class ReactProjectTool extends BaseTool {
                 }
             }
             if (adminModel.length) term(`admin screens: ${adminModel.map((e: any) => e.key).join(', ')}`);
+            // Carried out of this block so the terminal audit can ask the
+            // running server for every one of them by name.
+            systemTables = (tableModel || []).map((e: any) => String(e?.key || '')).filter(Boolean);
             const appFiles = buildAppFiles(runBp, {
                 brand: content.brand, isArabic: isAr, api: appApi, storeKey: `${slug(content.brand)}-${runBp.kind}`,
                 brandColor: (palette as any).primary,
@@ -2709,6 +2714,8 @@ export class ReactProjectTool extends BaseTool {
         // ── SELF-QA: a REAL browser measures the build before delivery ──────
         let audit: any = null;
         let selfRepair: { before: number; after: number; files: string[]; repairs: any[]; fixed: string[] } | null = null;
+        /** The terminal's own verdict — the browser's number has a twin now. */
+        let terminalAudit: any = null;
         if (built && !input?.skipAudit) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🔎 أفحص البناء في متصفح حقيقي قبل التسليم…' : '🔎 Self-QA in a real browser…');
             const { auditBuiltApp } = require('../../../core/quality/app-audit');
@@ -2859,9 +2866,48 @@ export class ReactProjectTool extends BaseTool {
                         };
                         audit = after;
                     } else {
-                        // The measurement did not improve. The honest thing is to
-                        // keep the first verdict rather than publish the flatter one.
-                        term(`self-repair: no measured gain — keeping the original verdict (${audit.score}/100)`);
+                        /**
+                         * A REPAIR THAT MEASURED WORSE MUST BE TAKEN BACK.
+                         *
+                         * From his own run:
+                         *
+                         *     self-repair: 78 → 73/100 (5 file(s))
+                         *     self-repair: no measured gain — keeping the original verdict (78/100)
+                         *
+                         * The verdict was kept. The FILES were not: the repaired
+                         * source had already been rebuilt and copied into the
+                         * server's public/ two steps above, so the system he
+                         * opened was the 73 one while the report said 78. Keeping
+                         * a number is not keeping a build — and reporting the
+                         * better of two measurements while shipping the worse is
+                         * the exact dishonesty this file keeps deleting.
+                         *
+                         * So the project goes back to the snapshot taken before
+                         * the first byte was written, is rebuilt, and is packaged
+                         * again. Then 78 is the truth about what he has.
+                         */
+                        let rolledBack = false;
+                        if (cycle.snapshotId) {
+                            try {
+                                const { restoreVersion } = require('../../../core/project/versions');
+                                const back = restoreVersion(proj, cycle.snapshotId);
+                                if (back?.ok) {
+                                    const { runDoctored } = require('../../../core/quality/log-doctor');
+                                    const rb = await runDoctored('npm', ['run', 'build'], {
+                                        cwd: proj, timeoutMs: 240_000,
+                                        onLine: (l: string) => term(`  ${l.slice(0, 200)}`),
+                                        onNote: term,
+                                    });
+                                    rolledBack = rb.ok === true;
+                                    if (rolledBack && packaged) packageIntoApi(false);
+                                }
+                            } catch (e: any) {
+                                term(`self-repair: could not roll back (${String(e?.message || e).slice(0, 120)})`);
+                            }
+                        }
+                        term(rolledBack
+                            ? `self-repair: the repair measured WORSE — rolled the project back and rebuilt it; ${audit.score}/100 is what you have`
+                            : `self-repair: no measured gain — keeping the original verdict (${audit.score}/100)`);
                     }
                 } else if (cycle.reverted) {
                     term('self-repair: reverted — the project is exactly as it was');
@@ -2899,6 +2945,53 @@ export class ReactProjectTool extends BaseTool {
                             data: { url: liveServer.url, previewUrl: liveServer.url, port: liveServer.port, live: true },
                         } as any);
                     } catch { /* the panel is optional, the server is not */ }
+                }
+            }
+
+            /**
+             * AND NOW THE OTHER HALF OF THE MEASUREMENT — IN THE TERMINAL.
+             *
+             * «ما زلت لم ارى شاشة الثيرمال يفتح مثل شاشة المتصفح ويجري اختبارات
+             *  امامي … ويرى جو نتائج الاختبارات التي يجريها الثيرمال مثل ما
+             *  ياخذ نتائج الجودة التي يجريها المتصفح»
+             *
+             * He named a real asymmetry. The browser half opens its own panel,
+             * presses every control in front of him, and returns a score with
+             * named findings that Joe repairs against. The terminal half was a
+             * PIPE: build output scrolled past, the panel never opened, and
+             * nothing that appeared there was ever measured. A stream is not a
+             * test, and output nobody scores is not a result.
+             *
+             * So the terminal gets its own instrument, to the same contract:
+             * the panel is asked for by name, every check is a real process
+             * with a real exit code, and it answers with a score Joe reads,
+             * reports, and can be held to.
+             */
+            if (apiDir && fs.existsSync(path.join(apiDir, 'package.json'))) {
+                try {
+                    broadcast({ type: 'panel_focus', sessionId, data: { panel: 'terminal', reason: 'terminal_qa' } } as any);
+                } catch { /* UI optional */ }
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                    ? '⌨️ الآن الطرفية — أُشغّل اختبارات حقيقية على الخادم أمامك وأقرأ نتائجها'
+                    : '⌨️ Now the terminal — running real checks against the server in front of you, and reading their results');
+                const { auditInTerminal, failingIds } = require('../../../core/quality/terminal-audit');
+                terminalAudit = await auditInTerminal(apiDir, {
+                    onLine: term,
+                    serveUrl: liveServer ? liveServer.url : '',
+                    tables: systemTables,
+                    timeoutMs: 25_000,
+                });
+                if (terminalAudit && !terminalAudit.skipped) {
+                    const bad = failingIds(terminalAudit);
+                    term(`terminal-QA: ${terminalAudit.score}/100 (${terminalAudit.passed}/${terminalAudit.total} checks)`
+                        + (bad.length ? ` — ${bad.join(', ')}` : ' — every check passed'));
+                    if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                        ? `⌨️ فحص الطرفية: ${terminalAudit.score}/100 — ${terminalAudit.passed} من ${terminalAudit.total} اختباراً`
+                            + (bad.length ? ` · تعثّر: ${bad.join('، ')}` : ' · كلها نجحت')
+                        : `⌨️ Terminal QA: ${terminalAudit.score}/100 — ${terminalAudit.passed} of ${terminalAudit.total} checks`
+                            + (bad.length ? ` · failed: ${bad.join(', ')}` : ' · all passed'));
+                } else {
+                    term(`terminal-QA: skipped (${terminalAudit?.skipped || 'no_project'}) — nothing was measured, so nothing is claimed`);
                 }
             }
         }
@@ -3115,6 +3208,28 @@ export class ReactProjectTool extends BaseTool {
                     for (const f of left) lines.push(`   • ${say(f)}`);
                 } else {
                     lines.push(isAr ? '✅ ولم يبقَ شيء من الملاحظات.' : '✅ Nothing left from the findings.');
+                }
+            }
+            /**
+             * AND THE TERMINAL'S NUMBER, BESIDE THE BROWSER'S.
+             *
+             * «ويرى جو نتائج الاختبارات التي يجريها الثيرمال مثل ما ياخذ نتائج
+             *  الجودة التي يجريها المتصفح». Two instruments, two scores, one
+             * report — and a failed check is named, never a scroll position.
+             */
+            if (terminalAudit && !terminalAudit.skipped) {
+                const bad = terminalAudit.checks.filter((c: any) => !c.ok && !c.skipped);
+                lines.push(isAr
+                    ? `⌨️ فحص الطرفية: **${terminalAudit.score}/100** — ${terminalAudit.passed} من ${terminalAudit.total} اختباراً حقيقياً (عمليات فعلية، لا ادّعاء)`
+                    : `⌨️ Terminal QA: **${terminalAudit.score}/100** — ${terminalAudit.passed} of ${terminalAudit.total} real checks (actual processes, not claims)`);
+                for (const c of terminalAudit.checks) {
+                    const mark = c.skipped ? '⏭️' : c.ok ? '✅' : '❌';
+                    lines.push(`   ${mark} ${c.id} — ${c.detail}`);
+                }
+                if (bad.length) {
+                    lines.push(isAr
+                        ? `   ↳ هذه فحوص خادم، لا تصميم — قل «أصلح ${bad[0].id}» وسأفتح الطرفية عليها.`
+                        : `   ↳ These are server checks, not design — say "fix ${bad[0].id}" and I will open the terminal on them.`);
                 }
             }
             return lines.join('\n') + '\n';

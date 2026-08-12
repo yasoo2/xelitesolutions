@@ -70,6 +70,16 @@ export interface RepairCycle {
     reverted: boolean;
     /** Set when nothing was attempted, so a caller can say why. */
     skipped?: string;
+    /**
+     * The snapshot taken BEFORE the first byte was written.
+     *
+     * `reverted` only covers a repair that failed to BUILD. A repair that
+     * builds perfectly and MEASURES WORSE is the other failure, and it has no
+     * undo without this id — which is how a build that scored 78, was
+     * repaired down to 73, and was reported as «keeping the original verdict
+     * (78/100)» shipped the 73 files to the user.
+     */
+    snapshotId?: string;
 }
 
 export async function repairAndRebuild(
@@ -96,7 +106,9 @@ export async function repairAndRebuild(
      */
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { snapshotProject } = require('../project/versions');
-    try { snapshotProject(dir, 'قبل الإصلاح الذاتي'); } catch { /* never blocks the repair */ }
+    let snapshotId = '';
+    try { snapshotId = String(snapshotProject(dir, 'قبل الإصلاح الذاتي')?.id || ''); }
+    catch { /* never blocks the repair */ }
 
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { syntaxOk } = require('../../modules/tools/definitions/ProjectEditTool');
@@ -143,11 +155,11 @@ export async function repairAndRebuild(
         onNote: say,
     });
 
-    if (r.ok === true) return { changed, refused, repairs: plan.repairs, built: true, reverted: false };
+    if (r.ok === true) return { changed, refused, repairs: plan.repairs, built: true, reverted: false, snapshotId };
 
     for (const rel of changed) {
         try { fs.writeFileSync(path.join(dir, rel), sources[rel], 'utf-8'); } catch { /* best effort */ }
     }
     say('self-repair: build FAILED after repair — every change reverted');
-    return { changed: [], refused, repairs: [], built: false, reverted: true };
+    return { changed: [], refused, repairs: [], built: false, reverted: true, snapshotId };
 }
