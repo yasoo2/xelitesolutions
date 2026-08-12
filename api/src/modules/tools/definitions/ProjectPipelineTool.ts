@@ -312,6 +312,38 @@ export class ProjectPipelineTool implements ToolDefinition {
             }
         }
 
+        /**
+         * AND WHAT THE BUILDERS THEMSELVES SAID — INCLUDING WHAT THEY DID NOT
+         * BUILD.
+         *
+         * His prompt ended: «At the end, show me plainly what you actually
+         * built and what you did not». He got three phase names.
+         *
+         * The answer existed the whole time. `react_project` writes it: the
+         * abilities the application really has, the two QA scores with every
+         * finding named, the owner account — and an explicit «⚠️ You also
+         * asked for things this step did NOT build» listing the live
+         * streaming, the video calls, the AI diagnosis from photos and the
+         * automatic vaccination recommendations. That message reached the
+         * phase executor and was dropped there, and this report had nothing
+         * to carry.
+         *
+         * A report that summarises phases instead of relaying what was
+         * measured is a table of contents for a book nobody printed.
+         */
+        const spoken: string[] = [];
+        for (const p of phaseResults) {
+            for (const t of (Array.isArray(p?.results) ? p.results : [])) {
+                const msg = String(t?.message || '').trim();
+                if (msg && !spoken.includes(msg)) spoken.push(msg);
+            }
+        }
+        if (spoken.length) {
+            lines.push('');
+            lines.push(ar ? '### ما بُني بالضبط — بكلام المحرّكات نفسها' : '### Exactly what was built — in the engines\' own words');
+            for (const m of spoken) { lines.push(''); lines.push(m); }
+        }
+
         // Files the PLAN wrote — the paths are in the plan itself, so this list
         // is exact, not guessed.
         const writeTools = new Set(['write_file', 'ai_write_file', 'file_write', 'create_file', 'write_to_file']);

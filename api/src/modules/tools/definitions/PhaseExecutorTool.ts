@@ -163,7 +163,26 @@ export class PhaseExecutorTool implements ToolDefinition {
 
                     if (toolResult.ok) {
                         logs.push(`[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`);
-                        results.push({ task: taskDesc, tool: toolName, ok: true });
+                        /**
+                         * THE BUILDER'S OWN WORDS SURVIVE THE PHASE.
+                         *
+                         * His prompt ended with «At the end, show me plainly
+                         * what you actually built and what you did not» — and
+                         * he got a list of three phase names. The answer he
+                         * asked for was WRITTEN: `react_project` composes a
+                         * message naming the live streaming, the video calls
+                         * and the AI diagnosis it did NOT build, the two QA
+                         * scores, and the owner account. This line threw all
+                         * of it away — `{task, tool, ok}` and nothing else —
+                         * so the pipeline's report had nothing to carry.
+                         *
+                         * Bounded, because a report is read, not scrolled.
+                         */
+                        const said = String((toolResult as any)?.output?.message || '').trim();
+                        results.push({
+                            task: taskDesc, tool: toolName, ok: true,
+                            ...(said ? { message: said.slice(0, 8000) } : {}),
+                        });
                         completedCount++;
                     } else {
                         const errMsg = String(toolResult.error || 'Unknown error');
