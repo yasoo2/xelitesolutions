@@ -43,6 +43,46 @@ describe('the terminal has its own instrument, not just a pipe', () => {
         expect(REACT).toMatch(/for \(const c of terminalAudit\.checks\)/);
     });
 
+    /**
+     * The panel WAS asked for on his machine — and eight seconds later
+     * `preview_ready` pulled the workspace to the Preview tab, so the checks
+     * ran on a tab nobody was looking at and the run ended somewhere else.
+     * Handing over the live system is the LAST thing that happens.
+     */
+    it('the terminal runs BEFORE the live system is handed to the preview panel', () => {
+        expect(REACT.indexOf('auditInTerminal(apiDir, {'))
+            .toBeLessThan(REACT.indexOf('self-QA: the system stays UP at'));
+        expect(REACT.indexOf('⌨️ Now the terminal'))
+            .toBeLessThan(REACT.indexOf("type: 'preview_ready', sessionId,"));
+    });
+
+    /**
+     * Both failures his first real run produced were inside the TEST:
+     *
+     *   ❌ health_answers — health answered with something that is not JSON
+     *      …printed under the valid JSON it had just answered (the script cut
+     *      the body to 300 chars and the parent parsed the cut);
+     *   ❌ tables_answer — ->flags & UV_HANDLE_CLOSING, src\win\async.c:94
+     *      …printed under «OK» (process.exit tore the loop down while undici
+     *      still held sockets, so a passing sweep exited non-zero).
+     *
+     * A test that fails for a reason inside the test sends the reader to fix
+     * the wrong system.
+     */
+    it('no probe script may call process.exit — it crashed libuv on Windows', () => {
+        const CODE = read('core', 'quality', 'terminal-audit.ts').replace(/\/\*[\s\S]*?\*\//g, '');
+        expect(CODE).not.toMatch(/process\.exit\(/);
+        expect(CODE).toMatch(/process\.exitCode/);
+    });
+
+    it('and nothing that gets parsed is ever truncated first', () => {
+        // …in the CODE; the comment above it quotes the line that used to be there.
+        const CODE = read('core', 'quality', 'terminal-audit.ts').replace(/\/\*[\s\S]*?\*\//g, '');
+        expect(CODE).not.toMatch(/t\.slice\(0, ?300\)/);
+        // The child reaches the verdict on the whole body and prints one line.
+        expect(CODE).toContain('console.log("OK "+(d.backend||"?")');
+    });
+
     it('a skipped run claims nothing — it says nothing was measured', () => {
         expect(REACT).toMatch(/terminal-QA: skipped \(\$\{terminalAudit\?\.skipped \|\| 'no_project'\}\) — nothing was measured, so nothing is claimed/);
     });

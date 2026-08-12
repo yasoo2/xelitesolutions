@@ -2914,41 +2914,6 @@ export class ReactProjectTool extends BaseTool {
                 }
             }
             /**
-             * AND THE SYSTEM THAT JUST PROVED IT WORKS STAYS UP.
-             *
-             * «لكن لم ارى النظام». He is right, and this line is why. Joe
-             * started the packaged server, opened a real browser on it,
-             * measured it, repaired it, measured it again — and then killed
-             * it, with the comment «the system he deploys is his to start».
-             * Then it tried to start something else on another port, failed,
-             * and handed him a dead link. He never once saw the thing he
-             * asked for, and Joe had it running in its hands the whole time.
-             *
-             * A server that has just answered a real browser and its own API
-             * IS the live preview. It is handed over, not thrown away: the
-             * preview panel opens it, the delivery message carries its
-             * address, and `project_run` adopts it instead of racing it.
-             */
-            if (liveServer) {
-                try {
-                    const prevPid = Number(prevEntry?.live?.pid || 0);
-                    if (prevPid && prevPid !== liveServer.pid) process.kill(prevPid);
-                } catch { /* an old server that is already gone needs no killing */ }
-                term(`self-QA: the system stays UP at ${liveServer.url} — this is your live system, not a test rig`);
-                if (sessionId) {
-                    broadcastThinkingDetail(sessionId, isAr
-                        ? `🌐 نظامك يعمل الآن على ${liveServer.url} — الواجهة وقاعدة بياناتها على نفس العنوان`
-                        : `🌐 Your system is live at ${liveServer.url} — the interface and its database on one address`);
-                    try {
-                        broadcast({
-                            type: 'preview_ready', sessionId,
-                            data: { url: liveServer.url, previewUrl: liveServer.url, port: liveServer.port, live: true },
-                        } as any);
-                    } catch { /* the panel is optional, the server is not */ }
-                }
-            }
-
-            /**
              * AND NOW THE OTHER HALF OF THE MEASUREMENT — IN THE TERMINAL.
              *
              * «ما زلت لم ارى شاشة الثيرمال يفتح مثل شاشة المتصفح ويجري اختبارات
@@ -2994,6 +2959,55 @@ export class ReactProjectTool extends BaseTool {
                     term(`terminal-QA: skipped (${terminalAudit?.skipped || 'no_project'}) — nothing was measured, so nothing is claimed`);
                 }
             }
+            /**
+             * ORDER MATTERS, AND HIS SCREEN PROVED IT.
+             *
+             * «المفروض ان شاشة الثيرمال … ظهرت واجرت الاختبارات … ولكنها لم
+             *  تظهر». The terminal panel WAS asked for by name — and eight
+             * seconds later `preview_ready` fired and pulled the workspace to
+             * the Preview tab, so the checks ran on a tab nobody was looking
+             * at and the run ended somewhere else entirely.
+             *
+             * Handing over the live system is the LAST thing that happens, not
+             * the second to last. Measure in the terminal while the terminal is
+             * the tab in front of him; open the preview when there is nothing
+             * left to watch.
+             */
+            /**
+             * AND THE SYSTEM THAT JUST PROVED IT WORKS STAYS UP.
+             *
+             * «لكن لم ارى النظام». He is right, and this line is why. Joe
+             * started the packaged server, opened a real browser on it,
+             * measured it, repaired it, measured it again — and then killed
+             * it, with the comment «the system he deploys is his to start».
+             * Then it tried to start something else on another port, failed,
+             * and handed him a dead link. He never once saw the thing he
+             * asked for, and Joe had it running in its hands the whole time.
+             *
+             * A server that has just answered a real browser and its own API
+             * IS the live preview. It is handed over, not thrown away: the
+             * preview panel opens it, the delivery message carries its
+             * address, and `project_run` adopts it instead of racing it.
+             */
+            if (liveServer) {
+                try {
+                    const prevPid = Number(prevEntry?.live?.pid || 0);
+                    if (prevPid && prevPid !== liveServer.pid) process.kill(prevPid);
+                } catch { /* an old server that is already gone needs no killing */ }
+                term(`self-QA: the system stays UP at ${liveServer.url} — this is your live system, not a test rig`);
+                if (sessionId) {
+                    broadcastThinkingDetail(sessionId, isAr
+                        ? `🌐 نظامك يعمل الآن على ${liveServer.url} — الواجهة وقاعدة بياناتها على نفس العنوان`
+                        : `🌐 Your system is live at ${liveServer.url} — the interface and its database on one address`);
+                    try {
+                        broadcast({
+                            type: 'preview_ready', sessionId,
+                            data: { url: liveServer.url, previewUrl: liveServer.url, port: liveServer.port, live: true },
+                        } as any);
+                    } catch { /* the panel is optional, the server is not */ }
+                }
+            }
+
         }
 
         // Remember the project so «عدل …» routes to the SURGICAL editor and

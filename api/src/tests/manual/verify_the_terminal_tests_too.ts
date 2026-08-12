@@ -141,6 +141,63 @@ async function main() {
         (d.checks.find((x: any) => x.id === 'sources_parse') || {}).detail || ''),
     (d.checks.find((x: any) => x.id === 'sources_parse') || {}).detail);
 
+    console.log('\n[2d] The two failures HIS machine produced — both inside the test\n');
+
+    /**
+     * From his first real run, both of these were defects in the harness, not
+     * in his system, and that is the worst kind:
+     *
+     *   ❌ health_answers — health answered with something that is not JSON
+     *      …printed directly under the valid JSON it had just answered. The
+     *      script truncated the body to 300 chars and the parent parsed the cut.
+     *
+     *   ❌ tables_answer — ->flags & UV_HANDLE_CLOSING), src\win\async.c:94
+     *      …printed directly under «OK». process.exit() tore the loop down
+     *      while undici still held sockets, libuv asserted, exit code ≠ 0.
+     */
+    const longDir = path.join(root, 'long');
+    writeServer(longDir);
+    // A health body far past 300 characters — the exact shape that broke it.
+    const fat = http.createServer((q, s2) => {
+        const url = String(q.url || '').split('?')[0];
+        s2.setHeader('content-type', 'application/json');
+        if (url === '/api/health') {
+            const t: Record<string, number> = {};
+            for (const k of TABLES) t[k] = 0;
+            return s2.end(JSON.stringify({
+                ok: true, backend: 'sqlite', count: 0, orders: 0, joe: 'api_project',
+                resource: 'bookings', providers: 0,
+                relation: {
+                    resource: 'providers', key: 'provider_id', labelKey: 'name',
+                    columns: [
+                        { key: 'name', type: 'TEXT', required: true },
+                        { key: 'specialty', type: 'TEXT', required: false },
+                        { key: 'phone', type: 'TEXT', required: false },
+                    ],
+                },
+                tables: t,
+            }));
+        }
+        const m = url.match(/^\/api\/([a-z_]+)$/);
+        if (m) {
+            if (q.method === 'POST') { s2.statusCode = 401; return s2.end('{"ok":false}'); }
+            return s2.end(JSON.stringify({ ok: true, [m[1]]: [] }));
+        }
+        s2.statusCode = 404; s2.end('{"ok":false}');
+    });
+    await new Promise<void>(r => fat.listen(0, '127.0.0.1', r));
+    const fatUrl = `http://127.0.0.1:${(fat.address() as AddressInfo).port}/`;
+    const f = await auditInTerminal(longDir, { serveUrl: fatUrl, tables: TABLES, timeoutMs: 20_000 });
+    const health = f.checks.find((x: any) => x.id === 'health_answers');
+    const tables = f.checks.find((x: any) => x.id === 'tables_answer');
+    console.log(`      health: ${health?.ok ? '✅' : '❌'} ${health?.detail}`);
+    console.log(`      tables: ${tables?.ok ? '✅' : '❌'} ${tables?.detail}`);
+    check('a health body longer than 300 chars is no longer «not JSON»', !!health?.ok, health?.detail);
+    check('…and it reads the real numbers out of it', /table\(s\) reported/.test(health?.detail || ''), health?.detail);
+    check('a passing table sweep is not failed by its own teardown', !!tables?.ok, tables?.detail);
+    check('and the whole run scores 100 on a healthy system', f.score === 100, `${f.score}/100 — ${failingIds(f).join(', ')}`);
+    fat.close();
+
     console.log('\n[3] Nothing measurable is not a zero — it is «nothing was measured»\n');
 
     const emptyDir = path.join(root, 'empty');
@@ -163,6 +220,17 @@ async function main() {
         /terminal-QA: \$\{terminalAudit\.score\}\/100/.test(REACT));
     check('and it reaches the delivery message beside the browser score',
         /Terminal QA: \*\*\$\{terminalAudit\.score\}\/100\*\*/.test(REACT));
+    // The panel was asked for — and eight seconds later preview_ready pulled
+    // the workspace to the Preview tab, so the checks ran unwatched.
+    check('the terminal runs BEFORE the live system is handed to the preview panel',
+        REACT.indexOf('auditInTerminal(apiDir, {') < REACT.indexOf('self-QA: the system stays UP at'),
+        'preview_ready still steals the tab mid-run');
+    // …in the CODE, not in the comment that explains why it is gone.
+    const TQA = fs.readFileSync(
+        path.join(__dirname, '..', '..', 'core', 'quality', 'terminal-audit.ts'), 'utf-8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+    check('…and no process.exit inside the probe scripts, which crashed libuv on Windows',
+        !/process\.exit\(/.test(TQA) && /process\.exitCode/.test(TQA));
 
     console.log('\n[5] A repair that measured WORSE is taken back, not just un-reported\n');
 

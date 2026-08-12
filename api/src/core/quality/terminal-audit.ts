@@ -111,7 +111,25 @@ async function run(
     return { ok: !!res.ok && res.exitCode === 0, out: lines.join('\n'), code: res.exitCode ?? null };
 }
 
-/** A node one-liner, run by THIS node — no dependency, no shell quoting games. */
+/**
+ * A node one-liner, run by THIS node — no dependency, no shell quoting games.
+ *
+ * ONE RULE INSIDE THESE SCRIPTS: never `process.exit()`.
+ *
+ * Field-measured on his Windows machine, on the very first run of this file:
+ *
+ *     $ node -e "GET /api/{animals,vaccinations,doctors,appointments,invoices}"
+ *         OK
+ *         Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 94
+ *       ❌ tables_answer — ->flags & UV_HANDLE_CLOSING …
+ *
+ * The check had printed `OK`. Every table had answered. Then `process.exit(0)`
+ * tore the loop down while undici still held sockets open, libuv asserted, and
+ * the exit code came back non-zero — so a passing system was reported as
+ * broken. `process.exitCode` says the same thing and lets Node close its own
+ * handles. A test that fails for a reason inside the test is worse than no
+ * test, because it sends the reader to fix the wrong system.
+ */
 function nodeEval(script: string): { file: string; args: string[] } {
     return { file: process.execPath, args: ['-e', script] };
 }
@@ -225,22 +243,33 @@ export async function auditInTerminal(
     /* 4 ── the RUNNING system answers, and says it is this system ────────── */
     const url = String(opts.serveUrl || '').replace(/\/+$/, '');
     if (url) {
+        /**
+         * THE VERDICT IS REACHED INSIDE THE CHILD, NOT PARSED OUT OF ITS LOG.
+         *
+         * First field run of this check: `❌ health_answers — health answered
+         * with something that is not JSON`, printed directly UNDER the JSON it
+         * had just answered. The bug was mine, twice over: the script printed
+         * `t.slice(0, 300)` — cutting a longer health body mid-object — and the
+         * parent then parsed that truncated string. A test whose own output
+         * pipeline can invent a failure is not a test; it is a rumour.
+         *
+         * So the child decides, on the whole body, and prints one short line.
+         * Nothing that is parsed is ever truncated.
+         */
         const healthScript = [
-            `fetch(${JSON.stringify(url + '/api/health')})`,
-            '.then(r=>r.text()).then(t=>{console.log(t.slice(0,300));process.exit(0)})',
-            '.catch(e=>{console.log(String(e && e.message));process.exit(1)})',
+            `fetch(${JSON.stringify(url + '/api/health')}).then(r=>r.json()).then(d=>{`,
+            'if(d&&d.ok){console.log("OK "+(d.backend||"?")+" "+Object.keys(d.tables||{}).length);}',
+            'else{console.log("FAIL answered, but not with ok:true");process.exitCode=1;}',
+            '}).catch(e=>{console.log("FAIL "+String((e&&e.message)||e).slice(0,120));process.exitCode=1;})',
         ].join('');
         await add('health_answers', `node -e "fetch('${url}/api/health')"`, async () => {
             const r = await run(...Object.values(nodeEval(healthScript)) as [string, string[]], dir, per, say);
-            if (!r.ok) return { ok: false, detail: `no answer from ${url}/api/health` };
-            try {
-                const d = JSON.parse(String(r.out).trim().split('\n').pop() || '{}');
-                return d && d.ok
-                    ? { ok: true, detail: `backend ${d.backend || '?'}, ${Object.keys(d.tables || {}).length} table(s) reported` }
-                    : { ok: false, detail: 'health answered, but not with ok:true' };
-            } catch {
-                return { ok: false, detail: 'health answered with something that is not JSON' };
+            const last = String(r.out).trim().split('\n').filter(Boolean).pop() || '';
+            if (r.ok && last.startsWith('OK ')) {
+                const [, backend, count] = last.split(' ');
+                return { ok: true, detail: `backend ${backend}, ${count} table(s) reported` };
             }
+            return { ok: false, detail: last.replace(/^FAIL /, '') || `no answer from ${url}/api/health` };
         });
 
         /* 5 ── EVERY declared table has a route that really answers ───────── */
@@ -254,7 +283,8 @@ export async function auditInTerminal(
                 'if(!r.ok||!d||!Array.isArray(d[k]))bad.push(k+" ("+r.status+")");',
                 '}catch(e){bad.push(k+" (no answer)")}}',
                 'console.log(bad.length?"FAIL "+bad.join(", "):"OK");',
-                'process.exit(bad.length?1:0)})()',
+                // Exit CODE, never an exit CALL — see nodeEval's note above.
+                'if(bad.length)process.exitCode=1})()',
             ].join('');
             await add('tables_answer', `node -e "GET /api/{${tables.join(',')}}"`, async () => {
                 const r = await run(...Object.values(nodeEval(listScript)) as [string, string[]], dir, per, say);
@@ -271,8 +301,8 @@ export async function auditInTerminal(
             const authScript = [
                 `fetch(${JSON.stringify(`${url}/api/${guardTable}`)},{method:'POST',`,
                 "headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'x'})})",
-                '.then(r=>{console.log(String(r.status));process.exit(r.status===401?0:1)})',
-                '.catch(e=>{console.log(String(e&&e.message));process.exit(1)})',
+                '.then(r=>{console.log(String(r.status));if(r.status!==401)process.exitCode=1})',
+                '.catch(e=>{console.log(String(e&&e.message));process.exitCode=1})',
             ].join('');
             await add('writes_protected', `node -e "POST /api/${guardTable} with no token"`, async () => {
                 const r = await run(...Object.values(nodeEval(authScript)) as [string, string[]], dir, per, say);
