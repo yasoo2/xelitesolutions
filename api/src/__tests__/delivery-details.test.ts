@@ -37,15 +37,17 @@ describe('a finding speaks the language of the message it lands in', () => {
 
     it('every finding the audit raises carries both languages', () => {
         const a = read('core', 'quality', 'app-audit.ts');
-        // Every raise site, however it wraps: the id, then the English within it.
-        const ids = [...a.matchAll(/findings\.push\(\{ id: '([a-z0-9_]+)'/g)].map(m => m[1]);
+        // Every raise site, HOWEVER it wraps — a finding that grew a second
+        // line (the offenders it names) is still a finding that must speak
+        // both languages, and the assertion must not depend on its formatting.
+        const ids = [...a.matchAll(/findings\.push\(\{\s*\n?\s*id: '([a-z0-9_]+)'/g)].map(m => m[1]);
         expect(ids.length).toBeGreaterThanOrEqual(11);
         for (const id of ids) {
-            const at = a.indexOf(`findings.push({ id: '${id}'`);
-            expect(a.slice(at, at + 500)).toMatch(/detailEn:/);
+            const at = a.search(new RegExp(`findings\\.push\\(\\{\\s*\n?\\s*id: '${id}'`));
+            expect(a.slice(at, at + 600)).toMatch(/detailEn:/);
         }
         // …including the ones translated from the behaviour audit.
-        expect(a).toMatch(/detail: f\.ar, detailEn: f\.en/);
+        expect(a).toMatch(/detail: f\.ar, detailEn: f\.en,/);
         // And the summary prints the reader's language, not the stored one.
         expect(a).toMatch(/a\.findings\.map\(f => `   • \$\{findingText\(f, isAr\)\}`\)/);
     });

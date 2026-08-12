@@ -19,7 +19,11 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { improveUntilItStops, improveSummary, repairRound } from '../core/quality/improve-loop';
-import { repairTapTargets, repairContrast, repairFormValidation } from '../core/quality/ui-repair';
+import {
+    repairTapTargets, repairContrast, repairFormValidation,
+    repairMeasuredTapTargets, repairMeasuredContrast, repairProjectFiles,
+} from '../core/quality/ui-repair';
+import { safeCss, cssRepairPrompt } from '../core/quality/model-round';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
 const REACT = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
@@ -193,6 +197,120 @@ describe('the build really drives it', () => {
     it('the ceiling and the bar are settings, not constants buried in a branch', () => {
         expect(REACT).toMatch(/process\.env\.JOE_IMPROVE_ROUNDS \|\| 4/);
         expect(REACT).toMatch(/process\.env\.JOE_IMPROVE_TARGET \|\| 95/);
+    });
+});
+
+/**
+ * SURGERY, NOT A BANDAGE.
+ *
+ * A finding used to be a sentence — «3 tap target(s) under 32px (احجز الآن =
+ * 51x36)» — true, readable, and nothing a repairer can aim at. So the repair
+ * was a rule over every button on the page, and a blanket is what makes a
+ * second round impossible: once it is spread there is nothing left to tighten.
+ */
+describe('the offenders the browser named are fixed by name', () => {
+    const evid = [{ sel: 'button.act', label: 'like', w: 53, h: 40 }, { sel: '.tabbtn', w: 60, h: 38 }];
+
+    it('a rule is written for exactly the measured selectors', () => {
+        const out = repairMeasuredTapTargets('.x{}', evid, 44).text;
+        expect(out).toContain('button.act');
+        expect(out).toContain('.tabbtn');
+        // …and nothing the browser never complained about is touched.
+        expect(out).not.toContain('.icon-btn');
+    });
+
+    it('nothing to aim at means nothing is written', () => {
+        expect(repairMeasuredTapTargets('.x{}', [], 44).text).toBe('.x{}');
+        expect(repairMeasuredContrast('.x{}', [], 0).text).toBe('.x{}');
+    });
+
+    it('a selector that could escape its rule never reaches the stylesheet', () => {
+        for (const bad of ['a{}b', 'a;b', '@media x', '<script>']) {
+            expect(repairMeasuredTapTargets('.x{}', [{ sel: bad }], 44).text).toBe('.x{}');
+        }
+    });
+
+    it('and the same surgery is never written twice', () => {
+        const once = repairMeasuredTapTargets('.x{}', evid, 44);
+        expect(repairMeasuredTapTargets(once.text, evid, 44).repairs).toHaveLength(0);
+    });
+
+    it('a measured contrast failure is answered on ITS OWN background', () => {
+        const fails = [{ sel: 'p.price', ratio: 3.2, need: 4.5, fg: [154, 154, 154], bg: [255, 255, 255] }];
+        const out = repairMeasuredContrast(':root{}', fails, 0).text;
+        expect(out).toMatch(/p\.price \{ color: #[0-9a-f]{6}; \}/);
+    });
+
+    /**
+     * Both surgical fixes used to be evaluated inside ONE array literal, so
+     * both ran against the same text and the second assignment threw the
+     * first one's block away. Measured: the tap-target rule vanished from the
+     * file it had just been added to.
+     */
+    it('both surgical blocks survive the same pass', () => {
+        const plan = repairProjectFiles(
+            { 'a.css': ':root{--bg:#fff;--surface:#fff;--text:#9a9a9a}' },
+            {
+                round: 1,
+                findings: [
+                    { id: 'tap_targets', evidence: evid },
+                    { id: 'contrast', evidence: [{ sel: 'p.price', need: 4.5, fg: [154, 154, 154], bg: [255, 255, 255] }] },
+                ],
+            },
+        );
+        const out = plan.files['a.css'] || '';
+        expect(out).toContain('button.act');
+        expect(out).toMatch(/p\.price \{ color:/);
+        // …and the general escalating rule is still there as the fallback.
+        expect(out).toContain('min-height: 44px');
+    });
+});
+
+/**
+ * The model is allowed to be wrong. It is not allowed to be believed: CSS
+ * only, appended to one stylesheet, parsed before it is written, built, and
+ * then measured — and rolled back by the same rule as any other round.
+ */
+describe('the model round is contained, not trusted', () => {
+    it('a plain block of CSS passes', () => {
+        expect(safeCss('.a{color:#111}').ok).toBe(true);
+    });
+
+    it('a fenced answer is unwrapped rather than refused', () => {
+        const g = safeCss('```css\n.a{color:#111}\n```');
+        expect(g.ok).toBe(true);
+        expect(g.css).not.toContain('```');
+    });
+
+    it.each([
+        ['markup', '<style>.a{color:red}</style>'],
+        ['@import', '@import url(x);\n.a{color:red}'],
+        ['a fetch', '.a{background:url(http://x/y.png)}'],
+        ['!important', '.a{color:red !important}'],
+        ['unbalanced braces', '.a{color:red'],
+        ['a stray closing brace', '.a{color:red}}'],
+        ['prose', 'You should raise the contrast of the price note.'],
+        ['nothing', '   '],
+    ])('%s is refused', (_what, css) => {
+        expect(safeCss(css).ok).toBe(false);
+    });
+
+    it('the prompt names the offenders it was given', () => {
+        const p = cssRepairPrompt([{ id: 'tap_targets', detailEn: 'x', evidence: [{ sel: 'button.act', w: 53, h: 40 }] }]);
+        expect(p).toContain('offender: button.act (measured 53x40px)');
+        expect(p).toContain('CSS ONLY');
+    });
+
+    it('it runs only after the deterministic repairer has nothing left', () => {
+        expect(REACT).toMatch(/if \(known\.changed\.length\) return known\.changed;/);
+    });
+
+    it('it may only append to a stylesheet, and can be switched off', () => {
+        expect(REACT).toMatch(/fs\.appendFileSync\(cssPath/);
+        expect(REACT).toMatch(/JOE_MODEL_ROUND \|\| '1'\) === '0'/);
+        // No other write path for it: no writeFileSync of model output.
+        const at = REACT.indexOf('const got = await askForCss');
+        expect(REACT.slice(at, at + 1200)).not.toMatch(/writeFileSync/);
     });
 });
 

@@ -222,7 +222,16 @@ function collector() {
     // Text sitting on a photograph, counted rather than guessed at.
     let unmeasurable = 0;
     // ---- tap targets
+    /**
+     * A TAP TARGET IS NOT A SENTENCE — IT IS AN ELEMENT.
+     *
+     * This used to be a human phrase: «احجز الآن = 51x36». Readable, and
+     * useless to a repairer, which then had nothing to aim at and wrote a
+     * blanket rule for every button on the page instead. The SELECTOR travels
+     * with it now, so the fix can be surgery instead of a bandage.
+     */
     const smallTargets: string[] = [];
+    const smallTargetSels: Array<{ sel: string; label: string; w: number; h: number }> = [];
     // ---- image distortion
     const distorted: Array<{ alt: string; box: string; natural: string }> = [];
     let imgTotal = 0, imgNoDims = 0;
@@ -274,7 +283,9 @@ function collector() {
         // Inline links inside a paragraph are exempt — only standalone controls.
         const inline = el.tagName === 'A' && el.parentElement && /^(P|LI|SPAN|TD)$/.test(el.parentElement.tagName);
         if (!inline && (b.height < 32 || b.width < 32) && smallTargets.length < 8) {
-            smallTargets.push(`${(el.textContent || el.getAttribute('aria-label') || el.tagName).trim().slice(0, 24)} = ${Math.round(b.width)}x${Math.round(b.height)}`);
+            const label = (el.textContent || el.getAttribute('aria-label') || el.tagName).trim().slice(0, 24);
+            smallTargets.push(`${label} = ${Math.round(b.width)}x${Math.round(b.height)}`);
+            smallTargetSels.push({ sel: selOf(el), label, w: Math.round(b.width), h: Math.round(b.height) });
         }
     }
 
@@ -460,7 +471,7 @@ function collector() {
     };
 
     return {
-        overflow, wideElements, contrastFails, contrastUnmeasurable: unmeasurable, smallTargets, distorted,
+        overflow, wideElements, contrastFails, contrastUnmeasurable: unmeasurable, smallTargets, smallTargetSels, distorted,
         imgTotal, imgNoDims, textChecked: checked,
         density: sample(),
         scrollHeight: de.scrollHeight,
@@ -644,7 +655,7 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
         }
         if (vp.label === 'mobile' && m.smallTargets?.length) {
             findings.push({
-                code: 'tap_targets', severity: 'minor',
+                code: 'tap_targets', severity: 'minor', data: m.smallTargetSels,
                 ar: `${m.smallTargets.length} عنصر قابل للنقر أصغر من 32px على الجوال (${m.smallTargets[0]})`,
                 en: `${m.smallTargets.length} tap target(s) under 32px on mobile (${m.smallTargets[0]})`,
                 hint: 'give controls at least 44px of height on mobile',

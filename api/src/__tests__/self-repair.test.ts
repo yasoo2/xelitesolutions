@@ -25,7 +25,7 @@ describe('the repair cycle is one piece of code', () => {
         // «one piece of code» was ever about.
         expect(read('modules', 'tools', 'definitions', 'ReactProjectTool.ts')).toMatch(/await improveUntilItStops\(/);
         expect(read('core', 'quality', 'improve-loop.ts'))
-            .toMatch(/repairProjectFiles\(sources, \{ isArabic: opts\.isArabic, round \}\)/);
+            .toMatch(/repairProjectFiles\(sources, \{ isArabic: opts\.isArabic, round, findings: opts\.findings \}\)/);
         expect(read('modules', 'tools', 'definitions', 'UiFixTool.ts')).toMatch(/await repairAndRebuild\(dir/);
     });
 

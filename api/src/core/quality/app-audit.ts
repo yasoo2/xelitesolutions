@@ -28,6 +28,20 @@ import { inspectUi } from './ui-inspection';
 export interface AppAuditFinding {
     id: string;
     severity: 'high' | 'medium' | 'low';
+    /**
+     * THE OFFENDERS, BY NAME.
+     *
+     * A finding used to be a sentence: «3 tap target(s) under 32px on mobile
+     * (احجز الآن = 51x36)». True, readable, and nothing a repairer can aim at
+     * — so the repair was a blanket rule over every button on the page, and a
+     * blanket is what makes a second round impossible: there is nothing left
+     * to tighten that has not already been loosened everywhere.
+     *
+     * The audit knows exactly WHICH element measured 51x36 and exactly WHICH
+     * two colours made 3.29:1. Carrying that here turns the next round from a
+     * bandage into surgery.
+     */
+    evidence?: any[];
     /** The sentence, in Arabic. */
     detail: string;
     /**
@@ -356,10 +370,23 @@ export async function auditBuiltApp(
         await page.evaluate(() => (document as any).fonts?.ready);
         const inspect = () => page.evaluate(() => {
             const controls = [...document.querySelectorAll('a.btn, button, .nav-links a')] as HTMLElement[];
-            const small = controls.filter(c => {
+            /** A stable-enough selector for one element: tag + its first class. */
+            const selOf = (el: Element): string => {
+                const id = (el as HTMLElement).id;
+                if (id) return '#' + id;
+                const cls = String(el.getAttribute('class') || '').trim().split(/\s+/).filter(Boolean)[0];
+                return el.tagName.toLowerCase() + (cls ? '.' + cls : '');
+            };
+            const tooSmall = controls.filter(c => {
                 const r = c.getBoundingClientRect();
                 return r.width > 0 && r.height > 0 && (r.height < 40 || r.width < 40);
-            }).map(c => (c.textContent || c.className || '').trim().slice(0, 30));
+            });
+            const small = tooSmall.map(c => (c.textContent || c.className || '').trim().slice(0, 30));
+            // …and the same offenders as selectors, so a repair can aim.
+            const smallSel = tooSmall.map(c => {
+                const r = c.getBoundingClientRect();
+                return { sel: selOf(c), label: (c.textContent || '').trim().slice(0, 24), w: Math.round(r.width), h: Math.round(r.height) };
+            });
             return {
                 deadImgs: ([...document.images] as HTMLImageElement[]).filter(i => i.currentSrc && i.naturalWidth === 0).length,
                 deadLinks: [...document.querySelectorAll('a')].filter(a => {
@@ -373,6 +400,7 @@ export async function auditBuiltApp(
                     return true;
                 }).length,
                 small,
+                smallSel,
                 h1s: document.querySelectorAll('h1').length,
                 bg: getComputedStyle(document.body).backgroundColor,
                 hasToggle: !!document.querySelector('.theme-toggle'),
@@ -469,6 +497,11 @@ export async function auditBuiltApp(
                 if (d2.deadImgs) dom.deadImgs += d2.deadImgs;
                 if (d2.deadLinks) dom.deadLinks += d2.deadLinks;
                 if (d2.small.length) dom.small.push(...d2.small.map((s: string) => `${r} ${s}`));
+                // The selectors merge too — a target that is small on page two
+                // is still a target this repair can aim at.
+                if (Array.isArray(d2.smallSel) && d2.smallSel.length) {
+                    dom.smallSel = [...(dom.smallSel || []), ...d2.smallSel];
+                }
                 if (d2.h1s !== 1) brokenRoutes.push(`${r} (h1=${d2.h1s})`);
                 mergeProbe(await probeControls(page, probeOpts()), r);
             } catch (e: any) {
@@ -544,7 +577,14 @@ export async function auditBuiltApp(
         if (failedRequests.length) findings.push({ id: 'failed_requests', severity: 'high', detail: `${failedRequests.length} ملف لم يصل: ${failedRequests[0]}`, detailEn: `${failedRequests.length} request(s) never arrived: ${failedRequests[0]}` });
         if (dom.deadImgs) findings.push({ id: 'dead_images', severity: 'high', detail: `${dom.deadImgs} صورة لم تُرسم`, detailEn: `${dom.deadImgs} image(s) never rendered` });
         if (dom.deadLinks) findings.push({ id: 'dead_links', severity: 'medium', detail: `${dom.deadLinks} رابط ميت (href فارغ أو #)`, detailEn: `${dom.deadLinks} dead link(s) (empty href or #)` });
-        if (dom.small.length) findings.push({ id: 'small_targets', severity: 'medium', detail: `${dom.small.length} هدف لمس أصغر من 40px: ${dom.small[0]}`, detailEn: `${dom.small.length} tap target(s) under 40px: ${dom.small[0]}` });
+        if (dom.small.length) {
+            findings.push({
+                id: 'small_targets', severity: 'medium',
+                detail: `${dom.small.length} هدف لمس أصغر من 40px: ${dom.small[0]}`,
+                detailEn: `${dom.small.length} tap target(s) under 40px: ${dom.small[0]}`,
+                ...(Array.isArray(dom.smallSel) && dom.smallSel.length ? { evidence: dom.smallSel } : {}),
+            });
+        }
         if (dom.h1s !== 1) findings.push({ id: 'h1_count', severity: 'low', detail: `عدد h1 = ${dom.h1s} (المطلوب 1)`, detailEn: `${dom.h1s} <h1> headings (exactly 1 expected)` });
         if (dom.hasToggle && !toggleWorks) findings.push({ id: 'theme_toggle_dead', severity: 'medium', detail: 'زر الوضع الليلي لا يغيّر الألوان فعلياً', detailEn: 'The dark-mode toggle does not actually change any colour' });
         if (dom.fontLoaded === false) findings.push({ id: 'webfont_missing', severity: 'medium', detail: `الخط المعلن «${dom.declaredFont}» لم يُحمَّل فعلياً — ملفاته غائبة`, detailEn: `The declared webfont "${dom.declaredFont}" never loaded — its files are missing` });
@@ -554,7 +594,10 @@ export async function auditBuiltApp(
         // than re-judged, so the two audits never disagree about a dead button.
         const asSeverity = { critical: 'high', major: 'medium', minor: 'low' } as const;
         for (const f of behaviour.findings) {
-            findings.push({ id: f.code, severity: asSeverity[f.severity], detail: f.ar, detailEn: f.en });
+            findings.push({
+                id: f.code, severity: asSeverity[f.severity], detail: f.ar, detailEn: f.en,
+                ...(Array.isArray((f as any).data) && (f as any).data.length ? { evidence: (f as any).data } : {}),
+            });
         }
 
         /**

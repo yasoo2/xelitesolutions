@@ -181,6 +181,56 @@ async function main() {
         /if \(packaged\) packageIntoApi\(false\);/.test(REACT));
     check('every round reaches the delivery report', /for \(const r of loop\.rounds\)/.test(REACT));
 
+    console.log('\n[7] Surgery: the offenders the browser NAMED, not every button on the page\n');
+
+    const { repairMeasuredTapTargets, repairMeasuredContrast, repairProjectFiles } = require('../../core/quality/ui-repair');
+    const evid = [{ sel: 'button.act', label: 'like', w: 53, h: 40 }, { sel: '.tabbtn', w: 60, h: 38 }];
+    const surg = repairMeasuredTapTargets('.x{}', evid, 44);
+    check('it writes a rule for exactly the measured selectors',
+        surg.text.includes('button.act') && surg.text.includes('.tabbtn'), surg.text.slice(-160));
+    check('…and does not touch a control the browser never complained about',
+        !surg.text.includes('.icon-btn'), surg.text.slice(-160));
+    check('nothing to aim at means nothing is written',
+        repairMeasuredTapTargets('.x{}', [], 44).text === '.x{}');
+    check('a selector carrying a brace can never reach a stylesheet',
+        repairMeasuredTapTargets('.x{}', [{ sel: 'a{}b' }], 44).text === '.x{}');
+
+    const cfail = [{ sel: 'p.price', ratio: 3.2, need: 4.5, fg: [154, 154, 154], bg: [255, 255, 255], text: '55 ر.س' }];
+    const cs = repairMeasuredContrast(':root{}', cfail, 0);
+    check('a measured contrast failure is answered on ITS OWN background',
+        /p\.price \{ color: #[0-9a-f]{6}; \}/.test(cs.text), cs.text.slice(-120));
+
+    const plan = repairProjectFiles(
+        { 'src/styles/app.css': ':root{--bg:#fff;--surface:#fff;--text:#9a9a9a}\n.btn{padding:2px}' },
+        { round: 1, findings: [{ id: 'tap_targets', evidence: evid }, { id: 'contrast', evidence: cfail }] },
+    );
+    const out = plan.files['src/styles/app.css'] || '';
+    check('the whole-project pass carries the evidence through',
+        out.includes('button.act') && /p\.price \{ color:/.test(out), out.slice(-200));
+    check('…and the general escalating rule is still there as the fallback',
+        out.includes('min-height: 44px'));
+
+    console.log('\n[8] The model round: allowed to be wrong, never allowed to be believed\n');
+
+    const { safeCss, cssRepairPrompt } = require('../../core/quality/model-round');
+    check('a plain block of CSS passes', safeCss('.a{color:#111}').ok);
+    check('a fenced answer is unwrapped, not rejected', safeCss('```css\n.a{color:#111}\n```').ok);
+    check('markup is refused', !safeCss('<style>.a{color:red}</style>').ok);
+    check('@import is refused', !safeCss('@import url(x);\n.a{color:red}').ok);
+    check('anything that fetches is refused', !safeCss('.a{background:url(http://x/y.png)}').ok);
+    check('!important is refused', !safeCss('.a{color:red !important}').ok);
+    check('unbalanced braces are refused', !safeCss('.a{color:red').ok);
+    check('a sentence about CSS is refused', !safeCss('You should raise the contrast.').ok);
+    check('the prompt names the offenders it was given',
+        /offender: button\.act \(measured 53x40px\)/.test(cssRepairPrompt([{ id: 'tap_targets', detailEn: 'x', evidence: evid }])));
+
+    const REACT2 = fs.readFileSync(path.join(__dirname, '..', '..',
+        'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+    check('the model round runs only AFTER the deterministic one has nothing left',
+        /if \(known\.changed\.length\) return known\.changed;/.test(REACT2));
+    check('it may only append to a stylesheet', /fs\.appendFileSync\(cssPath/.test(REACT2));
+    check('and it can be switched off entirely', /JOE_MODEL_ROUND \|\| '1'\) === '0'/.test(REACT2));
+
     try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* windows holds files */ }
     console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} passed, ${fail} failed\n`);
     process.exit(fail === 0 ? 0 : 1);

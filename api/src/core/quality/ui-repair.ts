@@ -371,6 +371,115 @@ a.btn > svg, button > svg { min-height: 0; min-width: 0; }
     };
 }
 
+/* ── surgery: the offenders the browser named, by name ───────────────────── */
+
+/**
+ * A BANDAGE CANNOT BE TIGHTENED TWICE.
+ *
+ * «هذا الزر 51x36» is a fact about ONE element. The repair for it was a rule
+ * over `a.btn, button, .nav-links a` — every control on the page, whether it
+ * was measured or not. Two costs, and the second is the one that mattered:
+ *
+ *   • elements the audit never complained about get resized anyway, which is
+ *     a design change nobody asked for;
+ *   • and once the blanket is spread there is nothing left to tighten, so a
+ *     second round has no move to make. A loop over blankets stalls at round
+ *     two by construction.
+ *
+ * Surgery is what makes a round-two possible: the browser measured
+ * `button.act` at 53x40, so `button.act` — and only it — is raised, and the
+ * NEXT measurement says whether that was enough.
+ */
+export interface SmallTargetEvidence { sel: string; label?: string; w?: number; h?: number }
+
+/** Selectors safe to write into a stylesheet: no braces, no at-rules, bounded. */
+function safeSelectors(evidence: any[]): string[] {
+    const out: string[] = [];
+    for (const e of Array.isArray(evidence) ? evidence : []) {
+        const sel = String((e && e.sel) || '').trim();
+        if (!sel || sel.length > 160) continue;
+        if (/[{}@;]/.test(sel)) continue;
+        if (!/^[#.a-zA-Z][\w.#>:()\-\s\[\]="']*$/.test(sel)) continue;
+        if (!out.includes(sel)) out.push(sel);
+        if (out.length >= 24) break;
+    }
+    return out;
+}
+
+/**
+ * Raise EXACTLY the targets the browser measured too small.
+ *
+ * Returns an unchanged file when there is no evidence — the escalating
+ * blanket above is then the honest fallback, because a repair with nothing to
+ * aim at should aim at nothing.
+ */
+export function repairMeasuredTapTargets(css: string, evidence: any[], px = 44): RepairedFile {
+    const text = String(css || '');
+    const sels = safeSelectors(evidence);
+    if (!sels.length) return { text, repairs: [] };
+    const marker = `إصلاح جو الجراحي: أهداف قيست (${px}px)`;
+    if (text.includes(marker)) return { text, repairs: [] };
+    const block = `
+/* ── ${marker} ──────────────────────────
+   هذه العناصر بالذات قاسها المتصفح أصغر من الحد — لا قاعدة عامة على كل زر. */
+${sels.join(',\n')} {
+  min-height: ${px}px;
+  min-width: ${px}px;
+}
+`;
+    return {
+        text: text + block,
+        repairs: [{
+            id: 'small_targets',
+            detail: `وسّعتُ ${sels.length} هدفاً قاسه المتصفح بعينه إلى ${px}px`,
+            detailEn: `Widened the ${sels.length} target(s) the browser actually measured to ${px}px`,
+            count: sels.length,
+        }],
+    };
+}
+
+/**
+ * Fix EXACTLY the text nodes the browser measured below their contrast bar.
+ *
+ * The audit already carries the two colours and the ratio each pair needs;
+ * `fixForeground` walks the foreground toward the required ratio against THAT
+ * background, so a dark card and a light card are each answered correctly
+ * instead of both being answered by the palette's average.
+ */
+export function repairMeasuredContrast(css: string, evidence: any[], bump = 0): RepairedFile {
+    const text = String(css || '');
+    const rules: string[] = [];
+    const seen = new Set<string>();
+    for (const e of Array.isArray(evidence) ? evidence : []) {
+        const sel = String((e && e.sel) || '').trim();
+        if (!sel || seen.has(sel) || /[{}@;]/.test(sel) || sel.length > 160) continue;
+        const fg = Array.isArray(e?.fg) && e.fg.length === 3 ? (e.fg as [number, number, number]) : null;
+        const bg = Array.isArray(e?.bg) && e.bg.length === 3 ? (e.bg as [number, number, number]) : null;
+        if (!fg || !bg) continue;
+        const need = Math.min(21, Math.max(3, Number(e?.need) || 4.5) + bump);
+        const fixed = toHex(fixForeground(fg, bg, need));
+        seen.add(sel);
+        rules.push(`${sel} { color: ${fixed}; }`);
+        if (rules.length >= 24) break;
+    }
+    if (!rules.length) return { text, repairs: [] };
+    const marker = `إصلاح جو الجراحي: تباين قيس (${rules.length}/${bump})`;
+    if (text.includes(marker)) return { text, repairs: [] };
+    return {
+        text: `${text}
+/* ── ${marker} ─────────────────────────────
+   كل سطر هنا نصٌّ قاسه المتصفح تحت الحد، ولونه محسوب على خلفيته هو. */
+${rules.join('\n')}
+`,
+        repairs: [{
+            id: 'low_contrast',
+            detail: `رفعتُ تباين ${rules.length} نصاً قاسه المتصفح بعينه`,
+            detailEn: `Raised the contrast of the ${rules.length} text node(s) the browser actually measured`,
+            count: rules.length,
+        }],
+    };
+}
+
 /* ── the whole project, in one pass ──────────────────────────────────────── */
 
 export interface ProjectRepairPlan {
@@ -417,10 +526,30 @@ export function repairFormValidation(code: string): RepairedFile {
 
 export function repairProjectFiles(
     files: Record<string, string>,
-    opts: { isArabic?: boolean; title?: string; round?: number } = {},
+    opts: {
+        isArabic?: boolean; title?: string; round?: number;
+        /**
+         * What the LAST measurement actually found, offender by offender.
+         *
+         * With it, this pass is surgery on the elements the browser named.
+         * Without it — the fix tool, a first build, an audit that was skipped
+         * — the escalating blanket below is the honest fallback.
+         */
+        findings?: Array<{ id: string; evidence?: any[] }>;
+    } = {},
 ): ProjectRepairPlan {
     // Which round this is — the strength the escalating fixes are asked for.
     const round = Math.max(1, Number(opts.round || 1));
+    const evidenceFor = (...ids: string[]) => {
+        const out: any[] = [];
+        for (const f of opts.findings || []) {
+            if (!ids.includes(String(f?.id))) continue;
+            for (const e of (Array.isArray(f.evidence) ? f.evidence : [])) out.push(e);
+        }
+        return out;
+    };
+    const smallEvidence = evidenceFor('small_targets', 'tap_targets');
+    const contrastEvidence = evidenceFor('low_contrast', 'contrast');
     const out: Record<string, string> = {};
     const all: Repair[] = [];
     const merge = (rs: Repair[]) => {
@@ -446,6 +575,28 @@ export function repairProjectFiles(
         } else if (lower.endsWith('.css')) {
             // Tokens first: contrast is decided in the palette, and the two
             // appended blocks must not sit between a token and its block.
+            /**
+             * SURGERY FIRST, THEN THE BLANKET.
+             *
+             * The measured offenders are answered by name; whatever the
+             * browser did not name is still covered by the escalating general
+             * rule, because an audit that timed out is not proof that a page
+             * is fine. Order matters: the surgical block is appended first, so
+             * the general one — appended after — wins a specificity tie the
+             * same way the old behaviour did.
+             */
+            // Sequentially, NOT as an array literal: both calls in one array
+            // are evaluated against the SAME text, and the second assignment
+            // then throws the first one's block away. Measured — the surgical
+            // tap-target rule vanished from the file it had just been added to.
+            const surgical = [
+                (t: string) => repairMeasuredTapTargets(t, smallEvidence, TAP_PX[Math.min(round, TAP_PX.length) - 1]),
+                (t: string) => repairMeasuredContrast(t, contrastEvidence, (round - 1) * 1.5),
+            ];
+            for (const fix of surgical) {
+                const r = fix(text);
+                text = r.text; merge(r.repairs);
+            }
             for (const fix of [repairContrast, repairTapTargets, repairResponsive]) {
                 // The two escalating fixes read the round; repairResponsive
                 // ignores the extra argument, which is what makes one loop

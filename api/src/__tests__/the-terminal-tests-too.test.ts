@@ -33,9 +33,34 @@ describe('the terminal has its own instrument, not just a pipe', () => {
     });
 
     it('Joe says the number out loud, the way he says the browser\'s', () => {
-        expect(REACT).toMatch(/terminal-QA: \$\{terminalAudit\.score\}\/100/);
+        // Once per round, from inside the loop…
+        expect(REACT).toMatch(/terminal-QA: \$\{firstTerminal\.score\}\/100/);
+        // …and once at the end, as the last reading — reported, not re-taken.
+        expect(REACT).toMatch(/terminal-QA \(final\): \$\{terminalAudit\.score\}\/100/);
         expect(REACT).toMatch(/⌨️ فحص الطرفية: \$\{terminalAudit\.score\}\/100/);
         expect(REACT).toMatch(/⌨️ Terminal QA: \$\{terminalAudit\.score\}\/100/);
+    });
+
+    /**
+     * IT MEASURED, AND IT DID NOT VOTE.
+     *
+     * `tables_answer` could fail on every round and the loop would neither see
+     * it nor stop for it, because the number it watched came from one eye. A
+     * system whose interface is beautiful and whose API refuses to answer is
+     * not a better build than one that is plainer and works.
+     */
+    it('the terminal is part of the round\'s verdict, not a footnote after it', () => {
+        expect(REACT).toMatch(/const blend = \(browser: number, terminal: any\) =>/);
+        expect(REACT).toMatch(/Math\.round\(browser \* 0\.8 \+ Number\(terminal\.score \|\| 0\) \* 0\.2\)/);
+        // Its failing checks join the findings the next round is aimed at.
+        expect(REACT).toMatch(/findingIds: \[\.\.\.\(a\.findings \|\| \[\]\)\.map\(\(f: any\) => f\.id\), \.\.\.termFails\]/);
+        // …and the FIRST reading is taken with both eyes too.
+        expect(REACT).toMatch(/score: blend\(Number\(audit\.score \|\| 0\), firstTerminal\)/);
+    });
+
+    it('a build with no server still measures — the blend degrades to the browser', () => {
+        expect(REACT).toMatch(/\(terminal && !terminal\.skipped && terminal\.total\)/);
+        expect(REACT).toMatch(/: browser;/);
     });
 
     it('and it lands in the delivery message beside the browser score, check by check', () => {

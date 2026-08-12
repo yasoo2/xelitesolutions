@@ -2833,6 +2833,14 @@ export class ReactProjectTool extends BaseTool {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? '🛠️ وجدتُ ما أستطيع إصلاحه بنفسي — أصلحه وأعيد البناء وأقيس مرّة أخرى…'
                     : '🛠️ Repairing what I can fix myself, rebuilding, and measuring again…');
+                // The terminal is a voter now, so its panel opens before the
+                // first round rather than after the last one.
+                try {
+                    broadcast({ type: 'panel_focus', sessionId, data: { panel: 'terminal', reason: 'terminal_qa' } } as any);
+                } catch { /* UI optional */ }
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                    ? '⌨️ الطرفية تصوّت أيضاً — أُشغّل اختبارات حقيقية على الخادم في كل جولة'
+                    : '⌨️ The terminal votes too — real checks against the server on every round');
 
                 /**
                  * THE LOOP HE ASKED FOR — «يرجع يحلل ويفكر ومن ثم يكمل».
@@ -2857,6 +2865,36 @@ export class ReactProjectTool extends BaseTool {
                 const { restoreVersion, snapshotProject } = require('../../../core/project/versions');
                 const { runDoctored } = require('../../../core/quality/log-doctor');
 
+                /**
+                 * BOTH INSTRUMENTS DECIDE THE ROUND — NOT JUST THE BROWSER.
+                 *
+                 * The terminal was measuring and not voting: `tables_answer`
+                 * could fail on every round and the loop would neither see it
+                 * nor stop for it, because the score it watched came from one
+                 * eye. A system whose interface is beautiful and whose API
+                 * refuses to answer is not a better build than one that is
+                 * plainer and works.
+                 *
+                 * So a round's score is the two scores together, weighted
+                 * toward the browser only because it carries far more checks:
+                 * the terminal is a sixth of the verdict, which is enough for
+                 * a broken table route to hold the whole loop open.
+                 */
+                const runTerminal = async () => {
+                    if (!apiDir || !fs.existsSync(path.join(apiDir, 'package.json'))) return null;
+                    const { auditInTerminal } = require('../../../core/quality/terminal-audit');
+                    return auditInTerminal(apiDir, {
+                        onLine: term,
+                        serveUrl: liveServer ? liveServer.url : '',
+                        tables: systemTables,
+                        timeoutMs: 25_000,
+                    });
+                };
+                const blend = (browser: number, terminal: any) =>
+                    (terminal && !terminal.skipped && terminal.total)
+                        ? Math.round(browser * 0.8 + Number(terminal.score || 0) * 0.2)
+                        : browser;
+
                 const measureNow = async () => {
                     const a = await auditBuiltApp(path.join(proj, 'dist'), {
                         timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
@@ -2864,12 +2902,39 @@ export class ReactProjectTool extends BaseTool {
                     });
                     if (a?.skipped) return { score: 0, findingIds: [], skipped: true };
                     lastAudit = a;
-                    return { score: Number(a.score || 0), findingIds: (a.findings || []).map((f: any) => f.id) };
+                    const t = await runTerminal().catch(() => null);
+                    if (t) terminalAudit = t;
+                    const { failingIds } = require('../../../core/quality/terminal-audit');
+                    const termFails: string[] = t && !t.skipped ? failingIds(t) : [];
+                    return {
+                        score: blend(Number(a.score || 0), t),
+                        findingIds: [...(a.findings || []).map((f: any) => f.id), ...termFails],
+                        // …and the offenders each finding named, so the next
+                        // round is surgery rather than another blanket.
+                        findings: (a.findings || []).map((f: any) => ({ id: f.id, evidence: f.evidence })),
+                    };
                 };
                 let lastAudit: any = audit;
 
+                // The FIRST reading is taken with both eyes too, so round 1's
+                // «before» is the same number every later round is judged by.
+                const firstTerminal = await runTerminal().catch(() => null);
+                if (firstTerminal) {
+                    terminalAudit = firstTerminal;
+                    const { failingIds } = require('../../../core/quality/terminal-audit');
+                    if (!firstTerminal.skipped) {
+                        term(`terminal-QA: ${firstTerminal.score}/100 (${firstTerminal.passed}/${firstTerminal.total} checks)`
+                            + (failingIds(firstTerminal).length ? ` — ${failingIds(firstTerminal).join(', ')}` : ' — every check passed'));
+                    }
+                }
+                const firstTermFails: string[] = firstTerminal && !firstTerminal.skipped
+                    ? require('../../../core/quality/terminal-audit').failingIds(firstTerminal) : [];
                 loop = await improveUntilItStops(
-                    { score: Number(audit.score || 0), findingIds: (audit.findings || []).map((f: any) => f.id) },
+                    {
+                        score: blend(Number(audit.score || 0), firstTerminal),
+                        findingIds: [...(audit.findings || []).map((f: any) => f.id), ...firstTermFails],
+                        findings: (audit.findings || []).map((f: any) => ({ id: f.id, evidence: f.evidence })),
+                    },
                     {
                         say: term,
                         maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
@@ -2885,7 +2950,45 @@ export class ReactProjectTool extends BaseTool {
                             if (rb.ok === true && packaged) packageIntoApi(false);
                             return rb.ok === true;
                         },
-                        repair: async (round: number) => (await repairRound(proj, round, { isArabic: isAr })).changed,
+                        repair: async (round: number, _ids: string[], findings: any[]) => {
+                            const known = await repairRound(proj, round, { isArabic: isAr, findings });
+                            if (known.changed.length) return known.changed;
+                            /**
+                             * THE CEILING OF EIGHT, LIFTED.
+                             *
+                             * The deterministic repairer knows eight fixes.
+                             * When a round has nothing left of them, the loop
+                             * used to stop — honestly, and short. A model is
+                             * asked for the CSS now, and it is CONTAINED
+                             * rather than trusted: CSS only, appended to one
+                             * stylesheet, parsed before it is written, built,
+                             * and then MEASURED. It is allowed to be wrong; it
+                             * is not allowed to be believed. A round it wins
+                             * is a round like any other; a round it loses is
+                             * rolled back by the same rule.
+                             */
+                            if (String(process.env.JOE_MODEL_ROUND || '1') === '0') return [];
+                            const { askForCss } = require('../../../core/quality/model-round');
+                            const rich = (lastAudit?.findings || []).filter((f: any) => f && f.id);
+                            term(`improve: no deterministic fix left for ${rich.map((f: any) => f.id).join(', ') || 'the rest'} — asking the model for CSS, under a syntax gate`);
+                            const got = await askForCss(rich, { timeoutMs: 45_000 });
+                            if (!got.css) {
+                                term(`improve: the model round produced nothing usable (${got.why || 'no answer'}) — nothing written`);
+                                return [];
+                            }
+                            const cssPath = ['src/styles/app.css', 'src/index.css', 'src/App.css']
+                                .map(rel => path.join(proj, rel)).find(f => fs.existsSync(f));
+                            if (!cssPath) { term('improve: no stylesheet to append to — the model round is skipped'); return []; }
+                            const rel = path.relative(proj, cssPath).replace(/\\/g, '/');
+                            try {
+                                fs.appendFileSync(cssPath, `\n/* ── جولة النموذج: ما لم يعرفه المُصلِح الحتمي (يُقاس بعدها) ── */\n${got.css}\n`, 'utf-8');
+                            } catch (e: any) {
+                                term(`improve: could not append the model's CSS (${String(e?.message || e).slice(0, 100)})`);
+                                return [];
+                            }
+                            term(`improve: the model wrote ${got.css.split('\n').length} line(s) of CSS into ${rel} — the next measurement decides whether it stays`);
+                            return [rel];
+                        },
                         rebuild: async () => {
                             const rb = await runDoctored('npm', ['run', 'build'], {
                                 cwd: proj, timeoutMs: 240_000,
@@ -2916,50 +3019,29 @@ export class ReactProjectTool extends BaseTool {
                 }
             }
             /**
-             * AND NOW THE OTHER HALF OF THE MEASUREMENT — IN THE TERMINAL.
+             * THE TERMINAL'S FINAL WORD — MEASURED INSIDE THE LOOP, NOT AFTER IT.
              *
-             * «ما زلت لم ارى شاشة الثيرمال يفتح مثل شاشة المتصفح ويجري اختبارات
-             *  امامي … ويرى جو نتائج الاختبارات التي يجريها الثيرمال مثل ما
-             *  ياخذ نتائج الجودة التي يجريها المتصفح»
+             * «ما زلت لم ارى شاشة الثيرمال … ويرى جو نتائج الاختبارات التي
+             *  يجريها الثيرمال مثل ما ياخذ نتائج الجودة التي يجريها المتصفح»
              *
-             * He named a real asymmetry. The browser half opens its own panel,
-             * presses every control in front of him, and returns a score with
-             * named findings that Joe repairs against. The terminal half was a
-             * PIPE: build output scrolled past, the panel never opened, and
-             * nothing that appeared there was ever measured. A stream is not a
-             * test, and output nobody scores is not a result.
-             *
-             * So the terminal gets its own instrument, to the same contract:
-             * the panel is asked for by name, every check is a real process
-             * with a real exit code, and it answers with a score Joe reads,
-             * reports, and can be held to.
+             * It ran here once, at the very end, and its verdict changed
+             * nothing: a table route could 404 on every round and the loop
+             * would neither see it nor stop for it, because the number it
+             * watched came from one eye. Now every round measures with BOTH,
+             * and this is simply the last reading — reported, not re-taken.
              */
-            if (apiDir && fs.existsSync(path.join(apiDir, 'package.json'))) {
-                try {
-                    broadcast({ type: 'panel_focus', sessionId, data: { panel: 'terminal', reason: 'terminal_qa' } } as any);
-                } catch { /* UI optional */ }
+            if (terminalAudit && !terminalAudit.skipped) {
+                const { failingIds } = require('../../../core/quality/terminal-audit');
+                const bad = failingIds(terminalAudit);
+                term(`terminal-QA (final): ${terminalAudit.score}/100 (${terminalAudit.passed}/${terminalAudit.total} checks)`
+                    + (bad.length ? ` — ${bad.join(', ')}` : ' — every check passed'));
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
-                    ? '⌨️ الآن الطرفية — أُشغّل اختبارات حقيقية على الخادم أمامك وأقرأ نتائجها'
-                    : '⌨️ Now the terminal — running real checks against the server in front of you, and reading their results');
-                const { auditInTerminal, failingIds } = require('../../../core/quality/terminal-audit');
-                terminalAudit = await auditInTerminal(apiDir, {
-                    onLine: term,
-                    serveUrl: liveServer ? liveServer.url : '',
-                    tables: systemTables,
-                    timeoutMs: 25_000,
-                });
-                if (terminalAudit && !terminalAudit.skipped) {
-                    const bad = failingIds(terminalAudit);
-                    term(`terminal-QA: ${terminalAudit.score}/100 (${terminalAudit.passed}/${terminalAudit.total} checks)`
-                        + (bad.length ? ` — ${bad.join(', ')}` : ' — every check passed'));
-                    if (sessionId) broadcastThinkingDetail(sessionId, isAr
-                        ? `⌨️ فحص الطرفية: ${terminalAudit.score}/100 — ${terminalAudit.passed} من ${terminalAudit.total} اختباراً`
-                            + (bad.length ? ` · تعثّر: ${bad.join('، ')}` : ' · كلها نجحت')
-                        : `⌨️ Terminal QA: ${terminalAudit.score}/100 — ${terminalAudit.passed} of ${terminalAudit.total} checks`
-                            + (bad.length ? ` · failed: ${bad.join(', ')}` : ' · all passed'));
-                } else {
-                    term(`terminal-QA: skipped (${terminalAudit?.skipped || 'no_project'}) — nothing was measured, so nothing is claimed`);
-                }
+                    ? `⌨️ فحص الطرفية: ${terminalAudit.score}/100 — ${terminalAudit.passed} من ${terminalAudit.total} اختباراً`
+                        + (bad.length ? ` · تعثّر: ${bad.join('، ')}` : ' · كلها نجحت')
+                    : `⌨️ Terminal QA: ${terminalAudit.score}/100 — ${terminalAudit.passed} of ${terminalAudit.total} checks`
+                        + (bad.length ? ` · failed: ${bad.join(', ')}` : ' · all passed'));
+            } else if (terminalAudit) {
+                term(`terminal-QA: skipped (${terminalAudit?.skipped || 'no_project'}) — nothing was measured, so nothing is claimed`);
             }
             /**
              * ORDER MATTERS, AND HIS SCREEN PROVED IT.

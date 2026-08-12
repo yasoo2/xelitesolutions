@@ -39,6 +39,16 @@ export interface Measurement {
     score: number;
     /** Stable ids: `small_targets`, `low_contrast`, `tables_answer`. */
     findingIds: string[];
+    /**
+     * The findings THEMSELVES, with the offenders each one names.
+     *
+     * An id tells the next round what kind of problem is left; the evidence
+     * tells it which element. That difference is what turns a blanket rule
+     * over every button into surgery on the two the browser measured — and
+     * surgery is what makes a round three possible, because a blanket cannot
+     * be tightened twice.
+     */
+    findings?: Array<{ id: string; evidence?: any[] }>;
     /** Set when the measurement could not be taken; never counted as 0. */
     skipped?: boolean;
 }
@@ -79,7 +89,11 @@ export interface ImproveOptions {
      * array means «this round has nothing new to write», which ENDS the loop
      * instead of spending a build on identical bytes.
      */
-    repair: (round: number, remaining: string[]) => Promise<string[]>;
+    repair: (
+        round: number,
+        remaining: string[],
+        findings: Array<{ id: string; evidence?: any[] }>,
+    ) => Promise<string[]>;
     /** Rebuild whatever the measurement measures. False stops the round. */
     rebuild: () => Promise<boolean>;
     /** Undo this round. Called only when a round failed to pay for itself. */
@@ -131,7 +145,7 @@ export async function improveUntilItStops(
             catch { return ''; }
         })();
 
-        const changed = await opts.repair(round, remaining).catch(() => [] as string[]);
+        const changed = await opts.repair(round, remaining, current.findings || []).catch(() => [] as string[]);
         if (!changed.length) {
             /**
              * The honest end of the loop, and the common one. Nothing this
@@ -223,7 +237,11 @@ export function improveSummary(r: ImproveResult, isAr: boolean): string {
 export async function repairRound(
     dir: string,
     round: number,
-    opts: { isArabic?: boolean } = {},
+    opts: {
+        isArabic?: boolean;
+        /** The last measurement's offenders — what makes this pass surgery. */
+        findings?: Array<{ id: string; evidence?: any[] }>;
+    } = {},
 ): Promise<{ changed: string[]; repairs: any[] }> {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { collectSources } = require('./self-repair');
@@ -235,7 +253,7 @@ export async function repairRound(
     const sources = collectSources(dir);
     if (!Object.keys(sources).length) return { changed: [], repairs: [] };
 
-    const plan = repairProjectFiles(sources, { isArabic: opts.isArabic, round });
+    const plan = repairProjectFiles(sources, { isArabic: opts.isArabic, round, findings: opts.findings });
     const changed: string[] = [];
     for (const [rel, text] of Object.entries(plan.files as Record<string, string>)) {
         // Identical bytes are not a change, and a round of them is not work.
