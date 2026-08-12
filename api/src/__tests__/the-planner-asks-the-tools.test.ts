@@ -105,3 +105,72 @@ describe('the planner uses it — after its own routes, before the model', () =>
         expect(guard).toBeLessThan(use);
     });
 });
+
+/**
+ * «كيف يعني تصل الى اداتين كحد اقصى لا سلسله طويلة؟» — he read the code right.
+ *
+ * capableTools ranked the WHOLE sentence, took the top two, and handed BOTH of
+ * them the same raw request: two attempts, not a pipeline. A request that
+ * names its own order deserves a step per task, and each step deserves the
+ * previous step's RESULT.
+ */
+describe('a sentence with four verbs is four steps', () => {
+    const { capabilityChain } = require('../core/orchestrator/capability-match');
+    const chain = (r: string) => capabilityChain(r).map((c: any) => c.name);
+
+    it('his own example: four tasks, four different tools, in his order', () => {
+        expect(chain('حلّل المستودع، ثم أصلح الثغرات الأمنية، ثم اختبر الواجهة البرمجية، ثم أرسل تنبيهاً'))
+            .toEqual(['analyze_codebase', 'security_scanner', 'api_tester', 'alert_manager']);
+    });
+
+    it('and English «then» splits exactly the same way', () => {
+        expect(chain('analyze the codebase, then review the code for security issues').length)
+            .toBeGreaterThanOrEqual(2);
+    });
+
+    it('two tasks are a chain; one job is not', () => {
+        expect(chain('خطّط المشروع ثم انشره على الاستضافة')).toEqual(['project_planner', 'deploy_pages']);
+        expect(chain('اضغط الملفات في أرشيف zip')).toEqual([]);
+    });
+
+    it('a part that matches no tool breaks the chain instead of being dropped', () => {
+        // A plan missing its middle step is worse than no plan at all.
+        expect(chain('حلّل المستودع ثم ما حالة الطقس ثم أرسل تنبيهاً')).toEqual([]);
+    });
+
+    it('and the same tool twice in a row is noise, not depth', () => {
+        const c = chain('حلّل المستودع ثم حلّل بنيته');
+        expect(new Set(c).size).toBe(c.length);
+    });
+});
+
+describe('and the steps FLOW — that was the real limitation', () => {
+    it('each step after the first reads the previous step’s result', () => {
+        const plan: any = PlanningEngine.capabilityPlan({
+            goal: 'حلّل المستودع، ثم أصلح الثغرات الأمنية، ثم اختبر الواجهة البرمجية',
+        });
+        expect(plan.metadata.matchedBy).toBe('capability-chain');
+        expect(plan.steps).toHaveLength(3);
+        // The first takes the raw part; every other takes {{FROM:previous}} —
+        // the reference this orchestrator already resolves.
+        expect(String(plan.steps[0].input.request)).not.toContain('{{FROM:');
+        expect(String(plan.steps[1].input.request)).toContain('{{FROM:chain_0}}');
+        expect(String(plan.steps[2].input.request)).toContain('{{FROM:chain_1}}');
+        expect(plan.steps[2].dependsOn).toEqual(['chain_1']);
+    });
+
+    it('and each step carries its OWN task, not the whole sentence', () => {
+        const plan: any = PlanningEngine.capabilityPlan({
+            goal: 'حلّل المستودع، ثم أرسل تنبيهاً',
+        });
+        expect(String(plan.steps[0].input.request)).not.toContain('تنبيه');
+        expect(String(plan.steps[1].input.request)).toContain('تنبيه');
+    });
+
+    it('the reference syntax is the orchestrator’s own, not a new one', () => {
+        const orch = require('fs').readFileSync(
+            require('path').join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
+        expect(orch).toMatch(/\\{\\{\\s\*FROM:\(\[a-zA-Z0-9_-\]\+\)\\s\*\\}\\}/);
+        expect(orch).toContain('resolveInputRefs(node.input, dag)');
+    });
+});

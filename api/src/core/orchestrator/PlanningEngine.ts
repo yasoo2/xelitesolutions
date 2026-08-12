@@ -283,8 +283,46 @@ Rules:
     /** A plan built from what the TOOLS say they do — or null, honestly. */
     static capabilityPlan(intent: any): any | null {
         try {
-            const { capableTools } = require('./capability-match');
-            const capable = capableTools(String(intent?.goal || ''), 3);
+            const { capableTools, capabilityChain } = require('./capability-match');
+            const goal = String(intent?.goal || '');
+
+            /**
+             * A SENTENCE WITH FOUR VERBS IS FOUR STEPS — AND THEY FLOW.
+             *
+             * «الخطّة تصل إلى أداتين كحدّ أقصى، لا سلسلة طويلة» — his question,
+             * and he was reading the code correctly. capableTools ranks the
+             * WHOLE sentence and took the top two, and BOTH of them were handed
+             * the same raw request, so nothing flowed: two attempts, not a
+             * pipeline.
+             *
+             * When the request names its own order — «ثم», «بعد ذلك», «then»,
+             * a numbered list — each part gets its own tool, and each step
+             * after the first receives the PREVIOUS step's result through
+             * {{FROM:id}}, which this orchestrator already resolves.
+             */
+            const chain = capabilityChain(goal, 5);
+            if (chain.length >= 2) {
+                console.log(`[PlanningEngine] capability chain -> ${chain.map((c: any) => c.name).join(' → ')}`);
+                return {
+                    id: `chain_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: chain.map((c: any, i: number) => {
+                        const prior = i === 0 ? '' : `\n\nنتيجة الخطوة السابقة:\n{{FROM:chain_${i - 1}}}`;
+                        const text = `${c.part}${prior}`;
+                        return {
+                            id: `chain_${i}`,
+                            description: `${c.name} — ${c.part.slice(0, 60)}`,
+                            tool: c.name,
+                            agent: 'General',
+                            input: { request: text, question: text, query: text },
+                            dependsOn: i === 0 ? [] : [`chain_${i - 1}`],
+                        };
+                    }),
+                    metadata: { complexity: 'high', riskLevel: 'low', matchedBy: 'capability-chain' },
+                };
+            }
+
+            const capable = capableTools(goal, 3);
             if (!capable.length) return null;
             console.log(`[PlanningEngine] capability match -> ${capable.map((c: any) => c.name).join(', ')}`);
             return {

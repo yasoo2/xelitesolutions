@@ -163,3 +163,52 @@ export function capableTools(request: string, limit = 4): Capable[] {
 export function reachableCount(): number {
     return toolProfiles().length;
 }
+
+/* ────────────────────────── one request, many tasks ────────────────────── */
+
+/**
+ * A SENTENCE WITH FOUR VERBS IS FOUR TASKS.
+ *
+ * capableTools() scores the WHOLE request against every tool and returns the
+ * closest few. That is right for «اضغط الملفات في أرشيف» — one job, one tool.
+ * It is wrong for:
+ *
+ *     «حلّل المستودع، ثم أصلح الثغرات، ثم اختبرها، ثم أرسل تقريراً»
+ *
+ * which is four jobs in a stated order. Ranking the sentence as a whole picks
+ * the two tools most similar to all of it and drops the rest — and both of
+ * them read the same raw sentence, so nothing flows.
+ *
+ * The split is by SEQUENCE MARKERS, not by meaning: «ثم», «بعد ذلك», «then»,
+ * a numbered list, a new line. Those are shapes of a language again — finite,
+ * and they carry the order the user already wrote down.
+ */
+const SEQUENCE = /\s*(?:،\s*)?(?:ثمّ?|بعد\s*ذلك|وبعدها|وبعد\s*ذلك|أخيراً|then|after\s+that|next|finally)\s+|[\n\r]+|(?:^|\s)\d+[.)]\s+/gi;
+
+export interface ChainStep { name: string; why: string[]; part: string }
+
+/**
+ * The request as an ORDERED chain of tools — one per task it names.
+ *
+ * Returns [] when the request is a single job (let capableTools answer that)
+ * or when a part matches nothing. It never pads the chain to look busy: a
+ * step Joe cannot name a tool for is a step he should not pretend to run.
+ */
+export function capabilityChain(request: string, max = 5): ChainStep[] {
+    const parts = String(request || '').split(SEQUENCE).map(p => p.trim()).filter(p => p.length > 2);
+    if (parts.length < 2) return [];
+
+    const chain: ChainStep[] = [];
+    for (const part of parts) {
+        const [best] = capableTools(part, 1);
+        // A part with no tool breaks the chain honestly rather than being
+        // silently dropped — a plan missing its middle step is worse than none.
+        if (!best) return [];
+        // «حلّلها ثم اشرحها» may match the same tool twice; running it twice on
+        // its own output is noise, not depth.
+        if (chain.length && chain[chain.length - 1].name === best.name) continue;
+        chain.push({ name: best.name, why: best.why, part });
+        if (chain.length >= max) break;
+    }
+    return chain.length >= 2 ? chain : [];
+}
