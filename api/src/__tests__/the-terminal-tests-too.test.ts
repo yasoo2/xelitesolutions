@@ -156,13 +156,14 @@ describe('a repair that measured WORSE is taken back, not just un-reported', () 
     });
 
     it('the builder restores it, rebuilds, and re-packages', () => {
-        expect(REACT).toMatch(/restoreVersion\(proj, cycle\.snapshotId\)/);
-        expect(REACT).toMatch(/rolledBack = rb\.ok === true;/);
-        expect(REACT).toMatch(/if \(rolledBack && packaged\) packageIntoApi\(false\);/);
+        expect(REACT).toMatch(/const back = restoreVersion\(proj, id\);/);
+        expect(REACT).toMatch(/if \(rb\.ok === true && packaged\) packageIntoApi\(false\);/);
+        expect(REACT).toMatch(/rollback: async \(id: string\) => \{/);
     });
 
     it('and it says which happened — a rollback is not silent', () => {
-        expect(REACT).toMatch(/the repair measured WORSE — rolled the project back and rebuilt it/);
-        expect(REACT).toMatch(/no measured gain — keeping the original verdict/);
+        const LOOP2 = read('core', 'quality', 'improve-loop.ts');
+        expect(LOOP2).toMatch(/no gain, \$\{undone \? 'rolled back' : 'left as written'\}, stopping/);
+        expect(REACT).toMatch(/await improveUntilItStops\(/);
     });
 });

@@ -20,7 +20,12 @@ const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p
 
 describe('the repair cycle is one piece of code', () => {
     it('the build path and the fix tool call the same function', () => {
-        expect(read('modules', 'tools', 'definitions', 'ReactProjectTool.ts')).toMatch(/await repairAndRebuild\(proj/);
+        // The build path drives the LOOP now; the fix tool still calls the
+        // single cycle. Both reach the same repairProjectFiles, which is what
+        // «one piece of code» was ever about.
+        expect(read('modules', 'tools', 'definitions', 'ReactProjectTool.ts')).toMatch(/await improveUntilItStops\(/);
+        expect(read('core', 'quality', 'improve-loop.ts'))
+            .toMatch(/repairProjectFiles\(sources, \{ isArabic: opts\.isArabic, round \}\)/);
         expect(read('modules', 'tools', 'definitions', 'UiFixTool.ts')).toMatch(/await repairAndRebuild\(dir/);
     });
 
@@ -67,12 +72,21 @@ describe('the build only claims an improvement it measured', () => {
     const R = () => read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
 
     it('re-audits after repairing instead of assuming', () => {
-        expect(R()).toMatch(/const after = await auditBuiltApp\(path\.join\(proj, 'dist'\)/);
-        expect(R()).toMatch(/if \(!after\.skipped && after\.score >= audit\.score\)/);
+        // The re-measurement lives in the LOOP's own measure() now — same
+        // browser, same folder, once per round instead of once per build.
+        expect(R()).toMatch(/const measureNow = async \(\) => \{/);
+        expect(R()).toMatch(/const a = await auditBuiltApp\(path\.join\(proj, 'dist'\)/);
+        expect(read('core', 'quality', 'improve-loop.ts'))
+            .toMatch(/if \(after\.skipped \|\| after\.score <= current\.score\)/);
     });
 
     it('and keeps the first verdict when the repair did not help', () => {
-        expect(R()).toMatch(/no measured gain — keeping the original verdict/);
+        // Stricter than the sentence it replaces: a round must BEAT the
+        // previous score, and one that does not is rolled back, not merely
+        // left unreported.
+        const LOOP = read('core', 'quality', 'improve-loop.ts');
+        expect(LOOP).toMatch(/if \(after\.skipped \|\| after\.score <= current\.score\)/);
+        expect(LOOP).toMatch(/verdict: 'no_measured_gain', rolledBack: !!undone,/);
     });
 
     it('the delivery message prints both numbers, not a promise', () => {

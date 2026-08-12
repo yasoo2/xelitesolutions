@@ -2716,6 +2716,8 @@ export class ReactProjectTool extends BaseTool {
         let selfRepair: { before: number; after: number; files: string[]; repairs: any[]; fixed: string[] } | null = null;
         /** The terminal's own verdict — the browser's number has a twin now. */
         let terminalAudit: any = null;
+        /** Every round of the improvement loop, kept for the delivery report. */
+        let loop: any = null;
         if (built && !input?.skipAudit) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🔎 أفحص البناء في متصفح حقيقي قبل التسليم…' : '🔎 Self-QA in a real browser…');
             const { auditBuiltApp } = require('../../../core/quality/app-audit');
@@ -2829,88 +2831,88 @@ export class ReactProjectTool extends BaseTool {
              */
             if (!audit.skipped && worthRepairing(audit.findings)) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
-                    ? '🛠️ وجدتُ ما أستطيع إصلاحه بنفسي — أصلحه وأعيد البناء قبل أن أسلّمك…'
-                    : '🛠️ Repairing what I can fix myself, then rebuilding before delivery…');
-                const cycle = await repairAndRebuild(proj, { onLine: term, isArabic: isAr });
-                if (cycle.changed.length && cycle.built) {
-                    // The repair rebuilt dist/ — the packaged copy inside the
-                    // server is now the OLD interface. Measuring that would
-                    // credit the repair with a page it did not produce.
-                    if (packaged) packageIntoApi(false);
-                    const after = await auditBuiltApp(path.join(proj, 'dist'), {
+                    ? '🛠️ وجدتُ ما أستطيع إصلاحه بنفسي — أصلحه وأعيد البناء وأقيس مرّة أخرى…'
+                    : '🛠️ Repairing what I can fix myself, rebuilding, and measuring again…');
+
+                /**
+                 * THE LOOP HE ASKED FOR — «يرجع يحلل ويفكر ومن ثم يكمل».
+                 *
+                 * What stood here was one pass: repair once, rebuild once,
+                 * measure once, done. There was no point in it where Joe
+                 * looked at what SURVIVED the repair and decided what to do
+                 * about that — the intelligence was all in the instruments
+                 * and none of it after them.
+                 *
+                 * Now every round is handed the findings that are still open
+                 * and its own round NUMBER, and the fixes escalate with it:
+                 * 44px → 48 → 56, contrast 4.5 → 5.5 → 7. A round that cannot
+                 * write one different byte does not run. A round that runs and
+                 * does not raise the measured score is rolled back to the
+                 * snapshot it started from, and the loop stops there.
+                 *
+                 * So the time it takes is decided by how much it is still
+                 * winning, and every minute of it is answerable in a number.
+                 */
+                const { improveUntilItStops, repairRound, improveSummary } = require('../../../core/quality/improve-loop');
+                const { restoreVersion, snapshotProject } = require('../../../core/project/versions');
+                const { runDoctored } = require('../../../core/quality/log-doctor');
+
+                const measureNow = async () => {
+                    const a = await auditBuiltApp(path.join(proj, 'dist'), {
                         timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
                     });
-                    term(`self-repair: ${audit.score} → ${after.score}/100 (${cycle.changed.length} file(s))`);
-                    if (!after.skipped && after.score >= audit.score) {
-                        /**
-                         * WHICH FINDINGS ACTUALLY WENT AWAY.
-                         *
-                         * From his own delivery: «Repaired before delivery:
-                         * 55/100 → 55/100 (5 file(s))» followed by six repairs
-                         * listed as done — «Widened tap targets to at least
-                         * 44px», «Stopped horizontal scrolling», «Raised text
-                         * contrast» — and then the SAME six findings under
-                         * «Still there after the repair». Five files edited,
-                         * nothing fixed, six accomplishments announced.
-                         *
-                         * The repairs are what was ATTEMPTED. What was achieved
-                         * is the difference between the two measurements, and
-                         * that is what the report may claim.
-                         */
-                        const beforeIds = (audit.findings || []).map((f: any) => f.id);
-                        const afterIds = (after.findings || []).map((f: any) => f.id);
-                        selfRepair = {
-                            before: audit.score, after: after.score, files: cycle.changed, repairs: cycle.repairs,
-                            fixed: beforeIds.filter((id: string) => !afterIds.includes(id)),
-                        };
-                        audit = after;
-                    } else {
-                        /**
-                         * A REPAIR THAT MEASURED WORSE MUST BE TAKEN BACK.
-                         *
-                         * From his own run:
-                         *
-                         *     self-repair: 78 → 73/100 (5 file(s))
-                         *     self-repair: no measured gain — keeping the original verdict (78/100)
-                         *
-                         * The verdict was kept. The FILES were not: the repaired
-                         * source had already been rebuilt and copied into the
-                         * server's public/ two steps above, so the system he
-                         * opened was the 73 one while the report said 78. Keeping
-                         * a number is not keeping a build — and reporting the
-                         * better of two measurements while shipping the worse is
-                         * the exact dishonesty this file keeps deleting.
-                         *
-                         * So the project goes back to the snapshot taken before
-                         * the first byte was written, is rebuilt, and is packaged
-                         * again. Then 78 is the truth about what he has.
-                         */
-                        let rolledBack = false;
-                        if (cycle.snapshotId) {
-                            try {
-                                const { restoreVersion } = require('../../../core/project/versions');
-                                const back = restoreVersion(proj, cycle.snapshotId);
-                                if (back?.ok) {
-                                    const { runDoctored } = require('../../../core/quality/log-doctor');
-                                    const rb = await runDoctored('npm', ['run', 'build'], {
-                                        cwd: proj, timeoutMs: 240_000,
-                                        onLine: (l: string) => term(`  ${l.slice(0, 200)}`),
-                                        onNote: term,
-                                    });
-                                    rolledBack = rb.ok === true;
-                                    if (rolledBack && packaged) packageIntoApi(false);
-                                }
-                            } catch (e: any) {
-                                term(`self-repair: could not roll back (${String(e?.message || e).slice(0, 120)})`);
-                            }
-                        }
-                        term(rolledBack
-                            ? `self-repair: the repair measured WORSE — rolled the project back and rebuilt it; ${audit.score}/100 is what you have`
-                            : `self-repair: no measured gain — keeping the original verdict (${audit.score}/100)`);
-                    }
-                } else if (cycle.reverted) {
-                    term('self-repair: reverted — the project is exactly as it was');
+                    if (a?.skipped) return { score: 0, findingIds: [], skipped: true };
+                    lastAudit = a;
+                    return { score: Number(a.score || 0), findingIds: (a.findings || []).map((f: any) => f.id) };
+                };
+                let lastAudit: any = audit;
+
+                loop = await improveUntilItStops(
+                    { score: Number(audit.score || 0), findingIds: (audit.findings || []).map((f: any) => f.id) },
+                    {
+                        say: term,
+                        maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
+                        target: Math.max(1, Number(process.env.JOE_IMPROVE_TARGET || 95)),
+                        snapshot: (label: string) => String(snapshotProject(proj, label)?.id || ''),
+                        rollback: async (id: string) => {
+                            const back = restoreVersion(proj, id);
+                            if (!back?.ok) return false;
+                            const rb = await runDoctored('npm', ['run', 'build'], {
+                                cwd: proj, timeoutMs: 240_000,
+                                onLine: (l: string) => term(`  ${l.slice(0, 200)}`), onNote: term,
+                            });
+                            if (rb.ok === true && packaged) packageIntoApi(false);
+                            return rb.ok === true;
+                        },
+                        repair: async (round: number) => (await repairRound(proj, round, { isArabic: isAr })).changed,
+                        rebuild: async () => {
+                            const rb = await runDoctored('npm', ['run', 'build'], {
+                                cwd: proj, timeoutMs: 240_000,
+                                onLine: (l: string) => term(`  ${l.slice(0, 200)}`), onNote: term,
+                            });
+                            if (rb.ok !== true) return false;
+                            // The packaged copy is the OLD interface until this
+                            // runs — measuring it would credit the round with a
+                            // page it did not produce.
+                            if (packaged) packageIntoApi(false);
+                            return true;
+                        },
+                    },
+                );
+                term(improveSummary(loop, false));
+                if (sessionId) broadcastThinkingDetail(sessionId, improveSummary(loop, isAr));
+
+                // The verdict the report publishes is the LAST measurement the
+                // loop actually kept — never the best number it ever saw.
+                if (loop.final && !loop.final.skipped && loop.final.score !== audit.score) audit = lastAudit;
+                const paid = loop.rounds.filter((r: any) => r.verdict === 'improved');
+                if (paid.length) {
+                    selfRepair = {
+                        before: loop.first.score, after: loop.final.score,
+                        files: Array.from(new Set(paid.flatMap((r: any) => r.changed))),
+                        repairs: [], fixed: loop.fixed,
+                    };
                 }
             }
             /**
@@ -3231,6 +3233,31 @@ export class ReactProjectTool extends BaseTool {
              *  الجودة التي يجريها المتصفح». Two instruments, two scores, one
              * report — and a failed check is named, never a scroll position.
              */
+            /**
+             * THE LOOP'S OWN STORY — every round, and why it stopped.
+             *
+             * «ومن ثم يرجع يحلل ما بناه ومن ثم يرجع يطور عليه». A number that
+             * moved is only half of it; the reader is owed the path it took
+             * and the reason it stopped, so he can disagree with the decision.
+             */
+            if (loop && Array.isArray(loop.rounds) && loop.rounds.length) {
+                const { improveSummary } = require('../../../core/quality/improve-loop');
+                lines.push(improveSummary(loop, isAr));
+                for (const r of loop.rounds) {
+                    const mark = r.verdict === 'improved' ? '✅' : r.rolledBack ? '↩️' : '⏹️';
+                    const move = r.after === undefined ? `${r.before}/100` : `${r.before} → ${r.after}/100`;
+                    const why: string = ({
+                        improved: isAr ? 'مكسب مقيس' : 'measured gain',
+                        no_measured_gain: isAr ? 'بلا مكسب — تراجعتُ عنها' : 'no gain — rolled back',
+                        no_change_possible: isAr ? 'لا شيء مختلف أستطيع كتابته' : 'nothing different left to write',
+                        build_failed: isAr ? 'كسرت البناء — تراجعتُ عنها' : 'broke the build — rolled back',
+                        target_reached: isAr ? 'بلغتُ الحدّ' : 'reached the bar',
+                    } as Record<string, string>)[String(r.verdict)] || String(r.verdict);
+                    lines.push(`   ${mark} ${isAr ? 'جولة' : 'round'} ${r.round}: ${move} — ${why}`
+                        + (r.changed.length ? ` (${r.changed.length} ${isAr ? 'ملف' : 'file(s)'})` : '')
+                        + (r.fixed.length ? ` · ${isAr ? 'زالت' : 'gone'}: ${r.fixed.join(', ')}` : ''));
+                }
+            }
             if (terminalAudit && !terminalAudit.skipped) {
                 const bad = terminalAudit.checks.filter((c: any) => !c.ok && !c.skipped);
                 lines.push(isAr

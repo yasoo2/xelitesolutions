@@ -326,13 +326,48 @@ a.btn, button, .nav-links a, [role="button"] {
 a.btn > svg, button > svg { min-height: 0; min-width: 0; }
 `;
 
-/** Add the tap-target rule once, and only once, however many times we run. */
-export function repairTapTargets(css: string): RepairedFile {
+/**
+ * THE SECOND ROUND MUST NOT BE THE FIRST ROUND AGAIN.
+ *
+ * «بعد ان ياخذ النتائج من المتصفح والثيرمال يرجع يحلل ويفكر ومن ثم يكمل».
+ * A loop over an idempotent repairer is theatre: round 2 writes the identical
+ * bytes, the score does not move, and five rounds of «no gain» are five
+ * rounds of nothing. Escalation is what makes a round WORTH its minute.
+ *
+ * So the fix carries a STRENGTH, chosen by what survived the last
+ * measurement. Round 1 asks for the 44px the guideline requires. If the
+ * browser still measures targets under the bar, round 2 asks for more, over a
+ * wider selector set — because something on that page overrides the polite
+ * version, and politeness has now been measured to fail.
+ */
+const TAP_PX = [44, 48, 56];
+
+export function repairTapTargets(css: string, round = 1): RepairedFile {
     const text = String(css || '');
-    if (text.includes('إصلاح جو: أهداف اللمس')) return { text, repairs: [] };
+    const px = TAP_PX[Math.min(Math.max(round, 1), TAP_PX.length) - 1];
+    const marker = `إصلاح جو: أهداف اللمس (${px}px)`;
+    if (text.includes(marker)) return { text, repairs: [] };
+    // Round 1 keeps the exact block this project has shipped for months.
+    if (px === 44 && text.includes('إصلاح جو: أهداف اللمس')) return { text, repairs: [] };
+    const block = px === 44 ? TAP_TARGET_CSS : `
+/* ── ${marker} ─────────────────────────────────────
+   القياس السابق ما زال يجد أهدافاً أصغر من الحد — فالقاعدة ترتفع وتتّسع.
+   لا !important: لو احتاجها الأمر فالمشكلة في مكان آخر ويجب أن تُقاس. */
+a.btn, button, .nav-links a, [role="button"], .btn, .act, .tabbtn,
+.tbl-tabs button, .icon-btn, input[type="file"], select, summary {
+  min-height: ${px}px;
+}
+a.btn, button, [role="button"], .btn, .icon-btn { min-width: ${px}px; }
+a.btn > svg, button > svg { min-height: 0; min-width: 0; }
+`;
     return {
-        text: text + TAP_TARGET_CSS,
-        repairs: [{ id: 'small_targets', detail: 'وسّعتُ أهداف اللمس إلى 44 بكسل على الأقل', detailEn: REPAIR_EN.small_targets, count: 1 }],
+        text: text + block,
+        repairs: [{
+            id: 'small_targets',
+            detail: `وسّعتُ أهداف اللمس إلى ${px} بكسل على الأقل`,
+            detailEn: `Widened tap targets to at least ${px}px`,
+            count: 1,
+        }],
     };
 }
 
@@ -349,10 +384,43 @@ export interface ProjectRepairPlan {
  * Pure: it reads a map of files and returns a map of files. Writing them (and
  * refusing any that fail the syntax gate) is the caller's job.
  */
+/**
+ * A FORM WHOSE STAR IS DECORATION.
+ *
+ * «form_no_validation» survived every round because nothing here ever wrote
+ * `required`. A label that says «الاسم *» and an input the browser will
+ * happily submit empty is a promise the page does not keep — the audit
+ * measured it on every build and the repairer had no answer.
+ *
+ * The first text input of a form that has NO required field at all gets one.
+ * One field, not all of them: making every box mandatory is a different
+ * design decision, and this is a repair, not a redesign.
+ */
+export function repairFormValidation(code: string): RepairedFile {
+    const text = String(code || '');
+    if (/required(=\{|\s|\/|>)/.test(text)) return { text, repairs: [] };
+    // The first <input …/> that is not a file/checkbox picker.
+    const m = text.match(/<input\s(?![^>]*type=["'{](?:file|checkbox|radio|hidden))[^>]*?\/>/);
+    if (!m || m.index === undefined) return { text, repairs: [] };
+    const tag = m[0];
+    const fixed = tag.replace(/\s*\/>$/, ' required />');
+    return {
+        text: text.slice(0, m.index) + fixed + text.slice(m.index + tag.length),
+        repairs: [{
+            id: 'form_no_validation',
+            detail: 'جعلتُ أول حقل في النموذج مطلوباً فعلاً — النجمة كانت زينة',
+            detailEn: 'Made the form\'s first field really required — the star was decoration',
+            count: 1,
+        }],
+    };
+}
+
 export function repairProjectFiles(
     files: Record<string, string>,
-    opts: { isArabic?: boolean; title?: string } = {},
+    opts: { isArabic?: boolean; title?: string; round?: number } = {},
 ): ProjectRepairPlan {
+    // Which round this is — the strength the escalating fixes are asked for.
+    const round = Math.max(1, Number(opts.round || 1));
     const out: Record<string, string> = {};
     const all: Repair[] = [];
     const merge = (rs: Repair[]) => {
@@ -371,7 +439,7 @@ export function repairProjectFiles(
             const r = repairHtmlShell(text, opts);
             text = r.text; merge(r.repairs);
         } else if (/\.(jsx|tsx)$/.test(lower)) {
-            for (const fix of [repairImagesAlt, repairInputLabels, repairDeadLinks, repairHeadings, repairLazyImages, repairKeyboardControls]) {
+            for (const fix of [repairImagesAlt, repairInputLabels, repairDeadLinks, repairHeadings, repairLazyImages, repairKeyboardControls, repairFormValidation]) {
                 const r = fix(text);
                 text = r.text; merge(r.repairs);
             }
@@ -379,7 +447,10 @@ export function repairProjectFiles(
             // Tokens first: contrast is decided in the palette, and the two
             // appended blocks must not sit between a token and its block.
             for (const fix of [repairContrast, repairTapTargets, repairResponsive]) {
-                const r = fix(text);
+                // The two escalating fixes read the round; repairResponsive
+                // ignores the extra argument, which is what makes one loop
+                // possible over three functions.
+                const r = (fix as any)(text, round);
                 text = r.text; merge(r.repairs);
             }
         }
@@ -443,7 +514,16 @@ export function fixForeground(fg: [number, number, number], bg: [number, number,
  * brand colour is deliberately left alone: it is an identity, not a text
  * colour, and darkening someone's brand without asking is not a repair.
  */
-export function repairContrast(css: string): RepairedFile {
+/**
+ * The contrast bar, per round. 4.5:1 is WCAG AA for body text; 7:1 is AAA.
+ * A colour that still measures low after being lifted to AA is lifted
+ * further, because the measurement — not the standard — is the authority on
+ * what this particular palette needs.
+ */
+const CONTRAST_MIN = [4.5, 5.5, 7];
+
+export function repairContrast(css: string, round = 1): RepairedFile {
+    const minRatio = CONTRAST_MIN[Math.min(Math.max(round, 1), CONTRAST_MIN.length) - 1];
     const repairs: Repair[] = [];
     let count = 0;
 
@@ -463,15 +543,16 @@ export function repairContrast(css: string): RepairedFile {
             if (!m) continue;
             const fg = parseHex(m[1]);
             if (!fg) continue;
-            // Body text is held to 4.5; a muted secondary is still text.
-            if (contrastRatio(fg, bg) >= 4.5) continue;
-            const fixed = toHex(fixForeground(fg, bg, 4.5));
+            // Body text is held to the round's bar; a muted secondary is
+            // still text, and is held to the same one.
+            if (contrastRatio(fg, bg) >= minRatio) continue;
+            const fixed = toHex(fixForeground(fg, bg, minRatio));
             next = next.replace(m[0], `--${token}: ${fixed}`);
             count++;
         }
         return next;
     });
-    add(repairs, 'low_contrast', 'رفعتُ تباين ألوان النصوص إلى 4.5:1 على الأقل (WCAG AA)', count);
+    add(repairs, 'low_contrast', `رفعتُ تباين ألوان النصوص إلى ${minRatio}:1 على الأقل`, count);
     return { text, repairs };
 }
 

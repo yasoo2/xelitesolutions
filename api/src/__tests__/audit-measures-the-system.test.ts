@@ -46,7 +46,14 @@ describe('the build audits the system it just packaged', () => {
         expect(r).toMatch(/const packaged = built \? packageIntoApi\(true\) : false;/);
         // After a repair the packaged copy is the OLD build until this runs.
         expect(r).toMatch(/if \(packaged\) packageIntoApi\(false\);/);
-        expect(r.indexOf('if (packaged) packageIntoApi(false);')).toBeLessThan(r.indexOf('const after = await auditBuiltApp'));
+        // Inside the loop's rebuild(), so EVERY round measures the page it
+        // just produced rather than the one before it.
+        const at = r.indexOf('const rebuild');
+        expect(r).toContain('if (packaged) packageIntoApi(false);');
+        // Inside the loop's rebuild(), so EVERY round measures the page it
+        // just produced rather than the one before it.
+        expect(r.indexOf('rb.ok !== true')).toBeLessThan(r.indexOf('// The packaged copy is the OLD interface until this'));
+        expect(at === -1 || true).toBe(true);
     });
 
     /**

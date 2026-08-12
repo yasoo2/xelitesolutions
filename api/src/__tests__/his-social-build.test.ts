@@ -85,8 +85,9 @@ describe('a repair is what the SECOND measurement says it is', () => {
 
     it('the findings that actually disappeared are computed, not assumed', () => {
         const r = R();
-        expect(r).toMatch(/const beforeIds = \(audit\.findings \|\| \[\]\)\.map\(\(f: any\) => f\.id\);/);
-        expect(r).toMatch(/fixed: beforeIds\.filter\(\(id: string\) => !afterIds\.includes\(id\)\),/);
+        const LOOP = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'improve-loop.ts'), 'utf-8');
+        expect(LOOP).toMatch(/const fixed = remaining\.filter\(id => !after\.findingIds\.includes\(id\)\);/);
+        expect(r).toMatch(/fixed: loop\.fixed,/);
     });
 
     it('and «55/100 → 55/100» is reported as an attempt, never as an achievement', () => {
