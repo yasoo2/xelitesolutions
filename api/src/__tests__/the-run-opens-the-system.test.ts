@@ -104,6 +104,65 @@ describe('readiness does not adopt a stranger\'s server', () => {
     });
 });
 
+/**
+ * «لكن لم ارى النظام جو اثناء تطبيق البروميت انه قام بتشغيل الثيرمال خاصته
+ *  واجرى الاختبارات اللازمه»
+ *
+ * He is right, and one comment in the build explained it: «The measurement is
+ * over; the system he deploys is his to start». Joe started the packaged
+ * server, opened a real browser on it, measured 63/100, repaired it to 73,
+ * measured again — and then killed it. The only minute his system was alive
+ * was the minute it was reserved for Joe's own tests.
+ */
+describe('the system that passed the test is the system he gets', () => {
+    it('the server that answered the audit is no longer killed after it', () => {
+        expect(REACT).not.toContain('self-QA: stopped the server that was started for the measurement');
+        expect(REACT).toMatch(/self-QA: the system stays UP at \$\{liveServer\.url\}/);
+    });
+
+    it('it carries a port and a pid, so it can be handed on and stopped later', () => {
+        expect(REACT).toMatch(/let liveServer: \{ url: string; port: number; pid\?: number; stop: \(\) => void \} \| null/);
+        expect(REACT).toMatch(/return \{ url, port, pid: child\.pid, stop:/);
+    });
+
+    it('the preview panel is told where it is', () => {
+        const at = REACT.indexOf('self-QA: the system stays UP');
+        const block = REACT.slice(at, at + 900);
+        expect(block).toContain("type: 'preview_ready'");
+        expect(block).toContain('url: liveServer.url');
+    });
+
+    it('a previous build\'s server is stopped, so ports do not pile up', () => {
+        const at = REACT.indexOf('self-QA: the system stays UP');
+        expect(REACT.slice(Math.max(0, at - 400), at)).toContain('process.kill(prevPid)');
+    });
+
+    it('and the address is remembered on the project', () => {
+        expect(REACT).toMatch(/live: \{ url: liveServer\.url, port: liveServer\.port, pid: liveServer\.pid, at: Date\.now\(\) \}/);
+    });
+});
+
+describe('an already-running system is adopted, not raced', () => {
+    it('project_run probes the remembered address before starting anything', () => {
+        expect(RUNTOOL).toContain('const live = activeProj?.live;');
+        expect(RUNTOOL).toMatch(/if \(!input\?\.cwd && !input\?\.command && liveUrl && await answersHttp\(liveUrl\)\)/);
+        expect(RUNTOOL).toMatch(/adopted: true, kind: 'already-running'/);
+    });
+
+    /**
+     * An open TCP port proves someone is listening, not that it is your
+     * project — and the remembered address outlives the process that wrote it.
+     */
+    it('adoption needs a real HTTP answer, not just an open port', () => {
+        expect(RUNTOOL).toMatch(/async function answersHttp\(url: string, timeoutMs = 2500\): Promise<boolean>/);
+        expect(RUNTOOL).toContain('return res.status < 500;');
+    });
+
+    it('an explicit cwd or command still starts fresh — adoption is the default only', () => {
+        expect(RUNTOOL).toContain('!input?.cwd && !input?.command && liveUrl');
+    });
+});
+
 describe('what Joe opens is the system, not its source folder', () => {
     it('the react build records WHICH folder became the whole system', () => {
         expect(REACT).toMatch(/\.\.\.\(packaged && apiDir \? \{ packagedInto: apiDir \} : \{\}\),/);

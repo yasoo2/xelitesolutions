@@ -37,6 +37,27 @@ async function findFreePort(start = 4300): Promise<number> {
     return start;
 }
 
+/**
+ * An open TCP port is not a running project.
+ *
+ * The recorded address survives a Joe restart, which is what makes adoption
+ * worth having — but so does the possibility that something else took that
+ * port meanwhile. A port that accepts a connection proves only that SOMEONE
+ * is listening; an HTTP answer proves it is a web server, and that is the
+ * least we should know before calling it «your system».
+ */
+async function answersHttp(url: string, timeoutMs = 2500): Promise<boolean> {
+    try {
+        const ac = new AbortController();
+        const t = setTimeout(() => ac.abort(), timeoutMs);
+        const res = await fetch(url, { signal: ac.signal, redirect: 'follow' });
+        clearTimeout(t);
+        return res.status < 500;
+    } catch {
+        return false;
+    }
+}
+
 function runKey(context?: any): string {
     return String(context?.workspaceId || context?.sessionId || 'default');
 }
@@ -177,6 +198,41 @@ export class ProjectRunTool implements ToolDefinition {
          * the project. It serves the same interface at `/` and answers its own
          * API on the same origin.
          */
+        /**
+         * IF IT IS ALREADY RUNNING, IT IS ALREADY RUNNING.
+         *
+         * The build ends with the packaged system UP — a real browser has just
+         * loaded it and its API has just answered. Starting a second copy on a
+         * second port is not «running the project»; it is a race with the
+         * thing that already works, and the loser is whatever the user is
+         * looking at.
+         *
+         * So the recorded address is probed first. If it answers, that IS the
+         * project, and this tool's job is to point at it.
+         */
+        const live = activeProj?.live;
+        const liveUrl = String(live?.url || (live?.port ? `http://localhost:${live.port}/` : ''));
+        if (!input?.cwd && !input?.command && liveUrl && await answersHttp(liveUrl)) {
+            say(pick(isAr,
+                `✅ نظامك يعمل بالفعل — المعاينة الحية: ${liveUrl}`,
+                `✅ Your system is already running — live preview: ${liveUrl}`));
+            try {
+                const { broadcast } = require('../../ws');
+                broadcast({
+                    type: 'preview_ready', sessionId: context?.sessionId,
+                    data: { url: liveUrl, previewUrl: liveUrl, port: Number(live.port), live: true },
+                } as any);
+            } catch { /* panel optional */ }
+            return {
+                ok: true,
+                output: {
+                    url: liveUrl, previewUrl: liveUrl, port: Number(live.port),
+                    ready: true, pid: live.pid, adopted: true, kind: 'already-running',
+                },
+                logs,
+            };
+        }
+
         const packagedInto = String(activeProj?.packagedInto || activeProj?.linkedApiDir || '').trim();
         const packagedIsWhole = !!packagedInto
             && fs.existsSync(path.join(packagedInto, 'public', 'index.html'))

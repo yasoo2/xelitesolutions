@@ -49,14 +49,21 @@ describe('the build audits the system it just packaged', () => {
         expect(r.indexOf('if (packaged) packageIntoApi(false);')).toBeLessThan(r.indexOf('const after = await auditBuiltApp'));
     });
 
-    it('the packaged server is started for the measurement and stopped after it', () => {
+    /**
+     * It is started for the measurement — and then KEPT. «لكن لم ارى النظام»:
+     * stopping it was how the one live minute of his system stayed private to
+     * Joe's own tests. It is handed over now instead of thrown away.
+     */
+    it('the packaged server is started for the measurement and then handed over', () => {
         const r = R();
         expect(r).toMatch(/const bootPackagedServer = async \(\): Promise<typeof liveServer> => \{/);
         // Never boot a server whose dependencies were never installed.
         expect(r).toMatch(/if \(!packaged \|\| !apiDir \|\| !fs\.existsSync\(path\.join\(apiDir, 'node_modules'\)\)\) return null;/);
         expect(r).toMatch(/if \(\/listening on\/\.test\(l\)\) up\(true\);/);
-        expect(r).toMatch(/liveServer\.stop\(\);/);
-        expect(r).toMatch(/stopped the server that was started for the measurement/);
+        expect(r).toMatch(/self-QA: the system stays UP at \$\{liveServer\.url\}/);
+        expect(r).not.toMatch(/stopped the server that was started for the measurement/);
+        // …and it can still be stopped: the handle survives for project_stop.
+        expect(r).toMatch(/stop: \(\) => \{ try \{ child\.kill\(\); \}/);
     });
 
     it('and both audits — before and after the repair — use that address', () => {

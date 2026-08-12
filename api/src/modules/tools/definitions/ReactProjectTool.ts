@@ -2657,7 +2657,7 @@ export class ReactProjectTool extends BaseTool {
          * will not start, the static folder still gets audited — a build is
          * never blocked on its own audit.
          */
-        let liveServer: { url: string; stop: () => void } | null = null;
+        let liveServer: { url: string; port: number; pid?: number; stop: () => void } | null = null;
         const bootPackagedServer = async (): Promise<typeof liveServer> => {
             if (!packaged || !apiDir || !fs.existsSync(path.join(apiDir, 'node_modules'))) return null;
             const port = 4600 + Math.floor(Math.random() * 300);
@@ -2699,7 +2699,7 @@ export class ReactProjectTool extends BaseTool {
                     try { child.kill(); } catch { /* already gone */ }
                     return null;
                 }
-                return { url, stop: () => { try { child.kill(); } catch { /* already gone */ } } };
+                return { url, port, pid: child.pid, stop: () => { try { child.kill(); } catch { /* already gone */ } } };
             } catch (e: any) {
                 term(`self-QA: could not start the packaged server (${String(e?.message || e).slice(0, 120)}) — auditing the folder instead`);
                 return null;
@@ -2867,11 +2867,39 @@ export class ReactProjectTool extends BaseTool {
                     term('self-repair: reverted — the project is exactly as it was');
                 }
             }
-            // The measurement is over; the system he deploys is his to start.
+            /**
+             * AND THE SYSTEM THAT JUST PROVED IT WORKS STAYS UP.
+             *
+             * «لكن لم ارى النظام». He is right, and this line is why. Joe
+             * started the packaged server, opened a real browser on it,
+             * measured it, repaired it, measured it again — and then killed
+             * it, with the comment «the system he deploys is his to start».
+             * Then it tried to start something else on another port, failed,
+             * and handed him a dead link. He never once saw the thing he
+             * asked for, and Joe had it running in its hands the whole time.
+             *
+             * A server that has just answered a real browser and its own API
+             * IS the live preview. It is handed over, not thrown away: the
+             * preview panel opens it, the delivery message carries its
+             * address, and `project_run` adopts it instead of racing it.
+             */
             if (liveServer) {
-                liveServer.stop();
-                term('self-QA: stopped the server that was started for the measurement');
-                liveServer = null;
+                try {
+                    const prevPid = Number(prevEntry?.live?.pid || 0);
+                    if (prevPid && prevPid !== liveServer.pid) process.kill(prevPid);
+                } catch { /* an old server that is already gone needs no killing */ }
+                term(`self-QA: the system stays UP at ${liveServer.url} — this is your live system, not a test rig`);
+                if (sessionId) {
+                    broadcastThinkingDetail(sessionId, isAr
+                        ? `🌐 نظامك يعمل الآن على ${liveServer.url} — الواجهة وقاعدة بياناتها على نفس العنوان`
+                        : `🌐 Your system is live at ${liveServer.url} — the interface and its database on one address`);
+                    try {
+                        broadcast({
+                            type: 'preview_ready', sessionId,
+                            data: { url: liveServer.url, previewUrl: liveServer.url, port: liveServer.port, live: true },
+                        } as any);
+                    } catch { /* the panel is optional, the server is not */ }
+                }
             }
         }
 
@@ -2890,6 +2918,9 @@ export class ReactProjectTool extends BaseTool {
             // `vite` over the source. Without this the pipeline opened a
             // hot-reload dev server with no backend behind it.
             ...(packaged && apiDir ? { packagedInto: apiDir } : {}),
+            // …and WHERE it is answering right now, so «شغّل المشروع» adopts
+            // the running system instead of starting a second copy of it.
+            ...(liveServer ? { live: { url: liveServer.url, port: liveServer.port, pid: liveServer.pid, at: Date.now() } } : {}),
             // The findings ride along, not just the number: the Quality phase
             // reports THIS audit instead of opening a second browser over the
             // same page, and a score with no findings would be a worse report

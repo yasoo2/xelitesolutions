@@ -142,6 +142,45 @@ async function main() {
     await run({ command: 'stop' }, ctx()).catch(() => null);
     await executeTool('project_stop', {}, { sessionId: sessionKey, workspaceId: 'ws-stop' }).catch(() => null);
 
+    console.log('\n[1b] A system that is already up is ADOPTED, not raced\n');
+
+    /**
+     * «لكن لم ارى النظام». The build ends with the packaged server UP — a real
+     * browser has just loaded it and its API has just answered. Joe used to
+     * kill it («the system he deploys is his to start»), then start something
+     * else somewhere else, fail, and hand over a dead link. So the one moment
+     * his system was alive was the one moment nobody was allowed to see it.
+     */
+    const alive = http.createServer((q, s2) => {
+        if (q.url === '/api/health') { s2.writeHead(200, { 'content-type': 'application/json' }); return s2.end('{"ok":true}'); }
+        s2.writeHead(200, { 'content-type': 'text/html' });
+        s2.end('<!doctype html><title>Dar Al-Rifq</title><h1>the whole system</h1>');
+    });
+    await new Promise<void>(r => alive.listen(0, '127.0.0.1', r));
+    const alivePort = (alive.address() as AddressInfo).port;
+    (global as any).joeProjects[sessionKey].live = {
+        url: `http://127.0.0.1:${alivePort}/`, port: alivePort, pid: process.pid, at: Date.now(),
+    };
+
+    lines = [];
+    const adopted = await run({}, ctx()).catch((e: any) => ({ ok: false, error: String(e?.message) }));
+    for (const l of lines) console.log(`        · ${l}`);
+    check('it adopted the running system instead of starting a second one',
+        adopted?.output?.adopted === true && Number(adopted?.output?.port) === alivePort,
+        JSON.stringify(adopted?.output || adopted?.error).slice(0, 200));
+    check('and told him where to look', lines.some(l => /already running/i.test(l)),
+        lines.join(' | ').slice(0, 200));
+
+    // …but a REMEMBERED address that no longer answers must not be adopted.
+    alive.close();
+    await new Promise(r => setTimeout(r, 200));
+    lines = [];
+    const stale = await run({}, ctx()).catch((e: any) => ({ ok: false, error: String(e?.message) }));
+    check('a remembered address that stopped answering is NOT adopted',
+        stale?.output?.adopted !== true, JSON.stringify(stale?.output || {}).slice(0, 200));
+    (global as any).joeProjects[sessionKey].live = undefined;
+    await executeTool('project_stop', {}, { sessionId: sessionKey, workspaceId: 'ws-stop1b' }).catch(() => null);
+
     console.log('\n[2] A real Vite project is told its port, and does not drift\n');
 
     // Occupy Vite's default, exactly as his machine was.
