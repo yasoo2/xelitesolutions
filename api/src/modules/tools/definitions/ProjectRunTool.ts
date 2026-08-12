@@ -41,17 +41,69 @@ function runKey(context?: any): string {
     return String(context?.workspaceId || context?.sessionId || 'default');
 }
 
-/** Detects how THIS project starts, from its files — not a guess. */
-function detectStart(cwd: string, port: number): { command: string; kind: string; expectPort: number } {
+/**
+ * THE PORT WE ANNOUNCE MUST BE THE PORT IT BINDS.
+ *
+ * What he saw on his screen, after Joe said «على المنفذ 4300»:
+ *
+ *     > dar-al-rifq@0.1.0 dev
+ *     > vite
+ *     Port 5173 is in use, trying another one...
+ *     ➜  Local:   http://localhost:5174/
+ *
+ * Three separate lies in five lines. Vite does not read `PORT` — it reads
+ * `--port` — so the environment variable we set was ignored and it went to
+ * its own default. That default was already taken by a PREVIOUS run of the
+ * same project that nobody stopped, so it drifted again, silently. And the
+ * URL Joe handed him, `http://localhost:4300/`, pointed at nothing at all:
+ * that is the `ERR_CONNECTION_REFUSED` he reported.
+ *
+ * A hint that a framework is free to ignore is not a decision. Each dev
+ * server is now told its port in the flag IT reads, and Vite is additionally
+ * told `--strictPort`: bind this port or fail loudly. Drifting to a port
+ * nobody was told about is worse than not starting.
+ */
+function devServerPortFlags(cwd: string, port: number): string {
+    const has = (f: string) => fs.existsSync(path.join(cwd, f));
+    let deps: Record<string, string> = {};
+    try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8'));
+        deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+    } catch { /* malformed package.json — fall through to the file probe */ }
+
+    if (deps.vite || has('vite.config.js') || has('vite.config.ts')) {
+        return ` -- --port ${port} --strictPort --host 127.0.0.1`;
+    }
+    if (deps.next || has('next.config.js') || has('next.config.mjs')) {
+        return ` -- --port ${port} --hostname 127.0.0.1`;
+    }
+    // Create React App, Parcel, Angular and plain `node` servers all read PORT
+    // from the environment, which is already set.
+    return '';
+}
+
+/**
+ * How THIS project starts, from its files — not a guess.
+ *
+ * `forced` says whether the port is a COMMAND, not a hope: a flag the
+ * framework must obey, or a static server we point ourselves. It decides
+ * whether readiness may go looking on other ports (see below).
+ */
+export function detectStart(cwd: string, port: number): { command: string; kind: string; expectPort: number; forced: boolean } {
     const pkgPath = path.join(cwd, 'package.json');
     if (fs.existsSync(pkgPath)) {
         let scripts: Record<string, string> = {};
         try { scripts = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).scripts || {}; } catch { /* malformed */ }
-        // A frontend dev server (Vite/Next/CRA): it picks its own port; we set
-        // PORT and also discover via probing.
-        if (scripts.dev) return { command: 'npm run dev', kind: 'dev-server', expectPort: port };
-        // A generic start script — most Node servers read process.env.PORT.
-        if (scripts.start) return { command: 'npm start', kind: 'npm-start', expectPort: port };
+        // A generic start script comes FIRST for a packaged system: `npm start`
+        // serves the built interface AND its API from one origin, which is the
+        // thing he asked for. `npm run dev` is a source-code tool.
+        if (scripts.start) return { command: 'npm start', kind: 'npm-start', expectPort: port, forced: false };
+        // A frontend dev server (Vite/Next/CRA) — told its port in the flag it
+        // actually reads, so the announcement below is true.
+        if (scripts.dev) {
+            const flags = devServerPortFlags(cwd, port);
+            return { command: `npm run dev${flags}`, kind: 'dev-server', expectPort: port, forced: !!flags };
+        }
     }
     // A bare Node server entry that listens.
     for (const entry of ['server.js', 'app.js', 'index.js', 'main.js', 'src/server.js', 'src/index.js']) {
@@ -59,17 +111,17 @@ function detectStart(cwd: string, port: number): { command: string; kind: string
         if (fs.existsSync(f)) {
             try {
                 if (/\.listen\s*\(/.test(fs.readFileSync(f, 'utf-8'))) {
-                    return { command: `node ${entry}`, kind: 'node-entry', expectPort: port };
+                    return { command: `node ${entry}`, kind: 'node-entry', expectPort: port, forced: false };
                 }
             } catch { /* unreadable */ }
         }
     }
     // A static site — serve the folder deterministically on our port.
     if (fs.existsSync(path.join(cwd, 'index.html'))) {
-        return { command: `npx -y serve -l ${port} -s . --no-clipboard`, kind: 'static', expectPort: port };
+        return { command: `npx -y serve -l ${port} -s . --no-clipboard`, kind: 'static', expectPort: port, forced: true };
     }
     // Last resort: try npm start and let readiness probing sort it out.
-    return { command: 'npm start', kind: 'unknown', expectPort: port };
+    return { command: 'npm start', kind: 'unknown', expectPort: port, forced: false };
 }
 
 export class ProjectRunTool implements ToolDefinition {
@@ -105,9 +157,40 @@ export class ProjectRunTool implements ToolDefinition {
         // created — the two stores never talked. The session's active
         // project is the default now; an explicit cwd still wins.
         const activeProj = (global as any).joeProjects?.[String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_')];
+
+        /**
+         * RUN THE SYSTEM, NOT ITS SOURCE FOLDER.
+         *
+         * The React build ends by copying its compiled interface into the API
+         * server's `public/` — «one origin, one npm start», the folder he can
+         * upload to a domain. Then the pipeline called project_run, which took
+         * the session's active project (the React SOURCE directory) and started
+         * `vite`. So what opened was a developer's hot-reload server for the
+         * source code, on a port nobody chose, with NO backend behind it — the
+         * database, the sign-in, the admin panel and every table were in the
+         * server that was never started.
+         *
+         * He asked «ما هذا الذي فتحه جو؟» about exactly that window, and the
+         * honest answer was: the wrong half of his own system.
+         *
+         * When the interface has been packaged into its server, the SERVER is
+         * the project. It serves the same interface at `/` and answers its own
+         * API on the same origin.
+         */
+        const packagedInto = String(activeProj?.packagedInto || activeProj?.linkedApiDir || '').trim();
+        const packagedIsWhole = !!packagedInto
+            && fs.existsSync(path.join(packagedInto, 'public', 'index.html'))
+            && fs.existsSync(path.join(packagedInto, 'package.json'));
+
         const cwd = String(input?.cwd || '').trim()
+            || (packagedIsWhole ? packagedInto : '')
             || (activeProj?.dir && fs.existsSync(activeProj.dir) ? String(activeProj.dir) : '')
             || workspaceService.getActiveRoot(context?.workspaceId);
+        if (!input?.cwd && packagedIsWhole) {
+            say(pick(isAr,
+                `📦 الواجهة محزومة داخل الخادم — أُشغّل النظام كاملاً (${path.basename(packagedInto)}) لا مجلّد الشيفرة.`,
+                `📦 The interface is packaged inside the server — starting the whole system (${path.basename(packagedInto)}), not the source folder.`));
+        }
         if (!fs.existsSync(cwd)) return { ok: false, error: `مسار المشروع غير موجود: ${cwd}`, logs };
         if (activeProj?.dir === cwd) logs.push(`project_run: using the session's active project (${cwd})`);
         // Falling back to the workspace root is deliberate — «شغّل المشروع»
@@ -126,7 +209,7 @@ export class ProjectRunTool implements ToolDefinition {
 
         const port = Number(input?.port) || await findFreePort();
         const detected = input?.command
-            ? { command: String(input.command), kind: 'override', expectPort: port }
+            ? { command: String(input.command), kind: 'override', expectPort: port, forced: false }
             : detectStart(cwd, port);
         say(pick(isAr,
             `▶️ أُشغّل المشروع (${detected.kind}) على المنفذ ${port}…`,
@@ -145,9 +228,21 @@ export class ProjectRunTool implements ToolDefinition {
         }
         const pid = res.data?.pid;
 
-        // Readiness: probe the chosen port first, then the common framework ports,
-        // so we DISCOVER where it actually bound instead of assuming.
-        const probeList = [port, ...COMMON_DEV_PORTS.filter(p => p !== port)];
+        /**
+          * Readiness — and the trap in «discover where it bound».
+          *
+          * Probing the common framework ports was written to find a server
+          * that drifted. But a drifted server is indistinguishable from
+          * SOMEONE ELSE'S: his «Port 5173 is in use» was a Vite from an
+          * earlier run that nobody stopped, and a probe of 5173 would have
+          * reported that orphan as «the project is running» and opened its
+          * stale interface as the new one.
+          *
+          * So the search is only allowed where the port was a hope. When we
+          * FORCED it — a flag the framework must obey, or a static server we
+          * point ourselves — the answer is that port or nothing.
+          */
+        const probeList = detected.forced ? [port] : [port, ...COMMON_DEV_PORTS.filter(p => p !== port)];
         let livePort = 0;
         const deadline = Date.now() + 45000; // weak machines + npm cold start
         while (Date.now() < deadline && !livePort) {
@@ -160,12 +255,29 @@ export class ProjectRunTool implements ToolDefinition {
         if (pid) RUNNING.set(key, { pid, port: livePort || port, cwd, command: detected.command, startedAt: Date.now() });
 
         if (!livePort) {
+            /**
+             * AND WHEN NOTHING ANSWERED, SAY SO — DO NOT HAND OVER AN ADDRESS.
+             *
+             * This used to return `url: http://localhost:${port}/` for a port
+             * that had just been probed for 45 seconds and found dead. That
+             * link went into the delivery report and into his browser, and
+             * came back «ERR_CONNECTION_REFUSED» — Joe inventing an address
+             * for a server he had failed to confirm.
+             *
+             * A URL is a promise that something is there. With no `url`, the
+             * pipeline's `if (runRes.output?.url)` leaves the report silent
+             * about a live link instead of advertising a dead one, and he
+             * gets the command to run it himself.
+             */
             say(pick(isAr,
-                '⏳ بدأ الخادم لكنه لم يستجب بعد — قد يحتاج وقتاً أطول على جهاز ضعيف.',
-                '⏳ The server started but has not answered yet — a slower machine may need longer.'));
+                `⏳ بدأ الخادم لكنه لم يستجب على أي منفذ خلال ٤٥ ثانية — لن أعطيك رابطاً لم أتحقّق منه. شغّله بنفسك: «${detected.command}» داخل ${cwd}`,
+                `⏳ The server started but answered on no port within 45s — I will not hand you a link I could not confirm. Run it yourself: «${detected.command}» in ${cwd}`));
             return {
                 ok: true,
-                output: { url: `http://localhost:${port}/`, port, ready: false, pid, note: 'started_not_confirmed' },
+                output: {
+                    port, ready: false, pid, cwd, command: detected.command,
+                    note: 'started_not_confirmed',
+                },
                 logs,
             };
         }

@@ -2884,6 +2884,12 @@ export class ReactProjectTool extends BaseTool {
             // database from disk, and the inbox bridge resolves the owner,
             // even after this react build took the session's project slot.
             ...(apiLink ? { linkedApi: apiLink, linkedApiDir: prevEntry.dir } : {}),
+            // WHICH FOLDER IS THE SYSTEM. When the compiled interface was
+            // copied into the server's public/, that server serves the whole
+            // thing from one origin — so `project_run` must start IT, not run
+            // `vite` over the source. Without this the pipeline opened a
+            // hot-reload dev server with no backend behind it.
+            ...(packaged && apiDir ? { packagedInto: apiDir } : {}),
             // The findings ride along, not just the number: the Quality phase
             // reports THIS audit instead of opening a second browser over the
             // same page, and a score with no findings would be a worse report
