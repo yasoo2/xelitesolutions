@@ -132,9 +132,12 @@ export const MODELS: Record<string, ModelConfig> = {
     },
 
     'llama-3.1-8b': {
-        name: 'Llama 3.1 8B',
+        name: 'GPT OSS 20B',
         provider: 'groq',
-        model: 'llama-3.1-8b-instant',
+        // Groq retires llama-3.1-8b-instant on 2026-08-16 and names GPT OSS
+        // 20B as its replacement. `liveGroqModel` would have caught it either
+        // way; this is the same answer without the first wasted request.
+        model: 'openai/gpt-oss-20b',
         maxTokens: 8000,
         temperature: 0.7,
         cost: 'free',
@@ -152,9 +155,9 @@ export const MODELS: Record<string, ModelConfig> = {
     },
 
     'gemma-2-9b': {
-        name: 'Llama 3.1 8B (code/math)',
+        name: 'GPT OSS 20B (code/math)',
         provider: 'groq',
-        model: 'llama-3.1-8b-instant',
+        model: 'openai/gpt-oss-20b',
         maxTokens: 8000,
         temperature: 0.7,
         cost: 'free',
@@ -260,8 +263,8 @@ Return exactly this JSON structure:
             return analyzeTask(userMessage, history);
         }
 
-        console.info('[IntelligentRouter] ⚡ Using Groq (Llama 3) for instant analysis');
-        const analyst = 'llama-3.1-8b-instant';
+        console.info('[IntelligentRouter] ⚡ Using Groq for instant analysis');
+        const analyst = 'openai/gpt-oss-20b';
 
         const responseText = await callGroq(analyst, [
             { role: 'system', content: systemPrompt },
@@ -523,8 +526,92 @@ function trimMessagesForGroq(messages: any[], keepRecent = 4): any[] {
     return [...system, ...recent];
 }
 
+/**
+ * ASK GROQ WHAT IT SERVES TODAY — THE LESSON THIS FILE KEPT RE-LEARNING.
+ *
+ * The registry above already carries a scar: «Groq DECOMMISSIONED
+ * llama-3.1-70b-versatile, mixtral-8x7b-32768 and gemma2-9b-it — calling them
+ * returns a permanent 400, which sidelined Groq for whole sessions». Each of
+ * those was repointed BY HAND, after it broke, on the user's machine.
+ *
+ * Then on 2026-08-13 Groq announced that llama-3.1-8b-instant stops being
+ * served on the 16th — three days — and this file was one email away from
+ * taking the same wound a fourth time.
+ *
+ * The vision path solved this long ago and wrote down why: «providers rename
+ * and retire models faster than any hardcoded list survives». It lists /models
+ * live and treats the answer as authoritative. The TEXT router never learned
+ * it, which is the only reason a vendor's notice is an emergency here at all.
+ *
+ * So: the catalogue is listed once (cached ten minutes) and any id the router
+ * is about to call is checked against it. An id Groq no longer serves is
+ * REPLACED with the closest thing it does serve, out loud, instead of spending
+ * a request to be told 400. When /models cannot be reached the configured id
+ * is used unchanged — an unreachable catalogue is not evidence that a model
+ * is gone.
+ */
+let groqTextCache: { at: number; ids: string[] } | null = null;
+
+async function groqTextModels(apiKey: string): Promise<string[]> {
+    if (groqTextCache && Date.now() - groqTextCache.at < 600_000) return groqTextCache.ids;
+    try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        const res = await fetch('https://api.groq.com/openai/v1/models', {
+            signal: ctrl.signal, headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        clearTimeout(timer);
+        if (!res.ok) throw new Error(`models list ${res.status}`);
+        const data: any = await res.json();
+        const ids: string[] = (data?.data || []).map((m: any) => String(m?.id || '')).filter(Boolean);
+        groqTextCache = { at: Date.now(), ids };
+        return ids;
+    } catch (e: any) {
+        console.warn(`[Groq] could not list models (${e?.message || e}) — using the configured ids unchanged`);
+        // Empty means «unknown», never «none». The caller must not read an
+        // unreachable catalogue as proof that every model was retired.
+        groqTextCache = { at: Date.now(), ids: [] };
+        return [];
+    }
+}
+
+/**
+ * The stand-ins, per slot, in the order Groq itself recommends them.
+ *
+ * `small` is the quick-decision slot llama-3.1-8b-instant filled, and whose
+ * replacement Groq names as GPT OSS 20B. `large` is the reasoning slot. Each
+ * list is tried in order against what the catalogue really contains.
+ */
+const GROQ_STANDINS: Record<'small' | 'large', string[]> = {
+    small: ['openai/gpt-oss-20b', 'gpt-oss-20b', 'llama-3.1-8b-instant', 'llama-3.3-70b-versatile'],
+    large: ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
+};
+
+/** Substitute a retired id for one Groq actually serves, and say so. */
+export async function liveGroqModel(model: string, apiKey: string): Promise<string> {
+    const ids = await groqTextModels(apiKey);
+    if (!ids.length) return model;                 // catalogue unknown → change nothing
+    if (ids.includes(model)) return model;          // still served → change nothing
+    const slot: 'small' | 'large' = /70b|120b|versatile|large/i.test(model) ? 'large' : 'small';
+    const pick = GROQ_STANDINS[slot].find(id => ids.includes(id))
+        // Whisper, TTS and the guard models live in the same catalogue and
+        // cannot hold a conversation. A blind «first id that exists» picks one.
+        || ids.find(id => !/whisper|tts|guard|vision|scout|maverick/i.test(id))
+        || '';
+    if (!pick) {
+        console.warn(`[Groq] «${model}» is not in the catalogue and nothing suitable replaces it — calling it anyway.`);
+        return model;
+    }
+    console.warn(`[Groq] «${model}» is no longer served — using «${pick}» instead (from the live catalogue).`);
+    return pick;
+}
+
 async function callGroq(model: string, messages: any[], onPartial?: (delta: string) => void, tools?: any[]): Promise<string> {
     const GROQ_API_KEY = process.env.GROQ_API_KEY || 'gsk_placeholder';
+    // A retired id costs a round trip and a 400 before anyone learns of it.
+    // The catalogue is cached ten minutes, so this is one request per ten
+    // minutes for the whole process.
+    model = await liveGroqModel(model, GROQ_API_KEY);
 
     try {
         const stream = !!onPartial;

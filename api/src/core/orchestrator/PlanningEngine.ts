@@ -73,6 +73,22 @@ export interface ExecutionPlan {
         complexity: string;
         riskLevel: string;
         estimatedDurationMs?: number;
+        /**
+         * WHY THESE ARE DECLARED RATHER THAN CAST AWAY.
+         *
+         * Three plans were setting `terminalExecution`, `buildVerification`
+         * and `matchedBy` on this object, and `tsc` refused two of them —
+         * excess-property checks catch a fresh literal but not one that has
+         * been widened on the way in, so the same mistake failed loudly in one
+         * place and passed silently in another. They are real, useful facts
+         * about a plan: whether it must run in the terminal, whether its
+         * result has to be build-verified, and which matcher chose it.
+         * Declaring them makes them readable by the orchestrator instead of
+         * being a lie the compiler was talked out of.
+         */
+        terminalExecution?: boolean;
+        buildVerification?: boolean;
+        matchedBy?: string;
     };
 }
 
@@ -524,7 +540,7 @@ Rules:
         // from silently creating a branch or commit.
         const requestsBoundedLocalGitWorkflow = /(فرع|برانش|التزام|كوميت|commit|branch|(?:docs|documentation)\/[A-Za-z0-9._/-]+\.md|ملف\s*(?:توثيق|ملاحظات)|وثّ?ق|توثيق)/i.test(probe);
         if (earlyGithubRepository && earlyGithubLocalWork) {
-            const steps: PlanStep[] = [{
+            const steps: ExecutionStep[] = [{
                 id: 'repo_import',
                 description: 'استنساخ المستودع وتحليل ملفاته ومراجعة اختباراته محلياً وربطه بالجلسة',
                 tool: 'import_project',

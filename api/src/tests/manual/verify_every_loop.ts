@@ -167,7 +167,14 @@ async function main() {
     } else {
         react = await run('react_project', { request: REQUEST });
         proj = String(react?.output?.path || '');
-        check('react_project built an interface', !!react?.ok && !!proj && fs.existsSync(proj), String(react?.error || '').slice(0, 200));
+        // `ok` now also carries the delivery-quality gate: it goes false when a
+        // high-severity finding survives, on a build that really happened. The
+        // loop being tested here is «did the interface get built», so it asks
+        // the disk — and checks separately that a blocked delivery is named.
+        check('react_project built an interface', !!proj && fs.existsSync(proj), String(react?.error || '').slice(0, 200));
+        check('…and if delivery was blocked, it said why',
+            react?.ok === true || /quality_gate|visual_audit/.test(String(react?.error || '')),
+            String(react?.error || '(no error)'));
         check('vite really produced a bundle', !!react?.output?.built);
         check('and it was packaged into the server, one origin',
             fs.existsSync(path.join(apiDir, 'public', 'index.html')));

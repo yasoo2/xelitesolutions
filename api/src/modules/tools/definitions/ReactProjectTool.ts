@@ -3652,6 +3652,23 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                 installed,
                 built,
                 audit,
+                /**
+                 * A BLOCKED DELIVERY IS EVIDENCE, NOT AN EXCEPTION TO RETRY.
+                 *
+                 * This gate returns ok:false on a build that really wrote its
+                 * files, really compiled and really packaged — it is saying
+                 * «there is a high-severity finding I could not repair». The
+                 * orchestrator reads a bare ok:false as a transient failure and
+                 * sends it to `attemptRecovery`, which asks a model to invent a
+                 * repair plan for a build that already worked.
+                 *
+                 * The guard for that already exists and this file was not using
+                 * it: `verificationFailed` stops recovery and surfaces the
+                 * evidence instead. The same rule the run path got — «final
+                 * evidence, not a transient exception for an LLM to retry
+                 * blindly» — now covers the delivery gate that reuses its shape.
+                 */
+                verificationFailed: deliveryBlocked,
                 delivery: {
                     accepted: !deliveryBlocked,
                     blockers: blockers.map((f: any) => f.id),

@@ -118,7 +118,22 @@ async function main() {
         skipped('react_project', 'the API never installed (no network) — a build would measure nothing');
     } else {
         const react = await run('react_project', { request: REQUEST });
-        check('react_project succeeded', !!react?.ok, String(react?.error || '').slice(0, 300));
+        /**
+         * `ok` NO LONGER MEANS «THE WORK HAPPENED».
+         *
+         * A delivery-quality gate now returns ok:false when a high-severity
+         * finding survives the self-repair — on a build that really wrote its
+         * files, compiled and packaged. That is a defensible thing for the tool
+         * to say, and it means this harness must assert on the EVIDENCE it
+         * cares about rather than on a flag whose meaning changed underneath
+         * it. A blocked delivery is still checked: it has to be reported, not
+         * silent.
+         */
+        const delivered = !!react?.output?.path;
+        check('react_project produced a project', delivered, String(react?.error || '').slice(0, 300));
+        check('…and a blocked delivery says so instead of passing quietly',
+            react?.ok === true || /quality_gate|visual_audit/.test(String(react?.error || '')),
+            String(react?.error || '(no error)'));
         const proj = String(react?.output?.path || '');
         check('it wrote a project directory', !!proj && fs.existsSync(proj), proj);
         const built = !!react?.output?.built;
