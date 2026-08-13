@@ -135,6 +135,31 @@ export class WorkspaceService {
     }
     private get localRoot(): string {
         if (this._localRoot) return this._localRoot;
+        /**
+         * AN OPERATOR CAN PIN WHERE BUILDS LAND.
+         *
+         * An outside test ran Joe inside a sandbox, told it in the prompt not
+         * to write outside a designated folder, and Joe wrote into its own
+         * `my-workspace` — inside its configured root, so no boundary was
+         * crossed, but not where the operator had decided either. It had no
+         * supported way to be TOLD: the root is a saved choice or a default,
+         * and prose in a prompt is not a setting.
+         *
+         * This is that setting. `JOE_WORKSPACE_ROOT` wins over the saved
+         * choice and the default, so a sandbox, a CI job or a test harness can
+         * confine every build to one directory and then assert that nothing
+         * appeared anywhere else.
+         */
+        const pinned = String(process.env.JOE_WORKSPACE_ROOT || '').trim();
+        if (pinned) {
+            try {
+                fs.mkdirSync(pinned, { recursive: true });
+                this._localRoot = pinned;
+                return pinned;
+            } catch (e: any) {
+                console.warn(`[WorkspaceService] JOE_WORKSPACE_ROOT is set to ${pinned} but could not be used (${e?.message}) — falling back.`);
+            }
+        }
         // Load a previously chosen location — but only if it still EXISTS.
         // A saved path can outlive its folder (a temp dir, an unplugged drive,
         // a folder the user deleted), and returning it anyway pointed every

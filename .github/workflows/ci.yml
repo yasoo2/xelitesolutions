@@ -89,6 +89,20 @@ jobs:
       # `--omit=dev` on purpose: a vulnerability in a build-time tool is worth
       # knowing about, but it is not the same fact as one in a package that runs
       # in production, and mixing the two is how audit output gets ignored.
+      # WHY `critical` AND NOT `high` — MEASURED TWICE, NOT ASSUMED.
+      #
+      # One high advisory remains in the production tree: js-yaml, reachable
+      # only through pm2. The obvious remedy is the one the advisory itself
+      # names — pm2 7.0.3 — and it was installed and measured here:
+      #
+      #     pm2 6.0.14  →  1 high (js-yaml) + 1 moderate (pm2)
+      #     pm2 7.0.3   →  2 high (js-yaml STILL, plus pm2 itself)
+      #
+      # The upgrade does not remove js-yaml and adds a high of its own, so
+      # `fixAvailable` is wrong for this tree. The gate stays where the
+      # evidence puts it. The unfiltered audit runs directly below, so the true
+      # number is never hidden — only the blocking threshold is being argued,
+      # and it moves the day pm2's own tree is clean.
       - name: Audit — api (production deps)
         run: npm --prefix api audit --omit=dev --audit-level=critical
 
