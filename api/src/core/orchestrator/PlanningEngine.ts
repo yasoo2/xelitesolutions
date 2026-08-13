@@ -400,6 +400,20 @@ Rules:
             ? `${userGoal}\n${goalNorm}` : userGoal;
         const goalLower = probe.toLowerCase();
 
+        /**
+         * LOCAL BUILD IS A CONTRACT, NOT A KEYWORD TIE.
+         *
+         * A real acceptance run asked Joe to build and preview a React dashboard
+         * locally, then stated «لا نشر خارجي». The generic capability chain split
+         * the sentence at «ثم», saw the bare word «نشر», and planned deploy_pages
+         * anyway. The permission gate correctly blocked it, but Joe had already
+         * abandoned every requested local action. When a build request explicitly
+         * denies publishing, neither a chain nor the capability scorer may choose
+         * deployment; the deterministic builder below owns the whole request.
+         */
+        const deniesExternalPublish = /(?:^|[\s،؛,:.!?])(?:(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)(?:نشر|انشر|أنشر|رفع|استضافة|deploy|publish|host|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])/i.test(userGoal);
+        const localBuildContract = PlanningEngine.looksLikeBuild(userGoal) && deniesExternalPublish;
+
         // [EARLY EXPLICIT URL OPEN] A bounded navigation request is a hard
         // prerequisite for any page-local tool. Resolve it before capability
         // chains and model-guided routing, which cannot safely search a page
@@ -460,7 +474,10 @@ Rules:
             const isGithubWorkRequest = /(?:https?:\/\/)?(?:www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?(?:[\/?#\s]|$)/i.test(goalText)
                 && /(استنسخ|نسخ|انسخ|استورد|استيراد|حلّ?ل|تحليل|افهم|فهم|دقّ?ق|مراجعة|طوّ?ر|تطوير|عدّ?ل|تعديل|أصلح|اصلح|إصلاح|اختبر|اختبار|شغّ?ل|تشغيل|نفّ?ذ|بناء|build|develop|implement|modify|edit|fix|test|run|clone|import|analy[sz]e|review|inspect)/i.test(probe);
             // Only an explicit «ثم»/«then» — a newline is layout, not order.
-            const early = !isGithubWorkRequest && hasExplicitSequence(goalText) ? capabilityChain(goalText, 5) : [];
+            // A locally constrained build must remain one coherent build plan.
+            // In particular, do not turn a negated «لا نشر» clause into the
+            // positive deploy_pages action inside a generic sequence.
+            const early = !isGithubWorkRequest && !localBuildContract && hasExplicitSequence(goalText) ? capabilityChain(goalText, 5) : [];
             if (early.length >= 2 && !early.some((c: any) => BUILDERS.has(c.name))) {
                 const chained = PlanningEngine.capabilityPlan(intent);
                 if (chained && chained.metadata?.matchedBy === 'capability-chain') {
@@ -808,7 +825,10 @@ Rules:
         const pageIsOpen = !!((global as any).joePages && (global as any).joePages[editKey]);
         const looksLikeEdit = /(اضف|أضف|ضيف|ضف|حط|خلي|خلّي|شيل|سوي|سوّي|غير|غيّر|عدل|عدّل|بدل|بدّل|احذف|امسح|كبر|كبّر|صغر|صغّر|رتب|رتّب|ركب|ركّب|جمل|جمّل|حسن|حسّن)/.test(String(intent.goal || ''))
             || /\b(add|change|replace|remove|make it|set the)\b/i.test(String(intent.goal || ''));
-        const capable = (pageIsOpen && looksLikeEdit) ? null : capabilityRoute(String(intent.goal || ''), context);
+        // The capability scorer sees token overlap only. Do not let it route a
+        // local-only build to deploy_pages just because the user mentioned the
+        // action they explicitly prohibited.
+        const capable = (pageIsOpen && looksLikeEdit) || localBuildContract ? null : capabilityRoute(String(intent.goal || ''), context);
         if (capable) {
             console.log(`[PlanningEngine] capability router -> ${capable.tool} (score ${capable.score}, runner-up ${capable.runnerUp || 'none'})`);
             return {

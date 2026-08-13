@@ -97,3 +97,28 @@ describe('honesty: a backend is refused, not faked', () => {
         expect(src).toMatch(/GitHub Pages يستضيف الملفات الثابتة فقط/);
     });
 });
+
+
+describe('local-only build contracts outrank deployment keywords', () => {
+    test('a sequenced local React build with an explicit external-publish ban never plans deploy_pages', async () => {
+        const goal = [
+            'اعمل كوكيل هندسي مستقل داخل مساحة العمل الحالية.',
+            'حلل بنية المشروع ثم ابنِ لوحة React عربية RTL تفاعلية لإدارة طلبات الصيانة.',
+            'شغّل البناء والاختبارات محلياً ثم افتح معاينة محلية وافحص التفاعل في المتصفح.',
+            'لا نشر خارجي ولا Git ولا رفع ملفات؛ إن تعذر التحقق فاذكر الفشل بوضوح.',
+        ].join(' ');
+        const p = await plan(goal);
+        expect(p.steps.some(step => step.tool === 'deploy_pages')).toBe(false);
+        expect(['web_page_builder', 'react_project', 'project_pipeline', 'scaffold_project']).toContain(p.steps[0].tool);
+    });
+
+    test('an English local build with do not deploy never plans deploy_pages', async () => {
+        const p = await plan('Build a local Arabic React dashboard, test it locally, preview it in the browser, and do not deploy or publish anything.');
+        expect(p.steps.some(step => step.tool === 'deploy_pages')).toBe(false);
+        expect(['web_page_builder', 'react_project', 'project_pipeline', 'scaffold_project']).toContain(p.steps[0].tool);
+    });
+
+    test('a standalone publish request remains deploy_pages', async () => {
+        expect((await plan('انشر الموقع على GitHub Pages')).steps[0].tool).toBe('deploy_pages');
+    });
+});
