@@ -28,6 +28,7 @@ import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { ROLES, describeRoles } from '../../../core/design/roles';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
+import { openTerminal } from '../../../core/quality/terminal-session';
 import { persistJoeProjects } from '../../../api/page-store';
 
 const slug = (s: string) => (String(s || '').toLowerCase()
@@ -2075,8 +2076,26 @@ export class ApiProjectTool extends BaseTool {
         // the catalogue shape — a booking table seeded with «Dish of the day»
         // would be noise pretending to be data.
         const columns = apiColumnsForRequest(request);
-        // The parent table, when this system has one — «طبيب ← مواعيده».
-        const relation = apiRelationForRequest(request);
+        /**
+         * The parent table, when this system has one — «طبيب ← مواعيده».
+         *
+         * BUT NOT WHEN HE NAMED THE TABLES HIMSELF.
+         *
+         * The relation comes from the blueprint of the KIND, and the model
+         * comes from the request. Ask for «Tables: bookings, clients» and the
+         * two disagree: the model is exactly those two, each with belongsTo
+         * null, while the blueprint still hands over a `providers` parent. The
+         * server then announced «two linked tables: /api/providers» for a
+         * parent it never created, and the build's own relation proof tested
+         * that ghost and reported «parent_label MISSING» — a failure invented
+         * by the check, about a feature nobody asked for, printed under a
+         * server that was working perfectly.
+         *
+         * The declared tables are the tables. When he writes them down,
+         * nothing is added behind them.
+         */
+        const { declaredTables } = require('../../../core/design/declared-tables');
+        const relation = declaredTables(request).length ? null : apiRelationForRequest(request);
         /**
          * AND THE REST OF THE SYSTEM'S TABLES.
          *
@@ -2100,7 +2119,34 @@ export class ApiProjectTool extends BaseTool {
          * builds it. Every failure lands on the six domains.
          */
         const { designDataModel } = require('../../../core/design/schema-designer');
-        const model = await designDataModel(request, { onNote: (n: string) => term(n) });
+        const designed = await designDataModel(request, { onNote: (n: string) => term(n) });
+        /**
+         * A DECLARED TABLE THAT IS ALREADY THE SYSTEM'S OWN PRIMARY TABLE.
+         *
+         * `alreadyOwned` below does exactly this for `orders`, and the primary
+         * table needed the same rule. «Tables: bookings, clients» on a booking
+         * system produced TWO definitions of `bookings`: the built-in one in
+         * db.js (name, phone, service, date…) and a second one in the model
+         * (title, date, time, status) — both mounted on `/api/bookings`, the
+         * generic mount registered first and therefore winning.
+         *
+         * So a write shaped for the real table was validated against the other
+         * one, answered 400, and the build reported «live proof → FAILED» on a
+         * server that was working. One name cannot mean two tables; the
+         * built-in one is the one with the CRUD, the auth and the ownership
+         * rules, so it keeps the name — and Joe says so instead of silently
+         * dropping a word the user typed.
+         */
+        const collided = designed.filter((e: any) => e.key === resource).map((e: any) => e.key);
+        const model = designed.filter((e: any) => e.key !== resource);
+        if (collided.length) {
+            term(`data model: ${collided.join(', ')} — already the system's own table, not regenerated`);
+            if (sessionId) {
+                broadcastThinkingDetail(sessionId, isAr
+                    ? `ℹ️ «${collided.join('، ')}» هو جدول النظام الأساسي أصلاً (/api/${resource}) — لم أُكرّره`
+                    : `ℹ️ "${collided.join(', ')}" is already the system's own table (/api/${resource}) — not duplicated`);
+            }
+        }
         if (model.length) {
             if (sessionId) broadcastThinkingDetail(sessionId, describeModel(model, isAr));
         }
@@ -2247,19 +2293,25 @@ export class ApiProjectTool extends BaseTool {
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
             const { executionEngine } = require('../../../kernel/ExecutionEngine');
-            const inst = await (async () => {
-                const h = executionEngine.runArgvStreaming('npm', ['install', '--no-audit', '--no-fund'], {
-                    cwd: proj, timeout: 240_000, env: { NO_COLOR: '1' },
-                    onLine: (l: string) => term(`  ${l.slice(0, 200)}`),
-                });
-                const r = await h.done;
-                if (r.exitCode === null) return -1;
-                if (r.exitCode === 124 && r.error === 'timeout') return -2;
-                return r.exitCode;
-            })();
+            /**
+             * THE SHELL HE CAN SEE — SAME AS THE INTERFACE BUILD.
+             *
+             * The install ran here before and printed its output with no
+             * prompt above it, so the panel filled with npm's chatter attached
+             * to no command. The session prints the directory and the tool
+             * versions first, echoes each command before it spawns, and closes
+             * it with an exit code and a duration.
+             */
+            const shell = openTerminal(term);
+            await shell.open(isAr ? 'طرفية جو — بناء الخادم' : 'Joe\'s terminal — building the server', proj);
+            const instRun = await shell.run('npm', ['install', '--no-audit', '--no-fund'], { cwd: proj, timeout: 240_000 });
+            const inst = instRun.missing ? -1 : instRun.timedOut ? -2 : (instRun.exitCode as number);
             npmMissing = inst === -1;
             installed = inst === 0;
-            term(`npm install → ${installed ? 'OK' : `exit ${inst}`}`);
+            shell.note(installed
+                ? 'packages installed — the server can boot now'
+                : npmMissing ? 'npm is not on this machine — the project is written, but nothing can run here'
+                    : `install did not finish (exit ${inst})`);
 
             if (installed) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🚀 أشغّل الخادم وأثبت كتابة/قراءة حقيقية…' : '🚀 Booting the server for a real write/read proof…');
@@ -2269,6 +2321,10 @@ export class ApiProjectTool extends BaseTool {
                     let upResolve: (v: boolean) => void = () => { /* set below */ };
                     const upPromise = new Promise<boolean>((resolve) => { upResolve = resolve; });
                     const upTimer = setTimeout(() => upResolve(false), 15_000);
+                    // A long-running process cannot be awaited like a command,
+                    // but it must still be ANNOUNCED the same way — otherwise
+                    // the server's own log appears under no command at all.
+                    term(`${path.basename(proj)} $ node server.js   # PORT=${port}`);
                     child = executionEngine.runArgvStreaming(process.execPath, ['server.js'], {
                         cwd: proj, env: { PORT: String(port), NODE_NO_WARNINGS: '1' },
                         onLine: (l: string) => {

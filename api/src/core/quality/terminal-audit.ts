@@ -63,6 +63,12 @@ export interface TerminalAuditOptions {
     tables?: string[];
     /** Milliseconds per check. A hung command must not hold the delivery. */
     timeoutMs?: number;
+    /**
+     * The INTERFACE's own directory, when one was built. The terminal's half
+     * of judging it: its dependencies, its bundle on disk, and whether the
+     * bundle the server serves is the one that was just built.
+     */
+    appDir?: string;
 }
 
 /** The failing ids, for a one-line verdict. */
@@ -312,6 +318,70 @@ export async function auditInTerminal(
                     : { ok: false, detail: `an anonymous write answered ${status} — it should be 401` };
             });
         }
+    }
+
+    /* 7 ── THE INTERFACE, TESTED FROM THE TERMINAL TOO ───────────────────── */
+    /**
+     * Everything above tests the SERVER, because that is what an API project
+     * is. But the thing he looks at is the interface, and the terminal had no
+     * opinion about it at all — the browser measured how it behaves and nobody
+     * measured whether it was really BUILT.
+     *
+     * These three are the terminal's honest half of that question, and none of
+     * them can be answered by looking at a page:
+     *
+     *   • are the interface's own dependencies really on disk;
+     *   • is there a real bundle — bytes, not a claim, and not an empty shell;
+     *   • and is the bundle that the SERVER serves the one that was just
+     *     built. A build can succeed and the packaging step still copy
+     *     nothing, and then he opens the site and sees the previous version.
+     */
+    const appDir = String(opts.appDir || '');
+    if (appDir && fs.existsSync(path.join(appDir, 'package.json'))) {
+        await add('app_deps_installed', `npm ls --depth=0 (${path.basename(appDir)})`, async () => {
+            if (!fs.existsSync(path.join(appDir, 'node_modules'))) {
+                return { ok: false, detail: 'the interface has no node_modules — it was never installed' };
+            }
+            const r = await run('npm', ['ls', '--depth=0'], appDir, per, say);
+            return r.ok
+                ? { ok: true, detail: 'the interface\'s dependencies are all on disk' }
+                : { ok: false, detail: (r.out.split('\n').find(l => /missing|invalid|UNMET/i.test(l)) || 'npm ls failed').slice(0, 160) };
+        });
+
+        await add('app_bundle_real', 'ls -l dist/', async () => {
+            const distDir = path.join(appDir, 'dist');
+            const index = path.join(distDir, 'index.html');
+            if (!fs.existsSync(index)) return { ok: false, detail: 'no dist/index.html — nothing was bundled' };
+            let bytes = 0, files = 0;
+            const walk = (d: string) => {
+                for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+                    const p = path.join(d, e.name);
+                    if (e.isDirectory()) walk(p);
+                    else { files++; bytes += fs.statSync(p).size; }
+                }
+            };
+            try { walk(distDir); } catch { /* a partial dist still answers below */ }
+            say(`    ${files} file(s), ${(bytes / 1024).toFixed(0)} KB`);
+            // An index.html with no script tag is a shell that renders nothing.
+            const html = fs.readFileSync(index, 'utf-8');
+            if (!/<script[^>]+src=/i.test(html)) {
+                return { ok: false, detail: 'dist/index.html loads no script — the bundle is an empty shell' };
+            }
+            return bytes > 20_000
+                ? { ok: true, detail: `${files} file(s), ${(bytes / 1024).toFixed(0)} KB of real bundle` }
+                : { ok: false, detail: `only ${(bytes / 1024).toFixed(0)} KB in dist/ — too small to be this application` };
+        });
+
+        await add('app_is_the_one_served', 'cmp dist/index.html public/index.html', async () => {
+            const built = path.join(appDir, 'dist', 'index.html');
+            const served = path.join(dir, 'public', 'index.html');
+            if (!fs.existsSync(built)) return { ok: false, detail: 'nothing was built, so nothing could be packaged' };
+            if (!fs.existsSync(served)) return { ok: false, detail: 'the server has no public/index.html — the interface was never packaged into it' };
+            const a = fs.readFileSync(built, 'utf-8'), b = fs.readFileSync(served, 'utf-8');
+            return a === b
+                ? { ok: true, detail: 'the server serves exactly the bundle that was just built' }
+                : { ok: false, detail: 'the served page differs from the built one — he would open an older version' };
+        });
     }
 
     const counted = checks.filter(c => !c.skipped);

@@ -111,7 +111,7 @@ describe('and the builder prefers what is already known', () => {
 
     it('the api builder awaits the design and says who answered', () => {
         const a = read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
-        expect(a).toMatch(/const model = await designDataModel\(request, \{ onNote: \(n: string\) => term\(n\) \}\);/);
+        expect(a).toMatch(/const designed = await designDataModel\(request, \{ onNote: \(n: string\) => term\(n\) \}\);/);
     });
 
     it('and the interface builds its screens from the SAME design, not a second guess', () => {

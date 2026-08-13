@@ -26,6 +26,7 @@ import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { resolveImages, sanitizeContentImages } from '../../../core/design/images';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
+import { openTerminal, transcriptLine } from '../../../core/quality/terminal-session';
 import { persistJoeProjects } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
@@ -2074,6 +2075,28 @@ export class ReactProjectTool extends BaseTool {
             } catch { /* UI optional */ }
         };
 
+        /**
+         * THE TERMINAL IS OPENED FIRST, AND HE IS LOOKING AT IT.
+         *
+         * «جو لا يعتمد على الطرفية بشكل كبير وحقيقي ويجب أن يكون ذلك بشكل مرئي
+         *  للمستخدم»
+         *
+         * Every process this build runs went through the terminal already —
+         * but only their OUTPUT reached him: npm's chatter with no prompt, no
+         * arguments, no exit code. That reads as a log file scrolling, not as
+         * a machine working. And the panel itself only came forward at repair
+         * time, two minutes in, when most of the real work was already done.
+         *
+         * Now the shell opens before the first file is written: the panel is
+         * asked for by name, the session prints the directory and the tool
+         * versions it found, and from there every command Joe runs appears the
+         * way it would if he had typed it himself.
+         */
+        const shell = openTerminal(term);
+        try {
+            broadcast({ type: 'panel_focus', sessionId, data: { panel: 'terminal', reason: 'build_shell' } } as any);
+        } catch { /* UI optional */ }
+
         const palette = buildPalette(request);
         // The SAME kind judgement the page builder uses: a restaurant app
         // ships a menu, a store ships pricing — never the same generic three
@@ -2528,22 +2551,24 @@ export class ReactProjectTool extends BaseTool {
         if (!input?.skipInstall) {
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
-            const { executionEngine } = require('../../../kernel/ExecutionEngine');
             // The build's own words are kept — they are what names the missing
             // package when a build stops one `npm install` short of finishing.
             let lastLog = '';
+            /**
+             * Every command here is now VISIBLE: the session prints the prompt
+             * and the command before it spawns, streams the output under it,
+             * and closes with `→ exit 0 · 19.4s`. The numeric contract the
+             * callers below rely on is unchanged — -1 means the binary is not
+             * on this machine, -2 means it timed out.
+             */
             const run = async (cmd: string, args: string[], timeoutMs: number): Promise<number> => {
-                lastLog = '';
-                const h = executionEngine.runArgvStreaming(cmd, args, {
-                    cwd: proj, timeout: timeoutMs,
-                    env: { NO_COLOR: '1' },
-                    onLine: (l: string) => { lastLog += l + '\n'; term(`  ${l.slice(0, 200)}`); },
-                });
-                const r = await h.done;
-                if (r.exitCode === null) return -1;                       // could not start (npm missing)
-                if (r.exitCode === 124 && r.error === 'timeout') return -2;
-                return r.exitCode;
+                const r = await shell.run(cmd, args, { cwd: proj, timeout: timeoutMs });
+                lastLog = r.out;
+                if (r.missing) return -1;
+                if (r.timedOut) return -2;
+                return r.exitCode as number;
             };
+            await shell.open(isAr ? 'طرفية جو — بناء الواجهة' : 'Joe\'s terminal — building the interface', proj);
             /**
              * WAKE THE BROWSER NOW, NOT WHEN HE IS WATCHING IT.
              *
@@ -2566,12 +2591,20 @@ export class ReactProjectTool extends BaseTool {
             const inst = await run('npm', ['install', '--no-audit', '--no-fund'], 240_000);
             npmMissing = inst === -1;
             installed = inst === 0;
-            term(`npm install → ${installed ? 'OK' : `exit ${inst}`}`);
+            // The exit code is already on screen, printed by the session. What
+            // Joe adds here is the MEANING of it — marked as his own note, so
+            // the transcript never mixes his words with a process's.
+            shell.note(installed
+                ? 'packages installed — the project can compile now'
+                : npmMissing ? 'npm is not on this machine — nothing can be installed here'
+                    : `install did not finish (exit ${inst}) — the build below will say what broke`);
             if (installed) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🏗️ أبني نسخة الإنتاج (vite build)…' : '🏗️ Building for production (vite build)…');
                 let b = await run('npm', ['run', 'build'], 180_000);
                 built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
-                term(`vite build → ${built ? 'OK (dist/index.html)' : `exit ${b}`}`);
+                shell.note(built
+                    ? 'dist/index.html exists — this is a real bundle, not a claim'
+                    : `no bundle on disk after the build (exit ${b})`);
 
                 /**
                  * A BUILD THAT NAMES ITS MISSING TOOL IS NOT A FAILED BUILD.
@@ -2889,6 +2922,10 @@ export class ReactProjectTool extends BaseTool {
                         serveUrl: liveServer ? liveServer.url : '',
                         tables: systemTables,
                         timeoutMs: 25_000,
+                        // The interface gets tested from the terminal too: its
+                        // own dependencies, a real bundle on disk, and whether
+                        // the bundle the server serves is the one just built.
+                        appDir: proj,
                     });
                 };
                 const blend = (browser: number, terminal: any) =>
@@ -3424,6 +3461,26 @@ export class ReactProjectTool extends BaseTool {
         })();
 
         /**
+         * HOW MUCH OF THIS BUILD WAS REAL WORK IN A REAL SHELL.
+         *
+         * «جو لا يعتمد على الطرفية بشكل كبير وحقيقي ويجب أن يكون ذلك بشكل مرئي
+         *  للمستخدم». He watched the panel and could not tell how much of what
+         * he saw was Joe working versus Joe printing. A count settles it: every
+         * command in the transcript was echoed before it spawned and closed
+         * with its own exit code, so this number is checkable against the panel
+         * he was already looking at.
+         *
+         * This stands OUTSIDE the QA block on purpose. It first sat inside it
+         * and vanished on any build where the browser audit was skipped — the
+         * exact runs where the terminal is the only instrument that worked, and
+         * therefore the only one with anything to report.
+         */
+        const shellBlock = (() => {
+            const line = transcriptLine(shell.transcript(), isAr);
+            return line ? `${line}\n` : '';
+        })();
+
+        /**
          * AND THE SIZE OF WHAT WAS NOT BUILT.
          *
          * «Build a world-class e-commerce platform similar to Shopify.
@@ -3451,7 +3508,7 @@ export class ReactProjectTool extends BaseTool {
         const message = isAr
             ? `⚛️ ${blockers.length ? 'بُني مشروع React وتجمّع — لكنه سُلّم بعيوب باقية' : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
 ${scopeBlock}${appBlock}
-${qaBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
+${qaBlock}${shellBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
 ${fileList}
 
@@ -3467,7 +3524,7 @@ ${buildDiagnosis ? (buildDiagnosis.healed
    • «انشر المشروع» → نسخة الإنتاج بصورها على رابط دائم`
             : `⚛️ ${blockers.length ? 'A React project that compiles — delivered WITH open defects' : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
 ${scopeBlock}${appBlock}
-${qaBlock}📂 Path: ${proj}
+${qaBlock}${shellBlock}📂 Path: ${proj}
 ${fileList}
 
 ${built ? '✅ npm install + vite build succeeded — the production build is in dist/.' : npmMissing ? '⚠️ npm is not available here — run npm install && npm run dev yourself.' : ''}`;

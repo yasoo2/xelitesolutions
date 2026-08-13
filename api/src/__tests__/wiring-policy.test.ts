@@ -2093,7 +2093,10 @@ describe('the server stores what the app sends', () => {
     it('a declared parent table reaches the database, the routes and the interface', () => {
         const A = SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
         expect(A).toMatch(/export function apiRelationForRequest/);
-        expect(A).toMatch(/const relation = apiRelationForRequest\(request\)/);
+        // The blueprint's parent table is still wired — but it stands down
+        // when the request DECLARED its own tables, because a system cannot
+        // have a parent nobody asked for and the model never created.
+        expect(A).toMatch(/const relation = declaredTables\(request\)\.length \? null : apiRelationForRequest\(request\);/);
         expect(A).toMatch(/'server\.js': fileServerJs\(resource, brand, path\.basename\(proj\), relation, model\)/);
         // the link is checked, never trusted
         expect(A).toMatch(/return \{ error: 'unknown_' \+ c\.key \}/);
