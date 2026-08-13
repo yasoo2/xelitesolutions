@@ -37,12 +37,23 @@ router.get('/', authenticate as any, async (req: Request, res: Response) => {
     const allowed = await Session.findOne({ _id: String(sessionId), userId }).select('_id').lean();
     if (!allowed) return res.status(403).json({ error: 'Forbidden' });
 
+    /**
+     * `sessionId` comes off `req.query`, so its type is
+     * `string | ParsedQs | (string | ParsedQs)[]` — a caller can send
+     * `?sessionId=a&sessionId=b` and hand this route an ARRAY. The line above
+     * already narrows it with `String(sessionId)` for the ownership check;
+     * these two queries did not, and were matching on whatever arrived.
+     * A newer mongoose types this strictly and refused to compile it, which
+     * is the type system catching a real inconsistency rather than a chore.
+     */
+    const sid = String(sessionId);
+
     // 1. Get User Uploaded Files
-    const files = await FileModel.find({ sessionId }).sort({ createdAt: -1 }).lean();
+    const files = await FileModel.find({ sessionId: sid }).sort({ createdAt: -1 }).lean();
 
     // 2. Get AI Generated Artifacts
     // First find all runs for this session
-    const runs = await Run.find({ sessionId }).select('_id').lean();
+    const runs = await Run.find({ sessionId: sid }).select('_id').lean();
     const runIds = runs.map(r => r._id);
     
     const artifacts = await Artifact.find({ runId: { $in: runIds } }).sort({ createdAt: -1 }).lean();

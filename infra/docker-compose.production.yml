@@ -61,9 +61,20 @@ services:
       retries: 3
     networks:
       - joe-network
-    ports:
-      - "5050:5050"
-      - "7070:7070"
+    # NO `ports:` HERE, DELIBERATELY.
+    #
+    # This block used to publish "5050:5050" and "7070:7070", which binds to
+    # every interface on the host — while mongo and ollama in this same file
+    # are carefully bound to 127.0.0.1. 5050 is the Chromium control socket:
+    # anyone who can reach it can drive a real browser with no credential at
+    # all, visit internal addresses through it, and act inside whatever session
+    # that browser holds.
+    #
+    # Nothing outside the compose network needs either port. The API reaches
+    # the worker by service name over `joe-network`
+    # (BROWSER_WS_ENDPOINT=ws://browser-worker:5050/ws) and nginx does not
+    # proxy it. For local debugging, bind explicitly to the loopback —
+    # "127.0.0.1:7070:7070" — never to 0.0.0.0.
 
   nginx:
     image: nginx:alpine

@@ -1,0 +1,99 @@
+#  THE GATE THAT WAS NOT THERE.
+#
+#  Every quality workflow in this repository was suffixed `.disabled`, so the
+#  only thing that ran on a push to `main` was the deploy. Type errors, failing
+#  tests and known-vulnerable dependencies all had a clear path to production;
+#  the checks existed and simply never ran.
+#
+#  This runs the checks the project already has and can pass today — the server
+#  build, both type-checks, the whole Jest suite, and a dependency audit of what
+#  actually ships. It reports on every push and every pull request, and the
+#  deploy workflow now waits for it.
+#
+#  Deliberately NOT here: `web lint` as a blocking step. It is fixed in this
+#  same change, but a gate whose first act is to fail on a pre-existing problem
+#  gets switched off again within a week. It runs, it is visible, and it will be
+#  made blocking once the warning count is zero.
+
+name: CI — build, types, tests, audit
+
+on:
+  push:
+    branches: [ main, 'claude/**' ]
+  pull_request:
+  workflow_dispatch:
+  # Called by the deploy workflow as its gate — a deploy that has not passed
+  # these checks does not run.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build, type-check and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install (api)
+        run: npm --prefix api ci --no-audit --no-fund
+
+      - name: Install (web)
+        run: npm --prefix web ci --no-audit --no-fund
+
+      - name: Type-check — api
+        run: npm --prefix api run type-check --if-present || npx --prefix api tsc --noEmit -p api
+
+      - name: Type-check — web
+        run: npm --prefix web run type-check
+
+      - name: Build — api
+        run: npm --prefix api run build
+
+      - name: Build — web
+        run: npm --prefix web run build
+
+      # The suite is the contract this project is built on: every guarantee it
+      # has is written down here as a test that fails when the guarantee goes.
+      - name: Test — api
+        run: npm --prefix api test
+        env:
+          JWT_SECRET: ci-not-a-real-secret
+          PERSISTENCE_MODE: JSON
+
+      - name: Lint — web (reported, not yet blocking)
+        run: npm --prefix web run lint
+        continue-on-error: true
+
+  audit:
+    name: Dependency audit (what actually ships)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # `--omit=dev` on purpose: a vulnerability in a build-time tool is worth
+      # knowing about, but it is not the same fact as one in a package that runs
+      # in production, and mixing the two is how audit output gets ignored.
+      - name: Audit — api (production deps)
+        run: npm --prefix api audit --omit=dev --audit-level=critical
+
+      - name: Audit — api (full report, not blocking)
+        run: npm --prefix api audit --omit=dev || true
+
+      - name: Audit — web (full report, not blocking)
+        run: npm --prefix web audit || true

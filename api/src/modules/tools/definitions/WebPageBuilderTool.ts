@@ -42,6 +42,29 @@ import { publicUrlFor } from '../../../shared/utils/publicUrl';
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 
 /**
+ * EVERY ARTIFACT WRITE MAKES ITS OWN DIRECTORY.
+ *
+ * The restore path wrote straight into ARTIFACT_DIR and trusted that some
+ * earlier build had created it. On this machine that is usually true, which is
+ * exactly what makes the bug hard to see: it only appears where nothing has
+ * been built yet — a fresh install, a cleaned /tmp, a new ARTIFACT_DIR, or a
+ * user whose first action after a restart is «ارجع للنسخة السابقة». Then the
+ * write throws ENOENT and the rollback he asked for answers `ok: false`, on a
+ * version that is sitting safely in memory.
+ *
+ * Measured, not argued: with /tmp/joe-artifacts moved aside, two tests in
+ * version-history.test.ts fail — restoring v1, and rolling back again to v2.
+ * With this helper they pass. One function instead of a `mkdirSync` at each
+ * call site, because the next write added to this file would have the same
+ * hole and nobody would notice until it reached him.
+ */
+function writeArtifact(rel: string, content: string): void {
+    const abs = path.join(ARTIFACT_DIR, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, content, 'utf-8');
+}
+
+/**
  * The code, live, in the Logs panel.
  *
  * «يجب أن تفتح قائمة اللوجز وأن يفتح الملف وأن تتكوّن داخلها الكودات بشكل حي»
@@ -263,7 +286,7 @@ export class WebPageBuilderTool implements ToolDefinition {
             versions.splice(idx, 1);
             versions.push({ html: prev.html, filename: prev.filename, at: prev.updatedAt || Date.now(), note: prev.lastRequest || '' });
             try {
-                fs.writeFileSync(path.join(ARTIFACT_DIR, prev.filename), target.html, 'utf-8');
+                writeArtifact(prev.filename, target.html);
                 let url = publicUrlFor(`/artifacts/${prev.filename}`);
                 const dirAbs = path.join(ARTIFACT_DIR, `joe-${sessionKey}`);
                 if (fs.existsSync(dirAbs)) {
@@ -671,7 +694,7 @@ ${prev!.html}`
                     });
                     partial = partial.replace(/\{\{\s*IMAGE\s*:([^}]*)\}\}/gi, (_m, spec: string) =>
                         gradientPlaceholder(String(spec).split('|').pop()!.trim() || 'image', palette.hue));
-                    fs.writeFileSync(path.join(ARTIFACT_DIR, partialFile), partial, 'utf-8');
+                    writeArtifact(partialFile, partial);
                     partialsEmitted++;
                     const purl = publicUrlFor(`/artifacts/${partialFile}?v=${Date.now()}`);
                     broadcast({ type: 'preview_ready', sessionId, data: { url: purl, previewUrl: purl, sessionId, partial: true, sections: okSoFar.length } } as any);
@@ -1510,7 +1533,7 @@ the WORDS, not the structure.`;
          * exactly this way.
          */
         const writeOut = (h: string) => {
-            fs.writeFileSync(path.join(ARTIFACT_DIR, filename), h, 'utf-8');
+            writeArtifact(filename, h);
             if (projectDir) {
                 const abs = path.join(ARTIFACT_DIR, projectDir);
                 const s = splitHtmlProject(h);
@@ -1552,7 +1575,7 @@ the WORDS, not the structure.`;
             fs.mkdirSync(path.dirname(path.join(ARTIFACT_DIR, filename)), { recursive: true });
             // Always write the combined file too (keeps single-file preview working
             // and is the source of truth for future edits).
-            fs.writeFileSync(path.join(ARTIFACT_DIR, filename), html, 'utf-8');
+            writeArtifact(filename, html);
             // The finished file, as written to disk — the Logs panel closes the
             // live view with exactly what the preview is about to show.
             streamCodeToLogs(sessionId, filename, html, { done: true, label: 'written to disk' });
@@ -2285,7 +2308,7 @@ the WORDS, not the structure.`;
 
         const out = spliceSections(html, edits);
         if (write) write(out);
-        else if (filename) fs.writeFileSync(path.join(ARTIFACT_DIR, filename), out, 'utf-8');
+        else if (filename) writeArtifact(filename, out);
         return out;
     }
 

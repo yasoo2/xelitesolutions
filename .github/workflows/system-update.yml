@@ -11,7 +11,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # THE DEPLOY WAITS FOR THE TESTS NOW.
+  #
+  # Before this, a push to `main` went straight to the production host: no
+  # test run, no type-check, no audit. A red suite and a green deploy could
+  # happen in the same minute, and the second one is what the user saw.
+  gate:
+    name: Tests must pass first
+    uses: ./.github/workflows/ci.yml
+
   deploy:
+    needs: gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -83,6 +93,9 @@ jobs:
             exit 1
           fi
           
-          docker compose -p joe -f docker-compose.production.yml ps
+          # The file lives in infra/, like every other compose call in this
+          # job. Written without the prefix, this last line fails under `set -e`
+          # and turns a deploy that actually worked into a red workflow.
+          docker compose -p joe -f infra/docker-compose.production.yml ps
           echo "=== Deploy completed at $(date) ==="
           REMOTE
