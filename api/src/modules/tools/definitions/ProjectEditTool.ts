@@ -821,6 +821,61 @@ export class ProjectEditTool extends BaseTool {
             }
         }
 
+        /**
+         * THE COMMONEST EDIT OF ALL — AND IT NEEDED A MODEL TO MAKE IT.
+         *
+         * «غيّر اسم الموقع إلى …» is the first thing anyone says after seeing
+         * their build. It had no deterministic path: the row editor above
+         * looks for a NAMED row and finds none, and the comment there says
+         * plainly that a rowless «اسم» request «belongs to the model path
+         * below». So the simplest edit in the product was the one that
+         * depended on a network, and on a machine with no key it answered
+         * «لم أجد ما يطابق الطلب» — about a name that is sitting in the file
+         * in one line.
+         *
+         * The brand lives in exactly two places and every other file reads it
+         * from there: `brand:` in src/content.js, and the `<title>` of
+         * index.html. Two known bytes are not a job for a language model.
+         */
+        if (!touched.length) {
+            const siteWord = /(الموقع|موقعي|التطبيق|تطبيقي|المشروع|مشروعي|النظام|الصفحة|صفحتي|site|website|app|project|page)/i.test(request);
+            const nameWord = /(?<![ء-ي])(اسم|الاسم|عنوان|العنوان|سمّه|سمه)(?![ء-ي])|\b(brand|title|rename)\b/i.test(request);
+            const val = ((request.match(/(?:(?<![ء-ي])(?:إلى|الى|ليصبح|ليصير|يصير|تصير)(?![ء-ي])|=|\bto\b)\s*(.+)$/i) || [])[1] || '')
+                .trim().replace(/^[«"']|[»"'.،!؟]+$/g, '').trim();
+            const contentAbs = path.join(dir, contentRel);
+            if (siteWord && nameWord && val && val.length <= 60 && fs.existsSync(contentAbs)) {
+                const body = fs.readFileSync(contentAbs, 'utf-8');
+                const oldBrand = (body.match(/\n\s*brand:\s*'([^']*)'/) || [])[1] || '';
+                const safe = String(val).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
+                const next = body.replace(/(\n\s*brand:\s*)'[^']*'/, `$1'${safe}'`);
+                const gate = syntaxOk(contentRel, next);
+                if (next !== body && gate.ok) {
+                    write(contentRel, next);
+                    /**
+                     * The tab title is the other half of the same fact. Leaving
+                     * it behind means the header says one name and the browser
+                     * tab says the old one — the kind of half-rename that looks
+                     * like the edit silently failed.
+                     */
+                    const htmlAbs = path.join(dir, 'index.html');
+                    if (oldBrand && fs.existsSync(htmlAbs)) {
+                        const html = fs.readFileSync(htmlAbs, 'utf-8');
+                        const swapped = html.replace(
+                            /<title>([\s\S]*?)<\/title>/i,
+                            (_m, inner) => `<title>${String(inner).split(oldBrand).join(val)}</title>`,
+                        );
+                        if (swapped !== html) write('index.html', swapped);
+                    }
+                    notes.push(isAr
+                        ? `✏️ غيّرت اسم ${/التطبيق|تطبيقي/i.test(request) ? 'التطبيق' : 'الموقع'}${oldBrand ? ` من «${oldBrand}»` : ''} إلى «${val}» — في المحتوى وفي عنوان التبويب.`
+                        : `✏️ Renamed the site${oldBrand ? ` from "${oldBrand}"` : ''} to "${val}" — in the content and in the tab title.`);
+                    logs.push(`brand edit: ${oldBrand || '(unset)'} → ${val} — no model call`);
+                } else if (next !== body) {
+                    refused.push(`${contentRel}: renaming breaks the syntax (${gate.error}) — refused`);
+                }
+            }
+        }
+
         // ── the general path: SEARCH/REPLACE from the model ─────────────────
         if (!touched.length) {
             const files = listFiles(dir);

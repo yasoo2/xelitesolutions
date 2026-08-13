@@ -34,6 +34,37 @@ export function isLikelyUrl(value: string): boolean {
     return /^([A-Za-z0-9-]+\.)+[A-Za-z]{2,}$/.test(host);
 }
 
+/**
+ * HIS SITE'S INBOX — SAID SO PLAINLY THAT GMAIL MUST NOT ANSWER.
+ *
+ * «رسائل» belongs to two different worlds: the mail in his Google account,
+ * and the messages visitors left in the contact form of the site Joe built
+ * him. The Gmail fast-path claimed the word outright, so «اقرأ رسائل نموذج
+ * التواصل» — a question about his own site — went to Google and came back
+ * asking him to connect an account he never mentioned.
+ *
+ * This names the second world unambiguously: the word «رسائل» standing next
+ * to «النموذج / الموقع / الزوار / التواصل», in either order. Where it
+ * matches, the site's inbox wins and the Gmail path steps aside — the same
+ * shape as the four guards already living there (a URL login, a compound
+ * browse-then-email, a form field named «بريد»).
+ *
+ * Exported because both ends of that decision have to agree, and a shared
+ * constant is the only way two regexes cannot drift apart.
+ */
+export const SITE_INBOX = new RegExp(
+    [
+        // «رسائل النموذج» — the site word first, the message word after.
+        '(نموذج|النموذج|الموقع|موقعي|الزوار|زوار|التواصل|اتصل\\s*بنا|تواصل\\s*معنا)\\s*[^.\\n]{0,14}?(رسائل|رساله|رسالة|الرسائل)',
+        // «رسائل الموقع» — the same two words, the other way round.
+        '(رسائل|رساله|رسالة|الرسائل)\\s*[^.\\n]{0,14}?(النموذج|نموذج|الموقع|موقعي|الزوار|زوار|التواصل)',
+        'contact\\s*form',
+        'form\\s*(inbox|messages|submissions)',
+        'site\\s*messages',
+    ].join('|'),
+    'i',
+);
+
 export interface ExecutionPlan {
     id: string;
     goal: string;
@@ -964,7 +995,18 @@ Rules:
 
         // [FORM INBOX] «اعرض رسائل النموذج» — the live-data reading path.
         {
-            const inboxAsk = /(اعرض|أعرض|شوف|كم|هل\s*(وصل|فيه))\s*[^.\n]{0,25}?(رسائل|رساله|رسالة|الرسائل)|صندوق\s*(الرسائل|النموذج|الوارد)|من\s*راسل|form\s*(inbox|messages|submissions)/i.test(probe);
+            /**
+             * «اقرأ» IS A READING VERB, AND IT WAS THE ONE MISSING.
+             *
+             * The list held اعرض/شوف/كم/هل and not the plainest word of them
+             * all. So «اقرأ الطلبات» reached the orders inbox and «اقرأ
+             * الرسائل» fell through this path entirely — and landed on the
+             * Gmail fast-path below, which reads «رسائل» as the user's own
+             * mailbox. He asked for his site's messages and Joe went to
+             * Google. The two ends of one wire, both wrong.
+             */
+            const inboxAsk = SITE_INBOX.test(probe)
+                || /(اعرض|أعرض|شوف|كم|هل\s*(وصل|فيه)|اقرأ|اقرا|أقرأ|ارني|أرني|وريني|راجع|جاني|وصلني)\s*[^.\n]{0,25}?(رسائل|رساله|رسالة|الرسائل)|صندوق\s*(الرسائل|النموذج|الوارد)|من\s*راسل|form\s*(inbox|messages|submissions)/i.test(probe);
             const hasArtifact = !!((global as any).joePages?.[activeKey] || (global as any).joeProjects?.[activeKey]);
             if (inboxAsk && hasArtifact) {
                 return {
@@ -1133,7 +1175,12 @@ Rules:
             // let the continue-on-live-page path below handle it, not the Gmail API.
             const pageInteraction = /(اضغط|انقر|اختر|عبّ?ئ|املأ|اكتب|حدّ?د|click|press|select|type|fill)/i.test(probe)
                 && /(زر|الزر|حقل|الحقل|خانة|القائمة|مربع|صندوق|button|field|menu|box|input)/i.test(probe);
-            if ((gmailRead || calList || driveList || sendMail) && !(hasUrl && loginToSite) && !emailCompound && !pageInteraction) {
+            // Guard: «رسائل نموذج التواصل» is the inbox of the site Joe built
+            // him, not the mail in his Google account. Without this, the word
+            // «رسائل» alone sent a question about his own site to Google — and
+            // the answer was a request to connect an account he never named.
+            const siteInbox = SITE_INBOX.test(probe);
+            if ((gmailRead || calList || driveList || sendMail) && !(hasUrl && loginToSite) && !emailCompound && !pageInteraction && !siteInbox) {
                 const action = sendMail ? 'gmail_send' : calList ? 'calendar_list' : driveList ? 'drive_list' : 'gmail_list';
                 const input: any = { action, request: intent.goal };
                 if (action === 'gmail_list') { const q = g.match(/(?:عن|من|بخصوص|about|from)\s+(.+)$/i); if (q) input.query = q[1].trim(); }
