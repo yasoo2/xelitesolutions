@@ -2854,6 +2854,9 @@ export class ReactProjectTool extends BaseTool {
                     : '🔌 Measuring the system while it RUNS — the interface inside its server, the data from its real database');
             }
             audit = await auditBuiltApp(path.join(proj, 'dist'), {
+                // His «لا تستخدم الشبكة» reaches the audit too: it still runs,
+                // it simply never downloads a browser to make itself possible.
+                offline: noInstall,
                 timeoutMs: 30_000,
                 watchSessionId: PANEL_BROWSER_SID,
                 ...(liveServer ? { serveUrl: liveServer.url } : {}),
@@ -2996,6 +2999,9 @@ export class ReactProjectTool extends BaseTool {
 
                 const measureNow = async () => {
                     const a = await auditBuiltApp(path.join(proj, 'dist'), {
+                // His «لا تستخدم الشبكة» reaches the audit too: it still runs,
+                // it simply never downloads a browser to make itself possible.
+                offline: noInstall,
                         timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
                     });

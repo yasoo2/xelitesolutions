@@ -108,6 +108,11 @@ export async function auditBuiltApp(
          * have been — a genuine defect.
          */
         serveUrl?: string;
+        /**
+         * The request forbade using the network. The audit still runs; it
+         * simply never downloads anything to make itself possible.
+         */
+        offline?: boolean;
     },
 ): Promise<AppAudit> {
     const timeoutMs = opts?.timeoutMs ?? 30_000;
@@ -218,7 +223,28 @@ export async function auditBuiltApp(
             }
         }
         if (!page) {
-            browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });
+            /**
+             * A MISSING BROWSER IS A COMMAND JOE CAN RUN, NOT A NOTE TO HIM.
+             *
+             * Chromium's binary is a download, not a dependency, so a fresh
+             * machine reaches here with playwright present and no browser to
+             * launch. Until now that ended the check and printed a warning
+             * telling the user to type `npx playwright install chromium`. He
+             * has a terminal open with Joe working inside it; the command
+             * belongs to Joe. It runs once, visibly, and the launch is retried.
+             */
+            try {
+                browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });
+            } catch (e: any) {
+                const { isMissingBrowser, ensureChromium } = require('./ensure-chromium');
+                if (!isMissingBrowser(e)) throw e;
+                const got = await ensureChromium({
+                    say: (l: string) => opts?.onProgress?.(`term:${l}`),
+                    offline: !!opts?.offline,
+                });
+                if (!got.ok) return { skipped: got.detail, score: 0, findings: [] };
+                browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });
+            }
             page = await browser.newPage();
             /**
              * AND SAY SO. A silent fallback is what produced «مازال يفتح

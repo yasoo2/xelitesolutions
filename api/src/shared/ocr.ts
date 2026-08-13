@@ -132,3 +132,26 @@ export async function extractImageText(filePath: string): Promise<string> {
         return '';
     }
 }
+
+/**
+ * CLOSE THE READER.
+ *
+ * `getWorker()` creates one tesseract worker for the whole process and nothing
+ * ever closed it. In a long-lived server that is correct — the reader is meant
+ * to be shared and reused. In a test run it is a worker THREAD that outlives
+ * the last assertion, so Jest reports «a worker process has failed to exit
+ * gracefully» and force-exits, which hides real leaks behind a known one.
+ *
+ * This is the missing half of the lifecycle: it terminates the worker if one
+ * was ever built, and resets the lazy promise so a later call can build
+ * another. Safe to call when no worker exists, and safe to call twice.
+ */
+export async function shutdownOcr(): Promise<void> {
+    const p = workerPromise;
+    workerPromise = null;
+    if (!p) return;
+    try {
+        const w = await p;
+        if (w && typeof w.terminate === 'function') await w.terminate();
+    } catch { /* a reader that never opened needs no closing */ }
+}

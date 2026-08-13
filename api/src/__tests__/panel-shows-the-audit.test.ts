@@ -127,7 +127,12 @@ describe('and he is never invited to watch a browser he cannot see', () => {
         const a = read('core', 'quality', 'app-audit.ts');
         expect(a).toMatch(/opts\.onProgress\?\.\('watching'\)/);
         // The private-browser fallback announces itself instead of running mute.
-        const fb = a.slice(a.indexOf('if (!page) {'), a.indexOf('if (!page) {') + 900);
+        // The window grew: the fallback now also guards the launch and fetches
+        // Chromium once if the binary is missing, so the announcement sits
+        // further down the same block. What is asserted is unchanged — the
+        // private-browser fallback still announces itself instead of running
+        // mute.
+        const fb = a.slice(a.indexOf('if (!page) {'), a.indexOf('if (!page) {') + 2200);
         expect(fb).toMatch(/onProgress\?\.\(borrowError \? `private:/);
     });
 
