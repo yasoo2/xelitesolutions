@@ -618,17 +618,32 @@ Rules:
             // A question/search ("how do I run…", "ابحث عن كيفية…", "…؟") describes
             // a topic; it does NOT command run/stop/deploy — those must yield to it.
             const isQuestion = /^\s*(how|what|why|when|where|which|can|do|does|is|are|should|explain)\b/i.test(userGoal.trim())
-                || /(^|\s)(كيف|ماذا|لماذا|متى|أين|هل|اشرح|وضّ?ح|ما\s+هو|ما\s+هي)(\s|$)/.test(userGoal)
+                || /^\s*(كيف|ماذا|لماذا|متى|أين|هل|اشرح|وضّ?ح|ما\s+هو|ما\s+هي)(?=\s|$)/.test(userGoal)
                 || /(ابحث|بحث|دوّ?ر\s*عن|ابغى\s*اعرف|search\s+for|google|look\s*up)/i.test(probe)
                 || /\?\s*$/.test(userGoal.trim());
 
-            // A build verb ("make a NEW one") beats run/stop — "ابنِ وشغّل" builds.
-            const hasBuildVerb = /\b(build|create|make|develop|scaffold|generate|code)\b/i.test(probe)
-                || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|برمج)/.test(probe);
+            // إنشاء مشروع جديد يتغلب على التشغيل فقط إذا ورد كفعل إنشاء صريح في
+            // نص المستخدم الأصلي. لا نقرأ النسخة المطَبَّعة `probe` هنا: فهي قد
+            // تحوّل الاسم «البناء» في جملة تحقق مثل «أثبت هل البناء والتشغيل نجحا»
+            // إلى «ابن»، فتختطف أمراً واضحاً لتشغيل مشروع قائم.
+            // أما «ابنِ المشروع ثم شغّله» فيبقى إنشاءً جديداً كما ينبغي.
+            //
+            // النفي جزء من النية، لا كلمة فصل يمكن إسقاطها. كان «لا تنشئ مشروعاً
+            // جديداً؛ شغّل المشروع القائم» يطابق `انشئ` هنا، فيحجب مسار التشغيل
+            // الحتمي ثم تسقط الجملة إلى منشئ React. نزيل فعل الإنشاء فقط حين يقع
+            // مباشرة بعد نفي صريح، ونبقي أي فعل إيجابي لاحق في الجملة مرئياً.
+            const userGoalWithoutNegatedBuildVerb = userGoal
+                .replace(/(^|[\s،؛,:.!?])(?:لا|ليس|بدون)\s+(?:ت?نشئ|ت?نشيء|ت?بن(?:ي|ِ)?|ت?صمم|ت?طور|ت?عمل|ت?سوي|ت?سوّي|ت?ول[ّد]{1,2}|ت?برمج)(?=\s|$|[،,:؛.!?])/giu, '$1')
+                .replace(/(^|[\s,;:.!?])(?:do\s+not|don't|no)\s+(?:build|create|make|develop|design|generate|code|scaffold)(?=\s|$|[,;:.!?])/giu, '$1');
+            const hasBuildVerb = /\b(build|create|make|develop|scaffold|generate|code)\b/i.test(userGoalWithoutNegatedBuildVerb)
+                // The imperative «ابنِ» carries a kasra after the final noon;
+                // accept optional Arabic vowel marks while still matching only a
+                // standalone explicit creation verb from the original user text.
+                || /(^|\s)(?:ابن[\u064B-\u065F]*|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|برمج)(?=\s|$|[،,:؛.!])/i.test(userGoalWithoutNegatedBuildVerb);
 
             // A concrete project/server target — NOT a browser, NOT content. Word
             // boundaries keep "serve" out of "server" and "app" out of "happen".
-            const projectTarget = /(المشروع|النظام|الخادم|السيرفر|المعاينة|\bproject\b|\bserver\b|\bapp\b|\bapplication\b|\bpreview\b|dev\s*server|localhost)/i.test(probe);
+            const projectTarget = /(المشروع|مشروع|النظام|الخادم|السيرفر|المعاينة|\bproject\b|\bserver\b|\bapp\b|\bapplication\b|\bpreview\b|dev\s*server|localhost)/i.test(probe);
             const deployTarget = projectTarget || /(الموقع|الصفحة|\bsite\b|\bwebsite\b|\bpage\b)/i.test(probe);
             // Content that "انشر/publish" ALSO applies to — publishing an article is
             // NOT deploying a site. This is the collision that sent "انشر مقالاً" to deploy.
@@ -657,7 +672,7 @@ Rules:
             if (runIntent) {
                 return {
                     id: `run_${Date.now()}`, goal: intent.goal,
-                    steps: [{ id: 'project_run', description: 'تشغيل المشروع ومعاينته حيّاً', tool: 'project_run', agent: 'Dev', input: {}, dependsOn: [] }],
+                    steps: [{ id: 'project_run', description: 'تشغيل المشروع ومعاينته حيّاً', tool: 'project_run', agent: 'Dev', input: { projectQuery: userGoal }, dependsOn: [] }],
                     metadata: { complexity: 'medium', riskLevel: 'low' },
                 };
             }

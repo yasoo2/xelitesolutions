@@ -145,6 +145,102 @@ export function detectStart(cwd: string, port: number): { command: string; kind:
     return { command: 'npm start', kind: 'unknown', expectPort: port, forced: false };
 }
 
+/**
+ * Resolve a runnable project below a workspace root without guessing.  A
+ * workspace is a container, not itself necessarily a Node/static project.
+ * The user may name a project in the request (normally quoted by the UI), so
+ * we prefer that exact human label; an unqualified request is accepted only
+ * when there is exactly one runnable child.
+ */
+type RunnableProjectResolution =
+    | { cwd: string; candidates: string[]; matched: boolean }
+    | { cwd: null; candidates: string[]; matched: false };
+
+const PROJECT_MARKERS = ['package.json', 'index.html', 'server.js', 'app.py', 'main.py', 'index.js'];
+const IGNORED_PROJECT_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next']);
+
+function hasProjectMarker(dir: string): boolean {
+    return PROJECT_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)));
+}
+
+function normalizeProjectLabel(value: unknown): string {
+    return String(value || '')
+        .trim()
+        .replace(/^(?:react|vite|next|node|app|project)[-_\s]*/iu, '')
+        .replace(/[-_][a-f0-9]{4,}$/iu, '')
+        .replace(/[-_]+/gu, ' ')
+        .replace(/\s+/gu, ' ')
+        .trim()
+        .toLocaleLowerCase();
+}
+
+function projectLabel(dir: string): string {
+    return normalizeProjectLabel(path.basename(dir));
+}
+
+function requestedProjectLabel(query: unknown): string {
+    const text = String(query || '').trim();
+    const quoted = text.match(/[«“"]\s*([^»”"]+?)\s*[»”"]/u)?.[1];
+    // The chat composer normally sends a natural sentence rather than a quoted
+    // path. Accept an explicit name after Arabic/English naming phrases, but do
+    // not infer a label from a generic run request.
+    const named = text.match(/(?:\b(?:named|called)\b|باسم|اسمه|اسمها|يسمى|تسمى)\s*(?:المشروع\s*)?([A-Za-z0-9_\-\u0600-\u06FF]+)/iu)?.[1];
+    return normalizeProjectLabel(quoted || named || '');
+}
+
+/** Exported for direct regression tests; this function never starts a process. */
+export function resolveRunnableProject(workspaceRoot: string, projectQuery?: unknown): RunnableProjectResolution {
+    if (!workspaceRoot || !fs.existsSync(workspaceRoot)) return { cwd: null, candidates: [], matched: false };
+    if (hasProjectMarker(workspaceRoot)) return { cwd: workspaceRoot, candidates: [workspaceRoot], matched: true };
+
+    const candidates: string[] = [];
+    try {
+        for (const entry of fs.readdirSync(workspaceRoot, { withFileTypes: true })) {
+            if (!entry.isDirectory() || entry.name.startsWith('.') || IGNORED_PROJECT_DIRS.has(entry.name)) continue;
+            const candidate = path.join(workspaceRoot, entry.name);
+            if (hasProjectMarker(candidate)) candidates.push(candidate);
+        }
+    } catch {
+        return { cwd: null, candidates: [], matched: false };
+    }
+    candidates.sort((a, b) => a.localeCompare(b));
+    if (candidates.length === 1) return { cwd: candidates[0], candidates, matched: true };
+
+    const requested = requestedProjectLabel(projectQuery);
+    if (!requested) return { cwd: null, candidates, matched: false };
+    const matches = candidates.filter(candidate => {
+        const label = projectLabel(candidate);
+        return label === requested || label.includes(requested) || requested.includes(label);
+    });
+    if (!matches.length) return { cwd: null, candidates, matched: false };
+
+    // A generated retry folder ends in a short hexadecimal suffix.  Prefer the
+    // stable project directory when both it and a retry copy match the name.
+    matches.sort((a, b) => {
+        const aGenerated = /[-_][a-f0-9]{4,}$/iu.test(path.basename(a)) ? 1 : 0;
+        const bGenerated = /[-_][a-f0-9]{4,}$/iu.test(path.basename(b)) ? 1 : 0;
+        return aGenerated - bGenerated || a.localeCompare(b);
+    });
+    return { cwd: matches[0], candidates, matched: true };
+}
+
+export function launchPrerequisiteError(cwd: string, detected: { command: string; kind: string }): string | null {
+    const pkgPath = path.join(cwd, 'package.json');
+    if (!fs.existsSync(pkgPath) || !/^npm (?:start|run dev)\b/u.test(detected.command)) return null;
+
+    try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const scripts = pkg?.scripts || {};
+        const selectedScript = detected.command.startsWith('npm start') ? scripts.start : scripts.dev;
+        const deps = { ...(pkg?.dependencies || {}), ...(pkg?.devDependencies || {}) };
+        const needsVite = !!deps.vite || /(?:^|\s)vite(?:\s|$)/u.test(String(selectedScript || ''))
+            || fs.existsSync(path.join(cwd, 'vite.config.js')) || fs.existsSync(path.join(cwd, 'vite.config.ts'));
+        const viteInstalled = fs.existsSync(path.join(cwd, 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite'));
+        if (needsVite && !viteInstalled) return 'vite';
+    } catch { /* The actual launcher will surface malformed package errors. */ }
+    return null;
+}
+
 export class ProjectRunTool implements ToolDefinition {
     name = 'project_run';
     version = '1.0.0';
@@ -156,6 +252,7 @@ export class ProjectRunTool implements ToolDefinition {
             cwd: { type: 'string' as const, description: 'Project directory. Defaults to the active workspace root.' },
             command: { type: 'string' as const, description: 'Override the start command (auto-detected otherwise).' },
             port: { type: 'number' as const, description: 'Preferred port (a free one is chosen otherwise).' },
+            projectQuery: { type: 'string' as const, description: 'Original user request, used only to select a named project within a workspace.' },
         },
     };
     outputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const }, port: { type: 'number' as const }, ready: { type: 'boolean' as const } } };
@@ -238,10 +335,32 @@ export class ProjectRunTool implements ToolDefinition {
             && fs.existsSync(path.join(packagedInto, 'public', 'index.html'))
             && fs.existsSync(path.join(packagedInto, 'package.json'));
 
-        const cwd = String(input?.cwd || '').trim()
+        const explicitCwd = String(input?.cwd || '').trim();
+        const activeProjectDir = activeProj?.dir && fs.existsSync(activeProj.dir) ? String(activeProj.dir) : '';
+        const workspaceRoot = workspaceService.getActiveRoot(context?.workspaceId);
+        const baseCwd = explicitCwd
             || (packagedIsWhole ? packagedInto : '')
-            || (activeProj?.dir && fs.existsSync(activeProj.dir) ? String(activeProj.dir) : '')
-            || workspaceService.getActiveRoot(context?.workspaceId);
+            || activeProjectDir
+            || workspaceRoot;
+        // An explicitly supplied cwd and an active build are authoritative.
+        // Only a bare workspace root can be a container that needs discovery.
+        const discovered = !explicitCwd && !packagedIsWhole && !activeProjectDir
+            ? resolveRunnableProject(baseCwd, input?.projectQuery)
+            : { cwd: baseCwd, candidates: [baseCwd], matched: true };
+        const cwd = String(discovered.cwd || baseCwd);
+        if (!discovered.cwd && discovered.candidates.length > 1) {
+            const choices = discovered.candidates.map(candidate => path.basename(candidate)).join('، ');
+            return {
+                ok: false,
+                error: pick(isAr,
+                    `توجد عدة مشاريع قابلة للتشغيل في مساحة العمل (${choices}). حدّد اسم المشروع بين علامتي اقتباس أو مرّر cwd؛ لن أخمّن مشروعاً وأشغّله.`,
+                    `Several runnable projects exist in the workspace (${choices}). Name the project in quotes or pass cwd; I will not guess which project to run.`),
+                logs,
+            };
+        }
+        if (discovered.cwd && discovered.cwd !== baseCwd) {
+            logs.push(`project_run: discovered workspace project (${cwd})`);
+        }
         if (!input?.cwd && packagedIsWhole) {
             say(pick(isAr,
                 `📦 الواجهة محزومة داخل الخادم — أُشغّل النظام كاملاً (${path.basename(packagedInto)}) لا مجلّد الشيفرة.`,
@@ -267,6 +386,16 @@ export class ProjectRunTool implements ToolDefinition {
         const detected = input?.command
             ? { command: String(input.command), kind: 'override', expectPort: port, forced: false }
             : detectStart(cwd, port);
+        const missingPrerequisite = launchPrerequisiteError(cwd, detected);
+        if (missingPrerequisite) {
+            return {
+                ok: false,
+                error: pick(isAr,
+                    `تعذّر تشغيل المشروع بأمان: التبعية المحلية ${missingPrerequisite} غير موجودة في node_modules. لم أُثبّت أي حزم؛ اسمح بـ npm install ثم أعد التشغيل.`,
+                    `Cannot start the project safely: local dependency ${missingPrerequisite} is missing from node_modules. No packages were installed; allow npm install, then run again.`),
+                logs,
+            };
+        }
         say(pick(isAr,
             `▶️ أُشغّل المشروع (${detected.kind}) على المنفذ ${port}…`,
             `▶️ Starting the project (${detected.kind}) on port ${port}…`));
@@ -325,14 +454,21 @@ export class ProjectRunTool implements ToolDefinition {
              * about a live link instead of advertising a dead one, and he
              * gets the command to run it himself.
              */
-            say(pick(isAr,
-                `⏳ بدأ الخادم لكنه لم يستجب على أي منفذ خلال ٤٥ ثانية — لن أعطيك رابطاً لم أتحقّق منه. شغّله بنفسك: «${detected.command}» داخل ${cwd}`,
-                `⏳ The server started but answered on no port within 45s — I will not hand you a link I could not confirm. Run it yourself: «${detected.command}» in ${cwd}`));
+            const readinessMessage = pick(isAr,
+                `بدأ الخادم لكنه لم يستجب على أي منفذ خلال ٤٥ ثانية — لن أعطيك رابطاً لم أتحقّق منه. شغّله بنفسك: «${detected.command}» داخل ${cwd}`,
+                `The server started but answered on no port within 45s — I will not hand you a link I could not confirm. Run it yourself: «${detected.command}» in ${cwd}`);
+            say(`⏳ ${readinessMessage}`);
+            // A spawned process is not delivery evidence. Returning ok:true here
+            // made the DAG mark the node completed and the chat announce a live
+            // preview although this exact tool had just proved no port answered.
             return {
-                ok: true,
+                ok: false,
+                error: readinessMessage,
                 output: {
                     port, ready: false, pid, cwd, command: detected.command,
                     note: 'started_not_confirmed',
+                    verificationFailed: true,
+                    message: readinessMessage,
                 },
                 logs,
             };

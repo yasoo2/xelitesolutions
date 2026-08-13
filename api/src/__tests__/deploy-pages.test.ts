@@ -30,6 +30,14 @@ describe('"انشر / deploy" routes to permanent deployment, deterministically'
     test('"شغّل المشروع" is NOT deploy', async () => {
         expect((await plan('شغّل المشروع')).steps[0].tool).toBe('project_run');
     });
+    test('a run request that asks to prove build and startup remains project_run', async () => {
+        const goal = 'شغّل المشروع الموجود في مساحة العمل محليًا فقط. أثبت هل البناء والتشغيل نجحا أم لا؛ إن لم يتثبت ذلك أعلن الفشل بوضوح.';
+        expect((await plan(goal)).steps[0].tool).toBe('project_run');
+    });
+    test('a negated Arabic creation verb does not hijack a run request into a new project', async () => {
+        const goal = 'شغّل مشروع لوحة مهامي القائم داخل مساحة العمل الحالية فقط. لا تنشئ مشروعاً جديداً ولا تثبّت حزمًا؛ أثبت البناء والتشغيل بدليل طرفية ورابط HTTP أو أعلن الفشل وتوقف.';
+        expect((await plan(goal)).steps[0].tool).toBe('project_run');
+    });
     test('"ابنِ مشروعاً" is NOT deploy', async () => {
         expect((await plan('ابنِ لي نظام إدارة متكامل بباك اند')).steps[0].tool).toBe('project_pipeline');
     });

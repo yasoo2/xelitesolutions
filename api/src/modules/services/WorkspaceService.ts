@@ -198,6 +198,26 @@ export class WorkspaceService {
         if (wsId) {
             const root = this.rootsByWorkspaceId.get(wsId);
             if (root) return root;
+
+            // Local JSON/mock mode has one user-visible filesystem workspace.
+            // The chat still carries a logical workspace id for ownership and
+            // isolation, but the Explorer (and every project it displays) uses
+            // `localRoot`. Mapping an otherwise-unbound logical id to
+            // externalRoot/<id> created a hidden sibling directory, so a run
+            // could not see the project the user had selected in the Explorer.
+            // Production persistence keeps the per-workspace directory layout.
+            const isLocalSingleUserMode = process.env.PERSISTENCE_MODE === 'JSON'
+                || process.env.MOCK_DB === 'true'
+                || String(process.env.MOCK_DB) === '1';
+            if (isLocalSingleUserMode) {
+                const local = this.localRoot;
+                if (!fs.existsSync(local)) {
+                    try { fs.mkdirSync(local, { recursive: true }); } catch { }
+                }
+                this.rootsByWorkspaceId.set(wsId, local);
+                return local;
+            }
+
             const autoPath = path.join(this.externalRoot, wsId);
             try {
                 if (!fs.existsSync(autoPath)) {

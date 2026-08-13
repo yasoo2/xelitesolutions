@@ -104,7 +104,7 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
  * Legacy simulation logic has been decommissioned.
  */
 router.post('/start', authenticateOptional as any, async (req: Request, res: Response) => {
-    const { text, sessionId, userId: bodyUserId, provider, model, apiKey, baseUrl, language } = req.body || {};
+    const { text, sessionId, browserSessionId, workspaceId, userId: bodyUserId, provider, model, apiKey, baseUrl, language } = req.body || {};
     // The UI language the user picked. Everything Joe SAYS must follow it —
     // previously nothing carried it here, so every reply came back in Arabic no
     // matter which language the switcher was set to. Fall back to the browser's
@@ -238,6 +238,12 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         // The background process will handle its own errors and broadcast status via WS
         AgentLoopService.execute(text, {
             sessionId,
+            // لا تستبدل جلسة لوحة المتصفح بجلسة الدردشة؛ تستخدمها browser_run
+            // للتحكم في الصفحة نفسها التي تعرضها الواجهة.
+            browserSessionId: String(browserSessionId || '').trim() || undefined,
+            // مساحة العمل يختارها المستخدم في الواجهة ويجب أن تصل إلى كل أداة
+            // تعتمد على ملفات المشروع، لا أن تتحول إلى مجلد جلسة الدردشة.
+            workspaceId: String(workspaceId || '').trim() || undefined,
             userId,
             userName,
             systemInstructions,

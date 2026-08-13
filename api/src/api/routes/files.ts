@@ -3,7 +3,6 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import mongoose from 'mongoose';
-const pdf = require('pdf-parse');
 import { FileModel } from '../../shared/models/file';
 import { authenticate } from '../middleware/auth';
 import { officeKind, extractOfficeText } from '../../shared/office-text';
@@ -114,7 +113,10 @@ router.post('/upload', authenticate as any, upload.single('file') as any, async 
     } else if (req.file.mimetype === 'application/pdf') {
       try {
         const dataBuffer = await fs.promises.readFile(req.file.path);
-        const data = await pdf(dataBuffer);
+        // `pdf-parse` initializes a native canvas/GC resource on import. Keep
+        // it in the PDF-only path so ordinary attachment routes do not retain it.
+        const parsePdf = require('pdf-parse');
+        const data = await parsePdf(dataBuffer);
         content = data.text;
       } catch (err) {
         console.warn('[UniversalLoader] PDF parse warning:', err);

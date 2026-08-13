@@ -24,8 +24,18 @@ const OCR_TIMEOUT_MS = 90_000;
 /** The block carries at most this much verbatim text per image. */
 export const OCR_TEXT_CAP = 6_000;
 
-let workerPromise: Promise<any> | null = null;
-let ocrDisabledReason = '';
+type OcrState = {
+    workerPromise: Promise<any> | null;
+    disabledReason: string;
+};
+
+// A test may call jest.resetModules(), which otherwise creates a second module
+// scope and leaves its Tesseract worker beyond the original teardown's reach.
+// Keep this resource state process-wide so all imports share one worker and one
+// shutdown path, as the production process does.
+const OCR_STATE_KEY = '__joeOcrSharedState' as const;
+const globalOcr = globalThis as typeof globalThis & { __joeOcrSharedState?: OcrState };
+const ocrState = globalOcr[OCR_STATE_KEY] ||= { workerPromise: null, disabledReason: '' };
 
 function cacheDir(): string {
     const dir = String(process.env.JOE_OCR_CACHE || '').trim()
@@ -60,9 +70,9 @@ function ensureLocalLangs(dir: string, langs: string[]): boolean {
 /** Lazily create the shared worker (ara+eng unless overridden). */
 async function getWorker(): Promise<any | null> {
     if (String(process.env.JOE_OCR || '1') === '0') return null;
-    if (ocrDisabledReason) return null;
-    if (!workerPromise) {
-        workerPromise = (async () => {
+    if (ocrState.disabledReason) return null;
+    if (!ocrState.workerPromise) {
+        ocrState.workerPromise = (async () => {
             const langs = String(process.env.JOE_OCR_LANGS || 'ara+eng').trim();
             const dir = cacheDir();
             const offline = ensureLocalLangs(dir, langs.split('+').map(s => s.trim()).filter(Boolean));
@@ -77,8 +87,8 @@ async function getWorker(): Promise<any | null> {
                 // Worker-thread errors must NEVER take the process down — a
                 // failed language load surfaces here instead of crashing Joe.
                 errorHandler: (e: any) => {
-                    ocrDisabledReason = String(e?.message || e);
-                    console.warn(`[OCR] worker error (${ocrDisabledReason.slice(0, 120)}) — continuing without verbatim text.`);
+                    ocrState.disabledReason = String(e?.message || e);
+                    console.warn(`[OCR] worker error (${ocrState.disabledReason.slice(0, 120)}) — continuing without verbatim text.`);
                 },
             });
             // FULL-PAGE segmentation. tesseract.js defaults to SINGLE_BLOCK
@@ -91,13 +101,33 @@ async function getWorker(): Promise<any | null> {
         })().catch((e: any) => {
             // One honest line, then OCR stays off for the process — the vision
             // description still flows; only the verbatim layer is missing.
-            ocrDisabledReason = String(e?.message || e);
-            console.warn(`[OCR] unavailable (${ocrDisabledReason.slice(0, 120)}) — descriptions continue without verbatim text.`);
-            workerPromise = null;
+            ocrState.disabledReason = String(e?.message || e);
+            console.warn(`[OCR] unavailable (${ocrState.disabledReason.slice(0, 120)}) — descriptions continue without verbatim text.`);
+            ocrState.workerPromise = null;
             return null;
         });
     }
-    return workerPromise;
+    return ocrState.workerPromise;
+}
+
+/**
+ * Release the shared Tesseract worker on a controlled shutdown.
+ *
+ * Tesseract runs in a Node worker thread; leaving it alive keeps the process
+ * alive even after every request has completed. The server normally owns the
+ * process lifetime, while tests and controlled shutdowns must terminate it
+ * explicitly. The function is idempotent so concurrent teardown paths are safe.
+ */
+export async function shutdownOcr(): Promise<void> {
+    const pending = ocrState.workerPromise;
+    ocrState.workerPromise = null;
+    if (!pending) return;
+    try {
+        const worker = await pending;
+        await worker?.terminate?.();
+    } catch {
+        // OCR is best-effort. A failed worker must never block shutdown.
+    }
 }
 
 /** Collapse OCR noise: long runs of blank lines / trailing spaces. */
@@ -133,25 +163,3 @@ export async function extractImageText(filePath: string): Promise<string> {
     }
 }
 
-/**
- * CLOSE THE READER.
- *
- * `getWorker()` creates one tesseract worker for the whole process and nothing
- * ever closed it. In a long-lived server that is correct — the reader is meant
- * to be shared and reused. In a test run it is a worker THREAD that outlives
- * the last assertion, so Jest reports «a worker process has failed to exit
- * gracefully» and force-exits, which hides real leaks behind a known one.
- *
- * This is the missing half of the lifecycle: it terminates the worker if one
- * was ever built, and resets the lazy promise so a later call can build
- * another. Safe to call when no worker exists, and safe to call twice.
- */
-export async function shutdownOcr(): Promise<void> {
-    const p = workerPromise;
-    workerPromise = null;
-    if (!p) return;
-    try {
-        const w = await p;
-        if (w && typeof w.terminate === 'function') await w.terminate();
-    } catch { /* a reader that never opened needs no closing */ }
-}

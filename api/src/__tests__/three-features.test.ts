@@ -71,6 +71,21 @@ describe('(2) a thin build prompt starts a dialogue, not a build', () => {
         const next = clarifyGate('ابن لي موقعاً لصالون حلاقة رجالي بألوان داكنة', 's-clar2', 'ar');
         expect(next.kind).toBe('pass');
     });
+    it('an explicit project-run command replaces a pending vague-build dialogue', () => {
+        const session = 's-clar-run';
+        expect(clarifyGate('ابن لي موقع', session, 'ar').kind).toBe('ask');
+
+        const run = clarifyGate(
+            'شغّل المشروع الموجود داخل مساحة العمل باسم react-لوحة-مهامي. لا تنشئ مشروعاً جديداً ولا تستخدم الشبكة.',
+            session,
+            'ar',
+        );
+        expect(run.kind).toBe('pass');
+
+        // The operational command consumes the stale state: a later ordinary
+        // message is not silently merged back into the unrelated build brief.
+        expect(clarifyGate('الحالة الآن', session, 'ar').kind).toBe('pass');
+    });
     it('sessions do not leak into each other', () => {
         clarifyGate('ابن لي موقع', 's-a', 'ar');
         expect(clarifyGate('أزرق وأبيض', 's-b', 'ar').kind).toBe('pass');

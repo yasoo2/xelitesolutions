@@ -43,7 +43,7 @@ export class AgentLoopService {
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    static async execute(goal: string, options: { sessionId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string } = {}) {
+    static async execute(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
         const userName = String(options.userName || '').trim();
@@ -204,7 +204,20 @@ export class AgentLoopService {
                 id: runId,
                 traceId,
                 goal: effectiveGoal,
-                context: { userId, userName, systemInstructions: runInstructions, sessionId, modelConfig, memoryContext, language }
+                context: {
+                    userId,
+                    userName,
+                    systemInstructions: runInstructions,
+                    sessionId,
+                    // هذا هو معرف لوحة المتصفح الذي أنشأته الواجهة، وليس معرف
+                    // الدردشة. يحتفظ به حتى تصل browser_run إلى الصفحة المرئية.
+                    browserSessionId: String(options.browserSessionId || '').trim() || undefined,
+                    // مستقل عن sessionId: هذا هو جذر مساحة العمل المختارة من الواجهة.
+                    workspaceId: String(options.workspaceId || '').trim() || undefined,
+                    modelConfig,
+                    memoryContext,
+                    language
+                }
             }), RUN_DEADLINE_MS, 'run');
 
             // [FIX] Surface the final answer to the chat UI.

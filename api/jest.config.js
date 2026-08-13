@@ -17,9 +17,7 @@ module.exports = {
     testMatch: ['**/__tests__/**/*.test.ts'],
     setupFiles: ['<rootDir>/__tests__/setup.ts'],
     // Closes the shared OCR worker after the last test. Without it the run
-    // ends on «a worker process has failed to exit gracefully», which is a
-    // warning people learn to scroll past — and a known leak that is always
-    // there hides the next one, which will not be known.
+    // ends on a worker-process warning that would hide later leaks.
     globalTeardown: '<rootDir>/__tests__/teardown.ts',
     // The suite must not reach the network. Anything that tries is a bug in the
     // test, not a flaky environment.

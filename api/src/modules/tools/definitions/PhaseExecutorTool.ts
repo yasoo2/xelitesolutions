@@ -286,7 +286,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                         }, executionContext);
                         const buildOutput = String((buildResult as any)?.output?.stdout || (buildResult as any)?.output || '');
                         if (buildOutput.includes('BUILD_CHECK_FAILED') || !buildResult.ok) {
-                            logs.push('[PhaseExecutor] ⚠️ Auto-build check found issues — orchestrator should route to self-fix');
+                            const buildError = String((buildResult as any)?.error || 'Auto-build check failed');
+                            logs.push(`[PhaseExecutor] ⚠️ Auto-build check found issues — orchestrator should route to self-fix: ${buildError}`);
+                            results.push({ task: 'Auto-build check', tool: 'shell_execute', ok: false, error: buildError });
                             status = 'partial';
                         } else {
                             logs.push('[PhaseExecutor] ✅ Auto-build check passed');
@@ -297,8 +299,11 @@ export class PhaseExecutorTool implements ToolDefinition {
                 }
             }
 
-            const ok = status === 'completed' || completedCount > 0;
-            const primaryError = ok ? undefined : (results.find(r => !r.ok)?.error || 'Phase failed');
+            // A partial phase contains useful artefacts, but it is not verified
+            // delivery. Propagating ok:true here previously let pipeline and chat
+            // callers mistake a failed check for a completed engineering phase.
+            const ok = status === 'completed';
+            const primaryError = ok ? undefined : (results.find(r => !r.ok)?.error || (status === 'partial' ? 'Phase completed only partially' : 'Phase failed'));
 
             return {
                 ok,

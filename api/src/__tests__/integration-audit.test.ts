@@ -44,6 +44,14 @@ describe('every defined tool is reachable', () => {
         const missing = det.filter(t => !names.has(t) && !new RegExp(`['"]${t}['"]`).test(svc));
         expect(missing).toEqual([]);
     });
+    it('a planned tool is executed as planned before any agent can reselect it', () => {
+        const orch = fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
+        const direct = orch.indexOf("else if (typeof node.tool === 'string' && node.tool.trim())");
+        const delegated = orch.indexOf('else if (agent)');
+        expect(direct).toBeGreaterThan(-1);
+        expect(direct).toBeLessThan(delegated);
+        expect(orch.slice(direct, delegated)).toContain('executeTool(plannedTool, nodeInput, executionContext)');
+    });
     it('the registry has no silent duplicates', () => {
         expect(names.size).toBe(tools.length);
     });
@@ -184,5 +192,28 @@ describe('the inbox notifies the owner LIVE', () => {
         expect(storeAt).toBeGreaterThan(0);
         expect(notifyAt).toBeGreaterThan(storeAt);
         expect(src).toContain("type: 'form_submission'");
+    });
+});
+
+
+describe('project-run preserves the user-selected workspace and task boundary', () => {
+    it('threads workspaceId from the composer through the run route and agent loop', () => {
+        const web = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'src', 'components', 'CommandComposer.tsx'), 'utf-8');
+        const route = fs.readFileSync(path.join(__dirname, '..', 'api', 'routes', 'run.ts'), 'utf-8');
+        const loop = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
+        expect(web).toContain('workspaceId: workspaceId || undefined');
+        expect(route).toContain('browserSessionId, workspaceId, userId: bodyUserId');
+        expect(route).toContain("workspaceId: String(workspaceId || '').trim() || undefined");
+        expect(loop).toContain('workspaceId?: string');
+        expect(loop).toContain("workspaceId: String(options.workspaceId || '').trim() || undefined");
+    });
+
+    it('returns an explicit project_run failure before the generative recovery planner', () => {
+        const orch = fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
+        const guard = orch.indexOf("const isDeterministicRunFailure = node.tool === 'project_run'");
+        const recovery = orch.indexOf('await this.attemptRecovery(');
+        expect(guard).toBeGreaterThan(-1);
+        expect(recovery).toBeGreaterThan(guard);
+        expect(orch.slice(guard, recovery)).toContain("return { ok: false");
     });
 });

@@ -94,11 +94,13 @@ describe('readiness does not adopt a stranger\'s server', () => {
             'const probeList = detected.forced ? [port] : [port, ...COMMON_DEV_PORTS.filter(p => p !== port)];');
     });
 
-    it('an unconfirmed server yields NO url — the dead link is what he clicked', () => {
+    it('an unconfirmed server yields an explicit verification failure, never a dead URL', () => {
         const at = RUNTOOL.indexOf('if (!livePort) {');
-        const block = RUNTOOL.slice(at, at + 1400);
+        const block = RUNTOOL.slice(at, at + 2600);
         expect(at).toBeGreaterThan(-1);
-        expect(block).not.toMatch(/url: `http:\/\/localhost:\$\{port\}\/`/);
+        expect(block).not.toMatch(/url: `http:\/\/localhost:\$\{port\}\//);
+        expect(block).toContain('ok: false');
+        expect(block).toContain('verificationFailed: true');
         expect(block).toContain("note: 'started_not_confirmed'");
         expect(block).toContain('command: detected.command');
     });

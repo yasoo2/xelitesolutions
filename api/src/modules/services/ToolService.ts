@@ -95,7 +95,10 @@ function checkToolRateLimit(bucketKey: string, limitPerMinute?: number): { allow
 }
 
 export interface ToolContext {
+    /** معرف جلسة الدردشة/التشغيل؛ ليس بالضرورة جلسة المتصفح. */
     sessionId?: string;
+    /** معرف جلسة لوحة المتصفح المخصص لهذا التشغيل. */
+    browserSessionId?: string;
     workspaceId?: string; // New: Strict Isolation Context
     userId?: string;
     language?: string;
@@ -222,6 +225,9 @@ export async function executeTool(name: string, input: any, context?: ToolContex
 
     // --- Aliasing & Compatibility Layer ---
     const contextSessionId = context?.sessionId;
+    // جلسة المتصفح مستقلة عن جلسة المحادثة. استخدام معرّف الدردشة هنا كان
+    // يفتح صفحة في جلسة لا تستمع إليها لوحة المستخدم (أو يفشل تفويضها).
+    const contextBrowserSessionId = String(context?.browserSessionId || '').trim();
     let contextWorkspaceId =
         typeof context?.workspaceId === 'string' && context.workspaceId.trim()
             ? context.workspaceId.trim()
@@ -488,9 +494,13 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         effectiveName = 'generate_image';
     }
 
-    // Universal Session Injection
-    if ((effectiveName === 'browser_run' || effectiveName === 'visual_qa' || effectiveName === 'codebase_navigator') && !effectiveInput.sessionId && contextSessionId) {
-        effectiveInput.sessionId = contextSessionId;
+    // Universal Browser Session Injection. Prefer the dedicated panel session;
+    // sessionId is retained only as a backwards-compatible fallback for callers
+    // that predate browserSessionId.
+    if (effectiveName === 'browser_run' || effectiveName === 'visual_qa' || effectiveName === 'codebase_navigator') {
+        if (!effectiveInput.sessionId && (contextBrowserSessionId || contextSessionId)) {
+            effectiveInput.sessionId = contextBrowserSessionId || contextSessionId;
+        }
     }
 
     // [NEW] Deep Memory Handlers

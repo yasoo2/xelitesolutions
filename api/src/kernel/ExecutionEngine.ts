@@ -62,6 +62,21 @@ export interface ExecutionSession {
 /** The Windows executables that ship as .cmd shims rather than real .exe. */
 const WIN_CMD_SHIMS = new Set(['npm', 'npx', 'yarn', 'pnpm']);
 
+/**
+ * A Joe session must not inherit an npm installation target from the API host.
+ * In particular, `npm_config_prefix` redirected every generated project's npm
+ * installs into the API directory; `npm_config_cache` then made the failure
+ * depend on an unrelated session's cache. Remove both after caller overrides
+ * have been merged so every spawn route receives the same clean environment.
+ */
+function isolatedExecutionEnv(overrides?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...process.env, ...overrides };
+    for (const key of Object.keys(env)) {
+        if (/^npm_config_(prefix|cache)$/i.test(key)) delete env[key];
+    }
+    return env;
+}
+
 export class ExecutionEngine {
     private pty: any = null;
     private cache = new Map<string, { result: ExecutionResult, expires: number }>();
@@ -297,7 +312,7 @@ export class ExecutionEngine {
                     cols: options.cols || 80,
                     rows: options.rows || 30,
                     cwd: cwd,
-                    env: { ...process.env, ...options.env, TERM: 'xterm-256color' }
+                    env: { ...isolatedExecutionEnv(options.env), TERM: 'xterm-256color' }
                 });
 
                 return {
@@ -341,7 +356,7 @@ export class ExecutionEngine {
                 // '/bin/sh' does not exist on Windows — when node-pty is missing
                 // there, this hardcoded shell made EVERY manual command fail.
                 // undefined lets Node pick the platform default (cmd.exe / sh).
-                exec(cmd, { cwd: currentCwd, shell: process.platform === 'win32' ? undefined : '/bin/sh', timeout: 30000 }, (err: any, stdout: string, stderr: string) => {
+                exec(cmd, { cwd: currentCwd, env: isolatedExecutionEnv(options.env), shell: process.platform === 'win32' ? undefined : '/bin/sh', timeout: 30000 }, (err: any, stdout: string, stderr: string) => {
                     if (err && !stdout && !stderr) {
                         resolve(`Error: ${err.message}\n`);
                     } else {
@@ -498,12 +513,12 @@ export class ExecutionEngine {
         const child = useShell
             ? spawn(line, [], {
                 cwd: rest.cwd || this.getWorkspaceRoot(),
-                env: { ...process.env, ...rest.env },
+                env: isolatedExecutionEnv(rest.env),
                 shell: true,
             })
             : spawn(cmd, args, {
                 cwd: rest.cwd || this.getWorkspaceRoot(),
-                env: { ...process.env, ...rest.env },
+                env: isolatedExecutionEnv(rest.env),
                 shell: false,
             });
         const feed = (stream: 'stdout' | 'stderr') => (b: Buffer) => {
@@ -596,7 +611,7 @@ export class ExecutionEngine {
                 : process.platform !== 'win32';
             const child = spawn(file, args, {
                 cwd: options.cwd || this.getWorkspaceRoot(),
-                env: { ...process.env, ...options.env },
+                env: isolatedExecutionEnv(options.env),
                 detached: detach,
                 // stdin closed: a detached updater must never sit waiting on a
                 // keypress nobody can give it.
@@ -682,25 +697,28 @@ export class ExecutionEngine {
         return new Promise((resolve) => {
             const child = spawn(file, args, {
                 cwd: options.cwd || this.getWorkspaceRoot(),
-                env: { ...process.env, ...options.env },
+                env: isolatedExecutionEnv(options.env),
                 shell: false, // argv is already tokenized — never let a shell re-parse it
                 stdio: options.stdio || 'pipe'
             });
             let stdout = '';
             let stderr = '';
             let done = false;
+            let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
             child.stdout?.on('data', (d) => { stdout += d.toString(); });
             child.stderr?.on('data', (d) => { stderr += d.toString(); });
             child.on('close', (code) => {
                 if (done) return; done = true;
+                if (timeoutTimer) clearTimeout(timeoutTimer);
                 resolve({ ok: code === 0, output: stdout, error: stderr, exitCode: code, pid: child.pid });
             });
             child.on('error', (err) => {
                 if (done) return; done = true;
+                if (timeoutTimer) clearTimeout(timeoutTimer);
                 resolve({ ok: false, error: err.message, exitCode: 1 });
             });
             if (options.timeout) {
-                setTimeout(() => {
+                timeoutTimer = setTimeout(() => {
                     if (done) return; done = true;
                     try { child.kill('SIGKILL'); } catch {}
                     resolve({ ok: false, error: 'Execution timed out', exitCode: 124 });
@@ -717,7 +735,7 @@ export class ExecutionEngine {
 
             const child = spawn(cmd, args, {
                 cwd: options.cwd || this.getWorkspaceRoot(),
-                env: { ...process.env, ...options.env },
+                env: isolatedExecutionEnv(options.env),
                 shell: options.shell !== undefined ? options.shell : true,
                 detached: options.detached,
                 stdio: options.stdio || 'pipe'
@@ -737,6 +755,8 @@ export class ExecutionEngine {
 
             let stdout = '';
             let stderr = '';
+            let done = false;
+            let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
 
             if (child.stdout) {
                 child.stdout.on('data', (data) => {
@@ -751,6 +771,8 @@ export class ExecutionEngine {
             }
 
             child.on('close', (code) => {
+                if (done) return; done = true;
+                if (timeoutTimer) clearTimeout(timeoutTimer);
                 resolve({
                     ok: code === 0,
                     output: stdout,
@@ -761,6 +783,8 @@ export class ExecutionEngine {
             });
 
             child.on('error', (err) => {
+                if (done) return; done = true;
+                if (timeoutTimer) clearTimeout(timeoutTimer);
                 resolve({
                     ok: false,
                     error: err.message,
@@ -769,7 +793,8 @@ export class ExecutionEngine {
             });
 
             if (options.timeout) {
-                setTimeout(() => {
+                timeoutTimer = setTimeout(() => {
+                    if (done) return; done = true;
                     try { child.kill(); } catch {}
                     resolve({ ok: false, error: 'Execution timed out', exitCode: 124 });
                 }, options.timeout);
@@ -792,7 +817,7 @@ export class ExecutionEngine {
         const result = spawnSync(cmd, args, {
             ...options,
             encoding: 'utf8',
-            env: { ...process.env, ...(options.env || {}) }
+            env: isolatedExecutionEnv(options.env)
         });
 
         return {

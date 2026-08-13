@@ -895,8 +895,11 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
             expect({ family, serial: new RegExp(family.replace('_', '_?')).test(orch.match(/const SERIAL_TOOLS = [^;]+/)![0]) })
                 .toEqual({ family, serial: true });
         }
-        // and a written command no longer needs a model to be run
-        expect(orch).toContain("node.tool === 'shell_execute' && typeof nodeInput?.command === 'string'");
+        // Every explicitly planned tool — including a written shell command — is
+        // executed as selected; it never falls into JoeAgent-V2's short tool menu.
+        expect(orch).toContain("const plannedTool = node.tool.trim();");
+        expect(orch).toContain('executeTool(plannedTool, nodeInput, executionContext)');
+        expect(orch).toContain('else if (agent)');
     });
 
     it('the mind never schedules work the tools cannot be fed', () => {

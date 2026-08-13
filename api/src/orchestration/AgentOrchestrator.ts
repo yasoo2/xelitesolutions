@@ -521,21 +521,17 @@ export class AgentOrchestrator {
               // Deterministic build tool — run it directly so the weak-model tool-picker
               // can't downgrade a "build a page" request back into a chat answer.
               result = await deadline(executeTool('web_page_builder', nodeInput, executionContext));
-            } else if (typeof node.tool === 'string' && ((node.tool.startsWith('browser_') && node.tool !== 'browser_run') || DETERMINISTIC_TOOLS.includes(node.tool))) {
-              // Deterministic tools (browser smart-tools, Google account, user's own
-              // browser, file read/write) — run the exact tool directly so the weak-model
-              // tool-picker or a Dev agent can't mis-handle a node that already names its
-              // tool and carries a resolved input (e.g. write the browser's data to a file).
-              result = await deadline(executeTool(node.tool, nodeInput, executionContext));
-            } else if (node.tool === 'shell_execute' && typeof nodeInput?.command === 'string' && nodeInput.command.trim()) {
-              // A COMMAND THAT IS ALREADY WRITTEN NEEDS NO ONE TO THINK ABOUT IT.
-              // shell_execute went through the Dev agent, which asks a model what
-              // to run — so a plan whose step already said `npm test` failed
-              // outright when no provider answered: «تعذّر الوصول إلى محرّك
-              // الذكاء» for work that needed no thinking at all. Measured. When
-              // the command is present it is executed; when it is not, the agent
-              // still does its job of working out what to run.
-              result = await deadline(executeTool('shell_execute', nodeInput, executionContext));
+            } else if (typeof node.tool === 'string' && node.tool.trim()) {
+              // التخطيط اختار الأداة والعقدة تحمل مدخلاتها. إعادة الاختيار في
+              // JoeAgent-V2 كانت تعني أن قائمة من ثماني أدوات قد تستبدل أداة
+              // مخططة (خصوصاً browser_run وأدوات التحقق) بأداة مختلفة أو برد
+              // نصي. ننفذ الاسم كما هو؛ الاسم غير المسجّل يفشل صراحة في بوابة
+              // الأدوات بدلاً من اختراع بديل.
+              const plannedTool = node.tool.trim();
+              if (!DETERMINISTIC_TOOLS.includes(plannedTool)) {
+                console.log(`[AgentOrchestrator] executing planned non-catalogued tool directly: ${plannedTool}`);
+              }
+              result = await deadline(executeTool(plannedTool, nodeInput, executionContext));
             } else if (agent) {
               result = await deadline(agent.execute(node.task, nodeInput, executionContext));
             } else {
@@ -728,6 +724,22 @@ export class AgentOrchestrator {
             console.error('[AgentOrchestrator] No LLM provider reachable — ending the run instead of planning a recovery.');
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason: 'provider_unreachable' });
             return { ok: false, result: result.error, steps: runSteps(dag) };
+          }
+
+          // A tool can prove that its requested outcome did not occur even when
+          // it successfully performed a preliminary action (for example, spawning
+          // a process that never opened a port). This is final evidence, not a
+          // transient exception for an LLM to retry blindly.
+          // `project_run` is an explicit, deterministic user request. Whether it
+          // failed because no project exists, the command could not start, or the
+          // readiness probe failed, inventing a build/repair plan changes the job.
+          // Surface its evidence and let the user choose the next action instead.
+          const isDeterministicRunFailure = node.tool === 'project_run';
+          if (out.verificationFailed === true || isDeterministicRunFailure) {
+            const reason = out.verificationFailed === true ? 'verification_failed' : 'project_run_failed';
+            console.error(`[AgentOrchestrator] Final ${reason} for ${node.id} — stopping without an invented recovery.`);
+            if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason });
+            return { ok: false, result: result.error || out.message || 'Project run failed', steps: runSteps(dag) };
           }
 
           // [DECISION] Intelligent recovery attempt (Reviewer/QA department steps in)

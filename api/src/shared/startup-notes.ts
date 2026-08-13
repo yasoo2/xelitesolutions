@@ -15,6 +15,10 @@ let scheduled = false;
 export function noteMissingKey(provider: string, envVar: string): void {
     if (missing.has(provider)) return;
     missing.set(provider, envVar);
+    // Test imports intentionally construct provider objects without credentials.
+    // A delayed cosmetic log after Jest has closed is neither runtime evidence
+    // nor a valid test result; it turned passing suites into exit code 1.
+    if (process.env.NODE_ENV === 'test') return;
     if (scheduled) return;
     scheduled = true;
     // After the boot sequence, so it lands as a summary rather than in the

@@ -31,6 +31,16 @@ const BUILD_VERB = /\b(build|create|make|design|develop|generate)\b|(ابنِ|ا
 const WEB_NOUN = /\b(page|site|website|app|store|dashboard|portfolio|landing)\b|(صفحة|موقع|تطبيق|متجر|لوحة|واجهة|بورتفوليو|هبوط)/i;
 const BYPASS = /(مباشرة|مباشره|بدون\s*أ?سئلة|بدون\s*اسئله|على\s*(راحتك|كيفك|ذوقك)|كما\s*تراه|اقترح\s*أنت|directly|no\s*questions|your\s*call|surprise\s*me)/i;
 
+/**
+ * A command to operate, verify, or deploy an existing project is a NEW task,
+ * never an answer to an earlier "what should I build?" dialogue. Keeping a
+ * 30-minute clarify state must not turn «شغّل المشروع» into a request to build
+ * the stale project. Deliberately excludes «ابدأ مباشرة»: that is the
+ * documented answer which means "build the pending brief now".
+ */
+const EXPLICIT_OPERATIONAL_INTENT =
+    /\b(project_run|run|start|launch|execute|open|test|verify|validate|deploy)\b|شغّ?ل|تشغيل|افتح|اختبر|تحقّ?ق|تأكّ?د|تاكّ?د|ابدأ\s*(?:التشغيل|تشغيل)|نفّ?ذ|انشر/i;
+
 /** Words that carry no description of WHAT to build. */
 const STOP = new Set([
     'ابن', 'ابني', 'ابنِ', 'انشئ', 'أنشئ', 'اصنع', 'صمم', 'اعمل', 'سوي', 'سو', 'طور',
@@ -103,6 +113,12 @@ export function clarifyGate(goal: string, sessionId: string, language: string, o
 
     if (pending && Date.now() - pending.at < TTL_MS) {
         delete map[key];
+        // An explicit run/verification/deploy command targets the current
+        // project, not the unanswered build brief. Pass it unchanged so the
+        // planner can select project_run (or the relevant operational tool).
+        if (EXPLICIT_OPERATIONAL_INTENT.test(text)) {
+            return { kind: 'pass' };
+        }
         // A brand-new DETAILED build request replaces the old conversation.
         if (BUILD_VERB.test(text) && WEB_NOUN.test(text) && descriptiveTokens(text).length >= 2) {
             return { kind: 'pass' };
