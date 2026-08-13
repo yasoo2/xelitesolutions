@@ -2119,7 +2119,7 @@ export class ReactProjectTool extends BaseTool {
          * step was skipped and why, so «I obeyed you» never looks like «I
          * failed».
          */
-        const { saysNoInstall } = require('../../../core/design/subject-phrase');
+        const { saysNoInstall, asksFor } = require('../../../core/design/subject-phrase');
         const noInstall = !!input?.skipInstall || saysNoInstall(request);
         if (noInstall && !input?.skipInstall) {
             term('policy: the request says not to install packages — skipping npm install and the build that needs it');
@@ -2534,6 +2534,34 @@ export class ReactProjectTool extends BaseTool {
         // App.jsx imports it unconditionally, so the file must always exist —
         // it simply renders nothing when `content.api` is empty.
         if (!appBp) files['src/components/AdminPanel.jsx'] = fileAdminPanelJsx();
+
+        /**
+         * A README WHEN HE ASKED FOR ONE — AND ONLY THEN.
+         *
+         * «واكتب README عربي» was in the brief and no README was written. The
+         * acceptance ledger below would report that honestly, but reporting a
+         * gap you could simply close is not the better outcome.
+         *
+         * It sits HERE, after both paths, on purpose: an application build
+         * (`appBp`) replaces the whole file set with its own, so a README
+         * added to the section-path map above is silently dropped for exactly
+         * the requests most likely to ask for one. Measured, not guessed — the
+         * first version of this went in above and the ledger still said «لم
+         * أكتب README» on a booking board.
+         */
+        if (asksFor(request).readme) {
+            files['README.md'] = isAr
+                ? `# ${content.brand}\n\n${content.tagline || 'مشروع React مبني بـVite.'}\n\n`
+                + `## التشغيل\n\n\`\`\`bash\nnpm install\nnpm run dev      # خادم تطوير بتحديث حي\nnpm run build    # نسخة الإنتاج في dist/\n\`\`\`\n\n`
+                + `## البنية\n\n- \`src/content.js\` — كل نصوص الواجهة وأرقامها في مكان واحد؛ عدّل هنا فيتبعك الباقي.\n`
+                + `- \`src/App.jsx\` — تركيب الصفحة.\n- \`src/components/\` — المكوّنات.\n- \`src/styles/\` — نظام التصميم والخطوط.\n\n`
+                + `> بُني بواسطة جو.\n`
+                : `# ${content.brand}\n\n${content.tagline || 'A React project built with Vite.'}\n\n`
+                + `## Running it\n\n\`\`\`bash\nnpm install\nnpm run dev      # dev server with live reload\nnpm run build    # production build in dist/\n\`\`\`\n\n`
+                + `## Layout\n\n- \`src/content.js\` — every word and number in one place; edit here and the rest follows.\n`
+                + `- \`src/App.jsx\` — how the page is assembled.\n- \`src/components/\` — the components.\n- \`src/styles/\` — the design system and fonts.\n\n`
+                + `> Built by Joe.\n`;
+        }
         // The multi-page app swaps in a Navbar of real page Links.
         if (!appBp && multiPage) files['src/components/Navbar.jsx'] = fileMultiPageNavbarJsx();
         // THE FILES, LIVE. Every file this build writes is streamed to the
@@ -3508,6 +3536,36 @@ export class ReactProjectTool extends BaseTool {
          * exact runs where the terminal is the only instrument that worked, and
          * therefore the only one with anything to report.
          */
+        /**
+         * THE ACCEPTANCE JUDGE — «نجاح البناء لا يساوي نجاح الوكيل».
+         *
+         * Every claim this tool made was individually true, and the delivery
+         * still read as complete on a run that had produced no build, no
+         * README and none of the seven features the brief listed. Nobody was
+         * asking the only question the user cares about: of the things I was
+         * TOLD to deliver, which can I actually show?
+         *
+         * The judge asks it. It reads his own brief into criteria, looks for
+         * evidence of each one in what really exists — files on disk, the
+         * build flag, a live server, the browser audit, the generated source —
+         * and publishes the ledger. `accepted` is false while a single one is
+         * unmet, and the unmet ones are named. The tool still returns ok:true
+         * because the files were really written; what it no longer does is let
+         * «I wrote files» stand in for «I did what you asked».
+         */
+        const { acceptanceFor, judgeAcceptance, acceptanceBlock } = require('../../../core/quality/acceptance');
+        const acceptance = judgeAcceptance(acceptanceFor(request), {
+            dir: proj,
+            built,
+            liveUrl: liveServer ? liveServer.url : '',
+            audit: audit || null,
+        }, isAr);
+        if (acceptance.criteria.length) {
+            term(`acceptance: ${acceptance.met}/${acceptance.criteria.length} of what you asked for is proven`
+                + (acceptance.unmet ? ` — unmet: ${acceptance.criteria.filter((c: any) => c.verdict === 'unmet').map((c: any) => c.id).join(', ')}` : ''));
+        }
+        const acceptBlock = acceptance.criteria.length ? `${acceptanceBlock(acceptance, isAr)}\n` : '';
+
         const shellBlock = (() => {
             const line = transcriptLine(shell.transcript(), isAr);
             return line ? `${line}\n` : '';
@@ -3541,7 +3599,7 @@ export class ReactProjectTool extends BaseTool {
         const message = isAr
             ? `⚛️ ${blockers.length ? 'بُني مشروع React وتجمّع — لكنه سُلّم بعيوب باقية' : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
 ${scopeBlock}${appBlock}
-${qaBlock}${shellBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
+${qaBlock}${shellBlock}${acceptBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
 ${fileList}
 
@@ -3557,14 +3615,14 @@ ${buildDiagnosis ? (buildDiagnosis.healed
    • «انشر المشروع» → نسخة الإنتاج بصورها على رابط دائم`
             : `⚛️ ${blockers.length ? 'A React project that compiles — delivered WITH open defects' : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
 ${scopeBlock}${appBlock}
-${qaBlock}${shellBlock}📂 Path: ${proj}
+${qaBlock}${shellBlock}${acceptBlock}📂 Path: ${proj}
 ${fileList}
 
 ${built ? '✅ npm install + vite build succeeded — the production build is in dist/.' : npmMissing ? '⚠️ npm is not available here — run npm install && npm run dev yourself.' : ''}`;
 
         return {
             ok: true,
-            output: { message, path: proj, dir: dirName, installed, built, audit, files: Object.keys(files) },
+            output: { message, acceptance, path: proj, dir: dirName, installed, built, audit, files: Object.keys(files) },
             logs,
         } as any;
     }

@@ -182,3 +182,31 @@ export function saysNoInstall(request: string): boolean {
         || /\b(no|without|do\s*not|don'?t)\s+(install|installing|network|internet|npm\s+install)\b/i.test(t)
         || /\boffline\b/i.test(t);
 }
+
+/**
+ * WHAT HE ASKED TO BE *VERIFIED* — SO THE REPORT CAN NAME WHAT DID NOT HAPPEN.
+ *
+ * A wide brief asks for more than a product: «… ثم ابنِ نسخة إنتاج، وافتح
+ * معاينة محلية، واكتب README، واذكر الفحوص التي نفذتها». A run that delivers
+ * the files and stays silent about the verification steps it skipped reads as
+ * complete success — an outside reviewer read exactly that, on a run where
+ * `built` was false and no README existed.
+ *
+ * These are not features; they are PROMISES, and each is either kept or named.
+ */
+export interface AskedFor {
+    build: boolean;
+    preview: boolean;
+    check: boolean;
+    readme: boolean;
+}
+
+export function asksFor(request: string): AskedFor {
+    const t = String(request || '');
+    return {
+        build: /(ابنِ?\s*(نسخة\s*)?(الإنتاج|إنتاج)|بناء\s*(الإنتاج|إنتاج)|production\s*build|\bbuild\b)/iu.test(t),
+        preview: /(معاينة|عاين|preview|\bserve\b|dev\s*server|خادم\s*تطوير)/iu.test(t),
+        check: /(افحص|فحص|تحقّ?ق|تحقق|اختبر|اختبار|دقّ?ق|verify|\bcheck\b|audit|\btest\b)/iu.test(t),
+        readme: /\breadme\b|ملف\s*(تعريف|شرح)/iu.test(t),
+    };
+}
