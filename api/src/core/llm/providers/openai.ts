@@ -10,8 +10,12 @@ export class OpenAIProvider {
     constructor(apiKey?: string) {
         this.apiKey = apiKey || OPENAI_API_KEY;
         if (this.apiKey && this.apiKey.startsWith('sk-')) {
+            // Keep the official endpoint by default, but honour an explicitly
+            // configured compatible gateway (used by local and managed installs).
+            const baseURL = String(process.env.OPENAI_API_BASE || '').trim();
             this.client = new OpenAI({
                 apiKey: this.apiKey,
+                ...(baseURL ? { baseURL } : {}),
             });
             console.info('[OpenAI] Provider initialized with API key');
         } else {
@@ -41,7 +45,13 @@ export class OpenAIProvider {
                 tool_choice: tools ? 'auto' : undefined,
             });
 
-            const message = completion.choices[0]?.message;
+            const choices = Array.isArray((completion as any)?.choices)
+                ? (completion as any).choices
+                : [];
+            const message = choices[0]?.message;
+            if (!message) {
+                throw new Error('OpenAI returned no assistant message (missing choices)');
+            }
 
             if (message?.tool_calls && message.tool_calls.length > 0) {
                 return JSON.stringify({

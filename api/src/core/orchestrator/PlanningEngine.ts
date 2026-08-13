@@ -400,6 +400,33 @@ Rules:
             ? `${userGoal}\n${goalNorm}` : userGoal;
         const goalLower = probe.toLowerCase();
 
+        // [EARLY EXPLICIT URL OPEN] A bounded navigation request is a hard
+        // prerequisite for any page-local tool. Resolve it before capability
+        // chains and model-guided routing, which cannot safely search a page
+        // that has not been opened yet.
+        const earlyUrlMatch = userGoal.match(/https?:\/\/[^\s<>'\"]+/i)
+            || userGoal.match(/\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s<>'\"]*)?/i);
+        const earlyOpenIntent = /(افتح|لفتح|فتح|اذهب|انتقل|زر|ادخل|go\s*to|open|visit|navigate)/i.test(probe);
+        const earlyTitleOnly = /(عنوان\s*(ال)?صفحة|title\s*(of\s*(the\s*)?)?page|page\s*title)/i.test(probe);
+        const earlyPageWork = /(لخّ?ص|تلخيص|حلّ?ل|تحليل|استخرج|استخراج|انقر|اضغط|املأ|عبّ?ئ|سجّ?ل|تسجيل|دخول|summari[sz]e|analy[sz]e|extract|click|fill|log\s*-?\s*in|sign\s*-?\s*in)/i.test(probe);
+        if (earlyUrlMatch && earlyOpenIntent && (earlyTitleOnly || !earlyPageWork)) {
+            const url = earlyUrlMatch[0].startsWith('http') ? earlyUrlMatch[0] : `https://${earlyUrlMatch[0]}`;
+            console.log(`[PlanningEngine] early explicit URL open -> browser_launch ${url}`);
+            return {
+                id: `browser_open_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'browser_open',
+                    description: earlyTitleOnly ? `افتح ${url} وأعد عنوان الصفحة` : `افتح ${url}`,
+                    tool: 'browser_launch',
+                    agent: 'Browser',
+                    input: { url, request: intent.goal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'low', riskLevel: 'low' },
+            };
+        }
+
         // A recovery goal ("Fix and continue: <task>\n[THE STEP FAILED WITH THIS
         // ERROR]: …") must NEVER enter the keyword fast-paths below. The goal now
         // carries the failed task's own words plus raw error text — both full of
@@ -426,8 +453,14 @@ Rules:
         try {
             const { capabilityChain, hasExplicitSequence } = require('./capability-match');
             const goalText = String(intent.goal || '');
+            // A GitHub link plus analysis/development verbs has a stronger
+            // deterministic contract below: clone it locally before inspecting
+            // or changing it. Do not let a generic multi-step chain consume the
+            // first clause and lose the repository checkout.
+            const isGithubWorkRequest = /(?:https?:\/\/)?(?:www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?(?:[\/?#\s]|$)/i.test(goalText)
+                && /(استنسخ|نسخ|انسخ|استورد|استيراد|حلّ?ل|تحليل|افهم|فهم|دقّ?ق|مراجعة|طوّ?ر|تطوير|عدّ?ل|تعديل|أصلح|اصلح|إصلاح|اختبر|اختبار|شغّ?ل|تشغيل|نفّ?ذ|بناء|build|develop|implement|modify|edit|fix|test|run|clone|import|analy[sz]e|review|inspect)/i.test(probe);
             // Only an explicit «ثم»/«then» — a newline is layout, not order.
-            const early = hasExplicitSequence(goalText) ? capabilityChain(goalText, 5) : [];
+            const early = !isGithubWorkRequest && hasExplicitSequence(goalText) ? capabilityChain(goalText, 5) : [];
             if (early.length >= 2 && !early.some((c: any) => BUILDERS.has(c.name))) {
                 const chained = PlanningEngine.capabilityPlan(intent);
                 if (chained && chained.metadata?.matchedBy === 'capability-chain') {
@@ -1208,6 +1241,34 @@ Rules:
             }
         }
 
+        // [GITHUB REPOSITORY WORK FAST-PATH] A link plus an implementation verb
+        // means the user expects a local, inspectable checkout — not a metadata
+        // report. ImportProjectTool clones, analyzes and makes that checkout active
+        // so later edit/run/test requests operate on real files. Detailed analysis
+        // is local too: meaningful findings must come from tracked files, not only
+        // repository metadata. A mere "view this link" still falls through.
+        {
+            const goalText = String(intent.goal || '');
+            const hasGithubUrl = /(?:https?:\/\/)?(?:www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?(?:[\/?#\s]|$)/i.test(goalText);
+            const wantsLocalRepositoryWork = /(استنسخ|نسخ|انسخ|استورد|استيراد|حلّ?ل|تحليل|افهم|فهم|دقّ?ق|مراجعة|طوّ?ر|تطوير|عدّ?ل|تعديل|أصلح|اصلح|إصلاح|اختبر|اختبار|شغّ?ل|تشغيل|نفّ?ذ|بناء|build|develop|implement|modify|edit|fix|test|run|clone|import|analy[sz]e|review|inspect)/i.test(probe);
+            if (hasGithubUrl && wantsLocalRepositoryWork) {
+                console.log('[PlanningEngine] GitHub implementation request → import_project');
+                return {
+                    id: `repo_import_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'repo_import',
+                        description: 'استنساخ المستودع وتحليل ملفاته وربطه بالجلسة',
+                        tool: 'import_project',
+                        agent: 'Dev',
+                        input: { request: intent.goal },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'medium' },
+                };
+            }
+        }
+
         // [REPO ANALYSIS FAST-PATH] «حلل الريبو المتصل / analyze the repo» is a
         // GitHub-API task, NOT a browser or shell task. Before this path existed,
         // the DAG planner produced blind shell nodes ("Connect to the repository"
@@ -1392,6 +1453,34 @@ Rules:
             }
         }
 
+        // [EXPLICIT URL OPEN FAST-PATH] A bounded request to open a URL (or to
+        // return only its title) must navigate before any page-local action. The
+        // ReAct route can otherwise choose `browser_find_text` against an empty
+        // panel, after which recovery incorrectly proposes browser installation.
+        // `browser_launch` performs the real goto and returns the final URL + title.
+        {
+            const explicitOpen = /(افتح|لفتح|فتح|اذهب|انتقل|زر|ادخل|go\s*to|open|visit|navigate)/i.test(probe);
+            const titleOnly = /(عنوان\s*(ال)?صفحة|title\s*(of\s*(the\s*)?)?page|page\s*title)/i.test(probe);
+            const pageWork = /(لخّ?ص|تلخيص|حلّ?ل|تحليل|استخرج|استخراج|انقر|اضغط|املأ|عبّ?ئ|سجّ?ل|تسجيل|دخول|summari[sz]e|analy[sz]e|extract|click|fill|log\s*-?\s*in|sign\s*-?\s*in)/i.test(probe);
+            if (urlMatch && explicitOpen && (titleOnly || !pageWork)) {
+                const url = urlMatch[0].startsWith('http') ? urlMatch[0] : `https://${urlMatch[0]}`;
+                console.log(`[PlanningEngine] explicit URL open -> browser_launch ${url}`);
+                return {
+                    id: `browser_open_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'browser_open',
+                        description: titleOnly ? `افتح ${url} وأعد عنوان الصفحة` : `افتح ${url}`,
+                        tool: 'browser_launch',
+                        agent: 'Browser',
+                        input: { url, request: intent.goal },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'low', riskLevel: 'low' },
+                };
+            }
+        }
+
         // [BROWSER AGENT FAST-PATH] A request to LOG IN to a site, or to DO an
         // interactive action on a site (fill/post/book/order/send/subscribe…), needs
         // the closed-loop ReAct agent — not a one-shot search. Route it to the
@@ -1535,6 +1624,29 @@ Rules:
         const fullshotIntent = /(لقطة\s*كاملة|screenshot\s*كامل|full\s*page|صورة\s*كاملة|كامل\s*الصفحة|طويلة)/i.test(probe);
         const agentIntent = /(تحليل\s*شامل|تقرير\s*شامل|حلّ?ل\s*الصفحة\s*بالكامل|وكيل\s*ذكي|smart\s*agent|full\s*analysis|analyze\s*(the\s*)?page|فحص\s*شامل|كل\s*شيء\s*عن\s*الصفحة)/i.test(probe);
         const autofixIntent = /(أصلح|اصلح|إصلاح\s*تلقائي|autofix|auto-?fix|صحّح\s*الصفحة|رقّع|عالج\s*المشاكل|fix\s*(the\s*)?(page|issues))/i.test(probe);
+        // A page-title request is not a text search inside an already-open page.
+        // Decide it before the smart-tool matrix, whose `findIntent` otherwise sees
+        // «عنوان» and selects browser_find_text before there is a document to search.
+        const explicitOpen = /(افتح|لفتح|فتح|اذهب|انتقل|زر|ادخل|go\s*to|open|visit|navigate)/i.test(probe);
+        const titleOnly = /(عنوان\s*(ال)?صفحة|title\s*(of\s*(the\s*)?)?page|page\s*title)/i.test(probe);
+        const pageWork = /(لخّ?ص|تلخيص|حلّ?ل|تحليل|استخرج|استخراج|انقر|اضغط|املأ|عبّ?ئ|سجّ?ل|تسجيل|دخول|summari[sz]e|analy[sz]e|extract|click|fill|log\s*-?\s*in|sign\s*-?\s*in)/i.test(probe);
+        if (urlMatch && explicitOpen && (titleOnly || !pageWork)) {
+            const url = urlMatch[0].startsWith('http') ? urlMatch[0] : `https://${urlMatch[0]}`;
+            console.log(`[PlanningEngine] explicit URL open -> browser_launch ${url}`);
+            return {
+                id: `browser_open_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'browser_open',
+                    description: titleOnly ? `افتح ${url} وأعد عنوان الصفحة` : `افتح ${url}`,
+                    tool: 'browser_launch',
+                    agent: 'Browser',
+                    input: { url, request: intent.goal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'low', riskLevel: 'low' },
+            };
+        }
         if (urlMatch && (autofixIntent || agentIntent || summarizeIntent || auditIntent || extractIntent || linksIntent || perfIntent || seoIntent || compareIntent || consoleIntent || pdfIntent || readIntent || contrastIntent || a11yIntent || metaIntent || translateIntent || responsiveIntent || findIntent || designIntent || clickIntent || fullshotIntent)) {
             // «أصلح واجهة https://…» — a page Joe does NOT own gets the CSS
             // patch tool, not the generic autofix: it measures, applies live,

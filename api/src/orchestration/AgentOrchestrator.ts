@@ -451,6 +451,9 @@ export class AgentOrchestrator {
           const liveSessionId = goalContext?.sessionId || dag.id;
           const executionContext = {
               sessionId: liveSessionId,
+              // Keep browser work bound to the live panel session rather than the
+              // chat session. ToolService injects this into browser tools.
+              browserSessionId: goalContext?.browserSessionId,
               workspaceId: goalContext?.workspaceId,
               userId: goalContext?.userId,
               userName: goalContext?.userName,

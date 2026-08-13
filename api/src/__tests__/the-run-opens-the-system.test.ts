@@ -177,7 +177,10 @@ describe('what Joe opens is the system, not its source folder', () => {
     });
 
     it('an explicit cwd still wins — this is a default, not a hijack', () => {
-        expect(RUNTOOL).toMatch(/const cwd = String\(input\?\.cwd \|\| ''\)\.trim\(\)\s*\n\s*\|\| \(packagedIsWhole \? packagedInto : ''\)/);
+        // `explicitCwd` is intentionally normalized once, then takes precedence
+        // over a packaged server and every discovery fallback.
+        expect(RUNTOOL).toContain("const explicitCwd = String(input?.cwd || '').trim();");
+        expect(RUNTOOL).toMatch(/const baseCwd = explicitCwd\s*\n\s*\|\| \(packagedIsWhole \? packagedInto : ''\)/);
         expect(RUNTOOL).toContain('if (!input?.cwd && packagedIsWhole)');
     });
 

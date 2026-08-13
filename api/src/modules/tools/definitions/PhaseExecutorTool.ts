@@ -72,6 +72,9 @@ export class PhaseExecutorTool implements ToolDefinition {
 
         const executionContext = {
             sessionId: context?.sessionId || projectContext?.sessionId,
+            // Phase tasks may invoke browser tools; retain the panel identifier
+            // from the parent run instead of falling back to the chat session.
+            browserSessionId: context?.browserSessionId || projectContext?.browserSessionId,
             workspaceId: context?.workspaceId || projectContext?.workspaceId,
             userId: context?.userId || projectContext?.userId,
             onThought: (m: string) => context?.onThought?.(m),
@@ -178,7 +181,17 @@ export class PhaseExecutorTool implements ToolDefinition {
                          *
                          * Bounded, because a report is read, not scrolled.
                          */
-                        const said = String((toolResult as any)?.output?.message || '').trim();
+                        const output = (toolResult as any)?.output || {};
+                        // Most builder tools return a prose message, while shell tools
+                        // deliberately return structured stdout/stderr. Preserve both
+                        // contracts so a successful terminal task is visible in the
+                        // phase report instead of looking like an empty completion.
+                        const stdout = String(output.stdout || '').trim();
+                        const stderr = String(output.stderr || '').trim();
+                        const terminalReport = toolName === 'shell_execute' && (stdout || stderr)
+                            ? `${stdout}${stdout && stderr ? '\n' : ''}${stderr ? `stderr: ${stderr}` : ''}`
+                            : '';
+                        const said = String(output.message || terminalReport).trim();
                         results.push({
                             task: taskDesc, tool: toolName, ok: true,
                             ...(said ? { message: said.slice(0, 8000) } : {}),

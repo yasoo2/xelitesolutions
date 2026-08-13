@@ -387,6 +387,29 @@ export function findChromiumExecutable(): string | undefined {
       }
     } catch { /* ignore */ }
   }
+
+  // A local Joe installation must still work when Playwright's optional browser
+  // download was skipped. Search well-known system-browser locations last: the
+  // explicit override and a version-matched Playwright browser always win.
+  const programFiles = process.env.ProgramFiles || process.env.PROGRAMFILES || 'C:\\Program Files';
+  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const systemCandidates = [
+    // Linux distributions and common container images.
+    '/usr/bin/google-chrome-stable', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
+    '/snap/bin/chromium', '/opt/google/chrome/chrome',
+    // Windows installs (Joe's primary local target).
+    path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(programFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    path.join(programFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    // macOS installs.
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  ];
+  for (const candidate of systemCandidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
   return undefined;
 }
 

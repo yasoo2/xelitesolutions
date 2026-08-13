@@ -97,6 +97,12 @@ describe('routing: URL + intent verb, and only that', () => {
     it('"work on github.com/…" → import_project', async () => {
         expect(await route('work on https://github.com/user/repo and improve it')).toBe('import_project');
     });
+    it('a detailed GitHub analysis is local and file-backed, not metadata-only', async () => {
+        expect(await route('حلل بدقة مستودع https://github.com/yasoo2/xelitesolutions وأخبرني بنقاط ضعفه')).toBe('import_project');
+    });
+    it('a GitHub repair-and-test request starts from a local checkout', async () => {
+        expect(await route('clone https://github.com/user/repo ثم أصلح الاختبارات وشغّلها')).toBe('import_project');
+    });
     it('a github link with NO intent verb is not hijacked', async () => {
         expect(await route('شاهد https://github.com/octocat/Hello-World')).not.toBe('import_project');
     });

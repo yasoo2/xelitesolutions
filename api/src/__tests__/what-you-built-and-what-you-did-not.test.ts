@@ -28,8 +28,10 @@ const PIPE = read('modules', 'tools', 'definitions', 'ProjectPipelineTool.ts');
 const REACT = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
 
 describe('the builder\'s own words survive the phase', () => {
-    it('a completed task keeps the message its tool wrote', () => {
-        expect(PHASE).toMatch(/const said = String\(\(toolResult as any\)\?\.output\?\.message \|\| ''\)\.trim\(\);/);
+    it('a completed task keeps its written message or a bounded shell transcript', () => {
+        expect(PHASE).toContain("const output = (toolResult as any)?.output || {};");
+        expect(PHASE).toContain("const terminalReport = toolName === 'shell_execute' && (stdout || stderr)");
+        expect(PHASE).toContain('const said = String(output.message || terminalReport).trim();');
         expect(PHASE).toMatch(/\.\.\.\(said \? \{ message: said\.slice\(0, 8000\) \} : \{\}\),/);
     });
 

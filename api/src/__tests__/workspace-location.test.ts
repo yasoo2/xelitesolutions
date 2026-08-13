@@ -56,9 +56,15 @@ describe('local build location: effective, persistent, clearly named', () => {
         expect(path.basename(make().getActiveRoot())).toBe('my-workspace');
     });
 
-    test('an explicit workspace id is isolated from the local root', () => {
-        const wsRoot = make().getActiveRoot('64b2f0000000000000000abc');
-        expect(wsRoot).toContain('64b2f0000000000000000abc');
+    test('an explicit workspace id keeps using the selected local explorer root', async () => {
+        const svc = make();
+        const chosen = path.join(projectsDir, 'visible-to-user');
+        await svc.setActiveRoot(chosen);
+
+        // JSON/Mock mode is a single local workspace: the logical chat workspace
+        // remains available for ownership, while the File Explorer must show the
+        // selected folder where Joe actually created the files.
+        expect(path.resolve(svc.getActiveRoot('64b2f0000000000000000abc'))).toBe(path.resolve(chosen));
     });
 });
 
