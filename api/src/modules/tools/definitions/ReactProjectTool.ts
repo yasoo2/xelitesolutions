@@ -245,8 +245,25 @@ export function sectionsForKind(kind: PageKind): string[] {
 /** Content derived from the request — deterministic, never blocks on a model. */
 function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic'): ReactContent {
     const brand = brandFrom(request, isAr) || brandFallback(request, isAr, kind);
-    const subject = request.replace(/(ابنِ|ابني|انشئ|أنشئ|اصنع|اعمل|سوي|مشروع|تطبيق|موقع|react|ريأكت|رياكت|vite|فيت|لي|جديد|build|create|make|app|project|site)/gi, ' ')
-        .replace(/\s+/g, ' ').trim();
+    /**
+     * WHAT IT IS ABOUT — NOT WHAT HE TOLD ME TO DO.
+     *
+     * This line used to delete a list of build verbs from the request and call
+     * the remainder «the subject», then set it as the tagline AND the `<h1>`
+     * with no bound on its length. Sent a realistic brief, the delivered page
+     * carried 500 characters of operational instructions as its headline —
+     * «نور — أنت تعمل داخل مساحة اختبار معزولة… لا تنشر…» — and the same
+     * replace cut «الحالية» into «الحا ة», because `لي` was matched as a
+     * substring inside Arabic words.
+     *
+     * `subjectPhrase` answers the same question by shape instead: it finds the
+     * phrase that NAMES the thing, drops clauses that command rather than
+     * describe, strips whole words only, and returns something the length of a
+     * headline — or nothing at all, which is honestly better than reading his
+     * own instructions back to him.
+     */
+    const { subjectPhrase } = require('../../../core/design/subject-phrase');
+    const subject = subjectPhrase(request);
     const restaurant = kind === 'restaurant';
     const store = kind === 'store';
     const base: ReactContent = isAr ? {
@@ -2092,6 +2109,22 @@ export class ReactProjectTool extends BaseTool {
          * versions it found, and from there every command Joe runs appears the
          * way it would if he had typed it himself.
          */
+        /**
+         * HIS CONSTRAINTS ARE INSTRUCTIONS, NOT DECORATION.
+         *
+         * «لا تثبت حزمًا من الشبكة» was in the brief and the build ran
+         * `npm install` anyway — 63 packages — then reported the install as an
+         * achievement. The tool already had `skipInstall`; nothing read the
+         * user's own words into it. It does now, and the message says which
+         * step was skipped and why, so «I obeyed you» never looks like «I
+         * failed».
+         */
+        const { saysNoInstall } = require('../../../core/design/subject-phrase');
+        const noInstall = !!input?.skipInstall || saysNoInstall(request);
+        if (noInstall && !input?.skipInstall) {
+            term('policy: the request says not to install packages — skipping npm install and the build that needs it');
+        }
+
         const shell = openTerminal(term);
         try {
             broadcast({ type: 'panel_focus', sessionId, data: { panel: 'terminal', reason: 'build_shell' } } as any);
@@ -2548,7 +2581,7 @@ export class ReactProjectTool extends BaseTool {
         // ── prove it compiles: npm install + vite build, streamed live ──────
         let installed = false, built = false, npmMissing = false;
         let buildDiagnosis: any = null;
-        if (!input?.skipInstall) {
+        if (!noInstall) {
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
             // The build's own words are kept — they are what names the missing
@@ -3514,7 +3547,7 @@ ${fileList}
 
 ${buildDiagnosis ? (buildDiagnosis.healed
                 ? `🩺 تعثّر البناء أول مرة، فشخّصتُه وعالجتُه: ${buildDiagnosis.note} — ثم اكتمل.\n`
-                : `🩺 البناء تعثّر، والسبب بالضبط: ${buildDiagnosis.ar}\n`) : ''}${built ? '✅ npm install + vite build نجحا — نسخة الإنتاج جاهزة في dist/ والمعاينة الحية فُتحت تلقائياً.' : npmMissing ? '⚠️ npm غير متاح هنا — المشروع جاهز، ثبّته بنفسك: npm install ثم npm run dev.' : installed ? '✅ الحزم مثبتة.' : input?.skipInstall ? 'ℹ️ تخطيت التثبيت كما طُلب.' : '⚠️ التثبيت لم يكتمل — جرّب: npm install داخل المجلد.'}
+                : `🩺 البناء تعثّر، والسبب بالضبط: ${buildDiagnosis.ar}\n`) : ''}${built ? `✅ npm install + vite build نجحا — نسخة الإنتاج جاهزة في dist/.${liveServer ? ` والمعاينة الحية تعمل الآن على ${liveServer.url}` : ' ولم أُبقِ خادم معاينة يعمل — قل «شغّل المشروع» وأفتحه لك.'}` : npmMissing ? '⚠️ npm غير متاح هنا — المشروع جاهز، ثبّته بنفسك: npm install ثم npm run dev.' : installed ? '✅ الحزم مثبتة.' : noInstall ? 'ℹ️ لم أثبّت أي حزمة لأن طلبك منع ذلك — شغّل npm install ثم npm run build حين تسمح لك بيئتك.' : '⚠️ التثبيت لم يكتمل — جرّب: npm install داخل المجلد.'}
 
 🧭 خطوات تالية — أرسل أيّ سطر كما هو:
    • «عدّل المحتوى: …» → تعديل جراحي متحقق بالبناء (والمعاينة تتحدث فوراً)

@@ -24,7 +24,11 @@ describe('the audit arithmetic', () => {
         const withFindings = formatAudit({ score: 85, findings: [{ id: 'dead_images', severity: 'high', detail: '3 صورة لم تُرسم' }] }, true);
         expect(withFindings).toContain('85/100');
         expect(withFindings).toContain('3 صورة لم تُرسم');
-        expect(formatAudit({ skipped: 'playwright not installed', score: 0, findings: [] }, true)).toContain('تخطيته');
+        // A skip is a WARNING, with its reason — never a footnote that reads
+        // like everything went fine.
+        const skipped = formatAudit({ skipped: 'playwright not installed', score: 0, findings: [] } as any, true);
+        expect(skipped).toContain('لم أفحص الصفحة بصرياً');
+        expect(skipped).toContain('playwright not installed');
     });
 });
 

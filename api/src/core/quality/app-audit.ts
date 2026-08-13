@@ -714,7 +714,24 @@ export async function auditBuiltApp(
 
 /** The verdict, formatted for the chat — findings named, never buried. */
 export function formatAudit(a: AppAudit, isAr: boolean): string {
-    if (a.skipped) return isAr ? `🔎 فحص الجودة الذاتي: تخطيته (${a.skipped}).` : `🔎 Self-QA skipped (${a.skipped}).`;
+    /**
+     * A SKIPPED CHECK IS A WARNING, NOT A FOOTNOTE.
+     *
+     * This read «🔎 فحص الجودة الذاتي: تخطيته» — the same calm icon as a
+     * passing audit, one line among twenty. An outside test read the delivery
+     * as a success while Chromium had never started, and it was not wrong to:
+     * nothing in the message said «this page was never looked at». It says so
+     * now, in the shape a reader treats as a warning, with the reason and the
+     * one command that fixes it.
+     */
+    if (a.skipped) {
+        return isAr
+            ? `⚠️ لم أفحص الصفحة بصرياً — تعذّر تشغيل المتصفح (${a.skipped}). لا رقم جودة لهذا البناء،`
+            + ` ولم يضغط أحد أزرارها. لتشغيل الفحص: npx playwright install chromium ثم «افحص الجودة».`
+            : `⚠️ This page was NOT visually checked — the browser could not start (${a.skipped}).`
+            + ` No quality score was earned and no control was pressed. To enable it:`
+            + ` npx playwright install chromium.`;
+    }
     // «كل الأزرار حية» used to be printed by an audit that never pressed one.
     // The claim is now the count of what was actually pressed, on how many pages.
     const pages = (a.routes || []).length || 1;

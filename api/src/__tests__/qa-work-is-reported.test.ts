@@ -121,7 +121,13 @@ describe('a finding is a sentence, not a slug', () => {
 
     it('a skipped audit is reported as skipped, never as a pass', () => {
         const text = formatAudit({ skipped: 'no_dist', score: 0, findings: [] } as any, true);
-        expect(text).toContain('تخطيته');
+        // It used to read «🔎 فحص الجودة الذاتي: تخطيته» — the same calm icon
+        // as a pass, one line among twenty, which an outside reviewer read as
+        // a success while Chromium had never started. It is a warning now, and
+        // it says the page was not looked at.
+        expect(text).toMatch(/⚠️/);
+        expect(text).toContain('لم أفحص الصفحة بصرياً');
+        expect(text).toContain('no_dist');
         expect(text).not.toContain('100/100');
     });
 });
