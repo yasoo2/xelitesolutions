@@ -68,6 +68,7 @@ class AutoOpenManagerClass {
                 toolName === 'npm_manager' ||
                 toolName === 'npm_install' ||
                 toolName === 'npm_build' ||
+                toolName === 'enterprise_platform_foundation' ||
                 toolName.includes('terminal')
             )
         ) {

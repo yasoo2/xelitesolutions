@@ -33,6 +33,18 @@ import { isArabicReply, say as pick } from '../../../shared/reply-language';
  *
  * Returns null when nothing deterministic fits, and the model plans as before.
  */
+export function isEnterprisePlatformRequest(request: string): boolean {
+    const text = String(request || '').toLowerCase();
+    const signals = [
+        /multi[ -]?agent|agents? collaboration|agent orchestrat/.test(text),
+        /microservices?|event[ -]?driven|kafka/.test(text),
+        /fortune\s*500|enterprise[ -]?(?:grade|platform)|large[ -]?scale/.test(text),
+        /kubernetes|helm|terraform|observability|prometheus/.test(text),
+        /ceo agent|cto agent|security agent|sre agent/.test(text),
+    ].filter(Boolean).length;
+    return signals >= 2;
+}
+
 export function buildSpine(scope: 'page' | 'app' | 'system', request: string): any | null {
     const phase = (n: number, name: string, tasks: any[], verification: any, deliverables: string[]) => ({
         phaseNumber: n, name, description: name, tasks,
@@ -150,6 +162,43 @@ export class ProjectPipelineTool implements ToolDefinition {
          * about the reader, not a fact. The request's own script is the fact.
          */
         const isAr = isArabicReply({ language: context?.language, text: request });
+
+        // Enterprise multi-agent requests are architecture programs, not small
+        // React/API applications. Generate a truthful, locally-verified foundation
+        // first; production implementation and any deployment require reviewed
+        // follow-up milestones and explicit approvals.
+        if (isEnterprisePlatformRequest(request)) {
+            say(pick(isAr,
+                '[pipeline] تم التعرف على منصة مؤسسية متعددة الوكلاء — أُنشئ أساساً قابلاً للمراجعة والتحقق محلياً، لا قالباً عاماً أو نشراً خارجياً.',
+                '[pipeline] Enterprise multi-agent platform detected — creating a reviewable, locally verified foundation, not a generic template or external deployment.'));
+            const foundation = await executeTool('enterprise_platform_foundation', { request }, context);
+            const output = foundation?.output || {};
+            const verified = foundation?.ok === true;
+            const summary = verified
+                ? pick(isAr,
+                    `## ✅ أساس المنصة المؤسسية جاهز للتحقق\n\n**المسار:** \`${output.projectPath}\`\n**التحقق المحلي:** ${output.verification}\n\nتم إنشاء المعمارية، عقود API/الأحداث، هيكل Control Plane، سياسات الأمان، قوالب Docker/Helm/Terraform، CI، والمراحل التنفيذية. لم يتم تنفيذ أي نشر خارجي أو ادعاء جاهزية إنتاجية قبل مراجعة المراحل والأسرار وبيئة السحابة.`,
+                    `## ✅ Enterprise platform foundation ready for review\n\n**Path:** \`${output.projectPath}\`\n**Local verification:** ${output.verification}\n\nArchitecture, API/event contracts, a control-plane skeleton, security policy, Docker/Helm/Terraform templates, CI, and implementation milestones were created. No external deployment or unproven production-readiness claim was made before review of milestones, secrets, and cloud environment.`)
+                : pick(isAr,
+                    `## ⚠️ توقف تأسيس المنصة بصدق\n\n${foundation?.error || 'فشل التحقق المحلي.'}`,
+                    `## ⚠️ Platform foundation stopped honestly\n\n${foundation?.error || 'Local verification failed.'}`);
+            say(`[pipeline] ${verified ? '✅' : '⚠️'} enterprise foundation ${verified ? 'verified' : 'failed verification'}`);
+            return {
+                ok: verified,
+                error: verified ? undefined : summary,
+                output: {
+                    projectName: 'autonomous-engineering-platform',
+                    completedPhases: verified ? 1 : 0,
+                    totalPhases: 1,
+                    verified,
+                    summary,
+                    deliveryScope: output.deliveryScope,
+                    projectPath: output.projectPath,
+                    writtenFiles: output.writtenFiles,
+                    verification: output.verification,
+                },
+                logs: [...logs, ...(foundation?.logs || [])],
+            };
+        }
 
         // 1 — Plan. The planner is planner-only by architecture law; it returns
         // phases and never executes anything itself.

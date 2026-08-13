@@ -34,6 +34,7 @@ import { ProgressiveGeneratorTool } from './definitions/ProgressiveGeneratorTool
 import * as EliteTools from './definitions/EliteTools';
 import { PhaseExecutorTool } from './definitions/PhaseExecutorTool';
 import { ProjectPipelineTool } from './definitions/ProjectPipelineTool';
+import { EnterprisePlatformFoundationTool } from './definitions/EnterprisePlatformFoundationTool';
 import { ProjectRunTool, ProjectStopTool } from './definitions/ProjectRunTool';
 import { DeployPagesTool } from './definitions/DeployPagesTool';
 import { ProjectStateManagerTool } from './definitions/ProjectStateManagerTool';
@@ -283,6 +284,7 @@ const baseTools: ToolDefinition[] = [
   createTool(ProjectPlannerTool),
   createTool(PhaseExecutorTool),
   createTool(ProjectPipelineTool),
+  createTool(EnterprisePlatformFoundationTool),
   createTool(ProjectRunTool),
   createTool(ProjectStopTool),
   createTool(DeployPagesTool),
