@@ -256,3 +256,28 @@ describe('a good photograph is not refused for spelling the subject differently'
         expect(r.matched).toContain('software');
     });
 });
+
+
+describe('a named brand cannot be replaced with generic stock', () => {
+    const brief = buildImageBrief('ابنِ موقعاً عربياً لشركة كوكاكولا يعرض منتجاتها');
+
+    it('turns the Arabic brand request into archive-ready brand subjects', () => {
+        expect(brief.brandTerms).toEqual(expect.arrayContaining(['coca', 'cola']));
+        expect(brief.suggestions.join(' ')).toMatch(/Coca-Cola/);
+    });
+
+    it('refuses unrelated generic subjects and grounds them in the named brand', () => {
+        expect(isSpecificEnough('construction workers on a building site', brief)).toBe(false);
+        expect(isSpecificEnough('Coca-Cola bottle on ice', brief)).toBe(true);
+        expect(groundSubject('city street at night', brief, 0)).toMatch(/Coca-Cola/);
+    });
+
+    it('requires candidate evidence for the requested brand', () => {
+        expect(isRelevant('Coca-Cola products', {
+            title: 'Construction workers building a concrete slab', tags: ['construction'],
+        })).toBe(false);
+        expect(isRelevant('Coca-Cola bottle', {
+            title: 'Coca-Cola bottle served with ice', tags: ['Coca-Cola products'],
+        })).toBe(true);
+    });
+});

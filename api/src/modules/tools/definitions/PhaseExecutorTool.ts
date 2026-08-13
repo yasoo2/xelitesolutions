@@ -67,7 +67,7 @@ export class PhaseExecutorTool implements ToolDefinition {
     async execute(input: { phase: any; projectContext?: any }, context?: any) {
         const { phase, projectContext } = input;
         const logs: string[] = [];
-        const results: Array<{ task: string; tool: string; ok: boolean; error?: string }> = [];
+        const results: Array<{ task: string; tool: string; ok: boolean; error?: string; message?: string }> = [];
         let completedCount = 0;
 
         const executionContext = {
@@ -199,8 +199,19 @@ export class PhaseExecutorTool implements ToolDefinition {
                         completedCount++;
                     } else {
                         const errMsg = String(toolResult.error || 'Unknown error');
+                        // A blocked delivery can still provide a live draft, a
+                        // preview link and the precise QA evidence. Keep that
+                        // report visible instead of reducing it to one error line.
+                        const failedOutput = (toolResult as any)?.output || {};
+                        const failedMessage = String(failedOutput.message || '').trim();
                         logs.push(`[PhaseExecutor] ❌ Task ${i + 1} failed: ${toolName} — ${errMsg}`);
-                        results.push({ task: taskDesc, tool: toolName, ok: false, error: errMsg });
+                        results.push({
+                            task: taskDesc,
+                            tool: toolName,
+                            ok: false,
+                            error: errMsg,
+                            ...(failedMessage ? { message: failedMessage.slice(0, 8000) } : {}),
+                        });
 
                         if (task.priority === 'high' || task.required === true) {
                             logs.push('[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...');

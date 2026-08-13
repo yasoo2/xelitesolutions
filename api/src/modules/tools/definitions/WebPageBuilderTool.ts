@@ -143,6 +143,32 @@ const PORT = String(process.env.PORT || '5002');
 const REPAIR_SIZE_LIMIT = Number(process.env.JOE_REPAIR_SIZE_LIMIT || 24000);
 
 /**
+ * A preview can be useful while it is being repaired, but it is not a completed
+ * delivery. The old builder treated an audit as decorative: it reported real
+ * JavaScript exceptions and dead controls, then still returned `ok: true` and
+ * displayed «QA passed». This gate is the single decision point shared by the
+ * user-facing report and the tool contract.
+ */
+export function assessWebDeliveryQuality(input: {
+    visualFindings?: VisualFinding[];
+    behaviourFindings?: BehaviourFinding[];
+    auditSkipped?: string[];
+    isArabic?: boolean;
+}): { blocked: boolean; reasons: string[] } {
+    const arabic = input.isArabic !== false;
+    const findings = [...(input.visualFindings || []), ...(input.behaviourFindings || [])];
+    const critical = findings.filter(f => f.severity === 'critical');
+    const reasons = critical.map(f => arabic ? f.ar : f.en);
+    const skipped = (input.auditSkipped || []).filter(Boolean);
+    if (skipped.length) {
+        reasons.push(arabic
+            ? `لم يكتمل الفحص الآلي المطلوب: ${skipped[0]}`
+            : `The required automated audit did not complete: ${skipped[0]}`);
+    }
+    return { blocked: reasons.length > 0, reasons };
+}
+
+/**
  * WebPageBuilderTool - turns a "build me a page/site" request into REAL work:
  * it generates a complete self-contained HTML file, WRITES it to disk (served at
  * /artifacts), and opens it in the live Preview panel. This is what makes Joe act
@@ -1328,7 +1354,14 @@ the WORDS, not the structure.`;
         if (/\{\{\s*IMAGE\s*:/i.test(html)) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `🖼️ أجلب صوراً حقيقية مرخّصة للصفحة` : `🖼️ Sourcing real licensed photographs`);
             try {
-                const r = await resolveImages(html, ARTIFACT_DIR, palette.hue, { max: Math.max(4, photos + 2), brief: imageBrief });
+                const r = await resolveImages(html, ARTIFACT_DIR, palette.hue, {
+                    max: Math.max(4, photos + 2),
+                    brief: imageBrief,
+                    // The page builder must always reach its functional QA gate.
+                    // A slow photo archive gets one bounded opportunity; unresolved
+                    // markers become intentional gradients rather than a hung build.
+                    totalTimeoutMs: 25_000,
+                });
                 html = r.html; imgReal = r.real; imgRequested = r.requested; imgCredits = r.credits; imgBytes = r.bytes;
                 imgSeen = r.candidatesSeen; imgRefused = r.refusedForSubject;
                 imgSources = r.sources; imgSourceErrors = r.sourceErrors;
@@ -2004,6 +2037,15 @@ the WORDS, not the structure.`;
             }
         }
 
+        // A critical browser finding is a delivery blocker, not a footnote. Keep
+        // the preview so the user can inspect the draft, but never call it done.
+        const deliveryQuality = assessWebDeliveryQuality({
+            visualFindings,
+            behaviourFindings,
+            auditSkipped,
+            isArabic: isAr,
+        });
+
         // Compose the QA summary line for the chat reply.
         const qaSummary = (() => {
             const parts: string[] = [];
@@ -2122,9 +2164,15 @@ the WORDS, not the structure.`;
                     + contentIssues.map(i => `   • ${isAr ? i.ar : i.en}`).join('\n'));
             }
             if (qaFixed.length) parts.push(isAr ? `🔧 تصحيحات الجودة: ${qaFixed.length}` : `🔧 QA fixes: ${qaFixed.length}`);
-            parts.push(qaIssues.length
-                ? (isAr ? `📋 ملاحظات: ${qaIssues.join('، ')}` : `📋 Notes: ${qaIssues.join(', ')}`)
-                : (isAr ? '📋 مراجعة الجودة: نجحت' : '📋 QA review: passed'));
+            if (deliveryQuality.blocked) {
+                parts.push(isAr
+                    ? `⛔ لم تُسلَّم الصفحة: فشل فحص الجودة الإلزامي. ما زالت المعاينة مسودة فقط ويجب إصلاح العيوب قبل التسليم.\n${deliveryQuality.reasons.slice(0, 3).map(r => `   • ${r}`).join('\n')}`
+                    : `⛔ Page not delivered: mandatory quality gate failed. The preview remains a draft and the defects must be repaired before delivery.\n${deliveryQuality.reasons.slice(0, 3).map(r => `   • ${r}`).join('\n')}`);
+            } else {
+                parts.push(qaIssues.length
+                    ? (isAr ? `📋 ملاحظات: ${qaIssues.join('، ')}` : `📋 Notes: ${qaIssues.join(', ')}`)
+                    : (isAr ? '📋 مراجعة الجودة: نجحت' : '📋 QA review: passed'));
+            }
             if (imgCredits.length) {
                 parts.push((isAr ? '📄 مصادر الصور: ' : '📄 Image credits: ')
                     + imgCredits.slice(0, 6).map(c => `${c.creator} (${c.license})`).join('، '));
@@ -2155,14 +2203,18 @@ the WORDS, not the structure.`;
         const fileList = (isProject ? projectFiles : [{ name: filename, bytes: html.length }])
             .map(f => `  • ${f.name} — ${Math.max(1, Math.round(f.bytes / 1024))} KB`)
             .join('\n');
-        const verb = editNoOp
-            ? (isAr ? '⚠️ لم أستطع تطبيق التعديل تلقائياً (النموذج لم يُرجع تغييراً). أعد صياغة الطلب أو حاول مجدداً' : '⚠️ Could not apply the change automatically (the model returned no change). Rephrase or try again')
-            : isEdit ? (isAr ? 'تم تعديل المشروع' : 'Updated the project') : (isAr ? (isProject ? 'تم بناء المشروع' : 'تم بناء الصفحة') : (isProject ? 'Built the project' : 'Built the page'));
+        const verb = deliveryQuality.blocked
+            ? (isAr ? '⛔ أنشأت معاينة غير مكتملة ولم أسلّمها بسبب عيوب جودة حرجة' : '⛔ Created an unfinished preview and did not deliver it because critical quality defects remain')
+            : editNoOp
+                ? (isAr ? '⚠️ لم أستطع تطبيق التعديل تلقائياً (النموذج لم يُرجع تغييراً). أعد صياغة الطلب أو حاول مجدداً' : '⚠️ Could not apply the change automatically (the model returned no change). Rephrase or try again')
+                : isEdit ? (isAr ? 'تم تعديل المشروع' : 'Updated the project') : (isAr ? (isProject ? 'تم بناء المشروع' : 'تم بناء الصفحة') : (isProject ? 'Built the project' : 'Built the page'));
         const fileLine = isProject
             ? (isAr ? `📁 المشروع (${projectFiles.length} ملفات): ${projectFiles.map(f => f.name).join('، ')}` : `📁 Project (${projectFiles.length} files): ${projectFiles.map(f => f.name).join(', ')}`)
             : (isAr ? `📄 الملف: ${filename}` : `📄 File: ${filename}`);
-        const okPrefix = editNoOp ? '' : '✅ ';
-        const shownTail = editNoOp ? '' : (isAr ? ' وعُرض في المعاينة.' : ' and shown in Preview.');
+        const okPrefix = (editNoOp || deliveryQuality.blocked) ? '' : '✅ ';
+        const shownTail = editNoOp ? '' : (deliveryQuality.blocked
+            ? (isAr ? ' يمكنك فحص المسودة في المعاينة، لكن لا ينبغي اعتمادها.' : ' You can inspect the draft in Preview, but it must not be accepted yet.')
+            : (isAr ? ' وعُرض في المعاينة.' : ' and shown in Preview.'));
         // WHERE the files are, in the panel the user actually looks at.
         const whereLine = explorerPath
             ? (isAr ? `\n📂 في مستعرض الملفات: ${explorerPath}` : `\n📂 In the File Explorer: ${explorerPath}`)
@@ -2189,7 +2241,13 @@ the WORDS, not the structure.`;
             ? `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}${whereLine}\n\n${qaSummary}\n\n${fileList}${nextSteps}`
             : `${okPrefix}${verb}${shownTail}\n\n${artifactBlock}\n\n${fileLine}${whereLine}\n\n${qaSummary}\n\n${fileList}${nextSteps}`;
 
-        return { ok: true, output: { message, url, previewUrl: url, path: filename }, logs, logsStreamedLive: true } as any;
+        return {
+            ok: !deliveryQuality.blocked,
+            ...(deliveryQuality.blocked ? { error: `quality_gate_blocked: ${deliveryQuality.reasons.join(' | ')}` } : {}),
+            output: { message, url, previewUrl: url, path: filename, deliveryStatus: deliveryQuality.blocked ? 'blocked' : 'delivered', qualityBlockers: deliveryQuality.reasons },
+            logs,
+            logsStreamedLive: true,
+        } as any;
     }
 
     /**
@@ -2493,7 +2551,11 @@ its filename (${sitePlan.pages.map(p => p.file).join(', ')}) when the copy calls
             }
             if (/\{\{\s*IMAGE\s*:/i.test(out)) {
                 try {
-                    const r = await resolveImages(out, ARTIFACT_DIR, palette.hue, { max: 8, brief: imageBrief });
+                    const r = await resolveImages(out, ARTIFACT_DIR, palette.hue, {
+                        max: 8,
+                        brief: imageBrief,
+                        totalTimeoutMs: 25_000,
+                    });
                     out = r.html; imgReal += r.real; imgRequested += r.requested; imgBytes += r.bytes;
                     for (const c of r.credits) if (!credits.some(x => x.source === c.source)) credits.push(c);
                     const block = creditsBlock(r.credits, isAr);

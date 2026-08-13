@@ -588,9 +588,17 @@ export function creditsBlock(credits: ImageResolution['credits'], isAr: boolean)
  * once and reused, and the whole pass is bounded so a slow network cannot hold a
  * build hostage.
  */
-export async function resolveImages(html: string, artifactDir: string, hue: number, opts?: { max?: number; timeoutMs?: number; brief?: ImageBrief }): Promise<ImageResolution> {
+export async function resolveImages(html: string, artifactDir: string, hue: number, opts?: { max?: number; timeoutMs?: number; totalTimeoutMs?: number; brief?: ImageBrief }): Promise<ImageResolution> {
     const max = opts?.max ?? 12;
     const brief = opts?.brief;
+    // A per-request timeout alone cannot protect a build: a page with several
+    // image markers may serially wait through two archive attempts per marker.
+    // The complete sourcing pass therefore has a strict budget; unresolved
+    // markers fall back to the on-palette gradient below, never a hung build.
+    const startedAt = Date.now();
+    const totalTimeoutMs = Math.max(5_000, opts?.totalTimeoutMs ?? 35_000);
+    const deadline = startedAt + totalTimeoutMs;
+    const perAttemptTimeoutMs = opts?.timeoutMs ?? 9_000;
     // Each marker carries its position and its subject. A generic subject is
     // replaced with one grounded in what this business actually does — "business
     // people" finds nothing about a consultancy, "business consultant strategy
@@ -623,10 +631,28 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
     // second full subject that condenses to the same pair skips the candidates
     // the first one took — the page must not carry the identical photo twice.
     const condensedUses = new Map<string, number>();
+    let sourcingTimedOut = false;
+    const sourceWithinBudget = async (query: string, variant: number, slot: ImageSlot | undefined): Promise<ResolvedImage | null> => {
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) { sourcingTimedOut = true; return null; }
+        let timer: NodeJS.Timeout | undefined;
+        try {
+            return await Promise.race([
+                sourceImage(artifactDir, query, Math.max(500, Math.min(perAttemptTimeoutMs, remainingMs)), variant, slot).catch(() => null),
+                new Promise<null>(resolve => {
+                    timer = setTimeout(() => { sourcingTimedOut = true; resolve(null); }, Math.max(1, remainingMs));
+                }),
+            ]);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    };
     for (const q of queries) {
+        if (Date.now() >= deadline) { sourcingTimedOut = true; break; }
         const times = Math.min(occurrences.get(q) || 1, 4);
         for (let v = 0; v < times && fetched < max; v++) {
-            let img = await sourceImage(artifactDir, subjectOf.get(q)!, opts?.timeoutMs ?? 9000, v, slotOf.get(q));
+            if (Date.now() >= deadline) { sourcingTimedOut = true; break; }
+            let img = await sourceWithinBudget(subjectOf.get(q)!, v, slotOf.get(q));
             fetched++;
             /**
              * A SECOND, SIMPLER ASK before giving up on the subject.
@@ -647,12 +673,13 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
              */
             if (!img) {
                 const condensed = condenseSubject(subjectOf.get(q)!);
-                if (condensed) {
+                if (condensed && Date.now() < deadline) {
                     const used = condensedUses.get(condensed) || 0;
-                    img = await sourceImage(artifactDir, condensed, opts?.timeoutMs ?? 9000, v + used, slotOf.get(q));
+                    img = await sourceWithinBudget(condensed, v + used, slotOf.get(q));
                     if (img) condensedUses.set(condensed, used + 1);
                 }
             }
+            if (Date.now() >= deadline) sourcingTimedOut = true;
             // Keep the reason an archive gave. "No photo" with no explanation is
             // the kind of silence that reads as a bug in Joe rather than a search
             // that came back empty.
@@ -660,6 +687,8 @@ export async function resolveImages(html: string, artifactDir: string, hue: numb
             if (img) resolved.set(`${q}#${v}`, img);
         }
     }
+
+    if (sourcingTimedOut) failures.set('budget', `sourcing time budget (${Math.round(totalTimeoutMs / 1000)}s) exhausted`);
 
     const credits: ImageResolution['credits'] = [];
     const seen = new Map<string, number>();

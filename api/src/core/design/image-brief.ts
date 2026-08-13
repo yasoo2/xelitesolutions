@@ -51,6 +51,24 @@ export function parseSlot(raw: string): { slot: ImageSlot; subject: string } {
 /* ---------- the page's own vocabulary --------------------------------------- */
 
 /** Arabic business terms -> the English a photo archive is actually indexed in. */
+/**
+ * A named brand is stricter than a business domain. A photo of any beverage may
+ * fit a drinks company, but it is wrong for a page explicitly about Coca-Cola.
+ * These terms are carried all the way into the archive subject gate.
+ */
+const BRAND_LEXICON: Array<{ re: RegExp; terms: string[]; subjects: string[] }> = [
+    {
+        re: /كوكا\s*كولا|coca[\s-]*cola/i,
+        terms: ['coca', 'cola'],
+        subjects: ['Coca-Cola bottle', 'Coca-Cola cans', 'Coca-Cola products'],
+    },
+    {
+        re: /بيبسي|pepsi/i,
+        terms: ['pepsi'],
+        subjects: ['Pepsi bottle', 'Pepsi cans', 'Pepsi products'],
+    },
+];
+
 const DOMAIN_LEXICON: Array<[RegExp, string[]]> = [
     [/برمج|سوفت|software|program|code|dev/i, ['software developer', 'programming', 'source code', 'laptop coding']],
     [/استشار|consult/i, ['business consultant', 'strategy meeting', 'advisor client meeting']],
@@ -174,6 +192,8 @@ export interface ImageBrief {
     vocabulary: string[];
     /** Subjects that name a PERSON, for slots where a face belongs. */
     portraits: string[];
+    /** A named brand requested by the user; generic stock must not satisfy it. */
+    brandTerms?: string[];
 }
 
 export function buildImageBrief(request: string): ImageBrief {
@@ -181,6 +201,7 @@ export function buildImageBrief(request: string): ImageBrief {
     const suggestions: string[] = [];
     const vocabulary: string[] = [];
     const portraits: string[] = [];
+    const brandTerms: string[] = [];
 
     const learn = (subject: string) => {
         if (!suggestions.includes(subject)) suggestions.push(subject);
@@ -189,6 +210,12 @@ export function buildImageBrief(request: string): ImageBrief {
             if (lw.length > 3 && !vocabulary.includes(lw)) vocabulary.push(lw);
         }
     };
+
+    for (const brand of BRAND_LEXICON) {
+        if (!brand.re.test(r)) continue;
+        for (const term of brand.terms) if (!brandTerms.includes(term)) brandTerms.push(term);
+        for (const subject of brand.subjects) learn(subject);
+    }
 
     for (const [re, subjects] of DOMAIN_LEXICON) {
         if (!re.test(r)) continue;
@@ -208,7 +235,7 @@ export function buildImageBrief(request: string): ImageBrief {
         const lw = w.toLowerCase();
         if (!vocabulary.includes(lw)) vocabulary.push(lw);
     }
-    return { suggestions: suggestions.slice(0, 12), vocabulary, portraits };
+    return { suggestions: suggestions.slice(0, 12), vocabulary, portraits, brandTerms };
 }
 
 /**
@@ -232,6 +259,12 @@ export function isSpecificEnough(subject: string, brief: ImageBrief): boolean {
      */
     if (words.length && words.every(w => FILLER.has(w) || w.length <= 2)) return false;
 
+    // A named brand is non-negotiable: a generic bottle or a construction
+    // scene is not an acceptable fallback for a Coca-Cola page.
+    // Ignore connectors such as "a" and "in": `cola`.includes('a') must
+    // never count as evidence that a construction photograph is Coca-Cola.
+    const meaningfulWords = words.filter(w => w.length > 2);
+    if (brief.brandTerms?.length && !brief.brandTerms.some(v => meaningfulWords.some(w => w.includes(v) || v.includes(w)))) return false;
     if (!brief.vocabulary.length) return true;      // nothing to check against
     return brief.vocabulary.some(v => words.some(w => w.includes(v) || v.includes(w)));
 }
