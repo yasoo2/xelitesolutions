@@ -415,6 +415,96 @@ Rules:
         const localBuildContract = PlanningEngine.looksLikeBuild(userGoal) && deniesExternalPublish;
 
         /**
+         * A TERMINAL REQUEST MUST EXECUTE, NOT JUST OPEN A PANEL OR ANSWER ABOUT IT.
+         *
+         * During a visible acceptance run, «نفّذ فحصاً محلياً باستخدام أداتك
+         * الطرفية» was sent to terminal_manager and ended in a central prose
+         * answer. The Terminal panel correctly waited for output, but no command
+         * was ever planned. A bounded diagnostic request therefore owns a safe,
+         * cross-platform command below. It deliberately does NOT interpret raw
+         * command text from a natural-language request: shell_execute still owns
+         * its own safety gate and real project build/edit routes retain their
+         * richer pipelines.
+         */
+        const explicitlyRequestsTerminalExecution = /\bshell_execute\b/i.test(probe)
+            || /(استخدم|استعمل|نفّ?ذ|شغّ?ل|اجري|أجرِ|قم\s+ب(?:إجراء|عمل))[^\n]{0,120}(?:طرفي[ةه]|terminal|shell|command\s*(?:line)?|سطر\s*(?:الأوامر|اوامر))|(?:طرفي[ةه]|terminal|shell)[^\n]{0,120}(?:نفّ?ذ|شغّ?ل|اجري|أجرِ|فحص|تحقّ?ق|check|verify|execute|run)/i.test(probe);
+        // The user can safely say «لا تبنِ / لا تعدّل ملفات» to constrain a
+        // terminal check. Those negated verbs are NOT a request to build or edit.
+        const terminalDiagnosticProbe = probe.replace(
+            /(?:لا|ليس|بدون|غير|do\s+not|don't|without)\s+(?:تبن[ِي]?|ابن[ِي]?|ابني|انشئ|أنشئ|طوّ?ر|تطوير|تعدّ?ل|عدّ?ل|تعديل|أصلح|اصلح|build|create|develop|implement|modify|edit|fix)(?:\s+[^\s،؛.:!?]+){0,3}/gi,
+            '',
+        );
+        const boundedTerminalDiagnostic = /(فحص|تحقّ?ق|اختبر|حالة|إصدار|نسخ[ةه]|version|status|check|verify|test|diagnostic)/i.test(probe)
+            && !/(?:ابنِ|ابني|انشئ|أنشئ|طوّ?ر|تطوير|عدّ?ل|تعديل|أصلح|اصلح|build|create|develop|implement|modify|edit|fix)/i.test(terminalDiagnosticProbe);
+
+        /**
+         * VERIFYING AN EXISTING PROJECT IS NOT REQUESTING A NEW PROJECT.
+         *
+         * "Run npm run build in folder X; do not edit" used to match the React
+         * builder later in this method and silently scaffold a replacement. The
+         * caller named both the execution tool and an existing simple directory,
+         * so keep the operation bounded: one fixed build command, no inferred
+         * shell text, and no traversal-capable cwd. This sits before every React
+         * or generic build route by design.
+         */
+        // A phrase such as «داخل هذا المجلد» is a reference, not a directory
+        // name. We only accept a directory explicitly named after «الموجود في»
+        // (or the equivalent English construction), so a later pronoun cannot
+        // replace the project identifier supplied earlier in the request.
+        const existingProjectDirMatch = userGoal.match(
+            /(?:الموجود\s+في|project\s+(?:located\s+)?in|folder\s+)(?:\s+)[`'\"]?([A-Za-z0-9_\-\u0600-\u06FF]+)[`'\"]?/i,
+        );
+        const existingProjectDir = String(existingProjectDirMatch?.[1] || '').trim();
+        const explicitExistingProjectBuild = explicitlyRequestsTerminalExecution
+            && /\bnpm\s+run\s+build\b/i.test(probe)
+            && /^[A-Za-z0-9_\-\u0600-\u06FF]+$/.test(existingProjectDir);
+        if (explicitExistingProjectBuild) {
+            console.log(`[PlanningEngine] explicit existing-project build → shell_execute (npm run build in ${existingProjectDir})`);
+            return {
+                id: `terminal_build_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'terminal_existing_project_build',
+                    description: `تشغيل فحص بناء محلي للمشروع القائم: ${existingProjectDir}`,
+                    tool: 'shell_execute',
+                    agent: 'Dev',
+                    input: { command: 'npm run build', cwd: existingProjectDir, request: intent.goal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'medium', riskLevel: 'medium', terminalExecution: true, buildVerification: true },
+            };
+        }
+
+        if (explicitlyRequestsTerminalExecution && boundedTerminalDiagnostic) {
+            // Never execute arbitrary natural-language shell text here. We only
+            // honour a deliberately small, read-only diagnostic allowlist, which
+            // lets the user see the exact requested command and its real output.
+            const requestedCommands: string[] = [];
+            if (/\bpwd\b/i.test(userGoal)) requestedCommands.push('pwd');
+            if (/\bnode\s+--version\b/i.test(userGoal)) requestedCommands.push('node --version');
+            const echo = userGoal.match(/\becho\s+([A-Za-z0-9_.:/=-]{1,120})\b/i);
+            if (echo) requestedCommands.push(`echo ${echo[1]}`);
+            if (!requestedCommands.length) {
+                requestedCommands.push("node -e \"console.log('Joe terminal execution verified')\"");
+            }
+
+            console.log(`[PlanningEngine] explicit terminal diagnostic → shell_execute (${requestedCommands.join(' → ')})`);
+            return {
+                id: `terminal_check_${Date.now()}`,
+                goal: intent.goal,
+                steps: requestedCommands.map((command, index) => ({
+                    id: `terminal_diagnostic_${index}`,
+                    description: `تنفيذ فحص طرفية محلي: ${command}`,
+                    tool: 'shell_execute',
+                    agent: 'Dev',
+                    input: { command, request: intent.goal },
+                    dependsOn: index === 0 ? [] : [`terminal_diagnostic_${index - 1}`],
+                })),
+                metadata: { complexity: 'low', riskLevel: 'low', terminalExecution: true },
+            };
+        }
+
+        /**
          * A GITHUB REPOSITORY IS NOT A WEB PAGE WHEN THE USER ASKS TO WORK ON IT.
          *
          * The URL-open guard below correctly handles “open GitHub and read this

@@ -193,30 +193,34 @@ export class WorkspaceService {
         return String(workspaceAsyncContext.getStore()?.workspaceId || '').trim();
     }
 
+    private get isLocalSingleUserMode(): boolean {
+        return process.env.PERSISTENCE_MODE === 'JSON'
+            || process.env.MOCK_DB === 'true'
+            || String(process.env.MOCK_DB) === '1';
+    }
+
     getActiveRoot(workspaceId?: string): string {
         const wsId = this.resolveWorkspaceId(workspaceId);
+
+        // JSON/mock mode exposes ONE on-disk workspace. The File Explorer changes
+        // this persisted location without a logical chat workspace id, while an
+        // executing run *does* have one. Previously a run that had looked up its
+        // id before the folder change retained the old value in
+        // `rootsByWorkspaceId`, so the explorer showed one folder and
+        // `shell_execute` ran in a stale sibling. Resolve the shared visible root
+        // before consulting that cache, and refresh the cache only as bookkeeping.
+        if (this.isLocalSingleUserMode) {
+            const local = this.localRoot;
+            if (!fs.existsSync(local)) {
+                try { fs.mkdirSync(local, { recursive: true }); } catch { }
+            }
+            if (wsId) this.rootsByWorkspaceId.set(wsId, local);
+            return local;
+        }
+
         if (wsId) {
             const root = this.rootsByWorkspaceId.get(wsId);
             if (root) return root;
-
-            // Local JSON/mock mode has one user-visible filesystem workspace.
-            // The chat still carries a logical workspace id for ownership and
-            // isolation, but the Explorer (and every project it displays) uses
-            // `localRoot`. Mapping an otherwise-unbound logical id to
-            // externalRoot/<id> created a hidden sibling directory, so a run
-            // could not see the project the user had selected in the Explorer.
-            // Production persistence keeps the per-workspace directory layout.
-            const isLocalSingleUserMode = process.env.PERSISTENCE_MODE === 'JSON'
-                || process.env.MOCK_DB === 'true'
-                || String(process.env.MOCK_DB) === '1';
-            if (isLocalSingleUserMode) {
-                const local = this.localRoot;
-                if (!fs.existsSync(local)) {
-                    try { fs.mkdirSync(local, { recursive: true }); } catch { }
-                }
-                this.rootsByWorkspaceId.set(wsId, local);
-                return local;
-            }
 
             const autoPath = path.join(this.externalRoot, wsId);
             try {
@@ -268,10 +272,20 @@ export class WorkspaceService {
             }
             await import('fs').then(fs => fs.promises.access(newPath));
             const wsId = this.resolveWorkspaceId(workspaceId);
-            if (wsId) this.rootsByWorkspaceId.set(wsId, newPath);
-            // No workspace id: persist the choice so it actually takes effect AND
-            // survives the next restart (the old currentRoot was ignored + lost).
-            else { this.currentRoot = newPath; this.localRoot = newPath; }
+            if (this.isLocalSingleUserMode) {
+                // The location picker is global in local mode: persist it even if
+                // an API caller happened to supply the current chat workspace id.
+                this.currentRoot = newPath;
+                this.localRoot = newPath;
+                if (wsId) this.rootsByWorkspaceId.set(wsId, newPath);
+            } else if (wsId) {
+                this.rootsByWorkspaceId.set(wsId, newPath);
+            } else {
+                // No workspace id: persist the choice so it actually takes effect
+                // AND survives the next restart (the old currentRoot was ignored + lost).
+                this.currentRoot = newPath;
+                this.localRoot = newPath;
+            }
             return true;
         } catch {
             return false;
@@ -280,8 +294,16 @@ export class WorkspaceService {
 
     resetToSystem(workspaceId?: string) {
         const wsId = this.resolveWorkspaceId(workspaceId);
-        if (wsId) this.rootsByWorkspaceId.delete(wsId);
-        else { this.currentRoot = process.cwd(); this.localRoot = path.join(this.externalRoot, 'my-workspace'); }
+        if (this.isLocalSingleUserMode) {
+            this.rootsByWorkspaceId.clear();
+            this.currentRoot = process.cwd();
+            this.localRoot = path.join(this.externalRoot, 'my-workspace');
+        } else if (wsId) {
+            this.rootsByWorkspaceId.delete(wsId);
+        } else {
+            this.currentRoot = process.cwd();
+            this.localRoot = path.join(this.externalRoot, 'my-workspace');
+        }
     }
 
     async runWithWorkspace<T>(workspaceId: string | undefined, fn: () => Promise<T> | T): Promise<T> {

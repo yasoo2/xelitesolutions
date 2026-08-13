@@ -118,6 +118,17 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
         // Opening on a hidden (0-size) tab leaves the renderer half-initialised and
         // xterm later crashes in Viewport._innerRefresh ("dimensions" of undefined).
         let openTries = 0;
+        let restoredScrollback = false;
+        const restoreScrollback = () => {
+            if (restoredScrollback) return;
+            restoredScrollback = true;
+            const history = SocketService.getTerminalHistory();
+            if (!history) return;
+            term.writeln('\x1b[2m--- Restored Joe execution output ---\x1b[0m');
+            term.write(history);
+            const plain = stripAnsi(history);
+            logBufferRef.current = plain.length > LOG_BUFFER_CAP ? plain.slice(-LOG_BUFFER_CAP) : plain;
+        };
         const openWhenVisible = () => {
             const el = containerRef.current;
             if (!el || termRef.current !== term) return; // unmounted or replaced
@@ -125,6 +136,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                 try {
                     term.open(el);
                     if (el.clientWidth > 0 && el.clientHeight > 0) fitAddon.fit();
+                    restoreScrollback();
                 } catch (err) {
                     console.warn('[Terminal] open/fit skipped:', err);
                 }
@@ -227,6 +239,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
             // to (`ids`) instead of four copies of the same line — the tab still
             // shows exactly what it showed before.
             const addressedHere = msg.id === activeTabId
+                || msg.id === 'panel-terminal'
                 || (Array.isArray(msg.ids) && msg.ids.includes(activeTabId))
                 || msg.id === 'joe-agent' || !msg.id;
             if (msg.type === 'terminal_output' && addressedHere) {
@@ -243,6 +256,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
     const handleClear = () => {
         termRef.current?.clear();
         logBufferRef.current = '';
+        SocketService.clearTerminalHistory();
     };
 
     const handleCopyAll = async () => {

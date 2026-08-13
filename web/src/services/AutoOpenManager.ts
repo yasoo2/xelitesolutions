@@ -64,6 +64,10 @@ class AutoOpenManagerClass {
                 toolName === 'run_command' ||
                 toolName === 'execute_command' ||
                 toolName === 'shell' ||
+                toolName === 'shell_execute' ||
+                toolName === 'npm_manager' ||
+                toolName === 'npm_install' ||
+                toolName === 'npm_build' ||
                 toolName.includes('terminal')
             )
         ) {

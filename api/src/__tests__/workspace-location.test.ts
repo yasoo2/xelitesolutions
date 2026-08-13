@@ -66,6 +66,20 @@ describe('local build location: effective, persistent, clearly named', () => {
         // selected folder where Joe actually created the files.
         expect(path.resolve(svc.getActiveRoot('64b2f0000000000000000abc'))).toBe(path.resolve(chosen));
     });
+
+    test('a cached chat workspace follows a later location-picker change', async () => {
+        const svc = make();
+        const logicalChatWorkspace = '64b2f0000000000000000def';
+        const before = svc.getActiveRoot(logicalChatWorkspace);
+        const chosen = path.join(projectsDir, 'changed-after-session-start');
+
+        // This is the browser sequence: an agent run has already resolved its
+        // logical workspace, then the user changes the visible Explorer location.
+        await svc.setActiveRoot(chosen);
+
+        expect(path.resolve(before)).not.toBe(path.resolve(chosen));
+        expect(path.resolve(svc.getActiveRoot(logicalChatWorkspace))).toBe(path.resolve(chosen));
+    });
 });
 
 describe('the /project/root route reports whether it is the default', () => {

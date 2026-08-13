@@ -123,6 +123,13 @@ function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' |
         if (/(rm\s+-rf|drop\s+table|shutdown|kill\s+process|\bsudo\b)/i.test(cmd)) return 'critical';
         if (/(chmod\s+777|chown\s+root|mkfs|dd\s+if=|:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;:)/i.test(cmd)) return 'critical';
         if (/(curl|wget|scp|ssh|docker|systemctl|service\s+|kubectl|terraform|ansible|git\s+push|npm\s+publish)/i.test(cmd)) return 'high';
+        // Read-only diagnostics must not be held behind the broad shell approval
+        // gate. The command itself remains subject to ShellExecuteTool's safety
+        // policy; this branch only permits an exact, single diagnostic command.
+        // Reject chaining/redirection/substitution so `pwd && …` cannot borrow
+        // this safe classification.
+        const readOnlyDiagnostic = /^(?:pwd|ls(?:\s+[-\w./]+)*|git\s+(?:status|diff)(?:\s+[-\w./]+)*|node\s+(?:--version|-v)|npm\s+(?:--version|-v)|echo\s+[A-Za-z0-9_.:/=-]+)$/i;
+        if (!/[;&|`$><\n\r]/.test(cmd) && readOnlyDiagnostic.test(cmd.trim())) return 'low';
         if (/(^|[;&|])\s*(node|npm|npx|pnpm|yarn|ts-node|tsc)\b/i.test(cmd)) return 'medium';
         return 'high';
     }
@@ -818,12 +825,10 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                 error = 'Tool reported failure without an error message';
             } else if (error) {
                 error = formatToolError(error);
-                // [NEW] Broadcast error
-                broadcast({
-                    type: 'terminal_output',
-                    id: 'panel-terminal',
-                    data: `\x1b[31mERROR: ${error}\x1b[0m\r\n`
-                });
+                // Terminal failures are user-visible work, too.  A raw event
+                // with only `panel-terminal` has no owner and is intentionally
+                // dropped by the socket privacy filter.
+                broadcastTerminalLine(contextSessionId, `\x1b[31mERROR: ${error}\x1b[0m\r\n`);
             }
 
             // [NEW] Broadcast tool completion
@@ -843,6 +848,10 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         const duration = Date.now() - t0;
         const errStr = formatToolError(e);
         logs.push(`exception=${errStr} duration=${duration}ms`);
+        try {
+            const { broadcastTerminalLine } = require('../../api/ws');
+            broadcastTerminalLine(contextSessionId, `\x1b[31mERROR: internal_exception: ${errStr}\x1b[0m\r\n`);
+        } catch { /* ws is optional in isolated unit tests */ }
         return { ok: false, error: `internal_exception: ${errStr}`, logs };
     }
 }

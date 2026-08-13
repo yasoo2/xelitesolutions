@@ -78,3 +78,47 @@ describe('the ownership check is not conditional on something being missing', ()
         expect(T).not.toMatch(/if \(\(needsWorkspace && !contextWorkspaceId\) \|\| \(needsUser && !effectiveContext\.userId\)\) \{[\s\S]{0,40}try \{/);
     });
 });
+
+
+describe('shell diagnostics use the least-privilege approval path', () => {
+    const saved = {
+        bypass: process.env.ENABLE_AUTH_BYPASS,
+        autoAll: process.env.AUTO_APPROVE_ALL,
+        autoSafe: process.env.AUTO_APPROVE_SAFE,
+    };
+    let executeTool: any, firewall: any;
+
+    beforeAll(async () => {
+        delete process.env.ENABLE_AUTH_BYPASS;
+        delete process.env.AUTO_APPROVE_ALL;
+        process.env.AUTO_APPROVE_SAFE = '1';
+        ({ executeTool } = await import('../modules/services/ToolService'));
+        ({ executionFirewall: firewall } = await import('../orchestration/AgentExecutionFirewall'));
+    });
+
+    afterAll(() => {
+        if (saved.bypass === undefined) delete process.env.ENABLE_AUTH_BYPASS; else process.env.ENABLE_AUTH_BYPASS = saved.bypass;
+        if (saved.autoAll === undefined) delete process.env.AUTO_APPROVE_ALL; else process.env.AUTO_APPROVE_ALL = saved.autoAll;
+        if (saved.autoSafe === undefined) delete process.env.AUTO_APPROVE_SAFE; else process.env.AUTO_APPROVE_SAFE = saved.autoSafe;
+    });
+
+    const context = { sessionId: OWNER, workspaceId: 'ws-owner-1', userId: 'owner-1' } as any;
+    const executeAsAgent = (command: string) => firewall.runInContext(
+        `shell-policy-${Date.now()}`,
+        () => executeTool('shell_execute', { command }, context),
+        { userId: 'owner-1', sessionId: OWNER },
+    );
+
+    it('runs a single read-only diagnostic without escalating it to approval_required', async () => {
+        const result: any = await executeAsAgent('pwd');
+        expect(result.ok).toBe(true);
+        expect(String(result.error || '')).not.toBe('approval_required');
+        expect(String(result.output?.stdout || '').trim()).toMatch(/^\//);
+    });
+
+    it('still blocks a repository push without explicit all-risk approval', async () => {
+        const result: any = await executeAsAgent('git push');
+        expect(result.ok).toBe(false);
+        expect(result.error).toBe('approval_required');
+    });
+});

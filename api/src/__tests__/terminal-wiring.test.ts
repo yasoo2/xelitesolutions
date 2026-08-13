@@ -45,7 +45,7 @@ describe('lines reach the terminal the user is actually looking at', () => {
         const WS = fs.readFileSync(path.join(__dirname, '..', 'api', 'ws.ts'), 'utf-8');
         const at = WS.indexOf('export function broadcastTerminalLine');
         const body = WS.slice(at, WS.indexOf('\n}', at));
-        expect(body).toMatch(/String\(sessionId \|\| ''\), 'local', 'default', 'panel-terminal'/);
+        expect(body).toMatch(/String\(sessionId \|\| ''\), 'local_terminal', 'local', 'default', 'panel-terminal'/);
     });
 });
 

@@ -25,6 +25,12 @@ let lastUrl = '';
 let triedFallback = false;
 let cachedIsShim: boolean | null = null;
 let lastShimCheckAt = 0;
+
+// Terminal is conditionally unmounted when the user changes workspace tabs.
+// Keep a bounded, connection-local scrollback so a build that starts before
+// the Terminal opens can still be inspected by its owner.
+const TERMINAL_HISTORY_CAP = 512_000;
+let terminalHistory = '';
 let authProbePromise: Promise<'ok' | 'unauthorized' | 'error'> | null = null;
 let lastAuthProbeAt = 0;
 
@@ -292,6 +298,12 @@ async function connect() {
 
       // [Wakil 5.5] Auto Quiet Mode & Thinking Phase Management
       const msgType = String(data?.type || '');
+      if (msgType === 'terminal_output' && typeof data?.data === 'string') {
+        terminalHistory += data.data;
+        if (terminalHistory.length > TERMINAL_HISTORY_CAP) {
+          terminalHistory = terminalHistory.slice(-TERMINAL_HISTORY_CAP);
+        }
+      }
       // Which session this event belongs to — so the neural indicator only shows
       // in the session that is actually running (no cross-session leak).
       const evSid = String(data?.sessionId || data?.data?.sessionId || '');
@@ -611,6 +623,13 @@ export const SocketService = {
       text,
       ts: Date.now()
     });
+  },
+  /** Bounded scrollback used when the visible Terminal panel remounts. */
+  getTerminalHistory() {
+    return terminalHistory;
+  },
+  clearTerminalHistory() {
+    terminalHistory = '';
   },
   subscribe(cb: (data: any) => void) {
     listeners.add(cb);

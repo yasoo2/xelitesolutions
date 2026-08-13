@@ -6,7 +6,7 @@ import fs from 'fs';
 import { workspaceService } from '../../services/WorkspaceService';
 import { resolveToolPath as sharedResolveToolPath } from '../utils';
 import { commandRouter } from '../../terminal/command-router';
-import { broadcast } from '../../../api/ws';
+import { broadcast, broadcastTerminalLine } from '../../../api/ws';
 import { handleShellCommand } from '../handlers';
 import { executionEngine } from '../../../kernel/ExecutionEngine';
 
@@ -643,16 +643,15 @@ export class ShellExecuteTool extends BaseTool {
             return out;
         };
 
-        // [VISIBLE TERMINAL] When Joe runs a command autonomously, the user must
-        // SEE it in the Terminal tab — the standing "use the terminal" promise
-        // is empty if the work is invisible. Broadcast to the agent terminal
-        // view (id 'joe-agent'), NEVER the interactive local_terminal (that
-        // would interleave with the user's own typing). CR/LF and ANSI colour
-        // make it read like a real shell. Best-effort — never blocks the run.
-        const AGENT_TERM = 'joe-agent';
+        // [VISIBLE TERMINAL] Every autonomous command is addressed to the run's
+        // actual session.  A raw `joe-agent` id has no registered owner and was
+        // therefore either dropped by the socket privacy filter or missed by the
+        // user's visible panel.  The shared panel stream is safely owner-scoped
+        // and understands every terminal tab alias.
+        const terminalSessionId = typeof context?.sessionId === 'string' ? context.sessionId : undefined;
         const paintToTerminal = (chunk: string) => {
             try {
-                if (chunk) broadcast({ type: 'terminal_output', id: AGENT_TERM, data: chunk } as any);
+                if (chunk) broadcastTerminalLine(terminalSessionId, chunk);
             } catch { /* the view is a window, never a dependency */ }
         };
         const echoCommand = () => paintToTerminal(`\r\n\x1b[36m$ ${redactCmd(command)}\x1b[0m\r\n`);
@@ -665,12 +664,16 @@ export class ShellExecuteTool extends BaseTool {
 
         if (dryRun) {
             const safeCmd = redactCmd(command);
+            echoCommand();
+            paintToTerminal(`\x1b[33m[dry run] ${safeCmd}\x1b[0m\r\n`);
             return { ok: true, output: { dryRun: true, status: 'success', command: safeCmd, stdout: `[dry run] ${safeCmd}`, exitCode: 0 }, logs: [`dryRun: ${safeCmd}`] };
         }
 
         if (command.includes('rm -rf /') || command.includes('sudo')) {
             const safeCmd = redactCmd(command);
             logs.push(`exec=${safeCmd} blocked=1`);
+            echoCommand();
+            paintToTerminal('\x1b[31m✗ command blocked by safety policy\x1b[0m\r\n');
             return { ok: false, error: 'command_not_allowed', logs };
         }
 
@@ -689,7 +692,11 @@ export class ShellExecuteTool extends BaseTool {
         let workDir = root;
         if (cwdInput) {
             const resolvedCwd = safePath(cwdInput, context?.workspaceId);
-            if (!resolvedCwd.ok) return { ok: false, error: resolvedCwd.error, logs };
+            if (!resolvedCwd.ok) {
+                echoCommand();
+                paintToTerminal(`\x1b[31m✗ ${resolvedCwd.error}\x1b[0m\r\n`);
+                return { ok: false, error: resolvedCwd.error, logs };
+            }
             workDir = resolvedCwd.path;
         }
 
@@ -713,6 +720,8 @@ export class ShellExecuteTool extends BaseTool {
                 });
 
                 logs.push(`exec_bg=${redactCmd(command)} id=${id} pid=${result.data?.pid}`);
+                echoCommand();
+                paintToTerminal(`\x1b[32m✓ started in background (${id})\x1b[0m\r\n`);
                 return {
                     ok: true,
                     output: { status: 'background', id, pid: result.data?.pid, message: 'Command started in background.' },
@@ -730,6 +739,8 @@ export class ShellExecuteTool extends BaseTool {
 
                 const durationMs = Date.now() - startedAt;
                 logs.push(`exec=${redactCmd(command)} server=${input.serverId || 'local'} exit=${result.code}`);
+                echoCommand();
+                echoResult(String(result.stdout || ''), String(result.stderr || ''), Number(result.code || 0));
 
                 return {
                     ok: result.code === 0,
@@ -773,6 +784,8 @@ export class ShellExecuteTool extends BaseTool {
             const durationMs = Date.now() - startedAt;
             const logCmd = redactCmd(command);
             logs.push(`exec_error=${logCmd} err=${e.message}`);
+            echoCommand();
+            echoResult(String(e.stdout || ''), String(e.stderr || e.message || 'Command failed'), Number(e.code || 1));
             return { ok: false, error: e.message || 'Command failed', output: { status: 'failed', stdout: e.stdout || '', stderr: e.stderr || e.message, exitCode: e.code || 1, cwd: workDir, durationMs }, logs };
         }
     }

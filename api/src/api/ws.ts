@@ -455,7 +455,10 @@ export function observeBroadcasts(fn: (event: any) => void): () => void {
  * this line belongs to. One message, same reach, a quarter of the traffic.
  */
 export function broadcastTerminalLine(sessionId: string | undefined, line: string): void {
-    const ids = [String(sessionId || ''), 'local', 'default', 'panel-terminal'].filter(Boolean);
+    // `local_terminal` is the actual default id of EnterpriseTerminalPanel.
+    // Omitting it meant the shared stream reached legacy `local` tabs only and
+    // the visible panel beside the browser remained blank during a build.
+    const ids = [String(sessionId || ''), 'local_terminal', 'local', 'default', 'panel-terminal'].filter(Boolean);
     // `sessionId` rides along so the delivery filter can find the owner: the
     // id is the shared panel stream, which belongs to nobody by itself.
     broadcast({ type: 'terminal_output', id: 'panel-terminal', ids, sessionId, data: line } as any);
