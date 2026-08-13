@@ -414,6 +414,53 @@ Rules:
         const deniesExternalPublish = /(?:^|[\s،؛,:.!?])(?:(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)(?:نشر|انشر|أنشر|رفع|استضافة|deploy|publish|host|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])/i.test(userGoal);
         const localBuildContract = PlanningEngine.looksLikeBuild(userGoal) && deniesExternalPublish;
 
+        /**
+         * A GITHUB REPOSITORY IS NOT A WEB PAGE WHEN THE USER ASKS TO WORK ON IT.
+         *
+         * The URL-open guard below correctly handles “open GitHub and read this
+         * page”, but it used to see “افحص README” inside a long local Git workflow
+         * as browser work and return immediately. The request then ended after a
+         * single navigation even though it explicitly required clone, branch,
+         * diff, test, and a local commit. Decide that engineering contract before
+         * *any* URL route: ImportProjectTool provides the real checkout from which
+         * the subsequent local operations can be proved. A plain view/open request
+         * still reaches browser_launch because it has none of these work signals.
+         */
+        const earlyGithubRepository = /(?:https?:\/\/)?(?:www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?(?:[\/?#\s]|$)/i.test(userGoal);
+        const earlyGithubLocalWork = /(استنسخ|نسخ|انسخ|استورد|استيراد|حلّ?ل|تحليل|افهم|فهم|دقّ?ق|مراجعة|طوّ?ر|تطوير|عدّ?ل|تعديل|أصلح|اصلح|إصلاح|اختبر|اختبار|شغّ?ل|تشغيل|نفّ?ذ|بناء|فرع|التزام|كوميت|git\s*(?:status|diff|checkout|commit|branch)|build|develop|implement|modify|edit|fix|test|run|clone|import|branch|commit|analy[sz]e|review|inspect)/i.test(probe);
+        // Import is deliberately sufficient for an analysis-only request. Add the
+        // constrained follow-through only when the user names actual local Git
+        // deliverables. This distinction prevents a harmless “analyse this repo”
+        // from silently creating a branch or commit.
+        const requestsBoundedLocalGitWorkflow = /(فرع|برانش|التزام|كوميت|commit|branch|(?:docs|documentation)\/[A-Za-z0-9._/-]+\.md|ملف\s*(?:توثيق|ملاحظات)|وثّ?ق|توثيق)/i.test(probe);
+        if (earlyGithubRepository && earlyGithubLocalWork) {
+            const steps: PlanStep[] = [{
+                id: 'repo_import',
+                description: 'استنساخ المستودع وتحليل ملفاته ومراجعة اختباراته محلياً وربطه بالجلسة',
+                tool: 'import_project',
+                agent: 'Dev',
+                input: { request: intent.goal },
+                dependsOn: [],
+            }];
+            if (requestsBoundedLocalGitWorkflow) {
+                steps.push({
+                    id: 'local_git_workflow',
+                    description: 'إنشاء فرع محلي وملف توثيق محدود والتحقق من الفرق ثم الالتزام محلياً دون دفع أو نشر خارجي',
+                    tool: 'git_local_workflow',
+                    agent: 'Dev',
+                    input: { request: intent.goal },
+                    dependsOn: ['repo_import'],
+                });
+            }
+            console.log(`[PlanningEngine] early GitHub local-work contract → import_project${requestsBoundedLocalGitWorkflow ? ' + git_local_workflow' : ''}`);
+            return {
+                id: `repo_import_${Date.now()}`,
+                goal: intent.goal,
+                steps,
+                metadata: { complexity: requestsBoundedLocalGitWorkflow ? 'high' : 'medium', riskLevel: 'medium' },
+            };
+        }
+
         // [EARLY EXPLICIT URL OPEN] A bounded navigation request is a hard
         // prerequisite for any page-local tool. Resolve it before capability
         // chains and model-guided routing, which cannot safely search a page

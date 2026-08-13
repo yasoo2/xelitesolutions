@@ -22,6 +22,7 @@ import { ReactProjectTool } from './definitions/ReactProjectTool';
 import { ProjectEditTool } from './definitions/ProjectEditTool';
 import { FormInboxTool } from './definitions/FormInboxTool';
 import { ImportProjectTool } from './definitions/ImportProjectTool';
+import { GitLocalWorkflowTool } from './definitions/GitLocalWorkflowTool';
 import { ApiProjectTool } from './definitions/ApiProjectTool';
 import { ImageStudioTool } from './definitions/ImageStudioTool';
 import { OrdersReadTool } from './definitions/OrdersReadTool';
@@ -309,6 +310,8 @@ const baseTools: ToolDefinition[] = [
   new WriteFileTool(),
   new DeleteFileTool(),
   new ScaffoldProjectTool(),
+  new ImportProjectTool(),
+  new GitLocalWorkflowTool(),
   new LsTool(),
   // [AUDIT] npm_manager and shell_check_status were DEFINED for months and
   // never registered — npm_manager is a name the frontend watches to open

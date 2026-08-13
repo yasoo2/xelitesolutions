@@ -52,6 +52,13 @@ describe('every defined tool is reachable', () => {
         expect(direct).toBeLessThan(delegated);
         expect(orch.slice(direct, delegated)).toContain('executeTool(plannedTool, nodeInput, executionContext)');
     });
+    it('preserves bounded local Git workflow when agent selection changes', () => {
+        const orch = fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
+        const list = orch.match(/DETERMINISTIC_TOOLS = \[([\s\S]*?)\]/)?.[1] || '';
+        expect(list).toContain("'git_local_workflow'");
+        const protection = orch.slice(orch.indexOf('const isProtected'), orch.indexOf('node.status = "running"'));
+        expect(protection).toContain('DETERMINISTIC_TOOLS.includes(node.tool)');
+    });
     it('the registry has no silent duplicates', () => {
         expect(names.size).toBe(tools.length);
     });

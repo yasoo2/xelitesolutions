@@ -101,7 +101,14 @@ function bridged(request: string): string[] {
     return out;
 }
 
-interface Profile { name: string; nameTerms: Set<string>; tagTerms: Set<string>; descTerms: Set<string> }
+interface Profile {
+    name: string;
+    nameTerms: Set<string>;
+    tagTerms: Set<string>;
+    descTerms: Set<string>;
+    /** Optional explicit evidence required for a write-capable tool to match. */
+    matchAnyTerms: Set<string>;
+}
 
 let cached: Profile[] | null = null;
 
@@ -118,6 +125,7 @@ export function toolProfiles(force = false): Profile[] {
             nameTerms: new Set(terms(String(t.name).replace(/[_-]+/g, ' '))),
             tagTerms: new Set((t.tags || []).flatMap((g: string) => terms(g))),
             descTerms: new Set(terms(String(t.description || '')).slice(0, 60)),
+            matchAnyTerms: new Set((t.capabilityMatchAny || []).flatMap((g: string) => terms(g))),
         }));
     return cached;
 }
@@ -138,6 +146,13 @@ export function capableTools(request: string, limit = 4): Capable[] {
 
     const scored: Capable[] = [];
     for (const p of toolProfiles()) {
+        // Some write-capable workflows deliberately declare the precise evidence
+        // they require. Their descriptive prose can mention "analysis" or
+        // "verification", but those broad words must never infer a branch/commit.
+        // Evaluate the explicit safety gate against the user's actual terms,
+        // not the language bridge. The bridge intentionally expands «مستودع» to
+        // Git vocabulary, but that must not manufacture an intent to commit.
+        if (p.matchAnyTerms.size && ![...p.matchAnyTerms].some(w => want.includes(w))) continue;
         let score = 0;
         const why: string[] = [];
         let descHits = 0;

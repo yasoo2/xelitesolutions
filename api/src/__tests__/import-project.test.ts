@@ -103,8 +103,19 @@ describe('routing: URL + intent verb, and only that', () => {
     it('a GitHub repair-and-test request starts from a local checkout', async () => {
         expect(await route('clone https://github.com/user/repo ثم أصلح الاختبارات وشغّلها')).toBe('import_project');
     });
+    it('an analysis-only GitHub request does not create a branch or local commit', async () => {
+        const plan = await PlanningEngine.generatePlan({ intent: { goal: 'حلل https://github.com/yasoo2/xelitesolutions محلياً', complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any });
+        expect(plan.steps.map((step: any) => step.tool)).toEqual(['import_project']);
+    });
     it('a github link with NO intent verb is not hijacked', async () => {
         expect(await route('شاهد https://github.com/octocat/Hello-World')).not.toBe('import_project');
+    });
+    it('a clone-and-local-commit contract wins over a negated “do not open a PR” clause', async () => {
+        const goal = 'تصرف كوكيل هندسي مستقل لاختبار مسار Git الحقيقي. استنسخ محلياً المستودع https://github.com/yasoo2/xelitesolutions داخل مساحة عمل معزولة، ثم افحص README وملفات package.json وحالة Git وحدد أمر بناء أو اختبار آمن مناسب. أنشئ فرعاً محلياً جديداً بالاسم joe/agent-git-publish-validation-20260813 من النسخة المستنسخة فقط، ولا تلمس فرع main. أضف ملف توثيق صغيراً جديداً فقط باسم docs/agent-validation/joe-git-publish-smoke.md يذكر تاريخ الاختبار، اسم الفرع، والأمر الذي تحققت به؛ لا تعدل ملفات إنتاج أو إعدادات أو أسرار. شغّل فحصاً أو بناءً آمناً مناسباً، ثم اعرض git diff وgit status وتحقق من أن التغيير الوحيد هو ملف التوثيق. إذا كانت الحالة سليمة، أنشئ commit محلياً برسالة واضحة، لكن لا تنفذ git push ولا تفتح Pull Request ولا تنشر GitHub Pages قبل أن أعطيك تأكيداً صريحاً ثانياً. أعد تقريراً صادقاً بالأوامر والنتائج والمسار والـSHA المحلي وأي عائق. لا تدّعِ النشر أو النجاح إذا لم يتحقق فعلاً.';
+        const plan = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'high', riskLevel: 'medium', rawIntent: {} } as any });
+        expect(plan.steps).toHaveLength(2);
+        expect(plan.steps[0]).toMatchObject({ id: 'repo_import', tool: 'import_project', dependsOn: [] });
+        expect(plan.steps[1]).toMatchObject({ id: 'local_git_workflow', tool: 'git_local_workflow', dependsOn: ['repo_import'] });
     });
 });
 

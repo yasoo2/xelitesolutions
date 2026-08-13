@@ -29,7 +29,7 @@ import { RunStep } from '../core/orchestrator/answerComposer';
 const DETERMINISTIC_TOOLS = [
     'google_account', 'user_browser',
     'write_file', 'file_write', 'create_file', 'write_to_file', 'read_file', 'file_read',
-    'web_page_builder', 'react_project', 'api_project', 'orders_read', 'business_profile', 'project_edit', 'form_inbox', 'import_project', 'github_repo_manager', 'project_pipeline', 'project_run', 'project_stop', 'deploy_pages',
+    'web_page_builder', 'react_project', 'api_project', 'orders_read', 'business_profile', 'project_edit', 'form_inbox', 'import_project', 'git_local_workflow', 'github_repo_manager', 'project_pipeline', 'project_run', 'project_stop', 'deploy_pages',
 ];
 
 /**
