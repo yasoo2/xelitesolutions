@@ -1007,7 +1007,7 @@ Rules:
                 return {
                     id: `import_${Date.now()}`,
                     goal: intent.goal,
-                    steps: [{ id: 'import_project', description: 'استيراد المستودع وفهمه وتفعيله للجلسة', tool: 'import_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [] }],
+                    steps: [{ id: 'import_project', description: 'استنساخ المستودع وتحليل ملفاته ومراجعة اختباراته محلياً ثم تفعيله للجلسة', tool: 'import_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [] }],
                     metadata: { complexity: 'medium', riskLevel: 'low' },
                 };
             }
@@ -1258,7 +1258,7 @@ Rules:
                     goal: intent.goal,
                     steps: [{
                         id: 'repo_import',
-                        description: 'استنساخ المستودع وتحليل ملفاته وربطه بالجلسة',
+                        description: 'استنساخ المستودع وتحليل ملفاته ومراجعة اختباراته محلياً وربطه بالجلسة',
                         tool: 'import_project',
                         agent: 'Dev',
                         input: { request: intent.goal },
