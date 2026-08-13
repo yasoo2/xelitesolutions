@@ -480,6 +480,90 @@ ${rules.join('\n')}
     };
 }
 
+/**
+ * THE DESIGN FINDINGS HAVE A REPAIR TOO.
+ *
+ * A measurement nobody can act on is a complaint. Two of the five design
+ * counts have a deterministic answer, and both are aimed at named offenders:
+ *
+ *   • a paragraph running past 95 characters gets a `max-width` in `ch`,
+ *     which is the unit the problem is measured in;
+ *   • a font size used once or twice on the whole page is a stray off the
+ *     scale, and is pulled to the nearest step of the scale the page already
+ *     uses everywhere else.
+ *
+ * The other three — spacing rhythm, colour discipline, flat hierarchy — are
+ * design decisions, not defects, and are left to the model round rather than
+ * guessed at here. Reporting them and NOT pretending to fix them is the
+ * honest half of this file.
+ */
+export function repairMeasure(css: string, longLines: any[]): RepairedFile {
+    const text = String(css || '');
+    const sels = safeSelectors(longLines);
+    if (!sels.length) return { text, repairs: [] };
+    const marker = 'إصلاح جو: طول السطر';
+    if (text.includes(marker)) return { text, repairs: [] };
+    return {
+        text: `${text}
+/* ── ${marker} ────────────────────────────────────────────
+   قيست هذه الفقرات فوق ٩٥ حرفاً في السطر. الوحدة ch لأن المشكلة تُقاس بالحرف. */
+${sels.join(',\n')} {
+  max-width: 72ch;
+}
+`,
+        repairs: [{
+            id: 'line_too_long',
+            detail: `حدّدتُ عرض ${sels.length} فقرة عند ٧٢ حرفاً`,
+            detailEn: `Capped ${sels.length} paragraph(s) at a 72-character measure`,
+            count: sels.length,
+        }],
+    };
+}
+
+/**
+ * Pull the stray font sizes onto the scale the page already uses.
+ *
+ * «Stray» is the audit's word and its measurement: a size used once or twice
+ * on a whole page, while every other size is used dozens of times. It is not
+ * a design decision; it is drift.
+ */
+export function repairTypeScale(css: string, strays: any[]): RepairedFile {
+    const text = String(css || '');
+    const rows = (Array.isArray(strays) ? strays : [])
+        .filter(x => x && x.sel && Number(x.px) > 0 && !/[{}@;]/.test(String(x.sel)))
+        .slice(0, 8);
+    if (!rows.length) return { text, repairs: [] };
+    const marker = 'إصلاح جو: سلّم الخطّ';
+    if (text.includes(marker)) return { text, repairs: [] };
+    // The scale this project already ships, in px, from tokens.css.
+    const STEPS = [13, 15, 16, 18, 22, 28, 36, 48, 64];
+    const nearest = (px: number) => STEPS.reduce((a, b) => (Math.abs(b - px) < Math.abs(a - px) ? b : a), STEPS[0]);
+    const rules: string[] = [];
+    const seen = new Set<string>();
+    for (const r of rows) {
+        const sel = String(r.sel);
+        if (seen.has(sel)) continue;
+        const to = nearest(Number(r.px));
+        if (to === Math.round(Number(r.px))) continue;   // already on the scale
+        seen.add(sel);
+        rules.push(`${sel} { font-size: ${to}px; }`);
+    }
+    if (!rules.length) return { text, repairs: [] };
+    return {
+        text: `${text}
+/* ── ${marker} ─────────────────────────────────────────────
+   أحجام استُعملت مرة أو مرتين على الصفحة كلها — انحراف عن السلّم، لا قرار. */
+${rules.join('\n')}
+`,
+        repairs: [{
+            id: 'type_scale_drift',
+            detail: `أعدتُ ${rules.length} حجم خطّ شارد إلى سلّم الصفحة`,
+            detailEn: `Pulled ${rules.length} stray font size(s) back onto the page's scale`,
+            count: rules.length,
+        }],
+    };
+}
+
 /* ── the whole project, in one pass ──────────────────────────────────────── */
 
 export interface ProjectRepairPlan {
@@ -592,6 +676,9 @@ export function repairProjectFiles(
             const surgical = [
                 (t: string) => repairMeasuredTapTargets(t, smallEvidence, TAP_PX[Math.min(round, TAP_PX.length) - 1]),
                 (t: string) => repairMeasuredContrast(t, contrastEvidence, (round - 1) * 1.5),
+                // …and the design counts that have a deterministic answer.
+                (t: string) => repairMeasure(t, evidenceFor('line_too_long')),
+                (t: string) => repairTypeScale(t, evidenceFor('type_scale_drift')),
             ];
             for (const fix of surgical) {
                 const r = fix(text);

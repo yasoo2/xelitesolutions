@@ -115,7 +115,20 @@ export function isCapability(phrase: string): boolean {
     // is not a table at all. A capability marker only wins when the phrase has
     // no clearer noun beside it.
     if (hits(CAPABILITY, s)) {
-        const stripped = s.replace(/\b(platform|system|module|feature|management|manager)\b/gi, '').trim();
+        /**
+         * THE HEAD DECIDES, NOT THE OBJECT.
+         *
+         * «video calls with pet owners» was read as a PEOPLE table, because
+         * «owners» is a person word and this test looked at the whole phrase.
+         * So the one thing he asked for and most obviously did not get was the
+         * one thing the honest block never mentioned.
+         *
+         * A person after a preposition is what the capability is ABOUT, not
+         * what the phrase IS. Cutting the tail first keeps «Ads platform» a
+         * capability and keeps «appointments with doctors» a table.
+         */
+        const head = s.split(/\s+(?:with|for|to|from|of|between|مع|من|إلى|بين|لـ?)\s+/i)[0] || s;
+        const stripped = head.replace(/\b(platform|system|module|feature|management|manager)\b/gi, '').trim();
         return !(hits(PERSON, stripped) || hits(MONEY, stripped) || hits(WHEN, stripped) || hits(GROUPING, stripped));
     }
     return false;

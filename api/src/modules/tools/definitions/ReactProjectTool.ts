@@ -2838,6 +2838,7 @@ export class ReactProjectTool extends BaseTool {
                 try {
                     broadcast({ type: 'panel_focus', sessionId, data: { panel: 'terminal', reason: 'terminal_qa' } } as any);
                 } catch { /* UI optional */ }
+                term('terminal-QA: the terminal votes too — real checks against the server on every round');
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? '⌨️ الطرفية تصوّت أيضاً — أُشغّل اختبارات حقيقية على الخادم في كل جولة'
                     : '⌨️ The terminal votes too — real checks against the server on every round');
@@ -2937,6 +2938,10 @@ export class ReactProjectTool extends BaseTool {
                     },
                     {
                         say: term,
+                        // The measurement itself — the one wire that made the
+                        // whole loop a no-op when it was missing, and that no
+                        // unit test could catch because each one brings its own.
+                        measure: measureNow,
                         maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
                         target: Math.max(1, Number(process.env.JOE_IMPROVE_TARGET || 95)),
                         snapshot: (label: string) => String(snapshotProject(proj, label)?.id || ''),
@@ -3199,8 +3204,54 @@ export class ReactProjectTool extends BaseTool {
         const askedButMissing: string[] = appBp
             ? uncoveredFeatures(request, appBp.engine, !!apiLink)
             : [];
+        /**
+         * AND THE CAPABILITIES HE NAMED IN PROSE.
+         *
+         * His request had no bullet list — the four things he wanted and did
+         * not get were in one sentence: «I also want: live streaming of
+         * surgeries, video calls with pet owners, AI that diagnoses illnesses
+         * from photos, and automatic vaccination recommendations». The bullet
+         * reader saw none of them, so the honest block named none of them.
+         *
+         * `inferModel` already splits that sentence and classifies each phrase:
+         * a table it can build, or a CAPABILITY that needs infrastructure a
+         * CRUD generator does not have. The second list is exactly «what you
+         * asked for and did not get», and it costs nothing to read.
+         */
+        const spokenCapabilities: string[] = (() => {
+            try {
+                const { inferModel } = require('../../../core/design/entity-inference');
+                return (inferModel(request, 4).capabilities || []).slice(0, 12);
+            } catch { return []; }
+        })();
+
+        /**
+         * …AND NOTHING THIS BUILD DEMONSTRABLY PRODUCED MAY APPEAR IN IT.
+         *
+         * Measured on his own veterinary run, the honest block read:
+         *
+         *     ⚠️ You also asked for things this step did NOT build:
+         *        • a React interface
+         *        • admin / business / developer portals
+         *        • an in-app AI assistant
+         *
+         * A React interface HAD been built — it was running in his browser.
+         * An admin panel HAD been built, one screen per table. So the block
+         * lied in both directions at once: it claimed away things he had, and
+         * it never mentioned the live streaming and video calls he did not.
+         *
+         * A regex is a guess about the request; `built`, `adminModel` and
+         * `apiLink` are facts about the output. Facts win.
+         */
+        const deliveredRe: RegExp[] = [
+            ...(built ? [/react|واجهة/i] : []),
+            ...(systemTables.length ? [/admin|portal|لوحة|بوابة/i] : []),
+            ...(apiLink ? [/auth|login|sign[-\s]?in|jwt|تسجيل\s*دخول|مصادقة/i, /database|backend|قاعدة\s*بيانات|خادم/i] : []),
+        ];
         const unmet = appBp
-            ? [...askedButMissing, ...UNMET.filter(([re]) => re.test(request)).map(u => (isAr ? u[1] : u[2]))]
+            ? [...askedButMissing, ...spokenCapabilities,
+                ...UNMET.filter(([re]) => re.test(request)).map(u => (isAr ? u[1] : u[2]))]
+                .filter(v => !deliveredRe.some(re => re.test(v)))
                 .filter((v, i, a) => a.indexOf(v) === i).slice(0, 24)
             : [];
         const unmetBlock = unmet.length
@@ -3208,10 +3259,24 @@ export class ReactProjectTool extends BaseTool {
                 ? `\n⚠️ وطلبتَ أيضاً ما لم أبنِه في هذه الخطوة — أقولها بصراحة بدل ادّعاء الاكتمال:\n${unmet.map(u => `   • ${u}`).join('\n')}\nأستطيع بناء الخادم وقاعدة البيانات كخطوة مستقلة: قل «ابنِ الباك إند لهذا التطبيق».\n`
                 : `\n⚠️ You also asked for things this step did NOT build — stated plainly rather than claimed:\n${unmet.map(u => `   • ${u}`).join('\n')}\n`)
             : '';
+        /**
+         * THE SCREENS IT REALLY MADE, IN THE MESSAGE HE READS.
+         *
+         * «admin screens: animals, vaccinations, doctors, appointments,
+         * invoices» went to the log and nowhere else, so the delivery message
+         * — the thing he actually reads — never said which tables he could
+         * administer. A report that omits what was built is only half of
+         * «show me what you built and what you did not».
+         */
+        const screensLine = systemTables.length
+            ? (isAr
+                ? `\n🗂️ شاشات إدارة لكل جدول: ${systemTables.join(' · ')}\n`
+                : `\n🗂️ An admin screen for every table: ${systemTables.join(' · ')}\n`)
+            : '';
         const appBlock = appBp
             ? (isAr
-                ? `\n🧠 هذا تطبيق يعمل، لا صفحة تتحدث عنه — «${appBp.title}»:\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n${unmetBlock}`
-                : `\n🧠 A working application, not a page about one — "${appBp.title}":\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n${unmetBlock}`)
+                ? `\n🧠 هذا تطبيق يعمل، لا صفحة تتحدث عنه — «${appBp.title}»:\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n${screensLine}${unmetBlock}`
+                : `\n🧠 A working application, not a page about one — "${appBp.title}":\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n${screensLine}${unmetBlock}`)
             : '';
         /**
          * «ولكن جو لم يصنع أي شيء ظاهر من هذه الخطوات نهائياً».

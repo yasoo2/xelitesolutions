@@ -532,6 +532,25 @@ export async function auditBuiltApp(
                 },
             });
         } catch { /* the inspection is additive — never the reason a build fails */ }
+        /**
+         * AND THE DESIGN ITSELF — «حتى يخرج بنتيجه مبهره».
+         *
+         * Everything above answers «does it work». All of it can be perfect on
+         * a page nobody would call good. These five counts ask whether there is
+         * a SYSTEM here — a type scale, a spacing rhythm, a readable measure, a
+         * colour discipline, a hierarchy — and they are counts taken from
+         * computed styles, not opinions.
+         */
+        try {
+            const { auditDesign } = require('./design-audit');
+            const design = await auditDesign(page);
+            if (design.findings.length) {
+                ui.findings.push(...design.findings);
+                opts?.onProgress?.('design');
+            }
+            Object.assign(ui.metrics, { design: design.metrics });
+        } catch { /* the design pass is additive — never the reason a build fails */ }
+
         try { await eyes.clear(page); } catch { /* the overlay removes itself with the page */ }
 
         behaviourMetrics.pressed = allControls.filter(c => c.kind !== 'anchor').length;

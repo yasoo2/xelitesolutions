@@ -122,6 +122,27 @@ export async function improveUntilItStops(
     opts: ImproveOptions,
 ): Promise<ImproveResult> {
     const say = (l: string) => { try { opts.say?.(l); } catch { /* logging is optional */ } };
+
+    /**
+     * A HALF-WIRED LOOP MUST SAY SO BEFORE IT SPENDS A BUILD.
+     *
+     * The build called this with `repair`, `rebuild`, `rollback` and
+     * `snapshot` — and no `measure`. Every unit test passed, because each one
+     * brings its own measure; the integration harness threw
+     * «opts.measure is not a function» in the middle of round one, AFTER the
+     * repair had already written to disk. A missing dependency should be a
+     * refusal at the door, not an exception halfway down the corridor.
+     */
+    for (const need of ['measure', 'repair', 'rebuild', 'rollback', 'snapshot'] as const) {
+        if (typeof (opts as any)[need] !== 'function') {
+            say(`improve: not wired — no ${need}() was given, so no round can run`);
+            return {
+                rounds: [], first: firstMeasurement, final: firstMeasurement,
+                fixed: [], stoppedBecause: 'no_change_possible',
+            };
+        }
+    }
+
     const target = Number.isFinite(opts.target as number) ? Number(opts.target) : 95;
     const maxRounds = Math.max(1, Number(opts.maxRounds || 4));
 
