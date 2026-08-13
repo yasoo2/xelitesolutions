@@ -149,7 +149,9 @@ const KIND_DETECTORS: Array<[AppKind, RegExp]> = [
     ['booking', /حجوزات|حجز|مواعيد|موعد|عياد|مرضى|reservation|booking|appointment|clinic/i],
     ['inventory', /مخزون|جرد|مستودع|أصناف|اصناف|inventory|stock|warehouse/i],
     ['expenses', /مصاريف|مصروفات|ميزانية|نفقات|محاسبة\s*شخصية|expense|budget|spending|finance\s*tracker/i],
-    ['tasks', /مهام|مهمة|مهمات|to-?do|todo|task\s*(manager|list)|kanban/i],
+    // لوحات الإصدار والتشغيل ليست صفحات تعريفية حتى لو لم تقل «تطبيق»:
+    // مؤشرات + جدول + بحث/تصفية/تفاصيل هي إشارة برنامج إدارة مهام صريحة.
+    ['tasks', /مهام|مهمة|مهمات|لوحة\s*(?:مهام|إصدار|اصدار|جاهزية)|مركز\s*جاهزية\s*(?:الإصدار|الاصدار)|جدول\s*مهام|بطاقات\s*مؤشرات|task\s*(manager|list|board)|release\s*(?:readiness|center|board)|kanban|to-?do|todo/i],
     ['notes', /ملاحظات|مذكرات|مفكرة|محرر\s*نصوص|محرر\s*نص|notes?\s*app|notepad|note\s*taking|text\s*editor|markdown/i],
     ['lms', /منصة\s*تعليم|تعليمية|طلاب|طالب|دورات|مدرسة|جامعة|درجات|\blms\b|courses?|students?|school|grade(book)?/i],
     ['crm', /عملاء|زبائن|علاقات\s*العملاء|صفقات|مبيعات\s*متابعة|\bcrm\b|leads?|pipeline|deals?/i],
@@ -169,7 +171,18 @@ const APP_SIGNAL = /تطبيق|برنامج|نظام|منصّة|منصة|أدا�
  */
 const CLINIC_SIGNAL = /عياد|طبيب|أطباء|اطباء|طبّي|مرضى|مريض|أسنان|اسنان|مستشفى|clinic|doctor|dentist|patient|medical|hospital/i;
 /** A page ABOUT something wins over the subject it describes. */
-const PAGE_SIGNAL = /صفحة\s*(هبوط|تعريف)?|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|landing\s*page|portfolio|one\s*-?\s*pager|brochure/i;
+// كلمة «الصفحة» وحدها ليست نية صفحة هبوط: تظهر كثيراً كإجراء جودة
+// («افحص الصفحة بنفسك») بعد طلب تطبيق كامل. نمنع التطبيق فقط عند تسمية
+// مادة تقديمية صريحة، كي لا تلغي مرحلة التدقيق قالب لوحة مهام حقيقياً.
+const PAGE_SIGNAL = /صفحة\s*(?:هبوط|تعريف(?:ية)?|تسويقية)|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|landing\s*page|portfolio|one\s*-?\s*pager|brochure/i;
+
+/**
+ * A release/task-board contract names concrete program surfaces, rather than
+ * merely a business subject. It therefore outranks incidental words inherited
+ * from a planner or prior conversation (for example «محادثة») — but only
+ * AFTER an explicit landing-page request has been honoured above.
+ */
+const TASK_BOARD_CONTRACT = /مركز\s*جاهزية\s*(?:الإصدار|الاصدار)|لوحة\s*(?:مهام|إصدار|اصدار|جاهزية)|جدول\s*مهام|(?:بطاقات\s*مؤشرات[\s\S]{0,180}(?:بحث|تصفية|نافذة\s*تفاصيل)|(?:بحث|تصفية|نافذة\s*تفاصيل)[\s\S]{0,180}بطاقات\s*مؤشرات)|release\s*(?:readiness|center|board)|task\s*(?:board|manager|list)|kanban/i;
 
 /**
  * WHICH application this is — or null when the request is genuinely a
@@ -183,6 +196,11 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // «صفحة هبوط لتطبيق خرائط» is a page about an app — the document the user
     // named wins, exactly as classifyBuildScope decides it.
     if (PAGE_SIGNAL.test(request)) return null;
+    // Explicit interaction surfaces are a stronger contract than a stray
+    // domain word that may have been appended to a long execution context.
+    // This prevents a release board from becoming ChatApp merely because its
+    // self-audit or planner context happened to mention a conversation.
+    if (TASK_BOARD_CONTRACT.test(request)) return 'tasks';
     for (const [kind, re] of KIND_DETECTORS) if (re.test(request)) return kind;
     // Nothing named, but «نظام إدارة …» / «تطبيق لتتبع …» is unmistakably an
     // application that owns records. It gets the records engine with an entity

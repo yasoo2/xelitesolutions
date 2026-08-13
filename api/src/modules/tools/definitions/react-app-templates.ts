@@ -922,6 +922,7 @@ export default function RecordsApp({ content }) {
   const [rows, setRows] = useState(() => store.read());
   const [draft, setDraft] = useState(() => blank(fields));
   const [editing, setEditing] = useState('');
+  const [selected, setSelected] = useState(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('');
@@ -1026,9 +1027,10 @@ export default function RecordsApp({ content }) {
     }
   };
 
-  const edit = (row) => { setEditing(row.id); setDraft({ ...blank(fields), ...row }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const edit = (row) => { setSelected(null); setEditing(row.id); setDraft({ ...blank(fields), ...row }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const remove = async (row) => {
     if (!window.confirm(${T('حذف هذا السجلّ؟', 'Delete this record?')})) return;
+    if (selected && selected.id === row.id) setSelected(null);
     setRows(rows.filter(r => r.id !== row.id));
     if (server) await apiDelete(content.api, row.id);
   };
@@ -1223,7 +1225,10 @@ export default function RecordsApp({ content }) {
                       src={imageOf(row, imageField.key, primary.key)}
                       alt={String(row[primary.key] || '')} />
                   ) : null}
-                  <div className="row-main">
+                  <div className="row-main row-open" role="button" tabIndex={0} aria-haspopup="dialog"
+                    aria-label={${T('عرض تفاصيل ', 'Show details for ')} + String(row[primary.key] || content.entityOne)}
+                    onClick={() => setSelected(row)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(row); } }}>
                     <h3>
                       {row[primary.key] || ${T('(بلا عنوان)', '(untitled)')}}
                       {rel && parentName(row) ? <span className="row-parent">{parentName(row)}</span> : null}
@@ -1234,6 +1239,7 @@ export default function RecordsApp({ content }) {
                       ))}
                       {rel && parentName(row) ? <div><dt>{rel.one}</dt><dd>{parentName(row)}</dd></div> : null}
                     </dl>
+                    <span className="row-detail-hint">{${T('انقر لعرض التفاصيل', 'Click to view details')}}</span>
                   </div>
                   <div className="row-acts">
                     {statusField && content.doneValue ? (
@@ -1250,6 +1256,32 @@ export default function RecordsApp({ content }) {
           </ul>
         )}
       </section>
+
+      {selected ? (
+        <div className="record-modal-backdrop" onMouseDown={() => setSelected(null)}>
+          <section className="record-modal" role="dialog" aria-modal="true" aria-labelledby="record-detail-title"
+            onMouseDown={(e) => e.stopPropagation()}>
+            <header className="record-modal-head">
+              <div>
+                <p className="eyebrow">{content.entityOne}</p>
+                <h2 id="record-detail-title">{selected[primary.key] || ${T('(بلا عنوان)', '(untitled)')}}</h2>
+              </div>
+              <button className="icon-btn" type="button" onClick={() => setSelected(null)} aria-label={${T('إغلاق التفاصيل', 'Close details')}}>×</button>
+            </header>
+            {imageField ? <img className="record-modal-pic" src={imageOf(selected, imageField.key, primary.key)} alt="" /> : null}
+            <dl className="record-detail-list">
+              {fields.filter(f => f.type !== 'image' && String(selected[f.key] || '').trim()).map(f => (
+                <div key={f.key}><dt>{f.label}</dt><dd>{String(selected[f.key])}</dd></div>
+              ))}
+              {rel && parentName(selected) ? <div><dt>{rel.one}</dt><dd>{parentName(selected)}</dd></div> : null}
+            </dl>
+            <footer className="record-modal-actions">
+              <button className="btn ghost" type="button" onClick={() => setSelected(null)}>{${T('إغلاق', 'Close')}}</button>
+              <button className="btn" type="button" onClick={() => edit(selected)}>{${T('تعديل المهمة', 'Edit task')}}</button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2121,12 +2153,27 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .row.done{opacity:.62}
 .row.done h3{text-decoration:line-through}
 .row-main{min-width:0;flex:1 1 260px}
+.row-open{cursor:pointer;border-radius:8px;padding:2px;transition:background .16s ease,outline-color .16s ease}
+.row-open:hover{background:var(--tint,#f6f6f6)}
+.row-open:focus-visible{outline:2px solid var(--accent,#06c);outline-offset:3px}
 .row-main h3{font-size:1rem;margin:0 0 4px}
 .row-meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0}
 .row-meta div{display:flex;gap:6px;font-size:.85rem}
 .row-meta dt{color:var(--text-muted,#666)}
 .row-meta dd{margin:0}
 .row-acts{display:flex;gap:6px;flex-wrap:wrap}
+.row-detail-hint{display:block;margin-top:8px;color:var(--text-muted,#666);font-size:.8rem}
+.record-modal-backdrop{position:fixed;z-index:20;inset:0;display:grid;place-items:center;padding:16px;background:rgb(0 0 0 / .46)}
+.record-modal{width:min(100%,640px);max-height:min(86vh,760px);overflow:auto;background:var(--surface,#fff);color:var(--text,#111);border:1px solid var(--border,#ddd);border-radius:var(--radius-lg,16px);padding:18px;box-shadow:0 22px 70px rgb(0 0 0 / .28)}
+.record-modal-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;border-bottom:1px solid var(--border,#ddd);padding-bottom:12px}
+.record-modal-head h2{margin:2px 0 0;font-size:1.25rem}
+.eyebrow{margin:0;color:var(--text-muted,#666);font-size:.82rem}
+.record-detail-list{display:grid;gap:12px;margin:16px 0}
+.record-detail-list div{display:grid;gap:4px;padding:10px 12px;background:var(--tint,#f6f6f6);border-radius:10px}
+.record-detail-list dt{color:var(--text-muted,#666);font-size:.85rem}
+.record-detail-list dd{margin:0;overflow-wrap:anywhere}
+.record-modal-pic{width:100%;max-height:280px;object-fit:cover;border-radius:12px;margin-top:16px}
+.record-modal-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;border-top:1px solid var(--border,#ddd);padding-top:14px}
 /* a picture for every row — «مع صور نباتات» */
 .row-pic{width:88px;height:66px;flex:none;object-fit:cover;border-radius:10px;border:1px solid var(--border,#e5e5e5);background:var(--tint,#f4f4f4)}
 .pic-pick{display:flex;gap:12px;align-items:center;flex-wrap:wrap}

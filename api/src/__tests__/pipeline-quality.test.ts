@@ -65,6 +65,37 @@ describe('the quality phase is executable, not decorative', () => {
     });
 });
 
+describe('operational release boards are working task applications', () => {
+    const RELEASE_READINESS_BOARD = 'ابنِ في مجلد عمل محلي معزول لوحة React عربية RTL باسم «مركز جاهزية الإصدار». يجب أن تعرض بطاقات مؤشرات، جدول مهام قابل للبحث والتصفية بحسب الحالة، نافذة تفاصيل للمهمة، ومفتاح نمط فاتح/داكن.';
+
+    it('classifies the release-readiness board as a task application, never a landing page', () => {
+        expect(detectAppKind(RELEASE_READINESS_BOARD)).toBe('tasks');
+        const files = buildAppFiles(
+            blueprintFor('tasks', RELEASE_READINESS_BOARD, true),
+            { isArabic: true, brand: 'مركز جاهزية الإصدار', storeKey: 'release-ready' } as any,
+            'app',
+        );
+        expect(files['src/App.jsx']).toMatch(/RecordsApp/);
+        const program = Object.values(files).join('\n');
+        const recordsApp = files['src/components/RecordsApp.jsx'];
+        expect(program).toMatch(/search/i);
+        expect(program).toMatch(/filter/i);
+        expect(recordsApp).toMatch(/aria-haspopup="dialog"/);
+        expect(recordsApp).toMatch(/role="dialog"/);
+        expect(recordsApp).toMatch(/record-modal/);
+    });
+
+    it('does not mistake a procedural page-audit instruction for landing-page intent', () => {
+        const fullOperationalRequest = `${RELEASE_READINESS_BOARD} شغّل الاختبارات محلياً ثم افتح معاينة محلية في المتصفح. دقّق الصفحة بنفسك: افحص أخطاء JavaScript وتفاعل البحث والتصفية ونافذة التفاصيل ومفتاح النمط.`;
+        expect(detectAppKind(fullOperationalRequest)).toBe('tasks');
+    });
+
+    it('keeps the explicit release-board contract when incidental chat context is appended', () => {
+        const mixedExecutionContext = `${RELEASE_READINESS_BOARD}\nسياق تنفيذي جانبي: راقب المحادثة السابقة بعد البناء.`;
+        expect(detectAppKind(mixedExecutionContext)).toBe('tasks');
+    });
+});
+
 describe('the app talks to ITS server, and to no other', () => {
     const files = (req: string) => {
         const kind = detectAppKind(req) as AppKind;

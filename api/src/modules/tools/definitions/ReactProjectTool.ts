@@ -2142,6 +2142,9 @@ export class ReactProjectTool extends BaseTool {
         // skipped entirely and a working app is generated instead.
         const appKind = detectAppKind(request);
         const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, isAr) : null;
+        // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
+        // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
+        term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'}`);
         const family = familyFor(request, kind);
         const multiPage = wantsMultiPage(request);
         const pages = pagesForKind(kind);
@@ -3420,8 +3423,20 @@ export class ReactProjectTool extends BaseTool {
          * burying it under a list of filenames.
          */
         const blockers = ((audit?.findings || []) as any[]).filter(f => f.severity === 'high');
+        // A user who expressly asks Joe to open and inspect the local preview
+        // asked for evidence, not merely a best-effort attempt. Missing browser
+        // evidence is therefore a delivery blocker, just like a surviving error.
+        const requestedVisualAudit = /(?:\b(?:browser|visual|preview|inspect|audit)\b|متصفح|معاينة|مرئي|بصري|دقّق|دقق|تدقيق)/i.test(request);
+        const visualAuditUnavailable = requestedVisualAudit && (!audit || !!audit.skipped);
+        const deliveryBlocked = blockers.length > 0 || visualAuditUnavailable;
         if (blockers.length) {
-            term(`self-QA: DELIVERED WITH ${blockers.length} BLOCKING FINDING(S) — ${blockers.map(f => f.id).join(', ')}`);
+            // The artefact exists, but its final acceptance is rejected. Say both
+            // facts explicitly so a terminal transcript cannot turn a blocked
+            // quality gate into a success claim.
+            term(`self-QA: DELIVERED WITH ${blockers.length} BLOCKING FINDING(S) — final acceptance remains blocked: ${blockers.map(f => f.id).join(', ')}`);
+        }
+        if (visualAuditUnavailable) {
+            term('self-QA: DELIVERY BLOCKED — requested browser audit was not completed');
         }
 
         const qaBlock = (() => {
@@ -3603,7 +3618,7 @@ export class ReactProjectTool extends BaseTool {
         })();
 
         const message = isAr
-            ? `⚛️ ${blockers.length ? 'بُني مشروع React وتجمّع — لكنه سُلّم بعيوب باقية' : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
+            ? `⚛️ ${deliveryBlocked ? (blockers.length ? 'بُني مشروع React وتجمّع — لكنه سُلّم بعيوب باقية' : 'بُني مشروع React، لكن رُفض تسليمه نهائياً حتى ينجح تدقيق الجودة المطلوب') : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
 ${scopeBlock}${appBlock}
 ${qaBlock}${shellBlock}${acceptBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
@@ -3619,7 +3634,7 @@ ${buildDiagnosis ? (buildDiagnosis.healed
    • «تراجع» → استرجاع آخر تعديل بايتاً ببايت
    • «شغّل خادم التطوير» → معاينة تطوير بتحديث حي
    • «انشر المشروع» → نسخة الإنتاج بصورها على رابط دائم`
-            : `⚛️ ${blockers.length ? 'A React project that compiles — delivered WITH open defects' : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
+            : `⚛️ ${deliveryBlocked ? (blockers.length ? 'A React project that compiles — delivered WITH open defects' : 'A React project was built, but final delivery is blocked until the required quality audit passes') : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
 ${scopeBlock}${appBlock}
 ${qaBlock}${shellBlock}${acceptBlock}📂 Path: ${proj}
 ${fileList}
@@ -3627,8 +3642,24 @@ ${fileList}
 ${built ? '✅ npm install + vite build succeeded — the production build is in dist/.' : npmMissing ? '⚠️ npm is not available here — run npm install && npm run dev yourself.' : ''}`;
 
         return {
-            ok: true,
-            output: { message, acceptance, path: proj, dir: dirName, installed, built, audit, files: Object.keys(files) },
+            ok: !deliveryBlocked,
+            error: deliveryBlocked
+                ? (visualAuditUnavailable ? 'required_visual_audit_not_completed' : 'react_delivery_quality_gate_failed')
+                : undefined,
+            output: { message, acceptance,
+                path: proj,
+                dir: dirName,
+                installed,
+                built,
+                audit,
+                delivery: {
+                    accepted: !deliveryBlocked,
+                    blockers: blockers.map((f: any) => f.id),
+                    requestedVisualAudit,
+                    visualAuditUnavailable,
+                },
+                files: Object.keys(files),
+            },
             logs,
         } as any;
     }

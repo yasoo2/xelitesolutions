@@ -388,7 +388,7 @@ export function findChromiumExecutable(): string | undefined {
     } catch { /* ignore */ }
   }
 
-  // A local Joe installation must still work when Playwright's optional browser
+// A local Joe installation must still work when Playwright's optional browser
   // download was skipped. Search well-known system-browser locations last: the
   // explicit override and a version-matched Playwright browser always win.
   const programFiles = process.env.ProgramFiles || process.env.PROGRAMFILES || 'C:\\Program Files';
@@ -400,6 +400,8 @@ export function findChromiumExecutable(): string | undefined {
     // Windows installs (Joe's primary local target).
     path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
     path.join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(programFiles, 'Chromium', 'Application', 'chrome.exe'),
     path.join(programFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
     path.join(programFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
     // macOS installs.
@@ -408,7 +410,7 @@ export function findChromiumExecutable(): string | undefined {
     '/Applications/Chromium.app/Contents/MacOS/Chromium',
   ];
   for (const candidate of systemCandidates) {
-    if (fs.existsSync(candidate)) return candidate;
+    if (candidate && fs.existsSync(candidate)) return candidate;
   }
   return undefined;
 }
