@@ -3,6 +3,11 @@ import OpenAI from 'openai';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 
+export interface OpenAIRequestOptions {
+    maxCompletionTokens?: number;
+    reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
+}
+
 export class OpenAIProvider {
     private client: OpenAI | null = null;
     private apiKey: string;
@@ -75,7 +80,8 @@ export class OpenAIProvider {
     async chatComplete(
         messages: Array<{ role: string; content: string | any[] }>,
         model: string = 'gpt-4o',
-        tools?: any[]
+        tools?: any[],
+        options?: OpenAIRequestOptions
     ): Promise<string> {
         if (!this.client) {
             throw new Error('OpenAI API key not configured');
@@ -84,12 +90,19 @@ export class OpenAIProvider {
         try {
             const resolvedModel = await this.resolveModel(model);
             console.info(`[OpenAI] Attempting with model: ${resolvedModel}`);
-            const completion = await this.client.chat.completions.create({
+            const request: any = {
                 model: resolvedModel,
                 messages: messages as any,
                 tools: tools as any,
                 tool_choice: tools ? 'auto' : undefined,
-            });
+            };
+            if (Number.isFinite(options?.maxCompletionTokens) && Number(options?.maxCompletionTokens) > 0) {
+                request.max_completion_tokens = Math.floor(Number(options?.maxCompletionTokens));
+            }
+            if (options?.reasoningEffort) {
+                request.reasoning = { effort: options.reasoningEffort };
+            }
+            const completion = await this.client.chat.completions.create(request);
 
             const choices = Array.isArray((completion as any)?.choices)
                 ? (completion as any).choices

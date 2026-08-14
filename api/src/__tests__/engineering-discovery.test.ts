@@ -143,12 +143,12 @@ describe('local specification evidence', () => {
   test('reads a discovered local specification through read_file before asking the planner to plan', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
     const specificationRead = source.indexOf('await this.readRequestedSpecifications(request, evidence, context, logs, say, isAr)');
-    const planner = source.indexOf("const plannerResult = await executeTool('project_planner'");
+    const planner = source.search(/(?:const|let) plannerResult[^\n]*executeTool\('project_planner'/);
 
     expect(specificationRead).toBeGreaterThanOrEqual(0);
     expect(planner).toBeGreaterThan(specificationRead);
     expect(source).toContain("executeTool('read_file'");
-    expect(source).toContain('FULL LOCAL SPECIFICATION');
+    expect(source).toContain('Reading complete local specification');
     expect(source).toContain('instructionFiles');
   });
 });

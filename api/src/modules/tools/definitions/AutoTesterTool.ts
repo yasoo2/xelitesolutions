@@ -76,7 +76,24 @@ export class AutoTesterTool implements ToolDefinition {
                     : typeof input?.__workspaceId === 'string' && input.__workspaceId.trim()
                         ? input.__workspaceId.trim()
                         : undefined;
-        const ctx = { sessionId, workspaceId };
+        const userId =
+            typeof context?.userId === 'string' && context.userId.trim()
+                ? context.userId.trim()
+                : typeof input?.userId === 'string' && input.userId.trim()
+                    ? input.userId.trim()
+                    : undefined;
+        const browserSessionId =
+            typeof context?.browserSessionId === 'string' && context.browserSessionId.trim()
+                ? context.browserSessionId.trim()
+                : undefined;
+        const language =
+            typeof context?.language === 'string' && context.language.trim()
+                ? context.language.trim()
+                : undefined;
+        // Nested shell_execute calls must retain the full trusted owner context.
+        // Dropping userId here makes ToolService correctly reject the delegated
+        // command as unauthorized even though PhaseExecutor authorized the phase.
+        const ctx = { sessionId, browserSessionId, workspaceId, userId, language };
         const supported = ['syntax', 'build', 'unit', 'integration'];
 
         if (!supported.includes(String(testType || '').trim())) {

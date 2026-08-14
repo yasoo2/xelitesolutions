@@ -1606,7 +1606,10 @@ export async function routeToModel(
         meshProviders.push({
             name: 'OpenAI (Direct)',
             run: async () => {
-                return await openAIProvider.chatComplete(effectiveMessages, 'gpt-4o', tools);
+                return await openAIProvider.chatComplete(effectiveMessages, 'gpt-4o', tools, {
+                    maxCompletionTokens: Number(context?.maxCompletionTokens) > 0 ? Number(context.maxCompletionTokens) : undefined,
+                    reasoningEffort: context?.reasoningEffort,
+                });
             }
         });
     }
@@ -1783,11 +1786,17 @@ export async function routeToModel(
             }
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
 
-            // Dynamic Timeout: Optimized for speed
+            // Dynamic Timeout: Optimized for speed. Long-running planning calls
+            // may request a bounded provider-specific override; ordinary agent
+            // turns retain the short defaults below.
             let timeoutValue = 8000; // Base 8s
 
             if (taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme') {
                 timeoutValue = 20000;
+            }
+            const requestedTimeout = Number(context?.providerTimeoutMs);
+            if (p.name === 'OpenAI (Direct)' && Number.isFinite(requestedTimeout) && requestedTimeout > 0) {
+                timeoutValue = Math.min(120000, Math.max(8000, Math.floor(requestedTimeout)));
             }
             if (p.name === 'Local (Auto)') {
                 // Local CPU inference — especially the first (cold) request that loads

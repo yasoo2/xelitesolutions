@@ -4,6 +4,7 @@ import path from 'path';
 
 import { AutoTesterTool } from '../modules/tools/definitions/AutoTesterTool';
 import { workspaceService } from '../modules/services/WorkspaceService';
+import * as ToolService from '../modules/services/ToolService';
 
 describe('AutoTesterTool acceptance contract', () => {
     let workspaceRoot = '';
@@ -28,6 +29,38 @@ describe('AutoTesterTool acceptance contract', () => {
         expect(result.ok).toBe(false);
         expect(result.output).toMatchObject({ passed: false });
         expect(result.error).toContain('requires testType');
+    });
+
+    it('preserves the trusted owner when syntax testing delegates to shell_execute', async () => {
+        const sourceFile = path.join(workspaceRoot, 'index.js');
+        fs.writeFileSync(sourceFile, 'const answer = 42;\\n');
+        const executeToolSpy = jest.spyOn(ToolService, 'executeTool').mockResolvedValue({
+            ok: true,
+            output: '',
+            logs: []
+        } as any);
+
+        const result: any = await new AutoTesterTool().execute({
+            testType: 'syntax',
+            projectPath: '.',
+            files: ['index.js'],
+        }, {
+            sessionId: 'session-nexus-19',
+            workspaceId: 'workspace-nexus-19',
+            userId: 'owner-nexus-19',
+        });
+
+        expect(result.ok).toBe(true);
+        expect(executeToolSpy).toHaveBeenCalledWith(
+            'shell_execute',
+            expect.objectContaining({ cwd: workspaceRoot }),
+            expect.objectContaining({
+                sessionId: 'session-nexus-19',
+                workspaceId: 'workspace-nexus-19',
+                userId: 'owner-nexus-19',
+            }),
+        );
+        executeToolSpy.mockRestore();
     });
 
     it('fails unit verification honestly when the selected project declares no test script', async () => {

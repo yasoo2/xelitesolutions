@@ -67,7 +67,7 @@ export class WebPipelineTool extends BaseTool {
     rateLimitPerMinute = 10;
     auditFields = ['name'];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const logs: string[] = [];
         const steps: any[] = [];
         // `name` is required by the schema — and defaulting it to 'mega-web'
@@ -89,11 +89,33 @@ export class WebPipelineTool extends BaseTool {
             : ['lint', 'typecheck', 'test', 'build'];
         const sessionId = typeof input?.sessionId === 'string' && input.sessionId.trim() ? input.sessionId.trim() : undefined;
         const workspaceId =
-            typeof input?.workspaceId === 'string' && input.workspaceId.trim()
-                ? input.workspaceId.trim()
-                : typeof input?.__workspaceId === 'string' && input.__workspaceId.trim()
-                    ? input.__workspaceId.trim()
+            typeof context?.workspaceId === 'string' && context.workspaceId.trim()
+                ? context.workspaceId.trim()
+                : typeof input?.workspaceId === 'string' && input.workspaceId.trim()
+                    ? input.workspaceId.trim()
+                    : typeof input?.__workspaceId === 'string' && input.__workspaceId.trim()
+                        ? input.__workspaceId.trim()
+                        : undefined;
+        const userId =
+            typeof context?.userId === 'string' && context.userId.trim()
+                ? context.userId.trim()
+                : typeof input?.userId === 'string' && input.userId.trim()
+                    ? input.userId.trim()
                     : undefined;
+        const browserSessionId =
+            typeof context?.browserSessionId === 'string' && context.browserSessionId.trim()
+                ? context.browserSessionId.trim()
+                : undefined;
+        // Preserve the trusted owner for every nested tool call. Reconstructing
+        // only {sessionId, workspaceId} makes delegated shell/build calls fail
+        // the ToolService authorization gate as `unauthorized`.
+        const toolContext = {
+            ...(context || {}),
+            sessionId: context?.sessionId || sessionId,
+            browserSessionId,
+            workspaceId,
+            userId,
+        };
 
         logs.push(`pipeline.name=${name} type=${type} features=${features.join(',')}`);
 
@@ -137,7 +159,7 @@ export class WebPipelineTool extends BaseTool {
             language: input?.language,
             port,
             overwrite: input?.overwrite !== false
-        }, { sessionId, workspaceId });
+        }, toolContext);
         
         if (!scRes?.ok) {
             const err = scRes?.error || 'No error message from scaffold tool';
@@ -187,7 +209,7 @@ export class WebPipelineTool extends BaseTool {
         // 2. Detect & Install
         broadcastBuildProgress(sessionId, 'dependencies', '📦 Installing dependencies...', 30);
         if (sessionId) broadcastThinkingDetail(sessionId, `🔍 Detecting project types and dependencies...`);
-        const detectRes = await executeTool('project_detect', { path: projectPath }, { sessionId, workspaceId });
+        const detectRes = await executeTool('project_detect', { path: projectPath }, toolContext);
         steps.push({ step: 'project_detect', ok: detectRes.ok, output: detectRes.output });
         const detectedNodeProjects: string[] = Array.isArray(detectRes.output?.nodeProjects) ? detectRes.output.nodeProjects : [];
         const allNodeProjects = Array.from(new Set([projectPath, ...detectedNodeProjects].map(p => String(p).trim()).filter(Boolean)));
@@ -208,7 +230,7 @@ export class WebPipelineTool extends BaseTool {
                 command: `npm install --include=dev --legacy-peer-deps --no-audit --no-fund`,
                 cwd: p,
                 timeout: 10 * 60 * 1000
-            }, { sessionId, workspaceId });
+            }, toolContext);
             if (r.ok) return r;
 
             // Tier 2: npm install --force
@@ -217,7 +239,7 @@ export class WebPipelineTool extends BaseTool {
                 command: `npm install --force --legacy-peer-deps --no-audit --no-fund`,
                 cwd: p,
                 timeout: 10 * 60 * 1000
-            }, { sessionId, workspaceId });
+            }, toolContext);
             if (r.ok) return r;
 
             // Tier 3: yarn install (fallback)
@@ -226,7 +248,7 @@ export class WebPipelineTool extends BaseTool {
                 command: `yarn install --no-lockfile`,
                 cwd: p,
                 timeout: 10 * 60 * 1000
-            }, { sessionId, workspaceId });
+            }, toolContext);
             return r;
         };
 
@@ -264,7 +286,7 @@ export class WebPipelineTool extends BaseTool {
 
         for (const proj of allNodeProjects) {
             if (sessionId) broadcastThinkingDetail(sessionId, `🛡️ Running quality checks for ${path.basename(proj)}...`);
-            const qualityRes = await executeTool('quality_run', { path: proj, tasks: qualityTasks }, { sessionId, workspaceId });
+            const qualityRes = await executeTool('quality_run', { path: proj, tasks: qualityTasks }, toolContext);
             steps.push({ step: 'quality_run', ok: qualityRes.ok, output: { project: proj, ...qualityRes.output } });
 
             if (!qualityRes.ok && autoFix) {
@@ -273,10 +295,10 @@ export class WebPipelineTool extends BaseTool {
                 const scripts = readScripts(proj);
                 if (lintFailed && typeof (scripts as any)?.lint === 'string') {
                     if (sessionId) broadcastThinkingDetail(sessionId, `🔧 Auto-fixing lint issues...`);
-                    const fixRes = await executeTool('shell_execute', { command: `npm run lint -- --fix`, cwd: proj, timeout: 10 * 60 * 1000 }, { sessionId, workspaceId });
+                    const fixRes = await executeTool('shell_execute', { command: `npm run lint -- --fix`, cwd: proj, timeout: 10 * 60 * 1000 }, toolContext);
                     steps.push({ step: 'lint_fix', ok: fixRes.ok, output: { project: proj, ...fixRes.output } });
                     // Retry
-                    const lintRetry = await executeTool('quality_run', { path: proj, tasks: ['lint'] }, { sessionId, workspaceId });
+                    const lintRetry = await executeTool('quality_run', { path: proj, tasks: ['lint'] }, toolContext);
                     steps.push({ step: 'quality_run_retry', ok: lintRetry.ok, output: { project: proj, ...lintRetry.output } });
                 }
             }
@@ -286,25 +308,25 @@ export class WebPipelineTool extends BaseTool {
         if (securityChecks) {
             broadcastBuildProgress(sessionId, 'security', '🔐 Running security audit...', 70);
             if (sessionId) broadcastThinkingDetail(sessionId, `🔐 Running security audit...`);
-            const secretsRes = await executeTool('secrets_scan_repo', { path: projectPath }, { sessionId, workspaceId });
+            const secretsRes = await executeTool('secrets_scan_repo', { path: projectPath }, toolContext);
             steps.push({ step: 'secrets_scan_repo', ok: secretsRes.ok, output: secretsRes.output });
-            const depRes = await executeTool('dependency_audit', { path: projectPath }, { sessionId, workspaceId });
+            const depRes = await executeTool('dependency_audit', { path: projectPath }, toolContext);
             steps.push({ step: 'dependency_audit', ok: depRes.ok, output: depRes.output });
         }
 
         // 5. CI & Analyze
         try {
-            const ciRes = await executeTool('ci_generate_pipeline', { path: projectPath, kind: 'node' }, { sessionId, workspaceId });
+            const ciRes = await executeTool('ci_generate_pipeline', { path: projectPath, kind: 'node' }, toolContext);
             steps.push({ step: 'ci_generate_pipeline', ok: ciRes.ok, output: ciRes.output });
         } catch { } // optional
 
         try {
-            const analyzeRes = await executeTool('analyze_codebase', { path: projectPath }, { sessionId, workspaceId });
+            const analyzeRes = await executeTool('analyze_codebase', { path: projectPath }, toolContext);
             steps.push({ step: 'analyze_codebase', ok: analyzeRes.ok, output: analyzeRes.output });
         } catch { }
 
         try {
-            const projectAnalyzeRes = await executeTool('analyze_project', { path: projectPath }, { sessionId, workspaceId });
+            const projectAnalyzeRes = await executeTool('analyze_project', { path: projectPath }, toolContext);
             steps.push({ step: 'analyze_project', ok: projectAnalyzeRes.ok, output: projectAnalyzeRes.output });
         } catch { }
 
@@ -316,7 +338,7 @@ export class WebPipelineTool extends BaseTool {
                 
                 // Helper to execute
                 const runGitOp = async (op: string, args: string[] = []) => {
-                    const res = await executeTool('git_ops', { operation: op, args, cwd: repoRoot, sessionId, userId: wsOwnerId }, { sessionId, workspaceId });
+                    const res = await executeTool('git_ops', { operation: op, args, cwd: repoRoot, sessionId, userId: wsOwnerId }, toolContext);
                     return res;
                 };
 
@@ -331,7 +353,7 @@ export class WebPipelineTool extends BaseTool {
                     cwd: repoRoot,
                     sessionId,
                     userId: wsOwnerId
-                }, { sessionId, workspaceId });
+                }, toolContext);
                 
                 if (pushRes.ok) {
                     if (sessionId) broadcastThinkingDetail(sessionId, `✅ Successfully pushed to GitHub`);
@@ -349,7 +371,7 @@ export class WebPipelineTool extends BaseTool {
                 if (sessionId) broadcastThinkingDetail(sessionId, `🐙 Initializing local git repository...`);
                 // Original local-only git init
                 const runGitOp = async (op: string, args: string[] = []) => {
-                    const res = await executeTool('git_ops', { operation: op, args, cwd: projectPath, sessionId }, { sessionId, workspaceId });
+                    const res = await executeTool('git_ops', { operation: op, args, cwd: projectPath, sessionId }, toolContext);
                     if (!res.ok) throw new Error(`Git ${op} failed: ${res.error}`);
                     return res;
                 };
@@ -367,7 +389,7 @@ export class WebPipelineTool extends BaseTool {
         if (!skipDev) {
             broadcastBuildProgress(sessionId, 'preview', '🌐 Starting dev server...', 90);
             if (sessionId) broadcastThinkingDetail(sessionId, `🌐 Starting dev server...`);
-            const devRes = await executeTool('dev_server_start', { cwd: projectPath }, { sessionId, workspaceId });
+            const devRes = await executeTool('dev_server_start', { cwd: projectPath }, toolContext);
             steps.push({ step: 'dev_server_start', ok: devRes.ok, output: devRes.output });
             if (devRes.ok) {
                 const previewUrl = String((devRes.output as any)?.userPreviewUrl || (devRes.output as any)?.previewUrl || `http://localhost:${port}/`).trim();

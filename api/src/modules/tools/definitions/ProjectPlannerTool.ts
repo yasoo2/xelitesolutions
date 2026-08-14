@@ -69,6 +69,13 @@ export class ProjectPlannerTool implements ToolDefinition {
                 // context. Do not silently discard it and fall back to unrelated
                 // keyless providers for a long planning request.
                 modelConfig: context?.modelConfig,
+                // Planning is a bounded long-running operation: the complete
+                // specification has already been read and compressed, but a
+                // multi-domain JSON plan can legitimately take longer than a
+                // normal conversational turn. Keep the cap finite and explicit.
+                providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
+                maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                reasoningEffort: context?.plannerReasoningEffort || 'low',
             });
 
             if (isProviderFailure(response)) {
