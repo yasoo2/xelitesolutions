@@ -99,14 +99,14 @@ describe('a plan made only of talking is refused for a build', () => {
         expect(at).toBeGreaterThan(0);
         const block = src.slice(at, at + 1600);
         expect(block).toMatch(/looksLikeBuildRequest\(String\(intent\.goal/);
-        expect(block).toMatch(/tool: 'api_project'/);
-        expect(block).toMatch(/tool: scope === 'page' \? 'web_page_builder' : 'react_project'/);
-        // The system case builds the backend first, and the app depends on it.
-        expect(block).toMatch(/dependsOn: scope === 'system' \? \['backend'\] : \[\]/);
+        expect(block).toMatch(/tool: 'project_pipeline'/);
+        // Concrete dependent phases are produced after workspace discovery,
+        // rather than being guessed in this anti-chat guard.
+        expect(block).toMatch(/استكشف السياق ثم خطط ونفّذ طلب البناء بأدلة واختبارات/);
     });
 
     it('and says so out loud rather than silently swapping the plan', () => {
-        expect(ENGINE()).toMatch(/talking step\(s\) for a BUILD — refused/);
+        expect(ENGINE()).toMatch(/talking step\(s\) for a BUILD — refusing invented construction/);
     });
 
     it('a mixed plan — one real step among the talk — is left alone', () => {

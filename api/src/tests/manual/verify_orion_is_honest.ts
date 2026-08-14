@@ -12,7 +12,6 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { OrionBusinessFoundationTool } from '../../modules/tools/definitions/OrionBusinessFoundationTool';
-import { isOrionBusinessOperatingSystemRequest } from '../../modules/tools/definitions/ProjectPipelineTool';
 
 const REQUEST = 'Build ORION, a multi-tenant business operating system with RBAC, CRM, inventory, orders and approvals';
 
@@ -82,19 +81,11 @@ async function main() {
         fs.rmSync(root, { recursive: true, force: true });
     }
 
-    console.log('\n=== 4. The route belongs to the name he gave it ===');
+    console.log('\n=== 4. The general pipeline does not route product names to this resource ===');
     {
-        const named: [string, boolean][] = [
-            ['Build ORION, a multi-tenant business operating system with RBAC and inventory', true],
-            ['ابنِ ORION — نظام أعمال متعدد المستأجرين فيه مخزون وطلبات', true],
-            ['Build a restaurant system with a menu, orders and an audit of every change', false],
-            ['I need an enterprise system for CRM, billing and inventory with an approval workflow', false],
-            ['Build a React store with products and orders', false],
-            ['Make me a landing page about the Orion nebula', false],
-        ];
-        for (const [request, expected] of named) {
-            check(`${expected ? 'ORION' : 'not ORION'}: ${request.slice(0, 62)}`, isOrionBusinessOperatingSystemRequest(request) === expected);
-        }
+        const pipeline = fs.readFileSync(path.join(__dirname, '../../modules/tools/definitions/ProjectPipelineTool.ts'), 'utf8');
+        check('the general pipeline begins with evidence discovery', pipeline.includes("executeTool('engineering_discovery'"));
+        check('the general pipeline does not auto-call this foundation', !pipeline.includes("executeTool('orion_business_foundation'"));
     }
 
     console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed}/${passed + failed} checks passed\n`);

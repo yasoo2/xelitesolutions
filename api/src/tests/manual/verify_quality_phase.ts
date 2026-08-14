@@ -50,7 +50,6 @@ async function main() {
     // pipeline tool sits in («Cannot access 'ProjectPipelineTool' before
     // initialization»). Import order here is a real constraint, not a style.
     const { executeTool } = await import('../../modules/services/ToolService');
-    const { buildSpine } = await import('../../modules/tools/definitions/ProjectPipelineTool');
     const { AgentLoopService } = await import('../../modules/services/AgentLoopService');
     const { executionFirewall } = await import('../../orchestration/AgentExecutionFirewall');
 
@@ -64,16 +63,32 @@ async function main() {
     console.log(`   ℹ️ خادم جو على ${process.env.PUBLIC_URL}`);
 
     console.log('\n[1] بناء حقيقي — ومعه فحص البنّاء الحيّ في متصفّح حقيقي');
-    const spine = buildSpine('app', 'ابنِ متجراً إلكترونياً بسيطاً لبيع القهوة');
-    const quality = spine.output.phases.find((p: any) => p.name === 'Quality');
-    check('مرحلة الجودة تُخطَّط بلا عنوان — كما في سجلّه بالضبط',
+    // Controlled test input for the executor only. This is not a production
+    // project-routing template: production obtains its plan after discovery.
+    const manualPlan: any = {
+        ok: true,
+        output: {
+            projectName: 'coffee-store-quality-proof', totalPhases: 2, autoExecuted: false,
+            phases: [
+                { phaseNumber: 1, name: 'Application', description: 'Build the controlled proof application', tasks: [
+                    { task: 'Build the proof application', tool: 'react_project', args: { request: 'ابنِ متجراً إلكترونياً بسيطاً لبيع القهوة' }, priority: 'high' },
+                ], verificationTask: { task: 'Inspect generated project', tool: 'project_detect', args: {} }, deliverables: ['Built application'] },
+                { phaseNumber: 2, name: 'Quality', description: 'Audit the controlled proof application', tasks: [
+                    { task: 'Audit the built interface in a real browser', tool: 'browser_ui_audit', args: {}, priority: 'medium' },
+                ], verificationTask: { task: 'Inspect quality evidence', tool: 'project_detect', args: {} }, deliverables: ['Measured quality report'] },
+            ],
+            dependencies: { phase2: ['phase1'] },
+        },
+    };
+    const quality = manualPlan.output.phases.find((p: any) => p.name === 'Quality');
+    check('مرحلة الجودة في خطة الاختبار لا تحمل عنواناً قبل البناء',
         JSON.stringify(quality.tasks[0].args) === '{}', JSON.stringify(quality.tasks[0].args));
 
     const said: string[] = [];
     const res: any = await executionFirewall.runInContext(undefined, () =>
         AgentLoopService.runPlannedPhasesIfPresent({
             sessionId, runId: `run-${Date.now()}`, userId: 'u1', workspaceId: `session-${sessionId}`,
-            plannerResult: spine,
+            plannerResult: manualPlan,
             onProgress: (m: string) => said.push(m),
         }));
 

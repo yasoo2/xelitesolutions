@@ -42,7 +42,7 @@ describe('injected coaching text never changes routing', () => {
         // «شرائح عليها صور وكتابات» the user objected to. What this file
         // protects is IMMUNITY: the same request must route identically with
         // and without the injected coaching block.
-        ['Build an admin dashboard for an online store', 'react_project'],
+        ['Build an admin dashboard for an online store', 'project_pipeline'],
         ['ابنِ لي نظام إدارة متكامل بباك اند وقاعدة بيانات', 'project_pipeline'],
         ['اصنع لي صفحة هبوط لمطعم', 'web_page_builder'],
         ['شغّل المشروع', 'project_run'],

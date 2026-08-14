@@ -1,16 +1,10 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { isEnterprisePlatformRequest } from '../modules/tools/definitions/ProjectPipelineTool';
 import { EnterprisePlatformFoundationTool } from '../modules/tools/definitions/EnterprisePlatformFoundationTool';
 
-describe('enterprise multi-agent platform route', () => {
+describe('enterprise multi-agent foundation resource', () => {
   const request = `You are not just a software engineer. Build a Fortune 500 enterprise-grade multi-agent autonomous engineering platform with CEO, CTO, security, SRE and QA agents, microservices, Kafka, Kubernetes, Helm, Terraform, observability and CI/CD.`;
-
-  test('detects a true enterprise multi-agent request without stealing ordinary full-stack applications', () => {
-    expect(isEnterprisePlatformRequest(request)).toBe(true);
-    expect(isEnterprisePlatformRequest('Build a complete inventory application with React and a REST API')).toBe(false);
-  });
 
   test('writes and locally verifies a reviewable foundation inside the selected workspace', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-enterprise-foundation-'));

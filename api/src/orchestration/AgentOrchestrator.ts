@@ -332,7 +332,7 @@ export class AgentOrchestrator {
           dag.status = "failed";
           return giveUp("Execution stopped: no ready nodes after recovery/replanning attempts");
         }
-        const newDag = await this.plan(dag.nodes[0]?.task || "continue goal", memory, traceId);
+        const newDag = await this.plan(goalText || dag.nodes[0]?.task || "continue goal", memory, traceId);
         const existingIds = new Set(dag.nodes.map(n => n.id));
         const uniqueNodes = newDag.nodes.filter(n => !existingIds.has(n.id));
         if (uniqueNodes.length === 0) {
@@ -632,7 +632,7 @@ export class AgentOrchestrator {
           if (evaluation.shouldReplan) {
             broadcastThinkingDetail(memory.sessionId, "🧠 Path adjustment required. Re-calculating execution graph...");
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'replan_triggered', nodeId: node.id });
-            const updatedDag = await this.plan(dag.id, memory, traceId);
+            const updatedDag = await this.plan(goalText || dag.id, memory, traceId);
             const existingIds = new Set(dag.nodes.map(n => n.id));
             const uniqueNodes = updatedDag.nodes.filter(n => !existingIds.has(n.id));
             dag.nodes = [...dag.nodes, ...uniqueNodes];
@@ -670,7 +670,13 @@ export class AgentOrchestrator {
           // surface the message, never loop. deploy_pages returning needsConnect
           // used to trigger a browser "obtain a token" recovery loop — exactly the
           // wrong response. The tool's own error IS the answer the user needs.
-          const userActionMarker = !!(out.needsConnect || out.needsRepo || out.tokenInvalid || out.unsupported);
+          const userActionMarker = !!(
+            out.needsConnect || out.needsRepo || out.tokenInvalid || out.unsupported ||
+            // A discovery gate can prove that the next safe step is a human
+            // decision (for example selecting one project root among several).
+            // It must be surfaced, never recast as an engineering failure.
+            out.requiresUserDecision
+          );
           const userActionableTool = (typeof node.tool === 'string' &&
             (node.tool === 'google_account' || node.tool === 'user_browser' || node.tool.startsWith('browser_')))
             || userActionMarker;

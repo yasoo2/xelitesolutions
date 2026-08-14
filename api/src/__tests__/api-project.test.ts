@@ -95,12 +95,12 @@ describe('«اعرض الطلبات» — the owner reads visitor orders in the 
     });
 });
 
-describe('routing — explicit backend asks reach api_project', () => {
-    it('«ابنِ لي API لإدارة الطلبات» → api_project', async () => {
-        expect(await route('ابنِ لي API لإدارة الطلبات')).toBe('api_project');
+describe('routing — explicit backend asks reach the evidence-first project pipeline', () => {
+    it('«ابنِ لي API لإدارة الطلبات» → project_pipeline', async () => {
+        expect(await route('ابنِ لي API لإدارة الطلبات')).toBe('project_pipeline');
     });
-    it('«اعمل باك اند بقاعدة بيانات للمخزون» → api_project', async () => {
-        expect(await route('اعمل باك اند بقاعدة بيانات للمخزون')).toBe('api_project');
+    it('«اعمل باك اند بقاعدة بيانات للمخزون» → project_pipeline', async () => {
+        expect(await route('اعمل باك اند بقاعدة بيانات للمخزون')).toBe('project_pipeline');
     });
     it('a request that ALSO names a frontend keeps its richer path', async () => {
         expect(await route('ابنِ لي متجر react مع قاعدة بيانات')).not.toBe('api_project');

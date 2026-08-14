@@ -91,14 +91,19 @@ Return ONLY a JSON object:
                 requiredTools: analysis.requirements || []
             };
         } catch (error) {
-            console.warn("[IntentParser] LLM analysis failed, falling back to Browser agent default.");
+            // A failed semantic analysis is absence of evidence, never evidence that
+            // the user wants a browser. Explicit browser requests have already been
+            // caught by quickIntent above. Returning Browser here used to turn an
+            // unfamiliar engineering request containing words such as "web console"
+            // into a network action before the workspace was inspected.
+            console.warn("[IntentParser] LLM analysis failed, returning a neutral intent for evidence-first planning.");
             return {
                 goal: userText,
                 complexity: 'medium',
                 riskLevel: 'low',
-                suggestedAgent: 'Browser',
-                requiredTools: ['browser_run'],
-                rawIntent: { primary: userText }
+                suggestedAgent: 'General',
+                requiredTools: [],
+                rawIntent: { primary: userText, analysisUnavailable: true }
             };
         }
     }

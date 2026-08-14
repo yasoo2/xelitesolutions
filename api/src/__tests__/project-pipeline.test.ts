@@ -20,11 +20,41 @@ describe('routing — full-project requests reach the pipeline, offline and dete
         'build a complete project for a task manager with a REST API',
         'create a full-stack inventory application with a database',
         'develop a Node.js express server with authentication',
+        'build a React Vite SPA for collaborative scheduling with offline support',
+        'Build ORION, a multi-tenant business system with approvals, inventory, ledger, and audit trails',
+        'Create NOVA, an unfamiliar engineering workspace with a web console, background jobs, and local verification',
+        'Build NOVA, an internal web console for verifying warehouse jobs. First inspect the current workspace and state an implementation plan. Then implement only the smallest independently testable vertical slice, run its local tests, report the evidence and remaining work, and never deploy externally.',
     ])('«%s» → project_pipeline', async (goal) => {
         const p = await plan(goal);
         expect(p.steps).toHaveLength(1);
         expect(p.steps[0].tool).toBe('project_pipeline');
         expect((p.steps[0].input as any).request).toBe(goal);
+    });
+
+    test('an engineering build resists browser-biased intent metadata and remains local', async () => {
+        const goal = 'Build NOVA, an internal web console with background jobs and local verification.';
+        const p = await PlanningEngine.generatePlan({
+            intent: {
+                goal,
+                complexity: 'medium',
+                riskLevel: 'low',
+                // This mimics an unavailable or imprecise upstream analysis. It must
+                // not turn a build into browser automation merely because it says web.
+                suggestedAgent: 'Browser',
+                requiredTools: ['browser_run'],
+                rawIntent: { analysisUnavailable: true },
+            } as any,
+        });
+        expect(p.steps).toHaveLength(1);
+        expect(p.steps[0].tool).toBe('project_pipeline');
+        expect(p.steps[0].agent).toBe('Dev');
+    });
+
+    test('the planning engine has no production route that dispatches a named foundation or prescribed stack', () => {
+        const src = fs.readFileSync(
+            path.join(__dirname, '..', 'core', 'orchestrator', 'PlanningEngine.ts'), 'utf-8');
+        expect(src).not.toMatch(/tool: '(?:orion_business_foundation|enterprise_platform_foundation|api_project|react_project)'/);
+        expect(src).not.toMatch(/executeTool\('(?!engineering_discovery|project_planner)/);
     });
 
     test('a simple landing page is NOT stolen from the page builder', async () => {
@@ -52,15 +82,24 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
     const src = fs.readFileSync(
         path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
 
-    test('it plans with the planner-only tool, then hands phases to the canonical pipeline', () => {
-        expect(src).toMatch(/executeTool\('project_planner'/);
+    test('it discovers evidence before planning, then hands valid phases to the canonical pipeline', () => {
+        const discovery = src.indexOf("executeTool('engineering_discovery'");
+        const planner = src.indexOf("executeTool('project_planner'");
+        expect(discovery).toBeGreaterThan(-1);
+        expect(planner).toBeGreaterThan(discovery);
+        expect(src).toMatch(/evidence is incomplete — blocking writes honestly/);
+        expect(src).not.toMatch(/executeTool\('orion_business_foundation'/);
+        expect(src).not.toMatch(/executeTool\('enterprise_platform_foundation'/);
         expect(src).toMatch(/AgentLoopService\.runPlannedPhasesIfPresent/);
         // Lazy require, or the import cycle ToolService→definitions→AgentLoopService bites.
         expect(src).toMatch(/require\('\.\.\/\.\.\/services\/AgentLoopService'\)/);
     });
 
-    test('ok is EARNED by verification, never assumed from file writes', () => {
+    test('success and verification are earned, with explicit execution and delivery states', () => {
         expect(src).toMatch(/const verified = pipeline\?\.ok === true/);
+        expect(src).toMatch(/const executionStatus = verified/);
+        expect(src).toMatch(/const verificationStatus = verified/);
+        expect(src).toMatch(/const deliveryStatus = verified/);
         expect(src).toMatch(/ok: verified/);
         // The honest partial-delivery message exists in Arabic.
         expect(src).toMatch(/توقف البناء بصدق/);

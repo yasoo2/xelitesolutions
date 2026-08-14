@@ -1,7 +1,7 @@
 import { ToolDefinition, ToolPermission } from '../types';
 
 import { executeTool } from '../../services/ToolService';
-import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs } from '../../../core/orchestrator/plan-tools';
+import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, plannedArgsIssue } from '../../../core/orchestrator/plan-tools';
 
 /**
  * PhaseExecutorTool - Executes a single phase from a project plan.
@@ -157,6 +157,13 @@ export class PhaseExecutorTool implements ToolDefinition {
                 if (executionContext.workspaceId && typeof planned.workspaceId !== 'string') planned.workspaceId = executionContext.workspaceId;
 
                 const toolArgs = adaptPlannedArgs(toolName, planned);
+                const argsIssue = plannedArgsIssue(toolName, toolArgs);
+                if (argsIssue) {
+                    logs.push(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${argsIssue}`);
+                    results.push({ task: taskDesc, tool: 'manual', ok: true, message: argsIssue });
+                    completedCount++;
+                    continue;
+                }
 
                 try {
                     const toolResult = await executeTool(toolName, toolArgs, {
@@ -248,6 +255,10 @@ export class PhaseExecutorTool implements ToolDefinition {
 
             const allOk = results.length > 0 && results.every(r => r.ok);
             let status = allOk ? 'completed' : (completedCount > 0 ? 'partial' : 'failed');
+            // This is evidence, not merely an English error message. Downstream
+            // orchestration must distinguish a code task that failed to run from
+            // a phase whose explicit acceptance check disproved delivery.
+            let verificationFailed = false;
 
             logs.push(`[PhaseExecutor] Phase ${phase.phaseNumber} ${status}: ${completedCount}/${totalTasks} tasks completed`);
 
@@ -270,11 +281,13 @@ export class PhaseExecutorTool implements ToolDefinition {
                         const vErr = String(vResult.error || 'Verification failed');
                         logs.push(`[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
                         results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: vErr });
+                        verificationFailed = true;
                         status = 'partial';
                     }
                 } catch (vError: any) {
                     logs.push(`[PhaseExecutor] ⚠️ Verification error: ${vError.message}`);
                     results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: vError.message });
+                    verificationFailed = true;
                     status = 'partial';
                 }
             }
@@ -313,6 +326,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                             const buildError = String((buildResult as any)?.error || 'Auto-build check failed');
                             logs.push(`[PhaseExecutor] ⚠️ Auto-build check found issues — orchestrator should route to self-fix: ${buildError}`);
                             results.push({ task: 'Auto-build check', tool: 'shell_execute', ok: false, error: buildError });
+                            verificationFailed = true;
                             status = 'partial';
                         } else {
                             logs.push('[PhaseExecutor] ✅ Auto-build check passed');
@@ -341,7 +355,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                     results,
                     nextPhase: phase.phaseNumber + 1,
                     deliverables: phase.deliverables || [],
-                    estimatedTime: phase.estimatedTime || 'unknown'
+                    estimatedTime: phase.estimatedTime || 'unknown',
+                    ...(verificationFailed ? { verificationFailed: true } : {})
                 },
                 logs
             };

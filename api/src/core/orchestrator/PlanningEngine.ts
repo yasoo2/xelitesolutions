@@ -165,9 +165,12 @@ export class PlanningEngine {
          * «تعذّر الوصول إلى محرّك الذكاء». One missing alef.
          */
         const verb = /\b(build|create|make|develop|generate|scaffold|implement|code)\b/i.test(g)
-            || /(ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو|برمج|شيّ?د|أقم|اقم)/.test(g)
+            // Require verb boundaries in Arabic too. A bare substring made
+            // «واجهة برمجية» look like the imperative «برمج»، hijacking
+            // analysis → security → API-test workflows as project builds.
+            || /(?:^|[\s،:؛])(?:ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو|برمج|شيّ?د|أقم|اقم)(?=$|[\s،:؛])/.test(g)
             || /(^|\s)بنِ?\s/.test(g);
-        const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game)\b/i.test(g)
+        const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|console|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game)\b/i.test(g)
             || /(موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|واجهة|أداة|اداة|برنامج|بوابة|خدمة)/.test(g);
         return verb && noun;
     }
@@ -186,7 +189,7 @@ export class PlanningEngine {
          */
         const dataSignals = /(تسجيل\s*دخول|تسجيل\s*الدخول|حسابات?|مستخدمين|صلاحيات|قاعدة\s*بيانات|قواعد\s*بيانات|حجوزات?|حجز|طلبات|طلبيّ?ات|مخزون|جرد|فواتير|فاتورة|تقارير|إحصائيات|احصائيات|نقاط\s*بيع|كاشير|رواتب|موظفين|عملاء|زبائن|مورّ?دي?ن|مورّ?دون|اشتراكات|مدفوعات|دفع\s*إلكتروني|api|backend|قاعدة\s*البيانات|login|auth|database|users?|orders?|suppliers?|vendors?|inventory|invoices?|reports?|bookings?|payments?|subscriptions?|crm|erp|pos)/i;
         // Screens and behaviour rather than a single scroll.
-        const appSignals = /(تطبيق|نظام|منصّ?ة|برنامج|لوحة\s*تحكم|داشبورد|محرّ?ر|أداة\s*ويب|لعبة|محادثة|دردشة|شات|خرائط|خريطة|تتبّ?ع|حاسبة|مخطّ?ط|جدولة|مهامّ?|شبيه\s*ب|مثل\s*تطبيق|clone|dashboard|app\b|platform|system|editor|tracker|chat|map|game|planner|scheduler|calculator|todo|to-do|tasks?)/i;
+        const appSignals = /(تطبيق|نظام|منصّ?ة|برنامج|لوحة\s*تحكم|داشبورد|محرّ?ر|أداة\s*ويب|لعبة|محادثة|دردشة|شات|خرائط|خريطة|تتبّ?ع|حاسبة|مخطّ?ط|جدولة|مهامّ?|شبيه\s*ب|مثل\s*تطبيق|clone|dashboard|app\b|platform|system|editor|tracker|chat|map|game|planner|scheduler|calculator|todo|to-do|tasks?|(?:web\s+)?console|background\s+(?:jobs?|workers?)|worker\s+(?:queue|process))/i;
         // A single document, said outright.
         const pageSignals = /(صفحة\s*(هبوط|واحدة)?|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|بروشور|قائمة\s*طعام|منيو|landing|portfolio|brochure|one[- ]?pager|resume|cv)/i;
 
@@ -346,6 +349,13 @@ Rules:
             const { capableTools, capabilityChain } = require('./capability-match');
             const goal = String(intent?.goal || '');
 
+            // A construction request is one engineering objective, not a bag of
+            // browser/deployment verbs. It must reach the evidence-first project
+            // pipeline as a whole, even when a model or intent parser has failed.
+            // Keeping this guard here is essential because capabilityPlan is also
+            // called before the later routing guards.
+            if (PlanningEngine.looksLikeBuild(goal)) return null;
+
             /**
              * A SENTENCE WITH FOUR VERBS IS FOUR STEPS — AND THEY FLOW.
              *
@@ -367,11 +377,16 @@ Rules:
                     id: `chain_${Date.now()}`,
                     goal: intent.goal,
                     steps: chain.map((c: any, i: number) => {
+                        // A registry capability may match a clause without exposing
+                        // a normalized `part`. Preserve the user's original request
+                        // rather than throwing into the broad capabilityPlan catch
+                        // and silently losing the entire multi-step workflow.
+                        const taskPart = String(c?.part || goal).trim();
                         const prior = i === 0 ? '' : `\n\nنتيجة الخطوة السابقة:\n{{FROM:chain_${i - 1}}}`;
-                        const text = `${c.part}${prior}`;
+                        const text = `${taskPart}${prior}`;
                         return {
                             id: `chain_${i}`,
-                            description: `${c.name} — ${c.part.slice(0, 60)}`,
+                            description: `${c.name} — ${taskPart.slice(0, 60)}`,
                             tool: c.name,
                             agent: 'General',
                             input: { request: text, question: text, query: text },
@@ -443,29 +458,10 @@ Rules:
         const deniesExternalPublish = /(?:^|[\s،؛,:.!?])(?:(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)(?:نشر|انشر|أنشر|رفع|استضافة|deploy|publish|host|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])/i.test(userGoal);
         const localBuildContract = PlanningEngine.looksLikeBuild(userGoal) && deniesExternalPublish;
 
-        // ORION is a named, multi-domain business specification. Its request can
-        // legitimately mention source control, deployment, or a requirements file;
-        // none of those incidental words may demote it into Git import/workflow.
-        // Route the whole goal through ProjectPipelineTool, whose deterministic
-        // ORION branch creates and verifies the bounded business foundation.
-        const isOrionBuildRequest = /\borion\b/i.test(probe)
-            && /(?:business|operating|tenant|crm|inventory|orders?|payments?|accounting|requirements?|specification|مواصفات|متطلبات|بناء|ابن|انش|طو|نفذ|طبق|read)/i.test(probe);
-        if (isOrionBuildRequest) {
-            console.log('[PlanningEngine] ORION specification/build → project_pipeline');
-            return {
-                id: `orion_${Date.now()}`,
-                goal: intent.goal,
-                steps: [{
-                    id: 'project_pipeline',
-                    description: 'بناء نواة ORION متعددة المستأجرين من المواصفة مع تحقق محلي وأدلة صادقة',
-                    tool: 'project_pipeline',
-                    agent: 'Dev',
-                    input: { request: intent.goal },
-                    dependsOn: [],
-                }],
-                metadata: { complexity: 'high', riskLevel: 'medium', deterministic: true, localOnly: true },
-            };
-        }
+        // Product names never decide an engineering route. A request that calls
+        // itself ORION, Atlas, or anything new must be classified from the work
+        // it asks for, then pass through the same evidence-first pipeline as every
+        // other system. This prevents a named example from becoming Joe's answer.
 
         /**
          * A TERMINAL REQUEST MUST EXECUTE, NOT JUST OPEN A PANEL OR ANSWER ABOUT IT.
@@ -664,10 +660,20 @@ Rules:
             const isGithubWorkRequest = /(?:https?:\/\/)?(?:www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?(?:[\/?#\s]|$)/i.test(goalText)
                 && /(استنسخ|نسخ|انسخ|استورد|استيراد|حلّ?ل|تحليل|افهم|فهم|دقّ?ق|مراجعة|طوّ?ر|تطوير|عدّ?ل|تعديل|أصلح|اصلح|إصلاح|اختبر|اختبار|شغّ?ل|تشغيل|نفّ?ذ|بناء|build|develop|implement|modify|edit|fix|test|run|clone|import|analy[sz]e|review|inspect)/i.test(probe);
             // Only an explicit «ثم»/«then» — a newline is layout, not order.
-            // A locally constrained build must remain one coherent build plan.
-            // In particular, do not turn a negated «لا نشر» clause into the
-            // positive deploy_pages action inside a generic sequence.
-            const early = !isGithubWorkRequest && !localBuildContract && hasExplicitSequence(goalText) ? capabilityChain(goalText, 5) : [];
+            // A build request must remain one coherent engineering plan even when
+            // it contains words that describe a later verification or delivery
+            // step. For example, "build an internal web console ... then test it,
+            // never deploy" is NOT a browser-console step followed by deployment.
+            // Splitting it here used to let generic capability scoring outrank the
+            // evidence-first pipeline before that pipeline had a chance to inspect
+            // the workspace. Any construction request therefore owns its whole
+            // sentence; only non-build multi-task requests may use this chain.
+            const early = !isGithubWorkRequest
+                && !localBuildContract
+                && !PlanningEngine.looksLikeBuild(userGoal)
+                && hasExplicitSequence(goalText)
+                ? capabilityChain(goalText, 5)
+                : [];
             if (early.length >= 2 && !early.some((c: any) => BUILDERS.has(c.name))) {
                 const chained = PlanningEngine.capabilityPlan(intent);
                 if (chained && chained.metadata?.matchedBy === 'capability-chain') {
@@ -949,12 +955,12 @@ Rules:
             const bareApiAsk = !namesAnApp;
             if (apiBuildVerb && apiNoun && !frontendNoun && !fullish && bareApiAsk) {
                 return {
-                    id: `apiproj_${Date.now()}`,
+                    id: `engineering_api_${Date.now()}`,
                     goal: intent.goal,
                     steps: [{
-                        id: 'api_project',
-                        description: `Scaffolding and live-proving an Express + SQLite backend: ${intent.goal}`,
-                        tool: 'api_project',
+                        id: 'project_pipeline',
+                        description: `استكشف سياق العمل ثم خطط ونفّذ خدمة الواجهة البرمجية المطلوبة بأدلة واختبارات: ${intent.goal}`,
+                        tool: 'project_pipeline',
                         agent: 'Dev',
                         input: { request: intent.goal },
                         dependsOn: [],
@@ -975,18 +981,32 @@ Rules:
         {
             const projectVerb = /\b(build|create|make|develop|scaffold|generate)\b/.test(goalLower)
                 || /(ابن|ابني|انشئ|أنشئ|اصنع|طور|اعمل|سو)/.test(probe);
-            const fullStackNoun = /(باك\s*اند|واجهة\s*خلفية|خادم|سيرفر|قاعدة\s*بيانات|مشروع\s*(متكامل|كامل)|تطبيق\s*(متكامل|كامل)|نظام\s*(متكامل|كامل|إدارة|اداره)|back\s*-?end|server\s*side|database|rest\s*api|api\s*server|full[-\s]?stack|complete\s+(project|app|application|system)|node\.?js|express|fastify|django|flask)/i.test(probe);
+            const fullStackNoun = /(باك\s*اند|واجهة\s*خلفية|خادم|سيرفر|قاعدة\s*بيانات|مشروع\s*(متكامل|كامل)|تطبيق\s*(متكامل|كامل)|نظام\s*(متكامل|كامل|إدارة|اداره)|back\s*-?end|\bserver\b|server\s*side|database|rest\s*api|api\s*server|full[-\s]?stack|complete\s+(project|app|application|system))/i.test(probe);
+            // A general engineering signal is a distinct required capability, not
+            // the product's label. Two or more signals require discovery before
+            // construction because they may constrain the existing workspace,
+            // architecture, test strategy, or tool selection.
+            const engineeringSignals = [
+                /(?:multi[\s-]?tenant|tenant|مستأجر|متعدد\s*المستأجرين)/i,
+                /(?:rbac|role|permission|authorization|صلاحيات|أدوار|ادوار)/i,
+                /(?:approval|workflow|موافقة|سير\s*عمل)/i,
+                /(?:audit|ledger|accounting|تدقيق|دفتر|محاسبة)/i,
+                /(?:inventory|orders?|payments?|stock|مخزون|طلبات|مدفوعات)/i,
+                /(?:integration|event|webhook|contract|تكامل|أحداث|احداث|عقد)/i,
+            ].filter((pattern) => pattern.test(probe)).length;
+            const namesASystem = /(تطبيق|نظام|منصّ?ة|لوحة\s*تحكم|برنامج|\bapp\b|dashboard|platform|system|application)/i.test(probe);
+            const needsEngineeringPipeline = fullStackNoun || (namesASystem && engineeringSignals >= 2);
             // A PHONE app is the page builder's job (it ships an installable
             // PWA); «تطبيق جوال متكامل» must not fall into the backend pipeline.
             const { wantsMobileApp } = require('../design/pwa');
-            if (projectVerb && fullStackNoun && !wantsMobileApp(probe)) {
-                console.log(`[PlanningEngine] full-project fast-path -> project_pipeline "${String(intent.goal).slice(0, 80)}"`);
+            if (projectVerb && needsEngineeringPipeline && !wantsMobileApp(probe)) {
+                console.log(`[PlanningEngine] engineering scope -> evidence-first project_pipeline (signals: ${engineeringSignals})`);
                 return {
                     id: `project_${Date.now()}`,
                     goal: intent.goal,
                     steps: [{
                         id: 'project_pipeline',
-                        description: `Building complete project through the engineering pipeline: ${intent.goal}`,
+                        description: `استكشف سياق العمل ثم خطط ونفّذ النظام المطلوب بأدلة واختبارات: ${intent.goal}`,
                         tool: 'project_pipeline',
                         agent: 'Dev',
                         input: { request: intent.goal },
@@ -1015,10 +1035,17 @@ Rules:
         const pageIsOpen = !!((global as any).joePages && (global as any).joePages[editKey]);
         const looksLikeEdit = /(اضف|أضف|ضيف|ضف|حط|خلي|خلّي|شيل|سوي|سوّي|غير|غيّر|عدل|عدّل|بدل|بدّل|احذف|امسح|كبر|كبّر|صغر|صغّر|رتب|رتّب|ركب|ركّب|جمل|جمّل|حسن|حسّن)/.test(String(intent.goal || ''))
             || /\b(add|change|replace|remove|make it|set the)\b/i.test(String(intent.goal || ''));
-        // The capability scorer sees token overlap only. Do not let it route a
-        // local-only build to deploy_pages just because the user mentioned the
-        // action they explicitly prohibited.
-        const capable = (pageIsOpen && looksLikeEdit) || localBuildContract ? null : capabilityRoute(String(intent.goal || ''), context);
+        // The capability scorer sees token overlap only. A construction request
+        // has one coherent engineering contract: inspect evidence, plan, build,
+        // verify, and report. It must never be claimed by a single matching tool
+        // (Git, browser, deploy, or otherwise), even when the request omits an
+        // explicit «never deploy» clause. The later build routes select the
+        // correct general engineering workflow from the actual workspace.
+        const capable = (pageIsOpen && looksLikeEdit)
+            || localBuildContract
+            || PlanningEngine.looksLikeBuild(String(intent.goal || ''))
+            ? null
+            : capabilityRoute(String(intent.goal || ''), context);
         if (capable) {
             console.log(`[PlanningEngine] capability router -> ${capable.tool} (score ${capable.score}, runner-up ${capable.runnerUp || 'none'})`);
             return {
@@ -1192,12 +1219,12 @@ Rules:
             const reactNoun = /\b(react|vite|jsx|spa)\b|ريأكت|رياكت|ري أكت|فيت\b|سبا\b/i.test(probe);
             if (buildVerb && reactNoun) {
                 return {
-                    id: `react_${Date.now()}`,
+                    id: `engineering_react_${Date.now()}`,
                     goal: intent.goal,
                     steps: [{
-                        id: 'react_project',
-                        description: `Scaffolding and verifying a Vite + React project: ${intent.goal}`,
-                        tool: 'react_project',
+                        id: 'project_pipeline',
+                        description: `استكشف السياق ثم خطط ونفّذ تطبيق React المطلوب بأدلة واختبارات: ${intent.goal}`,
+                        tool: 'project_pipeline',
                         agent: 'Dev',
                         input: { request: intent.goal },
                         dependsOn: [],
@@ -1356,25 +1383,15 @@ Rules:
             //   system → app + its own data: a backend, and the app wired to it
             const scope = PlanningEngine.classifyBuildScope(probe);
             if (scope !== 'page' && !(hasActivePage && editIntent)) {
-                const steps: any[] = [];
-                if (scope === 'system') {
-                    steps.push({
-                        id: 'backend', description: `الواجهة الخلفية وقاعدة البيانات لـ: ${intent.goal}`,
-                        tool: 'api_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [],
-                    });
-                }
-                steps.push({
-                    id: 'app', description: `تطبيق حقيقي لـ: ${intent.goal}`,
-                    tool: 'react_project', agent: 'Dev',
-                    // The app is built AFTER its API exists, so it is wired to a
-                    // backend that is really there rather than to a guess.
-                    input: { request: intent.goal }, dependsOn: scope === 'system' ? ['backend'] : [],
-                });
-                console.log(`[PlanningEngine] build scope = ${scope} -> ${steps.map(x => x.tool).join(' + ')}`);
+                console.log(`[PlanningEngine] build scope = ${scope} -> evidence-first project_pipeline`);
                 return {
-                    id: `build_${scope}_${Date.now()}`,
+                    id: `engineering_${scope}_${Date.now()}`,
                     goal: intent.goal,
-                    steps,
+                    steps: [{
+                        id: 'project_pipeline',
+                        description: `استكشف السياق ثم خطط ونفّذ التطبيق أو النظام بأدلة واختبارات: ${intent.goal}`,
+                        tool: 'project_pipeline', agent: 'Dev', input: { request: intent.goal }, dependsOn: [],
+                    }],
                     metadata: { complexity: 'high', riskLevel: 'medium' },
                 };
             }
@@ -1506,6 +1523,32 @@ Rules:
             }
         }
 
+        // [EVIDENCE-FIRST ENGINEERING PRECEDENCE]
+        // A request to BUILD an application or system is engineering work, even
+        // when it names a web console or local verification. The browser router
+        // below is intentionally broad for research, but must never turn a new
+        // engineering request into a network classifier call before Joe has
+        // inspected its workspace and planned from evidence.
+        {
+            const scope = PlanningEngine.classifyBuildScope(probe);
+            if (buildVerb && scope !== 'page') {
+                console.log(`[PlanningEngine] engineering scope = ${scope} -> evidence-first project_pipeline before browser routing`);
+                return {
+                    id: `engineering_${scope}_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_pipeline',
+                        description: `استكشف السياق ثم خطط ونفّذ التطبيق أو النظام بأدلة واختبارات: ${intent.goal}`,
+                        tool: 'project_pipeline',
+                        agent: 'Dev',
+                        input: { request: intent.goal },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'high', riskLevel: 'medium' },
+                };
+            }
+        }
+
         // [BROWSER SMART TOOLS FAST-PATH] summarise / audit a URL reliably.
         const goalRaw = intent.goal || '';
         const urlMatch = goalRaw.match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);
@@ -1514,8 +1557,12 @@ Rules:
         // language / any phrasing) with the model, instead of relying on brittle
         // keyword regexes. This is the primary path; the keyword fast-paths below
         // remain only as a deterministic fallback when the model is unavailable.
-        const looksBrowser = !!urlMatch || String(intent.suggestedAgent || '') === 'Browser'
-            || /(متصفح|براوزر|موقع|صفحة|الويب|الإنترنت|الانترنت|ابحث|إبحث|بحث|جد|جِد|دوّ?ر|فتّ?ش|افتح|تصفّ?ح|عايِ?ن|لخّ?ص|حلّ?ل|دقّ?ق|افحص|انقر|اضغط|املأ|عبّ?ئ|ترجم|قارن|استخرج|browser|web|site|page|search|find|look\s*up|google|open|visit|go\s*to|summari|analy|audit|click|fill|translate|compare|extract|scrape|seo)/i.test(probe);
+        const looksBrowser = !!urlMatch || (
+            !buildVerb && (
+                String(intent.suggestedAgent || '') === 'Browser'
+                || /(متصفح|براوزر|موقع|صفحة|الويب|الإنترنت|الانترنت|ابحث|إبحث|بحث|جد|جِد|دوّ?ر|فتّ?ش|افتح|تصفّ?ح|عايِ?ن|لخّ?ص|حلّ?ل|دقّ?ق|افحص|انقر|اضغط|املأ|عبّ?ئ|ترجم|قارن|استخرج|browser|web|site|page|search|find|look\s*up|google|open|visit|go\s*to|summari|analy|audit|click|fill|translate|compare|extract|scrape|seo)/i.test(probe)
+            )
+        );
 
         // [LOCAL BROWSER CONSENT GATE] When Joe is configured to drive the user's own
         // local Chrome profile (persistent mode), he must ASK permission once before
@@ -2028,20 +2075,21 @@ Rules:
                     if (routed.intent === 'build_page') {
                         const scope = PlanningEngine.classifyBuildScope(probe);
                         if (scope !== 'page') {
-                            const steps: any[] = [];
-                            if (scope === 'system') {
-                                steps.push({
-                                    id: 'backend', description: `الواجهة الخلفية وقاعدة البيانات لـ: ${intent.goal}`,
-                                    tool: 'api_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [],
-                                });
-                            }
-                            steps.push({
-                                id: 'app', description: `تطبيق حقيقي لـ: ${intent.goal}`,
-                                tool: 'react_project', agent: 'Dev',
-                                input: { request: intent.goal }, dependsOn: scope === 'system' ? ['backend'] : [],
-                            });
-                            console.log(`[PlanningEngine] semantic build scope = ${scope} -> ${steps.map(x => x.tool).join(' + ')}`);
-                            return { id: `build_${scope}_${Date.now()}`, goal: intent.goal, steps, metadata: { complexity: 'high', riskLevel: 'medium' } };
+                            // A semantic classification can identify that this is
+                            // more than a page, but it cannot prescribe a stack.
+                            // The evidence-first pipeline chooses and proves the
+                            // implementation from the workspace and requirements.
+                            console.log(`[PlanningEngine] semantic engineering scope = ${scope} -> project_pipeline`);
+                            return {
+                                id: `engineering_${scope}_${Date.now()}`,
+                                goal: intent.goal,
+                                steps: [{
+                                    id: 'project_pipeline',
+                                    description: `استكشف السياق ثم خطط ونفّذ الطلب الهندسي بأدلة واختبارات: ${intent.goal}`,
+                                    tool: 'project_pipeline', agent: 'Dev', input: { request: intent.goal }, dependsOn: [],
+                                }],
+                                metadata: { complexity: 'high', riskLevel: 'medium' },
+                            };
                         }
                     }
                 }
@@ -2228,24 +2276,24 @@ Return ONLY a JSON array of steps:
                 const talkOnly = steps.length > 0 && steps.every((st: any) =>
                     ANSWER_ONLY_TOOLS.has(String(st.tool || '')));
                 if (talkOnly && looksLikeBuildRequest(String(intent.goal || ''))) {
-                    console.warn(`[PlanningEngine] the model planned ${steps.length} talking step(s) for a BUILD — refused; using the real builders.`);
+                    console.warn(`[PlanningEngine] the model planned ${steps.length} talking step(s) for a BUILD — refusing invented construction.`);
                     const scope = PlanningEngine.classifyBuildScope(String(intent.goal || ''));
-                    const real: any[] = [];
-                    if (scope === 'system') {
-                        real.push({
-                            id: 'backend', description: `الواجهة الخلفية وقاعدة البيانات لـ: ${intent.goal}`,
-                            tool: 'api_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [],
-                        });
+                    if (scope === 'page') {
+                        return {
+                            id: `build_page_rescue_${Date.now()}`,
+                            goal: intent.goal,
+                            steps: [{ id: 'build_page', description: `بناء صفحة مطلوبة: ${intent.goal}`, tool: 'web_page_builder', agent: 'Dev', input: { request: intent.goal }, dependsOn: [] }],
+                            metadata: { complexity: 'medium', riskLevel: 'low' },
+                        };
                     }
-                    real.push({
-                        id: 'app', description: `تطبيق حقيقي لـ: ${intent.goal}`,
-                        tool: scope === 'page' ? 'web_page_builder' : 'react_project', agent: 'Dev',
-                        input: { request: intent.goal }, dependsOn: scope === 'system' ? ['backend'] : [],
-                    });
                     return {
-                        id: `build_rescue_${Date.now()}`,
+                        id: `engineering_rescue_${Date.now()}`,
                         goal: intent.goal,
-                        steps: real,
+                        steps: [{
+                            id: 'project_pipeline',
+                            description: `استكشف السياق ثم خطط ونفّذ طلب البناء بأدلة واختبارات: ${intent.goal}`,
+                            tool: 'project_pipeline', agent: 'Dev', input: { request: intent.goal }, dependsOn: [],
+                        }],
                         metadata: { complexity: 'high', riskLevel: 'medium' },
                     };
                 }
@@ -2280,24 +2328,24 @@ Return ONLY a JSON array of steps:
          * to survive the planner being unreachable, not merely wrong.
          */
         if (looksLikeBuildRequest(String(intent.goal || ''))) {
-            console.warn('[PlanningEngine] the planner was unreachable for a BUILD — using the real builders, which need no model.');
+            console.warn('[PlanningEngine] the planner was unreachable for a BUILD — routing systems to evidence-first planning, never an invented stack.');
             const scope = PlanningEngine.classifyBuildScope(String(intent.goal || ''));
-            const rescue: any[] = [];
-            if (scope === 'system') {
-                rescue.push({
-                    id: 'backend', description: `الواجهة الخلفية وقاعدة البيانات لـ: ${intent.goal}`,
-                    tool: 'api_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [],
-                });
+            if (scope === 'page') {
+                return {
+                    id: `build_page_offline_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{ id: 'build_page', description: `بناء صفحة مطلوبة: ${intent.goal}`, tool: 'web_page_builder', agent: 'Dev', input: { request: intent.goal }, dependsOn: [] }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
             }
-            rescue.push({
-                id: 'app', description: `تطبيق حقيقي لـ: ${intent.goal}`,
-                tool: scope === 'page' ? 'web_page_builder' : 'react_project', agent: 'Dev',
-                input: { request: intent.goal }, dependsOn: scope === 'system' ? ['backend'] : [],
-            });
             return {
-                id: `build_offline_${Date.now()}`,
+                id: `engineering_offline_${Date.now()}`,
                 goal: intent.goal,
-                steps: rescue,
+                steps: [{
+                    id: 'project_pipeline',
+                    description: `استكشف السياق ثم خطط ونفّذ طلب البناء بأدلة واختبارات: ${intent.goal}`,
+                    tool: 'project_pipeline', agent: 'Dev', input: { request: intent.goal }, dependsOn: [],
+                }],
                 metadata: { complexity: 'high', riskLevel: 'medium' },
             };
         }
@@ -2305,7 +2353,16 @@ Return ONLY a JSON array of steps:
         // Emergency Fallback (Dynamic but minimal)
         console.warn(`[PlanningEngine] Using failover node for: ${intent.goal}`);
         const fallbackUrl = String(intent.goal || '').match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);
-        const isBrowserFallback = (intent.suggestedAgent === 'Browser') || (intent.requiredTools && intent.requiredTools.includes('browser_run')) || !!fallbackUrl;
+        // A planner failure must not reinterpret an engineering build as a browser
+        // visit just because upstream intent analysis was unavailable or imprecise.
+        // URLs remain explicit browser evidence; otherwise a browser fallback is
+        // permitted only for a non-build request.
+        const isBrowserFallback = !!fallbackUrl || (
+            !looksLikeBuildRequest(String(intent.goal || '')) && (
+                intent.suggestedAgent === 'Browser'
+                || Boolean(intent.requiredTools && intent.requiredTools.includes('browser_run'))
+            )
+        );
         // For browser intents, open the live browser deterministically instead of
         // the generic browser_run (which needs explicit actions and otherwise dies
         // with "actions_or_instruction_required" -> "Recovery failed").

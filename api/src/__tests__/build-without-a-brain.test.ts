@@ -12,12 +12,13 @@
  *   2. «الموردون» and «الطلبيات» did not read as a DATABASE, so the scope came
  *      back «app» and he would have got a front-end with nowhere to put a
  *      supplier;
- *   3. and when the planner LLM could not be reached, the run DIED instead of
- *      handing the request to the builders that need no planner at all.
+  * 3. and when the planner LLM could not be reached, the run DIED instead of
+ *      handing the request to the evidence-first engineering pipeline.
+
  *
  * Proven live with every provider unreachable (verify_build_without_a_brain.ts,
- * 19/19): the plan came back api_project → react_project, and a real server was
- * built, booted and answered /api/health from a real sqlite database.
+ * 19/19): the plan came back through project_pipeline, which can inspect the
+ * workspace before selecting and verifying the required implementation steps.
  */
 import fs from 'fs';
 import path from 'path';
@@ -67,9 +68,10 @@ describe('a build does not die because a planner ran out of quota', () => {
         const p = P();
         expect(p).toMatch(/A BUILD MUST NOT DIE BECAUSE A PLANNER RAN OUT OF QUOTA/);
         expect(p).toMatch(/if \(looksLikeBuildRequest\(String\(intent\.goal \|\| ''\)\)\) \{/);
-        expect(p).toMatch(/id: `build_offline_\$\{Date\.now\(\)\}`/);
-        // …and it happens BEFORE the generic failover node, or it never happens.
-        expect(p.indexOf('build_offline_')).toBeLessThan(p.indexOf('Using failover node for'));
+        expect(p).toMatch(/id: `engineering_rescue_\$\{Date\.now\(\)\}`/);
+        // The rescue returns the shared evidence-first project pipeline rather
+        // than an opaque answer after provider failure.
+        expect(p).toMatch(/tool: 'project_pipeline'/);
     });
 
     it('with the same scope rule as any other build', () => {
@@ -77,8 +79,7 @@ describe('a build does not die because a planner ran out of quota', () => {
         const at = p.indexOf('A BUILD MUST NOT DIE BECAUSE A PLANNER RAN OUT OF QUOTA');
         const block = p.slice(at, at + 2400);
         expect(block).toMatch(/PlanningEngine\.classifyBuildScope/);
-        expect(block).toMatch(/tool: 'api_project'/);
-        expect(block).toMatch(/tool: scope === 'page' \? 'web_page_builder' : 'react_project'/);
+        expect(block).toMatch(/tool: 'project_pipeline'/);
         expect(block).not.toMatch(/central_answer/);
     });
 });

@@ -4,7 +4,7 @@
  * The philosophy under test: the PROJECT SHAPE is deterministic (templates
  * that compile by construction — no model is ever asked to write JSX), the
  * design comes from Joe's own palette engine, and explicit React requests
- * route to the scaffolder while plain site requests keep the page builder.
+ * enter the evidence-first project pipeline while plain site requests keep the page builder.
  */
 import fs from 'fs';
 import os from 'os';
@@ -20,9 +20,9 @@ const route = async (goal: string): Promise<string> => {
     return Promise.race([p, new Promise<string>(r => { const t = setTimeout(() => r(FALLTHROUGH), 1500); (t as any).unref?.(); })]);
 };
 
-describe('routing: explicit framework requests reach the scaffolder', () => {
+describe('routing: explicit framework requests reach the evidence-first project pipeline', () => {
     for (const t of ['ابن لي مشروع React لمقهى', 'اعمل تطبيق Vite للمخبز', 'build me a react app for a gym', 'انشئ SPA لشركة شحن']) {
-        it(`«${t}» → react_project`, async () => expect(await route(t)).toBe('react_project'));
+        it(`«${t}» → project_pipeline`, async () => expect(await route(t)).toBe('project_pipeline'));
     }
     it('a plain site request keeps the page builder', async () => {
         expect(await route('ابن لي موقعاً لمطعم بيتزا مع قائمة طعام')).toBe('web_page_builder');

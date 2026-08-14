@@ -466,6 +466,24 @@ export class AgentLoopService {
                 continue;
             }
 
+            // A negative acceptance check is useful engineering evidence, not an
+            // invitation to invent a search/replace patch. The phase executor and
+            // discovery/planning stages can state that the next safe step needs a
+            // user decision or that verification disproved delivery. Preserve that
+            // truthful outcome before the generic repair path starts.
+            const primaryError = String(phaseResult?.output?.primaryError || phaseResult?.error || '');
+            const isHonestBlocker =
+                phaseResult?.output?.requiresUserDecision === true ||
+                phaseResult?.output?.verificationFailed === true ||
+                primaryError.includes('EVIDENCE_BLOCKER');
+            if (isHonestBlocker) {
+                voice(pick(isAr,
+                    `⛔ توقفتُ عند عائق موثق — ${primaryError || 'يتطلب قراراً من المستخدم'}`,
+                    `⛔ Stopped at a documented blocker — ${primaryError || 'requires user decision'}`));
+                results.push({ ...phaseResult?.output, status, honestBlocker: true });
+                return { ok: false, completedPhases, results, honestBlocker: true };
+            }
+
             voice(pick(isAr,
                 `⚠️ تعثرت المرحلة ${n} — أفتح تذكرة إصلاح وأحاول العلاج الذاتي…`,
                 `⚠️ Phase ${n} stumbled — opening a repair ticket and attempting self-healing…`));

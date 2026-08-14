@@ -21,7 +21,6 @@
  * Live proof: src/tests/manual/verify_pipeline_quality.ts (16/16, a real
  * browser served from a foreign origin that answers /api/health).
  */
-import { buildSpine } from '../modules/tools/definitions/ProjectPipelineTool';
 import { adaptPlannedArgs } from '../core/orchestrator/plan-tools';
 import { buildAppFiles } from '../modules/tools/definitions/react-app-templates';
 import { blueprintFor, detectAppKind, type AppKind } from '../core/design/app-blueprints';
@@ -29,9 +28,12 @@ import { blueprintFor, detectAppKind, type AppKind } from '../core/design/app-bl
 const REQUEST = 'متجر إلكتروني كامل مع سلة شراء';
 
 describe('the quality phase is executable, not decorative', () => {
-    it('the spine still ends with a real browser audit', () => {
-        const phases = (buildSpine('system', REQUEST) as any).output.phases;
-        expect(phases[2].tasks[0].tool).toBe('browser_ui_audit');
+    it('the evidence-first pipeline supplies discovery to the phase planner', () => {
+        const fs = require('fs'); const path = require('path');
+        const pipeline = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
+        expect(pipeline).toContain("executeTool('engineering_discovery', { request }, context)");
+        expect(pipeline).toContain("executeTool('project_planner', { projectDescription: request, evidence }, context)");
+        expect(pipeline).toContain('AgentLoopService.runPlannedPhasesIfPresent');
     });
 
     it('an audit with no address is completed from what the session built', () => {

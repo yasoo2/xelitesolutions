@@ -36,6 +36,7 @@ import { PhaseExecutorTool } from './definitions/PhaseExecutorTool';
 import { ProjectPipelineTool } from './definitions/ProjectPipelineTool';
 import { EnterprisePlatformFoundationTool } from './definitions/EnterprisePlatformFoundationTool';
 import { OrionBusinessFoundationTool } from './definitions/OrionBusinessFoundationTool';
+import { EngineeringDiscoveryTool } from './definitions/EngineeringDiscoveryTool';
 import { ProjectRunTool, ProjectStopTool } from './definitions/ProjectRunTool';
 import { DeployPagesTool } from './definitions/DeployPagesTool';
 import { ProjectStateManagerTool } from './definitions/ProjectStateManagerTool';
@@ -282,6 +283,7 @@ const baseTools: ToolDefinition[] = [
   new EliteTools.MultiAgentDebateTool(),
   new EliteTools.SelfConfidenceTool(),
 
+  new EngineeringDiscoveryTool(),
   createTool(ProjectPlannerTool),
   createTool(PhaseExecutorTool),
   createTool(ProjectPipelineTool),

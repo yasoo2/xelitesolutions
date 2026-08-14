@@ -2,8 +2,6 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { isOrionBusinessOperatingSystemRequest } from '../modules/tools/definitions/ProjectPipelineTool';
 import { OrionBusinessFoundationTool } from '../modules/tools/definitions/OrionBusinessFoundationTool';
 
 const orionRequest = [
@@ -12,20 +10,7 @@ const orionRequest = [
   'Do not deploy, publish, call external payment providers, or apply infrastructure.',
 ].join(' ');
 
-describe('ORION business operating system route', () => {
-  test('identifies ORION business requirements without stealing unrelated enterprise engineering platforms', () => {
-    expect(isOrionBusinessOperatingSystemRequest(orionRequest)).toBe(true);
-    expect(isOrionBusinessOperatingSystemRequest('Build a Fortune 500 multi-agent engineering platform with Kubernetes and Kafka.')).toBe(false);
-    expect(isOrionBusinessOperatingSystemRequest('Build a small React task tracker.')).toBe(false);
-  });
-
-  test('routes an ORION specification ahead of Git-derived workflow cues', async () => {
-    const goal = `${orionRequest} Read ORION_SPECIFICATION.md in the current workspace before building it; the specification also describes repository and CI conventions.`;
-    const plan = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'high', riskLevel: 'medium', rawIntent: {} } as any });
-    expect(plan.steps[0].tool).toBe('project_pipeline');
-    expect(plan.steps.some((step: any) => step.tool === 'git_local_workflow')).toBe(false);
-  });
-
+describe('ORION business foundation resource', () => {
   test('writes and verifies an executable local ORION foundation in the selected workspace', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-orion-foundation-'));
     try {

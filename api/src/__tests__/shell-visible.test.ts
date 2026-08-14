@@ -70,7 +70,7 @@ describe('explicit terminal diagnostics execute instead of merely opening a term
                 rawIntent: {},
             } as any,
         });
-        expect(plan.steps[0].tool).toBe('react_project');
+        expect(plan.steps[0].tool).toBe('project_pipeline');
     });
 });
 

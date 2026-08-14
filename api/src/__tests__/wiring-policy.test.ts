@@ -981,16 +981,16 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
             { intent: { goal, complexity: 'high', riskLevel: 'low', rawIntent: {} } }))
             .steps.map((s: any) => s.tool).join(' + ');
 
-        expect(await tools('ابني تطبيق خرائط شبيه بتطبيق خرائط جوجل')).toMatch(/react_project/);
-        expect(await tools('ابن لي نظام حجوزات عيادة مع لوحة تحكم للطبيب')).toMatch(/api_project \+ react_project/);
+        expect(await tools('ابني تطبيق خرائط شبيه بتطبيق خرائط جوجل')).toBe('project_pipeline');
+        expect(await tools('ابن لي نظام حجوزات عيادة مع لوحة تحكم للطبيب')).toBe('project_pipeline');
         // …and a page request still gets a page
         expect(await tools('ابنِ لي صفحة هبوط لمقهى')).toMatch(/web_page_builder/);
-        // the app depends on its backend, so it is wired to a server that exists
+        // The implementation chain is planned only after workspace discovery;
+        // the top-level plan therefore has one evidence-first engineering entry.
         const sys = await PlanningEngine.generatePlan({
             intent: { goal: 'اعمل تطبيق محادثة فوري بين المستخدمين', complexity: 'high', riskLevel: 'low', rawIntent: {} } });
-        const api = sys.steps.find((x: any) => x.tool === 'api_project');
-        const app = sys.steps.find((x: any) => x.tool === 'react_project');
-        expect(app.dependsOn).toContain(api.id);
+        expect(sys.steps).toHaveLength(1);
+        expect(sys.steps[0].tool).toBe('project_pipeline');
         // the classifier is deterministic — it holds when the brain is down
         expect(PlanningEngine.classifyBuildScope('ابني تطبيق خرائط')).toBe('app');
         expect(PlanningEngine.classifyBuildScope('نظام حجوزات مع تسجيل دخول')).toBe('system');
@@ -2018,14 +2018,12 @@ describe('a plan may only name tools that exist', () => {
  * build real software.
  */
 describe('the biggest request gets the strongest route', () => {
-    it('the pipeline decides its spine from the request, with no model', () => {
+    it('the pipeline discovers evidence, plans phases, then executes verification', () => {
         const P = SRC('modules', 'tools', 'definitions', 'ProjectPipelineTool.ts');
-        expect(P).toMatch(/classifyBuildScope\(request\)/);
-        expect(P).toMatch(/const plannerResult = spine \|\| await executeTool\('project_planner'/);
-        // …and the spine names the real engines, in the order that wires them
-        const spine = P.slice(P.indexOf('export function buildSpine'), P.indexOf('export class ProjectPipelineTool'));
-        expect(spine.indexOf("'api_project'")).toBeLessThan(spine.indexOf("'react_project'"));
-        expect(spine).toMatch(/browser_ui_audit/);
+        expect(P).toContain("executeTool('engineering_discovery', { request }, context)");
+        expect(P).toContain("executeTool('project_planner', { projectDescription: request, evidence }, context)");
+        expect(P).toContain('AgentLoopService.runPlannedPhasesIfPresent');
+        expect(P).toContain('evidence is incomplete — blocking writes honestly');
     });
 
     it('a store is a shop engine, and every engine it names is rendered', () => {

@@ -18,7 +18,7 @@
  *
  * These are the exact strings from that run.
  */
-import { resolvePlannedTool, sanitisePlanPhases, unrunnableShellStep, plannerToolPrompt } from '../core/orchestrator/plan-tools';
+import { resolvePlannedTool, sanitisePlanPhases, unrunnableShellStep, plannerToolPrompt, plannedArgsIssue, adaptPlannedArgs } from '../core/orchestrator/plan-tools';
 
 describe('a plan may only name tools that exist', () => {
     it('«Git» is git_ops — the model named the product, it meant the capability', () => {
@@ -116,6 +116,76 @@ describe('his phase 1, run through the sanitiser', () => {
     });
 });
 
+describe('model-written tool arguments are checked before execution', () => {
+    const invalidMigrationPhase = {
+        phaseNumber: 2,
+        name: 'Data layer',
+        tasks: [
+            { task: 'Create a basic database schema for warehouse jobs', tool: 'db_schema_migrator', args: { engine: 'prisma', action: 'create' }, priority: 'high' },
+            { task: 'Write a documented vertical slice', tool: 'write_file', args: { path: 'docs/slice.md', content: '# Slice' } },
+        ],
+    };
+
+    it('rejects an invented migration action rather than guessing a destructive operation', () => {
+        expect(plannedArgsIssue('db_schema_migrator', { engine: 'prisma', action: 'create' })).toMatch(/action واحداً/);
+        expect(plannedArgsIssue('db_schema_migrator', { engine: 'prisma', action: 'status' })).toBeNull();
+    });
+
+    it('drops the invalid migration task before PhaseExecutor can emit Unsupported action', () => {
+        const { phases, notes } = sanitisePlanPhases([invalidMigrationPhase], 'warehouse-console');
+        expect(phases[0].tasks.map((task: any) => task.tool)).toEqual(['write_file']);
+        expect(notes.join('\n')).toMatch(/db_schema_migrator يحتاج action/);
+    });
+
+    it('drops a documentation task with no evidenced source file before it can report File not found undefined', () => {
+        const phase = {
+            phaseNumber: 1,
+            name: 'Initial planning',
+            tasks: [
+                { task: 'Document the initial plan', tool: 'doc_generator', args: {}, priority: 'high' },
+                { task: 'Record the plan explicitly', tool: 'write_file', args: { path: 'docs/plan.md', content: '# Plan' } },
+            ],
+        };
+        expect(plannedArgsIssue('doc_generator', {})).toMatch(/filePath/);
+        const { phases, notes } = sanitisePlanPhases([phase], 'warehouse-console');
+        expect(phases[0].tasks.map((task: any) => task.tool)).toEqual(['write_file']);
+        expect(notes.join('\n')).toMatch(/doc_generator يحتاج filePath/);
+    });
+
+    it('drops an AI source-generation task without a concrete path and brief before it can trigger repair', () => {
+        const phase = {
+            phaseNumber: 2,
+            name: 'Minimal vertical slice',
+            tasks: [
+                { task: 'Implement the warehouse verification console UI', tool: 'ai_write_file', args: {}, priority: 'high' },
+                { task: 'Record the implementation boundary', tool: 'write_file', args: { path: 'docs/slice-boundary.md', content: '# Boundary' } },
+            ],
+        };
+        expect(plannedArgsIssue('ai_write_file', {})).toMatch(/path نسبياً/);
+        expect(plannedArgsIssue('ai_write_file', { path: '../outside.ts', description: 'unsafe' })).toMatch(/داخل مساحة العمل/);
+        const { phases, notes } = sanitisePlanPhases([phase], 'warehouse-console');
+        expect(phases[0].tasks.map((task: any) => task.tool)).toEqual(['write_file']);
+        expect(notes.join('\n')).toMatch(/ai_write_file يحتاج path نسبياً/);
+    });
+
+    it('drops a test-generation task without a concrete source file before it can read undefined', () => {
+        const phase = {
+            phaseNumber: 3,
+            name: 'Local verification',
+            tasks: [
+                { task: 'Test the verification console', tool: 'test_generator', args: {}, priority: 'high' },
+                { task: 'Record the local result', tool: 'write_file', args: { path: 'docs/verification.md', content: '# Verification' } },
+            ],
+        };
+        expect(plannedArgsIssue('test_generator', {})).toMatch(/filePath/);
+        expect(plannedArgsIssue('test_generator', { filePath: 'undefined' })).toMatch(/filePath/);
+        expect(adaptPlannedArgs('test_generator', { path: 'src/verification-console.js' })).toMatchObject({ filePath: 'src/verification-console.js' });
+        const { phases, notes } = sanitisePlanPhases([phase], 'warehouse-console');
+        expect(phases[0].tasks.map((task: any) => task.tool)).toEqual(['write_file']);
+        expect(notes.join('\n')).toMatch(/test_generator يحتاج filePath/);
+    });
+});
+
 describe('the planner is told the vocabulary', () => {
     it('the prompt carries real tool names and forbids inventing one', () => {
         const p = plannerToolPrompt();
@@ -158,5 +228,35 @@ describe('a step nobody could ever run is recognised before it is attempted', ()
         expect(unrunnableShellStep('npm run build')).toBeNull();
         expect(unrunnableShellStep('npm test')).toBeNull();
         expect(unrunnableShellStep('git status')).toBeNull();
+    });
+});
+
+
+describe('a greenfield slice does not silently choose its technology', () => {
+    const implicitSeedPhase = {
+        phaseNumber: 1,
+        name: 'Project setup',
+        tasks: [
+            { task: 'Generate a full-stack starter', tool: 'scaffold_full_stack', args: { projectName: 'my-app' } },
+            { task: 'Create the smallest observable page', tool: 'ai_write_file', args: { path: 'index.html', description: 'A self-contained local HTML page that shows one verifiable warehouse-job status row.' } },
+            { task: 'Install packages', tool: 'npm_manager', args: {} },
+        ],
+    };
+
+    it('rejects npm_manager without a real command before it can emit missing_command', () => {
+        expect(plannedArgsIssue('npm_manager', {})).toMatch(/command صالحاً/);
+        expect(plannedArgsIssue('npm_manager', { command: 'run test' })).toBeNull();
+    });
+
+    it('keeps only explicit file-level work when the user did not choose a stack', () => {
+        const { phases, notes } = sanitisePlanPhases([implicitSeedPhase], 'warehouse-console', { disallowImplicitScaffold: true });
+        expect(phases[0].tasks.map((task: any) => task.tool)).toEqual(['ai_write_file']);
+        expect(notes.join('\n')).toMatch(/لن أُنشئ scaffold افتراضياً/);
+        expect(notes.join('\n')).toMatch(/npm_manager يحتاج command/);
+    });
+
+    it('permits a seed tool when an explicit engineering constraint authorizes it', () => {
+        const { phases } = sanitisePlanPhases([implicitSeedPhase], 'warehouse-console', { disallowImplicitScaffold: false });
+        expect(phases[0].tasks.map((task: any) => task.tool)).toContain('scaffold_full_stack');
     });
 });

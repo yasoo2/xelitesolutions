@@ -106,7 +106,8 @@ describe('the pipeline speaks the language of the run', () => {
     });
 
     it('its own spoken lines carry both sentences', () => {
-        expect(PIPE).toMatch(/`\[pipeline\] scope «\$\{scope\}» — building with the real engines/);
+        expect(PIPE).toMatch(/\[pipeline\] Discovering the workspace, project, and declared checks before selecting implementation/);
+        expect(PIPE).toMatch(/\[pipeline\] evidence-backed plan ready:/);
         expect(PIPE).toMatch(/'▶️ Starting the system so you can see it live…'/);
     });
 

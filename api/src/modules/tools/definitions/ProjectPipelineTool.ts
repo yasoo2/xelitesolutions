@@ -19,135 +19,6 @@ import { isArabicReply, say as pick } from '../../../shared/reply-language';
  * phases, and the repair-ticket/self-fix loop when a phase fails.
  */
 
-/**
- * THE DETERMINISTIC SPINE OF A BUILD.
- *
- * Shaped like a planner result so everything downstream — the phase executor,
- * the verification tasks, the repair ticket, the delivery report — is
- * unchanged. What changes is who decides: the request, not a model.
- *
- *   system → its own data: an Express + SQLite server, then a React app wired
- *            to it, then a check that both really exist
- *   app    → screens and state: a React app and the same check
- *   page   → one document: the page builder, which does that well
- *
- * Returns null when nothing deterministic fits, and the model plans as before.
- */
-/**
- * ORION IS A NAME HE GAVE A PRODUCT — SO THE NAME IS THE WHOLE TEST.
- *
- * This matcher used to fire on generic business nouns alone: two of
- * {tenant/rbac, orders/inventory/billing, approval/audit} plus any of
- * {business, enterprise, platform, system}. Measured against ordinary
- * requests, that captured things nobody asked ORION for:
- *
- *   «Build a restaurant system with a menu, orders and an audit of
- *    every change»                                    → ORION
- *   «I need an enterprise system for CRM, billing and
- *    inventory with an approval workflow»             → ORION
- *
- * A restaurant site is this system's bread and butter — kind-aware
- * sections, real photos, design families — and it was being handed a
- * Python stdlib domain core in a folder literally named
- * `orion-business-operating-system`, branded with a product name the user
- * never typed. That is the whitelist disease in its purest form: the list
- * of business nouns grows with commerce itself, so it will keep eating
- * neighbours forever.
- *
- * The honest shape is the one the planner already uses upstream: the user
- * NAMED it. Requiring the name loses nothing (nothing reaches this branch
- * without going through that gate) and returns every unnamed business
- * request to the builder that was always right for it. The business
- * context still has to be there — bare "Orion" is a constellation, a car,
- * and a browser — and it is now recognised in Arabic too, because the
- * planner routes «ابنِ ORION نظام أعمال…» here and this predicate used to
- * drop it on the floor immediately afterwards.
- */
-export function isOrionBusinessOperatingSystemRequest(request: string): boolean {
-    const text = String(request || '').toLowerCase();
-    if (!/\borion\b/.test(text)) return false;
-    const businessContext = [
-        /business operating system|business os|operating system/,
-        /نظام\s*(?:تشغيل\s*)?(?:ال)?أعمال|نظام\s*(?:تشغيل\s*)?(?:ال)?اعمال/,
-        /multi[ -]?tenant|tenant isolation|rbac|abac|متعدد\s*المستأجرين/,
-        /crm|inventory|orders?|payments?|billing|accounting|ledger/,
-        /مخزون|طلبات|مدفوعات|فوترة|محاسبة|قيود/,
-    ];
-    return businessContext.some(shape => shape.test(text));
-}
-
-export function isEnterprisePlatformRequest(request: string): boolean {
-    const text = String(request || '').toLowerCase();
-    const signals = [
-        /multi[ -]?agent|agents? collaboration|agent orchestrat/.test(text),
-        /microservices?|event[ -]?driven|kafka/.test(text),
-        /fortune\s*500|enterprise[ -]?(?:grade|platform)|large[ -]?scale/.test(text),
-        /kubernetes|helm|terraform|observability|prometheus/.test(text),
-        /ceo agent|cto agent|security agent|sre agent/.test(text),
-    ].filter(Boolean).length;
-    return signals >= 2;
-}
-
-export function buildSpine(scope: 'page' | 'app' | 'system', request: string): any | null {
-    const phase = (n: number, name: string, tasks: any[], verification: any, deliverables: string[]) => ({
-        phaseNumber: n, name, description: name, tasks,
-        verificationTask: verification, deliverables, estimatedTime: '—',
-    });
-    const detect = { task: 'Verify what is really on disk', tool: 'project_detect', args: {} };
-
-    if (scope === 'system') {
-        return {
-            ok: true,
-            output: {
-                projectName: request.split('\n')[0].slice(0, 60) || 'project',
-                projectVibe: 'Deterministic engineering spine',
-                totalPhases: 3,
-                estimatedDuration: '—',
-                autoExecuted: false,
-                executionPolicy: 'planner_only',
-                deterministic: true,
-                phases: [
-                    phase(1, 'Backend & database', [
-                        { task: 'Build the API server and its database', tool: 'api_project', args: { request }, priority: 'high' },
-                    ], detect, ['A running Express + SQLite API']),
-                    phase(2, 'Application', [
-                        // built AFTER the API exists, so it is wired to a
-                        // backend that is really there rather than to a guess
-                        { task: 'Build the application and wire it to the API', tool: 'react_project', args: { request }, priority: 'high' },
-                    ], detect, ['A real React application, installed and built']),
-                    phase(3, 'Quality', [
-                        { task: 'Audit the built interface in a real browser', tool: 'browser_ui_audit', args: {}, priority: 'medium' },
-                    ], detect, ['A measured quality report']),
-                ],
-                dependencies: { phase2: ['phase1'], phase3: ['phase2'] },
-            },
-            logs: [],
-        };
-    }
-    if (scope === 'app') {
-        return {
-            ok: true,
-            output: {
-                projectName: request.split('\n')[0].slice(0, 60) || 'project',
-                projectVibe: 'Deterministic engineering spine',
-                totalPhases: 2, estimatedDuration: '—', autoExecuted: false,
-                executionPolicy: 'planner_only', deterministic: true,
-                phases: [
-                    phase(1, 'Application', [
-                        { task: 'Build the application', tool: 'react_project', args: { request }, priority: 'high' },
-                    ], detect, ['A real React application, installed and built']),
-                    phase(2, 'Quality', [
-                        { task: 'Audit the built interface in a real browser', tool: 'browser_ui_audit', args: {}, priority: 'medium' },
-                    ], detect, ['A measured quality report']),
-                ],
-                dependencies: { phase2: ['phase1'] },
-            },
-            logs: [],
-        };
-    }
-    return null;
-}
-
 export class ProjectPipelineTool implements ToolDefinition {
     name = 'project_pipeline';
     version = '1.0.0';
@@ -206,127 +77,83 @@ export class ProjectPipelineTool implements ToolDefinition {
          */
         const isAr = isArabicReply({ language: context?.language, text: request });
 
-        // ORION has a named business-domain contract. It must win over both the
-        // generic enterprise and Git-derived routes, because otherwise a valid
-        // requirements document is mistaken for repository work.
-        if (isOrionBusinessOperatingSystemRequest(request)) {
-            say(pick(isAr,
-                '[pipeline] تم التعرف على ORION كنظام أعمال متعدد المستأجرين — أُنشئ نواة نطاق قابلة للاختبار محلياً، لا سير Git أو قالباً عاماً.',
-                '[pipeline] ORION business operating system detected — creating a locally testable domain foundation, not a Git workflow or generic template.'));
-            const foundation = await executeTool('orion_business_foundation', { request }, context);
-            const output = foundation?.output || {};
-            const verified = foundation?.ok === true;
-            // The acceptance suite is skipped, not failed, on a machine with no
-            // Python. A ✅ that silently means "unmeasured" is the exact kind of
-            // claim this system exists to refuse, so the headline says which.
-            const unmeasured = verified && output.acceptanceRan === false;
-            const summary = unmeasured
-                ? pick(isAr,
-                    `## ⚠️ نواة ORION مكتوبة — لكن فحص القبول لم يُنفَّذ\n\n**المسار:** \`${output.projectPath}\`\n**الحالة:** ${output.verification}\n\nالملفات مكتوبة وعقد الحدث صالح، لكن اختبارات القبول التنفيذية لم تُشغَّل على هذا الجهاز. شغّلها بنفسك بعد تثبيت Python: \`${output.acceptanceCommand}\``,
-                    `## ⚠️ ORION core written — acceptance not run\n\n**Path:** \`${output.projectPath}\`\n**State:** ${output.verification}\n\nThe files are written and the event contract is valid, but the executable acceptance tests did not run on this machine. Run them yourself after installing Python: \`${output.acceptanceCommand}\``)
-                : verified
-                ? pick(isAr,
-                    `## ✅ نواة ORION قابلة للمراجعة جاهزة\n\n**المسار:** \`${output.projectPath}\`\n**التحقق المحلي:** ${output.verification}\n\nتتضمن الحزمة عزل المستأجرين، RBAC، دورة طلب وموافقة ودفع محلية، مخزوناً وسجل قيود وتدقيقاً وعقد حدث وواجهة Command Center وبنية مراجعة. لم تُنفذ أي دفعة أو رسالة أو نشر أو عملية سحابية.`,
-                    `## ✅ Reviewable ORION foundation ready\n\n**Path:** \`${output.projectPath}\`\n**Local verification:** ${output.verification}\n\nThe package includes tenant isolation, RBAC, a local order/approval/payment flow, inventory, ledger and audit evidence, an event contract, Command Center UI starter, and review templates. No payment, message, deployment, or cloud operation was attempted.`)
-                : pick(isAr, `## ⚠️ توقف تأسيس ORION بصدق\n\n${foundation?.error || 'فشل التحقق المحلي.'}`, `## ⚠️ ORION foundation stopped honestly\n\n${foundation?.error || 'Local verification failed.'}`);
-            say(`[pipeline] ${unmeasured ? '⚠️' : verified ? '✅' : '⚠️'} ORION foundation ${unmeasured ? 'written, acceptance skipped (python not installed)' : verified ? 'verified' : 'failed verification'}`);
+        // Discovery is mandatory before any engineering write. Product names and
+        // business nouns are evidence only; they never select a named foundation.
+        say(pick(isAr,
+            '[pipeline] أستكشف مساحة العمل والمشروع والاختبارات قبل اختيار أي تنفيذ…',
+            '[pipeline] Discovering the workspace, project, and declared checks before selecting implementation…'));
+        const discoveryResult = await executeTool('engineering_discovery', { request }, context);
+        if (!discoveryResult?.ok || !discoveryResult?.output?.evidence) {
+            const message = discoveryResult?.error || 'Engineering discovery did not return usable evidence.';
             return {
-                ok: verified,
-                error: verified ? undefined : summary,
+                ok: false,
+                error: message,
                 output: {
-                    projectName: 'orion-business-operating-system',
-                    completedPhases: verified ? 1 : 0, totalPhases: 1, verified, summary,
-                    acceptanceRan: output.acceptanceRan, acceptanceCommand: output.acceptanceCommand,
-                    // Final evidence — the orchestrator must show it, not retry it.
-                    verificationFailed: !verified,
-                    deliveryScope: output.deliveryScope, projectPath: output.projectPath,
-                    writtenFiles: output.writtenFiles, verification: output.verification,
+                    projectName: 'engineering-task', completedPhases: 0, totalPhases: 0, verified: false,
+                    executionStatus: 'blocked', verificationStatus: 'not_run', deliveryStatus: 'blocked',
+                    summary: pick(isAr, `## ⚠️ توقف قبل الكتابة\n\nتعذر جمع أدلة مساحة العمل: ${message}`, `## ⚠️ Stopped before writing\n\nWorkspace evidence could not be collected: ${message}`),
                 },
-                logs: [...logs, ...(foundation?.logs || [])],
+                logs: [...logs, ...(discoveryResult?.logs || [])],
             };
         }
-
-        // Enterprise multi-agent requests are architecture programs, not small
-        // React/API applications. Generate a truthful, locally-verified foundation
-        // first; production implementation and any deployment require reviewed
-        // follow-up milestones and explicit approvals.
-        if (isEnterprisePlatformRequest(request)) {
-            say(pick(isAr,
-                '[pipeline] تم التعرف على منصة مؤسسية متعددة الوكلاء — أُنشئ أساساً قابلاً للمراجعة والتحقق محلياً، لا قالباً عاماً أو نشراً خارجياً.',
-                '[pipeline] Enterprise multi-agent platform detected — creating a reviewable, locally verified foundation, not a generic template or external deployment.'));
-            const foundation = await executeTool('enterprise_platform_foundation', { request }, context);
-            const output = foundation?.output || {};
-            const verified = foundation?.ok === true;
-            const unmeasuredPlatform = verified && output.acceptanceRan === false;
-            const summary = unmeasuredPlatform
-                ? pick(isAr,
-                    `## ⚠️ أساس المنصة مكتوب — لكن اختبارات العقود لم تُنفَّذ\n\n**المسار:** \`${output.projectPath}\`\n**الحالة:** ${output.verification}\n\nشغّلها بنفسك بعد تثبيت Python: \`${output.acceptanceCommand}\``,
-                    `## ⚠️ Platform foundation written — contract tests not run\n\n**Path:** \`${output.projectPath}\`\n**State:** ${output.verification}\n\nRun them yourself after installing Python: \`${output.acceptanceCommand}\``)
-                : verified
-                ? pick(isAr,
-                    `## ✅ أساس المنصة المؤسسية جاهز للتحقق\n\n**المسار:** \`${output.projectPath}\`\n**التحقق المحلي:** ${output.verification}\n\nتم إنشاء المعمارية، عقود API/الأحداث، هيكل Control Plane، سياسات الأمان، قوالب Docker/Helm/Terraform، CI، والمراحل التنفيذية. لم يتم تنفيذ أي نشر خارجي أو ادعاء جاهزية إنتاجية قبل مراجعة المراحل والأسرار وبيئة السحابة.`,
-                    `## ✅ Enterprise platform foundation ready for review\n\n**Path:** \`${output.projectPath}\`\n**Local verification:** ${output.verification}\n\nArchitecture, API/event contracts, a control-plane skeleton, security policy, Docker/Helm/Terraform templates, CI, and implementation milestones were created. No external deployment or unproven production-readiness claim was made before review of milestones, secrets, and cloud environment.`)
-                : pick(isAr,
-                    `## ⚠️ توقف تأسيس المنصة بصدق\n\n${foundation?.error || 'فشل التحقق المحلي.'}`,
-                    `## ⚠️ Platform foundation stopped honestly\n\n${foundation?.error || 'Local verification failed.'}`);
-            say(`[pipeline] ${unmeasuredPlatform ? '⚠️' : verified ? '✅' : '⚠️'} enterprise foundation ${unmeasuredPlatform ? 'written, contract tests skipped (python not installed)' : verified ? 'verified' : 'failed verification'}`);
+        const evidence = discoveryResult.output.evidence;
+        logs.push(...(discoveryResult.logs || []));
+        if (evidence.mode === 'remote_repository' || evidence.mode === 'ambiguous' || (Array.isArray(evidence.blockers) && evidence.blockers.length > 0)) {
+            const details = (evidence.blockers || []).map((blocker: any) => `- ${blocker.message}${blocker.remedy ? ` (${blocker.remedy})` : ''}`).join('\n') || 'Select the project root and retry discovery.';
+            const summary = pick(isAr,
+                `## ⚠️ توقف قبل الكتابة لأن الدليل غير مكتمل\n\n${details}\n\nلم يُنشئ Joe قالباً بديلاً ولم يعدّل أي ملف.`,
+                `## ⚠️ Stopped before writing because evidence is incomplete\n\n${details}\n\nJoe did not create a substitute template or modify files.`);
+            say('[pipeline] evidence is incomplete — blocking writes honestly');
             return {
-                ok: verified,
-                error: verified ? undefined : summary,
+                ok: false,
+                error: summary,
                 output: {
-                    projectName: 'autonomous-engineering-platform',
-                    completedPhases: verified ? 1 : 0,
-                    totalPhases: 1,
-                    verified,
-                    summary,
-                    acceptanceRan: output.acceptanceRan,
-                    acceptanceCommand: output.acceptanceCommand,
-                    verificationFailed: !verified,
-                    deliveryScope: output.deliveryScope,
-                    projectPath: output.projectPath,
-                    writtenFiles: output.writtenFiles,
-                    verification: output.verification,
+                    projectName: 'engineering-task', completedPhases: 0, totalPhases: 0, verified: false,
+                    executionStatus: 'not_started', verificationStatus: 'not_run', deliveryStatus: 'blocked',
+                    // A discovery blocker is a product decision boundary, not an
+                    // execution fault. The orchestrator must surface it to the user
+                    // rather than inventing repair work or guessing a project root.
+                    requiresUserDecision: true,
+                    stopReason: 'evidence_incomplete',
+                    decision: {
+                        kind: 'select_project_root',
+                        blockers: evidence.blockers || [],
+                    },
+                    evidence, summary,
                 },
-                logs: [...logs, ...(foundation?.logs || [])],
+                logs,
             };
         }
+        say(pick(isAr,
+            `[pipeline] دليل جاهز: ${evidence.mode}${evidence.selectedProject ? ` — ${evidence.selectedProject.root}` : ''}`,
+            `[pipeline] Evidence ready: ${evidence.mode}${evidence.selectedProject ? ` — ${evidence.selectedProject.root}` : ''}`));
 
-        // 1 — Plan. The planner is planner-only by architecture law; it returns
-        // phases and never executes anything itself.
-        say('[pipeline] planning the project phases…');
-
-        /**
-         * THE BIGGEST REQUEST MUST NOT GET THE WEAKEST ROUTE.
-         *
-         * «Build a world-class e-commerce platform similar to Shopify» came
-         * here, and here the plan was written by a language model that named
-         * whatever tools it imagined. Meanwhile the SAME request classifies as
-         * scope=system, and the deterministic route for scope=system builds a
-         * real Express + SQLite server and a real React application wired to
-         * it. The ambitious request got generic file-writing; the modest one
-         * got the real engines. That inversion is the defect.
-         *
-         * So the spine of the plan is now decided by the request itself, with
-         * no model involved — which also means it works when every provider is
-         * down. The model is still consulted for anything BEYOND the spine.
-         */
-        const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
-        const scope: 'page' | 'app' | 'system' = PlanningEngine.classifyBuildScope(request);
-        const spine = buildSpine(scope, request);
-        if (spine) {
-            const engines = spine.output.phases
-                .flatMap((p: any) => p.tasks.map((t: any) => t.tool)).join(' → ');
-            say(pick(isAr,
-                `[pipeline] النطاق «${scope}» — أبني بالمحرّكات الحقيقية: ${engines}`,
-                `[pipeline] scope «${scope}» — building with the real engines: ${engines}`));
+        // 1 — Plan from the evidence. A valid plan may choose a framework or a
+        // foundation only when it records a reason grounded in requirements or
+        // inspected workspace facts; no deterministic request classifier owns it.
+        say('[pipeline] planning evidence-backed engineering phases…');
+        const plannerResult = await executeTool('project_planner', { projectDescription: request, evidence }, context);
+        if (!plannerResult?.ok || plannerResult?.output?.fallback) {
+            const blocker = plannerResult?.output?.blocker?.message || plannerResult?.error || 'The planner did not produce a valid evidence-backed plan.';
+            const summary = pick(isAr,
+                `## ⚠️ توقف التخطيط بصدق\n\n${blocker}\n\nلم يُنشئ Joe مشروعاً أو قالباً كتعويض عن خطة مفقودة.`,
+                `## ⚠️ Planning stopped honestly\n\n${blocker}\n\nJoe did not create a project or template as a substitute for a missing plan.`);
+            return {
+                ok: false,
+                error: summary,
+                output: {
+                    projectName: plannerResult?.output?.projectName || 'engineering-task', completedPhases: 0, totalPhases: 0, verified: false,
+                    executionStatus: 'not_started', verificationStatus: 'not_run', deliveryStatus: 'blocked',
+                    evidence, summary,
+                },
+                logs: [...logs, ...(plannerResult?.logs || [])],
+            };
         }
-
-        const plannerResult = spine || await executeTool('project_planner', { projectDescription: request }, context);
         const phases = plannerResult?.output?.phases;
         if (!Array.isArray(phases) || phases.length === 0) {
             return { ok: false, error: plannerResult?.error || 'planner returned no phases', logs };
         }
-        say(`[pipeline] plan ready: ${plannerResult.output.projectName || 'project'} — ${phases.length} phases`);
+        say(`[pipeline] evidence-backed plan ready: ${plannerResult.output.projectName || 'project'} — ${phases.length} phases`);
 
         // 2 — Execute through the canonical pipeline (verification tasks, auto
         // build checks, repair tickets, one self-fix attempt, honest stop).
@@ -358,6 +185,18 @@ export class ProjectPipelineTool implements ToolDefinition {
         const total = Number(plannerResult.output.totalPhases || phases.length);
         const done = Number(pipeline?.completedPhases || 0);
         const verified = pipeline?.ok === true;
+        // `ok` is retained as the compatibility success signal, but the report
+        // must not force a reader to infer whether code ran, verification ran,
+        // or a deliverable is usable. These are separate engineering facts.
+        const executionStatus = verified ? 'completed' : done > 0 ? 'partial' : 'failed';
+        const verificationStatus = verified ? 'passed' : String(pipeline?.verificationStatus || 'failed');
+        const deliveryStatus = verified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
+        // A pipeline-level failure can already be a final, evidence-backed
+        // verdict from phase execution. Carry the machine-readable marker out
+        // to AgentOrchestrator so it cannot reopen a generative recovery loop.
+        const verificationFailed = Array.isArray(pipeline?.results)
+            && pipeline.results.some((result: any) => result?.verificationFailed === true);
+        const honestBlocker = pipeline?.honestBlocker === true || verificationFailed;
 
         // 3 — The last mile: a VERIFIED system is RUN, not left inert on disk.
         // No button — the pipeline starts it and the live preview opens itself.
@@ -392,6 +231,11 @@ export class ProjectPipelineTool implements ToolDefinition {
                 completedPhases: done,
                 totalPhases: total,
                 verified,
+                executionStatus,
+                verificationStatus,
+                deliveryStatus,
+                ...(verificationFailed ? { verificationFailed: true } : {}),
+                ...(honestBlocker ? { honestBlocker: true } : {}),
                 summary,
                 liveUrl: liveUrl || undefined,
                 report: pipeline?.engineeringReport,

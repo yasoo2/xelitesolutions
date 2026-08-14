@@ -43,13 +43,11 @@ async function main() {
     check('والنوع «store» لا «inventory»', detectAppKind(REQUEST) === 'store', String(detectAppKind(REQUEST)));
     check('ويعمل على محرّك المتجر', blueprintFor('store', REQUEST, true).engine === 'shop');
 
-    console.log('\n[2] وعمود الخطة هو المحرّكات الحقيقية، لا ما يتخيّله نموذج');
-    const { buildSpine } = await import('../../modules/tools/definitions/ProjectPipelineTool');
-    const spine: any = buildSpine('system', REQUEST);
-    const tools = (spine?.output?.phases || []).flatMap((p: any) => p.tasks.map((t: any) => t.tool));
-    check('المرحلة الأولى api_project', tools[0] === 'api_project', tools.join(' → '));
-    check('ثم react_project بعدها', tools[1] === 'react_project', tools.join(' → '));
-    check('ثم فحص في متصفح حقيقي', tools.includes('browser_ui_audit'), tools.join(' → '));
+    console.log('\n[2] خط الإنتاج يبدأ بالأدلة، لا بقائمة محرّكات مفروضة');
+    const pipelineSource = fs.readFileSync(path.join(__dirname, '../../modules/tools/definitions/ProjectPipelineTool.ts'), 'utf8');
+    check('الاستكشاف العام يسبق التخطيط', pipelineSource.indexOf("executeTool('engineering_discovery'") < pipelineSource.indexOf("executeTool('project_planner'"));
+    check('لا يوجد اختيار تلقائي لأساس ORION', !pipelineSource.includes("executeTool('orion_business_foundation'"));
+    check('ولا اختيار تلقائي لأساس المنصة المؤسسية', !pipelineSource.includes("executeTool('enterprise_platform_foundation'"));
 
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-shop-'));
     const { executeTool: raw } = await import('../../modules/services/ToolService');

@@ -218,7 +218,12 @@ export interface SanitisedPlan {
  * thing Joe can honestly do for it, a written document, so the phase still
  * produces a deliverable instead of a red ❌ nobody can act on.
  */
-export function sanitisePlanPhases(phases: any[], projectDir = ''): SanitisedPlan {
+export interface PlanSanitiseOptions {
+    /** Greenfield work without a user-selected stack may create only explicit, file-level work. */
+    disallowImplicitScaffold?: boolean;
+}
+
+export function sanitisePlanPhases(phases: any[], projectDir = '', options: PlanSanitiseOptions = {}): SanitisedPlan {
     const notes: string[] = [];
     let executableTasks = 0;
     const dir = String(projectDir || '').replace(/[^a-zA-Z0-9-_]/g, '-').slice(0, 40) || 'project';
@@ -237,8 +242,28 @@ export function sanitisePlanPhases(phases: any[], projectDir = ''): SanitisedPla
 
             const r = resolvePlannedTool(asked);
             if (r.tool) {
+                // A greenfield request without an explicit stack is not permission
+                // to invent one. A seed tool encodes a framework and dependency
+                // decision; retain only precise file-level work until the user or
+                // inspected evidence supplies that decision.
+                const seedTools = new Set(['scaffold_project', 'scaffold_full_stack', 'react_project', 'api_project', 'web_page_builder', 'mobile_builder']);
+                if (options.disallowImplicitScaffold && seedTools.has(r.tool)) {
+                    notes.push(`[plan] أسقطتُ «${desc}» — لا توجد تقنية أو إطار مُختار صراحةً لهذه المساحة الجديدة؛ لن أُنشئ scaffold افتراضياً.`);
+                    continue;
+                }
+                // A recognised name is still not automatically runnable: model
+                // arguments must satisfy the real tool contract.  Otherwise an
+                // invented action (for example `create` on a migrator that only
+                // supports migrate/push/reset/status) reaches execution, fails,
+                // and is wrongly treated as a code defect for self-healing.
+                const adaptedArgs = adaptPlannedArgs(r.tool, { ...(task?.args || {}), ...(task?.input || {}) });
+                const argsIssue = plannedArgsIssue(r.tool, adaptedArgs);
+                if (argsIssue) {
+                    notes.push(`[plan] أسقطتُ «${desc}» — ${argsIssue}`);
+                    continue;
+                }
                 if (r.how !== 'exact') notes.push(`[plan] «${asked}» → ${r.tool} (${desc})`);
-                kept.push({ ...task, tool: r.tool });
+                kept.push({ ...task, tool: r.tool, args: adaptedArgs });
                 executableTasks++;
                 continue;
             }
@@ -330,6 +355,7 @@ const ARG_SYNONYMS: Record<string, string[]> = {
     operation: ['action', 'op', 'subcommand', 'verb'],
     command: ['cmd', 'script', 'shell', 'run', 'commandLine'],
     path: ['file', 'filename', 'filePath', 'target', 'dest', 'destination'],
+    filePath: ['file', 'filename', 'path', 'target', 'sourceFile'],
     content: ['text', 'body', 'data', 'source'],
     description: ['prompt', 'instruction', 'details', 'spec'],
     baseDir: ['dir', 'directory', 'folder', 'projectDir'],
@@ -416,6 +442,60 @@ export function whyNoBuiltUrl(sessionId: string): string {
 
 /** The browser tools that audit or read a page and cannot invent their own address. */
 const NEEDS_BUILT_URL = new Set(['browser_ui_audit', 'browser_screenshot', 'browser_extract', 'browser_open']);
+
+/**
+ * Validate model-written arguments that use a closed action vocabulary.
+ *
+ * This is deliberately separate from JSON-schema validation: plans can be
+ * loaded from old sessions or repair tickets and must be rejected before any
+ * side-effecting tool executes.  The return value is a user-facing reason, not
+ * a silent coercion; we never guess a migration operation from prose.
+ */
+export function plannedArgsIssue(toolName: string, args: any): string | null {
+    if (toolName === 'npm_manager' && !String(args?.command || '').trim()) {
+        return 'npm_manager يحتاج command صالحاً مثل «install» أو «run test»؛ لم تُحدّد الخطة أمراً، لذلك أُسقطت المهمة قبل التنفيذ.';
+    }
+    if (toolName === 'db_schema_migrator') {
+        const action = norm(args?.action);
+        const supported = ['migrate', 'push', 'reset', 'status'];
+        if (!supported.includes(action)) {
+            return `db_schema_migrator يحتاج action واحداً من ${supported.join(', ')}، لكن الخطة طلبت «${action || 'مفقود'}». يلزم إثبات محرك ومخطط البيانات قبل تشغيل هجرة.`;
+        }
+    }
+    // DocumentationGeneratorTool can only transform an existing source file.
+    // A model-written phase that says “document the project” without naming a
+    // source file is not a file-not-found incident: it is an incomplete plan.
+    // Reject it before execution so the recovery loop never fabricates a file
+    // merely to satisfy an undefined path.
+    if (toolName === 'doc_generator' && !String(args?.filePath || '').trim()) {
+        return 'doc_generator يحتاج filePath لملف مصدر موجود ومثبت في الأدلة؛ لم تُحدّد الخطة ملفاً للتوثيق، لذلك أُسقطت المهمة قبل التنفيذ.';
+    }
+    // ai_write_file is a source-generation contract, not a vague instruction to
+    // “write code”.  It must name exactly one relative destination and explain
+    // the expected contents before the model is called.  Without both fields,
+    // execution would only create a false code defect and trigger self-healing.
+    if (toolName === 'ai_write_file') {
+        const target = String(args?.path || '').trim();
+        const brief = String(args?.description || '').trim();
+        if (!target || !brief) {
+            return 'ai_write_file يحتاج path نسبياً وdescription يوضح محتوى الملف؛ لم تُحدد الخطة عقد إنشاء مصدر مكتمل، لذلك أُسقطت المهمة قبل التنفيذ.';
+        }
+        if (target.startsWith('/') || target.includes('..')) {
+            return 'ai_write_file يحتاج path نسبياً داخل مساحة العمل؛ رفضتُ مساراً قد يخرج من المشروع قبل أي كتابة.';
+        }
+    }
+    // test_generator reads a real source file before it writes the matching test.
+    // A phase-level request such as “test the console” is not an executable test
+    // contract: without filePath the tool can only ask fs to read `undefined`,
+    // then a planner mistakenly treats the resulting input error as a code bug.
+    if (toolName === 'test_generator') {
+        const source = String(args?.filePath || '').trim();
+        if (!source || /^undefined$/i.test(source)) {
+            return 'test_generator يحتاج filePath لملف مصدر محدد؛ لم تُثبت الخطة الملف المراد اختباره، لذلك أُسقطت المهمة قبل التنفيذ.';
+        }
+    }
+    return null;
+}
 
 export function adaptPlannedArgs(toolName: string, args: any): any {
     const out: any = { ...(args || {}) };

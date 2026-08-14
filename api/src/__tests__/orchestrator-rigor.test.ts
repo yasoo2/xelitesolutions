@@ -88,3 +88,11 @@ describe('the run-level recovery budget and the humanized failure', () => {
         expect(AgentLoopService.humanizeFailure('تعذر تنفيذ الخطوة الثالثة', 'ar')).toBe('تعذر تنفيذ الخطوة الثالثة');
     });
 });
+
+describe('replanning preserves the original engineering goal', () => {
+    it('never replans from a partial node task or DAG identifier when the user goal exists', () => {
+        const src = read('orchestration', 'AgentOrchestrator.ts');
+        expect(src).toContain('this.plan(goalText || dag.nodes[0]?.task || "continue goal", memory, traceId)');
+        expect(src).toContain('this.plan(goalText || dag.id, memory, traceId)');
+    });
+});

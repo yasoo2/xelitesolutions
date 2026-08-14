@@ -15,6 +15,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerTool';
 
 describe('every defined tool is reachable', () => {
     // The REAL registry — not a source grep.
@@ -222,5 +223,76 @@ describe('project-run preserves the user-selected workspace and task boundary', 
         expect(guard).toBeGreaterThan(-1);
         expect(recovery).toBeGreaterThan(guard);
         expect(orch.slice(guard, recovery)).toContain("return { ok: false");
+    });
+});
+
+
+describe('planner failures preserve their evidence-backed blocker', () => {
+    it('keeps fallback state and its reason when normalising a blocked plan', () => {
+        const planner: any = new ProjectPlannerTool();
+        const blocked = planner.validatePlan({
+            projectName: 'NOVA',
+            phases: [],
+            fallback: true,
+            deliveryStatus: 'blocked',
+            blocker: { code: 'planner_unavailable_or_invalid', message: 'The planner response was not valid JSON.' },
+        }, 'Build NOVA');
+        expect(blocked.fallback).toBe(true);
+        expect(blocked.deliveryStatus).toBe('blocked');
+        expect(blocked.blocker).toEqual(expect.objectContaining({ code: 'planner_unavailable_or_invalid' }));
+    });
+});
+
+describe('evidence-gated engineering runs stop for a user decision', () => {
+    it('marks incomplete discovery as a project-root decision rather than a repairable tool fault', () => {
+        const pipeline = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
+        expect(pipeline).toContain('requiresUserDecision: true');
+        expect(pipeline).toContain("stopReason: 'evidence_incomplete'");
+        expect(pipeline).toContain("kind: 'select_project_root'");
+    });
+
+    it('surfaces the evidence decision before the generative recovery planner', () => {
+        const orch = fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
+        const decisionGuard = orch.indexOf('out.requiresUserDecision');
+        const recovery = orch.indexOf('await this.attemptRecovery(');
+        expect(decisionGuard).toBeGreaterThan(-1);
+        expect(recovery).toBeGreaterThan(decisionGuard);
+        expect(orch.slice(decisionGuard, recovery)).toContain('completedNodes.add(node.id)');
+    });
+});
+
+
+describe('partial phases preserve verified blockers instead of guessing a repair', () => {
+    it('marks failed acceptance checks explicitly in the phase result', () => {
+        const executor = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'PhaseExecutorTool.ts'), 'utf-8');
+        expect(executor).toContain('let verificationFailed = false');
+        expect(executor).toContain('verificationFailed = true');
+        expect(executor).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
+    });
+
+    it('stops an evidence-backed partial phase before a repair ticket can be built', () => {
+        const loop = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
+        const blockerGuard = loop.indexOf('const isHonestBlocker =');
+        const repairTicket = loop.indexOf('const repairTicket = RepairTicketService.build');
+        expect(blockerGuard).toBeGreaterThan(-1);
+        expect(repairTicket).toBeGreaterThan(blockerGuard);
+
+        const guardedRegion = loop.slice(blockerGuard, repairTicket);
+        expect(guardedRegion).toContain('phaseResult?.output?.requiresUserDecision === true');
+        expect(guardedRegion).toContain('phaseResult?.output?.verificationFailed === true');
+        expect(guardedRegion).toContain("primaryError.includes('EVIDENCE_BLOCKER')");
+        expect(guardedRegion).toContain('return { ok: false, completedPhases, results, honestBlocker: true }');
+    });
+});
+
+
+describe('pipeline preserves an honest verification verdict for its caller', () => {
+    it('forwards phase verification failure instead of reducing it to an opaque partial result', () => {
+        const pipeline = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
+        expect(pipeline).toContain('const verificationFailed = Array.isArray(pipeline?.results)');
+        expect(pipeline).toContain('result?.verificationFailed === true');
+        expect(pipeline).toContain('const honestBlocker = pipeline?.honestBlocker === true || verificationFailed');
+        expect(pipeline).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
+        expect(pipeline).toContain('...(honestBlocker ? { honestBlocker: true } : {})');
     });
 });
