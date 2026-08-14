@@ -85,7 +85,30 @@ describe('evidence-first engineering discovery', () => {
     expect(plannerIndex).toBeGreaterThan(discoveryIndex);
     expect(source).not.toContain("executeTool('orion_business_foundation'");
     expect(source).not.toContain("executeTool('enterprise_platform_foundation'");
-    expect(source).not.toContain("tool: 'api_project'");
-    expect(source).not.toContain("tool: 'react_project'");
+  });
+
+  /**
+   * This pair used to also ban `tool: 'api_project'` and `tool: 'react_project'`
+   * from this file — and that ban is precisely what left the system with
+   * nothing to do when no model answered. A generic builder is not a product
+   * foundation: it carries no product name, no stored business template, and
+   * it reads the request. Banning it did not protect the evidence-first rule,
+   * it removed the only plan a dead provider mesh can still produce.
+   *
+   * The invariant worth keeping is narrower and is asserted here: the planner
+   * owns the normal path, and the deterministic builders may appear only
+   * BEHIND it, as the fallback for when it cannot be reached.
+   */
+  test('the deterministic builders are a fallback behind the planner, never the primary route', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
+    const plannerIndex = source.indexOf("executeTool('project_planner'");
+    const fallbackIndex = source.indexOf('deterministicPhasesFor(request)');
+
+    expect(fallbackIndex).toBeGreaterThan(plannerIndex);
+    // …and it is reached only after the planner has actually failed.
+    expect(source).toContain('if (!plannerResult?.ok || plannerResult?.output?.fallback)');
+    // …and only for a request that creates something new, so it can never
+    // scaffold on top of a project the user asked to be modified.
+    expect(source).toContain('evidence?.constraints?.createsNewProject');
   });
 });

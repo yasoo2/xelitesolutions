@@ -99,6 +99,24 @@ const FUZZY_KEYWORDS = [
 
 const AR_DIACRITICS = /[ً-ْٰـ]/g; // tashkeel + dagger alef + tatweel
 
+/**
+ * HARAKAT ARE NOT WORD BOUNDARIES.
+ *
+ * Exported because a matcher that asserts Arabic word boundaries — and it
+ * must, since `\b` is meaningless for Arabic — will otherwise be defeated by
+ * a single vowel mark. `«ابنِ نظاماً»` is «ابن» followed by a kasra, and a
+ * lookahead for `(?=$|[\s،:؛])` sees the kasra, not the space, and refuses
+ * the match. The user then watches a plain build order fall through to a
+ * planner it never needed.
+ *
+ * The answer is never to add «ابنِ» to a list beside «ابن» — that is the
+ * whitelist disease, and the next form («ابنُ», «اِبن») is already waiting.
+ * Strip the marks and match the letters.
+ */
+export function stripArabicDiacritics(raw: string): string {
+    return String(raw || '').replace(AR_DIACRITICS, '');
+}
+
 function foldChars(s: string): string {
     let out = String(s || '').normalize('NFKC');
     out = out.replace(AR_DIACRITICS, '');

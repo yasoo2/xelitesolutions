@@ -19,6 +19,51 @@ import { isArabicReply, say as pick } from '../../../shared/reply-language';
  * phases, and the repair-ticket/self-fix loop when a phase fails.
  */
 
+/**
+ * THE PLAN A DEAD MESH CAN STILL PRODUCE.
+ *
+ * Nothing here matches a product name or a business domain — it reads the
+ * two things the request states out loud: what is being built (scope) and
+ * which entities it names. A page needs no server; a system with its own
+ * rows does, and its interface depends on it. Those are engineering
+ * relations, not a stored template, and they hold for a plant nursery, a
+ * freight company and a domain nobody has thought of yet.
+ *
+ * Exported so the gate that guards it can measure it directly.
+ */
+export function deterministicPhasesFor(request: string): {
+    projectName: string; reason: string; phases: Array<{ name: string; tasks: any[] }>;
+} | null {
+    const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
+    if (!PlanningEngine.looksLikeBuild(request)) return null;
+    const scope: 'page' | 'app' | 'system' = PlanningEngine.classifyBuildScope(request);
+
+    let projectName = 'project';
+    try { projectName = require('../../../core/design/subject-phrase').subjectPhrase(request, 48) || 'project'; } catch { /* naming is cosmetic */ }
+
+    if (scope === 'system') {
+        // The interface depends on the service that holds the rows — declared
+        // as an ordered pair of phases, so the dependency is enforced by the
+        // plan rather than left to whoever executes it.
+        return {
+            projectName,
+            reason: 'declared entities require their own data service, and the interface depends on it',
+            phases: [
+                { name: 'Data service and schema', tasks: [{ tool: 'api_project', description: `Backend and database for: ${request}`, args: { request } }] },
+                { name: 'Interface on the service', tasks: [{ tool: 'react_project', description: `Interface for: ${request}`, args: { request } }] },
+            ],
+        };
+    }
+    return {
+        projectName,
+        reason: scope === 'page' ? 'a single page was asked for; no data service is implied' : 'an application was asked for with no declared data service',
+        phases: [{
+            name: scope === 'page' ? 'Page' : 'Application',
+            tasks: [{ tool: scope === 'page' ? 'web_page_builder' : 'react_project', description: request, args: { request } }],
+        }],
+    };
+}
+
 export class ProjectPipelineTool implements ToolDefinition {
     name = 'project_pipeline';
     version = '1.0.0';
@@ -29,6 +74,11 @@ export class ProjectPipelineTool implements ToolDefinition {
         type: 'object' as const,
         properties: {
             request: { type: 'string' as const, description: 'The full project request, in the user\'s own words' },
+            // The blocking message below tells the caller to select a project
+            // root. It has to arrive somewhere: discovery accepts `path`, and
+            // before this the pipeline never forwarded it, so the remedy it
+            // printed was an instruction with no wire behind it.
+            path: { type: 'string' as const, description: 'Workspace-relative project root to operate on. Answers a select_project_root decision.' },
         },
         required: ['request'],
     };
@@ -52,7 +102,7 @@ export class ProjectPipelineTool implements ToolDefinition {
     auditFields = ['request'];
     mockSupported = false;
 
-    async execute(input: { request: string }, context?: any) {
+    async execute(input: { request: string; path?: string }, context?: any) {
         const logs: string[] = [];
         const request = String(input?.request || '').trim();
         if (!request) return { ok: false, error: 'request is required', logs };
@@ -82,7 +132,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         say(pick(isAr,
             '[pipeline] أستكشف مساحة العمل والمشروع والاختبارات قبل اختيار أي تنفيذ…',
             '[pipeline] Discovering the workspace, project, and declared checks before selecting implementation…'));
-        const discoveryResult = await executeTool('engineering_discovery', { request }, context);
+        const projectPath = String(input?.path || '').trim();
+        const discoveryResult = await executeTool('engineering_discovery',
+            projectPath ? { request, path: projectPath } : { request }, context);
         if (!discoveryResult?.ok || !discoveryResult?.output?.evidence) {
             const message = discoveryResult?.error || 'Engineering discovery did not return usable evidence.';
             return {
@@ -118,6 +170,12 @@ export class ProjectPipelineTool implements ToolDefinition {
                     decision: {
                         kind: 'select_project_root',
                         blockers: evidence.blockers || [],
+                        // Name the input that carries the answer back, so the
+                        // caller can act on this instead of re-reading it.
+                        answerWith: { tool: 'project_pipeline', field: 'path' },
+                        candidates: (evidence.facts || [])
+                            .filter((fact: any) => fact.id === 'workspace.multiple_projects')
+                            .map((fact: any) => fact.statement),
                     },
                     evidence, summary,
                 },
@@ -132,9 +190,41 @@ export class ProjectPipelineTool implements ToolDefinition {
         // foundation only when it records a reason grounded in requirements or
         // inspected workspace facts; no deterministic request classifier owns it.
         say('[pipeline] planning evidence-backed engineering phases…');
-        const plannerResult = await executeTool('project_planner', { projectDescription: request, evidence }, context);
+        let plannerResult: any = await executeTool('project_planner', { projectDescription: request, evidence }, context);
         if (!plannerResult?.ok || plannerResult?.output?.fallback) {
             const blocker = plannerResult?.output?.blocker?.message || plannerResult?.error || 'The planner did not produce a valid evidence-backed plan.';
+
+            /**
+             * A RESCUE THAT RE-CALLS THE THING THAT JUST FAILED IS NOT A RESCUE.
+             *
+             * When every provider is down, the planner returns nothing — and
+             * the rescue plan upstream routes here, into a tool whose first
+             * real step is that same planner. Measured on a clean workspace
+             * with every provider unreachable: 0/0 phases, zero files, «توقف
+             * التخطيط بصدق». The circle closed on the exact case the rescue
+             * exists for.
+             *
+             * The answer is NOT a product-name template. It is to plan from
+             * what the REQUEST ITSELF declares — the same shape path the rest
+             * of this system uses: the entities he listed become the data
+             * model, the scope decides whether that needs a server, and the
+             * deterministic builders do work that never needed a model. If
+             * the request declares too little to plan from, this falls through
+             * and stops honestly, exactly as before.
+             */
+            const deterministic = evidence?.constraints?.createsNewProject
+                ? deterministicPhasesFor(request)
+                : null;
+            if (deterministic) {
+                say(pick(isAr,
+                    `[pipeline] لا مخطِّط متاح — أخطّط حتمياً مما صرّح به الطلب: ${deterministic.reason}`,
+                    `[pipeline] no planner available — planning deterministically from what the request declares: ${deterministic.reason}`));
+                plannerResult = {
+                    ok: true,
+                    output: { projectName: deterministic.projectName, phases: deterministic.phases, deterministic: true, plannedWithoutModel: true },
+                    logs: plannerResult?.logs || [],
+                };
+            } else {
             const summary = pick(isAr,
                 `## ⚠️ توقف التخطيط بصدق\n\n${blocker}\n\nلم يُنشئ Joe مشروعاً أو قالباً كتعويض عن خطة مفقودة.`,
                 `## ⚠️ Planning stopped honestly\n\n${blocker}\n\nJoe did not create a project or template as a substitute for a missing plan.`);
@@ -148,6 +238,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 },
                 logs: [...logs, ...(plannerResult?.logs || [])],
             };
+            }
         }
         const phases = plannerResult?.output?.phases;
         if (!Array.isArray(phases) || phases.length === 0) {

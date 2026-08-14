@@ -1,7 +1,7 @@
 import { StructuredIntent } from '../intelligence/IntentParser';
 import { catalogueFor, registeredToolNames, capabilityRoute, inputForTool } from './toolCatalog';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
-import { normalizeIntentText } from './promptNormalizer';
+import { normalizeIntentText, stripArabicDiacritics } from './promptNormalizer';
 import { compactHistoryForPrompt } from './history-compact';
 
 export interface ExecutionStep {
@@ -164,14 +164,31 @@ export class PlanningEngine {
          * already spent, and a request that needed NO model at all died with
          * «تعذّر الوصول إلى محرّك الذكاء». One missing alef.
          */
+        /**
+         * …AND A VOWEL MARK IS NOT A WORD BOUNDARY.
+         *
+         * Asserting Arabic boundaries above was right — a bare substring made
+         * «واجهة برمجية» look like the imperative «برمج». But the boundary
+         * class `[\s،:؛]` knows nothing of harakat, so `«ابنِ نظاماً»` — the
+         * verb followed by a KASRA — failed the lookahead and stopped being a
+         * build request at all. Measured: true before the boundaries were
+         * added, false after.
+         *
+         * Adding «ابنِ» beside «ابن» would fix this sentence and no other:
+         * «ابنُ», «اِبن» and every form nobody has typed yet are already
+         * queuing. Strip the marks once and match the letters — the harakat
+         * are decoration on a word, never a break between two.
+         */
+        const bare = stripArabicDiacritics(g);
         const verb = /\b(build|create|make|develop|generate|scaffold|implement|code)\b/i.test(g)
             // Require verb boundaries in Arabic too. A bare substring made
             // «واجهة برمجية» look like the imperative «برمج»، hijacking
             // analysis → security → API-test workflows as project builds.
-            || /(?:^|[\s،:؛])(?:ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو|برمج|شيّ?د|أقم|اقم)(?=$|[\s،:؛])/.test(g)
-            || /(^|\s)بنِ?\s/.test(g);
+            || /(?:^|[\s،:؛])(?:ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو|برمج|شيّ?د|أقم|اقم)(?=$|[\s،:؛])/.test(bare)
+            || /(^|\s)بنِ?\s/.test(g)
+            || /(?:^|[\s،:؛])بن(?=$|[\s،:؛])/.test(bare);
         const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|console|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game)\b/i.test(g)
-            || /(موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|واجهة|أداة|اداة|برنامج|بوابة|خدمة)/.test(g);
+            || /(موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|واجهة|أداة|اداة|برنامج|بوابة|خدمة)/.test(bare);
         return verb && noun;
     }
 

@@ -59,7 +59,11 @@ describe('a missing interpreter is a skipped check, never a manufactured failure
 
     test('the shared pipeline discovers first and propagates verification evidence', () => {
         const pipeline = source('modules/tools/definitions/ProjectPipelineTool.ts');
-        expect(pipeline).toContain("executeTool('engineering_discovery', { request }, context)");
+        // Repointed: the pipeline now forwards the project root a caller may
+        // supply, so the literal call text changed. The guarantee is unchanged —
+        // discovery is still the first thing that runs.
+        expect(pipeline).toContain("executeTool('engineering_discovery',");
+        expect(pipeline).toContain("projectPath ? { request, path: projectPath } : { request }");
         expect(pipeline).toContain('const verificationFailed = Array.isArray(pipeline?.results)');
         expect(pipeline).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
         expect(pipeline).toContain('evidence is incomplete — blocking writes honestly');

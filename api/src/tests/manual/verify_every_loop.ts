@@ -117,7 +117,9 @@ async function main() {
         // A «نظام» is the whole pipeline — backend and interface. Asking for
         // react_project here would be asking for half the request.
         ['ابنِ لي نظام عيادة بيطرية بقاعدة بيانات حقيقية', 'project_pipeline'],
-        ['اعمل لي تطبيق حجز مواعيد', 'react_project'],
+        // Repointed with the row above it: a build request now reaches the
+        // shared pipeline, which selects the builders from the evidence.
+        ['اعمل لي تطبيق حجز مواعيد', 'project_pipeline'],
         ['شغّل المشروع', 'project_run'],
         ['أوقف الخادم', 'project_stop'],
         ['انشر المشروع على الإنترنت', 'deploy_pages'],
@@ -129,10 +131,15 @@ async function main() {
     // «تطبيق حجز مواعيد» has data behind it, so the plan is a SYSTEM: the
     // server first, then the interface wired to it. An app that reaches the
     // builder without its backend is a screen with nothing behind it.
+    // REPOINTED: the top-level plan now hands the request to the shared
+    // pipeline, which resolves the builders from the evidence. The ordering
+    // promise is unchanged and is asserted where it is now decided.
     const appPlan = await planOf('اعمل لي تطبيق حجز مواعيد');
+    const { deterministicPhasesFor } = await import('../../modules/tools/definitions/ProjectPipelineTool');
+    const appPhases = (deterministicPhasesFor('اعمل لي تطبيق حجز مواعيد')?.phases || []).map(ph => String(ph.tasks?.[0]?.tool));
     check('…and an app with data gets its backend BEFORE its interface',
-        appPlan.indexOf('api_project') === 0 && appPlan.includes('react_project'),
-        appPlan.join(' → ') || '(empty)');
+        appPlan.includes('project_pipeline') && appPhases.indexOf('api_project') === 0 && appPhases.includes('react_project'),
+        `${appPlan.join(' → ')} :: ${appPhases.join(' → ')}` || '(empty)');
 
     /**
      * The word «رسائل» belongs to two worlds, and the Gmail path claimed it

@@ -2020,7 +2020,11 @@ describe('a plan may only name tools that exist', () => {
 describe('the biggest request gets the strongest route', () => {
     it('the pipeline discovers evidence, plans phases, then executes verification', () => {
         const P = SRC('modules', 'tools', 'definitions', 'ProjectPipelineTool.ts');
-        expect(P).toContain("executeTool('engineering_discovery', { request }, context)");
+        // Repointed: the pipeline now forwards the project root a caller may
+        // supply, so the literal call text changed. The guarantee is unchanged —
+        // discovery is still the first thing that runs.
+        expect(P).toContain("executeTool('engineering_discovery',");
+        expect(P).toContain("projectPath ? { request, path: projectPath } : { request }");
         expect(P).toContain("executeTool('project_planner', { projectDescription: request, evidence }, context)");
         expect(P).toContain('AgentLoopService.runPlannedPhasesIfPresent');
         expect(P).toContain('evidence is incomplete — blocking writes honestly');

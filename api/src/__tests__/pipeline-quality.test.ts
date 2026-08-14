@@ -31,7 +31,11 @@ describe('the quality phase is executable, not decorative', () => {
     it('the evidence-first pipeline supplies discovery to the phase planner', () => {
         const fs = require('fs'); const path = require('path');
         const pipeline = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
-        expect(pipeline).toContain("executeTool('engineering_discovery', { request }, context)");
+        // Repointed: the pipeline now forwards the project root a caller may
+        // supply, so the literal call text changed. The guarantee is unchanged —
+        // discovery is still the first thing that runs.
+        expect(pipeline).toContain("executeTool('engineering_discovery',");
+        expect(pipeline).toContain("projectPath ? { request, path: projectPath } : { request }");
         expect(pipeline).toContain("executeTool('project_planner', { projectDescription: request, evidence }, context)");
         expect(pipeline).toContain('AgentLoopService.runPlannedPhasesIfPresent');
     });

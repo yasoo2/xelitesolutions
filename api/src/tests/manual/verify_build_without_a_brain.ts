@@ -76,9 +76,25 @@ async function main() {
     const tools = (dag?.steps || []).map((s: any) => String(s.tool));
     console.log(`   ℹ️ ${dag?.id} → ${tools.join(', ') || 'لا خطوات'}`);
     check('لا خطوة كلام', !tools.includes('central_answer'), tools.join(', '));
-    check('بل بنّاء حقيقي', tools.some((t: string) => ['api_project', 'react_project', 'web_page_builder'].includes(t)), tools.join(', '));
+    /**
+     * REPOINTED, NOT RELAXED — the guarantee moved one level down.
+     *
+     * The top-level plan used to name the builders itself. It now returns a
+     * single `project_pipeline` step, and the builders are chosen inside it.
+     * The promise being measured is unchanged — a build reaches real builders,
+     * and a request with its own rows gets its data service BEFORE its
+     * interface — so the check follows the promise to where it now lives
+     * instead of pinning a topology.
+     */
+    const { deterministicPhasesFor } = await import('../../modules/tools/definitions/ProjectPipelineTool');
+    const phaseTools = (deterministicPhasesFor(HIS_WORDS)?.phases || []).map(ph => String(ph.tasks?.[0]?.tool));
+    check('بل بنّاء حقيقي',
+        tools.includes('project_pipeline')
+        && phaseTools.some((t: string) => ['api_project', 'react_project', 'web_page_builder'].includes(t)),
+        `${tools.join(', ')} → ${phaseTools.join(', ')}`);
     check('وخادمٌ قبل الواجهة — لأنّ فيه موردين وطلبيات',
-        tools.includes('api_project') && tools.includes('react_project'), tools.join(', '));
+        phaseTools.indexOf('api_project') === 0 && phaseTools.includes('react_project'),
+        phaseTools.join(' → '));
 
     console.log('\n[4] والنظام يُبنى فعلاً — بلا دماغ إطلاقاً');
     const { executeTool } = await import('../../modules/services/ToolService');
@@ -91,8 +107,12 @@ async function main() {
     const dir = String((global as any).joeProjects?.[sessionId]?.dir || '');
     console.log(`   ℹ️ ${dir}`);
     check('على القرص', !!dir && fs.existsSync(path.join(dir, 'server.js')), dir);
-    check('والسبب مُعلن: لا مجال معروف ولا نموذج',
-        (res?.logs || []).some((l: string) => /no domain matched and no model answered|a known domain matched/.test(l)),
+    // The wording of the announcement changed when the model came from the
+    // request's own words rather than a canned domain — which is the better
+    // outcome. What is measured is that the reason is SAID, not which of the
+    // three reasons it happened to be.
+    check('والسبب مُعلن: من أين جاء نموذج البيانات',
+        (res?.logs || []).some((l: string) => /no domain matched and no model answered|a known domain matched|read from the request itself|the request declares its tables/.test(l)),
         (res?.logs || []).filter((l: string) => /data model/.test(l)).join(' | ').slice(0, 160));
 
     // The Arabic message's own shape: «البريد: …» then «كلمة المرور: …».

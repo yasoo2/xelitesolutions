@@ -24,6 +24,8 @@ export interface EngineeringEvidence {
         localOnly: boolean;
         forbidDeploy: boolean;
         userRequestedExistingProject: boolean;
+        /** The request creates a new project; discovered projects are not its target. */
+        createsNewProject: boolean;
     };
     facts: Array<{ id: string; source: 'request' | 'workspace' | 'tool'; statement: string }>;
     blockers: Array<{ code: string; message: string; remedy?: string }>;
@@ -85,6 +87,45 @@ export class EngineeringDiscoveryTool extends BaseTool {
         const forbidDeploy = /(?:لا|ليس|بدون|غير|do\s+not|don't|without|no)\s+(?:(?:أي|any|external)\s+)?(?:نشر|رفع|استضافة|deploy|publish|host|go\s*live)/i.test(request);
         const localOnly = forbidDeploy || /(?:محلي|local(?:ly)?|على\s+(?:جهازي|الجهاز)|on\s+(?:my\s+)?machine)/i.test(request);
 
+        /**
+         * «WHICH OF YOUR PROJECTS DO YOU MEAN?» IS THE WRONG QUESTION TO ASK
+         * SOMEONE WHO JUST SAID «BUILD ME A NEW ONE».
+         *
+         * Discovery counted the manifests in the workspace and, at two or
+         * more, declared the situation `ambiguous` — which the pipeline turns
+         * into a hard block. Measured on this machine: 0 projects → builds,
+         * 1 project → builds, 2+ → refused, with the owner's own folder
+         * holding 24. From his third project onward, every new build request
+         * stopped with «select a project root» and wrote nothing.
+         *
+         * Ambiguity is real, but it belongs to an operation that must LAND on
+         * one existing project — edit it, test it, run it. A request to
+         * create something new names no project because there is none to
+         * name; its write scope is a fresh directory that cannot collide with
+         * anything discovered. Counting manifests answers a question this
+         * request never asked.
+         *
+         * So the intent is read first, by shape, and it decides which
+         * question is even relevant.
+         */
+        // Lazy require: PlanningEngine -> toolCatalog -> registry -> definitions
+        // -> this file is a cycle if imported at module load.
+        const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
+        const buildsSomethingNew = PlanningEngine.looksLikeBuild(request)
+            && !requestedExisting
+            && !remoteUrl
+            // «ابنِ على المشروع الحالي» / «أضف صفحة إلى الموقع» point AT
+            // something that already exists — the noun is a target, not a
+            // thing to be created.
+            && !/(?:على|إلى|الى|in|into|to)\s+(?:هذا\s+)?(?:المشروع|المجلد|الموقع|التطبيق|النظام)\b/i.test(request);
+        if (buildsSomethingNew) {
+            facts.push({
+                id: 'request.creates_new_project',
+                source: 'request',
+                statement: 'The request asks for a NEW project; its write scope is a fresh directory, so previously discovered projects cannot be affected.',
+            });
+        }
+
         facts.push({ id: 'workspace.root', source: 'workspace', statement: `Workspace root selected: ${workspaceRoot}` });
         if (request) facts.push({ id: 'request.goal', source: 'request', statement: request.slice(0, 500) });
         if (forbidDeploy) facts.push({ id: 'request.forbid_deploy', source: 'request', statement: 'The request explicitly forbids deployment or publishing.' });
@@ -111,21 +152,34 @@ export class EngineeringDiscoveryTool extends BaseTool {
         if (candidates.length === 1) {
             selectedProject = candidates[0];
             facts.push({ id: 'workspace.selected_project', source: 'workspace', statement: `Exactly one project was detected at ${selectedProject.root}.` });
-        } else if (candidates.length > 1) {
+        } else if (candidates.length > 1 && !buildsSomethingNew) {
             blockers.push({
                 code: 'multiple_projects',
                 message: `Detected ${candidates.length} projects; no project was selected automatically.`,
-                remedy: 'Select a project root or ask Joe to inspect one named project before writing files.',
+                // The remedy has to name the input that carries the answer, or
+                // it is an instruction with no wire behind it: the caller is
+                // told to "select a project root" without being told how.
+                remedy: 'Re-run discovery with `path` set to the project root, or name one project in the request, before writing files.',
             });
             facts.push({ id: 'workspace.multiple_projects', source: 'workspace', statement: `Detected project roots: ${candidates.map(candidate => candidate.root).join(', ')}` });
+        } else if (candidates.length > 1) {
+            facts.push({
+                id: 'workspace.other_projects_untouched',
+                source: 'workspace',
+                statement: `Detected ${candidates.length} existing projects; none of them is the target — this request creates a new one and will not modify them.`,
+            });
         }
 
         let mode: EngineeringEvidence['mode'];
         if (remoteUrl && !selectedProject) {
             mode = 'remote_repository';
             blockers.push({ code: 'remote_not_cloned', message: 'The repository URL has not been cloned into the selected workspace.', remedy: 'Clone/import the repository, then run discovery on its local root.' });
-        } else if (selectedProject) {
+        } else if (selectedProject && !buildsSomethingNew) {
             mode = 'existing_workspace';
+        } else if (buildsSomethingNew) {
+            // A new project is greenfield no matter what else is on the disk:
+            // it writes into its own directory and reads nothing else.
+            mode = 'greenfield';
         } else if (candidates.length > 1) {
             mode = 'ambiguous';
         } else {
@@ -138,7 +192,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
             mode,
             workspaceRoot,
             selectedProject,
-            constraints: { localOnly, forbidDeploy, userRequestedExistingProject: requestedExisting },
+            constraints: { localOnly, forbidDeploy, userRequestedExistingProject: requestedExisting, createsNewProject: buildsSomethingNew },
             facts,
             blockers,
         };
