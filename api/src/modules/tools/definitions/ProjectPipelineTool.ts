@@ -279,6 +279,30 @@ export class ProjectPipelineTool implements ToolDefinition {
             };
             }
         }
+        /**
+         * A PLAN OF ZERO PHASES IS A MISSING PLAN WEARING ok:true.
+         *
+         * The rescue above fires when the planner FAILS. A planner that
+         * answers successfully with an empty `phases` array walked straight
+         * past it into this exit — same outcome for the user, nothing built,
+         * and the deterministic plan that could have run sitting one branch
+         * away. Both are the same fact: no plan arrived.
+         */
+        if ((!Array.isArray(plannerResult?.output?.phases) || plannerResult.output.phases.length === 0)
+            && evidence?.constraints?.createsNewProject) {
+            const rescue = deterministicPhasesFor(request);
+            if (rescue) {
+                say(pick(isAr,
+                    `[pipeline] الخطة عادت فارغة — أخطّط حتمياً مما صرّح به الطلب: ${rescue.reason}`,
+                    `[pipeline] the plan came back empty — planning deterministically from what the request declares: ${rescue.reason}`));
+                plannerResult = {
+                    ok: true,
+                    output: { projectName: rescue.projectName, phases: rescue.phases, deterministic: true, plannedWithoutModel: true },
+                    logs: plannerResult?.logs || [],
+                };
+            }
+        }
+
         const phases = plannerResult?.output?.phases;
         if (!Array.isArray(phases) || phases.length === 0) {
             return {

@@ -90,7 +90,29 @@ export class EngineeringDiscoveryTool extends BaseTool {
         const facts: EngineeringEvidence['facts'] = [];
         const blockers: EngineeringEvidence['blockers'] = [];
         const remoteUrl = /https?:\/\/github\.com\/[\w.-]+\/[\w.-]+/i.test(request);
-        const requestedExisting = /(?:repo(?:sitory)?|github|clone|import|existing|current|this\s+(?:project|codebase)|مستودع|جيت\s*هاب|استنسخ|استورد|المشروع\s*(?:الحالي|الموجود)|الكود\s*(?:الحالي|الموجود))/i.test(request);
+        /**
+         * «مستودع» IS A WAREHOUSE BEFORE IT IS A REPOSITORY.
+         *
+         * This list carried «مستودع» beside `repo`, `github` and `clone`, as a
+         * bare substring with no boundary. Measured on a freight brief naming
+         * «المستودعات» among its domains: the word matched, the request was
+         * read as «operate on an existing repository», `createsNewProject`
+         * came back false — and the deterministic rescue that exists for
+         * exactly that request never fired. A warehouse cost him the build.
+         *
+         * The English words in this list are unambiguous; the Arabic one is
+         * not, and a word with two meanings has to be read in context. So
+         * «مستودع» counts only where a Git signal stands beside it, and every
+         * term is boundary-asserted — `\b` is meaningless for Arabic, so the
+         * boundary is spelled out.
+         */
+        const AR = '\u0621-\u064A';
+        const gitContext = /(?:git|github|جيت|repo(?:sitory)?|clone|استنسخ|استورد|https?:\/\/)/i.test(request);
+        const requestedExisting =
+            /(?:\brepo(?:sitory)?\b|\bgithub\b|\bclone\b|\bimport\b|\bexisting\b|\bcurrent\b|this\s+(?:project|codebase))/i.test(request)
+            || new RegExp(`(^|[^${AR}])(?:جيت\\s*هاب|استنسخ|استورد)(?=$|[^${AR}])`).test(request)
+            || new RegExp(`(^|[^${AR}])(?:المشروع|الكود)\\s*(?:الحالي|الموجود)(?=$|[^${AR}])`).test(request)
+            || (gitContext && new RegExp(`(^|[^${AR}])(?:ال)?مستودع(?=$|[^${AR}])`).test(request));
         const forbidDeploy = /(?:لا|ليس|بدون|غير|do\s+not|don't|without|no)\s+(?:(?:أي|any|external)\s+)?(?:نشر|رفع|استضافة|deploy|publish|host|go\s*live)/i.test(request);
         const localOnly = forbidDeploy || /(?:محلي|local(?:ly)?|على\s+(?:جهازي|الجهاز)|on\s+(?:my\s+)?machine)/i.test(request);
 
