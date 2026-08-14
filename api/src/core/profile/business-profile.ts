@@ -95,9 +95,29 @@ export function parseProfileText(text: string): BusinessProfile {
         ['address', /(العنوان|عنوان|الموقع الجغرافي|address|location)/i],
         ['hours', /(الدوام|ساعات|أوقات\s*العمل|hours)/i],
     ];
+    /**
+     * ARABIC GLUES ITS «و» TO THE NEXT WORD, AND HE WRITES WITH IT.
+     *
+     * The splitter knew commas and newlines. He wrote one sentence joined by
+     * waw — «اسم المطعم دار الرفق والهاتف 0501234567 والعنوان …» — so nothing
+     * split, the `brand` label matched first, and the name it saved was
+     *
+     *     «دار الرفق» والهاتف 0501234567 والعنوان…
+     *
+     * Measured downstream: that string became the project folder, the page
+     * <title> and the hero of every build — `react-دار-الرفق-والهاتف-0501234567-وال`.
+     * One missing separator corrupted his business name everywhere it is used.
+     *
+     * The repo already solved this shape once, in declared-tables: «space +
+     * waw + an Arabic letter», never `\bو`, because `\b` is defined by `\w`.
+     * Here it is narrowed further — the waw splits only where a LABEL follows
+     * it, so a brand that legitimately contains «و» («سعد وأحمد») survives.
+     */
+    const LABEL_AHEAD = '(?:ال)?(?:اسم|علامة|واتس|جوال|هاتف|رقم|تلفون|بريد|ايميل|إيميل|انستغرام|انستقرام|إنستغرام|انستا|تويتر|عنوان|دوام|ساعات|أوقات)';
     const parts = String(text || '')
         .replace(/^[^:：]*[:：]/, '')                     // drop the «احفظ بيانات عملي:» head
-        .split(/[،,·\n;]+/).map(s => s.trim()).filter(Boolean);
+        .split(new RegExp(`[،,·\n;]+|\\s+و(?=${LABEL_AHEAD})|\\s+and\\s+(?=[A-Za-z])`, 'i'))
+        .map(s => s.trim()).filter(Boolean);
     for (const part of parts) {
         for (const [field, re] of labels) {
             const m = part.match(re);
