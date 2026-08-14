@@ -2112,7 +2112,13 @@ describe('the server stores what the app sends', () => {
         // The blueprint's parent table is still wired — but it stands down
         // when the request DECLARED its own tables, because a system cannot
         // have a parent nobody asked for and the model never created.
-        expect(A).toMatch(/const relation = declaredTables\(request\)\.length \? null : apiRelationForRequest\(request\);/);
+        // Repointed: the stand-down rule widened. It used to fire only on a
+        // literal «الجداول: …» declaration; measured on an eleven-domain
+        // sentence that declares nothing under that label, the two-table
+        // parent/child shortcut replaced nine tables the request described.
+        // The guarantee is the same and now covers both ways of naming them.
+        expect(A).toMatch(/const relation = \(declaredForRelation \|\| designed\.length >= 3\)/);
+        expect(A).toMatch(/: apiRelationForRequest\(request\);/);
         expect(A).toMatch(/'server\.js': fileServerJs\(resource, brand, path\.basename\(proj\), relation, model\)/);
         // the link is checked, never trusted
         expect(A).toMatch(/return \{ error: 'unknown_' \+ c\.key \}/);

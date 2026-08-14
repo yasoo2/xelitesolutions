@@ -118,6 +118,20 @@ const AR_EN: Record<string, string> = {
     'زراعه': 'agriculture', 'نبات': 'plants', 'زهور': 'flowers', 'اشجار': 'trees',
     'طاقه': 'energy', 'كهرباء': 'electricity', 'شمسيه': 'solar', 'بيئه': 'environment',
     'نقل': 'transport', 'شحن': 'shipping', 'لوجستيات': 'logistics', 'توصيل': 'delivery',
+    // The business nouns an eleven-domain freight brief is made of. Measured:
+    // each of these used to fall through to transliteration and reach him as
+    // an invented English word — «الحاويات» as `hawyats`, «الجمارك» as
+    // `jmarks`. A dictionary is a whitelist of a LANGUAGE, which is finite and
+    // legitimate; what is not legitimate is presenting a transliteration as
+    // though it were the English word.
+    'حاويه': 'container', 'حاوي': 'container', 'حاويات': 'containers',
+    'جمرك': 'customs', 'جمارك': 'customs', 'تخليص': 'clearance',
+    'سائق': 'driver', 'سائقون': 'drivers', 'سواق': 'driver',
+    'راتب': 'salary', 'رواتب': 'payroll', 'اجر': 'wage',
+    'فوتره': 'billing', 'فواتير': 'invoices', 'فاتوره': 'invoice',
+    'شحنه': 'shipment', 'شحنات': 'shipments', 'طرد': 'parcel', 'طرود': 'parcels',
+    'مشرف': 'supervisor', 'مشرفين': 'supervisors', 'صلاحيه': 'permission', 'صلاحيات': 'permissions',
+    'اسطول': 'fleet', 'جرد': 'stocktake',
     'عقارات': 'real estate', 'عقاري': 'real estate', 'منزل': 'house', 'بيت': 'home',
     'اثاث': 'furniture', 'ديكور': 'interior', 'موضه': 'fashion', 'ملابس': 'clothes',
     'جمال': 'beauty', 'شعر': 'hair', 'عطور': 'perfume', 'مجوهرات': 'jewelry',

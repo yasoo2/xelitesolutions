@@ -228,7 +228,9 @@ export function deriveDataModel(request: string): ModelEntity[] {
             fields: e.fields.map(f => ({ ...f, key: safe(f.key) })).filter(f => f.key && f.key !== 'id' && f.key !== 'created_at'),
         }))
         .filter(e => e.key && e.fields.length)
-        .slice(0, 4);
+        // A stocked domain now answers only a request that named nothing of
+        // its own, so its own shape is the only thing that bounds it.
+        .slice(0, 8);
 }
 
 /** Which domain answered, for the log — «why did I get these four tables?» */

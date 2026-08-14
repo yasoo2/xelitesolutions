@@ -286,7 +286,40 @@ export const NEVER = new Set([
  * system can give columns to, and a capability when its shape says it needs
  * something a database cannot provide.
  */
-export function inferModel(request: string, limit = 4): Inference {
+/**
+ * HOW MANY TABLES A REQUEST GETS IS DECIDED BY THE REQUEST.
+ *
+ * Every path that designs a data model stopped at four or five — four
+ * separate constants, in four files. Measured on an eleven-domain sentence:
+ * the extraction read ten of the eleven correctly and a constant threw six
+ * of them away. Nobody had decided that a shipping company gets four tables;
+ * it was a number someone typed once for a coffee shop.
+ *
+ * The count now comes from what he named. This bound exists only so a
+ * pathological input cannot generate a thousand tables — it is a guard rail,
+ * not a design opinion, and it sits far above any real request.
+ */
+export const MAX_MODEL_ENTITIES = 24;
+
+/**
+ * The English of an Arabic noun, or null when no dictionary has it.
+ * Never a transliteration — the caller decides what to do with "unknown",
+ * and inventing a word is not one of the options.
+ */
+export function englishFor(phrase: string): string | null {
+    const bare = String(phrase || '').replace(/^ال/, '').trim();
+    if (!bare) return null;
+    if (!/[\u0621-\u064A]/.test(bare)) return bare;
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { englishSubject } = require('./subject-translation');
+        const out = englishSubject(bare);
+        if (out?.translated && out.query && !/[\u0621-\u064A]/.test(out.query)) return String(out.query).trim();
+    } catch { /* no dictionary is an answer too */ }
+    return null;
+}
+
+export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inference {
     const entities: ModelEntity[] = [];
     const capabilities: string[] = [];
     const seen = new Set<string>();
@@ -301,8 +334,24 @@ export function inferModel(request: string, limit = 4): Inference {
         seen.add(key);
         if (entities.length >= limit) continue;
         const kind = inferKind(phrase);
+        /**
+         * A TRANSLITERATION IS NOT AN ENGLISH WORD.
+         *
+         * `en` was simply the key, and the key falls back to transliteration
+         * when no dictionary has the noun — so «الحاويات» reached an English
+         * interface as the heading "hawyats". That is a fabricated word
+         * presented as a translation, which is the one thing this system is
+         * not allowed to do.
+         *
+         * The KEY may stay transliterated: it is a SQL identifier and a URL
+         * segment, it must be ascii, and a stable ugly identifier is far
+         * better than a noun that vanishes. But a LABEL is read by a person.
+         * Where the English is unknown, the honest label is the word he
+         * actually wrote.
+         */
+        const english = englishFor(phrase);
         entities.push({
-            key, ar: phrase.replace(/^ال/, 'ال'), en: key,
+            key, ar: phrase.replace(/^ال/, 'ال'), en: english || phrase.trim(),
             fields: fieldsForKind(kind),
         } as ModelEntity);
     }

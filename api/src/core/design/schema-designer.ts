@@ -59,7 +59,9 @@ export const ENTITY_SCHEMA: Record<string, any> = {
     required: ['entities'],
 };
 
-const MAX_ENTITIES = 5;
+// The model may return as many tables as the request warrants; the shared
+// guard rail is the same one the deterministic paths use.
+const MAX_ENTITIES = 12;
 const MAX_FIELDS = 8;
 /** A table name is a SQL identifier and a URL segment — both, or neither. */
 const SAFE = /^[a-z][a-z0-9_]{1,30}$/;
@@ -202,48 +204,78 @@ export async function designDataModel(
         }
     }
 
-    const known = deriveDataModel(request);
-    // The deterministic domains are BETTER than a model guess when they match:
-    // they are hand-checked, and they cost nothing.
-    if (known.length) { opts?.onNote?.(`data model: a known domain matched — ${known.map(e => e.key).join(', ')}`); return known; }
+    /**
+     * WHAT HE NAMED OUTRANKS WHAT WE STOCKED.
+     *
+     * The canned domains used to sit here, above everything that reads the
+     * request, on the argument that they are hand-checked and free. Measured
+     * on his own eleven-domain sentence — «لشركة شحن: العملاء، الشحنات،
+     * الحاويات، الجمارك، المستودعات، السائقون، الرواتب، الفوترة…» — that
+     * argument cost him the whole request:
+     *
+     *     data model: a known domain matched — suppliers, movements
+     *
+     * Two tables, neither of them his, and ten domains he typed thrown away,
+     * because a keyword in his sentence brushed against a stocked domain. A
+     * hand-checked answer to a question he did not ask is not better than a
+     * read of the question he did.
+     *
+     * So the order is now: what he DECLARED, then what his own words IMPLY,
+     * and only then a stocked domain — which still earns its place on the
+     * request that names nothing at all («ابنِ لي متجراً»), where there is
+     * no sentence to read and a hand-checked shape is genuinely the best
+     * available answer.
+     */
+    const { inferModel } = require('./entity-inference');
 
     /**
-     * AND BEFORE ANY MODEL IS ASKED — READ WHAT HE ACTUALLY WROTE.
+     * TWO READERS OF THE SAME SENTENCE — TAKE THE ONE THAT HEARD MORE OF IT.
      *
-     * «ابنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات». He listed the
-     * tables himself, after a colon, separated by «و». That build produced a
-     * generic «إضافة سجلّ» form with العنوان/التفاصيل/قيمة, because «مشتل» is
-     * not one of the six domains and every provider was rate-limited that
-     * minute — so the model was never reached and the list was never read.
+     * `namedEntities` matches against a curated list of nouns: high precision,
+     * and blind to any noun nobody wrote down. `inferModel` reads by shape and
+     * has never heard of freight. Given the same eleven-domain sentence the
+     * curated reader returned five and the shape reader returned nine — and
+     * because the curated one ran first and returned a non-empty answer, four
+     * domains he typed were dropped without a word.
      *
-     * Needing a 70-billion-parameter model to parse a list a human typed is
-     * not intelligence, it is dependence. This costs nothing, works offline,
-     * and declines whenever it is not sure.
+     * Neither is wrong; they have different recall. So both read the sentence
+     * and the fuller reading wins, with the curated one preferred on a tie
+     * because its labels are hand-checked.
      */
     const listed = namedEntities(request);
-    if (listed.length) {
-        opts?.onNote?.(`data model: read from the request itself — ${listed.map(e => e.key).join(', ')}`);
-        return listed;
+    const shaped = inferModel(request).entities;
+    if (listed.length || shaped.length >= 2) {
+        const richer = shaped.length > listed.length ? shaped : listed;
+        const valid = validateDesign(richer);
+        if (valid && valid.length >= 2) {
+            opts?.onNote?.(`data model: read from the request itself — ${valid.map(e => e.key).join(', ')}`
+                + (richer === shaped && listed.length ? ` (${shaped.length} by shape beat ${listed.length} by name)` : ''));
+            return valid;
+        }
+        if (listed.length >= 2) {
+            opts?.onNote?.(`data model: read from the request itself — ${listed.map(e => e.key).join(', ')}`);
+            return listed;
+        }
     }
 
     /**
-     * AND THEN THE GENERAL PATH — «يجب ان نجد طريقه اخرى».
+     * THE GENERAL PATH — «يجب ان نجد طريقه اخرى».
      *
      * He is right that adding a domain per prompt is not a plan: «هذا يعني ان
-     * يجب ان اطور جو لالاف الميزات … وهذا غير ممكن». Everything above this
-     * line is a whitelist — six domains, forty nouns — and a whitelist of the
-     * world has no end.
+     * يجب ان اطور جو لالاف الميزات … وهذا غير ممكن». A stocked domain is a
+     * whitelist — six domains, forty nouns — and a whitelist of the world has
+     * no end.
      *
      * This reads the request by the SHAPE of its words: what a noun looks
      * like, what a gerund looks like, which suffixes mark a person, a payment,
      * an appointment, a container. It has never heard of a veterinary clinic
-     * or a car rental and it builds both, because that list grows with a
+     * or a freight company and it builds both, because that list grows with a
      * language and not with the world.
      *
-     * It runs BEFORE the model, not after: it costs nothing, works with every
-     * provider rate-limited, and never invents a table it cannot give columns.
+     * It runs BEFORE the model and before the stock: it costs nothing, works
+     * with every provider rate-limited, and never invents a table it cannot
+     * give columns.
      */
-    const { inferModel } = require('./entity-inference');
     const inferred = inferModel(request);
     if (inferred.entities.length >= 2) {
         const valid = validateDesign(inferred.entities);
@@ -253,6 +285,10 @@ export async function designDataModel(
             return valid;
         }
     }
+
+    // Only now: a request that named nothing of its own.
+    const known = deriveDataModel(request);
+    if (known.length) { opts?.onNote?.(`data model: nothing was named, so a known domain answered — ${known.map(e => e.key).join(', ')}`); return known; }
 
     if (String(process.env.JOE_AI_SCHEMA || '1') === '0') return [];
 

@@ -219,6 +219,12 @@ describe('one name cannot mean two tables', () => {
     });
 
     it('and a blueprint relation stands down when he named the tables', () => {
-        expect(API).toMatch(/const relation = declaredTables\(request\)\.length \? null : apiRelationForRequest\(request\);/);
+        // Repointed: the stand-down rule widened. It used to fire only on a
+        // literal «الجداول: …» declaration; measured on an eleven-domain
+        // sentence that declares nothing under that label, the two-table
+        // parent/child shortcut replaced nine tables the request described.
+        // The guarantee is the same and now covers both ways of naming them.
+        expect(API).toMatch(/const relation = \(declaredForRelation \|\| designed\.length >= 3\)/);
+        expect(API).toMatch(/: apiRelationForRequest\(request\);/);
     });
 });

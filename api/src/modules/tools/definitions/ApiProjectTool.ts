@@ -2095,7 +2095,7 @@ export class ApiProjectTool extends BaseTool {
          * nothing is added behind them.
          */
         const { declaredTables } = require('../../../core/design/declared-tables');
-        const relation = declaredTables(request).length ? null : apiRelationForRequest(request);
+        const declaredForRelation = declaredTables(request).length;
         /**
          * AND THE REST OF THE SYSTEM'S TABLES.
          *
@@ -2120,6 +2120,28 @@ export class ApiProjectTool extends BaseTool {
          */
         const { designDataModel } = require('../../../core/design/schema-designer');
         const designed = await designDataModel(request, { onNote: (n: string) => term(n) });
+
+        /**
+         * …AND A SYSTEM HE DESCRIBED IS NOT A PARENT/CHILD PAIR.
+         *
+         * The rule above — «the declared tables are the tables» — was right and
+         * too narrow: it only recognised a declaration carrying the literal
+         * word «الجداول». Measured on an eleven-domain freight sentence, which
+         * declares nothing under that label but describes nine tables in plain
+         * words: the model designed all nine, and then a two-table
+         * suppliers/items pattern replaced them, so the delivered database held
+         * `suppliers` and `items` and not one word he wrote.
+         *
+         * The relation shortcut earns its place on a request that names a
+         * parent and its children and nothing else. Once the request has
+         * described a system of its own, that system IS the answer.
+         */
+        const relation = (declaredForRelation || designed.length >= 3)
+            ? null
+            : apiRelationForRequest(request);
+        if (!relation && !declaredForRelation && designed.length >= 3) {
+            term(`data model: ${designed.length} tables described by the request — the parent/child shortcut is not used`);
+        }
         /**
          * A DECLARED TABLE THAT IS ALREADY THE SYSTEM'S OWN PRIMARY TABLE.
          *

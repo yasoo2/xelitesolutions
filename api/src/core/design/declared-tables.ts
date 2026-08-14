@@ -31,7 +31,7 @@
  * label before the colon has to actually say «tables».
  */
 import type { ModelEntity } from './data-model';
-import { inferKind, fieldsForKind, keyForPhrase, NEVER } from './entity-inference';
+import { inferKind, fieldsForKind, keyForPhrase, NEVER, MAX_MODEL_ENTITIES } from './entity-inference';
 
 /**
  * The label that turns a colon into a declaration. «Tables:» and «الجداول:»
@@ -59,7 +59,7 @@ const TAIL = /\s+(?:with|and with|مع|بتصميم|وبتصميم)\s+/i;
  * declare tables, and a wrong table is worse than no table because the entire
  * system — routes, screens, admin panel — is generated from it.
  */
-export function declaredTables(request: string, limit = 5): ModelEntity[] {
+export function declaredTables(request: string, limit = MAX_MODEL_ENTITIES): ModelEntity[] {
     const m = String(request || '').match(DECLARATION);
     if (!m) return [];
 

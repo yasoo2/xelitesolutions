@@ -89,7 +89,16 @@ describe('the validator is harsher than the schema', () => {
             fields: Array.from({ length: 20 }, (__, j) => ({ key: `f${j}x`, type: 'TEXT' })),
         })) };
         const out = validateDesign(many)!;
-        expect(out.length).toBeLessThanOrEqual(5);
+        // The cap is still a cap — «a model nobody can hold is not a model» —
+        // but five was a number chosen for a coffee shop and it was throwing
+        // away six of the eleven domains a freight brief names. The guard rail
+        // moved; it did not disappear, and 40 entities are still refused.
+        expect(out.length).toBeLessThanOrEqual(12);
+        const flood = { entities: Array.from({ length: 40 }, (_, i) => ({
+            key: `q${i}x`, label_ar: 'x', label_en: 'x',
+            fields: [{ key: 'a1', type: 'TEXT' }],
+        })) };
+        expect(validateDesign(flood)!.length).toBeLessThanOrEqual(12);
         for (const e of out) expect(e.fields.length).toBeLessThanOrEqual(8);
     });
 
@@ -104,7 +113,12 @@ describe('and the builder prefers what is already known', () => {
     it('a matching domain is never handed to a model', () => {
         const d = read('core', 'design', 'schema-designer.ts');
         expect(d).toMatch(/const known = deriveDataModel\(request\);/);
-        expect(d).toMatch(/if \(known\.length\) \{ opts\?\.onNote\?\.\(`data model: a known domain matched/);
+        // Repointed: the stocked domains moved BELOW the two readers of his own
+        // sentence — a hand-checked answer to a question he did not ask is not
+        // better than a read of the question he did. What this measures is
+        // unchanged: a stocked domain still returns without ever reaching a model.
+        expect(d).toMatch(/const known = deriveDataModel\(request\);/);
+        expect(d.indexOf('deriveDataModel(request)')).toBeLessThan(d.indexOf('askStructured'));
         // …and the whole path can be switched off on a machine that wants it off.
         expect(d).toMatch(/JOE_AI_SCHEMA \|\| '1'\) === '0'\) return \[\];/);
     });

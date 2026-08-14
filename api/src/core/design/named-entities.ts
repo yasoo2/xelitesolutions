@@ -24,6 +24,7 @@
  * nouns or it declines and lets the model try. It never invents a table.
  */
 import type { ModelEntity, ModelField } from './data-model';
+import { MAX_MODEL_ENTITIES } from './entity-inference';
 import { RESERVED_TABLES } from './schema-designer';
 
 const T = (key: string, ar: string, en: string, required = false): ModelField =>
@@ -169,7 +170,12 @@ export function namedEntities(request: string): ModelEntity[] {
     const picked: Noun[] = [];
     const skipped: Noun[] = [];
     for (const w of words) {
-        if (picked.length >= 4) break;
+        // THE FIFTH CEILING. Four constants in four other files were lifted
+        // before this one was found — by running an eleven-domain request and
+        // counting what came out, not by reading. This reader sits ahead of
+        // every other path, so its cap silently capped them all: the request
+        // named ten domains and delivered four.
+        if (picked.length >= MAX_MODEL_ENTITIES) break;
         // A phrase like «صور نباتات» must not match on its last word alone:
         // only a single noun, or a noun with its definite article, is a table.
         const token = w.split(/\s+/);
