@@ -65,7 +65,21 @@ export class CodeReviewerTool implements ToolDefinition {
     auditFields = ['projectPath'];
     mockSupported = false;
 
-    async execute(input: { files?: string[]; projectPath?: string; reviewType?: string; minimumScore?: number; failOnCritical?: boolean }, context?: { workspaceId?: string }) {
+    /**
+     * THE GUARD IS RIGHT; THE TYPE WAS WRONG.
+     *
+     * `rawMinimumScore === ''` was flagged by tsc as a comparison that can
+     * never hold — `number` and `string` do not overlap. The tempting fix is
+     * to delete the comparison, and it would be the wrong one: these
+     * arguments arrive from a plan a language model wrote, and a model
+     * emitting `minimumScore: ""` for "not set" is exactly what that branch
+     * exists to survive. Without it, `Number('')` is 0 and the review would
+     * silently run against a threshold of zero — every score passing.
+     *
+     * So the declaration widens to what actually arrives, and the guard
+     * stays where it was earning its keep.
+     */
+    async execute(input: { files?: string[]; projectPath?: string; reviewType?: string; minimumScore?: number | string | null; failOnCritical?: boolean }, context?: { workspaceId?: string }) {
         const files = Array.isArray(input?.files)
             ? input.files.map(file => String(file || '').trim()).filter(Boolean)
             : [];

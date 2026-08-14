@@ -1990,11 +1990,18 @@ describe('a plan may only name tools that exist', () => {
         // died with «تعذّر الوصول إلى محرّك الذكاء» — the same hole, one layer
         // down. Everything the document says is already known.
         const T = SRC('core', 'orchestrator', 'plan-tools.ts');
+        // The window was 1600 characters and an explicit-blocker branch was
+        // later inserted between the anchor and the fallback, pushing the
+        // target to 1891 and failing a guarantee that had not moved at all.
+        // A fixed width measures the distance between two pieces of code, which
+        // is not the promise; the promise is that the fallback the planner
+        // reaches for needs no model. So it is asserted on the fallback itself.
         const fallback = T.slice(T.indexOf('runnable.length === 0'));
-        expect(fallback.slice(0, 1600)).toMatch(/tool: 'write_file'/);
+        const document = fallback.slice(0, fallback.indexOf('return {', fallback.indexOf("tool: 'write_file'")) + 200);
+        expect(document).toMatch(/tool: 'write_file'/);
         // the prose above it names ai_write_file to explain why it is gone —
         // what matters is that no TASK is given that tool here
-        expect(fallback.slice(0, 1600)).not.toMatch(/tool: 'ai_write_file'/);
+        expect(document).not.toMatch(/tool: 'ai_write_file'/);
     });
 
     it('and the registry is read lazily, or the cycle kills the process', () => {
@@ -2025,7 +2032,11 @@ describe('the biggest request gets the strongest route', () => {
         // discovery is still the first thing that runs.
         expect(P).toContain("executeTool('engineering_discovery',");
         expect(P).toContain("projectPath ? { request, path: projectPath } : { request }");
-        expect(P).toContain("executeTool('project_planner', { projectDescription: request, evidence }, context)");
+        // Repointed: the call now passes a prepared request and prepared
+        // evidence rather than the raw two. What is guaranteed — and what this
+        // measures — is that the pipeline plans through project_planner and
+        // hands it the discovery evidence, not the spelling of its arguments.
+        expect(P).toMatch(/executeTool\('project_planner', \{ projectDescription: \w+, evidence: \w+ \}, context\)/);
         expect(P).toContain('AgentLoopService.runPlannedPhasesIfPresent');
         expect(P).toContain('evidence is incomplete — blocking writes honestly');
     });

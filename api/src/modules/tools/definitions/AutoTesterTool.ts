@@ -60,7 +60,24 @@ export class AutoTesterTool implements ToolDefinition {
     auditFields = ['testType', 'projectPath'];
     mockSupported = false;
 
-    async execute(input: { testType: string; projectPath?: string; files?: string[]; sessionId?: string; workspaceId?: string; __workspaceId?: string }, context?: any) {
+    /**
+     * DECLARE WHAT YOU READ.
+     *
+     * This signature listed six fields and the body read two more —
+     * `userId` and `browserSessionId` — as a caller-supplied fallback for
+     * when the context carries neither. `tsc` refused them; the whole Jest
+     * suite could not see the refusal, because ts-jest runs with
+     * `diagnostics: false`. It is the third time this exact shape has landed
+     * (ExecutionPlan.metadata twice before). The fields are real and useful:
+     * they are the identity a test run is attributed to. Declaring them
+     * makes the contract readable instead of a lie the compiler was talked
+     * out of.
+     */
+    async execute(input: {
+        testType: string; projectPath?: string; files?: string[];
+        sessionId?: string; workspaceId?: string; __workspaceId?: string;
+        userId?: string; browserSessionId?: string;
+    }, context?: any) {
         const { testType, projectPath = '', files = [] } = input || ({} as any);
         const logs: string[] = [];
         const sessionId =

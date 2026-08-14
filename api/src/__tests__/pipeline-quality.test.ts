@@ -36,7 +36,11 @@ describe('the quality phase is executable, not decorative', () => {
         // discovery is still the first thing that runs.
         expect(pipeline).toContain("executeTool('engineering_discovery',");
         expect(pipeline).toContain("projectPath ? { request, path: projectPath } : { request }");
-        expect(pipeline).toContain("executeTool('project_planner', { projectDescription: request, evidence }, context)");
+        // Repointed: the call now passes a prepared request and prepared
+        // evidence rather than the raw two. What is guaranteed — and what this
+        // measures — is that the pipeline plans through project_planner and
+        // hands it the discovery evidence, not the spelling of its arguments.
+        expect(pipeline).toMatch(/executeTool\('project_planner', \{ projectDescription: \w+, evidence: \w+ \}, context\)/);
         expect(pipeline).toContain('AgentLoopService.runPlannedPhasesIfPresent');
     });
 

@@ -64,7 +64,7 @@ export class OpenAIProvider {
             const selected = ids.includes(requestedModel)
                 ? requestedModel
                 : ['gpt-5-mini', 'gpt-4.1-mini', 'gpt-5-nano'].find(candidate => ids.includes(candidate))
-                    || ids.find(id => /^gpt-|^claude-|^gemini-/i.test(id))
+                    || ids.find((id: string) => /^gpt-|^claude-|^gemini-/i.test(id))
                     || ids[0];
             this.resolvedCompatibleModel = selected;
             if (selected !== requestedModel) {
