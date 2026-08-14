@@ -33,15 +33,47 @@ import { isArabicReply, say as pick } from '../../../shared/reply-language';
  *
  * Returns null when nothing deterministic fits, and the model plans as before.
  */
+/**
+ * ORION IS A NAME HE GAVE A PRODUCT — SO THE NAME IS THE WHOLE TEST.
+ *
+ * This matcher used to fire on generic business nouns alone: two of
+ * {tenant/rbac, orders/inventory/billing, approval/audit} plus any of
+ * {business, enterprise, platform, system}. Measured against ordinary
+ * requests, that captured things nobody asked ORION for:
+ *
+ *   «Build a restaurant system with a menu, orders and an audit of
+ *    every change»                                    → ORION
+ *   «I need an enterprise system for CRM, billing and
+ *    inventory with an approval workflow»             → ORION
+ *
+ * A restaurant site is this system's bread and butter — kind-aware
+ * sections, real photos, design families — and it was being handed a
+ * Python stdlib domain core in a folder literally named
+ * `orion-business-operating-system`, branded with a product name the user
+ * never typed. That is the whitelist disease in its purest form: the list
+ * of business nouns grows with commerce itself, so it will keep eating
+ * neighbours forever.
+ *
+ * The honest shape is the one the planner already uses upstream: the user
+ * NAMED it. Requiring the name loses nothing (nothing reaches this branch
+ * without going through that gate) and returns every unnamed business
+ * request to the builder that was always right for it. The business
+ * context still has to be there — bare "Orion" is a constellation, a car,
+ * and a browser — and it is now recognised in Arabic too, because the
+ * planner routes «ابنِ ORION نظام أعمال…» here and this predicate used to
+ * drop it on the floor immediately afterwards.
+ */
 export function isOrionBusinessOperatingSystemRequest(request: string): boolean {
     const text = String(request || '').toLowerCase();
-    const namedOrion = /\borion\b/.test(text) && /business operating system|business os|operating system/.test(text);
-    const businessSignals = [
-        /multi[ -]?tenant|tenant isolation|rbac|abac/.test(text),
-        /crm|inventory|orders?|payments?|billing|accounting|ledger/.test(text),
-        /approval|audit|event[ -]?driven|workflow/.test(text),
-    ].filter(Boolean).length;
-    return namedOrion || businessSignals >= 2 && /business|enterprise|platform|system/.test(text);
+    if (!/\borion\b/.test(text)) return false;
+    const businessContext = [
+        /business operating system|business os|operating system/,
+        /نظام\s*(?:تشغيل\s*)?(?:ال)?أعمال|نظام\s*(?:تشغيل\s*)?(?:ال)?اعمال/,
+        /multi[ -]?tenant|tenant isolation|rbac|abac|متعدد\s*المستأجرين/,
+        /crm|inventory|orders?|payments?|billing|accounting|ledger/,
+        /مخزون|طلبات|مدفوعات|فوترة|محاسبة|قيود/,
+    ];
+    return businessContext.some(shape => shape.test(text));
 }
 
 export function isEnterprisePlatformRequest(request: string): boolean {
@@ -184,13 +216,34 @@ export class ProjectPipelineTool implements ToolDefinition {
             const foundation = await executeTool('orion_business_foundation', { request }, context);
             const output = foundation?.output || {};
             const verified = foundation?.ok === true;
-            const summary = verified
+            // The acceptance suite is skipped, not failed, on a machine with no
+            // Python. A ✅ that silently means "unmeasured" is the exact kind of
+            // claim this system exists to refuse, so the headline says which.
+            const unmeasured = verified && output.acceptanceRan === false;
+            const summary = unmeasured
+                ? pick(isAr,
+                    `## ⚠️ نواة ORION مكتوبة — لكن فحص القبول لم يُنفَّذ\n\n**المسار:** \`${output.projectPath}\`\n**الحالة:** ${output.verification}\n\nالملفات مكتوبة وعقد الحدث صالح، لكن اختبارات القبول التنفيذية لم تُشغَّل على هذا الجهاز. شغّلها بنفسك بعد تثبيت Python: \`${output.acceptanceCommand}\``,
+                    `## ⚠️ ORION core written — acceptance not run\n\n**Path:** \`${output.projectPath}\`\n**State:** ${output.verification}\n\nThe files are written and the event contract is valid, but the executable acceptance tests did not run on this machine. Run them yourself after installing Python: \`${output.acceptanceCommand}\``)
+                : verified
                 ? pick(isAr,
                     `## ✅ نواة ORION قابلة للمراجعة جاهزة\n\n**المسار:** \`${output.projectPath}\`\n**التحقق المحلي:** ${output.verification}\n\nتتضمن الحزمة عزل المستأجرين، RBAC، دورة طلب وموافقة ودفع محلية، مخزوناً وسجل قيود وتدقيقاً وعقد حدث وواجهة Command Center وبنية مراجعة. لم تُنفذ أي دفعة أو رسالة أو نشر أو عملية سحابية.`,
                     `## ✅ Reviewable ORION foundation ready\n\n**Path:** \`${output.projectPath}\`\n**Local verification:** ${output.verification}\n\nThe package includes tenant isolation, RBAC, a local order/approval/payment flow, inventory, ledger and audit evidence, an event contract, Command Center UI starter, and review templates. No payment, message, deployment, or cloud operation was attempted.`)
                 : pick(isAr, `## ⚠️ توقف تأسيس ORION بصدق\n\n${foundation?.error || 'فشل التحقق المحلي.'}`, `## ⚠️ ORION foundation stopped honestly\n\n${foundation?.error || 'Local verification failed.'}`);
-            say(`[pipeline] ${verified ? '✅' : '⚠️'} ORION foundation ${verified ? 'verified' : 'failed verification'}`);
-            return { ok: verified, error: verified ? undefined : summary, output: { projectName: 'orion-business-operating-system', completedPhases: verified ? 1 : 0, totalPhases: 1, verified, summary, deliveryScope: output.deliveryScope, projectPath: output.projectPath, writtenFiles: output.writtenFiles, verification: output.verification }, logs: [...logs, ...(foundation?.logs || [])] };
+            say(`[pipeline] ${unmeasured ? '⚠️' : verified ? '✅' : '⚠️'} ORION foundation ${unmeasured ? 'written, acceptance skipped (python not installed)' : verified ? 'verified' : 'failed verification'}`);
+            return {
+                ok: verified,
+                error: verified ? undefined : summary,
+                output: {
+                    projectName: 'orion-business-operating-system',
+                    completedPhases: verified ? 1 : 0, totalPhases: 1, verified, summary,
+                    acceptanceRan: output.acceptanceRan, acceptanceCommand: output.acceptanceCommand,
+                    // Final evidence — the orchestrator must show it, not retry it.
+                    verificationFailed: !verified,
+                    deliveryScope: output.deliveryScope, projectPath: output.projectPath,
+                    writtenFiles: output.writtenFiles, verification: output.verification,
+                },
+                logs: [...logs, ...(foundation?.logs || [])],
+            };
         }
 
         // Enterprise multi-agent requests are architecture programs, not small
@@ -204,14 +257,19 @@ export class ProjectPipelineTool implements ToolDefinition {
             const foundation = await executeTool('enterprise_platform_foundation', { request }, context);
             const output = foundation?.output || {};
             const verified = foundation?.ok === true;
-            const summary = verified
+            const unmeasuredPlatform = verified && output.acceptanceRan === false;
+            const summary = unmeasuredPlatform
+                ? pick(isAr,
+                    `## ⚠️ أساس المنصة مكتوب — لكن اختبارات العقود لم تُنفَّذ\n\n**المسار:** \`${output.projectPath}\`\n**الحالة:** ${output.verification}\n\nشغّلها بنفسك بعد تثبيت Python: \`${output.acceptanceCommand}\``,
+                    `## ⚠️ Platform foundation written — contract tests not run\n\n**Path:** \`${output.projectPath}\`\n**State:** ${output.verification}\n\nRun them yourself after installing Python: \`${output.acceptanceCommand}\``)
+                : verified
                 ? pick(isAr,
                     `## ✅ أساس المنصة المؤسسية جاهز للتحقق\n\n**المسار:** \`${output.projectPath}\`\n**التحقق المحلي:** ${output.verification}\n\nتم إنشاء المعمارية، عقود API/الأحداث، هيكل Control Plane، سياسات الأمان، قوالب Docker/Helm/Terraform، CI، والمراحل التنفيذية. لم يتم تنفيذ أي نشر خارجي أو ادعاء جاهزية إنتاجية قبل مراجعة المراحل والأسرار وبيئة السحابة.`,
                     `## ✅ Enterprise platform foundation ready for review\n\n**Path:** \`${output.projectPath}\`\n**Local verification:** ${output.verification}\n\nArchitecture, API/event contracts, a control-plane skeleton, security policy, Docker/Helm/Terraform templates, CI, and implementation milestones were created. No external deployment or unproven production-readiness claim was made before review of milestones, secrets, and cloud environment.`)
                 : pick(isAr,
                     `## ⚠️ توقف تأسيس المنصة بصدق\n\n${foundation?.error || 'فشل التحقق المحلي.'}`,
                     `## ⚠️ Platform foundation stopped honestly\n\n${foundation?.error || 'Local verification failed.'}`);
-            say(`[pipeline] ${verified ? '✅' : '⚠️'} enterprise foundation ${verified ? 'verified' : 'failed verification'}`);
+            say(`[pipeline] ${unmeasuredPlatform ? '⚠️' : verified ? '✅' : '⚠️'} enterprise foundation ${unmeasuredPlatform ? 'written, contract tests skipped (python not installed)' : verified ? 'verified' : 'failed verification'}`);
             return {
                 ok: verified,
                 error: verified ? undefined : summary,
@@ -221,6 +279,9 @@ export class ProjectPipelineTool implements ToolDefinition {
                     totalPhases: 1,
                     verified,
                     summary,
+                    acceptanceRan: output.acceptanceRan,
+                    acceptanceCommand: output.acceptanceCommand,
+                    verificationFailed: !verified,
                     deliveryScope: output.deliveryScope,
                     projectPath: output.projectPath,
                     writtenFiles: output.writtenFiles,

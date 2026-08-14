@@ -4,8 +4,8 @@ import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcast, broadcastTerminalLine, broadcastThinkingDetail } from '../../../api/ws';
 import { workspaceService } from '../../services/WorkspaceService';
-import { executionEngine } from '../../../kernel/ExecutionEngine';
 import { isArabicReply, say } from '../../../shared/reply-language';
+import { pythonExecutable, pythonMissingNote, runPython } from '../../../core/quality/python-runtime';
 
 const ORION_DIR = 'orion-business-operating-system';
 
@@ -201,16 +201,54 @@ if __name__ == "__main__": unittest.main()
       writeText(target, content); stream(relativePath, content); writtenFiles += 1;
     }
     term(`[orion] wrote ${writtenFiles} business-core, contract, UI, infrastructure, and evidence artifacts`);
-    const python = process.platform === 'win32' ? 'python' : 'python3';
+    const python = pythonExecutable();
+    const acceptanceCommand = `${python} -m unittest discover -s tests -v`;
     term(`[orion] ${python} -m compileall -q services/business-core`);
-    const compile = await executionEngine.runArgv(python, ['-m', 'compileall', '-q', 'services/business-core'], { cwd: projectPath, timeout: 30000 });
-    term(`[orion] PYTHONPATH=services/business-core ${python} -m unittest discover -s tests -v`);
-    const testRun = await executionEngine.runArgv(python, ['-m', 'unittest', 'discover', '-s', 'tests', '-v'], { cwd: projectPath, timeout: 30000, env: { ...process.env, PYTHONPATH: path.join(projectPath, 'services/business-core') } } as any);
+    const compile = await runPython(['-m', 'compileall', '-q', 'services/business-core'], { cwd: projectPath, timeout: 30000 });
+    term(`[orion] PYTHONPATH=services/business-core ${acceptanceCommand}`);
+    const testRun = compile.missing
+      ? compile // no interpreter: do not spawn a second doomed process just to collect the same ENOENT
+      : await runPython(['-m', 'unittest', 'discover', '-s', 'tests', '-v'], { cwd: projectPath, timeout: 30000, env: { ...process.env, PYTHONPATH: path.join(projectPath, 'services/business-core') } });
     let schemaValid = false;
     try { JSON.parse(fs.readFileSync(path.join(projectPath, 'contracts/events/payment-captured.v1.json'), 'utf8')); schemaValid = true; } catch {}
-    const verified = compile.ok === true && testRun.ok === true && schemaValid;
-    term(`[orion] verification: business-core-syntax=${compile.ok ? 'passed' : 'failed'}; business-acceptance=${testRun.ok ? 'passed' : 'failed'}; payment-event-schema=${schemaValid ? 'passed' : 'failed'}`);
+
+    /**
+     * SKIPPED IS NOT FAILED.
+     *
+     * The event-schema check is pure JavaScript and always runs. The two
+     * Python checks only run where Python exists. When it does not, the
+     * files are still real and still correct — nothing was measured, so
+     * nothing may be reported as broken. Saying «verification failed» there
+     * blames the generated code for the machine's missing interpreter, and
+     * sends the orchestrator off to "recover" from something no retry can
+     * change.
+     */
+    const pythonSkipped = compile.missing;
+    const verified = pythonSkipped ? schemaValid : (compile.ok && testRun.ok && schemaValid);
+    const state = (run: { ok: boolean }) => (pythonSkipped ? 'skipped (python not installed)' : run.ok ? 'passed' : 'failed');
+    term(`[orion] verification: business-core-syntax=${state(compile)}; business-acceptance=${state(testRun)}; payment-event-schema=${schemaValid ? 'passed' : 'failed'}`);
+    if (pythonSkipped) term(`[orion] ${pythonMissingNote(acceptanceCommand, false)}`);
     term('[orion] external effects intentionally not attempted; payment, identity, mail, cloud, and deployment adapters require explicit configuration and approval.');
-    return { ok: verified, error: verified ? undefined : `ORION verification failed: ${compile.error || testRun.error || compile.output || testRun.output || 'schema validation failed'}`, output: { projectPath, writtenFiles, verified, verification: verified ? 'ORION business-core syntax, executable acceptance tests, and versioned payment event schema verified locally' : 'Local verification failed', deliveryScope: 'phase-one reviewable foundation; no payment, cloud, deployment, or other external effect was attempted' }, logs };
+
+    const verification = pythonSkipped
+      ? `ORION business core and versioned payment event schema written; the executable acceptance tests were NOT run — ${pythonMissingNote(acceptanceCommand, arabic)}`
+      : verified
+        ? 'ORION business-core syntax, executable acceptance tests, and versioned payment event schema verified locally'
+        : 'Local verification failed';
+    return {
+      ok: verified,
+      error: verified ? undefined : `ORION verification failed: ${compile.error || testRun.error || compile.output || testRun.output || 'schema validation failed'}`,
+      output: {
+        projectPath, writtenFiles, verified, verification,
+        acceptanceRan: !pythonSkipped,
+        acceptanceCommand,
+        // Final evidence, not a transient exception: when the acceptance suite
+        // ran and reported a broken foundation, the orchestrator must surface
+        // it instead of handing it to an LLM to retry blindly.
+        verificationFailed: !verified,
+        deliveryScope: 'phase-one reviewable foundation; no payment, cloud, deployment, or other external effect was attempted',
+      },
+      logs,
+    };
   }
 }

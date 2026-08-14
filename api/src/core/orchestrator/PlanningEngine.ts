@@ -89,6 +89,19 @@ export interface ExecutionPlan {
         terminalExecution?: boolean;
         buildVerification?: boolean;
         matchedBy?: string;
+        /**
+         * The same omission happened again one commit later: the ORION plan
+         * set `deterministic` and `localOnly` and `tsc` went red while the
+         * whole Jest suite stayed green — ts-jest runs with `diagnostics:
+         * false` and esbuild does not typecheck, so NOTHING in the
+         * test-and-build path can see this class of error. `npx tsc
+         * --noEmit` is the only gate that can, which is why it is run
+         * separately on every batch. Both facts are worth carrying: a
+         * deterministic plan was chosen by a matcher rather than a model,
+         * and a local-only plan must not reach for the network.
+         */
+        deterministic?: boolean;
+        localOnly?: boolean;
     };
 }
 

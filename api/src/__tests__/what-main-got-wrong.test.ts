@@ -72,9 +72,23 @@ describe('a foundation that installs nothing cannot verify by importing', () => 
         expect(ENTERPRISE).toContain('test_new_workflow_requires_approval');
     });
 
+    /**
+     * This gate was written against the literal verdict expression. The
+     * verdict has since learned one more distinction — a machine with no
+     * Python SKIPS the contract tests instead of failing them (see
+     * core/quality/python-runtime.ts) — so the pin moves to the property it
+     * was always guarding: where Python ran, every check still has to pass
+     * for the tool to claim ok. It is repointed, not removed; deleting it
+     * would drop the guard that made it worth writing.
+     */
     it('and the verification still gates the tool\'s own ok', () => {
-        expect(ENTERPRISE).toMatch(/const verified = compile\.ok === true && tests\.ok === true && serviceTests\.ok === true && jsonValid;/);
+        expect(ENTERPRISE).toMatch(/const verified = pythonSkipped \? jsonValid : \(compile\.ok && tests\.ok && serviceTests\.ok && jsonValid\);/);
         expect(ENTERPRISE).toMatch(/ok: verified,/);
+    });
+
+    it('…and a skipped run is never reported as a passing one', () => {
+        expect(ENTERPRISE).toMatch(/skipped \(python not installed\)/);
+        expect(ENTERPRISE).toContain('acceptanceRan: !pythonSkipped');
     });
 });
 

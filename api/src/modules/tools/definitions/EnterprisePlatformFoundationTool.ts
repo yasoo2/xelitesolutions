@@ -4,8 +4,8 @@ import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcast, broadcastTerminalLine, broadcastThinkingDetail } from '../../../api/ws';
 import { workspaceService } from '../../services/WorkspaceService';
-import { executionEngine } from '../../../kernel/ExecutionEngine';
 import { isArabicReply, say } from '../../../shared/reply-language';
+import { pythonExecutable, pythonMissingNote, runPython } from '../../../core/quality/python-runtime';
 
 const PLATFORM_DIR = 'autonomous-engineering-platform';
 
@@ -155,24 +155,37 @@ export class EnterprisePlatformFoundationTool extends BaseTool {
     }
 
     term(`[enterprise] wrote ${writtenFiles} architecture, contract, service, infrastructure, and test artifacts`);
-    const python = process.platform === 'win32' ? 'python' : 'python3';
+    const python = pythonExecutable();
+    const acceptanceCommand = `${python} -m unittest discover -s tests -v`;
     term(`[enterprise] ${python} -m compileall -q services/control-plane`);
-    const compile = await executionEngine.runArgv(python, ['-m', 'compileall', '-q', 'services/control-plane'], {
+    const compile = await runPython(['-m', 'compileall', '-q', 'services/control-plane'], {
       cwd: projectPath, timeout: 30_000,
     });
-    term(`[enterprise] ${python} -m unittest discover -s tests -v`);
-    const tests = await executionEngine.runArgv(python, ['-m', 'unittest', 'discover', '-s', 'tests', '-v'], {
+    // A machine with no interpreter answers the same way three times; ask once.
+    const skipped = { ok: false, missing: true, output: '', error: compile.error, exitCode: compile.exitCode };
+    term(`[enterprise] ${acceptanceCommand}`);
+    const tests = compile.missing ? skipped : await runPython(['-m', 'unittest', 'discover', '-s', 'tests', '-v'], {
       cwd: projectPath, timeout: 30_000,
     });
     term(`[enterprise] ${python} -m unittest discover -s services/control-plane/tests -v`);
-    const serviceTests = await executionEngine.runArgv(python, ['-m', 'unittest', 'discover', '-s', 'services/control-plane/tests', '-v'], {
+    const serviceTests = compile.missing ? skipped : await runPython(['-m', 'unittest', 'discover', '-s', 'services/control-plane/tests', '-v'], {
       cwd: projectPath, timeout: 30_000,
     });
     const jsonPath = path.join(projectPath, 'contracts/events/task-reviewed.v1.json');
     let jsonValid = false;
     try { JSON.parse(fs.readFileSync(jsonPath, 'utf8')); jsonValid = true; } catch { jsonValid = false; }
-    const verified = compile.ok === true && tests.ok === true && serviceTests.ok === true && jsonValid;
-    term(`[enterprise] verification: python-contract-syntax=${compile.ok ? 'passed' : 'failed'}; foundation-contract-tests=${tests.ok ? 'passed' : 'failed'}; control-plane-contract-tests=${serviceTests.ok ? 'passed' : 'failed'}; event-schema-json=${jsonValid ? 'passed' : 'failed'}`);
+
+    /**
+     * The generated `test_contract.py` already refuses to call a missing
+     * FastAPI a broken foundation — it says SKIPPED. The same rule has to
+     * hold one level up: a missing PYTHON is the machine's state, not a
+     * defect in what was just written. See core/quality/python-runtime.ts.
+     */
+    const pythonSkipped = compile.missing;
+    const verified = pythonSkipped ? jsonValid : (compile.ok && tests.ok && serviceTests.ok && jsonValid);
+    const state = (run: { ok: boolean }) => (pythonSkipped ? 'skipped (python not installed)' : run.ok ? 'passed' : 'failed');
+    term(`[enterprise] verification: python-contract-syntax=${state(compile)}; foundation-contract-tests=${state(tests)}; control-plane-contract-tests=${state(serviceTests)}; event-schema-json=${jsonValid ? 'passed' : 'failed'}`);
+    if (pythonSkipped) term(`[enterprise] ${pythonMissingNote(acceptanceCommand, false)}`);
     term('[enterprise] external deployment intentionally not attempted; human review and approvals are required.');
 
     return {
@@ -182,7 +195,14 @@ export class EnterprisePlatformFoundationTool extends BaseTool {
         projectPath,
         writtenFiles,
         verified,
-        verification: verified ? 'Python control-plane syntax, governed workflow-domain tests, control-plane API contract tests, and JSON event contract verified locally' : 'Local verification failed',
+        verification: pythonSkipped
+          ? `Architecture, contracts, control-plane skeleton, and JSON event contract written; the Python contract tests were NOT run — ${pythonMissingNote(acceptanceCommand, isAr)}`
+          : verified
+            ? 'Python control-plane syntax, governed workflow-domain tests, control-plane API contract tests, and JSON event contract verified locally'
+            : 'Local verification failed',
+        acceptanceRan: !pythonSkipped,
+        acceptanceCommand,
+        verificationFailed: !verified,
         deliveryScope: 'reviewable foundation; no external deployment or production-scale claim',
       },
       logs,
