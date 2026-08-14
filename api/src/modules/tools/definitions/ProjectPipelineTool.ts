@@ -33,6 +33,17 @@ import { isArabicReply, say as pick } from '../../../shared/reply-language';
  *
  * Returns null when nothing deterministic fits, and the model plans as before.
  */
+export function isOrionBusinessOperatingSystemRequest(request: string): boolean {
+    const text = String(request || '').toLowerCase();
+    const namedOrion = /\borion\b/.test(text) && /business operating system|business os|operating system/.test(text);
+    const businessSignals = [
+        /multi[ -]?tenant|tenant isolation|rbac|abac/.test(text),
+        /crm|inventory|orders?|payments?|billing|accounting|ledger/.test(text),
+        /approval|audit|event[ -]?driven|workflow/.test(text),
+    ].filter(Boolean).length;
+    return namedOrion || businessSignals >= 2 && /business|enterprise|platform|system/.test(text);
+}
+
 export function isEnterprisePlatformRequest(request: string): boolean {
     const text = String(request || '').toLowerCase();
     const signals = [
@@ -162,6 +173,25 @@ export class ProjectPipelineTool implements ToolDefinition {
          * about the reader, not a fact. The request's own script is the fact.
          */
         const isAr = isArabicReply({ language: context?.language, text: request });
+
+        // ORION has a named business-domain contract. It must win over both the
+        // generic enterprise and Git-derived routes, because otherwise a valid
+        // requirements document is mistaken for repository work.
+        if (isOrionBusinessOperatingSystemRequest(request)) {
+            say(pick(isAr,
+                '[pipeline] تم التعرف على ORION كنظام أعمال متعدد المستأجرين — أُنشئ نواة نطاق قابلة للاختبار محلياً، لا سير Git أو قالباً عاماً.',
+                '[pipeline] ORION business operating system detected — creating a locally testable domain foundation, not a Git workflow or generic template.'));
+            const foundation = await executeTool('orion_business_foundation', { request }, context);
+            const output = foundation?.output || {};
+            const verified = foundation?.ok === true;
+            const summary = verified
+                ? pick(isAr,
+                    `## ✅ نواة ORION قابلة للمراجعة جاهزة\n\n**المسار:** \`${output.projectPath}\`\n**التحقق المحلي:** ${output.verification}\n\nتتضمن الحزمة عزل المستأجرين، RBAC، دورة طلب وموافقة ودفع محلية، مخزوناً وسجل قيود وتدقيقاً وعقد حدث وواجهة Command Center وبنية مراجعة. لم تُنفذ أي دفعة أو رسالة أو نشر أو عملية سحابية.`,
+                    `## ✅ Reviewable ORION foundation ready\n\n**Path:** \`${output.projectPath}\`\n**Local verification:** ${output.verification}\n\nThe package includes tenant isolation, RBAC, a local order/approval/payment flow, inventory, ledger and audit evidence, an event contract, Command Center UI starter, and review templates. No payment, message, deployment, or cloud operation was attempted.`)
+                : pick(isAr, `## ⚠️ توقف تأسيس ORION بصدق\n\n${foundation?.error || 'فشل التحقق المحلي.'}`, `## ⚠️ ORION foundation stopped honestly\n\n${foundation?.error || 'Local verification failed.'}`);
+            say(`[pipeline] ${verified ? '✅' : '⚠️'} ORION foundation ${verified ? 'verified' : 'failed verification'}`);
+            return { ok: verified, error: verified ? undefined : summary, output: { projectName: 'orion-business-operating-system', completedPhases: verified ? 1 : 0, totalPhases: 1, verified, summary, deliveryScope: output.deliveryScope, projectPath: output.projectPath, writtenFiles: output.writtenFiles, verification: output.verification }, logs: [...logs, ...(foundation?.logs || [])] };
+        }
 
         // Enterprise multi-agent requests are architecture programs, not small
         // React/API applications. Generate a truthful, locally-verified foundation

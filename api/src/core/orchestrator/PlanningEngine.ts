@@ -430,6 +430,30 @@ Rules:
         const deniesExternalPublish = /(?:^|[\s،؛,:.!?])(?:(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)(?:نشر|انشر|أنشر|رفع|استضافة|deploy|publish|host|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])/i.test(userGoal);
         const localBuildContract = PlanningEngine.looksLikeBuild(userGoal) && deniesExternalPublish;
 
+        // ORION is a named, multi-domain business specification. Its request can
+        // legitimately mention source control, deployment, or a requirements file;
+        // none of those incidental words may demote it into Git import/workflow.
+        // Route the whole goal through ProjectPipelineTool, whose deterministic
+        // ORION branch creates and verifies the bounded business foundation.
+        const isOrionBuildRequest = /\borion\b/i.test(probe)
+            && /(?:business|operating|tenant|crm|inventory|orders?|payments?|accounting|requirements?|specification|مواصفات|متطلبات|بناء|ابن|انش|طو|نفذ|طبق|read)/i.test(probe);
+        if (isOrionBuildRequest) {
+            console.log('[PlanningEngine] ORION specification/build → project_pipeline');
+            return {
+                id: `orion_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'project_pipeline',
+                    description: 'بناء نواة ORION متعددة المستأجرين من المواصفة مع تحقق محلي وأدلة صادقة',
+                    tool: 'project_pipeline',
+                    agent: 'Dev',
+                    input: { request: intent.goal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'high', riskLevel: 'medium', deterministic: true, localOnly: true },
+            };
+        }
+
         /**
          * A TERMINAL REQUEST MUST EXECUTE, NOT JUST OPEN A PANEL OR ANSWER ABOUT IT.
          *

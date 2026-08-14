@@ -35,6 +35,7 @@ import * as EliteTools from './definitions/EliteTools';
 import { PhaseExecutorTool } from './definitions/PhaseExecutorTool';
 import { ProjectPipelineTool } from './definitions/ProjectPipelineTool';
 import { EnterprisePlatformFoundationTool } from './definitions/EnterprisePlatformFoundationTool';
+import { OrionBusinessFoundationTool } from './definitions/OrionBusinessFoundationTool';
 import { ProjectRunTool, ProjectStopTool } from './definitions/ProjectRunTool';
 import { DeployPagesTool } from './definitions/DeployPagesTool';
 import { ProjectStateManagerTool } from './definitions/ProjectStateManagerTool';
@@ -285,6 +286,7 @@ const baseTools: ToolDefinition[] = [
   createTool(PhaseExecutorTool),
   createTool(ProjectPipelineTool),
   createTool(EnterprisePlatformFoundationTool),
+  createTool(OrionBusinessFoundationTool),
   createTool(ProjectRunTool),
   createTool(ProjectStopTool),
   createTool(DeployPagesTool),
