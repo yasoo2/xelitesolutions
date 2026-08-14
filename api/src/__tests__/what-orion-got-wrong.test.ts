@@ -55,6 +55,30 @@ describe('a missing interpreter is a skipped check, never a manufactured failure
         test(`${tool} marks a genuine verification failure as final evidence`, () => {
             expect(source(`modules/tools/definitions/${tool}.ts`)).toContain('verificationFailed: !verified');
         });
+
+        /**
+         * RESTORED, AND WIDER THAN THE GUARD THAT WAS REMOVED.
+         *
+         * The original assertion banned one spelling —
+         * `executionEngine.runArgv(python…)` — and was dropped when this file
+         * was rewritten, leaving nothing to stop a future edit from spawning
+         * the interpreter directly again and losing the skip/fail distinction
+         * with it. Pinning a spelling was always the weak part: the same
+         * mistake wearing a different variable name would have sailed past.
+         *
+         * What actually matters is that these tools own no interpreter name
+         * of their own. `pythonExecutable()` is the single place that knows
+         * `python` on Windows and `python3` everywhere else — so the platform
+         * split must not be re-derived here, in either direction.
+         */
+        test(`${tool} never spawns an interpreter of its own`, () => {
+            const text = source(`modules/tools/definitions/${tool}.ts`);
+            // No direct execution engine call carrying an interpreter.
+            expect(text).not.toMatch(/executionEngine\.runArgv\(\s*(?:python|pythonExecutable|'python)/);
+            // …and no second copy of the platform decision.
+            expect(text).not.toMatch(/process\.platform === 'win32' \? 'python'/);
+            expect(text).toContain('pythonExecutable()');
+        });
     }
 
     test('the shared pipeline discovers first and propagates verification evidence', () => {

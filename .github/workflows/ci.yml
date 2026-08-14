@@ -76,6 +76,68 @@ jobs:
         run: npm --prefix web run lint
         continue-on-error: true
 
+  # A GREEN JEST RUN IS NOT THE SAME FACT AS A WORKING SYSTEM.
+  #
+  #  Twice now a change has landed with the entire unit suite green and the
+  #  live harnesses red — once because the tests had been legitimately
+  #  repointed to the new contract while the harnesses still measured the whole
+  #  path, and nobody ran them. That is exactly the gap these programs exist to
+  #  cover: they boot the real thing, with real files and real processes, and
+  #  they are the only checks that would have caught a build refusing to run on
+  #  a workspace that already had projects in it.
+  #
+  #  Each baseline below is the number measured on this commit. They are
+  #  asserted, not merely printed: a drop fails the job, and the number moves
+  #  only by a deliberate edit here with a reason attached to it.
+  live:
+    name: Live harnesses (the system, actually running)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      JWT_SECRET: ci-not-a-real-secret
+      PERSISTENCE_MODE: JSON
+      ENABLE_AUTH_BYPASS: 'true'
+      AUTO_APPROVE_ALL: '1'
+    defaults:
+      run:
+        # Without pipefail a harness piped into `tee` reports tee's exit code,
+        # so a red run would look green. The baseline greps below are the
+        # second belt; this is the first.
+        shell: bash -euo pipefail {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install (api)
+        run: npm --prefix api ci --no-audit --no-fund
+
+      - name: The whole chain (baseline 38)
+        working-directory: api
+        run: npx ts-node -T src/tests/manual/verify_the_whole_chain.ts | tee /tmp/chain.log
+      - name: …and it did not shrink
+        run: grep -Eq '(^|[^0-9])(3[8-9]|[4-9][0-9]) passed' /tmp/chain.log
+
+      - name: Every loop (baseline 55)
+        working-directory: api
+        run: npx ts-node -T src/tests/manual/verify_every_loop.ts | tee /tmp/loops.log
+      - name: …and it did not shrink
+        run: grep -Eq '(^|[^0-9])(5[5-9]|[6-9][0-9]) passed' /tmp/loops.log
+
+      # The one that proves Joe still works when every provider is dead —
+      # which is the state his machine is in every time a daily quota runs out.
+      - name: Build without a brain (baseline 19)
+        working-directory: api
+        run: npx ts-node -T src/tests/manual/verify_build_without_a_brain.ts | tee /tmp/brain.log
+      - name: …and it did not shrink
+        run: grep -Eq '(^|[^0-9])(19|[2-9][0-9]) passed' /tmp/brain.log
+
+      - name: It still builds on a crowded workspace (baseline 21)
+        working-directory: api
+        run: npx ts-node -T src/tests/manual/verify_it_still_builds.ts | tee /tmp/builds.log
+      - name: …and it did not shrink
+        run: grep -Eq '(2[1-9]|[3-9][0-9])/[0-9]+ checks passed' /tmp/builds.log
+
   audit:
     name: Dependency audit (what actually ships)
     runs-on: ubuntu-latest

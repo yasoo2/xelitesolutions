@@ -330,7 +330,61 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         return { ...phase, tasks: kept, verificationTask: verification };
     });
 
-    return { phases: out, notes, executableTasks };
+    return { phases: stampPlanDependencies(out, notes), notes, executableTasks };
+}
+
+/**
+ * THE HYBRID CONTRACT: THE PLANNER DECIDES WHAT, THE PLAN ENFORCES WHEN.
+ *
+ * A model is a fine judge of whether a request needs a data service at all —
+ * a static page plainly does not, and a UI on someone else's API must not
+ * have a new server forced onto it. But once it HAS decided that this project
+ * gets both a service and an interface, the order between them stops being a
+ * matter of judgement: an interface that reads rows cannot be built and
+ * verified before the thing that serves them exists.
+ *
+ * That guarantee used to live in a deterministic route which named
+ * `api_project` then `react_project` with an explicit `dependsOn`. When the
+ * route was replaced by an LLM planner the ordering went with it — a live
+ * harness caught it immediately («…and an app with data gets its backend
+ * BEFORE its interface»).
+ *
+ * So the decision stays with the planner and the RELATION is stamped here,
+ * on whatever plan arrives. Nothing is added, nothing is invented: if there
+ * is no data phase, or no interface phase, this does nothing at all.
+ */
+const DATA_PHASE_TOOLS = new Set(['api_project']);
+const INTERFACE_PHASE_TOOLS = new Set(['react_project', 'web_page_builder']);
+
+export function stampPlanDependencies(phases: any[], notes: string[] = []): any[] {
+    const list = Array.isArray(phases) ? phases : [];
+    const toolsOf = (phase: any): string[] =>
+        (Array.isArray(phase?.tasks) ? phase.tasks : []).map((task: any) => String(task?.tool || ''));
+
+    const dataIndex = list.findIndex(phase => toolsOf(phase).some(tool => DATA_PHASE_TOOLS.has(tool)));
+    const interfaceIndex = list.findIndex(phase => toolsOf(phase).some(tool => INTERFACE_PHASE_TOOLS.has(tool)));
+    // Only one of them present — the plan implies no relation to enforce.
+    if (dataIndex < 0 || interfaceIndex < 0 || dataIndex === interfaceIndex) return list;
+
+    const dataName = String(list[dataIndex]?.name || `Phase ${dataIndex + 1}`);
+    const ordered = dataIndex < interfaceIndex
+        ? list
+        // The interface was planned first. Move the service ahead of it rather
+        // than rewriting either phase — the planner's content is untouched.
+        : (() => {
+            const copy = [...list];
+            const [service] = copy.splice(dataIndex, 1);
+            copy.splice(interfaceIndex, 0, service);
+            notes.push(`[plan] the data service «${dataName}» was moved ahead of the interface that depends on it`);
+            return copy;
+        })();
+
+    return ordered.map(phase => {
+        if (!toolsOf(phase).some(tool => INTERFACE_PHASE_TOOLS.has(tool))) return phase;
+        const already = Array.isArray(phase?.dependsOn) ? phase.dependsOn.map(String) : [];
+        if (already.includes(dataName)) return phase;
+        return { ...phase, dependsOn: [...already, dataName] };
+    });
 }
 
 /**
