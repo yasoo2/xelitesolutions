@@ -12,6 +12,32 @@ process.env.MOCK_DB = 'true';
 process.env.NODE_ENV = 'test';
 
 /**
+ * THE SUITE WAS READING THE DEVELOPER'S REAL BUSINESS PROFILE.
+ *
+ * `business-profile` stores to `data/db/business-profile.json` under the
+ * process's cwd, which for `npm test` is this package — the same file Joe
+ * writes when the owner says «احفظ بيانات عملي». So every test that scaffolds
+ * a site silently inherited whatever business happened to be saved on the
+ * machine, and a suite could pass on one laptop and fail on another for a
+ * reason found nowhere in the diff.
+ *
+ * It surfaced the honest way: a fix to the profile parser made a stored
+ * profile richer — an address was extracted where the whole sentence used to
+ * be swallowed into the brand — and «a location is never advertised without a
+ * real saved address» went red. The assertion was right, the behaviour was
+ * right, and the test was reading a file it had no business reading.
+ *
+ * Each run now gets its own empty store. Tests that WANT a profile write one
+ * through the module's own API, into this directory, and it goes away with the
+ * process.
+ */
+if (!process.env.JOE_CHAT_STORE_DIR) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const os = require('os'), fsx = require('fs'), p = require('path');
+    process.env.JOE_CHAT_STORE_DIR = fsx.mkdtempSync(p.join(os.tmpdir(), 'joe-test-store-'));
+}
+
+/**
  * Importing the router pulls in every LLM provider, and each one announces at
  * construction that it has no API key. That is correct behaviour and expected
  * here, but a run that prints warnings trains everyone to ignore the output —

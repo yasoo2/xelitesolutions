@@ -2185,8 +2185,29 @@ export class ReactProjectTool extends BaseTool {
         const prevEntry = ((global as any).joeProjects || {})[sessionKey];
         /** The tables this system really declares — the terminal asks for each by name. */
         let systemTables: string[] = [];
+        /**
+         * SAME ORIGIN — SO THE LINK MUST NOT NAME A HOST OR A PORT.
+         *
+         * This built an ABSOLUTE url from a port recorded as the literal
+         * `4100`, while the generated server listens on `process.env.PORT ||
+         * 4100` and Joe starts it on whatever port is free. Then the built
+         * interface is copied into that same server's `public/` and served
+         * BY it — so the page and the API already share an origin, and the
+         * page was still calling `http://localhost:4100`.
+         *
+         * Measured end to end: the system came up on 127.0.0.1:4762, every
+         * fetch went to 4100 where nothing was listening, and the delivery
+         * gate refused the phase — `console_errors, failed_requests`. The
+         * gate was right; two halves of one system were talking past each
+         * other. The whole failure was an absolute URL where a relative one
+         * belongs.
+         *
+         * A relative base is correct wherever this bundle can run: served by
+         * the API, published as static files beside it, or opened through
+         * Joe's preview — all of them reach `/api/…` on their own origin.
+         */
         const apiLink = prevEntry?.type === 'api' && prevEntry?.resource
-            ? `http://localhost:${prevEntry.port || 4100}/api/${prevEntry.resource}` : '';
+            ? `/api/${prevEntry.resource}` : '';
         // The hero's second CTA points at the kind's main content — an
         // anchor on a single page, a real route on a multi-page app.
         (content as any).heroSecondary = (() => {

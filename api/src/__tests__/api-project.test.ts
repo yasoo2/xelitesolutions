@@ -156,14 +156,19 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         const linked: any = await new ReactProjectTool().execute(
             { request: 'ابنِ موقع react لمطعم الشواء', skipInstall: true, root: tmp }, { sessionId: 'api-t' });
         const content = fs.readFileSync(path.join(linked.output.path, 'src', 'content.js'), 'utf-8');
-        expect(content).toContain("api: 'http://localhost:4100/api/dishes'");
+        // Repointed: the interface is packaged into the API server's own public/
+        // and served BY it, so the base is relative. An absolute localhost URL
+        // with a guessed port is what made every fetch fail on the delivered
+        // system. «Born connected» is unchanged — the resource is still its own.
+        expect(content).toContain("api: '/api/dishes'");
+        expect(content).not.toMatch(/api: 'https?:\/\/localhost/);
         const menu = fs.readFileSync(path.join(linked.output.path, 'src', 'components', 'Menu.jsx'), 'utf-8');
         expect(menu).toContain('fetch(content.api)');
         expect(menu).toContain('.catch(');                       // failures keep the baked rows
         expect(menu).toContain('useState(content.menu)');        // the baked rows ARE the default
         expect(menu).toContain('live-dot');
         expect(syntaxOk('Menu.jsx', menu).ok).toBe(true);
-        expect((global as any).joeProjects['api-t'].linkedApi).toBe('http://localhost:4100/api/dishes');
+        expect((global as any).joeProjects['api-t'].linkedApi).toBe('/api/dishes');
         // A session with NO API stays unlinked — the hook is inert on api: ''.
         const plain: any = await new ReactProjectTool().execute(
             { request: 'ابنِ موقع react لمتجر عطور', skipInstall: true, root: tmp }, { sessionId: 'api-plain' });
@@ -225,7 +230,7 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         const linked: any = await new ReactProjectTool().execute(
             { request: 'ابنِ متجر react للعطور', skipInstall: true, root: tmp }, { sessionId: 'api-t' });
         const content = fs.readFileSync(path.join(linked.output.path, 'src', 'content.js'), 'utf-8');
-        expect(content).toContain("ordersApi: 'http://localhost:4100/api/orders'");
+        expect(content).toContain("ordersApi: '/api/orders'");
         expect(content).toContain("orderCta: 'اطلب الآن'");
         const btnPath = path.join(linked.output.path, 'src', 'components', 'OrderButton.jsx');
         expect(fs.existsSync(btnPath)).toBe(true);
@@ -384,7 +389,7 @@ describe('the generated site carries the owner\'s dashboard', () => {
         expect(syntaxOk('AdminPanel.jsx', panel).ok).toBe(true);
         expect(fs.readFileSync(path.join(dir, 'src', 'App.jsx'), 'utf-8')).toContain('<AdminPanel content={content} />');
         expect(fs.readFileSync(path.join(dir, 'src', 'components', 'Footer.jsx'), 'utf-8')).toContain("href={(content.routeBase || '') === '/' ? '#/admin' : '#/admin'}");
-        expect(fs.readFileSync(path.join(dir, 'src', 'content.js'), 'utf-8')).toMatch(/api: 'http/);
+        expect(fs.readFileSync(path.join(dir, 'src', 'content.js'), 'utf-8')).toMatch(/api: '\/api\//);
         // it reaches the real endpoints, with a token, and keeps it per brand
         expect(panel).toContain("'/auth/login'");
         expect(panel).toContain("authed('/orders')");
