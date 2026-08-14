@@ -30,6 +30,7 @@
  *      perform is not a failure of the build, it is a defect of the plan
  */
 import { TOOL_ALIASES } from '../../modules/services/ToolService';
+import { syntaxFileKind } from '../../shared/syntax-contract';
 
 /**
  * The registry is read LAZILY and cached.
@@ -752,6 +753,10 @@ export function plannedArgsIssue(toolName: string, args: any): string | null {
                 : [];
             if (files.length === 0 || files.some((file: string) => /^undefined$/i.test(file))) {
                 return 'auto_tester من نوع syntax يحتاج files كمصفوفة لمسارات مصدر مثبتة؛ لا يفحص جو مساحةً مجهولة أو ملفاً متخيلاً.';
+            }
+            const unsupported = files.filter((file: string) => syntaxFileKind(file) === null);
+            if (unsupported.length > 0) {
+                return `auto_tester من نوع syntax يدعم JavaScript/TypeScript وJSON فقط؛ استخدم مدققاً متخصصاً للملفات: ${unsupported.join(', ')}.`;
             }
         }
     }

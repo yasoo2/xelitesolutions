@@ -60,4 +60,31 @@ describe('workspace-scoped long-term memory', () => {
         expect(context).toContain('Prefers: react');
         expect(context).not.toMatch(/GitHub Pages|Publish the previous/i);
     });
+
+    test('reports project provenance separately from global profile context', async () => {
+        await memory.learnFromConversation('local-user', [
+            { role: 'user', content: 'I build React projects.' },
+        ], { workspaceId: '/projects/previous' });
+
+        const freshDetails = await memory.getContextDetails(
+            'local-user',
+            'Build a local NEXUS project.',
+            { workspaceId: '/projects/nexus' },
+        );
+        expect(freshDetails.text).toContain('Prefers: react');
+        expect(freshDetails.hasWorkspaceContext).toBe(false);
+
+        await memory.remember('local-user', {
+            type: 'conversation',
+            content: 'Investigate the current NEXUS implementation.',
+            metadata: { workspaceId: '/projects/nexus' },
+            importance: 1,
+        });
+        const projectDetails = await memory.getContextDetails(
+            'local-user',
+            'Investigate the current NEXUS implementation.',
+            { workspaceId: '/projects/nexus' },
+        );
+        expect(projectDetails.hasWorkspaceContext).toBe(true);
+    });
 });

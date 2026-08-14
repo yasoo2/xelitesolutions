@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
+import { syntaxFileKind } from '../../../shared/syntax-contract';
 import { ToolDefinition, ToolPermission } from '../types';
 import { executeTool } from '../../services/ToolService';
 import { resolveToolPath } from '../utils';
@@ -150,18 +151,53 @@ export class AutoTesterTool implements ToolDefinition {
         if (files.length === 0) {
             return this.failure('Syntax testing requires one or more evidenced source files.', logs, 'syntax');
         }
+
+        const kinds = files.map(file => ({ file, kind: syntaxFileKind(file) }));
+        const unsupported = kinds.filter(item => item.kind === null).map(item => path.relative(projectPath, item.file) || item.file);
+        if (unsupported.length > 0) {
+            return this.failure(
+                `auto_tester syntax supports JavaScript/TypeScript and JSON only; use a format-specific checker for: ${unsupported.join(', ')}`,
+                logs,
+                'syntax'
+            );
+        }
+
         logs.push(`Checking syntax for ${files.length} file(s)...`);
-        const quote = (value: string) => `'${String(value).replace(/'/g, "'\\''")}'`;
-        const command = files.map(file => `node --check ${quote(file)}`).join(' && ');
-        const result = await executeTool('shell_execute', { command, cwd: projectPath }, ctx);
-        const passed = Boolean(result.ok) && !String((result as any).output || '').includes('SyntaxError');
-        return passed
-            ? {
-                ok: true,
-                output: { passed: true, errors: [], summary: 'All requested syntax checks passed' },
-                logs
+
+        // JSON is an artifact format, not JavaScript. Parsing it in-process is
+        // deterministic, dependency-free, and works identically on Windows and
+        // POSIX. The old implementation sent every file to `node --check`, so a
+        // valid schema appeared to be a broken JS module and could trigger an
+        // unsafe self-fix.
+        const jsonFiles = kinds.filter(item => item.kind === 'json').map(item => item.file);
+        for (const file of jsonFiles) {
+            try {
+                JSON.parse(fs.readFileSync(file, 'utf8'));
+                logs.push(`JSON.parse passed: ${path.relative(projectPath, file) || file}`);
+            } catch (error: any) {
+                const name = path.relative(projectPath, file) || file;
+                return this.failure(`Invalid JSON in ${name}: ${String(error?.message || error)}`, logs, 'syntax');
             }
-            : this.failure(String((result as any).error || (result as any).output || 'Syntax errors found'), logs, 'syntax');
+        }
+
+        const javascriptFiles = kinds.filter(item => item.kind === 'javascript').map(item => item.file);
+        if (javascriptFiles.length > 0) {
+            const quote = (value: string) => `'${String(value).replace(/'/g, "'\\''")}'`;
+            const command = javascriptFiles
+                .map(file => `node --check ${quote(path.relative(projectPath, file) || file)}`)
+                .join(' && ');
+            const result = await executeTool('shell_execute', { command, cwd: projectPath }, ctx);
+            const passed = Boolean(result.ok) && !String((result as any).output || '').includes('SyntaxError');
+            if (!passed) {
+                return this.failure(String((result as any).error || (result as any).output || 'Syntax errors found'), logs, 'syntax');
+            }
+        }
+
+        return {
+            ok: true,
+            output: { passed: true, errors: [], summary: 'All requested syntax checks passed' },
+            logs
+        };
     }
 
     private declaredScript(projectPath: string, allowed: string[], logs: string[]): string | null {

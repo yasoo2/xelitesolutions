@@ -258,6 +258,22 @@ describe('model-written tool arguments are checked before execution', () => {
         expect(phases[0].tasks[0].args.path).toBe('NEXUS_SPECIFICATION.txt');
     });
 
+    it('rejects a non-parser artifact from auto_tester syntax before execution', () => {
+        expect(plannedArgsIssue('auto_tester', {
+            testType: 'syntax',
+            projectPath: '.',
+            files: ['docs/verification.md'],
+        })).toMatch(/يدعم JavaScript\/TypeScript وJSON فقط/);
+    });
+
+    it('allows a discovered JSON schema through the syntax contract', () => {
+        expect(plannedArgsIssue('auto_tester', {
+            testType: 'syntax',
+            projectPath: '.',
+            files: ['schemas/lifecycle_state_schema.json'],
+        })).toBeNull();
+    });
+
     it('refuses an empty or unevidenced code review before it can throw undefined.length', () => {
         expect(plannedArgsIssue('code_reviewer', {})).toMatch(/files/);
         expect(plannedArgsIssue('code_reviewer', { files: ['undefined'] })).toMatch(/files/);

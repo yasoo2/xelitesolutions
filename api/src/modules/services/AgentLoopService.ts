@@ -196,8 +196,14 @@ export class AgentLoopService {
         let memoryContext = '';
         try {
             // Pass the goal so recall surfaces the memories RELEVANT to it.
-            memoryContext = await longTermMemory.getContextSummary(memUserId, goal, { workspaceId });
-            if (memoryContext) broadcastThinkingDetail(sessionId, uiText('recalledContext', language));
+            // Keep global profile preferences available to the agent, but only
+            // announce project recall when scoped conversation/file/code memory
+            // from this exact workspace was actually found.
+            const memoryDetails = await longTermMemory.getContextDetails(memUserId, goal, { workspaceId });
+            memoryContext = memoryDetails.text;
+            if (memoryDetails.hasWorkspaceContext) {
+                broadcastThinkingDetail(sessionId, uiText('recalledContext', language));
+            }
         } catch { /* non-fatal */ }
 
         try {

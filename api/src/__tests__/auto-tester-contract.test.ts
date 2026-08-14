@@ -63,6 +63,43 @@ describe('AutoTesterTool acceptance contract', () => {
         executeToolSpy.mockRestore();
     });
 
+    it('parses a JSON schema as JSON instead of sending it to node --check', async () => {
+        const schemaFile = path.join(workspaceRoot, 'schemas', 'lifecycle_state_schema.json');
+        fs.mkdirSync(path.dirname(schemaFile), { recursive: true });
+        fs.writeFileSync(schemaFile, '{"type":"object","properties":{"state":{"type":"string"}}}');
+        const executeToolSpy = jest.spyOn(ToolService, 'executeTool');
+
+        const result: any = await new AutoTesterTool().execute({
+            testType: 'syntax',
+            projectPath: '.',
+            files: ['schemas/lifecycle_state_schema.json'],
+        }, { workspaceId: 'workspace-nexus-json' });
+
+        expect(result.ok).toBe(true);
+        expect(result.output.passed).toBe(true);
+        expect(result.logs.join('\\n')).toContain('JSON.parse passed');
+        expect(executeToolSpy).not.toHaveBeenCalled();
+        executeToolSpy.mockRestore();
+    });
+
+    it('reports malformed JSON as a syntax failure without invoking a shell repair', async () => {
+        const schemaFile = path.join(workspaceRoot, 'broken.json');
+        fs.writeFileSync(schemaFile, '{"type":"object"');
+        const executeToolSpy = jest.spyOn(ToolService, 'executeTool');
+
+        const result: any = await new AutoTesterTool().execute({
+            testType: 'syntax',
+            projectPath: '.',
+            files: ['broken.json'],
+        }, { workspaceId: 'workspace-nexus-json' });
+
+        expect(result.ok).toBe(false);
+        expect(result.output.passed).toBe(false);
+        expect(result.error).toContain('Invalid JSON');
+        expect(executeToolSpy).not.toHaveBeenCalled();
+        executeToolSpy.mockRestore();
+    });
+
     it('fails unit verification honestly when the selected project declares no test script', async () => {
         fs.writeFileSync(path.join(workspaceRoot, 'package.json'), JSON.stringify({ name: 'empty-project', scripts: {} }));
 

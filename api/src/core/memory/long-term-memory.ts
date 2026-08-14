@@ -28,6 +28,13 @@ export interface MemoryScope {
     workspaceId?: string;
 }
 
+export interface MemoryContextDetails {
+    /** The context text injected into the agent, including global preferences. */
+    text: string;
+    /** True only when conversation/file/code memory belongs to the active workspace. */
+    hasWorkspaceContext: boolean;
+}
+
 export interface UserProfile {
     userId: string;
     name?: string;
@@ -258,14 +265,21 @@ export class LongTermMemory {
     }
 
     /**
-     * Get conversation summary for context
+     * Get memory context together with its provenance. Global profile preferences
+     * may be useful to the agent, but they are not evidence of a prior project in
+     * the active workspace and must not be presented to the user as project recall.
      */
-    async getContextSummary(userId: string, query: string = '', scope: MemoryScope = {}): Promise<string> {
+    async getContextDetails(userId: string, query: string = '', scope: MemoryScope = {}): Promise<MemoryContextDetails> {
         await this.ensureInitialized();
         const profile = await this.getProfile(userId);
         // Recall is driven by the CURRENT request, so the past that surfaces is
         // the past that is relevant — not merely the most recent.
         const recentMemories = await this.recall(userId, query, 5, scope);
+        const activeWorkspaceId = normalizedWorkspaceId(scope.workspaceId);
+        const hasWorkspaceContext = Boolean(activeWorkspaceId && recentMemories.some(memory => {
+            if (memory.type === 'preference' || memory.type === 'fact') return false;
+            return normalizedWorkspaceId(memory.metadata?.workspaceId) === activeWorkspaceId;
+        }));
 
         const parts: string[] = [];
 
@@ -288,7 +302,15 @@ export class LongTermMemory {
             parts.push(`Recent context: ${recentMemories.map(m => m.content.substring(0, 100)).join('; ')}`);
         }
 
-        return parts.join(' | ');
+        return { text: parts.join(' | '), hasWorkspaceContext };
+    }
+
+    /**
+     * Backwards-compatible text-only API for callers that do not need provenance.
+     */
+    async getContextSummary(userId: string, query: string = '', scope: MemoryScope = {}): Promise<string> {
+        const details = await this.getContextDetails(userId, query, scope);
+        return details.text;
     }
 
     /**
