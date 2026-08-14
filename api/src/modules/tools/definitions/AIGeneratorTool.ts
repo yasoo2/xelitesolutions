@@ -4,6 +4,62 @@ import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import fs from 'fs';
 import path from 'path';
 
+type ArtifactProfile = {
+    kind: 'markdown_document' | 'structured_data' | 'source_code' | 'frontend_asset' | 'text_document';
+    instructions: string;
+};
+
+/**
+ * The destination is evidence too.  A plan can request an architecture document
+ * and a general-purpose model can still answer with a polished landing page if
+ * the prompt says "UI/UX designer" unconditionally.  Classify only from the
+ * file extension — never from product names — and make the expected artifact
+ * explicit in every generation request.
+ */
+function artifactProfileFor(filePath: string): ArtifactProfile {
+    const ext = path.extname(filePath).toLowerCase();
+    if (['.md', '.mdx', '.rst', '.adoc'].includes(ext)) {
+        return {
+            kind: 'markdown_document',
+            instructions: 'This is a technical document. Return Markdown prose, headings, tables, lists, and code blocks only when they document a concrete interface or command. Do not return an HTML page, CSS, visual mock-up, or UI implementation. Ground each section in the supplied requirements and state assumptions or open decisions explicitly.',
+        };
+    }
+    if (['.json', '.yaml', '.yml', '.toml', '.ini', '.env'].includes(ext)) {
+        return {
+            kind: 'structured_data',
+            instructions: 'This is a structured configuration or data artifact. Return syntactically valid content in the destination format only. Do not return HTML, CSS, prose explanations, or placeholder values unless the requirements explicitly require them.',
+        };
+    }
+    if (['.html', '.htm', '.css', '.scss', '.sass', '.jsx', '.tsx', '.vue', '.svelte'].includes(ext)) {
+        return {
+            kind: 'frontend_asset',
+            instructions: 'This is a frontend artifact. Apply visual and responsive-design guidance only when it serves the supplied requirements; do not invent product features, framework dependencies, or placeholder content.',
+        };
+    }
+    if (['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java', '.cs', '.rb', '.php', '.sh', '.sql'].includes(ext)) {
+        return {
+            kind: 'source_code',
+            instructions: 'This is source code. Return only executable source for the destination language, with concrete interfaces and error handling required by the supplied requirements. Do not return an HTML page or prose document unless the destination language requires it.',
+        };
+    }
+    return {
+        kind: 'text_document',
+        instructions: 'Return the exact text artifact implied by the destination and supplied requirements. Do not assume a web application, visual design, framework, or deployment target.',
+    };
+}
+
+function artifactMismatch(filePath: string, content: string): string | null {
+    const ext = path.extname(filePath).toLowerCase();
+    const looksLikeHtmlDocument = /<!doctype\s+html|<html\b|<\/(?:head|body|html)>/i.test(content);
+    if (['.md', '.mdx', '.rst', '.adoc'].includes(ext) && looksLikeHtmlDocument) {
+        return `artifact_type_mismatch: ${filePath} requires a technical document, but the model returned an HTML document`;
+    }
+    if (['.json', '.yaml', '.yml', '.toml', '.ini', '.env'].includes(ext) && looksLikeHtmlDocument) {
+        return `artifact_type_mismatch: ${filePath} requires structured data, but the model returned an HTML document`;
+    }
+    return null;
+}
+
 /**
  * Lazily resolve the LLM to avoid a circular import.
  *
@@ -91,45 +147,37 @@ export class AIGeneratorTool implements ToolDefinition {
         catch (e: any) { return { ok: false, error: String(e?.message || e), logs }; }
 
         const isRepair = input.context?.includes('repairTicket') || input.context?.includes('buildContext');
-        const systemPrompt = `You are an ELITE Software Engineer and UI/UX Designer. 
-Your task is to generate complete, ultra-high-quality, production-ready code for a single file.
+        const artifact = artifactProfileFor(filePath);
+        const frontendGuidance = artifact.kind === 'frontend_asset'
+            ? `\nFRONTEND QUALITY RULES:\n- Use accessible, responsive implementation only where the requirements call for a user interface.\n- Follow the selected style direction if supplied; otherwise favour clear, maintainable UI over decorative effects.\n- Support ${input.language === 'ar' ? 'Arabic with RTL layout' : 'the requested language'} when user-facing text is required.\n`
+            : '';
+        const systemPrompt = `You are an engineering artifact author. Generate one complete, production-ready file that satisfies the supplied, evidenced requirements.
 
-${isRepair ? `REPAIR MODE ACTIVE:
-- You are fixing a specific bug or build error.
-- Use the provided buildContext and repairTicket to identify the exact line and cause of failure.
-- Patch the code surgically. Ensure the fix is correct and doesn't break other logic.
-- Preserve the existing project style and architecture.` : ''}
-
-CRITICAL DESIGN RULES (IF UI/FRONTEND):
-- AESTHETICS ARE PARAMOUNT. The design MUST be stunning, modern, and feel premium.
-- Use advanced CSS techniques: Glassmorphism (backdrop-filter: blur), subtle multi-layered drop shadows, vibrant but professional gradients.
-- Typography: Use elegant sans-serif fonts (like Inter, Roboto, or Tajawal/Cairo for Arabic).
-- Animations: Add micro-interactions and smooth transitions (e.g., hover lifts, fade-ins).
-- Never use generic placeholder styling. Make it look like an award-winning site.
-- Support ${input.language === 'ar' ? 'Arabic (RTL layout: use dir="rtl", proper alignments)' : 'the requested language'} natively.
-
+ARTIFACT CONTRACT (${artifact.kind}):
+${artifact.instructions}
+${isRepair ? `\nREPAIR MODE ACTIVE:\n- Fix only the documented defect using the supplied repair evidence.\n- Preserve the existing architecture and avoid unrelated changes.\n` : ''}
+${frontendGuidance}
 GENERAL RULES:
-- DO NOT use placeholders like "<!-- content goes here -->". Write the actual content.
-- DO NOT include explanations, only the file content.
-- Ensure the code is robust, well-formatted, and responsive (mobile-first).
-- Output ONLY the content of the file. No markdown code blocks unless the file is a markdown file.
-- If it is code (html, css, js, ts), return ONLY the code.`;
+- Treat the supplied requirements as authoritative; do not invent a product, framework, build command, or visual interface.
+- Do not use placeholders. Write concrete content, and mark genuinely unresolved decisions as explicit assumptions only in documentation artifacts.
+- Do not include explanations outside the destination file content.
+- Output only the content of the requested file. Use Markdown fences only when the requested file is itself a Markdown document.`;
 
         const userPrompt = `Generate the content for the file: "${filePath}"
-        
-Description of requirements:
+
+Artifact contract:
+${artifact.instructions}
+
+Task requirements:
 ${input.description}
 
-Technical Context:
-${input.context || 'Standard web development environment.'}
+Verified project and requirements context:
+${input.context || 'No additional project context was provided. Do not assume a web development environment.'}
+${artifact.kind === 'frontend_asset' ? `\nVisual direction (use only if relevant):\n${input.aestheticMode || 'Use a clear, maintainable visual style consistent with the requirements.'}` : ''}
 
-Aesthetic Direction:
-${input.aestheticMode || 'Ultra-modern, glassmorphism, stunning gradients, and professional.'}
+Primary language for user-facing content: ${input.language === 'ar' ? 'Arabic (RTL where applicable)' : 'English (LTR where applicable)'}
 
-Primary Language:
-${input.language === 'ar' ? 'Arabic (RTL)' : 'English (LTR)'}
-
-IMPORTANT: Provide the FULL, production-ready content of the file. No generic designs. Make it visually breathtaking.`;
+Return the complete file content now.`;
 
         try {
             const content = await callLLM(userPrompt, [{ role: 'system', content: systemPrompt }]);
@@ -151,6 +199,10 @@ IMPORTANT: Provide the FULL, production-ready content of the file. No generic de
             // replace an existing file with nothing and report success.
             if (!finalContent) {
                 return { ok: false, error: 'the model returned no content, so nothing was written', logs };
+            }
+            const mismatch = artifactMismatch(filePath, finalContent);
+            if (mismatch) {
+                return { ok: false, error: mismatch, logs: [...logs, 'generated content violated the destination artifact contract; nothing was written'] };
             }
 
             // resolveToolPath keeps the write inside the workspace and throws on

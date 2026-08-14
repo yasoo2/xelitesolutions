@@ -797,6 +797,30 @@ const RECENT_FAIL_TTL_MS = Math.max(
     1000,
     parseInt(String(process.env.PROVIDER_FAIL_COOLDOWN_MS || '').trim(), 10) || 60000
 );
+
+// A complete provider walk may end in timeouts even though one provider served
+// several earlier steps in the same engineering run. Preserve that fact briefly:
+// a known-live brain earns one small, targeted probe before we declare the run
+// unable to reason. This is deliberately separate from cooldowns: a timeout is
+// often a transient network stall, while a 429 remains a real quota timer.
+const recentlyHealthyProviders = new Map<string, number>(); // name -> last successful epoch ms
+const recentlyRateLimitedProviders = new Map<string, number>(); // name -> quota/reset epoch ms
+const RECENT_SUCCESS_TTL_MS = Math.max(
+    1000,
+    parseInt(String(process.env.PROVIDER_SUCCESS_RETRY_WINDOW_MS || '').trim(), 10) || 120000
+);
+const TRANSIENT_PROVIDER_RETRY_DELAY_MS = Math.max(
+    0,
+    parseInt(String(process.env.PROVIDER_TRANSIENT_RETRY_DELAY_MS || '').trim(), 10) || 3500
+);
+// A recovery probe may need to produce structured plan JSON, not just answer a
+// health-check token. Twelve seconds proved too short after a provider had
+// already completed several real planning calls, so the bounded one-shot probe
+// gets a practical default while operators may still lower it explicitly.
+const TRANSIENT_PROVIDER_RETRY_TIMEOUT_MS = Math.max(
+    1000,
+    parseInt(String(process.env.PROVIDER_TRANSIENT_RETRY_TIMEOUT_MS || '').trim(), 10) || 30000
+);
 export function isProviderCoolingDown(name: string): boolean {
     if (name === 'Local (Auto)') return false; // never skip the local brain
     const until = recentlyFailedProviders.get(name);
@@ -936,7 +960,41 @@ export function noteLocalBrainOk(): void {
 export function resetLocalBrainBreaker(): void { localConsecutiveTimeouts = 0; localCircuitUntil = 0; localBreakerWindowMs = 0; localTimedOutAt = 0; localObservedMs = 0; localLeashFloorMs = 0; }
 export function markProviderOk(name: string): void {
     recentlyFailedProviders.delete(name);
+    recentlyRateLimitedProviders.delete(name);
+    recentlyHealthyProviders.set(name, Date.now());
 }
+
+function markProviderRateLimited(name: string, cooldownMs?: number): void {
+    recentlyRateLimitedProviders.set(name, Date.now() + (cooldownMs && cooldownMs > 0 ? cooldownMs : RECENT_FAIL_TTL_MS));
+}
+
+function isProviderRateLimited(name: string, now = Date.now()): boolean {
+    const until = recentlyRateLimitedProviders.get(name);
+    if (!until) return false;
+    if (now >= until) {
+        recentlyRateLimitedProviders.delete(name);
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Return only providers that answered successfully during the short current-run
+ * window. This supports one bounded recovery probe after transient transport
+ * failures; it never promotes an unknown or stale gateway.
+ */
+export function recentlyHealthyRetryCandidates<T extends { name: string }>(providers: T[], now = Date.now()): T[] {
+    return providers.filter((provider) => {
+        const succeededAt = recentlyHealthyProviders.get(provider.name);
+        if (!succeededAt) return false;
+        if (now - succeededAt > RECENT_SUCCESS_TTL_MS) {
+            recentlyHealthyProviders.delete(provider.name);
+            return false;
+        }
+        return true;
+    });
+}
+
 /** Test/diagnostics only: order a provider list fresh-first, cooled-last (the exact
  *  ordering the fallback mesh uses). */
 export function orderByCooldown<T extends { name: string }>(providers: T[]): T[] {
@@ -1824,8 +1882,13 @@ export async function routeToModel(
             console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message} `);
             // A rate-limit error that names its own window cools the provider
             // for that window, not for the default 60 seconds.
-            markProviderFailed(p.name, retryAfterMsFrom(String(e?.message || '')) || undefined);
-            if (RATE_LIMIT_RE.test(String(e?.message || ''))) sawRateLimit = true;
+            const failureMessage = String(e?.message || '');
+            const retryAfterMs = retryAfterMsFrom(failureMessage) || undefined;
+            markProviderFailed(p.name, retryAfterMs);
+            if (RATE_LIMIT_RE.test(failureMessage)) {
+                sawRateLimit = true;
+                markProviderRateLimited(p.name, retryAfterMs);
+            }
             if (p.name === 'Local (Auto)' && /TIMEOUT/i.test(String(e?.message || ''))) {
                 // Our patience may have been the fault, not the engine. Raise the
                 // floor before counting this against the breaker.
@@ -1851,6 +1914,37 @@ export async function routeToModel(
             onProgress?.(`⏳ مزوّد الذكاء وصل حدّ الطلبات المؤقت — أنتظر ${secs} ثانية ثم أُكمل تلقائياً`);
             await new Promise(r => setTimeout(r, waitMs));
             continue;
+        }
+
+        // A full mesh may fail transiently after a provider completed prior work in
+        // this same run. Give only that recently healthy, non-rate-limited provider
+        // one delayed probe. This prevents an engineering run from dying on a
+        // one-off timeout without disguising a quota window or retrying blindly.
+        const rescueCandidates = recentlyHealthyRetryCandidates(meshProviders)
+            .filter((provider) => !isProviderRateLimited(provider.name));
+        if (rescueCandidates.length) {
+            const names = rescueCandidates.map((provider) => provider.name).join(', ');
+            console.info(`[IntelligentRouter] 🩺 Transient mesh failure: probing recently healthy provider(s) once: ${names}.`);
+            onProgress?.('🩺 انقطع مزوّد التفكير مؤقتاً؛ أعيد اختبار مزوّد نجح قبل قليل مرة واحدة قبل إيقاف المهمة');
+            if (TRANSIENT_PROVIDER_RETRY_DELAY_MS > 0) {
+                await new Promise((resolve) => setTimeout(resolve, TRANSIENT_PROVIDER_RETRY_DELAY_MS));
+            }
+            for (const provider of rescueCandidates) {
+                try {
+                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TRANSIENT_RETRY_TIMEOUT')), TRANSIENT_PROVIDER_RETRY_TIMEOUT_MS));
+                    const retryRaw = await Promise.race([provider.run(), timeoutPromise]) as string;
+                    const retryAnswer = cleanOutput(retryRaw);
+                    if (!isUsableAnswer(retryAnswer)) throw new Error('TRANSIENT_RETRY_EMPTY');
+                    console.info(`[IntelligentRouter] ✅ Transient recovery via ${provider.name}.`);
+                    lastTotalFailureAt = 0;
+                    markProviderOk(provider.name);
+                    if (provider.name === 'Local (Auto)') noteLocalBrainOk();
+                    return retryAnswer;
+                } catch (retryError: any) {
+                    console.warn(`[IntelligentRouter] ${provider.name} transient recovery failed: ${retryError?.message || 'unknown error'}.`);
+                    lastError = String(retryError?.message || lastError);
+                }
+            }
         }
     }
     break;

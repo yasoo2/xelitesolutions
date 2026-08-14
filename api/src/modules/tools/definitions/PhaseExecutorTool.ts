@@ -38,7 +38,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                     totalPhases: { type: 'number' as const },
                     sessionId: { type: 'string' as const },
                     workspaceId: { type: 'string' as const },
-                    userId: { type: 'string' as const }
+                    userId: { type: 'string' as const },
+                    requirementsContext: { type: 'string' as const, description: 'Bounded evidence brief derived from the inspected request or specification' }
                 }
             }
         },
@@ -155,6 +156,19 @@ export class PhaseExecutorTool implements ToolDefinition {
                 const planned: any = { ...(task.args || {}), ...(task.input || {}) };
                 if (executionContext.sessionId && typeof planned.sessionId !== 'string') planned.sessionId = executionContext.sessionId;
                 if (executionContext.workspaceId && typeof planned.workspaceId !== 'string') planned.workspaceId = executionContext.workspaceId;
+                if (toolName === 'ai_write_file') {
+                    const requirementsContext = String(projectContext?.requirementsContext || '').trim();
+                    if (requirementsContext) {
+                        const taskContext = String(planned.context || '').trim();
+                        planned.context = taskContext
+                            ? `${taskContext}\n\n${requirementsContext}`
+                            : requirementsContext;
+                    }
+                    // A task title is a real planning datum; use it as a final
+                    // fallback so an otherwise valid write never reaches the
+                    // generator with an empty semantic requirement.
+                    if (!String(planned.description || '').trim()) planned.description = taskDesc;
+                }
 
                 const toolArgs = adaptPlannedArgs(toolName, planned);
                 const argsIssue = plannedArgsIssue(toolName, toolArgs);
@@ -272,17 +286,45 @@ export class PhaseExecutorTool implements ToolDefinition {
                 logs.push(`[PhaseExecutor] 🧪 Running verification: "${vTaskDesc}" with ${vToolName}`);
 
                 try {
-                    const vResult = await executeTool(vToolName, vTask.args || {}, executionContext);
-
-                    if (vResult.ok) {
-                        logs.push(`[PhaseExecutor] ✅ Verification passed for Phase ${phase.phaseNumber}`);
-                        results.push({ task: vTaskDesc, tool: vToolName, ok: true });
-                    } else {
-                        const vErr = String(vResult.error || 'Verification failed');
-                        logs.push(`[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
-                        results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: vErr });
+                    // Verification is a real tool invocation, not privileged prose.
+                    // Apply the same context injection and argument adaptation used
+                    // for ordinary phase tasks so `code_reviewer` and file tools
+                    // observe the selected workspace rather than the API process cwd.
+                    const plannedVerification: any = { ...(vTask.args || {}), ...(vTask.input || {}) };
+                    if (executionContext.sessionId && typeof plannedVerification.sessionId !== 'string') plannedVerification.sessionId = executionContext.sessionId;
+                    if (executionContext.workspaceId && typeof plannedVerification.workspaceId !== 'string') plannedVerification.workspaceId = executionContext.workspaceId;
+                    // A reviewer that merely ran is not proof that its output is
+                    // acceptable. Keep exploratory reviews informative, but make a
+                    // review selected as a phase acceptance check enforce a clear,
+                    // conservative quality floor unless the evidence-backed plan
+                    // explicitly asks for a stricter one.
+                    if (vToolName === 'code_reviewer') {
+                        const suppliedScore = Number(plannedVerification.minimumScore);
+                        plannedVerification.minimumScore = Number.isFinite(suppliedScore)
+                            ? Math.max(70, suppliedScore)
+                            : 70;
+                        plannedVerification.failOnCritical = true;
+                    }
+                    const verificationArgs = adaptPlannedArgs(vToolName, plannedVerification);
+                    const verificationArgsIssue = plannedArgsIssue(vToolName, verificationArgs);
+                    if (verificationArgsIssue) {
+                        logs.push(`[PhaseExecutor] ⚠️ Verification input invalid: ${verificationArgsIssue}`);
+                        results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: verificationArgsIssue });
                         verificationFailed = true;
                         status = 'partial';
+                    } else {
+                        const vResult = await executeTool(vToolName, verificationArgs, executionContext);
+
+                        if (vResult.ok) {
+                        logs.push(`[PhaseExecutor] ✅ Verification passed for Phase ${phase.phaseNumber}`);
+                        results.push({ task: vTaskDesc, tool: vToolName, ok: true });
+                        } else {
+                            const vErr = String(vResult.error || 'Verification failed');
+                            logs.push(`[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
+                            results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: vErr });
+                            verificationFailed = true;
+                            status = 'partial';
+                        }
                     }
                 } catch (vError: any) {
                     logs.push(`[PhaseExecutor] ⚠️ Verification error: ${vError.message}`);

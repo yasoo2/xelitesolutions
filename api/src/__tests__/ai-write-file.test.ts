@@ -97,6 +97,34 @@ describe('a path outside the workspace is refused, not written', () => {
     });
 });
 
+describe('artifact contracts prevent a familiar template from replacing the requested deliverable', () => {
+    it('refuses an HTML document returned for a Markdown architecture document', async () => {
+        callLLM.mockResolvedValue('<!doctype html><html><head><title>Dashboard</title></head><body>generic app</body></html>');
+        const rel = scratch('architecture/initial_plan.md');
+
+        const res: any = await tool.execute({
+            path: rel,
+            description: 'Write an architecture plan with boundaries, lifecycle, verification, and explicit open decisions.',
+            context: 'AUTHORITATIVE REQUIREMENTS EVIDENCE: architecture document only; no user interface is requested.',
+        });
+
+        expect(res.ok).toBe(false);
+        expect(res.error).toMatch(/artifact_type_mismatch/);
+        expect(fs.existsSync(landsAt(rel))).toBe(false);
+    });
+
+    it('keeps the destination contract in the generation prompt for a Markdown file', async () => {
+        callLLM.mockResolvedValue('# Architecture\n\n## Boundaries\nConcrete content.');
+        const rel = scratch('architecture/contract.md');
+
+        const res: any = await tool.execute({ path: rel, description: 'Write an architecture document.' });
+
+        expect(res.ok).toBe(true);
+        expect(callLLM.mock.calls[0][0]).toMatch(/technical document/i);
+        expect(callLLM.mock.calls[0][1][0].content).toMatch(/markdown_document/i);
+    });
+});
+
 describe('a failure is never written into the file as its contents', () => {
     it('refuses the router\'s no-provider notice', async () => {
         // The router answers with an apology STRING rather than throwing. Writing

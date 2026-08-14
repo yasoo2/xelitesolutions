@@ -156,6 +156,9 @@ export class AgentLoopService {
         const runInstructions = instructionBlocks.join('\n\n');
         const traceId = options.traceId;
         const modelConfig = options.modelConfig;
+        // Project memories are scoped by the workspace selected in the UI. This
+        // prevents a plan from an earlier project from changing a new, empty one.
+        const workspaceId = String(options.workspaceId || '').trim();
         // One language for the whole run — the block above, uiText fallbacks,
         // and context.language (which central_answer measures against) all
         // follow the message-derived choice, never the raw switcher value.
@@ -193,7 +196,7 @@ export class AgentLoopService {
         let memoryContext = '';
         try {
             // Pass the goal so recall surfaces the memories RELEVANT to it.
-            memoryContext = await longTermMemory.getContextSummary(memUserId, goal);
+            memoryContext = await longTermMemory.getContextSummary(memUserId, goal, { workspaceId });
             if (memoryContext) broadcastThinkingDetail(sessionId, uiText('recalledContext', language));
         } catch { /* non-fatal */ }
 
@@ -213,7 +216,7 @@ export class AgentLoopService {
                     // الدردشة. يحتفظ به حتى تصل browser_run إلى الصفحة المرئية.
                     browserSessionId: String(options.browserSessionId || '').trim() || undefined,
                     // مستقل عن sessionId: هذا هو جذر مساحة العمل المختارة من الواجهة.
-                    workspaceId: String(options.workspaceId || '').trim() || undefined,
+                    workspaceId: workspaceId || undefined,
                     modelConfig,
                     memoryContext,
                     language
@@ -269,11 +272,11 @@ export class AgentLoopService {
             // session: extracts facts (name, preferred languages, project types)
             // and stores a Q/A memory. Best-effort, non-blocking.
             try {
-                await longTermMemory.learnFromConversation(memUserId, [{ role: 'user', content: goal }]);
+                await longTermMemory.learnFromConversation(memUserId, [{ role: 'user', content: goal }], { workspaceId });
                 await longTermMemory.remember(memUserId, {
                     type: 'conversation',
                     content: `س: ${goal}\nج: ${String(finalText).slice(0, 400)}`,
-                    metadata: { sessionId, runId },
+                    metadata: { sessionId, runId, ...(workspaceId ? { workspaceId } : {}) },
                     importance: result.ok ? 0.6 : 0.4,
                 });
             } catch { /* non-fatal */ }
@@ -443,6 +446,10 @@ export class AgentLoopService {
             sessionId,
             workspaceId,
             userId,
+            // Set by the canonical pipeline from the fully read local
+            // specification. This is evidence for downstream artifact workers,
+            // not a guessed technology or product template.
+            requirementsContext: String(plannerResult?.output?.requirementsContext || ''),
         };
         const executionContext = { sessionId, workspaceId, userId, modelConfig, onProgress: voice, onThought: voice };
         const results: any[] = [];

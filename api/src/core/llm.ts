@@ -20,8 +20,17 @@ const {
 /**
  * Unified LLM Entry Point for Agents
  */
-export async function callLLM(prompt: string, context: any[] = []): Promise<string> {
-    return routeToModel([...context, { role: "user", content: prompt }]);
+export async function callLLM(prompt: string, context: any[] = [], routingContext?: any): Promise<string> {
+    return routeToModel(
+        [...context, { role: "user", content: prompt }],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        routingContext
+    );
 }
 
 /**

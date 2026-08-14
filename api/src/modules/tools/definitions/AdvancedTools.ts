@@ -2,6 +2,7 @@ import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
+import { resolveToolPath } from '../utils';
 
 /**
  * Pattern Recognition Tool - أداة التعرف على الأنماط
@@ -659,17 +660,30 @@ export class DocumentationGeneratorTool extends BaseTool {
 
   permissions: ToolPermission[] = ['read', 'write'];
 
-  async execute(input: any) {
-    const { filePath, outputFormat = 'markdown' } = input;
-    
-    if (!fs.existsSync(filePath)) {
-      return { ok: false, error: `File not found: ${filePath}` };
+  async execute(input: any, context?: { workspaceId?: string }) {
+    const { filePath, outputFormat = 'markdown' } = input || {};
+    const requestedPath = String(filePath || '').trim();
+    if (!requestedPath) {
+      return { ok: false, error: 'File not found: missing filePath' };
     }
 
-    const code = fs.readFileSync(filePath, 'utf-8');
-    const docs = this.generateDocumentation(code, filePath);
+    let sourcePath: string;
+    try {
+      // Planner paths are workspace-relative. Resolve them through the same
+      // containment boundary as read_file/write_file rather than API cwd.
+      sourcePath = resolveToolPath(requestedPath, { workspaceId: context?.workspaceId });
+    } catch (error: any) {
+      return { ok: false, error: String(error?.message || error) };
+    }
+    
+    if (!fs.existsSync(sourcePath)) {
+      return { ok: false, error: `File not found: ${requestedPath}` };
+    }
 
-    const outputPath = filePath.replace(/\.\w+$/, `.${outputFormat === 'markdown' ? 'md' : outputFormat}`);
+    const code = fs.readFileSync(sourcePath, 'utf-8');
+    const docs = this.generateDocumentation(code, sourcePath);
+
+    const outputPath = sourcePath.replace(/\.\w+$/, `.${outputFormat === 'markdown' ? 'md' : outputFormat}`);
     fs.writeFileSync(outputPath, docs);
 
     return {

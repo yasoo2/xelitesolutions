@@ -112,3 +112,43 @@ describe('evidence-first engineering discovery', () => {
     expect(source).toContain('evidence?.constraints?.createsNewProject');
   });
 });
+
+
+describe('local specification evidence', () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    while (roots.length) fs.rmSync(roots.pop()!, { recursive: true, force: true });
+  });
+
+  test('records a local specification with its complete line count without treating it as a project manifest', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-spec-evidence-'));
+    roots.push(root);
+    fs.writeFileSync(path.join(root, 'platform_specification.txt'), 'Requirement one\nRequirement two\nRequirement three\n');
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: 'Read the local specification then implement it locally without deployment.',
+    }, { workspaceRoot: root });
+
+    expect(result.ok).toBe(true);
+    expect(result.output.evidence.mode).toBe('greenfield');
+    expect(result.output.evidence.instructionFiles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ relativePath: 'platform_specification.txt', lineCount: 4 }),
+    ]));
+    const specification = result.output.evidence.instructionFiles.find((file: any) => file.relativePath === 'platform_specification.txt');
+    expect(specification).toBeDefined();
+    expect(specification).not.toHaveProperty('path');
+    expect(path.isAbsolute(specification.relativePath)).toBe(false);
+  });
+
+  test('reads a discovered local specification through read_file before asking the planner to plan', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
+    const specificationRead = source.indexOf('await this.readRequestedSpecifications(request, evidence, context, logs, say, isAr)');
+    const planner = source.indexOf("const plannerResult = await executeTool('project_planner'");
+
+    expect(specificationRead).toBeGreaterThanOrEqual(0);
+    expect(planner).toBeGreaterThan(specificationRead);
+    expect(source).toContain("executeTool('read_file'");
+    expect(source).toContain('FULL LOCAL SPECIFICATION');
+    expect(source).toContain('instructionFiles');
+  });
+});

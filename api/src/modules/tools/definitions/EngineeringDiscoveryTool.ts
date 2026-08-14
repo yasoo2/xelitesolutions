@@ -20,6 +20,13 @@ export interface EngineeringEvidence {
         likelyEntrypoints: string[];
         candidateChecks: Array<{ kind: 'test' | 'build' | 'lint' | 'typecheck'; command: string; source: string }>;
     };
+    /**
+     * Read-only candidates for a user-requested local brief/specification.
+     * Paths are deliberately workspace-relative: evidence is handed to the
+     * planner, and an absolute host path is neither a requirement nor a safe
+     * tool argument for a portable engineering plan.
+     */
+    instructionFiles: Array<{ relativePath: string; lineCount: number }>;
     constraints: {
         localOnly: boolean;
         forbidDeploy: boolean;
@@ -134,6 +141,8 @@ export class EngineeringDiscoveryTool extends BaseTool {
         const ignored = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.turbo', '.cache', 'vendor']);
         const maxDepth = Number.isFinite(input?.maxDepth) ? Math.max(1, Math.min(6, Number(input.maxDepth))) : 3;
         const roots = new Set<string>();
+        const instructionFiles: EngineeringEvidence['instructionFiles'] = [];
+        const isInstructionFile = (name: string) => /\.(?:md|txt|rst)$/i.test(name);
         const visit = (dir: string, depth: number) => {
             if (depth > maxDepth || roots.size >= 24) return;
             let entries: fs.Dirent[] = [];
@@ -141,8 +150,21 @@ export class EngineeringDiscoveryTool extends BaseTool {
             const names = new Set(entries.map(entry => entry.name));
             if (names.has('package.json') || names.has('pyproject.toml') || names.has('requirements.txt') || names.has('go.mod')) roots.add(dir);
             for (const entry of entries) {
+                const entryPath = path.join(dir, entry.name);
+                if (entry.isFile() && isInstructionFile(entry.name) && instructionFiles.length < 32) {
+                    try {
+                        const lineCount = fs.readFileSync(entryPath, 'utf8').split('\n').length;
+                        const relativePath = path.relative(workspaceRoot, entryPath).replace(/\\/g, '/');
+                        // Discovery only emits paths that later tools may safely
+                        // receive. `entryPath` is a host-local implementation
+                        // detail, never planner evidence.
+                        if (relativePath && !relativePath.startsWith('../') && !path.isAbsolute(relativePath)) {
+                            instructionFiles.push({ relativePath, lineCount });
+                        }
+                    } catch { /* unreadable documents are not evidence */ }
+                }
                 if (!entry.isDirectory() || entry.name.startsWith('.') || ignored.has(entry.name)) continue;
-                visit(path.join(dir, entry.name), depth + 1);
+                visit(entryPath, depth + 1);
             }
         };
         visit(workspaceRoot, 0);
@@ -192,13 +214,16 @@ export class EngineeringDiscoveryTool extends BaseTool {
             mode,
             workspaceRoot,
             selectedProject,
+            instructionFiles: instructionFiles.sort((a, b) => a.relativePath.localeCompare(b.relativePath)),
             constraints: { localOnly, forbidDeploy, userRequestedExistingProject: requestedExisting, createsNewProject: buildsSomethingNew },
+
             facts,
             blockers,
         };
         logs.push(`engineering_discovery.root=${workspaceRoot}`);
         logs.push(`engineering_discovery.mode=${mode}`);
         logs.push(`engineering_discovery.projects=${candidates.length}`);
+        logs.push(`engineering_discovery.instruction_files=${instructionFiles.length}`);
         logs.push(`engineering_discovery.blockers=${blockers.length}`);
         return { ok: true, output: { evidence }, logs };
     }

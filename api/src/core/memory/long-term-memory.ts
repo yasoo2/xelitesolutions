@@ -20,6 +20,14 @@ export interface MemoryEntry {
     lastAccessed: number;
 }
 
+export interface MemoryScope {
+    /**
+     * Stable identifier of the active project workspace. Conversation/code/file
+     * memories are private to this scope; user preferences remain global.
+     */
+    workspaceId?: string;
+}
+
 export interface UserProfile {
     userId: string;
     name?: string;
@@ -36,7 +44,14 @@ export interface UserProfile {
     updatedAt: number;
 }
 
-class LongTermMemory {
+function normalizedWorkspaceId(value?: string): string {
+    return String(value || '')
+        .trim()
+        .replace(/\\/g, '/')
+        .replace(/\/+$/, '');
+}
+
+export class LongTermMemory {
     private memoryStore: Map<string, MemoryEntry[]> = new Map(); // userId -> memories
     private profiles: Map<string, UserProfile> = new Map(); // userId -> profile
     private memoryDir: string;
@@ -94,9 +109,20 @@ class LongTermMemory {
     /**
      * Recall memories relevant to a query
      */
-    async recall(userId: string, query: string, limit: number = 10): Promise<MemoryEntry[]> {
+    async recall(userId: string, query: string, limit: number = 10, scope: MemoryScope = {}): Promise<MemoryEntry[]> {
         await this.ensureInitialized();
-        const userMemories = this.memoryStore.get(userId) || [];
+        const activeWorkspaceId = normalizedWorkspaceId(scope.workspaceId);
+        const allMemories = this.memoryStore.get(userId) || [];
+        // A workspace is an isolation boundary. Project conversation, file, and
+        // code memories from another workspace must never influence a fresh run.
+        // Preferences and explicit facts describe the user rather than a project,
+        // so they deliberately remain available across workspaces.
+        const userMemories = activeWorkspaceId
+            ? allMemories.filter(memory => {
+                if (memory.type === 'preference' || memory.type === 'fact') return true;
+                return normalizedWorkspaceId(memory.metadata?.workspaceId) === activeWorkspaceId;
+            })
+            : allMemories;
 
         if (userMemories.length === 0) return [];
 
@@ -186,9 +212,10 @@ class LongTermMemory {
     /**
      * Learn from conversation
      */
-    async learnFromConversation(userId: string, messages: any[]): Promise<void> {
+    async learnFromConversation(userId: string, messages: any[], scope: MemoryScope = {}): Promise<void> {
         await this.ensureInitialized();
         const profile = await this.getProfile(userId);
+        const workspaceId = normalizedWorkspaceId(scope.workspaceId);
 
         // Extract learnings
         for (const msg of messages) {
@@ -221,7 +248,7 @@ class LongTermMemory {
                 await this.remember(userId, {
                     type: 'conversation',
                     content: content.substring(0, 500),
-                    metadata: { timestamp: Date.now() },
+                    metadata: { timestamp: Date.now(), ...(workspaceId ? { workspaceId } : {}) },
                     importance: 0.5
                 });
             }
@@ -233,12 +260,12 @@ class LongTermMemory {
     /**
      * Get conversation summary for context
      */
-    async getContextSummary(userId: string, query: string = ''): Promise<string> {
+    async getContextSummary(userId: string, query: string = '', scope: MemoryScope = {}): Promise<string> {
         await this.ensureInitialized();
         const profile = await this.getProfile(userId);
         // Recall is driven by the CURRENT request, so the past that surfaces is
         // the past that is relevant — not merely the most recent.
-        const recentMemories = await this.recall(userId, query, 5);
+        const recentMemories = await this.recall(userId, query, 5, scope);
 
         const parts: string[] = [];
 

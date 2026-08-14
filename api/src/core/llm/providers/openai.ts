@@ -6,25 +6,70 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 export class OpenAIProvider {
     private client: OpenAI | null = null;
     private apiKey: string;
+    private baseURL: string;
+    private resolvedCompatibleModel: string | null = null;
 
     constructor(apiKey?: string) {
         this.apiKey = apiKey || OPENAI_API_KEY;
-        if (this.apiKey && this.apiKey.startsWith('sk-')) {
-            // Keep the official endpoint by default, but honour an explicitly
-            // configured compatible gateway (used by local and managed installs).
-            const baseURL = String(process.env.OPENAI_API_BASE || '').trim();
+        this.baseURL = String(process.env.OPENAI_API_BASE || '').trim();
+        // The public OpenAI endpoint uses `sk-…` keys, while compatible
+        // managed/local gateways can use another credential format. A
+        // non-standard credential is permitted only when an operator explicitly
+        // configures a compatible base URL, so it is never sent to the public
+        // OpenAI endpoint by accident.
+        const hasOfficialKey = this.apiKey.startsWith('sk-');
+        const hasCompatibleGatewayCredential = Boolean(this.baseURL && this.apiKey);
+        if (hasOfficialKey || hasCompatibleGatewayCredential) {
             this.client = new OpenAI({
                 apiKey: this.apiKey,
-                ...(baseURL ? { baseURL } : {}),
+                ...(this.baseURL ? { baseURL: this.baseURL } : {}),
             });
-            console.info('[OpenAI] Provider initialized with API key');
+            console.info('[OpenAI] Provider initialized with configured credentials');
         } else {
             noteMissingKey('OpenAI', 'OPENAI_API_KEY');
         }
     }
 
     isAvailable(): boolean {
-        return !!this.apiKey && !!this.client && this.apiKey.startsWith('sk-');
+        return !!this.client;
+    }
+
+    /**
+     * A compatible endpoint may expose a narrower and independently changing
+     * catalogue than api.openai.com. Ask its `/models` endpoint once, rather
+     * than declaring every later task impossible because a historic default
+     * such as `gpt-4o` is not present. Operators retain full control through
+     * OPENAI_MODEL; an unavailable catalogue leaves the requested model alone.
+     */
+    private async resolveModel(requestedModel: string): Promise<string> {
+        const configured = String(process.env.OPENAI_MODEL || '').trim();
+        if (configured) return configured;
+        if (!this.baseURL) return requestedModel;
+        if (this.resolvedCompatibleModel) return this.resolvedCompatibleModel;
+
+        try {
+            const list = (this.client as any)?.models?.list;
+            if (typeof list !== 'function') return requestedModel;
+            const catalogue = await list.call((this.client as any).models);
+            const ids = Array.isArray(catalogue?.data)
+                ? catalogue.data.map((item: any) => String(item?.id || '').trim()).filter(Boolean)
+                : [];
+            if (!ids.length) return requestedModel;
+
+            const selected = ids.includes(requestedModel)
+                ? requestedModel
+                : ['gpt-5-mini', 'gpt-4.1-mini', 'gpt-5-nano'].find(candidate => ids.includes(candidate))
+                    || ids.find(id => /^gpt-|^claude-|^gemini-/i.test(id))
+                    || ids[0];
+            this.resolvedCompatibleModel = selected;
+            if (selected !== requestedModel) {
+                console.info(`[OpenAI] Compatible gateway does not list ${requestedModel}; using discovered model: ${selected}`);
+            }
+            return selected;
+        } catch (error: any) {
+            console.warn(`[OpenAI] Could not list compatible gateway models; retaining requested model ${requestedModel}: ${error?.message || error}`);
+            return requestedModel;
+        }
     }
 
     async chatComplete(
@@ -37,9 +82,10 @@ export class OpenAIProvider {
         }
 
         try {
-            console.info(`[OpenAI] Attempting with model: ${model}`);
+            const resolvedModel = await this.resolveModel(model);
+            console.info(`[OpenAI] Attempting with model: ${resolvedModel}`);
             const completion = await this.client.chat.completions.create({
-                model: model,
+                model: resolvedModel,
                 messages: messages as any,
                 tools: tools as any,
                 tool_choice: tools ? 'auto' : undefined,
@@ -50,6 +96,10 @@ export class OpenAIProvider {
                 : [];
             const message = choices[0]?.message;
             if (!message) {
+                const gatewayError = (completion as any)?.error?.message;
+                if (gatewayError) {
+                    throw new Error(`OpenAI compatible gateway error: ${String(gatewayError).slice(0, 300)}`);
+                }
                 throw new Error('OpenAI returned no assistant message (missing choices)');
             }
 

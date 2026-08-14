@@ -213,7 +213,8 @@ describe('project-run preserves the user-selected workspace and task boundary', 
         expect(route).toContain('browserSessionId, workspaceId, userId: bodyUserId');
         expect(route).toContain("workspaceId: String(workspaceId || '').trim() || undefined");
         expect(loop).toContain('workspaceId?: string');
-        expect(loop).toContain("workspaceId: String(options.workspaceId || '').trim() || undefined");
+        expect(loop).toContain("const workspaceId = String(options.workspaceId || '').trim();");
+        expect(loop).toContain('workspaceId: workspaceId || undefined');
     });
 
     it('returns an explicit project_run failure before the generative recovery planner', () => {
@@ -294,5 +295,24 @@ describe('pipeline preserves an honest verification verdict for its caller', () 
         expect(pipeline).toContain('const honestBlocker = pipeline?.honestBlocker === true || verificationFailed');
         expect(pipeline).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
         expect(pipeline).toContain('...(honestBlocker ? { honestBlocker: true } : {})');
+    });
+});
+
+
+describe('planner provider and requirements-boundary contracts', () => {
+    it('passes the active session provider to project planning and treats provider outages as blockers', () => {
+        const planner = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPlannerTool.ts'), 'utf-8');
+        expect(planner).toContain('modelConfig: context?.modelConfig');
+        expect(planner).toContain('if (isProviderFailure(response))');
+        expect(planner).toContain('no plan was invented from the outage message');
+    });
+
+    it('plans from a bounded brief derived from fully read local evidence', () => {
+        const pipeline = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
+        expect(pipeline).toContain('const requirementsContext = this.buildRequirementsContext(request, specification.content);');
+        expect(pipeline).toContain('COMPACT REQUIREMENTS EVIDENCE');
+        expect(pipeline).toContain('pipeline.planning_requirements_brief_chars=');
+        expect(pipeline).toContain("slice(0, 12000)");
+        expect(pipeline).toContain('plannerResult.output.requirementsContext = requirementsContext;');
     });
 });

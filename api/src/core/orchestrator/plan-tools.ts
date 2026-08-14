@@ -203,12 +203,20 @@ export function resolvePlannedTool(raw: any): Resolution {
     return { tool: null, why: 'unknown' };
 }
 
+export interface PlanSanitiseBlocker {
+    code: string;
+    message: string;
+    remedy: string;
+}
+
 export interface SanitisedPlan {
     phases: any[];
     /** every change made, in the user's log, because a silent rewrite is its own lie */
     notes: string[];
     /** did anything executable survive? */
     executableTasks: number;
+    /** a plan-contract failure that must stop planning rather than become a fake deliverable */
+    blocker?: PlanSanitiseBlocker;
 }
 
 /**
@@ -221,17 +229,39 @@ export interface SanitisedPlan {
 export interface PlanSanitiseOptions {
     /** Greenfield work without a user-selected stack may create only explicit, file-level work. */
     disallowImplicitScaffold?: boolean;
+    /** Files discovered in the selected workspace and therefore safe as source inputs. */
+    evidencedPaths?: string[];
+    /** Exact local check commands declared by an inspected project manifest or test layout. */
+    candidateCheckCommands?: string[];
 }
 
 export function sanitisePlanPhases(phases: any[], projectDir = '', options: PlanSanitiseOptions = {}): SanitisedPlan {
     const notes: string[] = [];
     let executableTasks = 0;
+    const blockers: PlanSanitiseBlocker[] = [];
     const dir = String(projectDir || '').replace(/[^a-zA-Z0-9-_]/g, '-').slice(0, 40) || 'project';
+    const normaliseEvidencePath = (value: unknown) => String(value || '').trim().replace(/\\/g, '/').replace(/^\.\//, '');
+    /**
+     * A model plan is portable workspace code. Absolute Unix, Windows-drive and
+     * UNC paths all bind it to a host and can bypass the selected root; `..`
+     * does the same. Reject them before any file-oriented tool sees them.
+     */
+    const unsafeWorkspacePath = (value: unknown) => {
+        const raw = String(value || '').trim().replace(/\\/g, '/');
+        return !raw || /^(?:\/|[a-zA-Z]:\/|\/\/)/.test(raw) || raw.split('/').some(segment => segment === '..');
+    };
+    const evidencedPaths = new Set((options.evidencedPaths || []).map(normaliseEvidencePath).filter(Boolean));
+    const candidateCheckCommands = new Set((options.candidateCheckCommands || []).map(command => normaliseShellCommand(command)).filter(Boolean));
+    const taskOutputPaths = (tasks: any[]) => tasks
+        .filter((task: any) => ['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(String(task?.tool || '')))
+        .map((task: any) => normaliseEvidencePath(task?.args?.path || task?.args?.filePath || task?.input?.path || task?.input?.filePath))
+        .filter(Boolean);
 
     const out = (Array.isArray(phases) ? phases : []).map((phase: any, pi: number) => {
         const phaseName = String(phase?.name || `Phase ${pi + 1}`);
         const tasks = Array.isArray(phase?.tasks) ? phase.tasks : [];
         const kept: any[] = [];
+        const phaseBlockers: PlanSanitiseBlocker[] = [];
 
         for (const task of tasks) {
             const asked = String(task?.tool || '').trim();
@@ -242,12 +272,35 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
 
             const r = resolvePlannedTool(asked);
             if (r.tool) {
+                // `scaffold_project` is a closed contract.  Do not let the
+                // greenfield policy hide a missing structure behind a generic
+                // "implicit scaffold" note: that was the round-18 failure mode.
+                const adaptedArgs = adaptPlannedArgs(r.tool, { ...(task?.args || {}), ...(task?.input || {}) });
+                if (r.tool === 'scaffold_project') {
+                    const scaffoldIssue = plannedArgsIssue(r.tool, adaptedArgs);
+                    if (scaffoldIssue) {
+                        phaseBlockers.push({
+                            code: 'scaffold_project_contract_invalid',
+                            message: `المرحلة «${phaseName}» لا يمكن تنفيذها: ${scaffoldIssue}`,
+                            remedy: 'حدّد structure كائناً غير فارغ يحتوي المسارات والملفات المطلوبة، أو ابدأ بمرحلة استكشاف/سؤال تقني صريح قبل البناء.',
+                        });
+                        notes.push(`[plan] أوقفتُ «${desc}» — ${scaffoldIssue}`);
+                        continue;
+                    }
+                }
                 // A greenfield request without an explicit stack is not permission
                 // to invent one. A seed tool encodes a framework and dependency
                 // decision; retain only precise file-level work until the user or
                 // inspected evidence supplies that decision.
                 const seedTools = new Set(['scaffold_project', 'scaffold_full_stack', 'react_project', 'api_project', 'web_page_builder', 'mobile_builder']);
                 if (options.disallowImplicitScaffold && seedTools.has(r.tool)) {
+                    if (r.tool === 'scaffold_project') {
+                        phaseBlockers.push({
+                            code: 'implicit_scaffold_requires_explicit_stack',
+                            message: `المرحلة «${phaseName}» طلبت scaffold_project قبل إثبات تقنية أو إطار صريح لمساحة greenfield.`,
+                            remedy: 'استخدم أدلة الاستكشاف أو قيداً تقنياً صريحاً، ثم أرسل structure قابلاً للتنفيذ؛ لن أستبدل ذلك بوثيقة fallback.',
+                        });
+                    }
                     notes.push(`[plan] أسقطتُ «${desc}» — لا توجد تقنية أو إطار مُختار صراحةً لهذه المساحة الجديدة؛ لن أُنشئ scaffold افتراضياً.`);
                     continue;
                 }
@@ -256,10 +309,42 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 // invented action (for example `create` on a migrator that only
                 // supports migrate/push/reset/status) reaches execution, fails,
                 // and is wrongly treated as a code defect for self-healing.
-                const adaptedArgs = adaptPlannedArgs(r.tool, { ...(task?.args || {}), ...(task?.input || {}) });
+                const fileArguments = [
+                    adaptedArgs?.path,
+                    adaptedArgs?.filePath,
+                    adaptedArgs?.sourceFile,
+                    adaptedArgs?.projectPath,
+                    ...(Array.isArray(adaptedArgs?.files) ? adaptedArgs.files : []),
+                ].map(value => String(value || '').trim()).filter(Boolean);
+                const unsafeFileArgument = fileArguments.find(unsafeWorkspacePath);
+                if (unsafeFileArgument) {
+                    notes.push(`[plan] أسقطتُ «${desc}» — المسار «${unsafeFileArgument}» ليس مساراً نسبياً آمناً داخل مساحة العمل؛ لن أُمرّره إلى أداة الملفات.`);
+                    continue;
+                }
+                const sourcePath = normaliseEvidencePath(adaptedArgs?.path || adaptedArgs?.filePath || adaptedArgs?.sourceFile);
+                // Generation and review tools all consume source evidence. A review
+                // without files is not a harmless empty review: its real contract
+                // requires `files`, and executing the model's vague QA request used
+                // to crash at `undefined.length` in the live NEXUS quality phase.
+                // A read is an evidence operation, not an exploratory guess
+                // made by the planner. It may observe discovered evidence or an
+                // earlier phase output, exactly like generators and reviews.
+                const sourceDependentTools = new Set(['read_file', 'doc_generator', 'test_generator', 'code_reviewer', 'auto_tester']);
+                const sourcePaths = (r.tool === 'code_reviewer' || (r.tool === 'auto_tester' && norm(adaptedArgs?.testType) === 'syntax'))
+                    ? (Array.isArray(adaptedArgs?.files) ? adaptedArgs.files.map(normaliseEvidencePath).filter(Boolean) : [])
+                    : (r.tool === 'auto_tester' ? [] : (sourcePath ? [sourcePath] : []));
+                const knownPhaseOutputs = new Set(taskOutputPaths(kept));
+                const unprovenSource = sourcePaths.find((candidate: string) => !knownPhaseOutputs.has(candidate) && !evidencedPaths.has(candidate));
+                if (sourceDependentTools.has(r.tool) && unprovenSource) {
+                    notes.push(`[plan] أسقطتُ «${desc}» — ${r.tool} يحتاج ملفاً مصدرياً أنتجته مهمة سابقة أو سجّل الاستكشاف؛ «${unprovenSource}» غير مثبت، لذا لن أحوّل اسماً متخيلاً إلى إصلاح ذاتي.`);
+                    continue;
+                }
                 const argsIssue = plannedArgsIssue(r.tool, adaptedArgs);
-                if (argsIssue) {
-                    notes.push(`[plan] أسقطتُ «${desc}» — ${argsIssue}`);
+                const shellIssue = r.tool === 'shell_execute'
+                    ? unprovenProjectCheckIssue(adaptedArgs?.command, candidateCheckCommands)
+                    : null;
+                if (argsIssue || shellIssue) {
+                    notes.push(`[plan] أسقطتُ «${desc}» — ${argsIssue || shellIssue}`);
                     continue;
                 }
                 if (r.how !== 'exact') notes.push(`[plan] «${asked}» → ${r.tool} (${desc})`);
@@ -274,7 +359,22 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         }
 
         const runnable = kept.filter(t => String(t.tool || 'manual') !== 'manual');
-        if (runnable.length === 0) {
+        if (phaseBlockers.length && (runnable.length === 0 || taskOutputPaths(kept).length === 0)) {
+            const blocker = phaseBlockers[0];
+            blockers.push(blocker);
+            notes.push(`[plan] أوقفتُ المرحلة «${phaseName}» بعائق تخطيط صريح: ${blocker.message}`);
+            return {
+                ...phase,
+                tasks: [],
+                verificationTask: undefined,
+                deliveryStatus: 'blocked',
+                blocker,
+            };
+        }
+        // Inspection-only work still needs an evidence artefact. Without one, a
+        // planner can name a nonexistent source and turn a plan defect into repair.
+        const hasConcreteDelivery = taskOutputPaths(kept).length > 0;
+        if (runnable.length === 0 || !hasConcreteDelivery) {
             // Not a failure — a deliverable. Write the phase down instead of
             // pretending it ran, and instead of letting it stop the build.
             /**
@@ -305,9 +405,9 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                         '## ماذا كان مطلوباً في هذه المرحلة',
                         ...(asked.length ? asked : ['- (لا مهام)']),
                         '',
-                        '## لماذا لا ينفّذها جو',
-                        'كل ما طُلب هنا عمل تنظيمي بشري (اجتماعات، تذاكر، لوحات إدارة) وليس بناء برمجي.',
-                        'جو يكتب البرمجيات؛ فسجّلتُ المرحلة كوثيقة بدل ادّعاء تنفيذ لم يحدث.',
+                        '## سجل التنفيذ والأدلة',
+                        'هذه المرحلة لم تتضمن مخرجاً مسارياً مثبتاً يمكن التحقق منه، أو احتوت أدوات تعتمد على ملف مصدر غير مثبت.',
+                        'لذلك سجّل Joe ما عرفه من المهام والقيود في هذا الملف الحتمي، بدلاً من ادّعاء أن ملفاً متخيلاً موجود أو بدء إصلاح ذاتي تخميني.',
                         '',
                         ...(deliverables.length ? ['## المخرجات المتوقّعة', ...deliverables.map((d: any) => `- ${String(d)}`)] : []),
                         '',
@@ -324,13 +424,78 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         let verification = v;
         if (v && v.tool) {
             const rv = resolvePlannedTool(v.tool);
-            verification = rv.tool ? { ...v, tool: rv.tool } : { ...v, tool: 'project_detect', args: {} };
+            const verificationTool = rv.tool;
+            // A verification task is an acceptance observation, never another
+            // delivery action. In the first NEXUS run the planner used
+            // doc_generator to "verify" an architecture by reading the invented
+            // architecture_plan.md. That is neither a check nor a repairable
+            // code defect: it is a plan contract violation. It entered the
+            // repair loop as File not found and encouraged a speculative write.
+            //
+            // Prefer observing an explicit output of THIS phase. The path comes
+            // from an earlier task in execution order, not from the model's
+            // verification prose. If the phase has no named file output, inspect
+            // the project instead of inventing one.
+            const observedOutputPaths = kept
+                .filter((task: any) => ['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(String(task?.tool || '')))
+                .map((task: any) => String(task?.args?.path || task?.args?.filePath || task?.input?.path || task?.input?.filePath || '').trim())
+                .filter((candidate: string) => candidate && !candidate.startsWith('/') && !candidate.includes('..'));
+            const observedOutputPath = observedOutputPaths[0];
+            const generatesInsteadOfObserving = new Set([
+                'doc_generator', 'test_generator', 'ai_write_file', 'write_file',
+                'file_edit', 'file_edit_advanced', 'scaffold_project', 'react_project',
+                'api_project', 'web_page_builder', 'scaffold_full_stack',
+            ]);
+
+            const rawVerificationArgs = { ...(v?.args || {}), ...(v?.input || {}) };
+            const verificationArgs = verificationTool
+                ? adaptPlannedArgs(verificationTool, rawVerificationArgs)
+                : rawVerificationArgs;
+            const requestedReadPath = String(
+                verificationArgs?.path || verificationArgs?.filePath || verificationArgs?.sourceFile || ''
+            ).trim().replace(/^\.\//, '');
+            // A read is only evidence if it observes a file that this phase has
+            // already produced.  Otherwise a model can name architecture.md in
+            // the verification prose, get File not found, and wrongly turn a
+            // plan-contract error into a speculative repair. Existing workspace
+            // evidence belongs in an ordinary read task before the phase, not in
+            // an acceptance check for a new phase deliverable.
+            const readsUnprovenPhaseOutput = verificationTool === 'read_file'
+                && !!requestedReadPath
+                && !observedOutputPaths.some((candidate: string) => candidate.replace(/^\.\//, '') === requestedReadPath);
+
+            if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput) {
+                verification = observedOutputPath
+                    ? {
+                        task: `Verify phase output exists: ${observedOutputPath}`,
+                        tool: 'read_file',
+                        args: { path: observedOutputPath },
+                    }
+                    : {
+                        task: 'Inspect phase output on disk',
+                        tool: 'project_detect',
+                        args: {},
+                    };
+                const reason = readsUnprovenPhaseOutput ? 'تحققاً يقرأ ملفاً غير مثبت' : 'تحققاً مولّداً';
+                notes.push(observedOutputPath
+                    ? `[plan] استبدلتُ ${reason} بقراءة المخرج المثبت «${observedOutputPath}»؛ التحقق يلاحظ الناتج ولا ينشئ أو يفترض ملفاً متخيلاً.`
+                    : `[plan] استبدلتُ ${reason} بفحص المشروع؛ لا يوجد مخرج مساري مثبت في هذه المرحلة لأفحصه.`);
+            } else {
+                const verificationIssue = plannedArgsIssue(verificationTool, verificationArgs)
+                    || (verificationTool === 'shell_execute'
+                        ? unprovenProjectCheckIssue(verificationArgs?.command, candidateCheckCommands)
+                        : null);
+                verification = verificationIssue
+                    ? { task: 'Inspect phase output on disk', tool: 'project_detect', args: {} }
+                    : { ...v, tool: verificationTool, args: verificationArgs };
+                if (verificationIssue) notes.push(`[plan] استبدلتُ مهمة تحقق غير مكتملة بفحص المشروع — ${verificationIssue}`);
+            }
         }
 
         return { ...phase, tasks: kept, verificationTask: verification };
     });
 
-    return { phases: stampPlanDependencies(out, notes), notes, executableTasks };
+    return { phases: stampPlanDependencies(out, notes), notes, executableTasks, ...(blockers[0] ? { blocker: blockers[0] } : {}) };
 }
 
 /**
@@ -385,6 +550,7 @@ export function stampPlanDependencies(phases: any[], notes: string[] = []): any[
         if (already.includes(dataName)) return phase;
         return { ...phase, dependsOn: [...already, dataName] };
     });
+
 }
 
 /**
@@ -416,6 +582,8 @@ const ARG_SYNONYMS: Record<string, string[]> = {
     projectDescription: ['description', 'request', 'goal'],
     url: ['link', 'href', 'address'],
     packages: ['dependencies', 'deps', 'modules'],
+    testType: ['type', 'test', 'testTypeName', 'test_type', 'testKind'],
+    projectPath: ['path', 'cwd', 'dir', 'directory', 'projectDir', 'root'],
 };
 
 /** When a required field is still missing, the least surprising real value. */
@@ -506,6 +674,12 @@ const NEEDS_BUILT_URL = new Set(['browser_ui_audit', 'browser_screenshot', 'brow
  * a silent coercion; we never guess a migration operation from prose.
  */
 export function plannedArgsIssue(toolName: string, args: any): string | null {
+    if (toolName === 'scaffold_project') {
+        const structure = args?.structure;
+        if (!structure || typeof structure !== 'object' || Array.isArray(structure) || Object.keys(structure).length === 0) {
+            return 'scaffold_project يحتاج structure كائناً غير فارغاً يحدد مسارات الملفات والمجلدات؛ لم تُحدّد الخطة بنية قابلة للتنفيذ، لذلك أُوقفت قبل الكتابة.';
+        }
+    }
     if (toolName === 'npm_manager' && !String(args?.command || '').trim()) {
         return 'npm_manager يحتاج command صالحاً مثل «install» أو «run test»؛ لم تُحدّد الخطة أمراً، لذلك أُسقطت المهمة قبل التنفيذ.';
     }
@@ -548,7 +722,58 @@ export function plannedArgsIssue(toolName: string, args: any): string | null {
             return 'test_generator يحتاج filePath لملف مصدر محدد؛ لم تُثبت الخطة الملف المراد اختباره، لذلك أُسقطت المهمة قبل التنفيذ.';
         }
     }
+    // CodeReviewerTool requires a concrete array. A phase-level phrase such as
+    // “review quality” contains no reviewable evidence and must not turn into a
+    // runtime exception or a speculative recovery loop.
+    if (toolName === 'code_reviewer') {
+        const files = Array.isArray(args?.files)
+            ? args.files.map((value: any) => String(value || '').trim()).filter(Boolean)
+            : [];
+        if (files.length === 0 || files.some((file: string) => /^undefined$/i.test(file))) {
+            return 'code_reviewer يحتاج files كمصفوفة لمسارات ملفات مصدر مثبتة؛ لم تحدد الخطة ما الذي سيُراجع، لذلك أُسقطت المهمة قبل التنفيذ.';
+        }
+    }
+    // auto_tester has a closed test vocabulary.  A vague planned task such as
+    // “run tests” must never reach the tool as `undefined`, because that is a
+    // plan-contract defect rather than an executable verification result.
+    if (toolName === 'auto_tester') {
+        const testType = norm(args?.testType);
+        const supported = ['syntax', 'build', 'unit', 'integration'];
+        if (!supported.includes(testType)) {
+            return `auto_tester يحتاج testType واحداً من ${supported.join(', ')}؛ لكن الخطة طلبت «${testType || 'مفقود'}».`;
+        }
+        const projectPath = String(args?.projectPath || '').trim();
+        if (!projectPath || projectPath === 'undefined') {
+            return 'auto_tester يحتاج projectPath نسبياً داخل مساحة العمل؛ لا يجوز أن يفترض جذر عملية Joe كأنه المشروع.';
+        }
+        if (testType === 'syntax') {
+            const files = Array.isArray(args?.files)
+                ? args.files.map((value: any) => String(value || '').trim()).filter(Boolean)
+                : [];
+            if (files.length === 0 || files.some((file: string) => /^undefined$/i.test(file))) {
+                return 'auto_tester من نوع syntax يحتاج files كمصفوفة لمسارات مصدر مثبتة؛ لا يفحص جو مساحةً مجهولة أو ملفاً متخيلاً.';
+            }
+        }
+    }
     return null;
+}
+
+/** Normalise only spacing for a strict, manifest-backed command comparison. */
+export function normaliseShellCommand(command: unknown): string {
+    return String(command || '').trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * A raw package-script command is executable only when discovery proved that
+ * exact command exists in the selected project.  In a greenfield workspace,
+ * `npm test` is not a test: it is an unsupported assumption that cannot verify
+ * the files the plan has just produced.
+ */
+export function unprovenProjectCheckIssue(command: unknown, declaredChecks: Set<string>): string | null {
+    const normalised = normaliseShellCommand(command);
+    if (!/^(?:npm\s+(?:run\s+)?(?:test|build|lint|typecheck)|pnpm\s+(?:run\s+)?(?:test|build|lint|typecheck)|yarn\s+(?:test|build|lint|typecheck))(?:\s|$)/i.test(normalised)) return null;
+    if (declaredChecks.has(normalised)) return null;
+    return `أمر «${normalised}» ليس فحصاً معلناً في ملفات المشروع التي استكشفها Joe؛ لن يُشغَّل npm بافتراض وجود package.json أو script.`;
 }
 
 export function adaptPlannedArgs(toolName: string, args: any): any {

@@ -2,6 +2,8 @@ import { ToolDefinition } from '../types';
 import { callLLM } from '../../../core/llm';
 import fs from 'fs';
 import path from 'path';
+import { workspaceService } from '../../services/WorkspaceService';
+import { isWithinRoot } from '../utils';
 
 /**
  * CodeReviewerTool - AI-powered code review
@@ -29,6 +31,14 @@ export class CodeReviewerTool implements ToolDefinition {
                 type: 'string' as const,
                 enum: ['quick', 'detailed', 'comprehensive'],
                 description: 'Type of review'
+            },
+            minimumScore: {
+                type: 'number' as const,
+                description: 'Optional minimum accepted review score (0-100). When supplied, a lower score fails the review.'
+            },
+            failOnCritical: {
+                type: 'boolean' as const,
+                description: 'When true, any critical finding fails the review.'
             }
         },
         required: ['files']
@@ -55,22 +65,78 @@ export class CodeReviewerTool implements ToolDefinition {
     auditFields = ['projectPath'];
     mockSupported = false;
 
-    async execute(input: { files: string[]; projectPath?: string; reviewType?: string }) {
-        const { files, projectPath = '.', reviewType = 'detailed' } = input;
+    async execute(input: { files?: string[]; projectPath?: string; reviewType?: string; minimumScore?: number; failOnCritical?: boolean }, context?: { workspaceId?: string }) {
+        const files = Array.isArray(input?.files)
+            ? input.files.map(file => String(file || '').trim()).filter(Boolean)
+            : [];
+        const reviewType = input?.reviewType || 'detailed';
         const logs: string[] = [];
+        const rawMinimumScore = input?.minimumScore;
+        const minimumScore = rawMinimumScore === undefined || rawMinimumScore === null || rawMinimumScore === ''
+            ? undefined
+            : Number(rawMinimumScore);
+        const failOnCritical = input?.failOnCritical === true;
+
+        if (minimumScore !== undefined && (!Number.isFinite(minimumScore) || minimumScore < 0 || minimumScore > 100)) {
+            const error = 'code_reviewer minimumScore must be a number from 0 to 100';
+            logs.push(`Input error: ${error}`);
+            return { ok: false, error, logs };
+        }
+
+        // Schema validation normally prevents this, but plans can be restored
+        // from older sessions or invoke a tool directly. A malformed QA request
+        // is an input-contract error, never an uncaught `undefined.length`.
+        if (files.length === 0) {
+            const error = 'code_reviewer requires a non-empty files array of concrete source paths';
+            logs.push(`Input error: ${error}`);
+            return { ok: false, error, logs };
+        }
 
         try {
-            logs.push(`Reviewing ${files.length} files with ${reviewType} review`);
+            /**
+             * A phase runs inside a user-selected workspace, whereas this API
+             * process runs from `api/`. Treating `.` as the project base therefore
+             * reviewed `/api/<file>` after a builder had written
+             * `<workspace>/<file>`, then reported a successful 0/100 review.
+             * Resolve the project base from trusted execution context whenever it
+             * exists, and never let an explicit projectPath escape that root.
+             */
+            const activeRoot = context?.workspaceId
+                ? path.resolve(workspaceService.getActiveRoot(context.workspaceId))
+                : '';
+            const requestedProjectPath = String(input?.projectPath || '.').trim() || '.';
+            const projectPath = activeRoot
+                ? (path.isAbsolute(requestedProjectPath)
+                    ? path.resolve(requestedProjectPath)
+                    : path.resolve(activeRoot, requestedProjectPath))
+                : requestedProjectPath;
+
+            if (activeRoot && !isWithinRoot(path.resolve(projectPath), activeRoot)) {
+                const error = 'code_reviewer projectPath must stay within the active workspace';
+                logs.push(`Input error: ${error}`);
+                return { ok: false, error, logs };
+            }
+
+            logs.push(`Reviewing ${files.length} files with ${reviewType} review from ${projectPath}`);
 
             const issues: any[] = [];
             const suggestions: any[] = [];
+            const missingFiles: string[] = [];
+            const reviewedFiles: string[] = [];
             let totalScore = 0;
 
             for (const file of files.slice(0, 5)) { // Limit to 5 files for performance
-                const filePath = path.isAbsolute(file) ? file : path.resolve(projectPath, file);
+                const filePath = path.isAbsolute(file) ? path.resolve(file) : path.resolve(projectPath, file);
+
+                if (activeRoot && !isWithinRoot(filePath, activeRoot)) {
+                    logs.push(`Rejected path outside active workspace: ${file}`);
+                    missingFiles.push(file);
+                    continue;
+                }
 
                 if (!fs.existsSync(filePath)) {
                     logs.push(`File not found: ${filePath}`);
+                    missingFiles.push(file);
                     continue;
                 }
 
@@ -80,25 +146,52 @@ export class CodeReviewerTool implements ToolDefinition {
                 issues.push(...review.issues);
                 suggestions.push(...review.suggestions);
                 totalScore += review.score;
+                reviewedFiles.push(file);
 
                 logs.push(`Reviewed: ${file} (Score: ${review.score}/100)`);
             }
 
-            const overallScore = files.length > 0 ? Math.round(totalScore / Math.min(files.length, 5)) : 0;
+            const overallScore = reviewedFiles.length > 0 ? Math.round(totalScore / reviewedFiles.length) : 0;
+            const criticalCount = issues.filter(i => i.severity === 'critical').length;
+            const qualityFailures: string[] = [];
+            if (minimumScore !== undefined && overallScore < minimumScore) {
+                qualityFailures.push(`overall score ${overallScore}/100 is below the required ${minimumScore}/100`);
+            }
+            if (failOnCritical && criticalCount > 0) {
+                qualityFailures.push(`${criticalCount} critical finding(s) remain`);
+            }
+            const missingError = missingFiles.length > 0
+                ? `code_reviewer could not review ${missingFiles.length} requested file(s): ${missingFiles.join(', ')}`
+                : undefined;
+            const qualityError = qualityFailures.length > 0
+                ? `code_reviewer quality gate failed: ${qualityFailures.join('; ')}`
+                : undefined;
+            const error = [missingError, qualityError].filter(Boolean).join('; ') || undefined;
 
             logs.push(`Review complete. Overall score: ${overallScore}/100`);
+            if (minimumScore !== undefined) logs.push(`Quality gate: minimum score ${minimumScore}/100; critical findings ${failOnCritical ? 'block' : 'informational'}`);
+            if (error) logs.push(`Review failed: ${error}`);
 
             return {
-                ok: true,
+                ok: !error,
+                ...(error ? { error } : {}),
                 output: {
                     overallScore,
-                    filesReviewed: Math.min(files.length, 5),
+                    filesRequested: files.length,
+                    filesReviewed: reviewedFiles.length,
+                    reviewedFiles,
+                    missingFiles,
                     issues,
                     suggestions,
                     summary: {
-                        critical: issues.filter(i => i.severity === 'critical').length,
+                        critical: criticalCount,
                         warning: issues.filter(i => i.severity === 'warning').length,
                         info: issues.filter(i => i.severity === 'info').length
+                    },
+                    qualityGate: {
+                        minimumScore,
+                        failOnCritical,
+                        passed: qualityFailures.length === 0
                     }
                 },
                 logs

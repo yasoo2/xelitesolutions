@@ -1,3 +1,4 @@
+import path from 'path';
 import { ToolDefinition, ToolPermission } from '../types';
 import { executeTool } from '../../services/ToolService';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
@@ -143,6 +144,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                 output: {
                     projectName: 'engineering-task', completedPhases: 0, totalPhases: 0, verified: false,
                     executionStatus: 'blocked', verificationStatus: 'not_run', deliveryStatus: 'blocked',
+                    // The canonical pipeline evaluated this request and ended it;
+                    // the outer orchestrator must surface this evidence, not invent
+                    // a second generic repair plan from the error text.
+                    pipelineFinal: true,
                     summary: pick(isAr, `## ⚠️ توقف قبل الكتابة\n\nتعذر جمع أدلة مساحة العمل: ${message}`, `## ⚠️ Stopped before writing\n\nWorkspace evidence could not be collected: ${message}`),
                 },
                 logs: [...logs, ...(discoveryResult?.logs || [])],
@@ -166,6 +171,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     // execution fault. The orchestrator must surface it to the user
                     // rather than inventing repair work or guessing a project root.
                     requiresUserDecision: true,
+                    pipelineFinal: true,
                     stopReason: 'evidence_incomplete',
                     decision: {
                         kind: 'select_project_root',
@@ -182,6 +188,38 @@ export class ProjectPipelineTool implements ToolDefinition {
                 logs,
             };
         }
+        const specification = await this.readRequestedSpecifications(request, evidence, context, logs, say, isAr);
+        if (specification.error) {
+            const summary = pick(isAr,
+                `## ⚠️ توقف قبل التخطيط\n\n${specification.error}\n\nلم يُخمّن Joe محتوى مواصفة أو أمر اختبار من دون مصدر مقروء.`,
+                `## ⚠️ Stopped before planning\n\n${specification.error}\n\nJoe did not guess a specification or test command without a source it had read.`);
+            return {
+                ok: false,
+                error: summary,
+                output: {
+                    projectName: 'engineering-task', completedPhases: 0, totalPhases: 0, verified: false,
+                    executionStatus: 'not_started', verificationStatus: 'not_run', deliveryStatus: 'blocked',
+                    pipelineFinal: true, honestBlocker: true, evidence, summary,
+                },
+                logs,
+            };
+        }
+        // The specification is always read in full before planning, but a very
+        // large document must not be copied wholesale into a single provider call.
+        // That turns a documented local requirement into a timeout and makes the
+        // planner less reliable, not more informed. The deterministic brief below
+        // preserves scope, headings, and binding constraints with its source files;
+        // the complete text remains recorded as read evidence and is carried as
+        // bounded context to file-generation tasks after a plan is accepted.
+        const requirementsContext = this.buildRequirementsContext(request, specification.content);
+        const planningRequest = specification.content
+            ? `${request}\n\n--- COMPACT REQUIREMENTS EVIDENCE (derived from complete local files read through read_file; do not invent beyond it) ---\n${requirementsContext}\n--- END COMPACT REQUIREMENTS EVIDENCE ---`
+            : request;
+        if (requirementsContext) logs.push(`pipeline.planning_requirements_brief_chars=${requirementsContext.length}`);
+        const plannerEvidence = specification.sources.length
+            ? { ...evidence, specificationSources: specification.sources }
+            : evidence;
+
         say(pick(isAr,
             `[pipeline] دليل جاهز: ${evidence.mode}${evidence.selectedProject ? ` — ${evidence.selectedProject.root}` : ''}`,
             `[pipeline] Evidence ready: ${evidence.mode}${evidence.selectedProject ? ` — ${evidence.selectedProject.root}` : ''}`));
@@ -190,7 +228,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         // foundation only when it records a reason grounded in requirements or
         // inspected workspace facts; no deterministic request classifier owns it.
         say('[pipeline] planning evidence-backed engineering phases…');
-        let plannerResult: any = await executeTool('project_planner', { projectDescription: request, evidence }, context);
+        let plannerResult: any = await executeTool('project_planner', { projectDescription: planningRequest, evidence: plannerEvidence }, context);
         if (!plannerResult?.ok || plannerResult?.output?.fallback) {
             const blocker = plannerResult?.output?.blocker?.message || plannerResult?.error || 'The planner did not produce a valid evidence-backed plan.';
 
@@ -234,6 +272,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 output: {
                     projectName: plannerResult?.output?.projectName || 'engineering-task', completedPhases: 0, totalPhases: 0, verified: false,
                     executionStatus: 'not_started', verificationStatus: 'not_run', deliveryStatus: 'blocked',
+                    pipelineFinal: true,
                     evidence, summary,
                 },
                 logs: [...logs, ...(plannerResult?.logs || [])],
@@ -242,8 +281,22 @@ export class ProjectPipelineTool implements ToolDefinition {
         }
         const phases = plannerResult?.output?.phases;
         if (!Array.isArray(phases) || phases.length === 0) {
-            return { ok: false, error: plannerResult?.error || 'planner returned no phases', logs };
+            return {
+                ok: false,
+                error: plannerResult?.error || 'planner returned no phases',
+                output: {
+                    pipelineFinal: true,
+                    executionStatus: 'not_started',
+                    verificationStatus: 'not_run',
+                    deliveryStatus: 'blocked',
+                },
+                logs,
+            };
         }
+        // Each file-generation task runs later with only a short task description.
+        // Carry the same bounded evidence brief that grounded the accepted plan so
+        // workers cannot substitute a familiar template for a documented artifact.
+        plannerResult.output.requirementsContext = requirementsContext;
         say(`[pipeline] evidence-backed plan ready: ${plannerResult.output.projectName || 'project'} — ${phases.length} phases`);
 
         // 2 — Execute through the canonical pipeline (verification tasks, auto
@@ -327,6 +380,11 @@ export class ProjectPipelineTool implements ToolDefinition {
                 deliveryStatus,
                 ...(verificationFailed ? { verificationFailed: true } : {}),
                 ...(honestBlocker ? { honestBlocker: true } : {}),
+                // `project_pipeline` already performed discovery, planning,
+                // verification, and its bounded self-healing attempt. A false
+                // result is therefore final evidence, not an invitation for the
+                // outer generic recovery planner to guess a different project type.
+                pipelineFinal: true,
                 summary,
                 liveUrl: liveUrl || undefined,
                 report: pipeline?.engineeringReport,
@@ -344,6 +402,143 @@ export class ProjectPipelineTool implements ToolDefinition {
      * that ran, the files the plan wrote, and a run hint only when an entry
      * file is really there to run. No invented claims.
      */
+    /**
+     * A request to read a local specification is a binding source requirement,
+     * not a suggestion for the language model.  We first identify only files
+     * that discovery has actually observed, then read every page through Joe's
+     * own read_file tool.  The planner receives the complete text or nothing.
+     */
+    private async readRequestedSpecifications(request: string, evidence: any, context: any, logs: string[], say: (message: string) => void, isAr: boolean): Promise<{ content: string; sources: Array<{ path: string; lineCount: number }>; error?: string }> {
+        const asksToRead = /(?:اقرأ|قراءة|read|inspect|review)\s*(?:ال|a|the)?\s*(?:مواصف|spec(?:ification)?|requirements?|brief|document|ملف|file)|(?:مواصف|spec(?:ification)?|requirements?|brief)\s+(?:المحلي|local|المرفق|attached)/i.test(request);
+        const asksToExecute = /(?:نف[ّذذ]|ابن|طو[ّو]ر|طبق|execute|implement|build|develop|create|run)/i.test(request);
+        if (!asksToRead || !asksToExecute) return { content: '', sources: [] };
+
+        const files = Array.isArray(evidence?.instructionFiles) ? evidence.instructionFiles : [];
+        const named = files.filter((file: any) => /(?:spec|require|brief|مواصف|متطلبات)/i.test(String(file?.relativePath || '')));
+        const selected = named.length ? named : files.length === 1 ? files : [];
+        if (!selected.length) {
+            return {
+                content: '',
+                sources: [],
+                error: pick(isAr,
+                    'طلبتَ قراءة مواصفة محلية قبل التنفيذ، لكن الاستكشاف لم يثبت ملف مواصفة واحداً يمكن قراءته بأمان. حدّد اسم الملف أو ضعه في مساحة العمل ثم أعد الطلب.',
+                    'You asked Joe to read a local specification before execution, but discovery did not establish one safe specification file. Name the file or place it in the workspace, then retry.'),
+            };
+        }
+
+        const sections: string[] = [];
+        const sources: Array<{ path: string; lineCount: number }> = [];
+        const workspaceRoot = String(evidence?.workspaceRoot || evidence?.selectedProject?.root || '').trim();
+        for (const file of selected) {
+            const suppliedPath = String(file?.relativePath || '').trim();
+            const expectedLines = Number(file?.lineCount || 0);
+            if (!suppliedPath || !Number.isFinite(expectedLines) || expectedLines < 1) continue;
+            const relativePath = this.safeWorkspaceRelativePath(suppliedPath, workspaceRoot);
+            if (!relativePath) {
+                return {
+                    content: '', sources: [],
+                    error: pick(isAr,
+                        `رفض Joe مسار المواصفة «${suppliedPath}» لأنه ليس مساراً نسبياً آمناً داخل مساحة العمل المكتشفة.`,
+                        `Joe refused specification path “${suppliedPath}” because it is not a safe workspace-relative path.`),
+                };
+            }
+            say(pick(isAr, `[pipeline] أقرأ المواصفة كاملة: ${relativePath}`, `[pipeline] Reading complete local specification: ${relativePath}`));
+            const chunks: string[] = [];
+            for (let startLine = 1; startLine <= expectedLines; startLine += 1000) {
+                const readResult = await executeTool('read_file', {
+                    path: relativePath,
+                    startLine,
+                    endLine: Math.min(startLine + 999, expectedLines),
+                }, context);
+                if (!readResult?.ok || typeof readResult?.output?.content !== 'string') {
+                    return {
+                        content: '', sources: [],
+                        error: pick(isAr,
+                            `تعذّر قراءة المواصفة المثبتة «${relativePath}» كاملة: ${readResult?.error || 'لم تُرجع أداة القراءة محتوى صالحاً'}.`,
+                            `Joe could not fully read the established specification “${relativePath}”: ${readResult?.error || 'the read tool returned no valid content'}.`),
+                    };
+                }
+                chunks.push(readResult.output.content);
+                logs.push(...(readResult.logs || []));
+            }
+            const content = chunks.join('\n');
+            sections.push(`SOURCE: ${relativePath}\n${content}`);
+            sources.push({ path: relativePath, lineCount: expectedLines });
+            logs.push(`pipeline.specification_read=${relativePath} lines=1-${expectedLines}`);
+        }
+        if (!sources.length) {
+            return { content: '', sources: [], error: pick(isAr, 'لم تتوفر مواصفة مقروءة كاملة للتخطيط الآمن.', 'No complete specification was available for safe planning.') };
+        }
+        return { content: sections.join('\n\n'), sources };
+    }
+
+    /**
+     * Compatibility boundary for persisted discovery evidence created before
+     * instruction files became relative-only. A matching absolute path is
+     * converted to a portable relative path; every escape is rejected.
+     */
+    private safeWorkspaceRelativePath(suppliedPath: string, workspaceRoot: string): string {
+        const raw = String(suppliedPath || '').trim().replace(/\\/g, '/');
+        if (!raw) return '';
+        const normalisedRoot = String(workspaceRoot || '').trim();
+        let relativePath = raw;
+        if (path.isAbsolute(raw)) {
+            if (!normalisedRoot) return '';
+            relativePath = path.relative(normalisedRoot, raw).replace(/\\/g, '/');
+        }
+        relativePath = relativePath.replace(/^\.\//, '');
+        if (!relativePath || relativePath.startsWith('/') || /^[a-zA-Z]:\//.test(relativePath)) return '';
+        if (relativePath.split('/').some(segment => segment === '..')) return '';
+        return relativePath;
+    }
+
+    /**
+     * Produce a portable, bounded evidence brief for downstream workers.  The
+     * complete specification is read and preserved as execution evidence; the
+     * planner and individual workers receive this portable brief, which preserves
+     * the request, opening scope, headings, and binding constraints without
+     * sending an unbounded document to a single model request.
+     */
+    private buildRequirementsContext(request: string, specification: string): string {
+        const source = String(specification || request || '').replace(/\r\n?/g, '\n').trim();
+        if (!source) return '';
+        const lines = source.split('\n');
+        const chosen: string[] = [];
+        const add = (line: string) => {
+            const value = String(line || '').trim();
+            if (value && !chosen.includes(value)) chosen.push(value);
+        };
+
+        // Preserve the introductory scope verbatim, then retain every section
+        // marker, its immediate local intent, and binding constraints. This is a
+        // deterministic compression of inspected evidence, not a product-specific
+        // template and not an LLM summary that could omit an inconvenient rule.
+        lines.slice(0, 60).forEach(add);
+        for (let index = 0; index < lines.length; index += 1) {
+            const value = lines[index].trim();
+            if (!value) continue;
+            const isHeading = /^(?:#{1,6}\s+|\d+(?:\.\d+)*[.)]\s+|[A-Z][A-Z0-9 &/_-]{5,})/.test(value);
+            const isBinding = /\b(must|must not|never|required|approval|audit|security|tenant|lifecycle|rollback|health|metrics|traces|acceptance|deliverable)\b/i.test(value);
+            if (isHeading) {
+                add(value);
+                // Preserve nearby explanation and acceptance notes, not just an
+                // orphan heading, while keeping the request bounded.
+                let captured = 0;
+                for (let next = index + 1; next < lines.length && captured < 4; next += 1) {
+                    const local = lines[next].trim();
+                    if (!local) continue;
+                    if (/^(?:#{1,6}\s+|\d+(?:\.\d+)*[.)]\s+)/.test(local)) break;
+                    add(local);
+                    captured += 1;
+                }
+            }
+            if (isBinding) add(value);
+            if (chosen.join('\n').length >= 12000) break;
+        }
+        const brief = chosen.join('\n').slice(0, 12000);
+        return `AUTHORITATIVE REQUIREMENTS EVIDENCE (derived from the complete local specification; do not invent beyond it):\n${brief}`;
+    }
+
     private buildDeliveryReport(args: {
         language: 'ar' | 'en';
         projectName: string;

@@ -89,6 +89,16 @@ const MAX_RECOVERIES_PER_RUN = 3;
  */
 const MAX_REPAIR_NODES = 6;
 
+/**
+ * A project pipeline is the canonical engineering loop: it discovers, plans,
+ * executes, verifies, and performs one bounded self-fix. When it returns a
+ * marked terminal outcome, an outer recovery planner has no extra evidence to
+ * act on and must not guess a new project type from the error text.
+ */
+export function isFinalPipelineOutcome(tool: string | undefined, output: any): boolean {
+  return tool === 'project_pipeline' && output?.pipelineFinal === true;
+}
+
 /** The shape of a failure, ignoring the parts that change between attempts. */
 function errorSignature(text: string): string {
     return String(text || '')
@@ -744,8 +754,13 @@ export class AgentOrchestrator {
           // readiness probe failed, inventing a build/repair plan changes the job.
           // Surface its evidence and let the user choose the next action instead.
           const isDeterministicRunFailure = node.tool === 'project_run';
-          if (out.verificationFailed === true || isDeterministicRunFailure) {
-            const reason = out.verificationFailed === true ? 'verification_failed' : 'project_run_failed';
+          const isFinalPipelineFailure = isFinalPipelineOutcome(node.tool, out);
+          if (out.verificationFailed === true || isDeterministicRunFailure || isFinalPipelineFailure) {
+            const reason = out.verificationFailed === true
+              ? 'verification_failed'
+              : isFinalPipelineFailure
+                ? 'pipeline_final'
+                : 'project_run_failed';
             console.error(`[AgentOrchestrator] Final ${reason} for ${node.id} — stopping without an invented recovery.`);
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason });
             return { ok: false, result: result.error || out.message || 'Project run failed', steps: runSteps(dag) };

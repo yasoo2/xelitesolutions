@@ -84,9 +84,10 @@ describe('his phase 1, run through the sanitiser', () => {
         expect(notes.join('\n')).toMatch(/عمل تنظيمي بشري/);
     });
 
-    it('the verification step falls back to something that can actually verify', () => {
+    it('the verification step reads the concrete evidence artefact, not an invented source', () => {
         const { phases } = sanitisePlanPhases([phase1], 'E-commerce Platform');
-        expect(phases[0].verificationTask.tool).toBe('project_detect');
+        expect(phases[0].verificationTask.tool).toBe('read_file');
+        expect(phases[0].verificationTask.args.path).toMatch(/docs\/01-project_setup\.md$/);
     });
 
     it('and the phase that used to score 0/2 now has real work in it', () => {
@@ -152,6 +153,46 @@ describe('model-written tool arguments are checked before execution', () => {
         expect(notes.join('\n')).toMatch(/doc_generator يحتاج filePath/);
     });
 
+    it('replaces a generative verification of an invented file with a read of the phase output', () => {
+        const phase = {
+            phaseNumber: 1,
+            name: 'Architecture discovery',
+            tasks: [
+                { task: 'Record the discovered architecture', tool: 'write_file', args: { path: 'docs/architecture-evidence.md', content: '# Evidence' } },
+            ],
+            // This mirrors the NEXUS failure: the model treated a documentation
+            // generator as an acceptance check and named a source no task wrote.
+            verificationTask: { task: 'Generate architecture document', tool: 'doc_generator', args: { filePath: 'architecture_plan.md' } },
+        };
+        const { phases, notes } = sanitisePlanPhases([phase], 'evidence-workspace');
+        expect(phases[0].verificationTask).toMatchObject({
+            tool: 'read_file',
+            args: { path: 'docs/architecture-evidence.md' },
+        });
+        expect(phases[0].verificationTask.args.filePath).toBeUndefined();
+        expect(notes.join('\n')).toMatch(/تحققاً مولّداً/);
+    });
+
+    it('replaces a read of an invented verification file with a read of the phase output', () => {
+        const phase = {
+            phaseNumber: 1,
+            name: 'Architecture discovery',
+            tasks: [
+                { task: 'Record the discovered architecture', tool: 'write_file', args: { path: 'docs/architecture-evidence.md', content: '# Evidence' } },
+            ],
+            // This is the second live NEXUS failure: the planner used a read,
+            // not a generator, but architecture.md was never written by the
+            // phase. It must remain a plan-contract error, never a self-fix.
+            verificationTask: { task: 'Read the architecture', tool: 'read_file', args: { path: 'architecture.md' } },
+        };
+        const { phases, notes } = sanitisePlanPhases([phase], 'evidence-workspace');
+        expect(phases[0].verificationTask).toMatchObject({
+            tool: 'read_file',
+            args: { path: 'docs/architecture-evidence.md' },
+        });
+        expect(notes.join('\n')).toMatch(/ملفاً غير مثبت/);
+    });
+
     it('drops an AI source-generation task without a concrete path and brief before it can trigger repair', () => {
         const phase = {
             phaseNumber: 2,
@@ -183,6 +224,58 @@ describe('model-written tool arguments are checked before execution', () => {
         const { phases, notes } = sanitisePlanPhases([phase], 'warehouse-console');
         expect(phases[0].tasks.map((task: any) => task.tool)).toEqual(['write_file']);
         expect(notes.join('\n')).toMatch(/test_generator يحتاج filePath/);
+    });
+
+    it('drops an absolute read path before SafeReadFileTool can reject it at runtime', () => {
+        const phase = {
+            phaseNumber: 1,
+            name: 'Repository inspection',
+            tasks: [
+                { task: 'Read copied host path', tool: 'read_file', args: { path: '/tmp/joe-workspace/NEXUS_SPECIFICATION.txt' } },
+                { task: 'Record the inspection boundary', tool: 'write_file', args: { path: 'docs/inspection.md', content: '# Inspection' } },
+            ],
+        };
+        const { phases, notes } = sanitisePlanPhases([phase], 'nexus', {
+            evidencedPaths: ['NEXUS_SPECIFICATION.txt'],
+        });
+        expect(phases[0].tasks.map((task: any) => task.tool)).toEqual(['write_file']);
+        expect(notes.join('\n')).toMatch(/ليس مساراً نسبياً آمناً/);
+    });
+
+    it('retains a read of a discovered workspace-relative specification', () => {
+        const phase = {
+            phaseNumber: 1,
+            name: 'Repository inspection',
+            tasks: [
+                { task: 'Read specification', tool: 'read_file', args: { path: 'NEXUS_SPECIFICATION.txt' } },
+                { task: 'Record the inspection boundary', tool: 'write_file', args: { path: 'docs/inspection.md', content: '# Inspection' } },
+            ],
+        };
+        const { phases } = sanitisePlanPhases([phase], 'nexus', {
+            evidencedPaths: ['NEXUS_SPECIFICATION.txt'],
+        });
+        expect(phases[0].tasks.map((task: any) => task.tool)).toEqual(['read_file', 'write_file']);
+        expect(phases[0].tasks[0].args.path).toBe('NEXUS_SPECIFICATION.txt');
+    });
+
+    it('refuses an empty or unevidenced code review before it can throw undefined.length', () => {
+        expect(plannedArgsIssue('code_reviewer', {})).toMatch(/files/);
+        expect(plannedArgsIssue('code_reviewer', { files: ['undefined'] })).toMatch(/files/);
+        const phase = {
+            phaseNumber: 4,
+            name: 'Quality gate',
+            tasks: [
+                { task: 'Review quality', tool: 'code_reviewer', args: {}, priority: 'high' },
+                { task: 'Review an invented path', tool: 'code_reviewer', args: { files: ['src/invented.ts'] }, priority: 'high' },
+                { task: 'Write reviewed source', tool: 'write_file', args: { path: 'src/core.ts', content: 'export const ready = true;' } },
+                { task: 'Review the phase output', tool: 'code_reviewer', args: { files: ['src/core.ts'] }, priority: 'high' },
+            ],
+        };
+        const { phases, notes } = sanitisePlanPhases([phase], 'evidence-workspace');
+        expect(phases[0].tasks.map((task: any) => task.tool)).toEqual(['write_file', 'code_reviewer']);
+        expect(phases[0].tasks[1].args.files).toEqual(['src/core.ts']);
+        expect(notes.join('\n')).toMatch(/code_reviewer يحتاج files/);
+        expect(notes.join('\n')).toMatch(/src\/invented\.ts/);
     });
 });
 
@@ -258,5 +351,92 @@ describe('a greenfield slice does not silently choose its technology', () => {
     it('permits a seed tool when an explicit engineering constraint authorizes it', () => {
         const { phases } = sanitisePlanPhases([implicitSeedPhase], 'warehouse-console', { disallowImplicitScaffold: false });
         expect(phases[0].tasks.map((task: any) => task.tool)).toContain('scaffold_full_stack');
+    });
+
+    it('rejects scaffold_project with an empty structure before execution', () => {
+        expect(plannedArgsIssue('scaffold_project', { structure: {} })).toMatch(/structure كائناً غير فارغاً/);
+    });
+
+    it('turns a blocked scaffold phase into an explicit planning blocker, not a fallback document', () => {
+        const result = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Repository Inspection and Initial Setup',
+            tasks: [{ task: 'Create the project structure', tool: 'scaffold_project', args: { structure: {} } }],
+        }], 'NEXUS', { disallowImplicitScaffold: true });
+        expect(result.blocker?.code).toBe('scaffold_project_contract_invalid');
+        expect(result.phases[0].deliveryStatus).toBe('blocked');
+        expect(result.phases[0].tasks).toEqual([]);
+        expect(result.phases[0].tasks.some((task: any) => task.tool === 'write_file')).toBe(false);
+        expect(result.notes.join('\n')).toMatch(/أوقفتُ المرحلة/);
+    });
+
+    it('does not hide an implicit scaffold behind a fallback document', () => {
+        const result = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Choose an implementation stack',
+            tasks: [{ task: 'Create the project structure', tool: 'scaffold_project', args: { structure: { 'README.md': '# NEXUS' } } }],
+        }], 'NEXUS', { disallowImplicitScaffold: true });
+        expect(result.blocker?.code).toBe('implicit_scaffold_requires_explicit_stack');
+        expect(result.phases[0].tasks).toEqual([]);
+        expect(result.phases[0].tasks.some((task: any) => task.tool === 'write_file')).toBe(false);
+    });
+});
+
+
+describe('auto_tester receives a closed, evidence-safe contract', () => {
+    it('adapts common planner aliases into the explicit test contract', () => {
+        expect(adaptPlannedArgs('auto_tester', {
+            type: 'syntax',
+            path: 'src',
+            files: ['src/index.js'],
+        })).toMatchObject({
+            testType: 'syntax',
+            projectPath: 'src',
+            files: ['src/index.js'],
+        });
+    });
+
+    it('rejects a planned test with no real type before it reaches the tool', () => {
+        expect(plannedArgsIssue('auto_tester', { projectPath: '.', files: ['src/index.js'] })).toMatch(/testType/);
+    });
+
+    it('rejects a syntax test that names no evidenced source files', () => {
+        expect(plannedArgsIssue('auto_tester', { testType: 'syntax', projectPath: '.' })).toMatch(/files/);
+    });
+
+    it('drops an incomplete test task instead of producing Unknown test type: undefined', () => {
+        const { phases, notes } = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Verify implementation',
+            tasks: [{ task: 'Run automated tests', tool: 'auto_tester', args: { projectPath: '.' } }],
+        }], 'local project');
+        expect(phases[0].tasks.some((task: any) => task.tool === 'auto_tester')).toBe(false);
+        expect(notes.join('\n')).toMatch(/testType/);
+    });
+});
+
+describe('manifest-backed local verification commands', () => {
+    const shellPhase = (command: string) => ({
+        phaseNumber: 1,
+        name: 'Verify local project',
+        tasks: [{ task: `Run ${command}`, tool: 'shell_execute', args: { command } }],
+        verificationTask: { task: `Verify ${command}`, tool: 'shell_execute', args: { command } },
+    });
+
+    it('drops an assumed npm test rather than running it in a workspace with no declared script', () => {
+        const { phases, notes } = sanitisePlanPhases([shellPhase('npm test')], 'empty-workspace', {
+            candidateCheckCommands: [],
+        });
+        expect(phases[0].tasks.some((task: any) => task.tool === 'shell_execute')).toBe(false);
+        expect(notes.join('\n')).toMatch(/ليس فحصاً معلناً/);
+        expect(phases[0].verificationTask.tool).toBe('project_detect');
+    });
+
+    it('keeps an exact check declared by inspected package metadata', () => {
+        const { phases } = sanitisePlanPhases([shellPhase('npm run test')], 'inspected-node-project', {
+            candidateCheckCommands: ['npm run test'],
+        });
+        expect(phases[0].tasks.some((task: any) => task.tool === 'shell_execute' && task.args.command === 'npm run test')).toBe(true);
+        expect(phases[0].verificationTask).toMatchObject({ tool: 'shell_execute', args: { command: 'npm run test' } });
     });
 });

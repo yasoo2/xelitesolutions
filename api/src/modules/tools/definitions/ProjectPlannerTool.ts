@@ -1,6 +1,8 @@
 import { ToolDefinition, ToolPermission } from '../types';
 
+import path from 'path';
 import { callLLM } from '../../../core/llm';
+import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import { plannerToolPrompt, sanitisePlanPhases } from '../../../core/orchestrator/plan-tools';
 import { EngineeringEvidence } from './EngineeringDiscoveryTool';
 
@@ -45,7 +47,7 @@ export class ProjectPlannerTool implements ToolDefinition {
     auditFields = ['projectDescription'];
     mockSupported = false;
 
-    async execute(input: { projectDescription: string; analysis?: any; evidence?: EngineeringEvidence }) {
+    async execute(input: { projectDescription: string; analysis?: any; evidence?: EngineeringEvidence }, context?: any) {
         const { projectDescription, analysis, evidence } = input || ({} as any);
         const logs: string[] = [];
         // A missing required argument is a QUESTION, not a crash. The registry
@@ -56,10 +58,32 @@ export class ProjectPlannerTool implements ToolDefinition {
         }
 
         try {
-            const planningPrompt = this.createPlanningPrompt(projectDescription, analysis, evidence);
+            // A plan is portable workspace code, not a reflection of the host
+            // machine. The raw evidence remains available for internal guards,
+            // but the model receives no absolute host paths to copy into tools.
+            const planningPrompt = this.createPlanningPrompt(projectDescription, analysis, this.planningEvidence(evidence));
             const response = await callLLM(planningPrompt, [
                 { role: 'system', content: 'You are a senior software project manager. Return only valid JSON.' }
-            ]);
+            ], {
+                // The user-selected compatible gateway is part of the live tool
+                // context. Do not silently discard it and fall back to unrelated
+                // keyless providers for a long planning request.
+                modelConfig: context?.modelConfig,
+            });
+
+            if (isProviderFailure(response)) {
+                logs.push('Planner provider unavailable; no plan was invented from the outage message.');
+                return {
+                    ok: false,
+                    error: response,
+                    output: {
+                        ...this.fallbackPlan(projectDescription, analysis, evidence),
+                        autoExecuted: false,
+                        executionPolicy: 'planner_only',
+                    },
+                    logs,
+                } as any;
+            }
 
             logs.push('LLM planning completed');
 
@@ -83,20 +107,76 @@ export class ProjectPlannerTool implements ToolDefinition {
              * the executor ever sees it.
              */
             const hasExplicitStack = this.hasExplicitStackConstraint(projectDescription);
+            const workspaceRoot = evidence?.workspaceRoot || evidence?.selectedProject?.root || '';
+            const evidencedPaths = [
+                ...(evidence?.selectedProject?.manifests || []).map(item => item.path),
+                ...(evidence?.selectedProject?.likelyEntrypoints || []),
+                ...(evidence?.instructionFiles || []).map(item => item.relativePath),
+            ].map(item => {
+                const source = String(item || '');
+                return workspaceRoot && path.isAbsolute(source) ? path.relative(workspaceRoot, source) : source;
+            }).filter(Boolean);
             const clean = sanitisePlanPhases(plan.phases, plan.projectName, {
                 // In a blank root, a framework seed is a product decision rather
                 // than a harmless implementation detail. The user must name a
                 // stack, or discovery must prove one, before Joe can choose it.
                 disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack,
+                evidencedPaths,
+                candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
             });
             plan.phases = clean.phases;
             clean.notes.forEach(n => logs.push(n));
+
+            // A malformed scaffold is a planning contract failure, not a reason
+            // to manufacture a documentation artefact. Preserve the blocker so
+            // the pipeline stops honestly and the user/model can supply evidence.
+            if (clean.blocker) {
+                plan = this.validatePlan({
+                    ...plan,
+                    phases: [],
+                    totalPhases: 0,
+                    fallback: true,
+                    deliveryStatus: 'blocked',
+                    executionStatus: 'not_started',
+                    verificationStatus: 'not_run',
+                    blocker: clean.blocker,
+                }, projectDescription);
+                logs.push(`[plan] blocked: ${clean.blocker.message}`);
+                return {
+                    ok: false,
+                    error: clean.blocker.message,
+                    output: { ...plan, autoExecuted: false, executionPolicy: 'planner_only' },
+                    logs,
+                } as any;
+            }
 
             // A plan with nothing runnable in it is not a plan. The deterministic
             // fallback names only tools that exist, so it always executes.
             if (clean.executableTasks === 0) {
                 logs.push('[plan] لم يبق في الخطة أي عمل قابل للتنفيذ — رجعتُ إلى خطة مضمونة بأدوات حقيقية.');
                 plan = this.validatePlan(this.fallbackPlan(projectDescription, analysis, evidence), projectDescription);
+            }
+
+            // A long, multi-domain requirement set must not be rebranded as a
+            // delivered system merely because the model produced a well-written
+            // architecture note.  This guard is based on requirement headings and
+            // actual task/artifact types, never on a product name or keyword route.
+            const scopeAssessment = this.assessPlanScope(plan, projectDescription);
+            if (!scopeAssessment.ok) {
+                const blocked = this.fallbackPlan(projectDescription, analysis, evidence);
+                blocked.blocker = {
+                    code: 'plan_scope_insufficient',
+                    message: scopeAssessment.message,
+                    remedy: 'Produce a multi-phase plan that maps the discovered requirements to concrete implementation artifacts and evidence-backed verification.'
+                };
+                blocked.scopeAssessment = scopeAssessment;
+                logs.push(`[plan] scope gate blocked execution: ${scopeAssessment.message}`);
+                return {
+                    ok: false,
+                    error: scopeAssessment.message,
+                    output: { ...blocked, autoExecuted: false, executionPolicy: 'planner_only' },
+                    logs,
+                } as any;
             }
             logs.push(`Plan created: ${plan.totalPhases} phases, ${plan.estimatedDuration}`);
             logs.push('Planner-only mode: generated tasks were not executed.');
@@ -126,6 +206,47 @@ export class ProjectPlannerTool implements ToolDefinition {
         }
     }
 
+    /**
+     * Shape evidence for an LLM without leaking host-local absolute paths.
+     * The execution boundary accepts only workspace-relative paths, therefore
+     * those are the only path values a model is allowed to see and reuse.
+     */
+    private planningEvidence(evidence?: EngineeringEvidence): EngineeringEvidence | undefined {
+        if (!evidence) return undefined;
+        const root = String(evidence.workspaceRoot || '').trim();
+        const relative = (value: unknown): string => {
+            const raw = String(value || '').trim();
+            if (!raw) return '';
+            if (!path.isAbsolute(raw)) return raw.replace(/\\/g, '/').replace(/^\.\//, '');
+            if (!root) return '';
+            const rel = path.relative(root, raw).replace(/\\/g, '/');
+            return rel && !rel.startsWith('../') && !path.isAbsolute(rel) ? rel : '';
+        };
+        const redact = (value: unknown): string => {
+            const text = String(value || '');
+            return root ? text.split(root).join('.') : text;
+        };
+        const selected = evidence.selectedProject;
+        return {
+            ...evidence,
+            workspaceRoot: '.',
+            selectedProject: selected ? {
+                ...selected,
+                root: relative(selected.root) || '.',
+                manifests: selected.manifests.map(item => ({ ...item, path: relative(item.path) })),
+                likelyEntrypoints: selected.likelyEntrypoints.map(relative).filter(Boolean),
+            } : undefined,
+            instructionFiles: (evidence.instructionFiles || []).map(item => ({
+                relativePath: relative(item.relativePath),
+                lineCount: item.lineCount,
+            })).filter(item => Boolean(item.relativePath)),
+            facts: (evidence.facts || []).map(fact => ({
+                ...fact,
+                statement: fact.id === 'workspace.root' ? 'Workspace root selected: .' : redact(fact.statement),
+            })),
+        };
+    }
+
     private createPlanningPrompt(projectDescription: string, analysis?: any, evidence?: EngineeringEvidence) {
         // The vocabulary comes FIRST. Without it the model plans like a manager
         // — «Create project repository → Git», «Set up board → Jira» — and the
@@ -139,10 +260,11 @@ PROJECT:
 ${projectDescription}
 
 ${analysis ? `ANALYSIS:\n${JSON.stringify(analysis, null, 2)}\n` : ''}${evidence ? `ENGINEERING_EVIDENCE (facts, not suggestions):\n${JSON.stringify(evidence, null, 2)}\n` : ''}
-	Rules: Inspect and modify an existing selected project before proposing a new scaffold. Every write task must refer to an evidence fact or an explicit user requirement. Use candidateChecks from the evidence for verification where available. Do not select product-named foundations or deployment tools solely because words in the request resemble them. If evidence is ambiguous or blocked, plan clarification or read-only analysis rather than writing files. If evidence.mode is greenfield and PROJECT does not explicitly name a programming stack or framework, do NOT use scaffold_project, scaffold_full_stack, react_project, api_project, web_page_builder, mobile_builder, npm_manager, dependency installers, or invented package scripts. Plan only the smallest independently testable portable slice as exact file-level tasks, or stop with a clear implementation-constraint question if that is not possible.
+	Rules: Inspect and modify an existing selected project before proposing a new scaffold. Every write task must refer to an evidence fact or an explicit user requirement. Use candidateChecks from the evidence for verification where available. Paths in every file-oriented tool argument must be safe workspace-relative paths; never use an absolute host path, a drive path, a network path, or the parent-directory marker '..'. A read_file task may read only an evidence path or a file created earlier in the same phase. Do not select product-named foundations or deployment tools solely because words in the request resemble them. If evidence is ambiguous or blocked, plan clarification or read-only analysis rather than writing files. If evidence.mode is greenfield and PROJECT does not explicitly name a programming stack or framework, do NOT use scaffold_project, scaffold_full_stack, react_project, api_project, web_page_builder, mobile_builder, npm_manager, dependency installers, or invented package scripts. Plan only the smallest independently testable portable slice as exact file-level tasks, or stop with a clear implementation-constraint question if that is not possible.
+	${this.scopePlanningInstructions(projectDescription)}
 	Return ONLY JSON with: projectName, projectVibe, totalPhases, estimatedDuration, phases, dependencies.
-Each phase must include: phaseNumber, name, description, tasks, verificationTask, deliverables, estimatedTime.
-Tasks must include: task, tool, args, priority, realisticMinutes. A task using ai_write_file MUST include args.path (one safe relative destination inside the selected workspace) and args.description (specific technical contents for that one file); never use ai_write_file for a phase-level instruction without both fields. A task using write_file MUST include args.path and args.content. A task using doc_generator MUST include args.filePath for an existing evidenced source file. A task using test_generator MUST include args.filePath for one concrete source file, evidenced already or written by an earlier task in the same phase; never use it as a phase-level request to “test the application”.
+	Each phase must include: phaseNumber, name, description, tasks, verificationTask, deliverables, estimatedTime, requirementsCovered. The requirementsCovered field must be a non-empty array of requirement headings or requirement statements that this phase actually advances.
+Tasks must include: task, tool, args, priority, realisticMinutes. A task using ai_write_file MUST include args.path (one safe relative destination inside the selected workspace) and args.description (specific technical contents for that one file); never use ai_write_file for a phase-level instruction without both fields. A task using write_file MUST include args.path and args.content. A task using doc_generator MUST include args.filePath for an existing evidenced source file. A task using test_generator MUST include args.filePath for one concrete source file, evidenced already or written by an earlier task in the same phase; never use it as a phase-level request to “test the application”. A task using auto_tester MUST include args.testType as exactly one of syntax, build, unit, integration and args.projectPath as a safe workspace-relative directory. A syntax test MUST also include args.files as a non-empty array of concrete source paths evidenced already or written earlier in the same phase. Build, unit, and integration tests may be planned only when discovery proved the corresponding package script exists; do not guess npm test or npm run build. A task using code_reviewer MUST include args.files as a non-empty array of concrete source paths, each evidenced already or written by an earlier task in the same phase; never use it as a vague phase-level request to “review quality”.
 Every phase must produce something that EXISTS on disk when it finishes — code, a config, a test, a document.
 Do not claim that anything was executed. The plan is for controlled orchestrator execution later.
 Include build, browser QA, visual QA, and self-healing verification tasks where relevant.`;
@@ -156,6 +278,76 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
      */
     private hasExplicitStackConstraint(request: string): boolean {
         return /\b(?:react(?:\s+native)?|next(?:\.js)?|vue|angular|svelte|node(?:\.js)?|express|typescript|javascript|python|django|flask|fastapi|ruby|rails|php|laravel|java|spring|kotlin|go(?:lang)?|rust|dotnet|\.net|flutter|swift|postgres(?:ql)?|mysql|mongodb|sqlite|prisma)\b/i.test(String(request || ''));
+    }
+
+    /**
+     * Creates a small, evidence-derived requirement register from the compact
+     * specification brief. It deliberately uses structural headings, rather than
+     * product vocabulary, so the same rule applies to a library, an API, a CLI,
+     * or a complete product specification.
+     */
+    private requirementScope(projectDescription: string): { targets: string[]; minPhases: number; requiresImplementation: boolean } {
+        const ignored = /^(?:source|authoritative requirements evidence|compact requirements evidence|end compact requirements evidence|project|requirements?|overview|introduction|table of contents)$/i;
+        const headings = String(projectDescription || '').replace(/\r\n?/g, '\n').split('\n')
+            .map(line => line.trim())
+            .filter(line => /^(?:#{1,6}\s+|\d+(?:\.\d+)*[.)]\s+|[A-Z][A-Z0-9 &/_-]{5,}$)/.test(line))
+            .map(line => line.replace(/^(?:#{1,6}\s+|\d+(?:\.\d+)*[.)]\s+)/, ''))
+            .filter(line => line.length >= 5 && !ignored.test(line))
+            .filter((line, index, values) => values.indexOf(line) === index)
+            .slice(0, 18);
+        const requiresImplementation = /(?:\b(?:build|implement|develop|create|execute)\b|(?:ابن|نف[ّذذ]|طو[ّو]ر|طبق))/i.test(String(projectDescription || ''));
+        return {
+            targets: headings,
+            minPhases: Math.min(8, Math.max(3, Math.ceil(headings.length / 3))),
+            requiresImplementation,
+        };
+    }
+
+    private scopePlanningInstructions(projectDescription: string): string {
+        const scope = this.requirementScope(projectDescription);
+        if (!scope.requiresImplementation || scope.targets.length < 5) {
+            return 'Map each phase to the specific requirement statements it advances. Documentation may be a planning phase, but it is not evidence that an implementation request is delivered.';
+        }
+        return `SCOPE COVERAGE CONTRACT: the inspected specification has ${scope.targets.length} distinct requirement areas. Return at least ${scope.minPhases} execution phases. A documentation-only phase cannot be the complete delivery. Include concrete non-document implementation artifacts and verification phases, and map every requirement area below to one or more phases via requirementsCovered. Requirement register: ${scope.targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ')}`;
+    }
+
+    private assessPlanScope(plan: any, projectDescription: string): { ok: boolean; message: string; targets: string[]; phases: number; implementationArtifacts: number; coveredTargets: number } {
+        const scope = this.requirementScope(projectDescription);
+        const phases = Array.isArray(plan?.phases) ? plan.phases : [];
+        if (!scope.requiresImplementation || scope.targets.length < 5) {
+            return { ok: true, message: 'Scope is not a large multi-domain implementation request.', targets: scope.targets, phases: phases.length, implementationArtifacts: 0, coveredTargets: 0 };
+        }
+        const allTasks = phases.flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : []);
+        const implementationArtifacts = allTasks.filter((task: any) => {
+            const tool = String(task?.tool || '').toLowerCase();
+            if (!['ai_write_file', 'write_file', 'edit_file', 'scaffold_project', 'scaffold_full_stack', 'react_project', 'api_project', 'mobile_builder'].includes(tool)) return false;
+            const target = String(task?.args?.path || task?.args?.filePath || task?.args?.targetPath || '').toLowerCase();
+            return !/\.(?:md|mdx|txt|rst|adoc)$/i.test(target);
+        }).length;
+        const planText = phases.map((phase: any) => JSON.stringify({
+            name: phase?.name,
+            description: phase?.description,
+            requirementsCovered: phase?.requirementsCovered,
+            deliverables: phase?.deliverables,
+            tasks: (phase?.tasks || []).map((task: any) => ({ task: task?.task, description: task?.args?.description, path: task?.args?.path }))
+        })).join('\n').toLowerCase();
+        const coveredTargets = scope.targets.filter(target => {
+            const tokens = target.toLowerCase().match(/[\p{L}\p{N}_-]{4,}/gu) || [];
+            return tokens.length > 0 && tokens.some(token => planText.includes(token));
+        }).length;
+        const requiredCoverage = Math.max(3, Math.ceil(scope.targets.length * 0.7));
+        const problems: string[] = [];
+        if (phases.length < scope.minPhases) problems.push(`it has ${phases.length} phase(s), but the evidence requires at least ${scope.minPhases}`);
+        if (implementationArtifacts < 2) problems.push(`it has only ${implementationArtifacts} non-document implementation artifact task(s)`);
+        if (coveredTargets < requiredCoverage) problems.push(`it maps only ${coveredTargets}/${scope.targets.length} requirement areas (minimum ${requiredCoverage})`);
+        return {
+            ok: problems.length === 0,
+            message: problems.length ? `Planner produced an under-scoped plan: ${problems.join('; ')}. No implementation was started.` : 'Plan coverage is sufficient for controlled execution.',
+            targets: scope.targets,
+            phases: phases.length,
+            implementationArtifacts,
+            coveredTargets,
+        };
     }
 
     private parsePlan(response: string) {

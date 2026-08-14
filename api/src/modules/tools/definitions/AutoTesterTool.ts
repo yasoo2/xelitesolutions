@@ -1,12 +1,17 @@
-import { ToolDefinition, ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
 
+import { ToolDefinition, ToolPermission } from '../types';
 import { executeTool } from '../../services/ToolService';
+import { resolveToolPath } from '../utils';
 
 /**
- * AutoTesterTool - Automated testing and verification
- * Runs tests and checks for errors in generated code
+ * AutoTesterTool - Automated testing and verification.
+ *
+ * This tool is an acceptance observer: “ok” means a real declared check passed.
+ * It must not treat a missing test script, an unknown test type, or an invalid
+ * workspace path as a successful no-op, because PhaseExecutor uses this value to
+ * decide whether a phase is verified.
  */
 export class AutoTesterTool implements ToolDefinition {
     name = 'auto_tester';
@@ -24,15 +29,15 @@ export class AutoTesterTool implements ToolDefinition {
             },
             projectPath: {
                 type: 'string' as const,
-                description: 'Path to project to test'
+                description: 'Workspace-relative project directory to test'
             },
             files: {
                 type: 'array' as const,
                 items: { type: 'string' as const },
-                description: 'Specific files to test'
+                description: 'Specific workspace-relative files to syntax-check'
             }
         },
-        required: ['testType']
+        required: ['testType', 'projectPath']
     };
 
     outputSchema = {
@@ -55,7 +60,7 @@ export class AutoTesterTool implements ToolDefinition {
     mockSupported = false;
 
     async execute(input: { testType: string; projectPath?: string; files?: string[]; sessionId?: string; workspaceId?: string; __workspaceId?: string }, context?: any) {
-        const { testType, projectPath = '.', files = [] } = input;
+        const { testType, projectPath = '', files = [] } = input || ({} as any);
         const logs: string[] = [];
         const sessionId =
             typeof context?.sessionId === 'string' && context.sessionId.trim()
@@ -71,158 +76,122 @@ export class AutoTesterTool implements ToolDefinition {
                     : typeof input?.__workspaceId === 'string' && input.__workspaceId.trim()
                         ? input.__workspaceId.trim()
                         : undefined;
+        const ctx = { sessionId, workspaceId };
+        const supported = ['syntax', 'build', 'unit', 'integration'];
+
+        if (!supported.includes(String(testType || '').trim())) {
+            const error = `auto_tester requires testType to be one of: ${supported.join(', ')}.`;
+            logs.push(`Input error: ${error}`);
+            return this.failure(error, logs);
+        }
+        if (!String(projectPath || '').trim()) {
+            const error = 'auto_tester requires a workspace-relative projectPath.';
+            logs.push(`Input error: ${error}`);
+            return this.failure(error, logs);
+        }
 
         try {
+            const safeProjectPath = resolveToolPath(projectPath, { workspaceId });
+            const safeFiles = (Array.isArray(files) ? files : []).map(file =>
+                resolveToolPath(String(file || ''), { workspaceId })
+            );
             logs.push(`Running ${testType} test on ${projectPath}`);
 
             switch (testType) {
                 case 'syntax':
-                    return this.checkSyntax(projectPath, files, logs, { sessionId, workspaceId });
-
+                    return this.checkSyntax(safeProjectPath, safeFiles, logs, ctx);
                 case 'build':
-                    return this.runBuild(projectPath, logs, { sessionId, workspaceId });
-
+                    return this.runBuild(safeProjectPath, logs, ctx);
                 case 'unit':
-                    return this.runUnitTests(projectPath, logs, { sessionId, workspaceId });
-
+                    return this.runUnitTests(safeProjectPath, logs, ctx);
                 case 'integration':
-                    return this.runIntegrationTests(projectPath, logs, { sessionId, workspaceId });
-
+                    return this.runIntegrationTests(safeProjectPath, logs, ctx);
                 default:
-                    throw new Error(`Unknown test type: ${testType}`);
+                    return this.failure(`Unknown test type: ${testType}`, logs);
             }
-
         } catch (error: any) {
-            logs.push(`Error: ${error.message}`);
-            return {
-                ok: false,
-                error: error.message,
-                output: {
-                    passed: false,
-                    errors: [{ message: error.message }],
-                    summary: `Test failed: ${error.message}`
-                },
-                logs
-            };
+            const message = String(error?.message || error);
+            logs.push(`Error: ${message}`);
+            return this.failure(message, logs);
         }
+    }
+
+    private failure(error: string, logs: string[], type = 'test') {
+        return {
+            ok: false,
+            error,
+            output: {
+                passed: false,
+                errors: [{ type, message: error }],
+                summary: `Test failed: ${error}`
+            },
+            logs
+        };
     }
 
     private async checkSyntax(projectPath: string, files: string[], logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
-        logs.push('Checking syntax...');
+        if (files.length === 0) {
+            return this.failure('Syntax testing requires one or more evidenced source files.', logs, 'syntax');
+        }
+        logs.push(`Checking syntax for ${files.length} file(s)...`);
+        const quote = (value: string) => `'${String(value).replace(/'/g, "'\\''")}'`;
+        const command = files.map(file => `node --check ${quote(file)}`).join(' && ');
+        const result = await executeTool('shell_execute', { command, cwd: projectPath }, ctx);
+        const passed = Boolean(result.ok) && !String((result as any).output || '').includes('SyntaxError');
+        return passed
+            ? {
+                ok: true,
+                output: { passed: true, errors: [], summary: 'All requested syntax checks passed' },
+                logs
+            }
+            : this.failure(String((result as any).error || (result as any).output || 'Syntax errors found'), logs, 'syntax');
+    }
 
-        // Use shell_execute to run syntax check
-        const result = await executeTool('shell_execute', {
-            command: files.length > 0
-                ? `node --check ${files.join(' ')}`
-                : `find ${projectPath} -name "*.js" -o -name "*.ts" | xargs -I {} node --check {}`,
-            cwd: projectPath
-        }, ctx);
+    private declaredScript(projectPath: string, allowed: string[], logs: string[]): string | null {
+        const manifestPath = path.join(projectPath, 'package.json');
+        if (!fs.existsSync(manifestPath)) {
+            logs.push('No package.json exists in the requested project directory.');
+            return null;
+        }
+        try {
+            const pkg = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+            const scripts = pkg && typeof pkg.scripts === 'object' ? pkg.scripts : {};
+            const script = allowed.find(name => typeof scripts[name] === 'string' && scripts[name].trim());
+            if (!script) logs.push(`No declared script found (looked for: ${allowed.join(', ')}).`);
+            return script || null;
+        } catch (error: any) {
+            logs.push(`Could not read package.json: ${error?.message || error}`);
+            return null;
+        }
+    }
 
-        const passed = result.ok && !result.output?.includes('SyntaxError');
-
-        return {
-            ok: true,
-            output: {
-                passed,
-                errors: passed ? [] : [{ type: 'syntax', message: result.output }],
-                summary: passed ? 'All syntax checks passed' : 'Syntax errors found'
-            },
-            logs
-        };
+    private async runDeclaredScript(projectPath: string, script: string, kind: string, logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
+        logs.push(`Executing declared ${kind} script "${script}"...`);
+        const result = await executeTool('shell_execute', { command: `npm run ${script}`, cwd: projectPath }, ctx);
+        return result.ok
+            ? {
+                ok: true,
+                output: { passed: true, errors: [], summary: `${kind} check passed (${script})` },
+                logs
+            }
+            : this.failure(String((result as any).error || (result as any).output || `${kind} check failed`), logs, kind);
     }
 
     private async runBuild(projectPath: string, logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
-        logs.push('Running build...');
-
-        // Check if package.json exists and has build script
-        const result = await executeTool('shell_execute', {
-            command: 'npm run build',
-            cwd: projectPath
-        }, ctx);
-
-        const passed = result.ok;
-
-        return {
-            ok: true,
-            output: {
-                passed,
-                errors: passed ? [] : [{ type: 'build', message: result.error || 'Build failed' }],
-                summary: passed ? 'Build successful' : 'Build failed'
-            },
-            logs
-        };
+        const script = this.declaredScript(projectPath, ['build'], logs);
+        if (!script) return this.failure('No declared build script is available for this project.', logs, 'build');
+        return this.runDeclaredScript(projectPath, script, 'build', logs, ctx);
     }
 
     private async runUnitTests(projectPath: string, logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
-        logs.push('Running unit tests...');
-
-        const result = await executeTool('shell_execute', {
-            command: 'npm test',
-            cwd: projectPath
-        }, ctx);
-
-        const passed = result.ok;
-
-        return {
-            ok: true,
-            output: {
-                passed,
-                errors: passed ? [] : [{ type: 'test', message: 'Some tests failed' }],
-                summary: passed ? 'All tests passed' : 'Some tests failed'
-            },
-            logs
-        };
+        const script = this.declaredScript(projectPath, ['test', 'test:unit', 'unit'], logs);
+        if (!script) return this.failure('No declared unit-test script is available for this project.', logs, 'unit');
+        return this.runDeclaredScript(projectPath, script, 'unit test', logs, ctx);
     }
 
     private async runIntegrationTests(projectPath: string, logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
-        logs.push('Running integration tests...');
-
-        // Run the project's REAL integration script if one exists. Never report a
-        // green "passed" for tests that did not run — an unconfigured suite is
-        // reported honestly as skipped (passed:false), so no pipeline treats a
-        // no-op as success.
-        const scriptNames = ['test:integration', 'test:e2e', 'integration', 'e2e', 'test:int'];
-        let scriptToRun: string | null = null;
-        try {
-            const pkgPath = path.join(projectPath, 'package.json');
-            if (fs.existsSync(pkgPath)) {
-                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-                const scripts = (pkg && typeof pkg.scripts === 'object') ? pkg.scripts : {};
-                scriptToRun = scriptNames.find(n => typeof scripts[n] === 'string' && scripts[n].trim()) || null;
-            }
-        } catch (e: any) {
-            logs.push(`Could not read package.json: ${e?.message || e}`);
-        }
-
-        if (!scriptToRun) {
-            logs.push('No integration test script found (looked for: ' + scriptNames.join(', ') + ').');
-            return {
-                ok: true,
-                output: {
-                    passed: false,
-                    skipped: true,
-                    errors: [],
-                    summary: 'No integration test script configured — add "test:integration" to package.json to enable.'
-                },
-                logs
-            };
-        }
-
-        logs.push(`Found integration script "${scriptToRun}" — executing.`);
-        const result = await executeTool('shell_execute', {
-            command: `npm run ${scriptToRun}`,
-            cwd: projectPath
-        }, ctx);
-
-        const passed = result.ok;
-        return {
-            ok: true,
-            output: {
-                passed,
-                errors: passed ? [] : [{ type: 'integration', message: result.error || result.output || 'Integration tests failed' }],
-                summary: passed ? `Integration tests passed (${scriptToRun})` : `Integration tests failed (${scriptToRun})`
-            },
-            logs
-        };
+        const script = this.declaredScript(projectPath, ['test:integration', 'test:e2e', 'integration', 'e2e', 'test:int'], logs);
+        if (!script) return this.failure('No declared integration-test script is available for this project.', logs, 'integration');
+        return this.runDeclaredScript(projectPath, script, 'integration test', logs, ctx);
     }
 }

@@ -18,7 +18,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { retryAfterMsFrom } from '../core/llm/intelligent-router';
+import { markProviderOk, recentlyHealthyRetryCandidates, retryAfterMsFrom } from '../core/llm/intelligent-router';
 import { isolateLatinRuns } from '../core/design/language';
 import { stripBrokenStyleImages } from '../core/design/images';
 import { normalizeIconRefs, iconSprite } from '../core/design/layouts';
@@ -44,6 +44,22 @@ describe('retryAfterMsFrom — a rate limit is cooled for ITS window, not a defa
     it('an error that names no window gets the default (null)', () => {
         expect(retryAfterMsFrom('ECONNREFUSED')).toBeNull();
         expect(retryAfterMsFrom('')).toBeNull();
+    });
+});
+
+describe('recently healthy provider recovery — one evidence-based probe, not a blind re-walk', () => {
+    it('selects only a provider that answered within the current short window', () => {
+        const proven = `proven-${Date.now()}`;
+        const mesh = [{ name: proven }, { name: `unknown-${Date.now()}` }];
+        markProviderOk(proven);
+        expect(recentlyHealthyRetryCandidates(mesh)).toEqual([{ name: proven }]);
+    });
+
+    it('keeps the recovery bounded and excludes rate-limited providers', () => {
+        const src = read('core/llm/intelligent-router.ts');
+        expect(src).toContain('Transient mesh failure: probing recently healthy provider(s) once');
+        expect(src).toContain('TRANSIENT_PROVIDER_RETRY_TIMEOUT_MS');
+        expect(src).toContain('!isProviderRateLimited(provider.name)');
     });
 });
 

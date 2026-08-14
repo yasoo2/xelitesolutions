@@ -192,6 +192,25 @@ export class PlanningEngine {
         return verb && noun;
     }
 
+    /**
+     * A specification is an engineering source of truth, not a bag of verbs.
+     *
+     * A user can legitimately say «اقرأ NEXUS_SPECIFICATION.md ثم نفّذها»
+     * without also naming the future product type.  Splitting that sentence at
+     * «ثم» lets keyword matching turn it into unrelated write/test tools before
+     * Joe has read the file.  Require all three signals below: an explicit read,
+     * a concrete local source, and an execution verb.  This deliberately does
+     * not claim analysis-only requests such as «اقرأ المواصفة ولخّصها».
+     */
+    static isLocalSpecificationExecutionRequest(goalRaw: string): boolean {
+        const goal = String(goalRaw || '');
+        const boundary = '(?=$|[\\s،؛,:.!?])';
+        const asksToRead = new RegExp(`(?:اقر[أا]|إقرأ|قراءة|read|inspect)${boundary}`, 'i').test(goal);
+        const namesSource = /(?:\b[\w.-]+\.(?:md|mdx|txt|rst|pdf|docx?|yaml|yml|json)\b|(?:ملف|وثيقة|مستند)\s+(?:المواصفات|مواصفات|متطلبات|requirements?|spec(?:ification)?|prd))/i.test(goal);
+        const asksToExecute = new RegExp(`(?:نفّ?ذ|طبّ?ق|ابنِ|ابني|انشئ|أنشئ|اصنع|طوّ?ر|طوّر|build|create|implement|develop|scaffold)${boundary}`, 'i').test(goal);
+        return asksToRead && namesSource && asksToExecute;
+    }
+
     static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
         const g = String(goalRaw || '');
         // Its own data, its own users → it needs a server and a database.
@@ -474,6 +493,7 @@ Rules:
          */
         const deniesExternalPublish = /(?:^|[\s،؛,:.!?])(?:(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)(?:نشر|انشر|أنشر|رفع|استضافة|deploy|publish|host|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])/i.test(userGoal);
         const localBuildContract = PlanningEngine.looksLikeBuild(userGoal) && deniesExternalPublish;
+        const localSpecificationExecution = PlanningEngine.isLocalSpecificationExecutionRequest(userGoal);
 
         // Product names never decide an engineering route. A request that calls
         // itself ORION, Atlas, or anything new must be classified from the work
@@ -687,6 +707,7 @@ Rules:
             // sentence; only non-build multi-task requests may use this chain.
             const early = !isGithubWorkRequest
                 && !localBuildContract
+                && !localSpecificationExecution
                 && !PlanningEngine.looksLikeBuild(userGoal)
                 && hasExplicitSequence(goalText)
                 ? capabilityChain(goalText, 5)
@@ -702,6 +723,31 @@ Rules:
 
         if (/^fix and continue:/i.test(String(intent.goal || '').trim())) {
             return PlanningEngine.generateDynamicDag(intent, memory, context);
+        }
+
+        /**
+         * [LOCAL SPECIFICATION → EVIDENCE-FIRST ENGINEERING PIPELINE]
+         *
+         * The source file already exists in the selected workspace.  Joe must
+         * read it, discover the actual project shape, plan from that evidence,
+         * then execute and verify.  A capability chain must not split the
+         * request merely because the specification also says «write» or «test».
+         */
+        if (localSpecificationExecution) {
+            console.log('[PlanningEngine] local specification + execution verb → project_pipeline');
+            return {
+                id: `local_spec_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'project_pipeline',
+                    description: 'اقرأ مواصفة مساحة العمل، استكشف الأدلة، ثم خطط ونفّذ وتحقق محلياً',
+                    tool: 'project_pipeline',
+                    agent: 'Dev',
+                    input: { request: intent.goal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'high', riskLevel: 'medium', localOnly: true, matchedBy: 'local-specification' },
+            };
         }
 
         /**

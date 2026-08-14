@@ -198,6 +198,12 @@ describe('an attached requirements document + a build verb → the engineering p
     it('«حلل هذا الـPRD» (analysis, not implementation) stays a direct answer', async () => {
         expect(await tool('حلل هذا الـPRD وأعطني رأيك' + DOC_BLOCK)).toBe('central_answer');
     });
+    it('a local specification file to read then execute → project_pipeline, not a keyword chain', async () => {
+        expect(await tool('اقرأ ملف NEXUS_SPECIFICATION.md كاملاً، ثم استكشف وخطط ونفذ المواصفة محلياً واختبر الناتج')).toBe('project_pipeline');
+    });
+    it('reading a local specification for analysis only does not claim the build pipeline', async () => {
+        expect(await tool('اقرأ ملف NEXUS_SPECIFICATION.md ولخص المتطلبات فقط')).not.toBe('project_pipeline');
+    });
     it('«ابنِ لي صفحة مثل هذه الصورة» (a design reference, not a PRD) is NOT the pipeline', async () => {
         const g = 'ابنِ لي صفحة مثل هذه الصورة' +
             '\n\n[ATTACHED FILES — the user attached 1 file(s) to this message. Read them; the message refers to them.]' +
