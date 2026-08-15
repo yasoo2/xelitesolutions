@@ -198,6 +198,72 @@ Build the complete system with locally verifiable implementation artifacts.
         expect(result.logs.join('\n')).toMatch(/scope recovery completed/i);
     });
 
+    it('recovers one scaffold contract blocker when the replacement plan supplies a concrete structure', async () => {
+        mockCallLLM
+            .mockResolvedValueOnce(JSON.stringify({
+                projectName: 'Malformed scaffold plan',
+                projectVibe: 'Evidence-backed implementation',
+                totalPhases: 1,
+                estimatedDuration: '5 minutes',
+                dependencies: {},
+                phases: [{
+                    phaseNumber: 1,
+                    name: 'Initialize application',
+                    description: 'Create the application seed.',
+                    tasks: [{
+                        task: 'Scaffold the application',
+                        tool: 'scaffold_project',
+                        args: {},
+                        priority: 'high',
+                        realisticMinutes: 1,
+                    }],
+                    verificationTask: { task: 'Verify the seed', tool: 'read_file', args: { path: 'package.json' } },
+                    deliverables: ['package.json'],
+                    estimatedTime: '5 minutes',
+                    requirementsCovered: ['the requested application'],
+                }],
+            }))
+            .mockResolvedValueOnce(JSON.stringify({
+                projectName: 'Recovered scaffold plan',
+                projectVibe: 'Evidence-backed implementation',
+                totalPhases: 1,
+                estimatedDuration: '5 minutes',
+                dependencies: {},
+                phases: [{
+                    phaseNumber: 1,
+                    name: 'Initialize application',
+                    description: 'Create the application seed from the selected stack.',
+                    tasks: [{
+                        task: 'Scaffold the application with the evidenced structure',
+                        tool: 'scaffold_project',
+                        args: {
+                            structure: {
+                                'package.json': '{"private":true}',
+                                'src/index.ts': 'export const app = true;',
+                            },
+                        },
+                        priority: 'high',
+                        realisticMinutes: 1,
+                    }],
+                    verificationTask: { task: 'Verify the seed', tool: 'read_file', args: { path: 'package.json' } },
+                    deliverables: ['package.json', 'src/index.ts'],
+                    estimatedTime: '5 minutes',
+                    requirementsCovered: ['the requested application'],
+                }],
+            }));
+
+        const result: any = await new ProjectPlannerTool().execute({
+            projectDescription: 'Build a TypeScript application using the explicitly selected Vite stack and verify it locally.',
+        });
+
+        expect(mockCallLLM).toHaveBeenCalledTimes(2);
+        expect(mockCallLLM.mock.calls[1][0]).toMatch(/scaffold contract|structure|non-empty/i);
+        expect(result.ok).toBe(true);
+        expect(result.output.fallback).not.toBe(true);
+        expect(result.output.phases).toHaveLength(1);
+        expect(result.logs.join('\\n')).toMatch(/scaffold contract recovery completed/i);
+    });
+
     it('keeps the honest blocker when both the initial and recovery plans are unusable', async () => {
         mockCallLLM
             .mockResolvedValueOnce(JSON.stringify({ projectName: 'Empty', phases: [] }))

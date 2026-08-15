@@ -215,8 +215,58 @@ export class ProjectPlannerTool implements ToolDefinition {
             }
 
             // A malformed scaffold is a planning contract failure, not a reason
-            // to manufacture a documentation artefact. Preserve the blocker so
-            // the pipeline stops honestly and the user/model can supply evidence.
+            // to manufacture a documentation artefact. It is nevertheless a
+            // recoverable planner error when the model can supply the missing
+            // evidence-backed structure. Give only scaffold-contract blockers one
+            // bounded repair turn; every other blocker keeps the honest-stop path.
+            const scaffoldContractBlocker = clean.blocker
+                && /^(?:scaffold_project_contract_invalid|implicit_scaffold_requires_explicit_stack)$/.test(String(clean.blocker.code || ''));
+            if (scaffoldContractBlocker) {
+                logs.push('[plan] scaffold contract blocker detected; starting one bounded contract recovery.');
+                try {
+                    const recoveryPrompt = this.createRecoveryPlanningPrompt(
+                        projectDescription,
+                        analysis,
+                        this.planningEvidence(evidence),
+                        `The parsed plan was rejected by the scaffold contract: ${clean.blocker.code}: ${clean.blocker.message}. Remedy: ${clean.blocker.remedy || 'provide a concrete non-empty structure in scaffold_project args, or use an evidence-backed implementation plan without implicit scaffolding.'} Do not invent a fixed template locally. Re-plan from the request and evidence; if a new project is required, choose a stack only when the request or discovery evidence supports it, and give scaffold_project a concrete non-empty structure. Otherwise use real file and shell tools to implement the requested artifacts.`
+                    );
+                    const recoveryResponse = await callLLM(recoveryPrompt, [
+                        { role: 'system', content: 'You are a senior software project manager. Repair the rejected plan using the evidence and exact tool contracts. Return only valid JSON; never return prose or Markdown fences.' }
+                    ], {
+                        modelConfig: context?.modelConfig,
+                        providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
+                        maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                        reasoningEffort: context?.plannerReasoningEffort || 'low',
+                    });
+                    if (isProviderFailure(recoveryResponse)) throw new Error(recoveryResponse);
+                    const recoveredPlan = this.parsePlan(recoveryResponse);
+                    if (!this.hasPlanningShape(recoveredPlan)) {
+                        throw new Error('Scaffold contract recovery returned valid JSON without a non-empty phases/tasks plan');
+                    }
+                    const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
+                        disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack,
+                        evidencedPaths,
+                        candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
+                    });
+                    if (recoveredClean.blocker) {
+                        throw new Error(`Scaffold contract recovery remained blocked: ${recoveredClean.blocker.code}: ${recoveredClean.blocker.message}`);
+                    }
+                    if (this.countImplementationArtifacts(recoveredClean.phases) === 0) {
+                        throw new Error('Scaffold contract recovery retained no non-document implementation artifact');
+                    }
+                    plan = this.validatePlan(recoveredPlan, projectDescription);
+                    plan.phases = recoveredClean.phases;
+                    clean = recoveredClean;
+                    clean.notes.forEach(n => logs.push(n));
+                    logs.push('Planner scaffold contract recovery completed with executable implementation artifacts');
+                } catch (recoveryError: any) {
+                    logs.push(`Planner scaffold contract recovery failed: ${recoveryError?.message || recoveryError}`);
+                }
+            }
+
+            // Preserve any remaining blocker so the pipeline stops honestly and
+            // the user/model can supply evidence; never manufacture a scaffold or
+            // documentation artefact locally.
             if (clean.blocker) {
                 plan = this.validatePlan({
                     ...plan,
