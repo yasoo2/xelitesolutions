@@ -16,6 +16,15 @@ function inferWsUrl(apiUrl: string) {
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.hostname || 'localhost';
+  // In the local split-process setup Vite serves the UI on 5001 while the
+  // authenticated WebSocket server lives on the API port 5002. Vite can
+  // accept an upgrade on /ws/browser without forwarding it to the backend,
+  // leaving BrowserStream "Connected" while wsHub never sees the panel.
+  // Bypass that ambiguity locally; keep same-origin routing for production.
+  if (window.location.port === '5001' && (host === 'localhost' || host === '127.0.0.1' || host === '::1')) {
+    return `${protocol}//${host}:5002/api/ws`;
+  }
   return `${protocol}//${window.location.host}/api/ws`;
 }
 

@@ -156,7 +156,11 @@ export class BrowserRunTool extends BaseTool {
         if (!sid) return { ok: false, error: 'sessionId_required', logs };
         // The signed-in user arrives in the CONTEXT; only some callers repeat it
         // in the body. Reading the body alone made every direct call unauthorized.
-        const userId = String(input?.userId || input?.__userId || context?.userId || '').trim();
+        // The execution context is authoritative: a planner may describe a browser action,
+        // but it must never choose which signed-in user's panel the action runs as.
+        // Prefer context.userId over model-controlled input fields so a stale or
+        // hallucinated input.userId cannot turn a valid visible panel into `forbidden`.
+        const userId = String(context?.userId || input?.__userId || input?.userId || '').trim();
         const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
         if (!authBypass) {
             if (!userId) return { ok: false, error: 'unauthorized', logs };

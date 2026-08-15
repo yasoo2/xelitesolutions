@@ -1,6 +1,8 @@
 import { executeTool } from '../modules/services/ToolService';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 import { tools } from '../modules/tools/registry';
+import { BrowserRunTool } from '../modules/tools/definitions/BrowserRunTool';
+import * as browserSessions from '../modules/browser/wsHub';
 
 /**
  * The visible browser panel owns a dedicated id (for example `browser:chat-42`).
@@ -39,6 +41,23 @@ describe('browser session wiring', () => {
         expect(result.ok).toBe(true);
         expect(observedInput.sessionId).toBe('browser:chat-42');
         expect(observedInput.sessionId).not.toBe('chat-42');
+    });
+
+    it('uses the authenticated execution context over a planner-provided user id', async () => {
+        const sid = `panel-auth-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const accessSpy = jest.spyOn(browserSessions, 'canAccessBrowserSession').mockResolvedValue(true);
+        try {
+            const result = await new BrowserRunTool().execute(
+                { sessionId: sid, userId: 'planner-user', actions: [] },
+                { userId: 'panel-owner' },
+            );
+
+            expect(accessSpy).toHaveBeenCalledWith('panel-owner', sid);
+            expect(result.error).toBe('actions_or_instruction_required');
+            expect(result.error).not.toBe('forbidden');
+        } finally {
+            accessSpy.mockRestore();
+        }
     });
 
     it('pins the visible-panel session over a planner-provided session and falls back only for legacy callers', async () => {
