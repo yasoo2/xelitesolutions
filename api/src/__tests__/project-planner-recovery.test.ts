@@ -21,22 +21,22 @@ describe('project planner structured recovery', () => {
                 phases: [{
                     phaseNumber: 1,
                     name: 'Write the portable artifact',
-                    description: 'Create the requested artifact as a real file.',
+                    description: 'Create the requested JavaScript artifact as a real file.',
                     tasks: [{
                         task: 'Write the artifact',
                         tool: 'write_file',
-                        args: { path: 'src/artifact.txt', content: 'verified output' },
+                        args: { path: 'src/artifact.js', content: 'module.exports = { verified: true };' },
                         priority: 'high',
                         realisticMinutes: 1,
                     }],
                     verificationTask: {
                         task: 'Verify the artifact exists',
                         tool: 'read_file',
-                        args: { path: 'src/artifact.txt' },
+                        args: { path: 'src/artifact.js' },
                     },
-                    deliverables: ['src/artifact.txt'],
+                    deliverables: ['src/artifact.js'],
                     estimatedTime: '5 minutes',
-                    requirementsCovered: ['the requested artifact'],
+                    requirementsCovered: ['the requested JavaScript artifact'],
                 }],
             }));
 

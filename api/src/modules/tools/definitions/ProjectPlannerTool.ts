@@ -155,7 +155,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 const source = String(item || '');
                 return workspaceRoot && path.isAbsolute(source) ? path.relative(workspaceRoot, source) : source;
             }).filter(Boolean);
-            const clean = sanitisePlanPhases(plan.phases, plan.projectName, {
+            let clean = sanitisePlanPhases(plan.phases, plan.projectName, {
                 // In a blank root, a framework seed is a product decision rather
                 // than a harmless implementation detail. The user must name a
                 // stack, or discovery must prove one, before Joe can choose it.
@@ -165,6 +165,54 @@ export class ProjectPlannerTool implements ToolDefinition {
             });
             plan.phases = clean.phases;
             clean.notes.forEach(n => logs.push(n));
+
+            // A response can be valid JSON and still contain only invented tools,
+            // vague review tasks, or greenfield seeds rejected by the evidence
+            // policy. The old recovery handled only parse/empty-shape failures,
+            // so this exact case silently degraded to documentation. Give the
+            // model one bounded contract-aware retry before declaring the request
+            // blocked; never manufacture an implementation locally.
+            const requestedImplementation = this.requirementScope(projectDescription).requiresImplementation;
+            if (!clean.blocker && requestedImplementation && this.countImplementationArtifacts(clean.phases) === 0 && this.hasPlanningShape(plan)) {
+                const dropped = clean.notes.slice(-16).join(' | ');
+                logs.push('[plan] Parsed plan retained no non-document implementation artifact after contract sanitisation; starting one contract-aware recovery.');
+                try {
+                    const retryPrompt = this.createRecoveryPlanningPrompt(
+                        projectDescription,
+                        analysis,
+                        this.planningEvidence(evidence),
+                        `The parsed plan was non-empty, but contract sanitisation retained no non-document implementation artifact. Dropped-plan evidence: ${dropped}`
+                    );
+                    const retryResponse = await callLLM(retryPrompt, [
+                        { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with executable phases, exact tool contracts, and non-document implementation artifacts.' }
+                    ], {
+                        modelConfig: context?.modelConfig,
+                        providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
+                        maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                        reasoningEffort: context?.plannerReasoningEffort || 'low',
+                    });
+                    if (isProviderFailure(retryResponse)) throw new Error(retryResponse);
+                    const recoveredPlan = this.parsePlan(retryResponse);
+                    if (!this.hasPlanningShape(recoveredPlan)) {
+                        throw new Error('Contract recovery returned valid JSON without a non-empty phases/tasks plan');
+                    }
+                    const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
+                        disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack,
+                        evidencedPaths,
+                        candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
+                    });
+                    if (this.countImplementationArtifacts(recoveredClean.phases) === 0) {
+                        throw new Error('Contract recovery still retained no non-document implementation artifact');
+                    }
+                    plan = this.validatePlan(recoveredPlan, projectDescription);
+                    plan.phases = recoveredClean.phases;
+                    clean = recoveredClean;
+                    clean.notes.forEach(n => logs.push(n));
+                    logs.push('Planner contract recovery completed with non-document implementation artifacts');
+                } catch (recoveryError: any) {
+                    logs.push(`Planner contract recovery failed: ${recoveryError?.message || recoveryError}`);
+                }
+            }
 
             // A malformed scaffold is a planning contract failure, not a reason
             // to manufacture a documentation artefact. Preserve the blocker so
@@ -185,6 +233,26 @@ export class ProjectPlannerTool implements ToolDefinition {
                     ok: false,
                     error: clean.blocker.message,
                     output: { ...plan, autoExecuted: false, executionPolicy: 'planner_only' },
+                    logs,
+                } as any;
+            }
+
+            // A plan with no executable implementation for an implementation
+            // request is not a deliverable. Documentation is useful evidence, but
+            // it must never be counted as the requested product.
+            if (requestedImplementation && this.countImplementationArtifacts(clean.phases) === 0) {
+                const blocked = this.validatePlan(this.fallbackPlan(projectDescription, analysis, evidence), projectDescription);
+                blocked.blocker = {
+                    code: 'no_implementation_artifacts_after_contract_recovery',
+                    message: 'No non-document implementation artifact survived planning and contract validation. No implementation was started.',
+                    remedy: 'Return a concrete multi-phase plan using the registered tools and evidence-backed workspace-relative file outputs.'
+                };
+                blocked.planNotes = clean.notes;
+                logs.push(`[plan] blocked: ${blocked.blocker.message}`);
+                return {
+                    ok: false,
+                    error: blocked.blocker.message,
+                    output: { ...blocked, autoExecuted: false, executionPolicy: 'planner_only' },
                     logs,
                 } as any;
             }
@@ -372,12 +440,7 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
             return { ok: true, message: 'Scope is not a large multi-domain implementation request.', targets: scope.targets, phases: phases.length, implementationArtifacts: 0, coveredTargets: 0 };
         }
         const allTasks = phases.flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : []);
-        const implementationArtifacts = allTasks.filter((task: any) => {
-            const tool = String(task?.tool || '').toLowerCase();
-            if (!['ai_write_file', 'write_file', 'edit_file', 'scaffold_project', 'scaffold_full_stack', 'react_project', 'api_project', 'mobile_builder'].includes(tool)) return false;
-            const target = String(task?.args?.path || task?.args?.filePath || task?.args?.targetPath || '').toLowerCase();
-            return !/\.(?:md|mdx|txt|rst|adoc)$/i.test(target);
-        }).length;
+        const implementationArtifacts = this.countImplementationArtifacts(phases);
         const planText = phases.map((phase: any) => JSON.stringify({
             name: phase?.name,
             description: phase?.description,
@@ -417,6 +480,22 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
         return plan;
     }
 
+    private countImplementationArtifacts(phases: any[]): number {
+        const implementationTools = new Set([
+            'ai_write_file', 'write_file', 'file_edit', 'edit_file', 'project_edit',
+            'file_edit_advanced', 'scaffold_project', 'scaffold_full_stack',
+            'react_project', 'api_project', 'web_page_builder', 'mobile_builder',
+            'auth_builder', 'db_schema_migrator',
+        ]);
+        return (Array.isArray(phases) ? phases : []).flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : [])
+            .filter((task: any) => {
+                const tool = String(task?.tool || '').toLowerCase();
+                if (!implementationTools.has(tool)) return false;
+                const target = String(task?.args?.path || task?.args?.filePath || task?.args?.targetPath || '').toLowerCase();
+                return !/\.(?:md|mdx|txt|rst|adoc)$/i.test(target);
+            }).length;
+    }
+
     /**
      * JSON validity is weaker than a planning contract. A successful provider
      * response containing an empty phases array is not a plan and must be
@@ -441,7 +520,11 @@ You must now produce the smallest honest, executable engineering plan for the re
 Do not explain the failure. Do not return an empty phases array. Do not return prose or Markdown fences.
 Return ONLY one JSON object with projectName, projectVibe, totalPhases, estimatedDuration, phases, dependencies.
 Return at least ${scope.minPhases} phases when the requirement register is large, and every phase must contain a non-empty tasks array, a concrete deliverable that will exist on disk, and requirementsCovered.
-Use only real tools from the vocabulary supplied in the original planning contract. File tasks must have safe workspace-relative paths and complete arguments. Do not claim that any task has already run.
+Use only real tools from the executable catalogue below. At least one task in an implementation request must create or modify a non-document source/config/test artifact. Do not use documentation as a substitute for implementation. File tasks must have safe workspace-relative paths and complete arguments. Do not claim that any task has already run.
+
+EXECUTABLE TOOL CATALOGUE AND CONTRACT:
+${plannerToolPrompt()}
+
 Requirement register: ${register}
 
 PROJECT REQUEST:
