@@ -18,7 +18,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { markProviderOk, recentlyHealthyRetryCandidates, retryAfterMsFrom } from '../core/llm/intelligent-router';
+import { effectiveKeylessTimeoutMs, markProviderOk, recentlyHealthyRetryCandidates, retryAfterMsFrom } from '../core/llm/intelligent-router';
 import { isolateLatinRuns } from '../core/design/language';
 import { stripBrokenStyleImages } from '../core/design/images';
 import { normalizeIconRefs, iconSprite } from '../core/design/layouts';
@@ -60,6 +60,19 @@ describe('recently healthy provider recovery — one evidence-based probe, not a
         expect(src).toContain('Transient mesh failure: probing recently healthy provider(s) once');
         expect(src).toContain('TRANSIENT_PROVIDER_RETRY_TIMEOUT_MS');
         expect(src).toContain('!isProviderRateLimited(provider.name)');
+    });
+});
+
+describe('keyless planner deadlines — explicit patience is not overwritten by defaults', () => {
+    it('keeps a bounded planner deadline for LLM7', () => {
+        expect(effectiveKeylessTimeoutMs(120000, 'high', 25000)).toBe(120000);
+        expect(effectiveKeylessTimeoutMs(999999, 'high', 25000)).toBe(120000);
+        expect(effectiveKeylessTimeoutMs(1000, 'high', 25000)).toBe(8000);
+    });
+
+    it('uses short defaults only when the caller did not request a deadline', () => {
+        expect(effectiveKeylessTimeoutMs(undefined, 'high', 25000)).toBe(25000);
+        expect(effectiveKeylessTimeoutMs(undefined, 'medium', 18000)).toBe(18000);
     });
 });
 

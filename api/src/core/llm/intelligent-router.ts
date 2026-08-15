@@ -1007,6 +1007,27 @@ export function orderByCooldown<T extends { name: string }>(providers: T[]): T[]
 export const RATE_LIMIT_RE = /\b(429|rate.?limit(?:ed)?|too many requests)\b/i;
 
 /**
+ * Resolve the deadline used by the keyless mesh.  Explicit caller deadlines are
+ * part of the routing contract and must survive provider-specific defaults; an
+ * absent deadline gets the normal short keyless timeout.  Keeping this pure makes
+ * the precedence testable without starting a provider or making a network call.
+ */
+export function effectiveKeylessTimeoutMs(
+    requestedTimeout: unknown,
+    complexity?: string,
+    ordinaryDefaultMs?: number,
+): number {
+    const requested = Number(requestedTimeout);
+    if (Number.isFinite(requested) && requested > 0) {
+        return Math.min(120_000, Math.max(8_000, Math.floor(requested)));
+    }
+    if (Number.isFinite(ordinaryDefaultMs) && Number(ordinaryDefaultMs) > 0) {
+        return Math.floor(Number(ordinaryDefaultMs));
+    }
+    return complexity === 'high' || complexity === 'extreme' ? 25_000 : 18_000;
+}
+
+/**
  * THE DAY'S QUOTA RAN OUT — AND THE USER IS THE LAST TO KNOW.
  *
  * When the provider the user picked hits its daily limit, Joe quietly moves to
@@ -1876,8 +1897,17 @@ export async function routeToModel(
                 }
             }
             if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)') {
-                // Keyless gateways can be slower; give the keyless brains room.
-                timeoutValue = taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme' ? 25000 : 18000;
+                // Keyless gateways can be slower; give ordinary calls room.  A
+                // planner may explicitly request a longer bounded deadline (for
+                // example 120s for a large engineering brief); never overwrite
+                // that contract with the ordinary 18/25s default.  The previous
+                // unconditional assignment made the router abort LLM7 at 25s even
+                // after ProjectPlannerTool had requested 120s, producing a false
+                // "no valid plan" and provoking a second quota request.
+                const keylessDefault = taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme'
+                    ? 25_000
+                    : 18_000;
+                timeoutValue = effectiveKeylessTimeoutMs(requestedTimeout, taskAnalysis?.complexity, keylessDefault);
             }
             if (p.name === 'Pollinations (Backup)' || p.name === 'DeepSeek (Pollinations)') {
                 timeoutValue = 6000;
@@ -1991,15 +2021,26 @@ export async function routeToModel(
             }
             for (const provider of rescueCandidates) {
                 try {
-                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TRANSIENT_RETRY_TIMEOUT')), TRANSIENT_PROVIDER_RETRY_TIMEOUT_MS));
-                    const retryRaw = await Promise.race([provider.run(), timeoutPromise]) as string;
-                    const retryAnswer = cleanOutput(retryRaw);
-                    if (!isUsableAnswer(retryAnswer)) throw new Error('TRANSIENT_RETRY_EMPTY');
-                    console.info(`[IntelligentRouter] ✅ Transient recovery via ${provider.name}.`);
-                    lastTotalFailureAt = 0;
-                    markProviderOk(provider.name);
-                    if (provider.name === 'Local (Auto)') noteLocalBrainOk();
-                    return retryAnswer;
+                    const retryAbort = new AbortController();
+                    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+                    const retryTimeout = new Promise<never>((_, reject) => {
+                        retryTimer = setTimeout(() => {
+                            retryAbort.abort(new Error('Transient recovery deadline exceeded'));
+                            reject(new Error('TRANSIENT_RETRY_TIMEOUT'));
+                        }, TRANSIENT_PROVIDER_RETRY_TIMEOUT_MS);
+                    });
+                    try {
+                        const retryRaw = await Promise.race([provider.run(retryAbort.signal), retryTimeout]) as string;
+                        const retryAnswer = cleanOutput(retryRaw);
+                        if (!isUsableAnswer(retryAnswer)) throw new Error('TRANSIENT_RETRY_EMPTY');
+                        console.info(`[IntelligentRouter] ✅ Transient recovery via ${provider.name}.`);
+                        lastTotalFailureAt = 0;
+                        markProviderOk(provider.name);
+                        if (provider.name === 'Local (Auto)') noteLocalBrainOk();
+                        return retryAnswer;
+                    } finally {
+                        if (retryTimer) clearTimeout(retryTimer);
+                    }
                 } catch (retryError: any) {
                     console.warn(`[IntelligentRouter] ${provider.name} transient recovery failed: ${retryError?.message || 'unknown error'}.`);
                     lastError = String(retryError?.message || lastError);
