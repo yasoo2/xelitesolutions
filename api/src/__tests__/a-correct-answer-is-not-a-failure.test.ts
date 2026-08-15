@@ -112,7 +112,11 @@ describe('the pipeline speaks the language of the run', () => {
     });
 
     it('and project_run, which the pipeline starts, is handed that language', () => {
-        expect(PIPE).toMatch(/executeTool\('project_run', \{\}, \{ \.\.\.context, language: isAr \? 'ar' : 'en' \}\)/);
+        // The INPUT to project_run grew a projectQuery, so the second argument
+        // is no longer the literal `{}` this used to pin. The promise being
+        // guarded is the third argument — the run's language travels with the
+        // call — so that is what is asserted, whatever input rides along.
+        expect(PIPE).toMatch(/executeTool\('project_run', \w+, \{ \.\.\.context, language: isAr \? 'ar' : 'en' \}\)/);
         expect(RUNTOOL).toContain("import { isArabicReply, say as pick } from '../../../shared/reply-language';");
         expect(RUNTOOL).toContain('The server started but answered on no port within 45s');
         expect(RUNTOOL).toContain('بدأ الخادم لكنه لم يستجب على أي منفذ خلال ٤٥ ثانية');

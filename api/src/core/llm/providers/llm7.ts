@@ -185,6 +185,23 @@ export class LLM7Provider {
         } else {
             for (const p of PREFERRED_MODELS) push(p);
         }
+        /**
+         * A BLOCKLIST THAT EMPTIES THE LIST IS WORSE THAN NO BLOCKLIST.
+         *
+         * The memory of refusals is per-model and lasts a week. A gateway that
+         * refuses everything for one bad hour — expired anonymous quota, a
+         * proxy in the way — therefore writes the WHOLE preferred list into the
+         * file, and every later run builds zero candidates, never touches the
+         * network, and reports «unknown error» because no attempt ever set one.
+         * Joe loses a whole provider to a stale file, silently.
+         *
+         * So the blocklist advises; it does not veto. When it has eliminated
+         * every candidate, the preferred models are tried anyway — a refusal
+         * costs one request and re-writes the memory honestly.
+         */
+        if (out.length === 0) {
+            for (const p of PREFERRED_MODELS) if (!out.includes(p)) out.push(p);
+        }
         return out.slice(0, 6);
     }
 
@@ -256,7 +273,12 @@ export class LLM7Provider {
                 console.warn(`[LLM7] model "${m}" failed: ${status || error.message}`);
             }
         }
-        throw new Error(`LLM7 keyless gateway failed: ${lastErr?.message || 'unknown error'}`);
+        // «unknown error» is what this said whenever the loop never ran, which
+        // is precisely the case a reader most needs named. An error that cannot
+        // be acted on is a failure report with the evidence removed.
+        throw new Error(lastErr?.message
+            ? `LLM7 keyless gateway failed: ${lastErr.message}`
+            : `LLM7 keyless gateway failed: no candidate model was reachable (${candidates.length} tried)`);
     }
 }
 

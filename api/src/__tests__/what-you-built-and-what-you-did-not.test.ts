@@ -40,8 +40,27 @@ describe('the builder\'s own words survive the phase', () => {
     });
 
     it('a FAILED task still reports its error, not a message', () => {
-        // The failure path is untouched: an error is the honest payload there.
-        expect(PHASE).toMatch(/results\.push\(\{ task: taskDesc, tool: toolName, ok: false, error: errMsg \}\);/);
+        /**
+         * The failure record grew — a blocked delivery may also carry its own
+         * report, the shell command, and the directory it ran in — so the old
+         * one-line pin no longer matched anything, and a gate that matches
+         * nothing guards nothing.
+         *
+         * The promise it was written to hold is unchanged and is what is
+         * measured here: EVERY failure push states `ok: false` and carries the
+         * error text. An extra message beside the error is more evidence, not
+         * less; an error REPLACED by a message is the defect, and that is what
+         * this fails on.
+         */
+        const failures = [...PHASE.matchAll(/results\.push\(\{[\s\S]{0,900}?\}\);/g)]
+            .map(m => m[0])
+            .filter(block => /ok:\s*false/.test(block));
+        expect(failures.length).toBeGreaterThanOrEqual(2);
+        for (const block of failures) expect(block).toMatch(/error:\s*\w+/);
+        // …and a message never stands in place of the error.
+        for (const block of failures) {
+            if (/message:/.test(block)) expect(block.indexOf('error:')).toBeLessThan(block.indexOf('message:'));
+        }
     });
 });
 

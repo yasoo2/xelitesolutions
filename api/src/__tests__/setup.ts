@@ -38,6 +38,25 @@ if (!process.env.JOE_CHAT_STORE_DIR) {
 }
 
 /**
+ * …AND THE SAME DISEASE ONE DIRECTORY UP.
+ *
+ * `data/` under the cwd also holds what the LLM router LEARNED on this machine:
+ * `llm7-blocked.json` records every model the gateway refused. In a sandbox
+ * with no gateway that file grows to cover the entire preferred list — and the
+ * provider's candidate list then comes back EMPTY, so three resilience tests
+ * failed with «unknown error» on a machine that had once run live, and passed
+ * on a fresh checkout.
+ *
+ * The rule is the same one the profile taught: a unit test reads its own
+ * inputs, never the operator's history.
+ */
+if (!process.env.JOE_DATA_DIR) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const os = require('os'), fsx = require('fs'), p = require('path');
+    process.env.JOE_DATA_DIR = fsx.mkdtempSync(p.join(os.tmpdir(), 'joe-test-data-'));
+}
+
+/**
  * Importing the router pulls in every LLM provider, and each one announces at
  * construction that it has no API key. That is correct behaviour and expected
  * here, but a run that prints warnings trains everyone to ignore the output —
