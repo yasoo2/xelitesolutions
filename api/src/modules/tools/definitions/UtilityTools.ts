@@ -152,7 +152,11 @@ export class SearchTextTool extends BaseTool {
             glob: { type: 'string', description: 'Limit to files matching this glob (default all text files)' },
             maxResults: { type: 'number', description: 'Default 200' },
         },
+        // Either public alias satisfies the same semantic requirement. The
+        // planner's argument repair pass understands this extension while the
+        // JSON-schema `required` list remains empty for backward compatibility.
         required: [] as string[],
+        requiredAny: [['query', 'pattern']],
     };
     outputSchema = { type: 'object' as const, properties: { matches: { type: 'array' }, total: { type: 'number' } } };
     permissions: ToolPermission[] = ['read'];

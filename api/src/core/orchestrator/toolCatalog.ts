@@ -291,6 +291,9 @@ function sessionUrl(context?: any): string {
 export function inputForTool(tool: any, goal: string, context?: any): Record<string, any> | null {
     const props: Record<string, any> = tool?.inputSchema?.properties || {};
     const required: string[] = Array.isArray(tool?.inputSchema?.required) ? tool.inputSchema.required : [];
+    const requiredAny: string[][] = Array.isArray(tool?.inputSchema?.requiredAny)
+        ? tool.inputSchema.requiredAny.filter((group: any) => Array.isArray(group) && group.length).map((group: any[]) => group.map(String))
+        : [];
     const url = (String(goal).match(URL_RE) || [])[0] || sessionUrl(context);
     const input: Record<string, any> = {};
 
@@ -306,8 +309,16 @@ export function inputForTool(tool: any, goal: string, context?: any): Record<str
         }
     }
     // Anything still required and still missing means this tool cannot serve
-    // this sentence — and saying so is the point.
+    // this sentence — and saying so is the point. Some tools expose aliases
+    // for one semantic input (for example query/pattern), so a whole group is
+    // satisfied when any member has a value.
     for (const r of required) if (input[r] === undefined) return null;
+    for (const group of requiredAny) {
+        if (!group.some(r => {
+            const value = input[r];
+            return value !== undefined && value !== null && !(typeof value === 'string' && !value.trim());
+        })) return null;
+    }
     // A tool with no required fields still needs SOMETHING to act on.
     if (!Object.keys(input).length) input.request = goal;
     return input;

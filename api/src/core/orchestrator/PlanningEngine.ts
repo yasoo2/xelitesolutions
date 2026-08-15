@@ -2611,7 +2611,10 @@ Return ONLY a JSON array of steps:
         for (const s of steps) {
             const tool = byName.get(String(s.tool || ''));
             const required: string[] = Array.isArray(tool?.inputSchema?.required) ? tool.inputSchema.required : [];
-            if (!required.length) continue;
+            const requiredAny: string[][] = Array.isArray(tool?.inputSchema?.requiredAny)
+                ? tool.inputSchema.requiredAny.filter((group: any) => Array.isArray(group) && group.length).map((group: any[]) => group.map(String))
+                : [];
+            if (!required.length && !requiredAny.length) continue;
             s.input = s.input && typeof s.input === 'object' ? s.input : {};
 
             // Repair omitted project evidence before the generic URL/text filler.
@@ -2619,30 +2622,42 @@ Return ONLY a JSON array of steps:
             // workspace; it never invents a path or a test harness.
             s.input = enrichWorkspaceToolInput(String(s.tool || ''), s.input, `${s.description || ''} ${goal}`.trim(), context);
 
-            const missing = () => required.filter(r => {
-                if (RUNTIME_SUPPLIED.has(r)) return false;
-                const v = (s.input as any)[r];
-                if (v === undefined || v === null) return true;
-                if (typeof v === 'string' && !v.trim()) return true;
-                if (Array.isArray(v) && !v.length) return true;
-                return false;
-            });
-            if (!missing().length) continue;
+            const hasValue = (key: string) => {
+                if (RUNTIME_SUPPLIED.has(key)) return true;
+                const v = (s.input as any)[key];
+                if (v === undefined || v === null) return false;
+                if (typeof v === 'string' && !v.trim()) return false;
+                if (Array.isArray(v) && !v.length) return false;
+                return true;
+            };
+            const missing = () => required.filter(r => !hasValue(r));
+            const missingAny = () => requiredAny.filter(group => !group.some(hasValue));
+            if (!missing().length && !missingAny().length) continue;
 
             // The router's own filler: a URL from the sentence or the open page,
-            // the goal for a question/query/instruction.
+            // the goal for a question/query/instruction. For one-of groups copy
+            // only the first alias it can derive, preserving any alias already
+            // supplied by the planner.
             try {
                 const filled = inputForTool(tool, `${s.description || ''} ${goal}`.trim(), context);
-                if (filled) for (const k of missing()) if (filled[k] !== undefined) (s.input as any)[k] = filled[k];
+                if (filled) {
+                    for (const k of missing()) if (filled[k] !== undefined) (s.input as any)[k] = filled[k];
+                    for (const group of missingAny()) {
+                        const candidate = group.find(k => filled[k] !== undefined);
+                        if (candidate) (s.input as any)[candidate] = filled[candidate];
+                    }
+                }
             } catch { /* the filler is a helper, never a blocker */ }
 
             const still = missing();
-            if (!still.length) continue;
+            const stillAny = missingAny();
+            if (!still.length && !stillAny.length) continue;
+            const missingLabels = [...still, ...stillAny.map(group => group.join(' أو '))];
 
-            console.warn(`[PlanningEngine] «${s.tool}» needs ${still.join(', ')} and nothing in the request provides it — asking instead of failing`);
+            console.warn(`[PlanningEngine] «${s.tool}» needs ${missingLabels.join(', ')} and nothing in the request provides it — asking instead of failing`);
             s.tool = 'central_answer';
             s.input = {
-                question: `${s.description || goal}\n\n(لأنفّذ هذه الخطوة أحتاج: ${still.join('، ')} — لم أجده في الطلب. اسأل المستخدم عنه بوضوح، بلغته، ولا تختلق قيمة.)`,
+                question: `${s.description || goal}\n\n(لأنفّذ هذه الخطوة أحتاج: ${missingLabels.join('، ')} — لم أجده في الطلب. اسأل المستخدم عنه بوضوح، بلغته، ولا تختلق قيمة.)`,
                 request: goal,
             };
         }
