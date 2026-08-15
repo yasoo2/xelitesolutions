@@ -502,7 +502,13 @@ Rules:
             const qualityTarget = /(جودة|الجودة|تقرير|النتيجة|النتائج|المخرجات|التسليم|quality|report|result|output|deliverable)/i.test(probe);
             const explicitQualityReview = /(تقرير\s*الجودة|النتيجة\s*النهائية|quality\s*report|final\s+(?:result|output|deliverable))/i.test(probe);
             const built = findActiveBuiltProject(context?.sessionId);
-            if ((explicitQualityReview || (reviewVerb && qualityTarget)) && built) {
+            // A construction brief may contain its own QA, audit, and acceptance
+            // sections. Those words describe the deliverable's verification plan;
+            // they must not hijack the construction request into repairing the
+            // currently active (possibly unrelated) artifact. Only a request that
+            // is not itself an explicit build should use this fast-path.
+            const constructiveBuildRequest = PlanningEngine.looksLikeBuild(userGoal);
+            if ((explicitQualityReview || (reviewVerb && qualityTarget)) && built && !constructiveBuildRequest) {
                 return {
                     id: `quality_review_${Date.now()}`,
                     goal: intent.goal,

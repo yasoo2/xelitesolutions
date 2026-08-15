@@ -61,6 +61,11 @@ describe('quality review routing uses the active built project', () => {
         const goal = 'راجع تقرير الجودة والنتيجة التي أنشأتها بنفسك. أصلح جميع الملاحظات المتبقية قبل التسليم: أزل المحتوى المكرر والحشو واجعل كل قسم وبطاقة منتجات مختلفاً ومرتبطاً فعلياً بالمشروع، تحقق من أن كل الصور والشعار والروابط المحلية تعمل ولا توجد أصول مفقودة أو روابط مشوهة، ثم أعد تشغيل الفحص البصري وفحص التفاعل ومراجعة الشيفرة والاختبارات المحلية. لا تكتفِ بذكر الملاحظات؛ نفّذ الإصلاحات بنفسك، وأعد الفحص حتى لا تبقى أخطاء JavaScript أو موارد 404 أو عناصر تفاعلية معطلة، ثم اعرض النتيجة النهائية مع الأدلة والملفات التي عدّلتها.';
         expect(await routeInSession(goal, sessionId)).toBe('project_repair');
     });
+
+    it('a constructive build brief with QA and final-audit language is not hijacked by project_repair', async () => {
+        const goal = 'Build a production-grade autonomous software platform called NEXUS with real backend APIs, database models, authentication, authorization, frontend functionality, tests, and a final visual quality audit after implementation.';
+        expect(await routeInSession(goal, sessionId)).not.toBe('project_repair');
+    });
 });
 
 describe('quality review routing follows the active split static page', () => {
