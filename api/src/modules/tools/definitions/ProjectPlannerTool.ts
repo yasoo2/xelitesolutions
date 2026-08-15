@@ -474,10 +474,10 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
         // Those instructions are evidence about how to test the agent, not
         // product requirement areas. Prefer an explicit challenge/body marker
         // when one exists, while retaining the generic whole-request fallback.
-        const startMarker = lines.findIndex(line => /^(?:main joe challenge|build (?:a )?production[ -]grade\b|authoritative requirements evidence)$/i.test(line));
-        const endMarker = lines.findIndex((line, index) => index > Math.max(0, startMarker) && /^(?:end of joe challenge|end compact requirements evidence)$/i.test(line));
+        const startMarker = lines.findIndex(line => /^(?:(?:\d+[.)])\s*)?(?:main joe challenge|build (?:a )?production[ -]grade\b|authoritative requirements evidence)\s*$/i.test(line));
+        const endMarker = lines.findIndex((line, index) => index > Math.max(0, startMarker) && /^(?:(?:\d+[.)])\s*)?(?:end of joe challenge|end compact requirements evidence)\s*$/i.test(line));
         const scopedLines = startMarker >= 0
-            ? lines.slice(startMarker, endMarker > startMarker ? endMarker : lines.length)
+            ? lines.slice(startMarker + 1, endMarker > startMarker ? endMarker : lines.length)
             : lines;
 
         // A contiguous numbered list is the most reliable register for specs

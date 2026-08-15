@@ -67,6 +67,33 @@ OBSERVE JOE — DO NOT TAKE OVER
         expect(scope.targets).not.toContain('START THE REAL JOE SYSTEM');
     });
 
+    it('recognises a numbered NEXUS challenge marker and keeps the primary register', () => {
+        const productAreas = [
+            'Multi-tenant authentication', 'Organizations', 'Teams', 'Roles', 'Permissions',
+            'RBAC', 'Audit logs', 'Projects', 'Tasks', 'Kanban', 'Gantt', 'CRM',
+            'Customers', 'Products', 'Orders', 'Inventory', 'Invoices', 'Accounting',
+            'Notifications', 'File management', 'Search', 'AI assistant', 'AI agents',
+            'Workflow automation', 'API management', 'Developer portal', 'Analytics',
+            'Admin dashboard', 'Security center', 'Monitoring', 'Real-time updates',
+        ];
+        const prompt = [
+            '4. MAIN JOE CHALLENGE',
+            'Build a production-grade autonomous software platform.',
+            'It must contain:',
+            ...productAreas.map((area, index) => `${index + 1}. ${area}`),
+            '5. FINAL ACCEPTANCE TEST',
+            '1. Inspect the result',
+            '2. Verify the result',
+            'END OF JOE CHALLENGE',
+        ].join('\n');
+        const scope = planner.requirementScope(prompt);
+
+        expect(scope.requiresImplementation).toBe(true);
+        expect(scope.targets).toEqual(productAreas.slice(0, 18));
+        expect(scope.targets).not.toContain('Inspect the result');
+        expect(scope.minPhases).toBe(6);
+    });
+
     it('accepts a proportionate plan with implementation artifacts and requirement coverage', () => {
         const phase = (name: string, covered: string[], file: string) => ({
             name,
