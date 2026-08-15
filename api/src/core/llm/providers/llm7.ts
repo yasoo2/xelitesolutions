@@ -198,6 +198,9 @@ export class LLM7Provider {
             ? Math.min(120000, Math.max(1000, Math.floor(Number(options?.timeoutMs))))
             : 30000;
         const candidates = await this.buildCandidates(model, timeoutMs, options?.signal);
+        if (options?.signal?.aborted) {
+            throw options.signal.reason || new Error('Request was aborted');
+        }
         let lastErr: any = null;
         const body = (m: string): any => {
             const b: any = {
@@ -215,6 +218,9 @@ export class LLM7Provider {
             return b;
         };
         for (const m of candidates) {
+            if (options?.signal?.aborted) {
+                throw options.signal.reason || new Error('Request was aborted');
+            }
             try {
                 const completion = await LLM7Provider.withGatewayTurn(options?.signal, () =>
                     (this.client.chat.completions.create as any)(
@@ -229,6 +235,7 @@ export class LLM7Provider {
                 lastErr = new Error('LLM7 empty response');
             } catch (error: any) {
                 lastErr = error;
+                if (options?.signal?.aborted) throw error;
                 const status = error?.status || 0;
                 if (status === 401 || status === 402 || status === 403) {
                     this.blocked.add(m);

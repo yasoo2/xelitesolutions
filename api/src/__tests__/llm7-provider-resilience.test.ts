@@ -81,6 +81,31 @@ describe('LLM7Provider resilience', () => {
         expect(mockCreate).toHaveBeenCalledTimes(2);
     });
 
+    it('stops the candidate loop when the router aborts the in-flight request', async () => {
+        (global as any).fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ data: [{ id: 'first-model' }, { id: 'second-model' }] }),
+        });
+        const { LLM7Provider } = await import('../core/llm/providers/llm7');
+        const provider = new LLM7Provider();
+        const controller = new AbortController();
+        mockCreate.mockImplementationOnce(async (_body: any, options: any) => {
+            controller.abort(new Error('provider deadline exceeded'));
+            if (options.signal.aborted) throw new Error('aborted');
+            await new Promise((_resolve, reject) => {
+                options.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+            });
+        });
+
+        await expect(provider.chatComplete(
+            [{ role: 'user', content: 'abort after first candidate' }],
+            undefined,
+            undefined,
+            { timeoutMs: 5000, signal: controller.signal },
+        )).rejects.toThrow('aborted');
+        expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
+
     it('forwards bounded timeout, abort signal, and completion budget to the gateway', async () => {
         const { LLM7Provider } = await import('../core/llm/providers/llm7');
         const provider = new LLM7Provider();
