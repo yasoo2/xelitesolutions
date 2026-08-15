@@ -355,6 +355,10 @@ export class ProjectPipelineTool implements ToolDefinition {
             runId: context?.runId || `run-${Date.now()}`,
             userId: context?.userId || 'anonymous',
             workspaceId: context?.workspaceId || context?.sessionId || 'default',
+            // Preserve the visible browser panel through the canonical phase pipeline.
+            // Without this, PhaseExecutor fell back to the chat session and the
+            // first real browser verification was rejected by the ownership gate.
+            browserSessionId: context?.browserSessionId,
             plannerResult,
             modelConfig: context?.modelConfig,
             // The phase announcements are the loudest lines in the trace, and

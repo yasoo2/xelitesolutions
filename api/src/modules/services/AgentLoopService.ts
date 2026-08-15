@@ -401,13 +401,14 @@ export class AgentLoopService {
         runId: string;
         userId: string;
         workspaceId: string;
+        browserSessionId?: string;
         plannerResult: any;
         modelConfig?: any;
         /** The language of THIS run — the phase announcements follow it. */
         language?: string;
         onProgress?: (msg: string) => void;
     }) {
-        const { sessionId, runId, userId, workspaceId, plannerResult } = opts;
+        const { sessionId, runId, userId, workspaceId, browserSessionId, plannerResult } = opts;
 
         if (!plannerResult?.ok || !plannerResult?.output?.phases?.length) {
             return { ok: false, completedPhases: 0, results: [], error: 'No valid phases in planner result' };
@@ -422,12 +423,13 @@ export class AgentLoopService {
         runId: string;
         userId: string;
         workspaceId: string;
+        browserSessionId?: string;
         plannerResult: any;
         language?: string;
         modelConfig?: any;
         onProgress?: (msg: string) => void;
     }) {
-        const { sessionId, runId, userId, workspaceId, plannerResult, modelConfig } = opts;
+        const { sessionId, runId, userId, workspaceId, browserSessionId, plannerResult, modelConfig } = opts;
         /**
          * The phase announcements are the loudest lines in a multi-phase build,
          * and they were hardcoded Arabic — so his English run, in English mode,
@@ -450,6 +452,7 @@ export class AgentLoopService {
             projectName: plannerResult.output.projectName || 'Unknown',
             totalPhases: plannerResult.output.totalPhases || phases.length,
             sessionId,
+            browserSessionId,
             workspaceId,
             userId,
             // Set by the canonical pipeline from the fully read local
@@ -457,7 +460,7 @@ export class AgentLoopService {
             // not a guessed technology or product template.
             requirementsContext: String(plannerResult?.output?.requirementsContext || ''),
         };
-        const executionContext = { sessionId, workspaceId, userId, modelConfig, onProgress: voice, onThought: voice };
+        const executionContext = { sessionId, browserSessionId, workspaceId, userId, modelConfig, onProgress: voice, onThought: voice };
         const results: any[] = [];
         let completedPhases = 0;
         const totalPhases = Number(projectContext.totalPhases || phases.length);

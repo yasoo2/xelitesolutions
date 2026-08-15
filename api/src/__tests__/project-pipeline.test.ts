@@ -107,6 +107,15 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/require\('\.\.\/\.\.\/services\/AgentLoopService'\)/);
     });
 
+    test('the visible browser panel survives the pipeline-to-phase boundary', () => {
+        expect(src).toMatch(/browserSessionId:\s*context\?\.browserSessionId/);
+        const loop = fs.readFileSync(
+            path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
+        expect(loop).toMatch(/browserSessionId\?:\s*string/);
+        expect(loop).toMatch(/const projectContext = \{[\s\S]*browserSessionId,/);
+        expect(loop).toMatch(/const executionContext = \{ sessionId, browserSessionId,/);
+    });
+
     test('success and verification are earned, with explicit execution and delivery states', () => {
         expect(src).toMatch(/const verified = pipeline\?\.ok === true/);
         expect(src).toMatch(/const executionStatus = verified/);
