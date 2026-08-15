@@ -1028,6 +1028,23 @@ export function effectiveKeylessTimeoutMs(
 }
 
 /**
+ * Read the caller's bounded patience contract without tying it to one layer's
+ * field name. ProjectPlannerTool normally translates plannerTimeoutMs into
+ * providerTimeoutMs, but recovery or compatibility paths may pass the planner
+ * field directly. Losing that contract silently reverts a large planning call
+ * to the ordinary 18/25s keyless deadline.
+ */
+export function requestedProviderTimeoutMs(context: any): number | undefined {
+    for (const raw of [context?.providerTimeoutMs, context?.plannerTimeoutMs]) {
+        const value = Number(raw);
+        if (Number.isFinite(value) && value > 0) {
+            return Math.min(120_000, Math.max(8_000, Math.floor(value)));
+        }
+    }
+    return undefined;
+}
+
+/**
  * THE DAY'S QUOTA RAN OUT — AND THE USER IS THE LAST TO KNOW.
  *
  * When the provider the user picked hits its daily limit, Joe quietly moves to
@@ -1374,10 +1391,7 @@ export async function routeToModel(
             // fallback timeout. Give the OpenAI-compatible request one real
             // cancellation boundary, while leaving Gemini's separate provider API
             // untouched.
-            const requestedProviderTimeout = Number(context?.providerTimeoutMs);
-            const providerTimeoutMs = Number.isFinite(requestedProviderTimeout) && requestedProviderTimeout > 0
-                ? Math.min(120000, Math.floor(requestedProviderTimeout))
-                : undefined;
+            const providerTimeoutMs = requestedProviderTimeoutMs(context);
             const providerAbortController = providerTimeoutMs && cfgProvider !== 'gemini' && cfgProvider !== 'google'
                 ? new AbortController()
                 : undefined;
@@ -1658,7 +1672,7 @@ export async function routeToModel(
                 return await openAIProvider.chatComplete(effectiveMessages, 'gpt-4o', tools, {
                     maxCompletionTokens: Number(context?.maxCompletionTokens) > 0 ? Number(context.maxCompletionTokens) : undefined,
                     reasoningEffort: context?.reasoningEffort,
-                    timeoutMs: Number(context?.providerTimeoutMs) > 0 ? Math.min(120000, Number(context.providerTimeoutMs)) : undefined,
+                    timeoutMs: requestedProviderTimeoutMs(context),
                     signal,
                 });
             }
@@ -1671,11 +1685,9 @@ export async function routeToModel(
         meshProviders.push({
             name: 'LLM7 (Keyless)',
             run: async (signal?: AbortSignal) => {
-                const requestedTimeout = Number(context?.providerTimeoutMs);
+                const requestedTimeout = requestedProviderTimeoutMs(context);
                 const res = await llm7Provider.chatComplete(effectiveMessages, undefined, tools, {
-                    timeoutMs: Number.isFinite(requestedTimeout) && requestedTimeout > 0
-                        ? Math.min(120000, requestedTimeout)
-                        : undefined,
+                    timeoutMs: requestedTimeout,
                     signal,
                     maxCompletionTokens: Number(context?.maxCompletionTokens) > 0
                         ? Math.min(12000, Number(context.maxCompletionTokens))
@@ -1854,9 +1866,9 @@ export async function routeToModel(
             if (taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme') {
                 timeoutValue = 20000;
             }
-            const requestedTimeout = Number(context?.providerTimeoutMs);
-            if ((p.name === 'OpenAI (Direct)' || p.name === 'LLM7 (Keyless)') && Number.isFinite(requestedTimeout) && requestedTimeout > 0) {
-                timeoutValue = Math.min(120000, Math.max(8000, Math.floor(requestedTimeout)));
+            const requestedTimeout = requestedProviderTimeoutMs(context);
+            if ((p.name === 'OpenAI (Direct)' || p.name === 'LLM7 (Keyless)') && requestedTimeout) {
+                timeoutValue = requestedTimeout;
             }
             if (p.name === 'Local (Auto)') {
                 // Local CPU inference — especially the first (cold) request that loads

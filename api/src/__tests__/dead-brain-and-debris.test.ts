@@ -18,7 +18,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { effectiveKeylessTimeoutMs, markProviderOk, recentlyHealthyRetryCandidates, retryAfterMsFrom } from '../core/llm/intelligent-router';
+import { effectiveKeylessTimeoutMs, markProviderOk, recentlyHealthyRetryCandidates, requestedProviderTimeoutMs, retryAfterMsFrom } from '../core/llm/intelligent-router';
 import { isolateLatinRuns } from '../core/design/language';
 import { stripBrokenStyleImages } from '../core/design/images';
 import { normalizeIconRefs, iconSprite } from '../core/design/layouts';
@@ -73,6 +73,17 @@ describe('keyless planner deadlines — explicit patience is not overwritten by 
     it('uses short defaults only when the caller did not request a deadline', () => {
         expect(effectiveKeylessTimeoutMs(undefined, 'high', 25000)).toBe(25000);
         expect(effectiveKeylessTimeoutMs(undefined, 'medium', 18000)).toBe(18000);
+    });
+
+    it('preserves the planner deadline when a compatibility path passes plannerTimeoutMs directly', () => {
+        expect(requestedProviderTimeoutMs({ plannerTimeoutMs: 120000 })).toBe(120000);
+        expect(requestedProviderTimeoutMs({ providerTimeoutMs: undefined, plannerTimeoutMs: 45000 })).toBe(45000);
+    });
+
+    it('prefers a valid provider deadline and rejects non-finite values', () => {
+        expect(requestedProviderTimeoutMs({ providerTimeoutMs: 30000, plannerTimeoutMs: 120000 })).toBe(30000);
+        expect(requestedProviderTimeoutMs({ providerTimeoutMs: Infinity, plannerTimeoutMs: 50000 })).toBe(50000);
+        expect(requestedProviderTimeoutMs({ providerTimeoutMs: 'not-a-number', plannerTimeoutMs: undefined })).toBeUndefined();
     });
 });
 
