@@ -3,6 +3,7 @@ import { catalogueFor, registeredToolNames, capabilityRoute, inputForTool } from
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { normalizeIntentText, stripArabicDiacritics } from './promptNormalizer';
 import { compactHistoryForPrompt } from './history-compact';
+import { enrichWorkspaceToolInput } from './workspace-evidence';
 
 export interface ExecutionStep {
     id: string;
@@ -2568,6 +2569,11 @@ Return ONLY a JSON array of steps:
             const required: string[] = Array.isArray(tool?.inputSchema?.required) ? tool.inputSchema.required : [];
             if (!required.length) continue;
             s.input = s.input && typeof s.input === 'object' ? s.input : {};
+
+            // Repair omitted project evidence before the generic URL/text filler.
+            // The helper only uses the active session project inside the trusted
+            // workspace; it never invents a path or a test harness.
+            s.input = enrichWorkspaceToolInput(String(s.tool || ''), s.input, `${s.description || ''} ${goal}`.trim(), context);
 
             const missing = () => required.filter(r => {
                 if (RUNTIME_SUPPLIED.has(r)) return false;
