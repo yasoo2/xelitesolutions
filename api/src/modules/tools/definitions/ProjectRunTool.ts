@@ -191,9 +191,17 @@ function requestedProjectLabel(query: unknown): string {
 /** Exported for direct regression tests; this function never starts a process. */
 export function resolveRunnableProject(workspaceRoot: string, projectQuery?: unknown): RunnableProjectResolution {
     if (!workspaceRoot || !fs.existsSync(workspaceRoot)) return { cwd: null, candidates: [], matched: false };
-    if (hasProjectMarker(workspaceRoot)) return { cwd: workspaceRoot, candidates: [workspaceRoot], matched: true };
+
+    // A workspace may itself be runnable (for example Joe's own repository),
+    // but an explicit project name is stronger evidence than that root marker.
+    // Resolve the named child first; otherwise a request for a newly scaffolded
+    // project silently started the agent repository that contains it.
+    const requested = requestedProjectLabel(projectQuery);
+    const rootIsRunnable = hasProjectMarker(workspaceRoot);
+    if (!requested && rootIsRunnable) return { cwd: workspaceRoot, candidates: [workspaceRoot], matched: true };
 
     const candidates: string[] = [];
+    if (rootIsRunnable) candidates.push(workspaceRoot);
     try {
         for (const entry of fs.readdirSync(workspaceRoot, { withFileTypes: true })) {
             if (!entry.isDirectory() || entry.name.startsWith('.') || IGNORED_PROJECT_DIRS.has(entry.name)) continue;
@@ -203,11 +211,13 @@ export function resolveRunnableProject(workspaceRoot: string, projectQuery?: unk
     } catch {
         return { cwd: null, candidates: [], matched: false };
     }
-    candidates.sort((a, b) => a.localeCompare(b));
-    if (candidates.length === 1) return { cwd: candidates[0], candidates, matched: true };
 
-    const requested = requestedProjectLabel(projectQuery);
-    if (!requested) return { cwd: null, candidates, matched: false };
+    candidates.sort((a, b) => a.localeCompare(b));
+    if (!requested) {
+        if (candidates.length === 1) return { cwd: candidates[0], candidates, matched: true };
+        return { cwd: null, candidates, matched: false };
+    }
+
     const matches = candidates.filter(candidate => {
         const label = projectLabel(candidate);
         return label === requested || label.includes(requested) || requested.includes(label);
@@ -275,6 +285,14 @@ export class ProjectRunTool implements ToolDefinition {
         // created — the two stores never talked. The session's active
         // project is the default now; an explicit cwd still wins.
         const activeProj = (global as any).joeProjects?.[String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_')];
+        const namedProjectQuery = requestedProjectLabel(input?.projectQuery);
+        const activeProjectLabel = activeProj?.dir
+            ? projectLabel(String(activeProj.dir))
+            : normalizeProjectLabel(activeProj?.lastRequest);
+        const activeProjectMatchesQuery = !namedProjectQuery
+            || activeProjectLabel === namedProjectQuery
+            || activeProjectLabel.includes(namedProjectQuery)
+            || namedProjectQuery.includes(activeProjectLabel);
 
         /**
          * RUN THE SYSTEM, NOT ITS SOURCE FOLDER.
@@ -336,7 +354,9 @@ export class ProjectRunTool implements ToolDefinition {
             && fs.existsSync(path.join(packagedInto, 'package.json'));
 
         const explicitCwd = String(input?.cwd || '').trim();
-        const activeProjectDir = activeProj?.dir && fs.existsSync(activeProj.dir) ? String(activeProj.dir) : '';
+        const activeProjectDir = activeProjectMatchesQuery && activeProj?.dir && fs.existsSync(activeProj.dir)
+            ? String(activeProj.dir)
+            : '';
         const workspaceRoot = workspaceService.getActiveRoot(context?.workspaceId);
         const baseCwd = explicitCwd
             || (packagedIsWhole ? packagedInto : '')
@@ -347,6 +367,18 @@ export class ProjectRunTool implements ToolDefinition {
         const discovered = !explicitCwd && !packagedIsWhole && !activeProjectDir
             ? resolveRunnableProject(baseCwd, input?.projectQuery)
             : { cwd: baseCwd, candidates: [baseCwd], matched: true };
+        // A quoted project identity is an assertion, not a hint. Never fall
+        // through to the workspace root (which may be Joe itself) when that
+        // named artifact was not found among runnable projects.
+        if (!explicitCwd && !packagedIsWhole && !activeProjectDir && namedProjectQuery && !discovered.cwd) {
+            return {
+                ok: false,
+                error: pick(isAr,
+                    `لم أجد مشروعاً قابلاً للتشغيل باسم «${namedProjectQuery}» داخل مساحة العمل؛ لن أشغّل مستودعاً آخر بالتخمين.`,
+                    `No runnable project named “${namedProjectQuery}” was found in the workspace; I will not guess and start another repository.`),
+                logs,
+            };
+        }
         const cwd = String(discovered.cwd || baseCwd);
         if (!discovered.cwd && discovered.candidates.length > 1) {
             const choices = discovered.candidates.map(candidate => path.basename(candidate)).join('، ');

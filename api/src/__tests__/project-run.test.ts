@@ -5,8 +5,10 @@
  * language ("شغّل / أوقف المشروع") routes to them deterministically.
  */
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { resolveRunnableProject } from '../modules/tools/definitions/ProjectRunTool';
 
 const runSrc = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectRunTool.ts'), 'utf-8');
@@ -72,6 +74,38 @@ describe('project_run really RUNS (not renders) and is Windows-safe', () => {
     });
     test('one project owns one server — a new run stops the previous', () => {
         expect(runSrc).toMatch(/await stopServer\(key, logs\)/);
+    });
+});
+
+describe('named project discovery never falls back to the workspace repository', () => {
+    let root = '';
+
+    beforeEach(() => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-project-run-discovery-'));
+        // The workspace itself is runnable too — this models Joe's repository.
+        fs.writeFileSync(path.join(root, 'package.json'), '{"name":"joe"}', 'utf-8');
+        const child = path.join(root, 'Joe-System-Execution-Test');
+        fs.mkdirSync(child, { recursive: true });
+        fs.writeFileSync(path.join(child, 'package.json'), '{"name":"execution-test"}', 'utf-8');
+    });
+
+    afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
+
+    test('a quoted child name wins over the runnable workspace root', () => {
+        const result = resolveRunnableProject(root, '"Joe-System-Execution-Test"');
+        expect(result.matched).toBe(true);
+        expect(result.cwd).toBe(path.join(root, 'Joe-System-Execution-Test'));
+    });
+
+    test('an explicit missing name returns no match instead of the workspace root', () => {
+        const result = resolveRunnableProject(root, '"missing-project"');
+        expect(result.matched).toBe(false);
+        expect(result.cwd).toBeNull();
+    });
+
+    test('project_run has a named-query guard before selecting a fallback cwd', () => {
+        expect(runSrc).toMatch(/namedProjectQuery/);
+        expect(runSrc).toMatch(/will not guess and start another repository/);
     });
 });
 

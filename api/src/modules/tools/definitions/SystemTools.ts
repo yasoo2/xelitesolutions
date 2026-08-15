@@ -4,6 +4,7 @@ import { ToolPermission } from '../types';
 import path from 'path';
 import fs from 'fs';
 import { workspaceService } from '../../services/WorkspaceService';
+import { persistJoeProjects } from '../../../api/page-store';
 import { resolveToolPath as sharedResolveToolPath } from '../utils';
 import { commandRouter } from '../../terminal/command-router';
 import { broadcast, broadcastTerminalLine } from '../../../api/ws';
@@ -563,8 +564,25 @@ export class ScaffoldProjectTool extends BaseTool {
 
     async execute(input: any, context?: any) {
         const logs: string[] = [];
-        const structure = input?.structure || {};
-        const baseDir = String(input?.baseDir || input?.name || '.');
+        const rawStructure = input?.structure || {};
+        const declaredBaseDir = String(input?.baseDir || input?.projectName || input?.name || '.').trim() || '.';
+        // Models sometimes include the project folder in every structure key
+        // while also naming it as baseDir. Strip that one repeated prefix rather
+        // than creating project/project/src and then losing project identity.
+        const basePrefix = declaredBaseDir.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/u, '');
+        const structureEntries = Object.entries(rawStructure);
+        const repeatedPrefix = basePrefix !== '.' && structureEntries.length > 0
+            && structureEntries.every(([relativePath]) => {
+                const key = String(relativePath).replace(/\\/g, '/');
+                return key === basePrefix || key.startsWith(`${basePrefix}/`);
+            });
+        const structure = repeatedPrefix
+            ? Object.fromEntries(structureEntries.map(([relativePath, content]) => {
+                const key = String(relativePath).replace(/\\/g, '/');
+                return [key === basePrefix ? '' : key.slice(`${basePrefix}/`.length), content];
+            }))
+            : rawStructure;
+        const baseDir = declaredBaseDir;
         const resolvedBaseDir = safePath(baseDir, context?.workspaceId);
         if (!resolvedBaseDir.ok) return { ok: false, error: resolvedBaseDir.error, logs };
         const resolvedBase = resolvedBaseDir.path;
@@ -594,7 +612,27 @@ export class ScaffoldProjectTool extends BaseTool {
                 errors.push(`${relativePath}: ${e.message}`);
             }
         }
-        return { ok: errors.length === 0, output: { created, errors }, logs };
+
+        // A generic scaffold is still a real project. Remember its directory
+        // under the current session so later project_run, preview and surgical
+        // edits operate on the artifact just created instead of the workspace
+        // repository that happens to contain it.
+        const sessionId = typeof context?.sessionId === 'string' ? context.sessionId.trim() : '';
+        if (sessionId && created.length > 0) {
+            const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
+            const previous = projects[sessionKey] || {};
+            projects[sessionKey] = {
+                ...previous,
+                dir: resolvedBase,
+                type: previous.type || 'scaffold',
+                updatedAt: Date.now(),
+                lastRequest: String(input?.projectName || input?.name || path.basename(resolvedBase)).slice(0, 80),
+            };
+            persistJoeProjects();
+            logs.push(`scaffold_project: registered active project ${sessionKey} -> ${resolvedBase}`);
+        }
+        return { ok: errors.length === 0, output: { created, errors, ...(sessionId ? { projectDir: resolvedBase } : {}) }, logs };
     }
 }
 

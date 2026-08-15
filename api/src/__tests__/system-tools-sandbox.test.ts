@@ -79,6 +79,27 @@ describe('file_edit cannot reach a file outside the workspace', () => {
 });
 
 describe('scaffold_project contains every key, not just the base directory', () => {
+    it('registers a named project and strips a repeated baseDir prefix', async () => {
+        const sessionId = `scaffold-session-${process.pid}`;
+        const baseDir = path.join(DIR, 'registered-project');
+        const keyPrefix = baseDir.replace(/\\/g, '/');
+        const before = { ...(((global as any).joeProjects || {}) as Record<string, any>) };
+        const res: any = await new ScaffoldProjectTool().execute({
+            baseDir,
+            structure: {
+                [`${keyPrefix}/package.json`]: '{"name":"registered-project"}',
+                [`${keyPrefix}/src/index.ts`]: 'export default 1;',
+            },
+        }, { sessionId });
+
+        expect(res.ok).toBe(true);
+        expect(res.output.created).toEqual(expect.arrayContaining(['package.json', 'src/index.ts']));
+        expect(fs.existsSync(landsAt(path.join(baseDir, 'src/index.ts')))).toBe(true);
+        const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+        expect((global as any).joeProjects?.[sessionKey]?.dir).toBe(landsAt(baseDir));
+        (global as any).joeProjects = before;
+    });
+
     it('refuses a structure key that climbs out, and still writes the ones that do not', async () => {
         // Containing the base is not enough: each key of `structure` is a path
         // fragment the model chose, and they are joined onto the base one by one.

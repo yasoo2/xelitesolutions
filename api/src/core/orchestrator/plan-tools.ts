@@ -59,7 +59,7 @@ function registered(): Set<string> {
  * These are the tools that actually appear in a build.
  */
 export const PLANNER_TOOL_CATALOGUE: Array<{ tool: string; purpose: string }> = [
-    { tool: 'scaffold_project', purpose: 'create a new project on disk; REQUIRED args.structure is a non-empty object mapping safe workspace-relative paths to file contents (use null only for empty directories), for example {"package.json":"...","src/index.ts":"..."}; never pass an empty object, absolute path, drive path, or .. segment' },
+    { tool: 'scaffold_project', purpose: 'create a new project on disk; REQUIRED args.structure is a non-empty object mapping safe workspace-relative paths to file contents (use null only for empty directories), and optional args.baseDir is the project directory (projectName is accepted as an alias); include source/config/test files when implementation is requested, for example {"package.json":"...","src/index.ts":"..."}; never pass an empty object, absolute path, drive path, or .. segment' },
     { tool: 'scaffold_full_stack', purpose: 'create a full-stack project (frontend + backend together)' },
     { tool: 'react_project', purpose: 'build a real React + Vite application' },
     { tool: 'api_project', purpose: 'build a real Express + SQLite backend with working endpoints' },
@@ -1014,12 +1014,12 @@ export function plannerToolPrompt(): string {
         '',
         lines,
         '',
-        'Contract rules: every tool must receive the exact args required by its implementation. For scaffold_project, args.structure must be a non-empty object whose keys are safe workspace-relative file or directory paths and whose values are file contents or null for directories; do not use scaffold_project when the request has no explicit or evidence-backed stack — use exact file-level tools or stop honestly.',
+        'Contract rules: every tool must receive the exact args required by its implementation. For scaffold_project, args.structure must be a non-empty object whose keys are safe workspace-relative file or directory paths and whose values are file contents or null for directories; args.baseDir names the project directory (projectName is an accepted alias); after scaffolding, project_run must use the registered project identity and a live URL must be proven. Do not use scaffold_project when the request has no explicit or evidence-backed stack — use exact file-level tools or stop honestly.',
         'scaffold_project FEW-SHOT PATTERN (learn the contract; do not copy this fixed app):',
         '{',
         '  "tool": "scaffold_project",',
         '  "args": {',
-        '    "projectName": "my-app",',
+        '    "baseDir": "my-app",',
         '    "structure": {',
         '      "package.json": "{\\"name\\":\\"my-app\\",\\"version\\":\\"1.0.0\\",\\"scripts\\":{\\"start\\":\\"node src/index.js\\"}}",',
         '      "src/index.js": "const http = require(\\"http\\");\\nconst server = http.createServer((req, res) => { res.end(\\"Hello\\"); });\\nserver.listen(3000);",',
@@ -1027,7 +1027,7 @@ export function plannerToolPrompt(): string {
         '    }',
         '  }',
         '}',
-        'The important pattern is a non-empty structure with real source/config/test files and exact workspace-relative paths. A README, TXT note, or empty directory alone is not an implementation artifact. Adapt the paths and contents to the evidence-backed stack and user requirements; never return this example as a substitute for analysis.',
+        'The important pattern is a non-empty structure with real source/config/test files, a runnable package/config, and exact workspace-relative paths under the named baseDir. A README, TXT note, or empty directory alone is not an implementation artifact. Adapt the paths and contents to the evidence-backed stack and user requirements; never return this example as a substitute for analysis.',
         '',
         'This system writes software. It cannot open tickets, book meetings, hire people,',
         'or use Jira/Trello/Slack/Figma. Do not plan steps that need a human organisation.',
