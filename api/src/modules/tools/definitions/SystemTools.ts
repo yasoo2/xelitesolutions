@@ -11,7 +11,21 @@ import { handleShellCommand } from '../handlers';
 import { executionEngine } from '../../../kernel/ExecutionEngine';
 
 // Background Process Store
-const backgroundProcesses = new Map<string, { pid: number, command: string, startTime: number, process: any }>();
+const backgroundProcesses = new Map<string, { pid: number, command: string, cwd: string, startTime: number, process: any }>();
+
+function isBackgroundProcessAlive(pid: number): boolean {
+    if (!Number.isInteger(pid) || pid <= 0) return false;
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function sameBackgroundInvocation(left: { command: string; cwd: string }, command: string, cwd: string): boolean {
+    return left.command.trim() === command.trim() && path.resolve(left.cwd) === path.resolve(cwd);
+}
 
 // Helper
 function getWorkspaceRoot(workspaceId?: string) {
@@ -703,6 +717,36 @@ export class ShellExecuteTool extends BaseTool {
         try {
             if (background) {
                 if (input.serverId) throw new Error('Background execution not yet supported for remote servers');
+
+                // A planner can describe the same launch more than once (for
+                // example after a bounded self-fix). Starting a second copy of
+                // a real service is not progress: it usually fails with
+                // EADDRINUSE and makes a previously successful phase look
+                // broken. Reuse only a live process with the exact same
+                // command and workspace, and discard stale entries first.
+                for (const [existingId, existing] of backgroundProcesses) {
+                    if (!isBackgroundProcessAlive(existing.pid)) {
+                        backgroundProcesses.delete(existingId);
+                        continue;
+                    }
+                    if (sameBackgroundInvocation(existing, command, workDir)) {
+                        logs.push(`exec_bg_reused=${redactCmd(command)} id=${existingId} pid=${existing.pid}`);
+                        echoCommand();
+                        paintToTerminal(`\x1b[32m✓ already running (${existingId})\x1b[0m\r\n`);
+                        return {
+                            ok: true,
+                            output: {
+                                status: 'already_running',
+                                id: existingId,
+                                pid: existing.pid,
+                                cwd: workDir,
+                                message: 'The exact command is already running in this workspace; reused the live process.',
+                            },
+                            logs,
+                        };
+                    }
+                }
+
                 const id = 'bg_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
 
                 const result = await executionEngine.execute({
@@ -714,9 +758,10 @@ export class ShellExecuteTool extends BaseTool {
 
                 backgroundProcesses.set(id, {
                     pid: result.data?.pid || 0,
-                    command: command,
+                    command,
+                    cwd: workDir,
                     startTime: Date.now(),
-                    process: result.data
+                    process: result.data,
                 });
 
                 logs.push(`exec_bg=${redactCmd(command)} id=${id} pid=${result.data?.pid}`);

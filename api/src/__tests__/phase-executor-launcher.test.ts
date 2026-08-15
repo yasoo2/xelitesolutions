@@ -2,6 +2,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { recoverMissingNpmLauncher } from '../modules/tools/definitions/PhaseExecutorTool';
+import { ShellExecuteTool } from '../modules/tools/definitions/SystemTools';
+import { executionEngine } from '../kernel/ExecutionEngine';
 
 describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
     let workspaceRoot: string;
@@ -58,5 +60,30 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         );
 
         expect(recovery).toBeNull();
+    });
+
+    it('reuses an already-live identical background command after bounded recovery', async () => {
+        const command = `node -e "console.log('joe-background-dedupe-${Date.now()}')"`;
+        const execute = jest.spyOn(executionEngine, 'execute').mockResolvedValue({
+            success: true,
+            data: { pid: process.pid },
+            duration: 0,
+        });
+
+        try {
+            const tool = new ShellExecuteTool();
+            const first = await tool.execute({ command, cwd: '.', background: true });
+            const second = await tool.execute({ command, cwd: '.', background: true });
+
+            expect(first.ok).toBe(true);
+            expect(first.output?.status).toBe('background');
+            expect(second).toMatchObject({
+                ok: true,
+                output: { status: 'already_running', pid: process.pid },
+            });
+            expect(execute).toHaveBeenCalledTimes(1);
+        } finally {
+            execute.mockRestore();
+        }
     });
 });
