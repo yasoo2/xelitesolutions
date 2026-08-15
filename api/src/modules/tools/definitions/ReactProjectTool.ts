@@ -3030,7 +3030,7 @@ export class ReactProjectTool extends BaseTool {
                  * So the time it takes is decided by how much it is still
                  * winning, and every minute of it is answerable in a number.
                  */
-                const { improveUntilItStops, repairRound, improveSummary } = require('../../../core/quality/improve-loop');
+                const { improveUntilItStops, repairRound, improveSummary, normaliseImproveResult } = require('../../../core/quality/improve-loop');
                 const { restoreVersion, snapshotProject } = require('../../../core/project/versions');
                 const { runDoctored } = require('../../../core/quality/log-doctor');
 
@@ -3183,6 +3183,11 @@ export class ReactProjectTool extends BaseTool {
                         },
                     },
                 );
+                loop = normaliseImproveResult(loop, {
+                    score: blend(Number(audit.score || 0), firstTerminal),
+                    findingIds: [...(audit.findings || []).map((f: any) => f.id), ...firstTermFails],
+                    findings: (audit.findings || []).map((f: any) => ({ id: f.id, evidence: f.evidence })),
+                });
                 term(improveSummary(loop, false));
                 if (sessionId) broadcastThinkingDetail(sessionId, improveSummary(loop, isAr));
 

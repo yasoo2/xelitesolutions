@@ -227,6 +227,72 @@ export async function improveUntilItStops(
     return { rounds, first: firstMeasurement, final: current, fixed: fixedAll, stoppedBecause };
 }
 
+const normaliseStrings = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+
+const normaliseMeasurement = (value: unknown, fallback: Measurement): Measurement => {
+    const source = value && typeof value === 'object' ? value as any : {};
+    const score = Number(source.score);
+    const fallbackFindings = Array.isArray(fallback.findings) ? fallback.findings : [];
+    const findings = Array.isArray(source.findings)
+        ? source.findings
+            .filter((f: any) => f && typeof f.id === 'string')
+            .map((f: any) => ({ id: f.id, evidence: Array.isArray(f.evidence) ? f.evidence : [] }))
+        : fallbackFindings;
+    return {
+        score: Number.isFinite(score) ? score : fallback.score,
+        findingIds: normaliseStrings(source.findingIds).length
+            ? normaliseStrings(source.findingIds)
+            : normaliseStrings(fallback.findingIds),
+        findings,
+        ...(source.skipped === true ? { skipped: true } : {}),
+    };
+};
+
+/**
+ * Persistence and older callers can return a partial loop result. Reports must
+ * remain truthful and readable in that case instead of crashing on
+ * `undefined.length`; missing arrays become empty, while missing measurements
+ * fall back to the measurement that was actually taken before the loop.
+ */
+export function normaliseImproveResult(
+    value: Partial<ImproveResult> | null | undefined,
+    fallback: Measurement,
+): ImproveResult {
+    const source = value && typeof value === 'object' ? value : {};
+    const first = normaliseMeasurement(source.first, fallback);
+    const rounds = Array.isArray(source.rounds)
+        ? source.rounds.map((raw: any, index: number): ImproveRound => {
+            const allowed: ImproveRound['verdict'][] = [
+                'improved', 'no_change_possible', 'no_measured_gain', 'build_failed', 'target_reached',
+            ];
+            const before = Number(raw?.before);
+            const after = Number(raw?.after);
+            const verdict = allowed.includes(raw?.verdict) ? raw.verdict : 'no_change_possible';
+            return {
+                round: Number.isFinite(Number(raw?.round)) ? Number(raw.round) : index + 1,
+                before: Number.isFinite(before) ? before : first.score,
+                ...(Number.isFinite(after) ? { after } : {}),
+                targeted: normaliseStrings(raw?.targeted),
+                changed: normaliseStrings(raw?.changed),
+                fixed: normaliseStrings(raw?.fixed),
+                verdict,
+                rolledBack: raw?.rolledBack === true,
+            };
+        })
+        : [];
+    const final = normaliseMeasurement(source.final, first);
+    const fixed = normaliseStrings(source.fixed).length
+        ? normaliseStrings(source.fixed)
+        : uniq(rounds.flatMap(round => round.fixed));
+    const stoppedBecause: ImproveRound['verdict'] =
+        ['improved', 'no_change_possible', 'no_measured_gain', 'build_failed', 'target_reached']
+            .includes(source.stoppedBecause as ImproveRound['verdict'])
+            ? source.stoppedBecause as ImproveRound['verdict']
+            : (rounds.at(-1)?.verdict || 'no_change_possible');
+    return { rounds, first, final, fixed, stoppedBecause };
+}
+
 /** The one-line story of the loop, for a delivery report. */
 export function improveSummary(r: ImproveResult, isAr: boolean): string {
     const paid = r.rounds.filter(x => x.verdict === 'improved');

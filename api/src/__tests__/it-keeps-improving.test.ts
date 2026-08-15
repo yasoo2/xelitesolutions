@@ -18,7 +18,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { improveUntilItStops, improveSummary, repairRound } from '../core/quality/improve-loop';
+import { improveUntilItStops, improveSummary, repairRound, normaliseImproveResult } from '../core/quality/improve-loop';
 import {
     repairTapTargets, repairContrast, repairFormValidation,
     repairMeasuredTapTargets, repairMeasuredContrast, repairProjectFiles,
@@ -335,5 +335,22 @@ describe('the repairer writes to disk only what really differs', () => {
         expect(second.changed.length).toBeGreaterThan(0);
         expect(fs.readFileSync(path.join(dir, 'src', 'styles', 'app.css'), 'utf-8'))
             .toContain('min-height: 48px');
+    });
+});
+
+
+describe('legacy improvement results are safe to report', () => {
+    it('normalises missing arrays and measurements instead of throwing on length', () => {
+        const fallback = { score: 72, findingIds: ['x'], findings: [] };
+        const result = normaliseImproveResult({
+            rounds: [{ round: 1, before: 72, verdict: 'no_change_possible', rolledBack: false }],
+        } as any, fallback);
+
+        expect(result.rounds[0].changed).toEqual([]);
+        expect(result.rounds[0].fixed).toEqual([]);
+        expect(result.fixed).toEqual([]);
+        expect(result.first.score).toBe(72);
+        expect(result.final.score).toBe(72);
+        expect(() => improveSummary(result, false)).not.toThrow();
     });
 });
