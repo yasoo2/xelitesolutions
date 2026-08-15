@@ -34,6 +34,39 @@ Implement the complete system as described above with locally verifiable artifac
         expect(assessment.message).toContain('under-scoped');
     });
 
+    it('extracts the product requirement register instead of execution-protocol headings', () => {
+        const prompt = `
+CRITICAL INSTRUCTION — THIS IS A REAL EXECUTION TEST OF JOE
+START THE REAL JOE SYSTEM
+Diagnose it.
+Fix it.
+
+MAIN JOE CHALLENGE
+Build a production-grade platform.
+It must contain:
+1. Multi-tenant authentication
+2. Organizations
+3. Teams
+4. Roles
+5. Permissions
+6. Projects
+7. Tasks
+8. Notifications
+
+END OF JOE CHALLENGE
+OBSERVE JOE — DO NOT TAKE OVER
+`;
+        const scope = planner.requirementScope(prompt);
+
+        expect(scope.requiresImplementation).toBe(true);
+        expect(scope.targets).toEqual([
+            'Multi-tenant authentication', 'Organizations', 'Teams', 'Roles',
+            'Permissions', 'Projects', 'Tasks', 'Notifications',
+        ]);
+        expect(scope.targets).not.toContain('Diagnose it.');
+        expect(scope.targets).not.toContain('START THE REAL JOE SYSTEM');
+    });
+
     it('accepts a proportionate plan with implementation artifacts and requirement coverage', () => {
         const phase = (name: string, covered: string[], file: string) => ({
             name,

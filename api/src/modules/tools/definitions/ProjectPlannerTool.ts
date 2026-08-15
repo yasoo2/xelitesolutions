@@ -465,18 +465,51 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
      * or a complete product specification.
      */
     private requirementScope(projectDescription: string): { targets: string[]; minPhases: number; requiresImplementation: boolean } {
+        const source = String(projectDescription || '').replace(/\r\n?/g, '\n');
+        const lines = source.split('\n').map(line => line.trim());
         const ignored = /^(?:source|authoritative requirements evidence|compact requirements evidence|end compact requirements evidence|project|requirements?|overview|introduction|table of contents)$/i;
-        const headings = String(projectDescription || '').replace(/\r\n?/g, '\n').split('\n')
-            .map(line => line.trim())
-            .filter(line => /^(?:#{1,6}\s+|\d+(?:\.\d+)*[.)]\s+|[A-Z][A-Z0-9 &/_-]{5,}$)/.test(line))
-            .map(line => line.replace(/^(?:#{1,6}\s+|\d+(?:\.\d+)*[.)]\s+)/, ''))
+
+        // Long prompts often begin with an execution protocol ("start Joe",
+        // "observe", "diagnose", ...), followed by the actual product brief.
+        // Those instructions are evidence about how to test the agent, not
+        // product requirement areas. Prefer an explicit challenge/body marker
+        // when one exists, while retaining the generic whole-request fallback.
+        const startMarker = lines.findIndex(line => /^(?:main joe challenge|build (?:a )?production[ -]grade\b|authoritative requirements evidence)$/i.test(line));
+        const endMarker = lines.findIndex((line, index) => index > Math.max(0, startMarker) && /^(?:end of joe challenge|end compact requirements evidence)$/i.test(line));
+        const scopedLines = startMarker >= 0
+            ? lines.slice(startMarker, endMarker > startMarker ? endMarker : lines.length)
+            : lines;
+
+        // A contiguous numbered list is the most reliable register for specs
+        // such as NEXUS. Stop only when numbering breaks after the list starts;
+        // this avoids accidentally collecting later acceptance-test examples.
+        const numbered: string[] = [];
+        let expectedNumber: number | undefined;
+        for (const line of scopedLines) {
+            const match = line.match(/^(\d+)[.)]\s+(.+)$/);
+            if (!match) {
+                if (numbered.length && expectedNumber !== undefined && line) break;
+                continue;
+            }
+            const number = Number(match[1]);
+            if (expectedNumber !== undefined && number !== expectedNumber) {
+                if (numbered.length >= 5) break;
+                numbered.length = 0;
+            }
+            numbered.push(match[2].trim());
+            expectedNumber = number + 1;
+        }
+
+        const headingCandidates = scopedLines
+            .filter(line => /^(?:#{1,6}\s+|[A-Z][A-Z0-9 &/_-]{5,}$)/.test(line))
+            .map(line => line.replace(/^#{1,6}\s+/, '').trim())
             .filter(line => line.length >= 5 && !ignored.test(line))
-            .filter((line, index, values) => values.indexOf(line) === index)
-            .slice(0, 18);
-        const requiresImplementation = /(?:\b(?:build|implement|develop|create|execute)\b|(?:ابن|نف[ّذذ]|طو[ّو]ر|طبق))/i.test(String(projectDescription || ''));
+            .filter((line, index, values) => values.indexOf(line) === index);
+        const targets = (numbered.length >= 5 ? numbered : headingCandidates).slice(0, 18);
+        const requiresImplementation = /(?:\b(?:build|implement|develop|create|execute)\b|(?:ابن|نف[ّذذ]|طو[ّو]ر|طبق))/i.test(source);
         return {
-            targets: headings,
-            minPhases: Math.min(8, Math.max(3, Math.ceil(headings.length / 3))),
+            targets,
+            minPhases: Math.min(8, Math.max(3, Math.ceil(targets.length / 3))),
             requiresImplementation,
         };
     }
