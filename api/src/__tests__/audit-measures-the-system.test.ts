@@ -93,3 +93,14 @@ describe('the build audits the system it just packaged', () => {
         expect(r).toMatch(/if \(liveServer\) \{\s*\n\s*term\(`self-QA: measuring the RUNNING system/);
     });
 });
+
+
+describe('behaviour audit respects hover-open menus', () => {
+    it('keeps a measurable hover transition when the following click is intentionally a no-op', () => {
+        const a = read('core', 'quality', 'behaviour-audit.ts');
+        expect(a).toMatch(/const beforePointer = c\.kind === 'menu'/);
+        expect(a).toMatch(/const afterPointer = c\.kind === 'menu'/);
+        expect(a).toMatch(/const hoverEffect = c\.kind === 'menu' \? changed\(beforePointer, afterPointer\) : ''/);
+        expect(a).toMatch(/changed\(before, after\) \|\| \(hoverEffect \? `hover:\$\{hoverEffect\}` : ''\)/);
+    });
+});

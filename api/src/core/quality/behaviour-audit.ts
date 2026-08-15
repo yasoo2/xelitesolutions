@@ -502,11 +502,25 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                  * hover opens here, which is the only reason its items can be
                  * catalogued at all.
                  */
+                // Menus can legitimately respond to the pointer before the click:
+                // desktop dropdowns often open on hover and deliberately keep the
+                // panel open when the click follows. If the audit snapshots only
+                // after moving the pointer, that valid hover response disappears
+                // from the evidence and the follow-up click is a no-op by design.
+                // Capture the pre-pointer state so a real hover transition remains
+                // measurable rather than being reported as a dead control.
+                const beforePointer = c.kind === 'menu'
+                    ? await page.evaluate(snapshot).catch(() => null)
+                    : null;
                 await eyes.lookAt(page, await boxOf(page, c.sel), {
                     note: `${KIND_AR[c.kind] || 'عنصر'}: ${c.label}`.slice(0, 64),
                     moveMouse: true,
                 });
                 if (c.kind === 'menu') await page.waitForTimeout(220).catch(() => { });
+                const afterPointer = c.kind === 'menu'
+                    ? await page.evaluate(snapshot).catch(() => null)
+                    : null;
+                const hoverEffect = c.kind === 'menu' ? changed(beforePointer, afterPointer) : '';
                 // Snapshot AFTER scrolling into view. Taken before, the audit's own
                 // scroll is indistinguishable from the click's effect, and a cart
                 // button that really did increment its badge was reported as
@@ -528,7 +542,9 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 await page.waitForTimeout(SETTLE_MS);
                 try { page.off('download', onDownload); } catch { /* page may be gone */ }
                 const after = await page.evaluate(snapshot).catch(() => null);
-                effect = downloaded ? 'download' : changed(before, after);
+                effect = downloaded
+                    ? 'download'
+                    : (changed(before, after) || (hoverEffect ? `hover:${hoverEffect}` : ''));
                 // A submit that reloads the page proves the form is NOT handled —
                 // an unhandled submit is the browser's default, not a feature.
                 if (c.kind === 'submit' && effect === 'navigation') effect = 'reload';
