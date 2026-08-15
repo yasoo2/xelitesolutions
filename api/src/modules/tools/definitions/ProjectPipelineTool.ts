@@ -2,6 +2,7 @@ import path from 'path';
 import { ToolDefinition, ToolPermission } from '../types';
 import { executeTool } from '../../services/ToolService';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
+import { brandFrom } from '../../../core/design/page-head';
 
 /**
  * ProjectPipelineTool — the production bridge to the canonical pipeline.
@@ -32,6 +33,65 @@ import { isArabicReply, say as pick } from '../../../shared/reply-language';
  *
  * Exported so the gate that guards it can measure it directly.
  */
+function normalizeProjectSegment(value: unknown): string {
+    return String(value || '').trim().replace(/\\/g, '/').replace(/^\.\//u, '').replace(/\/$/u, '');
+}
+
+/**
+ * Resolve the project identity from the user's explicit naming language before
+ * trusting a model-written label. Evaluation wrappers frequently contain a
+ * quoted test/template name before the actual product name; brandFrom already
+ * encodes the general semantic-name rule used by the deterministic builders.
+ */
+export function resolveProjectIdentity(request: string, proposed?: unknown): string {
+    const explicit = brandFrom(request, /[؀-ۿ]/u.test(String(request || '')));
+    if (explicit) return explicit;
+    const candidate = String(proposed || '').trim();
+    return candidate || 'project';
+}
+
+/**
+ * Keep a greenfield scaffold and the later project_run call pointed at the
+ * same user-named artifact. This only normalizes identity and repeated path
+ * prefixes; it does not invent files, frameworks, or implementation tasks.
+ */
+export function alignGreenfieldPlanIdentity(plan: any, request: string, isGreenfield: boolean): any {
+    if (!isGreenfield || !plan || typeof plan !== 'object') return plan;
+    const explicit = brandFrom(request, /[؀-ۿ]/u.test(String(request || '')));
+    if (!explicit) return plan;
+
+    const previousIdentity = normalizeProjectSegment(plan.projectName);
+    plan.projectName = explicit;
+    const phases = Array.isArray(plan.phases) ? plan.phases : [];
+    for (const phase of phases) {
+        const tasks = Array.isArray(phase?.tasks) ? phase.tasks : [];
+        for (const task of tasks) {
+            if (String(task?.tool || '').toLowerCase() !== 'scaffold_project') continue;
+            const args = { ...(task.args || {}) };
+            const oldBase = normalizeProjectSegment(args.baseDir || args.projectName || args.name || previousIdentity);
+            const prefixes = [oldBase, previousIdentity]
+                .filter(Boolean)
+                .filter((value, index, values) => values.indexOf(value) === index);
+            const structure = args.structure;
+            if (structure && typeof structure === 'object' && !Array.isArray(structure)) {
+                const rewritten: Record<string, any> = {};
+                for (const [rawPath, content] of Object.entries(structure)) {
+                    let relativePath = normalizeProjectSegment(rawPath);
+                    const prefix = prefixes.find(value => relativePath === value || relativePath.startsWith(`${value}/`));
+                    if (prefix) relativePath = relativePath === prefix ? '' : relativePath.slice(prefix.length + 1);
+                    rewritten[relativePath] = content;
+                }
+                args.structure = rewritten;
+            }
+            args.baseDir = explicit;
+            if (Object.prototype.hasOwnProperty.call(args, 'projectName')) args.projectName = explicit;
+            if (Object.prototype.hasOwnProperty.call(args, 'name')) args.name = explicit;
+            task.args = args;
+        }
+    }
+    return plan;
+}
+
 export function deterministicPhasesFor(request: string): {
     projectName: string; reason: string; phases: Array<{ name: string; tasks: any[] }>;
 } | null {
@@ -40,7 +100,7 @@ export function deterministicPhasesFor(request: string): {
     const scope: 'page' | 'app' | 'system' = PlanningEngine.classifyBuildScope(request);
 
     let projectName = 'project';
-    try { projectName = require('../../../core/design/subject-phrase').subjectPhrase(request, 48) || 'project'; } catch { /* naming is cosmetic */ }
+    try { projectName = resolveProjectIdentity(request, require('../../../core/design/subject-phrase').subjectPhrase(request, 48)); } catch { /* naming is cosmetic */ }
 
     if (scope === 'system') {
         // The interface depends on the service that holds the rows — declared
@@ -339,6 +399,11 @@ export class ProjectPipelineTool implements ToolDefinition {
                 logs,
             };
         }
+        const isGreenfield = evidence?.constraints?.createsNewProject === true;
+        const acceptedProjectName = resolveProjectIdentity(request, plannerResult.output.projectName);
+        if (isGreenfield) alignGreenfieldPlanIdentity(plannerResult.output, request, true);
+        plannerResult.output.projectName = acceptedProjectName;
+
         // Each file-generation task runs later with only a short task description.
         // Carry the same bounded evidence brief that grounded the accepted plan so
         // workers cannot substitute a familiar template for a documented artifact.
