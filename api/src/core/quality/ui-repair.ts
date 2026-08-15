@@ -439,6 +439,44 @@ ${sels.join(',\n')} {
 }
 
 /**
+ * A finding without a safe selector is still a measured defect, not permission
+ * to give up. This fallback uses semantic regions that commonly contain the
+ * measured links (brand/footer/navigation), while remaining scoped to phones.
+ * It is deliberately round-aware so a second measured failure produces a
+ * stronger, different edit instead of an idempotent no-op.
+ */
+export function repairMobileTapFallback(css: string, round = 1, measured = false): RepairedFile {
+    const text = String(css || '');
+    if (!measured) return { text, repairs: [] };
+    const px = TAP_PX[Math.min(Math.max(round, 1), TAP_PX.length) - 1];
+    const marker = `إصلاح جو: أهداف الجوال العامة (${px}px)`;
+    if (text.includes(marker)) return { text, repairs: [] };
+    const block = `
+/* ── ${marker} ───────────────────────────
+   قاس المتصفح روابط صغيرة بلا selector آمن؛ نرفع المناطق الدلالية فقط على الجوال. */
+@media (max-width: 480px) {
+  a.brand, footer a, .site-footer a, .footer a, footer button,
+  .site-footer button, .footer button {
+    min-height: ${px}px;
+    min-width: ${px}px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+`;
+    return {
+        text: text + block,
+        repairs: [{
+            id: 'small_targets',
+            detail: `وسّعتُ المناطق الدلالية ذات أهداف اللمس المقاسة إلى ${px}px`,
+            detailEn: `Raised measured semantic mobile target regions to ${px}px`,
+            count: 1,
+        }],
+    };
+}
+
+/**
  * Fix EXACTLY the text nodes the browser measured below their contrast bar.
  *
  * The audit already carries the two colours and the ratio each pair needs;
@@ -635,6 +673,9 @@ export function repairProjectFiles(
     const hasFinding = (...ids: string[]) => (opts.findings || [])
         .some(f => ids.includes(String(f?.id)));
     const smallEvidence = evidenceFor('small_targets', 'tap_targets', 'mobile_tap_targets');
+    const mobileTapSelectors = safeSelectors(smallEvidence);
+    const mobileTapNeedsFallback = hasFinding('mobile_tap_targets', 'small_targets', 'tap_targets')
+        && mobileTapSelectors.length === 0;
     const mobileOverflowEvidence = evidenceFor('mobile_overflow', 'responsive');
     // A browser can prove overflow even when the offending node is the document
     // itself and therefore has no safe selector. The finding is still actionable:
@@ -696,6 +737,7 @@ export function repairProjectFiles(
             for (const fix of [
                 (t: string) => repairContrast(t, round),
                 (t: string) => repairTapTargets(t, round),
+                (t: string) => repairMobileTapFallback(t, round, mobileTapNeedsFallback),
                 (t: string) => repairResponsive(t, mobileOverflowMeasured),
             ]) {
                 const r = fix(text);

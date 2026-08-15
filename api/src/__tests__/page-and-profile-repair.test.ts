@@ -134,6 +134,29 @@ describe('responsive rules are appended once', () => {
             ],
         }).files).toEqual({});
     });
+
+    it('keeps an unselectable mobile finding actionable and escalates it on round two', () => {
+        const first = repairProjectFiles({ 'styles.css': '.a{color:red}' }, {
+            round: 1,
+            findings: [{ id: 'mobile_tap_targets' }],
+        });
+        const firstCss = first.files['styles.css'];
+        expect(firstCss).toMatch(/إصلاح جو: أهداف الجوال العامة \(44px\)/);
+        expect(first.repairs.map(r => r.id)).toContain('small_targets');
+
+        const second = repairProjectFiles({ 'styles.css': firstCss }, {
+            round: 2,
+            findings: [{ id: 'mobile_tap_targets' }],
+        });
+        expect(second.files['styles.css']).toMatch(/إصلاح جو: أهداف الجوال العامة \(48px\)/);
+        expect(second.files['styles.css']).not.toBe(firstCss);
+
+        const third = repairProjectFiles({ 'styles.css': second.files['styles.css'] }, {
+            round: 2,
+            findings: [{ id: 'mobile_tap_targets' }],
+        });
+        expect(third.files).toEqual({});
+    });
 });
 
 describe('all three reach a real project through one entry point', () => {
