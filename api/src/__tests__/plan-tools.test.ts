@@ -153,6 +153,22 @@ describe('model-written tool arguments are checked before execution', () => {
         expect(notes.join('\n')).toMatch(/doc_generator يحتاج filePath/);
     });
 
+    it('derives requiredAny search input from the task sentence before PhaseExecutor sees it', () => {
+        const phase = {
+            phaseNumber: 1,
+            name: 'Inspect the workspace',
+            tasks: [
+                { task: 'Search for providerTimeoutMs inside the existing project', tool: 'search_text', args: {}, priority: 'high' },
+            ],
+        };
+        expect(plannedArgsIssue('search_text', {})).toMatch(/query أو pattern/);
+        expect(plannedArgsIssue('search_text', { query: 'providerTimeoutMs' })).toBeNull();
+        const { phases } = sanitisePlanPhases([phase], 'nexus');
+        const search = phases[0].tasks.find((task: any) => task.tool === 'search_text');
+        expect(search).toBeDefined();
+        expect(search.args.query).toContain('providerTimeoutMs');
+    });
+
     it('replaces a generative verification of an invented file with a read of the phase output', () => {
         const phase = {
             phaseNumber: 1,

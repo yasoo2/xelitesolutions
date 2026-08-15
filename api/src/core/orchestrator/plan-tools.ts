@@ -161,6 +161,29 @@ const norm = (v: any) => String(v || '').trim().toLowerCase();
 const key = (v: any) => norm(v).replace(/[_\-\s]+/g, ' ').replace(/[^a-z0-9. /]/g, '').trim();
 const snake = (v: any) => norm(v).replace(/[\s\-.]+/g, '_').replace(/[^a-z0-9_]/g, '');
 
+/**
+ * Infer only semantic required fields from a task sentence.  This deliberately
+ * stays local to plan-tools: importing toolCatalog here would create the cycle
+ * registry -> PhaseExecutor -> plan-tools -> toolCatalog -> registry.
+ */
+function inferRequiredPlanArgs(schema: any, goal: string): Record<string, any> | null {
+    const properties: Record<string, any> = schema?.properties || {};
+    const input: Record<string, any> = {};
+    for (const property of Object.keys(properties)) {
+        const name = property.toLowerCase();
+        if (/^(query|question|text|request|instruction|goal|task|prompt|description|topic|content|input|pattern)$/.test(name)) {
+            input[property] = goal;
+        }
+    }
+    const required = Array.isArray(schema?.required) ? schema.required.map(String) : [];
+    const requiredAny: string[][] = Array.isArray(schema?.requiredAny)
+        ? schema.requiredAny.filter((group: any) => Array.isArray(group) && group.length).map((group: any[]) => group.map(String))
+        : [];
+    if (required.some((key: string) => input[key] === undefined)) return null;
+    if (requiredAny.some((group: string[]) => !group.some(key => input[key] !== undefined))) return null;
+    return Object.keys(input).length ? input : null;
+}
+
 export type Resolution =
     | { tool: string; how: 'exact' | 'alias' | 'normalised' | 'meaning' | 'nearest' }
     | { tool: null; why: 'not_software' | 'unknown' };
@@ -276,7 +299,8 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 // `scaffold_project` is a closed contract.  Do not let the
                 // greenfield policy hide a missing structure behind a generic
                 // "implicit scaffold" note: that was the round-18 failure mode.
-                const adaptedArgs = adaptPlannedArgs(r.tool, { ...(task?.args || {}), ...(task?.input || {}) });
+                const rawArgs = { ...(task?.args || {}), ...(task?.input || {}) };
+                const adaptedArgs = adaptPlannedArgsFromDescription(r.tool, rawArgs, desc);
                 if (r.tool === 'scaffold_project') {
                     const scaffoldIssue = plannedArgsIssue(r.tool, adaptedArgs);
                     if (scaffoldIssue) {
@@ -675,6 +699,31 @@ const NEEDS_BUILT_URL = new Set(['browser_ui_audit', 'browser_screenshot', 'brow
  * a silent coercion; we never guess a migration operation from prose.
  */
 export function plannedArgsIssue(toolName: string, args: any): string | null {
+    /**
+     * requiredAny is a real alternative-required contract, not documentation.
+     * Validate it here as well as in PlanningEngine so plans loaded from old
+     * sessions, repair reruns, and direct PhaseExecutor calls cannot send an
+     * unusable task to a tool.  This check is intentionally generic: the
+     * registry schema, not a search_text-specific branch, defines the aliases.
+     */
+    try {
+        const { tools } = require('../../modules/tools/registry');
+        const schema = (tools || []).find((candidate: any) => candidate?.name === toolName)?.inputSchema;
+        const requiredAny: string[][] = Array.isArray(schema?.requiredAny)
+            ? schema.requiredAny.filter((group: any) => Array.isArray(group) && group.length).map((group: any[]) => group.map(String))
+            : [];
+        const hasValue = (key: string) => {
+            const value = args?.[key];
+            return value !== undefined && value !== null && !(typeof value === 'string' && !value.trim()) && !(Array.isArray(value) && value.length === 0);
+        };
+        const missingGroup = requiredAny.find(group => !group.some(hasValue));
+        if (missingGroup) {
+            return `${toolName} يحتاج واحداً من ${missingGroup.join(' أو ')}؛ لم تُحدّد الخطة قيمة صالحة لأي بديل، لذلك أُوقفت المهمة قبل التنفيذ.`;
+        }
+    } catch {
+        // The registry can be mid-initialisation in isolated tests; specific
+        // deterministic checks below still run and the executor remains safe.
+    }
     if (toolName === 'scaffold_project') {
         const structure = args?.structure;
         if (!structure || typeof structure !== 'object' || Array.isArray(structure) || Object.keys(structure).length === 0) {
@@ -818,6 +867,37 @@ export function adaptPlannedArgs(toolName: string, args: any): any {
         }
     }
     return out;
+}
+
+/**
+ * Adapt a plan's arguments and fill only schema-defined semantic fields that
+ * can be derived from the task sentence. This is shared by the planner,
+ * PhaseExecutor, and repair reruns so an old plan cannot bypass the same
+ * contract simply by entering through a different path.
+ */
+export function adaptPlannedArgsFromDescription(toolName: string, args: any, description: string): any {
+    let out = adaptPlannedArgs(toolName, args);
+    try {
+        const { tools } = require('../../modules/tools/registry');
+        const definition = (tools || []).find((candidate: any) => candidate?.name === toolName);
+        const schema = definition?.inputSchema || {};
+        const required = Array.isArray(schema.required) ? schema.required.map(String) : [];
+        const requiredAny = Array.isArray(schema.requiredAny)
+            ? schema.requiredAny.filter((group: any) => Array.isArray(group) && group.length).flat().map(String)
+            : [];
+        const needed = new Set([...required, ...requiredAny]);
+        if (!needed.size) return out;
+        const inferred = inferRequiredPlanArgs(schema, description);
+        if (!inferred) return out;
+        for (const key of needed) {
+            const current = out?.[key];
+            const missing = current === undefined || current === null || (typeof current === 'string' && !current.trim());
+            if (missing && inferred[key] !== undefined) out[key] = inferred[key];
+        }
+        return adaptPlannedArgs(toolName, out);
+    } catch {
+        return out;
+    }
 }
 
 /**

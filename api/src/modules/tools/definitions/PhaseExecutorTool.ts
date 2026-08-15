@@ -1,7 +1,7 @@
 import { ToolDefinition, ToolPermission } from '../types';
 
 import { executeTool } from '../../services/ToolService';
-import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, plannedArgsIssue } from '../../../core/orchestrator/plan-tools';
+import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, adaptPlannedArgsFromDescription, plannedArgsIssue } from '../../../core/orchestrator/plan-tools';
 
 /**
  * PhaseExecutorTool - Executes a single phase from a project plan.
@@ -170,7 +170,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                     if (!String(planned.description || '').trim()) planned.description = taskDesc;
                 }
 
-                const toolArgs = adaptPlannedArgs(toolName, planned);
+                const adaptedPlanned = adaptPlannedArgs(toolName, planned);
+                const toolArgs = adaptPlannedArgsFromDescription(toolName, adaptedPlanned, taskDesc);
                 const argsIssue = plannedArgsIssue(toolName, toolArgs);
                 if (argsIssue) {
                     logs.push(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${argsIssue}`);
@@ -305,7 +306,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                             : 70;
                         plannedVerification.failOnCritical = true;
                     }
-                    const verificationArgs = adaptPlannedArgs(vToolName, plannedVerification);
+                    const adaptedVerification = adaptPlannedArgs(vToolName, plannedVerification);
+                    const verificationArgs = adaptPlannedArgsFromDescription(vToolName, adaptedVerification, vTaskDesc);
                     const verificationArgsIssue = plannedArgsIssue(vToolName, verificationArgs);
                     if (verificationArgsIssue) {
                         logs.push(`[PhaseExecutor] ⚠️ Verification input invalid: ${verificationArgsIssue}`);
