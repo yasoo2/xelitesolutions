@@ -30,8 +30,16 @@ describe('the audit measures the system, not the folder', () => {
     it('and a folder is never blamed for not answering the app’s API probe', () => {
         const a = read('core', 'quality', 'app-audit.ts');
         // Suppressed ONLY when we served the folder ourselves…
-        expect(a).toMatch(/if \(!givenUrl && \/\\\/api\\\/health\/\.test\(String\(m\.text\(\)\) \+ where\)\) return;/);
-        expect(a).toMatch(/&& !\(!givenUrl && \/\\\/api\\\/health\/\.test\(r\.url\(\)\)\)\) failedRequests\.push/);
+        //
+        // Repointed: the exception used to name `/api/health` alone, and the
+        // app asks its own endpoints too — `/api/items`, `/api/clients`. With
+        // no server behind the page those are the same fact, and counting them
+        // reported a working delivery as broken. The `!givenUrl` guard — which
+        // is the actual guarantee here — is unchanged, and the calls are now
+        // reported as `live_data_not_verified` instead of vanishing.
+        expect(a).toMatch(/if \(!givenUrl && \/\\\/api\\\/\/\.test\(String\(m\.text\(\)\) \+ where\)\) return;/);
+        expect(a).toMatch(/if \(!givenUrl && \/\\\/api\\\/\/\.test\(r\.url\(\)\)\) unverifiedLiveData\.push/);
+        expect(a).toMatch(/id: 'live_data_not_verified', severity: 'low'/);
         // …so on the real system the same 404 still counts, as it must.
         expect(a).toMatch(/there it means the API really is missing/);
     });

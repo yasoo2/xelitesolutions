@@ -257,6 +257,27 @@ export async function auditBuiltApp(
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
+        /**
+         * THE APP ASKING ITS OWN BACKEND, WITH NO BACKEND RUNNING.
+         *
+         * When no live URL is given this audit serves the built bundle from a
+         * throwaway static server — there is no API process behind it. The
+         * interface is BUILT to fetch its live rows and to fall back to the
+         * rows baked into it when that fetch fails; the `.catch()` is the
+         * design, not an accident.
+         *
+         * Counting those as `failed_requests` reported a delivered system as
+         * broken because a check could not be run: measured on a paired build,
+         * the phase was refused with «console_errors, failed_requests» while
+         * the page rendered perfectly from its baked data.
+         *
+         * The line below already made this exception for `/api/health` alone.
+         * The rule is the same for every endpoint the app owns, and the same
+         * one this codebase applies to a missing Python: a check that cannot
+         * run says so — it never invents a failure. They are kept, named, and
+         * reported as unverified rather than dropped in silence.
+         */
+        const unverifiedLiveData: string[] = [];
         const heavyImages: string[] = [];
         /** Set only when the address the audit was given refused its own root. */
         let frontDoor: { url: string; status: number; recovered: boolean } | null = null;
@@ -285,7 +306,11 @@ export async function auditBuiltApp(
              * real system (serveUrl), the same 404 counts in full, because
              * there it means the API really is missing.
              */
-            if (!givenUrl && /\/api\/health/.test(String(m.text()) + where)) return;
+            // The same rule as the response listener below: with no live server
+            // behind this page, an error about any endpoint the app owns is the
+            // app asking a backend that is not running. It is reported once, as
+            // `live_data_not_verified`, and must not be counted twice here.
+            if (!givenUrl && /\/api\//.test(String(m.text()) + where)) return;
             /**
              * AND «401 Unauthorized» IS NOT A BROKEN BUILD.
              *
@@ -305,8 +330,12 @@ export async function auditBuiltApp(
         const onResponse = (r: any) => {
             // 401/403: the audit is signed out on purpose — see onConsole above.
             if (r.status() >= 400 && r.status() !== 401 && r.status() !== 403
-                && !/favicon\.ico/i.test(r.url())
-                && !(!givenUrl && /\/api\/health/.test(r.url()))) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
+                && !/favicon\.ico/i.test(r.url())) {
+                // No live server behind the page → any /api/… it asks for is
+                // its own backend, which is not running. Unverified, not broken.
+                if (!givenUrl && /\/api\//.test(r.url())) unverifiedLiveData.push(r.url().slice(-60));
+                else failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
+            }
             try {
                 const len = Number(r.headers()['content-length'] || 0);
                 if (len > 400_000 && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(r.url())) {
@@ -384,6 +413,7 @@ export async function auditBuiltApp(
                         // belonged to the error page, not to the product.
                         consoleErrors.length = 0;
                         failedRequests.length = 0;
+                        unverifiedLiveData.length = 0;
                         pageErrors.length = 0;
                         opts?.onProgress?.('recovered');
                     }
@@ -620,6 +650,13 @@ export async function auditBuiltApp(
         if (pageErrors.length) findings.push({ id: 'page_errors', severity: 'high', detail: `${pageErrors.length} خطأ صفحة: ${pageErrors[0]}`, detailEn: `${pageErrors.length} page error(s): ${pageErrors[0]}` });
         if (consoleErrors.length) findings.push({ id: 'console_errors', severity: 'high', detail: `${consoleErrors.length} خطأ كونسول: ${consoleErrors[0]}`, detailEn: `${consoleErrors.length} console error(s): ${consoleErrors[0]}` });
         if (failedRequests.length) findings.push({ id: 'failed_requests', severity: 'high', detail: `${failedRequests.length} ملف لم يصل: ${failedRequests[0]}`, detailEn: `${failedRequests.length} request(s) never arrived: ${failedRequests[0]}` });
+        // Said out loud and costed at the lowest weight: nothing is broken, and
+        // one thing on this page was not measured. Silence would be the lie.
+        if (unverifiedLiveData.length) findings.push({
+            id: 'live_data_not_verified', severity: 'low',
+            detail: `${unverifiedLiveData.length} طلب بيانات حيّة لم يُتحقق منه — لا خادم يعمل أثناء الفحص، والواجهة عادت إلى صفوفها المخبوزة كما صُمّمت: ${unverifiedLiveData[0]}`,
+            detailEn: `${unverifiedLiveData.length} live-data request(s) unverified — no backend was running during the audit and the interface fell back to its baked rows by design: ${unverifiedLiveData[0]}`,
+        });
         if (dom.deadImgs) findings.push({ id: 'dead_images', severity: 'high', detail: `${dom.deadImgs} صورة لم تُرسم`, detailEn: `${dom.deadImgs} image(s) never rendered` });
         if (dom.deadLinks) findings.push({ id: 'dead_links', severity: 'medium', detail: `${dom.deadLinks} رابط ميت (href فارغ أو #)`, detailEn: `${dom.deadLinks} dead link(s) (empty href or #)` });
         if (dom.small.length) {

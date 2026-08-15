@@ -80,14 +80,28 @@ async function main() {
         // The system it produced is the one he described, on disk.
         const dir = String((global as any).joeProjects?.[sessionId]?.dir || '');
         console.log(`   ℹ️ ${dir || '(لا مسار)'}`);
-        if (dir && fs.existsSync(path.join(dir, 'entities.js'))) {
-            const src = fs.readFileSync(path.join(dir, 'entities.js'), 'utf8');
-            const his = ['clients', 'shipments', 'containers', 'customs', 'warehouses', 'drivers'];
-            const present = his.filter(k => new RegExp(`['"\`]${k}['"\`]`).test(src));
-            console.log(`   ℹ️ جداوله على القرص: ${present.join(', ')}`);
-            check('والنظام على القرص يحمل مجالاته هو', present.length >= 6, `${present.length}/${his.length}`);
+        /**
+         * After a two-phase run the session's CURRENT project is the interface,
+         * which is where it should point — the API is one phase behind it. The
+         * first draft of this check looked for `entities.js` there and reported
+         * a delivered system as missing its tables.
+         *
+         * What the promise actually is: the interface talks to HIS tables. Its
+         * own `content.js` carries the API base it will call, so that is what
+         * is measured — and it is the exact string that used to read
+         * `/api/suppliers`, a table nobody built.
+         */
+        const his = ['clients', 'shipments', 'containers', 'customs', 'warehouses', 'drivers'];
+        const contentFile = path.join(dir, 'src', 'content.js');
+        if (dir && fs.existsSync(contentFile)) {
+            const src = fs.readFileSync(contentFile, 'utf8');
+            const bases = [...new Set([...src.matchAll(/['"`](\/api\/[a-z_]+)['"`]/g)].map(m => m[1]))];
+            console.log(`   ℹ️ الواجهة تنادي: ${bases.join(', ') || '(لا شيء)'}`);
+            const strays = bases.filter(b => !his.some(k => b.endsWith(`/${k}`)) && !/\/api\/(orders|health)$/.test(b));
+            check('والواجهة تنادي جداوله هو، لا جدولاً لم يُبنَ', bases.length > 0 && strays.length === 0,
+                strays.join(', ') || `(${bases.length} base)`);
         } else {
-            check('والنظام على القرص يحمل مجالاته هو', false, 'entities.js not found');
+            check('والواجهة تنادي جداوله هو، لا جدولاً لم يُبنَ', false, 'content.js not found');
         }
         fs.rmSync(root, { recursive: true, force: true });
     }

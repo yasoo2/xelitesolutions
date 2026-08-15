@@ -89,10 +89,21 @@ describe('and the builder wires them without breaking what was there', () => {
         // tables cannot disagree when an LLM designed them.
         expect(r).toMatch(/const tableModel = apiLink/);
         expect(r).toMatch(/Array\.isArray\(prevEntry\?\.model\) && prevEntry\.model\.length/);
-        // …and when neither the session nor a known domain has one, the tables
-        // the user listed in his own sentence («: النباتات والموردون»).
-        expect(r).toMatch(/deriveDataModel\(request\)\.length/);
+        // …and when the session has none, the SAME ORDER the server uses:
+        // what he named, then what his words imply, and a stocked domain only
+        // when the sentence named nothing at all.
+        //
+        // Repointed: this used to require the stocked domains to be consulted
+        // FIRST. Measured on a paired build of an eleven-domain freight
+        // request — the server created clients/shipments/containers/…, the
+        // interface asked the running server for `/api/suppliers` from a
+        // stocked domain, and three 404s failed the delivery gate. The comment
+        // above says these two must not disagree; now they read alike.
         expect(r).toMatch(/named-entities'\)\.namedEntities\(request\)/);
+        expect(r).toMatch(/entity-inference'\)\.inferModel\(request\)\.entities/);
+        expect(r).toMatch(/deriveDataModel\(request\)/);
+        const chain = r.slice(r.indexOf('const tableModel = apiLink'));
+        expect(chain.indexOf('namedEntities(request)')).toBeLessThan(chain.indexOf('deriveDataModel(request)'));
         // The app itself manages the FIRST table now; the admin screens carry
         // the rest, so «النباتات» is never rendered twice.
         expect(r).toMatch(/model: adminModel,/);

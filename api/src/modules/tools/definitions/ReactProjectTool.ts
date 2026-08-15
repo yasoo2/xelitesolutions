@@ -2477,11 +2477,31 @@ export class ReactProjectTool extends BaseTool {
             const tableModel = apiLink
                 ? (Array.isArray(prevEntry?.model) && prevEntry.model.length
                     ? prevEntry.model
-                    // …and the same fallback the server uses: a known domain,
-                    // then the tables he listed in his own sentence.
-                    : (require('../../../core/design/data-model').deriveDataModel(request).length
-                        ? require('../../../core/design/data-model').deriveDataModel(request)
-                        : require('../../../core/design/named-entities').namedEntities(request)))
+                    /**
+                     * …AND THE FALLBACK MUST ASK IN THE SAME ORDER THE SERVER DOES.
+                     *
+                     * This called the STOCKED domains first, directly. The
+                     * server's own ordering was changed to put what he wrote
+                     * above what we stocked — and this copy was not, so the two
+                     * halves designed different databases from the same
+                     * sentence.
+                     *
+                     * Measured on a paired build of his freight request: the
+                     * server created clients, shipments, containers, customs,
+                     * warehouses, drivers; the interface asked the running
+                     * server for `/api/suppliers` — a table from a stocked
+                     * domain that nothing had built — and the delivery gate
+                     * refused the phase over three 404s it was right to report.
+                     *
+                     * One reading of the sentence, in one order, for both.
+                     */
+                    : (() => {
+                        const named = require('../../../core/design/named-entities').namedEntities(request);
+                        const shaped = require('../../../core/design/entity-inference').inferModel(request).entities;
+                        if (shaped.length > named.length) return shaped;
+                        if (named.length) return named;
+                        return require('../../../core/design/data-model').deriveDataModel(request);
+                    })())
                 : [];
             /**
              * AND THE APP MANAGES THE FIRST TABLE, NOT A GENERIC «سجلّ».
@@ -2496,7 +2516,34 @@ export class ReactProjectTool extends BaseTool {
              * Only for the fallback kind: a maps app, a chat, a shop already
              * know exactly what they manage and must not be overwritten.
              */
-            let runBp = appBp;
+            /**
+             * A BLUEPRINT MAY NOT LOOK UP A TABLE NOBODY BUILT.
+             *
+             * A stocked blueprint carries a stocked PARENT relation — the
+             * inventory one names `resource: 'suppliers'` — and the server one
+             * phase earlier built clients, shipments, containers, customs,
+             * warehouses and drivers from his own sentence. Nothing reconciled
+             * the two, so the interface asked a perfectly healthy server for a
+             * table that had never existed.
+             *
+             * Measured on a paired build: `404 /api/suppliers`, three times,
+             * counted as both `console_errors` and `failed_requests`. The gate
+             * refused the interface phase and the repair loop could not mend
+             * it, because nothing was broken — one half was asking the other
+             * half for something nobody had agreed to build.
+             *
+             * The app's own entity is not in question here; only the parent
+             * lookup is. So the lookup is dropped when the system did not build
+             * it, and kept untouched when it did.
+             */
+            let strippedRelation = false;
+            const builtKeys = new Set(tableModel.map((e: any) => String(e?.key || '')));
+            const parentResource = String((appBp as any)?.relation?.resource || '');
+            if (tableModel.length && parentResource && !builtKeys.has(parentResource)) {
+                term(`data link: «${parentResource}» is not a table this system built — the parent lookup is dropped rather than asking for it`);
+                strippedRelation = true;
+            }
+            let runBp: any = strippedRelation ? { ...appBp, relation: undefined } : appBp;
             let appApi = apiLink;
             let adminModel = tableModel;
             if (tableModel.length && appBp.kind === 'generic' && appBp.engine === 'records') {
