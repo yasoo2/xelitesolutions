@@ -65,6 +65,28 @@ export function deterministicPhasesFor(request: string): {
     };
 }
 
+/**
+ * A deterministic rescue is deliberately narrow. It may keep a short, direct
+ * build request alive when the planner is unavailable, but it must not turn a
+ * long evaluation brief, multi-phase specification, or acceptance contract
+ * into the generic api_project/react_project pair. That would hide the loss of
+ * engineering reasoning behind a plausible-looking template.
+ */
+export function deterministicRescueAllowed(request: string): boolean {
+    const text = String(request || '').trim();
+    if (!text || text.length > 1800) return false;
+    const structuralSignals = [
+        /\bphase(?:s|d)?\b/i,
+        /acceptance\s+criteria|definition\s+of\s+done/i,
+        /(?:api|integration)\s+contract|openapi|json\s+schema/i,
+        /(?:contract|integration|e2e|regression)\s+test/i,
+        /final\s+audit|evidence\s+matrix|verification\s+report/i,
+        /(?:first|then|after that|finally)\s+(?:inspect|implement|test|verify|document)/i,
+    ];
+    const signalCount = structuralSignals.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0);
+    return signalCount < 2;
+}
+
 export class ProjectPipelineTool implements ToolDefinition {
     name = 'project_pipeline';
     version = '1.0.0';
@@ -250,7 +272,7 @@ export class ProjectPipelineTool implements ToolDefinition {
              * the request declares too little to plan from, this falls through
              * and stops honestly, exactly as before.
              */
-            const deterministic = evidence?.constraints?.createsNewProject
+            const deterministic = evidence?.constraints?.createsNewProject && deterministicRescueAllowed(request)
                 ? deterministicPhasesFor(request)
                 : null;
             if (deterministic) {
@@ -290,7 +312,7 @@ export class ProjectPipelineTool implements ToolDefinition {
          */
         if ((!Array.isArray(plannerResult?.output?.phases) || plannerResult.output.phases.length === 0)
             && evidence?.constraints?.createsNewProject) {
-            const rescue = deterministicPhasesFor(request);
+            const rescue = deterministicRescueAllowed(request) ? deterministicPhasesFor(request) : null;
             if (rescue) {
                 say(pick(isAr,
                     `[pipeline] الخطة عادت فارغة — أخطّط حتمياً مما صرّح به الطلب: ${rescue.reason}`,

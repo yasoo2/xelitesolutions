@@ -111,8 +111,16 @@ export class LLM7Provider {
         return out.slice(0, 6);
     }
 
-    async chatComplete(messages: any[], model?: string, tools?: any[]): Promise<string> {
+    async chatComplete(
+        messages: any[],
+        model?: string,
+        tools?: any[],
+        options?: { timeoutMs?: number; signal?: AbortSignal }
+    ): Promise<string> {
         const candidates = await this.buildCandidates(model);
+        const timeoutMs = Number(options?.timeoutMs) > 0
+            ? Math.min(120000, Math.max(1000, Math.floor(Number(options?.timeoutMs))))
+            : 30000;
         let lastErr: any = null;
         const body = (m: string): any => {
             const b: any = {
@@ -128,7 +136,10 @@ export class LLM7Provider {
         };
         for (const m of candidates) {
             try {
-                const completion = await this.client.chat.completions.create(body(m), { timeout: 30000 });
+                const completion = await (this.client.chat.completions.create as any)(
+                    body(m),
+                    { timeout: timeoutMs, signal: options?.signal }
+                );
                 const message = completion.choices[0]?.message;
                 if (message?.tool_calls && message.tool_calls.length > 0) return JSON.stringify({ type: 'tool_calls', tool_calls: message.tool_calls });
                 const content = message?.content || '';

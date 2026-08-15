@@ -1534,7 +1534,7 @@ export async function routeToModel(
     //   9. DeepSeek / Pollinations (keyless proxy — last resort)
     // ============================================================================
 
-    const meshProviders: Array<{ name: string; run: () => Promise<string> }> = [];
+    const meshProviders: Array<{ name: string; run: (signal?: AbortSignal) => Promise<string> }> = [];
     const preferredProvider = String(process.env.LLM_PROVIDER || '').trim().toLowerCase();
 
     // 0. [PRIORITY] Forced provider via env
@@ -1633,11 +1633,12 @@ export async function routeToModel(
     if (openAIProvider.isAvailable()) {
         meshProviders.push({
             name: 'OpenAI (Direct)',
-            run: async () => {
+            run: async (signal?: AbortSignal) => {
                 return await openAIProvider.chatComplete(effectiveMessages, 'gpt-4o', tools, {
                     maxCompletionTokens: Number(context?.maxCompletionTokens) > 0 ? Number(context.maxCompletionTokens) : undefined,
                     reasoningEffort: context?.reasoningEffort,
                     timeoutMs: Number(context?.providerTimeoutMs) > 0 ? Math.min(120000, Number(context.providerTimeoutMs)) : undefined,
+                    signal,
                 });
             }
         });
@@ -1648,8 +1649,14 @@ export async function routeToModel(
     if (llm7Provider.isAvailable()) {
         meshProviders.push({
             name: 'LLM7 (Keyless)',
-            run: async () => {
-                const res = await llm7Provider.chatComplete(effectiveMessages, undefined, tools);
+            run: async (signal?: AbortSignal) => {
+                const requestedTimeout = Number(context?.providerTimeoutMs);
+                const res = await llm7Provider.chatComplete(effectiveMessages, undefined, tools, {
+                    timeoutMs: Number.isFinite(requestedTimeout) && requestedTimeout > 0
+                        ? Math.min(120000, requestedTimeout)
+                        : undefined,
+                    signal,
+                });
                 if (!isUsableAnswer(res)) throw new Error('LLM7 answered with nothing usable');
                 return res;
             }
@@ -1824,7 +1831,7 @@ export async function routeToModel(
                 timeoutValue = 20000;
             }
             const requestedTimeout = Number(context?.providerTimeoutMs);
-            if (p.name === 'OpenAI (Direct)' && Number.isFinite(requestedTimeout) && requestedTimeout > 0) {
+            if ((p.name === 'OpenAI (Direct)' || p.name === 'LLM7 (Keyless)') && Number.isFinite(requestedTimeout) && requestedTimeout > 0) {
                 timeoutValue = Math.min(120000, Math.max(8000, Math.floor(requestedTimeout)));
             }
             if (p.name === 'Local (Auto)') {
@@ -1874,9 +1881,21 @@ export async function routeToModel(
             }
 
             lastTimeoutUsed = timeoutValue;
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), timeoutValue));
+            const providerAbort = new AbortController();
+            let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                timeoutHandle = setTimeout(() => {
+                    providerAbort.abort(new Error(`Provider deadline exceeded after ${timeoutValue}ms`));
+                    reject(new Error('TIMEOUT'));
+                }, timeoutValue);
+            });
             const attemptStartedAt = Date.now();
-            const rawAns = await Promise.race([p.run(), timeoutPromise]) as string;
+            let rawAns: string;
+            try {
+                rawAns = await Promise.race([p.run(providerAbort.signal), timeoutPromise]) as string;
+            } finally {
+                if (timeoutHandle) clearTimeout(timeoutHandle);
+            }
             // How long this machine really takes is the only honest input to
             // how long we should be willing to wait for it next time.
             if (p.name === 'Local (Auto)') noteLocalDuration(Date.now() - attemptStartedAt);

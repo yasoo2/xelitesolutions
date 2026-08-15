@@ -18,7 +18,7 @@
 import fs from 'fs';
 import path from 'path';
 import { findingText, type AppAuditFinding } from '../core/quality/app-audit';
-import { brandFallback } from '../core/design/page-head';
+import { brandFallback, brandFrom } from '../core/design/page-head';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
@@ -100,6 +100,11 @@ describe('«MyApp» is not a name', () => {
     it('and a request that truly says nothing still gets the old placeholder', () => {
         expect(brandFallback('build me a website', false, 'generic')).toBe('MyApp');
         expect(brandFallback('ابن لي موقعاً', true, 'generic')).toBe('مشروعي');
+    });
+
+    it('prefers the named product over a quoted prohibition in an evaluation brief', () => {
+        const brief = 'DO NOT BUILD A "JOE TEST TEMPLATE". Build a production-grade autonomous software platform called "NEXUS".';
+        expect(brandFrom(brief, false)).toBe('NEXUS');
     });
 
     it('grammar is never mistaken for a subject', () => {

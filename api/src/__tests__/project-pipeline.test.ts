@@ -9,6 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { deterministicRescueAllowed } from '../modules/tools/definitions/ProjectPipelineTool';
 
 describe('routing — full-project requests reach the pipeline, offline and deterministic', () => {
     const plan = (goal: string) =>
@@ -60,6 +61,17 @@ describe('routing — full-project requests reach the pipeline, offline and dete
     test('a simple landing page is NOT stolen from the page builder', async () => {
         const p = await plan('ابنِ لي صفحة هبوط لمطعم شعبي');
         expect(p.steps[0].tool).toBe('web_page_builder');
+    });
+
+    test('planner failure cannot turn a multi-phase contract brief into a generic scaffold rescue', () => {
+        const brief = [
+            'Build a production API integration slice.',
+            'First inspect the workspace, then define the API contract and implement the smallest vertical slice.',
+            'Add integration tests, acceptance criteria, an evidence matrix, and a final audit.',
+            'Do not build a test template or claim completion without running verification.'
+        ].join(' ');
+        expect(deterministicRescueAllowed(brief)).toBe(false);
+        expect(deterministicRescueAllowed('Build a small local notes app with a web interface.')).toBe(true);
     });
 
     test('a recovery goal is NOT hijacked even if it mentions a server', async () => {

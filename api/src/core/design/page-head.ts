@@ -75,20 +75,21 @@ function trimBrand(raw: string): string {
 export function brandFrom(request: string, _isArabic?: boolean): string {
     const req = String(request || '');
 
-    // 1. Explicitly quoted — the strongest signal, and the one the site builder
-    //    already relied on.
-    const quoted = req.match(/[«"'“]([^«»"'“”]{2,40})[»"'”]/);
-    if (quoted) {
-        const b = trimBrand(quoted[1]);
-        if (b) return b;
-    }
-
-    // 2. Introduced by name: «اسمها X» / «اسمه X» / «تسمى X» / "called X" /
-    //    "named X". This is how the request that produced the broken title was
-    //    written, and it was not being read at all.
+    // 1. An explicit introduced name is stronger than an arbitrary quoted
+    //    phrase. Evaluation prompts often quote a prohibition first (for
+    //    example, “DO NOT BUILD A ...”) and name the actual product later.
+    //    Prefer the semantic name marker so wrapper text cannot become the app.
     const introduced = req.match(/(?:اسمها|اسمه|إسمها|إسمه|تسمى|يسمى|باسم|called|named|by the name of)\s+(.{2,60})/i);
     if (introduced) {
         const b = trimBrand(introduced[1]);
+        if (b) return b;
+    }
+
+    // 2. Explicitly quoted — useful when no semantic name marker exists, but
+    //    deliberately lower priority than `called`/`named` above.
+    const quoted = req.match(/[«"'“]([^«»"'“”]{2,40})[»"'”]/);
+    if (quoted) {
+        const b = trimBrand(quoted[1]);
         if (b) return b;
     }
 
