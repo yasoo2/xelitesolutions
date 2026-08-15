@@ -401,7 +401,22 @@ export class ProjectPipelineTool implements ToolDefinition {
             try {
                 say(pick(isAr, '▶️ أُشغّل النظام لتراه حيّاً…', '▶️ Starting the system so you can see it live…'));
                 // …and it speaks the run's language, not the interface default.
-                const runRes = await executeTool('project_run', {}, { ...context, language: isAr ? 'ar' : 'en' });
+                // The phase executor's scaffold evidence names the artifact through the planner's
+                // projectName. Carry that identity into project_run; an empty request fallback
+                // would be unsafe because a workspace may contain an older folder with the same
+                // business noun (for example, a stale "NEXUS" directory). ProjectRunTool then
+                // resolves the named artifact by evidence and still refuses to guess if it cannot
+                // find a unique match.
+                const plannedProjectName = String(plannerResult?.output?.projectName || '').trim();
+                const runInput: Record<string, string> = {};
+                if (plannedProjectName) {
+                    // ProjectRunTool deliberately extracts names from an explicit
+                    // quoted selector. Quote the planner identity at this boundary;
+                    // do not pass the full request, which could select an unrelated
+                    // stale directory by a shared business noun.
+                    runInput.projectQuery = `"${plannedProjectName.replace(/"/gu, '\\"')}"`;
+                }
+                const runRes = await executeTool('project_run', runInput, { ...context, language: isAr ? 'ar' : 'en' });
                 if (runRes?.ok && runRes.output?.url) liveUrl = String(runRes.output.url);
             } catch (e: any) {
                 say(pick(isAr,

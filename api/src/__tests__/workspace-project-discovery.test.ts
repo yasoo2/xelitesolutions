@@ -32,6 +32,15 @@ describe('workspace project discovery for project_run', () => {
         expect(result.matched).toBe(true);
     });
 
+    it('matches a planner name to a truncated scaffold folder without guessing another project', () => {
+        const generated = path.join(root, 'Joe-System-Validation-and-Nexus-Developm');
+        fs.mkdirSync(generated, { recursive: true });
+        fs.writeFileSync(path.join(generated, 'package.json'), JSON.stringify({ scripts: { start: 'node server.js' } }));
+        const result = resolveRunnableProject(root, '"Joe System Validation and Nexus Development"');
+        expect(result.cwd).toBe(generated);
+        expect(result.matched).toBe(true);
+    });
+
     it('refuses to guess when a workspace contains several projects and no name was supplied', () => {
         const result = resolveRunnableProject(root, 'شغّل المشروع الموجود في مساحة العمل');
         expect(result.cwd).toBeNull();

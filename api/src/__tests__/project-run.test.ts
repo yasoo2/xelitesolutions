@@ -80,6 +80,11 @@ describe('the pipeline runs a verified build automatically (no button)', () => {
         expect(pipeSrc).toMatch(/if \(verified\) \{[\s\S]*executeTool\('project_run'/);
         expect(pipeSrc).toMatch(/liveUrl/);
     });
+    test('verified delivery passes the planner identity to project_run instead of guessing a workspace child', () => {
+        expect(pipeSrc).toContain('const plannedProjectName = String(plannerResult?.output?.projectName || \'\').trim();');
+        expect(pipeSrc).toContain('runInput.projectQuery = `"${plannedProjectName.replace');
+        expect(pipeSrc).toContain("executeTool('project_run', runInput");
+    });
     test('the delivery report shows the live URL front and center', () => {
         expect(pipeSrc).toMatch(/🟢 نظامك يعمل الآن/);
         expect(pipeSrc).toMatch(/أوقف المشروع/);
