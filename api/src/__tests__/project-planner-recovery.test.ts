@@ -142,6 +142,62 @@ Build the complete system with locally verifiable implementation artifacts.
         expect(result.logs.join('\n')).toMatch(/scope recovery completed/i);
     });
 
+    it('uses a second bounded scope recovery attempt when the first repair remains under-scoped', async () => {
+        const specification = `
+# Identity and Access
+# Workspace Data Model
+# External Integration Boundary
+# Background Processing
+# User Interface Flows
+# Local Verification Strategy
+
+Build the complete system with locally verifiable implementation artifacts.
+`;
+        const phase = (name: string, covered: string[], file: string) => ({
+            name,
+            description: `Implement ${name}.`,
+            tasks: [{ task: `Write ${name}`, tool: 'write_file', args: { path: file, content: `module.exports = ${JSON.stringify(covered)};` }, priority: 'high', realisticMinutes: 1 }],
+            verificationTask: { task: `Verify ${name}`, tool: 'read_file', args: { path: file } },
+            deliverables: [file],
+            estimatedTime: '5 minutes',
+            requirementsCovered: covered,
+        });
+        const underScoped = {
+            projectName: 'Still incomplete system',
+            projectVibe: 'Evidence-backed implementation',
+            totalPhases: 1,
+            estimatedDuration: '5 minutes',
+            dependencies: {},
+            phases: [phase('Identity only', ['Identity and Access'], 'src/identity.js')],
+        };
+        const complete = {
+            projectName: 'Second recovery system',
+            projectVibe: 'Evidence-backed implementation',
+            totalPhases: 3,
+            estimatedDuration: '15 minutes',
+            dependencies: {},
+            phases: [
+                phase('Identity and workspace', ['Identity and Access', 'Workspace Data Model'], 'src/core.js'),
+                phase('Services and processing', ['External Integration Boundary', 'Background Processing'], 'src/services.js'),
+                phase('Interface and verification', ['User Interface Flows', 'Local Verification Strategy'], 'src/ui.js'),
+            ],
+        };
+        mockCallLLM
+            .mockResolvedValueOnce(JSON.stringify(underScoped))
+            .mockResolvedValueOnce(JSON.stringify(underScoped))
+            .mockResolvedValueOnce(JSON.stringify(complete));
+
+        const result: any = await new ProjectPlannerTool().execute({ projectDescription: specification });
+
+        expect(mockCallLLM).toHaveBeenCalledTimes(3);
+        expect(mockCallLLM.mock.calls[1][0]).toMatch(/Missing areas|under-scoped|coverage gate/i);
+        expect(mockCallLLM.mock.calls[2][0]).toMatch(/Missing areas|under-scoped|coverage gate/i);
+        expect(result.ok).toBe(true);
+        expect(result.output.scopeAssessment.ok).toBe(true);
+        expect(result.logs.join('\n')).toMatch(/attempt 2\/2/);
+        expect(result.logs.join('\n')).toMatch(/scope recovery completed/i);
+    });
+
     it('keeps the honest blocker when both the initial and recovery plans are unusable', async () => {
         mockCallLLM
             .mockResolvedValueOnce(JSON.stringify({ projectName: 'Empty', phases: [] }))

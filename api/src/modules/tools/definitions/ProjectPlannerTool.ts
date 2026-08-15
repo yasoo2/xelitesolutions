@@ -287,53 +287,62 @@ export class ProjectPlannerTool implements ToolDefinition {
             if (!scopeAssessment.ok && requestedImplementation) {
                 // A syntactically valid plan can still be materially incomplete. Do
                 // not weaken the gate and do not invent missing phases locally: give
-                // the planner one bounded, evidence-aware chance to cover the
-                // requirement register it failed to map.
-                logs.push(`[plan] scope coverage insufficient; starting one scope-aware recovery: ${scopeAssessment.message}`);
-                try {
-                    const scopeRecoveryPrompt = this.createRecoveryPlanningPrompt(
-                        projectDescription,
-                        analysis,
-                        this.planningEvidence(evidence),
-                        `The previous plan passed JSON and tool-contract validation but failed the coverage gate: ${scopeAssessment.message}. Re-plan the complete requirement register; do not preserve an under-scoped subset.`
-                    );
-                    const scopeRecoveryResponse = await callLLM(scopeRecoveryPrompt, [
-                        { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with complete requirement coverage, executable phases, exact tool contracts, and concrete non-document artifacts.' }
-                    ], {
-                        modelConfig: context?.modelConfig,
-                        providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
-                        maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
-                        reasoningEffort: context?.plannerReasoningEffort || 'low',
-                    });
-                    if (isProviderFailure(scopeRecoveryResponse)) throw new Error(scopeRecoveryResponse);
-                    const recoveredPlan = this.parsePlan(scopeRecoveryResponse);
-                    if (!this.hasPlanningShape(recoveredPlan)) {
-                        throw new Error('Scope recovery returned valid JSON without a non-empty phases/tasks plan');
+                // the planner a small, evidence-aware retry budget. Each retry gets
+                // the validator's uncovered requirement ledger so it can repair the
+                // plan rather than repeating the same first slice of the brief.
+                const maxScopeRecoveryAttempts = 2;
+                let scopeRecoveryAttempt = 0;
+                while (!scopeAssessment.ok && scopeRecoveryAttempt < maxScopeRecoveryAttempts) {
+                    scopeRecoveryAttempt += 1;
+                    logs.push(`[plan] scope coverage insufficient; starting scope-aware recovery attempt ${scopeRecoveryAttempt}/${maxScopeRecoveryAttempts}: ${scopeAssessment.message}`);
+                    try {
+                        const scopeRecoveryPrompt = this.createRecoveryPlanningPrompt(
+                            projectDescription,
+                            analysis,
+                            this.planningEvidence(evidence),
+                            `The previous plan passed JSON and tool-contract validation but failed the coverage gate: ${scopeAssessment.message}. Re-plan the complete requirement register; do not preserve an under-scoped subset.`,
+                            scopeAssessment
+                        );
+                        const scopeRecoveryResponse = await callLLM(scopeRecoveryPrompt, [
+                            { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with complete requirement coverage, executable phases, exact tool contracts, and concrete non-document artifacts.' }
+                        ], {
+                            modelConfig: context?.modelConfig,
+                            providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
+                            maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                            reasoningEffort: context?.plannerReasoningEffort || 'low',
+                        });
+                        if (isProviderFailure(scopeRecoveryResponse)) throw new Error(scopeRecoveryResponse);
+                        const recoveredPlan = this.parsePlan(scopeRecoveryResponse);
+                        if (!this.hasPlanningShape(recoveredPlan)) {
+                            throw new Error('Scope recovery returned valid JSON without a non-empty phases/tasks plan');
+                        }
+                        const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
+                            disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack,
+                            evidencedPaths,
+                            candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
+                        });
+                        if (recoveredClean.blocker) {
+                            throw new Error(`Scope recovery was blocked during contract sanitisation: ${recoveredClean.blocker.message}`);
+                        }
+                        if (this.countImplementationArtifacts(recoveredClean.phases) === 0) {
+                            throw new Error('Scope recovery retained no non-document implementation artifact');
+                        }
+                        const recoveredValidatedPlan = this.validatePlan(recoveredPlan, projectDescription);
+                        recoveredValidatedPlan.phases = recoveredClean.phases;
+                        const recoveredAssessment = this.assessPlanScope(recoveredValidatedPlan, projectDescription);
+                        if (!recoveredAssessment.ok) {
+                            scopeAssessment = recoveredAssessment;
+                            logs.push(`Planner scope recovery attempt ${scopeRecoveryAttempt} remained under-scoped: ${recoveredAssessment.message}`);
+                            continue;
+                        }
+                        plan = recoveredValidatedPlan;
+                        clean = recoveredClean;
+                        scopeAssessment = recoveredAssessment;
+                        clean.notes.forEach(n => logs.push(n));
+                        logs.push('Planner scope recovery completed with sufficient requirement coverage');
+                    } catch (scopeRecoveryError: any) {
+                        logs.push(`Planner scope recovery attempt ${scopeRecoveryAttempt} failed: ${scopeRecoveryError?.message || scopeRecoveryError}`);
                     }
-                    const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
-                        disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack,
-                        evidencedPaths,
-                        candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
-                    });
-                    if (recoveredClean.blocker) {
-                        throw new Error(`Scope recovery was blocked during contract sanitisation: ${recoveredClean.blocker.message}`);
-                    }
-                    if (this.countImplementationArtifacts(recoveredClean.phases) === 0) {
-                        throw new Error('Scope recovery retained no non-document implementation artifact');
-                    }
-                    const recoveredValidatedPlan = this.validatePlan(recoveredPlan, projectDescription);
-                    recoveredValidatedPlan.phases = recoveredClean.phases;
-                    const recoveredAssessment = this.assessPlanScope(recoveredValidatedPlan, projectDescription);
-                    if (!recoveredAssessment.ok) {
-                        throw new Error(`Scope recovery remained under-scoped: ${recoveredAssessment.message}`);
-                    }
-                    plan = recoveredValidatedPlan;
-                    clean = recoveredClean;
-                    scopeAssessment = recoveredAssessment;
-                    clean.notes.forEach(n => logs.push(n));
-                    logs.push('Planner scope recovery completed with sufficient requirement coverage');
-                } catch (scopeRecoveryError: any) {
-                    logs.push(`Planner scope recovery failed: ${scopeRecoveryError?.message || scopeRecoveryError}`);
                 }
             }
             if (!scopeAssessment.ok) {
@@ -522,11 +531,11 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
         return `SCOPE COVERAGE CONTRACT: the inspected specification has ${scope.targets.length} distinct requirement areas. Return at least ${scope.minPhases} execution phases. A documentation-only phase cannot be the complete delivery. Include concrete non-document implementation artifacts and verification phases, and map every requirement area below to one or more phases via requirementsCovered. Requirement register: ${scope.targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ')}`;
     }
 
-    private assessPlanScope(plan: any, projectDescription: string): { ok: boolean; message: string; targets: string[]; phases: number; implementationArtifacts: number; coveredTargets: number } {
+    private assessPlanScope(plan: any, projectDescription: string): { ok: boolean; message: string; targets: string[]; phases: number; implementationArtifacts: number; coveredTargets: number; coveredTargetNames: string[]; missingTargetNames: string[] } {
         const scope = this.requirementScope(projectDescription);
         const phases = Array.isArray(plan?.phases) ? plan.phases : [];
         if (!scope.requiresImplementation || scope.targets.length < 5) {
-            return { ok: true, message: 'Scope is not a large multi-domain implementation request.', targets: scope.targets, phases: phases.length, implementationArtifacts: 0, coveredTargets: 0 };
+            return { ok: true, message: 'Scope is not a large multi-domain implementation request.', targets: scope.targets, phases: phases.length, implementationArtifacts: 0, coveredTargets: 0, coveredTargetNames: [], missingTargetNames: [] };
         }
         const allTasks = phases.flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : []);
         const implementationArtifacts = this.countImplementationArtifacts(phases);
@@ -537,10 +546,12 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
             deliverables: phase?.deliverables,
             tasks: (phase?.tasks || []).map((task: any) => ({ task: task?.task, description: task?.args?.description, path: task?.args?.path }))
         })).join('\n').toLowerCase();
-        const coveredTargets = scope.targets.filter(target => {
+        const coveredTargetNames = scope.targets.filter(target => {
             const tokens = target.toLowerCase().match(/[\p{L}\p{N}_-]{4,}/gu) || [];
             return tokens.length > 0 && tokens.some(token => planText.includes(token));
-        }).length;
+        });
+        const missingTargetNames = scope.targets.filter(target => !coveredTargetNames.includes(target));
+        const coveredTargets = coveredTargetNames.length;
         const requiredCoverage = Math.max(3, Math.ceil(scope.targets.length * 0.7));
         const problems: string[] = [];
         if (phases.length < scope.minPhases) problems.push(`it has ${phases.length} phase(s), but the evidence requires at least ${scope.minPhases}`);
@@ -553,6 +564,8 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
             phases: phases.length,
             implementationArtifacts,
             coveredTargets,
+            coveredTargetNames,
+            missingTargetNames,
         };
     }
 
@@ -598,12 +611,19 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
             && plan.phases.some((phase: any) => Array.isArray(phase?.tasks) && phase.tasks.length > 0);
     }
 
-    private createRecoveryPlanningPrompt(projectDescription: string, analysis?: any, evidence?: EngineeringEvidence, failureReason = ''): string {
+    private createRecoveryPlanningPrompt(projectDescription: string, analysis?: any, evidence?: EngineeringEvidence, failureReason = '', coverage?: { coveredTargetNames?: string[]; missingTargetNames?: string[] }): string {
         const scope = this.requirementScope(projectDescription);
         const register = scope.targets.length
             ? scope.targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ')
             : '(No reliable heading register was extracted; use the explicit requirements only.)';
+        const missing = Array.isArray(coverage?.missingTargetNames) ? coverage.missingTargetNames : [];
+        const covered = Array.isArray(coverage?.coveredTargetNames) ? coverage.coveredTargetNames : [];
+        const coverageLedger = missing.length
+            ? `VALIDATOR COVERAGE LEDGER:\nCovered areas (do not drop them): ${covered.join(' | ') || '(none)'}\nMissing areas (mandatory in the repaired plan): ${missing.join(' | ')}\nEvery missing area must appear in at least one phase requirementsCovered array and must be advanced by a concrete implementation task; do not merely mention it in prose.`
+            : '';
         return `The previous planning response was unusable: ${failureReason}
+
+${coverageLedger}
 
 You must now produce the smallest honest, executable engineering plan for the request below.
 Do not explain the failure. Do not return an empty phases array. Do not return prose or Markdown fences.
