@@ -94,6 +94,30 @@ OBSERVE JOE — DO NOT TAKE OVER
         expect(scope.minPhases).toBe(6);
     });
 
+    it('counts stable R-number requirement references as coverage evidence', () => {
+        const phase = (name: string, covered: string[], file: string) => ({
+            name,
+            requirementsCovered: covered,
+            deliverables: [file],
+            tasks: [{
+                task: `Implement ${name}`,
+                tool: 'ai_write_file',
+                args: { path: file, description: `Concrete implementation for ${covered.join(' and ')}.` },
+            }],
+        });
+        const assessment = planner.assessPlanScope({
+            phases: [
+                phase('Identity implementation', ['R1', 'R2'], 'src/identity.ts'),
+                phase('Service implementation', ['R3', 'R4'], 'src/services.ts'),
+                phase('Experience and verification', ['R5', 'R6'], 'src/verification.ts'),
+            ],
+        }, specification);
+
+        expect(assessment.ok).toBe(true);
+        expect(assessment.coveredTargets).toBe(6);
+        expect(assessment.missingTargetNames).toEqual([]);
+    });
+
     it('accepts a proportionate plan with implementation artifacts and requirement coverage', () => {
         const phase = (name: string, covered: string[], file: string) => ({
             name,

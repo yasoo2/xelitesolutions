@@ -546,7 +546,20 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
             deliverables: phase?.deliverables,
             tasks: (phase?.tasks || []).map((task: any) => ({ task: task?.task, description: task?.args?.description, path: task?.args?.path }))
         })).join('\n').toLowerCase();
-        const coveredTargetNames = scope.targets.filter(target => {
+        // The planning contract names register entries as R1, R2, … so a model
+        // may correctly map a phase using those stable IDs instead of copying a
+        // long requirement title. Count those references as evidence-backed
+        // coverage, while retaining token matching for human-readable headings.
+        const referencedRequirementNumbers = new Set<number>();
+        phases.forEach((phase: any) => {
+            const covered = Array.isArray(phase?.requirementsCovered) ? phase.requirementsCovered : [];
+            covered.forEach((entry: any) => {
+                const match = String(entry || '').trim().match(/^R(\d+)(?:\\s*[:.)-]|\\s|$)/i);
+                if (match) referencedRequirementNumbers.add(Number(match[1]));
+            });
+        });
+        const coveredTargetNames = scope.targets.filter((target, index) => {
+            if (referencedRequirementNumbers.has(index + 1)) return true;
             const tokens = target.toLowerCase().match(/[\p{L}\p{N}_-]{4,}/gu) || [];
             return tokens.length > 0 && tokens.some(token => planText.includes(token));
         });
