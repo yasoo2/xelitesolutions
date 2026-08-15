@@ -108,10 +108,23 @@ export class EngineeringDiscoveryTool extends BaseTool {
          */
         const AR = '\u0621-\u064A';
         const gitContext = /(?:git|github|جيت|repo(?:sitory)?|clone|استنسخ|استورد|https?:\/\/)/i.test(request);
+        /**
+         * Existing-project language is not, by itself, an existing-project
+         * target. A greenfield brief often says "inspect the existing
+         * architecture" or "reuse working infrastructure" as a constraint;
+         * treating those words as the write target makes a multi-project
+         * workspace look ambiguous and blocks a safe new directory.
+         *
+         * Only explicit repository operations, or a mutating verb that points
+         * at an existing/current project, select an existing target. Read-only
+         * verbs such as inspect/analyze/verify remain evidence gathering.
+         */
+        const explicitExistingMutation = /(?:\b(?:fix|improve|update|modify|extend|refactor|debug|repair|maintain|continue|edit|add|build|create|develop|implement)\b[^.\n]{0,140}\b(?:existing|current|this)\s+(?:project|codebase|workspace|application|system)\b|\b(?:existing|current|this)\s+(?:project|codebase|workspace|application|system)\b[^.\n]{0,140}\b(?:fix|improve|update|modify|extend|refactor|debug|repair|maintain|continue|edit|add|build|create|develop|implement)\b)/i.test(request);
         const requestedExisting =
-            /(?:\brepo(?:sitory)?\b|\bgithub\b|\bclone\b|\bimport\b|\bexisting\b|\bcurrent\b|this\s+(?:project|codebase))/i.test(request)
-            || new RegExp(`(^|[^${AR}])(?:جيت\\s*هاب|استنسخ|استورد)(?=$|[^${AR}])`).test(request)
-            || new RegExp(`(^|[^${AR}])(?:المشروع|الكود)\\s*(?:الحالي|الموجود)(?=$|[^${AR}])`).test(request)
+            /(?:\brepo(?:sitory)?\b|\bgithub\b|\bclone\b|\bimport\b)/i.test(request)
+            || explicitExistingMutation
+            || new RegExp(`(^|[^${AR}])(?:جيت\s*هاب|استنسخ|استورد)(?=$|[^${AR}])`).test(request)
+            || new RegExp(`(^|[^${AR}])(?:المشروع|الكود)\s*(?:الحالي|الموجود)(?=$|[^${AR}])`).test(request)
             || (gitContext && new RegExp(`(^|[^${AR}])(?:ال)?مستودع(?=$|[^${AR}])`).test(request));
         const forbidDeploy = /(?:لا|ليس|بدون|غير|do\s+not|don't|without|no)\s+(?:(?:أي|any|external)\s+)?(?:نشر|رفع|استضافة|deploy|publish|host|go\s*live)/i.test(request);
         const localOnly = forbidDeploy || /(?:محلي|local(?:ly)?|على\s+(?:جهازي|الجهاز)|on\s+(?:my\s+)?machine)/i.test(request);

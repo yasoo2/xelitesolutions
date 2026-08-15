@@ -111,6 +111,45 @@ describe('evidence-first engineering discovery', () => {
     // scaffold on top of a project the user asked to be modified.
     expect(source).toContain('evidence?.constraints?.createsNewProject');
   });
+
+  test('does not mistake greenfield preflight language for an existing-project target', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-greenfield-multi-'));
+    roots.push(root);
+    for (const name of ['alpha', 'beta']) {
+      fs.mkdirSync(path.join(root, name), { recursive: true });
+      fs.writeFileSync(path.join(root, name, 'package.json'), JSON.stringify({ name, scripts: { test: 'npm test' } }));
+    }
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: 'Build a production-grade platform. First inspect the existing project and reuse working infrastructure where appropriate. Do not unnecessarily rewrite working infrastructure.',
+    }, { workspaceRoot: root });
+
+    expect(result.ok).toBe(true);
+    expect(result.output.evidence.mode).toBe('greenfield');
+    expect(result.output.evidence.constraints.createsNewProject).toBe(true);
+    expect(result.output.evidence.constraints.userRequestedExistingProject).toBe(false);
+    expect(result.output.evidence.blockers).toEqual([]);
+  });
+
+  test('keeps an explicit mutation of an existing project decision-bound', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-existing-multi-'));
+    roots.push(root);
+    for (const name of ['alpha', 'beta']) {
+      fs.mkdirSync(path.join(root, name), { recursive: true });
+      fs.writeFileSync(path.join(root, name, 'package.json'), JSON.stringify({ name }));
+    }
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: 'Improve the existing project locally without deployment.',
+    }, { workspaceRoot: root });
+
+    expect(result.ok).toBe(true);
+    expect(result.output.evidence.mode).toBe('ambiguous');
+    expect(result.output.evidence.constraints.createsNewProject).toBe(false);
+    expect(result.output.evidence.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'multiple_projects' }),
+    ]));
+  });
 });
 
 
