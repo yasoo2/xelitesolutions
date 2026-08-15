@@ -179,6 +179,22 @@ export function deterministicPhasesFor(request: string): {
  * into the generic api_project/react_project pair. That would hide the loss of
  * engineering reasoning behind a plausible-looking template.
  */
+export function buildPlannerEvidence(evidence: any, specificationSources: any[] = []): any {
+    const directReferences = Array.isArray(evidence?.referenceProjects) ? evidence.referenceProjects : undefined;
+    const wrappedReferences = [
+        evidence?.evidence?.referenceProjects,
+        evidence?.output?.evidence?.referenceProjects,
+        evidence?.discovery?.referenceProjects,
+        evidence?.discovery?.evidence?.referenceProjects,
+    ].find(Array.isArray);
+    const referenceProjects = directReferences || wrappedReferences || [];
+    return {
+        ...(evidence || {}),
+        referenceProjects,
+        ...(specificationSources.length ? { specificationSources } : {}),
+    };
+}
+
 export function deterministicRescueAllowed(request: string): boolean {
     const text = String(request || '').trim();
     if (!text || text.length > 1800) return false;
@@ -345,9 +361,11 @@ export class ProjectPipelineTool implements ToolDefinition {
             ? `${request}\n\n--- COMPACT REQUIREMENTS EVIDENCE (derived from complete local files read through read_file; do not invent beyond it) ---\n${requirementsContext}\n--- END COMPACT REQUIREMENTS EVIDENCE ---`
             : request;
         if (requirementsContext) logs.push(`pipeline.planning_requirements_brief_chars=${requirementsContext.length}`);
-        const plannerEvidence = specification.sources.length
-            ? { ...evidence, specificationSources: specification.sources }
-            : evidence;
+        const plannerEvidence = buildPlannerEvidence(evidence, specification.sources);
+        const plannerReferenceProjects = Array.isArray(plannerEvidence.referenceProjects) ? plannerEvidence.referenceProjects : [];
+        const plannerReferenceManifests = plannerReferenceProjects.reduce((count: number, project: any) =>
+            count + (Array.isArray(project?.manifests) ? project.manifests.length : 0), 0);
+        logs.push(`[pipeline] planner_evidence referenceProjects=${plannerReferenceProjects.length} manifests=${plannerReferenceManifests}`);
 
         say(pick(isAr,
             `[pipeline] دليل جاهز: ${evidence.mode}${evidence.selectedProject ? ` — ${evidence.selectedProject.root}` : ''}`,

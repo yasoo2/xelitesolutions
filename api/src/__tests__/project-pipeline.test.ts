@@ -9,7 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { deterministicRescueAllowed } from '../modules/tools/definitions/ProjectPipelineTool';
+import { buildPlannerEvidence, deterministicRescueAllowed } from '../modules/tools/definitions/ProjectPipelineTool';
 import { applyPhaseExecutionEvidence } from '../modules/tools/definitions/PhaseExecutorTool';
 
 describe('routing — full-project requests reach the pipeline, offline and deterministic', () => {
@@ -62,6 +62,21 @@ describe('routing — full-project requests reach the pipeline, offline and dete
     test('a simple landing page is NOT stolen from the page builder', async () => {
         const p = await plan('ابنِ لي صفحة هبوط لمطعم شعبي');
         expect(p.steps[0].tool).toBe('web_page_builder');
+    });
+
+    test('planner handoff preserves direct and wrapped reference-project evidence', () => {
+        const referenceProjects = [{
+            root: '/workspace/reference-app',
+            projectKinds: ['node'],
+            manifests: [{ path: '/workspace/reference-app/package.json', kind: 'package.json' }],
+        }];
+        const direct = buildPlannerEvidence({ mode: 'greenfield', referenceProjects });
+        expect(direct.referenceProjects).toBe(referenceProjects);
+        expect(direct.mode).toBe('greenfield');
+
+        const wrapped = buildPlannerEvidence({ mode: 'greenfield', output: { evidence: { referenceProjects } } });
+        expect(wrapped.referenceProjects).toBe(referenceProjects);
+        expect(wrapped.mode).toBe('greenfield');
     });
 
     test('planner failure cannot turn a multi-phase contract brief into a generic scaffold rescue', () => {
