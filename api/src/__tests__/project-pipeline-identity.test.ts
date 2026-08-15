@@ -36,6 +36,29 @@ describe('project pipeline identity follows the explicit product name', () => {
         });
     });
 
+    it('rewrites non-scaffold task paths and commands to the accepted artifact root', () => {
+        const plan: any = {
+            projectName: 'Joe Execution Test',
+            phases: [{
+                tasks: [
+                    { tool: 'write_file', args: { path: 'Joe-Execution-Test/src/index.ts', content: 'export const app = true;' } },
+                    { tool: 'file_edit', args: { path: 'Joe-Execution-Test/src/index.ts', instruction: 'add a health route' } },
+                    { tool: 'shell_execute', args: { cwd: 'Joe-Execution-Test', command: 'cd Joe-Execution-Test && npm test' } },
+                    { tool: 'project_run', args: { projectQuery: '\"Joe Execution Test\"' } },
+                ],
+            }],
+        };
+
+        alignGreenfieldPlanIdentity(plan, brief, true);
+
+        expect(plan.projectName).toBe('NEXUS');
+        expect(plan.phases[0].tasks[0].args.path).toBe('NEXUS/src/index.ts');
+        expect(plan.phases[0].tasks[1].args.path).toBe('NEXUS/src/index.ts');
+        expect(plan.phases[0].tasks[2].args.cwd).toBe('NEXUS');
+        expect(plan.phases[0].tasks[2].args.command).toBe('cd NEXUS && npm test');
+        expect(plan.phases[0].tasks[3].args.projectQuery).toBe('\"NEXUS\"');
+    });
+
     it('keeps a model proposal when the request has no explicit product name', () => {
         expect(resolveProjectIdentity('Build a local inventory platform with tests.', 'Inventory Platform')).toBe('Inventory Platform');
     });

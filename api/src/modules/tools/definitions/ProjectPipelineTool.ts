@@ -37,6 +37,43 @@ function normalizeProjectSegment(value: unknown): string {
     return String(value || '').trim().replace(/\\/g, '/').replace(/^\.\//u, '').replace(/\/$/u, '');
 }
 
+function projectPathVariants(identity: string): string[] {
+    const normalized = normalizeProjectSegment(identity);
+    if (!normalized) return [];
+    const slug = normalized.replace(/[^A-Za-z0-9._-]+/gu, '-').replace(/^-+|-+$/gu, '');
+    return [normalized, normalized.replace(/[-_]+/gu, ' '), slug]
+        .map(value => value.trim())
+        .filter((value, index, values) => value && values.indexOf(value) === index);
+}
+
+function rewriteProjectPath(value: string, oldPrefixes: string[], nextIdentity: string): string {
+    let result = String(value || '').replace(/\\/g, '/');
+    const next = normalizeProjectSegment(nextIdentity);
+    for (const prefix of oldPrefixes) {
+        const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+        const re = new RegExp(`(^|[\\s\"'/:=])${escaped}(?=$|[/\\s\"'&|;])`, 'giu');
+        result = result.replace(re, (_match, lead) => `${lead}${next}`);
+    }
+    return result;
+}
+
+function rewriteGreenfieldTaskPaths(task: any, oldPrefixes: string[], nextIdentity: string): void {
+    if (!task || typeof task !== 'object') return;
+    const args = task.args && typeof task.args === 'object' ? { ...task.args } : null;
+    if (!args) return;
+    const tool = String(task.tool || task.name || '').toLowerCase();
+    const pathKeys = new Set(['path', 'cwd', 'baseDir', 'projectName', 'name', 'projectPath', 'filePath', 'targetPath', 'directory', 'dir', 'projectQuery']);
+    for (const [key, value] of Object.entries(args)) {
+        if (typeof value !== 'string') continue;
+        if (pathKeys.has(key)) {
+            args[key] = rewriteProjectPath(value, oldPrefixes, nextIdentity);
+        } else if (key === 'command' && (tool === 'shell_execute' || tool === 'shell_exec' || tool === 'run_command')) {
+            args[key] = rewriteProjectPath(value, oldPrefixes, nextIdentity);
+        }
+    }
+    task.args = args;
+}
+
 /**
  * Resolve the project identity from the user's explicit naming language before
  * trusting a model-written label. Evaluation wrappers frequently contain a
@@ -65,6 +102,10 @@ export function alignGreenfieldPlanIdentity(plan: any, request: string, isGreenf
     const phases = Array.isArray(plan.phases) ? plan.phases : [];
     for (const phase of phases) {
         const tasks = Array.isArray(phase?.tasks) ? phase.tasks : [];
+        const oldPrefixes = [
+            ...projectPathVariants(previousIdentity),
+            ...tasks.flatMap((task: any) => projectPathVariants(task?.args?.baseDir || task?.args?.projectName || task?.args?.name)),
+        ].filter((value, index, values) => value && values.indexOf(value) === index);
         for (const task of tasks) {
             if (String(task?.tool || '').toLowerCase() !== 'scaffold_project') continue;
             const args = { ...(task.args || {}) };
@@ -88,6 +129,12 @@ export function alignGreenfieldPlanIdentity(plan: any, request: string, isGreenf
             if (Object.prototype.hasOwnProperty.call(args, 'name')) args.name = explicit;
             task.args = args;
         }
+
+        // A model can choose write_file/file_edit/shell tasks instead of the
+        // scaffold primitive. Those tasks still need the same artifact root;
+        // otherwise project_run correctly refuses to guess after files were
+        // written into an evaluation-wrapper directory.
+        for (const task of tasks) rewriteGreenfieldTaskPaths(task, oldPrefixes, explicit);
     }
     return plan;
 }
