@@ -25,6 +25,39 @@ const route = async (goal: string): Promise<string> => {
     return Promise.race([p, new Promise<string>(r => setTimeout(() => r(FALLTHROUGH), 1500))]);
 };
 
+const routeInSession = async (goal: string, sessionId: string): Promise<string> => {
+    const p = PlanningEngine.generatePlan(
+        { intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any },
+        undefined,
+        { sessionId },
+    ).then(x => x.steps[0].tool).catch(() => FALLTHROUGH);
+    return Promise.race([p, new Promise<string>(r => setTimeout(() => r(FALLTHROUGH), 1500))]);
+};
+
+describe('quality review routing uses the active built project', () => {
+    const sessionId = 'quality-review-t';
+    let projectDir: string;
+
+    beforeAll(() => {
+        projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-quality-review-'));
+        fs.mkdirSync(path.join(projectDir, 'dist'), { recursive: true });
+        fs.writeFileSync(path.join(projectDir, 'dist', 'index.html'), '<!doctype html><html><body>built</body></html>');
+        (global as any).joeProjects = {
+            ...((global as any).joeProjects || {}),
+            [sessionId]: { dir: projectDir, type: 'page', updatedAt: Date.now() },
+        };
+    });
+
+    afterAll(() => {
+        delete (global as any).joeProjects?.[sessionId];
+        fs.rmSync(projectDir, { recursive: true, force: true });
+    });
+
+    it('«راجع تقرير الجودة والنتيجة النهائية» → project_repair', async () => {
+        expect(await routeInSession('راجع تقرير الجودة والنتيجة النهائية', sessionId)).toBe('project_repair');
+    });
+});
+
 describe('api_project is registered and reachable', () => {
     it('the registry carries it; the orchestrator runs it deterministically', () => {
         const { tools } = require('../modules/tools/registry');

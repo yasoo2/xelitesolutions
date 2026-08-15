@@ -4,6 +4,8 @@ import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { normalizeIntentText, stripArabicDiacritics } from './promptNormalizer';
 import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
+import fs from 'fs';
+import path from 'path';
 
 export interface ExecutionStep {
     id: string;
@@ -1236,6 +1238,45 @@ Rules:
                         dependsOn: [],
                     }],
                     metadata: { complexity: 'low', riskLevel: 'low' },
+                };
+            }
+        }
+
+        /**
+         * [PROJECT QUALITY REVIEW FAST-PATH] A review of the delivered result is
+         * not an integration test request. A built project without a package.json
+         * or test harness still needs a real-browser audit: inspect the rendered
+         * build, repair measurable defects, rebuild, and measure again. The
+         * generic planner used to interpret «راجع تقرير الجودة والنتيجة النهائية»
+         * as auto_tester(integration), which then correctly refused because there
+         * was no harness. This guard keeps the choice evidence-first and works for
+         * any active built project, not a product name or a template.
+         *
+         * The build gate is deliberately concrete. `project_repair` itself
+         * requires dist/index.html, so do not route an unbuilt or half-created
+         * directory into it and report a misleading repair failure.
+         */
+        {
+            const reviewVerb = /(راجع|مراجع(?:ة|ه)|افحص|فحص|دقّ?ق|تدقيق|اختبر|اختبار|review|audit|inspect|check|verify)/i.test(probe);
+            const qualityTarget = /(جودة|الجودة|تقرير|النتيجة|النتائج|المخرجات|التسليم|quality|report|result|output|deliverable)/i.test(probe);
+            const explicitQualityReview = /(تقرير\s*الجودة|النتيجة\s*النهائية|quality\s*report|final\s+(?:result|output|deliverable))/i.test(probe);
+            const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+            const activeProject = ((global as any).joeProjects || {})[sessionKey];
+            const projectDir = String(activeProject?.dir || '').trim();
+            const hasBuiltIndex = !!projectDir && fs.existsSync(path.join(projectDir, 'dist', 'index.html'));
+            if ((explicitQualityReview || (reviewVerb && qualityTarget)) && hasBuiltIndex) {
+                return {
+                    id: `quality_review_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_repair',
+                        description: 'إعادة تدقيق البناء في متصفح حقيقي وإصلاح ما يظهر ثم إعادة البناء والقياس',
+                        tool: 'project_repair',
+                        agent: 'Dev',
+                        input: {},
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'low', matchedBy: 'active-built-project-quality-review' },
                 };
             }
         }
