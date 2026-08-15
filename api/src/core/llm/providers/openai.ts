@@ -49,6 +49,16 @@ export class OpenAIProvider {
      * such as `gpt-4o` is not present. Operators retain full control through
      * OPENAI_MODEL; an unavailable catalogue leaves the requested model alone.
      */
+    private buildRequestOptions(options?: OpenAIRequestOptions): { signal?: AbortSignal; timeout?: number } | undefined {
+        const requestOptions: { signal?: AbortSignal; timeout?: number } = {};
+        if (options?.signal) requestOptions.signal = options.signal;
+        const timeoutMs = Number(options?.timeoutMs);
+        if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+            requestOptions.timeout = Math.max(1, Math.floor(timeoutMs));
+        }
+        return Object.keys(requestOptions).length > 0 ? requestOptions : undefined;
+    }
+
     private async resolveModel(requestedModel: string, options?: OpenAIRequestOptions): Promise<string> {
         const configured = String(process.env.OPENAI_MODEL || '').trim();
         if (configured) return configured;
@@ -58,9 +68,7 @@ export class OpenAIProvider {
         try {
             const list = (this.client as any)?.models?.list;
             if (typeof list !== 'function') return requestedModel;
-            const requestOptions = options?.signal || (Number(options?.timeoutMs) > 0)
-                ? { signal: options?.signal, timeout: Number(options?.timeoutMs) > 0 ? Number(options?.timeoutMs) : undefined }
-                : undefined;
+            const requestOptions = this.buildRequestOptions(options);
             const catalogue = requestOptions
                 ? await list.call((this.client as any).models, requestOptions)
                 : await list.call((this.client as any).models);
@@ -110,9 +118,7 @@ export class OpenAIProvider {
             if (options?.reasoningEffort) {
                 request.reasoning = { effort: options.reasoningEffort };
             }
-            const requestOptions = options?.signal || (Number(options?.timeoutMs) > 0)
-                ? { signal: options?.signal, timeout: Number(options?.timeoutMs) > 0 ? Number(options?.timeoutMs) : undefined }
-                : undefined;
+            const requestOptions = this.buildRequestOptions(options);
             const completion = requestOptions
                 ? await (this.client.chat.completions.create as any)(request, requestOptions)
                 : await this.client.chat.completions.create(request);
