@@ -108,7 +108,11 @@ describe('and the builder turns it into real tables', () => {
 
     it('the server mounts them and counts them in /api/health', () => {
         expect(A()).toMatch(/mountEntities\(app, \{ requireAuth, optionalAuth, requireWrite, scopeOf, mayTouch \}\);/);
-        expect(A()).toMatch(/tables: entityCounts\(\),/);
+        // /api/health reports the whole system: the model's tables AND the
+        // system's own primary table, which lives in db.js and used to be
+        // missing from this report entirely — a built, reachable, writable
+        // table that read as absent.
+        expect(A()).toMatch(/tables: Object\.assign\(\{ \$\{JSON\.stringify\(resource\)\}: db\.count\(\) \}, entityCounts\(\)\),/);
         // …and a build with no model imports nothing that does not exist.
         expect(A()).toMatch(/\$\{model\.length \? "import \{ mountEntities, entityCounts \} from '\.\/entities\.js';" : ''\}/);
     });

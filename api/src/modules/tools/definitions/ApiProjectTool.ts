@@ -35,9 +35,19 @@ const slug = (s: string) => (String(s || '').toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'api';
 const js = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
 
-/** What this kind of business stores — the resource and its seed rows. */
+/**
+ * What this kind of business stores — the resource and its seed rows.
+ *
+ * `generic` is true when NOTHING in the request named the thing being stored
+ * and the last-resort `items` was returned. The caller uses it to let the
+ * request's own data model name the primary table instead; see the promotion
+ * in `execute` below. Without that flag the two are indistinguishable —
+ * a warehouse app that really is about «الأصناف» looks exactly like a freight
+ * system that fell off the end of the list.
+ */
 export function apiResourceForKind(kind: PageKind, isAr: boolean, probe?: string): {
     resource: string; labelAr: string; seeds: Array<{ name: string; details: string; price: string }>;
+    generic?: boolean;
 } {
     if (kind === 'restaurant') {
         return {
@@ -88,7 +98,7 @@ export function apiResourceForKind(kind: PageKind, isAr: boolean, probe?: string
         }
     }
     return {
-        resource: 'items', labelAr: 'العناصر',
+        resource: 'items', labelAr: 'العناصر', generic: true,
         seeds: isAr ? [
             { name: 'عنصر تجريبي أول', details: 'أضيف مع بذر القاعدة — عدّله أو احذفه', price: '' },
             { name: 'عنصر تجريبي ثانٍ', details: 'المسارات جاهزة: أضف، عدّل، احذف', price: '' },
@@ -1676,7 +1686,16 @@ app.get('/api/health', (_req, res) => res.json({
   ok: true, backend: db.backend, count: db.count(), orders: db.countOrders(),
   joe: 'api_project', resource: '${resource}',
   ${relation ? `${relation.resource}: db.rel.count(), relation: db.relation,` : ''}
-  ${model.length ? 'tables: entityCounts(),' : ''}
+  ${model.length
+        // THE REPORT DESCRIBES THE WHOLE SYSTEM, INCLUDING ITS OWN TABLE.
+        // `entityCounts()` covers the generated model only. The primary table
+        // lives in db.js with the built-in CRUD, so a request that declared
+        // «animals, vaccinations, doctors…» saw four of its five names here and
+        // the fifth — the one promoted to primary — appeared nowhere, reading
+        // as a table that was never built. It is served at /api/${resource};
+        // the report now says so.
+        ? `tables: Object.assign({ ${JSON.stringify(resource)}: db.count() }, entityCounts()),`
+        : `tables: { ${JSON.stringify(resource)}: db.count() },`}
 }));
 
 // ── ACCOUNTS ───────────────────────────────────────────────────────────────
@@ -1818,7 +1837,7 @@ app.get('/api/${resource}/:id', optionalAuth, (req, res) => {
   if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
   const mine = scopeOf(req);
   if (mine !== null && Number(row.owner_id) !== Number(mine)) return res.status(404).json({ ok: false, error: 'not_found' });
-  res.json({ ok: true, item: row });
+  res.json({ ok: true, item: row, row });
 });
 
 /**
@@ -1865,7 +1884,12 @@ app.post('/api/${resource}', requireAuth, requireWrite, (req, res) => {
   const { value, error } = validate(req.body, false);
   if (error) return res.status(400).json({ ok: false, error });
   // Whoever wrote the row owns it — read from the account, never from the body.
-  res.status(201).json({ ok: true, item: db.create(value, req.user.id) });
+  // ONE SERVER, ONE ENVELOPE. The generated model's tables answer with a row
+  // key and this one answered with an item key, so a client talking to its own
+  // backend had to know which half of the schema a table came from. Both keys
+  // carry the same row; item stays for anything already reading it.
+  const created = db.create(value, req.user.id);
+  res.status(201).json({ ok: true, item: created, row: created });
 });
 
 app.put('/api/${resource}/:id', requireAuth, requireWrite, (req, res) => {
@@ -1876,7 +1900,7 @@ app.put('/api/${resource}/:id', requireAuth, requireWrite, (req, res) => {
   if (error) return res.status(400).json({ ok: false, error });
   const row = db.update(req.params.id, value);
   if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
-  res.json({ ok: true, item: row });
+  res.json({ ok: true, item: row, row });
 });
 
 app.delete('/api/${resource}/:id', requireAuth, requireWrite, (req, res) => {
@@ -2071,11 +2095,11 @@ export class ApiProjectTool extends BaseTool {
 
         const kind = detectPageKind(request);
         const brand = brandFrom(request, isAr) || brandFallback(request, isAr, kind);
-        const { resource, labelAr, seeds: catalogueSeeds } = apiResourceForKind(kind, isAr, request);
+        const picked = apiResourceForKind(kind, isAr, request);
         // The schema follows the app's own blueprint. Seeds only make sense for
         // the catalogue shape — a booking table seeded with «Dish of the day»
         // would be noise pretending to be data.
-        const columns = apiColumnsForRequest(request);
+        const requestColumns = apiColumnsForRequest(request);
         /**
          * The parent table, when this system has one — «طبيب ← مواعيده».
          *
@@ -2120,6 +2144,73 @@ export class ApiProjectTool extends BaseTool {
          */
         const { designDataModel } = require('../../../core/design/schema-designer');
         const designed = await designDataModel(request, { onNote: (n: string) => term(n) });
+
+        /**
+         * AND THE SYSTEM NAMES ITS OWN PRIMARY TABLE.
+         *
+         * The picker above reads a LIST of application kinds — social, chat,
+         * booking, pos… — and anything not on it lands on `items`. That list
+         * grows with the world; his sentence does not wait for it. Measured on
+         * the freight request: nine tables were designed and mounted correctly,
+         * and the interface built on top of them still called `/api/items`,
+         * a table that holds nothing he asked about. The database was right and
+         * the front door pointed at the wrong room.
+         *
+         * So when the picker had NOTHING to go on and the request described its
+         * own system, the first table of that system becomes the primary one.
+         * The name comes from his words, not from a list somebody has to extend
+         * — and the `model.filter(e => e.key !== resource)` below then keeps it
+         * from being defined twice, which is the rule that already existed for
+         * a declared table colliding with the built-in one.
+         *
+         * A request that named its kind keeps that kind: a chat app still
+         * stores `messages`, because the picker was not guessing there.
+         *
+         * THE TEST IS NOT «did the picker fall back», IT IS «is the picker's
+         * answer part of the system». Measured: the freight sentence never
+         * reached the fallback at all — «المستودعات» made it read as an
+         * INVENTORY app, so the picker confidently returned `items`, one word
+         * matched out of eight domains. A single keyword cannot outrank a
+         * system the request spelled out, so the primary table is replaced
+         * exactly when the picker's answer is not one of the tables being
+         * built. A restaurant keeps `dishes` and its seed menu, because
+         * `dishes` IS in the model.
+         */
+        const outsideTheSystem = designed.length > 0
+            && !designed.some((e: any) => String(e.key) === picked.resource);
+        const promoted = outsideTheSystem && (designed.length >= 3 || picked.generic) ? designed[0] : null;
+        const resource = promoted ? String(promoted.key) : picked.resource;
+        const labelAr = promoted ? String(promoted.ar || promoted.key) : picked.labelAr;
+        // A described system starts EMPTY. Seeding «عنصر تجريبي أول» into
+        // `shipments` would be fabricated data wearing his table's name.
+        const catalogueSeeds = promoted ? [] : picked.seeds;
+        /**
+         * A PROMOTED TABLE BRINGS ITS OWN COLUMNS.
+         *
+         * `apiColumnsForRequest` reads the WHOLE request, which is right for a
+         * table the request is entirely about and wrong for one table out of
+         * nine. Measured: promoting `animals` in the clinic request gave it the
+         * columns derived from the sentence as a whole — appointments and all —
+         * so a write of `{name: 'Loop-proof cat'}` was refused with
+         * `date_required`. The table existed, was reachable, and could not be
+         * written to.
+         *
+         * The model already inferred what an `animals` row is. That is what the
+         * table is built from.
+         */
+        const promotedColumns = promoted ? columnsFromFields((promoted as any).fields || []) : [];
+        const columns = promoted && promotedColumns.length ? promotedColumns : requestColumns;
+        if (promoted && promotedColumns.length) {
+            term(`data model: /api/${resource} carries its own columns — ${promotedColumns.map(c => c.key).join(', ')}`);
+        }
+        if (promoted) {
+            term(`data model: the request describes its own system — the primary table is /api/${resource}, not the generic /api/items`);
+            if (sessionId) {
+                broadcastThinkingDetail(sessionId, isAr
+                    ? `🗂️ الجدول الأساسي من طلبك نفسه: /api/${resource} — لا /api/items`
+                    : `🗂️ The primary table comes from your own request: /api/${resource} — not /api/items`);
+            }
+        }
 
         /**
          * …AND A SYSTEM HE DESCRIBED IS NOT A PARENT/CHILD PAIR.

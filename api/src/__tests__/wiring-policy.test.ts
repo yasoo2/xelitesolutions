@@ -2094,7 +2094,18 @@ describe('the server stores what the app sends', () => {
     it('the schema comes from the same blueprint the interface renders', () => {
         const A = SRC('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
         expect(A).toMatch(/export function apiColumnsForRequest/);
-        expect(A).toMatch(/const columns = apiColumnsForRequest\(request\)/);
+        /**
+         * The columns the server builds are still derived, never hand-written —
+         * but the derivation now has TWO honest sources: the request as a whole,
+         * and, when one of the request's own tables is promoted to be the
+         * primary one, that table's own inferred fields. Pinning the old single
+         * line would forbid the second source rather than guard the promise.
+         *
+         * The promise is that `columns` is DERIVED and is what db.js is built
+         * from — both halves reading one answer.
+         */
+        expect(A).toMatch(/const requestColumns = apiColumnsForRequest\(request\)/);
+        expect(A).toMatch(/const columns = promoted && promotedColumns\.length \? promotedColumns : requestColumns/);
         expect(A).toMatch(/'db\.js': fileDbJs\(resource, columns, relation\)/);
     });
 

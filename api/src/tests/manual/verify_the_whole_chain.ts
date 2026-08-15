@@ -103,9 +103,27 @@ async function main() {
     for (const f of ['server.js', 'db.js', 'entities.js', 'auth.js', 'seed.js', 'package.json']) {
         check(`  ${f} is on disk`, fs.existsSync(path.join(apiDir, f)));
     }
+    /**
+     * A DECLARED TABLE LIVES IN ONE OF TWO FILES, AND BOTH COUNT.
+     *
+     * `entities.js` carries the generated model; `db.js` carries the system's
+     * OWN primary table, the one with the built-in CRUD, auth and ownership.
+     * When the request describes its own system, its first table is promoted
+     * to be that primary one — so it correctly leaves entities.js and appears
+     * in db.js instead. Reading only entities.js reported a table that exists,
+     * is served and is writable as missing.
+     *
+     * The promise is that every table he declared is BUILT. That is what is
+     * measured, wherever the generator chose to put it.
+     */
     const entities = fs.readFileSync(path.join(apiDir, 'entities.js'), 'utf-8');
+    const dbjs = fs.readFileSync(path.join(apiDir, 'db.js'), 'utf-8');
+    const built = (k: string) => entities.includes(`"${k}"`)
+        || new RegExp(`CREATE TABLE IF NOT EXISTS ${k}\\b`).test(dbjs);
+    const declaredTables = ['animals', 'vaccinations', 'doctors', 'appointments', 'invoices'];
     check('every declared table is in the generated model',
-        ['animals', 'vaccinations', 'doctors', 'appointments', 'invoices'].every(k => entities.includes(`"${k}"`)));
+        declaredTables.every(built),
+        declaredTables.filter(k => !built(k)).join(', '));
     const installed = fs.existsSync(path.join(apiDir, 'node_modules'));
     check('the write/read proof really ran', trace.some(l => /live proof → OK/.test(l)),
         trace.filter(l => /proof/.test(l)).join(' | ').slice(0, 200));
