@@ -41,7 +41,7 @@ describe('browser session wiring', () => {
         expect(observedInput.sessionId).not.toBe('chat-42');
     });
 
-    it('preserves a caller-provided browser session and falls back only for legacy callers', async () => {
+    it('pins the visible-panel session over a planner-provided session and falls back only for legacy callers', async () => {
         const seen: string[] = [];
         browserTool.execute = async (input: any) => {
             seen.push(input.sessionId);
@@ -59,6 +59,6 @@ describe('browser session wiring', () => {
             { sessionId: 'legacy-chat-session', userId: 'test-user' },
         );
 
-        expect(seen).toEqual(['explicit-browser', 'legacy-chat-session']);
+        expect(seen).toEqual(['browser:chat-42', 'legacy-chat-session']);
     });
 });

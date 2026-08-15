@@ -501,12 +501,18 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         effectiveName = 'generate_image';
     }
 
-    // Universal Browser Session Injection. Prefer the dedicated panel session;
-    // sessionId is retained only as a backwards-compatible fallback for callers
-    // that predate browserSessionId.
+    // Universal Browser Session Injection. A dedicated panel session is an
+    // execution invariant, not an optional hint: the planner/LLM is allowed to
+    // describe browser actions, but it must never redirect them to a different
+    // Chromium page by inventing its own sessionId. This was the direct cause
+    // of a real run ending with `forbidden` while the visible panel was attached
+    // to `panel-browser`. Keep the old chat-session fallback for callers that
+    // predate browserSessionId.
     if (effectiveName === 'browser_run' || effectiveName === 'visual_qa' || effectiveName === 'codebase_navigator') {
-        if (!effectiveInput.sessionId && (contextBrowserSessionId || contextSessionId)) {
-            effectiveInput.sessionId = contextBrowserSessionId || contextSessionId;
+        if (contextBrowserSessionId) {
+            effectiveInput.sessionId = contextBrowserSessionId;
+        } else if (!effectiveInput.sessionId && contextSessionId) {
+            effectiveInput.sessionId = contextSessionId;
         }
     }
 
