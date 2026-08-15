@@ -724,6 +724,13 @@ export function plannedArgsIssue(toolName: string, args: any): string | null {
         // The registry can be mid-initialisation in isolated tests; specific
         // deterministic checks below still run and the executor remains safe.
     }
+    if (toolName === 'browser_run') {
+        const instruction = String(args?.instructionText || '').trim();
+        const actions = Array.isArray(args?.actions) ? args.actions.filter(Boolean) : [];
+        if (!instruction && actions.length === 0) {
+            return 'browser_run يحتاج instructionText أو actions غير فارغة؛ لم تُحدّد الخطة هدفاً أو إجراءً قابلاً للتنفيذ، لذلك أُوقفت قبل فتح المتصفح.';
+        }
+    }
     if (toolName === 'scaffold_project') {
         const structure = args?.structure;
         if (!structure || typeof structure !== 'object' || Array.isArray(structure) || Object.keys(structure).length === 0) {
@@ -877,6 +884,20 @@ export function adaptPlannedArgs(toolName: string, args: any): any {
  */
 export function adaptPlannedArgsFromDescription(toolName: string, args: any, description: string): any {
     let out = adaptPlannedArgs(toolName, args);
+    // A phase task often carries the browser intent in its human-readable
+    // description while the model leaves `args` empty.  BrowserRunTool rightly
+    // rejects a direct empty call; the plan adapter is the safe upstream place
+    // to carry the already-declared task into its executable contract.  Do not
+    // invent navigation or actions, and keep genuinely empty tasks invalid.
+    if (toolName === 'browser_run') {
+        const instruction = String(out?.instructionText || '').trim();
+        const actions = Array.isArray(out?.actions) ? out.actions.filter(Boolean) : [];
+        const taskDescription = String(description || '').trim();
+        const genericDescription = /^(?:task\s+\d+|execute task)$/i.test(taskDescription);
+        if (!instruction && actions.length === 0 && taskDescription && !genericDescription) {
+            out.instructionText = taskDescription;
+        }
+    }
     try {
         const { tools } = require('../../modules/tools/registry');
         const definition = (tools || []).find((candidate: any) => candidate?.name === toolName);

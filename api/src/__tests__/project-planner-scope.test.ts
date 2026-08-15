@@ -1,4 +1,5 @@
 import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerTool';
+import { adaptPlannedArgsFromDescription, plannedArgsIssue } from '../core/orchestrator/plan-tools';
 
 describe('ProjectPlannerTool scope coverage gate', () => {
     const specification = `
@@ -116,6 +117,18 @@ OBSERVE JOE — DO NOT TAKE OVER
         expect(assessment.ok).toBe(true);
         expect(assessment.coveredTargets).toBe(6);
         expect(assessment.missingTargetNames).toEqual([]);
+    });
+
+    it('repairs a described browser task upstream but rejects a truly empty browser contract', () => {
+        const adapted = adaptPlannedArgsFromDescription(
+            'browser_run',
+            { sessionId: 'panel-test' },
+            'Open the locally built application in the visible browser and inspect the main flow',
+        );
+
+        expect(adapted.instructionText).toContain('Open the locally built application');
+        expect(plannedArgsIssue('browser_run', adapted)).toBeNull();
+        expect(plannedArgsIssue('browser_run', { sessionId: 'panel-test' })).toMatch(/instructionText|actions/);
     });
 
     it('accepts a proportionate plan with implementation artifacts and requirement coverage', () => {
