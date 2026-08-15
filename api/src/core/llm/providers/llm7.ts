@@ -58,6 +58,58 @@ export class LLM7Provider {
     private blocked = new Set<string>(loadBlockedModels());
     private cooldownUntil = 0; // set when the gateway returns 429 (global rate limit)
 
+    /**
+     * LLM7's anonymous gateway rate-limits concurrent chat requests per client.
+     * Joe can have several internal phases in flight after a tool completes, so
+     * a per-instance lock is not enough: all provider instances in this process
+     * must share the same FIFO gate.  The gate is deliberately around only the
+     * completion request, not model discovery, and queued callers honour their
+     * own AbortSignal instead of creating stale work after the router deadline.
+     */
+    private static gatewayTail: Promise<void> = Promise.resolve();
+
+    private static async withGatewayTurn<T>(signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
+        let release!: () => void;
+        const turn = new Promise<void>(resolve => { release = resolve; });
+        const previous = LLM7Provider.gatewayTail;
+        LLM7Provider.gatewayTail = previous.then(() => turn, () => turn);
+
+        let abortHandler: (() => void) | undefined;
+        const aborted = signal
+            ? new Promise<never>((_, reject) => {
+                abortHandler = () => reject(signal.reason || new Error('Request was aborted'));
+                if (signal.aborted) abortHandler();
+                else signal.addEventListener('abort', abortHandler, { once: true });
+            })
+            : undefined;
+
+        try {
+            await (aborted ? Promise.race([previous, aborted]) : previous);
+        } catch (error) {
+            if (signal?.aborted) {
+                // Keep the FIFO chain intact, but do not start work for a caller
+                // whose router deadline has already expired.
+                void previous.then(release, release);
+            } else {
+                release();
+            }
+            throw error;
+        } finally {
+            if (signal && abortHandler) signal.removeEventListener('abort', abortHandler);
+        }
+
+        if (signal?.aborted) {
+            release();
+            throw signal.reason || new Error('Request was aborted');
+        }
+
+        try {
+            return await work();
+        } finally {
+            release();
+        }
+    }
+
     constructor() {
         this.apiKey = (process.env.LLM7_API_KEY || 'unused').trim() || 'unused';
         this.client = new OpenAI({ apiKey: this.apiKey, baseURL: LLM7_BASE_URL });
@@ -164,9 +216,11 @@ export class LLM7Provider {
         };
         for (const m of candidates) {
             try {
-                const completion = await (this.client.chat.completions.create as any)(
-                    body(m),
-                    { timeout: timeoutMs, signal: options?.signal }
+                const completion = await LLM7Provider.withGatewayTurn(options?.signal, () =>
+                    (this.client.chat.completions.create as any)(
+                        body(m),
+                        { timeout: timeoutMs, signal: options?.signal }
+                    )
                 );
                 const message = completion.choices[0]?.message;
                 if (message?.tool_calls && message.tool_calls.length > 0) return JSON.stringify({ type: 'tool_calls', tool_calls: message.tool_calls });

@@ -57,6 +57,30 @@ describe('LLM7Provider resilience', () => {
         );
     });
 
+    it('serializes concurrent chat completions across provider instances', async () => {
+        let resolveFirst!: (value: any) => void;
+        const firstCompletion = new Promise<any>(resolve => {
+            resolveFirst = resolve;
+        });
+        mockCreate.mockImplementationOnce(() => firstCompletion);
+        const { LLM7Provider } = await import('../core/llm/providers/llm7');
+        const firstProvider = new LLM7Provider();
+        const secondProvider = new LLM7Provider();
+
+        const first = firstProvider.chatComplete([{ role: 'user', content: 'first' }]);
+        await new Promise(resolve => setImmediate(resolve));
+        const second = secondProvider.chatComplete([{ role: 'user', content: 'second' }]);
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(mockCreate).toHaveBeenCalledTimes(1);
+        // Resolve the first gateway call explicitly; only then may the queued
+        // second call reach the OpenAI-compatible gateway.
+        resolveFirst({ choices: [{ message: { content: 'first result' } }] });
+        await expect(first).resolves.toBe('first result');
+        await expect(second).resolves.toBe('planned');
+        expect(mockCreate).toHaveBeenCalledTimes(2);
+    });
+
     it('forwards bounded timeout, abort signal, and completion budget to the gateway', async () => {
         const { LLM7Provider } = await import('../core/llm/providers/llm7');
         const provider = new LLM7Provider();

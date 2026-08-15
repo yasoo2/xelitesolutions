@@ -136,7 +136,7 @@ describe('internal calls never wait the full local window', () => {
         const src = read('core', 'llm', 'intelligent-router.ts');
         const local = src.indexOf("p.name === 'Local (Auto)'", src.indexOf('for (const p of orderedProviders)'));
         const leash = src.indexOf('timeoutValue = Math.min(timeoutValue, internalLeashMs(');
-        const keyless = src.indexOf("p.name === 'LLM7 (Keyless)'", local);
+        const keyless = src.indexOf("if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)')", local);
         expect(local).toBeGreaterThan(0);
         expect(leash).toBeGreaterThan(local);
         expect(leash).toBeLessThan(keyless);
