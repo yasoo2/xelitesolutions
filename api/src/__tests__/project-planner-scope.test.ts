@@ -202,6 +202,32 @@ OBSERVE JOE — DO NOT TAKE OVER
         expect(shaped.referenceProjects[0].candidateChecks).toHaveLength(1);
     });
 
+    it('unwraps a persisted evidence envelope before stack inference', () => {
+        const reference = {
+            root: '/tmp/joe-reference-workspace/reference-app',
+            projectKinds: ['node'],
+            manifests: [{ path: '/tmp/joe-reference-workspace/reference-app/package.json', kind: 'package.json' }],
+            git: { isRepository: true, branch: 'main' },
+            likelyEntrypoints: [],
+            candidateChecks: [],
+        };
+        const wrapped = {
+            output: {
+                evidence: {
+                    mode: 'greenfield',
+                    workspaceRoot: '/tmp/joe-reference-workspace',
+                    referenceProjects: [reference],
+                },
+            },
+        };
+
+        expect(planner.normaliseEvidence(wrapped)).toMatchObject({
+            mode: 'greenfield',
+            referenceProjects: [reference],
+        });
+        expect(planner.hasEvidenceBackedStack(planner.normaliseEvidence(wrapped))).toBe(true);
+    });
+
     it('does not infer a stack from an untyped directory without a manifest', () => {
         expect(planner.hasEvidenceBackedStack({
             mode: 'greenfield',

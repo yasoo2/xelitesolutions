@@ -48,7 +48,12 @@ export class ProjectPlannerTool implements ToolDefinition {
     mockSupported = false;
 
     async execute(input: { projectDescription: string; analysis?: any; evidence?: EngineeringEvidence }, context?: any) {
-        const { projectDescription, analysis, evidence } = input || ({} as any);
+        const { projectDescription, analysis } = input || ({} as any);
+        // Tool calls may cross a JSON wrapper when they are routed through a
+        // pipeline or persisted/replayed by the orchestrator. Accept only the
+        // known evidence envelopes, while keeping the planner's internal shape
+        // stable and preserving the evidence-first policy.
+        const evidence = this.normaliseEvidence((input || ({} as any)).evidence);
         const logs: string[] = [];
         // A missing required argument is a QUESTION, not a crash. The registry
         // audit called every read-only tool with {} and six of them threw a raw
@@ -147,6 +152,12 @@ export class ProjectPlannerTool implements ToolDefinition {
              */
             const hasExplicitStack = this.hasExplicitStackConstraint(projectDescription);
             const hasEvidenceBackedStack = this.hasEvidenceBackedStack(evidence);
+            const referenceProjects = evidence?.referenceProjects || [];
+            const typedReferenceProjects = referenceProjects.filter(project =>
+                project.projectKinds.some(kind => kind === 'node' || kind === 'python' || kind === 'go')
+                && project.manifests.some(manifest => Boolean(String(manifest.path || '').trim()))
+            );
+            logs.push(`[plan] stack evidence mode=${evidence?.mode || 'missing'} references=${referenceProjects.length} typedWithManifest=${typedReferenceProjects.length} explicit=${hasExplicitStack} allowed=${hasEvidenceBackedStack}`);
             const workspaceRoot = evidence?.workspaceRoot || evidence?.selectedProject?.root || '';
             const evidencedPaths = [
                 ...(evidence?.selectedProject?.manifests || []).map(item => item.path),
@@ -446,6 +457,43 @@ export class ProjectPlannerTool implements ToolDefinition {
                 logs
             };
         }
+    }
+
+    /**
+     * Recover engineering evidence from the direct tool contract or one of the
+     * wrappers used by pipeline/replay boundaries. Do not infer evidence from
+     * arbitrary objects: a wrapper is accepted only when it contains the
+     * discovery-shaped fields used by the planner.
+     */
+    private normaliseEvidence(raw: unknown): EngineeringEvidence | undefined {
+        const parse = (value: unknown): any => {
+            if (typeof value !== 'string') return value;
+            try { return JSON.parse(value); } catch { return undefined; }
+        };
+        const root = parse(raw) as any;
+        if (!root || typeof root !== 'object') return undefined;
+        const candidates = [
+            root,
+            root.evidence,
+            root.output?.evidence,
+            root.discovery,
+            root.discovery?.evidence,
+        ].map(parse).filter((value: any) => value && typeof value === 'object');
+        const base = candidates.find((value: any) =>
+            typeof value.mode === 'string'
+            || typeof value.workspaceRoot === 'string'
+            || Array.isArray(value.referenceProjects)
+            || Array.isArray(value.facts)
+            || Array.isArray(value.blockers)
+        );
+        if (!base) return undefined;
+        const referenceProjects = candidates.find((value: any) => Array.isArray(value.referenceProjects))?.referenceProjects;
+        const selectedProject = candidates.find((value: any) => value.selectedProject)?.selectedProject;
+        return {
+            ...base,
+            ...(referenceProjects ? { referenceProjects } : {}),
+            ...(selectedProject && !base.selectedProject ? { selectedProject } : {}),
+        } as EngineeringEvidence;
     }
 
     /**
