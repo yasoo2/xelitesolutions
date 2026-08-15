@@ -4,6 +4,30 @@ import { executeTool } from '../../services/ToolService';
 import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, adaptPlannedArgsFromDescription, plannedArgsIssue } from '../../../core/orchestrator/plan-tools';
 
 /**
+ * Add only trusted project evidence to a phase-level project_run call.
+ * An accepted plan's projectName is an explicit selection signal; it is not a
+ * filesystem guess. ProjectRunTool remains responsible for matching it against
+ * runnable candidates and refusing when the evidence is insufficient.
+ */
+export function applyPhaseExecutionEvidence(
+    toolName: string,
+    planned: Record<string, any>,
+    projectContext?: Record<string, any>,
+    logs?: string[],
+): Record<string, any> {
+    if (toolName !== 'project_run'
+        || String(planned.cwd || '').trim()
+        || String(planned.projectQuery || '').trim()) return planned;
+
+    const projectName = String(projectContext?.projectName || '').trim();
+    if (projectName && !/^unknown(?: project)?$/iu.test(projectName)) {
+        planned.projectQuery = `run the project named "${projectName}"`;
+        logs?.push(`[PhaseExecutor] project_run: using accepted plan project evidence (${projectName})`);
+    }
+    return planned;
+}
+
+/**
  * PhaseExecutorTool - Executes a single phase from a project plan.
  *
  * This is the bridge between planning and doing. It must execute with a trusted
@@ -169,6 +193,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                     // generator with an empty semantic requirement.
                     if (!String(planned.description || '').trim()) planned.description = taskDesc;
                 }
+
+                applyPhaseExecutionEvidence(toolName, planned, projectContext, logs);
 
                 const adaptedPlanned = adaptPlannedArgs(toolName, planned);
                 const toolArgs = adaptPlannedArgsFromDescription(toolName, adaptedPlanned, taskDesc);

@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { deterministicRescueAllowed } from '../modules/tools/definitions/ProjectPipelineTool';
+import { applyPhaseExecutionEvidence } from '../modules/tools/definitions/PhaseExecutorTool';
 
 describe('routing — full-project requests reach the pipeline, offline and deterministic', () => {
     const plan = (goal: string) =>
@@ -155,6 +156,26 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(orch).toMatch(/'project_pipeline'/);
         // And it gets the RUN budget — a multi-phase build is not one node's slice.
         expect(orch).toMatch(/node\.tool === 'project_pipeline' \? RUN_DEADLINE_MS : NODE_DEADLINE_MS/);
+    });
+
+    test('phase project_run uses accepted project evidence without overriding explicit arguments', () => {
+        const logs: string[] = [];
+        const planned: Record<string, any> = {};
+        applyPhaseExecutionEvidence('project_run', planned, { projectName: 'NEXUS Console' }, logs);
+        expect(planned.projectQuery).toBe('run the project named "NEXUS Console"');
+        expect(logs.join('\\n')).toMatch(/accepted plan project evidence/i);
+
+        const withCwd: Record<string, any> = { cwd: '/workspace/nexus' };
+        applyPhaseExecutionEvidence('project_run', withCwd, { projectName: 'Other' });
+        expect(withCwd).toEqual({ cwd: '/workspace/nexus' });
+
+        const withQuery: Record<string, any> = { projectQuery: 'run the project named "NEXUS"' };
+        applyPhaseExecutionEvidence('project_run', withQuery, { projectName: 'Other' });
+        expect(withQuery.projectQuery).toBe('run the project named "NEXUS"');
+
+        const noEvidence: Record<string, any> = {};
+        applyPhaseExecutionEvidence('project_run', noEvidence, { projectName: 'Unknown project' });
+        expect(noEvidence).toEqual({});
     });
 
     test('the executor chain it relies on really verifies: build check after code phases', () => {
