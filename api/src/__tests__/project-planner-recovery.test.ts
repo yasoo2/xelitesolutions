@@ -265,6 +265,79 @@ Build the complete system with locally verifiable implementation artifacts.
         expect(result.logs.join('\\n')).toMatch(/scaffold contract recovery completed/i);
     });
 
+    it('recovers a docs-only scaffold into a real implementation scaffold', async () => {
+        mockCallLLM
+            .mockResolvedValueOnce(JSON.stringify({
+                projectName: 'Documentation-only scaffold',
+                projectVibe: 'Invalid implementation plan',
+                totalPhases: 1,
+                estimatedDuration: '5 minutes',
+                dependencies: {},
+                phases: [{
+                    phaseNumber: 1,
+                    name: 'Describe the application',
+                    description: 'Record the requested application in planning notes.',
+                    tasks: [{
+                        task: 'Create planning notes',
+                        tool: 'scaffold_project',
+                        args: {
+                            structure: {
+                                'README.md': '# App',
+                                'challenge.txt': 'Build the app.',
+                            },
+                        },
+                        priority: 'high',
+                        realisticMinutes: 1,
+                    }],
+                    verificationTask: { task: 'Read the notes', tool: 'read_file', args: { path: 'README.md' } },
+                    deliverables: ['README.md', 'challenge.txt'],
+                    estimatedTime: '5 minutes',
+                    requirementsCovered: ['the requested application'],
+                }],
+            }))
+            .mockResolvedValueOnce(JSON.stringify({
+                projectName: 'Recovered real scaffold',
+                projectVibe: 'Evidence-backed implementation',
+                totalPhases: 1,
+                estimatedDuration: '5 minutes',
+                dependencies: {},
+                phases: [{
+                    phaseNumber: 1,
+                    name: 'Create the executable seed',
+                    description: 'Create source and configuration files for the explicitly selected TypeScript stack.',
+                    tasks: [{
+                        task: 'Create the executable seed',
+                        tool: 'scaffold_project',
+                        args: {
+                            structure: {
+                                'package.json': '{"private":true,"scripts":{"test":"node test/app.test.js"}}',
+                                'src/index.ts': 'export const app = true;',
+                                'test/app.test.js': 'const assert = require("node:assert"); assert.equal(true, true);',
+                            },
+                        },
+                        priority: 'high',
+                        realisticMinutes: 1,
+                    }],
+                    verificationTask: { task: 'Verify the source seed', tool: 'read_file', args: { path: 'src/index.ts' } },
+                    deliverables: ['package.json', 'src/index.ts', 'test/app.test.js'],
+                    estimatedTime: '5 minutes',
+                    requirementsCovered: ['the requested application'],
+                }],
+            }));
+
+        const result: any = await new ProjectPlannerTool().execute({
+            projectDescription: 'Build a TypeScript application using the explicitly selected Vite stack and verify it locally.',
+        });
+
+        expect(mockCallLLM).toHaveBeenCalledTimes(2);
+        expect(mockCallLLM.mock.calls[1][0]).toMatch(/SCAFFOLD RECOVERY CONTRACT|structure.*non-empty/i);
+        expect(mockCallLLM.mock.calls[1][0]).toMatch(/README|Markdown\/TXT|implementation artifact/i);
+        expect(result.ok).toBe(true);
+        expect(result.output.fallback).not.toBe(true);
+        expect(result.output.phases[0].tasks[0].args.structure['src/index.ts']).toBeDefined();
+        expect(result.logs.join('\\n')).toMatch(/contract recovery completed/i);
+    });
+
     it('keeps the honest blocker when both the initial and recovery plans are unusable', async () => {
         mockCallLLM
             .mockResolvedValueOnce(JSON.stringify({ projectName: 'Empty', phases: [] }))

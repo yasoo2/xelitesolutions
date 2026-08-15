@@ -708,6 +708,9 @@ Return ONLY one JSON object with projectName, projectVibe, totalPhases, estimate
 Return at least ${scope.minPhases} phases when the requirement register is large, and every phase must contain a non-empty tasks array, a concrete deliverable that will exist on disk, and requirementsCovered.
 Use only real tools from the executable catalogue below. At least one task in an implementation request must create or modify a non-document source/config/test artifact. Do not use documentation as a substitute for implementation. File tasks must have safe workspace-relative paths and complete arguments. Do not claim that any task has already run.
 
+SCAFFOLD RECOVERY CONTRACT:
+If you use scaffold_project, args.structure MUST be a non-empty JSON object. Its keys must be safe workspace-relative paths, and its values must be file contents or null only for empty directories. The structure must include at least one real implementation artifact such as a source file (.ts, .tsx, .js, .jsx, .py, .go), an executable test, or a configuration file such as package.json/tsconfig.json that belongs to the requested stack. A structure containing only README.md, Markdown/TXT notes, or null directories is invalid and will be rejected. For example, adapt this pattern to the evidence and requirements (do not copy the app or invent a stack): {"package.json":"{\\"private\\":true}","src/index.ts":"export const app = true;","test/app.test.ts":"import { app } from \\\"../src/index\\\"; test(\\\"app\\\", () => expect(app).toBe(true));"}. If the request is greenfield without an explicit or evidence-backed stack, do not use scaffold_project; plan exact file-level work or stop honestly. Never satisfy a recovery by adding documentation alone.
+
 EXECUTABLE TOOL CATALOGUE AND CONTRACT:
 ${plannerToolPrompt()}
 
