@@ -289,7 +289,10 @@ export function normaliseImproveResult(
         ['improved', 'no_change_possible', 'no_measured_gain', 'build_failed', 'target_reached']
             .includes(source.stoppedBecause as ImproveRound['verdict'])
             ? source.stoppedBecause as ImproveRound['verdict']
-            : (rounds.at(-1)?.verdict || 'no_change_possible');
+            // `Array.at` is ES2022; this package targets ES2020, so the call
+            // type-checked nowhere and would have been a silent runtime risk on
+            // any older engine. Same meaning, no library assumption.
+            : (rounds[rounds.length - 1]?.verdict || 'no_change_possible');
     return { rounds, first, final, fixed, stoppedBecause };
 }
 

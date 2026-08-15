@@ -222,7 +222,10 @@ export class LLM7Provider {
                 throw options.signal.reason || new Error('Request was aborted');
             }
             try {
-                const completion = await LLM7Provider.withGatewayTurn(options?.signal, () =>
+                // The gateway client is reached through `as any`, and an `any`
+                // argument infers the generic as `unknown` — which made every
+                // read off the completion a type error. Pinned explicitly.
+                const completion = await LLM7Provider.withGatewayTurn<any>(options?.signal, () =>
                     (this.client.chat.completions.create as any)(
                         body(m),
                         { timeout: timeoutMs, signal: options?.signal }

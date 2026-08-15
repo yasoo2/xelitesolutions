@@ -235,16 +235,20 @@ export class ProjectPlannerTool implements ToolDefinition {
             // recoverable planner error when the model can supply the missing
             // evidence-backed structure. Give only scaffold-contract blockers one
             // bounded repair turn; every other blocker keeps the honest-stop path.
-            const scaffoldContractBlocker = clean.blocker
-                && /^(?:scaffold_project_contract_invalid|implicit_scaffold_requires_explicit_stack)$/.test(String(clean.blocker.code || ''));
-            if (scaffoldContractBlocker) {
+            // Held in its own const so the narrowing survives into the block —
+            // reading `clean.blocker` again there is what the compiler could not
+            // prove was defined.
+            const blocker = clean.blocker;
+            const scaffoldContractBlocker = !!blocker
+                && /^(?:scaffold_project_contract_invalid|implicit_scaffold_requires_explicit_stack)$/.test(String(blocker.code || ''));
+            if (blocker && scaffoldContractBlocker) {
                 logs.push('[plan] scaffold contract blocker detected; starting one bounded contract recovery.');
                 try {
                     const recoveryPrompt = this.createRecoveryPlanningPrompt(
                         projectDescription,
                         analysis,
                         this.planningEvidence(evidence),
-                        `The parsed plan was rejected by the scaffold contract: ${clean.blocker.code}: ${clean.blocker.message}. Remedy: ${clean.blocker.remedy || 'provide a concrete non-empty structure in scaffold_project args, or use an evidence-backed implementation plan without implicit scaffolding.'} Do not invent a fixed template locally. Re-plan from the request and evidence; if a new project is required, choose a stack only when the request or discovery evidence supports it, and give scaffold_project a concrete non-empty structure. Otherwise use real file and shell tools to implement the requested artifacts.`
+                        `The parsed plan was rejected by the scaffold contract: ${blocker.code}: ${blocker.message}. Remedy: ${blocker.remedy || 'provide a concrete non-empty structure in scaffold_project args, or use an evidence-backed implementation plan without implicit scaffolding.'} Do not invent a fixed template locally. Re-plan from the request and evidence; if a new project is required, choose a stack only when the request or discovery evidence supports it, and give scaffold_project a concrete non-empty structure. Otherwise use real file and shell tools to implement the requested artifacts.`
                     );
                     const recoveryResponse = await callLLM(recoveryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Repair the rejected plan using the evidence and exact tool contracts. Return only valid JSON; never return prose or Markdown fences.' }
