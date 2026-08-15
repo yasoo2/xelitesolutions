@@ -1656,6 +1656,9 @@ export async function routeToModel(
                         ? Math.min(120000, requestedTimeout)
                         : undefined,
                     signal,
+                    maxCompletionTokens: Number(context?.maxCompletionTokens) > 0
+                        ? Math.min(12000, Number(context.maxCompletionTokens))
+                        : undefined,
                 });
                 if (!isUsableAnswer(res)) throw new Error('LLM7 answered with nothing usable');
                 return res;

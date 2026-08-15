@@ -115,7 +115,7 @@ export class LLM7Provider {
         messages: any[],
         model?: string,
         tools?: any[],
-        options?: { timeoutMs?: number; signal?: AbortSignal }
+        options?: { timeoutMs?: number; signal?: AbortSignal; maxCompletionTokens?: number }
     ): Promise<string> {
         const candidates = await this.buildCandidates(model);
         const timeoutMs = Number(options?.timeoutMs) > 0
@@ -126,7 +126,10 @@ export class LLM7Provider {
             const b: any = {
                 model: m,
                 messages: messages.map(msg => ({ role: msg.role, content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content) })),
-                temperature: 0.7, max_tokens: 4096,
+                temperature: 0.7,
+                max_tokens: Number(options?.maxCompletionTokens) > 0
+                    ? Math.min(12000, Math.max(256, Math.floor(Number(options?.maxCompletionTokens))))
+                    : 4096,
             };
             if (tools && tools.length > 0) {
                 b.tools = tools.map((t: any) => ({ type: 'function', function: { name: t.name, description: t.description || '', parameters: t.inputSchema || { type: 'object', properties: {} } } }));
