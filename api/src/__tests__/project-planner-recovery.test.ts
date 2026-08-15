@@ -258,6 +258,7 @@ Build the complete system with locally verifiable implementation artifacts.
 
         expect(mockCallLLM).toHaveBeenCalledTimes(2);
         expect(mockCallLLM.mock.calls[1][0]).toMatch(/scaffold contract|structure|non-empty/i);
+        expect(mockCallLLM.mock.calls[1][0]).toMatch(/args\.structure.*non-empty|safe workspace-relative/i);
         expect(result.ok).toBe(true);
         expect(result.output.fallback).not.toBe(true);
         expect(result.output.phases).toHaveLength(1);

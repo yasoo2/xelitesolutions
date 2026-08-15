@@ -59,7 +59,7 @@ function registered(): Set<string> {
  * These are the tools that actually appear in a build.
  */
 export const PLANNER_TOOL_CATALOGUE: Array<{ tool: string; purpose: string }> = [
-    { tool: 'scaffold_project', purpose: 'create a new project on disk (folders, package.json, entry files)' },
+    { tool: 'scaffold_project', purpose: 'create a new project on disk; REQUIRED args.structure is a non-empty object mapping safe workspace-relative paths to file contents (use null only for empty directories), for example {"package.json":"...","src/index.ts":"..."}; never pass an empty object, absolute path, drive path, or .. segment' },
     { tool: 'scaffold_full_stack', purpose: 'create a full-stack project (frontend + backend together)' },
     { tool: 'react_project', purpose: 'build a real React + Vite application' },
     { tool: 'api_project', purpose: 'build a real Express + SQLite backend with working endpoints' },
@@ -1013,6 +1013,8 @@ export function plannerToolPrompt(): string {
         'name the tool. If a step needs no tool, use "manual".',
         '',
         lines,
+        '',
+        'Contract rules: every tool must receive the exact args required by its implementation. For scaffold_project, args.structure must be a non-empty object whose keys are safe workspace-relative file or directory paths and whose values are file contents or null for directories; do not use scaffold_project when the request has no explicit or evidence-backed stack — use exact file-level tools or stop honestly.',
         '',
         'This system writes software. It cannot open tickets, book meetings, hire people,',
         'or use Jira/Trello/Slack/Figma. Do not plan steps that need a human organisation.',
