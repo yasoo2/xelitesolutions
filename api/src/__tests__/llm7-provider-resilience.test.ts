@@ -24,6 +24,37 @@ describe('LLM7Provider resilience', () => {
 
     afterAll(() => {
         global.fetch = originalFetch;
+        delete process.env.LLM7_MODELS_TIMEOUT_MS;
+    });
+
+    it('bounds a hanging model-discovery request and falls back to preferred models', async () => {
+        process.env.LLM7_MODELS_TIMEOUT_MS = '50';
+        (global as any).fetch = jest.fn((_url: string, init: any) => new Promise((_resolve, reject) => {
+            const signal = init?.signal as AbortSignal | undefined;
+            if (signal?.aborted) {
+                reject(new Error('aborted'));
+                return;
+            }
+            signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        }));
+        const { LLM7Provider } = await import('../core/llm/providers/llm7');
+        const provider = new LLM7Provider();
+
+        await expect(provider.chatComplete(
+            [{ role: 'user', content: 'plan a system' }],
+            undefined,
+            undefined,
+            { timeoutMs: 5000 },
+        )).resolves.toBe('planned');
+
+        expect(mockCreate).toHaveBeenCalledWith(
+            expect.objectContaining({ model: 'gpt-4.1-mini' }),
+            expect.objectContaining({ timeout: 5000 }),
+        );
+        expect((global as any).fetch).toHaveBeenCalledWith(
+            expect.stringMatching(/\/models$/),
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
     });
 
     it('forwards bounded timeout, abort signal, and completion budget to the gateway', async () => {

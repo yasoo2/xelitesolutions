@@ -79,11 +79,32 @@ export class LLM7Provider {
         return NON_CHAT_PATTERNS.some(p => low.includes(p));
     }
 
-    private async getAvailableModels(): Promise<string[]> {
+    private async getAvailableModels(timeoutMs = 8000, parentSignal?: AbortSignal): Promise<string[]> {
         const now = Date.now();
         if (this.discovered && (now - this.discoveredAt) < 600000) return this.discovered;
+
+        // Model discovery is part of the provider call, not an unbounded
+        // pre-flight request. Without this boundary a hanging /models endpoint
+        // bypasses both the router's Promise.race and OpenAI SDK timeout, which
+        // can freeze a large planning run before the first completion starts.
+        const configured = Number(process.env.LLM7_MODELS_TIMEOUT_MS);
+        const discoveryMs = Number.isFinite(configured) && configured > 0
+            ? Math.min(10000, Math.max(50, Math.floor(configured)))
+            : Math.min(10000, Math.max(50, Math.floor(Number(timeoutMs) > 0 ? timeoutMs : 8000)));
+        const controller = new AbortController();
+        const abortFromParent = () => controller.abort(parentSignal?.reason);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        if (parentSignal?.aborted) {
+            controller.abort(parentSignal.reason);
+        } else {
+            parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+        }
+        timer = setTimeout(() => controller.abort(new Error(`LLM7 model discovery exceeded ${discoveryMs}ms`)), discoveryMs);
         try {
-            const res = await fetch(`${LLM7_BASE_URL}/models`, { headers: { 'Authorization': `Bearer ${this.apiKey}` } } as any);
+            const res = await fetch(`${LLM7_BASE_URL}/models`, {
+                headers: { 'Authorization': `Bearer ${this.apiKey}` },
+                signal: controller.signal,
+            } as any);
             if (res.ok) {
                 const data: any = await res.json();
                 const ids: string[] = (data?.data || data?.models || [])
@@ -91,12 +112,16 @@ export class LLM7Provider {
                     .filter((x: any) => typeof x === 'string' && x.length > 0);
                 if (ids.length > 0) { this.discovered = ids; this.discoveredAt = now; return ids; }
             }
-        } catch { /* fall back */ }
+        } catch { /* fall back to the bounded preferred-model list */ }
+        finally {
+            if (timer) clearTimeout(timer);
+            parentSignal?.removeEventListener('abort', abortFromParent);
+        }
         return [];
     }
 
-    private async buildCandidates(forced?: string): Promise<string[]> {
-        const available = await this.getAvailableModels();
+    private async buildCandidates(forced?: string, timeoutMs = 8000, signal?: AbortSignal): Promise<string[]> {
+        const available = await this.getAvailableModels(timeoutMs, signal);
         const out: string[] = [];
         const ok = (m?: string) => !!m && !this.blocked.has(m) && !out.includes(m);
         const push = (m?: string) => { if (ok(m)) out.push(m as string); };
@@ -117,10 +142,10 @@ export class LLM7Provider {
         tools?: any[],
         options?: { timeoutMs?: number; signal?: AbortSignal; maxCompletionTokens?: number }
     ): Promise<string> {
-        const candidates = await this.buildCandidates(model);
         const timeoutMs = Number(options?.timeoutMs) > 0
             ? Math.min(120000, Math.max(1000, Math.floor(Number(options?.timeoutMs))))
             : 30000;
+        const candidates = await this.buildCandidates(model, timeoutMs, options?.signal);
         let lastErr: any = null;
         const body = (m: string): any => {
             const b: any = {
