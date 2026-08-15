@@ -96,6 +96,7 @@ export class ProjectRepairTool extends BaseTool {
         say(isAr ? '🔎 أعيد القياس على البناء الحالي…' : '🔎 Re-measuring the current build…');
         const before = await auditBuiltApp(auditDir, {
             timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
+            artifactRootDir: process.env.ARTIFACT_DIR || '/tmp/joe-artifacts',
             onProgress: (where: string) => {
                 if (where.startsWith('private')) {
                     const why = where.slice('private'.length).replace(/^:/, '').trim();
@@ -127,7 +128,11 @@ export class ProjectRepairTool extends BaseTool {
 
         let after = before;
         if (cycle.changed.length && cycle.built) {
-            after = await auditBuiltApp(auditDir, { timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID });
+            after = await auditBuiltApp(auditDir, {
+                timeoutMs: 30_000,
+                watchSessionId: PANEL_BROWSER_SID,
+                artifactRootDir: process.env.ARTIFACT_DIR || '/tmp/joe-artifacts',
+            });
             term(`repair: ${before.score} → ${after.score}/100 (${cycle.changed.length} file(s))`);
         } else if (cycle.reverted) {
             term('repair: reverted — the project is exactly as it was');

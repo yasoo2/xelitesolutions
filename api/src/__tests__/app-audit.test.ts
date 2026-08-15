@@ -55,6 +55,14 @@ describe('the wiring — every green build gets measured', () => {
     it('a missing dist is an honest skip', async () => {
         const { auditBuiltApp } = require('../core/quality/app-audit');
         const a = await auditBuiltApp('/nowhere/dist');
-        expect(a.skipped).toContain('no dist');
+        expect(a.skipped).toContain('no index.html');
+    });
+
+    it('keeps the shared /artifacts alias rooted at the artifact directory', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
+        expect(src).toContain('artifactRootDir?: string');
+        expect(src).toContain("process.env.ARTIFACT_DIR || distDir");
+        expect(src).toContain('const artifactRequest = /^\\/artifacts');
+        expect(src).toContain('const root = artifactRequest ? artifactRoot : path.resolve(distDir)');
     });
 });

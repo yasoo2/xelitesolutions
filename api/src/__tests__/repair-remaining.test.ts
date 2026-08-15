@@ -101,6 +101,12 @@ describe('and the repair itself is honest', () => {
         expect(src).not.toContain("const dist = path.join(dir, 'dist')");
     });
 
+    it('audits shared /artifacts assets from the real artifact root', () => {
+        const src = TOOL();
+        expect((src.match(/artifactRootDir:/g) || []).length).toBe(2);
+        expect(src).toContain("process.env.ARTIFACT_DIR || '/tmp/joe-artifacts'");
+    });
+
     it('waits for the panel, exactly as the builder does', () => {
         const src = TOOL();
         const focus = src.indexOf("panel_focus");

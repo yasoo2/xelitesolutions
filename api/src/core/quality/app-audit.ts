@@ -109,6 +109,13 @@ export async function auditBuiltApp(
          */
         serveUrl?: string;
         /**
+         * Static pages use root-absolute `/artifacts/...` URLs for shared assets,
+         * while the page being audited may live in `/artifacts/<page>/`. When the
+         * audit owns the temporary server, this is the filesystem root that must
+         * answer those shared-asset requests.
+         */
+        artifactRootDir?: string;
+        /**
          * The request forbade using the network. The audit still runs; it
          * simply never downloads anything to make itself possible.
          */
@@ -128,10 +135,18 @@ export async function auditBuiltApp(
      * server below exists only for a build that has no server of its own.
      */
     const givenUrl = String(opts?.serveUrl || '').trim();
+    const artifactRoot = path.resolve(String(opts?.artifactRootDir || process.env.ARTIFACT_DIR || distDir));
     const srv = http.createServer((req, res) => {
-        const rel = decodeURIComponent(String(req.url || '/').split('?')[0]).replace(/^\/+/, '') || 'index.html';
-        const file = path.join(distDir, rel);
-        if (!file.startsWith(distDir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
+        const rawPath = decodeURIComponent(String(req.url || '/').split('?')[0]);
+        const artifactRequest = /^\/artifacts(?:\/|$)/i.test(rawPath);
+        const rel = (artifactRequest
+            ? rawPath.replace(/^\/artifacts\/?/i, '')
+            : rawPath.replace(/^\/+/, '')) || 'index.html';
+        const root = artifactRequest ? artifactRoot : path.resolve(distDir);
+        const file = path.resolve(root, rel);
+        if ((file !== root && !file.startsWith(root + path.sep)) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+            res.writeHead(404); return res.end();
+        }
         const type = file.endsWith('.html') ? 'text/html; charset=utf-8' : file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.svg') ? 'image/svg+xml' : file.endsWith('.png') ? 'image/png' : 'application/octet-stream';
         res.writeHead(200, { 'content-type': type });
         res.end(fs.readFileSync(file));
