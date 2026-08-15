@@ -701,7 +701,9 @@ export default function Joe() {
                 await api.post('/run/start', {
                     text: messageText,
                     sessionId: targetSessionId,
-                    workspaceId: currentWorkspaceId
+                    workspaceId: currentWorkspaceId,
+                    // Keep browser_run on the same visible panel page that the user watches.
+                    browserSessionId: browserSessionId || undefined
                 });
             } else {
                 await SocketService.sendMessage(targetSessionId, messageText);
@@ -711,7 +713,7 @@ export default function Joe() {
         } finally {
             setIsLoading(false);
         }
-    }, [inputValue, isLoading, activeSessionId, activeSessionKind, workspaceId, ensuresWorkspace, loadAllSessions, setAgentSelected]);
+    }, [inputValue, isLoading, activeSessionId, activeSessionKind, workspaceId, browserSessionId, ensuresWorkspace, loadAllSessions, setAgentSelected]);
 
     const handleCreateSession = useCallback(async () => {
         await createSession({ kind: 'agent' });
