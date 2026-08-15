@@ -18,7 +18,7 @@
  * not measure, and if the repair made things worse the project is put back.
  */
 import fs from 'fs';
-import path from 'path';
+import { findActiveBuiltProject } from '../../../core/orchestrator/active-built-project';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcast, broadcastTerminalLine, broadcastThinkingDetail } from '../../../api/ws';
@@ -33,7 +33,8 @@ export class ProjectRepairTool extends BaseTool {
     inputSchema = {
         type: 'object' as const,
         properties: {
-            projectDir: { type: 'string' as const, description: 'Project folder. Defaults to this session\'s active project.' },
+            projectDir: { type: 'string' as const, description: 'Project folder. Defaults to this session\'s active built project.' },
+            auditDir: { type: 'string' as const, description: 'Optional built-output folder selected from workspace evidence.' },
             sessionId: { type: 'string' as const },
         },
     };
@@ -58,23 +59,19 @@ export class ProjectRepairTool extends BaseTool {
         const say = (line: string) => { try { broadcastThinkingDetail(sessionId, line); } catch { /* UI optional */ } };
 
         const projects: Record<string, any> = (global as any).joeProjects || {};
-        const dir = String(input?.projectDir || projects[sessionKey]?.dir || '').trim();
-        if (!dir || !fs.existsSync(dir)) {
+        const built = findActiveBuiltProject(sessionId, input?.projectDir);
+        const dir = built?.projectDir || String(input?.projectDir || projects[sessionKey]?.dir || '').trim();
+        const auditDir = built?.auditDir || String(input?.auditDir || '').trim();
+        if (!built || !dir || !fs.existsSync(dir) || !auditDir || !fs.existsSync(auditDir)) {
             return {
                 ok: false,
                 error: isAr
-                    ? 'لا مشروع مبنيّ في هذه الجلسة لأصلحه — ابنِ شيئاً أولاً.'
-                    : 'No built project in this session to repair — build something first.',
-                logs,
-            } as any;
-        }
-        const dist = path.join(dir, 'dist');
-        if (!fs.existsSync(path.join(dist, 'index.html'))) {
-            return {
-                ok: false,
-                error: isAr
-                    ? `المشروع موجود في ${dir} لكن لا يوجد dist/index.html — البناء لم يكتمل.`
-                    : `The project is at ${dir} but there is no dist/index.html — the build never finished.`,
+                    ? (dir
+                        ? `المشروع موجود في ${dir} لكن لم أعثر على index.html مبني قابل للتدقيق — البناء لم يكتمل.`
+                        : 'لا مشروع مبنيّ في هذه الجلسة لأصلحه — ابنِ شيئاً أولاً.')
+                    : (dir
+                        ? `The project is at ${dir} but no built index.html was found to audit — the build never finished.`
+                        : 'No built project in this session to repair — build something first.'),
                 logs,
             } as any;
         }
@@ -97,7 +94,7 @@ export class ProjectRepairTool extends BaseTool {
         } catch { /* the hub is optional */ }
 
         say(isAr ? '🔎 أعيد القياس على البناء الحالي…' : '🔎 Re-measuring the current build…');
-        const before = await auditBuiltApp(dist, {
+        const before = await auditBuiltApp(auditDir, {
             timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
             onProgress: (where: string) => {
                 if (where.startsWith('private')) {
@@ -130,7 +127,7 @@ export class ProjectRepairTool extends BaseTool {
 
         let after = before;
         if (cycle.changed.length && cycle.built) {
-            after = await auditBuiltApp(dist, { timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID });
+            after = await auditBuiltApp(auditDir, { timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID });
             term(`repair: ${before.score} → ${after.score}/100 (${cycle.changed.length} file(s))`);
         } else if (cycle.reverted) {
             term('repair: reverted — the project is exactly as it was');

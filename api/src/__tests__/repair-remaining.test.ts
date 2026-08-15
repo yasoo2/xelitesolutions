@@ -94,6 +94,13 @@ describe('and the repair itself is honest', () => {
         expect(src).toMatch(/لا شيء لأصلحه/);
     });
 
+    it('accepts the evidence-selected static root instead of requiring dist/index.html', () => {
+        const src = TOOL();
+        expect(src).toContain("findActiveBuiltProject(sessionId, input?.projectDir)");
+        expect(src).toContain('auditBuiltApp(auditDir');
+        expect(src).not.toContain("const dist = path.join(dir, 'dist')");
+    });
+
     it('waits for the panel, exactly as the builder does', () => {
         const src = TOOL();
         const focus = src.indexOf("panel_focus");

@@ -117,7 +117,7 @@ export async function auditBuiltApp(
 ): Promise<AppAudit> {
     const timeoutMs = opts?.timeoutMs ?? 30_000;
     if (!fs.existsSync(path.join(distDir, 'index.html'))) {
-        return { skipped: 'no dist/index.html to audit', score: 0, findings: [] };
+        return { skipped: 'no index.html to audit', score: 0, findings: [] };
     }
     let chromium: any;
     try { chromium = require('playwright').chromium; }

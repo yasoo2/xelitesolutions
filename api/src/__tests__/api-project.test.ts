@@ -58,6 +58,37 @@ describe('quality review routing uses the active built project', () => {
     });
 });
 
+describe('quality review routing follows the active split static page', () => {
+    const sessionId = 'quality-page-t';
+    let artifactDir: string;
+    const previousArtifactDir = process.env.ARTIFACT_DIR;
+
+    beforeAll(() => {
+        artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-quality-page-'));
+        process.env.ARTIFACT_DIR = artifactDir;
+        const splitDir = path.join(artifactDir, `joe-${sessionId}`);
+        fs.mkdirSync(splitDir, { recursive: true });
+        fs.writeFileSync(path.join(splitDir, 'index.html'), '<!doctype html><html><body>static page</body></html>');
+        fs.writeFileSync(path.join(splitDir, 'styles.css'), 'body { color: #111; }');
+        fs.writeFileSync(path.join(splitDir, 'script.js'), 'document.body.dataset.ready = "yes";');
+        (global as any).joePages = {
+            ...((global as any).joePages || {}),
+            [sessionId]: { filename: `joe-${sessionId}.html`, updatedAt: Date.now(), multiFile: true },
+        };
+    });
+
+    afterAll(() => {
+        if (previousArtifactDir === undefined) delete process.env.ARTIFACT_DIR;
+        else process.env.ARTIFACT_DIR = previousArtifactDir;
+        delete (global as any).joePages?.[sessionId];
+        fs.rmSync(artifactDir, { recursive: true, force: true });
+    });
+
+    it('«راجع تقرير الجودة والنتيجة النهائية» → project_repair for a root static artifact', async () => {
+        expect(await routeInSession('راجع تقرير الجودة والنتيجة النهائية', sessionId)).toBe('project_repair');
+    });
+});
+
 describe('api_project is registered and reachable', () => {
     it('the registry carries it; the orchestrator runs it deterministically', () => {
         const { tools } = require('../modules/tools/registry');

@@ -4,8 +4,7 @@ import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { normalizeIntentText, stripArabicDiacritics } from './promptNormalizer';
 import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
-import fs from 'fs';
-import path from 'path';
+import { findActiveBuiltProject } from './active-built-project';
 
 export interface ExecutionStep {
     id: string;
@@ -1260,11 +1259,8 @@ Rules:
             const reviewVerb = /(راجع|مراجع(?:ة|ه)|افحص|فحص|دقّ?ق|تدقيق|اختبر|اختبار|review|audit|inspect|check|verify)/i.test(probe);
             const qualityTarget = /(جودة|الجودة|تقرير|النتيجة|النتائج|المخرجات|التسليم|quality|report|result|output|deliverable)/i.test(probe);
             const explicitQualityReview = /(تقرير\s*الجودة|النتيجة\s*النهائية|quality\s*report|final\s+(?:result|output|deliverable))/i.test(probe);
-            const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
-            const activeProject = ((global as any).joeProjects || {})[sessionKey];
-            const projectDir = String(activeProject?.dir || '').trim();
-            const hasBuiltIndex = !!projectDir && fs.existsSync(path.join(projectDir, 'dist', 'index.html'));
-            if ((explicitQualityReview || (reviewVerb && qualityTarget)) && hasBuiltIndex) {
+            const built = findActiveBuiltProject(context?.sessionId);
+            if ((explicitQualityReview || (reviewVerb && qualityTarget)) && built) {
                 return {
                     id: `quality_review_${Date.now()}`,
                     goal: intent.goal,
@@ -1273,7 +1269,7 @@ Rules:
                         description: 'إعادة تدقيق البناء في متصفح حقيقي وإصلاح ما يظهر ثم إعادة البناء والقياس',
                         tool: 'project_repair',
                         agent: 'Dev',
-                        input: {},
+                        input: { projectDir: built.projectDir, auditDir: built.auditDir },
                         dependsOn: [],
                     }],
                     metadata: { complexity: 'medium', riskLevel: 'low', matchedBy: 'active-built-project-quality-review' },
