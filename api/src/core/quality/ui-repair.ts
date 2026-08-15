@@ -632,8 +632,16 @@ export function repairProjectFiles(
         }
         return out;
     };
+    const hasFinding = (...ids: string[]) => (opts.findings || [])
+        .some(f => ids.includes(String(f?.id)));
     const smallEvidence = evidenceFor('small_targets', 'tap_targets', 'mobile_tap_targets');
     const mobileOverflowEvidence = evidenceFor('mobile_overflow', 'responsive');
+    // A browser can prove overflow even when the offending node is the document
+    // itself and therefore has no safe selector. The finding is still actionable:
+    // apply the measured mobile guardrails rather than treating empty evidence as
+    // proof that the repairer has nothing to write.
+    const mobileOverflowMeasured = mobileOverflowEvidence.length > 0
+        || hasFinding('mobile_overflow', 'responsive');
     const contrastEvidence = evidenceFor('low_contrast', 'contrast');
     const out: Record<string, string> = {};
     const all: Repair[] = [];
@@ -688,7 +696,7 @@ export function repairProjectFiles(
             for (const fix of [
                 (t: string) => repairContrast(t, round),
                 (t: string) => repairTapTargets(t, round),
-                (t: string) => repairResponsive(t, mobileOverflowEvidence.length > 0),
+                (t: string) => repairResponsive(t, mobileOverflowMeasured),
             ]) {
                 const r = fix(text);
                 text = r.text; merge(r.repairs);

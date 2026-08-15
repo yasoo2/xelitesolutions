@@ -54,7 +54,8 @@ export function collectSources(dir: string): Record<string, string> {
  * be theatre.
  */
 export const REPAIRABLE_FINDINGS = new Set([
-    'dead_links', 'small_targets', 'h1_count', 'keyboard_unreachable',
+    'dead_links', 'small_targets', 'mobile_tap_targets', 'tap_targets',
+    'mobile_overflow', 'responsive', 'h1_count', 'keyboard_unreachable',
     'heavy_images', 'html_lang', 'missing_viewport', 'low_contrast', 'dead_images_alt',
 ]);
 

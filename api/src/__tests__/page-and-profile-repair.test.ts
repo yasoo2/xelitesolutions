@@ -106,6 +106,15 @@ describe('responsive rules are appended once', () => {
         expect(repairResponsive(out.text).text).toBe(out.text);
     });
 
+    it('keeps a measured overflow finding actionable when the browser has no safe selector', () => {
+        const old = '/* ── إصلاح جو: التجاوب ────────────────────────────────────────────────── */\n.a{color:red}';
+        const plan = repairProjectFiles({ 'styles.css': old }, {
+            findings: [{ id: 'mobile_overflow' }],
+        });
+        expect(plan.files['styles.css']).toMatch(/إصلاح جو الجراحي: overflow قيس على الجوال/);
+        expect(plan.repairs.map(r => r.id)).toContain('responsive');
+    });
+
     it('uses measured mobile findings instead of losing them at the repair boundary', () => {
         const plan = repairProjectFiles({ 'styles.css': '.a{color:red}' }, {
             findings: [
