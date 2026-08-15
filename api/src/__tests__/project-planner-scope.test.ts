@@ -176,6 +176,47 @@ OBSERVE JOE — DO NOT TAKE OVER
         expect(assessment.implementationArtifacts).toBe(1);
     });
 
+    it('accepts a discovered reference project as stack evidence without selecting it as the write target', () => {
+        const evidence = {
+            mode: 'greenfield',
+            workspaceRoot: '/tmp/joe-reference-workspace',
+            selectedProject: undefined,
+            referenceProjects: [{
+                root: '/tmp/joe-reference-workspace/reference-app',
+                projectKinds: ['node'],
+                manifests: [{ path: '/tmp/joe-reference-workspace/reference-app/package.json', kind: 'package.json' }],
+                git: { isRepository: true, branch: 'main' },
+                likelyEntrypoints: ['/tmp/joe-reference-workspace/reference-app/src/index.ts'],
+                candidateChecks: [{ kind: 'test', command: 'npm test', source: '/tmp/joe-reference-workspace/reference-app/package.json' }],
+            }],
+        };
+
+        expect(planner.hasEvidenceBackedStack(evidence)).toBe(true);
+        const shaped = planner.planningEvidence(evidence);
+        expect(shaped.selectedProject).toBeUndefined();
+        expect(shaped.referenceProjects[0]).toMatchObject({
+            root: 'reference-app',
+            manifests: [{ path: 'reference-app/package.json', kind: 'package.json' }],
+            likelyEntrypoints: ['reference-app/src/index.ts'],
+        });
+        expect(shaped.referenceProjects[0].candidateChecks).toHaveLength(1);
+    });
+
+    it('does not infer a stack from an untyped directory without a manifest', () => {
+        expect(planner.hasEvidenceBackedStack({
+            mode: 'greenfield',
+            workspaceRoot: '/tmp/joe-reference-workspace',
+            referenceProjects: [{
+                root: '/tmp/joe-reference-workspace/unknown',
+                projectKinds: ['other'],
+                manifests: [],
+                git: { isRepository: false },
+                likelyEntrypoints: [],
+                candidateChecks: [],
+            }],
+        })).toBe(false);
+    });
+
     it('accepts a proportionate plan with implementation artifacts and requirement coverage', () => {
         const phase = (name: string, covered: string[], file: string) => ({
             name,

@@ -146,10 +146,15 @@ export class ProjectPlannerTool implements ToolDefinition {
              * the executor ever sees it.
              */
             const hasExplicitStack = this.hasExplicitStackConstraint(projectDescription);
+            const hasEvidenceBackedStack = this.hasEvidenceBackedStack(evidence);
             const workspaceRoot = evidence?.workspaceRoot || evidence?.selectedProject?.root || '';
             const evidencedPaths = [
                 ...(evidence?.selectedProject?.manifests || []).map(item => item.path),
                 ...(evidence?.selectedProject?.likelyEntrypoints || []),
+                ...(evidence?.referenceProjects || []).flatMap(project => [
+                    ...project.manifests.map(item => item.path),
+                    ...project.likelyEntrypoints,
+                ]),
                 ...(evidence?.instructionFiles || []).map(item => item.relativePath),
             ].map(item => {
                 const source = String(item || '');
@@ -159,7 +164,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 // In a blank root, a framework seed is a product decision rather
                 // than a harmless implementation detail. The user must name a
                 // stack, or discovery must prove one, before Joe can choose it.
-                disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack,
+                disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack,
                 evidencedPaths,
                 candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
             });
@@ -197,7 +202,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         throw new Error('Contract recovery returned valid JSON without a non-empty phases/tasks plan');
                     }
                     const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
-                        disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack,
+                        disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack,
                         evidencedPaths,
                         candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
                     });
@@ -244,7 +249,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         throw new Error('Scaffold contract recovery returned valid JSON without a non-empty phases/tasks plan');
                     }
                     const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
-                        disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack,
+                        disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack,
                         evidencedPaths,
                         candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
                     });
@@ -367,7 +372,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                             throw new Error('Scope recovery returned valid JSON without a non-empty phases/tasks plan');
                         }
                         const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
-                            disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack,
+                            disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack,
                             evidencedPaths,
                             candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
                         });
@@ -464,6 +469,12 @@ export class ProjectPlannerTool implements ToolDefinition {
             return root ? text.split(root).join('.') : text;
         };
         const selected = evidence.selectedProject;
+        const referenceProjects = (evidence.referenceProjects || []).map(project => ({
+            ...project,
+            root: relative(project.root) || '.',
+            manifests: project.manifests.map(item => ({ ...item, path: relative(item.path) })),
+            likelyEntrypoints: project.likelyEntrypoints.map(relative).filter(Boolean),
+        }));
         return {
             ...evidence,
             workspaceRoot: '.',
@@ -473,6 +484,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 manifests: selected.manifests.map(item => ({ ...item, path: relative(item.path) })),
                 likelyEntrypoints: selected.likelyEntrypoints.map(relative).filter(Boolean),
             } : undefined,
+            referenceProjects,
             instructionFiles: (evidence.instructionFiles || []).map(item => ({
                 relativePath: relative(item.relativePath),
                 lineCount: item.lineCount,
@@ -497,7 +509,7 @@ PROJECT:
 ${projectDescription}
 
 ${analysis ? `ANALYSIS:\n${JSON.stringify(analysis, null, 2)}\n` : ''}${evidence ? `ENGINEERING_EVIDENCE (facts, not suggestions):\n${JSON.stringify(evidence, null, 2)}\n` : ''}
-	Rules: Inspect and modify an existing selected project before proposing a new scaffold. Every write task must refer to an evidence fact or an explicit user requirement. Use candidateChecks from the evidence for verification where available. Paths in every file-oriented tool argument must be safe workspace-relative paths; never use an absolute host path, a drive path, a network path, or the parent-directory marker '..'. A read_file task may read only an evidence path or a file created earlier in the same phase. Do not select product-named foundations or deployment tools solely because words in the request resemble them. If evidence is ambiguous or blocked, plan clarification or read-only analysis rather than writing files. If evidence.mode is greenfield and PROJECT does not explicitly name a programming stack or framework, do NOT use scaffold_project, scaffold_full_stack, react_project, api_project, web_page_builder, mobile_builder, npm_manager, dependency installers, or invented package scripts. Plan only the smallest independently testable portable slice as exact file-level tasks, or stop with a clear implementation-constraint question if that is not possible.
+	Rules: Inspect and modify an existing selected project before proposing a new scaffold. Every write task must refer to an evidence fact or an explicit user requirement. Use candidateChecks from the evidence for verification where available. Paths in every file-oriented tool argument must be safe workspace-relative paths; never use an absolute host path, a drive path, a network path, or the parent-directory marker '..'. A read_file task may read only an evidence path or a file created earlier in the same phase. Do not select product-named foundations or deployment tools solely because words in the request resemble them. If evidence is ambiguous or blocked, plan clarification or read-only analysis rather than writing files. If evidence.mode is greenfield and PROJECT does not explicitly name a programming stack or framework, do NOT use scaffold_project, scaffold_full_stack, react_project, api_project, web_page_builder, mobile_builder, npm_manager, dependency installers, or invented package scripts unless evidence.referenceProjects contains a discovered project with a real manifest and declared project kind that can serve as a read-only architecture/stack reference. When using referenceProjects, preserve the new project write scope, cite the reference manifest in the plan, and never modify or run checks against the reference project as the deliverable target. Plan only the smallest independently testable portable slice as exact file-level tasks, or stop with a clear implementation-constraint question if that is not possible.
 	${this.scopePlanningInstructions(projectDescription)}
 	Return ONLY JSON with: projectName, projectVibe, totalPhases, estimatedDuration, phases, dependencies.
 	Each phase must include: phaseNumber, name, description, tasks, verificationTask, deliverables, estimatedTime, requirementsCovered. The requirementsCovered field must be a non-empty array of requirement headings or requirement statements that this phase actually advances.
@@ -515,6 +527,24 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
      */
     private hasExplicitStackConstraint(request: string): boolean {
         return /\b(?:react(?:\s+native)?|next(?:\.js)?|vue|angular|svelte|node(?:\.js)?|express|typescript|javascript|python|django|flask|fastapi|ruby|rails|php|laravel|java|spring|kotlin|go(?:lang)?|rust|dotnet|\.net|flutter|swift|postgres(?:ql)?|mysql|mongodb|sqlite|prisma)\b/i.test(String(request || ''));
+    }
+
+    /**
+     * A new project may inherit a technology decision only from a project that
+     * discovery actually inspected. This is deliberately narrower than
+     * "there is a directory on disk": a real manifest and a known project kind
+     * are required. The returned boolean authorizes only scaffold selection;
+     * reference candidate checks remain excluded from the target's execution.
+     */
+    private hasEvidenceBackedStack(evidence?: EngineeringEvidence): boolean {
+        const projects = [
+            evidence?.selectedProject,
+            ...(evidence?.referenceProjects || []),
+        ].filter(Boolean) as NonNullable<EngineeringEvidence['selectedProject']>[];
+        return projects.some(project =>
+            project.projectKinds.some(kind => kind === 'node' || kind === 'python' || kind === 'go')
+            && project.manifests.some(manifest => Boolean(String(manifest.path || '').trim())),
+        );
     }
 
     /**

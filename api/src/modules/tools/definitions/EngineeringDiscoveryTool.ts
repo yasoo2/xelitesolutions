@@ -21,6 +21,18 @@ export interface EngineeringEvidence {
         candidateChecks: Array<{ kind: 'test' | 'build' | 'lint' | 'typecheck'; command: string; source: string }>;
     };
     /**
+     * Read-only projects discovered while the request creates a separate new
+     * project. They are architectural references only, never a write target.
+     */
+    referenceProjects?: Array<{
+        root: string;
+        projectKinds: Array<'node' | 'python' | 'go' | 'other'>;
+        manifests: Array<{ path: string; kind: string; scripts?: Record<string, string> }>;
+        git: { isRepository: boolean; branch?: string; remote?: string; dirty?: boolean };
+        likelyEntrypoints: string[];
+        candidateChecks: Array<{ kind: 'test' | 'build' | 'lint' | 'typecheck'; command: string; source: string }>;
+    }>;
+    /**
      * Read-only candidates for a user-requested local brief/specification.
      * Paths are deliberately workspace-relative: evidence is handed to the
      * planner, and an absolute host path is neither a requirement nor a safe
@@ -212,7 +224,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
 
         const candidates = [...roots].sort((a, b) => a.localeCompare(b)).map(root => this.inspectProject(root));
         let selectedProject: Candidate | undefined;
-        if (candidates.length === 1) {
+        if (candidates.length === 1 && !buildsSomethingNew) {
             selectedProject = candidates[0];
             facts.push({ id: 'workspace.selected_project', source: 'workspace', statement: `Exactly one project was detected at ${selectedProject.root}.` });
         } else if (candidates.length > 1 && !buildsSomethingNew) {
@@ -250,11 +262,21 @@ export class EngineeringDiscoveryTool extends BaseTool {
             facts.push({ id: 'workspace.empty_of_known_projects', source: 'workspace', statement: 'No Node, Python, or Go project manifest was detected in the scanned workspace.' });
         }
 
+        const referenceProjects = buildsSomethingNew ? candidates : undefined;
+        if (referenceProjects?.length) {
+            facts.push({
+                id: 'workspace.reference_projects',
+                source: 'workspace',
+                statement: `The new project may use ${referenceProjects.length} discovered project(s) as read-only architecture and stack references; their files are not write targets.`,
+            });
+        }
+
         const evidence: EngineeringEvidence = {
             version: 1,
             mode,
             workspaceRoot,
             selectedProject,
+            referenceProjects,
             instructionFiles: instructionFiles.sort((a, b) => a.relativePath.localeCompare(b.relativePath)),
             constraints: { localOnly, forbidDeploy, userRequestedExistingProject: requestedExisting, createsNewProject: buildsSomethingNew },
 

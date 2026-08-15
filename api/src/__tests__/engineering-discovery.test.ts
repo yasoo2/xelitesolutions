@@ -129,6 +129,33 @@ describe('evidence-first engineering discovery', () => {
     expect(result.output.evidence.constraints.createsNewProject).toBe(true);
     expect(result.output.evidence.constraints.userRequestedExistingProject).toBe(false);
     expect(result.output.evidence.blockers).toEqual([]);
+    expect(result.output.evidence.selectedProject).toBeUndefined();
+    expect(result.output.evidence.referenceProjects).toHaveLength(2);
+    expect(result.output.evidence.referenceProjects).toEqual(expect.arrayContaining([
+      expect.objectContaining({ projectKinds: ['node'], manifests: [expect.objectContaining({ kind: 'package.json' })] }),
+    ]));
+    expect(result.output.evidence.facts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'workspace.reference_projects' }),
+    ]));
+  });
+
+  test('does not select the only existing project as a greenfield write target', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-greenfield-single-'));
+    roots.push(root);
+    fs.mkdirSync(path.join(root, 'existing-app', 'src'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'existing-app', 'package.json'), JSON.stringify({ name: 'existing-app' }));
+    fs.writeFileSync(path.join(root, 'existing-app', 'src', 'index.ts'), 'export const existing = true;');
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: 'Build a new platform locally. Inspect the existing project only for useful architecture evidence. Do not modify it.',
+    }, { workspaceRoot: root });
+
+    expect(result.ok).toBe(true);
+    expect(result.output.evidence.mode).toBe('greenfield');
+    expect(result.output.evidence.selectedProject).toBeUndefined();
+    expect(result.output.evidence.referenceProjects).toHaveLength(1);
+    expect(result.output.evidence.referenceProjects[0].root).toBe(path.join(root, 'existing-app'));
+    expect(result.output.evidence.constraints.createsNewProject).toBe(true);
   });
 
   test('keeps an explicit mutation of an existing project decision-bound', async () => {
