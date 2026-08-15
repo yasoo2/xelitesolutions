@@ -1347,6 +1347,28 @@ export async function routeToModel(
             const effectiveBaseUrl = cfgBaseUrl?.trim() || 
                 (cfgProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' :
                  cfgProvider === 'gemini' || cfgProvider === 'google' ? 'https://generativelanguage.googleapis.com/v1beta/openai/' : undefined);
+            // A Promise.race only releases the caller; it does not stop the HTTP
+            // request that lost the race. Long NEXUS planning calls then continued
+            // in the background and their late completion was logged beside the
+            // fallback timeout. Give the OpenAI-compatible request one real
+            // cancellation boundary, while leaving Gemini's separate provider API
+            // untouched.
+            const requestedProviderTimeout = Number(context?.providerTimeoutMs);
+            const providerTimeoutMs = Number.isFinite(requestedProviderTimeout) && requestedProviderTimeout > 0
+                ? Math.min(120000, Math.floor(requestedProviderTimeout))
+                : undefined;
+            const providerAbortController = providerTimeoutMs && cfgProvider !== 'gemini' && cfgProvider !== 'google'
+                ? new AbortController()
+                : undefined;
+            const providerTimer = providerAbortController && providerTimeoutMs
+                ? setTimeout(() => {
+                    console.warn(`[IntelligentRouter] ⏱️ custom ${cfgProvider}/${cfgModel} exceeded ${providerTimeoutMs}ms; aborting the in-flight request.`);
+                    providerAbortController.abort();
+                }, providerTimeoutMs)
+                : undefined;
+            const providerRequestOptions = providerAbortController && providerTimeoutMs
+                ? { signal: providerAbortController.signal, timeout: providerTimeoutMs }
+                : undefined;
 
             try {
                 if (cfgProvider === 'gemini' || cfgProvider === 'google') {
@@ -1374,9 +1396,9 @@ export async function routeToModel(
                         // through to the buffered call below — losing liveness,
                         // never the answer.
                         try {
-                            const stream: any = await client.chat.completions.create({
+                            const stream: any = await (client.chat.completions.create as any)({
                                 model, messages: flatMessages as any, stream: true,
-                            });
+                            }, providerRequestOptions);
                             let text = '';
                             for await (const chunk of stream) {
                                 const d = chunk?.choices?.[0]?.delta?.content || '';
@@ -1384,15 +1406,19 @@ export async function routeToModel(
                             }
                             if (text.trim()) return cleanOutput(text);
                         } catch (se: any) {
+                            // Never issue a second request after the deadline. The
+                            // buffered retry is useful for a 400/unsupported stream,
+                            // but harmful once the controller has already aborted.
+                            if (providerAbortController?.signal.aborted) throw se;
                             console.warn(`[IntelligentRouter] Streaming unsupported by ${cfgProvider} endpoint (${String(se?.message || se).slice(0, 80)}) — using buffered completion.`);
                         }
                     }
-                    const completion = await client.chat.completions.create({
+                    const completion = await (client.chat.completions.create as any)({
                         model,
                         messages: flatMessages as any,
                         tools: tools as any,
                         tool_choice: tools ? 'auto' : undefined,
-                    });
+                    }, providerRequestOptions);
                     const message = completion.choices[0]?.message;
                     if (message?.tool_calls && message.tool_calls.length > 0) {
                         return JSON.stringify({
@@ -1428,6 +1454,8 @@ export async function routeToModel(
                 } else {
                     console.warn(`[IntelligentRouter] Custom route ${cfgProvider}/${cfgModel} failed once (${status || 'no status'}) but the key looks fine — it stays enabled and will be retried.`);
                 }
+            } finally {
+                if (providerTimer) clearTimeout(providerTimer);
             }
           }
         }
@@ -1609,6 +1637,7 @@ export async function routeToModel(
                 return await openAIProvider.chatComplete(effectiveMessages, 'gpt-4o', tools, {
                     maxCompletionTokens: Number(context?.maxCompletionTokens) > 0 ? Number(context.maxCompletionTokens) : undefined,
                     reasoningEffort: context?.reasoningEffort,
+                    timeoutMs: Number(context?.providerTimeoutMs) > 0 ? Math.min(120000, Number(context.providerTimeoutMs)) : undefined,
                 });
             }
         });

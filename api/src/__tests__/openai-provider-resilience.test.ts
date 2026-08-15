@@ -104,4 +104,25 @@ describe('OpenAIProvider resilience', () => {
         await expect(provider.chatComplete([{ role: 'user', content: 'hello' }]))
             .rejects.toThrow('OpenAI returned no assistant message (missing choices)');
     });
+
+    it('propagates the same abort signal and bounded timeout to discovery and completion', async () => {
+        process.env.OPENAI_API_BASE = 'https://managed.example.test/v1';
+        mockListModels.mockResolvedValue({ data: [{ id: 'gpt-5-mini' }] });
+        mockCreate.mockResolvedValue({ choices: [{ message: { content: 'OK' } }] });
+        const provider = new OpenAIProvider('managed-gateway-token');
+        const controller = new AbortController();
+
+        await expect(provider.chatComplete(
+            [{ role: 'user', content: 'hello' }],
+            'gpt-4o',
+            undefined,
+            { signal: controller.signal, timeoutMs: 1234 },
+        )).resolves.toBe('OK');
+
+        expect(mockListModels).toHaveBeenCalledWith({ signal: controller.signal, timeout: 1234 });
+        expect(mockCreate).toHaveBeenCalledWith(
+            expect.objectContaining({ model: 'gpt-5-mini' }),
+            { signal: controller.signal, timeout: 1234 },
+        );
+    });
 });

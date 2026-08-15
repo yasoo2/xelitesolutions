@@ -46,7 +46,16 @@ export async function planNextStep(messagesOrTask: string | any[], opts?: any): 
     const messages = Array.isArray(messagesOrTask) 
       ? messagesOrTask 
       : [{ role: 'user', content: String(messagesOrTask || '') }];
-    const response = await routeToModel(messages, typeof opts === 'object' ? opts : undefined);
+    const response = await routeToModel(
+      messages,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      typeof opts === 'object' ? opts : undefined
+    );
     try {
       if (typeof response === 'string') {
         const jsonMatch = response.match(/\{[\s\S]*\}/);

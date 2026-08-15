@@ -6,6 +6,9 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 export interface OpenAIRequestOptions {
     maxCompletionTokens?: number;
     reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
+    /** Bounded provider deadline; unlike Promise.race this also aborts HTTP. */
+    timeoutMs?: number;
+    signal?: AbortSignal;
 }
 
 export class OpenAIProvider {
@@ -46,7 +49,7 @@ export class OpenAIProvider {
      * such as `gpt-4o` is not present. Operators retain full control through
      * OPENAI_MODEL; an unavailable catalogue leaves the requested model alone.
      */
-    private async resolveModel(requestedModel: string): Promise<string> {
+    private async resolveModel(requestedModel: string, options?: OpenAIRequestOptions): Promise<string> {
         const configured = String(process.env.OPENAI_MODEL || '').trim();
         if (configured) return configured;
         if (!this.baseURL) return requestedModel;
@@ -55,7 +58,12 @@ export class OpenAIProvider {
         try {
             const list = (this.client as any)?.models?.list;
             if (typeof list !== 'function') return requestedModel;
-            const catalogue = await list.call((this.client as any).models);
+            const requestOptions = options?.signal || (Number(options?.timeoutMs) > 0)
+                ? { signal: options?.signal, timeout: Number(options?.timeoutMs) > 0 ? Number(options?.timeoutMs) : undefined }
+                : undefined;
+            const catalogue = requestOptions
+                ? await list.call((this.client as any).models, requestOptions)
+                : await list.call((this.client as any).models);
             const ids = Array.isArray(catalogue?.data)
                 ? catalogue.data.map((item: any) => String(item?.id || '').trim()).filter(Boolean)
                 : [];
@@ -88,7 +96,7 @@ export class OpenAIProvider {
         }
 
         try {
-            const resolvedModel = await this.resolveModel(model);
+            const resolvedModel = await this.resolveModel(model, options);
             console.info(`[OpenAI] Attempting with model: ${resolvedModel}`);
             const request: any = {
                 model: resolvedModel,
@@ -102,7 +110,12 @@ export class OpenAIProvider {
             if (options?.reasoningEffort) {
                 request.reasoning = { effort: options.reasoningEffort };
             }
-            const completion = await this.client.chat.completions.create(request);
+            const requestOptions = options?.signal || (Number(options?.timeoutMs) > 0)
+                ? { signal: options?.signal, timeout: Number(options?.timeoutMs) > 0 ? Number(options?.timeoutMs) : undefined }
+                : undefined;
+            const completion = requestOptions
+                ? await (this.client.chat.completions.create as any)(request, requestOptions)
+                : await this.client.chat.completions.create(request);
 
             const choices = Array.isArray((completion as any)?.choices)
                 ? (completion as any).choices
