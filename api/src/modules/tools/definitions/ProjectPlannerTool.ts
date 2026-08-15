@@ -283,7 +283,59 @@ export class ProjectPlannerTool implements ToolDefinition {
             // delivered system merely because the model produced a well-written
             // architecture note.  This guard is based on requirement headings and
             // actual task/artifact types, never on a product name or keyword route.
-            const scopeAssessment = this.assessPlanScope(plan, projectDescription);
+            let scopeAssessment = this.assessPlanScope(plan, projectDescription);
+            if (!scopeAssessment.ok && requestedImplementation) {
+                // A syntactically valid plan can still be materially incomplete. Do
+                // not weaken the gate and do not invent missing phases locally: give
+                // the planner one bounded, evidence-aware chance to cover the
+                // requirement register it failed to map.
+                logs.push(`[plan] scope coverage insufficient; starting one scope-aware recovery: ${scopeAssessment.message}`);
+                try {
+                    const scopeRecoveryPrompt = this.createRecoveryPlanningPrompt(
+                        projectDescription,
+                        analysis,
+                        this.planningEvidence(evidence),
+                        `The previous plan passed JSON and tool-contract validation but failed the coverage gate: ${scopeAssessment.message}. Re-plan the complete requirement register; do not preserve an under-scoped subset.`
+                    );
+                    const scopeRecoveryResponse = await callLLM(scopeRecoveryPrompt, [
+                        { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with complete requirement coverage, executable phases, exact tool contracts, and concrete non-document artifacts.' }
+                    ], {
+                        modelConfig: context?.modelConfig,
+                        providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
+                        maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                        reasoningEffort: context?.plannerReasoningEffort || 'low',
+                    });
+                    if (isProviderFailure(scopeRecoveryResponse)) throw new Error(scopeRecoveryResponse);
+                    const recoveredPlan = this.parsePlan(scopeRecoveryResponse);
+                    if (!this.hasPlanningShape(recoveredPlan)) {
+                        throw new Error('Scope recovery returned valid JSON without a non-empty phases/tasks plan');
+                    }
+                    const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
+                        disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack,
+                        evidencedPaths,
+                        candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
+                    });
+                    if (recoveredClean.blocker) {
+                        throw new Error(`Scope recovery was blocked during contract sanitisation: ${recoveredClean.blocker.message}`);
+                    }
+                    if (this.countImplementationArtifacts(recoveredClean.phases) === 0) {
+                        throw new Error('Scope recovery retained no non-document implementation artifact');
+                    }
+                    const recoveredValidatedPlan = this.validatePlan(recoveredPlan, projectDescription);
+                    recoveredValidatedPlan.phases = recoveredClean.phases;
+                    const recoveredAssessment = this.assessPlanScope(recoveredValidatedPlan, projectDescription);
+                    if (!recoveredAssessment.ok) {
+                        throw new Error(`Scope recovery remained under-scoped: ${recoveredAssessment.message}`);
+                    }
+                    plan = recoveredValidatedPlan;
+                    clean = recoveredClean;
+                    scopeAssessment = recoveredAssessment;
+                    clean.notes.forEach(n => logs.push(n));
+                    logs.push('Planner scope recovery completed with sufficient requirement coverage');
+                } catch (scopeRecoveryError: any) {
+                    logs.push(`Planner scope recovery failed: ${scopeRecoveryError?.message || scopeRecoveryError}`);
+                }
+            }
             if (!scopeAssessment.ok) {
                 const blocked = this.fallbackPlan(projectDescription, analysis, evidence);
                 blocked.blocker = {
@@ -300,6 +352,10 @@ export class ProjectPlannerTool implements ToolDefinition {
                     logs,
                 } as any;
             }
+            // Preserve the evidence-backed scope decision in the successful
+            // output as well as in logs. Consumers must be able to distinguish a
+            // fully covered plan from one that merely parsed as JSON.
+            plan.scopeAssessment = scopeAssessment;
             logs.push(`Plan created: ${plan.totalPhases} phases, ${plan.estimatedDuration}`);
             logs.push('Planner-only mode: generated tasks were not executed.');
 
