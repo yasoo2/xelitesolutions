@@ -119,7 +119,13 @@ export class EngineeringDiscoveryTool extends BaseTool {
          * at an existing/current project, select an existing target. Read-only
          * verbs such as inspect/analyze/verify remain evidence gathering.
          */
-        const explicitExistingMutation = /(?:\b(?:fix|improve|update|modify|extend|refactor|debug|repair|maintain|continue|edit|add|build|create|develop|implement)\b[^.\n]{0,140}\b(?:existing|current|this)\s+(?:project|codebase|workspace|application|system)\b|\b(?:existing|current|this)\s+(?:project|codebase|workspace|application|system)\b[^.\n]{0,140}\b(?:fix|improve|update|modify|extend|refactor|debug|repair|maintain|continue|edit|add|build|create|develop|implement)\b)/i.test(request);
+        const explicitExistingMutation = request
+            .split(/[.!?\n]+/)
+            .some((sentence) => {
+                const mutation = /\b(?:fix|improve|update|modify|extend|refactor|debug|repair|maintain|continue|edit|add|build|create|develop|implement|clone|import|checkout|open|work\s+on)\b/i.test(sentence);
+                const target = /(?:\b(?:existing|current|this)\s+(?:project|codebase|workspace|application|system)\b|\b(?:repo(?:sitory)?|github)\b)/i.test(sentence);
+                return mutation && target;
+            });
         const requestedExisting =
             /(?:\brepo(?:sitory)?\b|\bgithub\b|\bclone\b|\bimport\b)/i.test(request)
             || explicitExistingMutation
@@ -154,7 +160,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
         // -> this file is a cycle if imported at module load.
         const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
         const buildsSomethingNew = PlanningEngine.looksLikeBuild(request)
-            && !requestedExisting
+            && !explicitExistingMutation
             && !remoteUrl
             // «ابنِ على المشروع الحالي» / «أضف صفحة إلى الموقع» point AT
             // something that already exists — the noun is a target, not a
