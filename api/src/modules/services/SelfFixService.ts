@@ -1,12 +1,13 @@
 import type { RepairTicket } from './RepairTicketService';
 import { repairMemory } from '../../core/memory/repair-memory';
+import { recoverMissingNpmLauncher } from '../tools/npm-launcher-recovery';
 
 export interface SelfFixPlan {
   type: 'self_fix_plan';
   allowed: boolean;
   reason: string;
   maxAttempts: number;
-  strategy: 'missing_file_fix' | 'dependency_fix' | 'build_fix' | 'code_fix' | 'permission_stop' | 'manual_review';
+  strategy: 'missing_file_fix' | 'dependency_fix' | 'launcher_fix' | 'build_fix' | 'code_fix' | 'permission_stop' | 'manual_review';
   suggestedTool?: string;
   suggestedInput?: Record<string, unknown>;
   /** A cure proven on this same error class in a past run — context, not a script. */
@@ -21,7 +22,7 @@ export interface SelfFixPlan {
 }
 
 function rawTextOf(ticket: RepairTicket) {
-  return `${ticket.status}\n${ticket.primaryError}\n${ticket.failedTasks.map(t => `${t.task}\n${t.tool}: ${t.error}`).join('\n')}`;
+  return `${ticket.status}\n${ticket.primaryError}\n${ticket.failedTasks.map(t => `${t.task}\n${t.tool}: ${t.error}${t.command ? `\ncommand: ${t.command}` : ''}${t.cwd ? `\ncwd: ${t.cwd}` : ''}`).join('\n')}`;
 }
 
 function textOf(ticket: RepairTicket) {
@@ -48,6 +49,23 @@ function extractMissingFilename(ticket: RepairTicket, text: string): string | nu
   }
 
   return null;
+}
+
+function extractMissingLauncher(ticket: RepairTicket) {
+  const failed = ticket.failedTasks.find(task =>
+    task.tool === 'shell_execute'
+    && typeof task.command === 'string'
+    && /missing script/i.test(`${task.error} ${ticket.primaryError}`)
+    && /^npm\s+run\s+[A-Za-z0-9:_-]+(?:\s|$)/i.test(task.command)
+  );
+  if (!failed?.command) return null;
+  return recoverMissingNpmLauncher(
+    failed.command,
+    failed.task,
+    failed.cwd || '.',
+    ticket.context.workspaceId,
+    failed.background,
+  );
 }
 
 function extractBuildContext(ticket: RepairTicket) {
@@ -173,6 +191,27 @@ export class SelfFixService {
     const cureNote = remembered
       ? `A cure proven ${remembered.wins}x on this same error class: ${remembered.repair}`
       : '';
+
+    const launcher = extractMissingLauncher(ticket);
+    if (launcher) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `The requested npm launcher is absent; package evidence selects npm run ${launcher.script} from ${launcher.manifest}.`,
+        maxAttempts: 1,
+        strategy: 'launcher_fix',
+        suggestedTool: 'shell_execute',
+        suggestedInput: {
+          command: launcher.command,
+          cwd: launcher.cwd,
+          background: launcher.background,
+          timeout: 600000,
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
 
     const missingFilename = extractMissingFilename(ticket, text);
     if (missingFilename && /missing file|enoent|existssync|not found|missing asset|missing config|process\.exit\(1\)/i.test(text)) {

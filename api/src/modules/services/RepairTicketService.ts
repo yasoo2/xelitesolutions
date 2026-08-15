@@ -19,7 +19,15 @@ export interface RepairTicket {
   status: string;
   severity: RepairTicketSeverity;
   primaryError: string;
-  failedTasks: Array<{ task: string; tool: string; error: string }>;
+  failedTasks: Array<{
+    task: string;
+    tool: string;
+    error: string;
+    /** Sanitised execution evidence; never carries session or credential fields. */
+    command?: string;
+    cwd?: string;
+    background?: boolean;
+  }>;
   suggestedNextAction: string;
   retryPolicy: {
     maxRepairAttempts: number;
@@ -70,11 +78,32 @@ export class RepairTicketService {
       status,
       severity: inferSeverity(status, primaryError),
       primaryError,
-      failedTasks: failedTasks.slice(0, 5).map((t: any) => ({
-        task: truncate(t.task || 'unknown task', 500),
-        tool: truncate(t.tool || 'unknown tool', 100),
-        error: truncate(t.error || 'failed', 1000),
-      })),
+      failedTasks: failedTasks.slice(0, 5).map((t: any) => {
+        const rawArgs = t?.args && typeof t.args === 'object'
+          ? t.args
+          : t?.input && typeof t.input === 'object'
+            ? t.input
+            : {};
+        const command = typeof t?.command === 'string'
+          ? t.command
+          : typeof rawArgs.command === 'string' ? rawArgs.command : undefined;
+        const cwd = typeof t?.cwd === 'string'
+          ? t.cwd
+          : typeof rawArgs.cwd === 'string'
+            ? rawArgs.cwd
+            : typeof t?.output?.cwd === 'string' ? t.output.cwd : undefined;
+        const background = typeof t?.background === 'boolean'
+          ? t.background
+          : typeof rawArgs.background === 'boolean' ? rawArgs.background : undefined;
+        return {
+          task: truncate(t.task || 'unknown task', 500),
+          tool: truncate(t.tool || 'unknown tool', 100),
+          error: truncate(t.error || 'failed', 1000),
+          ...(command ? { command: truncate(command, 1000) } : {}),
+          ...(cwd ? { cwd: truncate(cwd, 1000) } : {}),
+          ...(typeof background === 'boolean' ? { background } : {}),
+        };
+      }),
       suggestedNextAction: 'Run one controlled repair pass, then re-run the failed phase and continue only if it becomes completed.',
       retryPolicy: {
         maxRepairAttempts: 1,

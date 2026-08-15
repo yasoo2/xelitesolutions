@@ -1,7 +1,7 @@
 import { ToolDefinition, ToolPermission } from '../types';
 
-import fs from 'fs';
-import path from 'path';
+import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
+export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { executeTool } from '../../services/ToolService';
 import { resolveToolPath } from '../utils';
 import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, adaptPlannedArgsFromDescription, plannedArgsIssue } from '../../../core/orchestrator/plan-tools';
@@ -12,67 +12,6 @@ import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, adaptPlanned
  * filesystem guess. ProjectRunTool remains responsible for matching it against
  * runnable candidates and refusing when the evidence is insufficient.
  */
-/**
- * Inspect the selected workspace before repairing a bad npm launcher.
- *
- * A planner can know that a project must be started while still guessing a
- * script name (`npm run server`). The repair must learn the repository's real
- * contract from package.json, never replace the command from a hard-coded Joe
- * template. This helper is deliberately narrow: it only handles a missing
- * server-like script and only if a real start/dev/serve script is present.
- */
-export function recoverMissingNpmLauncher(
-    command: unknown,
-    taskDescription: unknown,
-    cwd: unknown,
-    workspaceId?: string,
-    background?: unknown,
-): { command: string; cwd?: string; background?: boolean; script: string; manifest: string } | null {
-    const rawCommand = String(command || '').trim();
-    const match = rawCommand.match(/^npm\s+run\s+([A-Za-z0-9:_-]+)(?:\s|$)/i);
-    if (!match) return null;
-
-    const requestedScript = match[1];
-    const taskText = `${String(taskDescription || '')} ${requestedScript}`;
-    if (!/(?:server|start|launch|serve|boot)/i.test(taskText)) return null;
-
-    let resolvedCwd: string;
-    try {
-        resolvedCwd = resolveToolPath(String(cwd || '.'), { workspaceId });
-    } catch {
-        return null;
-    }
-
-    const candidates = [
-        path.join(resolvedCwd, 'package.json'),
-        path.join(path.dirname(resolvedCwd), 'package.json'),
-    ];
-    for (const manifestPath of candidates) {
-        try {
-            if (!fs.existsSync(manifestPath)) continue;
-            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-            const scripts = manifest?.scripts && typeof manifest.scripts === 'object' ? manifest.scripts : {};
-            if (typeof scripts[requestedScript] === 'string') return null;
-            const fallback = ['start', 'dev', 'serve', 'preview']
-                .find(name => typeof scripts[name] === 'string' && scripts[name].trim());
-            if (!fallback) continue;
-
-            const isExplicitBackground = typeof background === 'boolean';
-            const launcherBackground = isExplicitBackground ? Boolean(background) : true;
-            return {
-                command: `npm run ${fallback}`,
-                cwd: path.dirname(manifestPath),
-                ...(launcherBackground ? { background: true } : { background: false }),
-                script: fallback,
-                manifest: manifestPath,
-            };
-        } catch {
-            // Invalid or unreadable manifests are evidence of no safe fallback.
-        }
-    }
-    return null;
-}
-
 export function applyPhaseExecutionEvidence(
     toolName: string,
     planned: Record<string, any>,
@@ -156,7 +95,16 @@ export class PhaseExecutorTool implements ToolDefinition {
     async execute(input: { phase: any; projectContext?: any }, context?: any) {
         const { phase, projectContext } = input;
         const logs: string[] = [];
-        const results: Array<{ task: string; tool: string; ok: boolean; error?: string; message?: string }> = [];
+        const results: Array<{
+            task: string;
+            tool: string;
+            ok: boolean;
+            error?: string;
+            message?: string;
+            command?: string;
+            cwd?: string;
+            background?: boolean;
+        }> = [];
         let completedCount = 0;
 
         const executionContext = {
@@ -357,6 +305,15 @@ export class PhaseExecutorTool implements ToolDefinition {
                             ok: false,
                             error: errMsg,
                             ...(failedMessage ? { message: failedMessage.slice(0, 8000) } : {}),
+                            ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
+                                ? { command: toolArgs.command.slice(0, 1000) }
+                                : {}),
+                            ...(toolName === 'shell_execute' && typeof (toolArgs.cwd || failedOutput.cwd) === 'string'
+                                ? { cwd: String(toolArgs.cwd || failedOutput.cwd).slice(0, 1000) }
+                                : {}),
+                            ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
+                                ? { background: toolArgs.background }
+                                : {}),
                         });
 
                         if (task.priority === 'high' || task.required === true) {
@@ -383,7 +340,21 @@ export class PhaseExecutorTool implements ToolDefinition {
                 } catch (toolError: any) {
                     const errMsg = String(toolError?.message || toolError || 'Execution error');
                     logs.push(`[PhaseExecutor] ❌ Task ${i + 1} threw: ${errMsg}`);
-                    results.push({ task: taskDesc, tool: toolName, ok: false, error: errMsg });
+                    results.push({
+                        task: taskDesc,
+                        tool: toolName,
+                        ok: false,
+                        error: errMsg,
+                        ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
+                            ? { command: toolArgs.command.slice(0, 1000) }
+                            : {}),
+                        ...(toolName === 'shell_execute' && typeof toolArgs.cwd === 'string'
+                            ? { cwd: toolArgs.cwd.slice(0, 1000) }
+                            : {}),
+                        ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
+                            ? { background: toolArgs.background }
+                            : {}),
+                    });
 
                     if (task.priority === 'high' || task.required === true) {
                         logs.push('[PhaseExecutor] ⛔ Critical task threw. Stopping phase.');
