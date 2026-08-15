@@ -22,7 +22,6 @@ import { findActiveBuiltProject } from '../../../core/orchestrator/active-built-
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcast, broadcastTerminalLine, broadcastThinkingDetail } from '../../../api/ws';
-import { repairAndRebuild } from '../../../core/quality/self-repair';
 
 export class ProjectRepairTool extends BaseTool {
     name = 'project_repair';
@@ -123,38 +122,128 @@ export class ProjectRepairTool extends BaseTool {
             return { ok: true, output: { message: clean, before: before.score, after: before.score, changed: [], remaining: [] }, logs } as any;
         }
 
-        say(isAr ? '🛠️ أُصلح ما أستطيع، ثم أُعيد البناء والقياس…' : '🛠️ Repairing what I can, then rebuilding and re-measuring…');
-        const cycle = await repairAndRebuild(dir, { onLine: term, isArabic: isAr });
+        say(isAr ? '🛠️ أُصلح ما أستطيع، ثم أُعيد البناء والقياس حتى يتوقف التحسن الحقيقي…' : '🛠️ Repairing what I can, then rebuilding and measuring until the real improvement stops…');
+        const { improveUntilItStops, improveSummary, repairRound, } = require('../../../core/quality/improve-loop');
+        const { collectSources } = require('../../../core/quality/self-repair');
+        const { snapshotProject, restoreVersion } = require('../../../core/project/versions');
+        const { runDoctored } = require('../../../core/quality/log-doctor');
+        const memorySnapshots = new Map<string, Record<string, string>>();
 
-        let after = before;
-        if (cycle.changed.length && cycle.built) {
-            after = await auditBuiltApp(auditDir, {
+        const hasBuildScript = () => {
+            try {
+                const pkg = JSON.parse(fs.readFileSync(require('path').join(dir, 'package.json'), 'utf-8'));
+                return typeof pkg?.scripts?.build === 'string' && pkg.scripts.build.trim().length > 0;
+            } catch { return false; }
+        };
+        const rebuild = async (): Promise<boolean> => {
+            if (!hasBuildScript()) {
+                // A Joe Pages/static artifact is already its own served build. Its
+                // source files are the measured files, so a second package build
+                // would be theatre and is correctly treated as a verified no-op.
+                term('repair: no package build script — measuring the repaired static artifact directly');
+                return true;
+            }
+            const rb = await runDoctored('npm', ['run', 'build'], {
+                cwd: dir,
+                timeoutMs: 240_000,
+                onLine: (line: string) => term(`  ${line.slice(0, 200)}`),
+                onNote: term,
+            }).catch(() => ({ ok: false }));
+            return rb.ok === true;
+        };
+        const snapshot = (label: string): string => {
+            try {
+                if (hasBuildScript() || fs.existsSync(require('path').join(dir, 'package.json'))) {
+                    return String(snapshotProject(dir, label)?.id || '');
+                }
+                const files = collectSources(dir);
+                if (!Object.keys(files).length) return '';
+                const id = `memory-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                memorySnapshots.set(id, files);
+                return id;
+            } catch { return ''; }
+        };
+        const rollback = async (id: string): Promise<boolean> => {
+            try {
+                const memory = memorySnapshots.get(id);
+                if (memory) {
+                    const now = collectSources(dir);
+                    for (const rel of Object.keys(now)) {
+                        if (!(rel in memory)) fs.rmSync(require('path').join(dir, rel), { force: true });
+                    }
+                    for (const [rel, text] of Object.entries(memory)) {
+                        const abs = require('path').join(dir, rel);
+                        fs.mkdirSync(require('path').dirname(abs), { recursive: true });
+                        fs.writeFileSync(abs, text, 'utf-8');
+                    }
+                    memorySnapshots.delete(id);
+                } else {
+                    const restored = restoreVersion(dir, id);
+                    if (!restored?.ok) return false;
+                }
+                const rebuilt = await rebuild();
+                if (rebuilt) term('repair: rollback verified by a successful rebuild');
+                return rebuilt;
+            } catch { return false; }
+        };
+        const measure = async () => {
+            const measured = await auditBuiltApp(auditDir, {
                 timeoutMs: 30_000,
                 watchSessionId: PANEL_BROWSER_SID,
                 artifactRootDir: process.env.ARTIFACT_DIR || '/tmp/joe-artifacts',
+                onProgress: (where: string) => {
+                    if (where === 'watching') say(isAr ? '👁️ القياس المقيس يجري الآن أمامك في لوحة المتصفّح' : '👁️ The measured round is running in the Browser panel');
+                },
             });
-            term(`repair: ${before.score} → ${after.score}/100 (${cycle.changed.length} file(s))`);
-        } else if (cycle.reverted) {
-            term('repair: reverted — the project is exactly as it was');
-        } else {
-            term('repair: nothing was changed');
-        }
+            return {
+                score: Number(measured.score || 0),
+                findingIds: (measured.findings || []).map((f: any) => String(f.id)),
+                findings: (measured.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence, severity: f.severity, detail: f.detail, message: f.message })),
+                skipped: measured.skipped,
+            };
+        };
+        const loop = await improveUntilItStops(
+            {
+                score: Number(before.score || 0),
+                findingIds: (before.findings || []).map((f: any) => String(f.id)),
+                findings: (before.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence, severity: f.severity, detail: f.detail, message: f.message })),
+                skipped: before.skipped,
+            },
+            {
+                say,
+                measure,
+                repair: async (round: number, _ids: string[], findings: any[]) => {
+                    const repaired = await repairRound(dir, round, { isArabic: isAr, findings });
+                    for (const file of repaired.changed) term(`repair: round ${round} edited ${file}`);
+                    return repaired.changed;
+                },
+                rebuild,
+                snapshot,
+                rollback,
+                target: Math.max(1, Number(process.env.JOE_IMPROVE_TARGET || 95)),
+                maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
+            },
+        );
+        term(improveSummary(loop, isAr));
 
-        const gained = !after.skipped && after.score > before.score;
-        const remaining = ((gained ? after : before).findings || []) as any[];
-        const blockers = remaining.filter(f => f.severity === 'high');
+        const finalMeasurement = loop.final || before;
+        const gained = !finalMeasurement.skipped && finalMeasurement.score > before.score;
+        const remaining = (finalMeasurement.findings || []) as any[];
+        const blockers = remaining.filter((f: any) => f.severity === 'high');
+        const paidFiles = Array.from(new Set(loop.rounds
+            .filter((r: any) => r.verdict === 'improved')
+            .flatMap((r: any) => r.changed || []))) as string[];
 
         // «• 3 خطأ كونسول» inside an English message: the findings carry both
         // languages now, and this picks the reader's.
         const { findingText } = require('../../../core/quality/app-audit');
         const said = (f: any) => findingText(f, isAr);
         const lines: string[] = [];
-        lines.push(gained
-            ? (isAr ? `🛠️ أصلحتُ ما أستطيع: ${before.score}/100 ← ${after.score}/100 (${cycle.changed.length} ملف)`
-                : `🛠️ Repaired what I could: ${before.score}/100 → ${after.score}/100 (${cycle.changed.length} file(s))`)
-            : (isAr ? `🛠️ لم يتحسّن القياس — أبقيتُ الحكم الأول: ${before.score}/100`
-                : `🛠️ No measured gain — keeping the first verdict: ${before.score}/100`));
-        for (const f of cycle.changed) lines.push(`   • ${isAr ? 'عُدّل' : 'edited'}: ${f}`);
+        lines.push(isAr
+            ? `🔁 دورة التحسين المقيسة: ${before.score}/100 → ${finalMeasurement.score}/100 عبر ${loop.rounds.length} جولة، وتوقفت لأن: ${loop.stoppedBecause}.`
+            : `🔁 Measured improvement loop: ${before.score}/100 → ${finalMeasurement.score}/100 across ${loop.rounds.length} round(s), stopped because: ${loop.stoppedBecause}.`);
+        for (const f of paidFiles) lines.push(`   • ${isAr ? 'عُدّل' : 'edited'}: ${f}`);
+        lines.push(improveSummary(loop, isAr));
         if (blockers.length) {
             lines.push(isAr ? `⛔ وما زال لا يعمل كما ينبغي — ${blockers.length} عطل جوهري:` : `⛔ Still not working properly — ${blockers.length} blocking finding(s):`);
             for (const f of blockers) lines.push(`   • ${said(f)}`);
@@ -172,7 +261,7 @@ export class ProjectRepairTool extends BaseTool {
             const entry = projects[sessionKey];
             if (entry) {
                 entry.lastAudit = {
-                    score: (gained ? after : before).score, at: Date.now(),
+                    score: finalMeasurement.score, at: Date.now(),
                     findings: remaining.slice(0, 12).map((f: any) => ({ severity: f.severity, message: String(f.detail || '').slice(0, 200) })),
                 };
             }
@@ -183,8 +272,10 @@ export class ProjectRepairTool extends BaseTool {
             output: {
                 message: lines.join('\n'),
                 before: before.score,
-                after: (gained ? after : before).score,
-                changed: cycle.changed,
+                after: finalMeasurement.score,
+                changed: paidFiles,
+                rounds: loop.rounds,
+                stoppedBecause: loop.stoppedBecause,
                 remaining: remaining.map((f: any) => f.id),
                 blockersBefore: blockersBefore.map((f: any) => f.id),
             },

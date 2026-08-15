@@ -71,20 +71,26 @@ describe('the phrase routes to it, and nothing else does', () => {
 });
 
 describe('and the repair itself is honest', () => {
-    it('measures before, repairs, rebuilds, measures again', () => {
+    it('measures before, repairs, rebuilds, and measures every paid round again', () => {
         const src = TOOL();
         const before = src.indexOf('const before = await auditBuiltApp');
-        const repair = src.indexOf('repairAndRebuild(dir');
-        const after = src.indexOf('after = await auditBuiltApp');
+        const loop = src.indexOf('improveUntilItStops');
+        const repair = src.indexOf('repairRound(');
+        const rebuild = src.indexOf('const rebuild = async');
+        const measure = src.indexOf('const measure = async');
         expect(before).toBeGreaterThan(0);
+        expect(loop).toBeGreaterThan(before);
         expect(repair).toBeGreaterThan(before);
-        expect(after).toBeGreaterThan(repair);
+        expect(rebuild).toBeGreaterThan(before);
+        expect(measure).toBeGreaterThan(before);
     });
 
-    it('never claims a gain it did not measure', () => {
+    it('never claims a gain it did not measure and rolls back a non-gain', () => {
         const src = TOOL();
-        expect(src).toMatch(/const gained = !after\.skipped && after\.score > before\.score/);
-        expect(src).toMatch(/لم يتحسّن القياس — أبقيتُ الحكم الأول/);
+        expect(src).toMatch(/const finalMeasurement = loop\.final \|\| before/);
+        expect(src).toMatch(/const gained = !finalMeasurement\.skipped && finalMeasurement\.score > before\.score/);
+        expect(src).toMatch(/rollback,/);
+        expect(src).toMatch(/stoppedBecause: loop\.stoppedBecause/);
     });
 
     it('refuses honestly when there is nothing to repair', () => {

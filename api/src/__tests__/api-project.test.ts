@@ -56,6 +56,11 @@ describe('quality review routing uses the active built project', () => {
     it('«راجع تقرير الجودة والنتيجة النهائية» → project_repair', async () => {
         expect(await routeInSession('راجع تقرير الجودة والنتيجة النهائية', sessionId)).toBe('project_repair');
     });
+
+    it('a long evidence-heavy quality request stays on project_repair before generic code/test routing', async () => {
+        const goal = 'راجع تقرير الجودة والنتيجة التي أنشأتها بنفسك. أصلح جميع الملاحظات المتبقية قبل التسليم: أزل المحتوى المكرر والحشو واجعل كل قسم وبطاقة منتجات مختلفاً ومرتبطاً فعلياً بالمشروع، تحقق من أن كل الصور والشعار والروابط المحلية تعمل ولا توجد أصول مفقودة أو روابط مشوهة، ثم أعد تشغيل الفحص البصري وفحص التفاعل ومراجعة الشيفرة والاختبارات المحلية. لا تكتفِ بذكر الملاحظات؛ نفّذ الإصلاحات بنفسك، وأعد الفحص حتى لا تبقى أخطاء JavaScript أو موارد 404 أو عناصر تفاعلية معطلة، ثم اعرض النتيجة النهائية مع الأدلة والملفات التي عدّلتها.';
+        expect(await routeInSession(goal, sessionId)).toBe('project_repair');
+    });
 });
 
 describe('quality review routing follows the active split static page', () => {
