@@ -97,9 +97,41 @@ export class ProjectPlannerTool implements ToolDefinition {
             let plan: any;
             try {
                 plan = this.parsePlan(response);
+                if (!this.hasPlanningShape(plan)) {
+                    throw new Error('Planner returned valid JSON without a non-empty phases/tasks plan');
+                }
             } catch (parseError) {
-                logs.push(`JSON parse error: ${parseError}`);
-                plan = this.fallbackPlan(projectDescription, analysis, evidence);
+                logs.push(`Initial planner response was not executable JSON: ${parseError}`);
+                // A provider can answer successfully with prose, `{ phases: [] }`,
+                // or a truncated JSON object. Those are provider answers, not
+                // engineering plans. Give the same provider one bounded, stricter
+                // planning turn before declaring the run blocked; never invent a
+                // scaffold from a malformed response.
+                try {
+                    const retryPrompt = this.createRecoveryPlanningPrompt(
+                        projectDescription,
+                        analysis,
+                        this.planningEvidence(evidence),
+                        String(parseError)
+                    );
+                    const retryResponse = await callLLM(retryPrompt, [
+                        { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with executable phases and tasks.' }
+                    ], {
+                        modelConfig: context?.modelConfig,
+                        providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
+                        maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                        reasoningEffort: context?.plannerReasoningEffort || 'low',
+                    });
+                    if (isProviderFailure(retryResponse)) throw new Error(retryResponse);
+                    plan = this.parsePlan(retryResponse);
+                    if (!this.hasPlanningShape(plan)) {
+                        throw new Error('Recovery planner returned valid JSON without a non-empty phases/tasks plan');
+                    }
+                    logs.push('Planner recovery completed with a non-empty execution plan');
+                } catch (retryError: any) {
+                    logs.push(`Planner recovery failed: ${retryError?.message || retryError}`);
+                    plan = this.fallbackPlan(projectDescription, analysis, evidence);
+                }
             }
 
             plan = this.validatePlan(plan, projectDescription);
@@ -160,8 +192,23 @@ export class ProjectPlannerTool implements ToolDefinition {
             // A plan with nothing runnable in it is not a plan. The deterministic
             // fallback names only tools that exist, so it always executes.
             if (clean.executableTasks === 0) {
-                logs.push('[plan] لم يبق في الخطة أي عمل قابل للتنفيذ — رجعتُ إلى خطة مضمونة بأدوات حقيقية.');
+                logs.push('[plan] لم يبق في الخطة أي عمل قابل للتنفيذ — رجعتُ إلى خطة محجوبة صادقة بدلاً من اختراع scaffold.');
                 plan = this.validatePlan(this.fallbackPlan(projectDescription, analysis, evidence), projectDescription);
+            }
+
+            // A fallback is evidence that planning did not produce executable
+            // work. It must never be reported as a successful plan: the pipeline
+            // needs the explicit failure to choose a safe recovery or stop, and
+            // the user must not see a blocked result labelled as delivered.
+            if (plan?.fallback === true) {
+                const blockerMessage = plan?.blocker?.message || 'No executable engineering plan was produced.';
+                logs.push(`[plan] blocked: ${blockerMessage}`);
+                return {
+                    ok: false,
+                    error: blockerMessage,
+                    output: { ...plan, autoExecuted: false, executionPolicy: 'planner_only' },
+                    logs,
+                } as any;
             }
 
             // A long, multi-domain requirement set must not be rebranded as a
@@ -368,6 +415,40 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
         const plan = JSON.parse(jsonStr);
         if (!Array.isArray(plan.phases)) throw new Error('Missing phases array in JSON');
         return plan;
+    }
+
+    /**
+     * JSON validity is weaker than a planning contract. A successful provider
+     * response containing an empty phases array is not a plan and must be
+     * retried before the pipeline can honestly stop. This shape check is
+     * deliberately tool-agnostic: tool contracts are enforced later by the
+     * plan sanitiser, while this guard only rejects empty/truncated planning.
+     */
+    private hasPlanningShape(plan: any): boolean {
+        return Array.isArray(plan?.phases)
+            && plan.phases.length > 0
+            && plan.phases.some((phase: any) => Array.isArray(phase?.tasks) && phase.tasks.length > 0);
+    }
+
+    private createRecoveryPlanningPrompt(projectDescription: string, analysis?: any, evidence?: EngineeringEvidence, failureReason = ''): string {
+        const scope = this.requirementScope(projectDescription);
+        const register = scope.targets.length
+            ? scope.targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ')
+            : '(No reliable heading register was extracted; use the explicit requirements only.)';
+        return `The previous planning response was unusable: ${failureReason}
+
+You must now produce the smallest honest, executable engineering plan for the request below.
+Do not explain the failure. Do not return an empty phases array. Do not return prose or Markdown fences.
+Return ONLY one JSON object with projectName, projectVibe, totalPhases, estimatedDuration, phases, dependencies.
+Return at least ${scope.minPhases} phases when the requirement register is large, and every phase must contain a non-empty tasks array, a concrete deliverable that will exist on disk, and requirementsCovered.
+Use only real tools from the vocabulary supplied in the original planning contract. File tasks must have safe workspace-relative paths and complete arguments. Do not claim that any task has already run.
+Requirement register: ${register}
+
+PROJECT REQUEST:
+${projectDescription}
+
+${analysis ? `ANALYSIS:\n${JSON.stringify(analysis, null, 2)}\n` : ''}${evidence ? `ENGINEERING_EVIDENCE:\n${JSON.stringify(evidence, null, 2)}\n` : ''}
+${this.scopePlanningInstructions(projectDescription)}`;
     }
 
     /**
