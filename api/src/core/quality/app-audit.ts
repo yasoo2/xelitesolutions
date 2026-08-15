@@ -693,7 +693,11 @@ export async function auditBuiltApp(
         for (const f of behaviour.findings) {
             findings.push({
                 id: f.code, severity: asSeverity[f.severity], detail: f.ar, detailEn: f.en,
-                ...(Array.isArray((f as any).data) && (f as any).data.length ? { evidence: (f as any).data } : {}),
+                ...(Array.isArray((f as any).evidence) && (f as any).evidence.length
+                    ? { evidence: (f as any).evidence }
+                    : Array.isArray((f as any).data) && (f as any).data.length
+                        ? { evidence: (f as any).data }
+                        : {}),
             });
         }
 

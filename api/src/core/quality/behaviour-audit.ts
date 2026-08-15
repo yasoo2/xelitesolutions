@@ -30,6 +30,8 @@ export interface BehaviourFinding {
     ar: string;
     en: string;
     hint?: string;
+    /** Measured element evidence used by deterministic repairers when available. */
+    evidence?: Array<{ sel?: string; label?: string; w?: number; h?: number; width?: number; height?: number; [key: string]: any }>;
 }
 
 export interface ControlResult {

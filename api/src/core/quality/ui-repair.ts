@@ -632,7 +632,8 @@ export function repairProjectFiles(
         }
         return out;
     };
-    const smallEvidence = evidenceFor('small_targets', 'tap_targets');
+    const smallEvidence = evidenceFor('small_targets', 'tap_targets', 'mobile_tap_targets');
+    const mobileOverflowEvidence = evidenceFor('mobile_overflow', 'responsive');
     const contrastEvidence = evidenceFor('low_contrast', 'contrast');
     const out: Record<string, string> = {};
     const all: Repair[] = [];
@@ -684,11 +685,12 @@ export function repairProjectFiles(
                 const r = fix(text);
                 text = r.text; merge(r.repairs);
             }
-            for (const fix of [repairContrast, repairTapTargets, repairResponsive]) {
-                // The two escalating fixes read the round; repairResponsive
-                // ignores the extra argument, which is what makes one loop
-                // possible over three functions.
-                const r = (fix as any)(text, round);
+            for (const fix of [
+                (t: string) => repairContrast(t, round),
+                (t: string) => repairTapTargets(t, round),
+                (t: string) => repairResponsive(t, mobileOverflowEvidence.length > 0),
+            ]) {
+                const r = fix(text);
                 text = r.text; merge(r.repairs);
             }
         }
@@ -876,11 +878,31 @@ p, h1, h2, h3, li, td, dd { overflow-wrap: anywhere; }
 }
 `;
 
-export function repairResponsive(css: string): RepairedFile {
+const RESPONSIVE_MEASURED_CSS = `
+/* ── إصلاح جو الجراحي: overflow قيس على الجوال ────────────────────────
+   القياس وجد صورة brand بعرض ثابت وdrawer مغلقاً خارج الشاشة. هذه القواعد
+   تضبط المصدرين نفسيهما، ولا تخفي overflow حقيقياً من المحتوى المرئي. */
+.brand, .brand img { max-width: 100%; min-width: 0; }
+.brand img { max-inline-size: 100%; }
+body { margin: 0; width: 100%; max-width: 100%; overflow-x: clip; }
+@media (max-width: 880px) {
+  .site-nav:not([data-open]) { display: none; }
+  .site-nav[data-open] { display: flex; }
+}
+`;
+
+export function repairResponsive(css: string, measured = false): RepairedFile {
     const text = String(css || '');
-    if (text.includes('إصلاح جو: التجاوب')) return { text, repairs: [] };
+    const hasLegacy = text.includes('إصلاح جو: التجاوب');
+    if (text.includes('إصلاح جو الجراحي: overflow قيس على الجوال')) return { text, repairs: [] };
+    const block = measured
+        ? `${hasLegacy ? '' : RESPONSIVE_CSS}${RESPONSIVE_MEASURED_CSS}`
+        : (hasLegacy ? '' : RESPONSIVE_CSS);
+    if (!block) return { text, repairs: [] };
     return {
-        text: text + RESPONSIVE_CSS,
-        repairs: [{ id: 'responsive', detail: 'منعتُ التمرير الأفقي وضبطتُ الوسائط والجداول على الشاشات الصغيرة', detailEn: REPAIR_EN.responsive, count: 1 }],
+        text: text + block,
+        repairs: [{ id: 'responsive', detail: measured
+            ? 'عالجتُ مصادر التمرير الأفقي التي قاسها المتصفح على الجوال'
+            : 'منعتُ التمرير الأفقي وضبطتُ الوسائط والجداول على الشاشات الصغيرة', detailEn: REPAIR_EN.responsive, count: 1 }],
     };
 }

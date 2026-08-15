@@ -157,16 +157,38 @@ function measureA11y() {
 function measureResponsive(vw: number) {
   var doc = document.documentElement;
   var scrollW = Math.max(doc.scrollWidth, (document.body && document.body.scrollWidth) || 0);
-  var wide: any[] = [], boxes: any[] = [];
+  var wide: any[] = [], boxes: any[] = [], wideEvidence: any[] = [];
+  var selectorFor = function (el: any) {
+    var parts: string[] = [];
+    var node: any = el;
+    while (node && node.nodeType === 1 && node !== document.body) {
+      var tag = String(node.tagName || '').toLowerCase();
+      if (!tag) break;
+      var id = String(node.id || '');
+      var part = /^[A-Za-z][\w-]*$/.test(id) ? tag + '#' + id : tag;
+      if (part === tag) {
+        var classes = String(node.className && typeof node.className === 'string' ? node.className : '')
+          .split(/\s+/).filter(function (c: string) { return /^[A-Za-z][\w-]*$/.test(c); }).slice(0, 2);
+        if (classes.length) part += '.' + classes.join('.');
+      }
+      var same = node.parentElement ? Array.prototype.filter.call(node.parentElement.children, function (s: any) { return s.tagName === node.tagName; }) : [];
+      if (same.length > 1) part += ':nth-of-type(' + (same.indexOf(node) + 1) + ')';
+      parts.unshift(part);
+      if (node.id) break;
+      node = node.parentElement;
+    }
+    return parts.join(' > ');
+  };
   Array.prototype.slice.call(document.querySelectorAll('body *'), 0, 4000).forEach(function (el: any) {
     var r = el.getBoundingClientRect();
     if (r.width > vw + 4 && r.height > 0 && wide.length < 6) {
       var cls = (el.getAttribute('class') || '').split(/\s+/).slice(0, 2).filter(Boolean).join('.');
       wide.push(cls ? el.tagName.toLowerCase() + '.' + cls : el.tagName.toLowerCase());
+      wideEvidence.push({ sel: selectorFor(el), label: 'wider than the screen', w: Math.round(r.width), h: Math.round(r.height) });
       boxes.push({ x: Math.max(0, Math.round(r.left)), y: Math.round(r.top), width: Math.min(vw, Math.round(r.width)), height: Math.round(r.height), label: 'wider than the screen' });
     }
   });
-  var tiny = 0, tinyBoxes: any[] = [], tinyNames: string[] = [];
+  var tiny = 0, tinyBoxes: any[] = [], tinyNames: string[] = [], tinyEvidence: any[] = [];
   Array.prototype.slice.call(document.querySelectorAll('a[href],button,input,select,[role="button"]')).forEach(function (el: any) {
     var r = el.getBoundingClientRect();
     /**
@@ -182,6 +204,7 @@ function measureResponsive(vw: number) {
       tiny++;
       if (tinyBoxes.length < 8) {
         tinyBoxes.push({ x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), label: 'tap target < 40px' });
+        tinyEvidence.push({ sel: selectorFor(el), label: 'tap target < 40px', w: Math.round(r.width), h: Math.round(r.height) });
         var cls = (el.getAttribute('class') || '').split(/\s+/).slice(0, 2).filter(Boolean).join('.');
         var say = (el.textContent || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 20);
         tinyNames.push(el.tagName.toLowerCase() + (cls ? '.' + cls : '') + (say ? ' «' + say + '»' : '') + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
@@ -194,8 +217,8 @@ function measureResponsive(vw: number) {
     if (fs && fs < 12) smallFonts++;
   });
   return {
-    scrollW: scrollW, overflowX: scrollW > vw + 2, wide: wide, boxes: boxes,
-    tiny: tiny, tinyBoxes: tinyBoxes, tinyNames: tinyNames, smallFonts: smallFonts,
+    scrollW: scrollW, overflowX: scrollW > vw + 2, wide: wide, wideEvidence: wideEvidence, boxes: boxes,
+    tiny: tiny, tinyBoxes: tinyBoxes, tinyNames: tinyNames, tinyEvidence: tinyEvidence, smallFonts: smallFonts,
     hasViewportMeta: !!document.querySelector('meta[name="viewport"]'),
   };
 }
@@ -266,6 +289,8 @@ export async function inspectUi(
     let overflowAt = '';
     let mobileTiny = 0, mobileFonts = 0, hasViewportMeta = true;
     let mobileTinyNames: string[] = [];
+    let overflowEvidence: any[] = [];
+    let mobileTinyEvidence: any[] = [];
     for (const vp of VIEWPORTS) {
         try {
             await page.setViewportSize({ width: vp.w, height: vp.h });
@@ -277,10 +302,12 @@ export async function inspectUi(
             hasViewportMeta = hasViewportMeta && !!r.hasViewportMeta;
             if (r.overflowX && !overflowAt) {
                 overflowAt = `${vp.w}px${r.wide.length ? ` — ${r.wide.join('، ')}` : ''}`;
+                overflowEvidence = Array.isArray(r.wideEvidence) ? r.wideEvidence.slice(0, 8) : [];
                 await eyes?.mark(page, r.boxes, { note: `تمرير أفقي على ${vp.w}px`, holdMs: 1200 });
             }
             if (vp.name === 'mobile') {
                 mobileTiny = r.tiny; mobileFonts = r.smallFonts; mobileTinyNames = r.tinyNames || [];
+                mobileTinyEvidence = Array.isArray(r.tinyEvidence) ? r.tinyEvidence.slice(0, 8) : [];
                 if (r.tinyBoxes?.length) await eyes?.mark(page, r.tinyBoxes, { note: 'أهداف لمس أصغر من 44px', tone: 'warn', holdMs: 1000 });
             }
         } catch { /* one width failing must not lose the others */ }
@@ -309,6 +336,7 @@ export async function inspectUi(
             ar: `تمرير أفقي على ${overflowAt} — المحتوى يخرج خارج الشاشة`,
             en: `Horizontal scrolling at ${overflowAt} — content spills off the screen`,
             hint: 'give the offending element max-width:100% and let the grid wrap',
+            evidence: overflowEvidence,
         });
     }
     if (mobileTiny > 0) {
@@ -318,6 +346,7 @@ export async function inspectUi(
             ar: `${mobileTiny} هدف لمس أصغر من 40px على الجوّال — يصعب ضغطه بالإصبع${mobileTinyNames.length ? `: ${mobileTinyNames.slice(0, 3).join('، ')}` : ''}`,
             en: `${mobileTiny} tap target(s) under 40px on a phone — hard to hit with a thumb${mobileTinyNames.length ? `: ${mobileTinyNames.slice(0, 3).join(', ')}` : ''}`,
             hint: 'min-height:44px and min-width:44px on buttons and nav links',
+            evidence: mobileTinyEvidence,
         });
     }
     if (mobileFonts > 0) {

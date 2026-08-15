@@ -105,6 +105,26 @@ describe('responsive rules are appended once', () => {
         expect(out.text).toMatch(/@media \(max-width: 480px\)/);
         expect(repairResponsive(out.text).text).toBe(out.text);
     });
+
+    it('uses measured mobile findings instead of losing them at the repair boundary', () => {
+        const plan = repairProjectFiles({ 'styles.css': '.a{color:red}' }, {
+            findings: [
+                { id: 'mobile_overflow', evidence: [{ sel: 'a.brand', label: 'wider than the screen', w: 600, h: 50 }] },
+                { id: 'mobile_tap_targets', evidence: [{ sel: 'a.brand', label: 'tap target < 40px', w: 86, h: 33 }] },
+            ],
+        });
+        const css = plan.files['styles.css'];
+        expect(css).toMatch(/إصلاح جو الجراحي: overflow قيس على الجوال/);
+        expect(css).toMatch(/a\.brand/);
+        expect(css).toMatch(/min-height:\s*44px/);
+        expect(plan.repairs.map(r => r.id)).toEqual(expect.arrayContaining(['responsive', 'small_targets']));
+        expect(repairProjectFiles({ 'styles.css': css }, {
+            findings: [
+                { id: 'mobile_overflow', evidence: [{ sel: 'a.brand', w: 600, h: 50 }] },
+                { id: 'mobile_tap_targets', evidence: [{ sel: 'a.brand', w: 86, h: 33 }] },
+            ],
+        }).files).toEqual({});
+    });
 });
 
 describe('all three reach a real project through one entry point', () => {

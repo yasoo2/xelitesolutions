@@ -323,7 +323,7 @@ describe('a measurement it cannot make honestly, it does not make', () => {
     it('and a click that hands over a FILE counts as an effect', () => {
         const b = read('core', 'quality', 'behaviour-audit.ts');
         expect(b).toMatch(/page\.on\('download', onDownload\)/);
-        expect(b).toMatch(/effect = downloaded \? 'download' : changed\(before, after\)/);
+        expect(b).toMatch(/effect = downloaded\s*\n?\s*\? 'download'\s*\n?\s*: \(changed\(before, after\)/);
     });
 
     it('and a form is exercised once per audit, not once per route', () => {
