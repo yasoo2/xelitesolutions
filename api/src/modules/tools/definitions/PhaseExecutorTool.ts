@@ -1,6 +1,9 @@
 import { ToolDefinition, ToolPermission } from '../types';
 
+import fs from 'fs';
+import path from 'path';
 import { executeTool } from '../../services/ToolService';
+import { resolveToolPath } from '../utils';
 import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, adaptPlannedArgsFromDescription, plannedArgsIssue } from '../../../core/orchestrator/plan-tools';
 
 /**
@@ -9,6 +12,67 @@ import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, adaptPlanned
  * filesystem guess. ProjectRunTool remains responsible for matching it against
  * runnable candidates and refusing when the evidence is insufficient.
  */
+/**
+ * Inspect the selected workspace before repairing a bad npm launcher.
+ *
+ * A planner can know that a project must be started while still guessing a
+ * script name (`npm run server`). The repair must learn the repository's real
+ * contract from package.json, never replace the command from a hard-coded Joe
+ * template. This helper is deliberately narrow: it only handles a missing
+ * server-like script and only if a real start/dev/serve script is present.
+ */
+export function recoverMissingNpmLauncher(
+    command: unknown,
+    taskDescription: unknown,
+    cwd: unknown,
+    workspaceId?: string,
+    background?: unknown,
+): { command: string; cwd?: string; background?: boolean; script: string; manifest: string } | null {
+    const rawCommand = String(command || '').trim();
+    const match = rawCommand.match(/^npm\s+run\s+([A-Za-z0-9:_-]+)(?:\s|$)/i);
+    if (!match) return null;
+
+    const requestedScript = match[1];
+    const taskText = `${String(taskDescription || '')} ${requestedScript}`;
+    if (!/(?:server|start|launch|serve|boot)/i.test(taskText)) return null;
+
+    let resolvedCwd: string;
+    try {
+        resolvedCwd = resolveToolPath(String(cwd || '.'), { workspaceId });
+    } catch {
+        return null;
+    }
+
+    const candidates = [
+        path.join(resolvedCwd, 'package.json'),
+        path.join(path.dirname(resolvedCwd), 'package.json'),
+    ];
+    for (const manifestPath of candidates) {
+        try {
+            if (!fs.existsSync(manifestPath)) continue;
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            const scripts = manifest?.scripts && typeof manifest.scripts === 'object' ? manifest.scripts : {};
+            if (typeof scripts[requestedScript] === 'string') return null;
+            const fallback = ['start', 'dev', 'serve', 'preview']
+                .find(name => typeof scripts[name] === 'string' && scripts[name].trim());
+            if (!fallback) continue;
+
+            const isExplicitBackground = typeof background === 'boolean';
+            const launcherBackground = isExplicitBackground ? Boolean(background) : true;
+            return {
+                command: `npm run ${fallback}`,
+                cwd: path.dirname(manifestPath),
+                ...(launcherBackground ? { background: true } : { background: false }),
+                script: fallback,
+                manifest: manifestPath,
+            };
+        } catch {
+            // Invalid or unreadable manifests are evidence of no safe fallback.
+        }
+    }
+    return null;
+}
+
 export function applyPhaseExecutionEvidence(
     toolName: string,
     planned: Record<string, any>,
@@ -247,10 +311,44 @@ export class PhaseExecutorTool implements ToolDefinition {
                         completedCount++;
                     } else {
                         const errMsg = String(toolResult.error || 'Unknown error');
+                        const failedOutput = (toolResult as any)?.output || {};
+                        const failureText = `${errMsg}\n${String(failedOutput.stderr || '')}\n${String(failedOutput.stdout || '')}`;
+
+                        // Evidence-aware launcher recovery. Do not invent a
+                        // `server` script and do not rewrite arbitrary npm
+                        // commands: inspect the manifest and retry only when
+                        // the repository proves a valid launcher exists.
+                        if (toolName === 'shell_execute' && /missing script/i.test(failureText)) {
+                            const launcher = recoverMissingNpmLauncher(
+                                toolArgs.command,
+                                taskDesc,
+                                toolArgs.cwd,
+                                executionContext.workspaceId,
+                                toolArgs.background,
+                            );
+                            if (launcher) {
+                                const launcherArgs = { ...toolArgs, ...launcher };
+                                logs.push(`[PhaseExecutor] 🔎 Missing npm script detected; package evidence at ${launcher.manifest} selects npm run ${launcher.script}.`);
+                                try {
+                                    const launcherResult = await executeTool(toolName, launcherArgs, {
+                                        ...executionContext,
+                                        onProgress: (m: string) => context?.onProgress?.(`[${toolName} MANIFEST RECOVERY] ${m}`),
+                                    });
+                                    if (launcherResult.ok) {
+                                        logs.push(`[PhaseExecutor] ✅ Manifest-aware launcher recovery succeeded: npm run ${launcher.script}`);
+                                        results.push({ task: taskDesc, tool: toolName, ok: true, message: `Used package.json script ${launcher.script} after the requested npm script was absent.` });
+                                        completedCount++;
+                                        continue;
+                                    }
+                                    logs.push(`[PhaseExecutor] ⚠️ Manifest-aware launcher recovery failed: ${String(launcherResult.error || 'unknown error')}`);
+                                } catch (launcherError: any) {
+                                    logs.push(`[PhaseExecutor] ⚠️ Manifest-aware launcher recovery threw: ${String(launcherError?.message || launcherError)}`);
+                                }
+                            }
+                        }
                         // A blocked delivery can still provide a live draft, a
                         // preview link and the precise QA evidence. Keep that
                         // report visible instead of reducing it to one error line.
-                        const failedOutput = (toolResult as any)?.output || {};
                         const failedMessage = String(failedOutput.message || '').trim();
                         logs.push(`[PhaseExecutor] ❌ Task ${i + 1} failed: ${toolName} — ${errMsg}`);
                         results.push({
