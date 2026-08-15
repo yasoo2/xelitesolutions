@@ -40,7 +40,12 @@ function extractOwnerHint(sessionId: string, userId: string) {
   const parts = sid.split(':').map((p) => p.trim()).filter(Boolean);
   const second = parts[1] || '';
   if (!second) return { type: 'none' as const, value: '' };
-  if (mongoose.Types.ObjectId.isValid(second)) return { type: 'mongoSession' as const, value: second };
+  // `browser:<id>` is the panel's local stream namespace. The suffix may be
+  // a chat/session ObjectId, but it is not itself a Mongo Session ownership
+  // claim. Treating it as one made local panels fail in JSON/mock mode (and
+  // whenever that chat id had no matching Session document). Only the
+  // explicit `browser:<userId>` form carries an ownership hint; all other
+  // browser-prefixed ids are claimed in the in-memory panel-owner map below.
   if (second === uid) return { type: 'userId' as const, value: uid };
   return { type: 'none' as const, value: '' };
 }
