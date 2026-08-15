@@ -652,12 +652,26 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
             'react_project', 'api_project', 'web_page_builder', 'mobile_builder',
             'auth_builder', 'db_schema_migrator',
         ]);
+        const isDocumentPath = (value: unknown): boolean =>
+            /(?:^|[\\/])[^\\/]+\.(?:md|mdx|txt|rst|adoc)$/i.test(String(value || '').trim());
+        const scaffoldHasImplementationFile = (task: any): boolean => {
+            const structure = task?.args?.structure;
+            if (!structure || typeof structure !== 'object' || Array.isArray(structure)) return false;
+            return Object.entries(structure).some(([relativePath, contents]) => {
+                // Null values represent directories in the scaffold contract, not
+                // implementation artifacts. A scaffold containing only README or
+                // challenge notes must not satisfy an implementation request.
+                if (contents === null || isDocumentPath(relativePath)) return false;
+                return Boolean(String(relativePath || '').trim());
+            });
+        };
         return (Array.isArray(phases) ? phases : []).flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : [])
             .filter((task: any) => {
                 const tool = String(task?.tool || '').toLowerCase();
                 if (!implementationTools.has(tool)) return false;
-                const target = String(task?.args?.path || task?.args?.filePath || task?.args?.targetPath || '').toLowerCase();
-                return !/\.(?:md|mdx|txt|rst|adoc)$/i.test(target);
+                if (tool === 'scaffold_project') return scaffoldHasImplementationFile(task);
+                const target = String(task?.args?.path || task?.args?.filePath || task?.args?.targetPath || '').trim();
+                return !isDocumentPath(target);
             }).length;
     }
 

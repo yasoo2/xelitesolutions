@@ -131,6 +131,51 @@ OBSERVE JOE — DO NOT TAKE OVER
         expect(plannedArgsIssue('browser_run', { sessionId: 'panel-test' })).toMatch(/instructionText|actions/);
     });
 
+    it('does not count a documentation-only scaffold as an implementation artifact', () => {
+        const assessment = planner.assessPlanScope({
+            phases: [{
+                name: 'Initial scaffold',
+                requirementsCovered: ['R1', 'R2', 'R3', 'R4', 'R5', 'R6'],
+                deliverables: ['README.md', 'challenge.txt'],
+                tasks: [{
+                    task: 'Create initial project notes',
+                    tool: 'scaffold_project',
+                    args: {
+                        structure: {
+                            'README.md': '# Plan',
+                            'challenge.txt': 'Acceptance notes',
+                        },
+                    },
+                }],
+            }],
+        }, specification);
+
+        expect(assessment.implementationArtifacts).toBe(0);
+        expect(assessment.ok).toBe(false);
+    });
+
+    it('counts a scaffold source file as an implementation artifact while ignoring documentation', () => {
+        const assessment = planner.assessPlanScope({
+            phases: [{
+                name: 'Executable scaffold',
+                requirementsCovered: ['R1', 'R2', 'R3', 'R4', 'R5', 'R6'],
+                deliverables: ['src/index.ts', 'README.md'],
+                tasks: [{
+                    task: 'Create the first executable source',
+                    tool: 'scaffold_project',
+                    args: {
+                        structure: {
+                            'src/index.ts': 'export const ready = true;',
+                            'README.md': '# Plan',
+                        },
+                    },
+                }],
+            }],
+        }, specification);
+
+        expect(assessment.implementationArtifacts).toBe(1);
+    });
+
     it('accepts a proportionate plan with implementation artifacts and requirement coverage', () => {
         const phase = (name: string, covered: string[], file: string) => ({
             name,
