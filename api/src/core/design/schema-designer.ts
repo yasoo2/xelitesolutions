@@ -180,9 +180,17 @@ Rules:
  * has been told nothing.
  */
 export async function designDataModel(
-    request: string,
+    requestRaw: string,
     opts?: { onNote?: (note: string) => void; timeoutMs?: number },
 ): Promise<ModelEntity[]> {
+    /**
+     * «بفئات: طعام، مواصلات، فواتير، ترفيه» declares the OPTIONS of one
+     * select field — and the shape readers below turned that list into three
+     * TABLES on a live build. The clause is removed before any reader runs;
+     * a genuine «الجداول: …» declaration never lives inside it.
+     */
+    const { stripDeclaredOptions } = require('./app-blueprints');
+    const request = stripDeclaredOptions(requestRaw);
     /**
      * WHAT HE WROTE DOWN COMES FIRST — BEFORE ANY RECOGNITION.
      *

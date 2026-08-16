@@ -41,6 +41,31 @@ describe('the declared categories are read from the request', () => {
     });
 });
 
+describe('the declaration reaches ONLY the field it belongs to', () => {
+    const { stripDeclaredOptions } = require('../core/design/app-blueprints');
+    it('stripDeclaredOptions removes the clause and keeps the sentence', () => {
+        const out = stripDeclaredOptions('ابنِ تطبيق مصاريف يومية بفئات: طعام، مواصلات، فواتير، ترفيه');
+        expect(out).toContain('تطبيق مصاريف يومية');
+        for (const w of ['طعام', 'مواصلات', 'فواتير', 'ترفيه', 'بفئات']) expect(out).not.toContain(w);
+    });
+    it('the scope classifier no longer reads a category word as a SYSTEM', () => {
+        // Measured live: «فواتير» inside the category list hit dataSignals and
+        // the expense app became a billing system — tables mwaslats/invoices/
+        // trfyhs were generated from the list, and the project shipped named
+        // «مشروع الات،».
+        const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
+        expect(PlanningEngine.classifyBuildScope('ابنِ تطبيق مصاريف يومية بفئات: طعام، مواصلات، فواتير، ترفيه')).toBe('app');
+        // …and a REAL billing system still classifies as one.
+        expect(PlanningEngine.classifyBuildScope('نظام فواتير للمحل مع تقارير')).toBe('system');
+    });
+    it('the model readers see the sentence without the list', () => {
+        const { inferModel } = require('../core/design/entity-inference');
+        const stripped = stripDeclaredOptions('ابنِ تطبيق مصاريف يومية بفئات: طعام، مواصلات، فواتير، ترفيه');
+        const keys = (inferModel(stripped).entities || []).map((e: any) => e.key);
+        for (const bad of ['invoices', 'trfyhs', 'mwaslats']) expect(keys).not.toContain(bad);
+    });
+});
+
 describe('the blueprint obeys the declaration', () => {
     it('declared categories replace the stock ones on the expenses select', () => {
         const bp = blueprintFor('expenses', 'تطبيق مصاريف بفئات: طعام، مواصلات، فواتير، ترفيه', true);

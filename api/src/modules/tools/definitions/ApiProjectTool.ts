@@ -2090,9 +2090,18 @@ export class ApiProjectTool extends BaseTool {
             } catch { /* UI optional */ }
         };
 
-        const kind = detectPageKind(request);
-        const brand = brandFrom(request, isAr) || brandFallback(request, isAr, kind);
-        const picked = apiResourceForKind(kind, isAr, request);
+        /**
+         * The category declaration is field OPTIONS, not a name and not a
+         * table list. Read raw, brandFrom shipped «مشروع الات،» as this
+         * project's NAME on a live build — the mangled tail of «بفئات:». The
+         * name, the kind and the columns read the sentence without it; the
+         * blueprint keeps the raw request, because the options ARE its.
+         */
+        const { stripDeclaredOptions } = require('../../../core/design/app-blueprints');
+        const requestForReading = stripDeclaredOptions(request);
+        const kind = detectPageKind(requestForReading);
+        const brand = brandFrom(requestForReading, isAr) || brandFallback(requestForReading, isAr, kind);
+        const picked = apiResourceForKind(kind, isAr, requestForReading);
         // The schema follows the app's own blueprint. Seeds only make sense for
         // the catalogue shape — a booking table seeded with «Dish of the day»
         // would be noise pretending to be data.

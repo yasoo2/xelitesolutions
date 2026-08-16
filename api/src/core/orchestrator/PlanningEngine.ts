@@ -214,7 +214,14 @@ export class PlanningEngine {
     }
 
     static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
-        const g = String(goalRaw || '');
+        // A declared category list is field OPTIONS, not scope evidence:
+        // «بفئات: طعام، مواصلات، فواتير» made an expense app a billing
+        // SYSTEM because the category word «فواتير» sat in dataSignals.
+        let g = String(goalRaw || '');
+        try {
+            const { stripDeclaredOptions } = require('../design/app-blueprints');
+            g = stripDeclaredOptions(g);
+        } catch { /* the classifier still answers from the raw text */ }
         // Its own data, its own users → it needs a server and a database.
         /**
          * ARABIC PLURALS THE LIST DID NOT KNOW.

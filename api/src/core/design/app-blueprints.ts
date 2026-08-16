@@ -97,6 +97,26 @@ export function readDeclaredOptions(requestRaw: string): string[] | null {
 }
 
 /**
+ * THE SAME CLAUSE, REMOVED — for the readers it must never reach.
+ *
+ * «بفئات: طعام، مواصلات، فواتير، ترفيه» declares OPTIONS of one field, and
+ * every other reader of the sentence heard it as something else, measured on
+ * one live build: the entity readers turned the list into three TABLES
+ * (mwaslats/invoices/trfyhs), the brand reader shipped «مشروع الات،» as the
+ * project's name, and the scope classifier read the category word «فواتير»
+ * as a billing SYSTEM. The categories belong to the category field alone;
+ * everyone else reads the sentence without them.
+ */
+export function stripDeclaredOptions(requestRaw: string): string {
+    const r = String(requestRaw || '');
+    return r
+        .replace(/(?:ب|وال|ال)?(?:فئات|تصنيفات|أقسام|اقسام|categories|types)\s*(?:هي|are)?\s*[:：]\s*[^.\n؟?!]{2,160}/gi, ' ')
+        .replace(/(?:بفئات|بتصنيفات|بأقسام|باقسام|with\s+categories)\s+[^.\n؟?!:،]{2,160}(?:،[^.\n؟?!]{0,120})?/gi, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+/**
  * A SECOND TABLE, AND THE LINE BETWEEN THEM — «علاقات بين أكثر من جدول
  * (طبيب ← مواعيده)».
  *
