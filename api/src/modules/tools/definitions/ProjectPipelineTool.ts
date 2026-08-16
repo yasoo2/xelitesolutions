@@ -1363,7 +1363,12 @@ export class ProjectPipelineTool implements ToolDefinition {
                     ? artifactRoot
                     : fs.existsSync(path.join(artifactRoot, 'dist', 'index.html'))
                         ? path.join(artifactRoot, 'dist')
-                        : artifactRoot;
+                        // The pair's door is the API, and the api serves its
+                        // built interface from public/ — round 7 measured
+                        // «no index.html to audit» right after the door fix.
+                        : fs.existsSync(path.join(artifactRoot, 'public', 'index.html'))
+                            ? path.join(artifactRoot, 'public')
+                            : artifactRoot;
                 const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
                 const panelSid = String(context?.browserSessionId || PANEL_BROWSER_SID || process.env.PANEL_BROWSER_SID || '').trim();
                 const { broadcast } = require('../../../api/ws');
