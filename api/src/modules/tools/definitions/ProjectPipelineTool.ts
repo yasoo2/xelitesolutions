@@ -879,7 +879,53 @@ export class ProjectPipelineTool implements ToolDefinition {
                         language: isAr ? 'ar' : 'en',
                         onProgress: (m: string) => say(m),
                     });
-                    if (repairPipeline?.ok === true) {
+                    let boundedRepairReady = repairPipeline?.ok === true;
+                    // A repair phase can write the missing entrypoint successfully but
+                    // still fail its immediate project_run because the selected project
+                    // has declared dependencies and no node_modules yet. That is a
+                    // bounded, evidence-backed runtime prerequisite—not permission to
+                    // invent a new project or retry indefinitely. Bootstrap dependencies
+                    // exactly once, only after the original failure was launchability and
+                    // only when package.json proves that dependencies are declared.
+                    if (!boundedRepairReady && /launchability|runtime target is missing|cannot start the project safely/i.test(failureText)) {
+                        const bootstrapRoot = String(
+                            repairPlanner?.output?.projectRoot || repairProjectRoot || plannerResult?.output?.projectRoot || discoveredProjectRoot || ''
+                        ).trim();
+                        const manifestPath = bootstrapRoot ? path.join(bootstrapRoot, 'package.json') : '';
+                        const dependencyRoot = bootstrapRoot ? path.join(bootstrapRoot, 'node_modules') : '';
+                        let declaredDependencyCount = 0;
+                        if (manifestPath && fs.existsSync(manifestPath) && !fs.existsSync(dependencyRoot)) {
+                            try {
+                                const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+                                declaredDependencyCount = ['dependencies', 'devDependencies', 'optionalDependencies']
+                                    .reduce((count, bucket) => count + (
+                                        manifest && manifest[bucket] && typeof manifest[bucket] === 'object'
+                                            ? Object.keys(manifest[bucket]).length
+                                            : 0
+                                    ), 0);
+                            } catch (manifestError: any) {
+                                appendBoundedPipelineLog(logs, `[pipeline] bounded dependency evidence unreadable: ${String(manifestError?.message || manifestError).slice(0, 240)}`);
+                            }
+                        }
+                        if (bootstrapRoot && declaredDependencyCount > 0) {
+                            say(pick(isAr,
+                                `📦 دليل التشغيل يثبت اعتماديات معلنة بلا node_modules؛ أثبّتها مرة واحدة داخل ${bootstrapRoot} قبل إعادة التحقق.`,
+                                `📦 Runtime evidence proves declared dependencies without node_modules; installing them once in ${bootstrapRoot} before re-verification.`));
+                            const bootstrapResult = await executeTool(
+                                'npm_manager',
+                                { command: 'install --ignore-scripts --no-audit --no-fund', cwd: bootstrapRoot },
+                                { ...(context || {}), language: isAr ? 'ar' : 'en', liveRepairAttempted: true },
+                            );
+                            appendBoundedPipelineLogs(logs, bootstrapResult?.logs);
+                            boundedRepairReady = bootstrapResult?.ok === true;
+                            if (!boundedRepairReady) {
+                                const bootstrapError = String(bootstrapResult?.error || bootstrapResult?.output?.message || 'npm install failed').slice(0, 420);
+                                liveRunError = `${liveRunError}; bounded dependency bootstrap: ${bootstrapError}`.slice(0, 900);
+                                appendBoundedPipelineLog(logs, `[pipeline] bounded dependency bootstrap failed: ${bootstrapError}`);
+                            }
+                        }
+                    }
+                    if (boundedRepairReady) {
                         const repairProjectName = String(repairPlanner?.output?.projectName || plannerResult?.output?.projectName || '').trim();
                         const repairProjectRoot = String(repairPlanner?.output?.projectRoot || plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim();
                         const retryInput: Record<string, string> = {};
