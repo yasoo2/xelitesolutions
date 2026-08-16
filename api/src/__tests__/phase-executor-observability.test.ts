@@ -136,16 +136,19 @@ describe('PhaseExecutorTool observable trusted context', () => {
 
     it('passes accepted project identity to live verification instead of using the workspace root', async () => {
         mockedExecuteTool.mockResolvedValue({ ok: true, output: {} } as any);
+        // Use a per-process path so an old live-run artifact cannot be mistaken
+        // for runtime evidence and turn this query assertion into a cwd assertion.
+        const projectName = `NEXUS-observability-${process.pid}`;
 
         const result: any = await new PhaseExecutorTool().execute({
             phase: {
                 phaseNumber: 2,
                 name: 'Run the produced system',
-                tasks: [{ task: 'Create the runnable manifest', tool: 'write_file', args: { path: 'NEXUS/package.json', content: '{"scripts":{"start":"node index.js"}}' } }],
-                verificationTask: { task: 'Start the NEXUS system', tool: 'project_run', args: {} },
+                tasks: [{ task: 'Create the runnable manifest', tool: 'write_file', args: { path: `${projectName}/package.json`, content: '{"scripts":{"start":"node index.js"}}' } }],
+                verificationTask: { task: `Start the ${projectName} system`, tool: 'project_run', args: {} },
             },
             projectContext: {
-                projectName: 'NEXUS',
+                projectName,
                 sessionId: 'chat-run',
                 workspaceId: 'workspace-run',
                 userId: 'user-run',
@@ -155,7 +158,8 @@ describe('PhaseExecutorTool observable trusted context', () => {
         expect(result.ok).toBe(true);
         expect(mockedExecuteTool.mock.calls[1][0]).toBe('project_run');
         expect(mockedExecuteTool.mock.calls[1][1]).toMatchObject({
-            projectQuery: 'run the project named "NEXUS"',
+                            projectQuery: `run the project named "${projectName}"`,
+
             workspaceId: 'workspace-run',
             sessionId: 'chat-run',
         });

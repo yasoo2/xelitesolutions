@@ -86,8 +86,17 @@ function projectRootFromWrittenFile(filePath: unknown, workspaceRoot: string): s
         : path.dirname(candidate);
     const workspace = path.resolve(workspaceRoot);
     while (isWithinRoot(current, workspace)) {
+        // A nested write such as `NEXUS/package.json` must not inherit an
+        // unrelated package.json at the workspace root. The workspace itself
+        // is valid evidence only when this write directly targets its manifest;
+        // otherwise a package-bearing ancestor has not been proven yet.
+        if (current === workspace) {
+            return path.dirname(candidate) === workspace && path.basename(candidate).toLowerCase() === 'package.json'
+                && fs.existsSync(path.join(current, 'package.json'))
+                ? current
+                : '';
+        }
         if (fs.existsSync(path.join(current, 'package.json'))) return current;
-        if (current === workspace) break;
         current = path.dirname(current);
     }
     return '';

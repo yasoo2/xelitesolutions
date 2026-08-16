@@ -927,7 +927,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
             projectName: String(plannerResult.output.projectName || 'project'),
-            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError,
+            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus,
         });
         say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
@@ -1118,8 +1118,9 @@ export class ProjectPipelineTool implements ToolDefinition {
             verified: boolean;
         liveUrl?: string;
         liveRunError?: string;
+        liveRepairStatus?: string;
     }): string {
-        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError } = args;
+        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
 
@@ -1231,6 +1232,11 @@ export class ProjectPipelineTool implements ToolDefinition {
                 lines.push(ar
                     ? '- دليل فشل التشغيل الحي: `' + String(liveRunError).slice(0, 420) + '`'
                     : '- Live-run evidence: `' + String(liveRunError).slice(0, 420) + '`');
+            }
+            if (liveRepairStatus && liveRepairStatus !== 'not_attempted') {
+                lines.push(ar
+                    ? '- حالة محاولة إصلاح التشغيل المحدودة: `' + String(liveRepairStatus).slice(0, 180) + '`'
+                    : '- Bounded live-repair status: `' + String(liveRepairStatus).slice(0, 180) + '`');
             }
             const sfReason = pipeline?.selfFixExecution?.reason || pipeline?.selfFixPlan?.reason;
             if (sfReason) {
