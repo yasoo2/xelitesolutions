@@ -19,6 +19,8 @@ describe('canonical engineering pipeline terminal outcomes', () => {
     expect(src).toContain('pipelineFinal: true');
     expect(src).toContain("error: plannerResult?.error || 'planner returned no phases'");
     expect(src).toContain("verificationStatus: 'not_run'");
+    expect(src).toContain('liveRunError');
+    expect(src).toContain('Live-run evidence:');
   });
 
   it('does not deliver a verified pipeline without a confirmed live URL', () => {

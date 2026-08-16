@@ -565,7 +565,8 @@ export class ProjectPipelineTool implements ToolDefinition {
         // and the whole story (phases, files, how to run) was discarded.
         const total = Number(plannerResult.output.totalPhases || phases.length);
         const done = Number(pipeline?.completedPhases || 0);
-        let verified = pipeline?.ok === true;
+        const verified = pipeline?.ok === true;
+        let finalVerified = verified;
         // `ok` is retained as the compatibility success signal, but the report
         // must not force a reader to infer whether code ran, verification ran,
         // or a deliverable is usable. These are separate engineering facts.
@@ -576,6 +577,10 @@ export class ProjectPipelineTool implements ToolDefinition {
             && pipeline.results.some((result: any) => result?.verificationFailed === true);
         let liveRunVerificationFailed = false;
         const honestBlocker = pipeline?.honestBlocker === true || verificationFailed;
+        // Compatibility facts for phase execution; live-run may still veto delivery.
+        const executionStatus = verified ? 'completed' : done > 0 ? 'partial' : 'failed';
+        const verificationStatus = verified ? 'passed' : String(pipeline?.verificationStatus || 'failed');
+        const deliveryStatus = verified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
 
         // 3 — The last mile: a VERIFIED system is RUN, not left inert on disk.
         // No button — the pipeline starts it and the live preview opens itself.
@@ -604,8 +609,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                     runInput.projectQuery = `"${plannedProjectName.replace(/"/gu, '\\"')}"`;
                 }
                 const runRes = await executeTool('project_run', runInput, { ...context, language: isAr ? 'ar' : 'en' });
-                const liveOutcome = applyLiveRunOutcome(verified, runRes);
-                verified = liveOutcome.verified;
+                const liveOutcome = applyLiveRunOutcome(finalVerified, runRes);
+                finalVerified = liveOutcome.verified;
                 liveUrl = liveOutcome.liveUrl;
                 if (liveOutcome.verificationFailed) {
                     liveRunError = liveOutcome.error || 'project_run did not confirm a live URL';
@@ -616,7 +621,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 }
             } catch (e: any) {
                 liveRunError = String(e?.message || e);
-                verified = false;
+                finalVerified = false;
                 liveRunVerificationFailed = true;
                 say(pick(isAr,
                     `⛔ لم أعتبر النظام مسلّماً: تعذّر تأكيد التشغيل الحي. ${liveRunError}`,
@@ -624,28 +629,28 @@ export class ProjectPipelineTool implements ToolDefinition {
             }
         }
 
-        const executionStatus = verified ? 'completed' : done > 0 ? 'partial' : 'failed';
-        const verificationStatus = verified ? 'passed' : String(pipeline?.verificationStatus || 'failed');
-        const deliveryStatus = verified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
+        const finalExecutionStatus = finalVerified ? 'completed' : done > 0 ? 'partial' : 'failed';
+        const finalVerificationStatus = finalVerified ? 'passed' : String(pipeline?.verificationStatus || 'failed');
+        const finalDeliveryStatus = finalVerified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
 
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
             projectName: String(plannerResult.output.projectName || 'project'),
-            phases, pipeline, done, total, verified, liveUrl,
+            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError,
         });
-        say(`[pipeline] ${verified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
+        say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
         return {
-            ok: verified,
-            error: verified ? undefined : summary,
+            ok: finalVerified,
+            error: finalVerified ? undefined : summary,
             output: {
                 projectName: plannerResult.output.projectName,
                 completedPhases: done,
                 totalPhases: total,
-                verified,
-                executionStatus,
-                verificationStatus,
-                deliveryStatus,
+                verified: finalVerified,
+                executionStatus: finalExecutionStatus,
+                verificationStatus: finalVerificationStatus,
+                deliveryStatus: finalDeliveryStatus,
                 ...(verificationFailed ? { verificationFailed: true } : {}),
                 ...(liveRunVerificationFailed ? { verificationFailed: true } : {}),
                 ...(honestBlocker ? { honestBlocker: true } : {}),
@@ -817,10 +822,11 @@ export class ProjectPipelineTool implements ToolDefinition {
         pipeline: any;
         done: number;
         total: number;
-        verified: boolean;
+            verified: boolean;
         liveUrl?: string;
+        liveRunError?: string;
     }): string {
-        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl } = args;
+        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
 
@@ -927,6 +933,11 @@ export class ProjectPipelineTool implements ToolDefinition {
             }
             if (ticket?.primaryError) {
                 lines.push((ar ? '- الخطأ: ' : '- Error: ') + '`' + String(ticket.primaryError).slice(0, 220) + '`');
+            }
+            if (liveRunError) {
+                lines.push(ar
+                    ? '- دليل فشل التشغيل الحي: `' + String(liveRunError).slice(0, 420) + '`'
+                    : '- Live-run evidence: `' + String(liveRunError).slice(0, 420) + '`');
             }
             const sfReason = pipeline?.selfFixExecution?.reason || pipeline?.selfFixPlan?.reason;
             if (sfReason) {

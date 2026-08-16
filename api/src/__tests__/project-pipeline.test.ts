@@ -137,7 +137,7 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/const executionStatus = verified/);
         expect(src).toMatch(/const verificationStatus = verified/);
         expect(src).toMatch(/const deliveryStatus = verified/);
-        expect(src).toMatch(/ok: verified/);
+        expect(src).toMatch(/ok: finalVerified/);
         // The honest partial-delivery message exists in Arabic.
         expect(src).toMatch(/توقف البناء بصدق/);
     });
