@@ -253,6 +253,27 @@ export function buildPlannerEvidence(evidence: any, specificationSources: any[] 
  * bypassed: the scope audit names every asked-for area the engine did not
  * build, and the delivery reports PARTIAL — named, never silently shrunk.
  */
+/**
+ * THE PAIR'S DOOR IS THE API.
+ *
+ * A deterministic full-stack pair shares one suffix on disk —
+ * react-taskflow-ai-9304 ↔ api-taskflow-ai-9304 — and the api serves the
+ * BUILT interface at «/» while answering /api/* on the same origin. Round 6,
+ * measured: live-run picked the interface's dev server instead, and the
+ * final Browser QA counted the app's own /api/health calls as 8×404 — two
+ * blocking findings about a topology mistake, not about the system.
+ */
+export function apiSiblingOf(projectRoot: string): string | null {
+    try {
+        const root = String(projectRoot || '').trim();
+        if (!root) return null;
+        const base = path.basename(root);
+        if (!/^react-/.test(base)) return null;
+        const sibling = path.join(path.dirname(root), base.replace(/^react-/, 'api-'));
+        return fs.existsSync(path.join(sibling, 'server.js')) ? sibling : null;
+    } catch { return null; }
+}
+
 export function deterministicRescueForDeadPlanner(request: string): boolean {
     if (deterministicRescueAllowed(request)) return true;
     try {
@@ -942,7 +963,12 @@ export class ProjectPipelineTool implements ToolDefinition {
                 const plannedProjectRoot = String(plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim();
                 const runInput: Record<string, string> = {};
                 if (plannedProjectRoot) runInput.cwd = plannedProjectRoot;
-                else if (plannedProjectName) {
+                // The pair's door is the API (it serves the built interface
+                // AND answers /api/* on one origin) — running the interface's
+                // dev server measured its own health calls as 404s (round 6).
+                const pairDoor = apiSiblingOf(runInput.cwd || discoveredProjectRoot || '');
+                if (pairDoor) runInput.cwd = pairDoor;
+                if (!runInput.cwd && plannedProjectName) {
                     // ProjectRunTool deliberately extracts names from an explicit
                     // quoted selector. Quote the planner identity at this boundary;
                     // do not pass the full request, which could select an unrelated

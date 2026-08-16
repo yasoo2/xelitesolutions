@@ -103,6 +103,21 @@ describe('routing — full-project requests reach the pipeline, offline and dete
         expect(deterministicRescueAllowed('Build a small local notes app with a web interface.')).toBe(true);
     });
 
+    test("the pair's door is the API — apiSiblingOf finds it by shared suffix", () => {
+        const os = require('os');
+        const { apiSiblingOf } = require('../modules/tools/definitions/ProjectPipelineTool');
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pair-'));
+        fs.mkdirSync(path.join(tmp, 'react-taskflow-ai-9304'));
+        fs.mkdirSync(path.join(tmp, 'api-taskflow-ai-9304'));
+        fs.writeFileSync(path.join(tmp, 'api-taskflow-ai-9304', 'server.js'), '// the door');
+        // Round 6, measured: live-run started the interface's dev server and
+        // Browser QA counted the app's own /api/health calls as 8×404.
+        expect(apiSiblingOf(path.join(tmp, 'react-taskflow-ai-9304'))).toBe(path.join(tmp, 'api-taskflow-ai-9304'));
+        expect(apiSiblingOf(path.join(tmp, 'api-taskflow-ai-9304'))).toBeNull();
+        expect(apiSiblingOf('/nowhere/react-ghost')).toBeNull();
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
     test('a DEAD planner rescues any build the engine recognises — the TaskFlow live failure', () => {
         const { deterministicRescueForDeadPlanner } = require('../modules/tools/definitions/ProjectPipelineTool');
         // The live test, verbatim shape: a giant structured production brief.
