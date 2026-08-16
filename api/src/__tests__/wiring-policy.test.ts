@@ -983,8 +983,25 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
 
         expect(await tools('ابني تطبيق خرائط شبيه بتطبيق خرائط جوجل')).toBe('project_pipeline');
         expect(await tools('ابن لي نظام حجوزات عيادة مع لوحة تحكم للطبيب')).toBe('project_pipeline');
-        // …and a page request still gets a page
-        expect(await tools('ابنِ لي صفحة هبوط لمقهى')).toMatch(/web_page_builder/);
+        // …and a NEW page request gets the deterministic React engine — the
+        // one that reads design directives and audits itself. Measured live:
+        // «ابنِ موقعاً لمشغل عطور…» planned web_page_builder, which needs an
+        // LLM and wrote nothing without one, while react_project sat unused.
+        expect(await tools('ابنِ لي صفحة هبوط لمقهى')).toMatch(/react_project/);
+        // The live failure itself, pinned verbatim: «موقع» is in none of the
+        // scope lists, so the classifier's default ('page') decided the tool.
+        expect(await tools('ابنِ موقعاً لمشغل عطور اسمه «ريحان» بخلفية داكنة ولمسة ذهبية، الشعار في المنتصف، زوايا كبسولية'))
+            .toBe('react_project');
+        // A real edit of the ACTIVE page keeps the page editor…
+        (global as any).joePages = { default: { updatedAt: Date.now() } };
+        try {
+            expect(await tools('غيّر لون الخلفية إلى أزرق داكن')).toBe('web_page_builder');
+            // …but an explicit build verb + web noun is a BUILD even with a
+            // page open — editIntent hears «خلفية» inside new briefs too.
+            expect(await tools('ابنِ موقعاً جديداً لمطعم مشويات بخلفية داكنة')).toBe('react_project');
+        } finally {
+            delete (global as any).joePages;
+        }
         // The implementation chain is planned only after workspace discovery;
         // the top-level plan therefore has one evidence-first engineering entry.
         const sys = await PlanningEngine.generatePlan({

@@ -1510,13 +1510,53 @@ Rules:
                     metadata: { complexity: 'high', riskLevel: 'medium' },
                 };
             }
+            /**
+             * A NEW SITE IS BUILT BY THE ENGINE THAT CAN ACTUALLY BUILD.
+             *
+             * «ابنِ موقعاً لمشغل عطور اسمه «ريحان» بخلفية داكنة ولمسة ذهبية،
+             * الشعار في المنتصف، زوايا كبسولية» — driven through the real
+             * chat UI — planned web_page_builder, which asked an LLM to write
+             * one HTML file. With no provider it wrote NOTHING («no LLM
+             * provider answered»); with one it writes a single page that has
+             * never met the design-directives reader, the design families,
+             * the photo pipeline, the visible self-QA or the improvement
+             * loop. The month of engine work sat unreachable behind the
+             * word «موقع», because that word is in none of the scope lists
+             * and 'page' is the classifier's default.
+             *
+             * react_project is deterministic — it builds, measures and
+             * repairs with ZERO model calls, so this route also survives
+             * every provider being down. web_page_builder keeps the two
+             * jobs that genuinely need model eyes: editing the session's
+             * ACTIVE page, and building from an attached design image.
+             */
+            // …and «edit» must not swallow an explicit build: editIntent hears
+            // nouns like «خلفية» and «لون», which a NEW brief also carries
+            // («ابنِ موقعاً بخلفية داكنة»). A build verb + a web noun is a
+            // build, whatever page happens to be open.
+            if (hasActivePage && editIntent && !(buildVerb && webNoun)) {
+                return {
+                    id: `build_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'build_page',
+                        description: `Building: ${intent.goal}`,
+                        tool: 'web_page_builder',
+                        agent: 'Dev',
+                        input: { request: intent.goal },
+                        dependsOn: []
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' }
+                };
+            }
+            console.log('[PlanningEngine] new page-scope build -> react_project (deterministic engine, no model needed)');
             return {
                 id: `build_${Date.now()}`,
                 goal: intent.goal,
                 steps: [{
                     id: 'build_page',
                     description: `Building: ${intent.goal}`,
-                    tool: 'web_page_builder',
+                    tool: 'react_project',
                     agent: 'Dev',
                     input: { request: intent.goal },
                     dependsOn: []
@@ -2209,13 +2249,17 @@ Rules:
                     }
                 }
                 if (routed.intent === 'build_page' || routed.intent === 'edit_page') {
+                    // Same split as the deterministic branch: an EDIT keeps the
+                    // page editor; a NEW page-scope build belongs to the
+                    // deterministic React engine — directives, QA and repairs
+                    // included, model or no model.
                     return {
                         id: `build_${Date.now()}`,
                         goal: intent.goal,
                         steps: [{
                             id: 'build_page',
                             description: `Building: ${intent.goal}`,
-                            tool: 'web_page_builder',
+                            tool: routed.intent === 'edit_page' ? 'web_page_builder' : 'react_project',
                             agent: 'Dev',
                             input: { request: intent.goal },
                             dependsOn: []
@@ -2397,7 +2441,7 @@ Return ONLY a JSON array of steps:
                         return {
                             id: `build_page_rescue_${Date.now()}`,
                             goal: intent.goal,
-                            steps: [{ id: 'build_page', description: `بناء صفحة مطلوبة: ${intent.goal}`, tool: 'web_page_builder', agent: 'Dev', input: { request: intent.goal }, dependsOn: [] }],
+                            steps: [{ id: 'build_page', description: `بناء الموقع بمحرك React الحتمي: ${intent.goal}`, tool: 'react_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [] }],
                             metadata: { complexity: 'medium', riskLevel: 'low' },
                         };
                     }
@@ -2449,7 +2493,7 @@ Return ONLY a JSON array of steps:
                 return {
                     id: `build_page_offline_${Date.now()}`,
                     goal: intent.goal,
-                    steps: [{ id: 'build_page', description: `بناء صفحة مطلوبة: ${intent.goal}`, tool: 'web_page_builder', agent: 'Dev', input: { request: intent.goal }, dependsOn: [] }],
+                    steps: [{ id: 'build_page', description: `بناء الموقع بمحرك React الحتمي: ${intent.goal}`, tool: 'react_project', agent: 'Dev', input: { request: intent.goal }, dependsOn: [] }],
                     metadata: { complexity: 'medium', riskLevel: 'low' },
                 };
             }
