@@ -863,7 +863,7 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
         // number of phases at eight, but truncating the register here made a
         // long implementation brief look complete after covering only its first
         // 18 areas (the observed NEXUS false-positive).
-        const requiresImplementation = /(?:\b(?:build|implement|develop|create|execute)\b|(?:ابن|نف[ّذذ]|طو[ّو]ر|طبق))/i.test(source);
+        const requiresImplementation = /(?:\b(?:build|implement|develop|create|execute|repair|fix|resolve|patch|refactor|modify|update)\b|(?:ابن|نف[ّذذ]|طو[ّو]ر|طبق|اصلح|أصلح|إصلاح|عال[جج]|عالج|عدّل|تعديل|طوّر))/i.test(source);
         return {
             targets,
             minPhases: Math.min(8, Math.max(3, Math.ceil(targets.length / 3))),

@@ -439,6 +439,45 @@ Build the complete system with locally verifiable implementation artifacts.
         expect(result.logs.join('\\n')).toMatch(/portability normalization completed/i);
     });
 
+    it('treats live-repair and fix requests as implementation work and blocks docs-only recovery', async () => {
+        const docsOnlyPlan = {
+            projectName: 'Repair target',
+            projectVibe: 'Evidence-backed repair',
+            totalPhases: 1,
+            estimatedDuration: '5 minutes',
+            dependencies: {},
+            phases: [{
+                phaseNumber: 1,
+                name: 'Record repair notes',
+                description: 'Document the repair instead of changing the runnable artifact.',
+                tasks: [{
+                    task: 'Write repair notes',
+                    tool: 'write_file',
+                    args: { path: 'docs/repair.md', content: '# Repair notes' },
+                    priority: 'high',
+                    realisticMinutes: 1,
+                }],
+                verificationTask: { task: 'Read repair notes', tool: 'read_file', args: { path: 'docs/repair.md' } },
+                deliverables: ['docs/repair.md'],
+                estimatedTime: '5 minutes',
+                requirementsCovered: ['the runnable contract'],
+            }],
+        };
+        mockCallLLM
+            .mockResolvedValueOnce(JSON.stringify(docsOnlyPlan))
+            .mockResolvedValueOnce(JSON.stringify(docsOnlyPlan));
+
+        const result: any = await new ProjectPlannerTool().execute({
+            projectDescription: 'Repair the current project and fix the runnable contract after a failed live-run check.',
+        });
+
+        expect(mockCallLLM).toHaveBeenCalledTimes(2);
+        expect(result.ok).toBe(false);
+        expect(result.output.fallback).toBe(true);
+        expect(result.output.blocker.code).toBe('no_implementation_artifacts_after_contract_recovery');
+        expect(result.logs.join('\\n')).toMatch(/contract recovery failed|no non-document implementation artifact/i);
+    });
+
     it('keeps the honest blocker when both the initial and recovery plans are unusable', async () => {
         mockCallLLM
             .mockResolvedValueOnce(JSON.stringify({ projectName: 'Empty', phases: [] }))
