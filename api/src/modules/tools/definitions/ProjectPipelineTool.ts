@@ -3,6 +3,7 @@ import { ToolDefinition, ToolPermission } from '../types';
 import { executeTool } from '../../services/ToolService';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import { brandFrom } from '../../../core/design/page-head';
+import { scopeReport } from '../../../core/quality/scope-audit';
 
 const MAX_PIPELINE_LOGS = 192;
 const MAX_PIPELINE_LOG_CHARS = 2_000;
@@ -257,6 +258,69 @@ export function applyLiveRunOutcome(
         verificationFailed: true,
         error: String(runResult?.error || runResult?.output?.message || 'project_run did not confirm a live URL'),
     };
+}
+
+export interface ScopeGateOutcome {
+    verified: boolean;
+    liveUrl: string;
+    verificationFailed: boolean;
+    error?: string;
+    scopeAudit: {
+        requested: number;
+        built: number;
+        coverage: number;
+        missing: string[];
+    };
+}
+
+/**
+ * A live HTTP response proves reachability, not that the requested system was
+ * built.  Keep this gate domain-neutral: scope-audit extracts named
+ * capabilities from the original request and looks for evidence in the exact
+ * artifact root that project_run started.  An underspecified request remains
+ * admissible; a request with named scope cannot be delivered below 50%.
+ */
+export function applyScopeAuditOutcome(
+    request: string,
+    projectRoot: string,
+    liveOutcome: { verified: boolean; liveUrl: string; verificationFailed: boolean; error?: string },
+): ScopeGateOutcome {
+    const root = String(projectRoot || '').trim();
+    if (!liveOutcome.verified) {
+        return { ...liveOutcome, scopeAudit: { requested: 0, built: 0, coverage: 0, missing: [] } };
+    }
+    if (!root) {
+        return {
+            ...liveOutcome,
+            verified: false,
+            verificationFailed: true,
+            error: 'project_run confirmed a live URL but did not identify the artifact root for scope verification',
+            scopeAudit: { requested: 0, built: 0, coverage: 0, missing: [] },
+        };
+    }
+
+    const report = scopeReport(request, [root]);
+    const coverage = report.requested.length
+        ? report.built.length / report.requested.length
+        : 1;
+    const missing = report.missing.map(capability => capability.en);
+    const scopeAudit = {
+        requested: report.requested.length,
+        built: report.built.length,
+        coverage,
+        missing,
+    };
+    if (coverage < 0.5) {
+        const missingText = missing.slice(0, 5).join(', ') || 'named capabilities';
+        return {
+            ...liveOutcome,
+            verified: false,
+            verificationFailed: true,
+            error: `artifact coverage ${Math.round(coverage * 100)}% — missing: ${missingText}`,
+            scopeAudit,
+        };
+    }
+    return { ...liveOutcome, scopeAudit };
 }
 
 export class ProjectPipelineTool implements ToolDefinition {
@@ -598,6 +662,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         let liveRunResult: any = null;
         let liveRepairAttempted = false;
         let liveRepairStatus = 'not_attempted';
+        let scopeAudit: ScopeGateOutcome['scopeAudit'] | undefined;
         if (verified) {
             try {
                 say(pick(isAr, '▶️ أُشغّل النظام لتراه حيّاً…', '▶️ Starting the system so you can see it live…'));
@@ -622,14 +687,19 @@ export class ProjectPipelineTool implements ToolDefinition {
                 const runRes = await executeTool('project_run', runInput, { ...context, language: isAr ? 'ar' : 'en' });
                 liveRunResult = runRes;
                 const liveOutcome = applyLiveRunOutcome(finalVerified, runRes);
-                finalVerified = liveOutcome.verified;
-                liveUrl = liveOutcome.liveUrl;
-                if (liveOutcome.verificationFailed) {
-                    liveRunError = liveOutcome.error || 'project_run did not confirm a live URL';
+                const liveArtifactRoot = String(
+                    runRes?.output?.cwd || runInput.cwd || plannedProjectRoot || discoveredProjectRoot || ''
+                ).trim();
+                const scopedLiveOutcome = applyScopeAuditOutcome(request, liveArtifactRoot, liveOutcome);
+                scopeAudit = scopedLiveOutcome.scopeAudit;
+                finalVerified = scopedLiveOutcome.verified;
+                liveUrl = scopedLiveOutcome.liveUrl;
+                if (scopedLiveOutcome.verificationFailed) {
+                    liveRunError = scopedLiveOutcome.error || 'project_run did not pass live acceptance';
                     liveRunVerificationFailed = true;
                     say(pick(isAr,
-                        `⛔ لم أعتبر النظام مسلّماً: التشغيل الحي لم يؤكد رابطاً قابلاً للوصول. ${liveRunError}`,
-                        `⛔ I did not mark the system delivered: live execution did not confirm an accessible URL. ${liveRunError}`));
+                        `⛔ لم أعتبر النظام مسلّماً: فشل قبول التشغيل الحي أو مطابقة نطاق الطلب. ${liveRunError}`,
+                        `⛔ I did not mark the system delivered: live acceptance or requested-scope verification failed. ${liveRunError}`));
                 }
             } catch (e: any) {
                 liveRunError = String(e?.message || e);
@@ -656,19 +726,33 @@ export class ProjectPipelineTool implements ToolDefinition {
                 say(pick(isAr,
                     `🔧 أُعيد اكتشاف المشروع لإصلاح دليل التشغيل الحي فقط: ${failureText}`,
                     `🔧 Re-discovering the current project to repair only the live-run evidence: ${failureText}`));
+                // Rediscovery must carry the CURRENT repair intent, not the original
+                // greenfield brief. The original request may say "build NEXUS", which
+                // correctly selects no existing project during the first pass; using it
+                // again here makes EngineeringDiscovery classify the partially-written
+                // workspace as a read-only reference and drops selectedProject.root.
+                // A repair request is an existing-project mutation by contract, so the
+                // incomplete root (src/tests without a manifest) becomes repair evidence.
+                const repairDiscoveryRequest = [
+                    'Repair the current project in place after a failed live-run acceptance check.',
+                    'Treat the existing workspace root as the write target for this bounded repair.',
+                    `Original build request: ${request.slice(0, 1200)}`,
+                    `Observed live-run failure: ${failureText}`,
+                ].join('\\n');
                 const repairDiscovery = await executeTool(
                     'engineering_discovery',
-                    projectPath ? { request, path: projectPath } : { request },
+                    projectPath
+                        ? { request: repairDiscoveryRequest, path: projectPath }
+                        : { request: repairDiscoveryRequest },
                     { ...(context || {}), liveRepairAttempted: true, language: isAr ? 'ar' : 'en' },
                 );
                 const repairEvidence = repairDiscovery?.output?.evidence || plannerEvidence;
                 const repairRequest = [
-                    'Repair the current implementation in place after a failed live-run acceptance check.',
+                    repairDiscoveryRequest,
                     'Do not redesign, regenerate, or replace working features. Do not create a template or a second project.',
                     'Inspect the current workspace and fix only the evidence-backed runnable contract: entrypoint, package manifest, start/build command, or the smallest dependency/configuration issue required for the existing implementation to build and start.',
                     'Run the existing build/tests and then make one real start/readiness check. Return executable phases only.',
                     `Original project identity: ${String(plannerResult?.output?.projectName || 'project').slice(0, 160)}.`,
-                    `Observed live-run failure: ${failureText}`,
                 ].join('\\n');
                 const repairPlanner = await executeTool(
                     'project_planner',
@@ -709,10 +793,15 @@ export class ProjectPipelineTool implements ToolDefinition {
                         );
                         liveRunResult = retryRunResult;
                         const retryOutcome = applyLiveRunOutcome(true, retryRunResult);
-                        finalVerified = retryOutcome.verified;
-                        liveUrl = retryOutcome.liveUrl;
-                        liveRunVerificationFailed = retryOutcome.verificationFailed;
-                        liveRunError = retryOutcome.error || '';
+                        const retryArtifactRoot = String(
+                            retryRunResult?.output?.cwd || retryInput.cwd || repairProjectRoot || discoveredProjectRoot || ''
+                        ).trim();
+                        const scopedRetryOutcome = applyScopeAuditOutcome(request, retryArtifactRoot, retryOutcome);
+                        scopeAudit = scopedRetryOutcome.scopeAudit;
+                        finalVerified = scopedRetryOutcome.verified;
+                        liveUrl = scopedRetryOutcome.liveUrl;
+                        liveRunVerificationFailed = scopedRetryOutcome.verificationFailed;
+                        liveRunError = scopedRetryOutcome.error || '';
                         liveRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_but_live_run_failed';
                         say(pick(isAr,
                             finalVerified ? '✅ نجحت محاولة الإصلاح المحدودة وأصبح التشغيل الحي مؤكداً.' : `⛔ اكتملت محاولة الإصلاح لكن التشغيل الحي ما زال غير مؤكّد: ${liveRunError}`,
@@ -760,6 +849,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(honestBlocker ? { honestBlocker: true } : {}),
                 ...(liveRunVerificationFailed ? { honestBlocker: true } : {}),
                 ...(liveRepairAttempted ? { liveRepairAttempted: true, liveRepairStatus } : {}),
+                ...(scopeAudit ? { scopeAudit } : {}),
                 // `project_pipeline` already performed discovery, planning,
                 // verification, and its bounded self-healing attempt. A false
                 // result is therefore final evidence, not an invitation for the

@@ -7,9 +7,15 @@
  * routes full-project requests to it deterministically.
  */
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { buildPlannerEvidence, deterministicRescueAllowed } from '../modules/tools/definitions/ProjectPipelineTool';
+import {
+    applyLiveRunOutcome,
+    applyScopeAuditOutcome,
+    buildPlannerEvidence,
+    deterministicRescueAllowed,
+} from '../modules/tools/definitions/ProjectPipelineTool';
 import { applyPhaseExecutionEvidence } from '../modules/tools/definitions/PhaseExecutorTool';
 
 describe('routing — full-project requests reach the pipeline, offline and deterministic', () => {
@@ -123,6 +129,13 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/require\('\.\.\/\.\.\/services\/AgentLoopService'\)/);
     });
 
+    test('bounded live-run repair rediscovers the current incomplete root instead of the greenfield reference set', () => {
+        expect(src).toMatch(/const repairDiscoveryRequest = \[/);
+        expect(src).toMatch(/request:\s*repairDiscoveryRequest/);
+        expect(src).toMatch(/Treat the existing workspace root as the write target/);
+        expect(src).not.toMatch(/repairDiscovery[\\s\\S]{0,500}request,\s*path:\s*projectPath/);
+    });
+
     test('the visible browser panel survives the pipeline-to-phase boundary', () => {
         expect(src).toMatch(/browserSessionId:\s*context\?\.browserSessionId/);
         const loop = fs.readFileSync(
@@ -130,6 +143,32 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(loop).toMatch(/browserSessionId\?:\s*string/);
         expect(loop).toMatch(/const projectContext = \{[\s\S]*browserSessionId,/);
         expect(loop).toMatch(/const executionContext = \{[\s\S]*browserSessionId,[\s\S]*engineeringPipeline:\s*true,[\s\S]*purpose:\s*['"]internal['"]/);
+    });
+
+    test('a live HTTP 200 cannot bypass semantic artifact scope verification', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-scope-gate-'));
+        try {
+            fs.writeFileSync(path.join(root, 'index.js'), "require('http').createServer((_req, res) => res.end('Hello World')).listen(3000);\n");
+            const live = applyLiveRunOutcome(true, {
+                ok: true,
+                output: { url: 'http://localhost:3000/', cwd: root },
+            });
+            const result = applyScopeAuditOutcome(
+                'Build an e-commerce platform with user authentication, inventory management, and analytics.',
+                root,
+                live,
+            );
+            expect(live.verified).toBe(true);
+            expect(result.verified).toBe(false);
+            expect(result.verificationFailed).toBe(true);
+            expect(result.scopeAudit.coverage).toBe(0);
+            expect(result.error).toMatch(/artifact coverage 0%/);
+            expect(result.error).toMatch(/user accounts|inventory management|analytics/i);
+            expect(src).toMatch(/applyScopeAuditOutcome\(request, liveArtifactRoot, liveOutcome\)/);
+            expect(src).toMatch(/scopeAudit/);
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
     });
 
     test('success and verification are earned, with explicit execution and delivery states', () => {

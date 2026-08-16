@@ -399,6 +399,46 @@ Build the complete system with locally verifiable implementation artifacts.
         expect(result.logs.join('\\n')).toMatch(/contract recovery completed/i);
     });
 
+    it('normalizes a native dependency after bounded recovery is still unusable', async () => {
+        const nativePlan = {
+            projectName: 'Native storage plan',
+            projectVibe: 'Greenfield implementation',
+            totalPhases: 1,
+            estimatedDuration: '5 minutes',
+            dependencies: {},
+            phases: [{
+                phaseNumber: 1,
+                name: 'Create persistence layer',
+                description: 'Implement the persistence layer with sqlite3.',
+                tasks: [{
+                    task: 'Create the sqlite3 persistence adapter',
+                    tool: 'ai_write_file',
+                    args: { path: 'src/db.ts', description: 'Use the sqlite3 native package for persistence.' },
+                    priority: 'high',
+                    realisticMinutes: 1,
+                }],
+                verificationTask: { task: 'Verify the adapter', tool: 'read_file', args: { path: 'src/db.ts' } },
+                deliverables: ['src/db.ts'],
+                estimatedTime: '5 minutes',
+                requirementsCovered: ['the requested persistence layer'],
+            }],
+        };
+        mockCallLLM
+            .mockResolvedValueOnce(JSON.stringify(nativePlan))
+            .mockResolvedValueOnce(`${PROVIDER_FAILURE_PREFIX} — recovery unavailable`);
+
+        const result: any = await new ProjectPlannerTool().execute({
+            projectDescription: 'Build a greenfield TypeScript persistence utility and verify it locally.',
+            evidence: { mode: 'greenfield', referenceProjects: [], facts: [], blockers: [] } as any,
+        });
+
+        expect(mockCallLLM).toHaveBeenCalledTimes(2);
+        expect(result.ok).toBe(true);
+        expect(result.output.fallback).not.toBe(true);
+        expect(result.output.phases[0].tasks[0].args.description).toMatch(/node:sqlite|JSON/i);
+        expect(result.logs.join('\\n')).toMatch(/portability normalization completed/i);
+    });
+
     it('keeps the honest blocker when both the initial and recovery plans are unusable', async () => {
         mockCallLLM
             .mockResolvedValueOnce(JSON.stringify({ projectName: 'Empty', phases: [] }))

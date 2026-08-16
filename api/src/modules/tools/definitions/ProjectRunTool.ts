@@ -58,6 +58,41 @@ async function answersHttp(url: string, timeoutMs = 2500): Promise<boolean> {
     }
 }
 
+function sameExistingPath(a: string, b: string): boolean {
+    if (!a || !b || !fs.existsSync(a) || !fs.existsSync(b)) return false;
+    try {
+        return fs.realpathSync(a) === fs.realpathSync(b);
+    } catch {
+        return path.resolve(a) === path.resolve(b);
+    }
+}
+
+/**
+ * A persisted live URL is adoptable only when it still belongs to a live
+ * process whose working directory is the project we just resolved. A port and
+ * an HTTP 200 are deliberately insufficient: an orphan from an older run can
+ * answer both while serving a deleted workspace copy.
+ */
+export function canAdoptRecordedLive(record: any, expectedCwd: string): boolean {
+    const pid = Number(record?.pid);
+    const recordedCwd = String(record?.cwd || '').trim();
+    if (!Number.isInteger(pid) || pid <= 0 || !sameExistingPath(recordedCwd, expectedCwd)) return false;
+    try {
+        process.kill(pid, 0);
+    } catch {
+        return false;
+    }
+    if (process.platform !== 'win32') {
+        const procCwd = `/proc/${pid}/cwd`;
+        try {
+            if (!fs.existsSync(procCwd) || !sameExistingPath(fs.realpathSync(procCwd), expectedCwd)) return false;
+        } catch {
+            return false;
+        }
+    }
+    return true;
+}
+
 function runKey(context?: any): string {
     return String(context?.workspaceId || context?.sessionId || 'default');
 }
@@ -161,6 +196,17 @@ const IGNORED_PROJECT_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '
 
 function hasProjectMarker(dir: string): boolean {
     return PROJECT_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)));
+}
+
+/**
+ * An active directory is authoritative only when it is runnable, or when the
+ * caller did not name a project and therefore explicitly asked for the active
+ * session project. A named request must be resolved against the workspace when
+ * the active directory is still an incomplete scaffold.
+ */
+export function shouldUseActiveProjectDirectly(activeProjectDir: string, projectQuery?: unknown): boolean {
+    const named = requestedProjectLabel(projectQuery);
+    return !!activeProjectDir && (hasProjectMarker(activeProjectDir) || !named);
 }
 
 function normalizeProjectLabel(value: unknown): string {
@@ -340,41 +386,6 @@ export class ProjectRunTool implements ToolDefinition {
          * the project. It serves the same interface at `/` and answers its own
          * API on the same origin.
          */
-        /**
-         * IF IT IS ALREADY RUNNING, IT IS ALREADY RUNNING.
-         *
-         * The build ends with the packaged system UP — a real browser has just
-         * loaded it and its API has just answered. Starting a second copy on a
-         * second port is not «running the project»; it is a race with the
-         * thing that already works, and the loser is whatever the user is
-         * looking at.
-         *
-         * So the recorded address is probed first. If it answers, that IS the
-         * project, and this tool's job is to point at it.
-         */
-        const live = activeProj?.live;
-        const liveUrl = String(live?.url || (live?.port ? `http://localhost:${live.port}/` : ''));
-        if (!input?.cwd && !input?.command && liveUrl && await answersHttp(liveUrl)) {
-            say(pick(isAr,
-                `✅ نظامك يعمل بالفعل — المعاينة الحية: ${liveUrl}`,
-                `✅ Your system is already running — live preview: ${liveUrl}`));
-            try {
-                const { broadcast } = require('../../ws');
-                broadcast({
-                    type: 'preview_ready', sessionId: context?.sessionId,
-                    data: { url: liveUrl, previewUrl: liveUrl, port: Number(live.port), live: true },
-                } as any);
-            } catch { /* panel optional */ }
-            return {
-                ok: true,
-                output: {
-                    url: liveUrl, previewUrl: liveUrl, port: Number(live.port),
-                    ready: true, pid: live.pid, adopted: true, kind: 'already-running',
-                },
-                logs,
-            };
-        }
-
         const packagedInto = String(activeProj?.packagedInto || activeProj?.linkedApiDir || '').trim();
         const packagedIsWhole = !!packagedInto
             && fs.existsSync(path.join(packagedInto, 'public', 'index.html'))
@@ -385,19 +396,30 @@ export class ProjectRunTool implements ToolDefinition {
             ? String(activeProj.dir)
             : '';
         const workspaceRoot = workspaceService.getActiveRoot(context?.workspaceId);
+        /**
+         * A scaffold folder can become the session's active project before the
+         * final manifest/entrypoint is written. Treating that incomplete folder
+         * as authoritative makes a completed build fail even when the same
+         * workspace already contains the named runnable artifact. An explicit
+         * project identity is stronger evidence: rediscover the container and
+         * match the runnable marker/package name there. Explicit cwd and a
+         * packaged whole-system directory remain authoritative.
+         */
+        const useActiveProjectDirectly = shouldUseActiveProjectDirectly(activeProjectDir, input?.projectQuery);
         const baseCwd = explicitCwd
             || (packagedIsWhole ? packagedInto : '')
-            || activeProjectDir
+            || (useActiveProjectDirectly ? activeProjectDir : '')
             || workspaceRoot;
-        // An explicitly supplied cwd and an active build are authoritative.
-        // Only a bare workspace root can be a container that needs discovery.
-        const discovered = !explicitCwd && !packagedIsWhole && !activeProjectDir
-            ? resolveRunnableProject(baseCwd, input?.projectQuery)
+        // An explicitly supplied cwd and a packaged/known runnable project are
+        // authoritative. An incomplete active scaffold is a container lookup
+        // case, not a runnable project, when the request names an artifact.
+        const discovered = !explicitCwd && !packagedIsWhole && !useActiveProjectDirectly
+            ? resolveRunnableProject(workspaceRoot, input?.projectQuery)
             : { cwd: baseCwd, candidates: [baseCwd], matched: true };
         // A quoted project identity is an assertion, not a hint. Never fall
         // through to the workspace root (which may be Joe itself) when that
         // named artifact was not found among runnable projects.
-        if (!explicitCwd && !packagedIsWhole && !activeProjectDir && namedProjectQuery && !discovered.cwd) {
+        if (!explicitCwd && !packagedIsWhole && !useActiveProjectDirectly && namedProjectQuery && !discovered.cwd) {
             return {
                 ok: false,
                 error: pick(isAr,
@@ -435,6 +457,39 @@ export class ProjectRunTool implements ToolDefinition {
         if (!input?.command && !['package.json', 'index.html', 'server.js', 'app.py', 'main.py', 'index.js']
             .some(f => fs.existsSync(path.join(cwd, f)))) {
             return { ok: false, error: `لا يوجد مشروع قابل للتشغيل في ${cwd} — ابنِ مشروعاً أولاً أو مرّر cwd.`, logs };
+        }
+
+        /**
+         * Adoption happens only after project resolution. The previous version
+         * adopted any answering persisted URL before it knew which cwd belonged
+         * to this request; after an API restart that could be a server from a
+         * deleted archive. The PID/cwd gate makes the evidence belong to this
+         * exact artifact, not merely to a live port.
+         */
+        const live = activeProj?.live;
+        const liveUrl = String(live?.url || (live?.port ? `http://localhost:${live.port}/` : ''));
+        if (!input?.cwd && !input?.command && liveUrl && canAdoptRecordedLive(live, cwd) && await answersHttp(liveUrl)) {
+            say(pick(isAr,
+                `✅ نظامك يعمل بالفعل — المعاينة الحية: ${liveUrl}`,
+                `✅ Your system is already running — live preview: ${liveUrl}`));
+            try {
+                const { broadcast } = require('../../ws');
+                broadcast({
+                    type: 'preview_ready', sessionId: context?.sessionId,
+                    data: { url: liveUrl, previewUrl: liveUrl, port: Number(live.port), live: true },
+                } as any);
+            } catch { /* panel optional */ }
+            return {
+                ok: true,
+                output: {
+                    url: liveUrl, previewUrl: liveUrl, port: Number(live.port),
+                    ready: true, pid: live.pid, cwd, adopted: true, kind: 'already-running',
+                },
+                logs,
+            };
+        }
+        if (!input?.cwd && !input?.command && liveUrl) {
+            logs.push(`project_run: ignored stale or unowned live record (${liveUrl})`);
         }
 
         const key = runKey(context);
@@ -543,7 +598,14 @@ export class ProjectRunTool implements ToolDefinition {
             broadcast({ type: 'preview_ready', sessionId: context?.sessionId, data: { url, previewUrl: url, port: livePort, live: true } });
         } catch { /* panel optional */ }
 
-        return { ok: true, output: { url, previewUrl: url, port: livePort, ready: true, pid, kind: detected.kind }, logs };
+        return {
+            ok: true,
+            output: {
+                url, previewUrl: url, port: livePort, ready: true, pid, cwd,
+                command: detected.command, startedAt: Date.now(), kind: detected.kind,
+            },
+            logs,
+        };
     }
 }
 

@@ -8,7 +8,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { resolveRunnableProject } from '../modules/tools/definitions/ProjectRunTool';
+import { canAdoptRecordedLive, resolveRunnableProject, shouldUseActiveProjectDirectly } from '../modules/tools/definitions/ProjectRunTool';
 
 const runSrc = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectRunTool.ts'), 'utf-8');
@@ -110,9 +110,29 @@ describe('named project discovery never falls back to the workspace repository',
         expect(result.cwd).toBe(root);
     });
 
+    test('an incomplete active scaffold does not hide a named runnable workspace artifact', () => {
+        const incomplete = path.join(root, 'nexus-scaffold');
+        fs.mkdirSync(incomplete, { recursive: true });
+        fs.writeFileSync(path.join(root, 'package.json'), '{"name":"nexus"}', 'utf-8');
+        expect(shouldUseActiveProjectDirectly(incomplete, '"nexus"')).toBe(false);
+        expect(shouldUseActiveProjectDirectly(incomplete, '')).toBe(true);
+        const resolved = resolveRunnableProject(root, '"nexus"');
+        expect(resolved.matched).toBe(true);
+        expect(resolved.cwd).toBe(root);
+    });
+
     test('project_run has a named-query guard before selecting a fallback cwd', () => {
         expect(runSrc).toMatch(/namedProjectQuery/);
+        expect(runSrc).toMatch(/shouldUseActiveProjectDirectly/);
         expect(runSrc).toMatch(/will not guess and start another repository/);
+    });
+
+    test('a persisted live URL is not adopted from a deleted or different cwd', () => {
+        const current = process.cwd();
+        expect(canAdoptRecordedLive({ pid: process.pid, cwd: current }, current)).toBe(true);
+        expect(canAdoptRecordedLive({ pid: process.pid, cwd: path.join(current, 'deleted-old-run') }, current)).toBe(false);
+        expect(canAdoptRecordedLive({ pid: process.pid, cwd: os.tmpdir() }, current)).toBe(false);
+        expect(runSrc).toContain('ignored stale or unowned live record');
     });
 });
 

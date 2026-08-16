@@ -221,6 +221,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 const source = String(item || '');
                 return workspaceRoot && path.isAbsolute(source) ? path.relative(workspaceRoot, source) : source;
             }).filter(Boolean);
+            const rawPlanBeforeSanitise = JSON.parse(JSON.stringify(plan));
             let clean = sanitisePlanPhases(plan.phases, plan.projectName, {
                 // A greenfield plan may choose a stack only when the planner made
                 // that choice explicit and tied it to a concrete implementation artifact.
@@ -360,6 +361,31 @@ export class ProjectPlannerTool implements ToolDefinition {
                     logs.push('Planner scaffold contract recovery completed with executable implementation artifacts');
                 } catch (recoveryError: any) {
                     logs.push(`Planner scaffold contract recovery failed: ${recoveryError?.message || recoveryError}`);
+                }
+            }
+
+            // If the model ignored both portability-recovery prompts, perform one
+            // deterministic dependency-only rewrite. This preserves the model's
+            // architecture and task scope; it merely applies the already stated
+            // contract (node:sqlite/JSON, node:crypto, sass, or a portable fallback)
+            // before the same sanitiser and artifact gates run again.
+            if (clean.blocker?.code === 'unportable_native_dependency' && evidence?.mode === 'greenfield') {
+                const portablePlan = this.rewriteUnportableNativePlan(rawPlanBeforeSanitise);
+                const portableClean = sanitisePlanPhases(portablePlan.phases, portablePlan.projectName, {
+                    disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !this.hasPlannerStackDecision(portablePlan),
+                    evidencedPaths,
+                    testFiles: (evidence?.selectedProject?.testFiles || []).map(item => String(item || '').trim()).filter(Boolean),
+                    candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
+                    disallowUnportableNativeDependencies: true,
+                });
+                if (!portableClean.blocker && this.countImplementationArtifacts(portableClean.phases) > 0) {
+                    plan = this.validatePlan(portablePlan, projectDescription);
+                    plan.phases = portableClean.phases;
+                    clean = portableClean;
+                    clean.notes.forEach(n => logs.push(n));
+                    logs.push('Planner portability normalization completed after bounded model recovery failed.');
+                } else {
+                    logs.push(`Planner portability normalization failed: ${portableClean.blocker?.message || 'no implementation artifact survived'}`);
                 }
             }
 
@@ -923,6 +949,60 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
                     : [],
             })),
         }));
+    }
+
+    /**
+     * Convert only the dependency choice that the portability contract rejected.
+     * This is not a product template and it does not create files: it preserves
+     * the model's phase/task structure, removes native install assumptions from
+     * package manifests, and lets the normal sanitiser decide whether the result
+     * is still executable. It is the bounded last mile after the model has failed
+     * both portability-recovery turns.
+     */
+    private rewriteUnportableNativePlan(plan: any): any {
+        const nativeNames = /(?:better-sqlite3|node-sqlite3|sqlite3|bcrypt|node-sass|sharp|canvas|ffi-napi|ref-napi|isolated-vm|@tensorflow\/tfjs-node|cpu-features|bufferutil|utf-8-validate|node-gyp|prebuild-install|binding\.gyp|C\+\+\s+compiler)/i;
+        const rewriteText = (value: string): string => value
+            .replace(/better-sqlite3|node-sqlite3|sqlite3/gi, 'node:sqlite or JSON file fallback')
+            .replace(/\bbcrypt\b/gi, 'node:crypto scrypt')
+            .replace(/\bnode-sass\b/gi, 'sass')
+            .replace(/\b(?:sharp|canvas)\b/gi, 'portable runtime image processing')
+            .replace(/\b(?:ffi-napi|ref-napi|isolated-vm|@tensorflow\/tfjs-node|cpu-features|bufferutil|utf-8-validate)\b/gi, 'portable runtime fallback')
+            .replace(/\b(?:node-gyp|prebuild-install|binding\.gyp)\b/gi, 'native toolchain')
+            .replace(/C\+\+\s+compiler/gi, 'host compiler');
+        const rewritePackageContent = (raw: string): string => {
+            try {
+                const parsed = JSON.parse(raw);
+                for (const bucket of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+                    if (!parsed || typeof parsed[bucket] !== 'object' || !parsed[bucket]) continue;
+                    for (const dependency of Object.keys(parsed[bucket])) {
+                        if (nativeNames.test(dependency)) delete parsed[bucket][dependency];
+                    }
+                }
+                return JSON.stringify(parsed, null, 2);
+            } catch {
+                return rewriteText(raw);
+            }
+        };
+        const visit = (value: any, key = ''): any => {
+            if (typeof value === 'string') {
+                return key === 'content' && /(?:^|[\\/])package\.json$/i.test(String((plan as any)?.path || ''))
+                    ? rewritePackageContent(value)
+                    : rewriteText(value);
+            }
+            if (Array.isArray(value)) return value.map(item => visit(item, key));
+            if (!value || typeof value !== 'object') return value;
+            const out: any = {};
+            for (const [childKey, childValue] of Object.entries(value)) {
+                if (childKey === 'tool') out[childKey] = childValue;
+                else if (childKey === 'content' && typeof childValue === 'string' && /package\.json$/i.test(String(value.path || value.filePath || ''))) {
+                    out[childKey] = rewritePackageContent(childValue);
+                } else {
+                    out[childKey] = visit(childValue, childKey);
+                }
+            }
+            return out;
+        };
+        return visit(JSON.parse(JSON.stringify(plan || {})));
     }
 
     private countImplementationArtifacts(phases: any[]): number {

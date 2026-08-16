@@ -66,6 +66,33 @@ describe('evidence-first engineering discovery', () => {
     expect(result.output.evidence.blockers).toEqual([]);
   });
 
+  test('binds the same incomplete root when a greenfield run enters bounded live-run repair', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-live-repair-root-'));
+    roots.push(root);
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'tests'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'src', 'index.ts'), 'export const ready = true;\n');
+    fs.writeFileSync(path.join(root, 'tests', 'smoke.test.ts'), 'test("smoke", () => expect(true).toBe(true));\n');
+
+    const greenfield: any = await new EngineeringDiscoveryTool().execute({
+      request: 'Build a production-grade platform locally as a new project. First inspect existing infrastructure for read-only evidence. Do not deploy.',
+    }, { workspaceRoot: root });
+    expect(greenfield.output.evidence.mode).toBe('greenfield');
+    expect(greenfield.output.evidence.selectedProject).toBeUndefined();
+
+    const repair: any = await new EngineeringDiscoveryTool().execute({
+      request: [
+        'Repair the current project in place after a failed live-run acceptance check.',
+        'Treat the existing workspace root as the write target for this bounded repair.',
+        'Original build request: Build a production-grade platform locally as a new project. Do not deploy.',
+        'Observed live-run failure: no runnable project was found.',
+      ].join('\\n'),
+    }, { workspaceRoot: root });
+    expect(repair.output.evidence.mode).toBe('existing_workspace');
+    expect(repair.output.evidence.selectedProject.root).toBe(root);
+    expect(repair.output.evidence.selectedProject.manifests).toEqual([]);
+  });
+
   test('reads a Python project through its own manifests and declared local tests, not a Node template', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-python-evidence-'));
     roots.push(root);
