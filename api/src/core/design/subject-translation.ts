@@ -132,6 +132,15 @@ const AR_EN: Record<string, string> = {
     'شحنه': 'shipment', 'شحنات': 'shipments', 'طرد': 'parcel', 'طرود': 'parcels',
     'مشرف': 'supervisor', 'مشرفين': 'supervisors', 'صلاحيه': 'permission', 'صلاحيات': 'permissions',
     'اسطول': 'fleet', 'جرد': 'stocktake',
+    // Measured passthroughs: «ابنِ نظام جرد للمخزون: الأصناف والكميات والموردون»
+    // produced tables literally named `asnafs`, `kmyats` and `mwrdwns` — three
+    // transliterations sitting in a delivered SQLite file as though they were
+    // English. These are ordinary stockroom words and they have ordinary
+    // English names.
+    'صنف': 'item', 'اصناف': 'items', 'كميه': 'quantity', 'كميات': 'quantities',
+    'مورد': 'supplier', 'موردون': 'suppliers', 'موردين': 'suppliers',
+    'مخزون': 'stock', 'رصيد': 'balance', 'وحده': 'unit', 'وحدات': 'units',
+    'دفعه': 'batch', 'دفعات': 'batches', 'رف': 'shelf', 'رفوف': 'shelves',
     'عقارات': 'real estate', 'عقاري': 'real estate', 'منزل': 'house', 'بيت': 'home',
     'اثاث': 'furniture', 'ديكور': 'interior', 'موضه': 'fashion', 'ملابس': 'clothes',
     'جمال': 'beauty', 'شعر': 'hair', 'عطور': 'perfume', 'مجوهرات': 'jewelry',
