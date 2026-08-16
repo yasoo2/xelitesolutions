@@ -297,7 +297,9 @@ export function recordBrowserAction(params: {
       state.errorTimes.action.push(now);
     }
   }
-  broadcastBrowserEvent(state.sessionId, { type: 'browser_action', ts: now, sessionId: state.sessionId, ...params, actionId: id });
+  // Spread first, then pin the canonical ids — params carries a raw sessionId
+  // and actionId that must not overwrite the sanitised ones.
+  broadcastBrowserEvent(state.sessionId, { ...params, type: 'browser_action', ts: now, sessionId: state.sessionId, actionId: id });
 }
 
 setBrowserActionObserver((sessionId, event) => {

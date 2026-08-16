@@ -541,8 +541,12 @@ export async function runReactBrowserTask(params: {
     steps.push({ n, action, ok: actionOk, note: actionNote, url: page.url() });
     emitAgentStep(sessionId, { phase: 'result', step: n, ok: actionOk, url: page.url(), note: actionNote });
     if (failureStreak >= 3) {
+      // Telemetry may not be registered for this session (old callers, tests,
+      // sid mismatch) — the stop must still be honest, never a TypeError. The
+      // most recent diagnostic is the best witness; `recent` only ever carries
+      // pageerror/console/requestfailed, so take the newest one, whatever it is.
       const runtime = getBrowserTelemetrySnapshot(sessionId);
-      const reason = runtime.reason || runtime.recent.find((d) => d.kind === 'action' || d.kind === 'page' || d.kind === 'network')?.message || 'three_consecutive_action_failures';
+      const reason = runtime?.reason || runtime?.recent[runtime.recent.length - 1]?.message || 'three_consecutive_action_failures';
       const honest = `توقّف الوكيل بعد ${failureStreak} أفعال فاشلة متتالية بدلاً من الدوران في حلقة. السبب المرصود: ${reason}.`;
       emitAgentStep(sessionId, { phase: 'result', step: n, ok: false, note: 'three_consecutive_action_failures', url: page.url() });
       chatDetail(chatSid, `⚠️ ${honest} سيحتاج المتصفح إلى خطوة استرداد مختلفة أو تدخّلك.`);
