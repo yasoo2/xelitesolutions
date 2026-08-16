@@ -235,6 +235,30 @@ export function deterministicRescueAllowed(request: string): boolean {
     return signalCount < 2;
 }
 
+/**
+ * A build is not delivered merely because its phase tools returned ok.  The
+ * final acceptance contract requires a confirmed live URL when the canonical
+ * pipeline claims a runnable system.  This pure reducer keeps the rule
+ * testable and prevents a spawned-but-dead process or a missing entrypoint
+ * from becoming a success message.
+ */
+export function applyLiveRunOutcome(
+    initiallyVerified: boolean,
+    runResult: any,
+): { verified: boolean; liveUrl: string; verificationFailed: boolean; error?: string } {
+    if (!initiallyVerified) return { verified: false, liveUrl: '', verificationFailed: false };
+    const liveUrl = String(runResult?.output?.url || '').trim();
+    if (runResult?.ok === true && liveUrl) {
+        return { verified: true, liveUrl, verificationFailed: false };
+    }
+    return {
+        verified: false,
+        liveUrl: '',
+        verificationFailed: true,
+        error: String(runResult?.error || runResult?.output?.message || 'project_run did not confirm a live URL'),
+    };
+}
+
 export class ProjectPipelineTool implements ToolDefinition {
     name = 'project_pipeline';
     version = '1.0.0';
@@ -541,25 +565,25 @@ export class ProjectPipelineTool implements ToolDefinition {
         // and the whole story (phases, files, how to run) was discarded.
         const total = Number(plannerResult.output.totalPhases || phases.length);
         const done = Number(pipeline?.completedPhases || 0);
-        const verified = pipeline?.ok === true;
+        let verified = pipeline?.ok === true;
         // `ok` is retained as the compatibility success signal, but the report
         // must not force a reader to infer whether code ran, verification ran,
         // or a deliverable is usable. These are separate engineering facts.
-        const executionStatus = verified ? 'completed' : done > 0 ? 'partial' : 'failed';
-        const verificationStatus = verified ? 'passed' : String(pipeline?.verificationStatus || 'failed');
-        const deliveryStatus = verified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
         // A pipeline-level failure can already be a final, evidence-backed
         // verdict from phase execution. Carry the machine-readable marker out
         // to AgentOrchestrator so it cannot reopen a generative recovery loop.
         const verificationFailed = Array.isArray(pipeline?.results)
             && pipeline.results.some((result: any) => result?.verificationFailed === true);
+        let liveRunVerificationFailed = false;
         const honestBlocker = pipeline?.honestBlocker === true || verificationFailed;
 
         // 3 — The last mile: a VERIFIED system is RUN, not left inert on disk.
         // No button — the pipeline starts it and the live preview opens itself.
-        // Best-effort: a run failure never turns a good build into a failure;
-        // it just means the user starts it manually.
+        // A runnable project that cannot be confirmed live is not delivered.
+        // This is deliberately a hard acceptance gate: no guessed URL and no
+        // "start it manually" success after the pipeline claimed verification.
         let liveUrl = '';
+        let liveRunError = '';
         if (verified) {
             try {
                 say(pick(isAr, '▶️ أُشغّل النظام لتراه حيّاً…', '▶️ Starting the system so you can see it live…'));
@@ -580,13 +604,29 @@ export class ProjectPipelineTool implements ToolDefinition {
                     runInput.projectQuery = `"${plannedProjectName.replace(/"/gu, '\\"')}"`;
                 }
                 const runRes = await executeTool('project_run', runInput, { ...context, language: isAr ? 'ar' : 'en' });
-                if (runRes?.ok && runRes.output?.url) liveUrl = String(runRes.output.url);
+                const liveOutcome = applyLiveRunOutcome(verified, runRes);
+                verified = liveOutcome.verified;
+                liveUrl = liveOutcome.liveUrl;
+                if (liveOutcome.verificationFailed) {
+                    liveRunError = liveOutcome.error || 'project_run did not confirm a live URL';
+                    liveRunVerificationFailed = true;
+                    say(pick(isAr,
+                        `⛔ لم أعتبر النظام مسلّماً: التشغيل الحي لم يؤكد رابطاً قابلاً للوصول. ${liveRunError}`,
+                        `⛔ I did not mark the system delivered: live execution did not confirm an accessible URL. ${liveRunError}`));
+                }
             } catch (e: any) {
+                liveRunError = String(e?.message || e);
+                verified = false;
+                liveRunVerificationFailed = true;
                 say(pick(isAr,
-                    `ℹ️ اكتمل البناء، لكن التشغيل التلقائي تعثّر: ${e?.message || e}`,
-                    `ℹ️ The build finished, but starting it automatically failed: ${e?.message || e}`));
+                    `⛔ لم أعتبر النظام مسلّماً: تعذّر تأكيد التشغيل الحي. ${liveRunError}`,
+                    `⛔ I did not mark the system delivered: live execution could not be confirmed. ${liveRunError}`));
             }
         }
+
+        const executionStatus = verified ? 'completed' : done > 0 ? 'partial' : 'failed';
+        const verificationStatus = verified ? 'passed' : String(pipeline?.verificationStatus || 'failed');
+        const deliveryStatus = verified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
 
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
@@ -607,7 +647,9 @@ export class ProjectPipelineTool implements ToolDefinition {
                 verificationStatus,
                 deliveryStatus,
                 ...(verificationFailed ? { verificationFailed: true } : {}),
+                ...(liveRunVerificationFailed ? { verificationFailed: true } : {}),
                 ...(honestBlocker ? { honestBlocker: true } : {}),
+                ...(liveRunVerificationFailed ? { honestBlocker: true } : {}),
                 // `project_pipeline` already performed discovery, planning,
                 // verification, and its bounded self-healing attempt. A false
                 // result is therefore final evidence, not an invitation for the
@@ -619,6 +661,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 reportMarkdown: pipeline?.engineeringReportMarkdown,
                 results: pipeline?.results,
                 repairTicket: pipeline?.repairTicket,
+                ...(liveRunError ? { liveRunError } : {}),
             },
             logs,
         };
