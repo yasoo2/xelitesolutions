@@ -153,6 +153,43 @@ describe('LLM7Provider resilience', () => {
             { timeout: 120000, signal: controller.signal },
         );
     });
+
+    /**
+     * A REFUSAL FILE THAT COVERS EVERYTHING MUST NOT SILENCE THE PROVIDER.
+     *
+     * The blocklist is per-model and lasts a week. One bad hour at the gateway
+     * — expired anonymous quota, a proxy in the way — writes every candidate
+     * into it, and a provider that obeys it without exception then builds an
+     * EMPTY candidate list: no request is made, so no attempt can ever clear
+     * the memory, and the provider is dead until the week runs out.
+     *
+     * Measured on the machine this was written on, whose real
+     * data/llm7-blocked.json holds every model of a previous preferred list.
+     * The memory advises; it does not veto.
+     */
+    it('still tries a model when the week-long refusal memory has covered every candidate', async () => {
+        const os = require('os'), fsx = require('fs'), p = require('path');
+        const dir = fsx.mkdtempSync(p.join(os.tmpdir(), 'joe-blocked-'));
+        const previous = process.env.JOE_DATA_DIR;
+        process.env.JOE_DATA_DIR = dir;
+        try {
+            const { PREFERRED_MODELS_FOR_TEST } = await import('../core/llm/providers/llm7');
+            fsx.writeFileSync(p.join(dir, 'llm7-blocked.json'),
+                JSON.stringify({ at: Date.now(), models: PREFERRED_MODELS_FOR_TEST }));
+            // Discovery unavailable — the same shape as no network at all.
+            (global as any).fetch = jest.fn().mockRejectedValue(new Error('no gateway'));
+            jest.resetModules();
+            const { LLM7Provider } = await import('../core/llm/providers/llm7');
+            const provider: any = new LLM7Provider();
+
+            const candidates = await provider.buildCandidates(undefined, 200, undefined);
+            expect(candidates.length).toBeGreaterThan(0);
+        } finally {
+            if (previous === undefined) delete process.env.JOE_DATA_DIR;
+            else process.env.JOE_DATA_DIR = previous;
+            fsx.rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });
 
 export {};

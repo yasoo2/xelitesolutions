@@ -41,6 +41,18 @@ describe('workspace project discovery for project_run', () => {
         expect(result.matched).toBe(true);
     });
 
+    it('does not let a short folder name swallow a sentence that merely contains it', () => {
+        // The prefix rule that finds a truncated scaffold must not revive the
+        // unbounded reverse match it replaced: `api` is a prefix of nothing a
+        // reader would call a project name.
+        const short = path.join(root, 'api');
+        fs.mkdirSync(short, { recursive: true });
+        fs.writeFileSync(path.join(short, 'package.json'), JSON.stringify({ scripts: { start: 'node server.js' } }));
+        const result = resolveRunnableProject(root, '"api gateway for the freight platform"');
+        expect(result.cwd).toBeNull();
+        expect(result.matched).toBe(false);
+    });
+
     it('refuses to guess when a workspace contains several projects and no name was supplied', () => {
         const result = resolveRunnableProject(root, 'شغّل المشروع الموجود في مساحة العمل');
         expect(result.cwd).toBeNull();

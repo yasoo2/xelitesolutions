@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { ToolDefinition } from '../types';
 import { workspaceService } from '../../services/WorkspaceService';
 import { isWithinRoot } from '../utils';
 

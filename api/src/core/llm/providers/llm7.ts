@@ -236,6 +236,34 @@ export class LLM7Provider {
             for (const preferred of PREFERRED_MODELS) push(preferred);
         }
 
+        /**
+         * A BLOCKLIST THAT EMPTIES THE LIST IS WORSE THAN NO BLOCKLIST.
+         *
+         * The memory of refusals is per-model and lasts a week, and `push`
+         * above obeys it without exception. So a gateway that refuses
+         * everything for one bad hour — expired anonymous quota, a proxy in
+         * the way — writes every candidate into the file, and from then on
+         * this function returns an EMPTY list: no request is made, no error is
+         * produced by any attempt, and Joe loses a whole provider to a stale
+         * file until the week runs out.
+         *
+         * That is not hypothetical. `data/llm7-blocked.json` on the machine
+         * this was written on holds all fourteen models of the previous
+         * preferred list, and a probe against this exact code returns
+         * «candidates: 0».
+         *
+         * So the memory ADVISES; it does not veto. When it has eliminated
+         * everything, the catalogue's own usable models are tried anyway — and
+         * failing that, the preferred list. A wrong guess costs one request and
+         * rewrites the memory honestly; an empty list costs the provider.
+         */
+        if (out.length === 0) {
+            for (const descriptor of available) {
+                if (this.isUsableModel(descriptor, false) && !out.includes(descriptor.id)) out.push(descriptor.id);
+            }
+            for (const preferred of PREFERRED_MODELS) if (!out.includes(preferred)) out.push(preferred);
+        }
+
         return out.slice(0, 6);
     }
 
@@ -317,3 +345,10 @@ export class LLM7Provider {
 }
 
 export const llm7Provider = new LLM7Provider();
+
+/**
+ * Exported so the gate that guards the refusal memory can build the exact
+ * blocklist that once emptied the candidate list, instead of copying the names
+ * into the test and drifting the moment a model is added here.
+ */
+export const PREFERRED_MODELS_FOR_TEST: readonly string[] = PREFERRED_MODELS;
