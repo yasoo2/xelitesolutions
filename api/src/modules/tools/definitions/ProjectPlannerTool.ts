@@ -5,6 +5,7 @@ import { callLLM } from '../../../core/llm';
 import { isProviderFailure, retryAfterMsFrom } from '../../../core/llm/intelligent-router';
 import { plannerToolPrompt, sanitisePlanPhases } from '../../../core/orchestrator/plan-tools';
 import { EngineeringEvidence } from './EngineeringDiscoveryTool';
+import { BOUNDED_REPAIR_CONSTITUTION, ENGINEERING_CONSTITUTION } from '../../../core/orchestrator/engineering-policy';
 
 /**
  * ProjectPlannerTool - creates an execution plan only.
@@ -688,6 +689,8 @@ export class ProjectPlannerTool implements ToolDefinition {
 
 ${plannerToolPrompt()}
 
+${ENGINEERING_CONSTITUTION}
+
 PROJECT:
 ${projectDescription}
 
@@ -713,6 +716,8 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
     private createCompactRecoveryPlanningPrompt(projectDescription: string, failureReason: string, assessment?: { missingTargetNames?: string[]; message?: string }, repairMode = false): string {
         if (repairMode) {
             return `BOUNDED LIVE-REPAIR — fix only the evidence-backed runnable-contract failure; do not redesign or rebuild the product.
+
+${BOUNDED_REPAIR_CONSTITUTION}
 
 Failure evidence: ${String(failureReason || '').slice(0, 900)}
 

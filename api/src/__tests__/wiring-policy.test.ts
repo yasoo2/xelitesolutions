@@ -1954,6 +1954,17 @@ describe('a plan may only name tools that exist', () => {
         expect(prompt.indexOf('plannerToolPrompt()')).toBeLessThan(prompt.indexOf('PROJECT:'));
     });
 
+    it('the planner carries the evidence-first engineering constitution without removing gates', () => {
+        const P = SRC('modules', 'tools', 'definitions', 'ProjectPlannerTool.ts');
+        const C = SRC('core', 'orchestrator', 'engineering-policy.ts');
+        expect(P).toMatch(/ENGINEERING_CONSTITUTION/);
+        expect(P).toMatch(/BOUNDED_REPAIR_CONSTITUTION/);
+        expect(C).toMatch(/inspect the workspace/);
+        expect(C).toMatch(/Never repeat the same failing action blindly/);
+        expect(C).toMatch(/approval\/security gates/);
+        expect(C).toMatch(/stop honestly/);
+    });
+
     it('and whatever it returns is snapped onto real tools before it is stored', () => {
         const P = SRC('modules', 'tools', 'definitions', 'ProjectPlannerTool.ts');
         expect(P).toMatch(/sanitisePlanPhases\(plan\.phases/);
@@ -2036,7 +2047,8 @@ describe('the biggest request gets the strongest route', () => {
         // evidence rather than the raw two. What is guaranteed — and what this
         // measures — is that the pipeline plans through project_planner and
         // hands it the discovery evidence, not the spelling of its arguments.
-        expect(P).toMatch(/executeTool\('project_planner', \{ projectDescription: \w+, evidence: \w+ \}, context\)/);
+        expect(P).toMatch(/executeTool\(\s*'project_planner',\s*\{\s*projectDescription:\s*planningRequest,\s*evidence:\s*plannerEvidence\s*\},\s*\{/);
+        expect(P).toMatch(/repairRequest[\s\S]{0,220}repairEvidence[\s\S]{0,260}repairMode:\s*true/);
         expect(P).toContain('AgentLoopService.runPlannedPhasesIfPresent');
         expect(P).toContain('evidence is incomplete — blocking writes honestly');
     });
