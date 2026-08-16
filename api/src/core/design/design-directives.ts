@@ -134,8 +134,13 @@ export function directivesCss(d: DesignDirectives): string {
     if (d.density === 'airy') out.push('.section{padding-block:104px}', '.wrap{gap:22px}');
     if (d.density === 'compact') out.push('.section{padding-block:44px}', '.wrap{gap:10px}');
     if (d.logoPosition === 'center') out.push(
-        '.header-inner{flex-direction:column;gap:10px;padding-block:14px}',
-        '.header-inner .brand{order:-1;font-size:1.35rem}',
+        // Alignment is said OUTRIGHT: the families justify .header-inner
+        // differently (measured — «كِفاح»'s family centred the brand, «جسور»
+        // parked it at the inline start), and a directive must not depend on
+        // which family happened to be picked.
+        '.header-inner{flex-direction:column;gap:10px;padding-block:14px;align-items:center;text-align:center;justify-content:center}',
+        '.header-inner .brand{order:-1;font-size:1.35rem;margin-inline:auto}',
+        '.header-inner nav,.header-inner .nav-links,.header-inner ul{justify-content:center;margin-inline:auto}',
         '.header-inner .theme-toggle{position:absolute;inset-inline-end:16px;top:14px}',
         '.site-header{position:relative}',
     );
