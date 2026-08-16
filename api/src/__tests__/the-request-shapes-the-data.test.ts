@@ -58,6 +58,11 @@ describe('the declaration reaches ONLY the field it belongs to', () => {
         // …and a REAL billing system still classifies as one.
         expect(PlanningEngine.classifyBuildScope('نظام فواتير للمحل مع تقارير')).toBe('system');
     });
+    it('the brand reader never ships a mangled tail of the declaration', () => {
+        const { brandFrom } = require('../core/design/page-head');
+        const b = brandFrom(stripDeclaredOptions('ابنِ تطبيق مصاريف يومية بفئات: طعام، مواصلات، فواتير، ترفيه'), true) || '';
+        expect(b).not.toMatch(/الات|فئات/);
+    });
     it('the model readers see the sentence without the list', () => {
         const { inferModel } = require('../core/design/entity-inference');
         const stripped = stripDeclaredOptions('ابنِ تطبيق مصاريف يومية بفئات: طعام، مواصلات، فواتير، ترفيه');
