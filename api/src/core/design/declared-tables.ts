@@ -60,10 +60,40 @@ const TAIL = /\s+(?:with|and with|مع|بتصميم|وبتصميم)\s+/i;
  * system — routes, screens, admin panel — is generated from it.
  */
 export function declaredTables(request: string, limit = MAX_MODEL_ENTITIES): ModelEntity[] {
-    const m = String(request || '').match(DECLARATION);
-    if (!m) return [];
-
-    const listed = String(m[1]).split(TAIL)[0];
+    const text = String(request || '');
+    let m = text.match(DECLARATION);
+    let listed: string;
+    if (m) {
+        listed = String(m[1]).split(TAIL)[0];
+    } else {
+        /**
+         * THE DATABASE BLOCK OF A STRUCTURED BRIEF — one table per line.
+         *
+         * The TaskFlow live brief declared its schema exactly the way a
+         * person writes a specification:
+         *
+         *     DATABASE
+         *     ==================
+         *     At minimum create:
+         *
+         *     users
+         *     projects
+         *     tasks
+         *     activities
+         *     notifications
+         *
+         * The inline reader above stops at the first newline, so a list
+         * WRITTEN AS LINES was invisible — and the shape reader then chewed
+         * the brief's instruction verbs into logins/logouts/appropriates.
+         * A creation label followed by consecutive one-word lines is as
+         * explicit as «Tables:» ever was; prose ends the list.
+         */
+        const block = text.match(
+            /(?:at\s+minimum\s+create|create\s+(?:at\s+least|these\s+tables)|الجداول\s+المطلوبة|أنشئ\s+على\s+الأقل)\s*[:：]\s*\n((?:\s*\n)?(?:[ \t]*[\p{L}_][\p{L}\p{N}_]{1,23}[ \t]*\n){2,8})/iu,
+        );
+        if (!block) return [];
+        listed = block[1].split(/\n/).map(s => s.trim()).filter(Boolean).join('، ');
+    }
     const words = listed.split(SPLIT)
         .map(w => w.replace(/[.،؛!?"'()]+$/g, '').trim())
         .filter(Boolean);

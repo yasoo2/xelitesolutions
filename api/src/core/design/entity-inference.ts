@@ -277,6 +277,17 @@ export function keyForPhrase(phrase: string): string {
 export const NEVER = new Set([
     'orders', 'users', 'products', 'items', 'health', 'auth', 'api', 'sqlite_master',
     'apps', 'systems', 'platforms', 'websites', 'sites', 'pages_of', 'databases', 'features',
+    /**
+     * INSTRUCTION WORDS ARE NOT TABLES — measured on the TaskFlow live brief:
+     * «Implement: User registration / Login / Logout … where appropriate»
+     * became logins, logouts, authentications and appropriates(!) in the
+     * delivered database, and «web application called TaskFlow» begat
+     * applications. A brief's verbs about HOW to build never own rows.
+     */
+    'applications', 'authentications', 'logins', 'logouts', 'registrations',
+    'appropriates', 'implementations', 'validations', 'verifications',
+    'requirements', 'functionalities', 'mockups', 'interactions', 'operations',
+    'statuses', 'priorities',
 ]);
 
 /**
