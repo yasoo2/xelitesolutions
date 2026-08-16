@@ -76,7 +76,12 @@ function stripWord(text: string, word: string): string {
     // replacement never has to guess what `replace` handed it. (An earlier
     // version used `\b…\b` with no group for Latin words and pasted the match
     // OFFSET into the text: «Build a landing page» came out «0 a landing 13».)
-    const re = new RegExp(`(^|[^${AR}\\w])${esc}(?=[^${AR}\\w]|$)`, 'gi');
+    //
+    // Arabic rides a case ending on the SAME word: «ابنِ موقعاً لمطعم» is
+    // «موقع» + اً to every reader and to no bare-word regex — so the accusative
+    // tail is allowed after the word, or the container noun sails through into
+    // the hero title («بيت الجمر — موقعاً لمطعم مشويات», shipped and measured).
+    const re = new RegExp(`(^|[^${AR}\\w])${esc}(?:اً|ًا|ً)?(?=[^${AR}\\w]|$)`, 'gi');
     return text.replace(re, (_m, pre: string) => `${pre || ''} `);
 }
 

@@ -1072,8 +1072,11 @@ export default function RecordsApp({ content }) {
       <section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
           <div className="stat" key={i}>
-            <b>{computeMetric(m, rows)}</b>
-            <span>{m.label}</span>
+            <i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i>
+            <div>
+              <b>{computeMetric(m, rows)}</b>
+              <span>{m.label}</span>
+            </div>
           </div>
         ))}
         {rel ? (
@@ -2312,6 +2315,82 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .auth-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .auth-actions button { padding: 8px 16px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; font-size: 12.5px; }
 .auth-actions .primary { background: var(--accent, #2563eb); border-color: transparent; color: #fff; }
+
+/* ═══════════════════ THE DESIGN LIFT ═══════════════════
+   «لا يعجبني تصميم جو في بناء المواقع والصفحات فهو يظهر بدائي.»
+   Measured with a screenshot before a line was written: flat white cards on a
+   flat ground, naked numbers, browser-default fields, one flat button, an
+   empty state that is a colored strip. Everything below OVERRIDES the layout
+   rules above through the same selectors — later wins — so every measured
+   guarantee up there (44px targets, AA inks, min-width:0) stands untouched.
+   Tokens only; both themes inherit automatically. */
+:root{--shadow-xs:0 1px 2px rgb(15 23 42/.05),0 1px 1px rgb(15 23 42/.04);
+  --shadow-sm:0 1px 2px rgb(15 23 42/.06),0 4px 12px rgb(15 23 42/.06);
+  --shadow-md:0 2px 4px rgb(15 23 42/.05),0 12px 28px rgb(15 23 42/.10);
+  --shadow-brand:0 8px 22px color-mix(in srgb,var(--brand,#2563eb) 30%,transparent);
+  --ring:0 0 0 3px color-mix(in srgb,var(--accent,#2563eb) 28%,transparent)}
+[data-theme="dark"],.dark{--shadow-xs:0 1px 2px rgb(0 0 0/.5);--shadow-sm:0 2px 8px rgb(0 0 0/.45);
+  --shadow-md:0 10px 30px rgb(0 0 0/.5);--shadow-brand:0 8px 24px color-mix(in srgb,var(--brand,#3b82f6) 38%,transparent)}
+/* An ambient ground: two brand glows instead of a flat sheet. */
+body{background:
+  radial-gradient(900px 420px at 85% -10%,color-mix(in srgb,var(--brand,#2563eb) 9%,transparent),transparent 60%),
+  radial-gradient(760px 380px at -10% 0%,color-mix(in srgb,var(--accent,#0ea5e9) 8%,transparent),transparent 55%),
+  var(--bg,#fff);background-attachment:fixed}
+/* Glass bar with a brand monogram. */
+.app-bar{background:color-mix(in srgb,var(--surface,#fff) 78%,transparent);
+  -webkit-backdrop-filter:saturate(1.4) blur(14px);backdrop-filter:saturate(1.4) blur(14px);
+  border-bottom:1px solid color-mix(in srgb,var(--border,#e5e5e5) 70%,transparent);box-shadow:var(--shadow-xs)}
+.app-name{display:inline-flex;align-items:center;gap:10px}
+.app-name::before{content:'';width:12px;height:12px;border-radius:4px;flex:none;
+  background:linear-gradient(135deg,var(--brand,#2563eb),var(--accent,#0ea5e9));
+  box-shadow:0 2px 8px color-mix(in srgb,var(--brand,#2563eb) 45%,transparent)}
+.icon-btn{transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+.icon-btn:hover{transform:translateY(-1px);box-shadow:var(--shadow-sm)}
+/* Stats read like a dashboard, not a receipt. */
+.stat{border-radius:var(--radius-lg,16px);box-shadow:var(--shadow-sm);border-color:color-mix(in srgb,var(--border,#e5e5e5) 80%,transparent);
+  display:flex;align-items:center;gap:14px;transition:transform .18s ease,box-shadow .18s ease}
+.stat:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.stat-ico{flex:none;width:46px;height:46px;display:grid;place-items:center;font-size:22px;border-radius:14px;
+  background:color-mix(in srgb,var(--brand,#2563eb) 12%,var(--surface,#fff));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--brand,#2563eb) 18%,transparent)}
+.stat b{font-size:1.75rem;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stat:first-child b{background:linear-gradient(135deg,var(--brand,#2563eb),var(--accent,#0ea5e9));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+/* Panels: real elevation, and a title that carries the accent. */
+.panel{border-radius:18px;box-shadow:var(--shadow-sm);border-color:color-mix(in srgb,var(--border,#e5e5e5) 80%,transparent)}
+.panel h2{display:flex;align-items:center;gap:10px}
+.panel h2::before{content:'';width:4px;height:1.05em;border-radius:99px;flex:none;
+  background:linear-gradient(180deg,var(--brand,#2563eb),var(--accent,#0ea5e9))}
+/* Fields a hand recognises: tinted, rounded, ringed on focus. */
+input,select,textarea{background:color-mix(in srgb,var(--tint,#f6f6f6) 55%,var(--bg,#fff));
+  border-radius:12px;transition:border-color .16s ease,box-shadow .16s ease,background .16s ease}
+input:hover,select:hover,textarea:hover{border-color:color-mix(in srgb,var(--brand,#2563eb) 35%,var(--border,#ddd))}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent,#2563eb);box-shadow:var(--ring);background:var(--bg,#fff)}
+select{appearance:none;-webkit-appearance:none;padding-inline-end:38px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round'/></svg>");
+  background-repeat:no-repeat;background-position:left 14px center}
+[dir="ltr"] select{background-position:right 14px center}
+/* The primary button earns its name. */
+.btn{background:linear-gradient(135deg,var(--brand,#2563eb),color-mix(in srgb,var(--brand,#2563eb) 55%,var(--accent,#0ea5e9)));
+  border-radius:12px;box-shadow:var(--shadow-brand);transition:transform .16s ease,box-shadow .16s ease,filter .16s ease}
+.btn:hover{transform:translateY(-1px);filter:brightness(1.06)}
+.btn:active{transform:translateY(0)}
+.btn.ghost,.btn.danger{background:transparent;box-shadow:none}
+.btn.ghost:hover{background:var(--tint,#f6f6f6);transform:none}
+/* Rows are cards that answer the cursor. */
+.row{border-radius:14px;box-shadow:var(--shadow-xs);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+.row:hover{transform:translateY(-1px);box-shadow:var(--shadow-sm);border-color:color-mix(in srgb,var(--brand,#2563eb) 25%,var(--border,#e5e5e5))}
+/* An empty state that invites, instead of a colored strip. */
+.empty{display:grid;justify-items:center;gap:10px;text-align:center;padding:34px 18px;
+  background:transparent;border:1.5px dashed color-mix(in srgb,var(--border,#ccc) 85%,transparent);border-radius:16px;color:var(--text-muted,#666)}
+.empty::before{content:'🗂️';font-size:34px;line-height:1;filter:grayscale(.15)}
+/* The page rises to meet its reader — and holds still for those who ask it to. */
+@media (prefers-reduced-motion:no-preference){
+  .wrap>*{animation:liftIn .45s cubic-bezier(.2,.7,.3,1) both}
+  .wrap>*:nth-child(2){animation-delay:.06s}.wrap>*:nth-child(3){animation-delay:.12s}
+  .wrap>*:nth-child(4){animation-delay:.18s}.wrap>*:nth-child(5){animation-delay:.24s}
+  @keyframes liftIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+}
 `;
 }
 
@@ -3421,9 +3500,9 @@ export default function ShopApp({ content }) {
     <div className="wrap">
       <section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
-          <div className="stat" key={i}><b>{computeMetric(m, products)}</b><span>{m.label}</span></div>
+          <div className="stat" key={i}><i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i><div><b>{computeMetric(m, products)}</b><span>{m.label}</span></div></div>
         ))}
-        <div className="stat"><b>{count}</b><span>{${T('في السلة', 'In cart')}}</span></div>
+        <div className="stat"><i className="stat-ico" aria-hidden="true">🛒</i><div><b>{count}</b><span>{${T('في السلة', 'In cart')}}</span></div></div>
       </section>
 
       <section className="panel shop-bar">
