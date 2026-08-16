@@ -189,6 +189,26 @@ const TASK_BOARD_CONTRACT = /مركز\s*جاهزية\s*(?:الإصدار|الا�
  * presentation site (a café, a clinic's landing page, a shop window), which
  * the section builder already does well and must keep doing.
  */
+/**
+ * THE TABLE EACH APPLICATION KIND STORES — one reading for BOTH halves.
+ *
+ * The server names its primary table from this map, and the interface uses the
+ * same map to ask one measurable question: is the detected kind's own table
+ * one of the tables this system is actually building? A kind whose table the
+ * system does not have was matched on a stray word — «المستودعات» inside an
+ * eleven-domain freight sentence read as an inventory app — and it stands
+ * down instead of renaming the whole system after one word.
+ *
+ * This lived as a private copy inside ApiProjectTool; a second copy for the
+ * interface would drift the first time either changed. [kind]: [table, labelAr].
+ */
+export const RECORDS_TABLE_BY_KIND: Record<string, [string, string]> = {
+    social: ['posts', 'المنشورات'], chat: ['messages', 'الرسائل'], maps: ['places', 'الأماكن'], tasks: ['tasks', 'المهام'],
+    notes: ['notes', 'الملاحظات'], expenses: ['expenses', 'المصاريف'], inventory: ['items', 'الأصناف'],
+    booking: ['bookings', 'الحجوزات'], pos: ['sales', 'المبيعات'], crm: ['customers', 'العملاء'],
+    lms: ['enrolments', 'التسجيلات'], contacts: ['contacts', 'جهات الاتصال'], habits: ['habits', 'العادات'],
+};
+
 export function detectAppKind(requestRaw: string): AppKind | null {
     const request = String(requestRaw || '')
         .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
