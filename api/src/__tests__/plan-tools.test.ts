@@ -179,6 +179,26 @@ describe('model-written tool arguments are checked before execution', () => {
         expect(plannedArgsIssue('db_schema_migrator', { engine: 'prisma', action: 'status' })).toBeNull();
     });
 
+    it('rejects auth_builder when a schema-required outputDir is missing', () => {
+        expect(plannedArgsIssue('auth_builder', { type: 'full' })).toMatch(/outputDir/);
+        expect(plannedArgsIssue('auth_builder', { type: 'full', outputDir: 'src/auth' })).toBeNull();
+    });
+
+    it('drops an auth_builder task with missing required fields before execution', () => {
+        const phase = {
+            phaseNumber: 2,
+            name: 'Authentication',
+            tasks: [
+                { task: 'Generate the authentication system', tool: 'auth_builder', args: { type: 'full' }, priority: 'high' },
+                { task: 'Record the authentication boundary', tool: 'write_file', args: { path: 'docs/auth-boundary.md', content: '# Auth boundary' } },
+            ],
+        };
+        const { phases, notes } = sanitisePlanPhases([phase], 'warehouse-console');
+        expect(phases[0].tasks.map((task: any) => task.tool)).toEqual(['write_file']);
+        expect(notes.join('\n')).toMatch(/auth_builder يحتاج الحقل الإلزامي/);
+        expect(notes.join('\n')).toMatch(/outputDir/);
+    });
+
     it('drops the invalid migration task before PhaseExecutor can emit Unsupported action', () => {
         const { phases, notes } = sanitisePlanPhases([invalidMigrationPhase], 'warehouse-console');
         expect(phases[0].tasks.map((task: any) => task.tool)).toEqual(['write_file']);
@@ -692,5 +712,26 @@ describe('runnable evidence is earned, not inferred from a generated manifest', 
         };
         const { phases } = sanitisePlanPhases([phase], 'NEXUS');
         expect(phases[0].verificationTask.tool).toBe('project_run');
+    });
+});
+
+
+describe('required tool fields are validated before phase execution', () => {
+    it('blocks auth_builder when outputDir is missing', () => {
+        expect(plannedArgsIssue('auth_builder', { type: 'full' })).toMatch(/outputDir/);
+    });
+
+    it('accepts auth_builder when all required fields are present', () => {
+        expect(plannedArgsIssue('auth_builder', { type: 'full', outputDir: 'src/auth' })).toBeNull();
+    });
+
+    it('sanitises an incomplete auth_builder task instead of executing it', () => {
+        const result = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Authentication foundation',
+            tasks: [{ task: 'Generate authentication', tool: 'auth_builder', args: { type: 'full' } }],
+        }], 'nexus', { mode: 'greenfield' });
+        expect(result.phases[0].tasks).toHaveLength(0);
+        expect(result.notes.join('\\n')).toMatch(/outputDir/);
     });
 });

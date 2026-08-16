@@ -84,7 +84,7 @@ export const PLANNER_TOOL_CATALOGUE: Array<{ tool: string; purpose: string }> = 
     { tool: 'security_scanner', purpose: 'scan for security problems' },
     { tool: 'dependency_audit', purpose: 'audit dependencies for vulnerabilities' },
     { tool: 'db_schema_migrator', purpose: 'execute an existing database schema file or SQL migration; action is REQUIRED and must be exactly migrate, push, reset, or status. Use engine sqlite for an existing .sql migration (execute it against SQLite, never pass it to Prisma); use engine prisma only for an existing .prisma schema. This tool does not create or design schemas; do not use create, design, or generate as an action—write and verify the schema or SQL file first.' },
-    { tool: 'auth_builder', purpose: 'add authentication (login, sessions, roles)' },
+    { tool: 'auth_builder', purpose: 'add authentication (login, sessions, roles); REQUIRED args.type and args.outputDir (workspace-relative destination)' },
     { tool: 'payments_create_checkout_session', purpose: 'wire a real payment checkout' },
     { tool: 'i18n_translator', purpose: 'add or translate interface languages' },
     { tool: 'swagger_docs', purpose: 'generate API documentation' },
@@ -418,6 +418,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         const tasks = Array.isArray(phase?.tasks) ? phase.tasks : [];
         const kept: any[] = [];
         const phaseBlockers: PlanSanitiseBlocker[] = [];
+        let hadHardContractDrop = false;
 
         for (const task of tasks) {
             const asked = String(task?.tool || '').trim();
@@ -531,7 +532,19 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     ? unprovenProjectCheckIssue(adaptedArgs?.command, candidateCheckCommands)
                     : null;
                 if (argsIssue || shellIssue) {
-                    notes.push(`[plan] أسقطتُ «${desc}» — ${argsIssue || shellIssue}`);
+                    const issue = argsIssue || shellIssue;
+                    // A missing schema-required field is a hard plan-contract
+                    // defect. It must not be disguised as an informational
+                    // documentation phase when this was the only requested work.
+                    if (argsIssue && /الحقل الإلزامي|واحداً من/.test(argsIssue)) {
+                        hadHardContractDrop = true;
+                        phaseBlockers.push({
+                            code: 'tool_contract_invalid',
+                            message: `المرحلة «${phaseName}» تحتوي ${r.tool} بعقد arguments ناقص: ${argsIssue}`,
+                            remedy: 'أكمل جميع الحقول الإلزامية في خطة الأداة قبل التنفيذ؛ لا تُنشئ Joe مخرجاً بديلاً لإخفاء نقص العقد.',
+                        });
+                    }
+                    notes.push(`[plan] أسقطتُ «${desc}» — ${issue}`);
                     continue;
                 }
                 if (r.how !== 'exact') notes.push(`[plan] «${asked}» → ${r.tool} (${desc})`);
@@ -562,6 +575,25 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             const blocker = phaseBlockers[0];
             blockers.push(blocker);
             notes.push(`[plan] أوقفتُ المرحلة «${phaseName}» بعائق تخطيط صريح: ${blocker.message}`);
+            return {
+                ...phase,
+                tasks: [],
+                verificationTask: undefined,
+                deliveryStatus: 'blocked',
+                blocker,
+            };
+        }
+        // A required-field contract failure is not an inspection-only phase and
+        // must not be rewritten into a documentation artifact. Keep the phase
+        // empty and expose the blocker so planner recovery can repair the plan.
+        if (hadHardContractDrop && runnable.length === 0) {
+            const blocker = phaseBlockers[0] || {
+                code: 'tool_contract_invalid',
+                message: `المرحلة «${phaseName}» فقدت حقلاً إلزامياً في عقد إحدى الأدوات.`,
+                remedy: 'أكمل arguments المطلوبة قبل التنفيذ.',
+            };
+            blockers.push(blocker);
+            notes.push(`[plan] أوقفتُ المرحلة «${phaseName}» — لن أحول نقص عقد الأداة إلى وثيقة fallback.`);
             return {
                 ...phase,
                 tasks: [],
@@ -842,6 +874,7 @@ const ARG_SYNONYMS: Record<string, string[]> = {
     packages: ['dependencies', 'deps', 'modules'],
     testType: ['type', 'test', 'testTypeName', 'test_type', 'testKind'],
     projectPath: ['path', 'cwd', 'dir', 'directory', 'projectDir', 'root'],
+    name: ['projectName', 'appName', 'applicationName'],
 };
 
 /** When a required field is still missing, the least surprising real value. */
@@ -939,24 +972,6 @@ export function plannedArgsIssue(toolName: string, args: any): string | null {
      * unusable task to a tool.  This check is intentionally generic: the
      * registry schema, not a search_text-specific branch, defines the aliases.
      */
-    try {
-        const { tools } = require('../../modules/tools/registry');
-        const schema = (tools || []).find((candidate: any) => candidate?.name === toolName)?.inputSchema;
-        const requiredAny: string[][] = Array.isArray(schema?.requiredAny)
-            ? schema.requiredAny.filter((group: any) => Array.isArray(group) && group.length).map((group: any[]) => group.map(String))
-            : [];
-        const hasValue = (key: string) => {
-            const value = args?.[key];
-            return value !== undefined && value !== null && !(typeof value === 'string' && !value.trim()) && !(Array.isArray(value) && value.length === 0);
-        };
-        const missingGroup = requiredAny.find(group => !group.some(hasValue));
-        if (missingGroup) {
-            return `${toolName} يحتاج واحداً من ${missingGroup.join(' أو ')}؛ لم تُحدّد الخطة قيمة صالحة لأي بديل، لذلك أُوقفت المهمة قبل التنفيذ.`;
-        }
-    } catch {
-        // The registry can be mid-initialisation in isolated tests; specific
-        // deterministic checks below still run and the executor remains safe.
-    }
     if (toolName === 'browser_run') {
         const instruction = String(args?.instructionText || '').trim();
         const actions = Array.isArray(args?.actions) ? args.actions.filter(Boolean) : [];
@@ -1051,6 +1066,36 @@ export function plannedArgsIssue(toolName: string, args: any): string | null {
                 return `auto_tester من نوع syntax يدعم JavaScript/TypeScript وJSON فقط؛ استخدم مدققاً متخصصاً للملفات: ${unsupported.join(', ')}.`;
             }
         }
+    }
+    // Apply the live registry's generic required-field contract only after
+    // tool-specific validators. This preserves precise, established messages
+    // (for example npm_manager's command and code_reviewer's files) while still
+    // blocking newly registered tools such as auth_builder when a required field
+    // is absent. The schema remains the source of truth; no tool is hard-coded.
+    try {
+        const { tools } = require('../../modules/tools/registry');
+        const schema = (tools || []).find((candidate: any) => candidate?.name === toolName)?.inputSchema;
+        const required: string[] = Array.isArray(schema?.required)
+            ? schema.required.map(String)
+            : [];
+        const requiredAny: string[][] = Array.isArray(schema?.requiredAny)
+            ? schema.requiredAny.filter((group: any) => Array.isArray(group) && group.length).map((group: any[]) => group.map(String))
+            : [];
+        const hasValue = (key: string) => {
+            const value = args?.[key];
+            return value !== undefined && value !== null && !(typeof value === 'string' && !value.trim()) && !(Array.isArray(value) && value.length === 0);
+        };
+        const missingRequired = required.find(key => !hasValue(key));
+        if (missingRequired) {
+            return `${toolName} يحتاج الحقل الإلزامي «${missingRequired}»؛ لم تُحدّد الخطة قيمة صالحة له، لذلك أُوقفت المهمة قبل التنفيذ.`;
+        }
+        const missingGroup = requiredAny.find(group => !group.some(hasValue));
+        if (missingGroup) {
+            return `${toolName} يحتاج واحداً من ${missingGroup.join(' أو ')}؛ لم تُحدّد الخطة قيمة صالحة لأي بديل، لذلك أُوقفت المهمة قبل التنفيذ.`;
+        }
+    } catch {
+        // The registry can be mid-initialisation in isolated tests; specific
+        // deterministic checks above still run and the executor remains safe.
     }
     return null;
 }
