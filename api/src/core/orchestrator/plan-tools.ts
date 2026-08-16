@@ -157,6 +157,19 @@ const NOT_SOFTWARE = new Set([
 ]);
 
 const norm = (v: any) => String(v || '').trim().toLowerCase();
+
+/**
+ * A file argument must name one workspace-relative path, not a shell command.
+ * Models sometimes put `node src/index.js` (or `npm run dev`) in the path field
+ * when they mean an entrypoint command. Treating that value as a filename creates
+ * a literal malformed file and hides the runnable-artifact defect until live-run.
+ */
+export function isShellLikeWorkspacePath(value: unknown): boolean {
+    const raw = String(value || '').trim().replace(/\\/g, '/');
+    if (!raw) return false;
+    if (/(?:&&|\|\||[;&|])/.test(raw)) return true;
+    return /^(?:(?:node|nodejs|npm|npx|pnpm|yarn|bun|deno|python|python3|ruby|php|bash|sh|zsh|pwsh|powershell|tsx|ts-node|java|go)(?:\s|$)|(?:\.\/)?node_modules\/\.bin\/[^\s]+\s)/i.test(raw);
+}
 /** «Set up Project Management Board» and «set_up_project_management_board» are the same words. */
 const key = (v: any) => norm(v).replace(/[_\-\s]+/g, ' ').replace(/[^a-z0-9. /]/g, '').trim();
 const snake = (v: any) => norm(v).replace(/[\s\-.]+/g, '_').replace(/[^a-z0-9_]/g, '');
@@ -276,7 +289,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
      */
     const unsafeWorkspacePath = (value: unknown) => {
         const raw = String(value || '').trim().replace(/\\/g, '/');
-        return !raw || /^(?:\/|[a-zA-Z]:\/|\/\/)/.test(raw) || raw.split('/').some(segment => segment === '..');
+        return !raw || isShellLikeWorkspacePath(raw) || /^(?:\/|[a-zA-Z]:\/|\/\/)/.test(raw) || raw.split('/').some(segment => segment === '..');
     };
     const evidencedPaths = new Set((options.evidencedPaths || []).map(normaliseEvidencePath).filter(Boolean));
     const candidateCheckCommands = new Set((options.candidateCheckCommands || []).map(command => normaliseShellCommand(command)).filter(Boolean));
@@ -954,6 +967,9 @@ export function plannedArgsIssue(toolName: string, args: any): string | null {
         const brief = String(args?.description || '').trim();
         if (!target || !brief) {
             return 'ai_write_file يحتاج path نسبياً وdescription يوضح محتوى الملف؛ لم تُحدد الخطة عقد إنشاء مصدر مكتمل، لذلك أُسقطت المهمة قبل التنفيذ.';
+        }
+        if (isShellLikeWorkspacePath(target)) {
+            return 'ai_write_file يحتاج مسار ملف واحداً؛ رفضتُ قيمة تبدو كأمر shell مثل node/npm قبل أي كتابة.';
         }
         if (target.startsWith('/') || target.includes('..')) {
             return 'ai_write_file يحتاج path نسبياً داخل مساحة العمل؛ رفضتُ مساراً قد يخرج من المشروع قبل أي كتابة.';

@@ -18,7 +18,7 @@
  *
  * These are the exact strings from that run.
  */
-import { resolvePlannedTool, sanitisePlanPhases, unrunnableShellStep, plannerToolPrompt, plannedArgsIssue, adaptPlannedArgs, PLANNER_TOOL_CATALOGUE } from '../core/orchestrator/plan-tools';
+import { resolvePlannedTool, sanitisePlanPhases, unrunnableShellStep, plannerToolPrompt, plannedArgsIssue, adaptPlannedArgs, PLANNER_TOOL_CATALOGUE, isShellLikeWorkspacePath } from '../core/orchestrator/plan-tools';
 
 describe('a plan may only name tools that exist', () => {
     it('«Git» is git_ops — the model named the product, it meant the capability', () => {
@@ -438,6 +438,39 @@ describe('a greenfield slice does not silently choose its technology', () => {
     });
 });
 
+
+describe('file arguments cannot hide shell commands', () => {
+    it('recognises command-like values but accepts a real relative entrypoint', () => {
+        expect(isShellLikeWorkspacePath('node src/index.js')).toBe(true);
+        expect(isShellLikeWorkspacePath('npm run dev')).toBe(true);
+        expect(isShellLikeWorkspacePath('src/index.js')).toBe(false);
+    });
+
+    it('rejects a shell command in ai_write_file path before any file is written', () => {
+        expect(plannedArgsIssue('ai_write_file', {
+            path: 'node src/index.js',
+            description: 'Create the application entrypoint',
+        })).toMatch(/أمر shell/);
+        expect(plannedArgsIssue('ai_write_file', {
+            path: 'src/index.js',
+            description: 'Create the application entrypoint',
+        })).toBeNull();
+    });
+
+    it('drops a malformed file task during plan sanitisation', () => {
+        const { phases, notes } = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Create runnable entrypoint',
+            tasks: [{
+                task: 'Create the entrypoint',
+                tool: 'ai_write_file',
+                args: { path: 'node src/index.js', description: 'Create the entrypoint' },
+            }],
+        }], 'local-project');
+        expect(phases[0].tasks.some((task: any) => task.tool === 'ai_write_file')).toBe(false);
+        expect(notes.join('\\n')).toMatch(/مساراً نسبياً آمناً|أمر shell|لا تتضمن أدوات قابلة للتنفيذ/);
+    });
+});
 
 describe('auto_tester receives a closed, evidence-safe contract', () => {
     it('adapts common planner aliases into the explicit test contract', () => {
