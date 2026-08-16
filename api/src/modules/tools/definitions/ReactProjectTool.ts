@@ -716,6 +716,12 @@ ${c.gallery.map(g => `    { src: '${js(g.src)}', alt: '${js(g.alt)}' },`).join('
   navLinks: [
 ${((c as any).navLinks || []).map((n: any) => `    { href: '${js(n.href)}', label: '${js(n.label)}' },`).join('\n')}
   ],
+  // What the PROMPT asked the header and footer to be — read, not guessed.
+  headerLayout: '${js((c as any).headerLayout || '')}',
+  navDropdown: ${(c as any).navDropdown === true},
+  defaultDark: ${(c as any).defaultDark === true},
+  footerMinimal: ${(c as any).footerMinimal === true},
+  moreLabel: '${js((c as any).moreLabel || '')}',
   menuTitle: '${js(c.menuTitle)}',
   menu: [
 ${c.menu.map(m => `    { name: '${js(m.name)}', desc: '${js(m.desc)}', price: '${js(m.price)}', img: ${m.img ? `{ src: '${js(m.img.src)}', alt: '${js(m.img.alt)}' }` : 'null'} },`).join('\n')}
@@ -766,20 +772,38 @@ function fileNavbarJsx(): string {
 
 export default function Navbar({ content }) {
   const [dark, setDark] = useState(() => {
-    try { return localStorage.getItem('theme') === 'dark'; } catch { return false; }
+    // The stored choice wins; before any choice, the ground HE asked for.
+    try { const t = localStorage.getItem('theme'); if (t) return t === 'dark'; } catch { /* private mode */ }
+    return !!content.defaultDark;
   });
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch { /* private mode */ }
   }, [dark]);
+  const links = content.navLinks || [];
+  // «قائمة منسدلة»: the overflow folds into a NATIVE details menu — keyboard
+  // and screen-reader behaviour for free, no click-outside wiring to break.
+  const fold = content.navDropdown && links.length > 4;
+  const head = fold ? links.slice(0, 3) : links;
+  const rest = fold ? links.slice(3) : [];
   return (
     <header className="site-header">
-      <div className="wrap header-inner">
+      <div className={'wrap header-inner' + (content.headerLayout === 'center' ? ' center' : '')}>
         <a className="brand" href="#top">{content.brand}</a>
         <nav className="nav-links">
-          {(content.navLinks || []).map((l) => (
+          {head.map((l) => (
             <a href={l.href} key={l.href}>{l.label}</a>
           ))}
+          {rest.length ? (
+            <details className="nav-more">
+              <summary>{content.moreLabel || 'المزيد'} ▾</summary>
+              <div className="nav-more-menu">
+                {rest.map((l) => (
+                  <a href={l.href} key={l.href}>{l.label}</a>
+                ))}
+              </div>
+            </details>
+          ) : null}
         </nav>
         <button type="button" className="theme-toggle" aria-pressed={dark} onClick={() => setDark(d => !d)}>
           {dark ? '☀️' : '🌙'}
@@ -1729,6 +1753,15 @@ function fileFooterJsx(): string {
 
 export default function Footer({ content }) {
   const c = content.contact;
+  // «تذييل بسيط»: the brand and the year, nothing else — because he said so.
+  if (content.footerMinimal) {
+    return (
+      <footer className="site-footer footer-min">
+        <div className="wrap"><p className="footer-brand">{content.brand}</p>
+        <p className="rights">© {new Date().getFullYear()} {content.brand}</p></div>
+      </footer>
+    );
+  }
   return (
     <footer className="site-footer">
       <div className="wrap footer-cols">
@@ -2041,6 +2074,22 @@ main > .section:nth-of-type(even):not(.band):not(.stats-band):not(.cta-band){bac
    survived, which is precisely why every project looked like its sibling.
    Last wins; the identity is now real below the token line too. */
 ${familyCss(family)}
+
+/* «قائمة منسدلة» — a native details menu, keyboardable for free. */
+.nav-more{position:relative}
+.nav-more>summary{list-style:none;cursor:pointer;padding:6px 10px;border-radius:10px;user-select:none}
+.nav-more>summary::-webkit-details-marker{display:none}
+.nav-more>summary:hover{background:var(--tint,rgb(0 0 0/.05))}
+.nav-more[open]>summary{background:var(--tint,rgb(0 0 0/.06))}
+.nav-more-menu{position:absolute;inset-inline-end:0;top:calc(100% + 8px);min-width:200px;display:grid;gap:2px;
+  background:var(--surface,#fff);border:1px solid var(--border,#e5e5e5);border-radius:14px;padding:8px;
+  box-shadow:0 14px 40px rgb(0 0 0/.16);z-index:40}
+.nav-more-menu a{display:block;padding:9px 12px;border-radius:9px}
+.nav-more-menu a:hover{background:var(--tint,rgb(0 0 0/.05))}
+/* «تذييل بسيط» */
+.footer-min .wrap{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding-block:18px}
+.footer-min .footer-brand{margin:0;font-weight:800}
+.footer-min .rights{margin:0;color:var(--text-muted,#777);font-size:.85rem}
 `;
 }
 
@@ -2130,7 +2179,28 @@ export class ReactProjectTool extends BaseTool {
             broadcast({ type: 'panel_focus', sessionId, data: { panel: 'terminal', reason: 'build_shell' } } as any);
         } catch { /* UI optional */ }
 
-        const palette = buildPalette(request);
+        let palette = buildPalette(request);
+        /**
+         * THE PROMPT'S OWN DESIGN LANGUAGE — «انت عملت قالب ولكن انا اريد جو
+         * يمتلك مهارة في تصميم أي موقع مهما كان المطلوب». The reader parses
+         * his directives (ground, hex, gold, logo place, dropdown, corners,
+         * motion, photos, footer, rhythm), each one is obeyed at its own seam
+         * below, and each obeyed one is said out loud. A prompt that states
+         * none builds exactly what it built before the reader existed.
+         */
+        const { readDesignDirectives, directivesCss, hexToHue } = require('../../../core/design/design-directives');
+        const directives = readDesignDirectives(request, isAr);
+        if (directives.hex) {
+            const { paletteForHue } = require('../../../core/design/design-system');
+            const hue = hexToHue(directives.hex);
+            if (hue !== null) palette = paletteForHue(hue);
+        }
+        if (directives.spoken.length) {
+            term(`design directives: ${directives.spoken.join(' · ')}`);
+            if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                ? `🎨 قرأتُ توجيهاتك التصميمية: ${directives.spoken.join(' · ')}`
+                : `🎨 Read your design directives: ${directives.spoken.join(' · ')}`);
+        }
         // The SAME kind judgement the page builder uses: a restaurant app
         // ships a menu, a store ships pricing — never the same generic three
         // sections for every request.
@@ -2256,6 +2326,11 @@ export class ReactProjectTool extends BaseTool {
                     .map(s => ({ href: `#${SECTION_ANCHOR[s]}`, label: SECTION_LABEL[s][isAr ? 0 : 1] }));
         };
         buildNavLinks();
+        (content as any).headerLayout = directives.logoPosition === 'center' ? 'center' : '';
+        (content as any).navDropdown = directives.navDropdown === true;
+        (content as any).moreLabel = isAr ? 'المزيد' : 'More';
+        (content as any).defaultDark = directives.ground === 'dark';
+        (content as any).footerMinimal = directives.footer === 'minimal';
         (content as any).api = apiLink;
         /**
          * …and WRITES into it: visitor orders post to the API's orders table.
@@ -2304,7 +2379,7 @@ export class ReactProjectTool extends BaseTool {
         // step is skipped with it; any live failure ships a clean no-image app.
         // An APPLICATION downloads no hero photograph: a map app needs tiles,
         // not a stock picture of a road.
-        if (!appBp && !input?.skipInstall && !input?.skipImages) {
+        if (!appBp && !input?.skipInstall && !input?.skipImages && directives.photos !== 'off') {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🖼️ أبحث عن صورة حقيقية مرخّصة للبطل…' : '🖼️ Finding a real licensed hero photo…');
             const hero = await fetchHeroImage({
                 subject: `${content.tagline || content.brand}`,
@@ -2443,11 +2518,14 @@ export class ReactProjectTool extends BaseTool {
             // data-theme blocks make the Navbar toggle actually change the
             // colours (paletteCss alone only follows the OS preference).
             'src/styles/tokens.css': `${paletteCss(palette)}
-:root[data-theme="dark"]{${darkTokenBlock(palette)}}
+${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the page's default, not an OS opinion */
+:root{${darkTokenBlock(palette)}}
+:root{color-scheme:dark}
+` : ''}:root[data-theme="dark"]{${darkTokenBlock(palette)}}
 :root[data-theme="light"]{${lightTokenBlock(palette)}}
 :root[data-theme="dark"]{color-scheme:dark}
 :root[data-theme="light"]{color-scheme:light}`,
-            'src/styles/base.css': fileBaseCss(family),
+            'src/styles/base.css': fileBaseCss(family) + directivesCss(directives),
         };
         // AN APPLICATION REPLACES ALL OF IT. Not one marketing section, not
         // one fabricated customer, not one restaurant dish: the program, its
