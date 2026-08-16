@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { detectStart, launchPrerequisiteError, resolveRunnableProject } from '../modules/tools/definitions/ProjectRunTool';
+import { buildProbeList, detectStart, isLoopbackPortOpen, launchPrerequisiteError, resolveRunnableProject } from '../modules/tools/definitions/ProjectRunTool';
 
 describe('workspace project discovery for project_run', () => {
     let root: string;
@@ -66,6 +66,25 @@ describe('workspace project discovery for project_run', () => {
         const result = resolveRunnableProject(root, 'شغّل المشروع الموجود في مساحة العمل');
         expect(result.cwd).toBe(path.join(root, 'react-لوحة-مهامي'));
         expect(result.matched).toBe(true);
+    });
+
+    it('excludes pre-existing common ports from post-launch discovery', () => {
+        expect(buildProbeList(4300, false, [3000, 5173])).toEqual([4300, 5174, 3001, 4173, 8080, 8000]);
+        expect(buildProbeList(4300, true, [3000, 5173])).toEqual([4300]);
+    });
+
+    it('detects a project server bound to the IPv6 loopback address', async () => {
+        const server = require('net').createServer();
+        await new Promise<void>((resolve, reject) => {
+            server.once('error', reject);
+            server.listen(0, '::1', () => resolve());
+        });
+        const port = server.address().port;
+        try {
+            await expect(isLoopbackPortOpen(port, 300)).resolves.toBe(true);
+        } finally {
+            await new Promise<void>(resolve => server.close(() => resolve()));
+        }
     });
 
     it('reports absent Vite dependencies before detached startup and its 45-second port wait', () => {

@@ -30,9 +30,37 @@ const RUNNING: Map<string, RunningServer> = new Map();
 // after the chosen port so we DISCOVER the real one instead of guessing.
 const COMMON_DEV_PORTS = [5173, 5174, 3000, 3001, 4173, 8080, 8000];
 
+/**
+ * Local servers are allowed to bind either loopback family. Node's
+ * `server.listen(port, 'localhost')` commonly resolves to ::1 on Linux, while
+ * the previous probe only checked 127.0.0.1 and therefore called a healthy
+ * server dead. Probe both families in parallel; this is still local evidence
+ * and never broadens discovery to a public or LAN address.
+ */
+export async function isLoopbackPortOpen(port: number, timeoutMs = 1000): Promise<boolean> {
+    const [ipv4, ipv6] = await Promise.all([
+        isPortOpen('127.0.0.1', port, timeoutMs),
+        isPortOpen('::1', port, timeoutMs),
+    ]);
+    return ipv4 || ipv6;
+}
+
+/**
+ * A common port that was already occupied before launch belongs to somebody
+ * else until proven otherwise. Keep it out of post-launch discovery; otherwise
+ * a failed `npm start` could accidentally report an old localhost server as the
+ * newly started project. The preferred free port is always retained because it
+ * is the only port we intentionally selected for this launch.
+ */
+export function buildProbeList(preferredPort: number, forced: boolean, preExistingPorts: readonly number[] = []): number[] {
+    if (forced) return [preferredPort];
+    const occupied = new Set(preExistingPorts);
+    return [preferredPort, ...COMMON_DEV_PORTS.filter(p => p !== preferredPort && !occupied.has(p))];
+}
+
 async function findFreePort(start = 4300): Promise<number> {
     for (let p = start; p < start + 200; p++) {
-        if (!(await isPortOpen('127.0.0.1', p))) return p;
+        if (!(await isLoopbackPortOpen(p, 250))) return p;
     }
     return start;
 }
@@ -514,6 +542,18 @@ export class ProjectRunTool implements ToolDefinition {
             `▶️ أُشغّل المشروع (${detected.kind}) على المنفذ ${port}…`,
             `▶️ Starting the project (${detected.kind}) on port ${port}…`));
 
+        // Snapshot common ports before launch. A port already occupied here is
+        // not evidence that this child started there (it may be an old server).
+        const preExistingCommonPorts = detected.forced
+            ? []
+            : (await Promise.all(COMMON_DEV_PORTS
+                .filter(p => p !== port)
+                .map(async p => (await isLoopbackPortOpen(p, 250)) ? p : null)))
+                .filter((p): p is number => p !== null);
+        if (preExistingCommonPorts.length) {
+            logs.push(`project_run: ignored pre-existing loopback ports (${preExistingCommonPorts.join(', ')})`);
+        }
+
         // Detached start through the sanctioned gateway — never child_process.
         const res = await ExecutionGateway.execute(detected.command, [], {
             cwd,
@@ -541,13 +581,13 @@ export class ProjectRunTool implements ToolDefinition {
           * FORCED it — a flag the framework must obey, or a static server we
           * point ourselves — the answer is that port or nothing.
           */
-        const probeList = detected.forced ? [port] : [port, ...COMMON_DEV_PORTS.filter(p => p !== port)];
+        const probeList = buildProbeList(port, detected.forced, preExistingCommonPorts);
         let livePort = 0;
         const deadline = Date.now() + 45000; // weak machines + npm cold start
         while (Date.now() < deadline && !livePort) {
             await new Promise(r => setTimeout(r, 700));
             for (const p of probeList) {
-                if (await isPortOpen('127.0.0.1', p)) { livePort = p; break; }
+                if (await isLoopbackPortOpen(p, 750)) { livePort = p; break; }
             }
         }
 
