@@ -184,12 +184,26 @@ describe('greenfield runnable contract is explicit before live-run', () => {
                 phaseNumber: 1,
                 name: 'Foundation',
                 tasks: [
-                    { task: 'Patch a missing manifest', tool: 'file_edit', args: { path: 'package.json', find: '{}', replace: '{"scripts":{"start":"node src/index.js"}}' } },
+                    { task: 'Patch a missing manifest', tool: 'file_edit', args: { filename: 'package.json', find: '{}', replace: '{"scripts":{"start":"node src/index.js"}}' } },
                 ],
                 verificationTask: { task: 'Start the project', tool: 'project_run', args: {} },
             },
         ], 'nexus', { mode: 'greenfield' });
         expect(result.blocker?.code).toBe('missing_runnable_contract');
+    });
+
+    it('accepts an in-place manifest edit only in bounded repair mode', () => {
+        const result = sanitisePlanPhases([
+            {
+                phaseNumber: 1,
+                name: 'Repair runnable contract',
+                tasks: [
+                    { task: 'Patch the evidenced manifest', tool: 'file_edit', args: { filename: 'package.json', find: '{}', replace: '{"scripts":{"start":"node src/index.js"}}' } },
+                ],
+                verificationTask: { task: 'Start the project', tool: 'project_run', args: {} },
+            },
+        ], 'nexus', { mode: 'greenfield', requireRunnableContract: true, repairMode: true });
+        expect(result.blocker).toBeUndefined();
     });
 });
 

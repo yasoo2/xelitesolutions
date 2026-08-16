@@ -278,6 +278,8 @@ export interface PlanSanitiseOptions {
     disallowUnportableNativeDependencies?: boolean;
     /** Engineering pipelines perform an automatic live-run after phases, so require a runnable artifact contract. */
     requireRunnableContract?: boolean;
+    /** Bounded live-repair may edit an existing manifest or entrypoint in place. */
+    repairMode?: boolean;
 }
 
 export function sanitisePlanPhases(phases: any[], projectDir = '', options: PlanSanitiseOptions = {}): SanitisedPlan {
@@ -781,9 +783,16 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         || sanitisedTasks.some((task: any) => String(task?.tool || '') === 'project_run')
         || out.some((phase: any) => String(phase?.verificationTask?.tool || '') === 'project_run');
     const runnableCreationTools = new Set(['write_file', 'ai_write_file', 'scaffold_project', 'scaffold_full_stack', 'react_project', 'api_project', 'web_page_builder', 'mobile_builder']);
+    if (options.repairMode === true) {
+        // A live repair may legitimately patch an existing runnable artifact
+        // instead of creating a second one. Keep the same path-level contract:
+        // only edits that name package.json or a recognized entrypoint qualify.
+        runnableCreationTools.add('file_edit');
+        runnableCreationTools.add('file_edit_advanced');
+    }
     const hasRunnableCreationTask = sanitisedTasks.some((task: any) => runnableCreationTools.has(String(task?.tool || '')) && (() => {
         const args = { ...(task?.args || {}), ...(task?.input || {}) };
-        const paths = [args.path, args.filePath, args.filename, ...(Array.isArray(args.files) ? args.files : [])]
+        const paths = [args.path, args.filePath, args.filename, args.file, args.targetPath, ...(Array.isArray(args.files) ? args.files : [])]
             .map((value: any) => normaliseEvidencePath(value)).filter(Boolean);
         if (String(task?.tool || '') === 'scaffold_project') return !!args.structure && typeof args.structure === 'object' && Object.keys(args.structure).some((file: string) => isRunnableContractPath(file));
         if (['scaffold_full_stack', 'react_project', 'api_project', 'web_page_builder', 'mobile_builder'].includes(String(task?.tool || ''))) return true;

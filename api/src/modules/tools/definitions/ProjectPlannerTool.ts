@@ -394,6 +394,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
                     disallowUnportableNativeDependencies: true,
                     requireRunnableContract: context?.requireRunnableContract === true,
+                    repairMode,
                 });
                 if (!portableClean.blocker && this.countImplementationArtifacts(portableClean.phases) > 0) {
                     plan = this.validatePlan(portablePlan, projectDescription);
@@ -517,6 +518,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                              candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
                              disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
                              requireRunnableContract: context?.requireRunnableContract === true,
+                             repairMode,
                          });
                         if (recoveredClean.blocker) {
                             throw new Error(`Scope recovery was blocked during contract sanitisation: ${recoveredClean.blocker.message}`);
