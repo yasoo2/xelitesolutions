@@ -2536,21 +2536,51 @@ export class ReactProjectTool extends BaseTool {
              * lookup is. So the lookup is dropped when the system did not build
              * it, and kept untouched when it did.
              */
-            let strippedRelation = false;
             const builtKeys = new Set(tableModel.map((e: any) => String(e?.key || '')));
-            const parentResource = String((appBp as any)?.relation?.resource || '');
+            /**
+             * THE PICKER'S ANSWER MUST BE PART OF THE SYSTEM — the interface
+             * obeys the same rule the server adopted one phase earlier.
+             *
+             * Measured on the freight sentence, through the real browser: the
+             * server promoted `clients` correctly, and the interface on top of
+             * it still called itself «المخزون» with an «إضافة صنف» form —
+             * because «المستودعات», one word out of eight domains, matched the
+             * inventory detector. The two halves of one build disagreed about
+             * what the system IS.
+             *
+             * The test is the one measurable question, asked of the SAME map
+             * the server names its table from: is this kind's own table among
+             * the tables being built? A freight system builds no `items`, so
+             * inventory stands down and the generic blueprint takes over —
+             * which the branch below immediately rebinds to the system's first
+             * table. A real stock request keeps inventory, because its model
+             * really does contain `items`. Engines with their own machinery
+             * (map, chat, weather, social, shop) are never demoted — their
+             * kind is the SUBJECT, not a guess.
+             */
+            let effectiveBp: AppBlueprint = appBp;
+            if (tableModel.length >= 3 && effectiveBp.engine === 'records' && effectiveBp.kind !== 'generic') {
+                const { RECORDS_TABLE_BY_KIND } = require('../../../core/design/app-blueprints');
+                const ownTable = String(RECORDS_TABLE_BY_KIND[effectiveBp.kind]?.[0] || '');
+                if (ownTable && !builtKeys.has(ownTable)) {
+                    term(`data link: this system builds no «${ownTable}» table — the ${effectiveBp.kind} template stands down for the system's own model`);
+                    effectiveBp = blueprintFor('generic', request, isAr);
+                }
+            }
+            let strippedRelation = false;
+            const parentResource = String((effectiveBp as any)?.relation?.resource || '');
             if (tableModel.length && parentResource && !builtKeys.has(parentResource)) {
                 term(`data link: «${parentResource}» is not a table this system built — the parent lookup is dropped rather than asking for it`);
                 strippedRelation = true;
             }
-            let runBp: any = strippedRelation ? { ...appBp, relation: undefined } : appBp;
+            let runBp: any = strippedRelation ? { ...effectiveBp, relation: undefined } : effectiveBp;
             let appApi = apiLink;
             let adminModel = tableModel;
-            if (tableModel.length && appBp.kind === 'generic' && appBp.engine === 'records') {
+            if (tableModel.length && effectiveBp.kind === 'generic' && effectiveBp.engine === 'records') {
                 const { blueprintFromEntity, apiFor } = require('../../../core/design/entity-app');
                 const lead = tableModel[0];
-                const derived = blueprintFromEntity(appBp, lead, isAr);
-                if (derived !== appBp) {
+                const derived = blueprintFromEntity(effectiveBp, lead, isAr);
+                if (derived !== effectiveBp) {
                     runBp = derived;
                     appApi = apiFor(apiLink, lead.key) || apiLink;
                     adminModel = tableModel.slice(1);          // never the same table twice
@@ -2581,7 +2611,7 @@ export class ReactProjectTool extends BaseTool {
             files['src/styles/app.css'] = `${familyFonts(family).faces}\nbody{font-family:${familyFonts(family).body}}\n`
                 + (appFiles['src/styles/app.css'] || fileAppCss());
             fs.mkdirSync(path.join(proj, 'src', 'app'), { recursive: true });
-            term(`application build: ${appBp.kind} — engine «${appBp.engine}»${Object.keys(appBp.deps).length ? `, real dependencies: ${Object.keys(appBp.deps).join(', ')}` : ''}`);
+            term(`application build: ${runBp.kind} — engine «${runBp.engine}»${Object.keys(runBp.deps || {}).length ? `, real dependencies: ${Object.keys(runBp.deps).join(', ')}` : ''}`);
         }
         // Only the components this KIND actually uses are written — a
         // restaurant carries Menu.jsx, a store carries Pricing.jsx, and no

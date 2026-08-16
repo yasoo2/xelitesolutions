@@ -81,15 +81,12 @@ export function apiResourceForKind(kind: PageKind, isAr: boolean, probe?: string
     // When the same request names an application, the resource is named after
     // it, so the two halves of the full stack are about the same thing.
     {
-        const { detectAppKind } = require('../../../core/design/app-blueprints');
+        // The kind→table map moved beside the detectors it serves, because the
+        // interface now reads the SAME map to decide whether a detected kind is
+        // part of the system at all — two copies would drift.
+        const { detectAppKind, RECORDS_TABLE_BY_KIND } = require('../../../core/design/app-blueprints');
         const appKind = detectAppKind(String(probe || ''));
-        const BY_APP: Record<string, [string, string]> = {
-            social: ['posts', 'المنشورات'], chat: ['messages', 'الرسائل'], maps: ['places', 'الأماكن'], tasks: ['tasks', 'المهام'],
-            notes: ['notes', 'الملاحظات'], expenses: ['expenses', 'المصاريف'], inventory: ['items', 'الأصناف'],
-            booking: ['bookings', 'الحجوزات'], pos: ['sales', 'المبيعات'], crm: ['customers', 'العملاء'],
-            lms: ['enrolments', 'التسجيلات'], contacts: ['contacts', 'جهات الاتصال'], habits: ['habits', 'العادات'],
-        };
-        const named = appKind ? BY_APP[appKind] : null;
+        const named = appKind ? RECORDS_TABLE_BY_KIND[appKind] : null;
         if (named) {
             return {
                 resource: named[0], labelAr: named[1],
@@ -2641,10 +2638,25 @@ export class ApiProjectTool extends BaseTool {
         // The model rides along: the interface builder generates one admin screen
         // per table from the SAME design, and asking the LLM a second time for
         // the same answer would be both slower and free to disagree with itself.
+        /**
+         * THE MODEL THE INTERFACE RECEIVES IS THE WHOLE SYSTEM.
+         *
+         * `model` was filtered above so the promoted primary table is not
+         * generated twice in entities.js — right for the SERVER's files, wrong
+         * as the record handed onward: the interface builds its screens from
+         * this entry, and a primary table absent from it is a table the server
+         * serves that no screen anywhere lets anyone touch. Measured on the
+         * freight pair: `clients` promoted, served at /api/clients — and the
+         * interface managed `shipments` with admin screens for the rest,
+         * clients reachable only by curl. The primary rides at the HEAD, so
+         * the interface's main screen manages exactly what the server calls
+         * primary.
+         */
+        const handedModel = promoted ? [promoted, ...model] : model;
         projects[sessionKey] = {
             dir: proj, type: 'api', brand, resource, port: 4100, updatedAt: Date.now(),
             lastRequest: request.slice(0, 80),
-            ...(model.length ? { model } : {}),
+            ...(handedModel.length ? { model: handedModel } : {}),
         };
         persistJoeProjects();
 

@@ -130,7 +130,11 @@ describe('and the builder prefers what is already known', () => {
 
     it('and the interface builds its screens from the SAME design, not a second guess', () => {
         const a = read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
-        expect(a).toMatch(/\.\.\.\(model\.length \? \{ model \} : \{\}\),/);
+        // The handed model is now the WHOLE system: the promoted primary rides
+        // at the head, because a primary absent from this entry was a table
+        // the server served that no screen anywhere let anyone touch.
+        expect(a).toMatch(/const handedModel = promoted \? \[promoted, \.\.\.model\] : model;/);
+        expect(a).toMatch(/\.\.\.\(handedModel\.length \? \{ model: handedModel \} : \{\}\),/);
         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
         expect(r).toMatch(/Array\.isArray\(prevEntry\?\.model\) && prevEntry\.model\.length/);
     });

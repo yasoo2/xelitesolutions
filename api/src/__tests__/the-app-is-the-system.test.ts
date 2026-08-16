@@ -101,9 +101,23 @@ describe('and the builder wires it without showing anything twice', () => {
     const R = () => read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
 
     it('only the fallback kind is replaced — a map app still manages a map', () => {
+        /**
+         * The guarantee GREW rather than moved: the fallback kind is still the
+         * only one rebound to the system's first table, and a records-shape
+         * kind whose own table the system does not build now stands down TO
+         * that fallback first — «المستودعات» in a freight sentence titled the
+         * whole interface «المخزون». Engines with their own machinery (map,
+         * chat, weather, social, shop) are never demoted, which is exactly
+         * what this test was written to protect.
+         */
         const r = R();
-        expect(r).toMatch(/appBp\.kind === 'generic' && appBp\.engine === 'records'/);
-        expect(r).toMatch(/const derived = blueprintFromEntity\(appBp, lead, isAr\)/);
+        expect(r).toMatch(/effectiveBp\.kind === 'generic' && effectiveBp\.engine === 'records'/);
+        expect(r).toMatch(/const derived = blueprintFromEntity\(effectiveBp, lead, isAr\)/);
+        // The stand-down is gated on the records engine and asks the SAME map
+        // the server names its table from.
+        expect(r).toMatch(/effectiveBp\.engine === 'records' && effectiveBp\.kind !== 'generic'/);
+        expect(r).toMatch(/RECORDS_TABLE_BY_KIND\[effectiveBp\.kind\]/);
+        expect(r).toMatch(/if \(ownTable && !builtKeys\.has\(ownTable\)\)/);
     });
 
     it('the app takes the first table and the admin screens take the rest', () => {

@@ -100,6 +100,18 @@ async function main() {
             const strays = bases.filter(b => !his.some(k => b.endsWith(`/${k}`)) && !/\/api\/(orders|health)$/.test(b));
             check('والواجهة تنادي جداوله هو، لا جدولاً لم يُبنَ', bases.length > 0 && strays.length === 0,
                 strays.join(', ') || `(${bases.length} base)`);
+            /**
+             * …AND THE INTERFACE CARRIES HIS SYSTEM'S IDENTITY, NOT A WORD'S.
+             *
+             * Measured through the real browser: the server promoted `clients`
+             * correctly and the app on top of it still titled itself
+             * «المخزون» with an «إضافة صنف» form, because «المستودعات» — one
+             * word out of eight domains — matched the inventory detector. The
+             * kind must be one of the tables being built, or it stands down.
+             */
+            check('والواجهة تحمل هوية نظامه، لا هوية كلمة واحدة',
+                !/title: 'المخزون'/.test(src) && !/kind: 'inventory'/.test(src),
+                (src.match(/title: '[^']{0,30}'/) || [])[0] || '');
         } else {
             check('والواجهة تنادي جداوله هو، لا جدولاً لم يُبنَ', false, 'content.js not found');
         }
