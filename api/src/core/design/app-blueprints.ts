@@ -247,7 +247,27 @@ export function subjectOf(request: string): string {
         // matched, which is why «ابن لي متجراً» kept its «لي».
         .replace(/(ابنِ|ابني|ابن|أنشئ|انشئ|اصنع|اعمل|سوّي|سوي|صمّم|صمم|طوّر|طور|أريد|اريد|أرغب|قم\s*ب|من\s*فضلك)/g, ' ')
         .replace(/(^|\s)(لي|لنا)(?=\s|$)/g, ' ')
-        .replace(/(تطبيق|برنامج|نظام|منصّة|منصة|أداة|اداة|موقع|مشروع|بسيط|جديد|كامل|احترافي|react|رياكت|ريأكت|vite|build|create|make|app|system|platform|project|simple|full)/gi, ' ')
+        /**
+         * A NOISE WORD IS A WORD, NOT A RUN OF LETTERS.
+         *
+         * These were stripped wherever they appeared, so «كامل» inside
+         * «متكاملاً» was eaten and «نظاماً متكاملاً لشركة شحن» came back as
+         * «مت لشركة شحن» — the app's own title, on screen, measured.
+         *
+         * They now match only at a word boundary, with the Arabic case endings
+         * that ride on them («نظاماً», «موقعاً», «تطبيقاً») allowed as a
+         * suffix — which is what let the substring match look necessary in the
+         * first place. «متكامل» joins the list as its own word.
+         */
+        .replace(
+            new RegExp(
+                '(^|\\s)(?:تطبيق|برنامج|نظام|منصّة|منصة|أداة|اداة|موقع|مشروع|بسيط|جديد|كامل|متكامل|شامل|احترافي'
+                + '|react|رياكت|ريأكت|vite|build|create|make|app|system|platform|project|simple|full)'
+                + '(?:اً|ًا|ات|ة|ه)?(?=\\s|$)',
+                'gi',
+            ),
+            ' ',
+        )
         // The accusative ending left behind by «نظاماً» / «موقعاً» / «تطبيقاً».
         .replace(/(^|\s)(اً|ًا|ا)(?=\s|$)/g, ' ')
         .replace(/\s+/g, ' ').trim()
