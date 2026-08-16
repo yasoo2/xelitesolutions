@@ -31,8 +31,14 @@ import { persistJoeProjects } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
 
+// Combining marks are not letters: «كِفاح» is ك + ◌ِ + فاح to this regex, so
+// the kasra became a hyphen and the project folder shipped as «react-ك-فاح»
+// (measured). Diacritics are dropped BEFORE hyphenation — a slug never
+// needed them, in any script.
 const slug = (s: string) => (String(s || '').toLowerCase()
+    .replace(/\p{M}+/gu, '')
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'app';
+export const PROJECT_SLUG_FOR_TEST = slug;
 
 /** Escape a string for safe embedding inside a JS single-quoted literal. */
 const js = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
@@ -1065,7 +1071,7 @@ export default function Products({ content }) {
           name: f.name, desc: f.details || '', price: f.price || '',
           // A live row still needs a URL of its own; the baked slug when the
           // names match, a derived one otherwise.
-          slug: baked.slug || String(f.name).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, ''),
+          slug: baked.slug || String(f.name).toLowerCase().replace(/\\p{M}+/gu, '').replace(/[^\\p{L}\\p{N}]+/gu, '-').replace(/^-+|-+$/g, ''),
           img: baked.img || null,
         };
       }));

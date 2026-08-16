@@ -24,8 +24,12 @@ describe('routing: explicit framework requests reach the evidence-first project 
     for (const t of ['ابن لي مشروع React لمقهى', 'اعمل تطبيق Vite للمخبز', 'build me a react app for a gym', 'انشئ SPA لشركة شحن']) {
         it(`«${t}» → project_pipeline`, async () => expect(await route(t)).toBe('project_pipeline'));
     }
-    it('a plain site request keeps the page builder', async () => {
-        expect(await route('ابن لي موقعاً لمطعم بيتزا مع قائمة طعام')).toBe('web_page_builder');
+    it('a plain site request gets the deterministic React engine', async () => {
+        // The old doctrine («keeps the page builder») shipped the commonest
+        // request to an LLM-only writer; measured live, it wrote nothing
+        // without a provider. The engine that reads design directives and
+        // audits itself owns new sites now.
+        expect(await route('ابن لي موقعاً لمطعم بيتزا مع قائمة طعام')).toBe('react_project');
     });
     it('the orchestrator runs react_project deterministically', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');

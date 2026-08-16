@@ -44,7 +44,10 @@ describe('injected coaching text never changes routing', () => {
         // and without the injected coaching block.
         ['Build an admin dashboard for an online store', 'project_pipeline'],
         ['ابنِ لي نظام إدارة متكامل بباك اند وقاعدة بيانات', 'project_pipeline'],
-        ['اصنع لي صفحة هبوط لمطعم', 'web_page_builder'],
+        // New page builds belong to the deterministic React engine now —
+        // the immunity this file protects (same tool with and without the
+        // coaching block) is unchanged.
+        ['اصنع لي صفحة هبوط لمطعم', 'react_project'],
         ['شغّل المشروع', 'project_run'],
         ['أوقف المشروع', 'project_stop'],
         ['انشر المشروع على GitHub Pages', 'deploy_pages'],

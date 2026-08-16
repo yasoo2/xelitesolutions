@@ -134,7 +134,9 @@ describe('routing: an edit goes to the surgical editor when the project is the a
     });
     it('a NEW build request is never hijacked by the project editor', async () => {
         (global as any).joeProjects = { ...(global as any).joeProjects, [KEY]: { dir: '/x', updatedAt: 2000 } };
-        expect(await route('ابن لي موقعاً جديداً لمطعم بيتزا')).toBe('web_page_builder');
+        // The guarantee is «not project_edit». The builder behind it moved to
+        // the deterministic React engine when new sites left web_page_builder.
+        expect(await route('ابن لي موقعاً جديداً لمطعم بيتزا')).toBe('react_project');
     });
 });
 

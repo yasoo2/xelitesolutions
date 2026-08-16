@@ -71,6 +71,22 @@ describe('the reader hears the design language of both tongues', () => {
     });
 });
 
+describe('the brand names the folder — diacritics never cut the name', () => {
+    it('«كِفاح» slugs whole: the kasra is dropped, not turned into a hyphen', () => {
+        const { PROJECT_SLUG_FOR_TEST } = require('../modules/tools/definitions/ReactProjectTool');
+        expect(PROJECT_SLUG_FOR_TEST('كِفاح')).toBe('كفاح');           // shipped as «react-ك-فاح»
+        expect(PROJECT_SLUG_FOR_TEST('قهوة مختصة')).toBe('قهوة-مختصة'); // spaces still hyphenate
+    });
+    it('and the generated app derives its live-row slugs with REAL unicode classes', () => {
+        // Inside a template literal `\p` cooks to a bare `p`, so the emitted
+        // regex was `[^p{L}p{N}]+` — a broken class masked by the baked-slug
+        // branch. The template must carry the DOUBLE escape.
+        const src = fs.readFileSync(path.join(SRC, 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(src).toContain('replace(/\\\\p{M}+/gu');
+        expect(src).toContain('[^\\\\p{L}\\\\p{N}]+/gu');
+    });
+});
+
 describe('each directive is obeyed at a real seam', () => {
     const R = () => read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
 

@@ -63,13 +63,18 @@ describe('routing — full-project requests reach the pipeline, offline and dete
     test('the planning engine has no production route that dispatches a named foundation or prescribed stack', () => {
         const src = fs.readFileSync(
             path.join(__dirname, '..', 'core', 'orchestrator', 'PlanningEngine.ts'), 'utf-8');
-        expect(src).not.toMatch(/tool: '(?:orion_business_foundation|enterprise_platform_foundation|api_project|react_project)'/);
+        // The doctrine stands for SYSTEMS: no invented foundations, no
+        // prescribed backend — those routes stay evidence-first through the
+        // pipeline. The one stack the planner may name is the deterministic
+        // page engine, and only inside the page-scope branch: a marketing
+        // site needs no workspace discovery to know what it is.
+        expect(src).not.toMatch(/tool: '(?:orion_business_foundation|enterprise_platform_foundation|api_project)'/);
         expect(src).not.toMatch(/executeTool\('(?!engineering_discovery|project_planner)/);
     });
 
-    test('a simple landing page is NOT stolen from the page builder', async () => {
+    test('a simple landing page goes to the deterministic React engine', async () => {
         const p = await plan('ابنِ لي صفحة هبوط لمطعم شعبي');
-        expect(p.steps[0].tool).toBe('web_page_builder');
+        expect(p.steps[0].tool).toBe('react_project');
     });
 
     test('planner handoff preserves direct and wrapped reference-project evidence', () => {
