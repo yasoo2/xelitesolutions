@@ -165,6 +165,44 @@ OBSERVE JOE — DO NOT TAKE OVER
         expect(assessment.missingTargetNames).toEqual([]);
     });
 
+    it('evaluates only the missing capability ledger in bounded scope repair mode', () => {
+        const repairPlan = {
+            phases: [{
+                name: 'Missing capability slice',
+                requirementsCovered: ['R1', 'R2'],
+                deliverables: ['src/search.ts', 'src/sorting.ts'],
+                tasks: [{
+                    task: 'Implement the missing capability slice',
+                    tool: 'ai_write_file',
+                    args: { path: 'src/search.ts', description: 'Extend the existing source with search and sorting behavior.' },
+                }],
+            }],
+        };
+        const assessment = planner.assessPlanScope(
+            repairPlan,
+            'Repair the existing project in place.',
+            false,
+            true,
+            ['search', 'sorting'],
+        );
+
+        expect(assessment.ok).toBe(true);
+        expect(assessment.targets).toEqual(['search', 'sorting']);
+        expect(assessment.missingTargetNames).toEqual([]);
+        const prompt = planner.createCompactRecoveryPlanningPrompt(
+            'Repair the existing project in place.',
+            'scope audit found missing search and sorting',
+            { missingTargetNames: ['search', 'sorting'] },
+            false,
+            true,
+            ['search', 'sorting'],
+        );
+        expect(prompt).toContain('BOUNDED SCOPE-REPAIR');
+        expect(prompt).toContain('R1: search');
+        expect(prompt).toContain('R2: sorting');
+        expect(prompt).not.toContain('BOUNDED LIVE-REPAIR');
+    });
+
     it('repairs a described browser task upstream but rejects a truly empty browser contract', () => {
         const adapted = adaptPlannedArgsFromDescription(
             'browser_run',

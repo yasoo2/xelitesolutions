@@ -8,7 +8,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { canAdoptRecordedLive, resolveRunnableProject, shouldUseActiveProjectDirectly } from '../modules/tools/definitions/ProjectRunTool';
+import { canAdoptRecordedLive, launchabilityError, missingRuntimeDependencies, placeholderLifecycleScriptError, reconcileMissingRuntimeTarget, resolveRunnableProject, shouldUseActiveProjectDirectly } from '../modules/tools/definitions/ProjectRunTool';
 
 const runSrc = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectRunTool.ts'), 'utf-8');
@@ -74,6 +74,92 @@ describe('project_run really RUNS (not renders) and is Windows-safe', () => {
     });
     test('one project owns one server — a new run stops the previous', () => {
         expect(runSrc).toMatch(/await stopServer\(key, logs\)/);
+    });
+});
+
+describe('placeholder lifecycle scripts are not engineering evidence', () => {
+    let root = '';
+
+    beforeEach(() => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-placeholder-script-'));
+    });
+
+    afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
+
+    test('rejects npm start when test is the npm placeholder that exits 1', () => {
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+            scripts: {
+                start: 'node server.js',
+                test: 'echo "Error: no test specified" && exit 1',
+            },
+        }), 'utf-8');
+        fs.writeFileSync(path.join(root, 'server.js'), 'require("http").createServer((_req, res) => res.end("ok")).listen(process.env.PORT);', 'utf-8');
+
+        expect(placeholderLifecycleScriptError(root)).toContain('scripts.test');
+        expect(launchabilityError(root, { command: 'npm start', kind: 'npm-start' })).toContain('failing placeholder');
+    });
+
+    test('rejects an explicitly failing build placeholder too', () => {
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+            scripts: {
+                start: 'node server.js',
+                build: 'echo "Build script not specified" && exit 1',
+            },
+        }), 'utf-8');
+        fs.writeFileSync(path.join(root, 'server.js'), 'require("http").createServer((_req, res) => res.end("ok")).listen(process.env.PORT);', 'utf-8');
+
+        expect(placeholderLifecycleScriptError(root)).toContain('scripts.build');
+    });
+
+    test('does not require optional lifecycle scripts when they are absent or real', () => {
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { start: 'node server.js', test: 'node tests/smoke.js' } }), 'utf-8');
+        fs.writeFileSync(path.join(root, 'server.js'), 'require("http").createServer((_req, res) => res.end("ok")).listen(process.env.PORT);', 'utf-8');
+
+        expect(placeholderLifecycleScriptError(root)).toBeNull();
+        expect(launchabilityError(root, { command: 'npm start', kind: 'npm-start' })).toBeNull();
+    });
+});
+
+describe('runtime import dependency preflight', () => {
+    test('detects undeclared or missing runtime imports without flagging Node built-ins', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-runtime-deps-'));
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { start: 'node server.js' }, dependencies: { express: '^4.0.0' } }), 'utf-8');
+        fs.writeFileSync(path.join(root, 'server.js'), "const http = require('http'); const sqlite3 = require('sqlite3'); http.createServer((_req, res) => res.end('ok')).listen(process.env.PORT);", 'utf-8');
+        expect(missingRuntimeDependencies(root, { command: 'npm start', kind: 'npm-start' })).toContain('sqlite3');
+        expect(missingRuntimeDependencies(root, { command: 'npm start', kind: 'npm-start' })).not.toContain('http');
+        expect(launchabilityError(root, { command: 'npm start', kind: 'npm-start' })).toBeNull();
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+});
+
+describe('bounded manifest-to-entrypoint reconciliation', () => {
+    test('repairs a missing node target from a unique on-disk server entrypoint', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-reconcile-'));
+        fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+            main: 'index.js',
+            scripts: { start: 'node index.js' },
+        }), 'utf-8');
+        fs.writeFileSync(path.join(root, 'src', 'index.js'), "require('http').createServer((_req, res) => res.end('ok')).listen(process.env.PORT);", 'utf-8');
+
+        const result = reconcileMissingRuntimeTarget(root, 'launchability: runtime target is missing (index.js)');
+        const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
+        expect(result.repaired).toBe(true);
+        expect(manifest.main).toBe('src/index.js');
+        expect(manifest.scripts.start).toBe('node src/index.js');
+    });
+
+    test('does not guess when equally ranked server entrypoints exist', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-reconcile-ambiguous-'));
+        fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { start: 'node index.js' } }), 'utf-8');
+        const source = "require('http').createServer((_req, res) => res.end('ok')).listen(process.env.PORT);";
+        fs.writeFileSync(path.join(root, 'src', 'foo.js'), source, 'utf-8');
+        fs.writeFileSync(path.join(root, 'src', 'bar.js'), source, 'utf-8');
+
+        const result = reconcileMissingRuntimeTarget(root, 'runtime target is missing (index.js)');
+        expect(result.repaired).toBe(false);
+        expect(result.message).toMatch(/multiple equally ranked/i);
     });
 });
 

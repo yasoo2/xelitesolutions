@@ -7,6 +7,7 @@ import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import { brandFrom } from '../../../core/design/page-head';
 import { scopeReport } from '../../../core/quality/scope-audit';
 import { verifyProviderDirect } from '../../../core/llm/intelligent-router';
+import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget } from './ProjectRunTool';
 
 const MAX_PIPELINE_LOGS = 192;
 const MAX_PIPELINE_LOG_CHARS = 2_000;
@@ -284,6 +285,65 @@ export interface ScopeGateOutcome {
         coverage: number;
         missing: string[];
     };
+    scopeCoverageFailed?: boolean;
+}
+
+export interface ProjectQualityContract {
+    ok: boolean;
+    failures: string[];
+}
+
+const PLACEHOLDER_SCRIPT = /^(?:echo\b.*(?:not\s+(?:implemented|specified|available)|no\s+tests?|placeholder|todo).*|(?:true|:|exit\s+0))$/iu;
+
+/**
+ * A declared lifecycle check is part of the delivery contract. A script that
+ * exits zero while saying "not implemented" is not evidence of a build or a
+ * test; accepting it turns a truthful command requirement into a green lie.
+ * This reducer is intentionally manifest/domain neutral and only rejects
+ * explicit placeholders or missing checks when the request asks for them.
+ */
+export function inspectProjectQualityContract(projectRoot: string, request = ''): ProjectQualityContract {
+    const root = String(projectRoot || '').trim();
+    const manifestPath = root ? path.join(root, 'package.json') : '';
+    if (!manifestPath || !fs.existsSync(manifestPath)) return { ok: true, failures: [] };
+    let manifest: any;
+    try {
+        manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    } catch (error: any) {
+        return { ok: false, failures: [`package.json is unreadable: ${String(error?.message || error).slice(0, 240)}`] };
+    }
+    const scripts = manifest?.scripts && typeof manifest.scripts === 'object' ? manifest.scripts : {};
+    const failures: string[] = [];
+    for (const name of ['build', 'test']) {
+        if (typeof scripts[name] === 'string' && PLACEHOLDER_SCRIPT.test(scripts[name].trim())) {
+            failures.push(`${name} script is a placeholder: ${scripts[name].trim()}`);
+        }
+    }
+    const asksForChecks = /(?:\b(?:npm\s+)?(?:run\s+)?(?:build|test|tests)\b|بناء|اختبار)/iu.test(String(request || ''));
+    if (asksForChecks) {
+        for (const name of ['build', 'test']) {
+            if (typeof scripts[name] !== 'string' || !scripts[name].trim()) {
+                failures.push(`package.json has no truthful ${name} script although the request requires it`);
+            }
+        }
+    }
+    return { ok: failures.length === 0, failures };
+}
+
+export function applyProjectQualityContractOutcome(
+    projectRoot: string,
+    request: string,
+    liveOutcome: { verified: boolean; liveUrl: string; verificationFailed: boolean; error?: string },
+): { verified: boolean; liveUrl: string; verificationFailed: boolean; error?: string } {
+    if (!liveOutcome.verified) return liveOutcome;
+    const quality = inspectProjectQualityContract(projectRoot, request);
+    if (quality.ok) return liveOutcome;
+    return {
+        ...liveOutcome,
+        verified: false,
+        verificationFailed: true,
+        error: `project quality contract failed — ${quality.failures.slice(0, 4).join('; ')}`,
+    };
 }
 
 /**
@@ -291,7 +351,7 @@ export interface ScopeGateOutcome {
  * built.  Keep this gate domain-neutral: scope-audit extracts named
  * capabilities from the original request and looks for evidence in the exact
  * artifact root that project_run started.  An underspecified request remains
- * admissible; a request with named scope cannot be delivered below 50%.
+ * admissible; a request with named scope cannot be delivered with any named capability missing.
  */
 export function applyScopeAuditOutcome(
     request: string,
@@ -323,14 +383,15 @@ export function applyScopeAuditOutcome(
         coverage,
         missing,
     };
-    if (coverage < 0.5) {
-        const missingText = missing.slice(0, 5).join(', ') || 'named capabilities';
+    if (missing.length > 0) {
+        const missingText = missing.slice(0, 8).join(', ') || 'named capabilities';
         return {
             ...liveOutcome,
             verified: false,
             verificationFailed: true,
             error: `artifact coverage ${Math.round(coverage * 100)}% — missing: ${missingText}`,
             scopeAudit,
+            scopeCoverageFailed: true,
         };
     }
     return { ...liveOutcome, scopeAudit };
@@ -786,6 +847,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         let liveRunResult: any = null;
         let liveRepairAttempted = false;
         let liveRepairStatus = 'not_attempted';
+        let scopeRepairAttempted = false;
+        let scopeRepairStatus = 'not_attempted';
+        let scopeCoverageFailed = false;
         let scopeAudit: ScopeGateOutcome['scopeAudit'] | undefined;
         if (verified) {
             try {
@@ -814,8 +878,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                 const liveArtifactRoot = String(
                     runRes?.output?.cwd || runInput.cwd || plannedProjectRoot || discoveredProjectRoot || ''
                 ).trim();
-                const scopedLiveOutcome = applyScopeAuditOutcome(request, liveArtifactRoot, liveOutcome);
+                const qualityCheckedLiveOutcome = applyProjectQualityContractOutcome(liveArtifactRoot, request, liveOutcome);
+                const scopedLiveOutcome = applyScopeAuditOutcome(request, liveArtifactRoot, qualityCheckedLiveOutcome);
                 scopeAudit = scopedLiveOutcome.scopeAudit;
+                scopeCoverageFailed = scopedLiveOutcome.scopeCoverageFailed === true;
                 finalVerified = scopedLiveOutcome.verified;
                 liveUrl = scopedLiveOutcome.liveUrl;
                 if (scopedLiveOutcome.verificationFailed) {
@@ -835,13 +901,133 @@ export class ProjectPipelineTool implements ToolDefinition {
             }
         }
 
+        // A scope failure is different from a launchability failure: the app is
+        // reachable, but the source does not yet prove every requested capability.
+        // Give the existing artifact one bounded, evidence-led implementation pass
+        // before declaring the delivery blocked. This is deliberately separate from
+        // runnable repair, and it never weakens applyScopeAuditOutcome.
+        const attemptScopeRepair = async (): Promise<void> => {
+            if (!scopeCoverageFailed || scopeRepairAttempted || !scopeAudit?.missing?.length) return;
+            scopeRepairAttempted = true;
+            const missingCapabilities = scopeAudit.missing.slice(0, 12);
+            const artifactRoot = String(
+                liveRunResult?.output?.cwd ||
+                plannerResult?.output?.projectRoot ||
+                discoveredProjectRoot ||
+                ''
+            ).trim();
+            if (!artifactRoot) {
+                scopeRepairStatus = 'scope_repair_no_trusted_root';
+                appendBoundedPipelineLog(logs, '[pipeline] scope repair skipped: no trusted artifact root');
+                return;
+            }
+            try {
+                const missingText = missingCapabilities.join(', ').slice(0, 1200);
+                say(pick(isAr,
+                    `🔬 التشغيل حيّ لكن دليل النطاق ناقص (${missingText}). سأصلح القدرات المفقودة داخل نفس artifact مرة واحدة فقط.`,
+                    `🔬 Runtime is live but scope evidence is missing (${missingText}). I will repair the missing capabilities in the same artifact once.`));
+                const scopeDiscoveryRequest = [
+                    'Inspect the existing project in place for a bounded scope-repair pass after a successful live run.',
+                    `Trusted artifact root: ${artifactRoot}`,
+                    `Missing capabilities reported by the deterministic scope audit: ${missingText}`,
+                    'Do not create a second project and do not redesign working features.',
+                ].join('\\n');
+                const scopeDiscovery = await executeTool(
+                    'engineering_discovery',
+                    { request: scopeDiscoveryRequest, path: artifactRoot },
+                    { ...(context || {}), scopeRepairAttempted: true, language: isAr ? 'ar' : 'en' },
+                );
+                const scopeEvidence = scopeDiscovery?.output?.evidence || plannerEvidence;
+                const scopeRepairRequest = [
+                    scopeDiscoveryRequest,
+                    'The deterministic scope audit is the acceptance evidence; implement every listed missing capability, not a generic explanation.',
+                    'Inspect the current source and tests first. Modify only the existing project in place with concrete file-level tasks.',
+                    'Preserve the current start contract. Run existing local build/tests and then perform one real restart/readiness check.',
+                    `Missing capability ledger: ${missingCapabilities.map((item, index) => `R${index + 1}: ${item}`).join(' | ')}`,
+                ].join('\\n');
+                const scopePlanner = await executeTool(
+                    'project_planner',
+                    { projectDescription: scopeRepairRequest, evidence: scopeEvidence },
+                    {
+                        ...(context || {}),
+                        repairMode: false,
+                        scopeRepairMode: true,
+                        scopeRepairTargets: missingCapabilities,
+                        scopeRepairAttempted: true,
+                        engineeringPipeline: true,
+                        requireRunnableContract: false,
+                        plannerTimeoutMs,
+                        language: isAr ? 'ar' : 'en',
+                    },
+                );
+                const scopePhases = scopePlanner?.output?.phases;
+                if (!(scopePlanner?.ok === true && Array.isArray(scopePhases) && scopePhases.length > 0)) {
+                    scopeRepairStatus = 'scope_repair_plan_unavailable';
+                    appendBoundedPipelineLog(logs, `[pipeline] scope repair planner unavailable: ${String(scopePlanner?.error || '').slice(0, 360)}`);
+                    return;
+                }
+                scopePlanner.output.projectName = plannerResult?.output?.projectName || scopePlanner.output.projectName;
+                scopePlanner.output.projectRoot = artifactRoot;
+                scopePlanner.output.requirementsContext = requirementsContext;
+                const scopePipeline = await AgentLoopService.runPlannedPhasesIfPresent({
+                    sessionId: context?.sessionId || `pipeline-${Date.now()}`,
+                    runId: context?.runId || `run-${Date.now()}`,
+                    userId: context?.userId || 'anonymous',
+                    workspaceId: context?.workspaceId || context?.sessionId || 'default',
+                    browserSessionId: context?.browserSessionId,
+                    plannerResult: scopePlanner,
+                    modelConfig: context?.modelConfig,
+                    providerTimeoutMs: context?.providerTimeoutMs ?? plannerTimeoutMs,
+                    plannerTimeoutMs,
+                    plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens,
+                    plannerReasoningEffort: context?.plannerReasoningEffort,
+                    language: isAr ? 'ar' : 'en',
+                    onProgress: (m: string) => say(m),
+                });
+                appendBoundedPipelineLogs(logs, scopePipeline?.logs);
+                if (scopePipeline?.ok !== true) {
+                    scopeRepairStatus = 'scope_repair_pipeline_failed';
+                    appendBoundedPipelineLog(logs, '[pipeline] scope repair phases did not verify successfully');
+                    return;
+                }
+                const scopeRetryResult = await executeTool(
+                    'project_run',
+                    { cwd: artifactRoot },
+                    { ...(context || {}), scopeRepairAttempted: true, language: isAr ? 'ar' : 'en' },
+                );
+                liveRunResult = scopeRetryResult;
+                const scopeRetryLive = applyLiveRunOutcome(true, scopeRetryResult);
+                const qualityCheckedScopeRetry = applyProjectQualityContractOutcome(artifactRoot, request, scopeRetryLive);
+                const scopeRetryOutcome = applyScopeAuditOutcome(request, artifactRoot, qualityCheckedScopeRetry);
+                scopeAudit = scopeRetryOutcome.scopeAudit;
+                scopeCoverageFailed = scopeRetryOutcome.scopeCoverageFailed === true;
+                finalVerified = scopeRetryOutcome.verified;
+                liveUrl = scopeRetryOutcome.liveUrl;
+                liveRunVerificationFailed = scopeRetryOutcome.verificationFailed;
+                liveRunError = scopeRetryOutcome.error || '';
+                scopeRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_scope_still_missing';
+                say(pick(isAr,
+                    finalVerified ? '✅ أصلحتُ القدرات المفقودة وأعدت تشغيل artifact؛ اجتاز scope audit.' : `⛔ اكتملت محاولة scope-repair لكن الدليل ما زال ناقصاً: ${liveRunError}`,
+                    finalVerified ? '✅ Missing capabilities were repaired and the artifact passed scope audit after restart.' : `⛔ Scope repair completed but the evidence is still incomplete: ${liveRunError}`));
+            } catch (scopeRepairError: any) {
+                scopeRepairStatus = 'scope_repair_error';
+                const message = String(scopeRepairError?.message || scopeRepairError).slice(0, 420);
+                liveRunError = `${liveRunError}; scope repair: ${message}`.slice(0, 900);
+                appendBoundedPipelineLog(logs, `[pipeline] scope repair error: ${message}`);
+            }
+        };
+
+        if (scopeCoverageFailed && !finalVerified && context?.scopeRepairAttempted !== true) {
+            await attemptScopeRepair();
+        }
+
         // A live-run failure is evidence about the current artifact, not a reason
         // to stop before Joe has had one bounded chance to repair it. Re-discover
         // the workspace so the repair planner sees files created by the phases,
         // then plan only the missing runnable contract. This is intentionally
         // inside project_pipeline (not a generic recovery loop): one attempt,
         // same project identity, same workspace, and no product-specific template.
-        if (!finalVerified && liveRunVerificationFailed && context?.liveRepairAttempted !== true) {
+        if (!finalVerified && liveRunVerificationFailed && !scopeCoverageFailed && context?.liveRepairAttempted !== true) {
             liveRepairAttempted = true;
             try {
                 const failureText = String(
@@ -875,6 +1061,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     repairDiscoveryRequest,
                     'Do not redesign, regenerate, or replace working features. Do not create a template or a second project.',
                     'Inspect the current workspace and fix only the evidence-backed runnable contract: entrypoint, package manifest, start/build command, or the smallest dependency/configuration issue required for the existing implementation to build and start.',
+                    'If the observed failure names a missing runtime import, trace that import from the selected entrypoint, reconcile package.json with that exact package, and do not substitute a placeholder or unrelated dependency.',
                     'Run the existing build/tests and then make one real start/readiness check. Return executable phases only.',
                     `Original project identity: ${String(plannerResult?.output?.projectName || 'project').slice(0, 160)}.`,
                 ].join('\\n');
@@ -891,36 +1078,54 @@ export class ProjectPipelineTool implements ToolDefinition {
                         language: isAr ? 'ar' : 'en',
                     },
                 );
+                const repairRootForEvidence = String(
+                    repairEvidence?.selectedProject?.root || plannerResult?.output?.projectRoot || discoveredProjectRoot || ''
+                ).trim();
+                const manifestReconciliation = repairRootForEvidence
+                    ? reconcileMissingRuntimeTarget(repairRootForEvidence, failureText)
+                    : { repaired: false, message: 'no trusted repair root available' };
+                if (manifestReconciliation.repaired) {
+                    appendBoundedPipelineLog(logs, `[pipeline] ${manifestReconciliation.message}`);
+                    say(pick(isAr,
+                        `🧭 أصلحتُ عقد التشغيل من دليل موجود على القرص: ${manifestReconciliation.message}`,
+                        `🧭 Reconciled the runnable contract from on-disk evidence: ${manifestReconciliation.message}`));
+                } else if (/runtime target is missing/iu.test(failureText)) {
+                    appendBoundedPipelineLog(logs, `[pipeline] manifest reconciliation not applied: ${manifestReconciliation.message}`);
+                }
                 const repairPhases = repairPlanner?.output?.phases;
-                if (repairPlanner?.ok === true && Array.isArray(repairPhases) && repairPhases.length > 0) {
-                    repairPlanner.output.projectName = plannerResult?.output?.projectName || repairPlanner.output.projectName;
-                    repairPlanner.output.requirementsContext = requirementsContext;
+                if ((repairPlanner?.ok === true && Array.isArray(repairPhases) && repairPhases.length > 0) || manifestReconciliation.repaired) {
                     const repairProjectRoot = String(repairEvidence?.selectedProject?.root || plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim();
-                    if (repairProjectRoot) repairPlanner.output.projectRoot = repairProjectRoot;
-                    const repairPipeline = await AgentLoopService.runPlannedPhasesIfPresent({
-                        sessionId: context?.sessionId || `pipeline-${Date.now()}`,
-                        runId: context?.runId || `run-${Date.now()}`,
-                        userId: context?.userId || 'anonymous',
-                        workspaceId: context?.workspaceId || context?.sessionId || 'default',
-                        browserSessionId: context?.browserSessionId,
-                        plannerResult: repairPlanner,
-                        modelConfig: context?.modelConfig,
-                        providerTimeoutMs: context?.providerTimeoutMs ?? plannerTimeoutMs,
-                        plannerTimeoutMs,
-                        plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens,
-                        plannerReasoningEffort: context?.plannerReasoningEffort,
-                        language: isAr ? 'ar' : 'en',
-                        onProgress: (m: string) => say(m),
-                    });
-                    let boundedRepairReady = repairPipeline?.ok === true;
+                    let repairPipeline: any = { ok: false };
+                    if (!manifestReconciliation.repaired) {
+                        repairPlanner.output = repairPlanner.output || {};
+                        repairPlanner.output.projectName = plannerResult?.output?.projectName || repairPlanner.output.projectName;
+                        repairPlanner.output.requirementsContext = requirementsContext;
+                        if (repairProjectRoot) repairPlanner.output.projectRoot = repairProjectRoot;
+                        repairPipeline = await AgentLoopService.runPlannedPhasesIfPresent({
+                            sessionId: context?.sessionId || `pipeline-${Date.now()}`,
+                            runId: context?.runId || `run-${Date.now()}`,
+                            userId: context?.userId || 'anonymous',
+                            workspaceId: context?.workspaceId || context?.sessionId || 'default',
+                            browserSessionId: context?.browserSessionId,
+                            plannerResult: repairPlanner,
+                            modelConfig: context?.modelConfig,
+                            providerTimeoutMs: context?.providerTimeoutMs ?? plannerTimeoutMs,
+                            plannerTimeoutMs,
+                            plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens,
+                            plannerReasoningEffort: context?.plannerReasoningEffort,
+                            language: isAr ? 'ar' : 'en',
+                            onProgress: (m: string) => say(m),
+                        });
+                    }
+                    let boundedRepairReady = manifestReconciliation.repaired || repairPipeline?.ok === true;
                     // A repair phase can write the missing entrypoint successfully but
                     // still fail its immediate project_run because the selected project
-                    // has declared dependencies and no node_modules yet. That is a
-                    // bounded, evidence-backed runtime prerequisite—not permission to
-                    // invent a new project or retry indefinitely. Bootstrap dependencies
-                    // exactly once, only after the original failure was launchability and
-                    // only when package.json proves that dependencies are declared.
-                    if (!boundedRepairReady && /launchability|runtime target is missing|cannot start the project safely/i.test(failureText)) {
+                    // has declared dependencies and no node_modules yet. It can also
+                    // reveal an import that the generated manifest forgot entirely.
+                    // Both are bounded, evidence-backed runtime prerequisites: install
+                    // only declared packages or exact packages reached from the runtime
+                    // entrypoint, never an arbitrary guessed bundle.
+                    if (/launchability|runtime target is missing|cannot start the project safely|runtime dependencies missing or undeclared/i.test(failureText)) {
                         const bootstrapRoot = String(
                             repairPlanner?.output?.projectRoot || repairProjectRoot || plannerResult?.output?.projectRoot || discoveredProjectRoot || ''
                         ).trim();
@@ -940,13 +1145,28 @@ export class ProjectPipelineTool implements ToolDefinition {
                                 appendBoundedPipelineLog(logs, `[pipeline] bounded dependency evidence unreadable: ${String(manifestError?.message || manifestError).slice(0, 240)}`);
                             }
                         }
-                        if (bootstrapRoot && declaredDependencyCount > 0) {
+                        let missingRuntime = [] as string[];
+                        if (bootstrapRoot && fs.existsSync(manifestPath)) {
+                            try {
+                                missingRuntime = missingRuntimeDependencies(bootstrapRoot, detectStart(bootstrapRoot, 4300));
+                            } catch (dependencyError: any) {
+                                appendBoundedPipelineLog(logs, `[pipeline] runtime dependency evidence unreadable: ${String(dependencyError?.message || dependencyError).slice(0, 240)}`);
+                            }
+                        }
+                        if (bootstrapRoot && (declaredDependencyCount > 0 || missingRuntime.length > 0)) {
+                            const installCommand = missingRuntime.length
+                                ? `install ${missingRuntime.join(' ')} --no-audit --no-fund`
+                                : 'install --ignore-scripts --no-audit --no-fund';
                             say(pick(isAr,
-                                `📦 دليل التشغيل يثبت اعتماديات معلنة بلا node_modules؛ أثبّتها مرة واحدة داخل ${bootstrapRoot} قبل إعادة التحقق.`,
-                                `📦 Runtime evidence proves declared dependencies without node_modules; installing them once in ${bootstrapRoot} before re-verification.`));
+                                missingRuntime.length
+                                    ? `📦 وجدت imports تشغيل مفقودة من manifest (${missingRuntime.join('، ')}); سأثبت الحزم المطابقة مرة واحدة داخل المشروع قبل إعادة التحقق.`
+                                    : `📦 دليل التشغيل يثبت اعتماديات معلنة بلا node_modules؛ أثبّتها مرة واحدة داخل ${bootstrapRoot} قبل إعادة التحقق.`,
+                                missingRuntime.length
+                                    ? `📦 Runtime imports are missing from the manifest (${missingRuntime.join(', ')}); installing only those exact packages once before re-verification.`
+                                    : `📦 Runtime evidence proves declared dependencies without node_modules; installing them once in ${bootstrapRoot} before re-verification.`));
                             const bootstrapResult = await executeTool(
                                 'npm_manager',
-                                { command: 'install --ignore-scripts --no-audit --no-fund', cwd: bootstrapRoot },
+                                { command: installCommand, cwd: bootstrapRoot },
                                 { ...(context || {}), language: isAr ? 'ar' : 'en', liveRepairAttempted: true },
                             );
                             appendBoundedPipelineLogs(logs, bootstrapResult?.logs);
@@ -974,8 +1194,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                         const retryArtifactRoot = String(
                             retryRunResult?.output?.cwd || retryInput.cwd || repairProjectRoot || discoveredProjectRoot || ''
                         ).trim();
-                        const scopedRetryOutcome = applyScopeAuditOutcome(request, retryArtifactRoot, retryOutcome);
+                        const qualityCheckedRetryOutcome = applyProjectQualityContractOutcome(retryArtifactRoot, request, retryOutcome);
+                        const scopedRetryOutcome = applyScopeAuditOutcome(request, retryArtifactRoot, qualityCheckedRetryOutcome);
                         scopeAudit = scopedRetryOutcome.scopeAudit;
+                        scopeCoverageFailed = scopedRetryOutcome.scopeCoverageFailed === true;
                         finalVerified = scopedRetryOutcome.verified;
                         liveUrl = scopedRetryOutcome.liveUrl;
                         liveRunVerificationFailed = scopedRetryOutcome.verificationFailed;
@@ -1000,6 +1222,10 @@ export class ProjectPipelineTool implements ToolDefinition {
             }
         }
 
+        if (scopeCoverageFailed && !finalVerified && !scopeRepairAttempted && context?.scopeRepairAttempted !== true) {
+            await attemptScopeRepair();
+        }
+
         const finalExecutionStatus = finalVerified ? 'completed' : done > 0 ? 'partial' : 'failed';
         const finalVerificationStatus = finalVerified ? 'passed' : String(pipeline?.verificationStatus || 'failed');
         const finalDeliveryStatus = finalVerified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
@@ -1007,7 +1233,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
             projectName: String(plannerResult.output.projectName || 'project'),
-            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus,
+            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus,
         });
         say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
@@ -1027,6 +1253,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(honestBlocker ? { honestBlocker: true } : {}),
                 ...(liveRunVerificationFailed ? { honestBlocker: true } : {}),
                 ...(liveRepairAttempted ? { liveRepairAttempted: true, liveRepairStatus } : {}),
+                ...(scopeRepairAttempted ? { scopeRepairAttempted: true, scopeRepairStatus } : {}),
+                ...(scopeCoverageFailed ? { scopeCoverageFailed: true } : {}),
                 ...(scopeAudit ? { scopeAudit } : {}),
                 // `project_pipeline` already performed discovery, planning,
                 // verification, and its bounded self-healing attempt. A false
@@ -1199,8 +1427,10 @@ export class ProjectPipelineTool implements ToolDefinition {
         liveUrl?: string;
         liveRunError?: string;
         liveRepairStatus?: string;
+        scopeAudit?: ScopeGateOutcome['scopeAudit'];
+        scopeRepairStatus?: string;
     }): string {
-        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus } = args;
+        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
 
@@ -1317,6 +1547,16 @@ export class ProjectPipelineTool implements ToolDefinition {
                 lines.push(ar
                     ? '- حالة محاولة إصلاح التشغيل المحدودة: `' + String(liveRepairStatus).slice(0, 180) + '`'
                     : '- Bounded live-repair status: `' + String(liveRepairStatus).slice(0, 180) + '`');
+            }
+            if (scopeAudit && scopeAudit.requested > 0) {
+                lines.push(ar
+                    ? `- تدقيق نطاق الطلب: ${scopeAudit.built}/${scopeAudit.requested} (${Math.round(scopeAudit.coverage * 100)}%)${scopeAudit.missing.length ? `؛ المتبقي: ${scopeAudit.missing.slice(0, 6).join('، ')}` : ''}`
+                    : `- Requested-scope audit: ${scopeAudit.built}/${scopeAudit.requested} (${Math.round(scopeAudit.coverage * 100)}%)${scopeAudit.missing.length ? `; remaining: ${scopeAudit.missing.slice(0, 6).join(', ')}` : ''}`);
+            }
+            if (scopeRepairStatus && scopeRepairStatus !== 'not_attempted') {
+                lines.push(ar
+                    ? '- حالة إصلاح النطاق المحدود: `' + String(scopeRepairStatus).slice(0, 180) + '`'
+                    : '- Bounded scope-repair status: `' + String(scopeRepairStatus).slice(0, 180) + '`');
             }
             const sfReason = pipeline?.selfFixExecution?.reason || pipeline?.selfFixPlan?.reason;
             if (sfReason) {

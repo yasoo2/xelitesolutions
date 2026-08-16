@@ -12,8 +12,10 @@ import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import {
     applyLiveRunOutcome,
+    applyProjectQualityContractOutcome,
     applyScopeAuditOutcome,
     buildPlannerEvidence,
+    inspectProjectQualityContract,
     deterministicRescueAllowed,
 } from '../modules/tools/definitions/ProjectPipelineTool';
 import { applyPhaseExecutionEvidence } from '../modules/tools/definitions/PhaseExecutorTool';
@@ -146,6 +148,13 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).not.toMatch(/repairDiscovery[\\s\\S]{0,500}request,\s*path:\s*projectPath/);
     });
 
+    test('dependency bootstrap runs after a successful repair phase when node_modules is still absent', () => {
+        expect(src).toMatch(/if \(\/launchability\|runtime target is missing\|cannot start the project safely\|runtime dependencies missing or undeclared\/i\.test\(failureText\)\)/);
+        expect(src).not.toMatch(/if \(\\!boundedRepairReady && \/launchability\|runtime target is missing\|cannot start the project safely\|runtime dependencies missing or undeclared\/i\.test\(failureText\)\)/);
+        expect(src).toMatch(/npm_manager/);
+        expect(src).toMatch(/install --ignore-scripts --no-audit --no-fund/);
+    });
+
     test('post-phase discovery rebinds the artifact root before live-run', () => {
         expect(src).toMatch(/const postPhaseDiscoveryRequest = \[/);
         expect(src).toMatch(/postPhaseDiscoveryRequest/);
@@ -180,13 +189,59 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
             expect(result.verified).toBe(false);
             expect(result.verificationFailed).toBe(true);
             expect(result.scopeAudit.coverage).toBe(0);
+            expect(result.scopeCoverageFailed).toBe(true);
             expect(result.error).toMatch(/artifact coverage 0%/);
             expect(result.error).toMatch(/user accounts|inventory management|analytics/i);
-            expect(src).toMatch(/applyScopeAuditOutcome\(request, liveArtifactRoot, liveOutcome\)/);
+            expect(src).toMatch(/applyProjectQualityContractOutcome\(liveArtifactRoot, request, liveOutcome\)/);
+            expect(src).toMatch(/applyScopeAuditOutcome\(request, liveArtifactRoot, (?:qualityCheckedLiveOutcome|liveOutcome)\)/);
             expect(src).toMatch(/scopeAudit/);
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
         }
+    });
+
+    test('50% scope coverage is still blocked instead of being delivered as complete', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-scope-half-'));
+        try {
+            fs.writeFileSync(path.join(root, 'index.js'), "app.get('/api/products', listProducts);\n", 'utf-8');
+            const live = applyLiveRunOutcome(true, { ok: true, output: { url: 'http://localhost:3000/', cwd: root } });
+            const result = applyScopeAuditOutcome('Build a product catalogue with analytics.', root, live);
+            expect(result.scopeAudit.coverage).toBe(0.5);
+            expect(result.scopeCoverageFailed).toBe(true);
+            expect(result.verified).toBe(false);
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('placeholder lifecycle scripts invalidate an otherwise reachable live artifact', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-quality-contract-'));
+        try {
+            fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: {
+                build: "echo 'Build script not implemented yet'",
+                test: "echo 'No test specified' && exit 0",
+            } }), 'utf-8');
+            const quality = inspectProjectQualityContract(root, 'run install, build, and tests');
+            expect(quality.ok).toBe(false);
+            expect(quality.failures.join(' ')).toMatch(/build script is a placeholder|test script is a placeholder/i);
+            const live = applyLiveRunOutcome(true, { ok: true, output: { url: 'http://localhost:3000/', cwd: root } });
+            const checked = applyProjectQualityContractOutcome(root, 'run install, build, and tests', live);
+            expect(checked.verified).toBe(false);
+            expect(checked.error).toMatch(/project quality contract failed/i);
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('scope coverage failure gets one bounded repair path without weakening the gate', () => {
+        expect(src).toMatch(/const attemptScopeRepair = async/);
+        expect(src).toMatch(/scopeRepairMode:\s*true/);
+        expect(src).toMatch(/scopeRepairTargets/);
+        expect(src).toMatch(/scope_repair_pipeline_failed/);
+        expect(src).toMatch(/if \(scopeCoverageFailed && !finalVerified/);
+        expect(src).toMatch(/scopeRepairAttempted/);
+        expect(src).toMatch(/applyProjectQualityContractOutcome\(artifactRoot, request, scopeRetryLive\)/);
+        expect(src).toMatch(/applyScopeAuditOutcome\(request, artifactRoot, (?:qualityCheckedScopeRetry|scopeRetryLive)\)/);
     });
 
     test('success and verification are earned, with explicit execution and delivery states', () => {

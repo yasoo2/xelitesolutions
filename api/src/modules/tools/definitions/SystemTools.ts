@@ -28,6 +28,104 @@ function sameBackgroundInvocation(left: { command: string; cwd: string }, comman
     return left.command.trim() === command.trim() && path.resolve(left.cwd) === path.resolve(cwd);
 }
 
+/**
+ * Reconcile only the deterministic, npm-invalid parts of a generated manifest.
+ *
+ * Models occasionally turn prose such as "node:sqlite or JSON file fallback"
+ * into a dependency key. npm cannot install that key, and guessing a replacement
+ * package would violate the evidence-first engineering contract. Removing the
+ * impossible dependency is the narrow, reversible repair; runtime imports still
+ * have to pass the later build/test gates.
+ */
+export function reconcileNpmManifest(workDir: string): {
+    ok: boolean;
+    changed: boolean;
+    packageJsonPath?: string;
+    removedDependencies?: string[];
+    renamedPackage?: { from: string; to: string };
+    recursiveScripts?: string[];
+    error?: string;
+} {
+    const packageJsonPath = path.join(workDir, 'package.json');
+    if (!fs.existsSync(packageJsonPath)) {
+        return { ok: true, changed: false, packageJsonPath };
+    }
+
+    let manifest: any;
+    try {
+        manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    } catch (error: any) {
+        return { ok: false, changed: false, packageJsonPath, error: `invalid_package_json:${String(error?.message || error)}` };
+    }
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+        return { ok: false, changed: false, packageJsonPath, error: 'invalid_package_json:manifest must be an object' };
+    }
+
+    const removedDependencies: string[] = [];
+    const dependencySections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+    const npmName = /^(?:@[a-z0-9][a-z0-9._~-]*\/[a-z0-9][a-z0-9._~-]*|[a-z0-9][a-z0-9._~-]*)$/;
+    for (const section of dependencySections) {
+        const entries = manifest[section];
+        if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
+        for (const dependencyName of Object.keys(entries)) {
+            if (dependencyName.length > 214 || !npmName.test(dependencyName)) {
+                delete entries[dependencyName];
+                removedDependencies.push(`${section}.${dependencyName}`);
+            }
+        }
+    }
+
+    let renamedPackage: { from: string; to: string } | undefined;
+    if (typeof manifest.name === 'string' && manifest.name !== manifest.name.toLowerCase()) {
+        const normalized = manifest.name.toLowerCase();
+        if (npmName.test(normalized)) {
+            renamedPackage = { from: manifest.name, to: normalized };
+            manifest.name = normalized;
+        }
+    }
+    if (typeof manifest.name === 'string' && !npmName.test(manifest.name)) {
+        return {
+            ok: false,
+            changed: false,
+            packageJsonPath,
+            removedDependencies,
+            renamedPackage,
+            error: `invalid_package_name:${manifest.name}`,
+        };
+    }
+
+    const recursiveScripts: string[] = [];
+    const scripts = manifest.scripts;
+    if (scripts && typeof scripts === 'object' && !Array.isArray(scripts)) {
+        for (const [scriptName, rawCommand] of Object.entries(scripts)) {
+            if (typeof rawCommand !== 'string') continue;
+            const escapedName = scriptName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const selfReference = new RegExp(`(?:^|[;&|]|&&|\\n)\\s*npm\\s+(?:run|run-script)\\s+${escapedName}(?=\\s|$)`);
+            if (selfReference.test(rawCommand)) recursiveScripts.push(scriptName);
+        }
+    }
+
+    const changed = removedDependencies.length > 0 || !!renamedPackage;
+    if (changed) {
+        fs.writeFileSync(packageJsonPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    }
+    if (recursiveScripts.length) {
+        return {
+            ok: false,
+            changed,
+            packageJsonPath,
+            removedDependencies,
+            renamedPackage,
+            recursiveScripts,
+            error: `recursive_npm_scripts:${recursiveScripts.join(',')}`,
+        };
+    }
+    if (!changed) {
+        return { ok: true, changed: false, packageJsonPath, removedDependencies, renamedPackage };
+    }
+    return { ok: true, changed: true, packageJsonPath, removedDependencies, renamedPackage };
+}
+
 // Helper
 function getWorkspaceRoot(workspaceId?: string) {
     try {
@@ -534,6 +632,17 @@ export class NpmManagerTool extends BaseTool {
             if (!resolvedWorkDir.ok) return { ok: false, error: resolvedWorkDir.error, logs };
             const workDir = resolvedWorkDir.path;
             logs.push(`npm.cwd=${workDir}`);
+            const installLike = ['install', 'i', 'ci'].includes(cmdParts[0]);
+            if (installLike) {
+                const manifest = reconcileNpmManifest(workDir);
+                if (!manifest.ok) {
+                    logs.push(`npm.manifest_error=${manifest.error || 'invalid_package_json'}`);
+                    return { ok: false, error: manifest.error || 'invalid_package_json', logs };
+                }
+                if (manifest.changed) {
+                    logs.push(`npm.manifest_reconciled=${(manifest.removedDependencies || []).join(',')}`);
+                }
+            }
             const r = await handleShellCommand('npm', args, workDir, 5 * 60_000, false);
             if (!r.ok) return { ok: false, error: r.error || 'npm_failed', logs: [...logs, ...(r.logs || [])] };
 

@@ -5,6 +5,7 @@ import { isPortOpen } from '../../../shared/utils/network';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import * as fs from 'fs';
 import * as path from 'path';
+import { builtinModules } from 'module';
 
 /**
  * project_run / project_stop — actually RUN a built system, not just render a
@@ -359,6 +360,33 @@ function hasServerStartEvidence(source: string): boolean {
 }
 
 /**
+ * Generated projects sometimes inherit npm's placeholder lifecycle commands:
+ * `echo "Error: no test specified" && exit 1` or
+ * `echo "Build script not specified" && exit 1`. They look like declared
+ * engineering checks, but they are deliberate failures and cannot be accepted
+ * as evidence. Do not require every project to have tests/build scripts; reject
+ * only explicit placeholders that advertise a check while guaranteeing failure.
+ */
+export function placeholderLifecycleScriptError(cwd: string): string | null {
+    const pkgPath = path.join(cwd, 'package.json');
+    if (!fs.existsSync(pkgPath)) return null;
+    try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const scripts = pkg?.scripts || {};
+        for (const name of ['test', 'build']) {
+            const script = String(scripts?.[name] || '').trim();
+            if (!script) continue;
+            const isPlaceholder = /(?:no\s+test\s+specified|test\s+script\s+(?:not|wasn['’]t)\s+specified|build\s+script\s+(?:not|wasn['’]t)\s+specified|script\s+not\s+specified)/iu.test(script)
+                && /\bexit\s+1\b/iu.test(script);
+            if (isPlaceholder) return `launchability: scripts.${name} is a failing placeholder, not a real check`;
+        }
+    } catch {
+        return 'launchability: package.json is missing or malformed';
+    }
+    return null;
+}
+
+/**
  * A manifest is not a runnable contract by itself. Before spending the full
  * readiness window, verify that npm's selected runtime target exists and is a
  * JavaScript/TypeScript server with observable listen evidence. This stays
@@ -366,6 +394,9 @@ function hasServerStartEvidence(source: string): boolean {
  */
 export function launchabilityError(cwd: string, detected: { command: string; kind: string }): string | null {
     if (detected.kind === 'static' || detected.kind === 'override') return null;
+
+    const placeholderError = placeholderLifecycleScriptError(cwd);
+    if (placeholderError) return placeholderError;
 
     let target = '';
     if (detected.kind === 'npm-start' || detected.kind === 'dev-server') {
@@ -405,6 +436,193 @@ export function launchabilityError(cwd: string, detected: { command: string; kin
     return null;
 }
 
+function serverEntrypointScore(value: string): number {
+    const normalized = value.toLowerCase();
+    if (/^src\/index\.(?:js|mjs|cjs|ts|tsx)$/u.test(normalized)) return 0;
+    if (/^src\/(?:server|app)\.(?:js|mjs|cjs|ts|tsx)$/u.test(normalized)) return 1;
+    if (/^(?:index|server|app)\.(?:js|mjs|cjs|ts|tsx)$/u.test(normalized)) return 2;
+    return 3;
+}
+
+function serverEntrypointCandidates(cwd: string): string[] {
+    const candidates: string[] = [];
+    const ignored = new Set(['.git', 'node_modules', 'coverage', 'dist', 'build', 'public', 'docs', 'test', 'tests', 'data']);
+    const extensions = /\.(?:js|mjs|cjs|ts|tsx)$/iu;
+    const walk = (directory: string, depth: number): void => {
+        if (depth > 3) return;
+        let entries: fs.Dirent[] = [];
+        try { entries = fs.readdirSync(directory, { withFileTypes: true }); } catch { return; }
+        for (const entry of entries) {
+            if (entry.name.startsWith('.') || ignored.has(entry.name)) continue;
+            const absolute = path.join(directory, entry.name);
+            if (entry.isDirectory()) {
+                walk(absolute, depth + 1);
+                continue;
+            }
+            if (!entry.isFile() || !extensions.test(entry.name)) continue;
+            try {
+                const source = fs.readFileSync(absolute, 'utf-8');
+                if (hasServerStartEvidence(source)) {
+                    candidates.push(path.relative(cwd, absolute).replace(/\\/g, '/'));
+                }
+            } catch { /* unreadable files are not evidence */ }
+        }
+    };
+    walk(cwd, 0);
+    return candidates.sort((a, b) => serverEntrypointScore(a) - serverEntrypointScore(b) || a.localeCompare(b));
+}
+
+/**
+ * Repair only a proven manifest-to-entrypoint mismatch. This is deliberately
+ * narrower than asking an LLM to rewrite a project: it changes package.json
+ * only when the declared node target is missing and exactly one best server
+ * entrypoint already exists on disk. The implementation remains the user's
+ * existing artifact; Joe merely reconciles the manifest with observed evidence.
+ */
+export function reconcileMissingRuntimeTarget(cwd: string, failureText: string): { repaired: boolean; message: string } {
+    if (!/runtime target is missing/iu.test(String(failureText || ''))) {
+        return { repaired: false, message: 'not an evidenced missing-runtime-target failure' };
+    }
+    const pkgPath = path.join(cwd, 'package.json');
+    if (!fs.existsSync(pkgPath)) return { repaired: false, message: 'package.json is missing' };
+    try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const scripts = pkg?.scripts || {};
+        const start = String(scripts.start || '').trim();
+        const targetMatch = start.match(/\bnode\s+(?:(?:--[^\s]+)\s+)*["']?([^\s"';&|]+)["']?/u);
+        const declaredTarget = String(targetMatch?.[1] || '').replace(/^\.\//u, '').trim();
+        if (!declaredTarget) return { repaired: false, message: 'start script has no direct node target to reconcile' };
+        if (fs.existsSync(path.resolve(cwd, declaredTarget))) {
+            return { repaired: false, message: `declared target already exists (${declaredTarget})` };
+        }
+        const candidates = serverEntrypointCandidates(cwd);
+        if (!candidates.length) return { repaired: false, message: 'no existing server entrypoint evidence found' };
+        const best = candidates[0];
+        const bestScore = serverEntrypointScore(best);
+        const equallyRanked = candidates.filter(candidate => serverEntrypointScore(candidate) === bestScore);
+        if (equallyRanked.length > 1) {
+            return { repaired: false, message: `multiple equally ranked server entrypoints: ${equallyRanked.slice(0, 4).join(', ')}` };
+        }
+        const relativeTarget = best.replace(/^\.\//u, '');
+        const nextStart = start.replace(targetMatch![1], relativeTarget);
+        const nextPkg = { ...pkg, main: pkg.main === declaredTarget || !pkg.main ? relativeTarget : pkg.main, scripts: { ...scripts, start: nextStart } };
+        fs.writeFileSync(pkgPath, `${JSON.stringify(nextPkg, null, 2)}\n`, 'utf-8');
+        return { repaired: true, message: `reconciled package.json start/main from ${declaredTarget} to ${relativeTarget}` };
+    } catch (error: any) {
+        return { repaired: false, message: `manifest reconciliation failed: ${String(error?.message || error).slice(0, 240)}` };
+    }
+}
+
+const NODE_BUILTIN_MODULES = new Set<string>([
+    ...builtinModules,
+    ...builtinModules.map((name) => name.startsWith('node:') ? name : `node:${name}`),
+]);
+const RUNTIME_SOURCE_EXTENSIONS = /\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu;
+const RUNTIME_SOURCE_IGNORES = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', 'public', 'docs', 'test', 'tests', '__tests__', 'data']);
+
+function packageNameFromSpecifier(specifier: string): string {
+    const value = String(specifier || '').trim();
+    if (value.startsWith('@')) return value.split('/').slice(0, 2).join('/');
+    return value.split('/')[0];
+}
+
+function runtimeImportSpecifiers(source: string): string[] {
+    const found = new Set<string>();
+    const patterns = [
+        /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/gu,
+        /\b(?:import|export)\s+(?:[^'"]+?\s+from\s+)?['"]([^'"]+)['"]/gu,
+        /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/gu,
+    ];
+    for (const pattern of patterns) {
+        for (const match of source.matchAll(pattern)) {
+            const specifier = String(match[1] || '').trim();
+            if (specifier) found.add(specifier);
+        }
+    }
+    return [...found];
+}
+
+function resolveLocalRuntimeImport(fromFile: string, specifier: string): string | null {
+    if (!specifier.startsWith('.')) return null;
+    const base = path.resolve(path.dirname(fromFile), specifier);
+    const candidates = [
+        base,
+        ...['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx'].map((extension) => `${base}${extension}`),
+        ...['index.js', 'index.mjs', 'index.cjs', 'index.ts', 'index.tsx', 'index.jsx'].map((entry) => path.join(base, entry)),
+    ];
+    return candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile() && RUNTIME_SOURCE_EXTENSIONS.test(candidate)) || null;
+}
+
+function collectRuntimeSourceFiles(entrypoint: string): string[] {
+    const visited = new Set<string>();
+    const files: string[] = [];
+    const visit = (file: string, depth: number): void => {
+        if (depth > 8 || visited.has(file) || !fs.existsSync(file)) return;
+        const relative = path.relative(path.dirname(entrypoint), file);
+        if (relative.split(path.sep).some((part) => RUNTIME_SOURCE_IGNORES.has(part))) return;
+        visited.add(file);
+        files.push(file);
+        let source = '';
+        try { source = fs.readFileSync(file, 'utf-8'); } catch { return; }
+        for (const specifier of runtimeImportSpecifiers(source)) {
+            const local = resolveLocalRuntimeImport(file, specifier);
+            if (local) visit(local, depth + 1);
+        }
+    };
+    visit(entrypoint, 0);
+    return files;
+}
+
+function runtimeEntrypoint(cwd: string, detected: { command: string; kind: string }): string {
+    if (detected.kind === 'npm-start' || detected.kind === 'dev-server') {
+        try {
+            const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8'));
+            const scripts = pkg?.scripts || {};
+            return runtimeTargetFromScript(String(detected.kind === 'npm-start' ? scripts.start : scripts.dev || ''));
+        } catch { return ''; }
+    }
+    if (detected.kind === 'node-entry' || detected.kind === 'tsx-entry') {
+        return String(detected.command).replace(/^(?:node|npx -y tsx)\s+/u, '').trim();
+    }
+    return '';
+}
+
+/**
+ * Inspect only the source reachable from the selected runtime entrypoint. A
+ * declared package is not enough: `npm install` cannot install an import that
+ * the manifest forgot, and a detached launch would otherwise fail silently
+ * after project_run discarded stderr. This is evidence, not a package guess;
+ * the bounded repair planner still decides how to reconcile the manifest.
+ */
+export function missingRuntimeDependencies(cwd: string, detected: { command: string; kind: string }): string[] {
+    if (detected.kind === 'static' || detected.kind === 'override') return [];
+    const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
+    if (!target) return [];
+    const entrypoint = path.resolve(cwd, target);
+    if (!fs.existsSync(entrypoint)) return [];
+    let pkg: any = {};
+    try { pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8')); } catch { return []; }
+    const declared = new Set<string>([
+        ...Object.keys(pkg?.dependencies || {}),
+        ...Object.keys(pkg?.devDependencies || {}),
+        ...Object.keys(pkg?.optionalDependencies || {}),
+    ]);
+    const missing = new Set<string>();
+    for (const file of collectRuntimeSourceFiles(entrypoint)) {
+        let source = '';
+        try { source = fs.readFileSync(file, 'utf-8'); } catch { continue; }
+        for (const specifier of runtimeImportSpecifiers(source)) {
+            if (specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('#') || NODE_BUILTIN_MODULES.has(specifier)) continue;
+            const packageName = packageNameFromSpecifier(specifier);
+            if (!packageName || NODE_BUILTIN_MODULES.has(packageName)) continue;
+            let resolved = false;
+            try { require.resolve(packageName, { paths: [cwd] }); resolved = true; } catch { /* absent from this project */ }
+            if (!declared.has(packageName) || !resolved) missing.add(packageName);
+        }
+    }
+    return [...missing].sort().slice(0, 12);
+}
+
 export function launchPrerequisiteError(cwd: string, detected: { command: string; kind: string }): string | null {
     const pkgPath = path.join(cwd, 'package.json');
     if (!fs.existsSync(pkgPath) || !/^npm (?:start|run dev)\b/u.test(detected.command)) return null;
@@ -418,6 +636,8 @@ export function launchPrerequisiteError(cwd: string, detected: { command: string
             || fs.existsSync(path.join(cwd, 'vite.config.js')) || fs.existsSync(path.join(cwd, 'vite.config.ts'));
         const viteInstalled = fs.existsSync(path.join(cwd, 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite'));
         if (needsVite && !viteInstalled) return 'vite';
+        const missingRuntime = missingRuntimeDependencies(cwd, detected);
+        if (missingRuntime.length) return `runtime dependencies missing or undeclared: ${missingRuntime.join(', ')}`;
     } catch { /* The actual launcher will surface malformed package errors. */ }
     return null;
 }

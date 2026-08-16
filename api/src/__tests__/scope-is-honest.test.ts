@@ -79,6 +79,22 @@ describe('what was built is read from the code, never from optimism', () => {
         expect(scopeReport(HIS_REQUEST, [dir]).built.map(c => c.id)).not.toContain('multi_vendor');
     });
 
+    it('test-only assertions are not runtime capability evidence', () => {
+        const dir = mk({
+            'src/__tests__/search.test.ts': "const setQuery = () => true; const onSearch = () => true;",
+            'src/App.jsx': 'export default function App() { return null; }',
+        });
+        expect(readProjectSource([dir])).not.toMatch(/setQuery|onSearch/);
+        expect(scopeReport('Build a task dashboard with search.', [dir]).built.map(c => c.id)).not.toContain('search');
+    });
+
+    it('an isolated analytics helper is not an integrated analytics feature', () => {
+        const isolated = mk({ 'src/analytics.js': 'class Analytics { getTasks() { return []; } }' });
+        expect(scopeReport('Build an analytics dashboard.', [isolated]).built.map(c => c.id)).not.toContain('analytics');
+        const integrated = mk({ 'src/routes.js': "router.get('/api/analytics', (req, res) => res.json({ series: [] }));" });
+        expect(scopeReport('Build an analytics dashboard.', [integrated]).built.map(c => c.id)).toContain('analytics');
+    });
+
     it('the word «vendor» is not a marketplace; a vendor_id is', () => {
         const bare = mk({ 'src/a.js': 'const vendors = "we love our vendors";' });
         expect(scopeReport(HIS_REQUEST, [bare]).built.map(c => c.id)).not.toContain('multi_vendor');

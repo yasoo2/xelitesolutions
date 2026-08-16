@@ -98,8 +98,8 @@ export const CAPABILITIES: Capability[] = [
     },
     {
         id: 'analytics', ar: 'التحليلات', en: 'analytics',
-        ask: /\banalytics?\b|\breports?\b|\bkpi\b|تحليلات|تقارير|إحصائيات/i,
-        evidence: /\/api\/stats|\banalytics\b|<canvas|sparkline|chart\.js/i,
+        ask: /\banalytics?\b|\breporting\b|\bkpi\b|تحليلات|إحصائيات/i,
+        evidence: /\/api\/(?:stats|analytics)|<canvas|sparkline|chart\.js|(?:analytics|metrics)\s*(?:route|router|endpoint|data|series|chart|dashboard|panel)/i,
     },
     {
         id: 'support', ar: 'دعم العملاء', en: 'customer support',
@@ -162,7 +162,10 @@ export function requestedCapabilities(request: string): Capability[] {
 
 const CODE_EXT = /\.(jsx?|tsx?|css|html|json|webmanifest)$/i;
 /**
- * A LOCKFILE IS NOT EVIDENCE OF A FEATURE.
+ * A LOCKFILE IS NOT EVIDENCE OF A FEATURE. Test-only and specification-only
+ * text is not runtime evidence either; the scan deliberately reads production
+ * source files, not assertions that merely describe a feature.
+
  *
  * The first run of this reported «multi-vendor marketplace ✅ built» for a
  * single-table store — because package-lock.json mentions the word «vendor»
@@ -185,6 +188,8 @@ export function readProjectSource(dirs: string[]): string {
             const full = path.join(dir, e.name);
             if (e.isDirectory()) { visit(full, depth + 1); continue; }
             if (!CODE_EXT.test(e.name) || NOT_EVIDENCE.test(e.name)) continue;
+            const normalized = full.toLowerCase();
+            if (normalized.includes('/__tests__/') || normalized.includes('/tests/') || /(?:^|[._-])(test|spec)(?:[._-]|$)/i.test(e.name)) continue;
             try { out += '\n' + fs.readFileSync(full, 'utf-8'); } catch { /* unreadable is not evidence */ }
         }
     };
