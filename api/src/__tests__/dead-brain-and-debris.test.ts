@@ -74,9 +74,10 @@ describe('recently healthy provider recovery — one evidence-based probe, not a
 });
 
 describe('keyless planner deadlines — explicit patience is not overwritten by defaults', () => {
-    it('keeps a bounded planner deadline for LLM7', () => {
+    it('keeps an explicit large-planner deadline bounded at 180 seconds', () => {
         expect(effectiveKeylessTimeoutMs(120000, 'high', 25000)).toBe(120000);
-        expect(effectiveKeylessTimeoutMs(999999, 'high', 25000)).toBe(120000);
+        expect(effectiveKeylessTimeoutMs(180000, 'extreme', 25000)).toBe(180000);
+        expect(effectiveKeylessTimeoutMs(999999, 'high', 25000)).toBe(180000);
         expect(effectiveKeylessTimeoutMs(1000, 'high', 25000)).toBe(8000);
     });
 
@@ -87,7 +88,15 @@ describe('keyless planner deadlines — explicit patience is not overwritten by 
 
     it('preserves the planner deadline when a compatibility path passes plannerTimeoutMs directly', () => {
         expect(requestedProviderTimeoutMs({ plannerTimeoutMs: 120000 })).toBe(120000);
+        expect(requestedProviderTimeoutMs({ plannerTimeoutMs: 180000 })).toBe(180000);
         expect(requestedProviderTimeoutMs({ providerTimeoutMs: undefined, plannerTimeoutMs: 45000 })).toBe(45000);
+    });
+
+    it('keeps the engineering pipeline deadline explicit instead of restoring a chat default', () => {
+        const src = read('modules/tools/definitions/ProjectPipelineTool.ts');
+        expect(src).toContain('engineeringPipeline: true');
+        expect(src).toContain(': 180_000');
+        expect(src).toContain('plannerTimeoutMs,');
     });
 
     it('prefers a valid provider deadline and rejects non-finite values', () => {

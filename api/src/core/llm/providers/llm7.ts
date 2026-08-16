@@ -35,6 +35,7 @@ interface LLM7ModelDescriptor {
 }
 
 const LLM7_BASE_URL = (process.env.LLM7_BASE_URL || 'https://api.llm7.io/v1').trim();
+const MAX_LLM7_TIMEOUT_MS = 180_000;
 const PREFERRED_MODELS = [
     'deepseek-v4-flash:0731', 'deepseek-v4-flash-0731', 'codestral-latest',
     'gpt-4.1-mini', 'gpt-4o-mini', 'gpt-4.1-nano', 'deepseek-v3', 'deepseek-r1',
@@ -274,7 +275,7 @@ export class LLM7Provider {
         options?: { timeoutMs?: number; signal?: AbortSignal; maxCompletionTokens?: number }
     ): Promise<string> {
         const timeoutMs = Number(options?.timeoutMs) > 0
-            ? Math.min(120000, Math.max(1000, Math.floor(Number(options?.timeoutMs))))
+            ? Math.min(MAX_LLM7_TIMEOUT_MS, Math.max(1000, Math.floor(Number(options?.timeoutMs))))
             : 30000;
         const candidates = await this.buildCandidates(model, timeoutMs, options?.signal);
         if (options?.signal?.aborted) {

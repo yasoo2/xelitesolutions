@@ -493,7 +493,23 @@ export class ProjectPipelineTool implements ToolDefinition {
         // foundation only when it records a reason grounded in requirements or
         // inspected workspace facts; no deterministic request classifier owns it.
         say('[pipeline] planning evidence-backed engineering phases…');
-        let plannerResult: any = await executeTool('project_planner', { projectDescription: planningRequest, evidence: plannerEvidence }, { ...(context || {}), requireRunnableContract: true });
+        // A greenfield engineering plan is the one operation that may legitimately
+        // produce a large, evidence-backed JSON graph. Give it an explicit bounded
+        // deadline and mark the call as an engineering pipeline so the planner's
+        // one recovery pass is available after a transient gateway failure. The
+        // normal chat route keeps its shorter deadline.
+        const plannerTimeoutMs = Number(context?.plannerTimeoutMs) > 0
+            ? Number(context.plannerTimeoutMs)
+            : 180_000;
+        let plannerResult: any = await executeTool('project_planner',
+            { projectDescription: planningRequest, evidence: plannerEvidence },
+            {
+                ...(context || {}),
+                requireRunnableContract: true,
+                engineeringPipeline: true,
+                plannerTimeoutMs,
+            },
+        );
         if (!plannerResult?.ok || plannerResult?.output?.fallback) {
             const blocker = plannerResult?.output?.blocker?.message || plannerResult?.error || 'The planner did not produce a valid evidence-backed plan.';
 
@@ -614,8 +630,8 @@ export class ProjectPipelineTool implements ToolDefinition {
             // handoff. PhaseExecutor already carries these fields downstream;
             // dropping them here silently restores LLM7's 30s default and turns
             // a transient provider delay into a false phase failure.
-            providerTimeoutMs: context?.providerTimeoutMs,
-            plannerTimeoutMs: context?.plannerTimeoutMs,
+            providerTimeoutMs: context?.providerTimeoutMs ?? plannerTimeoutMs,
+            plannerTimeoutMs,
             plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens,
             plannerReasoningEffort: context?.plannerReasoningEffort,
             // The phase announcements are the loudest lines in the trace, and
@@ -805,7 +821,14 @@ export class ProjectPipelineTool implements ToolDefinition {
                 const repairPlanner = await executeTool(
                     'project_planner',
                     { projectDescription: repairRequest, evidence: repairEvidence },
-                    { ...(context || {}), engineeringPipeline: true, requireRunnableContract: true, liveRepairAttempted: true, language: isAr ? 'ar' : 'en' },
+                    {
+                        ...(context || {}),
+                        engineeringPipeline: true,
+                        requireRunnableContract: true,
+                        liveRepairAttempted: true,
+                        plannerTimeoutMs,
+                        language: isAr ? 'ar' : 'en',
+                    },
                 );
                 const repairPhases = repairPlanner?.output?.phases;
                 if (repairPlanner?.ok === true && Array.isArray(repairPhases) && repairPhases.length > 0) {
@@ -821,8 +844,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                         browserSessionId: context?.browserSessionId,
                         plannerResult: repairPlanner,
                         modelConfig: context?.modelConfig,
-                        providerTimeoutMs: context?.providerTimeoutMs,
-                        plannerTimeoutMs: context?.plannerTimeoutMs,
+                        providerTimeoutMs: context?.providerTimeoutMs ?? plannerTimeoutMs,
+                        plannerTimeoutMs,
                         plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens,
                         plannerReasoningEffort: context?.plannerReasoningEffort,
                         language: isAr ? 'ar' : 'en',

@@ -1057,6 +1057,8 @@ export const RATE_LIMIT_RE = /\b(429|rate.?limit(?:ed)?|too many requests)\b/i;
  * absent deadline gets the normal short keyless timeout.  Keeping this pure makes
  * the precedence testable without starting a provider or making a network call.
  */
+const MAX_EXPLICIT_PROVIDER_TIMEOUT_MS = 180_000;
+
 export function effectiveKeylessTimeoutMs(
     requestedTimeout: unknown,
     complexity?: string,
@@ -1064,7 +1066,7 @@ export function effectiveKeylessTimeoutMs(
 ): number {
     const requested = Number(requestedTimeout);
     if (Number.isFinite(requested) && requested > 0) {
-        return Math.min(120_000, Math.max(8_000, Math.floor(requested)));
+        return Math.min(MAX_EXPLICIT_PROVIDER_TIMEOUT_MS, Math.max(8_000, Math.floor(requested)));
     }
     if (Number.isFinite(ordinaryDefaultMs) && Number(ordinaryDefaultMs) > 0) {
         return Math.floor(Number(ordinaryDefaultMs));
@@ -1083,7 +1085,7 @@ export function requestedProviderTimeoutMs(context: any): number | undefined {
     for (const raw of [context?.providerTimeoutMs, context?.plannerTimeoutMs]) {
         const value = Number(raw);
         if (Number.isFinite(value) && value > 0) {
-            return Math.min(120_000, Math.max(8_000, Math.floor(value)));
+            return Math.min(MAX_EXPLICIT_PROVIDER_TIMEOUT_MS, Math.max(8_000, Math.floor(value)));
         }
     }
     return undefined;
