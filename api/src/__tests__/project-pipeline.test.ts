@@ -129,6 +129,16 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/require\('\.\.\/\.\.\/services\/AgentLoopService'\)/);
     });
 
+    test('provider preflight blocks honestly before planner when no model is healthy', () => {
+        const preflight = src.indexOf('verifyProviderDirect');
+        const planner = src.indexOf("executeTool('project_planner'");
+        expect(preflight).toBeGreaterThan(-1);
+        expect(planner).toBeGreaterThan(preflight);
+        expect(src).toMatch(/stopReason: 'provider_unavailable'/);
+        expect(src).toMatch(/provider preflight/);
+        expect(src).toMatch(/skipProviderPreflight/);
+    });
+
     test('bounded live-run repair rediscovers the current incomplete root instead of the greenfield reference set', () => {
         expect(src).toMatch(/const repairDiscoveryRequest = \[/);
         expect(src).toMatch(/request:\s*repairDiscoveryRequest/);

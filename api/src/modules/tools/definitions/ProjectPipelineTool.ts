@@ -6,6 +6,7 @@ import { workspaceService } from '../../services/WorkspaceService';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import { brandFrom } from '../../../core/design/page-head';
 import { scopeReport } from '../../../core/quality/scope-audit';
+import { verifyProviderDirect } from '../../../core/llm/intelligent-router';
 
 const MAX_PIPELINE_LOGS = 192;
 const MAX_PIPELINE_LOG_CHARS = 2_000;
@@ -487,6 +488,38 @@ export class ProjectPipelineTool implements ToolDefinition {
             : request;
         if (requirementsContext) appendBoundedPipelineLog(logs, `pipeline.planning_requirements_brief_chars=${requirementsContext.length}`);
         const plannerEvidence = buildPlannerEvidence(evidence, specification.sources);
+
+        // Provider health is an execution prerequisite, not a late planner error.
+        // Probe the exact configured provider (or the auto mesh) before spending a
+        // long engineering-run budget. Tests may explicitly opt out; production
+        // callers cannot silently convert an unavailable model into fake progress.
+        const modelConfig = context?.modelConfig || {};
+        const providerHealth = context?.skipProviderPreflight === true
+            ? { ok: true, provider: String(modelConfig.provider || 'auto'), detail: 'skipped_by_test_harness' }
+            : await verifyProviderDirect(String(modelConfig.provider || 'auto'), {
+                apiKey: modelConfig.apiKey,
+                baseUrl: modelConfig.baseUrl,
+                model: modelConfig.model,
+            });
+        appendBoundedPipelineLog(logs, `[pipeline] provider preflight ${providerHealth.provider}: ${providerHealth.ok ? 'ok' : 'blocked'} (${providerHealth.detail})`);
+        if (!providerHealth.ok) {
+            const summary = pick(isAr,
+                `## ⚠️ توقف قبل التخطيط لأن مزود الذكاء الاصطناعي غير متاح\n\nالمزود: ${providerHealth.provider}\nالتفصيل: ${providerHealth.detail}\n\nلم ينشئ Joe ملفات ولم يبدأ مراحل طويلة من دون مزود صالح.`,
+                `## ⚠️ Stopped before planning because the AI provider is unavailable\n\nProvider: ${providerHealth.provider}\nDetail: ${providerHealth.detail}\n\nJoe did not write files or start a long phase run without a healthy provider.`,
+            );
+            return {
+                ok: false,
+                error: summary,
+                output: {
+                    projectName: 'engineering-task', completedPhases: 0, totalPhases: 0, verified: false,
+                    executionStatus: 'blocked', verificationStatus: 'not_run', deliveryStatus: 'blocked',
+                    pipelineFinal: true, honestBlocker: true, stopReason: 'provider_unavailable',
+                    providerHealth, evidence, summary,
+                },
+                logs,
+            };
+        }
+
         // Preserve the root selected by discovery as execution evidence. A project
         // can be locally real but incomplete (for example src/tests without a
         // manifest); naming it from the request is not enough to find that root.
