@@ -218,6 +218,15 @@ describe('model-written tool arguments are checked before execution', () => {
         expect(plannedArgsIssue('browser_run', { sessionId: 'browser:test' })).toMatch(/instructionText أو actions/);
     });
 
+    it('allows browser_ui_audit to resolve url from the Joe session runtime', () => {
+        expect(plannedArgsIssue('browser_ui_audit', {})).toBeNull();
+        expect(plannedArgsIssue('browser_ui_audit', { url: 'http://127.0.0.1:4300' })).toBeNull();
+    });
+
+    it('keeps business-tool required fields strict after runtime URL exceptions', () => {
+        expect(plannedArgsIssue('auth_builder', { type: 'full' })).toMatch(/outputDir/);
+    });
+
     it('drops an auth_builder task with missing required fields before execution', () => {
         const phase = {
             phaseNumber: 2,

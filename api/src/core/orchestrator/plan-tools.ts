@@ -1089,6 +1089,15 @@ export function plannedArgsIssue(toolName: string, args: any): string | null {
             }
         }
     }
+    // browser_ui_audit has a deliberate runtime URL contract: when the builder
+    // has already produced a preview, or when the audit is invoked inside a Joe
+    // session, BrowserUiAuditTool resolves the URL from session context (and can
+    // reuse a fresh builder audit). Requiring `url` in the model-written plan
+    // would reject that valid execution path before the runtime can resolve it.
+    // This exception is tool-specific and does not weaken browser_run or any
+    // business/data tool's required-field contract.
+    if (toolName === 'browser_ui_audit' && !String(args?.url || '').trim()) return null;
+
     // Apply the live registry's generic required-field contract only after
     // tool-specific validators. This preserves precise, established messages
     // (for example npm_manager's command and code_reviewer's files) while still
