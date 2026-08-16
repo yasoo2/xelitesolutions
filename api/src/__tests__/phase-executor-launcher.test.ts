@@ -9,11 +9,21 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
     it('uses the discovery-selected root for project_run only when the plan has no explicit location', () => {
         const planned: Record<string, any> = {};
         const logs: string[] = [];
-        expect(applyPhaseExecutionEvidence('project_run', planned, { projectRoot: '/workspace/repo', projectName: 'nexus' }, logs)).toMatchObject({
+        expect(applyPhaseExecutionEvidence('project_run', planned, { projectRoot: '/workspace/repo', projectName: 'repo' }, logs)).toMatchObject({
             cwd: '/workspace/repo',
         });
         expect(planned.projectQuery).toBeUndefined();
         expect(logs.join('\\n')).toContain('discovery-selected project root');
+
+        const greenfield: Record<string, any> = {};
+        const greenfieldLogs: string[] = [];
+        applyPhaseExecutionEvidence('project_run', greenfield, {
+            projectRoot: '/home/ubuntu/xelitesolutions-review',
+            projectName: 'nexus-platform',
+        }, greenfieldLogs);
+        expect(greenfield.cwd).toBeUndefined();
+        expect(greenfield.projectQuery).toBe('run the project named "nexus-platform"');
+        expect(greenfieldLogs.join('\\n')).toContain('ignored pre-creation root');
 
         expect(applyPhaseExecutionEvidence('project_run', { cwd: '/explicit/root' }, { projectRoot: '/workspace/repo' })).toMatchObject({
             cwd: '/explicit/root',

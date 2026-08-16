@@ -511,6 +511,7 @@ export class AgentLoopService {
             try { opts.onProgress ? opts.onProgress(m) : broadcastThinkingDetail(sessionId, m); } catch { /* optional */ }
         };
         const phases = plannerResult.output.phases;
+        const createsNewProject = plannerResult.output.createsNewProject === true;
         const projectContext = {
             projectName: plannerResult.output.projectName || 'Unknown',
             totalPhases: plannerResult.output.totalPhases || phases.length,
@@ -522,10 +523,17 @@ export class AgentLoopService {
             // specification. This is evidence for downstream artifact workers,
             // not a guessed technology or product template.
             requirementsContext: String(plannerResult?.output?.requirementsContext || ''),
+            // Greenfield discovery has no write target yet. A root is accepted
+            // only after PhaseExecutor binds a package-bearing artifact written
+            // by this run; otherwise an old discovery root can point at Joe.
+            createsNewProject,
             // Evidence-backed local root selected by discovery. Downstream tools
             // may use it only when a task has no explicit cwd; they still enforce
             // workspace containment and runnable-marker validation.
-            projectRoot: String(plannerResult?.output?.projectRoot || '').trim() || undefined,
+            projectRoot: !createsNewProject
+                ? (String(plannerResult?.output?.projectRoot || '').trim() || undefined)
+                : undefined,
+            projectRootRuntimeBound: false,
         };
         const executionContext = {
             sessionId,

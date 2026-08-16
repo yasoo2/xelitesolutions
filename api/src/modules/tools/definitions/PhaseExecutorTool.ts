@@ -1,4 +1,8 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import fs from 'fs';
+import path from 'path';
+import { persistJoeProjects } from '../../../api/page-store';
+import { workspaceService } from '../../services/WorkspaceService';
 
 import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
@@ -23,17 +27,125 @@ export function applyPhaseExecutionEvidence(
         || String(planned.projectQuery || '').trim()) return planned;
 
     const projectRoot = String(projectContext?.projectRoot || '').trim();
-    if (projectRoot) {
+    const projectName = String(projectContext?.projectName || '').trim();
+    const normaliseLabel = (value: string) => value
+        .replace(/\\/g, '/')
+        .split('/')
+        .pop()!
+        .replace(/[-_]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLocaleLowerCase();
+    const rootLabel = projectRoot ? normaliseLabel(projectRoot) : '';
+    const requestedLabel = projectName ? normaliseLabel(projectName) : '';
+    const labelsMatch = !!rootLabel && !!requestedLabel && (
+        rootLabel === requestedLabel
+        || rootLabel.includes(requestedLabel)
+        || requestedLabel.includes(rootLabel)
+    );
+    // Discovery intentionally has no selected project for greenfield work. A
+    // stale root here is usually Joe's own repository, not the artifact the
+    // preceding phases are creating. Also handle older callers that do not yet
+    // carry createsNewProject: a named project that disagrees with the root is
+    // not safe evidence for an explicit cwd. Runtime-bound evidence wins.
+    const preCreationRootMismatch = !!projectRoot
+        && projectContext?.projectRootRuntimeBound !== true
+        && (projectContext?.createsNewProject === true || !labelsMatch);
+    if (projectRoot && !preCreationRootMismatch) {
         planned.cwd = projectRoot;
-        logs?.push(`[PhaseExecutor] project_run: using discovery-selected project root (${projectRoot.slice(0, 240)})`);
+        logs?.push(`[PhaseExecutor] project_run: using ${projectContext?.projectRootRuntimeBound === true ? 'runtime-bound' : 'discovery-selected'} project root (${projectRoot.slice(0, 240)})`);
         return planned;
     }
-    const projectName = String(projectContext?.projectName || '').trim();
     if (projectName && !/^unknown(?: project)?$/iu.test(projectName)) {
         planned.projectQuery = `run the project named "${projectName}"`;
-        logs?.push(`[PhaseExecutor] project_run: using accepted plan project evidence (${projectName})`);
+        logs?.push(preCreationRootMismatch
+            ? `[PhaseExecutor] project_run: ignored pre-creation root and used accepted project query (${projectName})`
+            : `[PhaseExecutor] project_run: using accepted plan project evidence (${projectName})`);
     }
     return planned;
+}
+
+function sessionProjectKey(sessionId: unknown): string {
+    return String(sessionId || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
+}
+
+function isWithinRoot(child: string, parent: string): boolean {
+    const c = path.resolve(child);
+    const p = path.resolve(parent);
+    return c === p || c.startsWith(p.endsWith(path.sep) ? p : `${p}${path.sep}`);
+}
+
+function projectRootFromWrittenFile(filePath: unknown, workspaceRoot: string): string {
+    const raw = String(filePath || '').trim();
+    if (!raw) return '';
+    let candidate: string;
+    try { candidate = path.resolve(workspaceRoot, raw); } catch { return ''; }
+    if (!isWithinRoot(candidate, workspaceRoot)) return '';
+    let current = fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()
+        ? candidate
+        : path.dirname(candidate);
+    const workspace = path.resolve(workspaceRoot);
+    while (isWithinRoot(current, workspace)) {
+        if (fs.existsSync(path.join(current, 'package.json'))) return current;
+        if (current === workspace) break;
+        current = path.dirname(current);
+    }
+    return '';
+}
+
+/** Bind only a real package-bearing artifact written by the current phase. */
+function bindRuntimeProjectFromEvidence(
+    toolName: string,
+    toolArgs: Record<string, any>,
+    toolResult: any,
+    projectContext: Record<string, any>,
+    logs: string[],
+): void {
+    if (!projectContext || !['scaffold_project', 'write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(toolName)) return;
+    const workspaceRoot = path.resolve(workspaceService.getActiveRoot(projectContext?.workspaceId));
+    if (!workspaceRoot || !fs.existsSync(workspaceRoot)) return;
+    const outputRoot = String(toolResult?.output?.projectDir || toolResult?.output?.projectRoot || '').trim();
+    const fileRoot = projectRootFromWrittenFile(
+        toolArgs?.path || toolArgs?.filename || toolArgs?.filePath || toolResult?.output?.path,
+        workspaceRoot,
+    );
+    const candidate = outputRoot && isWithinRoot(outputRoot, workspaceRoot)
+        ? path.resolve(outputRoot)
+        : fileRoot;
+    if (!candidate || !isWithinRoot(candidate, workspaceRoot) || !fs.existsSync(candidate)
+        || !fs.statSync(candidate).isDirectory() || !fs.existsSync(path.join(candidate, 'package.json'))) return;
+
+    const key = sessionProjectKey(projectContext?.sessionId);
+    const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
+    const previous = projects[key] || {};
+    projects[key] = {
+        ...previous,
+        dir: candidate,
+        type: previous.type || 'scaffold',
+        updatedAt: Date.now(),
+        lastRequest: String(projectContext?.projectName || path.basename(candidate)).slice(0, 120),
+    };
+    try { persistJoeProjects(); } catch { /* binding remains useful for this run */ }
+    projectContext.projectRoot = candidate;
+    projectContext.projectRootRuntimeBound = true;
+    logs.push(`[PhaseExecutor] runtime project evidence bound ${key} -> ${candidate}`);
+}
+
+function syncRuntimeProjectContext(projectContext: Record<string, any>, logs: string[]): void {
+    const key = sessionProjectKey(projectContext?.sessionId);
+    const active = (global as any).joeProjects?.[key];
+    const candidate = String(active?.dir || '').trim();
+    if (!candidate || !fs.existsSync(candidate)) return;
+    const workspaceRoot = path.resolve(workspaceService.getActiveRoot(projectContext?.workspaceId));
+    if (!isWithinRoot(candidate, workspaceRoot)) return;
+    // An old active project is not evidence for the new greenfield artifact.
+    // bindRuntimeProjectFromEvidence is the only path allowed to establish it.
+    if (projectContext?.createsNewProject === true && projectContext?.projectRootRuntimeBound !== true) return;
+    if (!projectContext.projectRoot || projectContext.projectRootRuntimeBound === true) {
+        projectContext.projectRoot = path.resolve(candidate);
+        projectContext.projectRootRuntimeBound = true;
+        logs.push(`[PhaseExecutor] synchronized active project root (${path.resolve(candidate)})`);
+    }
 }
 
 /**
@@ -277,6 +389,8 @@ export class PhaseExecutorTool implements ToolDefinition {
 
                     if (toolResult.ok) {
                         appendLog(`[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`);
+                        bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, logs);
+                        syncRuntimeProjectContext(projectContext, logs);
                         /**
                          * THE BUILDER'S OWN WORDS SURVIVE THE PHASE.
                          *

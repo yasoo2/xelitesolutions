@@ -1,6 +1,8 @@
-import path from 'path';
 import { ToolDefinition, ToolPermission } from '../types';
+import fs from 'fs';
+import path from 'path';
 import { executeTool } from '../../services/ToolService';
+import { workspaceService } from '../../services/WorkspaceService';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import { brandFrom } from '../../../core/design/page-head';
 import { scopeReport } from '../../../core/quality/scope-audit';
@@ -28,6 +30,16 @@ function boundedPipelineLogs(...sources: unknown[]): string[] {
     const logs: string[] = [];
     for (const source of sources) appendBoundedPipelineLogs(logs, source);
     return logs;
+}
+
+function trustedRuntimeProjectRoot(sessionId: unknown, workspaceId: unknown): string {
+    const key = String(sessionId || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
+    const candidateRaw = String((global as any).joeProjects?.[key]?.dir || '').trim();
+    if (!candidateRaw) return '';
+    const workspaceRoot = path.resolve(workspaceService.getActiveRoot(String(workspaceId || '')));
+    const candidate = path.resolve(candidateRaw);
+    const inside = candidate === workspaceRoot || candidate.startsWith(`${workspaceRoot}${path.sep}`);
+    return inside && fs.existsSync(path.join(candidate, 'package.json')) ? candidate : '';
 }
 
 /**
@@ -479,7 +491,11 @@ export class ProjectPipelineTool implements ToolDefinition {
         // can be locally real but incomplete (for example src/tests without a
         // manifest); naming it from the request is not enough to find that root.
         // ProjectRunTool still owns runnable-marker validation and may refuse it.
-        const discoveredProjectRoot = String(evidence?.selectedProject?.root || '').trim();
+        const isGreenfield = evidence?.constraints?.createsNewProject === true;
+        // Greenfield discovery deliberately has no write target. If a stale
+        // selectedProject leaks through, it is usually Joe's own repository;
+        // only existing-project work may seed the planner with that root.
+        const discoveredProjectRoot = isGreenfield ? '' : String(evidence?.selectedProject?.root || '').trim();
         const plannerReferenceProjects = Array.isArray(plannerEvidence.referenceProjects) ? plannerEvidence.referenceProjects : [];
         const plannerReferenceManifests = plannerReferenceProjects.reduce((count: number, project: any) =>
             count + (Array.isArray(project?.manifests) ? project.manifests.length : 0), 0);
@@ -598,7 +614,6 @@ export class ProjectPipelineTool implements ToolDefinition {
                 logs,
             };
         }
-        const isGreenfield = evidence?.constraints?.createsNewProject === true;
         const acceptedProjectName = resolveProjectIdentity(request, plannerResult.output.projectName);
         if (isGreenfield) alignGreenfieldPlanIdentity(plannerResult.output, request, true);
         plannerResult.output.projectName = acceptedProjectName;
@@ -607,6 +622,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         // Carry the same bounded evidence brief that grounded the accepted plan so
         // workers cannot substitute a familiar template for a documented artifact.
         plannerResult.output.requirementsContext = requirementsContext;
+        plannerResult.output.createsNewProject = isGreenfield;
         if (discoveredProjectRoot) plannerResult.output.projectRoot = discoveredProjectRoot;
         say(`[pipeline] evidence-backed plan ready: ${plannerResult.output.projectName || 'project'} — ${phases.length} phases`);
 
@@ -652,7 +668,18 @@ export class ProjectPipelineTool implements ToolDefinition {
          * this is evidence, not a name-based fallback, and it also covers a
          * manifest that was written during the final phase.
          */
-        if (pipeline?.ok === true && !String(plannerResult?.output?.projectRoot || '').trim()) {
+        const runtimeProjectRoot = trustedRuntimeProjectRoot(
+            context?.sessionId,
+            context?.workspaceId || context?.sessionId || 'default',
+        );
+        if (pipeline?.ok === true && !String(plannerResult?.output?.projectRoot || '').trim() && runtimeProjectRoot) {
+            plannerResult.output.projectRoot = runtimeProjectRoot;
+            appendBoundedPipelineLog(logs, `[pipeline] runtime phase evidence bound projectRoot=${runtimeProjectRoot}`);
+            say(pick(isAr,
+                `📍 ثبّتُ جذر المشروع الذي سجّلته المراحل: ${runtimeProjectRoot}`,
+                `📍 Bound the runtime project root recorded by the phases: ${runtimeProjectRoot}`));
+        }
+        if (pipeline?.ok === true && !String(plannerResult?.output?.projectRoot || '').trim() && !runtimeProjectRoot) {
             try {
                 const postPhaseDiscoveryRequest = [
                     'Inspect the current workspace after the implementation phases completed.',
