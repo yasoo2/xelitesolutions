@@ -40,7 +40,15 @@ describe('the quality phase is executable, not decorative', () => {
         // evidence rather than the raw two. What is guaranteed — and what this
         // measures — is that the pipeline plans through project_planner and
         // hands it the discovery evidence, not the spelling of its arguments.
-        expect(pipeline).toMatch(/executeTool\('project_planner', \{ projectDescription: \w+, evidence: \w+ \}, context\)/);
+        // …and the third argument grew again: the planner is now handed a
+        // runnable-contract flag and its own deadline beside the context. The
+        // sentence above says the spelling of the arguments is not the promise,
+        // so the pin follows it — the call is matched across lines, and what is
+        // asserted is that the description and the evidence are what it gets.
+        expect(pipeline).toMatch(
+            /executeTool\(\s*'project_planner',\s*\{\s*projectDescription:\s*\w+,\s*evidence:\s*\w+\s*\}/,
+        );
+        expect(pipeline).toMatch(/\.\.\.\(context \|\| \{\}\)/);
         expect(pipeline).toContain('AgentLoopService.runPlannedPhasesIfPresent');
     });
 

@@ -74,11 +74,31 @@ describe('workspace project discovery for project_run', () => {
     });
 
     it('detects a project server bound to the IPv6 loopback address', async () => {
+        /**
+         * The guarantee is real and worth keeping: a project server that binds
+         * to ::1 must not be reported dead. What is NOT allowed is failing
+         * because the HOST has no IPv6 loopback — this suite ran red in a
+         * container with «listen EAFNOSUPPORT: address family not supported
+         * ::1», a verdict about the machine rather than about the code.
+         *
+         * The repository already settled this with the missing-interpreter
+         * check: a probe that cannot run SKIPS and says so; it never invents a
+         * failure.
+         */
         const server = require('net').createServer();
-        await new Promise<void>((resolve, reject) => {
-            server.once('error', reject);
-            server.listen(0, '::1', () => resolve());
+        const bound = await new Promise<boolean>(resolve => {
+            server.once('error', (err: any) => {
+                const noIpv6 = err?.code === 'EAFNOSUPPORT' || err?.code === 'EADDRNOTAVAIL'
+                    || err?.code === 'EINVAL' || err?.code === 'ENOTSUP';
+                if (!noIpv6) throw err;
+                resolve(false);
+            });
+            server.listen(0, '::1', () => resolve(true));
         });
+        if (!bound) {
+            console.log('  ⏭️  IPv6 loopback unavailable on this host — the ::1 probe is skipped, not failed');
+            return;
+        }
         const port = server.address().port;
         try {
             await expect(isLoopbackPortOpen(port, 300)).resolves.toBe(true);
