@@ -3872,6 +3872,85 @@ body:not(.rtl) .joe-user-info {
     border-color: rgba(96, 165, 250, 0.72);
     background: rgba(37, 99, 235, 0.78);
 }
+.browser-quality-signal {
+    width: 9px;
+    height: 25px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    font-size: 9px;
+    line-height: 1;
+    pointer-events: auto;
+}
+.browser-quality-signal.is-good { color: #4ade80; }
+.browser-quality-signal.is-degraded { color: #fbbf24; }
+.browser-quality-signal.is-blocked { color: #f87171; }
+.browser-quality-signal.is-unknown { color: #94a3b8; }
+.browser-quality-actions {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.browser-quality-actions button,
+.browser-action-filters button,
+.browser-action-filters select,
+.browser-action-filters input {
+    min-height: 26px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 6px;
+    background: rgba(30, 41, 59, 0.72);
+    color: #dbe4ee;
+    font: 500 10px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.browser-quality-actions button,
+.browser-action-filters button { padding: 0 8px; cursor: pointer; }
+.browser-quality-actions button:hover,
+.browser-action-filters button:hover { background: rgba(51, 65, 85, 0.92); }
+.browser-action-filters {
+    flex: 1 1 100%;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 9px;
+    background: rgba(15, 20, 26, 0.48);
+    color: #cbd5e1;
+    font-size: 11px;
+}
+.browser-action-filters input { min-width: 150px; padding: 0 8px; }
+.browser-action-filters select { padding: 0 6px; }
+.browser-action-filters input::placeholder { color: #94a3b8; }
+.browser-recovery-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+    padding: 8px 10px;
+    border: 1px solid rgba(251, 191, 36, 0.32);
+    border-radius: 9px;
+    background: rgba(120, 53, 15, 0.22);
+    color: #fde68a;
+    font-size: 11px;
+    line-height: 1.4;
+}
+.browser-recovery-banner > div { min-width: 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.browser-recovery-banner span { color: #fef3c7; opacity: 0.82; }
+.browser-recovery-banner button {
+    flex: 0 0 auto;
+    min-height: 26px;
+    padding: 0 9px;
+    border: 1px solid rgba(253, 230, 138, 0.35);
+    border-radius: 6px;
+    background: rgba(180, 83, 9, 0.42);
+    color: #fff7ed;
+    cursor: pointer;
+    font: 600 10px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.browser-recovery-banner button:hover { background: rgba(180, 83, 9, 0.62); }
 .browser-quality-popover {
     position: absolute;
     left: 14px;
@@ -3921,7 +4000,10 @@ body:not(.rtl) .joe-user-info {
     .browser-control-button,
     .browser-control-icon { min-width: 23px; height: 23px; }
     .browser-control-button { min-width: 29px; padding: 0 5px; }
+    .browser-quality-signal { height: 23px; }
     .browser-quality-popover { left: 8px; bottom: 42px; width: min(280px, calc(100% - 16px)); }
+    .browser-recovery-banner { align-items: flex-start; flex-direction: column; }
+    .browser-recovery-banner button { width: 100%; }
 }
 
 :fullscreen {

@@ -25,6 +25,7 @@ type WsEvent =
 
 type AgentPhase = 'observe' | 'decide' | 'act' | 'result' | 'done' | 'needs_user';
 type AgentStep = { ts: number; phase: AgentPhase; step: number; text: string; ok?: boolean };
+type ActionFilter = 'all' | 'success' | 'failed';
 
 type Props = { sessionId: string; showBoxes?: boolean };
 
@@ -58,6 +59,9 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     Array<{ ts: number; type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; actionId: string; actionType: string; summary?: string; reason?: string; error?: string; durationMs?: number }>
   >([]);
   const [browserActions, setBrowserActions] = useState<Array<Extract<WsEvent, { type: 'browser_action' }>>>([]);
+  const [actionFilter, setActionFilter] = useState<ActionFilter>('all');
+  const [actionQuery, setActionQuery] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState<'copied' | 'error' | null>(null);
   // Agent narration (steps + live thinking) renders in JOE'S CHAT, not here —
   // the browser view stays clean. When the agent pauses for the user (missing
   // credential / 2FA code) the prompt now appears in JOE'S CHAT, not here.
@@ -483,7 +487,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
   }, []);
 
-  const runQualityCheck = () => {
+  const buildQualityReport = () => {
     const now = Date.now();
     const ageMs = lastFrameAt === null ? null : Math.max(0, now - lastFrameAt);
     const frameOk = ageMs !== null && ageMs < 5000;
@@ -510,8 +514,73 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       `حالة الصفحة: ${pageState}${pageSnapshot?.title ? ` · ${pageSnapshot.title.slice(0, 80)}` : ''}`,
       `الدقة: ${w}×${h} · الإطارات المرصودة: ${frameCount}${measuredStatus ? ` · الخادم=${measuredStatus}` : ' · القياس الخادمي غير متاح'}`,
     ];
-    setQualityReport({ ok, title: ok ? 'البث اجتاز فحص الجودة الحي' : 'فحص الجودة يتطلب مراجعة قبل التسليم', checks });
+    return { ok, title: ok ? 'البث اجتاز فحص الجودة الحي' : 'فحص الجودة يتطلب مراجعة قبل التسليم', checks, measuredStatus, fps, ageMs, actionErrors, jsErrors, networkErrors };
+  };
+
+  const runQualityCheck = () => {
+    setQualityReport(buildQualityReport());
     setQualityOpen(true);
+  };
+
+  const downloadJson = (filename: string, value: unknown) => {
+    try {
+      const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = url;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch {
+      setCopyFeedback('error');
+    }
+  };
+
+  const copyText = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    if (!copied) throw new Error('clipboard unavailable');
+  };
+
+  const copyQaReport = async () => {
+    try {
+      const report = buildQualityReport();
+      await copyText(JSON.stringify({ exportedAt: new Date().toISOString(), sessionId, report, page: pageSnapshot, quality: qualityMetrics, diagnostics }, null, 2));
+      setQualityReport(report);
+      setCopyFeedback('copied');
+      window.setTimeout(() => setCopyFeedback(null), 1800);
+    } catch {
+      setCopyFeedback('error');
+    }
+  };
+
+  const exportSessionEvidence = () => {
+    const report = buildQualityReport();
+    downloadJson(`joe-browser-evidence-${new Date().toISOString().replace(/[:.]/g, '-')}.json`, {
+      schema: 'joe.browser.session-evidence.v1',
+      exportedAt: new Date().toISOString(),
+      sessionId,
+      connection: { status, frameCount, lastFrameAt, width: w, height: h },
+      page: pageSnapshot,
+      quality: qualityMetrics,
+      diagnostics,
+      qaReport: report,
+      browserActions,
+      legacyActions: actions,
+      final,
+      debug,
+    });
   };
 
   const toggleFullscreen = async () => {
@@ -560,6 +629,26 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     }
   };
 
+  const actionSearch = actionQuery.trim().toLowerCase();
+  const matchesAction = (action: Extract<WsEvent, { type: 'browser_action' }>) => {
+    const text = [action.phase, action.actionType, action.actionId, action.summary, action.reason].filter(Boolean).join(' ').toLowerCase();
+    const queryOk = !actionSearch || text.includes(actionSearch);
+    const filterOk = actionFilter === 'all' || (actionFilter === 'failed' ? action.phase === 'error' || action.ok === false : action.phase === 'done' || action.ok === true);
+    return queryOk && filterOk;
+  };
+  const matchesLegacyAction = (action: (typeof actions)[number]) => {
+    const text = [action.type, action.actionType, action.actionId, action.summary, action.reason, action.error].filter(Boolean).join(' ').toLowerCase();
+    const queryOk = !actionSearch || text.includes(actionSearch);
+    const filterOk = actionFilter === 'all' || (actionFilter === 'failed' ? action.type === 'action_error' : action.type === 'action_done');
+    return queryOk && filterOk;
+  };
+  const filteredBrowserActions = browserActions.filter(matchesAction);
+  const filteredActions = actions.filter(matchesLegacyAction);
+  const qualitySignal = qualityMetrics?.status || (status === 'error' ? 'blocked' : 'unknown');
+  const runtimeErrorCount = (qualityMetrics?.jsErrors ?? diagnostics?.jsErrors ?? 0) + (qualityMetrics?.networkErrors ?? diagnostics?.networkErrors ?? 0);
+  const qualityNeedsRecovery = status === 'error' || qualitySignal === 'degraded' || qualitySignal === 'blocked' || runtimeErrorCount > 0;
+  const recoveryTitle = status === 'error' ? 'بث المتصفح غير متصل' : qualitySignal === 'blocked' ? 'المتصفح محجوب ويحتاج تدخلاً' : 'جودة المتصفح تحتاج مراجعة';
+  const recoveryNextStep = status === 'error' ? 'أعد الاتصال بالجلسة' : runtimeErrorCount > 0 ? 'افتح التشخيص وراجع آخر خطأ' : 'افتح فحص الجودة وتحقق من آخر إطار';
   const waitingForPage = status === 'connected' && lastFrameAt === null && !pageSnapshot;
   const browserUnavailable = status === 'error';
 
@@ -567,6 +656,12 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     <div data-testid="browser-stream-root" style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#0b0b0b', display: 'flex', flexDirection: 'column' }}>
       <div ref={rootRef} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', background: '#fff' }}>
         <div className="browser-control-rail" data-testid="browser-control-rail" dir="rtl" aria-label="أدوات البث الحي">
+          <span
+            className={`browser-quality-signal is-${qualitySignal}`}
+            data-testid="browser-quality-signal"
+            title={qualityNeedsRecovery ? recoveryTitle : `جودة المتصفح: ${qualitySignal}`}
+            aria-label={qualityNeedsRecovery ? recoveryTitle : `جودة المتصفح: ${qualitySignal}`}
+          >●</span>
           <button
             className={`browser-control-button ${manualMode ? 'is-active' : ''}`}
             data-testid="browser-control-button"
@@ -747,6 +842,10 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
               <strong>{qualityReport.ok ? '✓' : '!'}</strong> {qualityReport.title}
               <button className="browser-quality-close" onClick={() => setQualityOpen(false)} aria-label="إغلاق فحص الجودة">×</button>
             </div>
+            <div className="browser-quality-actions">
+              <button type="button" data-testid="browser-copy-qa-button" onClick={() => void copyQaReport()}>{copyFeedback === 'copied' ? 'تم النسخ' : copyFeedback === 'error' ? 'تعذر النسخ' : 'نسخ التقرير'}</button>
+              <button type="button" data-testid="browser-export-evidence-button" onClick={exportSessionEvidence}>تصدير الدليل</button>
+            </div>
             <div className="browser-quality-checks">{qualityReport.checks.map((check) => <div key={check}>{check}</div>)}</div>
           </div>
         ) : null}
@@ -773,7 +872,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
                 إلغاء
               </button>
             ) : null}
-            {actions.length || final || debug ? (
+            {actions.length || browserActions.length || final || debug ? (
               <button
                 onClick={() => setDetailsOpen((v) => !v)}
                 style={{
@@ -791,6 +890,19 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
             ) : null}
           </div>
         </div>
+        {qualityNeedsRecovery ? (
+          <div className="browser-recovery-banner" data-testid="browser-recovery-banner" role="alert" dir="rtl">
+            <div><strong>{recoveryTitle}</strong><span>{recoveryNextStep}</span></div>
+            <button type="button" onClick={() => {
+              if (status === 'error') void startBrowserSession();
+              else {
+                setDetailsOpen(true);
+                setActionFilter(runtimeErrorCount > 0 ? 'failed' : 'all');
+                runQualityCheck();
+              }
+            }}>{status === 'error' ? 'إعادة المحاولة' : 'مراجعة الآن'}</button>
+          </div>
+        ) : null}
         {detailsOpen ? (
           <div style={{ marginTop: 10, display: 'flex', gap: 10, alignItems: 'stretch', flexWrap: 'wrap' }}>
             {pageSnapshot ? (
@@ -821,21 +933,31 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
                 {final.summary}
               </div>
             ) : null}
+            {(browserActions.length || actions.length) ? (
+              <div className="browser-action-filters" data-testid="browser-action-filters" dir="rtl">
+                <strong>سجل الأفعال</strong>
+                <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value as ActionFilter)} aria-label="تصفية سجل الأفعال">
+                  <option value="all">الكل</option>
+                  <option value="success">الناجحة فقط</option>
+                  <option value="failed">الفاشلة فقط</option>
+                </select>
+                <input value={actionQuery} onChange={(event) => setActionQuery(event.target.value)} placeholder="بحث في الأفعال" aria-label="بحث في سجل الأفعال" />
+                <button type="button" onClick={() => { setActionFilter('all'); setActionQuery(''); }}>مسح التصفية</button>
+                <span>{filteredBrowserActions.length + filteredActions.length} نتيجة</span>
+              </div>
+            ) : null}
             {browserActions.length ? (
               <div style={{ flex: '2 1 520px', minWidth: 320, maxHeight: 180, overflow: 'auto', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(37,99,235,0.10)', color: '#fff', fontSize: 12, lineHeight: 1.35, whiteSpace: 'pre-wrap' }}>
-                {browserActions.slice(-30).map((a) => `${a.phase} · ${a.actionType} · ${a.actionId}${a.durationMs == null ? '' : ` · ${Math.round(a.durationMs)}ms`}${a.reason ? ` · ${a.reason}` : ''}`).join('\n')}
+                {filteredBrowserActions.length ? filteredBrowserActions.slice(-30).map((a) => `${a.phase} · ${a.actionType} · ${a.actionId}${a.durationMs == null ? '' : ` · ${Math.round(a.durationMs)}ms`}${a.reason ? ` · ${a.reason}` : ''}`).join('\n') : 'لا توجد أفعال تطابق التصفية الحالية.'}
               </div>
             ) : null}
             {actions.length ? (
               <div style={{ flex: '2 1 520px', minWidth: 320, maxHeight: 220, overflow: 'auto', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.35)', color: '#fff', fontSize: 12, lineHeight: 1.35, whiteSpace: 'pre-wrap' }}>
-                {actions
-                  .slice(-30)
-                  .map((a) => {
-                    const label = a.summary ? `${a.actionType} · ${a.summary}` : a.actionType;
-                    const tail = a.type === 'action_error' ? ` · ${String(a.reason || a.error || '').slice(0, 160)}` : '';
-                    return `${a.type} · ${a.actionId} · ${label}${tail}`;
-                  })
-                  .join('\n')}
+                {filteredActions.length ? filteredActions.slice(-30).map((a) => {
+                  const label = a.summary ? `${a.actionType} · ${a.summary}` : a.actionType;
+                  const tail = a.type === 'action_error' ? ` · ${String(a.reason || a.error || '').slice(0, 160)}` : '';
+                  return `${a.type} · ${a.actionId} · ${label}${tail}`;
+                }).join('\n') : 'لا توجد أحداث قديمة تطابق التصفية الحالية.'}
               </div>
             ) : null}
             {debug ? (
