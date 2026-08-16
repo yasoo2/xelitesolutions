@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "verify-browser-ui": "node scripts/verify-browser-ui.mjs",
     "type-check": "tsc -b",
     "preview": "vite preview",
     "lint": "eslint ."

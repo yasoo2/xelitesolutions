@@ -39,12 +39,12 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const [busy, setBusy] = useState(false);
   const [queueLen, setQueueLen] = useState(0);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  // The user can log into ANY site by taking manual control of this live browser —
-  // clicks/keys below already forward to the real page, and the login persists
-  // forever (panel-browser session state). This bar surfaces that so they don't
-  // rely on Joe typing a password (which Google/banks block). Dismissible.
-  const [loginBarHidden, setLoginBarHidden] = useState<boolean>(() => { try { return localStorage.getItem('joe_login_bar_hidden') === '1'; } catch { return false; } });
   const [manualMode, setManualMode] = useState(false);
+  const [lastFrameAt, setLastFrameAt] = useState<number | null>(null);
+  const [frameCount, setFrameCount] = useState(0);
+  const [qualityOpen, setQualityOpen] = useState(false);
+  const [qualityReport, setQualityReport] = useState<{ ok: boolean; title: string; checks: string[] } | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [actions, setActions] = useState<
     Array<{ ts: number; type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; actionId: string; actionType: string; summary?: string; reason?: string; error?: string }>
   >([]);
@@ -320,6 +320,8 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         if (msg.type === 'stream_frame') {
           setW(msg.w);
           setH(msg.h);
+          setLastFrameAt(Date.now());
+          setFrameCount((count) => count + 1);
           const img = new Image();
           img.onload = () => {
             const canvas = canvasRef.current;
@@ -428,32 +430,64 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     };
   }, [wsUrl]);
 
+  useEffect(() => {
+    const onFullscreenChange = () => setIsFullscreen(document.fullscreenElement === rootRef.current);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+
+  const runQualityCheck = () => {
+    const ageMs = lastFrameAt === null ? null : Math.max(0, Date.now() - lastFrameAt);
+    const frameOk = ageMs !== null && ageMs < 5000;
+    const connectionOk = status === 'connected';
+    const queueOk = queueLen < 8;
+    const actionErrors = actions.filter((action) => action.type === 'action_error').length;
+    const actionsOk = actionErrors === 0;
+    const ok = connectionOk && frameOk && queueOk && actionsOk;
+    const checks = [
+      `${connectionOk ? '✓' : '✗'} WebSocket: ${status}`,
+      `${frameOk ? '✓' : '✗'} آخر إطار: ${ageMs === null ? 'لم يصل بعد' : `${Math.round(ageMs / 100) / 10}s`}`,
+      `${queueOk ? '✓' : '✗'} طابور الأفعال: ${queueLen}`,
+      `${actionsOk ? '✓' : '✗'} أخطاء الأفعال: ${actionErrors}`,
+      `الدقة: ${w}×${h} · الإطارات المرصودة: ${frameCount}`,
+    ];
+    setQualityReport({ ok, title: ok ? 'البث جاهز للاختبار الحي' : 'يحتاج البث إلى مراجعة قبل الاختبار', checks });
+    setQualityOpen(true);
+  };
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await rootRef.current?.requestFullscreen();
+    } catch { }
+  };
+
+  const captureSnapshot = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !w || !h) return;
+    try {
+      const link = document.createElement('a');
+      link.download = `joe-browser-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch { }
+  };
+
   return (
-    <div style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#0b0b0b', display: 'flex', flexDirection: 'column' }}>
-      {!loginBarHidden && (
-        <div dir="rtl" style={{
-          display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
-          background: manualMode ? 'rgba(34,197,94,0.14)' : 'rgba(37,99,235,0.14)',
-          borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#e8eef7', fontSize: 12.5,
-        }}>
-          <span style={{ fontSize: 15 }}>🔑</span>
-          <span style={{ flex: 1, minWidth: 0 }}>
-            {manualMode
-              ? t('browserManualHintOn')
-              : t('browserManualHintOff')}
-          </span>
-          <button
-            onClick={() => { setManualMode(true); try { canvasRef.current?.focus(); } catch { } }}
-            style={{ padding: '5px 12px', borderRadius: 7, border: 0, background: manualMode ? '#16a34a' : '#2563eb', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}
-          >{manualMode ? t('browserManualActive') : t('browserTakeControl')}</button>
-          <button
-            onClick={() => { setLoginBarHidden(true); try { localStorage.setItem('joe_login_bar_hidden', '1'); } catch { } }}
-            title={t('hideCanBeRestored')}
-            style={{ padding: '5px 8px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#8ba0be', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
-          >{t('hide')}</button>
-        </div>
-      )}
+    <div data-testid="browser-stream-root" style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#0b0b0b', display: 'flex', flexDirection: 'column' }}>
       <div ref={rootRef} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', background: '#fff' }}>
+        <div className="browser-control-rail" data-testid="browser-control-rail" dir="rtl" aria-label="أدوات البث الحي">
+          <button
+            className={`browser-control-button ${manualMode ? 'is-active' : ''}`}
+            data-testid="browser-control-button"
+            onClick={() => { setManualMode((active) => !active); try { canvasRef.current?.focus(); } catch { } }}
+            title={manualMode ? t('browserManualActive') : t('browserTakeControl')}
+            aria-label={manualMode ? t('browserManualActive') : t('browserTakeControl')}
+          >{manualMode ? 'LIVE' : 'CTRL'}</button>
+          <button className="browser-control-icon" data-testid="browser-quality-button" onClick={runQualityCheck} title="فحص جودة البث الحي" aria-label="فحص جودة البث الحي">QA</button>
+          <button className="browser-control-icon" data-testid="browser-capture-button" onClick={captureSnapshot} title="حفظ لقطة من البث" aria-label="حفظ لقطة من البث">CAP</button>
+          <button className="browser-control-icon" data-testid="browser-fullscreen-button" onClick={() => void toggleFullscreen()} title={isFullscreen ? 'الخروج من ملء الشاشة' : 'تكبير البث'} aria-label={isFullscreen ? 'الخروج من ملء الشاشة' : 'تكبير البث'}>{isFullscreen ? '−' : '↗'}</button>
+        </div>
         <style>{`
         .browser-cursor {
           width: 26px;
@@ -579,6 +613,15 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
             <path className="browser-cursor-path" d="M3.5 2.2 L3.5 19.6 L8.6 15.4 L11.5 22.1 L14.3 20.8 L11.3 14.0 L18.7 14.0 Z" />
           </svg>
         </div>
+        {qualityOpen && qualityReport ? (
+          <div className="browser-quality-popover" dir="rtl" role="status" aria-live="polite">
+            <div className={`browser-quality-title ${qualityReport.ok ? 'is-good' : 'is-warning'}`}>
+              <strong>{qualityReport.ok ? '✓' : '!'}</strong> {qualityReport.title}
+              <button className="browser-quality-close" onClick={() => setQualityOpen(false)} aria-label="إغلاق فحص الجودة">×</button>
+            </div>
+            <div className="browser-quality-checks">{qualityReport.checks.map((check) => <div key={check}>{check}</div>)}</div>
+          </div>
+        ) : null}
       </div>
       <div style={{ padding: 10, borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.35)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>

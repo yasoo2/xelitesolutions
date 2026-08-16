@@ -220,6 +220,16 @@ export default function JoeIDELayout({
         if (previewUrl) setIsWorkspaceCollapsed(false);
     }, [previewUrl]);
 
+    // A real browser session is a direct visibility contract: the live stream must
+    // not remain hidden behind the collapsed canvas. This effect intentionally does
+    // not run on close, so a user's manual collapse is respected until a new session
+    // or a new browser-tab selection arrives.
+    useEffect(() => {
+        if (browserSessionId || workspaceTab === 'browser') {
+            setIsWorkspaceCollapsed(false);
+        }
+    }, [browserSessionId, workspaceTab]);
+
     // SMART AUTO-OPEN: when the active workspace tab CHANGES because a task needs
     // it (Joe.tsx switches to terminal/preview/browser as work runs), reveal the
     // canvas. Guarded so it does NOT fire on the initial mount — the chat must stay
