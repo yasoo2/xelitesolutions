@@ -490,10 +490,10 @@ export class AgentOrchestrator {
           // Keep the value on the canonical context so ProjectPipelineTool can
           // carry it through PhaseExecutor, verifiers, generators, and repairs.
           const engineeringLlmTimeoutMs = node.tool === 'project_pipeline'
-            ? (Number(goalContext?.providerTimeoutMs) > 0 ? Number(goalContext.providerTimeoutMs) : 120000)
+            ? (Number(goalContext?.providerTimeoutMs) > 0 ? Number(goalContext?.providerTimeoutMs) : 120000)
             : goalContext?.providerTimeoutMs;
           const engineeringPlannerTimeoutMs = node.tool === 'project_pipeline'
-            ? (Number(goalContext?.plannerTimeoutMs) > 0 ? Number(goalContext.plannerTimeoutMs) : 120000)
+            ? (Number(goalContext?.plannerTimeoutMs) > 0 ? Number(goalContext?.plannerTimeoutMs) : 120000)
             : goalContext?.plannerTimeoutMs;
           const executionContext = {
               sessionId: liveSessionId,
@@ -510,7 +510,7 @@ export class AgentOrchestrator {
               providerTimeoutMs: engineeringLlmTimeoutMs,
               plannerTimeoutMs: engineeringPlannerTimeoutMs,
               plannerMaxCompletionTokens: node.tool === 'project_pipeline'
-                ? (Number(goalContext?.plannerMaxCompletionTokens) > 0 ? Number(goalContext.plannerMaxCompletionTokens) : 12000)
+                ? (Number(goalContext?.plannerMaxCompletionTokens) > 0 ? Number(goalContext?.plannerMaxCompletionTokens) : 12000)
                 : goalContext?.plannerMaxCompletionTokens,
               plannerReasoningEffort: node.tool === 'project_pipeline'
                 ? (goalContext?.plannerReasoningEffort || 'low')

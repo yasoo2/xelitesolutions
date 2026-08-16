@@ -231,8 +231,24 @@ export function resolveRunnableProject(workspaceRoot: string, projectQuery?: unk
         return { cwd: null, candidates, matched: false };
     }
 
+    /**
+     * A SCAFFOLD FOLDER IS OFTEN THE NAME, CUT SHORT.
+     *
+     * The generator bounds a directory name, so «Joe System Validation and Nexus
+     * Development» lands on disk as `Joe-System-Validation-and-Nexus-Developm`.
+     * Matching only forwards (`label.includes(requested)`) cannot see that, and
+     * the pipeline could not start the very project it had just built.
+     *
+     * The reverse direction used to be the unbounded `requested.includes(label)`,
+     * which is genuinely unsafe: a folder called `api` matches any sentence
+     * containing the word. Truncation produces a PREFIX, so that is what is
+     * accepted — and only when the label is long enough to identify something.
+     */
+    const TRUNCATION_FLOOR = 8;
     const matches = candidates.filter(candidate => projectLabels(candidate).some(label =>
-        label === requested || label.includes(requested)));
+        label === requested
+        || label.includes(requested)
+        || (label.length >= TRUNCATION_FLOOR && requested.startsWith(label))));
     if (!matches.length) return { cwd: null, candidates, matched: false };
 
     // A generated retry folder ends in a short hexadecimal suffix.  Prefer the
