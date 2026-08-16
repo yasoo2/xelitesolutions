@@ -22,7 +22,19 @@ export interface SelfFixPlan {
 }
 
 function rawTextOf(ticket: RepairTicket) {
-  return `${ticket.status}\n${ticket.primaryError}\n${ticket.failedTasks.map(t => `${t.task}\n${t.tool}: ${t.error}${t.command ? `\ncommand: ${t.command}` : ''}${t.cwd ? `\ncwd: ${t.cwd}` : ''}`).join('\n')}`;
+  return `${ticket.status}\n${ticket.primaryError}\n${ticket.failedTasks.map(t => `${t.task}\n${t.tool}: ${t.error}${t.command ? `\ncommand: ${t.command}` : ''}${t.cwd ? `\ncwd: ${t.cwd}` : ''}${t.file ? `\nfile: ${t.file}` : ''}${t.find ? `\nfind: ${t.find}` : ''}${t.replace !== undefined ? `\nreplace: ${t.replace}` : ''}`).join('\n')}`;
+}
+
+function extractFailedEdit(ticket: RepairTicket) {
+  const failed = ticket.failedTasks.find(task =>
+    ['file_edit', 'file_edit_advanced'].includes(task.tool)
+    && typeof task.file === 'string'
+    && typeof task.find === 'string'
+    && task.find.length > 0
+    && typeof task.replace === 'string'
+  );
+  if (!failed) return null;
+  return { file: failed.file!, find: failed.find!, replace: failed.replace ?? '' };
 }
 
 function textOf(ticket: RepairTicket) {
@@ -66,6 +78,52 @@ function extractMissingLauncher(ticket: RepairTicket) {
     ticket.context.workspaceId,
     failed.background,
   );
+}
+
+function hasNativeAddonBuildFailure(ticket: RepairTicket) {
+  const evidence = rawTextOf(ticket);
+  return /(?:node-gyp|prebuild-install|binding\.gyp|gyp ERR!|C\+\+\s+(?:compiler|build)|MSBuild|make(?:\.exe)?\s+failed|native addon|better-sqlite3|sqlite3|node-sass|sharp|canvas|ffi-napi)/i.test(evidence)
+    && /(?:build|compile|install|prebuild|gyp|compiler|MSBuild|make|not found|failed|error)/i.test(evidence);
+}
+
+function extractMissingNpmRunner(ticket: RepairTicket) {
+  const npmRunners = new Set(['jest', 'vitest', 'mocha', 'ava', 'tap']);
+  for (const failed of ticket.failedTasks) {
+    const evidence = `${failed.error || ''}\n${ticket.primaryError || ''}`;
+    if (failed.tool !== 'shell_execute' || !failed.cwd) continue;
+    if (!/(?:not found|command not found|cannot find module|is not recognized)/i.test(evidence)) continue;
+    const match = evidence.match(/(?:^|[\s'\"/])((?:jest|vitest|mocha|ava|tap))(?:$|[\s:'\"/])/im);
+    const runner = match?.[1]?.toLowerCase();
+    if (!runner || !npmRunners.has(runner)) continue;
+    return { runner, cwd: failed.cwd, task: failed.task };
+  }
+  return null;
+}
+
+function extractEslintConfigFailure(ticket: RepairTicket) {
+  const raw = rawTextOf(ticket);
+  const isEslintConfigFailure = /eslint/i.test(raw)
+    && /(?:couldn['’]t find a configuration file|could not find (?:an )?eslint configuration|failed to read (?:json )?file|cannot read config file|not valid json|unexpected token[^\n]*import)/i.test(raw);
+  if (!isEslintConfigFailure) return null;
+
+  const configMatch = raw.match(/(?:file at|config(?:uration)? file[:\s]+)\s*([A-Za-z0-9_./\\-]*\.eslintrc(?:\.json)?|eslint\.config\.[cm]?js)/i);
+  const lintTask = ticket.failedTasks.find(task =>
+    task.tool === 'shell_execute' && /(?:eslint|npm\s+run\s+lint|\blint\b)/i.test(`${task.command || ''}\n${task.error || ''}`),
+  );
+  const rawConfigPath = configMatch?.[1]?.replace(/\\/g, '/');
+  const cwd = lintTask?.cwd?.replace(/\\/g, '/').replace(/\/$/, '');
+  const configPath = rawConfigPath && cwd && rawConfigPath.startsWith(`${cwd}/`)
+    ? rawConfigPath.slice(cwd.length + 1)
+    : rawConfigPath && !rawConfigPath.startsWith('/') && !/^[A-Za-z]:\//i.test(rawConfigPath)
+      ? rawConfigPath
+      : '.eslintrc.json';
+
+  return {
+    configPath: configPath || '.eslintrc.json',
+    cwd: lintTask?.cwd || undefined,
+    command: lintTask?.command || undefined,
+    error: ticket.primaryError,
+  };
 }
 
 function extractBuildContext(ticket: RepairTicket) {
@@ -206,6 +264,85 @@ export class SelfFixService {
           cwd: launcher.cwd,
           background: launcher.background,
           timeout: 600000,
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    const failedEdit = extractFailedEdit(ticket);
+    if (failedEdit && /text to replace not found|search text.*not found|find.*not found/i.test(text)) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `The exact file edit missed the current file. Retry once with evidence-preserving advanced edit for ${failedEdit.file}; if the current content still does not match, stop for review.`,
+        maxAttempts: 1,
+        strategy: 'code_fix',
+        suggestedTool: 'file_edit_advanced',
+        suggestedInput: {
+          filePath: failedEdit.file,
+          edits: [{ find: failedEdit.find, replace: failedEdit.replace }],
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    // Native addons are not a missing-runner problem. Re-running npm install
+    // would repeat the same compiler/toolchain failure and can mutate the project
+    // without improving its portability. Stop honestly and let planning choose a
+    // runtime-native or file-backed alternative.
+    if (hasNativeAddonBuildFailure(ticket)) {
+      return this.stop(
+        ticket,
+        'A native dependency failed to install or compile. No automatic retry is safe; choose node:sqlite or a JSON/file fallback instead of repeating npm install.',
+        'manual_review',
+      );
+    }
+
+    const missingNpmRunner = extractMissingNpmRunner(ticket);
+    if (missingNpmRunner) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `The project test runner ${missingNpmRunner.runner} is missing. Install it as a project-local dev dependency in the recorded project cwd, then rerun the failed phase once.`,
+        maxAttempts: 1,
+        strategy: 'dependency_fix',
+        suggestedTool: 'npm_manager',
+        suggestedInput: {
+          command: 'install',
+          packages: [missingNpmRunner.runner],
+          dev: true,
+          cwd: missingNpmRunner.cwd,
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    const eslintConfigFailure = extractEslintConfigFailure(ticket);
+    if (eslintConfigFailure) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `ESLint configuration discovery/parsing failure detected in ${eslintConfigFailure.configPath}. Rewrite only the config in the recorded project cwd using a format supported by the installed ESLint version, then rerun the failed phase.`,
+        maxAttempts: 1,
+        strategy: 'build_fix',
+        suggestedTool: 'ai_write_file',
+        suggestedInput: {
+          path: eslintConfigFailure.configPath,
+          description: [
+            `Repair the ESLint configuration file ${eslintConfigFailure.configPath} in the project cwd.`,
+            'The lint command cannot discover or parse the current config. Inspect the existing file and package.json first.',
+            'Preserve the project intent, but rewrite the file in the configuration format supported by the installed ESLint version and the dependencies actually present in package.json.',
+            'Do not edit application source files, invent dependencies, or create a second config unless the evidence requires it.',
+            `Observed command: ${eslintConfigFailure.command || 'unknown'}`,
+            `Observed error: ${eslintConfigFailure.error}`,
+          ].join('\\n'),
+          context: JSON.stringify({ eslintConfigFailure, repairTicket: ticket }),
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),

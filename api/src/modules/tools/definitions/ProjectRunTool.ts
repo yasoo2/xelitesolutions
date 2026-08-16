@@ -178,6 +178,19 @@ function projectLabel(dir: string): string {
     return normalizeProjectLabel(path.basename(dir));
 }
 
+function projectPackageLabel(dir: string): string {
+    try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'));
+        return normalizeProjectLabel(pkg?.name || '');
+    } catch {
+        return '';
+    }
+}
+
+function projectLabels(dir: string): string[] {
+    return Array.from(new Set([projectLabel(dir), projectPackageLabel(dir)].filter(Boolean)));
+}
+
 function requestedProjectLabel(query: unknown): string {
     const text = String(query || '').trim();
     const quoted = text.match(/[«“"]\s*([^»”"]+?)\s*[»”"]/u)?.[1];
@@ -218,10 +231,8 @@ export function resolveRunnableProject(workspaceRoot: string, projectQuery?: unk
         return { cwd: null, candidates, matched: false };
     }
 
-    const matches = candidates.filter(candidate => {
-        const label = projectLabel(candidate);
-        return label === requested || label.includes(requested) || requested.includes(label);
-    });
+    const matches = candidates.filter(candidate => projectLabels(candidate).some(label =>
+        label === requested || label.includes(requested)));
     if (!matches.length) return { cwd: null, candidates, matched: false };
 
     // A generated retry folder ends in a short hexadecimal suffix.  Prefer the

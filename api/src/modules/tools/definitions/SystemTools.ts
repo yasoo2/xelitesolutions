@@ -507,7 +507,7 @@ export class NpmManagerTool extends BaseTool {
     tags = ['npm', 'package', 'install'];
     inputSchema = {
         type: 'object' as const,
-        properties: { command: { type: 'string' }, packages: { type: 'array', items: { type: 'string' } }, dev: { type: 'boolean' } },
+        properties: { command: { type: 'string' }, packages: { type: 'array', items: { type: 'string' } }, dev: { type: 'boolean' }, cwd: { type: 'string' }, projectPath: { type: 'string' } },
         required: ['command']
     };
     outputSchema = { type: 'object' as const, properties: { output: { type: 'string' } } };
@@ -515,7 +515,7 @@ export class NpmManagerTool extends BaseTool {
     sideEffects: ToolPermission[] = ['execute', 'write', 'internet'];
     rateLimitPerMinute = 30;
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const logs: string[] = [];
         const cmd = String(input?.command || '').trim();
         const pkgs = (input?.packages as string[]) || [];
@@ -527,7 +527,13 @@ export class NpmManagerTool extends BaseTool {
             const args = [...cmdParts, ...(Array.isArray(pkgs) ? pkgs : [])];
             if (isDev && (cmdParts[0] === 'install' || cmdParts[0] === 'i')) args.push('-D');
             logs.push(`npm.args=${args.join(' ')}`);
-            const workDir = getWorkspaceRoot();
+            const requestedCwd = String(input?.cwd || input?.projectPath || '').trim();
+            const resolvedWorkDir = requestedCwd
+                ? safePath(requestedCwd, context?.workspaceId)
+                : { ok: true as const, path: getWorkspaceRoot(context?.workspaceId) };
+            if (!resolvedWorkDir.ok) return { ok: false, error: resolvedWorkDir.error, logs };
+            const workDir = resolvedWorkDir.path;
+            logs.push(`npm.cwd=${workDir}`);
             const r = await handleShellCommand('npm', args, workDir, 5 * 60_000, false);
             if (!r.ok) return { ok: false, error: r.error || 'npm_failed', logs: [...logs, ...(r.logs || [])] };
 

@@ -159,8 +159,14 @@ export async function narrate(
  * ON, because the alternative that was shipping was a fake.
  */
 export function narrationEnabled(): boolean {
+    // Both names are supported: JOE_NARRATION is the public switch, while
+    // DISABLE_NARRATION is kept for local/offline runs and diagnostic scripts.
+    // Treating the latter as data only made an operator believe narration was
+    // disabled while every project_pipeline node still spent an LLM request.
+    const disabled = String(process.env.DISABLE_NARRATION ?? '').trim().toLowerCase();
     const v = String(process.env.JOE_NARRATION ?? '').trim().toLowerCase();
-    if (v === '0' || v === 'false' || v === 'off') return false;
+    if (disabled === '1' || disabled === 'true' || disabled === 'on'
+        || v === '0' || v === 'false' || v === 'off') return false;
     // Narration is a DECORATION: one friendly line above a step. When the
     // local brain is paused, that line would be bought from the metered
     // provider — spending the day's quota, and the user's seconds, on

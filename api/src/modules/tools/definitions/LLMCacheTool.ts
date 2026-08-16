@@ -55,7 +55,12 @@ export class LLMCacheTool implements ToolDefinition {
     private static maxEntries = (() => {
         const v = Number(process.env.LLM_CACHE_MAX_ENTRIES);
         if (Number.isFinite(v) && v > 0) return Math.floor(v);
-        return 500;
+        return 128;
+    })();
+    private static maxResponseChars = (() => {
+        const v = Number(process.env.LLM_CACHE_MAX_RESPONSE_CHARS);
+        if (Number.isFinite(v) && v > 0) return Math.floor(v);
+        return 32_000;
     })();
     private static ttlMs = (() => {
         const v = Number(process.env.LLM_CACHE_TTL_MS);
@@ -169,10 +174,26 @@ export class LLMCacheTool implements ToolDefinition {
     }
 
     private setCached(prompt: string, response: string, model: string | undefined, logs: string[]) {
+        const normalizedResponse = String(response ?? '');
+        if (normalizedResponse.length > LLMCacheTool.maxResponseChars) {
+            logs.push(`LLM response not cached (${normalizedResponse.length} chars exceeds ${LLMCacheTool.maxResponseChars}-char safety limit)`);
+            return {
+                ok: true,
+                output: {
+                    success: true,
+                    cached: false,
+                    skipped: true,
+                    reason: 'response_too_large',
+                    responseChars: normalizedResponse.length,
+                    maxResponseChars: LLMCacheTool.maxResponseChars,
+                },
+                logs,
+            };
+        }
         const key = this.generateCacheKey(prompt, model);
 
         LLMCacheTool.cache.set(key, {
-            response,
+            response: normalizedResponse,
             timestamp: Date.now(),
             hits: 0
         });
@@ -199,6 +220,7 @@ export class LLMCacheTool implements ToolDefinition {
             cacheSize: LLMCacheTool.cache.size,
             ttlMs: LLMCacheTool.ttlMs,
             maxEntries: LLMCacheTool.maxEntries,
+            maxResponseChars: LLMCacheTool.maxResponseChars,
             estimatedCostSaved: `$${LLMCacheTool.stats.costSaved.toFixed(2)}`
         };
 

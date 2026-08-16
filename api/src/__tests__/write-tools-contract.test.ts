@@ -126,7 +126,13 @@ beforeAll(async () => {
     }
 }, 180000);
 
-afterAll(() => { try { fs.rmSync(sandbox, { recursive: true, force: true }); } catch { } });
+afterAll(() => {
+    // JSON/mock mode has one visible local root. This audit intentionally points
+    // it at a temp directory, so restore the production default before Jest
+    // exits; otherwise the next local API process inherits the deleted sandbox.
+    try { workspaceService.resetToSystem(); } catch { }
+    try { fs.rmSync(sandbox, { recursive: true, force: true }); } catch { }
+});
 
 describe('the write/execute half of the catalogue is real', () => {
     it('there are more of them than of the read-only half — this must cover the bulk', () => {

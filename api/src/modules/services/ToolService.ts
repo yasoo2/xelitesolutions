@@ -118,6 +118,14 @@ function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' |
     const s = (() => {
         try { return JSON.stringify(input || {}); } catch { return String(input || ''); }
     })();
+    if (n === 'deploy_project') {
+        const action = String((input as any)?.action || '').trim().toLowerCase();
+        // Local build/start/package actions are part of the normal engineering
+        // loop and must remain usable under AUTO_APPROVE_SAFE. Only the action
+        // that creates a public tunnel is an external side effect requiring
+        // explicit all-risk approval.
+        return action === 'expose_port' ? 'high' : 'medium';
+    }
     if (n === 'shell_execute') {
         const cmd = String((input as any)?.command || '').toLowerCase();
         if (/(rm\s+-rf|drop\s+table|shutdown|kill\s+process|\bsudo\b)/i.test(cmd)) return 'critical';

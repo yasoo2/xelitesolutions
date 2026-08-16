@@ -2,6 +2,7 @@ import { ToolDefinition } from '../types';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import * as fs from 'fs';
 import * as path from 'path';
+import { resolveToolPath } from '../utils';
 
 /**
  * DeployProjectTool — Project deployment and port exposure.
@@ -60,13 +61,30 @@ export class DeployProjectTool implements ToolDefinition {
         required: ['action', 'projectPath'],
     };
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const action = String(input.action || '');
-        const projectPath = String(input.projectPath || process.cwd());
+        const rawProjectPath = String(input.projectPath || '').trim();
         const logs: string[] = [];
 
+        if (!rawProjectPath) {
+            return { ok: false, error: 'Project path is required and must be workspace-relative.', logs };
+        }
+
+        // Planner arguments are workspace-relative evidence, not paths relative
+        // to the API process. Phase 8 commonly says `NEXUS`; resolving it here
+        // keeps deploy_project consistent with file/test tools and preserves the
+        // containment check for absolute or traversal paths as well.
+        let projectPath: string;
+        try {
+            const workspaceId = context?.workspaceId || input?.workspaceId || input?.__workspaceId;
+            projectPath = resolveToolPath(rawProjectPath, { workspaceId });
+        } catch (error: any) {
+            const reason = String(error?.message || error);
+            return { ok: false, error: `Project path outside workspace: ${rawProjectPath}`, logs: [`Path rejected: ${reason}`] };
+        }
+
         if (!fs.existsSync(projectPath)) {
-            return { ok: false, error: `Project path not found: ${projectPath}`, logs: [] };
+            return { ok: false, error: `Project path not found: ${rawProjectPath}`, logs: [] };
         }
 
         try {

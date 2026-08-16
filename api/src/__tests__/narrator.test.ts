@@ -141,7 +141,11 @@ describe('narrate() never becomes the step\'s problem', () => {
 
 describe('it can be switched off, because it costs a call per step', () => {
     const original = process.env.JOE_NARRATION;
-    afterEach(() => { if (original === undefined) delete process.env.JOE_NARRATION; else process.env.JOE_NARRATION = original; });
+    const originalDisabled = process.env.DISABLE_NARRATION;
+    afterEach(() => {
+        if (original === undefined) delete process.env.JOE_NARRATION; else process.env.JOE_NARRATION = original;
+        if (originalDisabled === undefined) delete process.env.DISABLE_NARRATION; else process.env.DISABLE_NARRATION = originalDisabled;
+    });
 
     it('is ON by default — the alternative that was shipping was a fake', () => {
         delete process.env.JOE_NARRATION;
@@ -150,6 +154,12 @@ describe('it can be switched off, because it costs a call per step', () => {
 
     it.each(['0', 'false', 'off', 'OFF'])('is off for JOE_NARRATION=%s', (v) => {
         process.env.JOE_NARRATION = v;
+        expect(narrationEnabled()).toBe(false);
+    });
+
+    it.each(['1', 'true', 'on', 'ON'])('is off for DISABLE_NARRATION=%s', (v) => {
+        delete process.env.JOE_NARRATION;
+        process.env.DISABLE_NARRATION = v;
         expect(narrationEnabled()).toBe(false);
     });
 });

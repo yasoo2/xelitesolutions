@@ -31,6 +31,23 @@ export function applyPhaseExecutionEvidence(
 }
 
 /**
+ * Preserve only the deterministic edit facts needed for a safe recovery.
+ * Without this, a failed file_edit reaches self-fix as a bare English error and
+ * the recovery loop has no file, search text, or replacement to inspect.
+ */
+function editFailureEvidence(toolName: string, args: Record<string, any>): Record<string, string> {
+    if (!['file_edit', 'file_edit_advanced'].includes(toolName)) return {};
+    const file = String(args?.filename ?? args?.filePath ?? args?.path ?? '').trim();
+    const find = String(args?.find ?? args?.search ?? args?.old_string ?? '');
+    const replace = String(args?.replace ?? args?.new_string ?? '');
+    return {
+        ...(file ? { file: file.slice(0, 1000) } : {}),
+        ...(find ? { find: find.slice(0, 4000) } : {}),
+        ...(replace ? { replace: replace.slice(0, 4000) } : {}),
+    };
+}
+
+/**
  * PhaseExecutorTool - Executes a single phase from a project plan.
  *
  * This is the bridge between planning and doing. It must execute with a trusted
@@ -94,7 +111,22 @@ export class PhaseExecutorTool implements ToolDefinition {
 
     async execute(input: { phase: any; projectContext?: any }, context?: any) {
         const { phase, projectContext } = input;
+        const MAX_PHASE_LOGS = 128;
+        const MAX_PHASE_LOG_CHARS = 2_000;
         const logs: string[] = [];
+        // A phase log is live evidence for the panel, not an unbounded transcript.
+        // Keep the most recent lines (where verification/build failures appear)
+        // and one explicit marker when older progress has been evicted.
+        const appendLog = (line: unknown) => {
+            const text = String(line ?? '').slice(0, MAX_PHASE_LOG_CHARS);
+            if (logs.length < MAX_PHASE_LOGS) {
+                logs.push(text);
+                return;
+            }
+            logs[0] = '[PhaseExecutor] ... older phase logs truncated; recent evidence retained ...';
+            logs.splice(1, 1);
+            logs.push(text);
+        };
         const results: Array<{
             task: string;
             tool: string;
@@ -114,6 +146,18 @@ export class PhaseExecutorTool implements ToolDefinition {
             browserSessionId: context?.browserSessionId || projectContext?.browserSessionId,
             workspaceId: context?.workspaceId || projectContext?.workspaceId,
             userId: context?.userId || projectContext?.userId,
+            // Preserve the canonical engineering-routing contract across the
+            // executor boundary. AgentLoopService marks the pipeline as an
+            // internal engineering run, but the old narrowed context dropped
+            // these fields before delegated tools reached callLLM; generation
+            // then fell back to ordinary chat deadlines and dead-brain policy.
+            modelConfig: context?.modelConfig || projectContext?.modelConfig,
+            purpose: context?.purpose || projectContext?.purpose,
+            engineeringPipeline: context?.engineeringPipeline ?? projectContext?.engineeringPipeline,
+            providerTimeoutMs: context?.providerTimeoutMs ?? projectContext?.providerTimeoutMs,
+            plannerTimeoutMs: context?.plannerTimeoutMs ?? projectContext?.plannerTimeoutMs,
+            plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens ?? projectContext?.plannerMaxCompletionTokens,
+            plannerReasoningEffort: context?.plannerReasoningEffort ?? projectContext?.plannerReasoningEffort,
             onThought: (m: string) => context?.onThought?.(m),
             onProgress: (m: string) => context?.onProgress?.(m),
         };
@@ -122,11 +166,11 @@ export class PhaseExecutorTool implements ToolDefinition {
             const tasks = Array.isArray(phase.tasks) ? phase.tasks : [];
             const totalTasks = tasks.length;
 
-            if (!executionContext.sessionId) logs.push('[PhaseExecutor] Warning: missing sessionId in execution context');
-            if (!executionContext.workspaceId) logs.push('[PhaseExecutor] Warning: missing workspaceId in execution context');
-            if (!executionContext.userId) logs.push('[PhaseExecutor] Warning: missing userId in execution context');
+            if (!executionContext.sessionId) appendLog('[PhaseExecutor] Warning: missing sessionId in execution context');
+            if (!executionContext.workspaceId) appendLog('[PhaseExecutor] Warning: missing workspaceId in execution context');
+            if (!executionContext.userId) appendLog('[PhaseExecutor] Warning: missing userId in execution context');
 
-            logs.push(`[PhaseExecutor] Starting Phase ${phase.phaseNumber}: ${phase.name} (${totalTasks} tasks)`);
+            appendLog(`[PhaseExecutor] Starting Phase ${phase.phaseNumber}: ${phase.name} (${totalTasks} tasks)`);
 
             for (let i = 0; i < tasks.length; i++) {
                 const task = tasks[i];
@@ -134,7 +178,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 const taskDesc = String(task.task || task.description || `Task ${i + 1}`);
 
                 if (!askedFor || askedFor === 'manual') {
-                    logs.push(`[PhaseExecutor] Task ${i + 1}: "${taskDesc}" — skipped (manual/no tool)`);
+                    appendLog(`[PhaseExecutor] Task ${i + 1}: "${taskDesc}" — skipped (manual/no tool)`);
                     results.push({ task: taskDesc, tool: 'manual', ok: true });
                     completedCount++;
                     continue;
@@ -155,7 +199,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                  */
                 const resolved = resolvePlannedTool(askedFor);
                 if (!resolved.tool) {
-                    logs.push(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — «${askedFor}» ليست أداة في هذا النظام` +
+                    appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — «${askedFor}» ليست أداة في هذا النظام` +
                         `${(resolved as any).why === 'not_software' ? ' (عمل تنظيمي بشري)' : ''}. تخطّيتُها ولم أوقف البناء.`);
                     results.push({ task: taskDesc, tool: 'manual', ok: true });
                     completedCount++;
@@ -163,7 +207,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 }
                 const toolName = resolved.tool;
                 if (toolName !== askedFor) {
-                    logs.push(`[PhaseExecutor] ↪️ «${askedFor}» تعني ${toolName} — نفّذتُ الأداة الحقيقية.`);
+                    appendLog(`[PhaseExecutor] ↪️ «${askedFor}» تعني ${toolName} — نفّذتُ الأداة الحقيقية.`);
                 }
 
                 // The same run also tried `sudo apt-get install git -y` on
@@ -173,14 +217,14 @@ export class PhaseExecutorTool implements ToolDefinition {
                 if (toolName === 'shell_execute' || toolName === 'terminal_manager') {
                     const why = unrunnableShellStep((task.args || task.input || {}).command);
                     if (why) {
-                        logs.push(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${why}`);
+                        appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${why}`);
                         results.push({ task: taskDesc, tool: 'manual', ok: true });
                         completedCount++;
                         continue;
                     }
                 }
 
-                logs.push(`[PhaseExecutor] Task ${i + 1}/${totalTasks}: "${taskDesc}" — executing tool: ${toolName}`);
+                appendLog(`[PhaseExecutor] Task ${i + 1}/${totalTasks}: "${taskDesc}" — executing tool: ${toolName}`);
 
                 // A plan's arguments are model-written too: «Git» came with
                 // `{action:'status'}` and git_ops declares `operation`, so the
@@ -212,7 +256,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 const toolArgs = adaptPlannedArgsFromDescription(toolName, adaptedPlanned, taskDesc);
                 const argsIssue = plannedArgsIssue(toolName, toolArgs);
                 if (argsIssue) {
-                    logs.push(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${argsIssue}`);
+                    appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${argsIssue}`);
                     results.push({ task: taskDesc, tool: 'manual', ok: true, message: argsIssue });
                     completedCount++;
                     continue;
@@ -225,7 +269,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                     });
 
                     if (toolResult.ok) {
-                        logs.push(`[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`);
+                        appendLog(`[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`);
                         /**
                          * THE BUILDER'S OWN WORDS SURVIVE THE PHASE.
                          *
@@ -276,21 +320,21 @@ export class PhaseExecutorTool implements ToolDefinition {
                             );
                             if (launcher) {
                                 const launcherArgs = { ...toolArgs, ...launcher };
-                                logs.push(`[PhaseExecutor] 🔎 Missing npm script detected; package evidence at ${launcher.manifest} selects npm run ${launcher.script}.`);
+                                appendLog(`[PhaseExecutor] 🔎 Missing npm script detected; package evidence at ${launcher.manifest} selects npm run ${launcher.script}.`);
                                 try {
                                     const launcherResult = await executeTool(toolName, launcherArgs, {
                                         ...executionContext,
                                         onProgress: (m: string) => context?.onProgress?.(`[${toolName} MANIFEST RECOVERY] ${m}`),
                                     });
                                     if (launcherResult.ok) {
-                                        logs.push(`[PhaseExecutor] ✅ Manifest-aware launcher recovery succeeded: npm run ${launcher.script}`);
+                                        appendLog(`[PhaseExecutor] ✅ Manifest-aware launcher recovery succeeded: npm run ${launcher.script}`);
                                         results.push({ task: taskDesc, tool: toolName, ok: true, message: `Used package.json script ${launcher.script} after the requested npm script was absent.` });
                                         completedCount++;
                                         continue;
                                     }
-                                    logs.push(`[PhaseExecutor] ⚠️ Manifest-aware launcher recovery failed: ${String(launcherResult.error || 'unknown error')}`);
+                                    appendLog(`[PhaseExecutor] ⚠️ Manifest-aware launcher recovery failed: ${String(launcherResult.error || 'unknown error')}`);
                                 } catch (launcherError: any) {
-                                    logs.push(`[PhaseExecutor] ⚠️ Manifest-aware launcher recovery threw: ${String(launcherError?.message || launcherError)}`);
+                                    appendLog(`[PhaseExecutor] ⚠️ Manifest-aware launcher recovery threw: ${String(launcherError?.message || launcherError)}`);
                                 }
                             }
                         }
@@ -298,7 +342,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                         // preview link and the precise QA evidence. Keep that
                         // report visible instead of reducing it to one error line.
                         const failedMessage = String(failedOutput.message || '').trim();
-                        logs.push(`[PhaseExecutor] ❌ Task ${i + 1} failed: ${toolName} — ${errMsg}`);
+                        appendLog(`[PhaseExecutor] ❌ Task ${i + 1} failed: ${toolName} — ${errMsg}`);
                         results.push({
                             task: taskDesc,
                             tool: toolName,
@@ -314,32 +358,33 @@ export class PhaseExecutorTool implements ToolDefinition {
                             ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
                                 ? { background: toolArgs.background }
                                 : {}),
+                            ...editFailureEvidence(toolName, toolArgs),
                         });
 
                         if (task.priority === 'high' || task.required === true) {
-                            logs.push('[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...');
+                            appendLog('[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...');
                             try {
                                 const retryResult = await executeTool(toolName, toolArgs, {
                                     ...executionContext,
                                     onProgress: (m: string) => context?.onProgress?.(`[${toolName} RETRY] ${m}`),
                                 });
                                 if (retryResult.ok) {
-                                    logs.push(`[PhaseExecutor] ✅ Retry succeeded for task ${i + 1}: ${toolName}`);
+                                    appendLog(`[PhaseExecutor] ✅ Retry succeeded for task ${i + 1}: ${toolName}`);
                                     results[results.length - 1] = { task: taskDesc, tool: toolName, ok: true };
                                     completedCount++;
                                 } else {
-                                    logs.push('[PhaseExecutor] ⛔ Retry also failed. Stopping phase.');
+                                    appendLog('[PhaseExecutor] ⛔ Retry also failed. Stopping phase.');
                                     break;
                                 }
                             } catch (retryErr: any) {
-                                logs.push(`[PhaseExecutor] ⛔ Retry threw error: ${retryErr?.message}. Stopping phase.`);
+                                appendLog(`[PhaseExecutor] ⛔ Retry threw error: ${retryErr?.message}. Stopping phase.`);
                                 break;
                             }
                         }
                     }
                 } catch (toolError: any) {
                     const errMsg = String(toolError?.message || toolError || 'Execution error');
-                    logs.push(`[PhaseExecutor] ❌ Task ${i + 1} threw: ${errMsg}`);
+                    appendLog(`[PhaseExecutor] ❌ Task ${i + 1} threw: ${errMsg}`);
                     results.push({
                         task: taskDesc,
                         tool: toolName,
@@ -354,10 +399,11 @@ export class PhaseExecutorTool implements ToolDefinition {
                         ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
                             ? { background: toolArgs.background }
                             : {}),
+                        ...editFailureEvidence(toolName, toolArgs),
                     });
 
                     if (task.priority === 'high' || task.required === true) {
-                        logs.push('[PhaseExecutor] ⛔ Critical task threw. Stopping phase.');
+                        appendLog('[PhaseExecutor] ⛔ Critical task threw. Stopping phase.');
                         break;
                     }
                 }
@@ -370,7 +416,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             // a phase whose explicit acceptance check disproved delivery.
             let verificationFailed = false;
 
-            logs.push(`[PhaseExecutor] Phase ${phase.phaseNumber} ${status}: ${completedCount}/${totalTasks} tasks completed`);
+            appendLog(`[PhaseExecutor] Phase ${phase.phaseNumber} ${status}: ${completedCount}/${totalTasks} tasks completed`);
 
             if (phase.verificationTask && allOk) {
                 const vTask = phase.verificationTask;
@@ -379,7 +425,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 // answers the only question that matters — is it really there?
                 const vToolName = resolvePlannedTool(String(vTask.tool || '').trim()).tool || 'project_detect';
                 const vTaskDesc = String(vTask.task || 'Verify phase output');
-                logs.push(`[PhaseExecutor] 🧪 Running verification: "${vTaskDesc}" with ${vToolName}`);
+                appendLog(`[PhaseExecutor] 🧪 Running verification: "${vTaskDesc}" with ${vToolName}`);
 
                 try {
                     // Verification is a real tool invocation, not privileged prose.
@@ -401,11 +447,15 @@ export class PhaseExecutorTool implements ToolDefinition {
                             : 70;
                         plannedVerification.failOnCritical = true;
                     }
+                    // Verification calls are still planned tool calls. Apply the
+                    // same accepted project identity used by ordinary tasks so a
+                    // live check never falls back silently to the workspace root.
+                    applyPhaseExecutionEvidence(vToolName, plannedVerification, projectContext, logs);
                     const adaptedVerification = adaptPlannedArgs(vToolName, plannedVerification);
                     const verificationArgs = adaptPlannedArgsFromDescription(vToolName, adaptedVerification, vTaskDesc);
                     const verificationArgsIssue = plannedArgsIssue(vToolName, verificationArgs);
                     if (verificationArgsIssue) {
-                        logs.push(`[PhaseExecutor] ⚠️ Verification input invalid: ${verificationArgsIssue}`);
+                        appendLog(`[PhaseExecutor] ⚠️ Verification input invalid: ${verificationArgsIssue}`);
                         results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: verificationArgsIssue });
                         verificationFailed = true;
                         status = 'partial';
@@ -413,18 +463,18 @@ export class PhaseExecutorTool implements ToolDefinition {
                         const vResult = await executeTool(vToolName, verificationArgs, executionContext);
 
                         if (vResult.ok) {
-                        logs.push(`[PhaseExecutor] ✅ Verification passed for Phase ${phase.phaseNumber}`);
+                        appendLog(`[PhaseExecutor] ✅ Verification passed for Phase ${phase.phaseNumber}`);
                         results.push({ task: vTaskDesc, tool: vToolName, ok: true });
                         } else {
                             const vErr = String(vResult.error || 'Verification failed');
-                            logs.push(`[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
+                            appendLog(`[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
                             results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: vErr });
                             verificationFailed = true;
                             status = 'partial';
                         }
                     }
                 } catch (vError: any) {
-                    logs.push(`[PhaseExecutor] ⚠️ Verification error: ${vError.message}`);
+                    appendLog(`[PhaseExecutor] ⚠️ Verification error: ${vError.message}`);
                     results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: vError.message });
                     verificationFailed = true;
                     status = 'partial';
@@ -448,10 +498,10 @@ export class PhaseExecutorTool implements ToolDefinition {
                     .filter(Boolean);
                 const pkgPath = writtenPaths.find((p: string) => /(^|\/)package\.json$/i.test(p.replace(/\\/g, '/')));
                 if (!pkgPath) {
-                    logs.push('[PhaseExecutor] ℹ️ Auto-build check skipped honestly: this phase wrote no package.json, so there is no build to run.');
+                    appendLog('[PhaseExecutor] ℹ️ Auto-build check skipped honestly: this phase wrote no package.json, so there is no build to run.');
                 } else {
                     const projectDir = pkgPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
-                    logs.push(`[PhaseExecutor] 🔍 Auto-running build check in ${projectDir || 'workspace root'}...`);
+                    appendLog(`[PhaseExecutor] 🔍 Auto-running build check in ${projectDir || 'workspace root'}...`);
                     try {
                         const buildResult = await executeTool('shell_execute', {
                             // --if-present: a project without a build script is
@@ -463,15 +513,15 @@ export class PhaseExecutorTool implements ToolDefinition {
                         const buildOutput = String((buildResult as any)?.output?.stdout || (buildResult as any)?.output || '');
                         if (buildOutput.includes('BUILD_CHECK_FAILED') || !buildResult.ok) {
                             const buildError = String((buildResult as any)?.error || 'Auto-build check failed');
-                            logs.push(`[PhaseExecutor] ⚠️ Auto-build check found issues — orchestrator should route to self-fix: ${buildError}`);
+                            appendLog(`[PhaseExecutor] ⚠️ Auto-build check found issues — orchestrator should route to self-fix: ${buildError}`);
                             results.push({ task: 'Auto-build check', tool: 'shell_execute', ok: false, error: buildError });
                             verificationFailed = true;
                             status = 'partial';
                         } else {
-                            logs.push('[PhaseExecutor] ✅ Auto-build check passed');
+                            appendLog('[PhaseExecutor] ✅ Auto-build check passed');
                         }
                     } catch {
-                        logs.push('[PhaseExecutor] ℹ️ Auto-build check errored — treated as skipped, not as failure');
+                        appendLog('[PhaseExecutor] ℹ️ Auto-build check errored — treated as skipped, not as failure');
                     }
                 }
             }
@@ -501,7 +551,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             };
 
         } catch (error: any) {
-            logs.push(`[PhaseExecutor] Fatal error: ${error.message}`);
+            appendLog(`[PhaseExecutor] Fatal error: ${error.message}`);
             return {
                 ok: false,
                 error: error.message,

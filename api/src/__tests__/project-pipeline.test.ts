@@ -129,7 +129,7 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
             path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
         expect(loop).toMatch(/browserSessionId\?:\s*string/);
         expect(loop).toMatch(/const projectContext = \{[\s\S]*browserSessionId,/);
-        expect(loop).toMatch(/const executionContext = \{ sessionId, browserSessionId,/);
+        expect(loop).toMatch(/const executionContext = \{[\s\S]*browserSessionId,[\s\S]*engineeringPipeline:\s*true,[\s\S]*purpose:\s*['"]internal['"]/);
     });
 
     test('success and verification are earned, with explicit execution and delivery states', () => {

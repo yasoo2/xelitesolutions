@@ -25,6 +25,25 @@ export class IntentParser {
         // deterministically anyway. On a local CPU model this analysis alone cost
         // ~50s per request before the task even started. Ambiguous requests still
         // get the full analysis below.
+        // A long engineering brief may mention the browser, GitHub, visual QA, or
+        // "open the app" as part of its acceptance criteria.  Those words must not
+        // short-circuit the request into the Browser agent before the workspace has
+        // been inspected.  Keep the fast path for genuinely browser-only requests,
+        // but let substantial build/develop/debug work reach the evidence-first
+        // planner (and its project_pipeline route).
+        const engineeringBrief = IntentParser.looksLikeEngineeringBrief(userText);
+        if (engineeringBrief) {
+            console.log('[IntentParser] ⚙️ Engineering brief detected — routing to evidence-first project_pipeline.');
+            return {
+                goal: userText,
+                complexity: 'high',
+                riskLevel: 'medium',
+                suggestedAgent: 'Dev',
+                requiredTools: ['project_pipeline'],
+                constraints: ['Inspect the workspace and use evidence before implementation or verification.'],
+                rawIntent: { primary: userText, engineeringBrief: true, deterministic: true },
+            };
+        }
         const quick = IntentParser.quickIntent(userText);
         if (quick) {
             console.log(`[IntentParser] ⚡ Deterministic fast intent (${quick.suggestedAgent}) — skipping LLM deep analysis.`);
@@ -108,6 +127,23 @@ Return ONLY a JSON object:
         }
     }
 
+    /**
+     * Detect a substantial engineering request before applying the browser fast
+     * path. This is deliberately conservative: a short "open this page" request
+     * remains a browser task, while a build/repository/system brief with browser
+     * or GitHub acceptance criteria must be planned as engineering work.
+     */
+    static looksLikeEngineeringBrief(userText: string): boolean {
+        const raw = String(userText || '').trim();
+        if (!raw) return false;
+        const probe = `${raw}\n${normalizeIntentText(raw)}`;
+        const engineeringVerb = /(?:\bbuild\b|\bcreate\b|\bdevelop\b|\bimplement\b|\brefactor\b|\brepair\b|\bdebug\b|\btest\b|\bdeploy\b|\bcode\b|\bmodify\b|\bbuild\s+out\b|بناء|ابن(?:ِ|ي|ى)|انش(?:ئ|ء|ي)|تطوير|طوّ?ر|برمج|اختبر|اختبار|اصلح|إصلح|عدّ?ل|نفّ?ذ|تنفيذ)/i.test(probe);
+        const engineeringNoun = /(?:\brepository\b|\brepo\b|\bcodebase\b|\bproject\b|\bsystem\b|\bplatform\b|\bapplication\b|\bapp\b|\bapi\b|\bbackend\b|\bfrontend\b|\bdatabase\b|\bsoftware\b|\bcode\b|\btests?\b|نظام|منص(?:ة|ه)|تطبيق|مشروع|مستودع|كود|برنامج|خادم|قاعدة\s+بيانات|واجهة|اختبارات?)/i.test(probe);
+        // The length guard prevents ordinary short browser interactions that happen
+        // to contain an engineering noun (for example, "open the app dashboard").
+        return engineeringVerb && engineeringNoun && (raw.length >= 240 || /(?:production[- ]grade|from\s+scratch|from\s+beginning|من\s+الألف|من\s+الصفر|حقيقي|كامل|معقّد|complex|autonomous|real\s+working)/i.test(probe));
+    }
+
     /** Deterministic intent for unmistakable requests (skips the slow LLM pass).
      *  Probes the user's words PLUS the language-universal canonical form, so
      *  dialects, light typos, and other languages qualify too. Returns null when
@@ -115,6 +151,9 @@ Return ONLY a JSON object:
     static quickIntent(userText: string): StructuredIntent | null {
         const raw = String(userText || '').trim();
         if (!raw) return null;
+        // Keep this helper safe when callers use it directly instead of parse().
+        // Engineering briefs must never be returned as Browser intents.
+        if (IntentParser.looksLikeEngineeringBrief(raw)) return null;
         const probe = `${raw}\n${normalizeIntentText(raw)}`;
         const hasUrl = /https?:\/\/|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)\b/i.test(probe);
         // A well-known site named in words (dialect/transliteration) counts as a web

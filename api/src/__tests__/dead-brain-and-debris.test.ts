@@ -18,7 +18,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { effectiveKeylessTimeoutMs, markProviderOk, recentlyHealthyRetryCandidates, requestedProviderTimeoutMs, retryAfterMsFrom } from '../core/llm/intelligent-router';
+import { canAttemptAfterDeadBrainLatch, effectiveKeylessTimeoutMs, eligibleTransientRetryCandidates, markProviderOk, recentlyHealthyRetryCandidates, requestedProviderTimeoutMs, retryAfterMsFrom } from '../core/llm/intelligent-router';
 import { isolateLatinRuns } from '../core/design/language';
 import { stripBrokenStyleImages } from '../core/design/images';
 import { normalizeIconRefs, iconSprite } from '../core/design/layouts';
@@ -60,6 +60,16 @@ describe('recently healthy provider recovery — one evidence-based probe, not a
         expect(src).toContain('Transient mesh failure: probing recently healthy provider(s) once');
         expect(src).toContain('TRANSIENT_PROVIDER_RETRY_TIMEOUT_MS');
         expect(src).toContain('!isProviderRateLimited(provider.name)');
+    });
+
+    it('does not re-probe a provider that already failed in this route call', () => {
+        const recovered = `llm7-${Date.now()}`;
+        const untouched = `other-${Date.now()}`;
+        markProviderOk(recovered);
+        const mesh = [{ name: recovered }, { name: untouched }];
+        expect(eligibleTransientRetryCandidates(mesh, new Set([recovered]), new Set())).toEqual([]);
+        expect(eligibleTransientRetryCandidates(mesh, new Set(), new Set([recovered]))).toEqual([]);
+        expect(eligibleTransientRetryCandidates(mesh, new Set(), new Set())).toEqual([{ name: recovered }]);
     });
 });
 
@@ -103,6 +113,22 @@ describe('dead-brain latch — no minutes-long re-walks of a mesh that just died
     it('a local model that just timed out is probed briefly, not for 180 seconds', () => {
         expect(src).toMatch(/localTimedOutAt/);
         expect(src).toMatch(/Math\.min\(timeoutValue, 20_000\)/);
+    });
+
+    it('keeps ordinary calls fail-fast but lets evidence-backed internal recovery reopen the mesh', () => {
+        const now = 10_000;
+        expect(canAttemptAfterDeadBrainLatch(9_000, now, 45_000, false, true)).toBe(false);
+        expect(canAttemptAfterDeadBrainLatch(9_000, now, 45_000, true, false)).toBe(false);
+        expect(canAttemptAfterDeadBrainLatch(9_000, now, 45_000, true, true)).toBe(true);
+        expect(canAttemptAfterDeadBrainLatch(9_000, now + 45_000, 45_000, false, false)).toBe(true);
+    });
+
+    it('permits one bounded engineering recovery pass without weakening ordinary calls', () => {
+        const now = 10_000;
+        expect(canAttemptAfterDeadBrainLatch(9_000, now, 45_000, true, false, true)).toBe(true);
+        expect(canAttemptAfterDeadBrainLatch(9_000, now, 45_000, true, false, false)).toBe(false);
+        expect(src).toContain('deadBrainRecoveryAttempted');
+        expect(src).toContain('engineering recovery permit');
     });
 });
 

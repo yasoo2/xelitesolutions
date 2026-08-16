@@ -254,14 +254,24 @@ export class AutoRefactorTool extends BaseTool {
 
   permissions: ToolPermission[] = ['read', 'write'];
 
-  async execute(input: any) {
-    const { filePath, refactorType = 'all' } = input;
+  async execute(input: any, context?: { workspaceId?: string }) {
+    const { filePath, refactorType = 'all' } = input || {};
+    const requestedPath = String(filePath || '').trim();
+    if (!requestedPath) {
+      return { ok: false, error: 'filePath is required', logs: [] };
+    }
+    let resolvedFilePath: string;
+    try {
+      resolvedFilePath = resolveToolPath(requestedPath, { workspaceId: context?.workspaceId });
+    } catch (error: any) {
+      return { ok: false, error: String(error?.message || error), logs: [] };
+    }
     
-    if (!fs.existsSync(filePath)) {
-      return { ok: false, error: `File not found: ${filePath}` };
+    if (!fs.existsSync(resolvedFilePath)) {
+      return { ok: false, error: `File not found: ${requestedPath}` };
     }
 
-    const originalCode = fs.readFileSync(filePath, 'utf-8');
+    const originalCode = fs.readFileSync(resolvedFilePath, 'utf-8');
     let refactoredCode = originalCode;
     const changes: Array<{ type: string; description: string }> = [];
 
@@ -292,7 +302,7 @@ export class AutoRefactorTool extends BaseTool {
 
       // Write changes
       if (refactoredCode !== originalCode) {
-        fs.writeFileSync(filePath, refactoredCode);
+        fs.writeFileSync(resolvedFilePath, refactoredCode);
       }
 
       return {
@@ -386,17 +396,27 @@ export class TestGeneratorTool extends BaseTool {
 
   permissions: ToolPermission[] = ['read', 'write'];
 
-  async execute(input: any) {
-    const { filePath, testType = 'unit' } = input;
+  async execute(input: any, context?: { workspaceId?: string }) {
+    const { filePath, testType = 'unit' } = input || {};
+    const requestedPath = String(filePath || '').trim();
+    if (!requestedPath) {
+      return { ok: false, error: 'filePath is required', logs: [] };
+    }
+    let resolvedFilePath: string;
+    try {
+      resolvedFilePath = resolveToolPath(requestedPath, { workspaceId: context?.workspaceId });
+    } catch (error: any) {
+      return { ok: false, error: String(error?.message || error), logs: [] };
+    }
     
-    if (!fs.existsSync(filePath)) {
-      return { ok: false, error: `File not found: ${filePath}` };
+    if (!fs.existsSync(resolvedFilePath)) {
+      return { ok: false, error: `File not found: ${requestedPath}` };
     }
 
-    const code = fs.readFileSync(filePath, 'utf-8');
-    const fileName = path.basename(filePath, path.extname(filePath));
+    const code = fs.readFileSync(resolvedFilePath, 'utf-8');
+    const fileName = path.basename(resolvedFilePath, path.extname(resolvedFilePath));
     const testFileName = `${fileName}.test.ts`;
-    const testFilePath = path.join(path.dirname(filePath), '__tests__', testFileName);
+    const testFilePath = path.join(path.dirname(resolvedFilePath), '__tests__', testFileName);
 
     const tests = this.generateTests(code, fileName, testType);
 
@@ -488,14 +508,24 @@ export class PerformanceProfilerTool extends BaseTool {
 
   permissions: ToolPermission[] = ['read', 'execute'];
 
-  async execute(input: any) {
-    const { filePath, functionName, iterations = 1000 } = input;
+  async execute(input: any, context?: { workspaceId?: string }) {
+    const { filePath, functionName, iterations = 1000 } = input || {};
+    const requestedPath = String(filePath || '').trim();
+    if (!requestedPath) {
+      return { ok: false, error: 'filePath is required', logs: [] };
+    }
+    let resolvedFilePath: string;
+    try {
+      resolvedFilePath = resolveToolPath(requestedPath, { workspaceId: context?.workspaceId });
+    } catch (error: any) {
+      return { ok: false, error: String(error?.message || error), logs: [] };
+    }
     
-    if (!fs.existsSync(filePath)) {
-      return { ok: false, error: `File not found: ${filePath}` };
+    if (!fs.existsSync(resolvedFilePath)) {
+      return { ok: false, error: `File not found: ${requestedPath}` };
     }
 
-    const code = fs.readFileSync(filePath, 'utf-8');
+    const code = fs.readFileSync(resolvedFilePath, 'utf-8');
     
     // Static analysis for performance issues
     const issues = this.analyzePerformance(code);

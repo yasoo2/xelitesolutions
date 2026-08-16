@@ -25,8 +25,8 @@ function resolveShell(requestedShell?: string): string {
     return '/bin/sh';
 }
 
-function resolveToolPath(p: string) {
-    const root = getWorkspaceRoot();
+function resolveToolPath(p: string, workspaceId?: string) {
+    const root = getWorkspaceRoot(workspaceId);
     const val = String(p ?? '').trim();
     if (!val || val === '.') return root;
     const rootReal = (() => {
@@ -173,8 +173,8 @@ export class SafeReadFileTool extends BaseTool {
     permissions: ToolPermission[] = ['read'];
     sideEffects: ToolPermission[] = [];
 
-    async execute(input: any) {
-        const filePath = resolveToolPath(String(input?.path ?? ''));
+    async execute(input: any, context?: any) {
+        const filePath = resolveToolPath(String(input?.path ?? ''), context?.workspaceId);
         if (!fs.existsSync(filePath)) return { ok: false, error: 'File not found', logs: [] };
 
         // [Wakil 4.6] Smart Directory Peek (Voice Feedback)

@@ -180,7 +180,13 @@ Primary language for user-facing content: ${input.language === 'ar' ? 'Arabic (R
 Return the complete file content now.`;
 
         try {
-            const content = await callLLM(userPrompt, [{ role: 'system', content: systemPrompt }]);
+            const content = await callLLM(
+                userPrompt,
+                [{ role: 'system', content: systemPrompt }],
+                context?.engineeringPipeline === true
+                    ? { ...context, purpose: 'internal', engineeringPipeline: true }
+                    : undefined,
+            );
 
             // When no provider answers, the router returns an apology STRING
             // rather than throwing. Writing it would put "تعذّر الوصول إلى محرّك

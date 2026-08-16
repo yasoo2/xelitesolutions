@@ -83,7 +83,7 @@ export const PLANNER_TOOL_CATALOGUE: Array<{ tool: string; purpose: string }> = 
     { tool: 'code_reviewer', purpose: 'review code for defects' },
     { tool: 'security_scanner', purpose: 'scan for security problems' },
     { tool: 'dependency_audit', purpose: 'audit dependencies for vulnerabilities' },
-    { tool: 'db_schema_migrator', purpose: 'design or migrate a database schema' },
+    { tool: 'db_schema_migrator', purpose: 'execute an existing database schema file or SQL migration; action is REQUIRED and must be exactly migrate, push, reset, or status. Use engine sqlite for an existing .sql migration (execute it against SQLite, never pass it to Prisma); use engine prisma only for an existing .prisma schema. This tool does not create or design schemas; do not use create, design, or generate as an action—write and verify the schema or SQL file first.' },
     { tool: 'auth_builder', purpose: 'add authentication (login, sessions, roles)' },
     { tool: 'payments_create_checkout_session', purpose: 'wire a real payment checkout' },
     { tool: 'i18n_translator', purpose: 'add or translate interface languages' },
@@ -93,7 +93,7 @@ export const PLANNER_TOOL_CATALOGUE: Array<{ tool: string; purpose: string }> = 
     { tool: 'browser_ui_audit', purpose: 'audit the built UI for visual and accessibility defects' },
     { tool: 'project_detect', purpose: 'verify what was actually created on disk' },
     { tool: 'project_run', purpose: 'start the built project and get a live URL' },
-    { tool: 'deploy_project', purpose: 'deploy/publish the finished project' },
+    { tool: 'deploy_project', purpose: 'build, start, or package the project locally for verification; use action build_static, start_server, or package by default. Never use expose_port or publish externally unless the user explicitly requests and approves an external deployment.' },
     { tool: 'mobile_builder', purpose: 'build the mobile application' },
 ];
 
@@ -257,6 +257,10 @@ export interface PlanSanitiseOptions {
     evidencedPaths?: string[];
     /** Exact local check commands declared by an inspected project manifest or test layout. */
     candidateCheckCommands?: string[];
+    /** Real test files discovered in the selected workspace; scripts alone are not evidence. */
+    testFiles?: string[];
+    /** Greenfield plans may not assume a host compiler for native npm addons. */
+    disallowUnportableNativeDependencies?: boolean;
 }
 
 export function sanitisePlanPhases(phases: any[], projectDir = '', options: PlanSanitiseOptions = {}): SanitisedPlan {
@@ -276,10 +280,117 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
     };
     const evidencedPaths = new Set((options.evidencedPaths || []).map(normaliseEvidencePath).filter(Boolean));
     const candidateCheckCommands = new Set((options.candidateCheckCommands || []).map(command => normaliseShellCommand(command)).filter(Boolean));
+    const looksLikeTestPath = (candidate: string) => /(?:^|\/)(?:__tests__|tests?|spec)(?:\/|$)/i.test(candidate)
+        || /(?:\.test|\.spec)\.[cm]?[jt]sx?$|_test\.(?:py|go)$/i.test(candidate);
+    const discoveredTestPaths = new Set([
+        ...(options.testFiles || []),
+        ...[...evidencedPaths].filter(looksLikeTestPath),
+    ].map(normaliseEvidencePath).filter(Boolean));
+    /**
+     * Native npm addons are not forbidden in every existing repository, but a
+     * greenfield plan must not smuggle in a compiler/toolchain assumption. The
+     * current runtime already has a portable SQLite contract (`node:sqlite` or
+     * JSON fallback), so these packages are a planning blocker unless the user
+     * explicitly required that exact dependency.
+     */
+    const unportableNativeDependency = (task: any): string | null => {
+        const text = [
+            task?.task,
+            task?.description,
+            task?.args?.description,
+            JSON.stringify(task?.args || {}),
+            JSON.stringify(task?.input || {}),
+        ].join('\\n');
+        const known = [
+            'better-sqlite3', 'sqlite3', 'node-sqlite3', 'bcrypt', 'node-sass',
+            'sharp', 'canvas', 'ffi-napi', 'ref-napi', 'isolated-vm',
+            '@tensorflow/tfjs-node', 'cpu-features', 'bufferutil', 'utf-8-validate',
+        ];
+        const hit = known.find(name => new RegExp(`(?:^|[^a-z0-9@/_-])${name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}(?:$|[^a-z0-9@/_-])`, 'i').test(text));
+        return hit || (/(?:node-gyp|prebuild-install|binding\\.gyp|native\\s+(?:addon|module)|C\\+\\+\\s+compiler|make(?:file)?\\s+required)/i.test(text) ? 'native addon/toolchain' : null);
+    };
+    const pathWithinProject = (candidate: unknown, projectPath: unknown) => {
+        const candidatePath = normaliseEvidencePath(candidate);
+        const scope = normaliseEvidencePath(projectPath);
+        if (!candidatePath) return false;
+        if (!scope || scope === '.') return true;
+        return candidatePath === scope || candidatePath.startsWith(`${scope}/`);
+    };
+    const hasDeclaredIntegrationCheck = [...candidateCheckCommands].some(command =>
+        /(?:^|\s)npm\s+run\s+(?:test:integration|test:e2e|test:int|integration|e2e)(?:\s|$)/i.test(command)
+        || /(?:^|\s)(?:pytest|playwright|cypress)(?:\s|$)/i.test(command)
+    );
+    const testGeneratorOutputPath = (task: any): string => {
+        if (String(task?.tool || '') !== 'test_generator') return '';
+        const source = normaliseEvidencePath(task?.args?.filePath || task?.input?.filePath);
+        if (!source) return '';
+        const slash = source.lastIndexOf('/');
+        const dir = slash >= 0 ? source.slice(0, slash) : '';
+        const filename = slash >= 0 ? source.slice(slash + 1) : source;
+        const dot = filename.lastIndexOf('.');
+        const stem = dot > 0 ? filename.slice(0, dot) : filename;
+        return `${dir ? `${dir}/` : ''}__tests__/${stem}.test.ts`;
+    };
     const taskOutputPaths = (tasks: any[]) => tasks
-        .filter((task: any) => ['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(String(task?.tool || '')))
-        .map((task: any) => normaliseEvidencePath(task?.args?.path || task?.args?.filePath || task?.input?.path || task?.input?.filePath))
+        .flatMap((task: any) => {
+            const tool = String(task?.tool || '');
+            if (tool === 'test_generator') return [testGeneratorOutputPath(task)];
+            if (!['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(tool)) return [];
+            return [task?.args?.path || task?.args?.filePath || task?.input?.path || task?.input?.filePath];
+        })
+        .map(normaliseEvidencePath)
         .filter(Boolean);
+
+    // A phase-level live-run check is meaningful only after the plan has
+    // produced a runnable marker. Keep this ledger across phases so a later
+    // verification may start a project created by an earlier phase, while a
+    // foundation phase cannot accidentally run the workspace root.
+    const producedPaths = new Set<string>(evidencedPaths);
+    const generatedPaths = new Set<string>();
+    // Keep generated manifests separate from manifests discovered in an existing
+    // repository. A newly written package.json is not a runnable artifact by
+    // itself: it may be only a monorepo wrapper, may point at missing child
+    // scripts, or may require dependencies that have not been installed yet.
+    // Existing-project evidence remains eligible because discovery has already
+    // inspected that project and the user may explicitly ask to run it.
+    const generatedRunnableManifests = new Set<string>();
+    const generatedPackageLaunchEvidence = (manifestPath: string, phaseTasks: any[]) => {
+        const manifest = normaliseEvidencePath(manifestPath);
+        const producer = phaseTasks.find((task: any) => {
+            const tool = String(task?.tool || '');
+            if (!['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(tool)) return false;
+            const pathValue = task?.args?.path || task?.args?.filePath || task?.input?.path || task?.input?.filePath;
+            return normaliseEvidencePath(pathValue) === manifest;
+        });
+        if (!producer) return false;
+        const raw = producer?.args?.content ?? producer?.input?.content;
+        if (typeof raw !== 'string') return false;
+        let pkg: any;
+        try { pkg = JSON.parse(raw); } catch { return false; }
+        const scripts = pkg && typeof pkg.scripts === 'object' && pkg.scripts ? pkg.scripts : {};
+        const hasLaunchScript = ['start', 'dev', 'preview', 'serve'].some(name => typeof scripts[name] === 'string' && scripts[name].trim());
+        const hasMain = typeof pkg.main === 'string' && pkg.main.trim();
+        const hasInstallStep = phaseTasks.some((task: any) => {
+            const tool = String(task?.tool || '').toLowerCase();
+            const args = { ...(task?.args || {}), ...(task?.input || {}) };
+            const action = String(args.action || args.command || '').toLowerCase();
+            return (tool === 'npm_manager' && /^(?:install|ci|setup)$/.test(action))
+                || (tool === 'shell_execute' && /(?:^|[;&|])\s*npm\s+(?:install|ci)(?:\s|$)/i.test(action));
+        });
+        return (hasLaunchScript || hasMain) && hasInstallStep;
+    };
+    const runnableMarker = (candidate: string) => {
+        const normalised = normaliseEvidencePath(candidate);
+        const segments = normalised.split('/').filter(Boolean);
+        // ProjectRunTool resolves the workspace root and its immediate child
+        // projects. A deep source entry such as NEXUS/backend/src/index.js is
+        // not evidence that NEXUS itself can run.
+        if (segments.length > 2) return false;
+        if (/(?:^|\/)package\.json$/i.test(normalised)) {
+            return !generatedPaths.has(normalised) || generatedRunnableManifests.has(normalised);
+        }
+        return /(?:^|\/)(?:index\.html|server\.js|app\.py|main\.py|index\.js)$/i.test(normalised);
+    };
 
     const out = (Array.isArray(phases) ? phases : []).map((phase: any, pi: number) => {
         const phaseName = String(phase?.name || `Phase ${pi + 1}`);
@@ -301,6 +412,19 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 // "implicit scaffold" note: that was the round-18 failure mode.
                 const rawArgs = { ...(task?.args || {}), ...(task?.input || {}) };
                 const adaptedArgs = adaptPlannedArgsFromDescription(r.tool, rawArgs, desc);
+                if (options.disallowUnportableNativeDependencies) {
+                    const native = unportableNativeDependency({ ...task, args: adaptedArgs });
+                    if (native) {
+                        const blocker: PlanSanitiseBlocker = {
+                            code: 'unportable_native_dependency',
+                            message: `المرحلة «${phaseName}» اختارت ${native} الذي قد يحتاج node-gyp ومترجم C/C++ غير مثبت؛ لا يمكن افتراض قابلية بنائه محلياً.`,
+                            remedy: 'اختر تبعية portable مدعومة من runtime الحالي (مثل node:sqlite أو JSON fallback)، أو اذكر native dependency صراحةً مع تحقق toolchain قبل التثبيت.',
+                        };
+                        phaseBlockers.push(blocker);
+                        notes.push(`[plan] أوقفتُ «${desc}» — ${blocker.message}`);
+                        continue;
+                    }
+                }
                 if (r.tool === 'scaffold_project') {
                     const scaffoldIssue = plannedArgsIssue(r.tool, adaptedArgs);
                     if (scaffoldIssue) {
@@ -360,6 +484,23 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     : (r.tool === 'auto_tester' ? [] : (sourcePath ? [sourcePath] : []));
                 const knownPhaseOutputs = new Set(taskOutputPaths(kept));
                 const unprovenSource = sourcePaths.find((candidate: string) => !knownPhaseOutputs.has(candidate) && !evidencedPaths.has(candidate));
+                const requestedTestType = norm(adaptedArgs?.testType);
+                const testProjectPath = adaptedArgs?.projectPath || adaptedArgs?.path || '';
+                const testEvidenceCandidates = [...producedPaths, ...knownPhaseOutputs, ...discoveredTestPaths];
+                const hasTestEvidence = testEvidenceCandidates.some(candidate =>
+                    looksLikeTestPath(normaliseEvidencePath(candidate))
+                    && pathWithinProject(candidate, testProjectPath)
+                );
+                const hasPriorTestGenerator = kept.some(previous => String(previous?.tool || '') === 'test_generator');
+                const integrationScriptMissing = requestedTestType === 'integration' && !hasDeclaredIntegrationCheck;
+                if (r.tool === 'auto_tester' && (requestedTestType === 'unit' || requestedTestType === 'integration')
+                    && ((!hasTestEvidence && !hasPriorTestGenerator) || integrationScriptMissing)) {
+                    const reason = integrationScriptMissing
+                        ? 'لا يوجد script تكاملي معلن وقابل للتشغيل لهذا المشروع'
+                        : 'يحتاج ملف اختبار داخل مسار المشروع أو test_generator سابقاً؛ scripts العامة وحدها ليست دليلاً';
+                    notes.push(`[plan] أسقطتُ «${desc}» — auto_tester من نوع ${requestedTestType} ${reason}.`);
+                    continue;
+                }
                 if (sourceDependentTools.has(r.tool) && unprovenSource) {
                     notes.push(`[plan] أسقطتُ «${desc}» — ${r.tool} يحتاج ملفاً مصدرياً أنتجته مهمة سابقة أو سجّل الاستكشاف؛ «${unprovenSource}» غير مثبت، لذا لن أحوّل اسماً متخيلاً إلى إصلاح ذاتي.`);
                     continue;
@@ -384,6 +525,18 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         }
 
         const runnable = kept.filter(t => String(t.tool || 'manual') !== 'manual');
+        const nativeDependencyBlocker = phaseBlockers.find(blocker => blocker.code === 'unportable_native_dependency');
+        if (nativeDependencyBlocker) {
+            blockers.push(nativeDependencyBlocker);
+            notes.push(`[plan] أوقفتُ المرحلة «${phaseName}» بعائق portability صريح: ${nativeDependencyBlocker.message}`);
+            return {
+                ...phase,
+                tasks: [],
+                verificationTask: undefined,
+                deliveryStatus: 'blocked',
+                blocker: nativeDependencyBlocker,
+            };
+        }
         if (phaseBlockers.length && (runnable.length === 0 || taskOutputPaths(kept).length === 0)) {
             const blocker = phaseBlockers[0];
             blockers.push(blocker);
@@ -445,6 +598,18 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             notes.push(`[plan] المرحلة «${phaseName}» لم يبق فيها عمل قابل للتنفيذ — حوّلتُها إلى وثيقة حقيقية بدل مرحلة فاشلة.`);
         }
 
+        const phaseProducedPaths = taskOutputPaths(kept);
+        phaseProducedPaths.forEach((candidate: string) => {
+            producedPaths.add(candidate);
+            generatedPaths.add(candidate);
+        });
+        for (const candidate of phaseProducedPaths) {
+            if (/(?:^|\/)package\.json$/i.test(candidate)
+                && generatedPackageLaunchEvidence(candidate, kept)) {
+                generatedRunnableManifests.add(candidate);
+            }
+        }
+
         const v = phase?.verificationTask;
         let verification = v;
         if (v && v.tool) {
@@ -461,11 +626,11 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             // from an earlier task in execution order, not from the model's
             // verification prose. If the phase has no named file output, inspect
             // the project instead of inventing one.
-            const observedOutputPaths = kept
-                .filter((task: any) => ['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(String(task?.tool || '')))
-                .map((task: any) => String(task?.args?.path || task?.args?.filePath || task?.input?.path || task?.input?.filePath || '').trim())
+            const observedOutputPaths = phaseProducedPaths
+                .map((candidate: string) => String(candidate || '').trim())
                 .filter((candidate: string) => candidate && !candidate.startsWith('/') && !candidate.includes('..'));
             const observedOutputPath = observedOutputPaths[0];
+            const runHasRunnableEvidence = [...producedPaths].some(runnableMarker);
             const generatesInsteadOfObserving = new Set([
                 'doc_generator', 'test_generator', 'ai_write_file', 'write_file',
                 'file_edit', 'file_edit_advanced', 'scaffold_project', 'react_project',
@@ -488,8 +653,29 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             const readsUnprovenPhaseOutput = verificationTool === 'read_file'
                 && !!requestedReadPath
                 && !observedOutputPaths.some((candidate: string) => candidate.replace(/^\.\//, '') === requestedReadPath);
+            const runsBeforeRunnableArtifact = verificationTool === 'project_run' && !runHasRunnableEvidence;
+            const verificationTestType = norm(verificationArgs?.testType);
+            const verificationProjectPath = verificationArgs?.projectPath || verificationArgs?.path || '';
+            const verificationTestEvidenceCandidates = [...producedPaths, ...phaseProducedPaths, ...discoveredTestPaths];
+            const verificationHasTestEvidence = verificationTestEvidenceCandidates.some(candidate =>
+                looksLikeTestPath(normaliseEvidencePath(candidate))
+                && pathWithinProject(candidate, verificationProjectPath)
+            );
+            const verificationNeedsTestEvidence = verificationTool === 'auto_tester'
+                && (verificationTestType === 'unit' || verificationTestType === 'integration')
+                && !verificationHasTestEvidence
+                && !kept.some(task => String(task?.tool || '') === 'test_generator');
+            const verificationNeedsIntegrationScript = verificationTool === 'auto_tester'
+                && verificationTestType === 'integration'
+                && !hasDeclaredIntegrationCheck;
 
-            if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput) {
+            if (verificationNeedsTestEvidence || verificationNeedsIntegrationScript) {
+                verification = undefined;
+                const reason = verificationNeedsIntegrationScript
+                    ? 'لا يوجد script تكاملي معلن وقابل للتشغيل لهذا المشروع'
+                    : 'لا يوجد ملف اختبار مثبت داخل مسار المشروع أو test_generator سابق';
+                notes.push(`[plan] أزلتُ تحقق auto_tester من نوع ${verificationTestType} غير المدعوم — ${reason}؛ لن أدّعي نجاح اختبار غير موجود.`);
+            } else if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput || runsBeforeRunnableArtifact) {
                 verification = observedOutputPath
                     ? {
                         task: `Verify phase output exists: ${observedOutputPath}`,
@@ -501,7 +687,11 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                         tool: 'project_detect',
                         args: {},
                     };
-                const reason = readsUnprovenPhaseOutput ? 'تحققاً يقرأ ملفاً غير مثبت' : 'تحققاً مولّداً';
+                const reason = readsUnprovenPhaseOutput
+                    ? 'تحققاً يقرأ ملفاً غير مثبت'
+                    : runsBeforeRunnableArtifact
+                        ? 'تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل'
+                        : 'تحققاً مولّداً';
                 notes.push(observedOutputPath
                     ? `[plan] استبدلتُ ${reason} بقراءة المخرج المثبت «${observedOutputPath}»؛ التحقق يلاحظ الناتج ولا ينشئ أو يفترض ملفاً متخيلاً.`
                     : `[plan] استبدلتُ ${reason} بفحص المشروع؛ لا يوجد مخرج مساري مثبت في هذه المرحلة لأفحصه.`);

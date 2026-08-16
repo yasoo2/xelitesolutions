@@ -103,6 +103,13 @@ describe('named project discovery never falls back to the workspace repository',
         expect(result.cwd).toBeNull();
     });
 
+    test('a package name identifies a runnable workspace root when the folder name differs', () => {
+        fs.writeFileSync(path.join(root, 'package.json'), '{"name":"nexus-platform"}', 'utf-8');
+        const result = resolveRunnableProject(root, '"nexus"');
+        expect(result.matched).toBe(true);
+        expect(result.cwd).toBe(root);
+    });
+
     test('project_run has a named-query guard before selecting a fallback cwd', () => {
         expect(runSrc).toMatch(/namedProjectQuery/);
         expect(runSrc).toMatch(/will not guess and start another repository/);

@@ -8,6 +8,7 @@
  */
 
 import { normalizeIntentText } from '../core/orchestrator/promptNormalizer';
+import { IntentParser } from '../core/intelligence/IntentParser';
 import { extractRequirements, verifyContent, wireNavigation } from '../core/design/content-contract';
 import { pickArchetype, pickTypePair, layoutCss, primitivesCss, iconSprite } from '../core/design/layouts';
 
@@ -38,6 +39,25 @@ describe('Arabic normalisation folds spellings a reader treats as identical', ()
     it('does not throw on empty or punctuation-only input', () => {
         expect(() => normalizeIntentText('')).not.toThrow();
         expect(() => normalizeIntentText('؟؟؟ !!!')).not.toThrow();
+    });
+});
+
+describe('engineering briefs are not hijacked by the browser fast path', () => {
+    const brief = `Build a complete production-grade software system from scratch in the GitHub repository.\nUse the browser only for visual QA and inspect the terminal while implementing the backend, frontend, database, tests, and deployment checks. Work from evidence, write real files, run local tests, and repair any verified failures.`;
+
+    it('recognises a long build brief even when it mentions browser and GitHub', () => {
+        expect(IntentParser.looksLikeEngineeringBrief(brief)).toBe(true);
+    });
+
+    it('does not return a Browser quick intent for the engineering brief', () => {
+        expect(IntentParser.quickIntent(brief)).toBeNull();
+    });
+
+    it('keeps a short explicit URL request on the Browser fast path', () => {
+        expect(IntentParser.quickIntent('افتح https://example.com')).toEqual(expect.objectContaining({
+            suggestedAgent: 'Browser',
+            requiredTools: ['browser_run'],
+        }));
     });
 });
 

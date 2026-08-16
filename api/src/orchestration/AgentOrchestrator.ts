@@ -12,7 +12,7 @@ import { BaseAgent } from './agents/BaseAgent';
 import { DevAgent } from './agents/DevAgent';
 import { SecurityAgent } from './agents/SecurityAgent';
 import { BrowserAgent } from './agents/BrowserAgent';
-import { ExecutionMemory } from '../core/orchestrator/ExecutionMemory';
+import { ExecutionMemory, compactRuntimeValue } from '../core/orchestrator/ExecutionMemory';
 import { traceManager } from '../modules/services/TraceManager';
 import { executionFirewall } from './AgentExecutionFirewall';
 import intelligentRouter from '../core/llm/intelligent-router';
@@ -144,7 +144,16 @@ function pickParallelBatch(ready: ExecutionNode[]): ExecutionNode[] {
 /** The run's own story, in plan order — what each step was for and what it
  *  produced. The answer the user reads is composed from this. */
 function runSteps(dag: AgentDAG): RunStep[] {
-  return dag.nodes.map(n => ({ id: n.id, task: n.task, tool: n.tool, status: n.status, result: n.result }));
+  // A final receipt must describe the run, not keep a second live reference to
+  // every raw tool payload. ExecutionMemory already keeps bounded evidence; the
+  // DAG needs the same boundary because all early failure returns include steps.
+  return dag.nodes.map(n => ({
+    id: n.id,
+    task: String(n.task || '').slice(0, 8_000),
+    tool: String(n.tool || '').slice(0, 200),
+    status: n.status,
+    result: compactRuntimeValue(n.result),
+  }));
 }
 
 export class AgentOrchestrator {
@@ -193,37 +202,49 @@ export class AgentOrchestrator {
     const runtimeMemory = new ExecutionMemory(goal.id);
     this.memory.set(goal.id, runtimeMemory);
 
-    // [Departments] BA analyses the request, then the Architect plans it.
-    emitDepartment(goal.id, 'analyst');
+    let traceEnded = false;
+    try {
+        // [Departments] BA analyses the request, then the Architect plans it.
+        emitDepartment(goal.id, 'analyst');
 
-    // 1. Initial Dynamic Planning
-    emitDepartment(goal.id, 'architect');
-    const dag = await this.plan(goal.goal, undefined, goal.traceId);
-    dag.id = goal.id;
+        // 1. Initial Dynamic Planning
+        emitDepartment(goal.id, 'architect');
+        const dag = await this.plan(goal.goal, undefined, goal.traceId);
+        dag.id = goal.id;
 
-    if (goal.traceId) {
-        traceManager.logEvent(goal.traceId, 'orchestrator', {
-            event: 'execution_started',
-            goal: goal.goal,
-            dag_structure: dag.nodes.map(n => ({ id: n.id, task: n.task, tool: n.tool }))
-        });
+        if (goal.traceId) {
+            traceManager.logEvent(goal.traceId, 'orchestrator', {
+                event: 'execution_started',
+                goal: goal.goal,
+                dag_structure: dag.nodes.map(n => ({ id: n.id, task: n.task, tool: n.tool }))
+            });
+        }
+
+        // 2. Adaptive Coordination Execution (Developer department)
+        emitDepartment(goal.id, 'developer');
+        const result = await executionFirewall.runInContext(goal.traceId, () => {
+            return this.coordinate(dag, runtimeMemory, goal.context, goal.traceId, goal.goal);
+        }, { userId: goal.context?.userId, sessionId: goal.context?.sessionId || goal.id });
+
+        // [Departments] QA reviews the outcome, then it's delivered.
+        emitDepartment(goal.id, 'reviewer');
+        emitDepartment(goal.id, 'delivered', result.ok ? 'ok' : 'failed');
+
+        if (goal.traceId) {
+            traceManager.endTrace(goal.traceId);
+            traceEnded = true;
+        }
+
+        return result;
+    } finally {
+        // Runtime memory is scoped to one execution. Keeping it in this Map
+        // after return retains every bounded history/result object until the
+        // process ends and turns repeated runs into a slow memory leak.
+        this.memory.delete(goal.id);
+        if (goal.traceId && !traceEnded) {
+            traceManager.endTrace(goal.traceId);
+        }
     }
-
-    // 2. Adaptive Coordination Execution (Developer department)
-    emitDepartment(goal.id, 'developer');
-    const result = await executionFirewall.runInContext(goal.traceId, () => {
-        return this.coordinate(dag, runtimeMemory, goal.context, goal.traceId, goal.goal);
-    }, { userId: goal.context?.userId, sessionId: goal.context?.sessionId || goal.id });
-
-    // [Departments] QA reviews the outcome, then it's delivered.
-    emitDepartment(goal.id, 'reviewer');
-    emitDepartment(goal.id, 'delivered', result.ok ? 'ok' : 'failed');
-
-    if (goal.traceId) {
-        traceManager.endTrace(goal.traceId);
-    }
-
-    return result;
   }
 
   /**
@@ -411,7 +432,13 @@ export class AgentOrchestrator {
            * never fails because of it.
            */
           stepNo++;
-          if (narrationEnabled()) {
+          // project_pipeline owns its own evidence-first planning and progress
+          // stream. A decorative narration request immediately before it competes
+          // with the planner for the same keyless provider and can trip the global
+          // dead-brain latch, making a healthy planning call look unavailable.
+          // Keep narration for ordinary nodes, but never buy it before engineering
+          // planning begins; the pipeline's real progress remains visible below.
+          if (narrationEnabled() && node.tool !== 'project_pipeline') {
               const line = await narrate(
                   {
                       goal: goalText || node.task,
@@ -459,6 +486,15 @@ export class AgentOrchestrator {
           let result;
 
           const liveSessionId = goalContext?.sessionId || dag.id;
+          // A full project has a separate LLM budget from an ordinary chat node.
+          // Keep the value on the canonical context so ProjectPipelineTool can
+          // carry it through PhaseExecutor, verifiers, generators, and repairs.
+          const engineeringLlmTimeoutMs = node.tool === 'project_pipeline'
+            ? (Number(goalContext?.providerTimeoutMs) > 0 ? Number(goalContext.providerTimeoutMs) : 120000)
+            : goalContext?.providerTimeoutMs;
+          const engineeringPlannerTimeoutMs = node.tool === 'project_pipeline'
+            ? (Number(goalContext?.plannerTimeoutMs) > 0 ? Number(goalContext.plannerTimeoutMs) : 120000)
+            : goalContext?.plannerTimeoutMs;
           const executionContext = {
               sessionId: liveSessionId,
               // Keep browser work bound to the live panel session rather than the
@@ -471,6 +507,14 @@ export class AgentOrchestrator {
               traceId,
               memory: memory.getHistory(),
               modelConfig: goalContext?.modelConfig,
+              providerTimeoutMs: engineeringLlmTimeoutMs,
+              plannerTimeoutMs: engineeringPlannerTimeoutMs,
+              plannerMaxCompletionTokens: node.tool === 'project_pipeline'
+                ? (Number(goalContext?.plannerMaxCompletionTokens) > 0 ? Number(goalContext.plannerMaxCompletionTokens) : 12000)
+                : goalContext?.plannerMaxCompletionTokens,
+              plannerReasoningEffort: node.tool === 'project_pipeline'
+                ? (goalContext?.plannerReasoningEffort || 'low')
+                : goalContext?.plannerReasoningEffort,
               language: goalContext?.language,
               // [PERSISTENT MEMORY] Forward the recalled user/project context so tools
               // (central_answer, page builder) can personalise their output.
@@ -1011,8 +1055,10 @@ export class AgentOrchestrator {
   private sanitizeOutput(output: any): any {
     if (!output) return output;
     if (typeof output === 'string') {
-      // Remove common shell artifacts or paths if sensitive
-      return output.trim();
+      // Remove common shell artifacts or paths if sensitive, then apply the same
+      // hard string bound used by runtime memory. A result is evidence for the
+      // next step, not an unbounded transcript kept in the DAG forever.
+      return compactRuntimeValue(output.trim());
     }
     if (typeof output === 'object') {
       const sanitized = { ...output };
@@ -1030,8 +1076,8 @@ export class AgentOrchestrator {
       // The raw command line can carry inline secrets (API keys in env prefixes) —
       // that one stays out of recorded results.
       delete sanitized.command;
-      return sanitized;
+      return compactRuntimeValue(sanitized);
     }
-    return output;
+    return compactRuntimeValue(output);
   }
 }

@@ -5,6 +5,7 @@ jest.mock('../core/llm', () => ({
 }));
 
 import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerTool';
+import { PROVIDER_FAILURE_PREFIX } from '../core/llm/intelligent-router';
 
 describe('project planner structured recovery', () => {
     beforeEach(() => mockCallLLM.mockReset());
@@ -45,6 +46,8 @@ describe('project planner structured recovery', () => {
         });
 
         expect(mockCallLLM).toHaveBeenCalledTimes(2);
+        expect(mockCallLLM.mock.calls[0][2]).toMatchObject({ purpose: 'internal', providerTimeoutMs: 120000 });
+        expect(mockCallLLM.mock.calls[1][2]).toMatchObject({ purpose: 'internal', providerTimeoutMs: 120000 });
         expect(mockCallLLM.mock.calls[1][0]).toMatch(/Do not return an empty phases array/i);
         expect(result.ok).toBe(true);
         expect(result.output.fallback).not.toBe(true);
@@ -335,6 +338,64 @@ Build the complete system with locally verifiable implementation artifacts.
         expect(result.ok).toBe(true);
         expect(result.output.fallback).not.toBe(true);
         expect(result.output.phases[0].tasks[0].args.structure['src/index.ts']).toBeDefined();
+        expect(result.logs.join('\\n')).toMatch(/contract recovery completed/i);
+    });
+
+    it('retries portability recovery once after a provider rate limit and accepts only the portable plan', async () => {
+        const nativePlan = {
+            projectName: 'Native storage plan',
+            projectVibe: 'Greenfield implementation',
+            totalPhases: 1,
+            estimatedDuration: '5 minutes',
+            dependencies: {},
+            phases: [{
+                phaseNumber: 1,
+                name: 'Create persistence layer',
+                description: 'Implement the requested persistence layer with sqlite3.',
+                tasks: [{
+                    task: 'Create the sqlite3 persistence adapter',
+                    tool: 'ai_write_file',
+                    args: { path: 'src/db.ts', description: 'Use the sqlite3 native package for persistence.' },
+                    priority: 'high',
+                    realisticMinutes: 1,
+                }],
+                verificationTask: { task: 'Verify the adapter', tool: 'read_file', args: { path: 'src/db.ts' } },
+                deliverables: ['src/db.ts'],
+                estimatedTime: '5 minutes',
+                requirementsCovered: ['the requested persistence layer'],
+            }],
+        };
+        const portablePlan = {
+            ...nativePlan,
+            projectName: 'Portable storage plan',
+            phases: [{
+                ...nativePlan.phases[0],
+                name: 'Create portable persistence layer',
+                description: 'Implement persistence with node:sqlite or a JSON fallback.',
+                tasks: [{
+                    ...nativePlan.phases[0].tasks[0],
+                    task: 'Create the portable persistence adapter',
+                    args: { path: 'src/db.ts', description: 'Use node:sqlite when available and a JSON file fallback with the same interface.' },
+                }],
+            }],
+        };
+        mockCallLLM
+            .mockResolvedValueOnce(JSON.stringify(nativePlan))
+            .mockResolvedValueOnce(`${PROVIDER_FAILURE_PREFIX} — السبب: 429 rate limit; retry after 0 seconds`)
+            .mockResolvedValueOnce(JSON.stringify(portablePlan));
+
+        const result: any = await new ProjectPlannerTool().execute({
+            projectDescription: 'Build a greenfield TypeScript persistence utility and verify it locally.',
+            evidence: { mode: 'greenfield', referenceProjects: [], facts: [], blockers: [] } as any,
+        }, { plannerRecoveryRetryDelayMs: 0 });
+
+        expect(mockCallLLM).toHaveBeenCalledTimes(3);
+        expect(mockCallLLM.mock.calls[1][0]).toMatch(/PORTABILITY RECOVERY CONTRACT|native npm addons/i);
+        expect(mockCallLLM.mock.calls[2][0]).toMatch(/PORTABILITY RECOVERY CONTRACT|native npm addons/i);
+        expect(result.ok).toBe(true);
+        expect(result.output.fallback).not.toBe(true);
+        expect(result.output.phases[0].tasks[0].args.description).toMatch(/node:sqlite|JSON/i);
+        expect(result.logs.join('\\n')).toMatch(/rate limit; waiting 0ms/i);
         expect(result.logs.join('\\n')).toMatch(/contract recovery completed/i);
     });
 

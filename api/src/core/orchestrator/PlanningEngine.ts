@@ -538,6 +538,13 @@ Rules:
          */
         const deniesExternalPublish = /(?:^|[\s،؛,:.!?])(?:(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)(?:نشر|انشر|أنشر|رفع|استضافة|deploy|publish|host|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])/i.test(userGoal);
         const localBuildContract = PlanningEngine.looksLikeBuild(userGoal) && deniesExternalPublish;
+        // A long construction brief can quote its own rollback/version-history
+        // acceptance requirements. Those words are evidence about the product,
+        // not an instruction to undo the currently active project. Keep the
+        // direct undo fast-path for short, explicit requests, but never let a
+        // build brief with an active (possibly stale) project hijack the build.
+        const longConstructionBrief = PlanningEngine.looksLikeBuild(userGoal)
+            && userGoal.length >= 1000;
         const localSpecificationExecution = PlanningEngine.isLocalSpecificationExecutionRequest(userGoal);
 
         // Product names never decide an engineering route. A request that calls
@@ -1267,7 +1274,7 @@ Rules:
             const listVerb = /(اعرض|أظهر|اظهر|ما\s*هي)\s*(النسخ|الإصدارات|الاصدارات)|\bversions?\b|version\s*history/i.test(probe);
             const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
             const active = ((global as any).joeProjects || {})[sessionKey];
-            if ((undoVerb || listVerb) && active?.dir) {
+            if ((undoVerb || listVerb) && active?.dir && !longConstructionBrief) {
                 return {
                     id: `undo_${Date.now()}`,
                     goal: intent.goal,
@@ -1302,7 +1309,7 @@ Rules:
             const uiWhole = /(الواجهة|واجهة\s*(المشروع|النظام|التطبيق|الموقع)|\bui\b|\bux\b|الوصولية|إمكانية\s*الوصول|accessibility|a11y|جودة\s*الواجهة|مشاكل\s*الواجهة|كل\s*(المشاكل|الملاحظات))/i.test(probe);
             const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
             const activeProject = ((global as any).joeProjects || {})[sessionKey]?.dir;
-            if (repairVerb && uiWhole && activeProject) {
+            if (repairVerb && uiWhole && activeProject && !longConstructionBrief) {
                 return {
                     id: `ui_fix_${Date.now()}`,
                     goal: intent.goal,

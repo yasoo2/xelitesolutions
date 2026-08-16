@@ -271,7 +271,7 @@ describe('partial phases preserve verified blockers instead of guessing a repair
         expect(executor).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
     });
 
-    it('stops an evidence-backed partial phase before a repair ticket can be built', () => {
+    it('routes actionable build/lint evidence to self-fix while preserving honest blockers', () => {
         const loop = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
         const blockerGuard = loop.indexOf('const isHonestBlocker =');
         const repairTicket = loop.indexOf('const repairTicket = RepairTicketService.build');
@@ -283,6 +283,11 @@ describe('partial phases preserve verified blockers instead of guessing a repair
         expect(guardedRegion).toContain('phaseResult?.output?.verificationFailed === true');
         expect(guardedRegion).toContain("primaryError.includes('EVIDENCE_BLOCKER')");
         expect(guardedRegion).toContain('return { ok: false, completedPhases, results, honestBlocker: true }');
+        expect(loop).toContain('const hasActionableEvidence =');
+        expect(loop).toContain('r?.toolName || r?.name || r?.operation');
+        expect(loop).toContain('r?.errorMessage ||');
+        expect(loop).toContain('const phaseResultForRepair =');
+        expect(loop).toContain('phaseResult: phaseResultForRepair');
     });
 });
 
@@ -300,10 +305,12 @@ describe('pipeline preserves an honest verification verdict for its caller', () 
 
 
 describe('planner provider and requirements-boundary contracts', () => {
-    it('passes the active session provider to project planning and treats provider outages as blockers', () => {
+    it('passes the active session provider to project planning and bounds provider-outage recovery', () => {
         const planner = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPlannerTool.ts'), 'utf-8');
         expect(planner).toContain('modelConfig: context?.modelConfig');
         expect(planner).toContain('if (isProviderFailure(response))');
+        expect(planner).toContain('context?.engineeringPipeline === true');
+        expect(planner).toContain('createCompactRecoveryPlanningPrompt');
         expect(planner).toContain('no plan was invented from the outage message');
     });
 

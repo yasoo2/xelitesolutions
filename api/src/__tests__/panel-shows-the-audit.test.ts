@@ -55,7 +55,6 @@ describe('the browser is awake before the audit needs it', () => {
         const p = read('modules', 'tools', 'definitions', 'ProjectRepairTool.ts');
         expect(p).toMatch(/warmBrowserSession\(PANEL_BROWSER_SID\)/);
         // …before the first MEASUREMENT (the import above it is not the audit).
-        //
         // The directory the audit is handed was once called `dist` and is now
         // `auditDir`. The guarantee was never the NAME of that variable — it is
         // that the browser is warming before the first measurement starts — so

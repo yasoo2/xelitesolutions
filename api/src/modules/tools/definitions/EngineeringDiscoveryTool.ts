@@ -18,6 +18,8 @@ export interface EngineeringEvidence {
         manifests: Array<{ path: string; kind: string; scripts?: Record<string, string> }>;
         git: { isRepository: boolean; branch?: string; remote?: string; dirty?: boolean };
         likelyEntrypoints: string[];
+        /** Workspace-relative test files discovered on disk; never inferred from scripts alone. */
+        testFiles?: string[];
         candidateChecks: Array<{ kind: 'test' | 'build' | 'lint' | 'typecheck'; command: string; source: string }>;
     };
     /**
@@ -30,6 +32,8 @@ export interface EngineeringEvidence {
         manifests: Array<{ path: string; kind: string; scripts?: Record<string, string> }>;
         git: { isRepository: boolean; branch?: string; remote?: string; dirty?: boolean };
         likelyEntrypoints: string[];
+        /** Workspace-relative test files discovered on disk; never inferred from scripts alone. */
+        testFiles?: string[];
         candidateChecks: Array<{ kind: 'test' | 'build' | 'lint' | 'typecheck'; command: string; source: string }>;
     }>;
     /**
@@ -333,8 +337,35 @@ export class EngineeringDiscoveryTool extends BaseTool {
 
         const entryCandidates = ['src/index.ts', 'src/main.ts', 'src/main.tsx', 'src/index.tsx', 'index.ts', 'index.js', 'main.py', 'app.py', 'main.go'];
         const likelyEntrypoints = entryCandidates.filter(file => fs.existsSync(path.join(root, file))).map(file => path.join(root, file));
+        const testFiles = this.inspectTestFiles(root);
         const git = this.inspectGit(root);
-        return { root: path.resolve(root), projectKinds: [...kinds], manifests, git, likelyEntrypoints, candidateChecks: checks };
+        return { root: path.resolve(root), projectKinds: [...kinds], manifests, git, likelyEntrypoints, testFiles, candidateChecks: checks };
+    }
+
+    private inspectTestFiles(root: string): string[] {
+        const found: string[] = [];
+        const skip = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache', '.turbo']);
+        const visit = (dir: string, depth: number) => {
+            if (found.length >= 40 || depth > 6) return;
+            let entries: fs.Dirent[];
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+            for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+                if (found.length >= 40) return;
+                if (entry.name.startsWith('.') && entry.name !== '.env.example') continue;
+                const absolute = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    if (!skip.has(entry.name)) visit(absolute, depth + 1);
+                    continue;
+                }
+                if (!entry.isFile()) continue;
+                const relative = path.relative(root, absolute).split(path.sep).join('/');
+                if (/(?:^|\/)(?:__tests__|tests?|spec)(?:\/|$)/i.test(relative) || /(?:\.test|\.spec)\.[cm]?[jt]sx?$|_test\.py$|_test\.go$/i.test(relative)) {
+                    found.push(absolute);
+                }
+            }
+        };
+        visit(root, 0);
+        return found;
     }
 
     private inspectGit(root: string): Candidate['git'] {

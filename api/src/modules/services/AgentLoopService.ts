@@ -16,6 +16,7 @@ import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils
 import { persistChatStores } from '../../api/chat-store';
 import { clarifyGate } from '../../core/orchestrator/clarify';
 import { composeAnswer, composeFailure } from '../../core/orchestrator/answerComposer';
+import { compactRuntimeValue } from '../../core/orchestrator/ExecutionMemory';
 
 /**
  * Lessons Joe applies to every system HE builds — each line was paid for by a
@@ -30,6 +31,60 @@ export const BUILD_DISCIPLINE = [
     '2. Crash-loop guard: any auto-restart loop must stop after ~3 consecutive fast crashes (<15s uptime) with a clear message naming the likely cause, and should attempt ONE automatic dependency reinstall before giving up. Never restart a deterministic crash forever.',
     '3. Failure taxonomy in updaters: distinguish network failure (could not resolve host / timeout) from state conflict (merge/history). Network failure = warn and keep the current version; NEVER destructively reset over a connectivity error.',
 ].join('\n');
+
+const MAX_PHASE_RECEIPT_RESULTS = 48;
+const MAX_PHASE_RECEIPT_LOGS = 96;
+const MAX_PHASE_RECEIPT_STRING_CHARS = 2_000;
+
+function boundReceiptStrings(value: any, depth = 0): any {
+    if (value === null || value === undefined) return value;
+    if (typeof value === 'string') return value.slice(0, MAX_PHASE_RECEIPT_STRING_CHARS);
+    if (depth >= 4) return '[truncated receipt value]';
+    if (Array.isArray(value)) {
+        const items = value.slice(0, MAX_PHASE_RECEIPT_RESULTS).map(item => boundReceiptStrings(item, depth + 1));
+        if (value.length > MAX_PHASE_RECEIPT_RESULTS) items.push(`[...${value.length - MAX_PHASE_RECEIPT_RESULTS} more receipt items]`);
+        return items;
+    }
+    if (typeof value === 'object') {
+        const entries = Object.entries(value);
+        const result: Record<string, any> = {};
+        for (const [key, item] of entries.slice(0, 48)) result[key] = boundReceiptStrings(item, depth + 1);
+        if (entries.length > 48) result.__truncatedKeys = entries.length - 48;
+        return result;
+    }
+    return value;
+}
+
+function compactReceiptValue(value: any): any {
+    return boundReceiptStrings(compactRuntimeValue(value));
+}
+
+function compactPhaseLogs(logs: any): string[] {
+    if (!Array.isArray(logs)) return [];
+    const recent = logs.slice(-MAX_PHASE_RECEIPT_LOGS).map(log => String(log ?? '').slice(0, MAX_PHASE_RECEIPT_STRING_CHARS));
+    if (logs.length <= MAX_PHASE_RECEIPT_LOGS) return recent;
+    return [`[AgentLoop] ... ${logs.length - MAX_PHASE_RECEIPT_LOGS} older phase log entries truncated ...`, ...recent];
+}
+
+function compactPhaseReceipt(output: any, logs: any, status?: string, extras: Record<string, any> = {}): any {
+    const source = output && typeof output === 'object' ? output : {};
+    const receipt: Record<string, any> = {};
+    const retainedKeys = [
+        'phaseNumber', 'phaseName', 'status', 'completedTasks', 'totalTasks', 'nextPhase',
+        'deliverables', 'estimatedTime', 'verificationFailed', 'requiresUserDecision',
+        'primaryError', 'error', 'results', 'honestBlocker',
+    ];
+    for (const key of retainedKeys) {
+        if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+        receipt[key] = key === 'results'
+            ? compactReceiptValue(Array.isArray(source[key]) ? source[key].slice(0, MAX_PHASE_RECEIPT_RESULTS) : [])
+            : compactReceiptValue(source[key]);
+    }
+    if (status) receipt.status = String(status).slice(0, 120);
+    receipt.logs = compactPhaseLogs(logs);
+    for (const [key, value] of Object.entries(extras)) receipt[key] = compactReceiptValue(value);
+    return receipt;
+}
 
 /**
  * AgentLoopService - Dynamic Runtime Gateway
@@ -404,6 +459,10 @@ export class AgentLoopService {
         browserSessionId?: string;
         plannerResult: any;
         modelConfig?: any;
+        providerTimeoutMs?: number;
+        plannerTimeoutMs?: number;
+        plannerMaxCompletionTokens?: number;
+        plannerReasoningEffort?: string;
         /** The language of THIS run — the phase announcements follow it. */
         language?: string;
         onProgress?: (msg: string) => void;
@@ -427,6 +486,10 @@ export class AgentLoopService {
         plannerResult: any;
         language?: string;
         modelConfig?: any;
+        providerTimeoutMs?: number;
+        plannerTimeoutMs?: number;
+        plannerMaxCompletionTokens?: number;
+        plannerReasoningEffort?: string;
         onProgress?: (msg: string) => void;
     }) {
         const { sessionId, runId, userId, workspaceId, browserSessionId, plannerResult, modelConfig } = opts;
@@ -460,7 +523,28 @@ export class AgentLoopService {
             // not a guessed technology or product template.
             requirementsContext: String(plannerResult?.output?.requirementsContext || ''),
         };
-        const executionContext = { sessionId, browserSessionId, workspaceId, userId, modelConfig, onProgress: voice, onThought: voice };
+        const executionContext = {
+            sessionId,
+            browserSessionId,
+            workspaceId,
+            userId,
+            modelConfig,
+            // Preserve the caller's engineering budget all the way to every
+            // phase/verifier/repair LLM call. Without this, keyless providers
+            // silently fall back to their short default timeout.
+            providerTimeoutMs: opts.providerTimeoutMs,
+            plannerTimeoutMs: opts.plannerTimeoutMs,
+            plannerMaxCompletionTokens: opts.plannerMaxCompletionTokens,
+            plannerReasoningEffort: opts.plannerReasoningEffort,
+            // Every LLM call launched by a phase, verifier, repair, or rerun is
+            // bounded engineering work. Keep this marker explicit so downstream
+            // tools do not accidentally route it as an ordinary chat turn and
+            // inherit the dead-brain fail-fast latch after a transient timeout.
+            engineeringPipeline: true,
+            purpose: 'internal',
+            onProgress: voice,
+            onThought: voice,
+        };
         const results: any[] = [];
         let completedPhases = 0;
         const totalPhases = Number(projectContext.totalPhases || phases.length);
@@ -471,13 +555,21 @@ export class AgentLoopService {
                 `⚙️ المرحلة ${n}/${totalPhases} — ${phase.name || 'تنفيذ'}`,
                 `⚙️ Phase ${n}/${totalPhases} — ${phase.name || 'work'}`));
             const phaseResult = await executeTool('phase_executor', { phase, projectContext }, executionContext);
+            // Keep the executor's evidence visible to the user and to the final
+            // pipeline report. Without this, a failed acceptance tool was reduced
+            // to the opaque label `verification_failed`, making diagnosis and
+            // honest self-healing impossible even though the executor had the
+            // exact tool name and error in its logs.
+            if (Array.isArray(phaseResult?.logs)) {
+                for (const log of phaseResult.logs) voice(String(log));
+            }
             const status = String(phaseResult?.output?.status || 'unknown');
 
             if (phaseResult?.ok && status === 'completed') {
                 voice(pick(isAr,
                     `✅ اكتملت المرحلة ${n}/${totalPhases} وتحقَّقت`,
                     `✅ Phase ${n}/${totalPhases} completed and verified`));
-                results.push({ ...phaseResult.output, status: 'completed' });
+                results.push(compactPhaseReceipt(phaseResult.output, phaseResult.logs, 'completed'));
                 completedPhases++;
                 continue;
             }
@@ -488,15 +580,67 @@ export class AgentLoopService {
             // user decision or that verification disproved delivery. Preserve that
             // truthful outcome before the generic repair path starts.
             const primaryError = String(phaseResult?.output?.primaryError || phaseResult?.error || '');
+            const rawPhaseResults = Array.isArray(phaseResult?.output?.results)
+                ? phaseResult.output.results
+                : [];
+            const normalizeFailureEvidence = (r: any) => {
+                const tool = String(r?.tool || r?.toolName || r?.name || r?.operation || '').trim();
+                const error = String(
+                    r?.error ||
+                    r?.errorMessage ||
+                    r?.stderr ||
+                    r?.output?.stderr ||
+                    r?.message ||
+                    r?.output?.message ||
+                    primaryError ||
+                    '',
+                ).trim();
+                return {
+                    ...r,
+                    task: r?.task || r?.description || 'unknown task',
+                    tool: tool || 'unknown tool',
+                    error: error || 'failed tool result',
+                };
+            };
+            // PhaseExecutor normally emits { tool, error }, but stored plans and
+            // adapters can return the same facts under toolName/name and
+            // errorMessage/stderr. Normalize once so the decision gate, repair
+            // ticket, and SelfFixService consume the same evidence. A bare
+            // verification flag is never enough to authorize a repair.
+            const normalizedPhaseResults = rawPhaseResults.map((r: any) =>
+                r && r.ok === false ? normalizeFailureEvidence(r) : r
+            );
+            const failedEvidence = normalizedPhaseResults.filter((r: any) => r && r.ok === false);
+            const evidenceText = [
+                primaryError,
+                ...failedEvidence.map((r: any) => `${r?.tool || ''} ${r?.error || ''} ${r?.command || ''} ${r?.cwd || ''} ${r?.message || ''}`),
+            ].join(' ');
+            // A failed acceptance/build/lint command is actionable evidence: it
+            // must reach RepairTicket -> SelfFix -> phase rerun. Only evidence
+            // blockers, user decisions, and security/portability violations
+            // stop before repair. Treating every `verificationFailed` as a
+            // blocker made Joe stop after writing a project instead of learning
+            // from the actual compiler/linter output.
+            const nonRepairableEvidence = /EVIDENCE_BLOCKER|requires?\s+user\s+decision|outside_workspace|unauthorized|forbidden|permission|credential|secret|native\s+addon|toolchain/i.test(evidenceText);
+            const hasActionableEvidence = failedEvidence.some((r: any) =>
+                String(r?.tool || '').trim() && String(r?.error || '').trim()
+            ) || (
+                Boolean(primaryError) &&
+                /lint|build|npm\s+(?:install|run)|eslint|tsc|typescript|vite|jest|vitest|mocha|test/i.test(evidenceText)
+            );
+            const actionableVerificationFailure =
+                phaseResult?.output?.verificationFailed === true &&
+                hasActionableEvidence &&
+                !nonRepairableEvidence;
             const isHonestBlocker =
                 phaseResult?.output?.requiresUserDecision === true ||
-                phaseResult?.output?.verificationFailed === true ||
-                primaryError.includes('EVIDENCE_BLOCKER');
+                primaryError.includes('EVIDENCE_BLOCKER') ||
+                (phaseResult?.output?.verificationFailed === true && !actionableVerificationFailure);
             if (isHonestBlocker) {
                 voice(pick(isAr,
                     `⛔ توقفتُ عند عائق موثق — ${primaryError || 'يتطلب قراراً من المستخدم'}`,
                     `⛔ Stopped at a documented blocker — ${primaryError || 'requires user decision'}`));
-                results.push({ ...phaseResult?.output, status, honestBlocker: true });
+                results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status, { honestBlocker: true }));
                 return { ok: false, completedPhases, results, honestBlocker: true };
             }
 
@@ -505,13 +649,26 @@ export class AgentLoopService {
                 `⚠️ Phase ${n} stumbled — opening a repair ticket and attempting self-healing…`));
 
             // Phase failed — enter self-healing pipeline
-            const failedTasks = (phaseResult?.output?.results || [])
-                .filter((r: any) => !r.ok)
-                .map((r: any) => ({ task: r.task, tool: r.tool, ok: false, error: r.error }));
+            const failedTasks = failedEvidence.map((r: any) => ({
+                ...r,
+                task: r.task,
+                tool: r.tool,
+                ok: false,
+                error: r.error,
+            }));
+            const phaseResultForRepair = Array.isArray(phaseResult?.output?.results)
+                ? {
+                    ...phaseResult,
+                    output: {
+                        ...phaseResult.output,
+                        results: normalizedPhaseResults,
+                    },
+                }
+                : phaseResult;
 
             const repairTicket = RepairTicketService.build({
                 phase,
-                phaseResult,
+                phaseResult: phaseResultForRepair,
                 projectName: projectContext.projectName,
                 sessionId,
                 workspaceId,
@@ -520,8 +677,8 @@ export class AgentLoopService {
             const selfFixPlan = SelfFixService.plan(repairTicket);
 
             if (!selfFixPlan.allowed) {
-                results.push({ ...phaseResult?.output, status, repairTicket, selfFixPlan });
-                return { ok: false, completedPhases, results, repairTicket, selfFixPlan };
+                results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status, { repairTicket, selfFixPlan }));
+                return { ok: false, completedPhases, results, repairTicket: compactReceiptValue(repairTicket), selfFixPlan: compactReceiptValue(selfFixPlan) };
             }
 
             const selfFixExecution = await SelfFixExecutionService.executeOnce({
@@ -535,12 +692,12 @@ export class AgentLoopService {
                 voice(pick(isAr,
                     `🔧 نجح الإصلاح الذاتي — المرحلة ${n} اكتملت بعد العلاج`,
                     `🔧 Self-healing worked — phase ${n} completed after the repair`));
-                results.push({
-                    ...(selfFixExecution.rerunResult?.output || phaseResult?.output),
-                    status: 'completed',
-                    selfFixPlan,
-                    selfFixExecution,
-                });
+                results.push(compactPhaseReceipt(
+                    selfFixExecution.rerunResult?.output || phaseResult?.output,
+                    selfFixExecution.rerunResult?.logs || phaseResult?.logs || [],
+                    'completed',
+                    { selfFixPlan, selfFixExecution },
+                ));
                 completedPhases++;
                 continue;
             }
@@ -549,8 +706,15 @@ export class AgentLoopService {
             voice(pick(isAr,
                 `⛔ لم ينجح الإصلاح الذاتي — أتوقف بصدق عند ${completedPhases}/${totalPhases} مراحل`,
                 `⛔ Self-healing did not work — stopping honestly at ${completedPhases}/${totalPhases} phases`));
-            results.push({ ...phaseResult?.output, status, repairTicket, selfFixPlan, selfFixExecution });
-            return { ok: false, completedPhases, results, repairTicket, selfFixPlan, selfFixExecution };
+            results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status, { repairTicket, selfFixPlan, selfFixExecution }));
+            return {
+                ok: false,
+                completedPhases,
+                results,
+                repairTicket: compactReceiptValue(repairTicket),
+                selfFixPlan: compactReceiptValue(selfFixPlan),
+                selfFixExecution: compactReceiptValue(selfFixExecution),
+            };
         }
 
         const pipelineResult: any = {

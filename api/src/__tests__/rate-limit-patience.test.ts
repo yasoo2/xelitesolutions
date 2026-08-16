@@ -102,4 +102,11 @@ describe('no emergency fabrication when every provider is down', () => {
         const patienceBlock = routerSource.slice(routerSource.indexOf('Rate-limited, not dead'));
         expect(patienceBlock.slice(0, 600)).toContain('onProgress?.(');
     });
+
+    it('treats a 429 during transient rescue as a bounded retry, not an instant total failure', () => {
+        const rescueBlock = routerSource.slice(routerSource.indexOf('A rescue probe can itself hit a provider rate limit'));
+        expect(rescueBlock).toContain('markProviderRateLimited(provider.name, retryAfterMs)');
+        expect(rescueBlock).toContain('rateLimitPatienceMs(');
+        expect(rescueBlock).toContain('continue meshAttemptLoop');
+    });
 });

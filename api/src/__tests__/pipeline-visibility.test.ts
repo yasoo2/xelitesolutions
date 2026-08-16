@@ -54,7 +54,7 @@ describe('the canonical pipeline narrates phase by phase', () => {
     });
 
     test('the voice reaches the phase executor context so per-task progress flows', () => {
-        expect(loop).toMatch(/onProgress: voice, onThought: voice/);
+        expect(loop).toMatch(/onProgress: voice,\s*onThought: voice/);
     });
 
     test('without a callback the voice falls back to the panel stream directly', () => {

@@ -90,9 +90,55 @@ OBSERVE JOE — DO NOT TAKE OVER
         const scope = planner.requirementScope(prompt);
 
         expect(scope.requiresImplementation).toBe(true);
-        expect(scope.targets).toEqual(productAreas.slice(0, 18));
+        expect(scope.targets).toEqual(productAreas);
         expect(scope.targets).not.toContain('Inspect the result');
-        expect(scope.minPhases).toBe(6);
+        expect(scope.minPhases).toBe(8);
+    });
+
+    it('rejects a plan that covers only the former truncated register of a larger brief', () => {
+        const phase = (index: number) => ({
+            name: `Implementation ${index}`,
+            requirementsCovered: [`R${index}`],
+            deliverables: [`src/module-${index}.ts`],
+            tasks: [{
+                task: 'Implement the mapped requirement in source code',
+                tool: 'ai_write_file',
+                args: { path: `src/module-${index}.ts`, description: 'Concrete source implementation.' },
+            }],
+        });
+        const productAreas = ['AlphaGateway', 'BetaIdentity', 'GammaStorage', 'DeltaSearch', 'EpsilonBilling', 'ZetaAudit', 'EtaWorkflow', 'ThetaNotifications', 'IotaReports', 'KappaImport', 'LambdaExport', 'MuPermissions', 'NuAnalytics', 'XiBackups', 'OmicronSettings', 'PiTeams', 'RhoProjects', 'SigmaComments', 'TauTags', 'UpsilonFiles', 'PhiIntegrations', 'ChiWebhooks', 'PsiQueues', 'OmegaMonitoring', 'ApexPolicies', 'BeaconAlerts', 'CipherSecrets', 'DeltaRegions', 'EchoTemplates', 'FluxThemes', 'GraphSnapshots'];
+        const prompt = [
+            'MAIN JOE CHALLENGE',
+            'Build a production-grade platform.',
+            'It must contain:',
+            ...productAreas.map((area, index) => `${index + 1}. ${area}`),
+            'END OF JOE CHALLENGE',
+        ].join('\n');
+        const assessment = planner.assessPlanScope({ phases: Array.from({ length: 18 }, (_, index) => phase(index + 1)) }, prompt);
+
+        expect(assessment.targets).toHaveLength(31);
+        expect(assessment.coveredTargets).toBe(18);
+        expect(assessment.ok).toBe(false);
+        expect(assessment.message).toContain('31 requirement areas');
+    });
+
+    it('keeps the complete register and dynamic phase floor in compact scope recovery', () => {
+        const productAreas = Array.from({ length: 31 }, (_, index) => `Area ${index + 1}`);
+        const prompt = [
+            'MAIN JOE CHALLENGE',
+            'Build a production-grade platform.',
+            'It must contain:',
+            ...productAreas.map((area, index) => `${index + 1}. ${area}`),
+            'END OF JOE CHALLENGE',
+        ].join('\n');
+        const recovery = planner.createCompactRecoveryPlanningPrompt(prompt, 'under-scoped', {
+            missingTargetNames: ['Area 31'],
+        });
+
+        expect(recovery).toContain('R31: Area 31');
+        expect(recovery).toContain('between 8 and 8 phases');
+        expect(recovery).not.toContain('exactly 6 phases');
+        expect(recovery).toContain('including every missing area named by the validator');
     });
 
     it('counts stable R-number requirement references as coverage evidence', () => {
@@ -239,6 +285,39 @@ OBSERVE JOE — DO NOT TAKE OVER
                 git: { isRepository: false },
                 likelyEntrypoints: [],
                 candidateChecks: [],
+            }],
+        })).toBe(false);
+    });
+
+    it('accepts an explicit planner stack decision tied to a real scaffold artifact', () => {
+        expect(planner.hasPlannerStackDecision({
+            projectName: 'nexus',
+            phases: [{
+                name: 'Architecture and TypeScript stack decision',
+                description: 'Choose Node.js and TypeScript for the service runtime.',
+                tasks: [{
+                    task: 'Create the executable package manifest and source entrypoint',
+                    tool: 'scaffold_project',
+                    args: { structure: {
+                        'package.json': '{"scripts":{"test":"jest"}}',
+                        'src/index.ts': 'export const app = true;',
+                    } },
+                }],
+            }],
+        })).toBe(true);
+    });
+
+    it('rejects a greenfield scaffold with product language but no technical decision', () => {
+        expect(planner.hasPlannerStackDecision({
+            projectName: 'nexus',
+            phases: [{
+                name: 'NEXUS foundation',
+                description: 'Create the complete platform foundation and dashboard.',
+                tasks: [{
+                    task: 'Create the initial project',
+                    tool: 'scaffold_project',
+                    args: { structure: { 'README.md': '# NEXUS' } },
+                }],
             }],
         })).toBe(false);
     });

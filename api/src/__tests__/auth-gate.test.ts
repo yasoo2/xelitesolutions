@@ -121,4 +121,45 @@ describe('shell diagnostics use the least-privilege approval path', () => {
         expect(result.ok).toBe(false);
         expect(result.error).toBe('approval_required');
     });
+
+    it('allows local deployment actions through the safe approval path', async () => {
+        const result: any = await firewall.runInContext(
+            `local-deploy-${Date.now()}`,
+            () => executeTool('deploy_project', {
+                action: 'start_server',
+                projectPath: 'missing-local-project',
+                port: 4173,
+            }, context),
+            { userId: 'owner-1', sessionId: OWNER },
+        );
+        expect(result.error).not.toBe('approval_required');
+        expect(result.error).toBe('Project path not found: missing-local-project');
+    });
+
+    it('rejects an absolute path outside the workspace before execution', async () => {
+        const result: any = await firewall.runInContext(
+            `outside-deploy-${Date.now()}`,
+            () => executeTool('deploy_project', {
+                action: 'build_static',
+                projectPath: '/tmp',
+            }, context),
+            { userId: 'owner-1', sessionId: OWNER },
+        );
+        expect(result.ok).toBe(false);
+        expect(result.error).toMatch(/outside workspace/i);
+    });
+
+    it('keeps public port exposure behind explicit all-risk approval', async () => {
+        const result: any = await firewall.runInContext(
+            `public-deploy-${Date.now()}`,
+            () => executeTool('deploy_project', {
+                action: 'expose_port',
+                projectPath: '/tmp',
+                port: 4173,
+            }, context),
+            { userId: 'owner-1', sessionId: OWNER },
+        );
+        expect(result.ok).toBe(false);
+        expect(result.error).toBe('approval_required');
+    });
 });

@@ -87,6 +87,12 @@ describe('the run-level recovery budget and the humanized failure', () => {
         // A normal (non-raw) failure message passes through untouched.
         expect(AgentLoopService.humanizeFailure('تعذر تنفيذ الخطوة الثالثة', 'ar')).toBe('تعذر تنفيذ الخطوة الثالثة');
     });
+
+    it('does not spend decorative narration immediately before project planning', () => {
+        const src = read('orchestration', 'AgentOrchestrator.ts');
+        expect(src).toContain("narrationEnabled() && node.tool !== 'project_pipeline'");
+        expect(src).toContain('project_pipeline owns its own evidence-first planning');
+    });
 });
 
 describe('replanning preserves the original engineering goal', () => {

@@ -18,7 +18,7 @@
  *
  * These are the exact strings from that run.
  */
-import { resolvePlannedTool, sanitisePlanPhases, unrunnableShellStep, plannerToolPrompt, plannedArgsIssue, adaptPlannedArgs } from '../core/orchestrator/plan-tools';
+import { resolvePlannedTool, sanitisePlanPhases, unrunnableShellStep, plannerToolPrompt, plannedArgsIssue, adaptPlannedArgs, PLANNER_TOOL_CATALOGUE } from '../core/orchestrator/plan-tools';
 
 describe('a plan may only name tools that exist', () => {
     it('«Git» is git_ops — the model named the product, it meant the capability', () => {
@@ -138,6 +138,13 @@ describe('model-written tool arguments are checked before execution', () => {
         expect(notes.join('\n')).toMatch(/db_schema_migrator يحتاج action/);
     });
 
+    it('describes db_schema_migrator as an executor for an existing schema, not a schema designer', () => {
+        const entry = PLANNER_TOOL_CATALOGUE.find((item: any) => item.tool === 'db_schema_migrator');
+        expect(entry?.purpose).toMatch(/existing .*schema file/i);
+        expect(entry?.purpose).toMatch(/migrate, push, reset, or status/i);
+        expect(entry?.purpose).toMatch(/do not use create/i);
+    });
+
     it('drops a documentation task with no evidenced source file before it can report File not found undefined', () => {
         const phase = {
             phaseNumber: 1,
@@ -207,6 +214,23 @@ describe('model-written tool arguments are checked before execution', () => {
             args: { path: 'docs/architecture-evidence.md' },
         });
         expect(notes.join('\n')).toMatch(/ملفاً غير مثبت/);
+    });
+
+    it('does not run a foundation phase before a runnable artifact exists', () => {
+        const phase = {
+            phaseNumber: 1,
+            name: 'Foundation and Architecture',
+            tasks: [
+                { task: 'Create the backend entry point', tool: 'write_file', args: { path: 'NEXUS/backend/src/index.js', content: 'console.log("nexus")' } },
+            ],
+            verificationTask: { task: 'Start the live project', tool: 'project_run', args: {} },
+        };
+        const { phases, notes } = sanitisePlanPhases([phase], 'NEXUS');
+        expect(phases[0].verificationTask).toMatchObject({
+            tool: 'read_file',
+            args: { path: 'NEXUS/backend/src/index.js' },
+        });
+        expect(notes.join('\\n')).toMatch(/تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل/);
     });
 
     it('drops an AI source-generation task without a concrete path and brief before it can trigger repair', () => {
@@ -445,6 +469,42 @@ describe('auto_tester receives a closed, evidence-safe contract', () => {
         expect(phases[0].tasks.some((task: any) => task.tool === 'auto_tester')).toBe(false);
         expect(notes.join('\n')).toMatch(/testType/);
     });
+
+    it('does not treat a package script as evidence for unit tests', () => {
+        const { phases, notes } = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Verify implementation',
+            tasks: [{ task: 'Run unit tests', tool: 'auto_tester', args: { testType: 'unit', projectPath: '.' } }],
+            verificationTask: { task: 'Verify with unit tests', tool: 'auto_tester', args: { testType: 'unit', projectPath: '.' } },
+        }], 'NEXUS', { candidateCheckCommands: ['npm test'] });
+        expect(phases[0].tasks.some((task: any) => task.tool === 'auto_tester')).toBe(false);
+        expect(phases[0].verificationTask).toBeUndefined();
+        expect(notes.join('\n')).toMatch(/scripts وحدها ليست دليلاً|لا يوجد ملف اختبار مثبت/);
+    });
+
+    it('keeps unit tests when discovery provides a real test file', () => {
+        const { phases } = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Verify implementation',
+            tasks: [{ task: 'Run unit tests', tool: 'auto_tester', args: { testType: 'unit', projectPath: '.' } }],
+            verificationTask: { task: 'Verify with unit tests', tool: 'auto_tester', args: { testType: 'unit', projectPath: '.' } },
+        }], 'NEXUS', { testFiles: ['src/__tests__/app.test.ts'], candidateCheckCommands: ['npm test'] });
+        expect(phases[0].tasks.some((task: any) => task.tool === 'auto_tester')).toBe(true);
+        expect(phases[0].verificationTask?.tool).toBe('auto_tester');
+    });
+
+    it('keeps unit tests after a prior test_generator task with evidenced source', () => {
+        const { phases } = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Generate and run tests',
+            tasks: [
+                { task: 'Generate tests', tool: 'test_generator', args: { filePath: 'src/app.ts' } },
+                { task: 'Run generated tests', tool: 'auto_tester', args: { testType: 'unit', projectPath: '.' } },
+            ],
+        }], 'NEXUS', { evidencedPaths: ['src/app.ts'], candidateCheckCommands: ['npm test'] });
+        expect(phases[0].tasks.some((task: any) => task.tool === 'test_generator')).toBe(true);
+        expect(phases[0].tasks.some((task: any) => task.tool === 'auto_tester')).toBe(true);
+    });
 });
 
 describe('manifest-backed local verification commands', () => {
@@ -470,5 +530,87 @@ describe('manifest-backed local verification commands', () => {
         });
         expect(phases[0].tasks.some((task: any) => task.tool === 'shell_execute' && task.args.command === 'npm run test')).toBe(true);
         expect(phases[0].verificationTask).toMatchObject({ tool: 'shell_execute', args: { command: 'npm run test' } });
+    });
+});
+
+
+describe('portable stack policy for greenfield plans', () => {
+    const nativePhase = {
+        phaseNumber: 1,
+        name: 'Portable data layer',
+        tasks: [{
+            task: 'Install better-sqlite3 for the application data layer',
+            tool: 'npm_manager',
+            args: { command: 'install', packages: ['better-sqlite3'], dev: false },
+        }],
+    };
+
+    it('blocks an unportable native addon before npm_manager can mutate the workspace', () => {
+        const result = sanitisePlanPhases([nativePhase], 'new-console', {
+            disallowUnportableNativeDependencies: true,
+        });
+        expect(result.blocker).toMatchObject({ code: 'unportable_native_dependency' });
+        expect(result.executableTasks).toBe(0);
+        expect(result.notes.join('\n')).toMatch(/better-sqlite3/);
+    });
+
+    it('does not reject a native dependency merely because an existing project declares it', () => {
+        const result = sanitisePlanPhases([nativePhase], 'existing-console', {
+            disallowUnportableNativeDependencies: false,
+        });
+        expect(result.blocker?.code).not.toBe('unportable_native_dependency');
+        expect(result.phases[0].tasks.some((task: any) => task.tool === 'npm_manager')).toBe(true);
+    });
+});
+
+
+
+describe('runnable evidence is earned, not inferred from a generated manifest', () => {
+    it('does not run a fresh monorepo wrapper before dependencies are installed', () => {
+        const phase = {
+            phaseNumber: 1,
+            name: 'Foundation and Architecture',
+            tasks: [
+                {
+                    task: 'Create the workspace wrapper',
+                    tool: 'write_file',
+                    args: {
+                        path: 'NEXUS/package.json',
+                        content: JSON.stringify({ name: 'nexus', scripts: { dev: 'concurrently "npm --prefix backend run dev" "npm --prefix frontend run dev"' } }),
+                    },
+                },
+                {
+                    task: 'Create backend entry point',
+                    tool: 'write_file',
+                    args: { path: 'NEXUS/backend/src/index.js', content: 'console.log("nexus")' },
+                },
+            ],
+            verificationTask: { task: 'Start the live project', tool: 'project_run', args: {} },
+        };
+        const { phases, notes } = sanitisePlanPhases([phase], 'NEXUS');
+        expect(phases[0].verificationTask.tool).toBe('read_file');
+        expect(notes.join('\n')).toMatch(/تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل/);
+    });
+
+    it('accepts a generated manifest only after a launch script and install step are explicit', () => {
+        const phase = {
+            phaseNumber: 1,
+            name: 'Runnable foundation',
+            tasks: [
+                {
+                    task: 'Write the service manifest',
+                    tool: 'write_file',
+                    args: {
+                        path: 'NEXUS/package.json',
+                        content: JSON.stringify({ name: 'nexus', scripts: { start: 'node server.js' } }),
+                    },
+                },
+                { task: 'Install project dependencies', tool: 'npm_manager', args: { command: 'install', cwd: 'NEXUS' } },
+                { task: 'Write the server entry point', tool: 'write_file', args: { path: 'NEXUS/server.js', content: 'console.log("nexus")' } },
+            ],
+            verificationTask: { task: 'Start the live project', tool: 'project_run', args: {} },
+        };
+        const { phases } = sanitisePlanPhases([phase], 'NEXUS');
+        expect(phases[0].verificationTask.tool).toBe('project_run');
     });
 });

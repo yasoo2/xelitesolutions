@@ -88,4 +88,91 @@ describe('self-fix launcher recovery', () => {
     expect(plan.strategy).not.toBe('launcher_fix');
     expect(plan.allowed).toBe(true);
   });
+
+  it('installs a missing npm test runner in the recorded project cwd', () => {
+    const projectCwd = path.join(process.cwd(), '..', 'data', 'builds', `self-fix-runner-${Date.now()}`, 'NEXUS', 'backend');
+    const ticket = RepairTicketService.build({
+      projectName: 'NEXUS',
+      phase: { phaseNumber: 2, name: 'Backend Core & Authentication' },
+      phaseResult: {
+        error: 'sh: 1: jest: not found',
+        output: {
+          status: 'partial',
+          results: [{
+            task: 'Backend Core & Authentication',
+            tool: 'shell_execute',
+            ok: false,
+            error: 'sh: 1: jest: not found',
+            command: 'npm run test',
+            cwd: projectCwd,
+          }],
+        },
+      },
+    });
+
+    const plan = SelfFixService.plan(ticket);
+    expect(plan.allowed).toBe(true);
+    expect(plan.strategy).toBe('dependency_fix');
+    expect(plan.suggestedTool).toBe('npm_manager');
+    expect(plan.suggestedInput).toMatchObject({
+      command: 'install',
+      packages: ['jest'],
+      dev: true,
+      cwd: projectCwd,
+    });
+    expect(plan.maxAttempts).toBe(1);
+  });
+
+  it('does not treat a missing non-npm runner as an npm dependency', () => {
+    const ticket = RepairTicketService.build({
+      phase: { phaseNumber: 2, name: 'Backend Core & Authentication' },
+      phaseResult: {
+        error: 'pytest: command not found',
+        output: {
+          status: 'partial',
+          results: [{
+            task: 'Backend Core & Authentication',
+            tool: 'shell_execute',
+            ok: false,
+            error: 'pytest: command not found',
+            command: 'pytest -q',
+            cwd: path.join(process.cwd(), '..', 'data', 'builds', `self-fix-python-${Date.now()}`),
+          }],
+        },
+      },
+    });
+
+    const plan = SelfFixService.plan(ticket);
+    expect(plan.suggestedTool).not.toBe('npm_manager');
+  });
 });
+
+
+  it('stops honestly on a native addon toolchain failure instead of retrying npm install', () => {
+    const projectCwd = path.join(process.cwd(), '..', 'data', 'builds', `self-fix-native-${Date.now()}`, 'NEXUS', 'backend');
+    const ticket = RepairTicketService.build({
+      projectName: 'NEXUS',
+      phase: { phaseNumber: 1, name: 'Backend data layer' },
+      phaseResult: {
+        error: 'npm ERR! code 1\nnode-gyp ERR! build error\nC++ compiler not found while building better-sqlite3',
+        output: {
+          status: 'partial',
+          results: [{
+            task: 'Install database dependency',
+            tool: 'shell_execute',
+            ok: false,
+            error: 'npm ERR! code 1\nnode-gyp ERR! build error\nC++ compiler not found while building better-sqlite3',
+            command: 'npm install better-sqlite3',
+            cwd: projectCwd,
+          }],
+        },
+      },
+    });
+
+    const plan = SelfFixService.plan(ticket);
+    expect(plan.allowed).toBe(false);
+    expect(plan.strategy).toBe('manual_review');
+    expect(plan.suggestedTool).toBeUndefined();
+    expect(String(plan.reason)).toMatch(/native dependency/i);
+    expect(String(plan.reason)).toMatch(/node:sqlite|JSON\/file/i);
+  });

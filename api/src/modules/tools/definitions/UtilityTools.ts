@@ -291,6 +291,23 @@ export class SymbolInspectorTool extends BaseTool {
  * AdvancedFileEditTool: Multi-chunk replacement.
  * Equivalent to `multi_replace_file_content`.
  */
+function applyAdvancedReplacement(content: string, find: string, replace: string): string | null {
+    if (content.includes(find)) return content.replace(find, replace);
+    const lines = String(find || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (!lines.length) return null;
+    const escaped = lines.map(line => [...line].map(char => /\s/.test(char)
+        ? '\\s*'
+        : `${char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`).join(''));
+    try {
+        const re = new RegExp(escaped.join('\\s*\\n\\s*'));
+        const match = content.match(re);
+        if (match && match.index !== undefined) {
+            return content.slice(0, match.index) + replace + content.slice(match.index + match[0].length);
+        }
+    } catch { /* malformed evidence is refused honestly */ }
+    return null;
+}
+
 export class AdvancedFileEditTool extends BaseTool {
     name = 'file_edit_advanced';
     description = 'Advanced file editing with multiple non-contiguous replacements.';
@@ -325,23 +342,35 @@ export class AdvancedFileEditTool extends BaseTool {
         if (!fs.existsSync(filePath)) return { ok: false, error: 'File not found', logs: [] };
 
         try {
-            let content = fs.readFileSync(filePath, 'utf-8');
+            const original = fs.readFileSync(filePath, 'utf-8');
+            let content = original;
             let failedEdits = 0;
 
             for (const edit of edits) {
-                if (content.includes(edit.find)) {
-                    content = content.replace(edit.find, edit.replace);
-                } else {
+                const next = applyAdvancedReplacement(content, String(edit?.find ?? ''), String(edit?.replace ?? ''));
+                if (next === null) {
                     failedEdits++;
+                } else {
+                    content = next;
                 }
             }
 
+            // Never persist a partial multi-edit. A failed recovery must leave
+            // the repository unchanged so the next diagnosis sees honest state.
+            if (failedEdits > 0) {
+                return {
+                    ok: false,
+                    error: `Advanced edit could not match ${failedEdits} replacement(s).`,
+                    output: { success: false, failedCount: failedEdits },
+                    logs: [`applied=${edits.length - failedEdits} failed=${failedEdits}`],
+                };
+            }
             fs.writeFileSync(filePath, content);
 
             return {
-                ok: failedEdits === 0,
-                output: { success: true, failedCount: failedEdits },
-                logs: [`applied=${edits.length - failedEdits} failed=${failedEdits}`]
+                ok: true,
+                output: { success: true, failedCount: 0 },
+                logs: [`applied=${edits.length} failed=0`]
             };
         } catch (e: any) {
             return { ok: false, error: e.message, logs: [] };

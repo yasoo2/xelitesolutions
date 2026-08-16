@@ -862,6 +862,30 @@ export function retryAfterMsFrom(message: string): number | null {
  */
 let lastTotalFailureAt = 0;
 const DEAD_BRAIN_LATCH_MS = Math.max(0, parseInt(String(process.env.DEAD_BRAIN_LATCH_MS || '').trim(), 10) || 45_000);
+
+/**
+ * Decide whether a call may reopen the mesh while the dead-brain latch is live.
+ * Ordinary chat calls remain fail-fast. Internal engineering calls may reopen
+ * it only when a provider answered successfully in the recent window and is not
+ * currently rate-limited; that is bounded recovery evidence, not blind retry.
+ */
+export function canAttemptAfterDeadBrainLatch(
+    lastFailureAt: number,
+    now: number,
+    latchMs: number,
+    internalCall: boolean,
+    hasHealthyRecoveryEvidence: boolean,
+    allowSingleEngineeringRecovery = false,
+): boolean {
+    if (!lastFailureAt || now - lastFailureAt >= latchMs) return true;
+    // Ordinary internal work still needs positive provider evidence. The
+    // engineering pipeline gets one explicit recovery pass after a complete
+    // mesh failure: the prior phase already proved that the run was real and
+    // actionable, so failing the next self-fix call instantly would strand the
+    // verified repair path. The caller consumes this permit exactly once.
+    return internalCall && (hasHealthyRecoveryEvidence || allowSingleEngineeringRecovery);
+}
+
 /** The local model timing out once means a 180s wait per walk; remember it and
  *  probe with a short timeout for a while instead. */
 let localTimedOutAt = 0;
@@ -993,6 +1017,27 @@ export function recentlyHealthyRetryCandidates<T extends { name: string }>(provi
         }
         return true;
     });
+}
+
+/**
+ * A provider that already failed in THIS routeToModel call is not a valid
+ * transient-recovery candidate. The success remembered from an earlier phase is
+ * stale evidence once the same provider has just timed out or returned a 429;
+ * probing it again is exactly how LLM7 produced timeout -> rescue 429 -> final
+ * mesh 429 in one engineering phase. Keep this pure and exported so the policy
+ * is testable without starting a provider or making a network request.
+ */
+export function eligibleTransientRetryCandidates<T extends { name: string }>(
+    providers: T[],
+    attemptedNames: ReadonlySet<string>,
+    rateLimitedNames: ReadonlySet<string>,
+    now = Date.now(),
+): T[] {
+    return recentlyHealthyRetryCandidates(providers, now).filter((provider) =>
+        !attemptedNames.has(provider.name)
+        && !rateLimitedNames.has(provider.name)
+        && !isProviderRateLimited(provider.name)
+    );
 }
 
 /** Test/diagnostics only: order a provider list fresh-first, cooled-last (the exact
@@ -1150,6 +1195,8 @@ export async function routeToModel(
     // provider by mid-session. Internal calls run on the local brain first
     // and never touch the daily quota while it is available.
     const internalCall = String((context as any)?.purpose || '') === 'internal';
+    const engineeringPipeline = (context as any)?.engineeringPipeline === true;
+    const deadBrainRecoveryAttempted = (context as any)?.deadBrainRecoveryAttempted === true;
 
     if (process.env.MOCK_LLM === 'true') {
         const promptText = JSON.stringify(messages);
@@ -1732,12 +1779,43 @@ export async function routeToModel(
     let sawRateLimit = false;
 
     // Dead-brain latch: every provider failed moments ago; a re-walk costs
-    // minutes and cannot succeed yet. Answer honestly and instantly.
-    if (lastTotalFailureAt && Date.now() - lastTotalFailureAt < DEAD_BRAIN_LATCH_MS) {
-        console.warn(`[IntelligentRouter] ⛔ Dead-brain latch: all providers failed ${Math.round((Date.now() - lastTotalFailureAt) / 1000)}s ago — answering without a re-walk.`);
+    // minutes and cannot succeed yet. Answer honestly and instantly for ordinary
+    // calls. Internal engineering calls are different: they may be the planner's
+    // next phase or a self-fix attempt, and a provider that answered successfully
+    // moments earlier is real evidence that the failure was transient. Let exactly
+    // that evidence open one fresh mesh walk; do not let an old global latch turn a
+    // recoverable Phase 2 timeout into an automatic run termination.
+    const now = Date.now();
+    const latchAgeMs = lastTotalFailureAt ? now - lastTotalFailureAt : Number.POSITIVE_INFINITY;
+    const healthyRecoveryEvidence = internalCall
+        && recentlyHealthyRetryCandidates(meshProviders).some((provider) => !isProviderRateLimited(provider.name));
+    const engineeringRecoveryPermit = internalCall
+        && engineeringPipeline
+        && !deadBrainRecoveryAttempted;
+    const internalRecoveryEvidence = healthyRecoveryEvidence || engineeringRecoveryPermit;
+    if (!canAttemptAfterDeadBrainLatch(
+        lastTotalFailureAt,
+        now,
+        DEAD_BRAIN_LATCH_MS,
+        internalCall,
+        healthyRecoveryEvidence,
+        engineeringRecoveryPermit,
+    )) {
+        console.warn(`[IntelligentRouter] ⛔ Dead-brain latch: all providers failed ${Math.round(Math.max(0, latchAgeMs) / 1000)}s ago — answering without a re-walk.`);
         return PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد قبل لحظات). لم أستطع تنفيذ الطلب. "
             + "الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، "
             + "أو تحقّق من اتصال الإنترنت. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)";
+    }
+    if (lastTotalFailureAt && latchAgeMs < DEAD_BRAIN_LATCH_MS && internalRecoveryEvidence) {
+        const permitKind = healthyRecoveryEvidence ? 'recent provider success' : 'engineering recovery permit';
+        console.warn(`[IntelligentRouter] 🩺 Internal recovery evidence (${permitKind}) found after total failure (${Math.round(Math.max(0, latchAgeMs) / 1000)}s ago) — opening one fresh mesh walk.`);
+        if (engineeringPipeline && engineeringRecoveryPermit && context) {
+            // This is deliberately stored on the run context, not globally: one
+            // failed phase may earn one rescue pass, while another concurrent
+            // session must retain its own independent budget.
+            context.deadBrainRecoveryAttempted = true;
+        }
+        lastTotalFailureAt = 0;
     }
 
     // 1. Try Selected Model First (Happy Path)
@@ -1830,11 +1908,18 @@ export async function routeToModel(
         }
     }
 
+    // A provider may have succeeded in an earlier phase, but once it fails in this
+    // route call its old success is stale evidence. Keep the history local to this
+    // call so rescue/fallback never hammers the same gateway while its timed-out
+    // request may still be draining upstream.
+    const attemptedProvidersThisCall = new Set<string>();
+    const rateLimitedProvidersThisCall = new Set<string>();
+
     // Two passes at most: if the first pass fails and at least one failure was a
     // RATE LIMIT (a timer, not an outage), wait until the earliest cooldown expires
-    // — bounded by RATE_LIMIT_PATIENCE_MS — and try the mesh once more. This is the
-    // difference between "site build aborted on page 4" and "paused 60s, finished".
-    for (let meshAttempt = 0; meshAttempt < 2; meshAttempt++) {
+    // — bounded by RATE_LIMIT_PATIENCE_MS — and try only providers that were not
+    // already attempted in this call. The next route call owns a fresh retry.
+    meshAttemptLoop: for (let meshAttempt = 0; meshAttempt < 2; meshAttempt++) {
 
     // Move providers that are in cooldown (recently failed) to the END of the order
     // rather than dropping them entirely — so if EVERY provider is cooling down we
@@ -1850,6 +1935,19 @@ export async function routeToModel(
         // Outside the try on purpose: the catch needs to know how long we were
         // willing to wait before we called the engine dead.
         let lastTimeoutUsed = 0;
+        if (meshAttempt > 0 && attemptedProvidersThisCall.has(p.name)) {
+            console.info(`[IntelligentRouter] ⏭️ skipping ${p.name} — already attempted in this route call; a later call may retry it.`);
+            continue;
+        }
+        if (rateLimitedProvidersThisCall.has(p.name)) {
+            console.info(`[IntelligentRouter] ⏭️ skipping ${p.name} — rate-limited earlier in this route call; a later call may retry it.`);
+            continue;
+        }
+        if (p.name === 'LLM7 (Keyless)' && !llm7Provider.isAvailable()) {
+            console.info('[IntelligentRouter] ⏭️ skipping LLM7 (Keyless) — its gateway cooldown is still active.');
+            continue;
+        }
+        attemptedProvidersThisCall.add(p.name);
         try {
             if (p.name === 'Local (Auto)' && isLocalBrainOpen()) {
                 const left = Math.max(1, Math.round((localCircuitUntil - Date.now()) / 1000));
@@ -1989,6 +2087,7 @@ export async function routeToModel(
             markProviderFailed(p.name, retryAfterMs);
             if (RATE_LIMIT_RE.test(failureMessage)) {
                 sawRateLimit = true;
+                rateLimitedProvidersThisCall.add(p.name);
                 markProviderRateLimited(p.name, retryAfterMs);
             }
             if (p.name === 'Local (Auto)' && /TIMEOUT/i.test(String(e?.message || ''))) {
@@ -2010,9 +2109,14 @@ export async function routeToModel(
             Date.now(),
             RATE_LIMIT_PATIENCE_MS
         );
-        if (waitMs !== null) {
+        const hasUnattemptedProvider = meshProviders.some((provider) =>
+            !attemptedProvidersThisCall.has(provider.name)
+            && !rateLimitedProvidersThisCall.has(provider.name)
+            && !(provider.name === 'Local (Auto)' && isLocalBrainOpen())
+        );
+        if (waitMs !== null && hasUnattemptedProvider) {
             const secs = Math.round(waitMs / 1000);
-            console.info(`[IntelligentRouter] ⏳ Rate-limited, not dead: waiting ${secs}s for the limit to reset, then retrying every provider once.`);
+            console.info(`[IntelligentRouter] ⏳ Rate-limited, not dead: waiting ${secs}s for the limit to reset, then trying only unattempted providers.`);
             onProgress?.(`⏳ مزوّد الذكاء وصل حدّ الطلبات المؤقت — أنتظر ${secs} ثانية ثم أُكمل تلقائياً`);
             await new Promise(r => setTimeout(r, waitMs));
             continue;
@@ -2022,8 +2126,11 @@ export async function routeToModel(
         // this same run. Give only that recently healthy, non-rate-limited provider
         // one delayed probe. This prevents an engineering run from dying on a
         // one-off timeout without disguising a quota window or retrying blindly.
-        const rescueCandidates = recentlyHealthyRetryCandidates(meshProviders)
-            .filter((provider) => !isProviderRateLimited(provider.name));
+        const rescueCandidates = eligibleTransientRetryCandidates(
+            meshProviders,
+            attemptedProvidersThisCall,
+            rateLimitedProvidersThisCall,
+        );
         if (rescueCandidates.length) {
             const names = rescueCandidates.map((provider) => provider.name).join(', ');
             console.info(`[IntelligentRouter] 🩺 Transient mesh failure: probing recently healthy provider(s) once: ${names}.`);
@@ -2054,8 +2161,39 @@ export async function routeToModel(
                         if (retryTimer) clearTimeout(retryTimer);
                     }
                 } catch (retryError: any) {
-                    console.warn(`[IntelligentRouter] ${provider.name} transient recovery failed: ${retryError?.message || 'unknown error'}.`);
-                    lastError = String(retryError?.message || lastError);
+                    const retryMessage = String(retryError?.message || 'unknown error');
+                    console.warn(`[IntelligentRouter] ${provider.name} transient recovery failed: ${retryMessage}.`);
+                    lastError = retryMessage;
+                    // A rescue probe can itself hit a provider rate limit. Treat it
+                    // as a timer, not as proof that the whole brain is dead: preserve
+                    // retry-after, wait within the same bounded patience budget, and
+                    // walk the mesh once more. This matters during long engineering
+                    // runs where one provider was healthy a moment ago but its
+                    // gateway briefly reports concurrent-request pressure.
+                    if (RATE_LIMIT_RE.test(retryMessage)) {
+                        sawRateLimit = true;
+                        rateLimitedProvidersThisCall.add(provider.name);
+                        markProviderFailed(provider.name, retryAfterMsFrom(retryMessage) || undefined);
+                        const retryAfterMs = retryAfterMsFrom(retryMessage) || undefined;
+                        markProviderFailed(provider.name, retryAfterMs);
+                        markProviderRateLimited(provider.name, retryAfterMs);
+                        const rescueWaitMs = rateLimitPatienceMs(
+                            true,
+                            [...recentlyFailedProviders.values()],
+                            Date.now(),
+                            RATE_LIMIT_PATIENCE_MS
+                        );
+                        if (rescueWaitMs !== null) {
+                            const secs = Math.round(rescueWaitMs / 1000);
+                            console.info(`[IntelligentRouter] ⏳ Rescue provider ${provider.name} is rate-limited; waiting ${secs}s before one final mesh pass.`);
+                            onProgress?.(`⏳ مزوّد الاسترداد وصل حدّاً مؤقتاً — أنتظر ${secs} ثانية ثم أعاود التنفيذ مرة واحدة`);
+                            await new Promise(resolve => setTimeout(resolve, rescueWaitMs));
+                            // The explicit wait already consumed this cooldown. Do
+                            // not make the next mesh pass wait a second flat interval.
+                            sawRateLimit = false;
+                            continue meshAttemptLoop;
+                        }
+                    }
                 }
             }
         }

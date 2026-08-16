@@ -27,6 +27,10 @@ export interface RepairTicket {
     command?: string;
     cwd?: string;
     background?: boolean;
+    /** Evidence for deterministic file editors, preserved for safe recovery. */
+    file?: string;
+    find?: string;
+    replace?: string;
   }>;
   suggestedNextAction: string;
   retryPolicy: {
@@ -95,6 +99,25 @@ export class RepairTicketService {
         const background = typeof t?.background === 'boolean'
           ? t.background
           : typeof rawArgs.background === 'boolean' ? rawArgs.background : undefined;
+        const file = typeof t?.file === 'string'
+          ? t.file
+          : typeof rawArgs.filename === 'string'
+            ? rawArgs.filename
+            : typeof rawArgs.filePath === 'string'
+              ? rawArgs.filePath
+              : typeof rawArgs.path === 'string' ? rawArgs.path : undefined;
+        const find = typeof t?.find === 'string'
+          ? t.find
+          : typeof rawArgs.find === 'string'
+            ? rawArgs.find
+            : typeof rawArgs.search === 'string'
+              ? rawArgs.search
+              : typeof rawArgs.old_string === 'string' ? rawArgs.old_string : undefined;
+        const replace = typeof t?.replace === 'string'
+          ? t.replace
+          : typeof rawArgs.replace === 'string'
+            ? rawArgs.replace
+            : typeof rawArgs.new_string === 'string' ? rawArgs.new_string : undefined;
         return {
           task: truncate(t.task || 'unknown task', 500),
           tool: truncate(t.tool || 'unknown tool', 100),
@@ -102,6 +125,9 @@ export class RepairTicketService {
           ...(command ? { command: truncate(command, 1000) } : {}),
           ...(cwd ? { cwd: truncate(cwd, 1000) } : {}),
           ...(typeof background === 'boolean' ? { background } : {}),
+          ...(file ? { file: truncate(file, 1000) } : {}),
+          ...(find ? { find: truncate(find, 4000) } : {}),
+          ...(replace !== undefined ? { replace: truncate(replace, 4000) } : {}),
         };
       }),
       suggestedNextAction: 'Run one controlled repair pass, then re-run the failed phase and continue only if it becomes completed.',

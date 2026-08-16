@@ -1,14 +1,20 @@
-import { ToolDefinition } from '../types';
 import fs from 'fs';
 import path from 'path';
+import { workspaceService } from '../../services/WorkspaceService';
+import { isWithinRoot } from '../utils';
 
 /**
  * SecurityScannerTool - Security vulnerability scanner
- * Detects common security issues in code
+ * Detects common security issues in code.
+ *
+ * The planner may describe a project target instead of enumerating every file.
+ * In that case the scanner derives a bounded, evidence-backed source-file list
+ * from the requested project path. It never invents files and never escapes the
+ * trusted workspace root.
  */
 export class SecurityScannerTool implements ToolDefinition {
     name = 'security_scanner';
-    version = '1.0.0';
+    version = '1.1.0';
     description = 'Scan code for security vulnerabilities and best practices';
     tags = ['security', 'scanner', 'vulnerabilities'];
 
@@ -18,14 +24,22 @@ export class SecurityScannerTool implements ToolDefinition {
             files: {
                 type: 'array' as const,
                 items: { type: 'string' as const },
-                description: 'Files to scan'
+                description: 'Concrete files to scan; optional when projectPath or target identifies a project'
             },
             projectPath: {
                 type: 'string' as const,
                 description: 'Project base path'
+            },
+            target: {
+                type: 'string' as const,
+                description: 'Project or directory target used to discover source files'
+            },
+            path: {
+                type: 'string' as const,
+                description: 'Project or directory path used to discover source files'
             }
         },
-        required: ['files']
+        required: []
     };
 
     outputSchema = {
@@ -42,56 +56,172 @@ export class SecurityScannerTool implements ToolDefinition {
     permissions = ['read' as const];
     sideEffects = [];
     rateLimitPerMinute = 20;
-    auditFields = ['projectPath'];
+    auditFields = ['projectPath', 'target'];
     mockSupported = false;
 
-    async execute(input: { files: string[]; projectPath?: string }) {
-        const { files, projectPath = '.' } = input;
+    async execute(
+        input: {
+            files?: unknown;
+            projectPath?: string;
+            target?: string;
+            path?: string;
+            directory?: string;
+        } = {},
+        context?: { workspaceId?: string },
+    ) {
+        const requestedFiles = Array.isArray(input?.files)
+            ? input.files.map(file => String(file ?? '').trim()).filter(Boolean)
+            : [];
         const logs: string[] = [];
 
         try {
-            logs.push(`Scanning ${files.length} files for security vulnerabilities`);
+            const activeRoot = context?.workspaceId
+                ? path.resolve(workspaceService.getActiveRoot(context.workspaceId))
+                : '';
+            const requestedBase = String(
+                input?.projectPath ?? input?.target ?? input?.path ?? input?.directory ?? '.',
+            ).trim() || '.';
+            const projectPath = activeRoot
+                ? path.resolve(activeRoot, requestedBase)
+                : path.resolve(requestedBase);
+
+            if (activeRoot && !isWithinRoot(projectPath, activeRoot)) {
+                const error = 'security_scanner projectPath must stay within the active workspace';
+                logs.push(`Input error: ${error}`);
+                return { ok: false, error, logs };
+            }
+
+            if (!fs.existsSync(projectPath)) {
+                const error = `security_scanner target does not exist: ${requestedBase}`;
+                logs.push(`Input error: ${error}`);
+                return { ok: false, error, logs };
+            }
+
+            const files = requestedFiles.length > 0
+                ? requestedFiles
+                : this.discoverSourceFiles(projectPath);
+
+            // A malformed or incomplete plan is an explicit contract error, not
+            // an uncaught `undefined.length` and not a fabricated scan result.
+            if (files.length === 0) {
+                const error = 'security_scanner requires a non-empty files array or an existing project target containing source files';
+                logs.push(`Input error: ${error}`);
+                return { ok: false, error, logs };
+            }
+
+            logs.push(`Scanning ${files.length} files for security vulnerabilities from ${projectPath}`);
 
             const vulnerabilities: any[] = [];
+            const missingFiles: string[] = [];
+            const scannedFiles: string[] = [];
 
-            for (const file of files) {
-                const filePath = path.isAbsolute(file) ? file : path.resolve(projectPath, file);
+            for (const file of files.slice(0, 100)) {
+                const filePath = path.isAbsolute(file)
+                    ? path.resolve(file)
+                    : path.resolve(projectPath, file);
 
-                if (!fs.existsSync(filePath)) continue;
+                if (activeRoot && !isWithinRoot(filePath, activeRoot)) {
+                    logs.push(`Rejected path outside active workspace: ${file}`);
+                    missingFiles.push(file);
+                    continue;
+                }
+
+                if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+                    logs.push(`File not found: ${filePath}`);
+                    missingFiles.push(file);
+                    continue;
+                }
 
                 const content = fs.readFileSync(filePath, 'utf-8');
                 const vulns = this.scanFile(filePath, content);
 
                 vulnerabilities.push(...vulns);
+                scannedFiles.push(file);
             }
 
             const riskScore = this.calculateRiskScore(vulnerabilities);
+            const summary = {
+                critical: vulnerabilities.filter(v => v.severity === 'critical').length,
+                high: vulnerabilities.filter(v => v.severity === 'high').length,
+                medium: vulnerabilities.filter(v => v.severity === 'medium').length,
+                low: vulnerabilities.filter(v => v.severity === 'low').length,
+            };
+            const missingError = missingFiles.length > 0
+                ? `security_scanner could not scan ${missingFiles.length} requested file(s): ${missingFiles.join(', ')}`
+                : undefined;
 
-            logs.push(`Scan complete. Found ${vulnerabilities.length} potential issues. Risk: ${riskScore}/100`);
+            logs.push(`Scan complete. Scanned ${scannedFiles.length} files and found ${vulnerabilities.length} potential issues. Risk: ${riskScore}/100`);
+            if (missingError) logs.push(`Scan failed: ${missingError}`);
 
             return {
-                ok: true,
+                ok: !missingError,
+                ...(missingError ? { error: missingError } : {}),
                 output: {
                     vulnerabilities,
                     riskScore,
-                    summary: {
-                        critical: vulnerabilities.filter(v => v.severity === 'critical').length,
-                        high: vulnerabilities.filter(v => v.severity === 'high').length,
-                        medium: vulnerabilities.filter(v => v.severity === 'medium').length,
-                        low: vulnerabilities.filter(v => v.severity === 'low').length
-                    }
+                    filesRequested: files.length,
+                    filesScanned: scannedFiles.length,
+                    scannedFiles,
+                    missingFiles,
+                    summary,
                 },
-                logs
+                logs,
             };
-
         } catch (error: any) {
-            logs.push(`Error: ${error.message}`);
+            const message = String(error?.message || error);
+            logs.push(`Error: ${message}`);
             return {
                 ok: false,
-                error: error.message,
-                logs
+                error: message,
+                logs,
             };
         }
+    }
+
+    private discoverSourceFiles(projectPath: string): string[] {
+        const maxFiles = 100;
+        const maxDepth = 6;
+        const sourceExtensions = new Set([
+            '.cjs', '.css', '.cs', '.go', '.html', '.java', '.js', '.jsx',
+            '.json', '.mjs', '.php', '.py', '.rb', '.scss', '.sql', '.svelte',
+            '.ts', '.tsx', '.vue', '.xml', '.yaml', '.yml',
+        ]);
+        const ignoredDirectories = new Set([
+            '.git', '.next', '.turbo', 'build', 'coverage', 'dist',
+            'node_modules', 'target', 'vendor',
+        ]);
+        const discovered: string[] = [];
+
+        const rootStat = fs.statSync(projectPath);
+        if (rootStat.isFile()) return [path.basename(projectPath)];
+        if (!rootStat.isDirectory()) return discovered;
+
+        const walk = (current: string, depth: number): void => {
+            if (depth > maxDepth || discovered.length >= maxFiles) return;
+            let entries: fs.Dirent[];
+            try {
+                entries = fs.readdirSync(current, { withFileTypes: true })
+                    .sort((a, b) => a.name.localeCompare(b.name));
+            } catch {
+                return;
+            }
+
+            for (const entry of entries) {
+                if (discovered.length >= maxFiles) return;
+                if (entry.isDirectory()) {
+                    if (!ignoredDirectories.has(entry.name)) {
+                        walk(path.join(current, entry.name), depth + 1);
+                    }
+                    continue;
+                }
+                if (!entry.isFile()) continue;
+                if (!sourceExtensions.has(path.extname(entry.name).toLowerCase())) continue;
+                discovered.push(path.relative(projectPath, path.join(current, entry.name)));
+            }
+        };
+
+        walk(projectPath, 0);
+        return discovered;
     }
 
     private scanFile(filePath: string, content: string): any[] {

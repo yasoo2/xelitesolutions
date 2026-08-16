@@ -4,6 +4,31 @@ import { executeTool } from '../../services/ToolService';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import { brandFrom } from '../../../core/design/page-head';
 
+const MAX_PIPELINE_LOGS = 192;
+const MAX_PIPELINE_LOG_CHARS = 2_000;
+
+function appendBoundedPipelineLog(logs: string[], line: unknown): void {
+    const text = String(line ?? '').slice(0, MAX_PIPELINE_LOG_CHARS);
+    if (logs.length < MAX_PIPELINE_LOGS) {
+        logs.push(text);
+        return;
+    }
+    logs[0] = '[ProjectPipeline] ... older pipeline logs truncated; recent evidence retained ...';
+    logs.splice(1, 1);
+    logs.push(text);
+}
+
+function appendBoundedPipelineLogs(logs: string[], values: unknown): void {
+    if (!Array.isArray(values)) return;
+    for (const value of values) appendBoundedPipelineLog(logs, value);
+}
+
+function boundedPipelineLogs(...sources: unknown[]): string[] {
+    const logs: string[] = [];
+    for (const source of sources) appendBoundedPipelineLogs(logs, source);
+    return logs;
+}
+
 /**
  * ProjectPipelineTool — the production bridge to the canonical pipeline.
  *
@@ -253,7 +278,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         const request = String(input?.request || '').trim();
         if (!request) return { ok: false, error: 'request is required', logs };
 
-        const say = (m: string) => { logs.push(m); context?.onProgress?.(m); };
+        const say = (m: string) => { appendBoundedPipelineLog(logs, m); context?.onProgress?.(m); };
 
         /**
          * ONE RUN, ONE LANGUAGE — AND THE PIPELINE WAS STILL DEAF TO IT.
@@ -295,11 +320,11 @@ export class ProjectPipelineTool implements ToolDefinition {
                     pipelineFinal: true,
                     summary: pick(isAr, `## ⚠️ توقف قبل الكتابة\n\nتعذر جمع أدلة مساحة العمل: ${message}`, `## ⚠️ Stopped before writing\n\nWorkspace evidence could not be collected: ${message}`),
                 },
-                logs: [...logs, ...(discoveryResult?.logs || [])],
+                logs: boundedPipelineLogs(logs, discoveryResult?.logs),
             };
         }
         const evidence = discoveryResult.output.evidence;
-        logs.push(...(discoveryResult.logs || []));
+        appendBoundedPipelineLogs(logs, discoveryResult.logs);
         if (evidence.mode === 'remote_repository' || evidence.mode === 'ambiguous' || (Array.isArray(evidence.blockers) && evidence.blockers.length > 0)) {
             const details = (evidence.blockers || []).map((blocker: any) => `- ${blocker.message}${blocker.remedy ? ` (${blocker.remedy})` : ''}`).join('\n') || 'Select the project root and retry discovery.';
             const summary = pick(isAr,
@@ -360,12 +385,12 @@ export class ProjectPipelineTool implements ToolDefinition {
         const planningRequest = specification.content
             ? `${request}\n\n--- COMPACT REQUIREMENTS EVIDENCE (derived from complete local files read through read_file; do not invent beyond it) ---\n${requirementsContext}\n--- END COMPACT REQUIREMENTS EVIDENCE ---`
             : request;
-        if (requirementsContext) logs.push(`pipeline.planning_requirements_brief_chars=${requirementsContext.length}`);
+        if (requirementsContext) appendBoundedPipelineLog(logs, `pipeline.planning_requirements_brief_chars=${requirementsContext.length}`);
         const plannerEvidence = buildPlannerEvidence(evidence, specification.sources);
         const plannerReferenceProjects = Array.isArray(plannerEvidence.referenceProjects) ? plannerEvidence.referenceProjects : [];
         const plannerReferenceManifests = plannerReferenceProjects.reduce((count: number, project: any) =>
             count + (Array.isArray(project?.manifests) ? project.manifests.length : 0), 0);
-        logs.push(`[pipeline] planner_evidence referenceProjects=${plannerReferenceProjects.length} manifests=${plannerReferenceManifests}`);
+        appendBoundedPipelineLog(logs, `[pipeline] planner_evidence referenceProjects=${plannerReferenceProjects.length} manifests=${plannerReferenceManifests}`);
 
         say(pick(isAr,
             `[pipeline] دليل جاهز: ${evidence.mode}${evidence.selectedProject ? ` — ${evidence.selectedProject.root}` : ''}`,
@@ -407,7 +432,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 plannerResult = {
                     ok: true,
                     output: { projectName: deterministic.projectName, phases: deterministic.phases, deterministic: true, plannedWithoutModel: true },
-                    logs: plannerResult?.logs || [],
+                    logs: boundedPipelineLogs(plannerResult?.logs),
                 };
             } else {
             const summary = pick(isAr,
@@ -422,7 +447,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     pipelineFinal: true,
                     evidence, summary,
                 },
-                logs: [...logs, ...(plannerResult?.logs || [])],
+                logs: boundedPipelineLogs(logs, plannerResult?.logs),
             };
             }
         }
@@ -445,7 +470,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 plannerResult = {
                     ok: true,
                     output: { projectName: rescue.projectName, phases: rescue.phases, deterministic: true, plannedWithoutModel: true },
-                    logs: plannerResult?.logs || [],
+                    logs: boundedPipelineLogs(plannerResult?.logs),
                 };
             }
         }
@@ -491,6 +516,14 @@ export class ProjectPipelineTool implements ToolDefinition {
             browserSessionId: context?.browserSessionId,
             plannerResult,
             modelConfig: context?.modelConfig,
+            // Preserve the engineering LLM budget across the planner -> phase
+            // handoff. PhaseExecutor already carries these fields downstream;
+            // dropping them here silently restores LLM7's 30s default and turns
+            // a transient provider delay into a false phase failure.
+            providerTimeoutMs: context?.providerTimeoutMs,
+            plannerTimeoutMs: context?.plannerTimeoutMs,
+            plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens,
+            plannerReasoningEffort: context?.plannerReasoningEffort,
             // The phase announcements are the loudest lines in the trace, and
             // they were the ones speaking the wrong language.
             language: isAr ? 'ar' : 'en',
@@ -654,12 +687,12 @@ export class ProjectPipelineTool implements ToolDefinition {
                     };
                 }
                 chunks.push(readResult.output.content);
-                logs.push(...(readResult.logs || []));
+                appendBoundedPipelineLogs(logs, readResult.logs);
             }
             const content = chunks.join('\n');
             sections.push(`SOURCE: ${relativePath}\n${content}`);
             sources.push({ path: relativePath, lineCount: expectedLines });
-            logs.push(`pipeline.specification_read=${relativePath} lines=1-${expectedLines}`);
+            appendBoundedPipelineLog(logs, `pipeline.specification_read=${relativePath} lines=1-${expectedLines}`);
         }
         if (!sources.length) {
             return { content: '', sources: [], error: pick(isAr, 'لم تتوفر مواصفة مقروءة كاملة للتخطيط الآمن.', 'No complete specification was available for safe planning.') };

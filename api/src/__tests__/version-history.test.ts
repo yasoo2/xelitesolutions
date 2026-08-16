@@ -33,6 +33,27 @@ describe('routing: rollback phrases reach the page tool when a page is open', ()
     }
 });
 
+describe('a long build brief is not hijacked by incidental rollback words', () => {
+    const KEY = 'ver-build-brief';
+    beforeAll(() => {
+        (global as any).joeProjects = {
+            ...(global as any).joeProjects,
+            [KEY]: { dir: path.join(os.tmpdir(), 'stale-nexus-project') },
+        };
+    });
+    afterAll(() => { delete (global as any).joeProjects?.[KEY]; });
+
+    it('keeps a production build with rollback acceptance language on project_pipeline', async () => {
+        const goal = [
+            'Build a production-grade autonomous software platform with multi-tenant authentication, organizations, roles, permissions, audit logs, projects, workflows, real backend APIs, real database models, real frontend functionality, and real tests.',
+            'The final acceptance test must verify restartability, error handling, and version history; rollback and revert are product requirements, not a request to undo the active workspace.',
+            'Create modular architecture and execute the implementation incrementally with terminal evidence and local verification. ',
+        ].join(' ').repeat(3);
+        expect(goal.length).toBeGreaterThan(1000);
+        expect(await route(goal, KEY)).toBe('project_pipeline');
+    });
+});
+
 describe('the restore path: instant, honest, and itself undoable', () => {
     const KEY = 'ver-restore';
     let tmp: string;

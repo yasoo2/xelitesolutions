@@ -20,6 +20,8 @@ describe('evidence-first engineering discovery', () => {
       scripts: { test: 'vitest run', build: 'vite build', lint: 'eslint .' },
     }, null, 2));
     fs.writeFileSync(path.join(project, 'src', 'main.tsx'), 'export {};\n');
+    fs.mkdirSync(path.join(project, 'src', '__tests__'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'src', '__tests__', 'main.test.ts'), 'test("smoke", () => expect(true).toBe(true));\n');
     const before = fs.readFileSync(path.join(project, 'package.json'), 'utf8');
 
     const result: any = await new EngineeringDiscoveryTool().execute({
@@ -35,6 +37,7 @@ describe('evidence-first engineering discovery', () => {
       expect.objectContaining({ kind: 'build', command: 'npm run build' }),
       expect.objectContaining({ kind: 'lint', command: 'npm run lint' }),
     ]));
+    expect(result.output.evidence.selectedProject.testFiles).toContain(path.join(project, 'src', '__tests__', 'main.test.ts'));
     expect(result.output.evidence.constraints.forbidDeploy).toBe(true);
     expect(fs.readFileSync(path.join(project, 'package.json'), 'utf8')).toBe(before);
   });

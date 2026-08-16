@@ -280,12 +280,20 @@ Say "[OK] التحديث اكتمل — جو يعود الآن."
 # تشرح العلاج بدل حرق المعالج في حلقة لا نهائية.
 $restartCount = 0
 $fastCrashes = 0
+# Long engineering runs retain recent evidence and may legitimately exceed
+# Node's small default heap. Override on constrained machines with
+# $env:JOE_NODE_MAX_OLD_SPACE_MB before running this script.
+$nodeMaxOldSpaceMb = 1536
+$parsedHeapSize = 0
+if ($env:JOE_NODE_MAX_OLD_SPACE_MB -and [int]::TryParse($env:JOE_NODE_MAX_OLD_SPACE_MB, [ref]$parsedHeapSize) -and $parsedHeapSize -ge 512) {
+    $nodeMaxOldSpaceMb = $parsedHeapSize
+}
 while ($true) {
     $restartCount++
-    Say "`n[3/3] Starting Joe (attempt #$restartCount)  ->  http://localhost:5002/joe" Yellow
+    Say "`n[3/3] Starting Joe (attempt #$restartCount, V8 heap ${nodeMaxOldSpaceMb}MB)  ->  http://localhost:5002/joe" Yellow
     Push-Location $apiDir
     $startedAt = Get-Date
-    node dist/index.js
+    node "--max-old-space-size=$nodeMaxOldSpaceMb" dist/index.js
     $exitCode = $LASTEXITCODE
     $aliveSeconds = ((Get-Date) - $startedAt).TotalSeconds
     Pop-Location
