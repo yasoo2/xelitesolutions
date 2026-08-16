@@ -200,12 +200,33 @@ export class EngineeringDiscoveryTool extends BaseTool {
         const roots = new Set<string>();
         const instructionFiles: EngineeringEvidence['instructionFiles'] = [];
         const isInstructionFile = (name: string) => /\.(?:md|txt|rst)$/i.test(name);
+        /**
+         * A repair workspace can be a real project before its manifest exists.
+         * Discovery used to see only package/pyproject/requirements/go manifests,
+         * so a failed build that had already written `src/` and `tests/` became a
+         * greenfield workspace on rediscovery. The repair planner then received
+         * no concrete root and could not create the missing runnable contract.
+         *
+         * This is deliberately narrow: only the active workspace root or a Git
+         * root with implementation/test signals qualifies, and it is selected
+         * only for an existing-project request below. Greenfield requests still
+         * ignore incomplete roots as write targets.
+         */
+        const hasImplementationSignal = (entries: fs.Dirent[]) => {
+            const names = new Set(entries.map(entry => entry.name));
+            return names.has('src') || names.has('app') || names.has('tests') || names.has('test') || names.has('__tests__')
+                || entries.some(entry => entry.isFile() && /\.(?:[cm]?[jt]sx?|py|go)$/i.test(entry.name));
+        };
         const visit = (dir: string, depth: number) => {
             if (depth > maxDepth || roots.size >= 24) return;
             let entries: fs.Dirent[] = [];
             try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
             const names = new Set(entries.map(entry => entry.name));
-            if (names.has('package.json') || names.has('pyproject.toml') || names.has('requirements.txt') || names.has('go.mod')) roots.add(dir);
+            const hasManifest = names.has('package.json') || names.has('pyproject.toml') || names.has('requirements.txt') || names.has('go.mod');
+            const isIncompleteProjectRoot = !hasManifest
+                && hasImplementationSignal(entries)
+                && (depth === 0 || names.has('.git'));
+            if (hasManifest || isIncompleteProjectRoot) roots.add(dir);
             for (const entry of entries) {
                 const entryPath = path.join(dir, entry.name);
                 if (entry.isFile() && isInstructionFile(entry.name) && instructionFiles.length < 32) {
@@ -227,6 +248,15 @@ export class EngineeringDiscoveryTool extends BaseTool {
         visit(workspaceRoot, 0);
 
         const candidates = [...roots].sort((a, b) => a.localeCompare(b)).map(root => this.inspectProject(root));
+        for (const candidate of candidates) {
+            if (candidate.manifests.length === 0 && (candidate.likelyEntrypoints.length > 0 || (candidate.testFiles || []).length > 0)) {
+                facts.push({
+                    id: 'workspace.incomplete_project',
+                    source: 'workspace',
+                    statement: `Implementation and/or tests were found at ${candidate.root}, but no project manifest is present; the root is repairable evidence, not a greenfield template target.`,
+                });
+            }
+        }
         let selectedProject: Candidate | undefined;
         if (candidates.length === 1 && !buildsSomethingNew) {
             selectedProject = candidates[0];

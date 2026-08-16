@@ -42,6 +42,30 @@ describe('evidence-first engineering discovery', () => {
     expect(fs.readFileSync(path.join(project, 'package.json'), 'utf8')).toBe(before);
   });
 
+  test('recognizes an incomplete existing project root so repair can restore its missing manifest', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-incomplete-repair-'));
+    roots.push(root);
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'tests'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'src', 'index.ts'), 'export const ready = true;\n');
+    fs.writeFileSync(path.join(root, 'tests', 'smoke.test.ts'), 'test("smoke", () => expect(true).toBe(true));\n');
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: 'Repair the existing project locally and restore the missing runnable manifest. Do not deploy.',
+    }, { workspaceRoot: root });
+
+    expect(result.ok).toBe(true);
+    expect(result.output.evidence.mode).toBe('existing_workspace');
+    expect(result.output.evidence.selectedProject.root).toBe(root);
+    expect(result.output.evidence.selectedProject.manifests).toEqual([]);
+    expect(result.output.evidence.selectedProject.likelyEntrypoints).toContain(path.join(root, 'src', 'index.ts'));
+    expect(result.output.evidence.selectedProject.testFiles).toContain(path.join(root, 'tests', 'smoke.test.ts'));
+    expect(result.output.evidence.facts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'workspace.incomplete_project' }),
+    ]));
+    expect(result.output.evidence.blockers).toEqual([]);
+  });
+
   test('reads a Python project through its own manifests and declared local tests, not a Node template', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-python-evidence-'));
     roots.push(root);
