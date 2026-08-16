@@ -235,6 +235,33 @@ export function buildPlannerEvidence(evidence: any, specificationSources: any[] 
     };
 }
 
+/**
+ * WHEN NO PLAN EXISTS AT ALL, THE BAR IS DIFFERENT.
+ *
+ * The TaskFlow AI live test, verbatim: a six-thousand-character production
+ * brief arrived, every planner provider was down, and the strict gate below
+ * (length > 1800, two structural signals) forbade the deterministic rescue —
+ * so a request the engine plainly recognises as a task-management system
+ * ended as «Planning stopped honestly» with NOTHING built. The strict gate
+ * exists to stop a live planner's WRONG plan from being papered over with a
+ * template; when the planner is dead or answered empty, the alternative it
+ * is protecting is the empty set.
+ *
+ * So a dead planner rescues whenever the engine genuinely recognises the
+ * request as a build it owns. Honesty is kept by the gates that cannot be
+ * bypassed: the scope audit names every asked-for area the engine did not
+ * build, and the delivery reports PARTIAL — named, never silently shrunk.
+ */
+export function deterministicRescueForDeadPlanner(request: string): boolean {
+    if (deterministicRescueAllowed(request)) return true;
+    try {
+        const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
+        if (!PlanningEngine.looksLikeBuild(request)) return false;
+        const { detectAppKind, stripDeclaredOptions } = require('../../../core/design/app-blueprints');
+        return !!detectAppKind(stripDeclaredOptions(request));
+    } catch { return false; }
+}
+
 export function deterministicRescueAllowed(request: string): boolean {
     const text = String(request || '').trim();
     if (!text || text.length > 1800) return false;
@@ -641,7 +668,7 @@ export class ProjectPipelineTool implements ToolDefinition {
              * the request declares too little to plan from, this falls through
              * and stops honestly, exactly as before.
              */
-            const deterministic = evidence?.constraints?.createsNewProject && deterministicRescueAllowed(request)
+            const deterministic = evidence?.constraints?.createsNewProject && deterministicRescueForDeadPlanner(request)
                 ? deterministicPhasesFor(request)
                 : null;
             if (deterministic) {
@@ -681,7 +708,7 @@ export class ProjectPipelineTool implements ToolDefinition {
          */
         if ((!Array.isArray(plannerResult?.output?.phases) || plannerResult.output.phases.length === 0)
             && evidence?.constraints?.createsNewProject) {
-            const rescue = deterministicRescueAllowed(request) ? deterministicPhasesFor(request) : null;
+            const rescue = deterministicRescueForDeadPlanner(request) ? deterministicPhasesFor(request) : null;
             if (rescue) {
                 say(pick(isAr,
                     `[pipeline] الخطة عادت فارغة — أخطّط حتمياً مما صرّح به الطلب: ${rescue.reason}`,

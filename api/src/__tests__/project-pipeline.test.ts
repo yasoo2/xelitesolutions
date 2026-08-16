@@ -103,6 +103,27 @@ describe('routing — full-project requests reach the pipeline, offline and dete
         expect(deterministicRescueAllowed('Build a small local notes app with a web interface.')).toBe(true);
     });
 
+    test('a DEAD planner rescues any build the engine recognises — the TaskFlow live failure', () => {
+        const { deterministicRescueForDeadPlanner } = require('../modules/tools/definitions/ProjectPipelineTool');
+        // The live test, verbatim shape: a giant structured production brief.
+        // The strict gate says no (length + structural signals) — right for a
+        // paper plan from a LIVE planner. With NO plan at all, the engine
+        // recognises a task-management system and answers; the scope audit
+        // still names what it did not build.
+        const taskflow = 'Build a complete production-quality web application called "TaskFlow AI". '
+            + 'A modern project and task management platform. Implement authentication, users, '
+            + 'projects, tasks, kanban, notifications, database, API, tests, end-to-end test, '
+            + 'acceptance criteria and a final audit. '.repeat(60);
+        expect(taskflow.length).toBeGreaterThan(1800);
+        expect(deterministicRescueAllowed(taskflow)).toBe(false);
+        expect(deterministicRescueForDeadPlanner(taskflow)).toBe(true);
+        // …and a brief the engine does NOT recognise still stops honestly.
+        expect(deterministicRescueForDeadPlanner('Write a kernel driver for my GPU with acceptance criteria and integration tests. '.repeat(40))).toBe(false);
+        // The paper-plan branch keeps the STRICT gate — pinned at the source.
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
+        expect(src).toMatch(/plannerResult\?\.output\?\.deterministic !== true\s*&&\s*deterministicRescueAllowed\(request\)/);
+    });
+
     test('a recovery goal is NOT hijacked even if it mentions a server', async () => {
         // Recovery goals route to the dynamic planner before any fast-path.
         const src = fs.readFileSync(
