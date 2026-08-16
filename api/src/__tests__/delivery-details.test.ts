@@ -114,9 +114,12 @@ describe('«MyApp» is not a name', () => {
     });
 
     it('and both builders use it', () => {
-        for (const tool of ['ReactProjectTool.ts', 'ApiProjectTool.ts']) {
+        // The api tool now reads the brand from the request WITHOUT the
+        // category declaration («بفئات: …» shipped «مشروع الات،» as a name,
+        // measured live) — the guarantee is the same chain, fed clean text.
+        for (const [tool, req] of [['ReactProjectTool.ts', 'request'], ['ApiProjectTool.ts', 'requestForReading']] as const) {
             const t = read('modules', 'tools', 'definitions', tool);
-            expect(t).toMatch(/brandFrom\(request, isAr\) \|\| brandFallback\(request, isAr, kind\)/);
+            expect(t).toMatch(new RegExp(`brandFrom\\(${req}, isAr\\) \\|\\| brandFallback\\(${req}, isAr, kind\\)`));
             expect(t).not.toMatch(/\|\| \(isAr \? 'مشروعي' : 'MyApp'\)/);
         }
     });
