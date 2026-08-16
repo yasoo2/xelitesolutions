@@ -693,6 +693,12 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
         const scope = this.requirementScope(projectDescription);
         const targets = scope.targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ');
         const missing = (assessment?.missingTargetNames || []).join(' | ');
+        const phaseLedger = Array.from({ length: scope.minPhases }, (_, phaseIndex) => {
+            const start = phaseIndex * 4;
+            const end = Math.min(scope.targets.length, start + 4);
+            const ids = Array.from({ length: Math.max(0, end - start) }, (_, offset) => `R${start + offset + 1}`);
+            return ids.length ? `Phase ${phaseIndex + 1}: ${ids.join(', ')}` : '';
+        }).filter(Boolean).join(' | ');
         return `COMPACT PLANNER RECOVERY — OUTPUT LIMIT OVERRIDES ALL OTHER PLANNING VERBOSITY.
 
 The previous planner response could not be safely used. Failure evidence: ${String(failureReason || '').slice(0, 900)}
@@ -700,13 +706,14 @@ The previous planner response could not be safely used. Failure evidence: ${Stri
 REQUIREMENT REGISTER FROM THE ORIGINAL REQUEST:
 ${targets || 'R1: the requested implementation'}
 ${missing ? `MISSING COVERAGE TO REPAIR: ${missing}` : ''}
+COVERAGE LEDGER (use every listed ID in at least one requirementsCovered array): ${phaseLedger}
 
 Return ONLY one valid JSON object. No Markdown, prose, source code, HTML, logs, catalogue text, or explanations. Do not return an empty phases array.
 
 SCAFFOLD RECOVERY CONTRACT: if the failure evidence mentions a scaffold contract, args.structure must be concrete and non-empty with at least one executable source/config file, and every path must be safe workspace-relative. Otherwise do not use scaffold_project in this compact recovery.
 PORTABILITY RECOVERY CONTRACT: if the failure evidence mentions an unportable native dependency, do not choose better-sqlite3, sqlite3, bcrypt, sharp, canvas, node-sass, ffi-napi, or another native addon. Choose node:sqlite when the runtime supports it, or a JSON/file implementation with the same interface, and record the choice in the plan.
 
-The plan must contain between ${scope.minPhases} and 8 phases, with exactly 2 tasks in each phase. Keep every phase name, description, verificationTask, deliverable, task name, and args.description to one short sentence. Use requirementsCovered with the complete R-number register above; collectively cover every listed R number, including every missing area named by the validator.
+The plan must contain between ${scope.minPhases} and 8 phases, with up to 4 short implementation tasks per phase. Keep every phase name, description, verificationTask, deliverable, task name, and args.description to one short sentence. Use requirementsCovered with the complete R-number register above; collectively cover every listed R number, including every missing area named by the validator. Before returning JSON, audit that every ID from R1 through R${scope.targets.length} appears in requirementsCovered; do not stop at a partial subset.
 
 Make an explicit technical stack/architecture decision in phase 1, grounded in the requirements (for example a concrete runtime, language, and framework). Do not infer a stack from the product name. Do not use scaffold_project in this recovery. Every task must be an executable file-level implementation task using the registered tool ai_write_file, with args.path and args.description. Each phase must create two non-document source, configuration, or test artifacts under a safe workspace-relative path; never put code in JSON. Use paths such as src/, server/, client/, tests/, or config/ and let the controlled executor generate the contents from the descriptions.
 
@@ -733,7 +740,7 @@ Use this exact compact schema:
   ],
   "dependencies": []
 }
-Repeat the same compact phase shape for at least ${scope.minPhases} phases and no more than 8 phases, changing paths, descriptions, and R-number coverage. Do not output anything before or after the JSON object.`;
+Repeat the same compact phase shape for at least ${scope.minPhases} phases and no more than 8 phases, changing paths, descriptions, and R-number coverage according to the coverage ledger. Each R-ID must advance a concrete file-level implementation task; verification tasks may be included but must not replace implementation coverage. Do not output anything before or after the JSON object.`;
     }
 
     /**
