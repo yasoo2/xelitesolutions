@@ -59,6 +59,65 @@ export type ActionLogEvent = {
   reason?: FailureReason | (string & {});
 };
 
+/** Sanitised page metadata emitted after navigation and meaningful page changes. */
+export type PageSnapshotEvent = {
+  type: 'page_snapshot';
+  ts: number;
+  sessionId: string;
+  url: string;
+  title: string;
+  state: 'loading' | 'ready' | 'blocked' | 'error' | 'unknown' | (string & {});
+  workerStatus?: 'idle' | 'running' | 'error' | (string & {});
+  elementCount?: number;
+  textLength?: number;
+  hasPasswordField?: boolean;
+  blockingReason?: FailureReason | (string & {});
+};
+
+/** Runtime diagnostics from the current Playwright page, with credential-safe samples only. */
+export type PageDiagnosticsEvent = {
+  type: 'page_diagnostics';
+  ts: number;
+  sessionId: string;
+  jsErrors: number;
+  consoleErrors: number;
+  networkErrors: number;
+  recent?: Array<{ kind: 'pageerror' | 'console' | 'requestfailed'; message: string; ts: number }>;
+};
+
+/** A measured quality sample, never a claim of success without the underlying signals. */
+export type BrowserQualityEvent = {
+  type: 'browser_quality';
+  ts: number;
+  sessionId: string;
+  status: 'good' | 'degraded' | 'blocked' | 'unknown';
+  fps: number;
+  frameAgeMs: number | null;
+  jitterMs: number | null;
+  queueLength: number;
+  actionsInFlight: number;
+  actionErrors: number;
+  jsErrors: number;
+  networkErrors: number;
+  lastActionLatencyMs: number | null;
+  windowMs: number;
+  reason?: string;
+};
+
+/** Normalised action timeline event that complements the legacy lifecycle events. */
+export type BrowserActionEvent = {
+  type: 'browser_action';
+  ts: number;
+  sessionId: string;
+  actionId: string;
+  actionType: string;
+  phase: 'sent' | 'ack' | 'done' | 'error' | 'feedback';
+  ok?: boolean;
+  durationMs?: number;
+  summary?: string;
+  reason?: string;
+};
+
 export type ActionFeedbackEvent = {
   type: 'action_feedback';
   ts: number;
@@ -127,6 +186,10 @@ export type BrowserWsEvent =
   | HighlightBoxesEvent
   | SessionStatusEvent
   | ActionLogEvent
+  | PageSnapshotEvent
+  | PageDiagnosticsEvent
+  | BrowserQualityEvent
+  | BrowserActionEvent
   | ActionFeedbackEvent
   | StepEvent
   | FinalReportEvent

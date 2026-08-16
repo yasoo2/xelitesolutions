@@ -22,6 +22,7 @@ import { executePlannedActions } from './executor';
 import { broadcastBrowserEvent } from './wsHub';
 import { judgeAnswer, ungroundedMessage } from './grounding';
 import { detectChallenge, waitForHumanToClear } from './challenge';
+import { getBrowserTelemetrySnapshot, type BrowserRuntimeSnapshot } from './telemetry';
 
 /** Emit one live narration event to the session's panel (best-effort, never throws). */
 function emitAgentStep(sessionId: string, ev: {
@@ -110,6 +111,10 @@ export interface Observation {
   title: string;
   textSnippet: string;
   elements: ObservedElement[];
+  /** Runtime evidence from the same watched browser session; optional for old callers/tests. */
+  runtime?: BrowserRuntimeSnapshot;
+  /** Evidence about the immediately preceding action, so the brain can recover deliberately. */
+  lastActionResult?: { action: string; ok: boolean; note?: string };
 }
 
 export type ReactAction =
@@ -144,7 +149,16 @@ export interface ReactResult {
   steps: ReactStep[];
   missingSecret?: string;
   verified?: boolean;                                  // did the goal check confirm success?
-  evidence?: { url: string; title: string; snippet: string }; // real final-page proof
+  evidence?: { url: string; title: string; snippet: string; runtime?: BrowserRuntimeSnapshot }; // real final-page proof
+}
+
+function evidenceFromObservation(o: Observation) {
+  return {
+    url: o.url,
+    title: o.title,
+    snippet: (o.textSnippet || '').slice(0, 300),
+    ...(o.runtime ? { runtime: o.runtime } : {}),
+  };
 }
 
 /** A pluggable "brain": given the task + current observation + history, return the
@@ -247,6 +261,15 @@ export function renderObservation(o: Observation): string {
     `URL: ${o.url}`,
     `TITLE: ${o.title}`,
     `TEXT: ${o.textSnippet.slice(0, 600)}`,
+    ...(o.runtime ? [
+      `RUNTIME: status=${o.runtime.status}${o.runtime.reason ? ` reason=${o.runtime.reason}` : ''}; fps=${o.runtime.fps}; frameAgeMs=${o.runtime.frameAgeMs ?? 'unknown'}; jitterMs=${o.runtime.jitterMs ?? 'unknown'}; actionsInFlight=${o.runtime.actionsInFlight}; actionErrors=${o.runtime.actionErrors}; jsErrors=${o.runtime.jsErrors}; networkErrors=${o.runtime.networkErrors}; lastActionLatencyMs=${o.runtime.lastActionLatencyMs ?? 'unknown'}`,
+      ...(o.runtime.recent.length ? [`RECENT RUNTIME DIAGNOSTICS: ${o.runtime.recent.map((d) => `${d.kind}:${d.message}`).join(' | ')}`] : []),
+      'RUNTIME RULE: treat degraded/unknown as evidence to recover or ask the user; never claim the page is healthy from DOM alone.',
+    ] : []),
+    ...(o.lastActionResult ? [
+      `LAST ACTION RESULT: ${o.lastActionResult.action}; ok=${o.lastActionResult.ok};${o.lastActionResult.note ? ` note=${o.lastActionResult.note}` : ''}`,
+      ...(o.lastActionResult.ok ? [] : ['RECOVERY RULE: the previous action failed; choose a different evidence-based recovery step or ask the user instead of repeating blindly.']),
+    ] : []),
     `ELEMENTS (act on these by index):`,
     ...(lines.length ? lines : ['(no interactive elements found)']),
   ].join('\n');
@@ -312,6 +335,8 @@ export async function runReactBrowserTask(params: {
 
   let lastSignature = '';
   let repeat = 0;
+  let failureStreak = 0;
+  let lastActionResult: Observation['lastActionResult'];
 
   for (let n = 1; n <= maxSteps; n++) {
     await settle(page); // wait for dynamic content to load
@@ -351,6 +376,8 @@ export async function runReactBrowserTask(params: {
     }
 
     const observation = await observePage(page);
+    observation.runtime = getBrowserTelemetrySnapshot(sessionId);
+    if (lastActionResult) observation.lastActionResult = lastActionResult;
     emitAgentStep(sessionId, { phase: 'observe', step: n, url: observation.url, title: observation.title, elementCount: observation.elements.length });
     chatDetail(chatSid, `👁 يراقب الصفحة${observation.title ? `: ${observation.title.slice(0, 50)}` : ''} (${observation.elements.length} عنصر)`);
 
@@ -401,7 +428,8 @@ export async function runReactBrowserTask(params: {
       // never on the model's claim alone.
       await settle(page);
       const finalObs = await observePage(page);
-      const evidence = { url: finalObs.url, title: finalObs.title, snippet: (finalObs.textSnippet || '').slice(0, 300) };
+      finalObs.runtime = getBrowserTelemetrySnapshot(sessionId);
+      const evidence = evidenceFromObservation(finalObs);
       if (params.verify) {
         let v: { verified: boolean; note?: string };
         try { v = await params.verify({ task, observation: finalObs }); }
@@ -465,8 +493,14 @@ export async function runReactBrowserTask(params: {
     const sig = JSON.stringify(action) + '|' + observation.url;
     if (sig === lastSignature) { repeat++; } else { repeat = 0; lastSignature = sig; }
     if (repeat >= 2) {
-      steps.push({ n, action, ok: false, note: 'repeated', url: observation.url });
-      return finish('stuck', false, 'توقّف الوكيل عن التقدّم (تكرار نفس الخطوة).', undefined, observation.url);
+      const runtime = observation.runtime;
+      const degraded = runtime?.status === 'degraded';
+      const note = degraded ? `repeated_with_degraded_runtime:${runtime.reason || 'runtime_error'}` : 'repeated';
+      const summary = degraded
+        ? `توقّف الوكيل بدلاً من تكرار الفعل نفسه مع جودة متدهورة (${runtime.reason || 'runtime_error'}). يجب إصلاح السبب أو تدخل المستخدم قبل المتابعة.`
+        : 'توقّف الوكيل عن التقدّم (تكرار نفس الخطوة).';
+      steps.push({ n, action, ok: false, note, url: observation.url });
+      return finish('stuck', false, summary, undefined, observation.url);
     }
 
     const execActions = toExecutorActions(action, observation);
@@ -500,8 +534,28 @@ export async function runReactBrowserTask(params: {
       return out;
     }
 
-    steps.push({ n, action, ok: Boolean(res?.ok), note: res?.ok ? undefined : String(res?.summary || 'step_failed'), url: page.url() });
-    emitAgentStep(sessionId, { phase: 'result', step: n, ok: Boolean(res?.ok), url: page.url(), note: res?.ok ? undefined : String(res?.summary || '').slice(0, 80) });
+    const actionOk = Boolean(res?.ok);
+    const actionNote = actionOk ? undefined : String(res?.summary || 'step_failed').slice(0, 180);
+    failureStreak = actionOk ? 0 : failureStreak + 1;
+    lastActionResult = { action: describeAction(action, observation), ok: actionOk, ...(actionNote ? { note: actionNote } : {}) };
+    steps.push({ n, action, ok: actionOk, note: actionNote, url: page.url() });
+    emitAgentStep(sessionId, { phase: 'result', step: n, ok: actionOk, url: page.url(), note: actionNote });
+    if (failureStreak >= 3) {
+      const runtime = getBrowserTelemetrySnapshot(sessionId);
+      const reason = runtime.reason || runtime.recent.find((d) => d.kind === 'action' || d.kind === 'page' || d.kind === 'network')?.message || 'three_consecutive_action_failures';
+      const honest = `توقّف الوكيل بعد ${failureStreak} أفعال فاشلة متتالية بدلاً من الدوران في حلقة. السبب المرصود: ${reason}.`;
+      emitAgentStep(sessionId, { phase: 'result', step: n, ok: false, note: 'three_consecutive_action_failures', url: page.url() });
+      chatDetail(chatSid, `⚠️ ${honest} سيحتاج المتصفح إلى خطوة استرداد مختلفة أو تدخّلك.`);
+      const stopped = finish('stuck', false, honest, undefined, page.url());
+      try {
+        const finalObs = await observePage(page);
+        finalObs.runtime = runtime;
+        finalObs.lastActionResult = lastActionResult;
+        stopped.evidence = evidenceFromObservation(finalObs);
+      } catch { /* evidence is best-effort */ }
+      chatPhase(chatSid, 'idle', '');
+      return stopped;
+    }
   }
 
   const finalUrl = (() => { try { return page.url(); } catch { return ''; } })();
@@ -510,7 +564,8 @@ export async function runReactBrowserTask(params: {
   const out = finish('max_steps', false, `بلغ الوكيل الحدّ الأقصى للخطوات (${maxSteps}) دون إعلان الانتهاء.`, undefined, finalUrl);
   try {
     const finalObs = await observePage(page);
-    out.evidence = { url: finalObs.url, title: finalObs.title, snippet: (finalObs.textSnippet || '').slice(0, 300) };
+    finalObs.runtime = getBrowserTelemetrySnapshot(sessionId);
+    out.evidence = evidenceFromObservation(finalObs);
   } catch { /* evidence is best-effort */ }
   emitAgentStep(sessionId, { phase: 'result', step: maxSteps, ok: false, note: 'توقّف عند حدّ الخطوات دون إتمام', url: finalUrl });
   chatDetail(chatSid, '⚠️ توقّف عند حدّ الخطوات دون إتمام المهمة');

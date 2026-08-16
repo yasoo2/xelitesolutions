@@ -10,6 +10,13 @@ type BrowserWssHooks = {
   onLastClient?: (sessionId: string) => void;
 };
 
+type BrowserActionObserver = (sessionId: string, event: Extract<BrowserWsEvent, { type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error' }>) => void;
+let browserActionObserver: BrowserActionObserver | null = null;
+
+export function setBrowserActionObserver(observer: BrowserActionObserver | null) {
+  browserActionObserver = observer;
+}
+
 const clientsBySession = new Map<string, Set<Client>>();
 type OwnerEntry = { userId: string; at: number };
 const ownerByBrowserSessionId = new Map<string, OwnerEntry>();
@@ -198,6 +205,9 @@ export async function waitForPanelWatcher(sessionId: string, budgetMs = 4000): P
 export function broadcastBrowserEvent(sessionId: string, ev: BrowserWsEvent) {
   const sid = String(sessionId || '').trim();
   if (!sid) return;
+  if (ev.type === 'action_sent' || ev.type === 'action_ack' || ev.type === 'action_done' || ev.type === 'action_error') {
+    try { browserActionObserver?.(sid, ev); } catch { }
+  }
   const set = clientsBySession.get(sid);
   if (!set || set.size === 0) return;
   const payload = JSON.stringify(ev);

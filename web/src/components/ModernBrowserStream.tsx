@@ -8,6 +8,10 @@ type WsEvent =
   | { type: 'cursor_move'; ts: number; x: number; y: number }
   | { type: 'highlight_boxes'; ts: number; boxes: Array<{ x: number; y: number; width: number; height: number; label?: string }> }
   | { type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; ts: number; actionId: string; actionType: string; summary?: string; reason?: string; error?: string }
+  | { type: 'page_snapshot'; ts: number; sessionId: string; url: string; title: string; state: string; workerStatus?: string; elementCount?: number; textLength?: number; hasPasswordField?: boolean; blockingReason?: string }
+  | { type: 'page_diagnostics'; ts: number; sessionId: string; jsErrors: number; consoleErrors: number; networkErrors: number; recent?: Array<{ kind: string; message: string; ts: number }> }
+  | { type: 'browser_quality'; ts: number; sessionId: string; status: 'good' | 'degraded' | 'blocked' | 'unknown'; fps: number; frameAgeMs: number | null; jitterMs: number | null; queueLength: number; actionsInFlight: number; actionErrors: number; jsErrors: number; networkErrors: number; lastActionLatencyMs: number | null; windowMs: number; reason?: string }
+  | { type: 'browser_action'; ts: number; sessionId: string; actionId: string; actionType: string; phase: 'sent' | 'ack' | 'done' | 'error' | 'feedback'; ok?: boolean; durationMs?: number; summary?: string; reason?: string }
   | { type: 'step_start'; stepId: string; name: string; ts: number }
   | { type: 'step_done'; stepId: string; name: string; ts: number; data?: any }
   | { type: 'step_error'; stepId: string; name: string; ts: number; reason: string; message: string; data?: any }
@@ -44,10 +48,16 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const [frameCount, setFrameCount] = useState(0);
   const [qualityOpen, setQualityOpen] = useState(false);
   const [qualityReport, setQualityReport] = useState<{ ok: boolean; title: string; checks: string[] } | null>(null);
+  const [startPending, setStartPending] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [qualityMetrics, setQualityMetrics] = useState<Extract<WsEvent, { type: 'browser_quality' }> | null>(null);
+  const [pageSnapshot, setPageSnapshot] = useState<Extract<WsEvent, { type: 'page_snapshot' }> | null>(null);
+  const [diagnostics, setDiagnostics] = useState<Extract<WsEvent, { type: 'page_diagnostics' }> | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [actions, setActions] = useState<
-    Array<{ ts: number; type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; actionId: string; actionType: string; summary?: string; reason?: string; error?: string }>
+    Array<{ ts: number; type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; actionId: string; actionType: string; summary?: string; reason?: string; error?: string; durationMs?: number }>
   >([]);
+  const [browserActions, setBrowserActions] = useState<Array<Extract<WsEvent, { type: 'browser_action' }>>>([]);
   // Agent narration (steps + live thinking) renders in JOE'S CHAT, not here —
   // the browser view stays clean. When the agent pauses for the user (missing
   // credential / 2FA code) the prompt now appears in JOE'S CHAT, not here.
@@ -67,6 +77,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const cursorPosPxRef = useRef<{ x: number; y: number } | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastRafTsRef = useRef<number>(0);
+  const frameTimesRef = useRef<number[]>([]);
   const cursorVisibleRef = useRef(false);
   const scrollAccRef = useRef(0);
   const scrollTimerRef = useRef<number | null>(null);
@@ -320,7 +331,10 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         if (msg.type === 'stream_frame') {
           setW(msg.w);
           setH(msg.h);
-          setLastFrameAt(Date.now());
+          const frameNow = Date.now();
+          setLastFrameAt(frameNow);
+          frameTimesRef.current = frameTimesRef.current.filter((at) => frameNow - at <= 4000);
+          frameTimesRef.current.push(frameNow);
           setFrameCount((count) => count + 1);
           const img = new Image();
           img.onload = () => {
@@ -373,6 +387,34 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           });
           return;
         }
+        if (msg.type === 'browser_action') {
+          setBrowserActions((prev) => {
+            const next = prev.concat(msg);
+            return next.length > 60 ? next.slice(next.length - 60) : next;
+          });
+          return;
+        }
+        if (msg.type === 'page_snapshot') {
+          setPageSnapshot(msg);
+          try {
+            window.dispatchEvent(new CustomEvent('browser:page_snapshot', { detail: msg }));
+          } catch { }
+          return;
+        }
+        if (msg.type === 'page_diagnostics') {
+          setDiagnostics(msg);
+          try {
+            window.dispatchEvent(new CustomEvent('browser:diagnostics', { detail: msg }));
+          } catch { }
+          return;
+        }
+        if (msg.type === 'browser_quality') {
+          setQualityMetrics(msg);
+          try {
+            window.dispatchEvent(new CustomEvent('browser:quality', { detail: msg }));
+          } catch { }
+          return;
+        }
         if (msg.type === 'step_start') {
           setLastStep(`${msg.stepId}: ${msg.name}`);
           return;
@@ -406,7 +448,12 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         if ((msg as any).type === 'session_status') {
           try {
             const d = (msg as any);
-            const det = { url: String(d?.url || ''), sessionId: String(d?.sessionId || '') };
+            const det = {
+              url: String(d?.url || ''),
+              title: String(d?.title || ''),
+              workerStatus: String(d?.workerStatus || ''),
+              sessionId: String(d?.sessionId || ''),
+            };
             window.dispatchEvent(new CustomEvent('browser:session_status', { detail: det }));
           } catch { }
           return;
@@ -437,21 +484,33 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   }, []);
 
   const runQualityCheck = () => {
-    const ageMs = lastFrameAt === null ? null : Math.max(0, Date.now() - lastFrameAt);
+    const now = Date.now();
+    const ageMs = lastFrameAt === null ? null : Math.max(0, now - lastFrameAt);
     const frameOk = ageMs !== null && ageMs < 5000;
     const connectionOk = status === 'connected';
-    const queueOk = queueLen < 8;
-    const actionErrors = actions.filter((action) => action.type === 'action_error').length;
-    const actionsOk = actionErrors === 0;
-    const ok = connectionOk && frameOk && queueOk && actionsOk;
+    const queueOk = (qualityMetrics?.queueLength ?? queueLen) < 8;
+    const actionErrors = qualityMetrics?.actionErrors ?? actions.filter((action) => action.type === 'action_error').length;
+    const jsErrors = qualityMetrics?.jsErrors ?? diagnostics?.jsErrors ?? 0;
+    const networkErrors = qualityMetrics?.networkErrors ?? diagnostics?.networkErrors ?? 0;
+    const recentFrames = frameTimesRef.current.filter((at) => now - at <= 4000);
+    const fps = qualityMetrics?.fps ?? (recentFrames.length > 1 ? (recentFrames.length - 1) / Math.max(0.1, (recentFrames[recentFrames.length - 1] - recentFrames[0]) / 1000) : 0);
+    const jitter = qualityMetrics?.jitterMs ?? null;
+    const serverFresh = qualityMetrics ? now - qualityMetrics.ts < 8000 : false;
+    const measuredStatus = serverFresh ? qualityMetrics?.status : undefined;
+    const statusOk = measuredStatus ? measuredStatus === 'good' : connectionOk && frameOk && queueOk && actionErrors === 0 && jsErrors === 0 && networkErrors === 0;
+    const ok = statusOk && connectionOk && frameOk && queueOk && actionErrors === 0 && jsErrors === 0 && networkErrors === 0;
+    const pageState = pageSnapshot?.state || 'unknown';
     const checks = [
       `${connectionOk ? '✓' : '✗'} WebSocket: ${status}`,
       `${frameOk ? '✓' : '✗'} آخر إطار: ${ageMs === null ? 'لم يصل بعد' : `${Math.round(ageMs / 100) / 10}s`}`,
-      `${queueOk ? '✓' : '✗'} طابور الأفعال: ${queueLen}`,
-      `${actionsOk ? '✓' : '✗'} أخطاء الأفعال: ${actionErrors}`,
-      `الدقة: ${w}×${h} · الإطارات المرصودة: ${frameCount}`,
+      `${fps >= 8 ? '✓' : '✗'} FPS المقاس: ${fps ? fps.toFixed(1) : '0.0'}${jitter === null ? '' : ` · jitter=${Math.round(jitter)}ms`}`,
+      `${queueOk ? '✓' : '✗'} طابور الأفعال: ${qualityMetrics?.queueLength ?? queueLen} · in-flight=${qualityMetrics?.actionsInFlight ?? (busy ? 1 : 0)}`,
+      `${actionErrors === 0 ? '✓' : '✗'} أخطاء الأفعال: ${actionErrors} · آخر زمن استجابة=${qualityMetrics?.lastActionLatencyMs == null ? 'غير مقاس' : `${Math.round(qualityMetrics.lastActionLatencyMs)}ms`}`,
+      `${jsErrors === 0 ? '✓' : '✗'} أخطاء JavaScript: ${jsErrors} · أخطاء الشبكة: ${networkErrors}`,
+      `حالة الصفحة: ${pageState}${pageSnapshot?.title ? ` · ${pageSnapshot.title.slice(0, 80)}` : ''}`,
+      `الدقة: ${w}×${h} · الإطارات المرصودة: ${frameCount}${measuredStatus ? ` · الخادم=${measuredStatus}` : ' · القياس الخادمي غير متاح'}`,
     ];
-    setQualityReport({ ok, title: ok ? 'البث جاهز للاختبار الحي' : 'يحتاج البث إلى مراجعة قبل الاختبار', checks });
+    setQualityReport({ ok, title: ok ? 'البث اجتاز فحص الجودة الحي' : 'فحص الجودة يتطلب مراجعة قبل التسليم', checks });
     setQualityOpen(true);
   };
 
@@ -464,7 +523,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
 
   const captureSnapshot = () => {
     const canvas = canvasRef.current;
-    if (!canvas || !w || !h) return;
+    if (!canvas || !w || !h || lastFrameAt === null) return;
     try {
       const link = document.createElement('a');
       link.download = `joe-browser-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
@@ -472,6 +531,37 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       link.click();
     } catch { }
   };
+
+  const startBrowserSession = async () => {
+    const sid = String(sessionId || '').trim();
+    if (!sid || startPending) return;
+    setStartPending(true);
+    setStartError(null);
+    const token = (() => {
+      try { return localStorage.getItem('token'); } catch { return null; }
+    })();
+    try {
+      const response = await fetch(`${API_URL}/browser/actions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ sessionId: sid, actions: [{ type: 'ui_audit' }] }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(String(payload?.detail || payload?.error || `HTTP ${response.status}`));
+      }
+    } catch (error: any) {
+      setStartError(`تعذر بدء جلسة المتصفح: ${String(error?.message || error || 'خطأ غير معروف')}`);
+    } finally {
+      setStartPending(false);
+    }
+  };
+
+  const waitingForPage = status === 'connected' && lastFrameAt === null && !pageSnapshot;
+  const browserUnavailable = status === 'error';
 
   return (
     <div data-testid="browser-stream-root" style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#0b0b0b', display: 'flex', flexDirection: 'column' }}>
@@ -608,6 +698,44 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           }}
           style={{ width: '100%', height: '100%', display: 'block', outline: 'none' }}
         />
+        {(waitingForPage || browserUnavailable) ? (
+          <div
+            data-testid="browser-empty-state"
+            role="status"
+            aria-live="polite"
+            dir="rtl"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'grid',
+              placeItems: 'center',
+              padding: 24,
+              pointerEvents: 'none',
+              background: browserUnavailable ? 'rgba(11,11,11,0.58)' : 'rgba(11,11,11,0.22)',
+            }}
+          >
+            <div style={{ maxWidth: 420, padding: '18px 20px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(18,18,18,0.86)', color: '#fff', textAlign: 'center', boxShadow: '0 14px 42px rgba(0,0,0,0.28)' }}>
+              <strong style={{ display: 'block', fontSize: 14, marginBottom: 8 }}>
+                {browserUnavailable ? 'تعذر الاتصال ببث المتصفح' : 'المتصفح جاهز وينتظر مهمة Joe'}
+              </strong>
+              <span style={{ display: 'block', color: 'rgba(255,255,255,0.72)', fontSize: 12, lineHeight: 1.6 }}>
+                {browserUnavailable ? 'تحقق من تشغيل API وWebSocket ثم أعد المحاولة.' : 'أرسل مهمة تستخدم المتصفح من محادثة Joe لفتح الصفحة، أو ابدأ جلسة معاينة حقيقية الآن. لن تُعلن الجودة ناجحة قبل وصول إطار فعلي.'}
+              </span>
+              {!browserUnavailable ? (
+                <button
+                  type="button"
+                  data-testid="browser-start-session-button"
+                  onClick={() => void startBrowserSession()}
+                  disabled={startPending}
+                  style={{ marginTop: 14, padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.18)', background: startPending ? 'rgba(255,255,255,0.08)' : 'rgba(59,130,246,0.76)', color: '#fff', fontSize: 12, cursor: startPending ? 'wait' : 'pointer', opacity: startPending ? 0.72 : 1, pointerEvents: 'auto' }}
+                >
+                  {startPending ? 'جارٍ بدء الجلسة…' : 'بدء جلسة المتصفح'}
+                </button>
+              ) : null}
+              {startError ? <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 11, lineHeight: 1.5 }}>{startError}</div> : null}
+            </div>
+          </div>
+        ) : null}
         <div ref={cursorElRef} className="browser-cursor" aria-hidden="true">
           <svg className="browser-cursor-svg" viewBox="0 0 24 24">
             <path className="browser-cursor-path" d="M3.5 2.2 L3.5 19.6 L8.6 15.4 L11.5 22.1 L14.3 20.8 L11.3 14.0 L18.7 14.0 Z" />
@@ -626,7 +754,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       <div style={{ padding: 10, borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.35)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ color: '#fff', fontSize: 12, opacity: 0.95, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {status} · {w}×{h} {lastStep ? `· ${lastStep}` : ''} {busy ? `· busy` : ''} {queueLen ? `· queue=${queueLen}` : ''}
+            {status} · quality={qualityMetrics?.status || 'unknown'} · {w}×{h} {pageSnapshot?.title ? `· ${pageSnapshot.title.slice(0, 48)}` : ''} {lastStep ? `· ${lastStep}` : ''} {busy ? `· busy` : ''} {queueLen ? `· queue=${queueLen}` : ''}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: '0 0 auto' }}>
             {busy || queueLen ? (
@@ -665,9 +793,37 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         </div>
         {detailsOpen ? (
           <div style={{ marginTop: 10, display: 'flex', gap: 10, alignItems: 'stretch', flexWrap: 'wrap' }}>
+            {pageSnapshot ? (
+              <div style={{ flex: '1 1 320px', minWidth: 260, padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(59,130,246,0.12)', color: '#fff', fontSize: 12, lineHeight: 1.45 }}>
+                <strong>الصفحة الحالية</strong><br />
+                الحالة: {pageSnapshot.state} · العامل: {pageSnapshot.workerStatus || 'unknown'}<br />
+                العنوان: {pageSnapshot.title || 'بدون عنوان'}<br />
+                <span style={{ opacity: 0.78, wordBreak: 'break-all' }}>{pageSnapshot.url || 'لا يوجد URL'}</span>
+              </div>
+            ) : null}
+            {qualityMetrics ? (
+              <div style={{ flex: '1 1 260px', minWidth: 240, padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: qualityMetrics.status === 'good' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)', color: '#fff', fontSize: 12, lineHeight: 1.45 }}>
+                <strong>القياس الحي: {qualityMetrics.status}</strong><br />
+                FPS: {qualityMetrics.fps.toFixed(1)} · jitter: {qualityMetrics.jitterMs == null ? '—' : `${Math.round(qualityMetrics.jitterMs)}ms`}<br />
+                latency: {qualityMetrics.lastActionLatencyMs == null ? '—' : `${Math.round(qualityMetrics.lastActionLatencyMs)}ms`} · queue: {qualityMetrics.queueLength}<br />
+                JS: {qualityMetrics.jsErrors} · network: {qualityMetrics.networkErrors}{qualityMetrics.reason ? ` · ${qualityMetrics.reason}` : ''}
+              </div>
+            ) : null}
+            {diagnostics ? (
+              <div style={{ flex: '1 1 260px', minWidth: 240, padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: diagnostics.jsErrors || diagnostics.networkErrors ? 'rgba(239,68,68,0.14)' : 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 12, lineHeight: 1.45 }}>
+                <strong>تشخيص الصفحة</strong><br />
+                JavaScript: {diagnostics.jsErrors} · console: {diagnostics.consoleErrors} · network: {diagnostics.networkErrors}
+                {diagnostics.recent?.length ? <div style={{ marginTop: 4, opacity: 0.78 }}>{diagnostics.recent.slice(-3).map((item, index) => <div key={`${item.ts}-${index}`}>{item.kind}: {item.message}</div>)}</div> : null}
+              </div>
+            ) : null}
             {final ? (
               <div style={{ flex: '1 1 320px', minWidth: 260, padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: final.ok ? 'rgba(16,185,129,0.16)' : 'rgba(239,68,68,0.16)', color: '#fff', fontSize: 12, whiteSpace: 'pre-wrap' }}>
                 {final.summary}
+              </div>
+            ) : null}
+            {browserActions.length ? (
+              <div style={{ flex: '2 1 520px', minWidth: 320, maxHeight: 180, overflow: 'auto', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(37,99,235,0.10)', color: '#fff', fontSize: 12, lineHeight: 1.35, whiteSpace: 'pre-wrap' }}>
+                {browserActions.slice(-30).map((a) => `${a.phase} · ${a.actionType} · ${a.actionId}${a.durationMs == null ? '' : ` · ${Math.round(a.durationMs)}ms`}${a.reason ? ` · ${a.reason}` : ''}`).join('\n')}
               </div>
             ) : null}
             {actions.length ? (

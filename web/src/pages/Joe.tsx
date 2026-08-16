@@ -463,9 +463,27 @@ export default function Joe() {
                 setWorkspaceId(wsId);
                 setWorkspace(ws);
 
-                // Auto-open onboarding if PROJECT NOT INITIALIZED
+                // Do not reopen onboarding over an existing local artifact. The
+                // workspace flag can remain false after a restart or an interrupted
+                // run, while the shared local root already contains the project the
+                // user is actively inspecting. The tree endpoint is the source of
+                // truth for visible workspace content; if it cannot be read we keep
+                // the conservative first-run behaviour and show onboarding.
                 if (!ws.projectInitialized) {
-                    setIsOnboardingOpen(true);
+                    try {
+                        const treeResult: any = await api.get('/project/tree');
+                        const entries = Array.isArray(treeResult?.tree)
+                            ? treeResult.tree
+                            : Array.isArray(treeResult)
+                                ? treeResult
+                                : [];
+                        const hasVisibleArtifacts = entries.some((entry: any) =>
+                            entry && typeof entry === 'object' && String(entry.name || '').trim()
+                        );
+                        if (!hasVisibleArtifacts) setIsOnboardingOpen(true);
+                    } catch {
+                        setIsOnboardingOpen(true);
+                    }
                 }
 
                 return wsId;

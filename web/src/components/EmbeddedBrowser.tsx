@@ -32,9 +32,12 @@ export default function EmbeddedBrowser({
 }: EmbeddedBrowserProps) {
     const { t } = useTranslation();
     const [currentUrl, setCurrentUrl] = useState('');
+    const [pageTitle, setPageTitle] = useState('');
     const [inputUrl, setInputUrl] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
+    const [liveQuality, setLiveQuality] = useState<'good' | 'degraded' | 'blocked' | 'unknown'>('unknown');
+    const [runtimeErrorCount, setRuntimeErrorCount] = useState(0);
     const [showUrlInput, setShowUrlInput] = useState(false);
     const [showMine, setShowMine] = useState(false); // false = Joe's browser, true = user's real browser
     // "My personal browser" only works through the Joe BROWSER EXTENSION. On a local
@@ -67,21 +70,52 @@ export default function EmbeddedBrowser({
                     setInputUrl(detail.url);
                 }
             }
-            if (detail?.sessionId) {
+            if (detail?.sessionId && (!detail.sessionId || detail.sessionId === sessionId)) {
                 setIsConnected(true);
                 onReady?.();
             }
         };
 
+        const handlePageSnapshot = (e: CustomEvent) => {
+            const detail = e.detail as { sessionId?: string; url?: string; title?: string };
+            if (detail?.sessionId && detail.sessionId !== sessionId) return;
+            if (detail?.url) {
+                setCurrentUrl(detail.url);
+                if (!showUrlInput) setInputUrl(detail.url);
+            }
+            setPageTitle(String(detail?.title || ''));
+        };
+        const handleQuality = (e: CustomEvent) => {
+            const detail = e.detail as { sessionId?: string; status?: 'good' | 'degraded' | 'blocked' | 'unknown' };
+            if (detail?.sessionId && detail.sessionId !== sessionId) return;
+            setLiveQuality(detail?.status || 'unknown');
+        };
+        const handleDiagnostics = (e: CustomEvent) => {
+            const detail = e.detail as { sessionId?: string; jsErrors?: number; networkErrors?: number };
+            if (detail?.sessionId && detail.sessionId !== sessionId) return;
+            setRuntimeErrorCount(Number(detail?.jsErrors || 0) + Number(detail?.networkErrors || 0));
+        };
+
         window.addEventListener('browser:session_status', handleStatus as any);
-        return () => window.removeEventListener('browser:session_status', handleStatus as any);
-    }, [onReady, showUrlInput]);
+        window.addEventListener('browser:page_snapshot', handlePageSnapshot as any);
+        window.addEventListener('browser:quality', handleQuality as any);
+        window.addEventListener('browser:diagnostics', handleDiagnostics as any);
+        return () => {
+            window.removeEventListener('browser:session_status', handleStatus as any);
+            window.removeEventListener('browser:page_snapshot', handlePageSnapshot as any);
+            window.removeEventListener('browser:quality', handleQuality as any);
+            window.removeEventListener('browser:diagnostics', handleDiagnostics as any);
+        };
+    }, [onReady, sessionId, showUrlInput]);
 
     // Reset state when sessionId changes
     useEffect(() => {
         setCurrentUrl('');
+        setPageTitle('');
         setInputUrl('');
         setIsLoading(false);
+        setLiveQuality('unknown');
+        setRuntimeErrorCount(0);
     }, [sessionId]);
 
     // Navigate to URL
@@ -247,7 +281,7 @@ export default function EmbeddedBrowser({
                         />
                     ) : (
                         <>
-                            <Globe size={12} style={{ color: isConnected ? '#22c55e' : 'var(--text-muted)', flexShrink: 0 }} />
+                            <Globe size={12} style={{ color: !isConnected ? 'var(--text-muted)' : liveQuality === 'good' ? '#22c55e' : liveQuality === 'degraded' ? '#f59e0b' : liveQuality === 'blocked' ? '#ef4444' : '#94a3b8', flexShrink: 0 }} />
                             <span style={{
                                 flex: 1,
                                 fontSize: 12,
@@ -257,7 +291,7 @@ export default function EmbeddedBrowser({
                                 whiteSpace: 'nowrap',
                                 fontFamily: 'monospace',
                                 direction: 'ltr',
-                            }}>
+                            }} title={pageTitle ? `${pageTitle}${runtimeErrorCount ? ` · أخطاء: ${runtimeErrorCount}` : ''}` : undefined}>
                                 {currentUrl || t('browserNoPageLoaded')}
                             </span>
                         </>

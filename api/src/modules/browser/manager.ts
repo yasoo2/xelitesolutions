@@ -5,6 +5,7 @@ import os from 'os';
 import crypto from 'crypto';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
+import { ensureBrowserTelemetry, recordStreamFrame, disposeBrowserTelemetry } from './telemetry';
 
 /* ============================================================
    PER-USER ENCRYPTED SESSION PERSISTENCE
@@ -920,6 +921,8 @@ export async function createSession(sessionId: string) {
     saveTimer: null,
   };
 
+  ensureBrowserTelemetry(sessionId, page);
+
   page.on('framenavigated', (frame) => {
     if (frame !== page.mainFrame()) return;
     // A top-level navigation just settled (often right after a login redirect):
@@ -1057,6 +1060,7 @@ export function startStreaming(sessionId: string) {
         }
 
         if (!buf) return;
+        recordStreamFrame(sid);
         broadcastBrowserEvent(sid, {
           type: 'stream_frame',
           ts: Date.now(),
@@ -1155,7 +1159,8 @@ export async function stopSession(sessionId: string) {
   const s = sessions.get(sid);
   if (!s) return;
   sessions.delete(sid);
-  s.streaming = false;
+  disposeBrowserTelemetry(sid);
+
   if (s.streamTimer) {
     try { clearInterval(s.streamTimer); } catch { }
     s.streamTimer = null;
