@@ -349,6 +349,62 @@ export function resolveRunnableProject(workspaceRoot: string, projectQuery?: unk
     return { cwd: matches[0], candidates, matched: true };
 }
 
+function runtimeTargetFromScript(script: string): string {
+    const match = String(script || '').match(/\b(?:node|tsx|ts-node)\s+(?:(?:--[^\s]+)\s+)*["']?([^\s"';&|]+)["']?/u);
+    return String(match?.[1] || '').trim();
+}
+
+function hasServerStartEvidence(source: string): boolean {
+    return /\.listen\s*\(|\bcreateServer\s*\(|\b(?:express|fastify|koa)\s*\(/u.test(source);
+}
+
+/**
+ * A manifest is not a runnable contract by itself. Before spending the full
+ * readiness window, verify that npm's selected runtime target exists and is a
+ * JavaScript/TypeScript server with observable listen evidence. This stays
+ * generic: it does not prescribe a framework or a project template.
+ */
+export function launchabilityError(cwd: string, detected: { command: string; kind: string }): string | null {
+    if (detected.kind === 'static' || detected.kind === 'override') return null;
+
+    let target = '';
+    if (detected.kind === 'npm-start' || detected.kind === 'dev-server') {
+        try {
+            const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8'));
+            const scripts = pkg?.scripts || {};
+            const script = detected.kind === 'npm-start' ? scripts.start : scripts.dev;
+            target = runtimeTargetFromScript(String(script || ''));
+        } catch {
+            return 'launchability: package.json is missing or malformed';
+        }
+    } else if (detected.kind === 'node-entry' || detected.kind === 'tsx-entry') {
+        target = String(detected.command).replace(/^(?:node|npx -y tsx)\s+/u, '').trim();
+    }
+
+    if (!target) return null;
+    const safeTarget = target.replace(/^\.\//u, '');
+    const targetPath = path.resolve(cwd, safeTarget);
+    const relativeTarget = path.relative(cwd, targetPath);
+    if (!relativeTarget || relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget)) {
+        return `launchability: runtime target escapes project root (${target})`;
+    }
+    if (!fs.existsSync(targetPath)) {
+        return `launchability: runtime target is missing (${target})`;
+    }
+    if (!/\.(?:js|mjs|cjs|ts|tsx)$/iu.test(targetPath)) {
+        return `launchability: runtime target is not JavaScript/TypeScript (${target})`;
+    }
+    try {
+        const source = fs.readFileSync(targetPath, 'utf-8');
+        if (!hasServerStartEvidence(source)) {
+            return `launchability: runtime target has no observable server listen (${target})`;
+        }
+    } catch {
+        return `launchability: runtime target cannot be read (${target})`;
+    }
+    return null;
+}
+
 export function launchPrerequisiteError(cwd: string, detected: { command: string; kind: string }): string | null {
     const pkgPath = path.join(cwd, 'package.json');
     if (!fs.existsSync(pkgPath) || !/^npm (?:start|run dev)\b/u.test(detected.command)) return null;
@@ -541,6 +597,17 @@ export class ProjectRunTool implements ToolDefinition {
         const detected = input?.command
             ? { command: String(input.command), kind: 'override', expectPort: port, forced: false }
             : detectStart(cwd, port);
+        const launchability = launchabilityError(cwd, detected);
+        if (launchability) {
+            return {
+                ok: false,
+                error: pick(isAr,
+                    `تعذّر تشغيل المشروع بأمان: ${launchability}. أصلح target الخادم أو manifest أولاً؛ لم أنتظر على منفذ غير قابل للتشغيل.`,
+                    `Cannot start the project safely: ${launchability}. Fix the server target or manifest first; I will not wait on a project that cannot be launched.`,
+                ),
+                logs,
+            };
+        }
         const missingPrerequisite = launchPrerequisiteError(cwd, detected);
         if (missingPrerequisite) {
             return {

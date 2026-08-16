@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { buildProbeList, detectStart, isLoopbackPortOpen, launchPrerequisiteError, resolveRunnableProject } from '../modules/tools/definitions/ProjectRunTool';
+import { buildProbeList, detectStart, isLoopbackPortOpen, launchabilityError, launchPrerequisiteError, resolveRunnableProject } from '../modules/tools/definitions/ProjectRunTool';
 
 describe('workspace project discovery for project_run', () => {
     let root: string;
@@ -107,6 +107,41 @@ describe('workspace project discovery for project_run', () => {
         const resolved = resolveRunnableProject(root, 'شغّل المشروع باسم typescript-incomplete');
         expect(resolved.cwd).toBeNull();
         expect(resolved.matched).toBe(false);
+    });
+
+    it('rejects npm start when its declared runtime target is missing', () => {
+        const project = path.join(root, 'broken-start');
+        fs.mkdirSync(project, { recursive: true });
+        fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({ scripts: { start: 'node index.js' } }));
+        const detected = detectStart(project, 4300);
+        expect(launchabilityError(project, detected)).toContain('runtime target is missing');
+    });
+
+    it('rejects a JavaScript target that cannot prove a server listen', () => {
+        const project = path.join(root, 'not-a-server');
+        fs.mkdirSync(project, { recursive: true });
+        fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({ scripts: { start: 'node src/index.js' } }));
+        fs.mkdirSync(path.join(project, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(project, 'src', 'index.js'), 'print("this is not a Node server")');
+        const detected = detectStart(project, 4300);
+        expect(launchabilityError(project, detected)).toContain('no observable server listen');
+    });
+
+    it('accepts a Node target with observable HTTP listen evidence', () => {
+        const project = path.join(root, 'valid-server');
+        fs.mkdirSync(project, { recursive: true });
+        fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({ scripts: { start: 'node src/index.js' } }));
+        fs.mkdirSync(path.join(project, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(project, 'src', 'index.js'), 'require("http").createServer((_req, res) => res.end("ok")).listen(process.env.PORT || 4300);');
+        const detected = detectStart(project, 4300);
+        expect(launchabilityError(project, detected)).toBeNull();
+    });
+
+    it('keeps Vite prerequisite validation separate from runtime target validation', () => {
+        const project = path.join(root, 'react-لوحة-مهامي');
+        const detected = detectStart(project, 4300);
+        expect(launchabilityError(project, detected)).toBeNull();
+        expect(launchPrerequisiteError(project, detected)).toBe('vite');
     });
 
     it('reports absent Vite dependencies before detached startup and its 45-second port wait', () => {

@@ -91,7 +91,7 @@ describe('the port Joe announces is the port it binds', () => {
 describe('readiness does not adopt a stranger\'s server', () => {
     it('a forced port is probed alone — the common-port hunt is for hopes only', () => {
         expect(RUNTOOL).toContain(
-            'const probeList = detected.forced ? [port] : [port, ...COMMON_DEV_PORTS.filter(p => p !== port)];');
+            'const probeList = buildProbeList(port, detected.forced, preExistingCommonPorts);');
     });
 
     it('an unconfirmed server yields an explicit verification failure, never a dead URL', () => {
@@ -147,7 +147,7 @@ describe('the system that passed the test is the system he gets', () => {
 describe('an already-running system is adopted, not raced', () => {
     it('project_run probes the remembered address before starting anything', () => {
         expect(RUNTOOL).toContain('const live = activeProj?.live;');
-        expect(RUNTOOL).toMatch(/if \(!input\?\.cwd && !input\?\.command && liveUrl && await answersHttp\(liveUrl\)\)/);
+        expect(RUNTOOL).toMatch(/if \(!input\?\.cwd && !input\?\.command && liveUrl && canAdoptRecordedLive\(live, cwd\) && await answersHttp\(liveUrl\)\)/);
         expect(RUNTOOL).toMatch(/adopted: true, kind: 'already-running'/);
     });
 
