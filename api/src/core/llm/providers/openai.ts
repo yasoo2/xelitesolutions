@@ -128,7 +128,12 @@ export class OpenAIProvider {
                 : [];
             const message = choices[0]?.message;
             if (!message) {
-                const gatewayError = (completion as any)?.error?.message;
+                const rawGatewayError = (completion as any)?.error;
+                const gatewayError = typeof rawGatewayError === 'string'
+                    ? rawGatewayError
+                    : rawGatewayError?.message
+                        || (completion as any)?.details?.message
+                        || ((rawGatewayError && typeof rawGatewayError === 'object') ? JSON.stringify(rawGatewayError) : '');
                 if (gatewayError) {
                     throw new Error(`OpenAI compatible gateway error: ${String(gatewayError).slice(0, 300)}`);
                 }

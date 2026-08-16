@@ -5,17 +5,17 @@ import fs from 'fs';
 import path from 'path';
 import { glob } from 'glob';
 
-function getWorkspaceRoot() {
+function getWorkspaceRoot(workspaceId?: string) {
     try {
         const { workspaceService } = require('../../services/WorkspaceService');
-        return workspaceService.getActiveRoot();
+        return workspaceService.getActiveRoot(workspaceId);
     } catch {
         return process.cwd();
     }
 }
 
-function resolveToolPath(p: string) {
-    const root = getWorkspaceRoot();
+function resolveToolPath(p: string, workspaceId?: string) {
+    const root = getWorkspaceRoot(workspaceId);
     const val = String(p ?? '').trim();
     if (!val || val === '.') return root;
     const rootReal = (() => {
@@ -52,8 +52,8 @@ export class DirectoryInspectionTool extends BaseTool {
     permissions: ToolPermission[] = ['read'];
     sideEffects: ToolPermission[] = [];
 
-    async execute(input: any) {
-        const dirPath = resolveToolPath(String(input?.path ?? '.'));
+    async execute(input: any, context?: any) {
+        const dirPath = resolveToolPath(String(input?.path ?? '.'), context?.workspaceId);
         const depth = Number(input.depth || 1);
 
         if (!fs.existsSync(dirPath)) return { ok: false, error: 'Directory not found', logs: [] };
@@ -103,9 +103,9 @@ export class FileSearchTool extends BaseTool {
     permissions: ToolPermission[] = ['read'];
     sideEffects: ToolPermission[] = [];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const pattern = String(input.pattern);
-        const searchPath = resolveToolPath(String(input?.path ?? '.'));
+        const searchPath = resolveToolPath(String(input?.path ?? '.'), context?.workspaceId);
 
         try {
             const files = await glob(pattern, {
@@ -162,11 +162,13 @@ export class SearchTextTool extends BaseTool {
     permissions: ToolPermission[] = ['read'];
     sideEffects: ToolPermission[] = [];
 
-    async execute(input: any) {
+    async execute(input: any, context?: any) {
         const raw = String(input?.query ?? input?.pattern ?? '').trim();
         if (!raw) return { ok: false, error: 'search_text needs a query — the text to look for.', logs: [] };
         let root: string;
-        try { root = resolveToolPath(String(input?.path ?? '.')); }
+        try {
+            root = resolveToolPath(String(input?.path ?? '.'), context?.workspaceId);
+        }
         catch (e: any) { return { ok: false, error: String(e?.message || e), logs: [] }; }
 
         const max = Math.max(1, Math.min(1000, Number(input?.maxResults) || 200));
@@ -232,8 +234,8 @@ export class SymbolInspectorTool extends BaseTool {
     permissions: ToolPermission[] = ['read'];
     sideEffects: ToolPermission[] = [];
 
-    async execute(input: any) {
-        const filePath = resolveToolPath(String(input?.filePath ?? ''));
+    async execute(input: any, context?: any) {
+        const filePath = resolveToolPath(String(input?.filePath ?? ''), context?.workspaceId);
         const symbol = String(input.symbolName);
 
         if (!fs.existsSync(filePath)) return { ok: false, error: 'File not found', logs: [] };
@@ -335,8 +337,8 @@ export class AdvancedFileEditTool extends BaseTool {
     permissions: ToolPermission[] = ['write', 'read'];
     sideEffects: ToolPermission[] = ['write'];
 
-    async execute(input: any) {
-        const filePath = resolveToolPath(String(input?.filePath ?? ''));
+    async execute(input: any, context?: any) {
+        const filePath = resolveToolPath(String(input?.filePath ?? ''), context?.workspaceId);
         const edits = input.edits || [];
 
         if (!fs.existsSync(filePath)) return { ok: false, error: 'File not found', logs: [] };

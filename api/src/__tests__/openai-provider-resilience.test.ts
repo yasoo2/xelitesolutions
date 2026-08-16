@@ -97,6 +97,15 @@ describe('OpenAIProvider resilience', () => {
             .rejects.toThrow('OpenAI compatible gateway error: Unsupported model');
     });
 
+    it('surfaces string gateway errors and nested details instead of mislabelling them as missing choices', async () => {
+        process.env.OPENAI_API_BASE = 'https://managed.example.test/v1';
+        mockCreate.mockResolvedValue({ error: 'Gateway unavailable', details: { message: 'temporary upstream outage' } });
+        const provider = new OpenAIProvider('managed-gateway-token');
+
+        await expect(provider.chatComplete([{ role: 'user', content: 'hello' }]))
+            .rejects.toThrow('OpenAI compatible gateway error: Gateway unavailable');
+    });
+
     it('rejects an empty completion with a diagnostic error instead of dereferencing choices[0]', async () => {
         mockCreate.mockResolvedValue({});
         const provider = new OpenAIProvider('sk-local-test');
