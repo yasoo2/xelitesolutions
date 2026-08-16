@@ -318,8 +318,31 @@ export function computeMetric(m, rows) {
     }
     case 'todayCount': return String(list.filter(r => isToday(r[m.field])).length);
     case 'todaySum': return round(list.filter(r => isToday(r[m.field])).reduce((a, r) => a + num(r[m.field2]), 0));
+    case 'topGroup': {
+      // The group that carries the most — by the money field when the metric
+      // names one, by row count otherwise — with its share of the whole.
+      const groups = groupTotals(list, m.field, m.field2);
+      if (!groups.length) return '—';
+      const total = groups.reduce((a, g) => a + g.value, 0) || 1;
+      const top = groups[0];
+      return top.label + ' · ' + Math.round((top.value / total) * 100) + '%';
+    }
     default: return '—';
   }
+}
+
+/** Rows grouped by one field, valued by another (or counted), largest first.
+ *  The chart and the topGroup metric read the SAME numbers — one truth. */
+export function groupTotals(rows, groupField, valueField) {
+  const list = Array.isArray(rows) ? rows : [];
+  const by = new Map();
+  for (const r of list) {
+    const label = String(r[groupField] || '').trim() || '—';
+    by.set(label, (by.get(label) || 0) + (valueField ? num(r[valueField]) : 1));
+  }
+  return [...by.entries()].map(([label, value]) => ({ label, value }))
+    .filter(g => g.value > 0)
+    .sort((a, b) => b.value - a.value);
 }
 
 /** A real export — the rows leave with the user, not locked in a browser. */
@@ -876,7 +899,7 @@ export async function apiDelete(api, id) {
 export function fileRecordsAppJsx(isAr: boolean): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useMemo, useState } from 'react';
-import { createStore, uid, todayISO, computeMetric, toCsv, download, apiList, apiCreate, apiUpdate, apiDelete, apiListOn, apiCreateOn, apiDeleteOn, refusalOf, pickImage, cardFor, imageOf } from '../app/store.js';
+import { createStore, uid, todayISO, computeMetric, groupTotals, toCsv, download, apiList, apiCreate, apiUpdate, apiDelete, apiListOn, apiCreateOn, apiDeleteOn, refusalOf, pickImage, cardFor, imageOf } from '../app/store.js';
 
 const blank = (fields) => {
   const d = {};
@@ -1086,6 +1109,46 @@ export default function RecordsApp({ content }) {
           </div>
         ) : null}
       </section>
+
+      {/* A REAL chart of the real rows — no library, no fake data. Grouped by
+          the app's own grouping field, valued by its money field when it has
+          one, counted otherwise. Absent until there is something to show. */}
+      {(() => {
+        if (!content.statusField) return null;
+        const money = (content.metrics.find(m => m.kind === 'sum') || {}).field;
+        const groups = groupTotals(rows, content.statusField, money);
+        if (groups.length < 2) return null;
+        const total = groups.reduce((a, g) => a + g.value, 0) || 1;
+        let acc = 0;
+        const segs = groups.map((g, i) => {
+          const from = (acc / total) * 360; acc += g.value;
+          return { label: g.label, value: g.value, from, to: (acc / total) * 360,
+            color: 'hsl(' + ((210 + i * 47) % 360) + ' 62% 52%)' };
+        });
+        const pie = 'conic-gradient(' + segs.map(s => s.color + ' ' + s.from.toFixed(1) + 'deg ' + s.to.toFixed(1) + 'deg').join(', ') + ')';
+        const fieldLabel = (fields.find(f => f.key === content.statusField) || {}).label || content.statusField;
+        const spoken = segs.map(s => s.label + ' ' + Math.round((s.value / total) * 100) + '%').join('، ');
+        return (
+          <section className="panel chart-panel">
+            <h2>{${T('توزيع', 'Breakdown by')} + ' ' + fieldLabel}</h2>
+            <div className="chart-flex">
+              <div className="donut" style={{ background: pie }} role="img" aria-label={spoken}>
+                <i><b>{total.toLocaleString()}</b><span>{fieldLabel}</span></i>
+              </div>
+              <ul className="chart-legend">
+                {segs.map(s => (
+                  <li key={s.label}>
+                    <i className="sw" style={{ background: s.color }} aria-hidden="true" />
+                    <span>{s.label}</span>
+                    <b>{s.value.toLocaleString()}</b>
+                    <em>{Math.round((s.value / total) * 100)}%</em>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        );
+      })()}
 
       {rel ? (
         <section className="panel rel-panel">
@@ -2391,6 +2454,21 @@ select{appearance:none;-webkit-appearance:none;padding-inline-end:38px;
   .wrap>*:nth-child(4){animation-delay:.18s}.wrap>*:nth-child(5){animation-delay:.24s}
   @keyframes liftIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 }
+/* ─── THE CHART — real rows, no library ─── */
+.chart-flex{display:flex;gap:26px;align-items:center;flex-wrap:wrap}
+.donut{position:relative;width:172px;height:172px;border-radius:50%;flex:0 0 auto;
+  box-shadow:var(--shadow-sm,0 2px 10px rgba(0,0,0,.08))}
+.donut i{position:absolute;inset:26%;border-radius:50%;background:var(--panel,var(--bg,#fff));
+  display:grid;place-content:center;text-align:center;font-style:normal}
+.donut i b{font-size:1.15rem;font-variant-numeric:tabular-nums}
+.donut i span{display:block;font-size:.72rem;color:var(--text-muted,#666)}
+.chart-legend{list-style:none;margin:0;padding:0;display:grid;gap:8px;flex:1;min-width:220px}
+.chart-legend li{display:flex;align-items:center;gap:10px;padding:7px 12px;border-radius:10px;
+  background:color-mix(in srgb,var(--panel,#fff) 60%,transparent);border:1px solid var(--border,#e5e5e5)}
+.chart-legend .sw{width:13px;height:13px;border-radius:4px;flex:0 0 auto}
+.chart-legend span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chart-legend b{font-variant-numeric:tabular-nums}
+.chart-legend em{font-style:normal;color:var(--text-muted,#666);font-size:.82rem;min-width:38px;text-align:end}
 `;
 }
 

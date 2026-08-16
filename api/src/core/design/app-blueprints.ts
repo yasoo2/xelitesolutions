@@ -50,12 +50,50 @@ export interface AppField {
 /** A number worth showing at the top of the app, computed from the rows. */
 export interface AppMetric {
     label: string;
-    kind: 'count' | 'sum' | 'sumProduct' | 'avg' | 'countWhere' | 'todayCount' | 'todaySum';
+    kind: 'count' | 'sum' | 'sumProduct' | 'avg' | 'countWhere' | 'todayCount' | 'todaySum' | 'topGroup';
     field?: string;
     field2?: string;
     equals?: string;
     /** For money-shaped metrics — appended to the value. */
     unit?: string;
+}
+
+/**
+ * THE CATEGORIES THE REQUEST DECLARED — read, never invented.
+ *
+ * «ابنِ تطبيق مصاريف بفئات: طعام، مواصلات، فواتير، ترفيه» names the exact
+ * select options the owner wants, and the engine used to answer with its own
+ * five stock categories regardless — the same «tool never read the request»
+ * failure the fishing law exists to measure, this time on the DATA SHAPE
+ * rather than the design.
+ *
+ * A shape of two languages, not a domain list: a categories noun
+ * («فئات/تصنيفات/أقسام», "categories/types"), a separator («:» or «هي»),
+ * then the owner's own comma-or-و separated words. Silence returns null and
+ * the blueprint keeps its stock options byte-for-byte.
+ */
+export function readDeclaredOptions(requestRaw: string): string[] | null {
+    const r = String(requestRaw || '').replace(/[ً-ْـ]/g, '');
+    const m = r.match(/(?:ب|وال|ال)?(?:فئات|تصنيفات|أقسام|اقسام|categories|types)\s*(?:هي|are)?\s*[:：]\s*([^.\n؟?!]{2,160})/i)
+        || r.match(/(?:بفئات|بتصنيفات|بأقسام|باقسام|with\s+categories)\s+([^.\n؟?!:،]{2,160}(?:،[^.\n؟?!]{0,120})?)/i);
+    if (!m) return null;
+    /**
+     * Arabic attaches its «و» to the next word, so «مواد بناء وأدوات وسباكة»
+     * has no free-standing separator at all. When commas exist they rule —
+     * a « و» inside an item («مواد البناء والعزل، أدوات») stays part of it —
+     * and the comma swallows a following attached «و». With no commas, the
+     * space+«و» IS the list's separator; an item that truly starts with waw
+     * writes it twice («قهوة وورد») and keeps its own.
+     */
+    const raw = m[1];
+    const parts = /[،,]/.test(raw)
+        ? raw.split(/\s*[،,]\s*(?:و(?=[ء-ي]))?/)
+        : raw.split(/\s+و(?=[ء-ي])|\s+(?:or|and)\s+/i);
+    const list = parts
+        .map(s => s.trim())
+        .filter(s => s.length >= 2 && s.length <= 24 && !/^(الخ|إلخ|وغيرها|etc\.?)$/i.test(s));
+    const unique = [...new Set(list)];
+    return unique.length >= 2 && unique.length <= 8 ? unique : null;
 }
 
 /**
@@ -305,6 +343,27 @@ export function subjectOf(request: string): string {
 }
 
 export function blueprintFor(kind: AppKind, request: string, isAr: boolean): AppBlueprint {
+    const bp = stockBlueprintFor(kind, request, isAr);
+    /**
+     * The declared categories replace the stock ones — on whichever field
+     * carries the grouping (the statusField when it has one, else a field
+     * literally keyed `category`). A text field the owner declared options
+     * for becomes a real select: his words shape the schema.
+     */
+    const declared = readDeclaredOptions(request);
+    if (declared) {
+        const target = bp.fields.find(fl => fl.key === (bp.statusField || 'category'))
+            || bp.fields.find(fl => fl.key === 'category');
+        if (target) {
+            target.options = declared;
+            if (target.type === 'text') target.type = 'select';
+            if (!bp.statusField) bp.statusField = target.key;
+        }
+    }
+    return bp;
+}
+
+function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBlueprint {
     const subject = subjectOf(request);
     const L = (ar: string, en: string) => (isAr ? ar : en);
 
@@ -407,6 +466,7 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
             metrics: [
                 { label: L('الإجمالي', 'Total'), kind: 'sum', field: 'amount' },
                 { label: L('مصروف اليوم', 'Spent today'), kind: 'todaySum', field: 'date', field2: 'amount' },
+                { label: L('أعلى فئة', 'Top category'), kind: 'topGroup', field: 'category', field2: 'amount' },
                 { label: L('عدد العمليات', 'Entries'), kind: 'count' },
             ],
             deps: {},
