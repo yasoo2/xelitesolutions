@@ -112,7 +112,14 @@ export function stripDeclaredOptions(requestRaw: string): string {
     return r
         .replace(/(?:ب|وال|ال)?(?:فئات|تصنيفات|أقسام|اقسام|categories|types)\s*(?:هي|are)?\s*[:：]\s*[^.\n؟?!]{2,160}/gi, ' ')
         .replace(/(?:بفئات|بتصنيفات|بأقسام|باقسام|with\s+categories)\s+[^.\n؟?!:،]{2,160}(?:،[^.\n؟?!]{0,120})?/gi, ' ')
-        .replace(/\s{2,}/g, ' ')
+        // Tidy WITHIN lines only. Collapsing every run of whitespace flattened
+        // a structured brief's newlines, and the multiline DATABASE
+        // declaration («At minimum create:» + one table per line) became one
+        // unreadable line — measured on TaskFlow round 3, where the declared
+        // tables were lost and the shape reader harvested «cans» from
+        // «Users can». Line structure is data; it survives.
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
         .trim();
 }
 
