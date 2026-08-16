@@ -10,6 +10,7 @@ describe('LLM7Provider resilience', () => {
     const originalFetch = global.fetch;
 
     beforeEach(() => {
+        delete process.env.LLM7_MODEL;
         mockCreate.mockReset();
         mockOpenAI.mockReset();
         mockOpenAI.mockImplementation(() => ({
@@ -25,6 +26,7 @@ describe('LLM7Provider resilience', () => {
     afterAll(() => {
         global.fetch = originalFetch;
         delete process.env.LLM7_MODELS_TIMEOUT_MS;
+        delete process.env.LLM7_MODEL;
     });
 
     it('bounds a hanging model-discovery request and falls back to preferred models', async () => {
@@ -48,13 +50,41 @@ describe('LLM7Provider resilience', () => {
         )).resolves.toBe('planned');
 
         expect(mockCreate).toHaveBeenCalledWith(
-            expect.objectContaining({ model: 'gpt-4.1-mini' }),
+            expect.objectContaining({ model: 'deepseek-v4-flash:0731' }),
             expect.objectContaining({ timeout: 5000 }),
         );
         expect((global as any).fetch).toHaveBeenCalledWith(
             expect.stringMatching(/\/models$/),
             expect.objectContaining({ signal: expect.any(AbortSignal) }),
         );
+    });
+
+    it('selects a live free tool-capable model when a stale forced model is absent', async () => {
+        process.env.LLM7_MODEL = 'gpt-4.1-mini';
+        (global as any).fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                data: [
+                    { id: 'deepseek-v4-flash:0731', model_type: 'chat', usage_based_only: false, tools_calling: true },
+                    { id: 'text-embedding-3-small', model_type: 'embedding', usage_based_only: false },
+                ],
+            }),
+        });
+        const { LLM7Provider } = await import('../core/llm/providers/llm7');
+        const provider = new LLM7Provider();
+
+        await expect(provider.chatComplete(
+            [{ role: 'user', content: 'choose a live engineering model' }],
+            undefined,
+            undefined,
+            { timeoutMs: 5000 },
+        )).resolves.toBe('planned');
+
+        expect(mockCreate).toHaveBeenCalledWith(
+            expect.objectContaining({ model: 'deepseek-v4-flash:0731' }),
+            expect.objectContaining({ timeout: 5000 }),
+        );
+        delete process.env.LLM7_MODEL;
     });
 
     it('serializes concurrent chat completions across provider instances', async () => {

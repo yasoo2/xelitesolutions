@@ -27,8 +27,16 @@ function saveBlockedModels(set: Set<string>): void {
     } catch { /* read-only disk — the in-memory set still serves this run */ }
 }
 
+interface LLM7ModelDescriptor {
+    id: string;
+    usageBasedOnly?: boolean;
+    modelType?: string;
+    toolsCalling?: boolean;
+}
+
 const LLM7_BASE_URL = (process.env.LLM7_BASE_URL || 'https://api.llm7.io/v1').trim();
 const PREFERRED_MODELS = [
+    'deepseek-v4-flash:0731', 'deepseek-v4-flash-0731', 'codestral-latest',
     'gpt-4.1-mini', 'gpt-4o-mini', 'gpt-4.1-nano', 'deepseek-v3', 'deepseek-r1',
     'mistral-small-2503', 'mistral-small-3.1-24b-instruct-2503', 'qwen2.5-coder-32b-instruct',
     'qwen2.5-72b-instruct', 'gemini', 'nova-fast', 'openai-fast', 'openai', 'openai-large'
@@ -43,7 +51,7 @@ const NON_CHAT_PATTERNS = ['image', 'img', 'flux', 'dall', 'sdxl', 'stable-diffu
 export class LLM7Provider {
     private client: OpenAI;
     private apiKey: string;
-    private discovered: string[] | null = null;
+    private discovered: LLM7ModelDescriptor[] | null = null;
     private discoveredAt = 0;
     /**
      * Models this gateway has refused, REMEMBERED ACROSS RESTARTS.
@@ -131,7 +139,15 @@ export class LLM7Provider {
         return NON_CHAT_PATTERNS.some(p => low.includes(p));
     }
 
-    private async getAvailableModels(timeoutMs = 8000, parentSignal?: AbortSignal): Promise<string[]> {
+    private isUsableModel(model: LLM7ModelDescriptor, allowPaid = false): boolean {
+        const id = String(model?.id || '').trim();
+        if (!id || this.isNonChat(id)) return false;
+        if (model.modelType && model.modelType.toLowerCase() !== 'chat') return false;
+        if (!allowPaid && (model.usageBasedOnly === true || this.isPremium(id))) return false;
+        return true;
+    }
+
+    private async getAvailableModels(timeoutMs = 8000, parentSignal?: AbortSignal): Promise<LLM7ModelDescriptor[]> {
         const now = Date.now();
         if (this.discovered && (now - this.discoveredAt) < 600000) return this.discovered;
 
@@ -159,10 +175,19 @@ export class LLM7Provider {
             } as any);
             if (res.ok) {
                 const data: any = await res.json();
-                const ids: string[] = (data?.data || data?.models || [])
-                    .map((m: any) => (typeof m === 'string' ? m : m?.id))
-                    .filter((x: any) => typeof x === 'string' && x.length > 0);
-                if (ids.length > 0) { this.discovered = ids; this.discoveredAt = now; return ids; }
+                const models: LLM7ModelDescriptor[] = (data?.data || data?.models || [])
+                    .map((m: any) => {
+                        if (typeof m === 'string') return { id: m };
+                        const id = typeof m?.id === 'string' ? m.id : '';
+                        return {
+                            id,
+                            usageBasedOnly: typeof m?.usage_based_only === 'boolean' ? m.usage_based_only : undefined,
+                            modelType: typeof m?.model_type === 'string' ? m.model_type : undefined,
+                            toolsCalling: typeof m?.tools_calling === 'boolean' ? m.tools_calling : undefined,
+                        };
+                    })
+                    .filter((m: LLM7ModelDescriptor) => Boolean(m.id));
+                if (models.length > 0) { this.discovered = models; this.discoveredAt = now; return models; }
             }
         } catch { /* fall back to the bounded preferred-model list */ }
         finally {
@@ -175,33 +200,42 @@ export class LLM7Provider {
     private async buildCandidates(forced?: string, timeoutMs = 8000, signal?: AbortSignal): Promise<string[]> {
         const available = await this.getAvailableModels(timeoutMs, signal);
         const out: string[] = [];
-        const ok = (m?: string) => !!m && !this.blocked.has(m) && !out.includes(m);
-        const push = (m?: string) => { if (ok(m)) out.push(m as string); };
-        push(forced);
-        push((process.env.LLM7_MODEL || '').trim());
+        const explicit = [forced, (process.env.LLM7_MODEL || '').trim()]
+            .map(value => String(value || '').trim())
+            .filter(Boolean);
+        const push = (m?: string) => {
+            if (m && !this.blocked.has(m) && !out.includes(m)) out.push(m);
+        };
+        const pushDescriptor = (descriptor?: LLM7ModelDescriptor, allowPaid = false) => {
+            if (descriptor && this.isUsableModel(descriptor, allowPaid)) push(descriptor.id);
+        };
+
         if (available.length > 0) {
-            for (const p of PREFERRED_MODELS) if (available.includes(p)) push(p);
-            for (const a of available) if (!this.isPremium(a) && !this.isNonChat(a)) push(a);
+            const byId = new Map(available.map(model => [model.id, model]));
+            // A configured model is an explicit user choice, but it still must
+            // exist in the live catalogue. This prevents stale defaults such as
+            // gpt-4.1-mini from consuming the whole timeout before a real model
+            // is attempted. Explicit paid models remain opt-in only.
+            for (const modelId of explicit) pushDescriptor(byId.get(modelId), true);
+
+            for (const preferred of PREFERRED_MODELS) {
+                pushDescriptor(byId.get(preferred), false);
+            }
+
+            // Prefer models advertising tool calling because Joe's engineering
+            // loop uses structured tool calls, then preserve the gateway order.
+            for (const descriptor of [...available].sort((a, b) =>
+                Number(b.toolsCalling === true) - Number(a.toolsCalling === true))) {
+                pushDescriptor(descriptor, false);
+            }
         } else {
-            for (const p of PREFERRED_MODELS) push(p);
+            // Discovery itself can be unavailable. In that case retain the
+            // historical bounded fallback list; the completion call remains the
+            // source of truth and records the actual provider error.
+            for (const modelId of explicit) push(modelId);
+            for (const preferred of PREFERRED_MODELS) push(preferred);
         }
-        /**
-         * A BLOCKLIST THAT EMPTIES THE LIST IS WORSE THAN NO BLOCKLIST.
-         *
-         * The memory of refusals is per-model and lasts a week. A gateway that
-         * refuses everything for one bad hour — expired anonymous quota, a
-         * proxy in the way — therefore writes the WHOLE preferred list into the
-         * file, and every later run builds zero candidates, never touches the
-         * network, and reports «unknown error» because no attempt ever set one.
-         * Joe loses a whole provider to a stale file, silently.
-         *
-         * So the blocklist advises; it does not veto. When it has eliminated
-         * every candidate, the preferred models are tried anyway — a refusal
-         * costs one request and re-writes the memory honestly.
-         */
-        if (out.length === 0) {
-            for (const p of PREFERRED_MODELS) if (!out.includes(p)) out.push(p);
-        }
+
         return out.slice(0, 6);
     }
 
