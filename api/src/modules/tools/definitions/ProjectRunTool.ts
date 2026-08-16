@@ -200,6 +200,17 @@ export function detectStart(cwd: string, port: number): { command: string; kind:
             } catch { /* unreadable */ }
         }
     }
+    // A TypeScript service may be intentionally file-level and have no package
+    // manifest yet. Accept it only when the project proves both a TS config and
+    // a conventional entrypoint; `tsx` is the portable local launcher and the
+    // normal readiness probe still decides whether the entrypoint is an HTTP app.
+    if (fs.existsSync(path.join(cwd, 'tsconfig.json'))) {
+        for (const entry of ['src/index.ts', 'src/main.ts', 'src/server.ts', 'src/app.ts', 'index.ts', 'main.ts', 'server.ts', 'app.ts']) {
+            if (fs.existsSync(path.join(cwd, entry))) {
+                return { command: `npx -y tsx ${entry}`, kind: 'tsx-entry', expectPort: port, forced: false };
+            }
+        }
+    }
     // A static site — serve the folder deterministically on our port.
     if (fs.existsSync(path.join(cwd, 'index.html'))) {
         return { command: `npx -y serve -l ${port} -s . --no-clipboard`, kind: 'static', expectPort: port, forced: true };
@@ -220,10 +231,13 @@ type RunnableProjectResolution =
     | { cwd: null; candidates: string[]; matched: false };
 
 const PROJECT_MARKERS = ['package.json', 'index.html', 'server.js', 'app.py', 'main.py', 'index.js'];
+const TYPESCRIPT_ENTRYPOINTS = ['src/index.ts', 'src/main.ts', 'src/server.ts', 'src/app.ts', 'index.ts', 'main.ts', 'server.ts', 'app.ts'];
 const IGNORED_PROJECT_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next']);
 
 function hasProjectMarker(dir: string): boolean {
-    return PROJECT_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)));
+    if (PROJECT_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)))) return true;
+    return fs.existsSync(path.join(dir, 'tsconfig.json'))
+        && TYPESCRIPT_ENTRYPOINTS.some(entry => fs.existsSync(path.join(dir, entry)));
 }
 
 /**
@@ -482,8 +496,7 @@ export class ProjectRunTool implements ToolDefinition {
         // holds no project at all is not a project: without this, an empty
         // call spawned `npm start` in a folder with nothing to start, and
         // waited 45s for a server that was never coming.
-        if (!input?.command && !['package.json', 'index.html', 'server.js', 'app.py', 'main.py', 'index.js']
-            .some(f => fs.existsSync(path.join(cwd, f)))) {
+        if (!input?.command && !hasProjectMarker(cwd)) {
             return { ok: false, error: `لا يوجد مشروع قابل للتشغيل في ${cwd} — ابنِ مشروعاً أولاً أو مرّر cwd.`, logs };
         }
 

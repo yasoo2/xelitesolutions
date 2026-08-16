@@ -87,6 +87,28 @@ describe('workspace project discovery for project_run', () => {
         }
     });
 
+    it('recognizes a TypeScript project without package.json only when tsconfig and an entrypoint exist', () => {
+        const project = path.join(root, 'typescript-service');
+        fs.mkdirSync(path.join(project, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(project, 'tsconfig.json'), '{"compilerOptions":{"target":"ES2022"}}');
+        fs.writeFileSync(path.join(project, 'src', 'index.ts'), 'import { createServer } from "node:http"; createServer((_req, res) => res.end("ok")).listen(4300);');
+
+        const resolved = resolveRunnableProject(root, 'شغّل المشروع باسم typescript-service');
+        expect(resolved.cwd).toBe(project);
+        expect(resolved.matched).toBe(true);
+        expect(detectStart(project, 4300)).toMatchObject({ kind: 'tsx-entry', expectPort: 4300, forced: false });
+        expect(detectStart(project, 4300).command).toContain('src/index.ts');
+    });
+
+    it('does not treat tsconfig without a conventional entrypoint as runnable', () => {
+        const project = path.join(root, 'typescript-incomplete');
+        fs.mkdirSync(project, { recursive: true });
+        fs.writeFileSync(path.join(project, 'tsconfig.json'), '{}');
+        const resolved = resolveRunnableProject(root, 'شغّل المشروع باسم typescript-incomplete');
+        expect(resolved.cwd).toBeNull();
+        expect(resolved.matched).toBe(false);
+    });
+
     it('reports absent Vite dependencies before detached startup and its 45-second port wait', () => {
         const project = path.join(root, 'react-لوحة-مهامي');
         const detected = detectStart(project, 4300);

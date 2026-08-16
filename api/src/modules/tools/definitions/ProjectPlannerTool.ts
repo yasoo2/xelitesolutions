@@ -223,6 +223,7 @@ export class ProjectPlannerTool implements ToolDefinition {
             }).filter(Boolean);
             const rawPlanBeforeSanitise = JSON.parse(JSON.stringify(plan));
             let clean = sanitisePlanPhases(plan.phases, plan.projectName, {
+                mode: evidence?.mode,
                 // A greenfield plan may choose a stack only when the planner made
                 // that choice explicit and tied it to a concrete implementation artifact.
                 disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !hasPlannerStackDecision,
@@ -230,6 +231,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 testFiles: (evidence?.selectedProject?.testFiles || []).map(item => String(item || '').trim()).filter(Boolean),
                 candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
                 disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
+                requireRunnableContract: context?.requireRunnableContract === true,
             });
             plan.phases = clean.phases;
             clean.notes.forEach(n => logs.push(n));
@@ -266,11 +268,13 @@ export class ProjectPlannerTool implements ToolDefinition {
                     }
                     const recoveredHasPlannerStackDecision = this.hasPlannerStackDecision(recoveredPlan);
                     const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
+                        mode: evidence?.mode,
                         disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !recoveredHasPlannerStackDecision,
                         evidencedPaths,
                         testFiles: evidence?.selectedProject?.testFiles || [],
                         candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
                         disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
+                        requireRunnableContract: context?.requireRunnableContract === true,
                     });
                     if (this.countImplementationArtifacts(recoveredClean.phases) === 0) {
                         throw new Error('Contract recovery still retained no non-document implementation artifact');
@@ -292,13 +296,13 @@ export class ProjectPlannerTool implements ToolDefinition {
             // an evidence-backed, workspace-runnable alternative.
             const blocker = clean.blocker;
             const contractRecoveryBlocker = !!blocker
-                && /^(?:scaffold_project_contract_invalid|implicit_scaffold_requires_explicit_stack|unportable_native_dependency)$/.test(String(blocker.code || ''));
+                && /^(?:scaffold_project_contract_invalid|implicit_scaffold_requires_explicit_stack|unportable_native_dependency|missing_runnable_contract)$/.test(String(blocker.code || ''));
             if (contractRecoveryBlocker) {
                 logs.push(`[plan] ${blocker.code} detected; starting one bounded contract recovery.`);
                 try {
                     const recoveryPrompt = this.createCompactRecoveryPlanningPrompt(
                         projectDescription,
-                        `The parsed plan was rejected by a planning contract: ${blocker.code}: ${blocker.message}. ${blocker.remedy || ''} Do not use scaffold_project or native npm addons in this repair. Prefer node:sqlite when available, otherwise a JSON/file fallback with the same interface; use file-level implementation tasks instead. Re-plan from the original request and evidence; do not invent a fixed template locally.`
+                        `The parsed plan was rejected by a planning contract: ${blocker.code}: ${blocker.message}. ${blocker.remedy || ''} For missing_runnable_contract, add an explicit foundation task using write_file or ai_write_file for package.json and a real entrypoint (or a stack scaffold with an inspectable runnable structure) before any live-run. Do not use scaffold_project or native npm addons in this repair. Prefer node:sqlite when available, otherwise a JSON/file fallback with the same interface; use file-level implementation tasks instead. Re-plan from the original request and evidence; do not invent a fixed template locally.`
                     );
                     const recoveryRequest = () => callLLM(recoveryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Repair the rejected plan using the evidence and exact tool contracts. Return only valid JSON; never return prose or Markdown fences.' }
@@ -342,11 +346,13 @@ export class ProjectPlannerTool implements ToolDefinition {
                     const recoveredHasPlannerStackDecision = this.hasPlannerStackDecision(recoveredPlan);
                     logs.push(`[plan] recovery stack decision=${recoveredHasPlannerStackDecision}`);
                     const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
+                        mode: evidence?.mode,
                         disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !recoveredHasPlannerStackDecision,
                         evidencedPaths,
                         testFiles: evidence?.selectedProject?.testFiles || [],
                         candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
                         disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
+                        requireRunnableContract: context?.requireRunnableContract === true,
                     });
                     if (recoveredClean.blocker) {
                         throw new Error(`Contract recovery remained blocked: ${recoveredClean.blocker.code}: ${recoveredClean.blocker.message}`);
@@ -372,11 +378,13 @@ export class ProjectPlannerTool implements ToolDefinition {
             if (clean.blocker?.code === 'unportable_native_dependency' && evidence?.mode === 'greenfield') {
                 const portablePlan = this.rewriteUnportableNativePlan(rawPlanBeforeSanitise);
                 const portableClean = sanitisePlanPhases(portablePlan.phases, portablePlan.projectName, {
+                    mode: evidence?.mode,
                     disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !this.hasPlannerStackDecision(portablePlan),
                     evidencedPaths,
                     testFiles: (evidence?.selectedProject?.testFiles || []).map(item => String(item || '').trim()).filter(Boolean),
                     candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
                     disallowUnportableNativeDependencies: true,
+                    requireRunnableContract: context?.requireRunnableContract === true,
                 });
                 if (!portableClean.blocker && this.countImplementationArtifacts(portableClean.phases) > 0) {
                     plan = this.validatePlan(portablePlan, projectDescription);
@@ -496,9 +504,10 @@ export class ProjectPlannerTool implements ToolDefinition {
                             disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !recoveredHasPlannerStackDecision,
                             evidencedPaths,
                             testFiles: evidence?.selectedProject?.testFiles || [],
-                            candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
-                            disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
-                        });
+                             candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
+                             disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
+                             requireRunnableContract: context?.requireRunnableContract === true,
+                         });
                         if (recoveredClean.blocker) {
                             throw new Error(`Scope recovery was blocked during contract sanitisation: ${recoveredClean.blocker.message}`);
                         }

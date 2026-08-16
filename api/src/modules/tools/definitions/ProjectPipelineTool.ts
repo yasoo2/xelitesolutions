@@ -493,7 +493,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         // foundation only when it records a reason grounded in requirements or
         // inspected workspace facts; no deterministic request classifier owns it.
         say('[pipeline] planning evidence-backed engineering phases…');
-        let plannerResult: any = await executeTool('project_planner', { projectDescription: planningRequest, evidence: plannerEvidence }, context);
+        let plannerResult: any = await executeTool('project_planner', { projectDescription: planningRequest, evidence: plannerEvidence }, { ...(context || {}), requireRunnableContract: true });
         if (!plannerResult?.ok || plannerResult?.output?.fallback) {
             const blocker = plannerResult?.output?.blocker?.message || plannerResult?.error || 'The planner did not produce a valid evidence-backed plan.';
 
@@ -757,7 +757,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 const repairPlanner = await executeTool(
                     'project_planner',
                     { projectDescription: repairRequest, evidence: repairEvidence },
-                    { ...(context || {}), engineeringPipeline: true, liveRepairAttempted: true, language: isAr ? 'ar' : 'en' },
+                    { ...(context || {}), engineeringPipeline: true, requireRunnableContract: true, liveRepairAttempted: true, language: isAr ? 'ar' : 'en' },
                 );
                 const repairPhases = repairPlanner?.output?.phases;
                 if (repairPlanner?.ok === true && Array.isArray(repairPhases) && repairPhases.length > 0) {

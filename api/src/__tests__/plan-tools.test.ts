@@ -117,6 +117,53 @@ describe('his phase 1, run through the sanitiser', () => {
     });
 });
 
+describe('greenfield runnable contract is explicit before live-run', () => {
+    it('blocks project_run when no creation task writes a manifest or entrypoint', () => {
+        const result = sanitisePlanPhases([
+            {
+                phaseNumber: 1,
+                name: 'Build services',
+                tasks: [
+                    { task: 'Implement the service logic', tool: 'ai_write_file', args: { path: 'src/service.ts', description: 'Implement service logic' } },
+                ],
+                verificationTask: { task: 'Start the project', tool: 'project_run', args: {} },
+            },
+        ], 'nexus', { mode: 'greenfield' });
+        expect(result.blocker?.code).toBe('missing_runnable_contract');
+        expect(result.notes.join('\\n')).toMatch(/project_run/);
+    });
+
+    it('accepts a greenfield plan that creates package.json before project_run', () => {
+        const result = sanitisePlanPhases([
+            {
+                phaseNumber: 1,
+                name: 'Foundation',
+                tasks: [
+                    { task: 'Create the runnable manifest', tool: 'ai_write_file', args: { path: 'package.json', description: 'Create package manifest' } },
+                    { task: 'Create the HTTP entrypoint', tool: 'ai_write_file', args: { path: 'src/index.ts', description: 'Create an HTTP entrypoint' } },
+                ],
+                verificationTask: { task: 'Start the project', tool: 'project_run', args: {} },
+            },
+        ], 'nexus', { mode: 'greenfield' });
+        expect(result.blocker).toBeUndefined();
+        expect(result.phases[0].tasks.map((task: any) => task.tool)).toEqual(['ai_write_file', 'ai_write_file']);
+    });
+
+    it('treats file_edit as source-dependent and does not mistake it for file creation', () => {
+        const result = sanitisePlanPhases([
+            {
+                phaseNumber: 1,
+                name: 'Foundation',
+                tasks: [
+                    { task: 'Patch a missing manifest', tool: 'file_edit', args: { path: 'package.json', find: '{}', replace: '{"scripts":{"start":"node src/index.js"}}' } },
+                ],
+                verificationTask: { task: 'Start the project', tool: 'project_run', args: {} },
+            },
+        ], 'nexus', { mode: 'greenfield' });
+        expect(result.blocker?.code).toBe('missing_runnable_contract');
+    });
+});
+
 describe('model-written tool arguments are checked before execution', () => {
     const invalidMigrationPhase = {
         phaseNumber: 2,

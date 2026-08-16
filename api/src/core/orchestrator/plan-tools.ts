@@ -264,6 +264,8 @@ export interface SanitisedPlan {
  * produces a deliverable instead of a red ❌ nobody can act on.
  */
 export interface PlanSanitiseOptions {
+    /** Evidence mode from engineering discovery; greenfield has no pre-existing runnable artifact. */
+    mode?: 'greenfield' | 'existing' | string;
     /** Greenfield work without a user-selected stack may create only explicit, file-level work. */
     disallowImplicitScaffold?: boolean;
     /** Files discovered in the selected workspace and therefore safe as source inputs. */
@@ -274,12 +276,18 @@ export interface PlanSanitiseOptions {
     testFiles?: string[];
     /** Greenfield plans may not assume a host compiler for native npm addons. */
     disallowUnportableNativeDependencies?: boolean;
+    /** Engineering pipelines perform an automatic live-run after phases, so require a runnable artifact contract. */
+    requireRunnableContract?: boolean;
 }
 
 export function sanitisePlanPhases(phases: any[], projectDir = '', options: PlanSanitiseOptions = {}): SanitisedPlan {
     const notes: string[] = [];
     let executableTasks = 0;
     const blockers: PlanSanitiseBlocker[] = [];
+    const rawHasProjectRun = (Array.isArray(phases) ? phases : []).some((phase: any) =>
+        (Array.isArray(phase?.tasks) ? phase.tasks : []).some((task: any) => String(task?.tool || '') === 'project_run')
+        || String(phase?.verificationTask?.tool || '') === 'project_run'
+    );
     const dir = String(projectDir || '').replace(/[^a-zA-Z0-9-_]/g, '-').slice(0, 40) || 'project';
     const normaliseEvidencePath = (value: unknown) => String(value || '').trim().replace(/\\/g, '/').replace(/^\.\//, '');
     /**
@@ -491,12 +499,12 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 // A read is an evidence operation, not an exploratory guess
                 // made by the planner. It may observe discovered evidence or an
                 // earlier phase output, exactly like generators and reviews.
-                const sourceDependentTools = new Set(['read_file', 'doc_generator', 'test_generator', 'code_reviewer', 'auto_tester']);
+                const sourceDependentTools = new Set(['read_file', 'doc_generator', 'test_generator', 'code_reviewer', 'auto_tester', 'file_edit', 'file_edit_advanced']);
                 const sourcePaths = (r.tool === 'code_reviewer' || (r.tool === 'auto_tester' && norm(adaptedArgs?.testType) === 'syntax'))
                     ? (Array.isArray(adaptedArgs?.files) ? adaptedArgs.files.map(normaliseEvidencePath).filter(Boolean) : [])
                     : (r.tool === 'auto_tester' ? [] : (sourcePath ? [sourcePath] : []));
                 const knownPhaseOutputs = new Set(taskOutputPaths(kept));
-                const unprovenSource = sourcePaths.find((candidate: string) => !knownPhaseOutputs.has(candidate) && !evidencedPaths.has(candidate));
+                const unprovenSource = sourcePaths.find((candidate: string) => !knownPhaseOutputs.has(candidate) && !producedPaths.has(candidate) && !evidencedPaths.has(candidate));
                 const requestedTestType = norm(adaptedArgs?.testType);
                 const testProjectPath = adaptedArgs?.projectPath || adaptedArgs?.path || '';
                 const testEvidenceCandidates = [...producedPaths, ...knownPhaseOutputs, ...discoveredTestPaths];
@@ -723,6 +731,28 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         return { ...phase, tasks: kept, verificationTask: verification };
     });
 
+    const sanitisedTasks = out.flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : []);
+    const hasProjectRun = rawHasProjectRun
+        || sanitisedTasks.some((task: any) => String(task?.tool || '') === 'project_run')
+        || out.some((phase: any) => String(phase?.verificationTask?.tool || '') === 'project_run');
+    const runnableCreationTools = new Set(['write_file', 'ai_write_file', 'scaffold_project', 'scaffold_full_stack', 'react_project', 'api_project', 'web_page_builder', 'mobile_builder']);
+    const hasRunnableCreationTask = sanitisedTasks.some((task: any) => runnableCreationTools.has(String(task?.tool || '')) && (() => {
+        const args = { ...(task?.args || {}), ...(task?.input || {}) };
+        const paths = [args.path, args.filePath, args.filename, ...(Array.isArray(args.files) ? args.files : [])]
+            .map((value: any) => normaliseEvidencePath(value)).filter(Boolean);
+        if (String(task?.tool || '') === 'scaffold_project') return !!args.structure && typeof args.structure === 'object' && Object.keys(args.structure).some((file: string) => /(?:^|\/)package\.json$|(?:^|\/)(?:index|server|app|main)\.(?:[cm]?[jt]s|tsx?|jsx?|py)$/i.test(normaliseEvidencePath(file)));
+        if (['scaffold_full_stack', 'react_project', 'api_project', 'web_page_builder', 'mobile_builder'].includes(String(task?.tool || ''))) return true;
+        return paths.some((file: string) => /(?:^|\/)package\.json$|(?:^|\/)(?:index|server|app|main)\.(?:[cm]?[jt]s|tsx?|jsx?|py)$/i.test(file));
+    })());
+    if (options.mode === 'greenfield' && (hasProjectRun || options.requireRunnableContract === true) && !hasRunnableCreationTask) {
+        const blocker: PlanSanitiseBlocker = {
+            code: 'missing_runnable_contract',
+            message: 'الخطة تحتوي project_run لمساحة greenfield، لكنها لا تحتوي مهمة تنشئ package.json أو entrypoint قابلاً للتشغيل عبر أداة إنشاء مناسبة.',
+            remedy: 'أضف مرحلة foundation صريحة تستخدم scaffold_project ببنية غير فارغة أو write_file/ai_write_file لإنشاء manifest وentrypoint، ثم ثبّت dependencies وشغّل المشروع بعد ذلك.',
+        };
+        blockers.push(blocker);
+        notes.push(`[plan] أوقفتُ الخطة قبل live-run — ${blocker.message}`);
+    }
     return { phases: stampPlanDependencies(out, notes), notes, executableTasks, ...(blockers[0] ? { blocker: blockers[0] } : {}) };
 }
 
