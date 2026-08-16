@@ -37,6 +37,26 @@ export async function saveBrowserSession(sessionId: string): Promise<{ ok: boole
   const sid = String(sessionId || '').trim();
   const s = sessions.get(sid);
   if (!s) return { ok: false, error: 'no_active_session' };
+  return saveSessionStateOf(sid, s);
+}
+
+/**
+ * The save that works from the OBJECT, not from the registry.
+ *
+ * stopSession used to re-insert the dying session into the live map so that
+ * saveBrowserSession — which looks the session up by id — could find it, then
+ * delete it again after the await. Re-inserting into a Map that the cleanup
+ * loop was iterating AT THAT MOMENT moves the entry to the tail of the same
+ * iterator, so the loop reached it again, called stopSession again, which
+ * re-inserted again — thousands of cycles per second, each one starting a
+ * Playwright storageState call that allocated an Error, a Promise and an
+ * Immediate. Measured with a heap snapshot at the crash: 13,805 identical
+ * Playwright stacks «storageState ← saveBrowserSession ← stopSession ←
+ * Timeout._onTimeout», 13,803 queued Immediates, and the whole heap gone in
+ * under five seconds — fifteen minutes after the panel was last touched, on
+ * every machine, including the user's.
+ */
+async function saveSessionStateOf(sid: string, s: SessionState): Promise<{ ok: boolean; error?: string; origins?: number; cookies?: number }> {
   try {
     const storage = await s.context.storageState();
     // Never persist an empty state — otherwise "logout then close" would recreate a
@@ -532,7 +552,10 @@ function ensureCleanupLoop() {
   cleanupTimer = setInterval(() => {
     const idleMs = Math.max(60_000, Number(process.env.BROWSER_IDLE_TIMEOUT_MS || 900_000));
     const cutoff = Date.now() - idleMs;
-    for (const [sid, s] of sessions.entries()) {
+    // A SNAPSHOT, never the live map: stopSession mutates `sessions` while
+    // this loop runs, and iterating the live Map is how one idle session once
+    // became an infinite stop-save-stop cycle (see saveSessionStateOf).
+    for (const [sid, s] of [...sessions.entries()]) {
       if (s.lastUsedAt < cutoff) {
         void stopSession(sid);
       }
@@ -1139,8 +1162,10 @@ export async function stopSession(sessionId: string) {
   }
   if (s.saveTimer) { try { clearTimeout(s.saveTimer); } catch { } s.saveTimer = null; }
   // Capture the final login state before tearing the context down so the last
-  // sign-in of the session is never lost.
-  try { sessions.set(sid, s); await saveBrowserSession(sid); } catch { } finally { sessions.delete(sid); }
+  // sign-in of the session is never lost. Saved from the OBJECT — never by
+  // re-inserting the dying session into the map a cleanup loop may be
+  // iterating right now (see saveSessionStateOf for what that cost).
+  try { await saveSessionStateOf(sid, s); } catch { }
   try { await s.context.close(); } catch { }
   try { if (s.browser) await s.browser.close(); } catch { }
 }

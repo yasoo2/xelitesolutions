@@ -123,6 +123,21 @@ function bindRuntimeProjectFromEvidence(
         : fileRoot;
     if (!candidate || !isWithinRoot(candidate, workspaceRoot) || !fs.existsSync(candidate)
         || !fs.statSync(candidate).isDirectory() || !fs.existsSync(path.join(candidate, 'package.json'))) return;
+    /**
+     * THE WORKSPACE ROOT IS NEVER A PROJECT.
+     *
+     * Every project Joe builds is a CHILD of the workspace — that is the
+     * architecture, and every other tool assumes it. Measured on the MyBudget
+     * field run: a repair phase wrote package.json into the workspace root
+     * itself, this binding then adopted the root — twenty-four real projects
+     * suddenly inside «the active project» — and every later discovery read
+     * the whole workspace as one ambiguous artifact. Refusing here keeps one
+     * bad write from re-labelling everything the user ever built.
+     */
+    if (path.resolve(candidate) === workspaceRoot) {
+        logs.push('[PhaseExecutor] refused to bind the workspace root as a project — a project is a child of the workspace, never the workspace itself');
+        return;
+    }
 
     const key = sessionProjectKey(projectContext?.sessionId);
     const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});

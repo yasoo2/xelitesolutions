@@ -381,7 +381,10 @@ export class SelfFixService {
           // --if-present: a project without a build script must not turn a
           // SUCCESSFUL install into a failed repair. The timeout matches
           // reality on a weak laptop — npm install alone can take minutes.
-          command: 'npm install --no-audit --no-fund && npm run --if-present build',
+          // --legacy-peer-deps: the healer repeated the exact install that had
+          // just refused with ERESOLVE (MyBudget field run) — the one flag the
+          // rest of this repository already installs with.
+          command: 'npm install --no-audit --no-fund --legacy-peer-deps && npm run --if-present build',
           timeout: 600000,
         },
         rememberedCure: cureNote || undefined,

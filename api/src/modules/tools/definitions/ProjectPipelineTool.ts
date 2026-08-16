@@ -694,6 +694,52 @@ export class ProjectPipelineTool implements ToolDefinition {
             }
         }
 
+        /**
+         * A PLAN MADE ONLY OF PAPER IS NOT A PLAN FOR AN APPLICATION.
+         *
+         * The two rescues above catch a planner that fails and a planner that
+         * answers with nothing. The MyBudget field run found the third shape:
+         * a planner that answers CONFIDENTLY with five template phases —
+         * Technical Stack, Database, Business Logic, Testing, Deployment —
+         * whose every task is ai_write_file. Ten loose .ts files were written,
+         * each phase «verified» by project_detect (which counts projects and
+         * proves nothing about them), and six minutes later the delivery gate
+         * said honestly that no runnable application existed. The user watched
+         * an empty preview the whole time.
+         *
+         * The measurable test is the fishing law's: a plan for a NEW
+         * application that never invokes anything able to build or run one —
+         * no builder, no scaffold, no shell, no npm, no run — did not read the
+         * request; it recited a template. The deterministic chain that plans
+         * from what the request itself declares is sitting one branch up, and
+         * it is the same rescue both earlier shapes already use.
+         */
+        {
+            const CAN_BUILD_OR_RUN = new Set(['api_project', 'react_project', 'web_page_builder', 'scaffold_project',
+                'scaffold_full_stack', 'shell_execute', 'npm_manager', 'project_run', 'project_edit']);
+            const planPhases = Array.isArray(plannerResult?.output?.phases) ? plannerResult.output.phases : [];
+            const touchesRunnable = planPhases.some((phase: any) =>
+                [...(Array.isArray(phase?.tasks) ? phase.tasks : []),
+                 ...(phase?.verificationTask ? [phase.verificationTask] : [])]
+                    .some((t: any) => CAN_BUILD_OR_RUN.has(String(t?.tool || ''))));
+            if (planPhases.length > 0 && !touchesRunnable
+                && evidence?.constraints?.createsNewProject
+                && plannerResult?.output?.deterministic !== true
+                && deterministicRescueAllowed(request)) {
+                const rescue = deterministicPhasesFor(request);
+                if (rescue) {
+                    say(pick(isAr,
+                        `[pipeline] الخطة كلها كتابة ملفات بلا بناء ولا تشغيل — أخطّط حتمياً مما صرّح به الطلب: ${rescue.reason}`,
+                        `[pipeline] the plan is all paper — files written, nothing built or run. Planning deterministically from what the request declares: ${rescue.reason}`));
+                    plannerResult = {
+                        ok: true,
+                        output: { projectName: rescue.projectName, phases: rescue.phases, deterministic: true, plannedWithoutModel: true },
+                        logs: boundedPipelineLogs(plannerResult?.logs),
+                    };
+                }
+            }
+        }
+
         const phases = plannerResult?.output?.phases;
         if (!Array.isArray(phases) || phases.length === 0) {
             return {

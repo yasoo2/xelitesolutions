@@ -624,6 +624,20 @@ export class NpmManagerTool extends BaseTool {
             if (!cmdParts.length) return { ok: false, error: 'missing_command', logs };
             const args = [...cmdParts, ...(Array.isArray(pkgs) ? pkgs : [])];
             if (isDev && (cmdParts[0] === 'install' || cmdParts[0] === 'i')) args.push('-D');
+            /**
+             * The rest of this repository installs with --legacy-peer-deps
+             * (DeployManager, the scaffolder, start-joe.ps1) — and this tool,
+             * the one the PLANNER reaches, did not. Measured on the MyBudget
+             * field run: an LLM-authored package.json paired vite 4 with
+             * @vitejs/plugin-react 2, plain `npm install` refused with
+             * ERESOLVE twice, the retry repeated the same command byte for
+             * byte, and the build died on a flag Joe already uses everywhere
+             * else.
+             */
+            if ((cmdParts[0] === 'install' || cmdParts[0] === 'i' || cmdParts[0] === 'ci')
+                && !args.includes('--legacy-peer-deps')) {
+                args.push('--legacy-peer-deps');
+            }
             logs.push(`npm.args=${args.join(' ')}`);
             const requestedCwd = String(input?.cwd || input?.projectPath || '').trim();
             const resolvedWorkDir = requestedCwd

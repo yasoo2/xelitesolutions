@@ -58,6 +58,10 @@ function trimBrand(raw: string): string {
         // followed by an Arabic word is the sentence resuming, not more name.
         if (out.length && isLatin(out[out.length - 1]) !== isLatin(bare)) break;
         out.push(bare);
+        // A word that closes a quote or ends the sentence ends the name — the
+        // per-word cleaner above erases those marks, which is how «"MyBudget".»
+        // once flowed into the next clause.
+        if (/["»'”]\s*$|[.!?؟]$/.test(w)) break;
         // A brand is a name, not a clause.
         if (out.length >= 4) break;
     }
@@ -79,9 +83,19 @@ export function brandFrom(request: string, _isArabic?: boolean): string {
     //    phrase. Evaluation prompts often quote a prohibition first (for
     //    example, “DO NOT BUILD A ...”) and name the actual product later.
     //    Prefer the semantic name marker so wrapper text cannot become the app.
-    const introduced = req.match(/(?:اسمها|اسمه|إسمها|إسمه|تسمى|يسمى|باسم|called|named|by the name of)\s+(.{2,60})/i);
+    /**
+     * A QUOTED NAME AFTER THE MARKER IS THE WHOLE NAME.
+     *
+     * «called "MyBudget". Requirements: a clean…» walked into trimBrand as
+     * one sixty-character span; the per-word cleaner erased the closing quote
+     * AND the full stop, so the walk lost the sentence boundary and delivered
+     * «MyBudget Requirements a clean» — into the title, the header and the
+     * folder name of a real field build. When the author quoted the name, the
+     * quotes say exactly where it ends; take that span verbatim first.
+     */
+    const introduced = req.match(/(?:اسمها|اسمه|إسمها|إسمه|تسمى|يسمى|باسم|called|named|by the name of)\s+(?:["«'“]([^"«»'“”]{2,40})["»'”]|(.{2,60}))/i);
     if (introduced) {
-        const b = trimBrand(introduced[1]);
+        const b = trimBrand(introduced[1] || introduced[2] || '');
         if (b) return b;
     }
 

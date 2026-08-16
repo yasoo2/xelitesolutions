@@ -807,6 +807,53 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         blockers.push(blocker);
         notes.push(`[plan] أوقفتُ الخطة قبل live-run — ${blocker.message}`);
     }
+    /**
+     * A GREENFIELD BUILD LIVES IN ITS OWN DIRECTORY — NEVER IN THE WORKSPACE ROOT.
+     *
+     * Measured on the MyBudget field run: the planner emitted bare paths —
+     * `src/main.ts`, `config/config.ts`, `tests/main.test.ts`, `deploy.sh` —
+     * and every write tool resolves relative to the ACTIVE WORKSPACE ROOT, so
+     * ten loose files and finally a package.json landed in `my-workspace/`
+     * itself, beside twenty-four real projects. Discovery then read the whole
+     * workspace as one ambiguous artifact, and the run ended with «no runnable
+     * project named mybudget was found» — because the project was never given
+     * a directory to exist in.
+     *
+     * The test for what to prefix is a SHAPE, not a domain: a path whose first
+     * segment is project-internal layout (src, tests, config, public…) or a
+     * bare root-level file is project furniture and moves inside the project's
+     * own directory. A path that already starts with a bespoke folder name is
+     * an intentional location and is left alone. Runs after the runnable
+     * contract was judged, so this changes WHERE the plan writes, never
+     * WHETHER it was accepted.
+     */
+    if (String(options.mode || '') === 'greenfield') {
+        const WRITE_TOOLS = new Set(['ai_write_file', 'write_file', 'file_edit', 'file_edit_advanced', 'doc_generator', 'test_generator']);
+        const INTERNAL_SEGMENTS = new Set(['src', 'test', 'tests', '__tests__', 'config', 'public', 'dist', 'build',
+            'scripts', 'docs', 'lib', 'app', 'components', 'styles', 'assets', 'server', 'api', 'db', 'data', 'migrations']);
+        let moved = 0;
+        const prefixPath = (raw: unknown): string | null => {
+            const p = normaliseEvidencePath(raw);
+            if (!p || p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p) || p.startsWith('..')) return null;
+            if (p === dir || p.startsWith(`${dir}/`)) return null;
+            const first = p.split('/')[0];
+            if (p.includes('/') && !INTERNAL_SEGMENTS.has(first.toLowerCase())) return null;
+            return `${dir}/${p}`;
+        };
+        for (const phase of out) {
+            const everyTask = [...(Array.isArray(phase?.tasks) ? phase.tasks : []),
+                ...(phase?.verificationTask ? [phase.verificationTask] : [])];
+            for (const task of everyTask) {
+                if (!WRITE_TOOLS.has(String(task?.tool || ''))) continue;
+                const args = task.args || task.input || {};
+                for (const key of ['path', 'filename', 'filePath'] as const) {
+                    const next = prefixPath(args[key]);
+                    if (next) { args[key] = next; moved++; }
+                }
+            }
+        }
+        if (moved) notes.push(`[plan] وجّهتُ ${moved} ملفاً إلى مجلد المشروع «${dir}/» — بناء جديد لا يكتب في جذر مساحة العمل نفسه.`);
+    }
     return { phases: stampPlanDependencies(out, notes), notes, executableTasks, ...(blockers[0] ? { blocker: blockers[0] } : {}) };
 }
 
