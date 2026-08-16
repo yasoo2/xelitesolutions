@@ -1413,9 +1413,34 @@ export class ProjectPipelineTool implements ToolDefinition {
             }
         }
 
+        /**
+         * A LIVE, QUALITY-TRUE, QA-PASSED SYSTEM MISSING SOME OF WHAT WAS
+         * ASKED IS A PARTIAL DELIVERY — NOT A BLOCKED ONE.
+         *
+         * TaskFlow round 5, measured: the engine built the full-stack system
+         * fresh, the visible audit pressed its buttons, filled its forms and
+         * REPAIRED it 83→94, the server answered live — and the scope audit
+         * (rightly) counted kanban, the AI assistant and the notifications
+         * centre as missing. The old policy turned that into ok:false, and
+         * the user was handed NOTHING while a working system sat on disk.
+         *
+         * Partial rides ONLY on this exact shape: the live URL is confirmed,
+         * the quality contract passed (a failed contract zeroes `verified`
+         * BEFORE the scope gate, so scopeCoverageFailed stays false and a
+         * stub can never ride this), visible Browser QA raised no blocking
+         * finding, and the ONLY failure is named scope coverage. `verified`
+         * stays false — the missing list is the headline, never a footnote.
+         */
+        const partialDelivery = !finalVerified && scopeCoverageFailed && !browserQaFailed && !!liveUrl;
+        if (partialDelivery) {
+            const missingText = (scopeAudit?.missing || []).slice(0, 8).join(', ');
+            say(pick(isAr,
+                `📦 تسليم جزئي: النظام يعمل حيّاً واجتاز فحص الجودة، ولم أبنِ بعد: ${missingText}`,
+                `📦 Partial delivery: the system runs live and passed QA; not yet built: ${missingText}`));
+        }
         const finalExecutionStatus = finalVerified ? 'completed' : done > 0 ? 'partial' : 'failed';
         const finalVerificationStatus = finalVerified ? 'passed' : browserQaFailed ? 'browser_qa_failed' : String(pipeline?.verificationStatus || 'failed');
-        const finalDeliveryStatus = finalVerified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
+        const finalDeliveryStatus = finalVerified ? 'delivered' : (partialDelivery || done > 0) ? 'partial' : 'blocked';
 
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
@@ -1425,8 +1450,8 @@ export class ProjectPipelineTool implements ToolDefinition {
         say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
         return {
-            ok: finalVerified,
-            error: finalVerified ? undefined : summary,
+            ok: finalVerified || partialDelivery,
+            error: (finalVerified || partialDelivery) ? undefined : summary,
             output: {
                 projectName: plannerResult.output.projectName,
                 completedPhases: done,
@@ -1443,6 +1468,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(liveRepairAttempted ? { liveRepairAttempted: true, liveRepairStatus } : {}),
                 ...(scopeRepairAttempted ? { scopeRepairAttempted: true, scopeRepairStatus } : {}),
                 ...(scopeCoverageFailed ? { scopeCoverageFailed: true } : {}),
+                ...(partialDelivery ? { partialDelivery: true } : {}),
                 ...(scopeAudit ? { scopeAudit } : {}),
                 // `project_pipeline` already performed discovery, planning,
                 // verification, and its bounded self-healing attempt. A false
