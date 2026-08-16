@@ -1,11 +1,28 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { recoverMissingNpmLauncher } from '../modules/tools/definitions/PhaseExecutorTool';
+import { applyPhaseExecutionEvidence, recoverMissingNpmLauncher } from '../modules/tools/definitions/PhaseExecutorTool';
 import { ShellExecuteTool } from '../modules/tools/definitions/SystemTools';
 import { executionEngine } from '../kernel/ExecutionEngine';
 
 describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
+    it('uses the discovery-selected root for project_run only when the plan has no explicit location', () => {
+        const planned: Record<string, any> = {};
+        const logs: string[] = [];
+        expect(applyPhaseExecutionEvidence('project_run', planned, { projectRoot: '/workspace/repo', projectName: 'nexus' }, logs)).toMatchObject({
+            cwd: '/workspace/repo',
+        });
+        expect(planned.projectQuery).toBeUndefined();
+        expect(logs.join('\\n')).toContain('discovery-selected project root');
+
+        expect(applyPhaseExecutionEvidence('project_run', { cwd: '/explicit/root' }, { projectRoot: '/workspace/repo' })).toMatchObject({
+            cwd: '/explicit/root',
+        });
+        expect(applyPhaseExecutionEvidence('project_run', { projectQuery: 'run nexus' }, { projectRoot: '/workspace/repo' })).toMatchObject({
+            projectQuery: 'run nexus',
+        });
+    });
+
     let workspaceRoot: string;
     const previousRoot = process.env.JOE_WORKSPACE_ROOT;
 

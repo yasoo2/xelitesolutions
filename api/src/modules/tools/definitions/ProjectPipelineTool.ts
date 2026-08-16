@@ -411,6 +411,11 @@ export class ProjectPipelineTool implements ToolDefinition {
             : request;
         if (requirementsContext) appendBoundedPipelineLog(logs, `pipeline.planning_requirements_brief_chars=${requirementsContext.length}`);
         const plannerEvidence = buildPlannerEvidence(evidence, specification.sources);
+        // Preserve the root selected by discovery as execution evidence. A project
+        // can be locally real but incomplete (for example src/tests without a
+        // manifest); naming it from the request is not enough to find that root.
+        // ProjectRunTool still owns runnable-marker validation and may refuse it.
+        const discoveredProjectRoot = String(evidence?.selectedProject?.root || '').trim();
         const plannerReferenceProjects = Array.isArray(plannerEvidence.referenceProjects) ? plannerEvidence.referenceProjects : [];
         const plannerReferenceManifests = plannerReferenceProjects.reduce((count: number, project: any) =>
             count + (Array.isArray(project?.manifests) ? project.manifests.length : 0), 0);
@@ -522,6 +527,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         // Carry the same bounded evidence brief that grounded the accepted plan so
         // workers cannot substitute a familiar template for a documented artifact.
         plannerResult.output.requirementsContext = requirementsContext;
+        if (discoveredProjectRoot) plannerResult.output.projectRoot = discoveredProjectRoot;
         say(`[pipeline] evidence-backed plan ready: ${plannerResult.output.projectName || 'project'} — ${phases.length} phases`);
 
         // 2 — Execute through the canonical pipeline (verification tasks, auto
@@ -603,8 +609,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                 // resolves the named artifact by evidence and still refuses to guess if it cannot
                 // find a unique match.
                 const plannedProjectName = String(plannerResult?.output?.projectName || '').trim();
+                const plannedProjectRoot = String(plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim();
                 const runInput: Record<string, string> = {};
-                if (plannedProjectName) {
+                if (plannedProjectRoot) runInput.cwd = plannedProjectRoot;
+                else if (plannedProjectName) {
                     // ProjectRunTool deliberately extracts names from an explicit
                     // quoted selector. Quote the planner identity at this boundary;
                     // do not pass the full request, which could select an unrelated
@@ -671,6 +679,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                 if (repairPlanner?.ok === true && Array.isArray(repairPhases) && repairPhases.length > 0) {
                     repairPlanner.output.projectName = plannerResult?.output?.projectName || repairPlanner.output.projectName;
                     repairPlanner.output.requirementsContext = requirementsContext;
+                    const repairProjectRoot = String(repairEvidence?.selectedProject?.root || plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim();
+                    if (repairProjectRoot) repairPlanner.output.projectRoot = repairProjectRoot;
                     const repairPipeline = await AgentLoopService.runPlannedPhasesIfPresent({
                         sessionId: context?.sessionId || `pipeline-${Date.now()}`,
                         runId: context?.runId || `run-${Date.now()}`,
@@ -688,8 +698,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                     });
                     if (repairPipeline?.ok === true) {
                         const repairProjectName = String(repairPlanner?.output?.projectName || plannerResult?.output?.projectName || '').trim();
+                        const repairProjectRoot = String(repairPlanner?.output?.projectRoot || plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim();
                         const retryInput: Record<string, string> = {};
-                        if (repairProjectName) retryInput.projectQuery = `"${repairProjectName.replace(/"/gu, '\\\"')}"`;
+                        if (repairProjectRoot) retryInput.cwd = repairProjectRoot;
+                        else if (repairProjectName) retryInput.projectQuery = `"${repairProjectName.replace(/"/gu, '\\\"')}"`;
                         const retryRunResult = await executeTool(
                             'project_run',
                             retryInput,

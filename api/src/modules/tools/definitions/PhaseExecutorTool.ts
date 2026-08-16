@@ -22,6 +22,12 @@ export function applyPhaseExecutionEvidence(
         || String(planned.cwd || '').trim()
         || String(planned.projectQuery || '').trim()) return planned;
 
+    const projectRoot = String(projectContext?.projectRoot || '').trim();
+    if (projectRoot) {
+        planned.cwd = projectRoot;
+        logs?.push(`[PhaseExecutor] project_run: using discovery-selected project root (${projectRoot.slice(0, 240)})`);
+        return planned;
+    }
     const projectName = String(projectContext?.projectName || '').trim();
     if (projectName && !/^unknown(?: project)?$/iu.test(projectName)) {
         planned.projectQuery = `run the project named "${projectName}"`;
@@ -83,7 +89,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                     sessionId: { type: 'string' as const },
                     workspaceId: { type: 'string' as const },
                     userId: { type: 'string' as const },
-                    requirementsContext: { type: 'string' as const, description: 'Bounded evidence brief derived from the inspected request or specification' }
+                    requirementsContext: { type: 'string' as const, description: 'Bounded evidence brief derived from the inspected request or specification' },
+                    projectRoot: { type: 'string' as const, description: 'Evidence-backed local root selected by engineering discovery' }
                 }
             }
         },

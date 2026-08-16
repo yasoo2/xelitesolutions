@@ -522,6 +522,10 @@ export class AgentLoopService {
             // specification. This is evidence for downstream artifact workers,
             // not a guessed technology or product template.
             requirementsContext: String(plannerResult?.output?.requirementsContext || ''),
+            // Evidence-backed local root selected by discovery. Downstream tools
+            // may use it only when a task has no explicit cwd; they still enforce
+            // workspace containment and runnable-marker validation.
+            projectRoot: String(plannerResult?.output?.projectRoot || '').trim() || undefined,
         };
         const executionContext = {
             sessionId,
