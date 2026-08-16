@@ -626,6 +626,54 @@ export class ProjectPipelineTool implements ToolDefinition {
             onProgress: (m: string) => say(m),
         });
 
+        /**
+         * Phase execution can create the runnable artifact even when the initial
+         * greenfield discovery intentionally has no selectedProject. The old
+         * handoff kept the planner's empty projectRoot and later fell back to a
+         * projectQuery such as "nexus", which correctly refused to guess when
+         * the on-disk folder was named differently. Re-bind the current artifact
+         * using the existing repair-aware discovery contract before project_run;
+         * this is evidence, not a name-based fallback, and it also covers a
+         * manifest that was written during the final phase.
+         */
+        if (pipeline?.ok === true && !String(plannerResult?.output?.projectRoot || '').trim()) {
+            try {
+                const postPhaseDiscoveryRequest = [
+                    'Inspect the current workspace after the implementation phases completed.',
+                    'Select the exact existing artifact root that the phases wrote and that project_run should execute.',
+                    'This is read-only binding evidence; do not rewrite files, create a template, or choose by product name.',
+                ].join(' ');
+                const postPhaseDiscovery = await executeTool(
+                    'engineering_discovery',
+                    projectPath
+                        ? { request: postPhaseDiscoveryRequest, path: projectPath }
+                        : { request: postPhaseDiscoveryRequest },
+                    { ...(context || {}), engineeringPipeline: true, language: isAr ? 'ar' : 'en' },
+                );
+                const evidenceRoot = String(postPhaseDiscovery?.output?.evidence?.selectedProject?.root || '').trim();
+                const candidateRoots = [
+                    ...(Array.isArray(postPhaseDiscovery?.output?.nodeProjects) ? postPhaseDiscovery.output.nodeProjects : []),
+                    ...(Array.isArray(postPhaseDiscovery?.output?.pythonProjects) ? postPhaseDiscovery.output.pythonProjects : []),
+                    ...(Array.isArray(postPhaseDiscovery?.output?.goProjects) ? postPhaseDiscovery.output.goProjects : []),
+                ].map((root: unknown) => String(root || '').trim()).filter(Boolean);
+                const runtimeProjectRoot = evidenceRoot || (candidateRoots.length === 1 ? candidateRoots[0] : '');
+                if (runtimeProjectRoot) {
+                    plannerResult.output.projectRoot = runtimeProjectRoot;
+                    appendBoundedPipelineLog(logs, `[pipeline] post-phase discovery bound projectRoot=${runtimeProjectRoot}`);
+                    say(pick(isAr,
+                        `📍 ثبّتُ جذر artifact الذي أنشأته المراحل قبل التشغيل: ${runtimeProjectRoot}`,
+                        `📍 Bound the artifact root created by the phases before live-run: ${runtimeProjectRoot}`));
+                } else {
+                    appendBoundedPipelineLogs(logs, postPhaseDiscovery?.logs);
+                    say(pick(isAr,
+                        '⚠️ اكتشاف ما بعد التنفيذ لم يثبت جذراً وحيداً قابلاً للتشغيل؛ لن أخمّن مشروعاً آخر.',
+                        '⚠️ Post-phase discovery did not prove one runnable root; I will not guess another project.'));
+                }
+            } catch (postPhaseDiscoveryError: any) {
+                appendBoundedPipelineLog(logs, `[pipeline] post-phase discovery failed: ${String(postPhaseDiscoveryError?.message || postPhaseDiscoveryError).slice(0, 420)}`);
+            }
+        }
+
         // 3 — Report with the numbers as they are. A partial delivery announced
         // as partial is engineering; announced as done, it is a lie.
         //

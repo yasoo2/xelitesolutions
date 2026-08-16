@@ -136,6 +136,14 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).not.toMatch(/repairDiscovery[\\s\\S]{0,500}request,\s*path:\s*projectPath/);
     });
 
+    test('post-phase discovery rebinds the artifact root before live-run', () => {
+        expect(src).toMatch(/const postPhaseDiscoveryRequest = \[/);
+        expect(src).toMatch(/postPhaseDiscoveryRequest/);
+        expect(src).toMatch(/selectedProject\?\.root/);
+        expect(src).toMatch(/plannerResult\.output\.projectRoot = runtimeProjectRoot/);
+        expect(src).toMatch(/post-phase discovery bound projectRoot/);
+    });
+
     test('the visible browser panel survives the pipeline-to-phase boundary', () => {
         expect(src).toMatch(/browserSessionId:\s*context\?\.browserSessionId/);
         const loop = fs.readFileSync(

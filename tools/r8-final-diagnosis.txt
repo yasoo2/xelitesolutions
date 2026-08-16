@@ -1,0 +1,79 @@
+=== timestamp ===
+2026-08-16T00:57:43+00:00
+=== last run markers ===
+16:[32minfo[39m: [DeployManager] Added safe.directory exceptions for git successfully. {"timestamp":"2026-08-16T00:50:18.119Z"}
+22:[2026-08-16 00:50:18.109 +0000] [32mINFO[39m (105451): [36m🧠 Local brain: LOCAL_LLM_BASE_URL not set (using keyless free AI mesh).[39m
+67:[IntelligentRouter] OpenAI (Direct) failed or timed out: OpenAI compatible gateway error: Insufficient credits 
+70:[IntelligentRouter] OpenAI (Direct) failed or timed out: OpenAI compatible gateway error: Insufficient credits 
+176:- Joe can run commands.
+177:- Joe can observe command output.
+189:6. Continue only after verification.
+496:Verify that the application builds successfully.
+498:Verify that the application can restart successfully.
+515:- Which tools Joe failed to use.
+516:- Which commands Joe executed.
+517:- Which commands failed.
+525:- Where Joe failed to verify its own work.
+526:- Where Joe failed to recover from an error.
+622:- Pretend a failed feature succeeded.
+641:After Joe successfully implements the system, inspect the actual application visually.
+730:After the first successful version, simulate a real customer giving change requests.
+982:- Joe can run commands.
+983:- Joe can observe command output.
+995:6. Continue only after verification.
+1302:Verify that the application builds successfully.
+1304:Verify that the application can restart successfully.
+1321:- Which tools Joe failed to use.
+1322:- Which commands Joe executed.
+1323:- Which commands failed.
+1331:- Where Joe failed to verify its own work.
+1332:- Where Joe failed to recover from an error.
+1428:- Pretend a failed feature succeeded.
+1447:After Joe successfully implements the system, inspect the actual application visually.
+1536:After the first successful version, simulate a real customer giving change requests.
+1792:- Joe can run commands.
+1793:- Joe can observe command output.
+1805:6. Continue only after verification.
+2112:Verify that the application builds successfully.
+2114:Verify that the application can restart successfully.
+2131:- Which tools Joe failed to use.
+2132:- Which commands Joe executed.
+2133:- Which commands failed.
+2141:- Where Joe failed to verify its own work.
+2142:- Where Joe failed to recover from an error.
+2238:- Pretend a failed feature succeeded.
+2257:After Joe successfully implements the system, inspect the actual application visually.
+2346:After the first successful version, simulate a real customer giving change requests.
+2545:[IntelligentRouter] OpenAI (Direct) failed or timed out: OpenAI compatible gateway error: Insufficient credits 
+2715:[IntelligentRouter] OpenAI (Direct) failed or timed out: OpenAI compatible gateway error: Insufficient credits 
+2845:[IntelligentRouter] OpenAI (Direct) failed or timed out: OpenAI compatible gateway error: Insufficient credits 
+3025:[IntelligentRouter] OpenAI (Direct) failed or timed out: OpenAI compatible gateway error: Insufficient credits 
+3101:[AgentOrchestrator] Node project_pipeline failed: ## ⚠️ Build stopped honestly: NEXUS
+3102:**Phases:** 8/8 executed and verified (real execution + checks, not just written files).
+3133:- Everything completed before the stop (8/8) is verified and intact.
+3134:[AgentOrchestrator] Final verification_failed for project_pipeline — stopping without an invented recovery.
+3138:[WS] Broadcast type=run_finished target=6a80ef04894e9e9971c947e7 clients=1
+
+=== workspace tree ===
+2026-08-16 00:53:30.9164553970 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/src/index.ts
+2026-08-16 00:53:32.3684623480 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/config/tsconfig.json
+2026-08-16 00:53:50.7085500530 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/src/database.ts
+2026-08-16 00:54:10.3646440860 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/tests/database.test.ts
+2026-08-16 00:54:27.5367265640 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/src/auth.ts
+2026-08-16 00:54:41.7687954400 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/tests/auth.test.ts
+2026-08-16 00:55:07.3929307970 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/src/organizations.ts
+2026-08-16 00:55:18.3169858000 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/tests/organizations.test.ts
+2026-08-16 00:55:24.1850178040 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/src/roles.ts
+2026-08-16 00:55:35.1490718640 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/tests/roles.test.ts
+2026-08-16 00:55:47.6771342350 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/src/projects.ts
+2026-08-16 00:56:01.4252027250 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/tests/projects.test.ts
+2026-08-16 00:56:15.6692733520 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/src/crm.ts
+2026-08-16 00:56:25.4373217120 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/tests/crm.test.ts
+2026-08-16 00:56:38.2573834670 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/src/notifications.ts
+2026-08-16 00:56:56.3694701870 /home/ubuntu/xelitesolutions-review/data/projects/my-workspace/tests/notifications.test.ts
+
+=== package ===
+no package.json
+
+=== likely entrypoints ===
+/home/ubuntu/xelitesolutions-review/data/projects/my-workspace/src/index.ts
