@@ -850,6 +850,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     { projectDescription: repairRequest, evidence: repairEvidence },
                     {
                         ...(context || {}),
+                        repairMode: true,
                         engineeringPipeline: true,
                         requireRunnableContract: true,
                         liveRepairAttempted: true,

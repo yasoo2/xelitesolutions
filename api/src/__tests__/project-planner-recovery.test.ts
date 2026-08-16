@@ -55,6 +55,46 @@ describe('project planner structured recovery', () => {
         expect(result.logs.join('\n')).toMatch(/Planner recovery completed/);
     });
 
+    it('repairMode accepts one runnable-contract phase without full multi-domain scope coverage', async () => {
+        mockCallLLM.mockResolvedValueOnce(JSON.stringify({
+            projectName: 'Existing application',
+            projectVibe: 'Bounded runnable-contract repair',
+            totalPhases: 1,
+            estimatedDuration: '10 minutes',
+            dependencies: {},
+            phases: [{
+                phaseNumber: 1,
+                name: 'Fix entrypoint contract',
+                description: 'Update the manifest so the existing start command points to the evidenced entrypoint.',
+                tasks: [{
+                    task: 'Repair package manifest',
+                    tool: 'ai_write_file',
+                    args: { path: 'package.json', description: 'Update only the existing start script to target the current entrypoint.' },
+                    priority: 'high',
+                    realisticMinutes: 5,
+                }],
+                verificationTask: 'Run the existing build or tests and perform one real start/readiness check.',
+                deliverables: ['package.json'],
+                estimatedTime: '10 minutes',
+                requirementsCovered: ['R1'],
+            }],
+        }));
+
+        const result: any = await new ProjectPlannerTool().execute({
+            projectDescription: 'Repair the existing application after a launchability failure; fix only the manifest or entrypoint and verify it locally.',
+        }, {
+            repairMode: true,
+            engineeringPipeline: true,
+            requireRunnableContract: true,
+        });
+
+        expect(mockCallLLM).toHaveBeenCalledTimes(1);
+        expect(mockCallLLM.mock.calls[0][0]).toMatch(/BOUNDED REPAIR CONTRACT/i);
+        expect(result.ok).toBe(true);
+        expect(result.output.phases).toHaveLength(1);
+        expect(result.output.scopeAssessment).toMatchObject({ ok: true, phases: 1, coveredTargets: 1 });
+    });
+
     it('retries an under-scoped implementation plan with the requirement register', async () => {
         const specification = `
 # Identity and Access
