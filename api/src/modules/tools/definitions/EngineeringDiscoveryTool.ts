@@ -175,13 +175,39 @@ export class EngineeringDiscoveryTool extends BaseTool {
         // Lazy require: PlanningEngine -> toolCatalog -> registry -> definitions
         // -> this file is a cycle if imported at module load.
         const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
+        /**
+         * «اكمل» POINTS AT WORK THAT EXISTS — IT NEVER OPENS A FRESH DIRECTORY.
+         *
+         * A bare continuation — the verb alone, or the verb plus «the work /
+         * ما تبقى / من حيث توقفت», naming no new thing to build — was read by
+         * looksLikeBuild as a build, so a session that had just produced a real
+         * artifact answered «اكمل» by scaffolding api-myapp and react-myapp
+         * beside it: the subject-less brand fallback, wearing a folder. The
+         * shape is finite (continuation verbs of two languages); the demotion
+         * is gated on the session actually KNOWING its artifact, so a genuine
+         * first build in an empty session is untouched.
+         */
+        const bareContinuation = /^\s*(?:اكمل|أكمل|كمل|كمّل|تابع|استمر|واصل|استأنف|continue|resume|proceed|finish(?:\s+it)?|keep\s+going)[\s!.،؟]*(?:من\s+حيث\s+توقفت|ما\s+تبق[ىي]|التنفيذ|العمل|المشروع|البناء|the\s+(?:work|project|build)|where\s+you\s+left\s+off)?[\s!.،؟]*$/i.test(request);
+        const sessionArtifactKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const sessionArtifact = (global as any).joeProjects?.[sessionArtifactKey];
+        const knownArtifactRoot = sessionArtifact?.dir && fs.existsSync(String(sessionArtifact.dir))
+            ? String(sessionArtifact.dir) : '';
+        const continuesKnownArtifact = bareContinuation && !!knownArtifactRoot;
         const buildsSomethingNew = PlanningEngine.looksLikeBuild(request)
             && !explicitExistingMutation
             && !remoteUrl
+            && !continuesKnownArtifact
             // «ابنِ على المشروع الحالي» / «أضف صفحة إلى الموقع» point AT
             // something that already exists — the noun is a target, not a
             // thing to be created.
             && !/(?:على|إلى|الى|in|into|to)\s+(?:هذا\s+)?(?:المشروع|المجلد|الموقع|التطبيق|النظام)\b/i.test(request);
+        if (continuesKnownArtifact) {
+            facts.push({
+                id: 'request.continues_known_artifact',
+                source: 'request',
+                statement: `The request is a bare continuation; the session's known artifact at ${knownArtifactRoot} is its target — no new project directory may be created for it.`,
+            });
+        }
         if (buildsSomethingNew) {
             facts.push({
                 id: 'request.creates_new_project',
@@ -258,7 +284,14 @@ export class EngineeringDiscoveryTool extends BaseTool {
             }
         }
         let selectedProject: Candidate | undefined;
-        if (candidates.length === 1 && !buildsSomethingNew) {
+        // A continuation SELECTS the artifact the session already knows —
+        // twenty-four other projects in the workspace are not ambiguity when
+        // the target is on record.
+        if (continuesKnownArtifact) {
+            selectedProject = candidates.find(c => path.resolve(c.root) === path.resolve(knownArtifactRoot))
+                || this.inspectProject(knownArtifactRoot);
+            facts.push({ id: 'workspace.selected_project', source: 'workspace', statement: `Continuation bound to the session's known artifact at ${selectedProject.root}.` });
+        } else if (candidates.length === 1 && !buildsSomethingNew) {
             selectedProject = candidates[0];
             facts.push({ id: 'workspace.selected_project', source: 'workspace', statement: `Exactly one project was detected at ${selectedProject.root}.` });
         } else if (candidates.length > 1 && !buildsSomethingNew) {

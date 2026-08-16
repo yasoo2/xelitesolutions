@@ -87,14 +87,16 @@ describe('a plan made only of paper is not a plan for an application', () => {
     });
 });
 
-describe('npm speaks with the flag the rest of the repository uses', () => {
-    it('npm_manager installs with --legacy-peer-deps', () => {
+describe('npm is strict first and loosens only on ERESOLVE', () => {
+    it('npm_manager retries exactly once, with the flag, exactly on ERESOLVE', () => {
         const p = read('modules', 'tools', 'definitions', 'SystemTools.ts');
-        expect(p).toMatch(/args\.push\('--legacy-peer-deps'\)/);
+        expect(p).toMatch(/ERESOLVE/);
+        expect(p).toMatch(/npm\.retry=--legacy-peer-deps \(ERESOLVE on the strict install\)/);
+        expect(p).toMatch(/\[\.\.\.args, '--legacy-peer-deps'\]/);
     });
-    it('and the self-healer does not repeat the refused command byte for byte', () => {
+    it('and the self-healer falls back instead of repeating the refused command', () => {
         const p = read('modules', 'services', 'SelfFixService.ts');
-        expect(p).toMatch(/npm install --no-audit --no-fund --legacy-peer-deps && npm run --if-present build/);
+        expect(p).toMatch(/npm install --no-audit --no-fund \|\| npm install --no-audit --no-fund --legacy-peer-deps && npm run --if-present build/);
     });
 });
 
@@ -129,5 +131,55 @@ describe('an idle browser session dies once, quietly', () => {
         const m = read('modules', 'browser', 'manager.ts');
         expect(m).toMatch(/await saveSessionStateOf\(sid, s\)/);
         expect(m).not.toMatch(/sessions\.set\(sid, s\); await saveBrowserSession/);
+    });
+});
+
+describe('the deterministic rescue cannot skip a gate', () => {
+    /**
+     * The paper-plan rescue swaps WHICH PLAN runs — never how the result is
+     * judged. These are the same two gate functions the pipeline calls after
+     * every plan, deterministic or not, invoked here directly to prove that
+     * nothing about a rescued plan can soften them.
+     */
+    const { applyLiveRunOutcome, applyScopeAuditOutcome, deterministicPhasesFor } =
+        require('../modules/tools/definitions/ProjectPipelineTool');
+
+    it('a rescued plan whose live run fails is not delivered', () => {
+        // The rescue's own output shape — deterministic, plannedWithoutModel —
+        // is not even an input the gate accepts: it judges the run result.
+        const rescued = deterministicPhasesFor('Build an expense tracker web application called "Ledgerly" with a dashboard');
+        expect(rescued).toBeTruthy();
+        const live = applyLiveRunOutcome(true, { ok: false, error: 'no server answered' });
+        expect(live.verified).toBe(false);
+        expect(live.verificationFailed).toBe(true);
+    });
+
+    it('a live URL without an artifact root still fails scope verification', () => {
+        const out = applyScopeAuditOutcome('build a store with checkout', '', {
+            verified: true, liveUrl: 'http://localhost:4300/', verificationFailed: false,
+        });
+        expect(out.verified).toBe(false);
+        expect(out.verificationFailed).toBe(true);
+        expect(String(out.error || '')).toMatch(/scope verification/);
+    });
+
+    it('an incomplete artifact is refused by coverage, whatever plan produced it', () => {
+        const os = require('os');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-scope-'));
+        try {
+            // A real root with a manifest and nothing else: none of the request's
+            // named capabilities exist in it.
+            fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'stub', scripts: { start: 'node x' } }));
+            const out = applyScopeAuditOutcome(
+                'Build a store platform with checkout, search across the data, and a dashboard of indicators',
+                dir,
+                { verified: true, liveUrl: 'http://localhost:4300/', verificationFailed: false },
+            );
+            expect(out.scopeAudit.requested).toBeGreaterThan(0);
+            expect(out.verified).toBe(false);
+            expect(out.verificationFailed).toBe(true);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 });

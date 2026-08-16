@@ -47,10 +47,11 @@ describe('the auto build check is honest about WHERE and WHETHER', () => {
 
 describe('dependency self-fix survives a weak machine', () => {
     test('long timeout, no audit noise, optional build script', () => {
-        // The healer's install gained --legacy-peer-deps after the MyBudget
-        // field run repeated a refused ERESOLVE install byte for byte — the
-        // guarantee here (quiet flags, optional build) is unchanged.
-        expect(selfFix).toMatch(/npm install --no-audit --no-fund --legacy-peer-deps && npm run --if-present build/);
+        // Strict install first, --legacy-peer-deps only as the ERESOLVE
+        // fallback — the healer neither repeats a refused command byte for
+        // byte (MyBudget field run) nor loosens an install that would have
+        // succeeded strictly.
+        expect(selfFix).toMatch(/npm install --no-audit --no-fund \|\| npm install --no-audit --no-fund --legacy-peer-deps && npm run --if-present build/);
         expect(selfFix).toMatch(/timeout: 600000/);
     });
 });

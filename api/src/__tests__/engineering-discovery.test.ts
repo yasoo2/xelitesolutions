@@ -272,3 +272,61 @@ describe('local specification evidence', () => {
     expect(source).toContain('instructionFiles');
   });
 });
+
+describe('«اكمل» points at work that exists', () => {
+    /**
+     * A bare continuation in a session that had just produced a real artifact
+     * used to read as a BUILD — looksLikeBuild saw the verb, createsNewProject
+     * came back true, and the pipeline scaffolded api-myapp and react-myapp
+     * beside the finished work: the subject-less brand fallback, wearing a
+     * folder. Measured on a crowded workspace: the continuation now SELECTS
+     * the session's known artifact — other projects are not ambiguity when
+     * the target is on record — and a genuine new-build sentence, or a
+     * session with nothing on record, keeps exactly today's behaviour.
+     */
+    const os = require('os');
+    let root: string;
+    const SID = 'continuation-proof';
+
+    beforeEach(() => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-cont-'));
+        for (const name of ['react-evidenceboard', 'api-other']) {
+            const d = path.join(root, name);
+            fs.mkdirSync(d, { recursive: true });
+            fs.writeFileSync(path.join(d, 'package.json'), JSON.stringify({ name, scripts: { start: 'node s.js' } }));
+        }
+        (global as any).joeProjects = {
+            ...(global as any).joeProjects,
+            [SID]: { dir: path.join(root, 'react-evidenceboard'), type: 'react' },
+        };
+    });
+    afterEach(() => {
+        fs.rmSync(root, { recursive: true, force: true });
+        delete (global as any).joeProjects?.[SID];
+    });
+
+    const discover = (request: string, sessionId = SID) =>
+        new EngineeringDiscoveryTool().execute({ request }, { sessionId, workspaceRoot: root });
+
+    test.each(['اكمل', 'continue', 'اكمل من حيث توقفت', 'أكمل العمل'])(
+        '«%s» binds to the known artifact and creates nothing', async (req) => {
+            const r: any = await discover(req);
+            const ev = r.output.evidence;
+            expect(ev.constraints.createsNewProject).toBe(false);
+            expect(ev.mode).toBe('existing_workspace');
+            expect(path.basename(ev.selectedProject.root)).toBe('react-evidenceboard');
+            expect(ev.blockers).toHaveLength(0);
+        });
+
+    it('a real new-build sentence stays greenfield even with an artifact on record', async () => {
+        const r: any = await discover('ابنِ نظاماً جديداً لمطعم');
+        expect(r.output.evidence.mode).toBe('greenfield');
+        expect(r.output.evidence.constraints.createsNewProject).toBe(true);
+    });
+
+    it('a bare continuation with nothing on record keeps the honest ambiguous stop', async () => {
+        const r: any = await discover('اكمل', 'session-with-no-artifact');
+        expect(r.output.evidence.constraints.createsNewProject).toBe(false);
+        expect(r.output.evidence.mode).toBe('ambiguous');
+    });
+});

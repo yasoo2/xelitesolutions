@@ -612,7 +612,18 @@ export function missingRuntimeDependencies(cwd: string, detected: { command: str
         let source = '';
         try { source = fs.readFileSync(file, 'utf-8'); } catch { continue; }
         for (const specifier of runtimeImportSpecifiers(source)) {
-            if (specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('#') || NODE_BUILTIN_MODULES.has(specifier)) continue;
+            /**
+             * `node:` IS the evidence. npm forbids «:» in package names, so a
+             * node:-prefixed specifier can only ever be a Node builtin — and
+             * `builtinModules` deliberately omits the prefix-only ones
+             * (node:sqlite, node:test), so deriving the set from it left a
+             * hole. Measured: every API this repository generates opens its
+             * database with `require('node:sqlite')`, and this gate refused
+             * to start all of them with «node:sqlite is missing from
+             * node_modules» — a dependency nobody could ever install.
+             */
+            if (specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('#')
+                || specifier.startsWith('node:') || NODE_BUILTIN_MODULES.has(specifier)) continue;
             const packageName = packageNameFromSpecifier(specifier);
             if (!packageName || NODE_BUILTIN_MODULES.has(packageName)) continue;
             let resolved = false;

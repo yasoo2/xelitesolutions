@@ -624,20 +624,6 @@ export class NpmManagerTool extends BaseTool {
             if (!cmdParts.length) return { ok: false, error: 'missing_command', logs };
             const args = [...cmdParts, ...(Array.isArray(pkgs) ? pkgs : [])];
             if (isDev && (cmdParts[0] === 'install' || cmdParts[0] === 'i')) args.push('-D');
-            /**
-             * The rest of this repository installs with --legacy-peer-deps
-             * (DeployManager, the scaffolder, start-joe.ps1) — and this tool,
-             * the one the PLANNER reaches, did not. Measured on the MyBudget
-             * field run: an LLM-authored package.json paired vite 4 with
-             * @vitejs/plugin-react 2, plain `npm install` refused with
-             * ERESOLVE twice, the retry repeated the same command byte for
-             * byte, and the build died on a flag Joe already uses everywhere
-             * else.
-             */
-            if ((cmdParts[0] === 'install' || cmdParts[0] === 'i' || cmdParts[0] === 'ci')
-                && !args.includes('--legacy-peer-deps')) {
-                args.push('--legacy-peer-deps');
-            }
             logs.push(`npm.args=${args.join(' ')}`);
             const requestedCwd = String(input?.cwd || input?.projectPath || '').trim();
             const resolvedWorkDir = requestedCwd
@@ -657,7 +643,25 @@ export class NpmManagerTool extends BaseTool {
                     logs.push(`npm.manifest_reconciled=${(manifest.removedDependencies || []).join(',')}`);
                 }
             }
-            const r = await handleShellCommand('npm', args, workDir, 5 * 60_000, false);
+            let r = await handleShellCommand('npm', args, workDir, 5 * 60_000, false);
+            /**
+             * --legacy-peer-deps is a FALLBACK, not a default.
+             *
+             * The first attempt is strict on purpose: a peer conflict npm can
+             * resolve should be resolved, and blanket-loosening every install
+             * hides manifests that are genuinely wrong. What must never happen
+             * again is the MyBudget shape — ERESOLVE, then a retry of the SAME
+             * command byte for byte, then a dead build over a flag the rest of
+             * this repository (DeployManager, the scaffolder, start-joe.ps1)
+             * already uses. So exactly on ERESOLVE, exactly once, the install
+             * is retried with the flag and says so.
+             */
+            const installCmd = cmdParts[0] === 'install' || cmdParts[0] === 'i' || cmdParts[0] === 'ci';
+            if (!r.ok && installCmd && !args.includes('--legacy-peer-deps')
+                && /ERESOLVE/i.test(`${r.error || ''}\n${(r.logs || []).join('\n')}\n${String((r as any).output || '')}`)) {
+                logs.push('npm.retry=--legacy-peer-deps (ERESOLVE on the strict install)');
+                r = await handleShellCommand('npm', [...args, '--legacy-peer-deps'], workDir, 5 * 60_000, false);
+            }
             if (!r.ok) return { ok: false, error: r.error || 'npm_failed', logs: [...logs, ...(r.logs || [])] };
 
             if ((cmdParts[0] === 'install' || cmdParts[0] === 'i') && pkgs.length > 0) {

@@ -174,4 +174,19 @@ describe('workspace project discovery for project_run', () => {
         fs.writeFileSync(viteBin, 'placeholder');
         expect(launchPrerequisiteError(project, detected)).toBeNull();
     });
+
+    it('node:-prefixed builtins are never reported as missing npm dependencies', () => {
+        // npm forbids «:» in package names, and builtinModules omits the
+        // prefix-only modules (node:sqlite, node:test) — so the generated API,
+        // which opens its database with require('node:sqlite'), was refused
+        // with a dependency nobody could ever install.
+        const project = path.join(root, 'api-sqlite-service');
+        fs.mkdirSync(project, { recursive: true });
+        fs.writeFileSync(path.join(project, 'package.json'),
+            JSON.stringify({ name: 'api-sqlite-service', scripts: { start: 'node server.js' } }));
+        fs.writeFileSync(path.join(project, 'server.js'),
+            "const { DatabaseSync } = require('node:sqlite');\nconst t = require('node:test');\nconsole.log('ok');\n");
+        const detected = detectStart(project, 4310);
+        expect(launchPrerequisiteError(project, detected)).toBeNull();
+    });
 });
