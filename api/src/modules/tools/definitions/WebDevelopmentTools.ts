@@ -602,7 +602,7 @@ export class DevServerTool extends BaseTool {
             logs.push(`dev_started cwd=${actualCwd} cmd=${command} port=${port} isProd=${isProd} ready=${serverReady}`);
 
             // Broadcast preview_ready event for JoeStudio LivePreview
-            const { broadcast } = require('../../ws');
+            const { broadcast } = require('../../../api/ws');
             broadcast({
                 type: 'preview_ready',
                 data: {

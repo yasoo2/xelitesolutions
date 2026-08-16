@@ -801,7 +801,7 @@ export class ProjectRunTool implements ToolDefinition {
                 `✅ نظامك يعمل بالفعل — المعاينة الحية: ${liveUrl}`,
                 `✅ Your system is already running — live preview: ${liveUrl}`));
             try {
-                const { broadcast } = require('../../ws');
+                const { broadcast } = require('../../../api/ws');
                 broadcast({
                     type: 'preview_ready', sessionId: context?.sessionId,
                     data: { url: liveUrl, previewUrl: liveUrl, port: Number(live.port), live: true },
@@ -945,7 +945,7 @@ export class ProjectRunTool implements ToolDefinition {
             `✅ The project is running — live preview: ${url}`));
         // The preview panel opens automatically on this event.
         try {
-            const { broadcast } = require('../../ws');
+            const { broadcast } = require('../../../api/ws');
             broadcast({ type: 'preview_ready', sessionId: context?.sessionId, data: { url, previewUrl: url, port: livePort, live: true } });
         } catch { /* panel optional */ }
 

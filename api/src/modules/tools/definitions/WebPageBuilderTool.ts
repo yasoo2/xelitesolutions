@@ -1745,6 +1745,50 @@ the WORDS, not the structure.`;
         } catch { /* non-fatal */ }
         if (sessionId) broadcastThinkingDetail(sessionId, isAr ? `✅ تم تحديث الصفحة في المعاينة` : `✅ Page updated in Preview`);
 
+        // [VISIBLE QA] Focus Joe's Browser panel and wait briefly for its watcher
+        // before measuring. The audit receives this same session id, so the page
+        // is loaded and its controls are pressed in the stream the user watches.
+        let panelBrowserSid = '';
+        try {
+            const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
+            panelBrowserSid = PANEL_BROWSER_SID;
+            broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'page_qa' } } as any);
+            try { require('../../browser/manager').warmBrowserSession(PANEL_BROWSER_SID); } catch { /* private fallback remains available */ }
+            try {
+                const { waitForPanelWatcher } = require('../../browser/wsHub');
+                const watching = await waitForPanelWatcher(PANEL_BROWSER_SID, 4000);
+                term(watching
+                    ? 'QA: the Browser panel is attached — visual and behaviour checks will run where you can watch them'
+                    : 'QA: no Browser panel attached — checks will run privately and the result will say so');
+                if (sessionId) broadcastThinkingDetail(sessionId, watching
+                    ? (isAr ? '👁️ أبدأ فحص الجودة أمامك في المتصفح الحقيقي' : '👁️ Starting quality checks in the real Browser panel')
+                    : (isAr ? '🔒 لا توجد مشاهدة للوحة المتصفح؛ سأجري الفحص الخاص وأذكر ذلك صراحةً' : '🔒 No Browser watcher is attached; I will run a private check and say so explicitly'));
+            } catch {
+                term('QA: watcher status unavailable — the audit will report its actual execution state');
+            }
+        } catch {
+            term('QA: Browser panel integration unavailable — the audit will report its actual execution state');
+        }
+        const qaProgress = (phase: string) => {
+            if (phase.startsWith('private')) {
+                const why = phase.slice('private'.length).replace(/^:/, '').trim();
+                term(`QA: private fallback${why ? ` — ${why}` : ''}`);
+                if (sessionId) broadcastThinkingDetail(sessionId, (isAr
+                    ? '🔒 تعذّر استعارة لوحة المتصفح؛ الفحص يعمل في متصفح خاص'
+                    : '🔒 The Browser panel could not be borrowed; QA is running privately') + (why ? ` — ${why}` : ''));
+            } else if (phase.startsWith('inspecting:')) {
+                term(`QA: measuring ${phase.slice('inspecting:'.length)} viewport in the live browser`);
+            } else if (phase === 'pressing') {
+                term('QA: pressing interactive controls for the behaviour audit');
+            } else if (phase === 'inspected') {
+                term('QA: behaviour controls measured');
+            } else if (phase === 'restored') {
+                term('QA: restored the Browser panel to desktop viewport');
+            } else if (phase === 'watching' && sessionId) {
+                broadcastThinkingDetail(sessionId, isAr ? '👁️ الفحص يعمل الآن داخل المتصفح المرئي' : '👁️ QA is running inside the visible Browser panel');
+            }
+        };
+
         // [VISUAL AUDIT] Everything above reasons about HTML as text. The defects
         // the user actually saw — a page scrolling 2456px sideways, a phone screen
         // rendering empty, text at 2.79:1 — only exist once a browser has laid the
@@ -1761,7 +1805,12 @@ the WORDS, not the structure.`;
         let visualScore = -1;
         let visualRepairs = 0;
         try {
-            let audit = await auditVisually(url, { screenshotDir: ARTIFACT_DIR, name: `audit-${sessionKey}` });
+            let audit = await auditVisually(url, {
+                screenshotDir: ARTIFACT_DIR,
+                name: `audit-${sessionKey}`,
+                ...(panelBrowserSid ? { watchSessionId: panelBrowserSid } : {}),
+                onProgress: qaProgress,
+            });
             if (audit.ran) {
                 visualFindings = audit.findings;
                 visualScore = audit.score;
@@ -1775,7 +1824,12 @@ the WORDS, not the structure.`;
                 const mech = applyMechanicalRepairs(html, audit.findings, { language: isAr ? 'ar' : 'en', subject: request });
                 if (mech.applied.length) {
                     writeOut(mech.html);
-                    const after = await auditVisually(url, { screenshotDir: ARTIFACT_DIR, name: `audit-${sessionKey}` });
+                    const after = await auditVisually(url, {
+                screenshotDir: ARTIFACT_DIR,
+                name: `audit-${sessionKey}`,
+                ...(panelBrowserSid ? { watchSessionId: panelBrowserSid } : {}),
+                onProgress: qaProgress,
+            });
                     if (after.ran && (after.score > audit.score
                         || (after.score === audit.score && after.findings.length < audit.findings.length))) {
                         html = mech.html;
@@ -1825,7 +1879,12 @@ the WORDS, not the structure.`;
                             : `👁️ Page is large — repairing only the sections the findings name`,
                     }) : null;
                     if (scoped) {
-                        const after = await auditVisually(url, { screenshotDir: ARTIFACT_DIR, name: `audit-${sessionKey}` });
+                        const after = await auditVisually(url, {
+                screenshotDir: ARTIFACT_DIR,
+                name: `audit-${sessionKey}`,
+                ...(panelBrowserSid ? { watchSessionId: panelBrowserSid } : {}),
+                onProgress: qaProgress,
+            });
                         if (after.ran && after.score > audit.score) {
                             visualRepairs = audit.findings.length - after.findings.length;
                             visualFindings = after.findings;
@@ -1858,7 +1917,12 @@ the WORDS, not the structure.`;
                         if (d2 > 0) out = out.slice(d2);
                         if (/<\/html\s*>/i.test(out) && out.length > html.length * 0.7) {
                             writeOut(out);
-                            const after = await auditVisually(url, { screenshotDir: ARTIFACT_DIR, name: `audit-${sessionKey}` });
+                            const after = await auditVisually(url, {
+                screenshotDir: ARTIFACT_DIR,
+                name: `audit-${sessionKey}`,
+                ...(panelBrowserSid ? { watchSessionId: panelBrowserSid } : {}),
+                onProgress: qaProgress,
+            });
                             // Only keep a repair the browser agrees is better.
                             if (after.ran && after.score > audit.score) {
                                 visualRepairs = audit.findings.length - after.findings.length;
@@ -1889,7 +1953,11 @@ the WORDS, not the structure.`;
         let behaviourScore = -1;
         let behaviourRepairs = 0;
         try {
-            const b = await auditBehaviour(url, { kind });
+            const b = await auditBehaviour(url, {
+                kind,
+                ...(panelBrowserSid ? { watchSessionId: panelBrowserSid } : {}),
+                onProgress: qaProgress,
+            });
             if (b.ran) {
                 behaviourFindings = b.findings;
                 behaviourScore = b.score;
@@ -1909,7 +1977,11 @@ the WORDS, not the structure.`;
                             : `🖱️ Page is large — repairing only the sections holding the dead controls`,
                     });
                     if (scoped) {
-                        const after = await auditBehaviour(url, { kind });
+                        const after = await auditBehaviour(url, {
+                kind,
+                ...(panelBrowserSid ? { watchSessionId: panelBrowserSid } : {}),
+                onProgress: qaProgress,
+            });
                         const keptControls = after.ran && after.metrics.pressed >= Math.floor(b.metrics.pressed * 0.8);
                         if (after.ran && after.score > b.score && keptControls) {
                             behaviourRepairs = b.findings.length - after.findings.length;
@@ -1945,7 +2017,11 @@ the WORDS, not the structure.`;
                         if (d3 > 0) out = out.slice(d3);
                         if (/<\/html\s*>/i.test(out) && out.length > html.length * 0.7) {
                             writeOut(out);
-                            const after = await auditBehaviour(url, { kind });
+                            const after = await auditBehaviour(url, {
+                kind,
+                ...(panelBrowserSid ? { watchSessionId: panelBrowserSid } : {}),
+                onProgress: qaProgress,
+            });
                             // A "fix" that deletes the buttons scores well on dead
                             // controls, so the count of controls must not fall.
                             const keptControls = after.ran && after.metrics.pressed >= Math.floor(b.metrics.pressed * 0.8);

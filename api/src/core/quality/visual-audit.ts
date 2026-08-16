@@ -507,7 +507,12 @@ function collector() {
  * Open the built page and measure it. Never throws: a missing browser or a slow
  * machine returns `ran: false` with the reason, and the build carries on.
  */
-export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: string; name?: string }): Promise<VisualAudit> {
+export async function auditVisually(fileUrl: string, opts?: {
+    screenshotDir?: string;
+    name?: string;
+    watchSessionId?: string;
+    onProgress?: (phase: string) => void;
+}): Promise<VisualAudit> {
     const empty: VisualAudit = { ran: false, score: 0, findings: [], screenshots: [], metrics: {} };
     if (String(process.env.JOE_VISUAL_AUDIT || '1') === '0') {
         return { ...empty, skipped: 'disabled (JOE_VISUAL_AUDIT=0)' };
@@ -517,12 +522,37 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
         return { ...empty, skipped: `playwright unavailable: ${e?.message || e}` };
     }
 
-    let browser: any;
-    try {
-        const { getChromiumLaunchOptions } = require('../../modules/browser/manager');
-        browser = await chromium.launch(getChromiumLaunchOptions());
-    } catch (e: any) {
-        return { ...empty, skipped: `browser launch failed: ${e?.message || e}` };
+    let browser: any = null;
+    let borrowedPage: any = null;
+    let borrowed = false;
+    let borrowError = '';
+    const browserManager = require('../../modules/browser/manager');
+    if (opts?.watchSessionId) {
+        try {
+            const session = await browserManager.getBrowserSession(opts.watchSessionId);
+            if (session?.page) {
+                borrowedPage = session.page;
+                borrowed = true;
+                try { browserManager.resumeStreamingIfWatched(opts.watchSessionId); } catch { /* streaming is a bonus */ }
+                opts.onProgress?.('watching');
+            } else {
+                borrowError = 'the Browser panel session opened without a page';
+            }
+        } catch (e: any) {
+            borrowError = String(e?.message || e).slice(0, 300);
+        }
+        if (borrowError) {
+            try { browserManager.noteBrowserFailure(opts.watchSessionId, 'visual-audit-borrow', borrowError); } catch { /* diagnostic only */ }
+        }
+    }
+    if (!borrowedPage) {
+        try {
+            const { getChromiumLaunchOptions } = browserManager;
+            browser = await chromium.launch(getChromiumLaunchOptions());
+            opts?.onProgress?.(borrowError ? `private:${borrowError}` : 'private');
+        } catch (e: any) {
+            return { ...empty, skipped: `browser launch failed: ${e?.message || e}` };
+        }
     }
 
     const findings: VisualFinding[] = [];
@@ -534,7 +564,12 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
 
     try {
         for (const vp of VIEWPORTS) {
-            const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
+            const page = borrowedPage || await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
+            if (borrowed) {
+                await page.setViewportSize({ width: vp.width, height: vp.height }).catch(() => { });
+                try { browserManager.setSessionViewport(opts?.watchSessionId || '', vp.width, vp.height); } catch { /* viewport sync is best effort */ }
+            }
+            opts?.onProgress?.(`inspecting:${vp.label}`);
             // collector() is serialised into the page; a bundler that keeps function
             // names wraps it in a `__name(...)` helper the browser has never heard
             // of. The identity shim keeps the audit working whatever compiled it.
@@ -583,8 +618,8 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
             try { resp = await page.goto(fileUrl, { waitUntil: 'networkidle', timeout: 20000 }); }
             catch (e: any) { navError = String(e?.message || e).split('\n')[0].slice(0, 120); }
             if (navError || !resp || !resp.ok()) {
-                try { await page.close(); } catch { }
-                try { await browser.close(); } catch { }
+                if (!borrowed) { try { await page.close(); } catch { } }
+                if (browser) { try { await browser.close(); } catch { } }
                 return {
                     ...empty,
                     skipped: `could not load ${fileUrl} — ${navError || (resp ? `HTTP ${resp.status()}` : 'no response')}`,
@@ -619,13 +654,18 @@ export async function auditVisually(fileUrl: string, opts?: { screenshotDir?: st
                 await page.screenshot({ path: p, fullPage: false }).catch(() => { });
                 screenshots.push(p);
             }
-            await page.close();
+            if (!borrowed) { await page.close().catch(() => { }); }
+        }
+        if (borrowed) {
+            try { await borrowedPage.setViewportSize({ width: 1280, height: 900 }); } catch { }
+            try { browserManager.setSessionViewport(opts?.watchSessionId || '', 1280, 900); } catch { }
+            opts?.onProgress?.('restored');
         }
     } catch (e: any) {
-        try { await browser.close(); } catch { }
+        if (!borrowed && browser) { try { await browser.close(); } catch { } }
         return { ...empty, skipped: `audit failed: ${e?.message || e}` };
     }
-    try { await browser.close(); } catch { }
+    if (!borrowed && browser) { try { await browser.close(); } catch { } }
 
     // ---- judgement, on the numbers -----------------------------------------
     for (const vp of VIEWPORTS) {

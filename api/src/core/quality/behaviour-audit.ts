@@ -301,7 +301,11 @@ function changed(a: any, b: any): string {
  * were made: a store that ships a dead "add to cart" is a critical failure; a
  * documentation page has no cart to break.
  */
-export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }): Promise<BehaviourAudit> {
+export async function auditBehaviour(fileUrl: string, opts?: {
+    kind?: string;
+    watchSessionId?: string;
+    onProgress?: (phase: string) => void;
+}): Promise<BehaviourAudit> {
     const empty: BehaviourAudit = { ran: false, skipped: '', score: 0, findings: [], controls: [], metrics: {} };
     if (String(process.env.JOE_BEHAVIOUR_AUDIT || '1') === '0') {
         return { ...empty, skipped: 'disabled (JOE_BEHAVIOUR_AUDIT=0)' };
@@ -311,12 +315,36 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
         return { ...empty, skipped: `playwright unavailable: ${e?.message || e}` };
     }
 
-    let browser: any;
-    try {
-        const { getChromiumLaunchOptions } = require('../../modules/browser/manager');
-        browser = await chromium.launch(getChromiumLaunchOptions());
-    } catch (e: any) {
-        return { ...empty, skipped: `browser launch failed: ${e?.message || e}` };
+    let browser: any = null;
+    let page: any = null;
+    let borrowed = false;
+    let borrowError = '';
+    const browserManager = require('../../modules/browser/manager');
+    if (opts?.watchSessionId) {
+        try {
+            const session = await browserManager.getBrowserSession(opts.watchSessionId);
+            if (session?.page) {
+                page = session.page;
+                borrowed = true;
+                try { browserManager.resumeStreamingIfWatched(opts.watchSessionId); } catch { /* streaming is a bonus */ }
+                opts.onProgress?.('watching');
+            } else {
+                borrowError = 'the Browser panel session opened without a page';
+            }
+        } catch (e: any) {
+            borrowError = String(e?.message || e).slice(0, 300);
+        }
+        if (borrowError) {
+            try { browserManager.noteBrowserFailure(opts.watchSessionId, 'behaviour-audit-borrow', borrowError); } catch { /* diagnostic only */ }
+        }
+    }
+    if (!page) {
+        try {
+            browser = await chromium.launch(browserManager.getChromiumLaunchOptions());
+            opts?.onProgress?.(borrowError ? `private:${borrowError}` : 'private');
+        } catch (e: any) {
+            return { ...empty, skipped: `browser launch failed: ${e?.message || e}` };
+        }
     }
 
     const controls: ControlResult[] = [];
@@ -324,11 +352,16 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
     const metrics: Record<string, any> = {};
     const jsErrors: string[] = [];
 
+    let detach = () => { };
     try {
-        const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+        if (!page) page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+        if (borrowed) {
+            await page.setViewportSize({ width: 1280, height: 900 }).catch(() => { });
+            try { browserManager.setSessionViewport(opts?.watchSessionId || '', 1280, 900); } catch { /* viewport sync is best effort */ }
+        }
         await page.addInitScript('globalThis.__name = globalThis.__name || (function (f) { return f; });').catch(() => { });
-        page.on('pageerror', (e: any) => { if (jsErrors.length < 6) jsErrors.push(String(e?.message || e).slice(0, 140)); });
-        page.on('console', (m: any) => {
+        const onPageError = (e: any) => { if (jsErrors.length < 6) jsErrors.push(String(e?.message || e).slice(0, 140)); };
+        const onConsole = (m: any) => {
             if (m.type() !== 'error' || jsErrors.length >= 6) return;
             const t = String(m.text());
             // Chrome reports a missing favicon as a bare "Failed to load resource"
@@ -337,14 +370,21 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
             const where = (() => { try { return String(m.location()?.url || ''); } catch { return ''; } })();
             if (/favicon\.ico/i.test(t) || /favicon\.ico/i.test(where)) return;
             jsErrors.push(t.slice(0, 140));
-        });
+        };
+        const onDialog = (d: any) => {
+            const kind = (() => { try { return String(d.type()); } catch { return ''; } })();
+            return (kind === 'beforeunload' ? d.dismiss() : d.accept('Joe QA')).catch(() => { });
+        };
+        page.on('pageerror', onPageError);
+        page.on('console', onConsole);
+        page.on('dialog', onDialog);
+        detach = () => {
+            try { page.off('pageerror', onPageError); page.off('console', onConsole); page.off('dialog', onDialog); } catch { /* page may be gone */ }
+        };
+        opts?.onProgress?.('pressing');
         // A page that pops a confirm() on click would hang the audit forever.
         // The same rule as the app audit: answer YES, or every confirm-guarded
         // button is measured as dead. beforeunload alone is dismissed.
-        page.on('dialog', (d: any) => {
-            const kind = (() => { try { return String(d.type()); } catch { return ''; } })();
-            return (kind === 'beforeunload' ? d.dismiss() : d.accept('Joe QA')).catch(() => { });
-        });
         // Same rule as the visual audit: a navigation that failed leaves the
         // browser's own error page on screen, and clicking ITS buttons and
         // reporting a score would be a measurement of nothing.
@@ -352,8 +392,9 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
         try { resp = await page.goto(fileUrl, { waitUntil: 'networkidle', timeout: 20000 }); }
         catch (e: any) { navError = String(e?.message || e).split('\n')[0].slice(0, 120); }
         if (navError || !resp || !resp.ok()) {
-            try { await page.close(); } catch { }
-            try { await browser.close(); } catch { }
+            detach();
+            if (!borrowed) { try { await page.close(); } catch { } }
+            if (browser) { try { await browser.close(); } catch { } }
             return { ...empty, skipped: `could not load ${fileUrl} — ${navError || (resp ? `HTTP ${resp.status()}` : 'no response')}` };
         }
         await page.waitForTimeout(500);
@@ -363,12 +404,20 @@ export async function auditBehaviour(fileUrl: string, opts?: { kind?: string }):
         Object.assign(metrics, probe.metrics);
 
         metrics.jsErrors = jsErrors.length;
-        await page.close();
+        opts?.onProgress?.('inspected');
+        detach();
+        if (!borrowed) { await page.close().catch(() => { }); }
+        else {
+            try { await page.setViewportSize({ width: 1280, height: 900 }); } catch { }
+            try { browserManager.setSessionViewport(opts?.watchSessionId || '', 1280, 900); } catch { }
+            opts?.onProgress?.('restored');
+        }
     } catch (e: any) {
-        try { await browser.close(); } catch { }
+        detach();
+        if (!borrowed && browser) { try { await browser.close(); } catch { } }
         return { ...empty, skipped: `behaviour audit failed: ${e?.message || e}` };
     }
-    try { await browser.close(); } catch { }
+    if (!borrowed && browser) { try { await browser.close(); } catch { } }
 
     const judged = judgeBehaviour(controls, metrics, jsErrors);
     findings.push(...judged.findings);

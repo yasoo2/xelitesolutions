@@ -299,7 +299,8 @@ describe('pipeline preserves an honest verification verdict for its caller', () 
         expect(pipeline).toContain('result?.verificationFailed === true');
         expect(pipeline).toContain('const honestBlocker = pipeline?.honestBlocker === true || verificationFailed');
         expect(pipeline).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
-        expect(pipeline).toContain('...(honestBlocker ? { honestBlocker: true } : {})');
+        expect(pipeline).toContain('let finalHonestBlocker = honestBlocker');
+        expect(pipeline).toContain('...(finalHonestBlocker ? { honestBlocker: true } : {})');
     });
 });
 

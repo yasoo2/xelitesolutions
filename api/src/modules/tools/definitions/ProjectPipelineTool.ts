@@ -8,6 +8,7 @@ import { brandFrom } from '../../../core/design/page-head';
 import { scopeReport } from '../../../core/quality/scope-audit';
 import { verifyProviderDirect } from '../../../core/llm/intelligent-router';
 import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget } from './ProjectRunTool';
+import { auditBuiltApp, AppAudit } from '../../../core/quality/app-audit';
 
 const MAX_PIPELINE_LOGS = 192;
 const MAX_PIPELINE_LOG_CHARS = 2_000;
@@ -904,7 +905,10 @@ export class ProjectPipelineTool implements ToolDefinition {
         const verificationFailed = Array.isArray(pipeline?.results)
             && pipeline.results.some((result: any) => result?.verificationFailed === true);
         let liveRunVerificationFailed = false;
+        let browserQaFailed = false;
+        let browserQa: AppAudit | null = null;
         const honestBlocker = pipeline?.honestBlocker === true || verificationFailed;
+        let finalHonestBlocker = honestBlocker;
         // Compatibility facts for phase execution; live-run may still veto delivery.
         const executionStatus = verified ? 'completed' : done > 0 ? 'partial' : 'failed';
         const verificationStatus = verified ? 'passed' : String(pipeline?.verificationStatus || 'failed');
@@ -1106,6 +1110,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                 const failureText = String(
                     liveRunError || liveRunResult?.error || liveRunResult?.output?.message || 'project_run did not confirm a live URL'
                 ).slice(0, 1400);
+                const qualityContractRepair = /(?:project\s+quality\s+contract|truthful\s+test\s+script|missing\s+test\s+script|real\s+(?:local\s+)?tests?)/iu.test(failureText);
+                const qualityRepairInstruction = qualityContractRepair
+                    ? 'QUALITY-CONTRACT REPAIR IS REQUIRED: the current implementation is reachable, but the declared quality contract is not truthful. Preserve working features, add a real local test script to the existing package manifest when absent, add at least one deterministic test file that exercises existing behavior, run that test command and the existing build, then make one real start/readiness check. Never use echo, true, :, exit 0, a placeholder, or documentation as test evidence.'
+                    : '';
                 say(pick(isAr,
                     `🔧 أُعيد اكتشاف المشروع لإصلاح دليل التشغيل الحي فقط: ${failureText}`,
                     `🔧 Re-discovering the current project to repair only the live-run evidence: ${failureText}`));
@@ -1134,6 +1142,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     repairDiscoveryRequest,
                     'Do not redesign, regenerate, or replace working features. Do not create a template or a second project.',
                     'Inspect the current workspace and fix only the evidence-backed runnable contract: entrypoint, package manifest, start/build command, or the smallest dependency/configuration issue required for the existing implementation to build and start.',
+                    qualityRepairInstruction,
                     'If the observed failure names a missing runtime import, trace that import from the selected entrypoint, reconcile package.json with that exact package, and do not substitute a placeholder or unrelated dependency.',
                     'Run the existing build/tests and then make one real start/readiness check. Return executable phases only.',
                     `Original project identity: ${String(plannerResult?.output?.projectName || 'project').slice(0, 160)}.`,
@@ -1144,8 +1153,15 @@ export class ProjectPipelineTool implements ToolDefinition {
                     {
                         ...(context || {}),
                         repairMode: true,
+                        scopeRepairMode: qualityContractRepair,
+                        ...(qualityContractRepair ? {
+                            scopeRepairTargets: [
+                                'a truthful local test script in the existing package manifest',
+                                'at least one deterministic test file exercising existing implementation behavior',
+                            ],
+                        } : {}),
                         engineeringPipeline: true,
-                        requireRunnableContract: true,
+                        requireRunnableContract: !qualityContractRepair,
                         liveRepairAttempted: true,
                         plannerTimeoutMs,
                         language: isAr ? 'ar' : 'en',
@@ -1299,14 +1315,112 @@ export class ProjectPipelineTool implements ToolDefinition {
             await attemptScopeRepair();
         }
 
+        /**
+         * FINAL ACCEPTANCE: a live URL proves reachability, not usability.
+         *
+         * project_run can finish green while the Browser panel is still blank,
+         * because reachability and visible quality are separate facts. Run the
+         * same real app audit after every bounded repair/restart, against the
+         * final live URL and the exact artifact root selected by project_run.
+         * A skipped audit is an honest verification failure: Joe must not call
+         * an unmeasured application delivered.
+         */
+        if (liveUrl) {
+            try {
+                const artifactRoot = String(
+                    liveRunResult?.output?.cwd ||
+                    plannerResult?.output?.projectRoot ||
+                    discoveredProjectRoot ||
+                    ''
+                ).trim();
+                const auditDir = fs.existsSync(path.join(artifactRoot, 'index.html'))
+                    ? artifactRoot
+                    : fs.existsSync(path.join(artifactRoot, 'dist', 'index.html'))
+                        ? path.join(artifactRoot, 'dist')
+                        : artifactRoot;
+                const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
+                const panelSid = String(context?.browserSessionId || PANEL_BROWSER_SID || process.env.PANEL_BROWSER_SID || '').trim();
+                const { broadcast } = require('../../../api/ws');
+                try {
+                    broadcast({ type: 'panel_focus', sessionId: context?.sessionId, data: { panel: 'browser', reason: 'pipeline_qa' } } as any);
+                } catch { /* visible panel is best effort; audit remains mandatory */ }
+                try { require('../../browser/manager').warmBrowserSession(panelSid); } catch { /* audit reports private fallback */ }
+                try {
+                    const { waitForPanelWatcher } = require('../../browser/wsHub');
+                    const watching = await waitForPanelWatcher(panelSid, 4000);
+                    say(pick(isAr,
+                        watching ? '👁️ أبدأ فحص الجودة المرئي الآن داخل لوحة المتصفح…' : '🔒 لا توجد مشاهدة للوحة؛ سأجري الفحص الخاص وأذكر ذلك صراحةً…',
+                        watching ? '👁️ Starting visible Browser QA in the Browser panel…' : '🔒 No Browser watcher is attached; I will run private QA and say so explicitly…'));
+                    appendBoundedPipelineLog(logs, `[pipeline] browser QA watcher=${watching ? 'attached' : 'not_attached'}`);
+                } catch {
+                    appendBoundedPipelineLog(logs, '[pipeline] browser QA watcher status unavailable');
+                }
+                const progress = (phase: string) => {
+                    if (phase.startsWith('private')) {
+                        const why = phase.slice('private'.length).replace(/^:/, '').trim();
+                        say(pick(isAr,
+                            `🔒 تعذّر استعارة لوحة المتصفح؛ يعمل QA في متصفح خاص${why ? `: ${why}` : ''}.`,
+                            `🔒 The Browser panel could not be borrowed; QA is running privately${why ? `: ${why}` : ''}.`));
+                    } else if (phase === 'watching') {
+                        say(pick(isAr, '👁️ المتصفح المرئي ينفذ الفحص الآن…', '👁️ The visible Browser panel is executing QA now…'));
+                    } else if (phase.startsWith('inspecting:') || phase === 'pressing' || phase === 'inspected') {
+                        appendBoundedPipelineLog(logs, `[pipeline] browser QA ${phase}`);
+                    }
+                };
+                browserQa = await auditBuiltApp(auditDir, {
+                    watchSessionId: panelSid || undefined,
+                    serveUrl: liveUrl,
+                    artifactRootDir: artifactRoot || auditDir,
+                    timeoutMs: 45_000,
+                    onProgress: progress,
+                });
+                if (browserQa.skipped) {
+                    browserQaFailed = true;
+                    finalVerified = false;
+                    finalHonestBlocker = true;
+                    liveRunVerificationFailed = true;
+                    liveRunError = `browser QA skipped: ${browserQa.skipped}`;
+                    say(pick(isAr,
+                        `⛔ لم أسلّم النظام: فحص Browser QA لم يُجرَ (${browserQa.skipped}).`,
+                        `⛔ I did not deliver the system: Browser QA did not run (${browserQa.skipped}).`));
+                } else {
+                    const blocking = browserQa.findings.filter((finding) => finding.severity === 'high');
+                    appendBoundedPipelineLog(logs, `[pipeline] browser QA score=${browserQa.score} findings=${browserQa.findings.length} blocking=${blocking.length}`);
+                    if (blocking.length > 0) {
+                        browserQaFailed = true;
+                        finalVerified = false;
+                        finalHonestBlocker = true;
+                        liveRunVerificationFailed = true;
+                        liveRunError = `browser QA found ${blocking.length} blocking finding(s)`;
+                        say(pick(isAr,
+                            `⛔ كشف Browser QA المرئي ${blocking.length} مشكلة حرجة؛ لم أعتبر التطبيق مسلّماً.`,
+                            `⛔ Visible Browser QA found ${blocking.length} blocking issue(s); the application is not delivered.`));
+                    } else {
+                        say(pick(isAr,
+                            `✅ اكتمل Browser QA على التطبيق الحي (score: ${browserQa.score}).`,
+                            `✅ Browser QA completed on the live application (score: ${browserQa.score}).`));
+                    }
+                }
+            } catch (qaError: any) {
+                browserQaFailed = true;
+                finalVerified = false;
+                finalHonestBlocker = true;
+                liveRunVerificationFailed = true;
+                const message = String(qaError?.message || qaError).slice(0, 420);
+                liveRunError = `browser QA error: ${message}`;
+                appendBoundedPipelineLog(logs, `[pipeline] browser QA error: ${message}`);
+                say(pick(isAr, `⛔ تعذّر إكمال Browser QA: ${message}`, `⛔ Browser QA could not complete: ${message}`));
+            }
+        }
+
         const finalExecutionStatus = finalVerified ? 'completed' : done > 0 ? 'partial' : 'failed';
-        const finalVerificationStatus = finalVerified ? 'passed' : String(pipeline?.verificationStatus || 'failed');
+        const finalVerificationStatus = finalVerified ? 'passed' : browserQaFailed ? 'browser_qa_failed' : String(pipeline?.verificationStatus || 'failed');
         const finalDeliveryStatus = finalVerified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
 
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
             projectName: String(plannerResult.output.projectName || 'project'),
-            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus,
+            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa,
         });
         say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
@@ -1323,7 +1437,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                 deliveryStatus: finalDeliveryStatus,
                 ...(verificationFailed ? { verificationFailed: true } : {}),
                 ...(liveRunVerificationFailed ? { verificationFailed: true } : {}),
-                ...(honestBlocker ? { honestBlocker: true } : {}),
+                ...(browserQaFailed ? { browserQaFailed: true } : {}),
+                ...(finalHonestBlocker ? { honestBlocker: true } : {}),
                 ...(liveRunVerificationFailed ? { honestBlocker: true } : {}),
                 ...(liveRepairAttempted ? { liveRepairAttempted: true, liveRepairStatus } : {}),
                 ...(scopeRepairAttempted ? { scopeRepairAttempted: true, scopeRepairStatus } : {}),
@@ -1338,6 +1453,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 liveUrl: liveUrl || undefined,
                 report: pipeline?.engineeringReport,
                 reportMarkdown: pipeline?.engineeringReportMarkdown,
+                ...(browserQa ? { browserQa } : {}),
                 results: pipeline?.results,
                 repairTicket: pipeline?.repairTicket,
                 ...(liveRunError ? { liveRunError } : {}),
@@ -1502,8 +1618,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         liveRepairStatus?: string;
         scopeAudit?: ScopeGateOutcome['scopeAudit'];
         scopeRepairStatus?: string;
+        browserQa?: AppAudit | null;
     }): string {
-        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus } = args;
+        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
 
@@ -1521,6 +1638,25 @@ export class ProjectPipelineTool implements ToolDefinition {
         lines.push(ar
             ? `**المراحل:** ${done}/${total} نُفِّذت وتحقَّقت (تنفيذ فعلي + فحوص، لا مجرد كتابة ملفات).`
             : `**Phases:** ${done}/${total} executed and verified (real execution + checks, not just written files).`);
+
+        if (browserQa) {
+            lines.push('');
+            if (browserQa.skipped) {
+                lines.push(ar
+                    ? `### Browser QA المرئي: **لم يُجرَ** — ${browserQa.skipped}`
+                    : `### Visible Browser QA: **not run** — ${browserQa.skipped}`);
+            } else {
+                const high = browserQa.findings.filter((finding) => finding.severity === 'high').length;
+                lines.push(ar
+                    ? `### Browser QA المرئي: **${browserQa.score}/100** — ${browserQa.findings.length} ملاحظة، ${high} حرجة، ${browserQa.pressed ?? 0} تفاعلاً مقاساً.`
+                    : `### Visible Browser QA: **${browserQa.score}/100** — ${browserQa.findings.length} finding(s), ${high} blocking, ${browserQa.pressed ?? 0} interaction(s) measured.`);
+                if (browserQa.findings.length) {
+                    for (const finding of browserQa.findings.slice(0, 8)) {
+                        lines.push(`- ${finding.severity.toUpperCase()}: ${finding.detailEn || finding.detail}`);
+                    }
+                }
+            }
+        }
 
         // Phase-by-phase, from the pipeline's own results.
         const phaseResults: any[] = Array.isArray(pipeline?.results) ? pipeline.results : [];

@@ -116,7 +116,9 @@ export class ProjectPlannerTool implements ToolDefinition {
                             projectDescription,
                             'The planning gateway failed before returning a plan. Re-attempt the same evidence-backed request once; do not invent facts or a framework.',
                             undefined,
-                            repairMode
+                            repairMode,
+                            scopeRepairMode,
+                            scopeRepairTargets,
                         );
                         recoveryResponse = await callLLM(recoveryPrompt, [
                             { role: 'system', content: 'You are a senior software project manager. Return only compact valid JSON with executable phases and tasks.' }
@@ -179,7 +181,9 @@ export class ProjectPlannerTool implements ToolDefinition {
                         projectDescription,
                         String(parseError),
                         undefined,
-                        repairMode
+                        repairMode,
+                        scopeRepairMode,
+                        scopeRepairTargets,
                     );
                     retryResponse = await callLLM(retryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with executable phases and tasks.' }
@@ -270,7 +274,9 @@ export class ProjectPlannerTool implements ToolDefinition {
                         projectDescription,
                         `The parsed plan retained no non-document implementation artifact after sanitisation. Dropped-plan evidence: ${dropped}`,
                         undefined,
-                        repairMode
+                        repairMode,
+                        scopeRepairMode,
+                        scopeRepairTargets,
                     );
                     const retryResponse = await callLLM(retryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with executable phases, exact tool contracts, and non-document implementation artifacts.' }
@@ -295,6 +301,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
                         disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
                         requireRunnableContract: context?.requireRunnableContract === true,
+                        repairMode: repairMode || scopeRepairMode,
                     });
                     if (this.countImplementationArtifacts(recoveredClean.phases) === 0) {
                         throw new Error('Contract recovery still retained no non-document implementation artifact');
@@ -324,7 +331,9 @@ export class ProjectPlannerTool implements ToolDefinition {
                         projectDescription,
                         `The parsed plan was rejected by a planning contract: ${blocker.code}: ${blocker.message}. ${blocker.remedy || ''} For missing_runnable_contract, add an explicit foundation task using write_file or ai_write_file for package.json and a real entrypoint (or a stack scaffold with an inspectable runnable structure) before any live-run. Do not use scaffold_project or native npm addons in this repair. Prefer node:sqlite when available, otherwise a JSON/file fallback with the same interface; use file-level implementation tasks instead. Re-plan from the original request and evidence; do not invent a fixed template locally.`,
                         undefined,
-                        repairMode
+                        repairMode,
+                        scopeRepairMode,
+                        scopeRepairTargets,
                     );
                     const recoveryRequest = () => callLLM(recoveryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Repair the rejected plan using the evidence and exact tool contracts. Return only valid JSON; never return prose or Markdown fences.' }
@@ -375,6 +384,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
                         disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
                         requireRunnableContract: context?.requireRunnableContract === true,
+                        repairMode: repairMode || scopeRepairMode,
                     });
                     if (recoveredClean.blocker) {
                         throw new Error(`Contract recovery remained blocked: ${recoveredClean.blocker.code}: ${recoveredClean.blocker.message}`);
@@ -771,6 +781,21 @@ Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect 
 Schema: {"projectName":"scope-repair","projectVibe":"bounded missing-capability repair","totalPhases":${phaseCount},"estimatedDuration":"short estimate","phases":[{"phaseNumber":1,"name":"Implement missing capabilities","description":"Add only the missing capabilities to the existing project using inspected source evidence.","requirementsCovered":${JSON.stringify(ids)},"tasks":[{"task":"implement the missing capability slice","tool":"ai_write_file","args":{"path":"src/existing-module.ts","description":"Extend the evidenced existing source module with the missing capability behavior without replacing unrelated features."},"priority":"high","realisticMinutes":20}],"verificationTask":"Run the existing local checks and make one real start/readiness check.","deliverables":["updated existing source and tests"],"estimatedTime":"30 minutes"}],"dependencies":[]}`;
         }
         if (repairMode) {
+            const qualityRepair = /(?:project\s+quality\s+contract|truthful\s+test\s+script|missing\s+test\s+script|real\s+(?:local\s+)?tests?)/iu.test(`${failureReason}\n${projectDescription}`);
+            if (qualityRepair) {
+                return `BOUNDED QUALITY-CONTRACT REPAIR — preserve the working product and repair only the explicit quality failure; do not redesign or rebuild it.
+
+${BOUNDED_REPAIR_CONSTITUTION}
+
+Failure evidence: ${String(failureReason || '').slice(0, 1200)}
+
+Original repair request and evidence:
+${String(projectDescription || '').slice(0, 5000)}
+
+Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect the current workspace before deciding exact paths. Every task must be an executable file-level implementation task using ai_write_file or write_file with safe workspace-relative args.path and a precise args.description or args.content. If the evidence says the test script is missing or untruthful, update the existing package.json with a real local test command and add at least one deterministic test file that imports or exercises existing implementation behavior; run that test command after writing the test. Preserve existing build/start commands and make one real start/readiness check after the repair. Never use echo, true, :, exit 0, a placeholder, or documentation as test evidence. Do not create a template, second project, or unrelated feature. Use requirementsCovered: ["R1"] and keep each phase to at most 3 tasks.
+
+Schema: {"projectName":"quality-repair","projectVibe":"bounded quality-contract repair","totalPhases":1,"estimatedDuration":"short estimate","phases":[{"phaseNumber":1,"name":"Repair quality contract","description":"Add the evidenced truthful test command and deterministic test artifact without redesigning the project.","requirementsCovered":["R1"],"tasks":[{"task":"update the existing manifest with a truthful test script","tool":"ai_write_file","args":{"path":"package.json","description":"Preserve existing scripts and add a real local test command such as node --test only when supported by the inspected runtime and test file."},"priority":"high","realisticMinutes":10},{"task":"add a deterministic test for existing behavior","tool":"ai_write_file","args":{"path":"tests/quality-contract.test.js","description":"Create a small deterministic test that imports or exercises an existing project module; do not use a placeholder assertion."},"priority":"high","realisticMinutes":15}],"verificationTask":"Run the truthful test command, build, and one real start/readiness check.","deliverables":["updated manifest and real test artifact"],"estimatedTime":"25 minutes"}],"dependencies":[]}`;
+            }
             return `BOUNDED LIVE-REPAIR — fix only the evidence-backed runnable-contract failure; do not redesign or rebuild the product.
 
 ${BOUNDED_REPAIR_CONSTITUTION}
@@ -964,9 +989,16 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
     ): string {
         if (scopeRepairMode) {
             const targets = scopeRepairTargets.length ? scopeRepairTargets : ['the missing named capabilities'];
-            return `BOUNDED SCOPE-REPAIR CONTRACT: the project already starts, but the live scope audit found missing capabilities. Modify only the existing project in place. Implement every missing capability in this ledger: ${targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ')}. Use 1-3 phases, concrete source/test artifacts, evidence-backed paths, and local verification including one real restart/readiness check. Do not redesign, regenerate, scaffold a second project, or claim that an unchanged runtime proves the missing behavior.`;
+            const qualityRepair = targets.some((target) => /(?:test\s+script|test\s+file|quality\s+contract|deterministic\s+test)/iu.test(String(target)));
+            return qualityRepair
+                ? `BOUNDED QUALITY SCOPE-REPAIR CONTRACT: the project already runs, but the live quality contract found missing truthful local tests. Modify only the existing project in place. Implement every ledger item: ${targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ')}. Inspect the existing package manifest and implementation first; preserve build/start scripts, add a real test script and a deterministic test file that imports or exercises existing behavior, run the test command and build, then perform one real restart/readiness check. Never use echo, true, :, exit 0, a placeholder assertion, or documentation as evidence. Do not redesign, regenerate, scaffold a second project, or claim that an unchanged runtime proves the missing behavior.`
+                : `BOUNDED SCOPE-REPAIR CONTRACT: the project already starts, but the live scope audit found missing capabilities. Modify only the existing project in place. Implement every missing capability in this ledger: ${targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ')}. Use 1-3 phases, concrete source/test artifacts, evidence-backed paths, and local verification including one real restart/readiness check. Do not redesign, regenerate, scaffold a second project, or claim that an unchanged runtime proves the missing behavior.`;
         }
         if (repairMode) {
+            const qualityRepair = /(?:project\s+quality\s+contract|truthful\s+test\s+script|missing\s+test\s+script|real\s+(?:local\s+)?tests?)/iu.test(projectDescription);
+            if (qualityRepair) {
+                return 'BOUNDED QUALITY-CONTRACT REPAIR: this live repair is caused by explicit quality-contract evidence. Preserve the working product and add only the missing truthful local check: update the existing package manifest with a real test script when absent, add at least one deterministic test file that exercises existing implementation behavior, and keep existing build/start commands intact. Use 1-3 phases maximum, map the repair to R1, and verify the test command, build, and one real start/readiness check. Never use echo, true, :, exit 0, a placeholder, or a documentation-only task to fake evidence; do not redesign, regenerate, or cover the original multi-domain request.';
+            }
             return 'BOUNDED REPAIR CONTRACT: this is a live-repair attempt after a concrete launchability or runnable-contract failure. Scope is limited to the evidence-backed manifest, entrypoint, start/build command, or smallest required dependency/configuration fix. Use 1-3 phases maximum, map the bounded repair to R1, create concrete file-level implementation artifacts, and verify the existing build/tests plus one real start/readiness check. Do not redesign, regenerate, or cover the original multi-domain request.';
         }
         const scope = this.requirementScope(projectDescription);
@@ -1031,7 +1063,7 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
             const boundedCovered = phases.some((phase: any) => {
                 const covered = Array.isArray(phase?.requirementsCovered) ? phase.requirementsCovered : [];
                 return covered.some((entry: any) => /^R1(?:\s*[:.)-]|\s|$)/i.test(String(entry || '').trim()))
-                    || /(?:manifest|package\.json|entrypoint|start|build|launch|runnable|readiness|dependency|configuration)/i.test(JSON.stringify(phase));
+                    || /(?:manifest|package\.json|entrypoint|start|build|launch|runnable|readiness|dependency|configuration|quality\s+contract|truthful\s+test|test\s+script|test\s+file|node:test)/i.test(JSON.stringify(phase));
             });
             const problems: string[] = [];
             if (phases.length < 1 || phases.length > 3) problems.push(`it has ${phases.length} phase(s), but bounded repair allows 1-3`);

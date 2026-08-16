@@ -124,3 +124,47 @@ describe('the new checks exist with honest severities', () => {
         expect(block).toContain("hasAttribute('tabindex')");
     });
 });
+
+
+describe('visible browser QA is part of page delivery', () => {
+    const builder = read('modules/tools/definitions/WebPageBuilderTool.ts');
+    const pipeline = read('modules/tools/definitions/ProjectPipelineTool.ts');
+    const visual = read('core/quality/visual-audit.ts');
+    const behaviour = read('core/quality/behaviour-audit.ts');
+
+    it('focuses and warms the Browser panel before page audits', () => {
+        expect(builder).toContain("reason: 'page_qa'");
+        expect(builder).toContain('warmBrowserSession(PANEL_BROWSER_SID)');
+        expect(builder).toContain('waitForPanelWatcher(PANEL_BROWSER_SID, 4000)');
+    });
+
+    it('the evidence-first pipeline performs visible QA after the final live run', () => {
+        expect(pipeline).toContain("if (liveUrl) {");
+        expect(pipeline).not.toContain("if (finalVerified && liveUrl) {");
+        expect(pipeline).toContain("reason: 'pipeline_qa'");
+        expect(pipeline).toContain('warmBrowserSession(panelSid)');
+        expect(pipeline).toContain('waitForPanelWatcher(panelSid, 4000)');
+        expect(pipeline).toContain('watchSessionId: panelSid || undefined');
+        expect(pipeline).toContain('serveUrl: liveUrl');
+        expect(pipeline).toContain('browserQaFailed = true');
+    });
+
+    it('passes the same watched session through repair re-audits', () => {
+        expect((builder.match(/watchSessionId: panelBrowserSid/g) || []).length).toBeGreaterThanOrEqual(2);
+        expect(builder).toContain('onProgress: qaProgress');
+        expect(builder).toContain('auditBehaviour(url, {');
+    });
+
+    it('visual audit borrows the panel page and leaves private fallback explicit', () => {
+        expect(visual).toContain('getBrowserSession(opts.watchSessionId)');
+        expect(visual).toContain('resumeStreamingIfWatched(opts.watchSessionId)');
+        expect(visual).toContain("opts.onProgress?.('watching')");
+        expect(visual).toContain('private:');
+    });
+
+    it('behaviour audit presses controls on the borrowed panel page', () => {
+        expect(behaviour).toContain('getBrowserSession(opts.watchSessionId)');
+        expect(behaviour).toContain("opts?.onProgress?.('pressing')");
+        expect(behaviour).toContain('setSessionViewport(opts?.watchSessionId || \'\', 1280, 900)');
+    });
+});

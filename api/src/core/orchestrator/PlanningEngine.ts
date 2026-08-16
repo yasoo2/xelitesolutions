@@ -550,8 +550,8 @@ Rules:
         // not an instruction to undo the currently active project. Keep the
         // direct undo fast-path for short, explicit requests, but never let a
         // build brief with an active (possibly stale) project hijack the build.
-        const longConstructionBrief = PlanningEngine.looksLikeBuild(userGoal)
-            && userGoal.length >= 1000;
+        const buildRequest = PlanningEngine.looksLikeBuild(userGoal);
+        const longConstructionBrief = buildRequest && userGoal.length >= 1000;
         const localSpecificationExecution = PlanningEngine.isLocalSpecificationExecutionRequest(userGoal);
 
         // Product names never decide an engineering route. A request that calls
@@ -1316,7 +1316,12 @@ Rules:
             const uiWhole = /(الواجهة|واجهة\s*(المشروع|النظام|التطبيق|الموقع)|\bui\b|\bux\b|الوصولية|إمكانية\s*الوصول|accessibility|a11y|جودة\s*الواجهة|مشاكل\s*الواجهة|كل\s*(المشاكل|الملاحظات))/i.test(probe);
             const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
             const activeProject = ((global as any).joeProjects || {})[sessionKey]?.dir;
-            if (repairVerb && uiWhole && activeProject && !longConstructionBrief) {
+            // A build request may mention QA, accessibility, or repairing defects
+            // as acceptance criteria. It must still enter the evidence-first
+            // pipeline so the project is created/inspected before any UI repair;
+            // otherwise a stale active-project path can trigger `no_project` and
+            // abort a fresh build before project_pipeline gets a chance to run.
+            if (repairVerb && uiWhole && activeProject && !buildRequest && !longConstructionBrief) {
                 return {
                     id: `ui_fix_${Date.now()}`,
                     goal: intent.goal,
