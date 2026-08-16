@@ -291,6 +291,19 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
     const dir = String(projectDir || '').replace(/[^a-zA-Z0-9-_]/g, '-').slice(0, 40) || 'project';
     const normaliseEvidencePath = (value: unknown) => String(value || '').trim().replace(/\\/g, '/').replace(/^\.\//, '');
     /**
+     * Keep the planner's runnable contract aligned with ProjectRunTool. A nested
+     * feature module such as `src/auth/index.ts` is implementation evidence, not
+     * an application entrypoint. A project may be prefixed by one workspace
+     * directory (for example `NEXUS/src/index.ts`), while manifests may live in
+     * a discovered child project and are therefore accepted at any depth.
+     */
+    const isRunnableContractPath = (value: unknown): boolean => {
+        const candidate = normaliseEvidencePath(value).replace(/^\/+|\/+$/g, '');
+        if (!candidate) return false;
+        if (/(?:^|\/)package\.json$/i.test(candidate)) return true;
+        return /^(?:[^/]+\/)?(?:index\.html|server\.js|app\.py|main\.py|index\.js|index\.ts|main\.ts|server\.ts|app\.ts|src\/(?:index|main|server|app)\.ts)$/i.test(candidate);
+    };
+    /**
      * A model plan is portable workspace code. Absolute Unix, Windows-drive and
      * UNC paths all bind it to a host and can bypass the selected root; `..`
      * does the same. Reject them before any file-oriented tool sees them.
@@ -772,9 +785,9 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         const args = { ...(task?.args || {}), ...(task?.input || {}) };
         const paths = [args.path, args.filePath, args.filename, ...(Array.isArray(args.files) ? args.files : [])]
             .map((value: any) => normaliseEvidencePath(value)).filter(Boolean);
-        if (String(task?.tool || '') === 'scaffold_project') return !!args.structure && typeof args.structure === 'object' && Object.keys(args.structure).some((file: string) => /(?:^|\/)package\.json$|(?:^|\/)(?:index|server|app|main)\.(?:[cm]?[jt]s|tsx?|jsx?|py)$/i.test(normaliseEvidencePath(file)));
+        if (String(task?.tool || '') === 'scaffold_project') return !!args.structure && typeof args.structure === 'object' && Object.keys(args.structure).some((file: string) => isRunnableContractPath(file));
         if (['scaffold_full_stack', 'react_project', 'api_project', 'web_page_builder', 'mobile_builder'].includes(String(task?.tool || ''))) return true;
-        return paths.some((file: string) => /(?:^|\/)package\.json$|(?:^|\/)(?:index|server|app|main)\.(?:[cm]?[jt]s|tsx?|jsx?|py)$/i.test(file));
+        return paths.some((file: string) => isRunnableContractPath(file));
     })());
     if (options.mode === 'greenfield' && (hasProjectRun || options.requireRunnableContract === true) && !hasRunnableCreationTask) {
         const blocker: PlanSanitiseBlocker = {

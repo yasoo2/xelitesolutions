@@ -133,6 +133,35 @@ describe('greenfield runnable contract is explicit before live-run', () => {
         expect(result.notes.join('\\n')).toMatch(/project_run/);
     });
 
+    it('does not mistake a nested feature index for the application entrypoint', () => {
+        const result = sanitisePlanPhases([
+            {
+                phaseNumber: 1,
+                name: 'Feature implementation',
+                tasks: [
+                    { task: 'Implement authentication', tool: 'ai_write_file', args: { path: 'src/auth/index.ts', description: 'Implement auth module' } },
+                    { task: 'Add auth tests', tool: 'ai_write_file', args: { path: 'tests/auth.test.ts', description: 'Add auth tests' } },
+                ],
+                verificationTask: { task: 'Start the project', tool: 'project_run', args: {} },
+            },
+        ], 'nexus', { mode: 'greenfield', requireRunnableContract: true });
+        expect(result.blocker?.code).toBe('missing_runnable_contract');
+    });
+
+    it('accepts a conventional root entrypoint before project_run', () => {
+        const result = sanitisePlanPhases([
+            {
+                phaseNumber: 1,
+                name: 'Foundation',
+                tasks: [
+                    { task: 'Create the HTTP entrypoint', tool: 'ai_write_file', args: { path: 'src/index.ts', description: 'Create the application entrypoint' } },
+                ],
+                verificationTask: { task: 'Start the project', tool: 'project_run', args: {} },
+            },
+        ], 'nexus', { mode: 'greenfield', requireRunnableContract: true });
+        expect(result.blocker).toBeUndefined();
+    });
+
     it('accepts a greenfield plan that creates package.json before project_run', () => {
         const result = sanitisePlanPhases([
             {
