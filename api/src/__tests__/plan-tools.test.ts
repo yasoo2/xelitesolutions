@@ -213,6 +213,11 @@ describe('model-written tool arguments are checked before execution', () => {
         expect(plannedArgsIssue('auth_builder', { type: 'full', outputDir: 'src/auth' })).toBeNull();
     });
 
+    it('allows browser_run without runtime sessionId but still requires browser intent', () => {
+        expect(plannedArgsIssue('browser_run', { instructionText: 'Open the local app and inspect the page' })).toBeNull();
+        expect(plannedArgsIssue('browser_run', { sessionId: 'browser:test' })).toMatch(/instructionText أو actions/);
+    });
+
     it('drops an auth_builder task with missing required fields before execution', () => {
         const phase = {
             phaseNumber: 2,

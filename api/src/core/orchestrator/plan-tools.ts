@@ -969,6 +969,15 @@ export function whyNoBuiltUrl(sessionId: string): string {
 /** The browser tools that audit or read a page and cannot invent their own address. */
 const NEEDS_BUILT_URL = new Set(['browser_ui_audit', 'browser_screenshot', 'browser_extract', 'browser_open']);
 
+// These fields are injected by the trusted execution/session context after the
+// plan is accepted. They are required by runtime schemas, but must not block a
+// valid plan at sanitisation time; PlanningEngine.fillRequiredArgs uses the same
+// contract. Business arguments (for example browser_run instructionText/actions)
+// remain planner-required and are validated above.
+const RUNTIME_SUPPLIED_PLAN_FIELDS = new Set([
+    'sessionId', 'userId', 'workspaceId', 'context', '__userId', '__workspaceId',
+]);
+
 /**
  * Validate model-written arguments that use a closed action vocabulary.
  *
@@ -1095,6 +1104,7 @@ export function plannedArgsIssue(toolName: string, args: any): string | null {
             ? schema.requiredAny.filter((group: any) => Array.isArray(group) && group.length).map((group: any[]) => group.map(String))
             : [];
         const hasValue = (key: string) => {
+            if (RUNTIME_SUPPLIED_PLAN_FIELDS.has(key)) return true;
             const value = args?.[key];
             return value !== undefined && value !== null && !(typeof value === 'string' && !value.trim()) && !(Array.isArray(value) && value.length === 0);
         };
@@ -1308,7 +1318,7 @@ export function plannerToolPrompt(): string {
         '',
         lines,
         '',
-        'Contract rules: every tool must receive the exact args required by its implementation. For scaffold_project, args.structure must be a non-empty object whose keys are safe workspace-relative file or directory paths and whose values are file contents or null for directories; args.baseDir names the project directory (projectName is an accepted alias); after scaffolding, project_run must use the registered project identity and a live URL must be proven. Do not use scaffold_project when the request has no explicit or evidence-backed stack — use exact file-level tools or stop honestly.',
+        'Contract rules: every tool must receive the exact business args required by its implementation. Runtime context fields such as sessionId, userId, workspaceId, context, __userId, and __workspaceId are injected by the trusted executor and must not be invented in the plan; browser_run still needs instructionText or non-empty actions, and every other tool-specific business field remains mandatory. For scaffold_project, args.structure must be a non-empty object whose keys are safe workspace-relative file or directory paths and whose values are file contents or null for directories; args.baseDir names the project directory (projectName is an accepted alias); after scaffolding, project_run must use the registered project identity and a live URL must be proven. Do not use scaffold_project when the request has no explicit or evidence-backed stack — use exact file-level tools or stop honestly.',
         'scaffold_project FEW-SHOT PATTERN (learn the contract; do not copy this fixed app):',
         '{',
         '  "tool": "scaffold_project",',
