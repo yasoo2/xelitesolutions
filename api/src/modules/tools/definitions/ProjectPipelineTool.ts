@@ -589,6 +589,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         // "start it manually" success after the pipeline claimed verification.
         let liveUrl = '';
         let liveRunError = '';
+        let liveRunResult: any = null;
+        let liveRepairAttempted = false;
+        let liveRepairStatus = 'not_attempted';
         if (verified) {
             try {
                 say(pick(isAr, '▶️ أُشغّل النظام لتراه حيّاً…', '▶️ Starting the system so you can see it live…'));
@@ -609,6 +612,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     runInput.projectQuery = `"${plannedProjectName.replace(/"/gu, '\\"')}"`;
                 }
                 const runRes = await executeTool('project_run', runInput, { ...context, language: isAr ? 'ar' : 'en' });
+                liveRunResult = runRes;
                 const liveOutcome = applyLiveRunOutcome(finalVerified, runRes);
                 finalVerified = liveOutcome.verified;
                 liveUrl = liveOutcome.liveUrl;
@@ -626,6 +630,94 @@ export class ProjectPipelineTool implements ToolDefinition {
                 say(pick(isAr,
                     `⛔ لم أعتبر النظام مسلّماً: تعذّر تأكيد التشغيل الحي. ${liveRunError}`,
                     `⛔ I did not mark the system delivered: live execution could not be confirmed. ${liveRunError}`));
+            }
+        }
+
+        // A live-run failure is evidence about the current artifact, not a reason
+        // to stop before Joe has had one bounded chance to repair it. Re-discover
+        // the workspace so the repair planner sees files created by the phases,
+        // then plan only the missing runnable contract. This is intentionally
+        // inside project_pipeline (not a generic recovery loop): one attempt,
+        // same project identity, same workspace, and no product-specific template.
+        if (!finalVerified && liveRunVerificationFailed && context?.liveRepairAttempted !== true) {
+            liveRepairAttempted = true;
+            try {
+                const failureText = String(
+                    liveRunError || liveRunResult?.error || liveRunResult?.output?.message || 'project_run did not confirm a live URL'
+                ).slice(0, 1400);
+                say(pick(isAr,
+                    `🔧 أُعيد اكتشاف المشروع لإصلاح دليل التشغيل الحي فقط: ${failureText}`,
+                    `🔧 Re-discovering the current project to repair only the live-run evidence: ${failureText}`));
+                const repairDiscovery = await executeTool(
+                    'engineering_discovery',
+                    projectPath ? { request, path: projectPath } : { request },
+                    { ...(context || {}), liveRepairAttempted: true, language: isAr ? 'ar' : 'en' },
+                );
+                const repairEvidence = repairDiscovery?.output?.evidence || plannerEvidence;
+                const repairRequest = [
+                    'Repair the current implementation in place after a failed live-run acceptance check.',
+                    'Do not redesign, regenerate, or replace working features. Do not create a template or a second project.',
+                    'Inspect the current workspace and fix only the evidence-backed runnable contract: entrypoint, package manifest, start/build command, or the smallest dependency/configuration issue required for the existing implementation to build and start.',
+                    'Run the existing build/tests and then make one real start/readiness check. Return executable phases only.',
+                    `Original project identity: ${String(plannerResult?.output?.projectName || 'project').slice(0, 160)}.`,
+                    `Observed live-run failure: ${failureText}`,
+                ].join('\\n');
+                const repairPlanner = await executeTool(
+                    'project_planner',
+                    { projectDescription: repairRequest, evidence: repairEvidence },
+                    { ...(context || {}), engineeringPipeline: true, liveRepairAttempted: true, language: isAr ? 'ar' : 'en' },
+                );
+                const repairPhases = repairPlanner?.output?.phases;
+                if (repairPlanner?.ok === true && Array.isArray(repairPhases) && repairPhases.length > 0) {
+                    repairPlanner.output.projectName = plannerResult?.output?.projectName || repairPlanner.output.projectName;
+                    repairPlanner.output.requirementsContext = requirementsContext;
+                    const repairPipeline = await AgentLoopService.runPlannedPhasesIfPresent({
+                        sessionId: context?.sessionId || `pipeline-${Date.now()}`,
+                        runId: context?.runId || `run-${Date.now()}`,
+                        userId: context?.userId || 'anonymous',
+                        workspaceId: context?.workspaceId || context?.sessionId || 'default',
+                        browserSessionId: context?.browserSessionId,
+                        plannerResult: repairPlanner,
+                        modelConfig: context?.modelConfig,
+                        providerTimeoutMs: context?.providerTimeoutMs,
+                        plannerTimeoutMs: context?.plannerTimeoutMs,
+                        plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens,
+                        plannerReasoningEffort: context?.plannerReasoningEffort,
+                        language: isAr ? 'ar' : 'en',
+                        onProgress: (m: string) => say(m),
+                    });
+                    if (repairPipeline?.ok === true) {
+                        const repairProjectName = String(repairPlanner?.output?.projectName || plannerResult?.output?.projectName || '').trim();
+                        const retryInput: Record<string, string> = {};
+                        if (repairProjectName) retryInput.projectQuery = `"${repairProjectName.replace(/"/gu, '\\\"')}"`;
+                        const retryRunResult = await executeTool(
+                            'project_run',
+                            retryInput,
+                            { ...(context || {}), language: isAr ? 'ar' : 'en', liveRepairAttempted: true },
+                        );
+                        liveRunResult = retryRunResult;
+                        const retryOutcome = applyLiveRunOutcome(true, retryRunResult);
+                        finalVerified = retryOutcome.verified;
+                        liveUrl = retryOutcome.liveUrl;
+                        liveRunVerificationFailed = retryOutcome.verificationFailed;
+                        liveRunError = retryOutcome.error || '';
+                        liveRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_but_live_run_failed';
+                        say(pick(isAr,
+                            finalVerified ? '✅ نجحت محاولة الإصلاح المحدودة وأصبح التشغيل الحي مؤكداً.' : `⛔ اكتملت محاولة الإصلاح لكن التشغيل الحي ما زال غير مؤكّد: ${liveRunError}`,
+                            finalVerified ? '✅ The bounded repair succeeded and live execution is confirmed.' : `⛔ The repair completed but live execution is still unconfirmed: ${liveRunError}`));
+                    } else {
+                        liveRepairStatus = 'repair_pipeline_failed';
+                        say(pick(isAr, '⛔ فشلت خطة إصلاح دليل التشغيل؛ أحتفظ بالتوقف الصادق.', '⛔ The runnable-artifact repair plan failed; keeping the honest stop.'));
+                    }
+                } else {
+                    liveRepairStatus = 'repair_plan_unavailable';
+                    say(pick(isAr, '⛔ لم تُنتج الأدلة خطة إصلاح قابلة للتنفيذ؛ أحتفظ بالتوقف الصادق.', '⛔ Evidence did not produce an executable repair plan; keeping the honest stop.'));
+                }
+            } catch (repairError: any) {
+                liveRepairStatus = 'repair_error';
+                const repairMessage = String(repairError?.message || repairError).slice(0, 420);
+                liveRunError = `${liveRunError}; repair: ${repairMessage}`.slice(0, 900);
+                say(pick(isAr, `⛔ تعذرت محاولة إصلاح التشغيل المحدودة: ${repairMessage}`, `⛔ Bounded live-run repair failed: ${repairMessage}`));
             }
         }
 
@@ -655,6 +747,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(liveRunVerificationFailed ? { verificationFailed: true } : {}),
                 ...(honestBlocker ? { honestBlocker: true } : {}),
                 ...(liveRunVerificationFailed ? { honestBlocker: true } : {}),
+                ...(liveRepairAttempted ? { liveRepairAttempted: true, liveRepairStatus } : {}),
                 // `project_pipeline` already performed discovery, planning,
                 // verification, and its bounded self-healing attempt. A false
                 // result is therefore final evidence, not an invitation for the
