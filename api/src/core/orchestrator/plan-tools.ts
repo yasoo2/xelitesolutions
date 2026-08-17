@@ -998,8 +998,12 @@ export function builtPreviewUrl(sessionId: string): string {
         const fs = require('fs');
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const path = require('path');
-        // dist/ and only dist/: that is exactly what the preview route serves,
-        // and an address it cannot serve is no better than no address at all.
+        // A running project_run server is the strongest live evidence. The
+        // quality phase must audit the real app (including its API), not fail
+        // merely because this run did not produce a static dist/ bundle.
+        const liveUrl = String(entry.live?.url || '').trim();
+        if (/^https?:\/\//i.test(liveUrl)) return liveUrl;
+        // dist/ is the static preview fallback when no live server was kept.
         if (!fs.existsSync(path.join(entry.dir, 'dist', 'index.html'))) return '';
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { publicUrlFor } = require('../../shared/utils/publicUrl');
@@ -1036,8 +1040,10 @@ export function whyNoBuiltUrl(sessionId: string): string {
         const fs = require('fs');
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const path = require('path');
+        const liveUrl = String(entry.live?.url || '').trim();
+        if (/^https?:\/\//i.test(liveUrl)) return 'no_url: تعذّر استخدام عنوان الخادم الحي رغم أن المشروع سجّله.';
         const dist = path.join(String(entry.dir), 'dist', 'index.html');
-        if (!fs.existsSync(dist)) return `no_url: المشروع مسجّل في ${entry.dir} لكن لا يوجد dist/index.html — البناء لم يكتمل.`;
+        if (!fs.existsSync(dist)) return `no_url: المشروع مسجّل في ${entry.dir} لكن لا يوجد dist/index.html ولا خادم حي مسجّل — البناء أو التشغيل لم يكتمل.`;
     } catch (e: any) {
         return `no_url: تعذّر فحص مجلّد المشروع — ${e?.message || e}`;
     }

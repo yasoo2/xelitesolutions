@@ -31,7 +31,7 @@ import path from 'path';
 
 const G = () => ((global as any).joeProjects || ((global as any).joeProjects = {}));
 
-function builtProject(sessionId: string, opts: { dist?: boolean; auditAgeMs?: number } = {}) {
+function builtProject(sessionId: string, opts: { dist?: boolean; auditAgeMs?: number; liveUrl?: string } = {}) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-qa-'));
     if (opts.dist !== false) {
         fs.mkdirSync(path.join(dir, 'dist'), { recursive: true });
@@ -39,6 +39,7 @@ function builtProject(sessionId: string, opts: { dist?: boolean; auditAgeMs?: nu
     }
     G()[sessionId] = {
         dir, type: 'react',
+        ...(opts.liveUrl ? { live: { url: opts.liveUrl, port: Number(new URL(opts.liveUrl).port || 80), pid: 1234, at: Date.now() } } : {}),
         ...(opts.auditAgeMs === undefined ? {} : {
             lastAudit: { score: 92, at: Date.now() - opts.auditAgeMs, findings: [{ severity: 'low', message: 'x' }] },
         }),
@@ -80,7 +81,15 @@ describe('an audit with no address finds the app this session built', () => {
         expect(builtPreviewUrl('')).toBe('');
     });
 
-    it('and a project whose build never finished has none either', () => {
+    it('uses the live project_run URL when no static build exists', () => {
+        const sid = `qa-${Date.now()}-live`;
+        const liveUrl = 'http://localhost:4319/';
+        builtProject(sid, { dist: false, liveUrl });
+        expect(builtPreviewUrl(sid)).toBe(liveUrl);
+        expect(adaptPlannedArgs('browser_ui_audit', { sessionId: sid }).url).toBe(liveUrl);
+    });
+
+    it('and a project whose build never finished and never ran has none either', () => {
         const sid = `qa-${Date.now()}-e`;
         builtProject(sid, { dist: false });
         expect(builtPreviewUrl(sid)).toBe('');
@@ -96,7 +105,7 @@ describe('and when it cannot, it says which of the three it was', () => {
         expect(whyNoBuiltUrl(`never-${Date.now()}`)).toMatch(/لا مشروع مبنيّ مسجّل/);
     });
 
-    it('a project, but no finished build — and it names the directory', () => {
+    it('a project, but no finished build or live server — and it names the directory', () => {
         const sid = `qa-${Date.now()}-f`;
         const dir = builtProject(sid, { dist: false });
         const why = whyNoBuiltUrl(sid);
