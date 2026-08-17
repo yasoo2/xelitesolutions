@@ -162,6 +162,60 @@ describe('PhaseExecutorTool observable trusted context', () => {
         }
     });
 
+    it('installs missing npm script binaries before an auto_tester build', async () => {
+        const workspaceId = `workspace-auto-tester-preflight-${process.pid}`;
+        const sessionId = `chat-auto-tester-preflight-${process.pid}`;
+        const workspaceRoot = workspaceService.getActiveRoot(workspaceId);
+        const projectRoot = path.join(workspaceRoot, `auto-tester-vite-${process.pid}`);
+        fs.mkdirSync(projectRoot, { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, 'package.json'), JSON.stringify({
+            name: 'auto-tester-vite',
+            scripts: { build: 'vite build' },
+            devDependencies: { vite: '^5.0.0' },
+        }));
+
+        try {
+            const calls: string[] = [];
+            mockedExecuteTool.mockImplementation(async (toolName: string) => {
+                calls.push(toolName);
+                if (toolName === 'npm_manager') {
+                    const binDir = path.join(projectRoot, 'node_modules', '.bin');
+                    fs.mkdirSync(binDir, { recursive: true });
+                    fs.writeFileSync(path.join(binDir, 'vite'), '#!/usr/bin/env node\\n');
+                    return { ok: true, output: { message: 'dependencies installed' } } as any;
+                }
+                return { ok: true, output: { passed: true, summary: 'build passed' } } as any;
+            });
+
+            const result: any = await new PhaseExecutorTool().execute({
+                phase: {
+                    phaseNumber: 5,
+                    name: 'Build readiness',
+                    tasks: [{
+                        task: 'Run the declared build readiness check',
+                        tool: 'auto_tester',
+                        args: { testType: 'build', projectPath: projectRoot },
+                    }],
+                },
+                projectContext: {
+                    projectName: `auto-tester-vite-${process.pid}`,
+                    createsNewProject: true,
+                    projectRoot,
+                    projectRootRuntimeBound: true,
+                    sessionId,
+                    workspaceId,
+                    userId: 'user-auto-tester-preflight',
+                },
+            }, { sessionId, workspaceId, userId: 'user-auto-tester-preflight' });
+
+            expect(result.ok).toBe(true);
+            expect(calls).toEqual(['npm_manager', 'auto_tester']);
+            expect(result.logs.join('\\n')).toContain('npm preflight installed dependencies for npm run build');
+        } finally {
+            fs.rmSync(projectRoot, { recursive: true, force: true });
+        }
+    });
+
     it('preserves engineering LLM routing context across delegated tool execution', async () => {
         let observedContext: any;
         mockedExecuteTool.mockImplementation(async (_tool: any, _input: any, context: any) => {

@@ -319,6 +319,20 @@ function npmScriptNameFromCommand(command: unknown): string {
     return shorthand?.[1] || '';
 }
 
+function npmScriptCandidatesForTool(toolName: string, toolArgs: Record<string, any>): string[] {
+    if (toolName === 'shell_execute' || toolName === 'terminal_manager') {
+        const name = npmScriptNameFromCommand(toolArgs?.command);
+        return name ? [name] : [];
+    }
+    if (toolName !== 'auto_tester') return [];
+    switch (String(toolArgs?.testType || '').trim().toLowerCase()) {
+        case 'build': return ['build'];
+        case 'unit': return ['test', 'test:unit', 'unit'];
+        case 'integration': return ['test:integration', 'test:e2e', 'integration', 'e2e', 'test:int'];
+        default: return [];
+    }
+}
+
 function firstScriptCommand(segment: string): string {
     let value = String(segment || '').trim();
     value = value.replace(/^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)\s+)+/u, '').trim();
@@ -376,9 +390,9 @@ async function ensureNpmScriptDependencies(
     executionContext: Record<string, any>,
     appendLog: (line: unknown) => void,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-    if (!['shell_execute', 'terminal_manager'].includes(toolName)) return { ok: true };
-    const scriptName = npmScriptNameFromCommand(toolArgs?.command);
-    if (!scriptName) return { ok: true };
+    if (!['shell_execute', 'terminal_manager', 'auto_tester'].includes(toolName)) return { ok: true };
+    const scriptCandidates = npmScriptCandidatesForTool(toolName, toolArgs);
+    if (!scriptCandidates.length) return { ok: true };
     const projectRoot = resolvedProjectCwd(toolArgs?.cwd || toolArgs?.projectPath, projectContext || {}, executionContext.workspaceId);
     if (!projectRoot) return { ok: true };
     const manifestPath = path.join(projectRoot, 'package.json');
@@ -386,8 +400,9 @@ async function ensureNpmScriptDependencies(
 
     let manifest: any;
     try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { return { ok: true }; }
-    const script = manifest?.scripts?.[scriptName];
-    if (typeof script !== 'string' || !script.trim()) return { ok: true };
+    const scriptName = scriptCandidates.find(candidate => typeof manifest?.scripts?.[candidate] === 'string' && manifest.scripts[candidate].trim()) || '';
+    if (!scriptName) return { ok: true };
+    const script = manifest.scripts[scriptName];
     const missing = localScriptBinaries(script).filter(binary => !localBinaryExists(projectRoot, binary));
     if (!missing.length) return { ok: true };
 
