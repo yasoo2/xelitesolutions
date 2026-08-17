@@ -2003,139 +2003,193 @@ import { createStore, uid } from '../app/store.js';
 const CODES = ${codes};
 const describe = (c) => CODES[c] || ${T('—', '—')};
 const ICONS = { 0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️', 45: '🌫️', 48: '🌫️', 51: '🌦️', 53: '🌦️', 55: '🌧️', 61: '🌦️', 63: '🌧️', 65: '🌧️', 71: '🌨️', 73: '🌨️', 75: '❄️', 80: '🌦️', 81: '🌧️', 82: '⛈️', 95: '⛈️', 96: '⛈️', 99: '⛈️' };
+const FORECAST_API = 'https://api.open-meteo.com/v1/forecast';
+const GEOCODING_API = 'https://geocoding-api.open-meteo.com/v1/search';
+
+const readSetting = (key, fallback) => {
+  try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
+};
+
+const formatHour = (iso, format) => {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return iso;
+  return date.toLocaleTimeString('${lang}', { hour: '2-digit', minute: '2-digit', hour12: format === '12h' });
+};
+
+const formatDay = (iso) => {
+  const date = new Date(iso + 'T12:00:00');
+  return date.toLocaleDateString('${lang}', { weekday: 'short', month: 'short', day: 'numeric' });
+};
 
 export default function WeatherApp({ content }) {
   const store = useMemo(() => createStore(content.storeKey + ':cities'), [content.storeKey]);
   const [cities, setCities] = useState(() => store.read());
+  const [screen, setScreen] = useState('home');
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState([]);
   const [place, setPlace] = useState(null);
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
-  const [unit, setUnit] = useState(() => { try { return localStorage.getItem(content.storeKey + ':unit') || 'C'; } catch { return 'C'; } });
+  const [unit, setUnit] = useState(() => readSetting(content.storeKey + ':unit', 'C'));
+  const [timeFormat, setTimeFormat] = useState(() => readSetting(content.storeKey + ':time', '24h'));
 
   useEffect(() => { store.write(cities); }, [cities, store]);
   useEffect(() => { try { localStorage.setItem(content.storeKey + ':unit', unit); } catch { /* private mode */ } }, [unit, content.storeKey]);
+  useEffect(() => { try { localStorage.setItem(content.storeKey + ':time', timeFormat); } catch { /* private mode */ } }, [timeFormat, content.storeKey]);
 
-  const show = (c) => (unit === 'F' ? Math.round((c * 9) / 5 + 32) : Math.round(c));
+  const show = (value) => {
+    const c = Number(value);
+    if (!Number.isFinite(c)) return '—';
+    return unit === 'F' ? Math.round((c * 9) / 5 + 32) : Math.round(c);
+  };
+  const isSaved = place && cities.some(c => c.name === place.name);
 
   const load = async (p) => {
-    setPlace(p); setBusy(true); setNote(''); setData(null);
+    if (!p || !Number.isFinite(Number(p.lat)) || !Number.isFinite(Number(p.lng))) {
+      setNote(${T('إحداثيات المدينة غير صالحة.', 'This city has invalid coordinates.')});
+      return;
+    }
+    setPlace(p); setBusy(true); setNote(''); setData(null); setScreen('details');
     try {
-      const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + p.lat + '&longitude=' + p.lng
-        + '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code'
-        + '&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto';
-      const r = await fetch(url);
+      if (!FORECAST_API) throw new Error('missing_weather_api_configuration');
+      const params = new URLSearchParams({
+        latitude: String(p.lat),
+        longitude: String(p.lng),
+        current: 'temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,pressure_msl,visibility',
+        hourly: 'temperature_2m,weather_code',
+        daily: 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max',
+        forecast_days: '7',
+        timezone: 'auto',
+      });
+      const r = await fetch(FORECAST_API + '?' + params.toString());
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      setData(await r.json());
+      const payload = await r.json();
+      if (!payload || !payload.current || !payload.daily || !payload.hourly) throw new Error('invalid_weather_response');
+      setData(payload);
     } catch {
-      setNote(${T('تعذّر جلب الطقس — تحقّق من اتصال الإنترنت.', 'Could not load the forecast — check your connection.')});
+      setNote(${T('تعذّر جلب بيانات الطقس. تحقّق من الشبكة وحاول مرة أخرى.', 'Could not load weather data. Check the network and try again.')});
     } finally { setBusy(false); }
   };
 
-  const search = async (e) => {
-    e.preventDefault();
-    const term = query.trim(); if (!term) return;
-    setBusy(true); setNote(''); setHits([]);
+  const findCities = async (term) => {
+    const value = String(term || '').trim();
+    if (!value) { setHits([]); return; }
+    setBusy(true); setNote('');
     try {
-      const url = 'https://geocoding-api.open-meteo.com/v1/search?count=6&language=${lang}&format=json&name=' + encodeURIComponent(term);
-      const r = await fetch(url);
-      const d = await r.json();
-      const list = (d && d.results) || [];
-      if (!list.length) { setNote(${T('لا مدينة بهذا الاسم.', 'No city by that name.')}); return; }
-      setHits(list.map(x => ({ id: uid(), name: x.name + (x.country ? '، ' + x.country : ''), lat: x.latitude, lng: x.longitude })));
+      if (!GEOCODING_API) throw new Error('missing_geocoding_configuration');
+      const params = new URLSearchParams({ count: '6', language: '${lang}', format: 'json', name: value });
+      const r = await fetch(GEOCODING_API + '?' + params.toString());
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const payload = await r.json();
+      const list = (payload && payload.results) || [];
+      if (!list.length) { setHits([]); setNote(${T('لا توجد مدينة بهذا الاسم.', 'No city by that name was found.')}); return; }
+      setHits(list.map(x => ({ id: uid(), name: x.name + (x.country ? ' · ' + x.country : ''), lat: x.latitude, lng: x.longitude })));
+      setScreen('search');
     } catch {
-      setNote(${T('تعذّر البحث — تحقّق من اتصال الإنترنت.', 'Search failed — check your connection.')});
+      setHits([]);
+      setNote(${T('تعذّر البحث عن المدينة. تحقّق من اتصال الإنترنت.', 'City search failed. Check your internet connection.')});
     } finally { setBusy(false); }
   };
 
+  useEffect(() => {
+    if (screen !== 'search' || query.trim().length < 2) return undefined;
+    const timer = setTimeout(() => { void findCities(query); }, 350);
+    return () => clearTimeout(timer);
+  }, [query, screen]);
+
+  const search = (e) => { e.preventDefault(); void findCities(query); };
+  const chooseCity = (city) => { setQuery(city.name); setHits([]); void load(city); };
+  const saveCity = (city) => {
+    setCities(prev => [city, ...prev.filter(item => item.name !== city.name)]);
+    setNote(${T('تم حفظ المدينة في المفضلة.', 'City saved to favorites.')});
+  };
+  const removeCity = (city) => setCities(prev => prev.filter(item => item.name !== city.name));
   const locate = () => {
-    if (!navigator.geolocation) { setNote(${T('متصفحك لا يدعم تحديد الموقع.', 'This browser has no geolocation.')}); return; }
+    if (!navigator.geolocation) { setNote(${T('متصفحك لا يدعم تحديد الموقع.', 'This browser does not support geolocation.')}); return; }
+    setBusy(true); setNote('');
     navigator.geolocation.getCurrentPosition(
-      (pos) => load({ id: 'me', name: ${T('موقعي', 'My location')}, lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => setNote(${T('رُفض إذن الموقع أو تعذّر تحديده.', 'Location permission denied or unavailable.')}),
+      (pos) => { setBusy(false); void load({ id: 'me-' + uid(), name: ${T('موقعي الحالي', 'Current location')}, lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+      () => { setBusy(false); setNote(${T('رُفض إذن الموقع أو تعذّر تحديده.', 'Location permission was denied or unavailable.')}); },
       { timeout: 10000 },
     );
   };
 
   const cur = data && data.current;
-  const daily = (data && data.daily) || null;
+  const hourly = data && data.hourly;
+  const daily = data && data.daily;
+  const nav = [
+    ['home', ${T('الرئيسية', 'Home')}],
+    ['search', ${T('بحث', 'Search')}],
+    ['favorites', ${T('المفضلة', 'Favorites')}],
+    ['settings', ${T('الإعدادات', 'Settings')}],
+  ];
 
   return (
     <div className="wrap">
       <section className="panel">
+        <div className="toolbar">
+          <div><h1>WeatherGo</h1><p className="muted small">{${T('طقس حقيقي من Open-Meteo', 'Live weather from Open-Meteo')}}</p></div>
+          <button className="btn ghost" type="button" onClick={locate} disabled={busy}>{${T('موقعي', 'My location')}}</button>
+        </div>
+        <nav className="toolbar" aria-label={${T('تنقل الطقس', 'Weather navigation')}}>
+          {nav.map(([key, label]) => <button key={key} className={'btn tiny ' + (screen === key ? '' : 'ghost')} type="button" onClick={() => setScreen(key)}>{label}</button>)}
+        </nav>
         <form className="toolbar" onSubmit={search}>
-          <input className="search" type="search" value={query} onChange={e => setQuery(e.target.value)}
-            placeholder={${T('ابحث عن مدينة…', 'Search a city…')}} aria-label={${T('بحث عن مدينة', 'Search a city')}} />
-          <button className="btn" type="submit" disabled={busy}>{${T('ابحث', 'Search')}}</button>
-          <button className="btn ghost" type="button" onClick={locate}>{${T('موقعي', 'My location')}}</button>
+          <input className="search" type="search" value={query} onChange={e => { setQuery(e.target.value); setScreen('search'); }} placeholder={${T('اكتب اسم مدينة لاقتراحات تلقائية…', 'Type a city for autocomplete suggestions…')}} aria-label={${T('بحث عن مدينة', 'Search for a city')}} />
+          <button className="btn" type="submit" disabled={busy || !query.trim()}>{${T('بحث', 'Search')}}</button>
           <button className="btn ghost" type="button" onClick={() => setUnit(unit === 'C' ? 'F' : 'C')}>{unit === 'C' ? '°C' : '°F'}</button>
         </form>
-        {note ? <p className="err" role="status">{note}</p> : null}
-        {hits.length ? (
-          <ul className="rows compact">
-            {hits.map(h => (
-              <li className="row" key={h.id}>
-                <div className="row-main"><h3>{h.name}</h3></div>
-                <div className="row-acts">
-                  <button className="btn tiny" type="button" onClick={() => { load(h); setHits([]); }}>{${T('اعرض', 'Show')}}</button>
-                  <button className="btn tiny ghost" type="button"
-                    onClick={() => { setCities([h, ...cities.filter(c => c.name !== h.name)]); setHits([]); }}>{${T('احفظ', 'Save')}}</button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        {busy ? <p className="muted" role="status">{${T('جار التحميل…', 'Loading…')}}</p> : null}
+        {note ? <p className="err" role="alert">{note}</p> : null}
       </section>
 
-      {cur ? (
-        <section className="panel now">
-          <h2>{place ? place.name : ''}</h2>
-          <div className="now-line">
-            <span className="now-icon" aria-hidden="true">{ICONS[cur.weather_code] || '🌡️'}</span>
-            <b className="now-temp">{show(cur.temperature_2m)}°{unit}</b>
-            <span className="now-desc">{describe(cur.weather_code)}</span>
-          </div>
-          <dl className="row-meta">
-            <div><dt>{${T('الرطوبة', 'Humidity')}}</dt><dd>{cur.relative_humidity_2m}%</dd></div>
-            <div><dt>{${T('الرياح', 'Wind')}}</dt><dd>{Math.round(cur.wind_speed_10m)} ${isAr ? 'كم/س' : 'km/h'}</dd></div>
-          </dl>
-        </section>
-      ) : null}
-
-      {daily ? (
+      {screen === 'search' ? (
         <section className="panel">
-          <h2 className="list-title">{${T('توقّعات الأيام القادمة', 'The days ahead')}}</h2>
-          <ul className="days">
-            {daily.time.map((d, i) => (
-              <li className="day" key={d}>
-                <span className="day-name">{new Date(d).toLocaleDateString('${lang}', { weekday: 'short' })}</span>
-                <span className="day-icon" aria-hidden="true">{ICONS[daily.weather_code[i]] || '🌡️'}</span>
-                <span className="day-temp"><b>{show(daily.temperature_2m_max[i])}°</b> / {show(daily.temperature_2m_min[i])}°</span>
-              </li>
-            ))}
-          </ul>
+          <h2 className="list-title">{${T('اقتراحات المدن', 'City suggestions')}}</h2>
+          {hits.length ? <ul className="rows compact">{hits.map(h => <li className="row" key={h.id}>
+            <div className="row-main"><h3>{h.name}</h3><p className="muted small">{h.lat.toFixed(2)}, {h.lng.toFixed(2)}</p></div>
+            <div className="row-acts"><button className="btn tiny" type="button" onClick={() => chooseCity(h)}>{${T('عرض', 'Open')}}</button><button className="btn tiny ghost" type="button" onClick={() => saveCity(h)}>{${T('حفظ', 'Save')}}</button></div>
+          </li>)}</ul> : <p className="empty">{${T('اكتب اسم مدينة، وستظهر الاقتراحات هنا.', 'Type a city name and suggestions will appear here.')}}</p>}
         </section>
       ) : null}
 
-      <section className="panel">
-        <h2 className="list-title">{content.entityMany} <em>({cities.length})</em></h2>
-        {cities.length === 0 ? <p className="empty">{content.emptyHint}</p> : (
-          <ul className="rows compact">
-            {cities.map(c => (
-              <li className="row" key={c.id}>
-                <div className="row-main"><h3>{c.name}</h3></div>
-                <div className="row-acts">
-                  <button className="btn tiny ghost" type="button" onClick={() => load(c)}>{${T('اعرض', 'Show')}}</button>
-                  <button className="btn tiny danger" type="button" onClick={() => setCities(cities.filter(x => x.id !== c.id))}>{${T('حذف', 'Delete')}}</button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="muted small">{${T('بيانات الطقس من open-meteo.com — مفتوحة ومجانية.', 'Weather data from open-meteo.com — open and free.')}}</p>
-      </section>
+      {screen === 'favorites' ? (
+        <section className="panel">
+          <h2 className="list-title">{${T('المدن المفضلة', 'Favorite cities')}} <em>({cities.length})</em></h2>
+          {cities.length ? <ul className="rows compact">{cities.map(city => <li className="row" key={city.name}>
+            <div className="row-main"><h3>{city.name}</h3></div><div className="row-acts"><button className="btn tiny" type="button" onClick={() => void load(city)}>{${T('تحديث', 'Load')}}</button><button className="btn tiny danger" type="button" onClick={() => removeCity(city)}>{${T('حذف', 'Remove')}}</button></div>
+          </li>)}</ul> : <p className="empty">{${T('لا توجد مدن محفوظة بعد.', 'No favorite cities yet.')}}</p>}
+        </section>
+      ) : null}
+
+      {screen === 'settings' ? (
+        <section className="panel">
+          <h2 className="list-title">{${T('إعدادات العرض', 'Display settings')}}</h2>
+          <div className="toolbar"><label>{${T('الوحدة', 'Temperature unit')}} <button className="btn tiny" type="button" onClick={() => setUnit(unit === 'C' ? 'F' : 'C')}>{unit === 'C' ? 'Celsius (°C)' : 'Fahrenheit (°F)'}</button></label><label>{${T('تنسيق الوقت', 'Time format')}} <button className="btn tiny" type="button" onClick={() => setTimeFormat(timeFormat === '24h' ? '12h' : '24h')}>{timeFormat}</button></label></div>
+          <p className="muted small">{${T('الإعدادات والمفضلة محفوظة محلياً بعد إعادة التحميل.', 'Favorites and settings persist locally after reload.')}}</p>
+        </section>
+      ) : null}
+
+      {(screen === 'home' || screen === 'details') && !cur ? <section className="panel"><p className="empty">{${T('ابحث عن مدينة لعرض الطقس الحقيقي.', 'Search for a city to view live weather.')}}</p></section> : null}
+
+      {(screen === 'home' || screen === 'details') && cur ? (
+        <>
+          <section className="panel now">
+            <div className="toolbar"><div><h2>{place ? place.name : ''}</h2><p className="muted small">{describe(cur.weather_code)}</p></div><button className={'btn tiny ' + (isSaved ? '' : 'ghost')} type="button" onClick={() => isSaved ? removeCity(place) : saveCity(place)}>{isSaved ? ${T('محفوظ', 'Saved')} : ${T('أضف للمفضلة', 'Add favorite')}}</button></div>
+            <div className="now-line"><span className="now-icon" aria-hidden="true">{ICONS[cur.weather_code] || '🌡️'}</span><b className="now-temp">{show(cur.temperature_2m)}°{unit}</b></div>
+            <dl className="row-meta"><div><dt>{${T('الإحساس', 'Feels like')}}</dt><dd>{show(cur.apparent_temperature)}°{unit}</dd></div><div><dt>{${T('الرطوبة', 'Humidity')}}</dt><dd>{cur.relative_humidity_2m}%</dd></div><div><dt>{${T('الرياح', 'Wind')}}</dt><dd>{Math.round(cur.wind_speed_10m)} ${isAr ? 'كم/س' : 'km/h'}</dd></div></dl>
+          </section>
+
+          <section className="panel"><h2 className="list-title">{${T('الساعات القادمة', 'Next 24 hours')}}</h2>{hourly && hourly.time ? <ul className="days">{hourly.time.slice(0, 24).map((time, i) => <li className="day" key={time}><span className="day-name">{formatHour(time, timeFormat)}</span><span className="day-icon" aria-hidden="true">{ICONS[hourly.weather_code[i]] || '🌡️'}</span><span className="day-temp"><b>{show(hourly.temperature_2m[i])}°{unit}</b></span></li>)}</ul> : <p className="empty">{${T('لا توجد بيانات ساعية.', 'Hourly data is unavailable.')}}</p>}</section>
+
+          <section className="panel"><h2 className="list-title">{${T('توقعات 7 أيام', '7-day forecast')}}</h2>{daily && daily.time ? <ul className="days">{daily.time.slice(0, 7).map((day, i) => <li className="day" key={day}><span className="day-name">{formatDay(day)}</span><span className="day-icon" aria-hidden="true">{ICONS[daily.weather_code[i]] || '🌡️'}</span><span className="day-temp"><b>{show(daily.temperature_2m_max[i])}°</b> / {show(daily.temperature_2m_min[i])}°</span></li>)}</ul> : <p className="empty">{${T('لا توجد توقعات يومية.', 'Daily data is unavailable.')}}</p>}</section>
+
+          <section className="panel"><h2 className="list-title">{${T('التفاصيل', 'Details')}}</h2><dl className="row-meta"><div><dt>{${T('الشروق', 'Sunrise')}}</dt><dd>{daily && daily.sunrise ? formatHour(daily.sunrise[0], timeFormat) : '—'}</dd></div><div><dt>{${T('الغروب', 'Sunset')}}</dt><dd>{daily && daily.sunset ? formatHour(daily.sunset[0], timeFormat) : '—'}</dd></div><div><dt>UV</dt><dd>{daily && daily.uv_index_max ? Math.round(daily.uv_index_max[0]) : '—'}</dd></div><div><dt>{${T('الرؤية', 'Visibility')}}</dt><dd>{cur.visibility ? Math.round(cur.visibility / 1000) + ' km' : '—'}</dd></div><div><dt>{${T('الضغط', 'Pressure')}}</dt><dd>{cur.pressure_msl ? Math.round(cur.pressure_msl) + ' hPa' : '—'}</dd></div></dl></section>
+        </>
+      ) : null}
+
+      <section className="panel"><p className="muted small">{${T('المصدر: Open-Meteo، بدون مفتاح API، والبيانات ليست تجريبية.', 'Source: Open-Meteo, no API key required; live data only.')}}</p></section>
     </div>
   );
 }
@@ -2652,10 +2706,42 @@ select{appearance:none;-webkit-appearance:none;padding-inline-end:38px;
 export function fileAppPackageJson(name: string, bp: AppBlueprint): string {
     return JSON.stringify({
         name, private: true, version: '0.1.0', type: 'module',
-        scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview' },
+        scripts: {
+            dev: 'vite',
+            build: 'vite build',
+            test: 'node --test scripts/smoke-test.test.mjs',
+            preview: 'vite preview',
+        },
         dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1', ...bp.deps },
         devDependencies: { '@vitejs/plugin-react': '^4.3.4', vite: '^5.4.11' },
     }, null, 2);
+}
+
+/**
+ * A deterministic, dependency-free test that every generated React app can run.
+ * The Vite build remains the JSX/compiler gate; this test verifies the generated
+ * scaffold and its declared contract before Browser QA is attempted.
+ */
+export function fileAppSmokeTest(): string {
+    return `import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const root = process.cwd();
+const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
+
+test('generated React app scaffold is complete and testable', () => {
+  for (const rel of ['index.html', 'src/main.jsx', 'src/App.jsx', 'src/content.js', 'src/app/store.js']) {
+    assert.equal(fs.existsSync(path.join(root, rel)), true, 'missing generated file: ' + rel);
+  }
+  const manifest = JSON.parse(read('package.json'));
+  assert.equal(manifest.scripts.build, 'vite build');
+  assert.equal(manifest.scripts.test, 'node --test scripts/smoke-test.test.mjs');
+  assert.match(read('index.html'), /root/);
+  assert.match(read('src/main.jsx'), /createRoot/);
+});
+`;
 }
 
 /**
@@ -3261,6 +3347,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         'src/App.jsx': fileAppShellJsx(bp, o.isArabic, !!(o.model && o.model.length), !!o.api),
         'src/content.js': fileAppContentJs(bp, o),
         'src/app/store.js': fileAppStoreJs(),
+        'scripts/smoke-test.test.mjs': fileAppSmokeTest(),
         [enginePath]: engineSrc,
         ...(o.model && o.model.length ? { 'src/components/TablesAdmin.jsx': fileTablesAdminJsx(o.model, o.isArabic) } : {}),
         // The accounts screen ships whenever there IS a server to have accounts

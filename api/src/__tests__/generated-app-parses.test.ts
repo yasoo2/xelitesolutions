@@ -34,6 +34,31 @@ describe('the generated application is syntactically real', () => {
         }
     });
 
+    it('every generated React app declares a real build/test contract and smoke test', () => {
+        for (const kind of KINDS) {
+            const files = filesFor(kind, false);
+            const manifest = JSON.parse(files['package.json']);
+            expect(manifest.scripts).toMatchObject({
+                build: 'vite build',
+                test: 'node --test scripts/smoke-test.test.mjs',
+            });
+            expect(files['scripts/smoke-test.test.mjs']).toContain("from 'node:test'");
+            expect(files['scripts/smoke-test.test.mjs']).toContain("assert.equal(manifest.scripts.test, 'node --test scripts/smoke-test.test.mjs')");
+        }
+    });
+
+    it('weather includes the real forecast contract and negative-state surfaces', () => {
+        const files = filesFor('weather', false);
+        const weather = files['src/components/WeatherApp.jsx'];
+        expect(weather).toContain('https://api.open-meteo.com/v1/forecast');
+        expect(weather).toContain('https://geocoding-api.open-meteo.com/v1/search');
+        expect(weather).toContain("hourly: 'temperature_2m,weather_code'");
+        expect(weather).toContain("daily: 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max'");
+        expect(weather).toContain('No city by that name was found.');
+        expect(weather).toContain('Could not load weather data. Check the network and try again.');
+        expect(weather).toContain("localStorage.setItem(content.storeKey + ':time'");
+    });
+
     it('productivity carries two API resources and real remote CRUD', () => {
         const files = buildAppFiles(
             blueprintFor('productivity', 'QuickNotes', true),
