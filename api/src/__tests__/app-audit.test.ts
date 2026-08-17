@@ -65,4 +65,28 @@ describe('the wiring — every green build gets measured', () => {
         expect(src).toContain('const artifactRequest = /^\\/artifacts');
         expect(src).toContain('const root = artifactRequest ? artifactRoot : path.resolve(distDir)');
     });
+
+    it('does not overwrite a real live preview with the static project-preview proxy', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(src).toContain('if (built && !liveServer)');
+        expect(src).toContain('} else if (liveServer) {');
+        expect(src).toContain('previewUrl = liveServer.url;');
+    });
+    it('supports authenticated QA without persisting plaintext credentials', () => {
+        const auditSrc = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
+        const reactSrc = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        const storeSrc = fs.readFileSync(path.join(__dirname, '..', 'api', 'page-store.ts'), 'utf-8');
+        expect(auditSrc).toContain('credentials?: {');
+        expect(auditSrc).toContain("fetch(loginUrl, {");
+        expect(auditSrc).toContain("localStorage.setItem(tokenStorageKey, token)");
+        expect(auditSrc).toContain("id: 'auth_failed'");
+        expect(reactSrc).toContain('...(runtimeAuth ? { credentials: runtimeAuth } : {}),');
+        expect(reactSrc).toContain('const runtimeAuth =');
+        expect(storeSrc).toContain('delete copy.runtimeAuth;');
+        expect(storeSrc).toContain('delete copy.ownerPassword;');
+    });
+    it('labels a proven authenticated pass in the chat verdict', () => {
+        const verdict = formatAudit({ score: 100, findings: [], authenticated: true }, true);
+        expect(verdict).toContain('دخول محمي مثبت');
+    });
 });

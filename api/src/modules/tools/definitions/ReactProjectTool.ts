@@ -2238,6 +2238,10 @@ export class ReactProjectTool extends BaseTool {
         const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const prevEntry = ((global as any).joeProjects || {})[sessionKey];
+        // Carry the API builder's in-memory account into self-QA. The page-store
+        // strips runtimeAuth, so a plaintext password never crosses to disk.
+        const runtimeAuth = prevEntry?.type === 'api' && prevEntry?.runtimeAuth?.email && prevEntry?.runtimeAuth?.password
+            ? { ...prevEntry.runtimeAuth } : null;
         const inheritedAppKind = prevEntry?.type === 'api' && typeof prevEntry?.appKind === 'string'
             ? prevEntry.appKind : null;
         const kind = detectPageKind(request);
@@ -3237,6 +3241,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 offline: noInstall,
                         timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
+                        ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                     });
                     if (a?.skipped) return { score: 0, findingIds: [], skipped: true };
                     lastAudit = a;
@@ -3450,6 +3455,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             // database from disk, and the inbox bridge resolves the owner,
             // even after this react build took the session's project slot.
             ...(apiLink ? { linkedApi: apiLink, linkedApiDir: prevEntry.dir } : {}),
+            // Keep the account available for a later same-session audit, while
+            // page-store removes it before state persistence.
+            ...(runtimeAuth ? { runtimeAuth } : {}),
             // WHICH FOLDER IS THE SYSTEM. When the compiled interface was
             // copied into the server's public/, that server serves the whole
             // thing from one origin — so `project_run` must start IT, not run
@@ -3477,9 +3485,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // same moment a page build does, through the live /project-preview
         // route that serves this session's dist.
         let previewUrl = '';
-        if (built) {
+        // A packaged live server is the delivered system. Do not overwrite its
+        // real origin with Joe's static /project-preview proxy after QA: that
+        // proxy has no database behind it and made the Browser panel show 4309
+        // while the API-backed app was actually running on 4856.
+        if (built && !liveServer) {
             previewUrl = publicUrlFor(`/project-preview/${sessionKey}/index.html?v=${Date.now()}`);
             try { broadcast({ type: 'preview_ready', sessionId, data: { url: previewUrl, previewUrl, sessionId } } as any); } catch { /* UI optional */ }
+        } else if (liveServer) {
+            previewUrl = liveServer.url;
         }
 
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');

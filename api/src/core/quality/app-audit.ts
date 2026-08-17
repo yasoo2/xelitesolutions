@@ -67,6 +67,10 @@ export interface AppAudit {
     findings: AppAuditFinding[];
     /** Which pages were opened, and how many controls were actually pressed. */
     routes?: string[];
+    /** Whether the optional authenticated browser flow completed successfully. */
+    authenticated?: boolean;
+    /** Present only when credentials were supplied but login could not be proven. */
+    authError?: string;
     pressed?: number;
     dead?: string[];
     /** …how many forms were really filled in and sent, and at how many widths. */
@@ -108,6 +112,20 @@ export async function auditBuiltApp(
          * have been — a genuine defect.
          */
         serveUrl?: string;
+        /**
+         * Optional real credentials for an authenticated browser pass. The
+         * password is accepted only in memory, is never logged, and is not
+         * persisted with the project record. The default route matches the
+         * generated API-backed admin panel; callers may override it for another
+         * application contract.
+         */
+        credentials?: {
+            email: string;
+            password: string;
+            loginPath?: string;
+            tokenStorageKey?: string;
+            route?: string;
+        };
         /**
          * Static pages use root-absolute `/artifacts/...` URLs for shared assets,
          * while the page being audited may live in `/artifacts/<page>/`. When the
@@ -413,6 +431,8 @@ export async function auditBuiltApp(
          */
         const landing = await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
         const doorStatus = Number(landing?.status?.() || 0);
+        let authenticated = false;
+        let authError = '';
         if (doorStatus >= 400) {
             frontDoor = { url, status: doorStatus, recovered: false };
             // The running system refused its own root. Measure the interface
@@ -433,6 +453,52 @@ export async function auditBuiltApp(
                         opts?.onProgress?.('recovered');
                     }
                 } catch { /* the folder could not be served either — reported below */ }
+            }
+        }
+        /**
+         * Authenticated QA is explicit, never guessed. A generic form filler
+         * must not invent credentials; when the caller hands us the account
+         * produced by the API builder, login happens against the real origin
+         * and the resulting token is installed before protected controls are
+         * pressed. If the live root was recovered from a 404, the audit uses
+         * the built folder and cannot claim authenticated coverage.
+         */
+        if (opts?.credentials && !frontDoor?.recovered) {
+            const c = opts.credentials;
+            try {
+                const loginUrl = new URL(c.loginPath || '/api/auth/login', url).toString();
+                const result = await page.evaluate(async ({ loginUrl, email, password, tokenStorageKey }: any) => {
+                    try {
+                        const response = await fetch(loginUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email, password }),
+                        });
+                        const text = await response.text();
+                        let data: any = null;
+                        try { data = text ? JSON.parse(text) : null; } catch { /* response was not JSON */ }
+                        const token = String(data?.token || '');
+                        if (response.ok && token) {
+                            try { localStorage.setItem(tokenStorageKey, token); } catch { /* storage may be blocked */ }
+                        }
+                        return { ok: response.ok && !!token, status: response.status, error: data?.error || text.slice(0, 120) };
+                    } catch (e: any) {
+                        return { ok: false, status: 0, error: String(e?.message || e).slice(0, 120) };
+                    }
+                }, {
+                    loginUrl,
+                    email: c.email,
+                    password: c.password,
+                    tokenStorageKey: c.tokenStorageKey || 'joe-admin-token:' + (c.email.split('@')[0] || 'app'),
+                });
+                authenticated = !!result?.ok;
+                if (!authenticated) authError = `login ${result?.status || 0}: ${String(result?.error || 'rejected').slice(0, 120)}`;
+                if (authenticated && c.route) {
+                    const target = new URL(c.route, url).toString();
+                    await page.goto(target, { waitUntil: 'networkidle', timeout: timeoutMs });
+                }
+            } catch (e: any) {
+                authError = `login failed: ${String(e?.message || e).slice(0, 120)}`;
             }
         }
 
@@ -714,6 +780,13 @@ export async function auditBuiltApp(
             findings.length = 0;
             findings.push(...door);
         }
+        if (opts?.credentials && !frontDoor?.recovered && !authenticated) {
+            findings.push({
+                id: 'auth_failed', severity: 'high',
+                detail: `تعذّر إثبات الدخول المحمي بالحساب المعطى: ${authError || 'رفض الخادم بيانات الدخول'}`,
+                detailEn: `Authenticated QA could not log in with the supplied account: ${authError || 'the server rejected the credentials'}`,
+            });
+        }
 
         /**
          * AND HE SEES THE VERDICT ON THE PAGE ITSELF.
@@ -769,6 +842,8 @@ export async function auditBuiltApp(
 
         return {
             score: scoreOf(findings), findings,
+            authenticated,
+            ...(authError ? { authError } : {}),
             routes: ['/', ...routes],
             pressed: behaviourMetrics.pressed,
             dead: allControls.filter(c => c.kind !== 'anchor' && !c.worked).map(c => c.label),
@@ -817,6 +892,9 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
     // «كل الأزرار حية» used to be printed by an audit that never pressed one.
     // The claim is now the count of what was actually pressed, on how many pages.
     const pages = (a.routes || []).length || 1;
+    const authNote = a.authenticated
+        ? (isAr ? '، ودخول محمي مثبت' : ', authenticated login proven')
+        : '';
     /**
      * AND THE SCOPE NAMES EVERY KIND OF WORK THAT WAS DONE.
      *
@@ -829,9 +907,9 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
     const widths = (a.viewports || []).length;
     const scope = isAr
         ? `(${pages} صفحة، ${a.pressed || 0} عنصر مضغوط، ${a.formsFilled || 0} نموذج معبّأ ومُرسل`
-        + `${a.fieldsFilled ? ` (${a.fieldsFilled} حقل)` : ''}${widths ? `، ${widths} مقاسات شاشة` : ''})`
+        + `${a.fieldsFilled ? ` (${a.fieldsFilled} حقل)` : ''}${widths ? `، ${widths} مقاسات شاشة` : ''}${authNote})`
         : `(${pages} page(s), ${a.pressed || 0} control(s) pressed, ${a.formsFilled || 0} form(s) filled and submitted`
-        + `${a.fieldsFilled ? ` (${a.fieldsFilled} fields)` : ''}${widths ? `, ${widths} viewport(s)` : ''})`;
+        + `${a.fieldsFilled ? ` (${a.fieldsFilled} fields)` : ''}${widths ? `, ${widths} viewport(s)` : ''}${authNote})`;
     if (!a.findings.length) {
         return isAr
             ? `🔎 فحص الجودة الذاتي في متصفح حقيقي ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.`

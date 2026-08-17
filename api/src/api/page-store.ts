@@ -81,6 +81,17 @@ export function persistJoePages(): void {
 const projectsFile = () => path.join(storeDir(), 'joe-projects.json');
 const MAX_PERSISTED_PROJECTS = 20;
 
+/** Remove ephemeral credentials before project state crosses the process boundary. */
+function persistedProjects(store: Record<string, any>): Record<string, any> {
+    return Object.fromEntries(Object.entries(store || {}).map(([key, value]) => {
+        const copy = { ...(value as any) };
+        delete copy.runtimeAuth;
+        delete copy.ownerEmail;
+        delete copy.ownerPassword;
+        return [key, copy];
+    }));
+}
+
 export function loadJoeProjects(): void {
     try {
         const g: any = global as any;
@@ -88,8 +99,8 @@ export function loadJoeProjects(): void {
         if (!fs.existsSync(projectsFile())) return;
         const v = JSON.parse(fs.readFileSync(projectsFile(), 'utf-8'));
         if (v && typeof v === 'object' && !Array.isArray(v)) {
-            g.joeProjects = v;
-            const n = Object.keys(v).length;
+            g.joeProjects = persistedProjects(v);
+            const n = Object.keys(g.joeProjects).length;
             if (n) console.info(`[PageStore] 💾 restored ${n} project(s) — surgical edits survive restarts.`);
         }
     } catch { /* start fresh */ }
@@ -105,7 +116,7 @@ export function persistJoeProjects(): void {
             const entries = Object.entries(g.joeProjects || {});
             entries.sort((a: any, b: any) => (Number(b[1]?.updatedAt) || 0) - (Number(a[1]?.updatedAt) || 0));
             fs.mkdirSync(storeDir(), { recursive: true });
-            fs.writeFileSync(projectsFile(), JSON.stringify(Object.fromEntries(entries.slice(0, MAX_PERSISTED_PROJECTS)), null, 0), 'utf-8');
+            fs.writeFileSync(projectsFile(), JSON.stringify(persistedProjects(Object.fromEntries(entries.slice(0, MAX_PERSISTED_PROJECTS))), null, 0), 'utf-8');
         } catch { /* memory continues */ }
     }, DEBOUNCE_MS);
     (projTimer as any).unref?.();
@@ -116,7 +127,7 @@ export function flushJoeProjects(): void {
     try {
         const g: any = global as any;
         fs.mkdirSync(storeDir(), { recursive: true });
-        fs.writeFileSync(projectsFile(), JSON.stringify(g.joeProjects || {}, null, 0), 'utf-8');
+        fs.writeFileSync(projectsFile(), JSON.stringify(persistedProjects(g.joeProjects || {}), null, 0), 'utf-8');
     } catch { /* best-effort */ }
 }
 

@@ -2715,6 +2715,16 @@ export class ApiProjectTool extends BaseTool {
             ...(inheritedScaffoldDir ? { scaffoldDir: inheritedScaffoldDir } : {}),
             ...(appKind ? { appKind } : {}),
             ...(handedModel.length ? { model: handedModel } : {}),
+            // Runtime-only handoff for the immediately following React build.
+            // page-store strips this field before persistence; the plaintext
+            // password remains out of every generated file and database record.
+            runtimeAuth: {
+                email: ownerEmail,
+                password: ownerPassword,
+                loginPath: '/api/auth/login',
+                tokenStorageKey: `joe-admin-token:${brand || 'app'}`,
+                route: '#/admin',
+            },
         };
         persistJoeProjects();
 
