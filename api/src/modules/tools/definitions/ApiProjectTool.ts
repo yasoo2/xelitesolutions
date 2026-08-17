@@ -136,10 +136,22 @@ function columnsFromFields(fields: any[]): ApiColumn[] {
     return (fields || [])
         .map((f: any) => ({
             key: safeKey(f.key),
-            type: f.type === 'number' ? 'REAL' as const : 'TEXT' as const,
+            type: (f.type === 'number' || f.type === 'REAL') ? 'REAL' as const : f.type === 'INT' ? 'INT' as const : 'TEXT' as const,
             required: !!f.required,
         }))
         .filter((c: ApiColumn) => c.key && c.key !== 'id' && c.key !== 'created_at');
+}
+
+/**
+ * Finance has a deterministic three-resource contract. When its primary table
+ * is also present in the designed model, its fields are the API contract — not
+ * the catalogue fallback used by presentation pages. Keeping this decision in
+ * a pure helper makes the full-stack alignment regression-testable.
+ */
+export function apiPrimaryColumnsForApp(appKind: string | null, resource: string, designed: any[]): ApiColumn[] {
+    if (appKind !== 'finance') return [];
+    const primary = (designed || []).find((entity: any) => String(entity?.key || '') === String(resource || ''));
+    return primary ? columnsFromFields(primary.fields || []) : [];
 }
 
 /**
@@ -2233,9 +2245,15 @@ export class ApiProjectTool extends BaseTool {
          * table is built from.
          */
         const promotedColumns = promoted ? columnsFromFields((promoted as any).fields || []) : [];
+        const primaryDesignedColumns = apiPrimaryColumnsForApp(appKind, resource, designed);
         const columns = isProductivity
             ? productivityNotesColumns
-            : (promoted && promotedColumns.length ? promotedColumns : requestColumns);
+            : (primaryDesignedColumns.length
+                ? primaryDesignedColumns
+                : (promoted && promotedColumns.length ? promotedColumns : requestColumns));
+        if (primaryDesignedColumns.length) {
+            term(`data model: /api/${resource} uses its finance contract columns — ${primaryDesignedColumns.map(c => c.key).join(', ')}`);
+        }
         if (promoted && promotedColumns.length) {
             term(`data model: /api/${resource} carries its own columns — ${promotedColumns.map(c => c.key).join(', ')}`);
         }

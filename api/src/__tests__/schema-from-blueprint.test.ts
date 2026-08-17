@@ -11,7 +11,7 @@
  *
  * The columns now come from the same blueprint the interface renders from.
  */
-import { apiColumnsForRequest, CATALOGUE_COLUMNS } from '../modules/tools/definitions/ApiProjectTool';
+import { apiColumnsForRequest, apiPrimaryColumnsForApp, CATALOGUE_COLUMNS } from '../modules/tools/definitions/ApiProjectTool';
 import { blueprintFor, detectAppKind } from '../core/design/app-blueprints';
 import { designDataModel } from '../core/design/schema-designer';
 import { fileFinanceAppJsx } from '../modules/tools/definitions/react-app-templates';
@@ -42,6 +42,16 @@ describe('the schema follows the app, not a fixed guess', () => {
         expect(model.find(entity => entity.key === 'incomes')!.fields.find(field => field.key === 'amount')!.type).toBe('REAL');
         expect(model.find(entity => entity.key === 'expenses')!.fields.find(field => field.key === 'amount')!.type).toBe('REAL');
         expect(model.find(entity => entity.key === 'budgets')!.fields.find(field => field.key === 'limit_amount')!.type).toBe('REAL');
+    });
+
+    it('the finance primary API table uses the designed income contract, not catalogue columns', async () => {
+        const request = 'Build a complete personal finance app called MoneyTrack. Track income and expenses, create budgets by category, show dashboard charts and monthly totals.';
+        const model = await designDataModel(request);
+        const columns = apiPrimaryColumnsForApp('finance', 'incomes', model);
+        expect(columns.map(column => column.key)).toEqual(['source', 'amount', 'category', 'date', 'note']);
+        expect(columns.find(column => column.key === 'amount')!.type).toBe('REAL');
+        expect(columns.map(column => column.key)).not.toEqual(expect.arrayContaining(['name', 'details', 'price']));
+        expect(apiPrimaryColumnsForApp('finance', 'missing', model)).toEqual([]);
     });
 
     it('FinanceApp emits a closed JSX expression for the editor heading', () => {
