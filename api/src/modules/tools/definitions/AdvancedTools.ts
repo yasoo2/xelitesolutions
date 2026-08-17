@@ -382,7 +382,7 @@ export class AutoRefactorTool extends BaseTool {
 export class TestGeneratorTool extends BaseTool {
   name = 'test_generator';
   description = 'Generate comprehensive test suites for code';
-  version = '2.0.0';
+  version = '3.0.0';
   tags = ['testing', 'automation', 'quality'];
   
   inputSchema = {
@@ -415,13 +415,32 @@ export class TestGeneratorTool extends BaseTool {
 
     const code = fs.readFileSync(resolvedFilePath, 'utf-8');
     const fileName = path.basename(resolvedFilePath, path.extname(resolvedFilePath));
-    const testFileName = `${fileName}.test.ts`;
-    const testFilePath = path.join(path.dirname(resolvedFilePath), '__tests__', testFileName);
+    const projectPackage = this.findNearestPackageJson(path.dirname(resolvedFilePath));
+    const runner = this.detectRunner(projectPackage);
+    const sourceExt = path.extname(resolvedFilePath).toLowerCase();
+    if (runner === 'node' && ['.ts', '.tsx'].includes(sourceExt)) {
+      return {
+        ok: false,
+        error: 'test_runner_unsupported: node --test cannot execute TypeScript/TSX without a project-declared transpiling runner',
+        logs: [],
+      };
+    }
 
-    const tests = this.generateTests(code, fileName, testType);
+    const testDir = path.join(path.dirname(resolvedFilePath), '__tests__');
+    const testExtension = runner === 'node'
+      ? (this.isCommonJs(code, projectPackage) ? '.test.js' : '.test.mjs')
+      : (['.ts', '.tsx'].includes(sourceExt) ? '.test.ts' : '.test.js');
+    const testFileName = `${fileName}${testExtension}`;
+    const testFilePath = path.join(testDir, testFileName);
+    const relativeSource = path.relative(testDir, resolvedFilePath).replace(/\\/g, '/');
+    const importSpecifier = runner === 'node'
+      ? (relativeSource.startsWith('.') ? relativeSource : `./${relativeSource}`)
+      : (relativeSource.replace(/\.(jsx?|tsx?)$/i, '').startsWith('.')
+        ? relativeSource.replace(/\.(jsx?|tsx?)$/i, '')
+        : `./${relativeSource.replace(/\.(jsx?|tsx?)$/i, '')}`);
 
-    // Ensure test directory exists
-    const testDir = path.dirname(testFilePath);
+    const tests = this.generateTests(code, fileName, testType, { runner, importSpecifier, sourceExt });
+
     if (!fs.existsSync(testDir)) {
       fs.mkdirSync(testDir, { recursive: true });
     }
@@ -432,56 +451,126 @@ export class TestGeneratorTool extends BaseTool {
       ok: true,
       output: {
         testFilePath,
-        testCount: (tests.match(/it\s*\(/g) || []).length,
+        runner,
+        importSpecifier,
+        testCount: (tests.match(/(?:it|test)\s*\(/g) || []).length,
         coverage: this.estimateCoverage(code, tests)
       }
     };
   }
 
-  private generateTests(code: string, fileName: string, testType: string): string {
-    const imports = `import { describe, it, expect, beforeEach, jest } from '@jest/globals';\nimport * as subject from './${fileName}';\n\n`;
+  private findNearestPackageJson(startDir: string): any | null {
+    let current = path.resolve(startDir);
+    while (true) {
+      const manifestPath = path.join(current, 'package.json');
+      if (fs.existsSync(manifestPath)) {
+        try {
+          return JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+        } catch {
+          return null;
+        }
+      }
+      const parent = path.dirname(current);
+      if (parent === current) return null;
+      current = parent;
+    }
+  }
 
-    const describeBlock = `describe('${fileName}', () => {\n`;
-    
+  private detectRunner(manifest: any | null): 'node' | 'jest' | 'vitest' {
+    const script = String(manifest?.scripts?.test || '');
+    if (/\bvitest\b/i.test(script)) return 'vitest';
+    if (/\bjest(?:-expo)?\b/i.test(script) || manifest?.dependencies?.jest || manifest?.devDependencies?.jest) return 'jest';
+    return 'node';
+  }
+
+  private isCommonJs(code: string, manifest: any | null): boolean {
+    if (manifest?.type === 'module') return false;
+    return /\bmodule\.exports\b|\bexports\.[A-Za-z_$]/.test(code) || /\brequire\s*\(/.test(code);
+  }
+
+  private exportedTargets(code: string): Array<{ name: string; defaultExport?: boolean }> {
+    const targets: Array<{ name: string; defaultExport?: boolean }> = [];
+    const add = (name: string, defaultExport = false) => {
+      if (name && !targets.some((item) => item.name === name && item.defaultExport === defaultExport)) {
+        targets.push({ name, defaultExport });
+      }
+    };
+    for (const match of code.matchAll(/export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/g)) add(match[1]);
+    for (const match of code.matchAll(/export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)) add(match[1]);
+    for (const match of code.matchAll(/(?:module\.exports|exports)\.([A-Za-z_$][\w$]*)\s*=/g)) add(match[1]);
+    const objectExport = code.match(/module\.exports\s*=\s*\{([\s\S]*?)\}/m);
+    if (objectExport) {
+      for (const match of objectExport[1].matchAll(/(?:^|,|\n)\s*([A-Za-z_$][\w$]*)\s*(?=[:,}])/g)) add(match[1]);
+    }
+    if (/module\.exports\s*=\s*(?:async\s+)?function\b|module\.exports\s*=\s*\([^)]*\)\s*=>/.test(code)) add('default', true);
+    if (/export\s+default\b/.test(code)) add('default', true);
+    return targets;
+  }
+
+  private generateTests(
+    code: string,
+    fileName: string,
+    testType: string,
+    options: { runner: 'node' | 'jest' | 'vitest'; importSpecifier: string; sourceExt: string },
+  ): string {
+    const targets = this.exportedTargets(code);
+    const title = fileName.replace(/['\\]/g, '');
     const tests: string[] = [];
-    
-    // Extract functions from code
-    const functionMatches = code.matchAll(/(?:export\s+)?(?:function|const|let)\s+(\w+)\s*[=(]/g);
-    
-    for (const match of functionMatches) {
-      const funcName = match[1];
-      
-      tests.push(`  describe('${funcName}', () => {`);
-      tests.push(`    it('should handle normal case', async () => {`);
-      tests.push(`      // Arrange`);
-      tests.push(`      const input = {};`);
-      tests.push(`      `);
-      tests.push(`      // Act`);
-      tests.push(`      const result = await subject.${funcName}(input);`);
-      tests.push(`      `);
-      tests.push(`      // Assert`);
-      tests.push(`      expect(result).toBeDefined();`);
-      tests.push(`    });`);
-      tests.push(`    `);
-      tests.push(`    it('should handle error case', async () => {`);
-      tests.push(`      // Arrange`);
-      tests.push(`      const input = null;`);
-      tests.push(`      `);
-      tests.push(`      // Act & Assert`);
-      tests.push(`      await expect(subject.${funcName}(input)).rejects.toThrow();`);
-      tests.push(`    });`);
-      tests.push(`  });`);
-      tests.push(`  `);
+
+    if (options.runner === 'node') {
+      tests.push("const test = require('node:test');");
+      tests.push("const assert = require('node:assert/strict');");
+      tests.push(`const subject = require('${options.importSpecifier}');`);
+      tests.push('');
+      tests.push(`test('${title} loads successfully', () => {`);
+      tests.push('  assert.ok(subject);');
+      tests.push('});');
+      for (const target of targets) {
+        if (target.defaultExport) {
+          tests.push('');
+          tests.push(`test('${title} exposes its default export', () => {`);
+          tests.push(`  assert.equal(typeof subject, 'function');`);
+          tests.push('});');
+        } else {
+          tests.push('');
+          tests.push(`test('${target.name} is exported', () => {`);
+          tests.push(`  assert.notEqual(subject.${target.name}, undefined);`);
+          tests.push('});');
+        }
+      }
+      return tests.join('\n') + '\n';
     }
 
-    return imports + describeBlock + tests.join('\n') + '\n});';
+    const assertionImport = options.runner === 'vitest'
+      ? "import { describe, it, expect } from 'vitest';"
+      : "import { describe, it, expect } from '@jest/globals';";
+    tests.push(assertionImport);
+    tests.push(`import * as subject from '${options.importSpecifier}';`);
+    tests.push('');
+    tests.push(`describe('${title}', () => {`);
+    tests.push('  it("loads successfully", () => {');
+    tests.push('    expect(subject).toBeDefined();');
+    tests.push('  });');
+    for (const target of targets) {
+      if (target.defaultExport) {
+        tests.push('');
+        tests.push('  it("exposes its default export", () => {');
+        tests.push('    expect(subject.default).toBeDefined();');
+        tests.push('  });');
+      } else {
+        tests.push('');
+        tests.push(`  it('${target.name} is exported', () => {`);
+        tests.push(`    expect(subject.${target.name}).toBeDefined();`);
+        tests.push('  });');
+      }
+    }
+    tests.push('});');
+    return tests.join('\n') + '\n';
   }
 
   private estimateCoverage(code: string, tests: string): number {
-    const codeLines = code.split('\n').length;
+    const codeLines = Math.max(1, code.split('\n').length);
     const testLines = tests.split('\n').length;
-    
-    // Rough estimate based on test-to-code ratio
     const ratio = testLines / codeLines;
     return Math.min(100, Math.round(ratio * 50));
   }
