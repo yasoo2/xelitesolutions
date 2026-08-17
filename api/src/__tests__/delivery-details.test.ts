@@ -19,9 +19,52 @@ import fs from 'fs';
 import path from 'path';
 import { findingText, type AppAuditFinding } from '../core/quality/app-audit';
 import { brandFallback, brandFrom } from '../core/design/page-head';
+import { ProjectPipelineTool } from '../modules/tools/definitions/ProjectPipelineTool';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
+
+describe('pipeline delivery preserves the one-time test credential handoff', () => {
+    it('surfaces credentials before a long QA report can truncate them', () => {
+        const password = 'QuickNotes-Test-9x7m';
+        const report = (new ProjectPipelineTool() as any).buildDeliveryReport({
+            language: 'ar',
+            projectName: 'QuickNotes',
+            phases: [],
+            pipeline: {
+                results: [{
+                    status: 'completed',
+                    phaseName: 'API',
+                    completedTasks: 4,
+                    totalTasks: 4,
+                    results: [{
+                        message: `🗄️ بُنيت واجهة خلفية كاملة\n\n🔐 حسابك (يظهر مرة واحدة):\n   البريد: owner@quicknotes.local\n   كلمة المرور: ${password}\n${'تفصيل تحقق طويل. '.repeat(500)}`,
+                    }],
+                }],
+            },
+            done: 1,
+            total: 1,
+            verified: true,
+            browserQa: {
+                skipped: false,
+                score: 78,
+                pressed: 12,
+                findings: Array.from({ length: 40 }, (_, index) => ({
+                    id: `finding_${index}`,
+                    severity: 'low',
+                    detail: `ملاحظة ${index}`,
+                    detailEn: `Finding ${index} ${'x'.repeat(180)}`,
+                })),
+            },
+        });
+
+        expect(report.length).toBeLessThanOrEqual(3500);
+        expect(report.indexOf('### 🔑 بيانات الدخول الاختبارية')).toBeGreaterThanOrEqual(0);
+        expect(report.indexOf('owner@quicknotes.local')).toBeGreaterThanOrEqual(0);
+        expect(report.indexOf(password)).toBeGreaterThanOrEqual(0);
+        expect(report.indexOf('owner@quicknotes.local')).toBeLessThan(report.indexOf('### Browser QA المرئي'));
+    });
+});
 
 describe('a finding speaks the language of the message it lands in', () => {
     const f: AppAuditFinding = { id: 'console_errors', severity: 'high', detail: '3 خطأ كونسول: x', detailEn: '3 console error(s): x' };
