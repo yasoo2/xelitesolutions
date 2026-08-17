@@ -298,15 +298,42 @@ export class EngineeringDiscoveryTool extends BaseTool {
                 });
             }
         }
+        const requestText = request.toLowerCase();
+        const normalized = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        const normalizedRequest = normalized(request);
+        // A phrase such as `project named react-weathergo-a587` is an explicit
+        // write-target declaration. It must outrank a stale session artifact or
+        // a sibling API candidate, while a name following `not` is exclusion
+        // evidence and must never become the write target.
+        const explicitlyNamedProjectNames = [...requestText.matchAll(/\b(?:named|called)\s+([a-z0-9][a-z0-9_-]*)/gi)]
+            .map(match => normalized(match[1]));
+        const isExplicitlyExcluded = (candidate: Candidate) => {
+            const name = normalized(path.basename(candidate.root));
+            return [
+                `not ${name}`,
+                `rather than ${name}`,
+                `instead of ${name}`,
+                `exclude ${name}`,
+                `excluding ${name}`,
+            ].some(phrase => normalizedRequest.includes(phrase));
+        };
+        const explicitlyNamedCandidate = candidates.find(candidate => {
+            const name = normalized(path.basename(candidate.root));
+            return explicitlyNamedProjectNames.includes(name) && !isExplicitlyExcluded(candidate);
+        });
         let selectedProject: Candidate | undefined;
+        if (explicitlyNamedCandidate) {
+            selectedProject = explicitlyNamedCandidate;
+            facts.push({ id: 'workspace.selected_project_by_explicit_name', source: 'request', statement: `The explicit project name in the request selected ${selectedProject.root}; excluded sibling names are not write targets.` });
+        }
         // A continuation SELECTS the artifact the session already knows —
         // twenty-four other projects in the workspace are not ambiguity when
         // the target is on record.
-        if (targetsKnownArtifact) {
+        if (!selectedProject && targetsKnownArtifact) {
             selectedProject = candidates.find(c => path.resolve(c.root) === path.resolve(knownArtifactRoot))
                 || this.inspectProject(knownArtifactRoot);
             facts.push({ id: 'workspace.selected_project', source: 'workspace', statement: `The request is bound to the session's known artifact at ${selectedProject.root}.` });
-        } else if (!buildsSomethingNew && requestedExisting && candidates.length > 1) {
+        } else if (!selectedProject && !buildsSomethingNew && requestedExisting && candidates.length > 1) {
             /**
              * A new browser chat does not inherit the previous chat's
              * sessionArtifact record.  An explicit repair request must still
@@ -319,16 +346,17 @@ export class EngineeringDiscoveryTool extends BaseTool {
              * runnable API for a server brief.  A tied score remains blocked;
              * Joe must never guess between equally named write targets.
              */
-            const requestText = request.toLowerCase();
-            const normalized = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
             const wordInRequest = (word: string) => word.length >= 3 && new RegExp(`(^|[^a-z0-9])${word.replace(/[.*+?^${}()|[\\]\\]/g, '\\\\$&')}(?=$|[^a-z0-9])`, 'i').test(requestText);
             const appBrief = /\b(?:app|application|frontend|front\s*end|react|ui|website|web|mobile|browser|page)\b/i.test(request);
             const apiBrief = /\b(?:api|backend|back\s*end|server|endpoint|database)\b/i.test(request);
             const scored = candidates.map(candidate => {
                 const base = path.basename(candidate.root);
-                const parts = normalized(base).split(/\s+/).filter(Boolean);
+                const candidateName = normalized(base);
+                const parts = candidateName.split(/\s+/).filter(Boolean);
                 let score = 0;
-                if (wordInRequest(normalized(base).replace(/\s+/g, ''))) score += 20;
+                if (explicitlyNamedProjectNames.includes(candidateName)) score += 120;
+                if (isExplicitlyExcluded(candidate)) score -= 300;
+                if (wordInRequest(candidateName.replace(/\s+/g, ''))) score += 20;
                 for (const part of parts) if (wordInRequest(part)) score += 10;
                 if (appBrief && /(?:^|[-_])react(?:[-_]|$)/i.test(base)) score += 20;
                 if (apiBrief && /(?:^|[-_])api(?:[-_]|$)/i.test(base)) score += 20;
