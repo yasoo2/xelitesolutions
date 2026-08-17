@@ -218,8 +218,22 @@ function backendEntrypointForFrontendScript(cwd: string, script: string): string
 export function detectStart(cwd: string, port: number): { command: string; kind: string; expectPort: number; forced: boolean } {
     const pkgPath = path.join(cwd, 'package.json');
     if (fs.existsSync(pkgPath)) {
+        let manifest: Record<string, any> = {};
         let scripts: Record<string, string> = {};
-        try { scripts = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).scripts || {}; } catch { /* malformed */ }
+        try {
+            manifest = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) || {};
+            scripts = manifest.scripts || {};
+        } catch { /* malformed */ }
+
+        // Expo's generic `start` command launches the native/dev dashboard;
+        // Browser QA needs the declared web target. Pass the port through the
+        // script contract so readiness can only accept the web server we chose.
+        const expoWebScript = String(scripts.web || '').trim();
+        const dependencies = { ...(manifest.dependencies || {}), ...(manifest.devDependencies || {}) };
+        if (dependencies.expo && /\b(?:npx\s+)?expo\s+start\b/iu.test(expoWebScript) && /--web\b/iu.test(expoWebScript)) {
+            return { command: `npm run web -- --port ${port}`, kind: 'expo-web', expectPort: port, forced: true };
+        }
+
         // A generic start script is normally the packaged contract. If it is
         // visibly a frontend-only command but the project also contains exactly
         // one proven backend entrypoint, use that observed server instead of

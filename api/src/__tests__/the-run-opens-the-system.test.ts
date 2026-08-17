@@ -38,6 +38,12 @@ const VITE_PKG = JSON.stringify({
     devDependencies: { vite: '^5.4.11' },
 });
 
+const EXPO_WEB_PKG = JSON.stringify({
+    name: 'weathergo',
+    scripts: { start: 'expo start', web: 'expo start --web', test: 'jest' },
+    dependencies: { expo: '^57.0.14', 'react-native-web': '^0.21.2' },
+});
+
 describe('the port Joe announces is the port it binds', () => {
     it('tells vite the port in the flag vite actually reads', () => {
         const d = detectStart(project({ 'package.json': VITE_PKG }), 4321);
@@ -49,6 +55,14 @@ describe('the port Joe announces is the port it binds', () => {
         const d = detectStart(project({ 'package.json': VITE_PKG }), 4321);
         expect(d.command).toContain('--strictPort');
         expect(d.forced).toBe(true);
+    });
+
+    it('recognises Expo projects with a declared web script and does not launch native expo start', () => {
+        const d = detectStart(project({ 'package.json': EXPO_WEB_PKG }), 4357);
+        expect(d.kind).toBe('expo-web');
+        expect(d.command).toBe('npm run web -- --port 4357');
+        expect(d.forced).toBe(true);
+        expect(d.command).not.toBe('npm start');
     });
 
     it('recognises vite by its config file too, not only by package.json', () => {

@@ -43,6 +43,13 @@ describe('active live preview browser routing', () => {
 
     test('does not hijack explicit search intent even when a live app exists', () => {
         expect(asksToOpenTheActiveApp('Search Google for the latest browser documentation.')).toBe(false);
+        expect(asksToOpenTheActiveApp('Search the web for the latest browser documentation.')).toBe(false);
         expect(asksToOpenTheActiveApp('افتح جوجل وابحث عن Vite')).toBe(false);
+    });
+
+    test('routes in-app QA search steps to the active live preview', () => {
+        expect(asksToOpenTheActiveApp('Search Istanbul inside the running WeatherGo app.')).toBe(true);
+        expect(asksToOpenTheActiveApp('Search another real city.')).toBe(true);
+        expect(asksToOpenTheActiveApp('Add Istanbul to favorites in the app.')).toBe(true);
     });
 });

@@ -25,8 +25,22 @@ export function localLivePreviewFor(sessionId: string): string {
 }
 
 export function asksToOpenTheActiveApp(instructionText: string): boolean {
-    const text = String(instructionText || '').toLowerCase();
-    if (/(google|جوجل|غوغل|yahoo|ياهو|wikipedia|ويكيبيديا|search|بحث)/i.test(text)) return false;
+    const text = String(instructionText || '').trim().toLowerCase();
+    if (!text) return false;
+
+    // Search-engine intent is explicit and must never be hijacked by a local
+    // preview. Generic "search" wording, however, is also how an agent writes
+    // an in-app QA step ("Search Istanbul", "Search another real city").
+    // Route that wording to the active preview when it carries an application
+    // signal, while keeping web/search-engine requests on their search path.
+    const explicitExternalSearch = /(google|جوجل|غوغل|yahoo|ياهو|wikipedia|ويكيبيديا|search(?:ing)?\s+(?:the\s+)?(?:web|internet|engine)|بحث\s+(?:في|على)\s+(?:الويب|الإنترنت|الانترنت)|بحث\s+جوجل)/i.test(text);
+    if (explicitExternalSearch) return false;
+
+    const inAppDomain = /\b(?:app|application|project|site|system|page|weathergo|weather|city|cities|favorite|favorites|forecast|temperature|settings?|invalid|api|istanbul)\b|(?:المشروع|التطبيق|النظام|الطقس|مدينة|مدن|المفضلة|الإعدادات|الحرارة|التوقعات)/i;
+    const inAppQaSearch = /(?:\b(?:search|بحث)\b.*\b(?:app|application|project|site|system|page|weather|city|cities|favorite|favorites|forecast|temperature|settings?|invalid|api|istanbul)\b|\b(?:app|application|project|site|system|page|weather|city|cities|favorite|favorites|forecast|temperature|settings?|invalid|api|istanbul)\b.*\b(?:search|بحث)\b)/i.test(text);
+    const inAppQaAction = inAppDomain.test(text) && /\b(?:add|remove|save|select|set|change|open|click|check|verify|view|show|load|type|enter|choose|toggle|reload|refresh)\b|(?:أضف|احذف|احفظ|اختر|غيّر|غير|افتح|اضغط|تحقق|اعرض|اكتب|أدخل|ادخل|بدّل|بدل|أعد التحميل|اعد التحميل)/i.test(text);
+    if (inAppQaSearch || inAppQaAction) return true;
+
     return /(open|launch|visit|load|test|verify|qa|preview|inspect|run).*(app|application|project|site|system|page)|افتح|شغّل|شغل|اختبر|تحقق|فحص|تدقيق|المشروع|التطبيق|المعاينة|النظام/i.test(text);
 }
 
