@@ -14,6 +14,7 @@
 import { apiColumnsForRequest, CATALOGUE_COLUMNS } from '../modules/tools/definitions/ApiProjectTool';
 import { blueprintFor, detectAppKind } from '../core/design/app-blueprints';
 import { designDataModel } from '../core/design/schema-designer';
+import { fileFinanceAppJsx } from '../modules/tools/definitions/react-app-templates';
 
 describe('the schema follows the app, not a fixed guess', () => {
     it('a clinic booking system stores date, time and status', () => {
@@ -41,6 +42,12 @@ describe('the schema follows the app, not a fixed guess', () => {
         expect(model.find(entity => entity.key === 'incomes')!.fields.find(field => field.key === 'amount')!.type).toBe('REAL');
         expect(model.find(entity => entity.key === 'expenses')!.fields.find(field => field.key === 'amount')!.type).toBe('REAL');
         expect(model.find(entity => entity.key === 'budgets')!.fields.find(field => field.key === 'limit_amount')!.type).toBe('REAL');
+    });
+
+    it('FinanceApp emits a closed JSX expression for the editor heading', () => {
+        const jsx = fileFinanceAppJsx(false);
+        expect(jsx).toContain("<h2>{editing ? 'Edit entry' : 'New entry'}</h2>");
+        expect(jsx).not.toContain("'New entry'</h2>");
     });
 
     it('and an online store stores price, image, category and stock', () => {
