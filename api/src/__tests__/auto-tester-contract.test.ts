@@ -100,6 +100,28 @@ describe('AutoTesterTool acceptance contract', () => {
         executeToolSpy.mockRestore();
     });
 
+    it('parses JSX and TSX with esbuild instead of sending them to node --check', async () => {
+        const appFile = path.join(workspaceRoot, 'src', 'App.jsx');
+        const cardFile = path.join(workspaceRoot, 'src', 'Card.tsx');
+        fs.mkdirSync(path.dirname(appFile), { recursive: true });
+        fs.writeFileSync(appFile, 'export default function App() { return <main>Weather</main>; }\n');
+        fs.writeFileSync(cardFile, 'type Props = { title: string }; export function Card({ title }: Props) { return <div>{title}</div>; }\n');
+        const executeToolSpy = jest.spyOn(ToolService, 'executeTool');
+
+        const result: any = await new AutoTesterTool().execute({
+            testType: 'syntax',
+            projectPath: '.',
+            files: ['src/App.jsx', 'src/Card.tsx'],
+        }, { workspaceId: 'workspace-nexus-jsx' });
+
+        expect(result.ok).toBe(true);
+        expect(result.output.passed).toBe(true);
+        expect(result.logs.join('\\n')).toContain('esbuild syntax passed: src/App.jsx');
+        expect(result.logs.join('\\n')).toContain('esbuild syntax passed: src/Card.tsx');
+        expect(executeToolSpy).not.toHaveBeenCalled();
+        executeToolSpy.mockRestore();
+    });
+
     it('fails unit verification honestly when the selected project declares no test script', async () => {
         fs.writeFileSync(path.join(workspaceRoot, 'package.json'), JSON.stringify({ name: 'empty-project', scripts: {} }));
 

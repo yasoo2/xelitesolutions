@@ -169,7 +169,11 @@ export class AutoTesterTool implements ToolDefinition {
             return this.failure('Syntax testing requires one or more evidenced source files.', logs, 'syntax');
         }
 
-        const kinds = files.map(file => ({ file, kind: syntaxFileKind(file) }));
+        const kinds = files.map(file => ({
+            file,
+            kind: syntaxFileKind(file),
+            extension: path.extname(file).toLowerCase(),
+        }));
         const unsupported = kinds.filter(item => item.kind === null).map(item => path.relative(projectPath, item.file) || item.file);
         if (unsupported.length > 0) {
             return this.failure(
@@ -197,7 +201,9 @@ export class AutoTesterTool implements ToolDefinition {
             }
         }
 
-        const javascriptFiles = kinds.filter(item => item.kind === 'javascript').map(item => item.file);
+        const javascriptFiles = kinds
+            .filter(item => item.kind === 'javascript' && ['.js', '.mjs', '.cjs'].includes(item.extension))
+            .map(item => item.file);
         if (javascriptFiles.length > 0) {
             const quote = (value: string) => `'${String(value).replace(/'/g, "'\\''")}'`;
             const command = javascriptFiles
@@ -207,6 +213,34 @@ export class AutoTesterTool implements ToolDefinition {
             const passed = Boolean(result.ok) && !String((result as any).output || '').includes('SyntaxError');
             if (!passed) {
                 return this.failure(String((result as any).error || (result as any).output || 'Syntax errors found'), logs, 'syntax');
+            }
+        }
+
+        // Node's parser cannot parse JSX or TypeScript and would report a false
+        // runtime error such as ERR_UNKNOWN_FILE_EXTENSION for a valid React
+        // source file. Parse those source families with the already-declared
+        // esbuild dependency, exactly like ProjectEditTool's syntax gate.
+        const transpileFiles = kinds.filter(item => item.kind === 'javascript' && !['.js', '.mjs', '.cjs'].includes(item.extension));
+        if (transpileFiles.length > 0) {
+            let esbuild: any;
+            try {
+                esbuild = require('esbuild');
+            } catch (error: any) {
+                return this.failure(`JSX/TypeScript syntax checker unavailable: ${String(error?.message || error)}`, logs, 'syntax');
+            }
+            for (const item of transpileFiles) {
+                const name = path.relative(projectPath, item.file) || item.file;
+                const loader = item.extension === '.jsx' ? 'jsx' : 'tsx';
+                try {
+                    esbuild.transformSync(fs.readFileSync(item.file, 'utf8'), {
+                        loader,
+                        sourcefile: item.file,
+                    });
+                    logs.push(`esbuild syntax passed: ${name}`);
+                } catch (error: any) {
+                    const detail = String(error?.errors?.[0]?.text || error?.message || error).split('\n')[0].slice(0, 300);
+                    return this.failure(`Syntax error in ${name}: ${detail}`, logs, 'syntax');
+                }
             }
         }
 
