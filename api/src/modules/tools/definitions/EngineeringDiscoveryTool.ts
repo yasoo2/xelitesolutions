@@ -139,7 +139,16 @@ export class EngineeringDiscoveryTool extends BaseTool {
             .split(/[.!?\n]+/)
             .some((sentence) => {
                 const mutation = /\b(?:fix|improve|update|modify|extend|refactor|debug|repair|maintain|continue|edit|add|build|create|develop|implement|clone|import|checkout|open|work\s+on)\b/i.test(sentence);
-                const target = /(?:\b(?:existing|current|this)\s+(?:project|codebase|workspace|application|system)\b|\b(?:repo(?:sitory)?|github)\b)/i.test(sentence);
+                // Existing-project requests often name the artifact by lifecycle,
+                // not by the bare word "project": "current generated project",
+                // "active build", and "last app" are unambiguous write targets
+                // when a session has one on record. The ownership/currentness word
+                // is required; accepting "generated project" on its own would
+                // misclassify a legitimate greenfield request such as "build a
+                // new generated project" in a crowded workspace.
+                // Allow at most two descriptive words between that word and the
+                // project noun so this remains an existing-target guard.
+                const target = /(?:\b(?:existing|current|this|active|last)\s+(?:[A-Za-z0-9_-]+\s+){0,2}(?:project|codebase|workspace|application|system|app|build|artifact)\b|\b(?:repo(?:sitory)?|github)\b)/i.test(sentence);
                 return mutation && target;
             });
         const requestedExisting =
@@ -193,10 +202,16 @@ export class EngineeringDiscoveryTool extends BaseTool {
         const knownArtifactRoot = sessionArtifact?.dir && fs.existsSync(String(sessionArtifact.dir))
             ? String(sessionArtifact.dir) : '';
         const continuesKnownArtifact = bareContinuation && !!knownArtifactRoot;
+        // An explicit repair/continuation request may name the active artifact
+        // rather than using the bare word "continue". When the session already
+        // records a built project, bind that request to the same root; otherwise
+        // a crowded workspace can turn "current generated project" into a new
+        // greenfield scaffold or an ambiguity blocker.
+        const targetsKnownArtifact = !!knownArtifactRoot && (continuesKnownArtifact || explicitExistingMutation);
         const buildsSomethingNew = PlanningEngine.looksLikeBuild(request)
             && !explicitExistingMutation
             && !remoteUrl
-            && !continuesKnownArtifact
+            && !targetsKnownArtifact
             // «ابنِ على المشروع الحالي» / «أضف صفحة إلى الموقع» point AT
             // something that already exists — the noun is a target, not a
             // thing to be created.
@@ -287,10 +302,10 @@ export class EngineeringDiscoveryTool extends BaseTool {
         // A continuation SELECTS the artifact the session already knows —
         // twenty-four other projects in the workspace are not ambiguity when
         // the target is on record.
-        if (continuesKnownArtifact) {
+        if (targetsKnownArtifact) {
             selectedProject = candidates.find(c => path.resolve(c.root) === path.resolve(knownArtifactRoot))
                 || this.inspectProject(knownArtifactRoot);
-            facts.push({ id: 'workspace.selected_project', source: 'workspace', statement: `Continuation bound to the session's known artifact at ${selectedProject.root}.` });
+            facts.push({ id: 'workspace.selected_project', source: 'workspace', statement: `The request is bound to the session's known artifact at ${selectedProject.root}.` });
         } else if (candidates.length === 1 && !buildsSomethingNew) {
             selectedProject = candidates[0];
             facts.push({ id: 'workspace.selected_project', source: 'workspace', statement: `Exactly one project was detected at ${selectedProject.root}.` });

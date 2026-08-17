@@ -156,7 +156,7 @@ describe('evidence-first engineering discovery', () => {
   test('the deterministic builders are a fallback behind the planner, never the primary route', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
     const plannerIndex = source.indexOf("executeTool('project_planner'");
-    const fallbackIndex = source.indexOf('deterministicPhasesFor(request)');
+    const fallbackIndex = source.indexOf('deterministicPhasesFor(productRequest)');
 
     expect(fallbackIndex).toBeGreaterThan(plannerIndex);
     // …and it is reached only after the planner has actually failed.
@@ -262,7 +262,7 @@ describe('local specification evidence', () => {
 
   test('reads a discovered local specification through read_file before asking the planner to plan', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
-    const specificationRead = source.indexOf('await this.readRequestedSpecifications(request, evidence, context, logs, say, isAr)');
+    const specificationRead = source.indexOf('await this.readRequestedSpecifications(productRequest, evidence, context, logs, say, isAr)');
     const planner = source.search(/(?:const|let) plannerResult[^\n]*executeTool\('project_planner'/);
 
     expect(specificationRead).toBeGreaterThanOrEqual(0);
@@ -317,6 +317,16 @@ describe('«اكمل» points at work that exists', () => {
             expect(path.basename(ev.selectedProject.root)).toBe('react-evidenceboard');
             expect(ev.blockers).toHaveLength(0);
         });
+
+    it('an explicit repair request naming the current generated project binds to the active artifact', async () => {
+        const r: any = await discover('Continue the WeatherGo task from the current generated project. Fix the remaining quality findings in the active project, rebuild and rerun Browser QA.');
+        const ev = r.output.evidence;
+        expect(ev.constraints.userRequestedExistingProject).toBe(true);
+        expect(ev.constraints.createsNewProject).toBe(false);
+        expect(ev.mode).toBe('existing_workspace');
+        expect(path.basename(ev.selectedProject.root)).toBe('react-evidenceboard');
+        expect(ev.blockers).toHaveLength(0);
+    });
 
     it('a real new-build sentence stays greenfield even with an artifact on record', async () => {
         const r: any = await discover('ابنِ نظاماً جديداً لمطعم');
