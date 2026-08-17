@@ -67,6 +67,30 @@ function artifactMismatch(filePath: string, content: string): string | null {
     return null;
 }
 
+/**
+ * Validate executable source with the parser for the destination extension.
+ * A model can satisfy the import/package contract while still emitting
+ * TypeScript-only syntax into a `.js` file; that must be rejected before disk
+ * writes, otherwise the later project test is the first place the defect shows.
+ */
+function sourceSyntaxMismatch(filePath: string, content: string): string | null {
+    const ext = path.extname(filePath).toLowerCase();
+    const loaderByExtension: Record<string, string> = {
+        '.js': 'js', '.mjs': 'js', '.cjs': 'js',
+        '.jsx': 'jsx', '.ts': 'ts', '.tsx': 'tsx',
+    };
+    const loader = loaderByExtension[ext];
+    if (!loader) return null;
+    try {
+        const { transformSync } = require('esbuild');
+        transformSync(content, { loader, target: 'esnext', logLevel: 'silent' });
+        return null;
+    } catch (error: any) {
+        const detail = String(error?.message || error || 'syntax parse failed').split(/\r?\n/u)[0].trim();
+        return `source_syntax_mismatch: ${filePath} is not valid ${loader.toUpperCase()} syntax (${detail})`;
+    }
+}
+
 type RuntimeContract = {
     root: string;
     manifestPath: string;
@@ -345,6 +369,10 @@ Return the complete file content now.`;
             const runtimeMismatch = runtimeArtifactMismatch(filePath, finalContent, runtimeContract);
             if (runtimeMismatch) {
                 return { ok: false, error: runtimeMismatch, logs: [...logs, 'generated content violated the verified project runtime contract; nothing was written'] };
+            }
+            const syntaxMismatch = sourceSyntaxMismatch(filePath, finalContent);
+            if (syntaxMismatch) {
+                return { ok: false, error: syntaxMismatch, logs: [...logs, 'generated source failed the destination-extension syntax contract; nothing was written'] };
             }
 
             // resolveToolPath keeps the write inside the workspace and throws on

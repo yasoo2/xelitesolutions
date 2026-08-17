@@ -1149,6 +1149,18 @@ export class ScaffoldProjectTool extends BaseTool {
         const resolvedBaseDir = safePath(baseDir, context?.workspaceId);
         if (!resolvedBaseDir.ok) return { ok: false, error: resolvedBaseDir.error, logs };
         const resolvedBase = resolvedBaseDir.path;
+        const workspaceRoot = path.resolve(workspaceService.getActiveRoot(context?.workspaceId));
+        const resolvedProduct = path.resolve(resolvedBase);
+        const isSafeProductChild = resolvedProduct !== workspaceRoot
+            && resolvedProduct.startsWith(`${workspaceRoot}${path.sep}`);
+        const shouldResetGreenfield = context?.engineeringPipeline === true
+            && context?.createsNewProject === true
+            && context?.projectRootRuntimeBound !== true
+            && isSafeProductChild;
+        if (shouldResetGreenfield && fs.existsSync(resolvedProduct)) {
+            fs.rmSync(resolvedProduct, { recursive: true, force: true });
+            logs.push(`scaffold_project: reset stale greenfield product root ${resolvedProduct.slice(0, 240)}`);
+        }
         const created: string[] = [];
         const errors: string[] = [];
 

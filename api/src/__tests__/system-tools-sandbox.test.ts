@@ -125,6 +125,30 @@ describe('scaffold_project contains every key, not just the base directory', () 
         }
     });
 
+    it('resets a stale product child for a new greenfield pipeline before writing', async () => {
+        const baseDir = path.join(DIR, 'greenfield-reset');
+        const staleRoot = landsAt(baseDir);
+        fs.mkdirSync(path.join(staleRoot, 'tests'), { recursive: true });
+        fs.writeFileSync(path.join(staleRoot, 'tests', 'old-selenium.test.js'), 'stale test', 'utf-8');
+
+        const res: any = await new ScaffoldProjectTool().execute({
+            baseDir,
+            structure: {
+                'package.json': '{"name":"greenfield-reset","scripts":{"dev":"vite"}}',
+                'src/main.js': 'document.body.textContent = "fresh";',
+            },
+        }, {
+            engineeringPipeline: true,
+            createsNewProject: true,
+            projectRootRuntimeBound: false,
+        });
+
+        expect(res.ok).toBe(true);
+        expect(fs.existsSync(path.join(staleRoot, 'tests', 'old-selenium.test.js'))).toBe(false);
+        expect(fs.existsSync(path.join(staleRoot, 'src', 'main.js'))).toBe(true);
+        expect(res.logs.join(' ')).toMatch(/reset stale greenfield product root/);
+    });
+
     it('refuses a structure key that climbs out, and still writes the ones that do not', async () => {
         // Containing the base is not enough: each key of `structure` is a path
         // fragment the model chose, and they are joined onto the base one by one.

@@ -158,6 +158,17 @@ describe('generated source and structured artifacts are rejected before disk wri
         expect(res.error).toMatch(/artifact_type_mismatch/);
         expect(fs.existsSync(landsAt(rel))).toBe(false);
     });
+
+    it('refuses TypeScript-only syntax in a JavaScript destination before disk write', async () => {
+        callLLM.mockResolvedValue('interface WeatherResult { temperature: number; }\nexport function readWeather(value: WeatherResult) { return value.temperature; }');
+        const rel = scratch('src/services/weatherService.js');
+
+        const res: any = await tool.execute({ path: rel, description: 'Write the JavaScript weather service.' });
+
+        expect(res.ok).toBe(false);
+        expect(res.error).toMatch(/source_syntax_mismatch/);
+        expect(fs.existsSync(landsAt(rel))).toBe(false);
+    });
 });
 
  describe('a path outside the workspace is refused, not written', () => {
