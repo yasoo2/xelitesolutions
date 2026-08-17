@@ -111,6 +111,57 @@ describe('PhaseExecutorTool observable trusted context', () => {
         }
     });
 
+    it('installs missing local npm script binaries before executing a shell build', async () => {
+        const workspaceId = `workspace-npm-preflight-${process.pid}`;
+        const sessionId = `chat-npm-preflight-${process.pid}`;
+        const workspaceRoot = workspaceService.getActiveRoot(workspaceId);
+        const projectRoot = path.join(workspaceRoot, `vite-preflight-${process.pid}`);
+        fs.mkdirSync(projectRoot, { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, 'package.json'), JSON.stringify({
+            name: 'vite-preflight',
+            scripts: { build: 'vite build' },
+            devDependencies: { vite: '^5.0.0' },
+        }));
+
+        try {
+            const calls: string[] = [];
+            mockedExecuteTool.mockImplementation(async (toolName: string) => {
+                calls.push(toolName);
+                if (toolName === 'npm_manager') {
+                    const binDir = path.join(projectRoot, 'node_modules', '.bin');
+                    fs.mkdirSync(binDir, { recursive: true });
+                    fs.writeFileSync(path.join(binDir, 'vite'), '#!/usr/bin/env node\\n');
+                    return { ok: true, output: { output: 'installed' } } as any;
+                }
+                return { ok: true, output: { stdout: 'build complete' } } as any;
+            });
+
+            const projectContext: any = {
+                projectName: `vite-preflight-${process.pid}`,
+                createsNewProject: true,
+                projectRoot,
+                projectRootRuntimeBound: true,
+                sessionId,
+                workspaceId,
+                userId: 'user-npm-preflight',
+            };
+            const result: any = await new PhaseExecutorTool().execute({
+                phase: {
+                    phaseNumber: 4,
+                    name: 'Build generated project',
+                    tasks: [{ task: 'Build with the declared npm script', tool: 'shell_execute', args: { command: 'npm run build' } }],
+                },
+                projectContext,
+            }, { sessionId, workspaceId, userId: 'user-npm-preflight' });
+
+            expect(result.ok).toBe(true);
+            expect(calls).toEqual(['npm_manager', 'shell_execute']);
+            expect(result.logs.join('\\n')).toContain('npm preflight installed dependencies for npm run build');
+        } finally {
+            fs.rmSync(projectRoot, { recursive: true, force: true });
+        }
+    });
+
     it('preserves engineering LLM routing context across delegated tool execution', async () => {
         let observedContext: any;
         mockedExecuteTool.mockImplementation(async (_tool: any, _input: any, context: any) => {

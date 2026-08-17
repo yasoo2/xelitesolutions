@@ -305,6 +305,115 @@ function fileFailureEvidence(toolName: string, args: Record<string, any>): Recor
     };
 }
 
+const NON_LOCAL_SCRIPT_COMMANDS = new Set([
+    'node', 'npm', 'npx', 'sh', 'bash', 'cmd', 'powershell', 'pwsh',
+    'echo', 'true', 'false', 'cd', 'set', 'export', 'env', 'cross-env-shell',
+]);
+
+function npmScriptNameFromCommand(command: unknown): string {
+    const raw = String(command || '').trim();
+    if (!raw) return '';
+    const named = raw.match(/\bnpm\s+(?:run-script|run)\s+([A-Za-z0-9:_-]+)/iu);
+    if (named?.[1]) return named[1];
+    const shorthand = raw.match(/\bnpm\s+(start|test|stop|restart)\b/iu);
+    return shorthand?.[1] || '';
+}
+
+function firstScriptCommand(segment: string): string {
+    let value = String(segment || '').trim();
+    value = value.replace(/^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)\s+)+/u, '').trim();
+    return value.split(/\s+/u)[0] || '';
+}
+
+function localScriptBinaries(script: unknown): string[] {
+    const binaries: string[] = [];
+    for (const segment of String(script || '').split(/&&|\|\||[|;]/u)) {
+        const token = firstScriptCommand(segment).replace(/^['"]|['"]$/gu, '');
+        if (!token || token.startsWith('-')) continue;
+        const base = path.basename(token).replace(/\.(?:cmd|ps1|exe)$/iu, '');
+        if (!base || NON_LOCAL_SCRIPT_COMMANDS.has(base.toLowerCase()) || token.includes('://')) continue;
+        binaries.push(token);
+    }
+    return Array.from(new Set(binaries));
+}
+
+function localBinaryExists(projectRoot: string, token: string): boolean {
+    const candidates = token.includes('/') || token.includes('\\')
+        ? [path.resolve(projectRoot, token)]
+        : [
+            path.join(projectRoot, 'node_modules', '.bin', token),
+            path.join(projectRoot, 'node_modules', '.bin', `${token}.cmd`),
+            path.join(projectRoot, 'node_modules', '.bin', `${token}.ps1`),
+        ];
+    return candidates.some(candidate => fs.existsSync(candidate));
+}
+
+function resolvedProjectCwd(raw: unknown, projectContext: Record<string, any>, workspaceId?: string): string {
+    const requested = String(raw || projectContext?.projectRoot || '').trim();
+    if (!requested) return '';
+    try {
+        const resolved = resolveToolPath(requested, { workspaceId });
+        const workspaceRoot = path.resolve(workspaceService.getActiveRoot(workspaceId));
+        return isWithinRoot(resolved, workspaceRoot) ? path.resolve(resolved) : '';
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * A generated project can have a correct package.json while node_modules is
+ * absent or incomplete. Running `npm run build` in that state reports only
+ * `vite: not found`, and the phase self-fix has no evidence that an install was
+ * required. Before any planned shell/terminal npm script, inspect the script's
+ * local binaries and install from the project's own manifest when one is
+ * missing. This is capability-level behaviour: it applies to Vite, Jest,
+ * TypeScript, Expo and any other package-provided executable.
+ */
+async function ensureNpmScriptDependencies(
+    toolName: string,
+    toolArgs: Record<string, any>,
+    projectContext: Record<string, any> | undefined,
+    executionContext: Record<string, any>,
+    appendLog: (line: unknown) => void,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (!['shell_execute', 'terminal_manager'].includes(toolName)) return { ok: true };
+    const scriptName = npmScriptNameFromCommand(toolArgs?.command);
+    if (!scriptName) return { ok: true };
+    const projectRoot = resolvedProjectCwd(toolArgs?.cwd || toolArgs?.projectPath, projectContext || {}, executionContext.workspaceId);
+    if (!projectRoot) return { ok: true };
+    const manifestPath = path.join(projectRoot, 'package.json');
+    if (!fs.existsSync(manifestPath)) return { ok: true };
+
+    let manifest: any;
+    try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { return { ok: true }; }
+    const script = manifest?.scripts?.[scriptName];
+    if (typeof script !== 'string' || !script.trim()) return { ok: true };
+    const missing = localScriptBinaries(script).filter(binary => !localBinaryExists(projectRoot, binary));
+    if (!missing.length) return { ok: true };
+
+    appendLog(`[PhaseExecutor] npm preflight: ${scriptName} requires missing local binary${missing.length === 1 ? '' : 'ies'} (${missing.join(', ')}); installing dependencies in ${projectRoot.slice(0, 240)}`);
+    const installResult = await executeTool('npm_manager', {
+        command: 'install',
+        cwd: projectRoot,
+        projectPath: projectRoot,
+        workspaceId: executionContext.workspaceId,
+        sessionId: executionContext.sessionId,
+    }, executionContext);
+    if (!installResult?.ok) {
+        const error = String(installResult?.error || 'npm_install_failed');
+        appendLog(`[PhaseExecutor] npm preflight failed: ${error}`);
+        return { ok: false, error: `npm preflight install failed before ${scriptName}: ${error}` };
+    }
+    const stillMissing = missing.filter(binary => !localBinaryExists(projectRoot, binary));
+    if (stillMissing.length) {
+        const error = `npm preflight completed but local binary is still missing: ${stillMissing.join(', ')}`;
+        appendLog(`[PhaseExecutor] npm preflight failed: ${error}`);
+        return { ok: false, error };
+    }
+    appendLog(`[PhaseExecutor] npm preflight installed dependencies for npm run ${scriptName}`);
+    return { ok: true };
+}
+
 /**
  * PhaseExecutorTool - Executes a single phase from a project plan.
  *
@@ -547,6 +656,30 @@ export class PhaseExecutorTool implements ToolDefinition {
                     appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${argsIssue}`);
                     results.push({ task: taskDesc, tool: 'manual', ok: true, message: argsIssue });
                     completedCount++;
+                    continue;
+                }
+
+                const dependencyPreflight = await ensureNpmScriptDependencies(
+                    toolName,
+                    toolArgs,
+                    projectContext,
+                    executionContext,
+                    appendLog,
+                );
+                if (!dependencyPreflight.ok) {
+                    const preflightError = dependencyPreflight.error;
+                    appendLog(`[PhaseExecutor] ❌ Task ${i + 1} blocked by npm preflight: ${preflightError}`);
+                    results.push({
+                        task: taskDesc,
+                        tool: toolName,
+                        ok: false,
+                        error: preflightError,
+                        ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
+                            ? { command: toolArgs.command.slice(0, 1000) }
+                            : {}),
+                        ...(typeof toolArgs.cwd === 'string' ? { cwd: toolArgs.cwd.slice(0, 1000) } : {}),
+                    });
+                    if (task.priority === 'high' || task.required === true) break;
                     continue;
                 }
 
