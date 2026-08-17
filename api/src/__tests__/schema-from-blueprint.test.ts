@@ -48,6 +48,7 @@ describe('the schema follows the app, not a fixed guess', () => {
         const jsx = fileFinanceAppJsx(false);
         expect(jsx).toContain("<h2>{editing ? 'Edit entry' : 'New entry'}</h2>");
         expect(jsx).not.toContain("'New entry'</h2>");
+        expect(jsx).not.toContain("</h2>}");
     });
 
     it('and an online store stores price, image, category and stock', () => {
