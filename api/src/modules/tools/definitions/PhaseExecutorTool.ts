@@ -211,10 +211,10 @@ function bindRuntimeProjectFromEvidence(
     projectContext: Record<string, any>,
     logs: string[],
 ): void {
-    if (!projectContext || !['scaffold_project', 'write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(toolName)) return;
+    if (!projectContext || !['scaffold_project', 'react_project', 'api_project', 'scaffold_full_stack', 'write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(toolName)) return;
     const workspaceRoot = path.resolve(workspaceService.getActiveRoot(projectContext?.workspaceId));
     if (!workspaceRoot || !fs.existsSync(workspaceRoot)) return;
-    const outputRoot = String(toolResult?.output?.projectDir || toolResult?.output?.projectRoot || '').trim();
+    const outputRoot = String(toolResult?.output?.projectDir || toolResult?.output?.projectRoot || toolResult?.output?.path || '').trim();
     const fileRoot = projectRootFromWrittenFile(
         toolArgs?.path || toolArgs?.filename || toolArgs?.filePath || toolResult?.output?.path,
         workspaceRoot,
@@ -525,6 +525,20 @@ export class PhaseExecutorTool implements ToolDefinition {
                 }
 
                 applyPhaseExecutionEvidence(toolName, planned, projectContext, logs);
+
+                // Builder tools establish the artifact identity for the rest of
+                // the phase. Downstream package/install commands must execute
+                // inside that artifact, not silently fall back to the workspace
+                // root when the planner omitted cwd/projectPath.
+                const runtimeProjectRoot = String(projectContext?.projectRoot || '').trim();
+                const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager']);
+                if (projectContext?.projectRootRuntimeBound === true
+                    && runtimeProjectRoot
+                    && cwdInheritedTools.has(toolName)
+                    && !String(planned.cwd || planned.projectPath || '').trim()) {
+                    planned.cwd = runtimeProjectRoot;
+                    appendLog(`[PhaseExecutor] ${toolName}: inherited cwd from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
+                }
 
                 const adaptedPlanned = adaptPlannedArgs(toolName, planned);
                 const toolArgs = adaptPlannedArgsFromDescription(toolName, adaptedPlanned, taskDesc);

@@ -2,6 +2,9 @@ jest.mock('../modules/services/ToolService', () => ({
     executeTool: jest.fn(),
 }));
 
+import fs from 'fs';
+import path from 'path';
+import { workspaceService } from '../modules/services/WorkspaceService';
 import { executeTool } from '../modules/services/ToolService';
 import { applyPhaseExecutionEvidence, PhaseExecutorTool } from '../modules/tools/definitions/PhaseExecutorTool';
 
@@ -49,6 +52,63 @@ describe('PhaseExecutorTool observable trusted context', () => {
             ok: true,
             message: '/workspace/project\nstderr: minor diagnostic',
         });
+    });
+
+    it('binds a react_project artifact and inherits its cwd for downstream npm_manager', async () => {
+        const workspaceId = `workspace-react-bind-${process.pid}`;
+        const sessionId = `chat-react-bind-${process.pid}`;
+        const workspaceRoot = workspaceService.getActiveRoot(workspaceId);
+        const projectRoot = path.join(workspaceRoot, `react-weathergo-${process.pid}`);
+        fs.mkdirSync(projectRoot, { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, 'package.json'), JSON.stringify({
+            name: 'react-weathergo',
+            scripts: { build: 'vite build' },
+        }));
+
+        try {
+            mockedExecuteTool.mockImplementation(async (toolName: string, input: any) => {
+                if (toolName === 'react_project') {
+                    return { ok: true, output: { path: projectRoot, message: 'React artifact created.' } } as any;
+                }
+                if (toolName === 'npm_manager') {
+                    return { ok: true, output: { message: 'npm mocked; no install executed.' } } as any;
+                }
+                return { ok: true, output: {} } as any;
+            });
+
+            const projectContext: any = {
+                projectName: `react-weathergo-${process.pid}`,
+                createsNewProject: true,
+                sessionId,
+                workspaceId,
+                userId: 'user-react-bind',
+            };
+            const result: any = await new PhaseExecutorTool().execute({
+                phase: {
+                    phaseNumber: 1,
+                    name: 'Build and install WeatherGo',
+                    tasks: [
+                        { task: 'Create the React artifact', tool: 'react_project', args: { request: 'Build WeatherGo.' } },
+                        { task: 'Install the artifact dependencies', tool: 'npm_manager', args: { command: 'install' } },
+                    ],
+                },
+                projectContext,
+            }, { sessionId, workspaceId, userId: 'user-react-bind' });
+
+            expect(result.ok).toBe(true);
+            expect(projectContext.projectRoot).toBe(projectRoot);
+            expect(projectContext.projectRootRuntimeBound).toBe(true);
+            expect(mockedExecuteTool).toHaveBeenCalledTimes(2);
+            expect(mockedExecuteTool.mock.calls[0][0]).toBe('react_project');
+            expect(mockedExecuteTool.mock.calls[1][0]).toBe('npm_manager');
+            expect(mockedExecuteTool.mock.calls[1][1]).toMatchObject({
+                command: 'install',
+                cwd: projectRoot,
+            });
+            expect(result.logs.join('\\n')).toContain('npm_manager: inherited cwd from runtime-bound project root');
+        } finally {
+            fs.rmSync(projectRoot, { recursive: true, force: true });
+        }
     });
 
     it('preserves engineering LLM routing context across delegated tool execution', async () => {
