@@ -243,22 +243,46 @@ export class ProjectPlannerTool implements ToolDefinition {
             );
             logs.push(`[plan] stack evidence mode=${evidence?.mode || 'missing'} references=${referenceProjects.length} typedWithManifest=${typedReferenceProjects.length} explicit=${hasExplicitStack} plannerDecision=${hasPlannerStackDecision} allowed=${hasEvidenceBackedStack || hasPlannerStackDecision}`);
             const workspaceRoot = evidence?.workspaceRoot || evidence?.selectedProject?.root || '';
-            const evidencedPaths = [
+            const selectedProjectRoot = evidence?.selectedProject?.root || '';
+            const safeRelative = (value: unknown, root: string): string => {
+                const source = String(value || '').replace(/\\/g, '/').replace(/^\.\//, '');
+                if (!source) return '';
+                if (!path.isAbsolute(source) || !root) return source;
+                const relative = path.relative(root, source).replace(/\\/g, '/');
+                return relative && !relative.startsWith('../') && !path.isAbsolute(relative) ? relative : '';
+            };
+            const evidenceVariants = (value: unknown, allowSelectedProjectAlias = false): string[] => {
+                const source = String(value || '').trim();
+                if (!source) return [];
+                const variants = new Set<string>();
+                if (!path.isAbsolute(source)) variants.add(source.replace(/^\.\//, ''));
+                const workspacePath = safeRelative(source, workspaceRoot);
+                if (workspacePath) variants.add(workspacePath);
+                if (allowSelectedProjectAlias && selectedProjectRoot) {
+                    const absoluteSource = path.isAbsolute(source)
+                        ? source
+                        : (workspaceRoot ? path.resolve(workspaceRoot, source) : '');
+                    const projectPath = safeRelative(absoluteSource, selectedProjectRoot);
+                    if (projectPath) variants.add(projectPath);
+                }
+                return Array.from(variants);
+            };
+            const selectedProjectEvidence = [
                 ...(evidence?.selectedProject?.manifests || []).map(item => item.path),
                 ...(evidence?.selectedProject?.likelyEntrypoints || []),
                 ...(evidence?.selectedProject?.sourceFiles || []),
                 ...(evidence?.selectedProject?.testFiles || []),
+            ].flatMap(item => evidenceVariants(item, true));
+            const evidencedPaths = [
+                ...selectedProjectEvidence,
                 ...(evidence?.referenceProjects || []).flatMap(project => [
                     ...project.manifests.map(item => item.path),
                     ...project.likelyEntrypoints,
                     ...(project.sourceFiles || []),
                     ...(project.testFiles || []),
-                ]),
-                ...(evidence?.instructionFiles || []).map(item => item.relativePath),
-            ].map(item => {
-                const source = String(item || '');
-                return workspaceRoot && path.isAbsolute(source) ? path.relative(workspaceRoot, source) : source;
-            }).filter(Boolean);
+                ]).flatMap(item => evidenceVariants(item)),
+                ...(evidence?.instructionFiles || []).map(item => item.relativePath).flatMap(item => evidenceVariants(item)),
+            ].filter(Boolean);
             // Keep the newest model plan available for the bounded portability
             // rewrite. A recovery response may be more complete than the first
             // response even when it repeats the same native dependency blocker.
