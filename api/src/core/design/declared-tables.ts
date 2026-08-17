@@ -114,8 +114,22 @@ const TAIL = /\s+(?:with|and with|مع|بتصميم|وبتصميم)\s+/i;
  * system — routes, screens, admin panel — is generated from it.
  */
 export function declaredTables(request: string, limit = MAX_MODEL_ENTITIES): ModelEntity[] {
-    const words = declarationWords(request);
-    if (!words.length) return [];
+    const text = String(request || '');
+    let words = declarationWords(text);
+    if (!words.length) {
+        // Additional explicit multiline forms from structured briefs. The
+        // normal declaration reader remains authoritative for inline lists and
+        // the existing block syntax; this fallback only runs when it found no
+        // declaration, so prose is never promoted into tables.
+        const block = text.match(
+            /(?:at\s+minimum\s+create|create\s+(?:at\s+least|these\s+tables)|الجداول\s+المطلوبة|أنشئ\s+على\s+الأقل)\s*[:：]\s*\n((?:\s*\n)?(?:[ \t]*[\p{L}_][\p{L}\p{N}_]{1,23}[ \t]*\n){2,8})/iu,
+        );
+        if (!block) return [];
+        const listed = block[1].split(/\n/).map(s => s.trim()).filter(Boolean).join('، ');
+        words = listed.split(SPLIT)
+            .map(w => w.replace(/[.،؛!?"'()]+$/g, '').trim())
+            .filter(Boolean);
+    }
     // One item after a «Tables:» label is a heading, not a list.
     if (words.length < 2) return [];
 

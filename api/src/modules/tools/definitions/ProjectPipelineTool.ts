@@ -347,6 +347,27 @@ export function buildPlannerEvidence(evidence: any, specificationSources: any[] 
  * bypassed: the scope audit names every asked-for area the engine did not
  * build, and the delivery reports PARTIAL — named, never silently shrunk.
  */
+/**
+ * THE PAIR'S DOOR IS THE API.
+ *
+ * A deterministic full-stack pair shares one suffix on disk —
+ * react-taskflow-ai-9304 ↔ api-taskflow-ai-9304 — and the api serves the
+ * BUILT interface at «/» while answering /api/* on the same origin. Round 6,
+ * measured: live-run picked the interface's dev server instead, and the
+ * final Browser QA counted the app's own /api/health calls as 8×404 — two
+ * blocking findings about a topology mistake, not about the system.
+ */
+export function apiSiblingOf(projectRoot: string): string | null {
+    try {
+        const root = String(projectRoot || '').trim();
+        if (!root) return null;
+        const base = path.basename(root);
+        if (!/^react-/.test(base)) return null;
+        const sibling = path.join(path.dirname(root), base.replace(/^react-/, 'api-'));
+        return fs.existsSync(path.join(sibling, 'server.js')) ? sibling : null;
+    } catch { return null; }
+}
+
 export function deterministicRescueForDeadPlanner(request: string): boolean {
     if (deterministicRescueAllowed(request)) return true;
     try {
@@ -1048,7 +1069,12 @@ export class ProjectPipelineTool implements ToolDefinition {
                 const plannedProjectRoot = String(plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim();
                 const runInput: Record<string, string> = {};
                 if (plannedProjectRoot) runInput.cwd = plannedProjectRoot;
-                else if (plannedProjectName) {
+                // The pair's door is the API (it serves the built interface
+                // AND answers /api/* on one origin) — running the interface's
+                // dev server measured its own health calls as 404s (round 6).
+                const pairDoor = apiSiblingOf(runInput.cwd || discoveredProjectRoot || '');
+                if (pairDoor) runInput.cwd = pairDoor;
+                if (!runInput.cwd && plannedProjectName) {
                     // ProjectRunTool deliberately extracts names from an explicit
                     // quoted selector. Quote the planner identity at this boundary;
                     // do not pass the full request, which could select an unrelated
@@ -1461,7 +1487,12 @@ export class ProjectPipelineTool implements ToolDefinition {
                     ? artifactRoot
                     : fs.existsSync(path.join(artifactRoot, 'dist', 'index.html'))
                         ? path.join(artifactRoot, 'dist')
-                        : artifactRoot;
+                        // The pair's door is the API, and the api serves its
+                        // built interface from public/ — round 7 measured
+                        // «no index.html to audit» right after the door fix.
+                        : fs.existsSync(path.join(artifactRoot, 'public', 'index.html'))
+                            ? path.join(artifactRoot, 'public')
+                            : artifactRoot;
                 const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
                 const panelSid = String(context?.browserSessionId || PANEL_BROWSER_SID || process.env.PANEL_BROWSER_SID || '').trim();
                 const { broadcast } = require('../../../api/ws');
@@ -1537,9 +1568,34 @@ export class ProjectPipelineTool implements ToolDefinition {
             }
         }
 
+        /**
+         * A LIVE, QUALITY-TRUE, QA-PASSED SYSTEM MISSING SOME OF WHAT WAS
+         * ASKED IS A PARTIAL DELIVERY — NOT A BLOCKED ONE.
+         *
+         * TaskFlow round 5, measured: the engine built the full-stack system
+         * fresh, the visible audit pressed its buttons, filled its forms and
+         * REPAIRED it 83→94, the server answered live — and the scope audit
+         * (rightly) counted kanban, the AI assistant and the notifications
+         * centre as missing. The old policy turned that into ok:false, and
+         * the user was handed NOTHING while a working system sat on disk.
+         *
+         * Partial rides ONLY on this exact shape: the live URL is confirmed,
+         * the quality contract passed (a failed contract zeroes `verified`
+         * BEFORE the scope gate, so scopeCoverageFailed stays false and a
+         * stub can never ride this), visible Browser QA raised no blocking
+         * finding, and the ONLY failure is named scope coverage. `verified`
+         * stays false — the missing list is the headline, never a footnote.
+         */
+        const partialDelivery = !finalVerified && scopeCoverageFailed && !browserQaFailed && !!liveUrl;
+        if (partialDelivery) {
+            const missingText = (scopeAudit?.missing || []).slice(0, 8).join(', ');
+            say(pick(isAr,
+                `📦 تسليم جزئي: النظام يعمل حيّاً واجتاز فحص الجودة، ولم أبنِ بعد: ${missingText}`,
+                `📦 Partial delivery: the system runs live and passed QA; not yet built: ${missingText}`));
+        }
         const finalExecutionStatus = finalVerified ? 'completed' : done > 0 ? 'partial' : 'failed';
         const finalVerificationStatus = finalVerified ? 'passed' : browserQaFailed ? 'browser_qa_failed' : String(pipeline?.verificationStatus || 'failed');
-        const finalDeliveryStatus = finalVerified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
+        const finalDeliveryStatus = finalVerified ? 'delivered' : (partialDelivery || done > 0) ? 'partial' : 'blocked';
 
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
@@ -1549,8 +1605,8 @@ export class ProjectPipelineTool implements ToolDefinition {
         say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
         return {
-            ok: finalVerified,
-            error: finalVerified ? undefined : summary,
+            ok: finalVerified || partialDelivery,
+            error: (finalVerified || partialDelivery) ? undefined : summary,
             output: {
                 projectName: plannerResult.output.projectName,
                 completedPhases: done,
@@ -1567,6 +1623,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(liveRepairAttempted ? { liveRepairAttempted: true, liveRepairStatus } : {}),
                 ...(scopeRepairAttempted ? { scopeRepairAttempted: true, scopeRepairStatus } : {}),
                 ...(scopeCoverageFailed ? { scopeCoverageFailed: true } : {}),
+                ...(partialDelivery ? { partialDelivery: true } : {}),
                 ...(scopeAudit ? { scopeAudit } : {}),
                 // `project_pipeline` already performed discovery, planning,
                 // verification, and its bounded self-healing attempt. A false
