@@ -502,6 +502,37 @@ export interface ProjectQualityContract {
     failures: string[];
 }
 
+/**
+ * A full-stack pair has two different roots with two different jobs: the
+ * React root is the source/evidence root, while the API sibling is the live
+ * door. Keep both roots in the audit ledger so runtime topology cannot make
+ * the quality gate inspect the wrong package.json or miss UI capabilities.
+ */
+export function projectAuditRoots(sourceRoot: string, runtimeRoot: string): string[] {
+    const source = String(sourceRoot || '').trim();
+    const runtime = String(runtimeRoot || '').trim();
+    const roots: string[] = [];
+    const add = (candidate: string) => {
+        const value = String(candidate || '').trim();
+        if (value && !roots.includes(value)) roots.push(value);
+    };
+    add(source);
+    if (!source && runtime && /^api-/i.test(path.basename(runtime))) {
+        add(path.join(path.dirname(runtime), path.basename(runtime).replace(/^api-/i, 'react-')));
+    }
+    add(runtime);
+    return roots;
+}
+
+export function projectAuditDirectory(roots: string[]): string {
+    for (const root of roots.map(value => String(value || '').trim()).filter(Boolean)) {
+        if (fs.existsSync(path.join(root, 'index.html'))) return root;
+        if (fs.existsSync(path.join(root, 'dist', 'index.html'))) return path.join(root, 'dist');
+        if (fs.existsSync(path.join(root, 'public', 'index.html'))) return path.join(root, 'public');
+    }
+    return roots.map(value => String(value || '').trim()).find(Boolean) || '';
+}
+
 const PLACEHOLDER_SCRIPT = /^(?:echo\b.*(?:not\s+(?:implemented|specified|available)|no\s+tests?|placeholder|todo).*|(?:true|:|exit\s+0))$/iu;
 
 /**
@@ -564,14 +595,16 @@ export function applyProjectQualityContractOutcome(
  */
 export function applyScopeAuditOutcome(
     request: string,
-    projectRoot: string,
+    projectRoot: string | string[],
     liveOutcome: { verified: boolean; liveUrl: string; verificationFailed: boolean; error?: string },
 ): ScopeGateOutcome {
-    const root = String(projectRoot || '').trim();
+    const roots = (Array.isArray(projectRoot) ? projectRoot : [projectRoot])
+        .map(root => String(root || '').trim())
+        .filter(Boolean);
     if (!liveOutcome.verified) {
         return { ...liveOutcome, scopeAudit: { requested: 0, built: 0, coverage: 0, missing: [] } };
     }
-    if (!root) {
+    if (!roots.length) {
         return {
             ...liveOutcome,
             verified: false,
@@ -581,7 +614,7 @@ export function applyScopeAuditOutcome(
         };
     }
 
-    const report = scopeReport(request, [root]);
+    const report = scopeReport(request, roots);
     const coverage = report.requested.length
         ? report.built.length / report.requested.length
         : 1;
@@ -1156,11 +1189,15 @@ export class ProjectPipelineTool implements ToolDefinition {
                 const runRes = await executeTool('project_run', runInput, { ...context, language: isAr ? 'ar' : 'en' });
                 liveRunResult = runRes;
                 const liveOutcome = applyLiveRunOutcome(finalVerified, runRes);
-                const liveArtifactRoot = String(
+                const liveRuntimeRoot = String(
                     runRes?.output?.cwd || runInput.cwd || plannedProjectRoot || discoveredProjectRoot || ''
                 ).trim();
-                const qualityCheckedLiveOutcome = applyProjectQualityContractOutcome(liveArtifactRoot, productRequest, liveOutcome);
-                const scopedLiveOutcome = applyScopeAuditOutcome(productRequest, liveArtifactRoot, qualityCheckedLiveOutcome);
+                const liveSourceRoot = String(
+                    plannedProjectRoot || discoveredProjectRoot || liveRuntimeRoot || ''
+                ).trim();
+                const liveAuditRoots = projectAuditRoots(liveSourceRoot, liveRuntimeRoot);
+                const qualityCheckedLiveOutcome = applyProjectQualityContractOutcome(liveSourceRoot || liveRuntimeRoot, productRequest, liveOutcome);
+                const scopedLiveOutcome = applyScopeAuditOutcome(productRequest, liveAuditRoots, qualityCheckedLiveOutcome);
                 scopeAudit = scopedLiveOutcome.scopeAudit;
                 scopeCoverageFailed = scopedLiveOutcome.scopeCoverageFailed === true;
                 finalVerified = scopedLiveOutcome.verified;
@@ -1192,11 +1229,12 @@ export class ProjectPipelineTool implements ToolDefinition {
             scopeRepairAttempted = true;
             const missingCapabilities = scopeAudit.missing.slice(0, 12);
             const artifactRoot = String(
-                liveRunResult?.output?.cwd ||
                 plannerResult?.output?.projectRoot ||
                 discoveredProjectRoot ||
+                liveRunResult?.output?.cwd ||
                 ''
             ).trim();
+            const runtimeRoot = String(liveRunResult?.output?.cwd || '').trim();
             if (!artifactRoot) {
                 scopeRepairStatus = 'scope_repair_no_trusted_root';
                 appendBoundedPipelineLog(logs, '[pipeline] scope repair skipped: no trusted artifact root');
@@ -1273,13 +1311,15 @@ export class ProjectPipelineTool implements ToolDefinition {
                 }
                 const scopeRetryResult = await executeTool(
                     'project_run',
-                    { cwd: artifactRoot },
+                    { cwd: apiSiblingOf(artifactRoot) || artifactRoot },
                     { ...(context || {}), scopeRepairAttempted: true, language: isAr ? 'ar' : 'en' },
                 );
                 liveRunResult = scopeRetryResult;
                 const scopeRetryLive = applyLiveRunOutcome(true, scopeRetryResult);
-                const qualityCheckedScopeRetry = applyProjectQualityContractOutcome(artifactRoot, productRequest, scopeRetryLive);
-                const scopeRetryOutcome = applyScopeAuditOutcome(productRequest, artifactRoot, qualityCheckedScopeRetry);
+                const scopeRetryRuntimeRoot = String(scopeRetryResult?.output?.cwd || apiSiblingOf(artifactRoot) || artifactRoot || runtimeRoot).trim();
+                const scopeRetryAuditRoots = projectAuditRoots(artifactRoot, scopeRetryRuntimeRoot);
+                const qualityCheckedScopeRetry = applyProjectQualityContractOutcome(artifactRoot || scopeRetryRuntimeRoot, productRequest, scopeRetryLive);
+                const scopeRetryOutcome = applyScopeAuditOutcome(productRequest, scopeRetryAuditRoots, qualityCheckedScopeRetry);
                 scopeAudit = scopeRetryOutcome.scopeAudit;
                 scopeCoverageFailed = scopeRetryOutcome.scopeCoverageFailed === true;
                 finalVerified = scopeRetryOutcome.verified;
@@ -1344,9 +1384,9 @@ export class ProjectPipelineTool implements ToolDefinition {
                     runtimeImportRepairInstruction,
                 ].filter(Boolean).join('\\n');
                 const trustedRepairRoot = String(
-                    liveRunResult?.output?.cwd ||
                     plannerResult?.output?.projectRoot ||
                     discoveredProjectRoot ||
+                    liveRunResult?.output?.cwd ||
                     projectPath ||
                     ''
                 ).trim();
@@ -1493,7 +1533,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                         const repairProjectName = String(repairPlanner?.output?.projectName || plannerResult?.output?.projectName || '').trim();
                         const repairProjectRoot = String(repairPlanner?.output?.projectRoot || plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim();
                         const retryInput: Record<string, string> = {};
-                        if (repairProjectRoot) retryInput.cwd = repairProjectRoot;
+                        if (repairProjectRoot) retryInput.cwd = apiSiblingOf(repairProjectRoot) || repairProjectRoot;
                         else if (repairProjectName) retryInput.projectQuery = `"${repairProjectName.replace(/"/gu, '\\\"')}"`;
                         const retryRunResult = await executeTool(
                             'project_run',
@@ -1502,11 +1542,13 @@ export class ProjectPipelineTool implements ToolDefinition {
                         );
                         liveRunResult = retryRunResult;
                         const retryOutcome = applyLiveRunOutcome(true, retryRunResult);
-                        const retryArtifactRoot = String(
+                        const retryRuntimeRoot = String(
                             retryRunResult?.output?.cwd || retryInput.cwd || repairProjectRoot || discoveredProjectRoot || ''
                         ).trim();
-                        const qualityCheckedRetryOutcome = applyProjectQualityContractOutcome(retryArtifactRoot, productRequest, retryOutcome);
-                        const scopedRetryOutcome = applyScopeAuditOutcome(productRequest, retryArtifactRoot, qualityCheckedRetryOutcome);
+                        const retrySourceRoot = repairProjectRoot || discoveredProjectRoot || retryRuntimeRoot;
+                        const retryAuditRoots = projectAuditRoots(retrySourceRoot, retryRuntimeRoot);
+                        const qualityCheckedRetryOutcome = applyProjectQualityContractOutcome(retrySourceRoot || retryRuntimeRoot, productRequest, retryOutcome);
+                        const scopedRetryOutcome = applyScopeAuditOutcome(productRequest, retryAuditRoots, qualityCheckedRetryOutcome);
                         scopeAudit = scopedRetryOutcome.scopeAudit;
                         scopeCoverageFailed = scopedRetryOutcome.scopeCoverageFailed === true;
                         finalVerified = scopedRetryOutcome.verified;
@@ -1549,22 +1591,15 @@ export class ProjectPipelineTool implements ToolDefinition {
          */
         if (liveUrl) {
             try {
+                const runtimeRoot = String(liveRunResult?.output?.cwd || '').trim();
                 const artifactRoot = String(
-                    liveRunResult?.output?.cwd ||
                     plannerResult?.output?.projectRoot ||
                     discoveredProjectRoot ||
+                    runtimeRoot ||
                     ''
                 ).trim();
-                const auditDir = fs.existsSync(path.join(artifactRoot, 'index.html'))
-                    ? artifactRoot
-                    : fs.existsSync(path.join(artifactRoot, 'dist', 'index.html'))
-                        ? path.join(artifactRoot, 'dist')
-                        // The pair's door is the API, and the api serves its
-                        // built interface from public/ — round 7 measured
-                        // «no index.html to audit» right after the door fix.
-                        : fs.existsSync(path.join(artifactRoot, 'public', 'index.html'))
-                            ? path.join(artifactRoot, 'public')
-                            : artifactRoot;
+                const auditRoots = projectAuditRoots(artifactRoot, runtimeRoot);
+                const auditDir = projectAuditDirectory(auditRoots);
                 const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
                 const panelSid = String(context?.browserSessionId || PANEL_BROWSER_SID || process.env.PANEL_BROWSER_SID || '').trim();
                 const { broadcast } = require('../../../api/ws');
@@ -1597,7 +1632,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 browserQa = await auditBuiltApp(auditDir, {
                     watchSessionId: panelSid || undefined,
                     serveUrl: liveUrl,
-                    artifactRootDir: artifactRoot || auditDir,
+                    artifactRootDir: artifactRoot || auditDir || runtimeRoot,
                     timeoutMs: 45_000,
                     onProgress: progress,
                 });

@@ -14,6 +14,8 @@ import {
     applyLiveRunOutcome,
     applyProjectQualityContractOutcome,
     applyScopeAuditOutcome,
+    projectAuditRoots,
+    projectAuditDirectory,
     buildPlannerEvidence,
     inspectProjectQualityContract,
     deterministicRescueAllowed,
@@ -146,6 +148,35 @@ describe('routing — full-project requests reach the pipeline, offline and dete
         fs.rmSync(tmp, { recursive: true, force: true });
     });
 
+    test('full-stack quality audits the source root while project_run may use the API door', () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-source-runtime-audit-'));
+        const reactRoot = path.join(tmp, 'react-weathergo-1234');
+        const apiRoot = path.join(tmp, 'api-weathergo-1234');
+        try {
+            fs.mkdirSync(reactRoot, { recursive: true });
+            fs.mkdirSync(apiRoot, { recursive: true });
+            fs.writeFileSync(path.join(reactRoot, 'index.html'), '<div id="root"></div>', 'utf8');
+            fs.writeFileSync(path.join(reactRoot, 'package.json'), JSON.stringify({ scripts: {
+                build: 'vite build',
+                test: 'node smoke-test.mjs',
+            } }), 'utf8');
+            fs.writeFileSync(path.join(apiRoot, 'package.json'), JSON.stringify({ scripts: {
+                start: 'node server.js',
+            } }), 'utf8');
+            fs.writeFileSync(path.join(apiRoot, 'server.js'), '// runtime door', 'utf8');
+
+            const roots = projectAuditRoots(reactRoot, apiRoot);
+            expect(roots).toEqual([reactRoot, apiRoot]);
+            expect(projectAuditDirectory(roots)).toBe(reactRoot);
+            const live = applyLiveRunOutcome(true, { ok: true, output: { url: 'http://localhost:4318/', cwd: apiRoot } });
+            expect(applyProjectQualityContractOutcome(reactRoot, 'run build and tests', live).verified).toBe(true);
+            expect(applyProjectQualityContractOutcome(apiRoot, 'run build and tests', live).verified).toBe(false);
+            expect(applyScopeAuditOutcome('Build a React weather app.', roots, live).scopeAudit).toBeDefined();
+        } finally {
+            fs.rmSync(tmp, { recursive: true, force: true });
+        }
+    });
+
     test('a DEAD planner rescues any build the engine recognises — the TaskFlow live failure', () => {
         const { deterministicRescueForDeadPlanner } = require('../modules/tools/definitions/ProjectPipelineTool');
         // The live test, verbatim shape: a giant structured production brief.
@@ -263,8 +294,8 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
             expect(result.scopeCoverageFailed).toBe(true);
             expect(result.error).toMatch(/artifact coverage 0%/);
             expect(result.error).toMatch(/user accounts|inventory management|analytics/i);
-            expect(src).toMatch(/applyProjectQualityContractOutcome\(liveArtifactRoot, productRequest, liveOutcome\)/);
-            expect(src).toMatch(/applyScopeAuditOutcome\(productRequest, liveArtifactRoot, (?:qualityCheckedLiveOutcome|liveOutcome)\)/);
+            expect(src).toMatch(/applyProjectQualityContractOutcome\(liveSourceRoot \|\| liveRuntimeRoot, productRequest, liveOutcome\)/);
+            expect(src).toMatch(/applyScopeAuditOutcome\(productRequest, liveAuditRoots, qualityCheckedLiveOutcome\)/);
             expect(src).toMatch(/scopeAudit/);
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
@@ -311,8 +342,8 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/scope_repair_pipeline_failed/);
         expect(src).toMatch(/if \(scopeCoverageFailed && !finalVerified/);
         expect(src).toMatch(/scopeRepairAttempted/);
-        expect(src).toMatch(/applyProjectQualityContractOutcome\(artifactRoot, productRequest, scopeRetryLive\)/);
-        expect(src).toMatch(/applyScopeAuditOutcome\(productRequest, artifactRoot, (?:qualityCheckedScopeRetry|scopeRetryLive)\)/);
+            expect(src).toMatch(/applyProjectQualityContractOutcome\(artifactRoot \|\| scopeRetryRuntimeRoot, productRequest, scopeRetryLive\)/);
+            expect(src).toMatch(/applyScopeAuditOutcome\(productRequest, scopeRetryAuditRoots, qualityCheckedScopeRetry\)/);
     });
 
     test('success and verification are earned, with explicit execution and delivery states', () => {
