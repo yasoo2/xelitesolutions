@@ -445,3 +445,57 @@ describe('product pages, the team, and the build command', () => {
         }
     });
 });
+
+
+describe('project identity: React builds reuse only their session-owned scaffold', () => {
+    it('reuses a valid React/Vite scaffold registered for the same session', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-reuse-'));
+        const sessionId = 'reuse-scaffold-t';
+        const scaffoldDir = path.join(root, 'QuickNotes');
+        fs.mkdirSync(path.join(scaffoldDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(scaffoldDir, 'index.html'), '<!doctype html><div id="root"></div>');
+        fs.writeFileSync(path.join(scaffoldDir, 'package.json'), JSON.stringify({
+            private: true, type: 'module',
+            scripts: { dev: 'vite', build: 'vite build' },
+            dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+            devDependencies: { vite: '^5.4.11' },
+        }));
+        const projects = ((global as any).joeProjects || ((global as any).joeProjects = {}));
+        projects[sessionId] = { dir: scaffoldDir, type: 'scaffold', brand: 'QuickNotes' };
+        try {
+            const result: any = await new ReactProjectTool().execute(
+                { request: 'Build a React productivity app for notes and tasks', root, skipInstall: true },
+                { sessionId },
+            );
+            expect(result.ok).toBe(true);
+            expect(path.resolve(result.output.path)).toBe(path.resolve(scaffoldDir));
+            expect(fs.readFileSync(path.join(scaffoldDir, 'src', 'App.jsx'), 'utf8')).toContain('ProductivityApp');
+        } finally {
+            delete projects[sessionId];
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('does not reuse a non-React or cross-root artifact', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-no-reuse-'));
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-outside-'));
+        const sessionId = 'no-reuse-scaffold-t';
+        fs.mkdirSync(path.join(outside, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(outside, 'package.json'), JSON.stringify({ scripts: { build: 'vite build' } }));
+        const projects = ((global as any).joeProjects || ((global as any).joeProjects = {}));
+        projects[sessionId] = { dir: outside, type: 'scaffold', brand: 'QuickNotes' };
+        try {
+            const result: any = await new ReactProjectTool().execute(
+                { request: 'Build a React app for a cafe', root, skipInstall: true },
+                { sessionId },
+            );
+            expect(result.ok).toBe(true);
+            expect(path.resolve(result.output.path)).not.toBe(path.resolve(outside));
+            expect(path.resolve(result.output.path).startsWith(path.resolve(root) + path.sep)).toBe(true);
+        } finally {
+            delete projects[sessionId];
+            fs.rmSync(root, { recursive: true, force: true });
+            fs.rmSync(outside, { recursive: true, force: true });
+        }
+    });
+});

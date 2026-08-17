@@ -40,6 +40,28 @@ const slug = (s: string) => (String(s || '').toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'app';
 export const PROJECT_SLUG_FOR_TEST = slug;
 
+/**
+ * A React builder may reuse only a scaffold that is both owned by this
+ * session and structurally a Vite project.  A directory name alone is not
+ * ownership evidence: another session (or an old workspace artifact) may
+ * happen to use the same brand.
+ */
+export function isReactViteProjectDir(dir: string): boolean {
+    try {
+        const root = path.resolve(String(dir || ''));
+        const manifestPath = path.join(root, 'package.json');
+        if (!fs.existsSync(manifestPath) || !fs.existsSync(path.join(root, 'index.html'))
+            || !fs.existsSync(path.join(root, 'src'))) return false;
+        const pkg = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        const scripts = pkg?.scripts && typeof pkg.scripts === 'object' ? pkg.scripts : {};
+        const deps = { ...(pkg?.dependencies || {}), ...(pkg?.devDependencies || {}) };
+        return typeof scripts.build === 'string' && /vite\s+build/i.test(scripts.build)
+            && !!deps.react && !!deps['react-dom'] && !!deps.vite;
+    } catch {
+        return false;
+    }
+}
+
 /** Escape a string for safe embedding inside a JS single-quoted literal. */
 const js = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
 
@@ -2366,12 +2388,21 @@ export class ReactProjectTool extends BaseTool {
         // The project lands where the File Explorer actually looks.
         const { workspaceService } = require('../../services/WorkspaceService');
         const root = String(input?.root || workspaceService.getExplorerRoot());
-        let proj = path.join(root, dirName);
+        const activeProject = ((global as any).joeProjects || {})[sessionKey];
+        const activeDir = typeof activeProject?.dir === 'string' ? path.resolve(activeProject.dir) : '';
+        const workspaceRoot = path.resolve(root);
+        const activeInsideRoot = !!activeDir && (activeDir === workspaceRoot || activeDir.startsWith(workspaceRoot + path.sep));
+        const reusableScaffold = activeProject?.type === 'scaffold' && activeInsideRoot && isReactViteProjectDir(activeDir)
+            ? activeDir : '';
+        let proj = reusableScaffold || path.join(root, dirName);
+        if (reusableScaffold) {
+            term(`project identity: reusing this session's React scaffold at ${proj}`);
+        }
         // Two sessions with generic brands must NEVER share a directory —
         // the second build silently overwrote the first app (caught by the
         // families wire proof: two different stores landed in react-react).
         // The session that OWNS the directory may rebuild in place.
-        if (fs.existsSync(proj) && ((global as any).joeProjects || {})[sessionKey]?.dir !== proj) {
+        if (fs.existsSync(proj) && path.resolve(proj) !== activeDir) {
             const suffix = sessionKey.replace(/[^a-zA-Z0-9]/g, '').slice(-4).toLowerCase() || Date.now().toString(36).slice(-4);
             proj = path.join(root, `${dirName}-${suffix}`);
         }
