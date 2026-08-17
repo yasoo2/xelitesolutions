@@ -16,6 +16,49 @@ import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, adaptPlanned
  * filesystem guess. ProjectRunTool remains responsible for matching it against
  * runnable candidates and refusing when the evidence is insufficient.
  */
+export function reactProjectStartFallback(
+    command: unknown,
+    taskDescription: unknown,
+    taskArgs: Record<string, any> = {},
+    projectContext?: Record<string, any>,
+    workspaceId?: string,
+): { cwd: string } | null {
+    const rawCommand = String(command || '').trim();
+    const description = String(taskDescription || '').trim();
+    // A browser project must be launched through its declared dev/start script.
+    // `node src/index.ts` is not a portable launcher: Node cannot execute TS/TSX
+    // without a declared transpiler, and it bypasses Vite/Next/Expo readiness.
+    if (!/\bnode(?:\.exe)?\s+(?:(?:--[^\s]+)\s+)*["']?[^"'\s]+\.(?:ts|tsx|jsx)["']?(?:\s|$)/iu.test(rawCommand)) return null;
+    if (!/(?:\b(?:start|launch|serve|preview|open|dev)\b|\brun\s+(?:the\s+)?(?:project|app|application|server)\b|تشغيل|شغّل|ابدأ|المشروع|التطبيق|الخادم)/iu.test(description)) return null;
+
+    const candidate = String(
+        taskArgs.cwd
+        || taskArgs.projectPath
+        || projectContext?.projectRoot
+        || workspaceService.getActiveRoot(workspaceId)
+        || '',
+    ).trim();
+    if (!candidate) return null;
+    const workspaceRoot = String(workspaceService.getActiveRoot(workspaceId) || '').trim();
+    const projectRoot = path.isAbsolute(candidate)
+        ? path.resolve(candidate)
+        : path.resolve(workspaceRoot || process.cwd(), candidate);
+    const manifestPath = path.join(projectRoot, 'package.json');
+    if (!fs.existsSync(manifestPath)) return null;
+
+    let manifest: any;
+    try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { return null; }
+    const dependencyNames = Object.keys({
+        ...(manifest?.dependencies && typeof manifest.dependencies === 'object' ? manifest.dependencies : {}),
+        ...(manifest?.devDependencies && typeof manifest.devDependencies === 'object' ? manifest.devDependencies : {}),
+    });
+    const scriptText = Object.values(manifest?.scripts || {}).filter(value => typeof value === 'string').join(' ');
+    const browserRuntime = dependencyNames.some(name => /^(?:react|react-dom|next|vite|expo|@vitejs\/plugin-react|react-scripts)$/iu.test(name))
+        && /(?:vite|next|expo|react-scripts|webpack|parcel)/iu.test(`${dependencyNames.join(' ')} ${scriptText}`);
+    if (!browserRuntime) return null;
+    return { cwd: projectRoot };
+}
+
 export function applyPhaseExecutionEvidence(
     toolName: string,
     planned: Record<string, any>,
@@ -588,7 +631,18 @@ export class PhaseExecutorTool implements ToolDefinition {
                     completedCount++;
                     continue;
                 }
-                const toolName = resolved.tool;
+                let toolName = resolved.tool;
+                let rawTaskArgs: any = { ...(task.args || {}), ...(task.input || {}) };
+                const browserStart = (toolName === 'shell_execute' || toolName === 'terminal_manager')
+                    ? reactProjectStartFallback(rawTaskArgs.command, taskDesc, rawTaskArgs, projectContext, executionContext.workspaceId)
+                    : null;
+                if (browserStart) {
+                    toolName = 'project_run';
+                    rawTaskArgs = { ...rawTaskArgs, cwd: browserStart.cwd };
+                    delete rawTaskArgs.command;
+                    delete rawTaskArgs.background;
+                    appendLog(`[PhaseExecutor] ↪️ Task ${i + 1}: replaced direct Node TypeScript launch with project_run (${browserStart.cwd.slice(0, 240)})`);
+                }
                 if (toolName !== askedFor) {
                     appendLog(`[PhaseExecutor] ↪️ «${askedFor}» تعني ${toolName} — نفّذتُ الأداة الحقيقية.`);
                 }
@@ -598,7 +652,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 // impossible command is not a task that failed; it is a task
                 // that was never possible, and retrying it burns the run.
                 if (toolName === 'shell_execute' || toolName === 'terminal_manager') {
-                    const why = unrunnableShellStep((task.args || task.input || {}).command);
+                    const why = unrunnableShellStep(rawTaskArgs.command);
                     if (why) {
                         appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${why}`);
                         results.push({ task: taskDesc, tool: 'manual', ok: true });
@@ -616,7 +670,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 // The session goes in BEFORE the adapter runs: an audit with no
                 // address is completed from what THIS session just built, and
                 // the adapter cannot find that without knowing whose it is.
-                const planned: any = { ...(task.args || {}), ...(task.input || {}) };
+                const planned: any = { ...rawTaskArgs };
                 if (executionContext.sessionId && typeof planned.sessionId !== 'string') planned.sessionId = executionContext.sessionId;
                 if (executionContext.workspaceId && typeof planned.workspaceId !== 'string') planned.workspaceId = executionContext.workspaceId;
                 const requirementsContext = String(projectContext?.requirementsContext || '').trim();

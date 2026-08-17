@@ -426,4 +426,52 @@ describe('PhaseExecutorTool observable trusted context', () => {
             userId: 'user-3',
         });
     });
+
+    it('promotes a direct Node TypeScript browser launch to project_run', async () => {
+        const workspaceId = `workspace-browser-start-${process.pid}`;
+        const sessionId = `chat-browser-start-${process.pid}`;
+        const workspaceRoot = workspaceService.getActiveRoot(workspaceId);
+        const projectRoot = path.join(workspaceRoot, `vite-browser-start-${process.pid}`);
+        fs.mkdirSync(projectRoot, { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, 'package.json'), JSON.stringify({
+            name: 'vite-browser-start',
+            scripts: { dev: 'vite' },
+            dependencies: { react: '^18.0.0', 'react-dom': '^18.0.0' },
+            devDependencies: { vite: '^5.0.0', '@vitejs/plugin-react': '^4.0.0' },
+        }));
+        try {
+            mockedExecuteTool.mockResolvedValue({ ok: true, output: { url: 'http://localhost:4317/', ready: true } } as any);
+            const projectContext: any = {
+                projectName: `vite-browser-start-${process.pid}`,
+                createsNewProject: true,
+                projectRoot,
+                projectRootRuntimeBound: true,
+                sessionId,
+                workspaceId,
+                userId: 'user-browser-start',
+            };
+            const result: any = await new PhaseExecutorTool().execute({
+                phase: {
+                    phaseNumber: 4,
+                    name: 'Tests, review, and quality checks',
+                    tasks: [{
+                        task: 'Start the project',
+                        tool: 'shell_execute',
+                        args: { command: 'node src/index.ts' },
+                    }],
+                },
+                projectContext,
+            }, { sessionId, workspaceId, userId: 'user-browser-start' });
+
+            expect(result.ok).toBe(true);
+            expect(mockedExecuteTool).toHaveBeenCalledTimes(1);
+            expect(mockedExecuteTool.mock.calls[0][0]).toBe('project_run');
+            expect(mockedExecuteTool.mock.calls[0][1]).toMatchObject({ cwd: projectRoot });
+            expect(mockedExecuteTool.mock.calls[0][1]).not.toHaveProperty('command');
+            expect(result.output.results[0]).toMatchObject({ tool: 'project_run', ok: true });
+            expect(result.logs.join('\\n')).toContain('replaced direct Node TypeScript launch with project_run');
+        } finally {
+            fs.rmSync(projectRoot, { recursive: true, force: true });
+        }
+    });
 });
