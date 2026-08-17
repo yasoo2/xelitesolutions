@@ -67,6 +67,99 @@ function artifactMismatch(filePath: string, content: string): string | null {
     return null;
 }
 
+type RuntimeContract = {
+    root: string;
+    manifestPath: string;
+    declaredPackages: Set<string>;
+    kind: 'web' | 'native' | 'node' | 'other';
+    packageNames: string[];
+};
+
+const NODE_BUILTINS = new Set([
+    'assert', 'buffer', 'child_process', 'crypto', 'events', 'fs', 'http', 'https',
+    'module', 'os', 'path', 'process', 'readline', 'stream', 'timers', 'tty',
+    'url', 'util', 'worker_threads', 'zlib',
+]);
+
+function packageNameFromSpecifier(specifier: string): string {
+    const value = String(specifier || '').trim();
+    if (value.startsWith('@')) return value.split('/').slice(0, 2).join('/');
+    return value.split('/')[0] || value;
+}
+
+function importedPackageNames(content: string): string[] {
+    const found = new Set<string>();
+    const patterns = [
+        /\bimport\s+(?:[\s\S]*?\s+from\s+)?['\"]([^'\"]+)['\"]/g,
+        /\bexport\s+(?:[\s\S]*?\s+from\s+)?['\"]([^'\"]+)['\"]/g,
+        /\brequire\(\s*['\"]([^'\"]+)['\"]\s*\)/g,
+        /\bimport\(\s*['\"]([^'\"]+)['\"]\s*\)/g,
+    ];
+    for (const pattern of patterns) {
+        for (const match of content.matchAll(pattern)) {
+            const specifier = String(match[1] || '').trim();
+            if (!specifier || specifier.startsWith('.') || specifier.startsWith('/')
+                || specifier.startsWith('#') || specifier.startsWith('@/')
+                || /^(?:node:|https?:)/iu.test(specifier)) continue;
+            found.add(packageNameFromSpecifier(specifier));
+        }
+    }
+    return [...found];
+}
+
+function runtimeContractFor(projectRoot: unknown, workspaceId?: string): RuntimeContract | null {
+    // The active workspace can contain many products and is not a runtime
+    // contract. Only an explicit projectRoot bound by the engineering pipeline
+    // may constrain generated source. The optional workspaceId remains in the
+    // signature for forward compatibility with trusted callers.
+    void workspaceId;
+    let root = String(projectRoot || '').trim();
+    if (!root) return null;
+    root = path.resolve(root);
+    const manifestPath = path.join(root, 'package.json');
+    if (!fs.existsSync(manifestPath)) return null;
+    try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as any;
+        const declared = new Set<string>();
+        for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+            const values = manifest?.[section];
+            if (values && typeof values === 'object') Object.keys(values).forEach(name => declared.add(name));
+        }
+        const packageNames = [...declared].sort();
+        const has = (name: string) => declared.has(name);
+        const web = has('react-dom') || has('vite') || has('next') || has('react-scripts') || has('webpack') || has('parcel');
+        const native = has('react-native') || has('expo');
+        const kind: RuntimeContract['kind'] = native ? 'native' : web ? 'web' : has('express') || has('fastify') || has('koa') ? 'node' : 'other';
+        return { root, manifestPath, declaredPackages: declared, kind, packageNames };
+    } catch {
+        return null;
+    }
+}
+
+function runtimeGuidanceFor(contract: RuntimeContract | null): string {
+    if (!contract) return '';
+    const stack = contract.kind === 'web'
+        ? 'web React/Vite/Next'
+        : contract.kind === 'native' ? 'React Native/Expo' : contract.kind;
+    return `\nVERIFIED PROJECT RUNTIME CONTRACT:\n- Project root: ${contract.root}\n- Detected stack: ${stack}\n- Declared packages only: ${contract.packageNames.join(', ') || '(none)'}\n- Preserve this stack. Do not switch frameworks or import a package absent from package.json.\n- For a web React project, use browser/React DOM APIs; never emit react-native, Expo, or React Navigation imports unless they are declared in this manifest.\n`;
+}
+
+function runtimeArtifactMismatch(filePath: string, content: string, contract: RuntimeContract | null): string | null {
+    if (!contract || !/\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu.test(filePath) || path.basename(filePath).toLowerCase() === 'package.json') return null;
+    const imports = importedPackageNames(content);
+    const undeclared = imports.filter(name => !contract.declaredPackages.has(name) && !NODE_BUILTINS.has(name));
+    const nativeImports = imports.filter(name => /^(?:react-native|expo|@react-navigation)(?:$|[\/])/iu.test(name));
+    const webImports = imports.filter(name => /^(?:react-dom|vite|next|react-scripts)(?:$|[\/])/iu.test(name));
+    const stackMismatch = (contract.kind === 'web' && nativeImports.length > 0)
+        || (contract.kind === 'native' && webImports.length > 0);
+    const errors: string[] = [];
+    if (stackMismatch) errors.push(`imports ${[...new Set([...nativeImports, ...webImports])].join(', ')}, which conflicts with the verified ${contract.kind} project stack`);
+    if (undeclared.length > 0) errors.push(`imports undeclared package(s): ${undeclared.join(', ')}`);
+    return errors.length > 0
+        ? `runtime_contract_mismatch: ${filePath} ${errors.join('; ')}. Update the project manifest only when the requirements explicitly require a stack change.`
+        : null;
+}
+
 /**
  * Lazily resolve the LLM to avoid a circular import.
  *
@@ -159,6 +252,8 @@ export class AIGeneratorTool implements ToolDefinition {
         catch (e: any) { return { ok: false, error: String(e?.message || e), logs }; }
 
         const isRepair = input.context?.includes('repairTicket') || input.context?.includes('buildContext');
+        const runtimeContract = runtimeContractFor(context?.projectRoot, contextWorkspaceId);
+        const runtimeGuidance = runtimeGuidanceFor(runtimeContract);
         const artifact = artifactProfileFor(filePath);
         const frontendGuidance = artifact.kind === 'frontend_asset'
             ? `\nFRONTEND QUALITY RULES:\n- Use accessible, responsive implementation only where the requirements call for a user interface.\n- Follow the selected style direction if supplied; otherwise favour clear, maintainable UI over decorative effects.\n- Support ${input.language === 'ar' ? 'Arabic with RTL layout' : 'the requested language'} when user-facing text is required.\n`
@@ -171,7 +266,7 @@ export class AIGeneratorTool implements ToolDefinition {
 ARTIFACT CONTRACT (${artifact.kind}):
 ${artifact.instructions}
 ${isRepair ? `\nREPAIR MODE ACTIVE:\n- Fix only the documented defect using the supplied repair evidence.\n- Preserve the existing architecture and avoid unrelated changes.\n` : ''}
-${frontendGuidance}${runtimePathGuidance}
+${frontendGuidance}${runtimePathGuidance}${runtimeGuidance}
 GENERAL RULES:
 - Treat the supplied requirements as authoritative; do not invent a product, framework, build command, or visual interface.
 - Do not use placeholders. Write concrete content, and mark genuinely unresolved decisions as explicit assumptions only in documentation artifacts.
@@ -189,7 +284,7 @@ ${input.description}
 Verified project and requirements context:
 ${input.context || 'No additional project context was provided. Do not assume a web development environment.'}
 ${artifact.kind === 'frontend_asset' ? `\nVisual direction (use only if relevant):\n${input.aestheticMode || 'Use a clear, maintainable visual style consistent with the requirements.'}` : ''}
-${runtimePathGuidance}
+${runtimePathGuidance}${runtimeGuidance}
 
 Primary language for user-facing content: ${input.language === 'ar' ? 'Arabic (RTL where applicable)' : 'English (LTR where applicable)'}
 
@@ -246,6 +341,10 @@ Return the complete file content now.`;
             const mismatch = artifactMismatch(filePath, finalContent);
             if (mismatch) {
                 return { ok: false, error: mismatch, logs: [...logs, 'generated content violated the destination artifact contract; nothing was written'] };
+            }
+            const runtimeMismatch = runtimeArtifactMismatch(filePath, finalContent, runtimeContract);
+            if (runtimeMismatch) {
+                return { ok: false, error: runtimeMismatch, logs: [...logs, 'generated content violated the verified project runtime contract; nothing was written'] };
             }
 
             // resolveToolPath keeps the write inside the workspace and throws on

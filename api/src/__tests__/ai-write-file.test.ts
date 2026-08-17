@@ -215,6 +215,54 @@ describe('artifact contracts prevent a familiar template from replacing the requ
     });
 });
 
+describe('verified runtime contracts keep generated source on the project stack', () => {
+    const projectRel = scratch('verified-web');
+    const projectRoot = landsAt(projectRel);
+
+    beforeAll(() => {
+        fs.mkdirSync(projectRoot, { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, 'package.json'), JSON.stringify({
+            name: 'verified-web',
+            dependencies: { react: '^18.2.0', 'react-dom': '^18.2.0' },
+            devDependencies: { vite: '^5.0.0' },
+        }), 'utf-8');
+    });
+
+    afterAll(() => {
+        try { fs.rmSync(projectRoot, { recursive: true, force: true }); } catch { }
+    });
+
+    it('rejects a React Native switch in a verified React/Vite project before disk write', async () => {
+        callLLM.mockResolvedValue("import React from 'react';\nimport { View, Text } from 'react-native';\nexport default function App() { return <View><Text>Weather</Text></View>; }");
+        const rel = path.join(projectRel, 'src/App.jsx');
+
+        const res: any = await tool.execute({
+            path: rel,
+            description: 'Write the main browser screen for the existing React project.',
+        }, { projectRoot, engineeringPipeline: true });
+
+        expect(res.ok).toBe(false);
+        expect(res.error).toMatch(/runtime_contract_mismatch/);
+        expect(res.error).toMatch(/react-native/);
+        expect(callLLM.mock.calls[0][0]).toMatch(/VERIFIED PROJECT RUNTIME CONTRACT/);
+        expect(callLLM.mock.calls[0][0]).toMatch(/web React\/Vite\/Next/);
+        expect(fs.existsSync(landsAt(rel))).toBe(false);
+    });
+
+    it('allows declared React DOM imports under the same verified contract', async () => {
+        callLLM.mockResolvedValue("import React from 'react';\nimport { createRoot } from 'react-dom/client';\nexport function App() { return <main>Weather</main>; }\nvoid createRoot;");
+        const rel = path.join(projectRel, 'src/App.jsx');
+
+        const res: any = await tool.execute({
+            path: rel,
+            description: 'Write a browser React screen for the existing project.',
+        }, { projectRoot, engineeringPipeline: true });
+
+        expect(res.ok).toBe(true);
+        expect(fs.readFileSync(landsAt(rel), 'utf-8')).toMatch(/react-dom\/client/);
+    });
+});
+
 describe('a failure is never written into the file as its contents', () => {
     it('refuses the router\'s no-provider notice', async () => {
         // The router answers with an apology STRING rather than throwing. Writing

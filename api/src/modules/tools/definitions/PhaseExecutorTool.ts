@@ -572,6 +572,14 @@ export class PhaseExecutorTool implements ToolDefinition {
             browserSessionId: context?.browserSessionId || projectContext?.browserSessionId,
             workspaceId: context?.workspaceId || projectContext?.workspaceId,
             userId: context?.userId || projectContext?.userId,
+            // Delegated artifact writers need the same trusted project identity
+            // as project_run. Without it, a model can see only a broad workspace
+            // and silently switch a Vite/React product to React Native or another
+            // undeclared stack between phases.
+            projectRoot: context?.projectRoot || projectContext?.projectRoot,
+            projectName: context?.projectName || projectContext?.projectName,
+            createsNewProject: context?.createsNewProject ?? projectContext?.createsNewProject,
+            projectRootRuntimeBound: context?.projectRootRuntimeBound ?? projectContext?.projectRootRuntimeBound,
             // Preserve the canonical engineering-routing contract across the
             // executor boundary. AgentLoopService marks the pipeline as an
             // internal engineering run, but the old narrowed context dropped
