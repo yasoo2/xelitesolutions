@@ -365,32 +365,96 @@ export function normalizeReactScaffoldStructure(structure: Record<string, any>):
         const normalized = normalizePath(String(relativePath)).toLowerCase();
         return normalized.endsWith('vite.config.js') || normalized.endsWith('vite.config.mjs') || normalized.endsWith('vite.config.cjs') || normalized.endsWith('vite.config.ts');
     });
-    if (!((hasViteScript || hasViteConfig) && (hasReactDependency || hasReactSource))) return { structure, changed: false };
+    const hasExpoScript = Object.values(scripts).some(command => /\bexpo\b/i.test(String(command || '')));
+    const hasExpoConfig = entries.some(([relativePath]) => {
+        const normalized = normalizePath(String(relativePath)).toLowerCase();
+        const basename = normalized.slice(normalized.lastIndexOf('/') + 1);
+        return basename === 'app.json' || /^app\.config\.(?:js|cjs|mjs|ts)$/.test(basename);
+    });
+    const hasExpoSource = entries.some(([relativePath, content]) => {
+        const normalized = normalizePath(String(relativePath)).toLowerCase();
+        const sourceText = String(content || '');
+        const isSourceFile = /\.(?:js|jsx|ts|tsx)$/.test(normalized);
+        return isSourceFile && (/(?:from|require\s*\()\s*[\'\"](?:expo|react-native|react-native-web)(?:[\'\"]|\/)/i.test(sourceText)
+            || sourceText.includes('babel-preset-expo'));
+    });
+    const hasExpoEvidence = hasExpoScript || hasExpoConfig || hasExpoSource;
+    const hasExpoWebScript = Object.values(scripts).some(command => /\bexpo\b[\s\S]*(?:^|\s)--web(?:\s|$)/i.test(String(command || '')));
+    const hasBabelExpoPreset = entries.some(([relativePath, content]) => {
+        const normalized = normalizePath(String(relativePath)).toLowerCase();
+        return normalized.slice(normalized.lastIndexOf('/') + 1).startsWith('babel.config.')
+            && /babel-preset-expo/i.test(String(content || ''));
+    });
+    const hasJestScript = Object.values(scripts).some(command => /(?:^|[\s&|])jest(?:\s|$)/i.test(String(command || '')));
+    const hasJestConfig = Object.keys(manifest).some(key => key.toLowerCase() === 'jest' && manifest[key])
+        || entries.some(([relativePath]) => /^jest\.config\./i.test(normalizePath(String(relativePath)).slice(normalizePath(String(relativePath)).lastIndexOf('/') + 1)));
+    const hasJestEvidence = hasJestScript || hasJestConfig;
+    const hasViteEvidence = (hasViteScript || hasViteConfig) && (hasReactDependency || hasReactSource);
+    if (!hasViteEvidence && !hasExpoEvidence && !hasJestEvidence) return { structure, changed: false };
 
     const nextManifest = JSON.parse(JSON.stringify(manifest));
-    nextManifest.dependencies = {
-        ...(nextManifest.dependencies && typeof nextManifest.dependencies === 'object' ? nextManifest.dependencies : {}),
-        react: nextManifest.dependencies?.react || '^18.2.0',
-        'react-dom': nextManifest.dependencies?.['react-dom'] || '^18.2.0',
-    };
-    nextManifest.devDependencies = {
-        ...(nextManifest.devDependencies && typeof nextManifest.devDependencies === 'object' ? nextManifest.devDependencies : {}),
-        vite: nextManifest.devDependencies?.vite || '^5.0.0',
-        '@vitejs/plugin-react': nextManifest.devDependencies?.['@vitejs/plugin-react'] || '^4.0.0',
-    };
-    nextManifest.scripts = {
-        ...scripts,
-        dev: scripts.dev || 'vite',
-        build: scripts.build || 'vite build',
-        preview: scripts.preview || 'vite preview',
-    };
+    const dependencies = nextManifest.dependencies && typeof nextManifest.dependencies === 'object' ? nextManifest.dependencies : {};
+    const devDependencies = nextManifest.devDependencies && typeof nextManifest.devDependencies === 'object' ? nextManifest.devDependencies : {};
+    const reasons: string[] = [];
+
+    if (hasViteEvidence) {
+        nextManifest.dependencies = {
+            ...dependencies,
+            react: dependencies.react || '^18.2.0',
+            'react-dom': dependencies['react-dom'] || '^18.2.0',
+        };
+        nextManifest.devDependencies = {
+            ...devDependencies,
+            vite: devDependencies.vite || '^5.0.0',
+            '@vitejs/plugin-react': devDependencies['@vitejs/plugin-react'] || '^4.0.0',
+        };
+        nextManifest.scripts = {
+            ...scripts,
+            dev: scripts.dev || 'vite',
+            build: scripts.build || 'vite build',
+            preview: scripts.preview || 'vite preview',
+        };
+        reasons.push('React + Vite');
+    }
+
+    if (hasExpoEvidence) {
+        nextManifest.dependencies = {
+            ...(nextManifest.dependencies && typeof nextManifest.dependencies === 'object' ? nextManifest.dependencies : dependencies),
+            expo: dependencies.expo || '^57.0.14',
+            react: (nextManifest.dependencies?.react || dependencies.react) || '^19.2.8',
+            'react-native': dependencies['react-native'] || '^0.87.0',
+        };
+        if (hasExpoWebScript) {
+            nextManifest.dependencies['react-dom'] = nextManifest.dependencies['react-dom'] || '^19.2.8';
+            nextManifest.dependencies['react-native-web'] = nextManifest.dependencies['react-native-web'] || '^0.21.2';
+        }
+        if (hasBabelExpoPreset || hasExpoScript) {
+            nextManifest.devDependencies = {
+                ...(nextManifest.devDependencies && typeof nextManifest.devDependencies === 'object' ? nextManifest.devDependencies : devDependencies),
+                'babel-preset-expo': devDependencies['babel-preset-expo'] || '^57.0.7',
+            };
+        }
+        reasons.push(hasExpoWebScript ? 'Expo Web' : 'Expo');
+    }
+
+    if (hasJestEvidence) {
+        nextManifest.devDependencies = {
+            ...(nextManifest.devDependencies && typeof nextManifest.devDependencies === 'object' ? nextManifest.devDependencies : devDependencies),
+            jest: devDependencies.jest || '^30.4.2',
+        };
+        if (hasExpoEvidence) {
+            nextManifest.devDependencies['jest-expo'] = devDependencies['jest-expo'] || '^57.0.4';
+        }
+        reasons.push(hasExpoEvidence ? 'Jest + Expo preset' : 'Jest');
+    }
+
     const serialized = JSON.stringify(nextManifest, null, 2) + String.fromCharCode(10);
     const changed = serialized !== packageEntry[1];
     if (!changed) return { structure, changed: false };
     return {
         structure: { ...structure, [packageEntry[0]]: serialized },
         changed: true,
-        reason: 'React + Vite evidence found; manifest dependencies and lifecycle scripts were completed',
+        reason: `${reasons.join(' and ')} evidence found; manifest dependencies and lifecycle contracts were completed`,
     };
 }
 

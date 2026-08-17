@@ -173,6 +173,30 @@ describe('React scaffold manifests are runnable when the evidence is explicit', 
         expect(result.changed).toBe(false);
         expect(result.structure).toBe(structure);
     });
+
+    it('completes Expo Web and Jest dependencies from explicit scaffold evidence', () => {
+        const result = normalizeReactScaffoldStructure({
+            'package.json': JSON.stringify({
+                name: 'weathergo',
+                scripts: { start: 'expo start', web: 'expo start --web', test: 'jest' },
+            }),
+            'babel.config.js': "module.exports = function(api){ api.cache(true); return { presets: ['babel-preset-expo'] }; };",
+            'jest.config.js': "module.exports = { preset: 'jest-expo' };",
+            'App.js': "import React from 'react'; import { View } from 'react-native'; export default function App(){ return <View />; }",
+        });
+
+        expect(result.changed).toBe(true);
+        expect(result.reason).toMatch(/Expo Web/);
+        const manifest = JSON.parse(result.structure['package.json']);
+        expect(manifest.dependencies.expo).toBe('^57.0.14');
+        expect(manifest.dependencies.react).toBe('^19.2.8');
+        expect(manifest.dependencies['react-native']).toBe('^0.87.0');
+        expect(manifest.dependencies['react-dom']).toBe('^19.2.8');
+        expect(manifest.dependencies['react-native-web']).toBe('^0.21.2');
+        expect(manifest.devDependencies['babel-preset-expo']).toBe('^57.0.7');
+        expect(manifest.devDependencies.jest).toBe('^30.4.2');
+        expect(manifest.devDependencies['jest-expo']).toBe('^57.0.4');
+    });
 });
 
 describe('ls cannot enumerate outside the workspace', () => {
