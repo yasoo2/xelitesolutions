@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { handleShellCommand } from '../modules/tools/handlers';
-import { NpmManagerTool, reconcileNpmManifest, extractNpmInvalidVersionEvidence, selectStableNpmVersion } from '../modules/tools/definitions/SystemTools';
+import { NpmManagerTool, reconcileNpmManifest, extractNpmInvalidVersionEvidence, selectStableNpmVersion, npmInstallTimeoutMs } from '../modules/tools/definitions/SystemTools';
 
 jest.mock('../modules/tools/handlers', () => ({
     ...jest.requireActual('../modules/tools/handlers'),
@@ -10,6 +10,27 @@ jest.mock('../modules/tools/handlers', () => ({
 }));
 
 const mockedHandleShellCommand = handleShellCommand as jest.MockedFunction<typeof handleShellCommand>;
+
+describe('npm install timeout contract', () => {
+    const previous = process.env.JOE_NPM_INSTALL_TIMEOUT_MS;
+
+    afterEach(() => {
+        if (previous === undefined) delete process.env.JOE_NPM_INSTALL_TIMEOUT_MS;
+        else process.env.JOE_NPM_INSTALL_TIMEOUT_MS = previous;
+    });
+
+    it('allows ordinary dependency bootstraps the same five minutes as shell npm commands', () => {
+        delete process.env.JOE_NPM_INSTALL_TIMEOUT_MS;
+        expect(npmInstallTimeoutMs()).toBe(300_000);
+    });
+
+    it('keeps explicit npm deadlines bounded', () => {
+        process.env.JOE_NPM_INSTALL_TIMEOUT_MS = '1';
+        expect(npmInstallTimeoutMs()).toBe(15_000);
+        process.env.JOE_NPM_INSTALL_TIMEOUT_MS = '999999';
+        expect(npmInstallTimeoutMs()).toBe(600_000);
+    });
+});
 
 describe('npm manifest reconciliation', () => {
     let root = '';

@@ -24,7 +24,12 @@ const backgroundProcesses = new Map<string, { pid: number, command: string, cwd:
  */
 export function npmInstallTimeoutMs(): number {
     const configured = Number(process.env.JOE_NPM_INSTALL_TIMEOUT_MS);
-    if (!Number.isFinite(configured)) return 120_000;
+    // Keep npm installs aligned with the command-aware shell default. A real
+    // dependency bootstrap may spend more than two minutes in registry,
+    // optional-package, or native-lifecycle work; cutting it at 120s created
+    // false pipeline failures even though the shared shell contract allows
+    // five minutes. The environment override remains bounded below and above.
+    if (!Number.isFinite(configured)) return 300_000;
     return Math.min(10 * 60_000, Math.max(15_000, Math.floor(configured)));
 }
 
