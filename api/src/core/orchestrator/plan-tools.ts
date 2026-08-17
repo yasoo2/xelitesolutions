@@ -372,7 +372,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             const tool = String(task?.tool || '');
             if (tool === 'test_generator') return [testGeneratorOutputPath(task)];
             if (!['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(tool)) return [];
-            return [task?.args?.path || task?.args?.filePath || task?.input?.path || task?.input?.filePath];
+            return [task?.args?.path || task?.args?.filePath || task?.args?.filename || task?.input?.path || task?.input?.filePath || task?.input?.filename];
         })
         .map(normaliseEvidencePath)
         .filter(Boolean);
@@ -395,7 +395,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         const producer = phaseTasks.find((task: any) => {
             const tool = String(task?.tool || '');
             if (!['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(tool)) return false;
-            const pathValue = task?.args?.path || task?.args?.filePath || task?.input?.path || task?.input?.filePath;
+            const pathValue = task?.args?.path || task?.args?.filePath || task?.args?.filename || task?.input?.path || task?.input?.filePath || task?.input?.filename;
             return normaliseEvidencePath(pathValue) === manifest;
         });
         if (!producer) return false;

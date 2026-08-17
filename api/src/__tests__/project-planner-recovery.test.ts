@@ -43,6 +43,69 @@ describe('project planner structured recovery', () => {
         expect(prompt).not.toMatch(/api-taskflow-ai/i);
     });
 
+    it('keeps selected-project relative read and edit tasks when workspace is nested', async () => {
+        mockCallLLM.mockResolvedValueOnce(JSON.stringify({
+            projectName: 'WeatherGo',
+            projectVibe: 'Evidence-backed source repair',
+            totalPhases: 1,
+            estimatedDuration: '5 minutes',
+            dependencies: {},
+            phases: [{
+                phaseNumber: 1,
+                name: 'Repair the existing WeatherGo source',
+                description: 'Read and edit the discovered React source before verifying it.',
+                tasks: [
+                    {
+                        task: 'Read the discovered application entrypoint',
+                        tool: 'read_file',
+                        args: { path: 'src/App.jsx' },
+                        priority: 'high',
+                        realisticMinutes: 1,
+                    },
+                    {
+                        task: 'Edit the discovered application entrypoint',
+                        tool: 'file_edit',
+                        args: { filename: 'src/App.jsx', find: 'old text', replace: 'new text' },
+                        priority: 'high',
+                        realisticMinutes: 1,
+                    },
+                ],
+                verificationTask: {
+                    task: 'Read the edited entrypoint',
+                    tool: 'read_file',
+                    args: { path: 'src/App.jsx' },
+                },
+                deliverables: ['src/App.jsx'],
+                estimatedTime: '5 minutes',
+                requirementsCovered: ['R1'],
+            }],
+        }));
+
+        const result: any = await new ProjectPlannerTool().execute({
+            projectDescription: 'Continue by repairing the existing WeatherGo project; do not create a new project.',
+            evidence: {
+                mode: 'existing_workspace',
+                workspaceRoot: '/tmp/joe-workspace',
+                selectedProject: {
+                    root: '/tmp/joe-workspace/react-weathergo-a587',
+                    projectKinds: ['react'],
+                    manifests: [{ path: '/tmp/joe-workspace/react-weathergo-a587/package.json' }],
+                    likelyEntrypoints: ['/tmp/joe-workspace/react-weathergo-a587/src/App.jsx'],
+                    sourceFiles: ['/tmp/joe-workspace/react-weathergo-a587/src/App.jsx'],
+                    testFiles: [],
+                    candidateChecks: [{ command: 'npm run build' }],
+                },
+                referenceProjects: [],
+            },
+        }, { repairMode: true, engineeringPipeline: true });
+
+        expect(result.ok).toBe(true);
+        expect(result.output.fallback).not.toBe(true);
+        const tasks = result.output.phases[0].tasks;
+        expect(tasks.map((task: any) => task.tool)).toEqual(['read_file', 'file_edit']);
+        expect(result.output.phases[0].verificationTask.tool).toBe('read_file');
+    });
+
     it('propagates selected-project evidence into contract recovery', async () => {
         mockCallLLM
             .mockResolvedValueOnce(JSON.stringify({
