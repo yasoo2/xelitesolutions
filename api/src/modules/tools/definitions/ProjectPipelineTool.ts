@@ -51,6 +51,35 @@ function boundedPipelineLogs(...sources: unknown[]): string[] {
     return logs;
 }
 
+/**
+ * A builder may return a long, useful delivery message.  Credentials are a
+ * one-time handoff, however, so they must not depend on where the builder's
+ * prose lands in the bounded report.  Extract only the explicit owner-account
+ * forms emitted by ApiProjectTool; never infer or recover a password from a
+ * hash or from project files.
+ */
+function deliveryCredentialFromMessage(message: unknown): { email: string; password: string } | null {
+    const text = String(message || '').trim();
+    if (!text) return null;
+
+    const clean = (value: string): string => String(value || '').replace(/[),.;`]+$/u, '').trim();
+    const arabicEmail = text.match(/البريد:\s*([^\s]+)/u)?.[1];
+    const arabicPassword = text.match(/كلمة المرور:\s*([^\s]+)/u)?.[1];
+    if (arabicEmail && arabicPassword) {
+        const email = clean(arabicEmail);
+        const password = clean(arabicPassword);
+        if (email.includes('@') && password) return { email, password };
+    }
+
+    const english = text.match(/Owner account(?:\s*\([^)]*\))?:\s*([^\s/]+)\s*\/\s*([^\s]+)/iu);
+    if (english) {
+        const email = clean(english[1]);
+        const password = clean(english[2]);
+        if (email.includes('@') && password) return { email, password };
+    }
+    return null;
+}
+
 function trustedRuntimeProjectRoot(sessionId: unknown, workspaceId: unknown): string {
     const key = String(sessionId || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
     const candidateRaw = String((global as any).joeProjects?.[key]?.dir || '').trim();
@@ -1878,10 +1907,30 @@ export class ProjectPipelineTool implements ToolDefinition {
         const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
+        const phaseResults: any[] = Array.isArray(pipeline?.results) ? pipeline.results : [];
+        const credentials: Array<{ email: string; password: string }> = [];
+        for (const phase of phaseResults) {
+            for (const result of (Array.isArray(phase?.results) ? phase.results : [])) {
+                const credential = deliveryCredentialFromMessage(result?.message);
+                if (credential && !credentials.some(item => item.email === credential.email && item.password === credential.password)) {
+                    credentials.push(credential);
+                }
+            }
+        }
 
         lines.push(verified
             ? (ar ? `## ✅ اكتمل المشروع: ${projectName}` : `## ✅ Project delivered: ${projectName}`)
             : (ar ? `## ⚠️ توقف البناء بصدق: ${projectName}` : `## ⚠️ Build stopped honestly: ${projectName}`));
+
+        if (credentials.length) {
+            lines.push('');
+            lines.push(ar ? '### 🔑 بيانات الدخول الاختبارية (تظهر مرة واحدة)' : '### 🔑 Test account credentials (shown once)');
+            for (const credential of credentials) {
+                lines.push(ar
+                    ? `- البريد: ${credential.email}\n  كلمة المرور: ${credential.password}`
+                    : `- ${credential.email} / ${credential.password}`);
+            }
+        }
 
         // The live system, front and center — it is RUNNING, not just built.
         if (verified && liveUrl) {
@@ -1914,7 +1963,6 @@ export class ProjectPipelineTool implements ToolDefinition {
         }
 
         // Phase-by-phase, from the pipeline's own results.
-        const phaseResults: any[] = Array.isArray(pipeline?.results) ? pipeline.results : [];
         if (phaseResults.length) {
             lines.push('');
             lines.push(ar ? '### المراحل' : '### Phases');
