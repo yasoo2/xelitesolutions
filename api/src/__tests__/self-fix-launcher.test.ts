@@ -157,6 +157,38 @@ describe('self-fix launcher recovery', () => {
     expect(plan.maxAttempts).toBe(1);
   });
 
+  it('recovers a missing test preset reported by auto_tester', () => {
+    const projectCwd = path.join(process.cwd(), '..', 'data', 'builds', `self-fix-auto-tester-preset-${Date.now()}`, 'WeatherGo');
+    const ticket = RepairTicketService.build({
+      projectName: 'WeatherGo',
+      phase: { phaseNumber: 8, name: 'Testing and QA' },
+      phaseResult: {
+        error: 'Validation Error: Preset jest-expo not found.',
+        output: {
+          status: 'partial',
+          results: [{
+            task: 'Run tests',
+            tool: 'auto_tester',
+            ok: false,
+            error: 'Validation Error: Preset jest-expo not found.',
+            cwd: projectCwd,
+          }],
+        },
+      },
+    });
+
+    const plan = SelfFixService.plan(ticket);
+    expect(plan.allowed).toBe(true);
+    expect(plan.strategy).toBe('dependency_fix');
+    expect(plan.suggestedTool).toBe('npm_manager');
+    expect(plan.suggestedInput).toMatchObject({
+      command: 'install',
+      packages: ['jest-expo'],
+      dev: true,
+      cwd: projectCwd,
+    });
+  });
+
   it('installs a missing test preset from a module-resolution error', () => {
     const projectCwd = path.join(process.cwd(), '..', 'data', 'builds', `self-fix-jest-module-${Date.now()}`, 'WeatherGo');
     const ticket = RepairTicketService.build({

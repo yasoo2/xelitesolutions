@@ -183,8 +183,9 @@ function extractMissingNpmTestDependency(ticket: RepairTicket): MissingNpmTestDe
   for (const failed of ticket.failedTasks) {
     const evidence = `${failed.error || ''}\n${ticket.primaryError || ''}`;
     const command = String(failed.command || '');
-    if (failed.tool !== 'shell_execute' || !failed.cwd) continue;
-    if (!/(?:npm\s+(?:run\s+)?(?:test|unit|integration)|(?:jest|vitest|mocha|ava|tap)|test\s+(?:preset|environment|runner))/i.test(`${command}\n${evidence}`)) continue;
+    const task = String(failed.task || '');
+    if (!['shell_execute', 'auto_tester'].includes(String(failed.tool)) || !failed.cwd) continue;
+    if (!/(?:npm\s+(?:run\s+)?(?:test|unit|integration)|(?:jest|vitest|mocha|ava|tap)|test|preset|test\s+(?:environment|runner))/i.test(`${task}\n${command}\n${evidence}`)) continue;
 
     const moduleMatch = evidence.match(/(?:cannot\s+find\s+module|module\s+not\s+found|can't\s+resolve)\s*['\"]([^'\"]+)['\"]/i);
     const presetMatch = evidence.match(/(?:preset|test\s+environment|test\s+runner)\s+['\"]?((?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*)['\"]?\s+(?:is\s+)?(?:not\s+found|could\s+not\s+be\s+found)/i);
