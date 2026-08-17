@@ -1865,8 +1865,12 @@ const validate = (body, partial) => {
        * was wrong.
        */
       const n = Number(v);
-      if (!Number.isInteger(n) || n <= 0) return { error: 'bad_' + c.key };
-      if (db.relation && c.key === db.relation.key && !db.rel.get(n)) return { error: 'unknown_' + c.key };
+      // Zero is a valid value for ordinary integer flags such as pinned and
+      // completed. Only a declared foreign-key column must be strictly
+      // positive and point at a real parent row.
+      const isRelation = !!db.relation && c.key === db.relation.key;
+      if (!Number.isInteger(n) || (isRelation && n <= 0)) return { error: 'bad_' + c.key };
+      if (isRelation && !db.rel.get(n)) return { error: 'unknown_' + c.key };
       out[c.key] = n;
     } else {
       const str = String(v);

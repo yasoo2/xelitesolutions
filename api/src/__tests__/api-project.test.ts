@@ -279,6 +279,15 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         expect(server).toContain('404');
     });
 
+    it('ordinary integer flags accept zero while foreign keys stay positive', async () => {
+        const res: any = await new ApiProjectTool().execute(
+            { request: 'build an api for notes with pinned and completed flags', skipInstall: true, root: tmp }, { sessionId: 'api-int-flags' });
+        const server = fs.readFileSync(path.join(res.output.path, 'server.js'), 'utf-8');
+        expect(server).toContain('const isRelation = !!db.relation && c.key === db.relation.key;');
+        expect(server).toContain('(isRelation && n <= 0)');
+        expect(server).not.toContain("if (!Number.isInteger(n) || n <= 0) return { error: 'bad_' + c.key };");
+    });
+
     it('ORDERS: both backends carry the orders store, the routes validate, the README teaches them', async () => {
         const res: any = await new ApiProjectTool().execute(
             { request: 'ابنِ لي API لمنتجات متجر', skipInstall: true, root: tmp }, { sessionId: 'api-t' });
