@@ -697,8 +697,13 @@ export class AgentLoopService {
                 phase,
                 projectContext,
                 selfFixPlan,
-                executionContext,
-            });
+            executionContext: {
+                ...executionContext,
+                projectRoot: projectContext.projectRoot,
+                projectRootRuntimeBound: projectContext.projectRootRuntimeBound,
+                projectName: projectContext.projectName,
+            },
+        });
 
             if (selfFixExecution.ok) {
                 voice(pick(isAr,

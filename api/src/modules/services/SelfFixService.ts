@@ -48,6 +48,29 @@ interface NpmInvalidVersionEvidence {
   explicitSpecifier: boolean;
 }
 
+interface UndeclaredRuntimePackageEvidence {
+  file: string;
+  packages: string[];
+  cwd: string;
+}
+
+function extractUndeclaredRuntimePackageEvidence(ticket: RepairTicket): UndeclaredRuntimePackageEvidence | null {
+  const raw = rawTextOf(ticket);
+  const match = raw.match(/runtime_contract_mismatch:\s*([^\s]+)\s+imports undeclared (?:packages?|package\(s\)):\s*([^\n]+)/i);
+  if (!match?.[1] || !match[2]) return null;
+
+  const file = match[1].trim().replace(/\\/g, '/');
+  const packages = [...match[2].matchAll(/(?:@[a-z0-9][a-z0-9._~-]*\/[a-z0-9][a-z0-9._~-]*|[a-z0-9][a-z0-9._~-]*)/giu)]
+    .map(item => item[0].replace(/[.,;:)}\]]+$/u, ''))
+    .filter((name, index, all) => isSafeNpmPackageName(name) && all.indexOf(name) === index);
+  if (!packages.length) return null;
+
+  const failed = ticket.failedTasks.find(task => /runtime_contract_mismatch/i.test(`${task.error || ''}\n${task.file || ''}`));
+  const fileRoot = file.match(/^(.+?)\/src\//i)?.[1];
+  const cwd = fileRoot || failed?.cwd || '.';
+  return { file, packages, cwd };
+}
+
 function extractNpmInvalidVersionEvidence(ticket: RepairTicket): NpmInvalidVersionEvidence | null {
   const raw = rawTextOf(ticket);
   if (!/(?:ETARGET|notarget|No matching version|No match found for version)/i.test(raw)) return null;
@@ -370,6 +393,29 @@ export class SelfFixService {
       };
     }
 
+    // A runtime contract mismatch is dependency evidence, not a malformed
+    // artifact. Classify it before the generic artifact/code repair branch so
+    // recovery installs the evidenced package in the evidenced project root.
+    const undeclaredRuntimePackage = extractUndeclaredRuntimePackageEvidence(ticket);
+    if (undeclaredRuntimePackage) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `The generated file ${undeclaredRuntimePackage.file} imports undeclared runtime package(s): ${undeclaredRuntimePackage.packages.join(', ')}. Install only those evidenced packages in the project cwd, then rerun the failed phase.`,
+        maxAttempts: 1,
+        strategy: 'dependency_fix',
+        suggestedTool: 'npm_manager',
+        suggestedInput: {
+          command: 'install',
+          packages: undeclaredRuntimePackage.packages,
+          cwd: undeclaredRuntimePackage.cwd,
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
     const artifactValidationFailure = extractArtifactValidationFailure(ticket);
     if (artifactValidationFailure) {
       return {
@@ -440,8 +486,8 @@ export class SelfFixService {
 
     // Native addons are not a missing-runner problem. Re-running npm install
     // would repeat the same compiler/toolchain failure and can mutate the project
-    // without improving its portability. Stop honestly and let planning choose a
-    // runtime-native or file-backed alternative.
+    // without improving its portability. Stop honestly and let planning choose
+    // a runtime-native or file-backed alternative.
     if (hasNativeAddonBuildFailure(ticket)) {
       return this.stop(
         ticket,

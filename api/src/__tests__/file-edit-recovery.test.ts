@@ -116,6 +116,39 @@ describe('evidence-aware file edit recovery', () => {
     expect(String(plan.suggestedInput?.description)).toContain('run npm install');
   });
 
+  it('repairs an undeclared runtime package in the evidenced project root', () => {
+    const plan = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'WeatherGo',
+      phaseNumber: 3,
+      phaseName: 'API Integration',
+      status: 'partial',
+      severity: 'high',
+      primaryError: 'runtime_contract_mismatch: /workspace/WeatherGo/src/components/Favorites.jsx imports undeclared packages: react-router-dom',
+      failedTasks: [{
+        task: 'Write Favorites component',
+        tool: 'ai_write_file',
+        error: 'runtime_contract_mismatch: /workspace/WeatherGo/src/components/Favorites.jsx imports undeclared packages: react-router-dom',
+        cwd: '/workspace/WeatherGo',
+        file: '/workspace/WeatherGo/src/components/Favorites.jsx',
+      }],
+      suggestedNextAction: 'install the evidenced package in the product root and rerun',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(plan.allowed).toBe(true);
+    expect(plan.strategy).toBe('dependency_fix');
+    expect(plan.suggestedTool).toBe('npm_manager');
+    expect(plan.suggestedInput).toEqual(expect.objectContaining({
+      command: 'install',
+      packages: ['react-router-dom'],
+      cwd: '/workspace/WeatherGo',
+    }));
+    expect(JSON.stringify(plan.suggestedInput)).not.toContain('src/index.ts');
+  });
+
   it('builds one bounded advanced-edit recovery from preserved file evidence', () => {
     const plan = SelfFixService.plan({
       type: 'phase_repair_ticket',

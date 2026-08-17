@@ -106,6 +106,10 @@ export interface ToolContext {
     onProgress?: (msg: string) => void;
     onThought?: (msg: string) => void;
     modelConfig?: any;
+    /** جذر المنتج الذي ثبته pipeline بالدليل، وليس workspace العام. */
+    projectRoot?: string;
+    projectRootRuntimeBound?: boolean;
+    projectName?: string;
 }
 
 function normalizeUserId(v: any) {
