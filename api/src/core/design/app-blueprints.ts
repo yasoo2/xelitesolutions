@@ -23,10 +23,10 @@
  *             search, filter, totals, CSV — driven by a per-domain schema
  */
 
-export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social' | 'shop';
+export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social' | 'shop' | 'calculator' | 'productivity';
 
 export type AppKind =
-    | 'maps' | 'chat' | 'weather' | 'social' | 'store'
+    | 'maps' | 'chat' | 'weather' | 'social' | 'store' | 'calculator' | 'productivity'
     | 'tasks' | 'notes' | 'expenses' | 'inventory' | 'booking'
     | 'pos' | 'crm' | 'lms' | 'contacts' | 'habits' | 'generic';
 
@@ -180,6 +180,10 @@ export interface AppBlueprint {
 const KIND_DETECTORS: Array<[AppKind, RegExp]> = [
     ['maps', /خرائط|خريطة|خارطة|مواقع\s*جغرافي|ملاحة|تتبع\s*(المواقع|الموقع)|جي\s*بي\s*اس|\bmaps?\b|\bgps\b|navigation|geolocation|geo\s*app/i],
     ['weather', /طقس|الجو|درجات?\s*الحرارة|أحوال\s*جوية|weather|forecast|temperature app/i],
+    // A calculator is a distinct interaction contract, not a records page.
+    // Detect it before generic app/manage fallbacks so a request such as
+    // "Build a calculator" never becomes Hero + Features + Contact.
+    ['calculator', /آلة\s*حاسبة|حاسبة|حسابات?\s*رياضية|عمليات\s*حسابية|calculator|calc\s*(app|pro)?|arithmetic|scientific\s*calculator/i],
     // A social network CONTAINS messaging, so it is tested before chat:
     // «منصة تواصل اجتماعي … Messaging» is a feed with messages in it, not a
     // messenger. Measured from the field request that produced a chat app.
@@ -246,6 +250,9 @@ const PAGE_SIGNAL = /صفحة\s*(?:هبوط|تعريف(?:ية)?|تسويقية)|
  */
 const TASK_BOARD_CONTRACT = /مركز\s*جاهزية\s*(?:الإصدار|الاصدار)|لوحة\s*(?:مهام|إصدار|اصدار|جاهزية)|جدول\s*مهام|(?:بطاقات\s*مؤشرات[\s\S]{0,180}(?:بحث|تصفية|نافذة\s*تفاصيل)|(?:بحث|تصفية|نافذة\s*تفاصيل)[\s\S]{0,180}بطاقات\s*مؤشرات)|release\s*(?:readiness|center|board)|task\s*(?:board|manager|list)|kanban/i;
 
+/** A request that names two first-class collections is a composite app, not the first matching single-domain blueprint. */
+const PRODUCTIVITY_CONTRACT = /(?:ملاحظات|مذكرات|مفكرة|notes?|notepad)[\s\S]{0,260}(?:مهام|مهمات|مهامّ?|tasks?|to-?do)|(?:مهام|مهمات|مهامّ?|tasks?|to-?do)[\s\S]{0,260}(?:ملاحظات|مذكرات|مفكرة|notes?|notepad)/i;
+
 /**
  * WHICH application this is — or null when the request is genuinely a
  * presentation site (a café, a clinic's landing page, a shop window), which
@@ -278,6 +285,10 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // «صفحة هبوط لتطبيق خرائط» is a page about an app — the document the user
     // named wins, exactly as classifyBuildScope decides it.
     if (PAGE_SIGNAL.test(request)) return null;
+    // Two named collections are a stronger contract than either word alone.
+    // This prevents «notes and tasks» from becoming only a task table or a
+    // React-Native-shaped scaffold; the builder receives both surfaces.
+    if (PRODUCTIVITY_CONTRACT.test(request) && APP_SIGNAL.test(request)) return 'productivity';
     // Explicit interaction surfaces are a stronger contract than a stray
     // domain word that may have been appended to a long execution context.
     // This prevents a release board from becoming ChatApp merely because its
@@ -432,6 +443,19 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
             entityOne: L('رسالة', 'message'), entityMany: L('الرسائل', 'Messages'),
             fields: [], metrics: [], deps: {},
             emptyHint: L('لا رسائل في هذه الغرفة بعد — اكتب أول رسالة.', 'No messages in this room yet — write the first one.'),
+        };
+
+        case 'productivity': return {
+            kind, engine: 'productivity',
+            title: L('الملاحظات والمهام', 'Notes & Tasks'),
+            lede: L('نظّم ملاحظاتك ومهامك في مساحة واحدة، مع حفظ دائم على جهازك.', 'Keep notes and tasks together, with durable local storage.'),
+            entityOne: L('عنصر', 'item'), entityMany: L('الملاحظات والمهام', 'Notes and tasks'),
+            fields: [], metrics: [
+                { label: L('الملاحظات', 'Notes'), kind: 'count' },
+                { label: L('المهام', 'Tasks'), kind: 'count' },
+            ],
+            deps: {},
+            emptyHint: L('ابدأ بإضافة ملاحظة أو مهمة.', 'Start by adding a note or task.'),
         };
 
         case 'tasks': return {
@@ -712,6 +736,18 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
             emptyHint: L('الدفتر فارغ — أضف أول جهة اتصال.', 'The book is empty — add the first contact.'),
         };
 
+        case 'calculator': return {
+            kind, engine: 'calculator',
+            title: L('الآلة الحاسبة', 'Calculator'),
+            lede: L('احسب بسرعة، راجع آخر عملياتك، واعمل بثقة على الهاتف أو سطح المكتب.',
+                'Calculate quickly, review recent operations, and stay confident on phone or desktop.'),
+            entityOne: L('عملية', 'calculation'), entityMany: L('العمليات الأخيرة', 'Recent calculations'),
+            fields: [],
+            metrics: [],
+            deps: {},
+            emptyHint: L('لا توجد عمليات بعد — ابدأ بعملية حسابية.', 'No calculations yet — start an operation.'),
+        };
+
         case 'habits': return {
             kind, engine: 'records',
             title: L('العادات', 'Habits'),
@@ -830,6 +866,7 @@ const ENGINE_COVERS: Record<AppEngine, RegExp> = {
     weather: /weather|forecast|temperature|humidity|wind|طقس|توقّع|توقع|حرارة/i,
     social: /post|feed|timeline|like|comment|follow|profile|share|newsfeed|wall|منشور|منشورات|خيط|إعجاب|تعليق|متابع|ملف\s*شخصي|مشاركة/i,
     records: /list|record|crud|table|entry|entries|manage|track|inventory|booking|order|task|note|expense|customer|student|contact|report|search|filter|export|relation(ship)?s?|foreign\s*key|linked|belongs\s*to|قائمة|سجل|إدارة|تتبع|حجز|طلب|مهمة|ملاحظة|مصروف|عميل|طالب|تقرير|بحث|تصدير|علاقات?|ربط|جداول|مرتبط/i,
+    calculator: /calculator|calc|arithmetic|addition|subtraction|multiplication|division|decimal|percentage|percent|backspace|clear|sign\s*toggle|history|آلة\s*حاسبة|حاسبة|جمع|طرح|ضرب|قسمة|عشري|نسبة|حذف|مسح|إشارة|سجل\s*العمليات/i,
     // The shop covers the catalogue, the cart and the order — and deliberately
     // NOT payment gateways, shipping carriers or multi-vendor payouts, so a
     // «Shopify-like» request still gets an honest list of what was not built.

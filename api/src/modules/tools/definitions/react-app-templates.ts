@@ -92,7 +92,7 @@ ${bp.relation.fields.map(f => `      { key: '${q(f.key)}', label: '${q(f.label)}
 
 const ENGINE_COMPONENT: Record<AppBlueprint['engine'], string> = {
     map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp', social: 'SocialApp',
-    shop: 'ShopApp',
+    shop: 'ShopApp', calculator: 'CalculatorApp', productivity: 'ProductivityApp',
 };
 
 export function fileAppShellJsx(bp: AppBlueprint, isAr: boolean, hasTables = false, hasApi = false): string {
@@ -2134,6 +2134,173 @@ export default function WeatherApp({ content }) {
 `;
 }
 
+/* ── engine: calculator — a working calculator, not a page about one ─────── */
+export function fileCalculatorAppJsx(isAr: boolean): string {
+    const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
+    return `import React, { useMemo, useState } from 'react';
+import { createStore } from '../app/store.js';
+
+const formatNumber = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  return String(Math.round(n * 1000000000000) / 1000000000000);
+};
+
+const calculate = (a, b, op) => {
+  if (op === '÷' && Number(b) === 0) throw new Error('division_by_zero');
+  if (op === '+') return a + b;
+  if (op === '-') return a - b;
+  if (op === '×') return a * b;
+  if (op === '÷') return a / b;
+  return b;
+};
+
+export default function CalculatorApp({ content }) {
+  const historyStore = useMemo(() => createStore(content.storeKey + ':history'), [content.storeKey]);
+  const [display, setDisplay] = useState('0');
+  const [stored, setStored] = useState(null);
+  const [operator, setOperator] = useState(null);
+  const [waiting, setWaiting] = useState(false);
+  const [error, setError] = useState('');
+  const [history, setHistory] = useState(() => historyStore.read().slice(0, 10));
+
+  const remember = (expression, result) => {
+    const next = [{ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), expression, result, at: new Date().toISOString() }, ...history].slice(0, 10);
+    setHistory(next);
+    historyStore.write(next);
+  };
+
+  const reset = () => {
+    setDisplay('0'); setStored(null); setOperator(null); setWaiting(false); setError('');
+  };
+
+  const inputDigit = (digit) => {
+    setError('');
+    if (waiting) { setDisplay(digit); setWaiting(false); return; }
+    setDisplay(display === '0' ? digit : (display.length < 18 ? display + digit : display));
+  };
+
+  const inputDecimal = () => {
+    setError('');
+    if (waiting) { setDisplay('0.'); setWaiting(false); return; }
+    if (!display.includes('.')) setDisplay(display + '.');
+  };
+
+  const chooseOperator = (nextOperator) => {
+    setError('');
+    const value = Number(display);
+    if (!Number.isFinite(value)) return;
+    try {
+      if (stored !== null && operator && !waiting) {
+        const result = calculate(stored, value, operator);
+        remember(String(stored) + ' ' + operator + ' ' + String(value), formatNumber(result));
+        setStored(result); setDisplay(formatNumber(result));
+      } else if (stored === null) {
+        setStored(value);
+      }
+      setOperator(nextOperator); setWaiting(true);
+    } catch {
+      setDisplay('0'); setStored(null); setOperator(null); setWaiting(false);
+      setError(${T('لا يمكن القسمة على صفر', 'Cannot divide by zero')});
+    }
+  };
+
+  const equals = () => {
+    if (stored === null || !operator) return;
+    const value = Number(display);
+    try {
+      const result = calculate(stored, value, operator);
+      remember(String(stored) + ' ' + operator + ' ' + String(value), formatNumber(result));
+      setDisplay(formatNumber(result)); setStored(null); setOperator(null); setWaiting(true); setError('');
+    } catch {
+      setDisplay('0'); setStored(null); setOperator(null); setWaiting(false);
+      setError(${T('لا يمكن القسمة على صفر', 'Cannot divide by zero')});
+    }
+  };
+
+  const backspace = () => {
+    setError('');
+    if (waiting) return;
+    setDisplay(display.length <= 1 || display === '-0' ? '0' : display.slice(0, -1));
+  };
+
+  const toggleSign = () => {
+    setError('');
+    if (display === '0') return;
+    setDisplay(display.startsWith('-') ? display.slice(1) : '-' + display);
+  };
+
+  const percentage = () => {
+    setError('');
+    const value = Number(display);
+    if (Number.isFinite(value)) setDisplay(formatNumber(value / 100));
+  };
+
+  const onKeyDown = (event) => {
+    const key = event.key;
+    if (/^[0-9]$/.test(key)) inputDigit(key);
+    else if (key === '.') inputDecimal();
+    else if (key === '+') chooseOperator('+');
+    else if (key === '-') chooseOperator('-');
+    else if (key === '*') chooseOperator('×');
+    else if (key === '/') { event.preventDefault(); chooseOperator('÷'); }
+    else if (key === '%') percentage();
+    else if (key === 'Enter' || key === '=') equals();
+    else if (key === 'Backspace') backspace();
+    else if (key === 'Escape') reset();
+  };
+
+  const loadHistory = (item) => {
+    setDisplay(String(item.result)); setStored(null); setOperator(null); setWaiting(true); setError('');
+  };
+
+  return (
+    <div className="calc-layout" onKeyDown={onKeyDown} tabIndex="0">
+      <section className="calc-panel" aria-label={${T('آلة حاسبة', 'Calculator')}}>
+        <div className="calc-heading">
+          <div><h2>{content.title}</h2><p>{content.lede}</p></div>
+          <span className="calc-badge">{${T('يعمل دون اتصال', 'Works offline')}}</span>
+        </div>
+        <div className="calc-display" aria-live="polite">
+          <span className="calc-expression">{operator && stored !== null ? String(stored) + ' ' + operator : ''}</span>
+          <strong>{display}</strong>
+          {error ? <small role="alert" className="calc-error">{error}</small> : null}
+        </div>
+        <div className="calc-grid" role="group" aria-label={${T('أزرار الآلة الحاسبة', 'Calculator buttons')}}>
+          <button className="calc-key utility" type="button" onClick={reset} aria-label={${T('مسح الكل', 'Clear all')}}>AC</button>
+          <button className="calc-key utility" type="button" onClick={backspace} aria-label={${T('حذف', 'Backspace')}}>⌫</button>
+          <button className="calc-key utility" type="button" onClick={percentage} aria-label={${T('نسبة مئوية', 'Percentage')}}>%</button>
+          <button className="calc-key operator" type="button" onClick={toggleSign} aria-label={${T('تبديل الإشارة', 'Toggle sign')}}>±</button>
+          <button className="calc-key" type="button" onClick={() => inputDigit('7')}>7</button>
+          <button className="calc-key" type="button" onClick={() => inputDigit('8')}>8</button>
+          <button className="calc-key" type="button" onClick={() => inputDigit('9')}>9</button>
+          <button className="calc-key operator" type="button" onClick={() => chooseOperator('÷')} aria-label={${T('قسمة', 'Divide')}}>÷</button>
+          <button className="calc-key" type="button" onClick={() => inputDigit('4')}>4</button>
+          <button className="calc-key" type="button" onClick={() => inputDigit('5')}>5</button>
+          <button className="calc-key" type="button" onClick={() => inputDigit('6')}>6</button>
+          <button className="calc-key operator" type="button" onClick={() => chooseOperator('×')} aria-label={${T('ضرب', 'Multiply')}}>×</button>
+          <button className="calc-key" type="button" onClick={() => inputDigit('1')}>1</button>
+          <button className="calc-key" type="button" onClick={() => inputDigit('2')}>2</button>
+          <button className="calc-key" type="button" onClick={() => inputDigit('3')}>3</button>
+          <button className="calc-key operator" type="button" onClick={() => chooseOperator('-')} aria-label={${T('طرح', 'Subtract')}}>−</button>
+          <button className="calc-key zero" type="button" onClick={() => inputDigit('0')}>0</button>
+          <button className="calc-key" type="button" onClick={inputDecimal} aria-label={${T('فاصلة عشرية', 'Decimal point')}}>.</button>
+          <button className="calc-key equals" type="button" onClick={equals} aria-label={${T('يساوي', 'Equals')}}>=</button>
+          <button className="calc-key operator" type="button" onClick={() => chooseOperator('+')} aria-label={${T('جمع', 'Add')}}>+</button>
+        </div>
+      </section>
+      <aside className="calc-history" aria-label={${T('تاريخ العمليات', 'Calculation history')}}>
+        <div className="calc-history-head"><h2>{${T('تاريخ العمليات', 'History')}}</h2><span>{history.length}/10</span></div>
+        {history.length === 0 ? <p className="calc-empty">{${T('ستظهر آخر 10 عمليات هنا.', 'Your last 10 operations will appear here.')}}</p> : (
+          <ol>{history.map(item => <li key={item.id}><button type="button" onClick={() => loadHistory(item)}><code>{item.expression} = {item.result}</code><time>{new Date(item.at).toLocaleTimeString()}</time></button></li>)}</ol>
+        )}
+      </aside>
+    </div>
+  );
+}
+`;
+}
+
 /* ── the stylesheet — an application's chrome, not a landing page's ─────── */
 
 export function fileAppCss(): string {
@@ -3045,6 +3212,26 @@ export function fileTablesAdminCss(): string {
 `;
 }
 
+export function fileCalculatorCss(): string {
+    return `/* Calculator surface: compact on desktop, thumb-friendly on mobile. */
+.calc-layout{max-width:1080px;margin:0 auto;padding:24px 16px 32px;display:grid;grid-template-columns:minmax(0,520px) minmax(240px,1fr);gap:18px;align-items:start}
+.calc-panel,.calc-history{background:var(--surface,#fff);border:1px solid var(--border,#e5e5e5);border-radius:var(--radius-lg,16px);padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.05)}
+.calc-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
+.calc-heading h2{font-size:1.2rem;margin:0 0 4px}.calc-heading p{color:var(--text-muted,#666);font-size:.9rem;line-height:1.5}
+.calc-badge{white-space:nowrap;border:1px solid var(--border,#ddd);border-radius:999px;padding:4px 10px;color:var(--text-muted,#666);font-size:.75rem}
+.calc-display{min-height:112px;border:1px solid var(--border,#ddd);border-radius:14px;background:var(--bg,#fff);padding:12px 16px;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:2px;margin-bottom:14px;overflow:hidden}
+.calc-expression{min-height:24px;color:var(--text-muted,#666);font-size:.9rem;direction:ltr;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.calc-display strong{font-size:clamp(2.1rem,8vw,3.4rem);font-weight:700;line-height:1.1;direction:ltr;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.calc-error{color:#96271b;font-size:.85rem}.calc-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.calc-key{min-height:58px;border:1px solid var(--border,#ddd);border-radius:12px;background:var(--bg,#fff);color:inherit;font:inherit;font-size:1.15rem;font-weight:650;cursor:pointer;touch-action:manipulation}
+.calc-key:hover{border-color:var(--brand,#333);transform:translateY(-1px)}.calc-key:active{transform:translateY(1px)}
+.calc-key.utility{color:var(--text-muted,#555);background:var(--chip,#f5f5f5)}.calc-key.operator{color:var(--brand,#155eef);background:color-mix(in srgb,var(--brand,#155eef) 10%,var(--bg,#fff))}.calc-key.equals{background:var(--brand,#155eef);color:var(--on-brand,#fff);border-color:transparent}.calc-key.zero{grid-column:span 2}
+.calc-history{min-height:260px}.calc-history-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border,#e5e5e5);padding-bottom:10px;margin-bottom:8px}.calc-history-head h2{font-size:1.05rem;margin:0}.calc-history-head span{color:var(--text-muted,#666);font-size:.8rem}.calc-history ol{list-style:none;padding:0;margin:0;display:grid;gap:6px}.calc-history li button{width:100%;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:start;background:transparent;color:inherit;border:1px solid transparent;border-radius:10px;padding:9px 10px;cursor:pointer}.calc-history li button:hover{background:var(--chip,#f5f5f5);border-color:var(--border,#ddd)}.calc-history code{direction:ltr;overflow-wrap:anywhere}.calc-history time{font-size:.75rem;color:var(--text-muted,#666)}.calc-empty{color:var(--text-muted,#666);font-size:.9rem}
+[data-theme="dark"] .calc-error{color:#ff9f93}
+@media (max-width:760px){.calc-layout{grid-template-columns:1fr;padding:14px 10px 24px}.calc-panel,.calc-history{padding:12px}.calc-key{min-height:54px}.calc-heading{flex-direction:column}.calc-badge{align-self:flex-start}.calc-history{min-height:0}}
+`;
+}
+
 export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: string): Record<string, string> {
     const engineFile: Record<AppBlueprint['engine'], [string, string]> = {
         map: ['src/components/MapApp.jsx', fileMapAppJsx(o.isArabic)],
@@ -3053,6 +3240,8 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         records: ['src/components/RecordsApp.jsx', fileRecordsAppJsx(o.isArabic)],
         social: ['src/components/SocialApp.jsx', fileSocialAppJsx(o.isArabic)],
         shop: ['src/components/ShopApp.jsx', fileShopAppJsx(o.isArabic)],
+        calculator: ['src/components/CalculatorApp.jsx', fileCalculatorAppJsx(o.isArabic)],
+        productivity: ['src/components/ProductivityApp.jsx', fileProductivityAppJsx(o.isArabic)],
     };
     const [enginePath, engineSrc] = engineFile[bp.engine];
     return {
@@ -3069,9 +3258,117 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         // on; it renders for the owner only, and returns null for everybody else.
         ...(o.api ? { 'src/components/Accounts.jsx': fileAccountsJsx(o.isArabic) } : {}),
         'src/styles/app.css': fileAppCss() + (bp.engine === 'shop' ? fileShopCss() : '')
+            + (bp.engine === 'calculator' ? fileCalculatorCss() : '')
+            + (bp.engine === 'productivity' ? fileProductivityCss() : '')
             + (o.model && o.model.length ? fileTablesAdminCss() : '')
             + (o.api ? fileAccountsCss() : ''),
     };
+}
+
+/* ── composite engine: notes + tasks — two working surfaces, one app ──────── */
+
+export function fileProductivityAppJsx(isAr: boolean): string {
+    const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
+    return `import React, { useEffect, useMemo, useState } from 'react';
+import { createStore, uid, todayISO } from '../app/store.js';
+import { content } from '../content.js';
+
+const noteDefaults = { title: '', body: '', category: 'General', pinned: false, completed: false };
+const taskDefaults = { title: '', details: '', priority: 'Medium', due: '', completed: false };
+const priorities = ['High', 'Medium', 'Low'];
+const readRows = (store, fallback) => {
+  const value = store.read();
+  return Array.isArray(value) ? value : fallback;
+};
+const dateValue = (v) => String(v || '').slice(0, 10);
+
+export default function ProductivityApp() {
+  const noteStore = useMemo(() => createStore(content.storeKey + ':notes'), []);
+  const taskStore = useMemo(() => createStore(content.storeKey + ':tasks'), []);
+  const [tab, setTab] = useState('home');
+  const [notes, setNotes] = useState(() => readRows(noteStore, []));
+  const [tasks, setTasks] = useState(() => readRows(taskStore, []));
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('All');
+  const [taskFilter, setTaskFilter] = useState('All');
+  const [taskSort, setTaskSort] = useState('due');
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem(content.storeKey + ':theme') || 'light'; } catch { return 'light'; } });
+  const [noteDraft, setNoteDraft] = useState(noteDefaults);
+  const [taskDraft, setTaskDraft] = useState(taskDefaults);
+  const [editingNote, setEditingNote] = useState(null);
+  const [editingTask, setEditingTask] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => { noteStore.write(notes); }, [notes, noteStore]);
+  useEffect(() => { taskStore.write(tasks); }, [tasks, taskStore]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem(content.storeKey + ':theme', theme); } catch {}
+  }, [theme]);
+
+  const categories = useMemo(() => ['All', ...new Set(notes.map(n => String(n.category || '').trim()).filter(Boolean))], [notes]);
+  const visibleNotes = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return notes.filter(n => {
+      if (category !== 'All' && n.category !== category) return false;
+      if (!needle) return true;
+      return [n.title, n.body, n.category].some(v => String(v || '').toLowerCase().includes(needle));
+    }).sort((a, b) => Number(b.pinned) - Number(a.pinned) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  }, [notes, query, category]);
+  const visibleTasks = useMemo(() => {
+    const rows = tasks.filter(t => taskFilter === 'All' || (taskFilter === 'Done' ? t.completed : !t.completed));
+    return [...rows].sort((a, b) => {
+      if (taskSort === 'priority') return priorities.indexOf(a.priority) - priorities.indexOf(b.priority);
+      if (taskSort === 'title') return String(a.title).localeCompare(String(b.title));
+      const ad = dateValue(a.due) || '9999-99-99';
+      const bd = dateValue(b.due) || '9999-99-99';
+      return ad.localeCompare(bd);
+    });
+  }, [tasks, taskFilter, taskSort]);
+
+  const saveNote = (event) => {
+    event.preventDefault();
+    const title = String(noteDraft.title || '').trim();
+    if (!title) { setError(${T('اكتب عنوان الملاحظة أولاً.', 'Add a note title first.')}); return; }
+    const now = new Date().toISOString();
+    if (editingNote) setNotes(rows => rows.map(n => n.id === editingNote ? { ...n, ...noteDraft, title, updatedAt: now } : n));
+    else setNotes(rows => [{ ...noteDraft, id: uid(), title, createdAt: now, updatedAt: now }, ...rows]);
+    setNoteDraft(noteDefaults); setEditingNote(null); setError('');
+  };
+  const editNote = (note) => { setEditingNote(note.id); setNoteDraft({ ...noteDefaults, ...note }); setTab('notes'); };
+  const deleteNote = (note) => { if (window.confirm(${T('حذف الملاحظة؟', 'Delete this note?')})) setNotes(rows => rows.filter(n => n.id !== note.id)); };
+  const toggleNote = (id, field) => setNotes(rows => rows.map(n => n.id === id ? { ...n, [field]: !n[field], updatedAt: new Date().toISOString() } : n));
+
+  const saveTask = (event) => {
+    event.preventDefault();
+    const title = String(taskDraft.title || '').trim();
+    if (!title) { setError(${T('اكتب عنوان المهمة أولاً.', 'Add a task title first.')}); return; }
+    const now = new Date().toISOString();
+    if (editingTask) setTasks(rows => rows.map(t => t.id === editingTask ? { ...t, ...taskDraft, title, updatedAt: now } : t));
+    else setTasks(rows => [{ ...taskDraft, id: uid(), title, createdAt: now, updatedAt: now }, ...rows]);
+    setTaskDraft(taskDefaults); setEditingTask(null); setError('');
+  };
+  const editTask = (task) => { setEditingTask(task.id); setTaskDraft({ ...taskDefaults, ...task }); setTab('tasks'); };
+  const deleteTask = (task) => { if (window.confirm(${T('حذف المهمة؟', 'Delete this task?')})) setTasks(rows => rows.filter(t => t.id !== task.id)); };
+  const toggleTask = (id) => setTasks(rows => rows.map(t => t.id === id ? { ...t, completed: !t.completed, updatedAt: new Date().toISOString() } : t));
+  const cancelEdit = () => { setNoteDraft(noteDefaults); setTaskDraft(taskDefaults); setEditingNote(null); setEditingTask(null); setError(''); };
+  const input = (value, onChange, label, type = 'text') => <label className="prod-field"><span>{label}</span>{type === 'textarea' ? <textarea value={value} onChange={e => onChange(e.target.value)} /> : <input type={type} value={value} onChange={e => onChange(e.target.value)} />}</label>;
+
+  return <div className="prod-wrap">
+    <header className="prod-head"><div><h1>{content.brand}</h1><p>{content.lede}</p></div><button className="prod-theme" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={${T('تبديل الوضع الليلي', 'Toggle dark mode')}}>{theme === 'dark' ? '☀' : '☾'}</button></header>
+    <nav className="prod-nav" aria-label={${T('التنقل', 'Navigation')}}>{[['home', ${T('الرئيسية', 'Home')}], ['notes', ${T('الملاحظات', 'Notes')}], ['tasks', ${T('المهام', 'Tasks')}], ['settings', ${T('الإعدادات', 'Settings')}]].map(([key, label]) => <button key={key} type="button" className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}</nav>
+    {error ? <div className="prod-error" role="alert">{error}</div> : null}
+    {tab === 'home' ? <main className="prod-home"><section className="prod-stats"><div><b>{notes.length}</b><span>{${T('ملاحظة', 'Notes')}}</span></div><div><b>{tasks.length}</b><span>{${T('مهمة', 'Tasks')}}</span></div><div><b>{tasks.filter(t => t.completed).length}</b><span>{${T('منجزة', 'Completed')}}</span></div></section><section className="prod-panel"><div className="prod-panel-head"><h2>{${T('آخر العناصر', 'Recent items')}}</h2><button type="button" onClick={() => setTab('notes')}>{${T('افتح الملاحظات', 'Open notes')}}</button></div>{notes.slice(0, 3).map(n => <button className="prod-row" type="button" key={n.id} onClick={() => editNote(n)}><strong>{n.pinned ? '★ ' : ''}{n.title}</strong><span>{n.body}</span></button>)}{tasks.slice(0, 3).map(t => <button className="prod-row" type="button" key={t.id} onClick={() => editTask(t)}><strong>{t.completed ? '✓ ' : ''}{t.title}</strong><span>{t.priority}{t.due ? ' · ' + t.due : ''}</span></button>)}{!notes.length && !tasks.length ? <p className="prod-empty">{content.emptyHint}</p> : null}</section></main> : null}
+    {tab === 'notes' ? <main className="prod-grid"><section className="prod-panel"><div className="prod-panel-head"><h2>{editingNote ? ${T('تعديل ملاحظة', 'Edit note')} : ${T('ملاحظة جديدة', 'New note')}}</h2>{editingNote ? <button type="button" onClick={cancelEdit}>{${T('إلغاء', 'Cancel')}}</button> : null}</div><form onSubmit={saveNote}>{input(noteDraft.title, v => setNoteDraft({ ...noteDraft, title: v }), ${T('العنوان', 'Title')})}{input(noteDraft.body, v => setNoteDraft({ ...noteDraft, body: v }), ${T('النص', 'Body')}, 'textarea')}{input(noteDraft.category, v => setNoteDraft({ ...noteDraft, category: v }), ${T('التصنيف', 'Category')})}<label className="prod-check"><input type="checkbox" checked={!!noteDraft.pinned} onChange={e => setNoteDraft({ ...noteDraft, pinned: e.target.checked })} />{${T('تثبيت الملاحظة', 'Pin note')}}</label><label className="prod-check"><input type="checkbox" checked={!!noteDraft.completed} onChange={e => setNoteDraft({ ...noteDraft, completed: e.target.checked })} />{${T('مكتملة', 'Completed')}}</label><button className="prod-primary" type="submit">{editingNote ? ${T('حفظ التعديل', 'Save changes')} : ${T('إضافة الملاحظة', 'Add note')}}</button></form></section><section className="prod-panel"><div className="prod-panel-head"><h2>{${T('الملاحظات', 'Notes')}}</h2><span>{visibleNotes.length}</span></div><div className="prod-toolbar"><input value={query} onChange={e => setQuery(e.target.value)} placeholder={${T('ابحث في الملاحظات…', 'Search notes…')}} aria-label={${T('بحث', 'Search notes')}} /><select value={category} onChange={e => setCategory(e.target.value)} aria-label={${T('التصنيف', 'Category')}}>{categories.map(c => <option key={c}>{c}</option>)}</select></div>{visibleNotes.map(note => <article className={\`prod-item \${note.completed ? 'done' : ''}\`} key={note.id}><div><h3>{note.pinned ? '★ ' : ''}{note.title}</h3><p>{note.body}</p><small>{note.category}</small></div><div className="prod-actions"><button type="button" onClick={() => toggleNote(note.id, 'pinned')}>{note.pinned ? ${T('إلغاء التثبيت', 'Unpin')} : ${T('تثبيت', 'Pin')}}</button><button type="button" onClick={() => toggleNote(note.id, 'completed')}>{note.completed ? ${T('إعادة فتح', 'Reopen')} : ${T('إكمال', 'Complete')}}</button><button type="button" onClick={() => editNote(note)}>{${T('تعديل', 'Edit')}}</button><button type="button" onClick={() => deleteNote(note)}>{${T('حذف', 'Delete')}}</button></div></article>)}{!visibleNotes.length ? <p className="prod-empty">{${T('لا توجد ملاحظات مطابقة.', 'No matching notes.')}}</p> : null}</section></main> : null}
+    {tab === 'tasks' ? <main className="prod-grid"><section className="prod-panel"><div className="prod-panel-head"><h2>{editingTask ? ${T('تعديل مهمة', 'Edit task')} : ${T('مهمة جديدة', 'New task')}}</h2>{editingTask ? <button type="button" onClick={cancelEdit}>{${T('إلغاء', 'Cancel')}}</button> : null}</div><form onSubmit={saveTask}>{input(taskDraft.title, v => setTaskDraft({ ...taskDraft, title: v }), ${T('المهمة', 'Task')})}{input(taskDraft.details, v => setTaskDraft({ ...taskDraft, details: v }), ${T('التفاصيل', 'Details')}, 'textarea')}<label className="prod-field"><span>{${T('الأولوية', 'Priority')}}</span><select value={taskDraft.priority} onChange={e => setTaskDraft({ ...taskDraft, priority: e.target.value })}>{priorities.map(p => <option key={p}>{p}</option>)}</select></label>{input(taskDraft.due, v => setTaskDraft({ ...taskDraft, due: v }), ${T('تاريخ الاستحقاق', 'Due date')}, 'date')}<label className="prod-check"><input type="checkbox" checked={!!taskDraft.completed} onChange={e => setTaskDraft({ ...taskDraft, completed: e.target.checked })} />{${T('مكتملة', 'Completed')}}</label><button className="prod-primary" type="submit">{editingTask ? ${T('حفظ التعديل', 'Save changes')} : ${T('إضافة المهمة', 'Add task')}}</button></form></section><section className="prod-panel"><div className="prod-panel-head"><h2>{${T('المهام', 'Tasks')}}</h2><span>{visibleTasks.length}</span></div><div className="prod-toolbar"><select value={taskFilter} onChange={e => setTaskFilter(e.target.value)} aria-label={${T('فلترة المهام', 'Filter tasks')}}><option>All</option><option>Open</option><option>Done</option></select><select value={taskSort} onChange={e => setTaskSort(e.target.value)} aria-label={${T('ترتيب المهام', 'Sort tasks')}}><option value="due">{${T('حسب التاريخ', 'By due date')}}</option><option value="priority">{${T('حسب الأولوية', 'By priority')}}</option><option value="title">{${T('حسب الاسم', 'By title')}}</option></select></div>{visibleTasks.map(task => <article className={\`prod-item \${task.completed ? 'done' : ''}\`} key={task.id}><div><h3>{task.title}</h3><p>{task.details}</p><small>{task.priority}{task.due ? ' · ' + task.due : ''}</small></div><div className="prod-actions"><button type="button" onClick={() => toggleTask(task.id)}>{task.completed ? ${T('إعادة فتح', 'Reopen')} : ${T('إكمال', 'Complete')}}</button><button type="button" onClick={() => editTask(task)}>{${T('تعديل', 'Edit')}}</button><button type="button" onClick={() => deleteTask(task)}>{${T('حذف', 'Delete')}}</button></div></article>)}{!visibleTasks.length ? <p className="prod-empty">{${T('لا توجد مهام مطابقة.', 'No matching tasks.')}}</p> : null}</section></main> : null}
+    {tab === 'settings' ? <main className="prod-panel"><h2>{${T('الإعدادات', 'Settings')}}</h2><label className="prod-field"><span>{${T('الوضع', 'Theme')}}</span><select value={theme} onChange={e => setTheme(e.target.value)}><option value="light">{${T('نهاري', 'Light')}}</option><option value="dark">{${T('ليلي', 'Dark')}}</option></select></label><p className="prod-muted">{${T('البيانات محفوظة محلياً وتبقى بعد إغلاق التطبيق وإعادة فتحه.', 'Data is stored locally and survives closing and reopening the app.')}}</p></main> : null}
+  </div>;
+}
+`;
+}
+
+export function fileProductivityCss(): string {
+    return `.prod-wrap{min-height:100vh;max-width:1180px;margin:0 auto;padding:24px;color:var(--text,#18212f)}.prod-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;padding:18px 0}.prod-head h1{margin:0;font-size:clamp(1.7rem,4vw,2.6rem)}.prod-head p{margin:.45rem 0 0;color:var(--muted,#667085)}.prod-theme,.prod-nav button,.prod-panel-head button,.prod-actions button{border:1px solid var(--border,#d0d5dd);background:var(--panel,#fff);color:inherit;border-radius:10px;padding:8px 12px;cursor:pointer}.prod-theme{font-size:1.15rem}.prod-nav{display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border,#d0d5dd);margin-bottom:18px}.prod-nav button.active{background:var(--brand,#155eef);color:#fff;border-color:var(--brand,#155eef)}.prod-grid{display:grid;grid-template-columns:minmax(260px,.75fr) minmax(360px,1.25fr);gap:18px}.prod-panel,.prod-stats>div{background:var(--panel,#fff);border:1px solid var(--border,#d0d5dd);border-radius:16px;padding:18px;box-shadow:0 8px 24px rgba(16,24,40,.06)}.prod-panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}.prod-panel h2{margin:0;font-size:1.15rem}.prod-field{display:grid;gap:6px;margin:0 0 12px;font-weight:600}.prod-field input,.prod-field textarea,.prod-field select,.prod-toolbar input,.prod-toolbar select{width:100%;border:1px solid var(--border,#d0d5dd);border-radius:10px;padding:10px;background:var(--panel,#fff);color:inherit;font:inherit}.prod-field textarea{min-height:100px;resize:vertical}.prod-check{display:flex;gap:8px;align-items:center;margin:9px 0;font-weight:500}.prod-primary{width:100%;border:0;border-radius:10px;padding:11px;background:var(--brand,#155eef);color:#fff;font-weight:700;cursor:pointer;margin-top:8px}.prod-toolbar{display:grid;grid-template-columns:1.4fr .8fr;gap:8px;margin-bottom:12px}.prod-item{display:flex;justify-content:space-between;gap:14px;border-top:1px solid var(--border,#eaecf0);padding:14px 0}.prod-item.done{opacity:.62}.prod-item h3{margin:0 0 5px}.prod-item p{margin:0 0 6px;white-space:pre-wrap;color:var(--muted,#667085)}.prod-item small{color:var(--muted,#667085)}.prod-actions{display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap;justify-content:flex-end}.prod-actions button{font-size:.8rem;padding:6px 8px}.prod-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}.prod-stats>div{display:grid;gap:4px}.prod-stats b{font-size:1.8rem}.prod-stats span,.prod-muted,.prod-empty{color:var(--muted,#667085)}.prod-row{display:flex;justify-content:space-between;gap:12px;width:100%;text-align:start;border:0;border-top:1px solid var(--border,#eaecf0);background:transparent;color:inherit;padding:13px 0;cursor:pointer}.prod-row span{color:var(--muted,#667085);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.prod-error{background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;margin-bottom:14px}.prod-empty{text-align:center;padding:24px}.prod-home{max-width:900px}.prod-home .prod-panel{min-height:220px}[data-theme=dark]{--text:#f2f4f7;--muted:#98a2b3;--panel:#151a22;--border:#344054;--brand:#84adff} @media(max-width:760px){.prod-wrap{padding:14px}.prod-grid{grid-template-columns:1fr}.prod-stats{grid-template-columns:1fr 1fr}.prod-item{display:grid}.prod-actions{justify-content:flex-start}.prod-toolbar{grid-template-columns:1fr}}`;
 }
 
 /* ── engine 5: social — a real feed, not a page about one ────────────────── */

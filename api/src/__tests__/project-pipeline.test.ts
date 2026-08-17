@@ -17,6 +17,8 @@ import {
     buildPlannerEvidence,
     inspectProjectQualityContract,
     deterministicRescueAllowed,
+    interactiveAppNeedsReactBuilder,
+    planContainsReactBuilder,
 } from '../modules/tools/definitions/ProjectPipelineTool';
 import { applyPhaseExecutionEvidence } from '../modules/tools/definitions/PhaseExecutorTool';
 
@@ -101,6 +103,32 @@ describe('routing — full-project requests reach the pipeline, offline and dete
         ].join(' ');
         expect(deterministicRescueAllowed(brief)).toBe(false);
         expect(deterministicRescueAllowed('Build a small local notes app with a web interface.')).toBe(true);
+    });
+
+    test('QuickNotes is a composite interactive app and requires the concrete React builder', () => {
+        const quickNotes = [
+            'Build a complete mobile productivity application called "QuickNotes".',
+            'The application must allow users to manage notes and tasks.',
+            'Create Home, Notes, Tasks, Note editor, Task editor, Search, and Settings screens.',
+            'Implement light/dark mode, responsive mobile UI, validation, and persistence using storage/database.',
+            'Run and verify the complete application.'
+        ].join(' ');
+        const { detectAppKind } = require('../core/design/app-blueprints');
+        expect(detectAppKind(quickNotes)).toBe('productivity');
+        expect(PlanningEngine.classifyBuildScope(quickNotes)).toBe('system');
+        expect(interactiveAppNeedsReactBuilder(quickNotes)).toBe(true);
+    });
+
+    test('an interactive app request requires the concrete React builder instead of a generic scaffold', () => {
+        const calcPro = [
+            'Build a mobile-responsive calculator application called "CalcPro" with basic arithmetic,',
+            'decimals, percentage, sign toggle, clear, delete, history, division by zero handling,',
+            'light and dark mode, and working tests.'
+        ].join(' ');
+        expect(interactiveAppNeedsReactBuilder(calcPro)).toBe(true);
+        expect(planContainsReactBuilder([{ tasks: [{ tool: 'scaffold_project' }] }])).toBe(false);
+        expect(planContainsReactBuilder([{ tasks: [{ tool: 'react_project' }] }])).toBe(true);
+        expect(interactiveAppNeedsReactBuilder('Build a production API integration slice with an OpenAPI contract and an evidence matrix.')).toBe(false);
     });
 
     test("the pair's door is the API — apiSiblingOf finds it by shared suffix", () => {

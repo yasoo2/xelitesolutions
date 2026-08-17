@@ -19,7 +19,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { WriteFileTool, FileEditTool, LsTool, ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
+import { WriteFileTool, FileEditTool, LsTool, ScaffoldProjectTool, normalizeReactScaffoldStructure } from '../modules/tools/definitions/SystemTools';
 import { workspaceService } from '../modules/services/WorkspaceService';
 
 const OUT = path.join(os.tmpdir(), 'joe-systemtools-escape-' + process.pid);
@@ -120,6 +120,33 @@ describe('scaffold_project contains every key, not just the base directory', () 
         // The legitimate entry is not collateral damage of the refusal.
         expect(res.output.created).toContain('src/index.ts');
         expect(fs.readFileSync(landsAt(path.join(base, 'src/index.ts')), 'utf-8')).toBe('export default 1;');
+    });
+});
+
+describe('React scaffold manifests are runnable when the evidence is explicit', () => {
+    it('adds React and Vite dependencies to a Vite + JSX scaffold', () => {
+        const result = normalizeReactScaffoldStructure({
+            'package.json': JSON.stringify({ name: 'quick-notes', scripts: { dev: 'vite', build: 'vite build' } }),
+            'src/App.jsx': "import React from 'react'; export default function App(){ return <div />; }",
+        });
+
+        expect(result.changed).toBe(true);
+        const manifest = JSON.parse(result.structure['package.json']);
+        expect(manifest.dependencies.react).toBe('^18.2.0');
+        expect(manifest.dependencies['react-dom']).toBe('^18.2.0');
+        expect(manifest.devDependencies.vite).toBe('^5.0.0');
+        expect(manifest.devDependencies['@vitejs/plugin-react']).toBe('^4.0.0');
+        expect(manifest.scripts.preview).toBe('vite preview');
+    });
+
+    it('does not add React dependencies to a non-React Vite scaffold', () => {
+        const structure = {
+            'package.json': JSON.stringify({ name: 'plain-vite', scripts: { dev: 'vite' } }),
+            'src/main.js': 'document.body.textContent = "ok";',
+        };
+        const result = normalizeReactScaffoldStructure(structure);
+        expect(result.changed).toBe(false);
+        expect(result.structure).toBe(structure);
     });
 });
 

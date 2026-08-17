@@ -394,6 +394,43 @@ export function deterministicRescueAllowed(request: string): boolean {
 }
 
 /**
+ * A short, greenfield interactive application must reach the real UI builder.
+ * A generic scaffold is not equivalent: it can satisfy the runnable contract
+ * while silently producing a landing page or an empty shell, which is exactly
+ * how the first CalcPro run passed planning but failed independent acceptance.
+ * This guard is semantic and bounded: it applies only to an application-shaped
+ * request with browser/UI signals and only when the request is simple enough for
+ * the deterministic builder to preserve the declared scope. Larger or ambiguous
+ * requests remain with the evidence-backed planner and must recover honestly.
+ */
+export function interactiveAppNeedsReactBuilder(request: string): boolean {
+    const text = String(request || '').trim();
+    if (!deterministicRescueAllowed(text)) return false;
+    try {
+        const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
+        const { detectAppKind, stripDeclaredOptions } = require('../../../core/design/app-blueprints');
+        if (!PlanningEngine.looksLikeBuild(text)) return false;
+        const scope = PlanningEngine.classifyBuildScope(text);
+        // A short app with explicit persistence is classified as `system`; that
+        // must not demote its UI to a generic scaffold. The known blueprint is
+        // the evidence boundary — long/unknown engineering briefs still stay
+        // with the planner and its honest gates.
+        const kind = detectAppKind(stripDeclaredOptions(text));
+        if (!kind || (scope !== 'app' && scope !== 'system')) return false;
+        return /\b(?:web|browser|frontend|front[ -]?end|responsive|mobile|ui|interface|application|app|dashboard|portal|calculator|notes?|tracker|weather|shop|form|button|crud|tasks?)\b/i.test(text)
+            || kind === 'productivity';
+    } catch {
+        return false;
+    }
+}
+
+export function planContainsReactBuilder(phases: any[]): boolean {
+    return (Array.isArray(phases) ? phases : []).some((phase: any) =>
+        [...(Array.isArray(phase?.tasks) ? phase.tasks : []), ...(phase?.verificationTask ? [phase.verificationTask] : [])]
+            .some((task: any) => String(task?.tool || '').trim().toLowerCase() === 'react_project'));
+}
+
+/**
  * A build is not delivered merely because its phase tools returned ok.  The
  * final acceptance contract requires a confirmed live URL when the canonical
  * pipeline claims a runnable system.  This pure reducer keeps the rule
@@ -874,15 +911,21 @@ export class ProjectPipelineTool implements ToolDefinition {
                 [...(Array.isArray(phase?.tasks) ? phase.tasks : []),
                  ...(phase?.verificationTask ? [phase.verificationTask] : [])]
                     .some((t: any) => CAN_BUILD_OR_RUN.has(String(t?.tool || ''))));
-            if (planPhases.length > 0 && !touchesRunnable
+            const requiresConcreteUiBuilder = interactiveAppNeedsReactBuilder(productRequest);
+            const missingConcreteUiBuilder = requiresConcreteUiBuilder && !planContainsReactBuilder(planPhases);
+            const requiresDeterministicRescue = !touchesRunnable || missingConcreteUiBuilder;
+            if (planPhases.length > 0 && requiresDeterministicRescue
                 && evidence?.constraints?.createsNewProject
                 && plannerResult?.output?.deterministic !== true
                 && deterministicRescueAllowed(productRequest)) {
                 const rescue = deterministicPhasesFor(productRequest);
                 if (rescue) {
+                    const reason = missingConcreteUiBuilder
+                        ? 'the interactive application plan omitted the concrete React UI builder'
+                        : 'the plan is all paper — files written, nothing built or run';
                     say(pick(isAr,
-                        `[pipeline] الخطة كلها كتابة ملفات بلا بناء ولا تشغيل — أخطّط حتمياً مما صرّح به الطلب: ${rescue.reason}`,
-                        `[pipeline] the plan is all paper — files written, nothing built or run. Planning deterministically from what the request declares: ${rescue.reason}`));
+                        `[pipeline] ${reason} — أخطّط حتمياً مما صرّح به الطلب: ${rescue.reason}`,
+                        `[pipeline] ${reason}; planning deterministically from what the request declares: ${rescue.reason}`));
                     plannerResult = {
                         ok: true,
                         output: { projectName: rescue.projectName, phases: rescue.phases, deterministic: true, plannedWithoutModel: true },

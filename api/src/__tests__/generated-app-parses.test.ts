@@ -15,7 +15,7 @@ import { buildAppFiles } from '../modules/tools/definitions/react-app-templates'
 import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
 import { blueprintFor, type AppKind } from '../core/design/app-blueprints';
 
-const KINDS: AppKind[] = ['store', 'booking', 'tasks', 'social', 'chat', 'maps', 'weather', 'crm', 'inventory'];
+const KINDS: AppKind[] = ['store', 'booking', 'tasks', 'social', 'chat', 'maps', 'weather', 'crm', 'inventory', 'calculator', 'productivity'];
 
 const filesFor = (kind: AppKind, isArabic: boolean) => buildAppFiles(
     blueprintFor(kind, 'اختبار', isArabic),

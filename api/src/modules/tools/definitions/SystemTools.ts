@@ -318,6 +318,77 @@ export function repairNpmManifestVersion(workDir: string, evidence: NpmInvalidVe
     return { ok: true, changed, packageName: evidence.packageName, requestedSpec: evidence.requestedSpec, replacementSpec, packageJsonPath, source };
 }
 
+export interface ReactScaffoldNormalization {
+    structure: Record<string, any>;
+    changed: boolean;
+    reason?: string;
+}
+
+/**
+ * A scaffold that calls Vite but omits React/Vite from package.json is not a
+ * runnable project: project_run must reject it, and the user sees a failure
+ * several steps after the actual defect. Repair only when the evidence in the
+ * same scaffold proves a React + Vite project; never guess dependencies for a
+ * generic Node, Vue, or plain HTML scaffold.
+ */
+export function normalizeReactScaffoldStructure(structure: Record<string, any>): ReactScaffoldNormalization {
+    const entries = Object.entries(structure || {});
+    const normalizePath = (value: string) => String(value).split(String.fromCharCode(92)).join('/');
+    const packageEntry = entries.find(([relativePath]) => {
+        const normalized = normalizePath(String(relativePath));
+        return normalized.slice(normalized.lastIndexOf('/') + 1) === 'package.json';
+    });
+    if (!packageEntry || typeof packageEntry[1] !== 'string') return { structure, changed: false };
+
+    let manifest: any;
+    try { manifest = JSON.parse(packageEntry[1]); } catch { return { structure, changed: false }; }
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return { structure, changed: false };
+
+    const scripts = manifest.scripts && typeof manifest.scripts === 'object' ? manifest.scripts : {};
+    const dependencyNames = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']
+        .flatMap(section => Object.keys(manifest[section] && typeof manifest[section] === 'object' ? manifest[section] : {}));
+    const hasReactDependency = dependencyNames.some(name => ['react', 'react-dom'].includes(String(name).toLowerCase()));
+    const hasReactSource = entries.some(([relativePath, content]) => {
+        const normalized = normalizePath(String(relativePath)).toLowerCase();
+        const sourceText = String(content || '');
+        const isReactFile = normalized.endsWith('.jsx') || normalized.endsWith('.tsx');
+        return isReactFile && (sourceText.includes("from 'react'") || sourceText.includes('from "react"') || sourceText.includes("require('react'") || sourceText.includes('require("react"') || sourceText.includes('React.'));
+    });
+    const hasViteScript = Object.entries(scripts).some(([name, command]) =>
+        ['dev', 'build', 'preview'].includes(String(name).toLowerCase()) && String(command || '').toLowerCase().includes('vite'));
+    const hasViteConfig = entries.some(([relativePath]) => {
+        const normalized = normalizePath(String(relativePath)).toLowerCase();
+        return normalized.endsWith('vite.config.js') || normalized.endsWith('vite.config.mjs') || normalized.endsWith('vite.config.cjs') || normalized.endsWith('vite.config.ts');
+    });
+    if (!((hasViteScript || hasViteConfig) && (hasReactDependency || hasReactSource))) return { structure, changed: false };
+
+    const nextManifest = JSON.parse(JSON.stringify(manifest));
+    nextManifest.dependencies = {
+        ...(nextManifest.dependencies && typeof nextManifest.dependencies === 'object' ? nextManifest.dependencies : {}),
+        react: nextManifest.dependencies?.react || '^18.2.0',
+        'react-dom': nextManifest.dependencies?.['react-dom'] || '^18.2.0',
+    };
+    nextManifest.devDependencies = {
+        ...(nextManifest.devDependencies && typeof nextManifest.devDependencies === 'object' ? nextManifest.devDependencies : {}),
+        vite: nextManifest.devDependencies?.vite || '^5.0.0',
+        '@vitejs/plugin-react': nextManifest.devDependencies?.['@vitejs/plugin-react'] || '^4.0.0',
+    };
+    nextManifest.scripts = {
+        ...scripts,
+        dev: scripts.dev || 'vite',
+        build: scripts.build || 'vite build',
+        preview: scripts.preview || 'vite preview',
+    };
+    const serialized = JSON.stringify(nextManifest, null, 2) + String.fromCharCode(10);
+    const changed = serialized !== packageEntry[1];
+    if (!changed) return { structure, changed: false };
+    return {
+        structure: { ...structure, [packageEntry[0]]: serialized },
+        changed: true,
+        reason: 'React + Vite evidence found; manifest dependencies and lifecycle scripts were completed',
+    };
+}
+
 // Helper
 function getWorkspaceRoot(workspaceId?: string) {
     try {
@@ -996,12 +1067,15 @@ export class ScaffoldProjectTool extends BaseTool {
                 const key = String(relativePath).replace(/\\/g, '/');
                 return key === basePrefix || key.startsWith(`${basePrefix}/`);
             });
-        const structure = repeatedPrefix
+        const rawStructureForWrite = repeatedPrefix
             ? Object.fromEntries(structureEntries.map(([relativePath, content]) => {
                 const key = String(relativePath).replace(/\\/g, '/');
                 return [key === basePrefix ? '' : key.slice(`${basePrefix}/`.length), content];
             }))
             : rawStructure;
+        const normalizedReact = normalizeReactScaffoldStructure(rawStructureForWrite as Record<string, any>);
+        const structure = normalizedReact.structure;
+        if (normalizedReact.changed) logs.push(`scaffold_project: ${normalizedReact.reason}`);
         const baseDir = declaredBaseDir;
         const resolvedBaseDir = safePath(baseDir, context?.workspaceId);
         if (!resolvedBaseDir.ok) return { ok: false, error: resolvedBaseDir.error, logs };
