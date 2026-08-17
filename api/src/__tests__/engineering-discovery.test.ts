@@ -285,6 +285,36 @@ describe('evidence-first engineering discovery', () => {
       expect.objectContaining({ id: 'workspace.selected_project_by_name' }),
     ]));
   });
+
+  test('does not hide an explicitly named target after the first 24 workspace projects', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-discovery-breadth-'));
+    roots.push(root);
+    for (let index = 0; index < 30; index += 1) {
+      const project = path.join(root, `legacy-project-${String(index).padStart(2, '0')}`);
+      fs.mkdirSync(path.join(project, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({
+        name: path.basename(project),
+        scripts: { test: 'node --test', build: 'node -e "process.exit(0)"' },
+      }));
+      fs.writeFileSync(path.join(project, 'src', 'index.js'), 'module.exports = {};\n');
+    }
+    const target = path.join(root, 'react-weathergo-a587');
+    fs.mkdirSync(path.join(target, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(target, 'package.json'), JSON.stringify({
+      name: 'weathergo',
+      scripts: { test: 'node --test', build: 'node -e "process.exit(0)"' },
+    }));
+    fs.writeFileSync(path.join(target, 'src', 'main.jsx'), 'export default function App() { return null; }\n');
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: 'Repair the existing project named react-weathergo-a587. Do not create a new project or modify any other project.',
+    }, { workspaceRoot: root, sessionId: 'breadth-regression-chat' });
+
+    expect(result.ok).toBe(true);
+    expect(result.output.evidence.mode).toBe('existing_workspace');
+    expect(result.output.evidence.selectedProject.root).toBe(target);
+    expect(result.output.evidence.blockers).toEqual([]);
+  });
 });
 
 

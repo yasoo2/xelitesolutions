@@ -258,8 +258,16 @@ export class EngineeringDiscoveryTool extends BaseTool {
             return names.has('src') || names.has('app') || names.has('tests') || names.has('test') || names.has('__tests__')
                 || entries.some(entry => entry.isFile() && /\.(?:[cm]?[jt]sx?|py|go)$/i.test(entry.name));
         };
+        /**
+         * Do not cap discovered project roots by an arbitrary count. A workspace
+         * can legitimately contain more than 24 projects, and an explicitly
+         * named target must remain discoverable even when it sorts later than
+         * older projects. Search breadth is bounded by maxDepth and ignored
+         * dependency/build directories instead; ambiguity is resolved only
+         * after the complete bounded scan, never by truncating candidates.
+         */
         const visit = (dir: string, depth: number) => {
-            if (depth > maxDepth || roots.size >= 24) return;
+            if (depth > maxDepth) return;
             let entries: fs.Dirent[] = [];
             try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
             const names = new Set(entries.map(entry => entry.name));
