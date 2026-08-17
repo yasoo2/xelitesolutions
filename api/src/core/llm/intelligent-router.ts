@@ -1199,6 +1199,10 @@ export async function routeToModel(
     const internalCall = String((context as any)?.purpose || '') === 'internal';
     const engineeringPipeline = (context as any)?.engineeringPipeline === true;
     const deadBrainRecoveryAttempted = (context as any)?.deadBrainRecoveryAttempted === true;
+    // Provider preflight is a health probe, not a real engineering turn. It must
+    // never be satisfied by a cached answer, and a slow local CPU model must not
+    // consume the whole mesh deadline before keyless/cloud fallback gets a chance.
+    const providerHealthProbe = (context as any)?.providerHealthProbe === true;
 
     if (process.env.MOCK_LLM === 'true') {
         const promptText = JSON.stringify(messages);
@@ -1575,7 +1579,7 @@ export async function routeToModel(
 
     const effectiveMessages = isVisionCapable ? messages : flatMessages;
 
-    const cacheDisabled = String(process.env.LLM_CACHE_DISABLE || '').trim() === '1';
+    const cacheDisabled = String(process.env.LLM_CACHE_DISABLE || '').trim() === '1' || providerHealthProbe;
     const cacheKeyPayload = JSON.stringify({
         messages: flatMessages,
         analysis: taskAnalysis,
@@ -1996,6 +2000,13 @@ export async function routeToModel(
                 // arrived while moondream described a screenshot and the user
                 // stared at a frozen run. 25s is enough for qwen to answer a
                 // short JSON prompt when free, and cheap to give up when not.
+                if (providerHealthProbe) {
+                    // A preflight must be bounded: if the local brain is cold or
+                    // unavailable, the keyless/cloud mesh must be allowed to answer.
+                    // The real engineering call still receives the normal local
+                    // deadline after this health check has passed.
+                    timeoutValue = Math.min(timeoutValue, 8_000);
+                }
                 if (internalCall) {
                     // …but the leash is MEASURED, not guessed. A machine whose
                     // model needs 40s to load will never answer inside 25s, and
@@ -2290,9 +2301,11 @@ export async function verifyProviderDirect(
 
     try {
         // AUTO is the free mesh itself — testing the mesh is the honest meaning here.
+        // This is deliberately a bounded, uncached probe: a slow local model must
+        // not make an otherwise healthy keyless/cloud fallback look unavailable.
         if (p === 'auto') {
             const ans = await withTimeout(routeToModel(probe, undefined, undefined, undefined, undefined, undefined, undefined,
-                { modelConfig: { provider: 'auto', apiKey: 'auto-mode' } }));
+                { modelConfig: { provider: 'auto', apiKey: 'auto-mode' }, providerHealthProbe: true }), 45_000);
             return { ok: nonEmpty(ans), provider, detail: nonEmpty(ans) ? 'mesh_ok' : 'mesh_empty' };
         }
 

@@ -78,6 +78,20 @@ describe('a correct answer is not a failure', () => {
     });
 });
 
+/* ─────────── 1b. Auto preflight must not block a healthy fallback mesh ─────────── */
+describe('Auto preflight is a bounded health probe', () => {
+    it('bypasses cache and gives the mesh a real recovery window', () => {
+        expect(ROUTER).toContain('const providerHealthProbe = (context as any)?.providerHealthProbe === true;');
+        expect(ROUTER).toContain("|| providerHealthProbe;");
+        expect(ROUTER).toContain("providerHealthProbe: true");
+        expect(ROUTER).toContain("}), 45_000);");
+    });
+
+    it('does not let a cold local CPU model consume the preflight deadline', () => {
+        expect(ROUTER).toContain('timeoutValue = Math.min(timeoutValue, 8_000);');
+    });
+});
+
 /* ─────────── 2. a line the user already read is not repeated ─────────── */
 
 describe('the log does not say everything twice', () => {
