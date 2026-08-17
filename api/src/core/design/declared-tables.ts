@@ -42,6 +42,60 @@ const DECLARATION =
     /(?:^|[\n.!?؟•·-]\s*|\s)(?:tables?|entities|data\s*model|جداول|الجداول|كيانات|الكيانات|قواعد\s*البيانات)\s*[:：]\s*([^\n]{2,400})/i;
 
 /**
+ * A database section often declares its minimum tables as one item per line:
+ *
+ *     At minimum create:
+ *
+ *     users
+ *     projects
+ *     tasks
+ *
+ * This is still an explicit declaration, but it cannot be captured by the
+ * inline regex above because the list deliberately spans lines. The reader
+ * below is line-oriented and stops at the first prose line or blank line after
+ * the list, so it cannot consume the next section of a long specification.
+ */
+const BLOCK_DECLARATION =
+    /(?:^|[\n\r])\s*(?:at\s+minimum\s+create|create\s+at\s+minimum|minimum\s+(?:tables?|entities)|minimum\s+database\s+(?:tables?|entities)|(?:أنشئ|أنشئوا)\s+(?:كحد\s+أدنى|على\s+الأقل)|الحد\s+الأدنى)\s*[:：]\s*/i;
+
+function declarationList(request: string): string {
+    const source = String(request || '');
+    const inline = source.match(DECLARATION);
+    if (inline) return inline[1];
+
+    const header = source.match(BLOCK_DECLARATION);
+    if (!header || header.index === undefined) return '';
+
+    const lines = source.slice(header.index + header[0].length).split(/\r?\n/);
+    const values: string[] = [];
+    let started = false;
+    for (const raw of lines) {
+        const line = raw.trim().replace(/^[-*•]\s*/, '').trim();
+        if (!line) {
+            if (started) break;
+            continue;
+        }
+        // List rows are short noun phrases, not complete prose sentences.
+        if (line.length > 60 || line.split(/\s+/).length > 2 || /[.,;:!?؟]/.test(line)
+            || !/^[A-Za-z\u0621-\u064A][A-Za-z0-9_\u0621-\u064A\s_-]*$/u.test(line)) {
+            break;
+        }
+        values.push(line);
+        started = true;
+        if (values.length >= 24) break;
+    }
+    return values.join(', ');
+}
+
+function declarationWords(request: string): string[] {
+    const listed = declarationList(request);
+    if (!listed) return [];
+    return listed.split(TAIL)[0].split(SPLIT)
+        .map(w => w.replace(/[.،؛!?"'()]+$/g, '').trim())
+        .filter(Boolean);
+}
+
+/**
  * The separators a list is written with. Same shapes as the rest of the
  * project: Arabic glues its «و» to the front of the next word, so it is
  * «space + waw + an Arabic letter», never `\bو` — `\b` is defined by `\w`,
@@ -60,13 +114,8 @@ const TAIL = /\s+(?:with|and with|مع|بتصميم|وبتصميم)\s+/i;
  * system — routes, screens, admin panel — is generated from it.
  */
 export function declaredTables(request: string, limit = MAX_MODEL_ENTITIES): ModelEntity[] {
-    const m = String(request || '').match(DECLARATION);
-    if (!m) return [];
-
-    const listed = String(m[1]).split(TAIL)[0];
-    const words = listed.split(SPLIT)
-        .map(w => w.replace(/[.،؛!?"'()]+$/g, '').trim())
-        .filter(Boolean);
+    const words = declarationWords(request);
+    if (!words.length) return [];
     // One item after a «Tables:» label is a heading, not a list.
     if (words.length < 2) return [];
 
@@ -90,10 +139,10 @@ export function declaredTables(request: string, limit = MAX_MODEL_ENTITIES): Mod
 
 /** The names in the declaration this system already serves, so the report can say so. */
 export function declaredButOwned(request: string): string[] {
-    const m = String(request || '').match(DECLARATION);
-    if (!m) return [];
+    const words = declarationWords(request);
+    if (!words.length) return [];
     const out: string[] = [];
-    for (const word of String(m[1]).split(TAIL)[0].split(SPLIT).map(w => w.trim()).filter(Boolean)) {
+    for (const word of words) {
         if (word.split(/\s+/).length > 2) continue;
         const key = keyForPhrase(word);
         if (key && NEVER.has(key) && !out.includes(key)) out.push(key);

@@ -2210,13 +2210,21 @@ export class ReactProjectTool extends BaseTool {
         // The SAME kind judgement the page builder uses: a restaurant app
         // ships a menu, a store ships pricing — never the same generic three
         // sections for every request.
+        // A phase request can be intentionally short. When this frontend is
+        // built after api_project, the API's persisted appKind is the
+        // authoritative contract and must outrank a weaker second guess.
+        const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+        const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const prevEntry = ((global as any).joeProjects || {})[sessionKey];
+        const inheritedAppKind = prevEntry?.type === 'api' && typeof prevEntry?.appKind === 'string'
+            ? prevEntry.appKind : null;
         const kind = detectPageKind(request);
         // AND THE OTHER QUESTION, the one that was never asked: is this a site
         // about something, or a PROGRAM? «تطبيق خرائط» used to come back as
         // Hero + Features + FAQ with a restaurant menu attached and no map at
         // all. When the request names an application, the section library is
         // skipped entirely and a working app is generated instead.
-        const appKind = detectAppKind(request);
+        const appKind = detectAppKind(request) || inheritedAppKind;
         const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, isAr) : null;
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
@@ -2252,13 +2260,10 @@ export class ReactProjectTool extends BaseTool {
             (content as any).contact = null;
         }
         const dirName = `react-${slug(content.brand)}`;
-        const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
-        const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         // THE FULL-STACK LINK: when this session's previous project is a Joe
         // API, the new frontend is born connected — content.js carries the
         // API's URL, the list components ask it for the LIVE rows at runtime,
         // and any failure (API stopped, published copy) keeps the baked rows.
-        const prevEntry = ((global as any).joeProjects || {})[sessionKey];
         /** The tables this system really declares — the terminal asks for each by name. */
         let systemTables: string[] = [];
         /**

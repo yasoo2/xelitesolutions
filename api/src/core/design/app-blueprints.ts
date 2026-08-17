@@ -112,7 +112,8 @@ export function stripDeclaredOptions(requestRaw: string): string {
     return r
         .replace(/(?:ب|وال|ال)?(?:فئات|تصنيفات|أقسام|اقسام|categories|types)\s*(?:هي|are)?\s*[:：]\s*[^.\n؟?!]{2,160}/gi, ' ')
         .replace(/(?:بفئات|بتصنيفات|بأقسام|باقسام|with\s+categories)\s+[^.\n؟?!:،]{2,160}(?:،[^.\n؟?!]{0,120})?/gi, ' ')
-        .replace(/\s{2,}/g, ' ')
+        // Preserve newlines: block schema declarations use them as boundaries.
+        .replace(/[ \t]{2,}/g, ' ')
         .trim();
 }
 

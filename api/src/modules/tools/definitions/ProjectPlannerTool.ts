@@ -7,6 +7,19 @@ import { plannerToolPrompt, sanitisePlanPhases } from '../../../core/orchestrato
 import { EngineeringEvidence } from './EngineeringDiscoveryTool';
 import { BOUNDED_REPAIR_CONSTITUTION, ENGINEERING_CONSTITUTION } from '../../../core/orchestrator/engineering-policy';
 
+const DEPENDENCY_RESOLUTION_CONTRACT = `DEPENDENCY RESOLUTION CONTRACT: Never invent npm package versions or copy an unverified exact patch. When a plan introduces or edits package.json, use a published stable release family grounded in the inspected project or an explicit requirement. Before declaring setup complete, run the real install in the project root and treat ETARGET/No matching version as evidence: inspect the registry for stable versions, update only the failing package specifier, retry once, then verify the manifest and install result. Do not use --force or --legacy-peer-deps to hide a missing package version, do not choose prerelease/dev/integration tags, and do not remove a dependency unless source inspection proves it is unused.`;
+
+function extractRuntimeImportLedger(projectDescription: unknown): string[] {
+    const text = String(projectDescription || '');
+    const match = text.match(/local\s+runtime\s+imports\s+missing\s*\(([^)]*)\)/iu);
+    if (!match?.[1]) return [];
+    return match[1]
+        .split(/\s*;\s*/u)
+        .map(item => item.trim())
+        .filter(item => /^.+?\s*->\s*\.\/?[^\s]+$/u.test(item))
+        .slice(0, 24);
+}
+
 /**
  * ProjectPlannerTool - creates an execution plan only.
  *
@@ -119,6 +132,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                             repairMode,
                             scopeRepairMode,
                             scopeRepairTargets,
+                            evidence,
                         );
                         recoveryResponse = await callLLM(recoveryPrompt, [
                             { role: 'system', content: 'You are a senior software project manager. Return only compact valid JSON with executable phases and tasks.' }
@@ -184,6 +198,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         repairMode,
                         scopeRepairMode,
                         scopeRepairTargets,
+                        evidence,
                     );
                     retryResponse = await callLLM(retryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with executable phases and tasks.' }
@@ -223,8 +238,8 @@ export class ProjectPlannerTool implements ToolDefinition {
             const hasPlannerStackDecision = this.hasPlannerStackDecision(plan);
             const referenceProjects = evidence?.referenceProjects || [];
             const typedReferenceProjects = referenceProjects.filter(project =>
-                project.projectKinds.some(kind => kind === 'node' || kind === 'python' || kind === 'go')
-                && project.manifests.some(manifest => Boolean(String(manifest.path || '').trim()))
+                (Array.isArray(project.projectKinds) ? project.projectKinds : []).some(kind => kind === 'node' || kind === 'python' || kind === 'go')
+                && (Array.isArray(project.manifests) ? project.manifests : []).some(manifest => Boolean(String(manifest.path || '').trim()))
             );
             logs.push(`[plan] stack evidence mode=${evidence?.mode || 'missing'} references=${referenceProjects.length} typedWithManifest=${typedReferenceProjects.length} explicit=${hasExplicitStack} plannerDecision=${hasPlannerStackDecision} allowed=${hasEvidenceBackedStack || hasPlannerStackDecision}`);
             const workspaceRoot = evidence?.workspaceRoot || evidence?.selectedProject?.root || '';
@@ -242,7 +257,10 @@ export class ProjectPlannerTool implements ToolDefinition {
                 const source = String(item || '');
                 return workspaceRoot && path.isAbsolute(source) ? path.relative(workspaceRoot, source) : source;
             }).filter(Boolean);
-            const rawPlanBeforeSanitise = JSON.parse(JSON.stringify(plan));
+            // Keep the newest model plan available for the bounded portability
+            // rewrite. A recovery response may be more complete than the first
+            // response even when it repeats the same native dependency blocker.
+            let rawPlanForPortableRewrite = JSON.parse(JSON.stringify(plan));
             let clean = sanitisePlanPhases(plan.phases, plan.projectName, {
                 mode: evidence?.mode,
                 // A greenfield plan may choose a stack only when the planner made
@@ -277,6 +295,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         repairMode,
                         scopeRepairMode,
                         scopeRepairTargets,
+                        evidence,
                     );
                     const retryResponse = await callLLM(retryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with executable phases, exact tool contracts, and non-document implementation artifacts.' }
@@ -308,6 +327,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     }
                     plan = this.validatePlan(recoveredPlan, projectDescription);
                     plan.phases = recoveredClean.phases;
+                    rawPlanForPortableRewrite = JSON.parse(JSON.stringify(plan));
                     clean = recoveredClean;
                     clean.notes.forEach(n => logs.push(n));
                     logs.push('Planner contract recovery completed with non-document implementation artifacts');
@@ -334,6 +354,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         repairMode,
                         scopeRepairMode,
                         scopeRepairTargets,
+                        evidence,
                     );
                     const recoveryRequest = () => callLLM(recoveryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Repair the rejected plan using the evidence and exact tool contracts. Return only valid JSON; never return prose or Markdown fences.' }
@@ -386,6 +407,12 @@ export class ProjectPlannerTool implements ToolDefinition {
                         requireRunnableContract: context?.requireRunnableContract === true,
                         repairMode: repairMode || scopeRepairMode,
                     });
+                    if (recoveredClean.blocker?.code === 'unportable_native_dependency') {
+                        // The model supplied a newer architecture but repeated the
+                        // native choice. Preserve that newer plan for the bounded
+                        // dependency-only rewrite below.
+                        rawPlanForPortableRewrite = JSON.parse(JSON.stringify(recoveredPlan));
+                    }
                     if (recoveredClean.blocker) {
                         throw new Error(`Contract recovery remained blocked: ${recoveredClean.blocker.code}: ${recoveredClean.blocker.message}`);
                     }
@@ -408,7 +435,7 @@ export class ProjectPlannerTool implements ToolDefinition {
             // contract (node:sqlite/JSON, node:crypto, sass, or a portable fallback)
             // before the same sanitiser and artifact gates run again.
             if (clean.blocker?.code === 'unportable_native_dependency' && evidence?.mode === 'greenfield') {
-                const portablePlan = this.rewriteUnportableNativePlan(rawPlanBeforeSanitise);
+                const portablePlan = this.rewriteUnportableNativePlan(rawPlanForPortableRewrite);
                 const portableClean = sanitisePlanPhases(portablePlan.phases, portablePlan.projectName, {
                     mode: evidence?.mode,
                     disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !this.hasPlannerStackDecision(portablePlan),
@@ -519,6 +546,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                             repairMode,
                             scopeRepairMode,
                             scopeRepairTargets,
+                            evidence,
                         );
                         const scopeRecoveryResponse = await callLLM(scopeRecoveryPrompt, [
                             { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with complete requirement coverage, executable phases, exact tool contracts, and concrete non-document artifacts.' }
@@ -542,6 +570,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                             testFiles: evidence?.selectedProject?.testFiles || [],
                              candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
                              disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
+                             mode: evidence?.mode,
                              requireRunnableContract: context?.requireRunnableContract === true,
                              repairMode,
                          });
@@ -559,6 +588,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                             repairMode,
                             scopeRepairMode,
                             scopeRepairTargets,
+                            evidence,
                         );
                         if (!recoveredAssessment.ok) {
                             scopeAssessment = recoveredAssessment;
@@ -728,6 +758,8 @@ ${plannerToolPrompt()}
 
 ${ENGINEERING_CONSTITUTION}
 
+${DEPENDENCY_RESOLUTION_CONTRACT}
+
 PROJECT:
 ${projectDescription}
 
@@ -757,7 +789,46 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
         repairMode = false,
         scopeRepairMode = false,
         scopeRepairTargets: string[] = [],
+        evidence?: EngineeringEvidence,
     ): string {
+        const promptEvidence = this.planningEvidence(evidence);
+        const authoritativeEvidence = promptEvidence
+            ? `\n\nAUTHORITATIVE DISCOVERY EVIDENCE — these are the only known project roots, manifests, entrypoints, and tests. Reuse these workspace-relative paths exactly; never invent a product-named directory or prefix.\n${JSON.stringify({
+                mode: promptEvidence.mode,
+                workspaceRoot: '.',
+                selectedProject: promptEvidence.selectedProject ? {
+                    root: promptEvidence.selectedProject.root,
+                    manifests: promptEvidence.selectedProject.manifests,
+                    likelyEntrypoints: promptEvidence.selectedProject.likelyEntrypoints,
+                    testFiles: promptEvidence.selectedProject.testFiles || [],
+                    candidateChecks: promptEvidence.selectedProject.candidateChecks || [],
+                } : undefined,
+                referenceProjects: (promptEvidence.referenceProjects || []).map(project => ({
+                    root: project.root,
+                    manifests: project.manifests,
+                    likelyEntrypoints: project.likelyEntrypoints,
+                    testFiles: project.testFiles || [],
+                })),
+            }, null, 2).slice(0, 9000)}\n`
+            : '';
+        const qualityRepair = /(?:project\s+quality\s+contract|truthful\s+test\s+script|missing\s+test\s+script|real\s+(?:local\s+)?tests?)/iu.test(`${failureReason}\n${projectDescription}`);
+        // Quality-contract repair is a specialized bounded repair even when the
+        // caller also sets scopeRepairMode to reuse the short recovery path.
+        // Keep it ahead of the generic scope branch so test-script obligations
+        // cannot be silently downgraded to a missing-capability repair.
+        if (repairMode && qualityRepair) {
+            return `BOUNDED QUALITY-CONTRACT REPAIR — preserve the working product and repair only the explicit quality failure; do not redesign or rebuild it.
+
+${BOUNDED_REPAIR_CONSTITUTION}
+
+Failure evidence: ${String(failureReason || '').slice(0, 1200)}${authoritativeEvidence}
+Original repair request and evidence:
+${String(projectDescription || '').slice(0, 5000)}
+
+Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect the current workspace before deciding exact paths. Every task must be an executable file-level implementation task using ai_write_file or write_file with safe workspace-relative args.path and a precise args.description or args.content. If the evidence says the test script is missing or untruthful, update the existing package.json with a real local test command and add at least one deterministic test file that imports or exercises existing implementation behavior; run that test command after writing the test. Preserve existing build/start commands and make one real start/readiness check after the repair. Never use echo, true, :, exit 0, a placeholder, or documentation as test evidence. Do not create a template, second project, or unrelated feature. Use requirementsCovered: ["R1"] and keep each phase to at most 3 tasks.
+
+Schema: {"projectName":"quality-repair","projectVibe":"bounded quality-contract repair","totalPhases":1,"estimatedDuration":"short estimate","phases":[{"phaseNumber":1,"name":"Repair quality contract","description":"Add the evidenced truthful test command and deterministic test artifact without redesigning the project.","requirementsCovered":["R1"],"tasks":[{"task":"update the existing manifest with a truthful test script","tool":"ai_write_file","args":{"path":"package.json","description":"Preserve existing scripts and add a real local test command such as node --test only when supported by the inspected runtime and test file."},"priority":"high","realisticMinutes":10},{"task":"add a deterministic test for existing behavior","tool":"ai_write_file","args":{"path":"tests/quality-contract.test.js","description":"Create a small deterministic test that imports or exercises an existing project module; do not use a placeholder assertion."},"priority":"high","realisticMinutes":15}],"verificationTask":"Run the truthful test command, build, and one real start/readiness check.","deliverables":["updated manifest and real test artifact"],"estimatedTime":"25 minutes"}],"dependencies":[]}`;
+        }
         if (scopeRepairMode) {
             const repairTargets = scopeRepairTargets.length
                 ? scopeRepairTargets
@@ -781,14 +852,29 @@ Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect 
 Schema: {"projectName":"scope-repair","projectVibe":"bounded missing-capability repair","totalPhases":${phaseCount},"estimatedDuration":"short estimate","phases":[{"phaseNumber":1,"name":"Implement missing capabilities","description":"Add only the missing capabilities to the existing project using inspected source evidence.","requirementsCovered":${JSON.stringify(ids)},"tasks":[{"task":"implement the missing capability slice","tool":"ai_write_file","args":{"path":"src/existing-module.ts","description":"Extend the evidenced existing source module with the missing capability behavior without replacing unrelated features."},"priority":"high","realisticMinutes":20}],"verificationTask":"Run the existing local checks and make one real start/readiness check.","deliverables":["updated existing source and tests"],"estimatedTime":"30 minutes"}],"dependencies":[]}`;
         }
         if (repairMode) {
-            const qualityRepair = /(?:project\s+quality\s+contract|truthful\s+test\s+script|missing\s+test\s+script|real\s+(?:local\s+)?tests?)/iu.test(`${failureReason}\n${projectDescription}`);
-            if (qualityRepair) {
-                return `BOUNDED QUALITY-CONTRACT REPAIR — preserve the working product and repair only the explicit quality failure; do not redesign or rebuild it.
+            const runtimeImportLedger = extractRuntimeImportLedger(`${failureReason}\n${projectDescription}`);
+            if (runtimeImportLedger.length) {
+                const targets = runtimeImportLedger
+                    .map((item, index) => `R${index + 1}: ${item}`)
+                    .join(' | ');
+                const ids = runtimeImportLedger.map((_item, index) => `R${index + 1}`);
+                return `BOUNDED RUNTIME-IMPORT REPAIR — repair every exact local import edge in the current project and nothing else.
 
 ${BOUNDED_REPAIR_CONSTITUTION}
 
 Failure evidence: ${String(failureReason || '').slice(0, 1200)}
 
+MISSING LOCAL RUNTIME IMPORT LEDGER (every item is mandatory):
+${targets}
+
+Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect each importer and the filesystem before editing. Every ledger item must have a concrete file-level implementation task that repairs the exact edge or creates only the smallest real module required by the proven contract; never create a placeholder, unrelated file, guessed dependency, or second project. Use requirementsCovered: ${JSON.stringify(ids)} and include syntax/build/tests plus one real start/readiness check after all items are addressed.`;
+            }
+            if (qualityRepair) {
+                return `BOUNDED QUALITY-CONTRACT REPAIR — preserve the working product and repair only the explicit quality failure; do not redesign or rebuild it.
+
+${BOUNDED_REPAIR_CONSTITUTION}
+
+Failure evidence: ${String(failureReason || '').slice(0, 1200)}${authoritativeEvidence}
 Original repair request and evidence:
 ${String(projectDescription || '').slice(0, 5000)}
 
@@ -800,8 +886,7 @@ Schema: {"projectName":"quality-repair","projectVibe":"bounded quality-contract 
 
 ${BOUNDED_REPAIR_CONSTITUTION}
 
-Failure evidence: ${String(failureReason || '').slice(0, 900)}
-
+Failure evidence: ${String(failureReason || '').slice(0, 900)}${authoritativeEvidence}
 Original repair request and evidence:
 ${String(projectDescription || '').slice(0, 5000)}
 
@@ -916,8 +1001,8 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
             ...(evidence?.referenceProjects || []),
         ].filter(Boolean) as NonNullable<EngineeringEvidence['selectedProject']>[];
         return projects.some(project =>
-            project.projectKinds.some(kind => kind === 'node' || kind === 'python' || kind === 'go')
-            && project.manifests.some(manifest => Boolean(String(manifest.path || '').trim())),
+            (Array.isArray(project.projectKinds) ? project.projectKinds : []).some(kind => kind === 'node' || kind === 'python' || kind === 'go')
+            && (Array.isArray(project.manifests) ? project.manifests : []).some(manifest => Boolean(String(manifest.path || '').trim())),
         );
     }
 
@@ -981,6 +1066,43 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
         };
     }
 
+    /**
+     * A request that explicitly asks for a web-facing product needs a concrete
+     * browser-auditable UI artifact in the plan. This is intentionally based on
+     * capability language, not product names or a fixed framework, so a planner
+     * may choose vanilla HTML, React, Vue, or another evidence-backed stack.
+     */
+    private requiresBrowserAuditableArtifact(projectDescription: string): boolean {
+        const text = String(projectDescription || '');
+        return /\b(?:web\s+(?:app|application|site|page)|browser\s+(?:app|application|interface)|website|frontend|front[ -]?end|responsive\s+(?:web\s+)?(?:ui|interface|page|layout)|dashboard|portal)\b/i.test(text);
+    }
+
+    /**
+     * Detects only plan evidence that can become visible in a browser. A vague
+     * "run browser QA" sentence is not enough: the plan must name a concrete UI
+     * path/structure or use a registered UI-building tool.
+     */
+    private hasBrowserAuditableArtifact(plan: any): boolean {
+        const frontendPath = /(?:^|\/)(?:index\.html|(?:public|static)\/[^/]+\.(?:html|css|js|jsx|ts|tsx)|(?:src\/)?(?:app|main|pages?|views?|components?)\/(?:[^/]+\.)?(?:html|css|js|jsx|ts|tsx)|(?:src\/)?(?:app|main)\.(?:html|css|js|jsx|ts|tsx))$/i;
+        const implementationTools = new Set(['react_project', 'web_page_builder']);
+        const fileTools = new Set(['ai_write_file', 'write_file', 'file_edit', 'edit_file', 'project_edit', 'file_edit_advanced']);
+        const phases = Array.isArray(plan?.phases) ? plan.phases : [];
+        for (const phase of phases) {
+            for (const task of Array.isArray(phase?.tasks) ? phase.tasks : []) {
+                const tool = String(task?.tool || '').trim().toLowerCase();
+                if (implementationTools.has(tool)) return true;
+                const structure = task?.args?.structure;
+                if (structure && typeof structure === 'object' && !Array.isArray(structure)) {
+                    if (Object.keys(structure).some(key => frontendPath.test(String(key).replace(/\\/g, '/')))) return true;
+                }
+                if (!fileTools.has(tool) && tool !== 'scaffold_project' && tool !== 'scaffold_full_stack') continue;
+                const path = String(task?.args?.path || task?.args?.filePath || task?.args?.targetPath || '').trim().replace(/\\/g, '/');
+                if (frontendPath.test(path)) return true;
+            }
+        }
+        return false;
+    }
+
     private scopePlanningInstructions(
         projectDescription: string,
         repairMode = false,
@@ -995,6 +1117,11 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
                 : `BOUNDED SCOPE-REPAIR CONTRACT: the project already starts, but the live scope audit found missing capabilities. Modify only the existing project in place. Implement every missing capability in this ledger: ${targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ')}. Use 1-3 phases, concrete source/test artifacts, evidence-backed paths, and local verification including one real restart/readiness check. Do not redesign, regenerate, scaffold a second project, or claim that an unchanged runtime proves the missing behavior.`;
         }
         if (repairMode) {
+            const runtimeImportLedger = extractRuntimeImportLedger(projectDescription);
+            if (runtimeImportLedger.length) {
+                const targets = runtimeImportLedger.map((item, index) => `R${index + 1}: ${item}`).join(' | ');
+                return `BOUNDED RUNTIME-IMPORT REPAIR: the current project failed launchability because the selected runtime graph has exact missing local import edges. Preserve all working product behavior and repair every ledger item in place. Inspect each importer and the filesystem before editing; repair the exact existing edge when a unique file exists, otherwise create only the smallest real module required by that proven import contract. Never create placeholders, unrelated files, guessed dependencies, or a second project. Use 1-3 phases, concrete file-level tasks, requirementsCovered for every ledger ID, syntax/build/tests, and one real start/readiness check. Ledger: ${targets}`;
+            }
             const qualityRepair = /(?:project\s+quality\s+contract|truthful\s+test\s+script|missing\s+test\s+script|real\s+(?:local\s+)?tests?)/iu.test(projectDescription);
             if (qualityRepair) {
                 return 'BOUNDED QUALITY-CONTRACT REPAIR: this live repair is caused by explicit quality-contract evidence. Preserve the working product and add only the missing truthful local check: update the existing package manifest with a real test script when absent, add at least one deterministic test file that exercises existing implementation behavior, and keep existing build/start commands intact. Use 1-3 phases maximum, map the repair to R1, and verify the test command, build, and one real start/readiness check. Never use echo, true, :, exit 0, a placeholder, or a documentation-only task to fake evidence; do not redesign, regenerate, or cover the original multi-domain request.';
@@ -1002,10 +1129,13 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
             return 'BOUNDED REPAIR CONTRACT: this is a live-repair attempt after a concrete launchability or runnable-contract failure. Scope is limited to the evidence-backed manifest, entrypoint, start/build command, or smallest required dependency/configuration fix. Use 1-3 phases maximum, map the bounded repair to R1, create concrete file-level implementation artifacts, and verify the existing build/tests plus one real start/readiness check. Do not redesign, regenerate, or cover the original multi-domain request.';
         }
         const scope = this.requirementScope(projectDescription);
+        const browserContract = this.requiresBrowserAuditableArtifact(projectDescription)
+            ? ' For this browser-facing request, include at least one concrete UI artifact task with a safe path such as index.html, public/*.html, src/App.tsx, src/main.jsx, or an equivalent evidence-backed UI path; browser QA cannot substitute for creating the UI.'
+            : '';
         if (!scope.requiresImplementation || scope.targets.length < 5) {
-            return 'Map each phase to the specific requirement statements it advances. Documentation may be a planning phase, but it is not evidence that an implementation request is delivered.';
+            return `Map each phase to the specific requirement statements it advances. Documentation may be a planning phase, but it is not evidence that an implementation request is delivered.${browserContract}`;
         }
-        return `SCOPE COVERAGE CONTRACT: the inspected specification has ${scope.targets.length} distinct requirement areas. Return at least ${scope.minPhases} execution phases. A documentation-only phase cannot be the complete delivery. Include concrete non-document implementation artifacts and verification phases, and map every requirement area below to one or more phases via requirementsCovered. Requirement register: ${scope.targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ')}`;
+        return `SCOPE COVERAGE CONTRACT: the inspected specification has ${scope.targets.length} distinct requirement areas. Return at least ${scope.minPhases} execution phases. A documentation-only phase cannot be the complete delivery. Include concrete non-document implementation artifacts and verification phases, and map every requirement area below to one or more phases via requirementsCovered.${browserContract} Requirement register: ${scope.targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ')}`;
     }
 
     private assessPlanScope(
@@ -1014,10 +1144,12 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
         repairMode = false,
         scopeRepairMode = false,
         scopeRepairTargets: string[] = [],
-    ): { ok: boolean; message: string; targets: string[]; phases: number; implementationArtifacts: number; coveredTargets: number; coveredTargetNames: string[]; missingTargetNames: string[] } {
+    ): { ok: boolean; message: string; targets: string[]; phases: number; implementationArtifacts: number; coveredTargets: number; coveredTargetNames: string[]; missingTargetNames: string[]; browserContractRequired?: boolean; browserAuditableArtifact?: boolean } {
         const scope = scopeRepairMode
             ? { targets: scopeRepairTargets.length ? scopeRepairTargets : ['the missing named capabilities'], minPhases: 1, requiresImplementation: true }
             : this.requirementScope(projectDescription);
+        const browserContractRequired = !repairMode && !scopeRepairMode && scope.requiresImplementation && this.requiresBrowserAuditableArtifact(projectDescription);
+        const browserAuditableArtifact = browserContractRequired ? this.hasBrowserAuditableArtifact(plan) : true;
         const phases = Array.isArray(plan?.phases) ? plan.phases : [];
         if (scopeRepairMode) {
             const implementationArtifacts = this.countImplementationArtifacts(phases);
@@ -1058,6 +1190,31 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
             };
         }
         if (repairMode) {
+            const runtimeImportLedger = extractRuntimeImportLedger(projectDescription);
+            if (runtimeImportLedger.length) {
+                const implementationArtifacts = this.countImplementationArtifacts(phases);
+                const planText = JSON.stringify(phases).toLowerCase();
+                const coveredTargetNames = runtimeImportLedger.filter((item) => {
+                    const [importer, specifier] = item.split(/\s*->\s*/u).map(value => value.trim().toLowerCase());
+                    return planText.includes(item.toLowerCase())
+                        || (Boolean(importer) && Boolean(specifier) && planText.includes(importer) && planText.includes(specifier));
+                });
+                const missingTargetNames = runtimeImportLedger.filter(item => !coveredTargetNames.includes(item));
+                const problems: string[] = [];
+                if (phases.length < 1 || phases.length > 3) problems.push(`it has ${phases.length} phase(s), but runtime-import repair allows 1-3`);
+                if (implementationArtifacts < 1) problems.push('it has no non-document implementation artifact task');
+                if (missingTargetNames.length) problems.push(`missing runtime-import ledger coverage: ${missingTargetNames.join(', ')}`);
+                return {
+                    ok: problems.length === 0,
+                    message: problems.length ? `Bounded runtime-import repair plan is invalid: ${problems.join('; ')}.` : 'Bounded runtime-import repair scope is sufficient for controlled execution.',
+                    targets: runtimeImportLedger,
+                    phases: phases.length,
+                    implementationArtifacts,
+                    coveredTargets: coveredTargetNames.length,
+                    coveredTargetNames,
+                    missingTargetNames,
+                };
+            }
             const implementationArtifacts = this.countImplementationArtifacts(phases);
             const boundedTargets = ['bounded runnable-contract repair'];
             const boundedCovered = phases.some((phase: any) => {
@@ -1081,7 +1238,34 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
             };
         }
         if (!scope.requiresImplementation || scope.targets.length < 5) {
-            return { ok: true, message: 'Scope is not a large multi-domain implementation request.', targets: scope.targets, phases: phases.length, implementationArtifacts: 0, coveredTargets: 0, coveredTargetNames: [], missingTargetNames: [] };
+            const implementationArtifacts = this.countImplementationArtifacts(phases);
+            if (browserContractRequired && !browserAuditableArtifact) {
+                const message = 'The browser-facing request has no concrete frontend artifact task that can be inspected or launched for browser QA.';
+                return {
+                    ok: false,
+                    message,
+                    targets: scope.targets,
+                    phases: phases.length,
+                    implementationArtifacts,
+                    coveredTargets: 0,
+                    coveredTargetNames: [],
+                    missingTargetNames: ['browser-auditable frontend artifact'],
+                    browserContractRequired: true,
+                    browserAuditableArtifact: false,
+                };
+            }
+            return {
+                ok: true,
+                message: 'Scope is not a large multi-domain implementation request.',
+                targets: scope.targets,
+                phases: phases.length,
+                implementationArtifacts,
+                coveredTargets: 0,
+                coveredTargetNames: [],
+                missingTargetNames: [],
+                browserContractRequired,
+                browserAuditableArtifact,
+            };
         }
         const allTasks = phases.flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : []);
         const implementationArtifacts = this.countImplementationArtifacts(phases);
@@ -1116,6 +1300,9 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
         if (phases.length < scope.minPhases) problems.push(`it has ${phases.length} phase(s), but the evidence requires at least ${scope.minPhases}`);
         if (implementationArtifacts < 2) problems.push(`it has only ${implementationArtifacts} non-document implementation artifact task(s)`);
         if (coveredTargets < requiredCoverage) problems.push(`it maps only ${coveredTargets}/${scope.targets.length} requirement areas (minimum ${requiredCoverage})`);
+        if (browserContractRequired && !browserAuditableArtifact) {
+            problems.push('the browser-facing request has no concrete frontend artifact task that can be inspected or launched for browser QA');
+        }
         return {
             ok: problems.length === 0,
             message: problems.length ? `Planner produced an under-scoped plan: ${problems.join('; ')}. No implementation was started.` : 'Plan coverage is sufficient for controlled execution.',
@@ -1124,7 +1311,11 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
             implementationArtifacts,
             coveredTargets,
             coveredTargetNames,
-            missingTargetNames,
+            missingTargetNames: browserContractRequired && !browserAuditableArtifact
+                ? [...missingTargetNames, 'browser-auditable frontend artifact']
+                : missingTargetNames,
+            browserContractRequired,
+            browserAuditableArtifact,
         };
     }
 
@@ -1175,6 +1366,20 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
      */
     private rewriteUnportableNativePlan(plan: any): any {
         const nativeNames = /(?:better-sqlite3|node-sqlite3|sqlite3|bcrypt|node-sass|sharp|canvas|ffi-napi|ref-napi|isolated-vm|@tensorflow\/tfjs-node|cpu-features|bufferutil|utf-8-validate|node-gyp|prebuild-install|binding\.gyp|C\+\+\s+compiler)/i;
+        const nativePackageSpec = (value: unknown): boolean => {
+            const token = String(value || '').trim().replace(/^["']|["']$/g, '');
+            return /^(?:better-sqlite3|node-sqlite3|sqlite3|bcrypt|node-sass|sharp|canvas|ffi-napi|ref-napi|isolated-vm|@tensorflow\/tfjs-node|cpu-features|bufferutil|utf-8-validate)(?:@.*)?$/i.test(token);
+        };
+        const rewriteNpmInstallCommand = (value: string): string => {
+            const parts = value.trim().split(/\s+/).filter(Boolean);
+            if (!parts.length) return value;
+            const commandOffset = /^npm$/i.test(parts[0]) ? 1 : 0;
+            const action = parts[commandOffset] || '';
+            if (!/^(?:install|i|ci)$/i.test(action)) return rewriteText(value);
+            const kept = parts.slice(commandOffset + 1).filter(token => !nativePackageSpec(token));
+            // npm_manager expects the npm subcommand, not the npm executable.
+            return [action.toLowerCase() === 'i' ? 'install' : action.toLowerCase(), ...kept].join(' ');
+        };
         const rewriteText = (value: string): string => value
             .replace(/better-sqlite3|node-sqlite3|sqlite3/gi, 'node:sqlite or JSON file fallback')
             .replace(/\bbcrypt\b/gi, 'node:crypto scrypt')
@@ -1210,6 +1415,10 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
                 if (childKey === 'tool') out[childKey] = childValue;
                 else if (childKey === 'content' && typeof childValue === 'string' && /package\.json$/i.test(String(value.path || value.filePath || ''))) {
                     out[childKey] = rewritePackageContent(childValue);
+                } else if (childKey === 'command' && typeof childValue === 'string' && /^(?:npm\s+)?(?:install|i|ci)(?:\s|$)/i.test(childValue.trim())) {
+                    out[childKey] = rewriteNpmInstallCommand(childValue);
+                } else if (childKey === 'packages' && Array.isArray(childValue)) {
+                    out[childKey] = childValue.filter(packageSpec => !nativePackageSpec(packageSpec));
                 } else {
                     out[childKey] = visit(childValue, childKey);
                 }
@@ -1295,6 +1504,7 @@ PROJECT REQUEST:
 ${projectDescription}
 
 ${analysis ? `ANALYSIS:\n${JSON.stringify(analysis, null, 2)}\n` : ''}${evidence ? `ENGINEERING_EVIDENCE:\n${JSON.stringify(evidence, null, 2)}\n` : ''}
+${DEPENDENCY_RESOLUTION_CONTRACT}
 ${this.scopePlanningInstructions(projectDescription)}`;
     }
 

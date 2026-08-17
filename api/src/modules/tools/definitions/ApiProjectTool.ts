@@ -2100,6 +2100,11 @@ export class ApiProjectTool extends BaseTool {
         const { stripDeclaredOptions } = require('../../../core/design/app-blueprints');
         const requestForReading = stripDeclaredOptions(request);
         const kind = detectPageKind(requestForReading);
+        const { detectAppKind } = require('../../../core/design/app-blueprints');
+        // This is the authoritative application contract used to choose the
+        // API resource. Persist it so a later frontend phase cannot re-derive
+        // a different kind from its shorter phase request.
+        const appKind = detectAppKind(requestForReading);
         const brand = brandFrom(requestForReading, isAr) || brandFallback(requestForReading, isAr, kind);
         const picked = apiResourceForKind(kind, isAr, requestForReading);
         // The schema follows the app's own blueprint. Seeds only make sense for
@@ -2665,6 +2670,7 @@ export class ApiProjectTool extends BaseTool {
         projects[sessionKey] = {
             dir: proj, type: 'api', brand, resource, port: 4100, updatedAt: Date.now(),
             lastRequest: request.slice(0, 80),
+            ...(appKind ? { appKind } : {}),
             ...(handedModel.length ? { model: handedModel } : {}),
         };
         persistJoeProjects();

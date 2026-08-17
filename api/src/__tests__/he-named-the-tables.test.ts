@@ -99,6 +99,52 @@ describe('the designer reads him before it asks anyone', () => {
         expect(notes.join(' ')).toMatch(/read from the request itself/);
     });
 
+    it('reads a multiline minimum-schema declaration without consuming the next section', async () => {
+        const request = `Build a complete task management system.
+
+DATABASE
+
+At minimum create:
+
+users
+projects
+tasks
+activities
+notifications
+
+Use relationships correctly.
+
+API
+
+Create proper backend APIs for authentication.`;
+        const m = await designDataModel(request, { timeoutMs: 1 });
+        expect(m.map(e => e.key)).toEqual(['projects', 'tasks', 'activities', 'notifications']);
+        expect(m.map(e => e.key)).not.toContain('apis');
+    });
+
+    it('reads entities from sectioned requirements without turning headings into tables', async () => {
+        const request = `Build a complete project and task management system.
+
+AUTHENTICATION
+Users can create projects.
+
+PROJECT MANAGEMENT
+Each project contains name, status, and due date.
+
+TASK MANAGEMENT
+Create a complete task management system.
+Each task should contain title, priority, and due date.
+
+KANBAN BOARD
+When a task moves, update the UI immediately and persist the new status.
+Record the activity.
+Verify notifications.
+Verify dashboard statistics.`;
+        const m = await designDataModel(request, { timeoutMs: 1 });
+        expect(m.map(e => e.key)).toEqual(['projects', 'tasks', 'activities', 'notifications']);
+        expect(m.map(e => e.key)).not.toEqual(expect.arrayContaining(['authentications', 'boards', 'uis', 'statuses']));
+    });
+
     it('and a known domain still wins, because it is hand-checked', async () => {
         const m = await designDataModel('ابنِ نظاماً لعيادة أسنان: أطباء ومرضى ومواعيد', { timeoutMs: 1 });
         expect(m.map(e => e.key)).toEqual(['doctors', 'patients', 'appointments']);

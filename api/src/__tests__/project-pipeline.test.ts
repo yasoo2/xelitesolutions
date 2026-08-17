@@ -121,7 +121,7 @@ describe('routing — full-project requests reach the pipeline, offline and dete
         expect(deterministicRescueForDeadPlanner('Write a kernel driver for my GPU with acceptance criteria and integration tests. '.repeat(40))).toBe(false);
         // The paper-plan branch keeps the STRICT gate — pinned at the source.
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
-        expect(src).toMatch(/plannerResult\?\.output\?\.deterministic !== true\s*&&\s*deterministicRescueAllowed\(request\)/);
+        expect(src).toMatch(/plannerResult\?\.output\?\.deterministic !== true\s*&&\s*deterministicRescueAllowed\(productRequest\)/);
     });
 
     test('a recovery goal is NOT hijacked even if it mentions a server', async () => {
@@ -169,6 +169,8 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
 
     test('bounded live-run repair rediscovers the current incomplete root instead of the greenfield reference set', () => {
         expect(src).toMatch(/const repairDiscoveryRequest = \[/);
+        expect(src).toMatch(/const trustedRepairRoot = String\(/);
+        expect(src).toMatch(/liveRunResult\?\.output\?\.cwd/);
         expect(src).toMatch(/request:\s*repairDiscoveryRequest/);
         expect(src).toMatch(/Treat the existing workspace root as the write target/);
         expect(src).not.toMatch(/repairDiscovery[\\s\\S]{0,500}request,\s*path:\s*projectPath/);
@@ -218,8 +220,8 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
             expect(result.scopeCoverageFailed).toBe(true);
             expect(result.error).toMatch(/artifact coverage 0%/);
             expect(result.error).toMatch(/user accounts|inventory management|analytics/i);
-            expect(src).toMatch(/applyProjectQualityContractOutcome\(liveArtifactRoot, request, liveOutcome\)/);
-            expect(src).toMatch(/applyScopeAuditOutcome\(request, liveArtifactRoot, (?:qualityCheckedLiveOutcome|liveOutcome)\)/);
+            expect(src).toMatch(/applyProjectQualityContractOutcome\(liveArtifactRoot, productRequest, liveOutcome\)/);
+            expect(src).toMatch(/applyScopeAuditOutcome\(productRequest, liveArtifactRoot, (?:qualityCheckedLiveOutcome|liveOutcome)\)/);
             expect(src).toMatch(/scopeAudit/);
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
@@ -266,8 +268,8 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/scope_repair_pipeline_failed/);
         expect(src).toMatch(/if \(scopeCoverageFailed && !finalVerified/);
         expect(src).toMatch(/scopeRepairAttempted/);
-        expect(src).toMatch(/applyProjectQualityContractOutcome\(artifactRoot, request, scopeRetryLive\)/);
-        expect(src).toMatch(/applyScopeAuditOutcome\(request, artifactRoot, (?:qualityCheckedScopeRetry|scopeRetryLive)\)/);
+        expect(src).toMatch(/applyProjectQualityContractOutcome\(artifactRoot, productRequest, scopeRetryLive\)/);
+        expect(src).toMatch(/applyScopeAuditOutcome\(productRequest, artifactRoot, (?:qualityCheckedScopeRetry|scopeRetryLive)\)/);
     });
 
     test('success and verification are earned, with explicit execution and delivery states', () => {

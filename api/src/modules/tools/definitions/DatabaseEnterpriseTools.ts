@@ -26,6 +26,40 @@ function sqliteDatabasePath(schemaFile: string, input: any, context?: any): stri
     return path.join(nearestPackageRoot(schemaFile), 'nexus.db');
 }
 
+function discoverSqlSchemaPath(context?: any): { path?: string; error?: string } {
+    let root: string;
+    try {
+        root = resolveToolPath('.', { workspaceId: context?.workspaceId });
+    } catch (error: any) {
+        return { error: `SQLite schema discovery failed: ${error?.message || error}` };
+    }
+
+    const candidates: string[] = [];
+    const visit = (directory: string, depth: number) => {
+        if (depth > 6 || candidates.length > 50) return;
+        let entries: fs.Dirent[];
+        try { entries = fs.readdirSync(directory, { withFileTypes: true }); } catch { return; }
+        for (const entry of entries) {
+            if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist' || entry.name === 'build') continue;
+            const absolute = path.join(directory, entry.name);
+            if (entry.isDirectory()) visit(absolute, depth + 1);
+            else if (entry.isFile() && path.extname(entry.name).toLowerCase() === '.sql') candidates.push(absolute);
+        }
+    };
+    visit(root, 0);
+
+    const normalized = candidates.sort((a, b) => a.localeCompare(b));
+    if (normalized.length === 0) {
+        return { error: `SQLite migration requires schemaPath; no .sql migration was found under ${root}` };
+    }
+    const conventional = normalized.filter(candidate => path.basename(candidate).toLowerCase() === 'schema.sql');
+    if (conventional.length === 1) return { path: conventional[0] };
+    if (normalized.length === 1) return { path: normalized[0] };
+    return {
+        error: `SQLite migration requires schemaPath because multiple .sql files were found under ${root}: ${normalized.slice(0, 8).join(', ')}`,
+    };
+}
+
 function runSqliteMigration(schemaFile: string, input: any, context?: any) {
     let DatabaseSync: any;
     try {
@@ -101,8 +135,12 @@ export class DbSchemaMigratorTool extends BaseTool {
         if (schemaPath.toLowerCase().endsWith('.sql')) engine = 'sqlite';
 
         if (engine === 'sqlite') {
-            if (!schemaPath && action !== 'status') return { ok: false, error: 'SQLite migration requires schemaPath pointing to an existing .sql file', logs: [] };
             let resolvedSchema = '';
+            if (!schemaPath && action !== 'status') {
+                const discovered = discoverSqlSchemaPath(context);
+                if (discovered.error) return { ok: false, error: discovered.error, logs: [] };
+                resolvedSchema = discovered.path || '';
+            }
             if (schemaPath) {
                 try { resolvedSchema = resolveToolPath(schemaPath, { workspaceId: context?.workspaceId }); }
                 catch (error: any) { return { ok: false, error: `SQLite migration path rejected: ${error?.message || error}`, logs: [] }; }

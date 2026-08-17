@@ -3911,7 +3911,11 @@ export default function CommandComposer({
               dir="auto"
               disabled={!!approval}
               onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                // Long engineering briefs are multiline documents. Plain Enter
+                // must remain a newline; sending on every newline can split one
+                // brief into many independent agent runs. Use the explicit
+                // Ctrl/Cmd+Enter shortcut (or the visible Send button) instead.
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
                   if (isUploading) return;
                   if (status !== 'idle' || !!approval || !!secretPrompt) {

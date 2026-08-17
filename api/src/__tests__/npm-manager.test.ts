@@ -1,7 +1,15 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { reconcileNpmManifest } from '../modules/tools/definitions/SystemTools';
+import { handleShellCommand } from '../modules/tools/handlers';
+import { NpmManagerTool, reconcileNpmManifest, extractNpmInvalidVersionEvidence, selectStableNpmVersion } from '../modules/tools/definitions/SystemTools';
+
+jest.mock('../modules/tools/handlers', () => ({
+    ...jest.requireActual('../modules/tools/handlers'),
+    handleShellCommand: jest.fn(),
+}));
+
+const mockedHandleShellCommand = handleShellCommand as jest.MockedFunction<typeof handleShellCommand>;
 
 describe('npm manifest reconciliation', () => {
     let root = '';
@@ -62,6 +70,26 @@ describe('npm manifest reconciliation', () => {
         expect(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).name).toBe('evidenceboard');
     });
 
+    it('slugifies a human project label before bounded dependency bootstrap', () => {
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+            name: 'TaskFlow AI',
+            scripts: { start: 'node src/server.js' },
+            dependencies: { express: '^4.17.1' },
+        }));
+
+        const result = reconcileNpmManifest(root);
+
+        expect(result).toMatchObject({
+            ok: true,
+            changed: true,
+            renamedPackage: { from: 'TaskFlow AI', to: 'taskflow-ai' },
+        });
+        const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+        expect(manifest.name).toBe('taskflow-ai');
+        expect(manifest.scripts.start).toBe('node src/server.js');
+        expect(manifest.dependencies).toEqual({ express: '^4.17.1' });
+    });
+
     it('blocks scripts that recursively invoke themselves instead of running npm forever', () => {
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
             name: 'evidence-board',
@@ -78,6 +106,61 @@ describe('npm manifest reconciliation', () => {
         expect(result.changed).toBe(false);
         expect(result.recursiveScripts).toEqual(['build', 'test']);
         expect(result.error).toBe('recursive_npm_scripts:build,test');
+    });
+
+    it('recovers an ETARGET dependency from registry evidence and retries install', async () => {
+        const projectRoot = fs.mkdtempSync(path.join(process.cwd(), '..', '.joe-npm-etarget-'));
+        try {
+            fs.writeFileSync(path.join(projectRoot, 'package.json'), JSON.stringify({
+                name: 'registry-recovery',
+                dependencies: { '@scope/widget': '^4.18.0' },
+            }));
+            const calls: string[][] = [];
+            mockedHandleShellCommand.mockImplementation(async (_command, args) => {
+                calls.push(args);
+                if (args[0] === 'install' && calls.filter(call => call[0] === 'install').length === 1) {
+                    return {
+                        ok: false,
+                        error: 'npm error code ETARGET\\nnpm error notarget No matching version found for @scope/widget@^4.18.0.',
+                        output: '',
+                        logs: [],
+                    };
+                }
+                if (args[0] === 'view') {
+                    return {
+                        ok: true,
+                        output: JSON.stringify(['4.17.0', '4.19.0', '5.0.0', '5.1.0-beta.1']),
+                        logs: [],
+                    };
+                }
+                return { ok: true, output: 'install ok', logs: [] };
+            });
+
+            const result: any = await new NpmManagerTool().execute({ command: 'install', cwd: projectRoot });
+
+            expect(result.ok).toBe(true);
+            expect(calls).toEqual([
+                ['install'],
+                ['view', '@scope/widget', 'versions', '--json'],
+                ['install'],
+            ]);
+            const manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
+            expect(manifest.dependencies['@scope/widget']).toBe('^4.19.0');
+            expect(result.logs.join('\\n')).toMatch(/npm\.etarget_retry=registry-verified-version/);
+        } finally {
+            mockedHandleShellCommand.mockReset();
+            fs.rmSync(projectRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('extracts only package/version evidence and rejects unrelated npm failures', () => {
+        expect(extractNpmInvalidVersionEvidence('npm error code ETARGET\\nnpm error notarget No matching version found for @prisma/client@^4.18.0.')).toEqual({
+            packageName: '@prisma/client',
+            requestedSpec: '^4.18.0',
+        });
+        expect(extractNpmInvalidVersionEvidence('npm error code ERESOLVE unable to resolve dependency tree')).toBeNull();
+        expect(selectStableNpmVersion(JSON.stringify(['4.17.0', '4.19.0', '5.0.0', '5.1.0-beta.1']), '^4.18.0')).toBe('4.19.0');
+        expect(selectStableNpmVersion(JSON.stringify(['4.17.0', '4.19.0']), '^4.0.0')).toBe('4.19.0');
     });
 
     it('reports malformed JSON instead of rewriting it', () => {

@@ -176,3 +176,68 @@ describe('self-fix launcher recovery', () => {
     expect(String(plan.reason)).toMatch(/native dependency/i);
     expect(String(plan.reason)).toMatch(/node:sqlite|JSON\/file/i);
   });
+
+
+describe('self-fix npm registry recovery', () => {
+  it('routes an ETARGET failure to npm_manager with the recorded project cwd and package evidence', () => {
+    const projectCwd = path.join(process.cwd(), '..', 'data', 'builds', `self-fix-etarget-${Date.now()}`, 'TaskFlow AI');
+    const ticket = RepairTicketService.build({
+      projectName: 'TaskFlow AI',
+      phase: { phaseNumber: 1, name: 'Project Setup' },
+      phaseResult: {
+        error: 'npm error code ETARGET\nnpm error notarget No matching version found for @prisma/client@^4.18.0.',
+        output: {
+          status: 'partial',
+          results: [{
+            task: 'Install project dependencies',
+            tool: 'shell_execute',
+            ok: false,
+            error: 'npm error code ETARGET\nnpm error notarget No matching version found for @prisma/client@^4.18.0.',
+            command: 'npm install',
+            cwd: projectCwd,
+          }],
+        },
+      },
+    });
+
+    const plan = SelfFixService.plan(ticket);
+    expect(plan.allowed).toBe(true);
+    expect(plan.strategy).toBe('dependency_fix');
+    expect(plan.suggestedTool).toBe('npm_manager');
+    expect(plan.suggestedInput).toMatchObject({
+      command: 'install',
+      cwd: projectCwd,
+    });
+    expect(plan.suggestedInput).not.toHaveProperty('packages');
+    expect(String(plan.reason)).toMatch(/ETARGET|published stable versions/i);
+  });
+
+  it('preserves explicit package specifiers when ETARGET came from a direct npm command', () => {
+    const projectCwd = path.join(process.cwd(), '..', 'data', 'builds', `self-fix-etarget-explicit-${Date.now()}`);
+    const ticket = RepairTicketService.build({
+      phase: { phaseNumber: 1, name: 'Project Setup' },
+      phaseResult: {
+        error: 'No matching version found for left-pad@^99.99.99.',
+        output: {
+          status: 'partial',
+          results: [{
+            task: 'Install dependency',
+            tool: 'shell_execute',
+            ok: false,
+            error: 'npm error code ETARGET\nNo matching version found for left-pad@^99.99.99.',
+            command: 'npm install left-pad@^99.99.99',
+            cwd: projectCwd,
+          }],
+        },
+      },
+    });
+
+    const plan = SelfFixService.plan(ticket);
+    expect(plan.suggestedTool).toBe('npm_manager');
+    expect(plan.suggestedInput).toMatchObject({
+      command: 'install',
+      packages: ['left-pad@^99.99.99'],
+      cwd: projectCwd,
+    });
+  });
+});

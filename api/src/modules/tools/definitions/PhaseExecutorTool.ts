@@ -22,13 +22,14 @@ export function applyPhaseExecutionEvidence(
     projectContext?: Record<string, any>,
     logs?: string[],
 ): Record<string, any> {
-    if (toolName !== 'project_run'
-        || String(planned.cwd || '').trim()
-        || String(planned.projectQuery || '').trim()) return planned;
+    if (toolName !== 'project_run') return planned;
 
     const projectRoot = String(projectContext?.projectRoot || '').trim();
     const projectName = String(projectContext?.projectName || '').trim();
-    const normaliseLabel = (value: string) => value
+    const existingCwd = String(planned.cwd || '').trim();
+    const existingProjectQuery = String(planned.projectQuery || '').trim();
+    const normaliseLabel = (value: string) =>
+        value
         .replace(/\\/g, '/')
         .split('/')
         .pop()!
@@ -38,22 +39,70 @@ export function applyPhaseExecutionEvidence(
         .toLocaleLowerCase();
     const rootLabel = projectRoot ? normaliseLabel(projectRoot) : '';
     const requestedLabel = projectName ? normaliseLabel(projectName) : '';
+    const cwdLabel = existingCwd ? normaliseLabel(existingCwd) : '';
     const labelsMatch = !!rootLabel && !!requestedLabel && (
         rootLabel === requestedLabel
         || rootLabel.includes(requestedLabel)
         || requestedLabel.includes(rootLabel)
     );
+    const cwdMatchesProject = !!cwdLabel && !!requestedLabel && (
+        cwdLabel === requestedLabel
+        || cwdLabel.includes(requestedLabel)
+        || requestedLabel.includes(cwdLabel)
+    );
+    const runtimeBound = projectContext?.projectRootRuntimeBound === true;
+    let workspaceRoot = '';
+    if ((projectContext?.createsNewProject === true || runtimeBound) && existingCwd) {
+        try { workspaceRoot = String(workspaceService.getActiveRoot(projectContext?.workspaceId) || '').trim(); } catch { /* best effort */ }
+    }
+    const resolvedCwd = existingCwd && workspaceRoot
+        ? path.resolve(workspaceRoot, existingCwd)
+        : '';
+    const cwdIsInsideWorkspace = !!resolvedCwd && isWithinRoot(resolvedCwd, workspaceRoot);
+
+    // A runtime-bound artifact is stronger evidence than a model-written cwd.
+    // This protects both greenfield and repair phases from an old workspace-root
+    // argument that would make project_run execute `src/index.js` outside the
+    // artifact Joe just wrote.
+    if (runtimeBound && projectRoot) {
+        const resolvedRoot = path.resolve(projectRoot);
+        if (!existingCwd || path.resolve(resolvedCwd || existingCwd) !== resolvedRoot) {
+            planned.cwd = projectRoot;
+            delete planned.projectQuery;
+            logs?.push(`[PhaseExecutor] project_run: replaced stale cwd with runtime-bound project root (${projectRoot.slice(0, 240)})`);
+        }
+        return planned;
+    }
+
+    // Greenfield discovery intentionally has no selected project yet. If the
+    // planner nevertheless writes the workspace root (or another in-workspace
+    // directory) into project_run, honoring it turns the generated app's
+    // `node src/index.js` into `/workspace/src/index.js`. Remove only that
+    // unsafe in-workspace cwd; keep an explicit cwd outside the workspace as a
+    // deliberate caller choice and keep a cwd whose label matches the accepted
+    // project identity.
+    const staleGreenfieldCwd = projectContext?.createsNewProject === true
+        && !runtimeBound
+        && !!existingCwd
+        && cwdIsInsideWorkspace
+        && !cwdMatchesProject;
+    if (staleGreenfieldCwd) {
+        delete planned.cwd;
+        logs?.push(`[PhaseExecutor] project_run: ignored stale greenfield cwd (${existingCwd}); using accepted project evidence instead`);
+    } else if (existingCwd || existingProjectQuery) {
+        return planned;
+    }
+
     // Discovery intentionally has no selected project for greenfield work. A
     // stale root here is usually Joe's own repository, not the artifact the
     // preceding phases are creating. Also handle older callers that do not yet
     // carry createsNewProject: a named project that disagrees with the root is
     // not safe evidence for an explicit cwd. Runtime-bound evidence wins.
     const preCreationRootMismatch = !!projectRoot
-        && projectContext?.projectRootRuntimeBound !== true
         && (projectContext?.createsNewProject === true || !labelsMatch);
     if (projectRoot && !preCreationRootMismatch) {
         planned.cwd = projectRoot;
-        logs?.push(`[PhaseExecutor] project_run: using ${projectContext?.projectRootRuntimeBound === true ? 'runtime-bound' : 'discovery-selected'} project root (${projectRoot.slice(0, 240)})`);
+        logs?.push(`[PhaseExecutor] project_run: using discovery-selected project root (${projectRoot.slice(0, 240)})`);
         return planned;
     }
     if (projectName && !/^unknown(?: project)?$/iu.test(projectName)) {
@@ -75,7 +124,27 @@ function isWithinRoot(child: string, parent: string): boolean {
     return c === p || c.startsWith(p.endsWith(path.sep) ? p : `${p}${path.sep}`);
 }
 
-function projectRootFromWrittenFile(filePath: unknown, workspaceRoot: string): string {
+/**
+ * A runtime project may be incomplete while its first server-shaped write is
+ * still the strongest identity evidence available. The fileRoot is produced by
+ * projectRootFromWrittenFile, so callers must not pass an arbitrary directory
+ * here. A manifest remains sufficient evidence for later writes.
+ */
+export function canBindRuntimeProjectEvidence(
+    candidate: string,
+    workspaceRoot: string,
+    fileRoot: string,
+    hasManifest: boolean,
+): boolean {
+    const resolvedCandidate = path.resolve(String(candidate || ''));
+    const resolvedWorkspace = path.resolve(String(workspaceRoot || ''));
+    const fromWrittenFile = !!fileRoot && resolvedCandidate === path.resolve(fileRoot);
+    if (!resolvedCandidate || !resolvedWorkspace || resolvedCandidate === resolvedWorkspace
+        || !isWithinRoot(resolvedCandidate, resolvedWorkspace)) return false;
+    return hasManifest || fromWrittenFile;
+}
+
+export function projectRootFromWrittenFile(filePath: unknown, workspaceRoot: string, projectName?: unknown): string {
     const raw = String(filePath || '').trim();
     if (!raw) return '';
     let candidate: string;
@@ -91,13 +160,45 @@ function projectRootFromWrittenFile(filePath: unknown, workspaceRoot: string): s
         // is valid evidence only when this write directly targets its manifest;
         // otherwise a package-bearing ancestor has not been proven yet.
         if (current === workspace) {
-            return path.dirname(candidate) === workspace && path.basename(candidate).toLowerCase() === 'package.json'
+            const rootManifest = path.dirname(candidate) === workspace && path.basename(candidate).toLowerCase() === 'package.json'
                 && fs.existsSync(path.join(current, 'package.json'))
                 ? current
                 : '';
+            if (rootManifest) return rootManifest;
+            break;
         }
         if (fs.existsSync(path.join(current, 'package.json'))) return current;
         current = path.dirname(current);
+    }
+
+    // Greenfield plans commonly write the server entrypoint before the
+    // manifest. If the path is a direct child project whose label matches the
+    // accepted plan identity, that is stronger evidence than falling back to
+    // an old active project or the workspace root. This is deliberately narrow:
+    // it accepts only an existing project-name directory and a server-shaped
+    // JavaScript/TypeScript entrypoint, never an arbitrary source file.
+    const requestedLabel = String(projectName || '')
+        .trim()
+        .replace(/\\/g, '/')
+        .split('/')
+        .pop()!
+        .replace(/[-_]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLocaleLowerCase();
+    const relative = path.relative(workspace, candidate);
+    const firstSegment = relative.split(path.sep).filter(Boolean)[0] || '';
+    const directChild = firstSegment ? path.join(workspace, firstSegment) : '';
+    const directChildLabel = firstSegment.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+    const relativeInsideChild = directChild ? path.relative(directChild, candidate).replace(/\\/g, '/') : '';
+    const runtimeEvidence = /(?:^|\/)(?:server|app|index|main)\.(?:js|mjs|cjs|ts|tsx)$/iu.test(relativeInsideChild);
+    const labelsMatch = !!requestedLabel && !!directChildLabel && (
+        requestedLabel === directChildLabel
+        || requestedLabel.includes(directChildLabel)
+        || directChildLabel.includes(requestedLabel)
+    );
+    if (directChild && fs.existsSync(directChild) && fs.statSync(directChild).isDirectory() && labelsMatch && runtimeEvidence) {
+        return directChild;
     }
     return '';
 }
@@ -117,12 +218,22 @@ function bindRuntimeProjectFromEvidence(
     const fileRoot = projectRootFromWrittenFile(
         toolArgs?.path || toolArgs?.filename || toolArgs?.filePath || toolResult?.output?.path,
         workspaceRoot,
+        projectContext?.projectName,
     );
     const candidate = outputRoot && isWithinRoot(outputRoot, workspaceRoot)
         ? path.resolve(outputRoot)
         : fileRoot;
-    if (!candidate || !isWithinRoot(candidate, workspaceRoot) || !fs.existsSync(candidate)
-        || !fs.statSync(candidate).isDirectory() || !fs.existsSync(path.join(candidate, 'package.json'))) return;
+    const candidateFromWrittenFile = !!fileRoot && !!candidate && path.resolve(fileRoot) === path.resolve(candidate);
+    const hasManifest = !!candidate && fs.existsSync(path.join(candidate, 'package.json'));
+    // A greenfield phase may write the server-shaped entrypoint before its
+    // manifest. That file is still identity evidence: projectRootFromWrittenFile
+    // accepts only a direct child whose label matches projectName and whose
+    // relative path is server/app/index/main-shaped. Bind that bounded artifact
+    // now, otherwise project_run falls back to an unrelated workspace root and
+    // reports its dependencies as if they belonged to the new project. Never
+    // accept an arbitrary output directory without a manifest or file evidence.
+    if (!candidate || !fs.existsSync(candidate) || !fs.statSync(candidate).isDirectory()
+        || !canBindRuntimeProjectEvidence(candidate, workspaceRoot, fileRoot, hasManifest)) return;
     /**
      * THE WORKSPACE ROOT IS NEVER A PROJECT.
      *
@@ -173,13 +284,18 @@ function syncRuntimeProjectContext(projectContext: Record<string, any>, logs: st
 }
 
 /**
- * Preserve only the deterministic edit facts needed for a safe recovery.
- * Without this, a failed file_edit reaches self-fix as a bare English error and
- * the recovery loop has no file, search text, or replacement to inspect.
+ * Preserve deterministic file facts needed for a safe recovery.
+ *
+ * A failed generator is still actionable: artifact validation can reject the
+ * content while the destination path is perfectly valid. If that path is
+ * discarded here, RepairTicketService cannot identify the failed artifact and
+ * SelfFixService falls through to its conservative generic source target
+ * (`src/index.ts`). That is not a repair; it is evidence loss.
  */
-function editFailureEvidence(toolName: string, args: Record<string, any>): Record<string, string> {
-    if (!['file_edit', 'file_edit_advanced'].includes(toolName)) return {};
-    const file = String(args?.filename ?? args?.filePath ?? args?.path ?? '').trim();
+function fileFailureEvidence(toolName: string, args: Record<string, any>): Record<string, string> {
+    const fileTools = new Set(['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced']);
+    if (!fileTools.has(toolName)) return {};
+    const file = String(args?.filename ?? args?.filePath ?? args?.path ?? args?.targetPath ?? '').trim();
     const find = String(args?.find ?? args?.search ?? args?.old_string ?? '');
     const replace = String(args?.replace ?? args?.new_string ?? '');
     return {
@@ -379,8 +495,23 @@ export class PhaseExecutorTool implements ToolDefinition {
                 const planned: any = { ...(task.args || {}), ...(task.input || {}) };
                 if (executionContext.sessionId && typeof planned.sessionId !== 'string') planned.sessionId = executionContext.sessionId;
                 if (executionContext.workspaceId && typeof planned.workspaceId !== 'string') planned.workspaceId = executionContext.workspaceId;
+                const requirementsContext = String(projectContext?.requirementsContext || '').trim();
+                if (['api_project', 'react_project'].includes(toolName) && requirementsContext) {
+                    // Builder tools receive their semantics through `request`,
+                    // not through the narrowed execution context. Preserve the
+                    // planner's request, then append the bounded evidence brief
+                    // that was derived from the fully read specification. This
+                    // keeps the handoff evidence-first without inventing a
+                    // product template or replacing an explicit builder brief.
+                    const taskRequest = String(planned.request || '').trim();
+                    const evidenceMarker = 'COMPACT REQUIREMENTS EVIDENCE';
+                    if (!taskRequest.includes(evidenceMarker) && !taskRequest.includes(requirementsContext.slice(0, 160))) {
+                        planned.request = taskRequest
+                            ? `${taskRequest}\n\n${requirementsContext}`
+                            : requirementsContext;
+                    }
+                }
                 if (toolName === 'ai_write_file') {
-                    const requirementsContext = String(projectContext?.requirementsContext || '').trim();
                     if (requirementsContext) {
                         const taskContext = String(planned.context || '').trim();
                         planned.context = taskContext
@@ -503,7 +634,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                             ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
                                 ? { background: toolArgs.background }
                                 : {}),
-                            ...editFailureEvidence(toolName, toolArgs),
+                            ...fileFailureEvidence(toolName, toolArgs),
                         });
 
                         if (task.priority === 'high' || task.required === true) {
@@ -544,7 +675,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                         ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
                             ? { background: toolArgs.background }
                             : {}),
-                        ...editFailureEvidence(toolName, toolArgs),
+                        ...fileFailureEvidence(toolName, toolArgs),
                     });
 
                     if (task.priority === 'high' || task.required === true) {

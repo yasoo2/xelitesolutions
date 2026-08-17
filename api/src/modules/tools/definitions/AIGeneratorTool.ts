@@ -3,6 +3,7 @@ import { resolveToolPath } from '../utils';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import fs from 'fs';
 import path from 'path';
+import { prepareArtifactContent } from '../artifact-validation';
 
 type ArtifactProfile = {
     kind: 'markdown_document' | 'structured_data' | 'source_code' | 'frontend_asset' | 'text_document';
@@ -37,9 +38,15 @@ function artifactProfileFor(filePath: string): ArtifactProfile {
         };
     }
     if (['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java', '.cs', '.rb', '.php', '.sh', '.sql'].includes(ext)) {
+        const javascriptLike = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext);
+        const languageRules = javascriptLike
+            ? 'The destination is JavaScript/TypeScript. For .js/.jsx/.mjs/.cjs use JavaScript syntax (CommonJS require/module.exports or ECMAScript imports); for .ts/.tsx use valid TypeScript. NEVER emit Python constructs such as from ... import, def, elif, @app.route, None, True, False, Flask, Django, or Python indentation blocks.'
+            : ext === '.py'
+                ? 'The destination is Python. Return valid Python only and do not emit JavaScript/TypeScript imports, require(), module.exports, or JSX.'
+                : 'Return only the source language required by the destination extension; do not substitute another language.';
         return {
             kind: 'source_code',
-            instructions: 'This is source code. Return only executable source for the destination language, with concrete interfaces and error handling required by the supplied requirements. Do not return an HTML page or prose document unless the destination language requires it.',
+            instructions: `This is source code. ${languageRules} Return only executable source for the destination language, with concrete interfaces and error handling required by the supplied requirements. Do not return an HTML page or prose document unless the destination language requires it.`,
         };
     }
     return {
@@ -115,7 +122,12 @@ export class AIGeneratorTool implements ToolDefinition {
 
     permissions: ToolPermission[] = ['write'];
     sideEffects: ToolPermission[] = ['write'];
-    rateLimitPerMinute = 10;
+    // Engineering pipelines commonly write more than ten evidence-backed files in
+    // one minute (the next phase must not be blocked merely because earlier phases
+    // already consumed the bucket). Keep a real abuse guard, but size it for a
+    // bounded build rather than a chat turn; the ToolService still returns an
+    // explicit rate_limited result after this ceiling.
+    rateLimitPerMinute = 60;
     auditFields = ['path'];
     mockSupported = false;
 
@@ -151,12 +163,15 @@ export class AIGeneratorTool implements ToolDefinition {
         const frontendGuidance = artifact.kind === 'frontend_asset'
             ? `\nFRONTEND QUALITY RULES:\n- Use accessible, responsive implementation only where the requirements call for a user interface.\n- Follow the selected style direction if supplied; otherwise favour clear, maintainable UI over decorative effects.\n- Support ${input.language === 'ar' ? 'Arabic with RTL layout' : 'the requested language'} when user-facing text is required.\n`
             : '';
-        const systemPrompt = `You are an engineering artifact author. Generate one complete, production-ready file that satisfies the supplied, evidenced requirements.
+        const runtimePathGuidance = artifact.kind === 'source_code' && /\.(?:js|mjs|cjs|ts|tsx)$/iu.test(filePath)
+            ? `\nRUNTIME PATH EVIDENCE RULES:\n- Before writing a local require/import in executable code, inspect the verified project context and existing filesystem layout supplied to this task. The specifier must resolve from the importing file to an existing file or directory entry.\n- Never assume a conventional folder such as routes, src/routes, models, or middleware. If the evidence shows src/routes, use that exact relative path; if it shows routes, use routes. Do not create a duplicate folder or placeholder module to hide an unresolved path.\n- For a server or entrypoint, trace every local runtime import one hop at a time and preserve the project\'s actual module system. If the layout evidence is missing, stop and request/perform discovery before emitting imports; do not guess.\n`
+            : '';
+            const systemPrompt = `You are an engineering artifact author. Generate one complete, production-ready file that satisfies the supplied, evidenced requirements.
 
 ARTIFACT CONTRACT (${artifact.kind}):
 ${artifact.instructions}
 ${isRepair ? `\nREPAIR MODE ACTIVE:\n- Fix only the documented defect using the supplied repair evidence.\n- Preserve the existing architecture and avoid unrelated changes.\n` : ''}
-${frontendGuidance}
+${frontendGuidance}${runtimePathGuidance}
 GENERAL RULES:
 - Treat the supplied requirements as authoritative; do not invent a product, framework, build command, or visual interface.
 - Do not use placeholders. Write concrete content, and mark genuinely unresolved decisions as explicit assumptions only in documentation artifacts.
@@ -174,19 +189,27 @@ ${input.description}
 Verified project and requirements context:
 ${input.context || 'No additional project context was provided. Do not assume a web development environment.'}
 ${artifact.kind === 'frontend_asset' ? `\nVisual direction (use only if relevant):\n${input.aestheticMode || 'Use a clear, maintainable visual style consistent with the requirements.'}` : ''}
+${runtimePathGuidance}
 
 Primary language for user-facing content: ${input.language === 'ar' ? 'Arabic (RTL where applicable)' : 'English (LTR where applicable)'}
 
 Return the complete file content now.`;
 
         try {
-            const content = await callLLM(
-                userPrompt,
-                [{ role: 'system', content: systemPrompt }],
-                context?.engineeringPipeline === true
-                    ? { ...context, purpose: 'internal', engineeringPipeline: true }
-                    : undefined,
+            const llmContext = context?.engineeringPipeline === true
+                ? { ...context, purpose: 'internal', engineeringPipeline: true }
+                : undefined;
+            const callForArtifact = (formatRetry = false) => callLLM(
+                formatRetry
+                    ? `${userPrompt}\n\nFORMAT RETRY REQUIRED:\nThe previous completion violated the destination artifact contract. Return the complete file again, with no Markdown fences or explanatory prose. For JSON, return strict parseable JSON only. Do not omit, truncate, or replace any content.`
+                    : userPrompt,
+                [{ role: 'system', content: formatRetry
+                    ? `${systemPrompt}\n\nFORMAT RETRY: the previous response was rejected before writing. Re-emit one complete artifact matching the extension exactly; do not explain the repair.`
+                    : systemPrompt }],
+                llmContext,
             );
+
+            let content = await callForArtifact();
 
             // When no provider answers, the router returns an apology STRING
             // rather than throwing. Writing it would put "تعذّر الوصول إلى محرّك
@@ -195,17 +218,31 @@ Return the complete file content now.`;
                 return { ok: false, error: String(content), logs: [...logs, 'no LLM provider answered; nothing was written'] };
             }
 
-            // Clean content (remove potential LLM-added backticks if any)
-            let finalContent = String(content ?? '').trim();
-            if (finalContent.startsWith('```') && finalContent.endsWith('```')) {
-                const lines = finalContent.split('\n');
-                finalContent = lines.slice(1, -1).join('\n').trim();
+            let prepared = prepareArtifactContent(filePath, content);
+            // A provider occasionally truncates a structured artifact or leaves
+            // a Markdown wrapper open. These are format defects, not evidence
+            // that the engineering request is impossible. Give the same
+            // provider one bounded format-only retry, while keeping the real
+            // validator as the gate and never writing the rejected completion.
+            const retryableFormatError = !!prepared.error
+                && /incomplete Markdown fence|not valid JSON|valid JSON/i.test(prepared.error)
+                && !/artifact_type_mismatch: .*Python source markers|artifact_type_mismatch: .*Node\.js source markers/i.test(prepared.error);
+            if (retryableFormatError) {
+                logs.push(`format retry requested for ${filePath}: ${prepared.error}`);
+                content = await callForArtifact(true);
+                if (isProviderFailure(content)) {
+                    return { ok: false, error: String(content), logs: [...logs, 'format retry received no LLM provider answer; nothing was written'] };
+                }
+                prepared = prepareArtifactContent(filePath, content);
             }
-            // An empty completion is a failed generation. Writing it would
-            // replace an existing file with nothing and report success.
-            if (!finalContent) {
-                return { ok: false, error: 'the model returned no content, so nothing was written', logs };
+
+            // An empty completion or a destination-level contract violation is
+            // a failed generation. Writing it would replace an existing file
+            // with invalid content and report success.
+            if (prepared.error) {
+                return { ok: false, error: prepared.error, logs: [...logs, 'generated content violated the destination artifact contract; nothing was written'] };
             }
+            const finalContent = prepared.content;
             const mismatch = artifactMismatch(filePath, finalContent);
             if (mismatch) {
                 return { ok: false, error: mismatch, logs: [...logs, 'generated content violated the destination artifact contract; nothing was written'] };

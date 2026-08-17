@@ -93,7 +93,7 @@ export function brandFrom(request: string, _isArabic?: boolean): string {
      * folder name of a real field build. When the author quoted the name, the
      * quotes say exactly where it ends; take that span verbatim first.
      */
-    const introduced = req.match(/(?:اسمها|اسمه|إسمها|إسمه|تسمى|يسمى|باسم|called|named|by the name of)\s+(?:["«'“]([^"«»'“”]{2,40})["»'”]|(.{2,60}))/i);
+    const introduced = req.match(/(?:اسمها|اسمه|إسمها|إسمه|تسمى|يسمى|باسم|called|named|by the name of)\s*:?[\s\r\n]*(?:["«“]([^"«»“”]{2,40})["»”]|(.{2,60}))/i);
     if (introduced) {
         const b = trimBrand(introduced[1] || introduced[2] || '');
         if (b) return b;
@@ -101,7 +101,10 @@ export function brandFrom(request: string, _isArabic?: boolean): string {
 
     // 2. Explicitly quoted — useful when no semantic name marker exists, but
     //    deliberately lower priority than `called`/`named` above.
-    const quoted = req.match(/[«"'“]([^«»"'“”]{2,40})[»"'”]/);
+    // A plain apostrophe is punctuation inside contractions such as Joe's; it is
+    // not a reliable quote delimiter. Only paired typographic/double quotes
+    // participate in the generic product-name fallback.
+    const quoted = req.match(/[«"“]([^«»"“”]{2,40})[»"”]/);
     if (quoted) {
         const b = trimBrand(quoted[1]);
         if (b) return b;

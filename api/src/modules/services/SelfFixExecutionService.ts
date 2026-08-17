@@ -11,6 +11,48 @@ const ALLOWED_SELF_FIX_TOOLS = new Set([
   'npm_manager',
 ]);
 
+function normalisePath(value: unknown): string {
+  return String(value || '').trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+}
+
+function taskPaths(task: any): string[] {
+  const args = { ...(task?.args || {}), ...(task?.input || {}) };
+  return [args.path, args.filename, args.filePath, args.filepath, args.target]
+    .map(normalisePath)
+    .filter(Boolean);
+}
+
+function pathsReferToSameFile(left: unknown, right: unknown): boolean {
+  const a = normalisePath(left);
+  const b = normalisePath(right);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  // The repair ticket may contain the workspace-resolved absolute path while
+  // the stored plan keeps the same target relative to the workspace. Require a
+  // complete path-segment suffix, never a loose substring, before considering
+  // the task repaired.
+  return a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
+}
+
+function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: any; skipped: string[] } {
+  const file = normalisePath(repairedFile);
+  if (!file || !Array.isArray(phase?.tasks)) return { phase, skipped: [] };
+
+  const skipped: string[] = [];
+  const tasks = phase.tasks.filter((task: any) => {
+    const matches = taskPaths(task).some((candidate) => pathsReferToSameFile(candidate, file));
+    if (matches) skipped.push(String(task.task || task.description || task.tool || 'repaired task'));
+    return !matches;
+  });
+
+  // Never hand an empty phase to the executor: an artifact-only phase still
+  // needs a real verification step, and an empty result would be reported as a
+  // failure by PhaseExecutorTool. If this was the only task, keep it in the
+  // phase so the executor can perform the actual post-repair proof.
+  if (tasks.length === 0) return { phase, skipped: [] };
+  return { phase: tasks.length === phase.tasks.length ? phase : { ...phase, tasks }, skipped };
+}
+
 export interface SelfFixExecutionInput {
   phase: any;
   projectContext: any;
@@ -115,7 +157,15 @@ export class SelfFixExecutionService {
       };
     }
 
-    const rerunResult = await executeTool('phase_executor', { phase, projectContext }, {
+    const repairedFile = selfFixPlan.suggestedInput?.path
+      || selfFixPlan.suggestedInput?.filename
+      || selfFixPlan.suggestedInput?.filePath;
+    const resumed = phaseAfterRepair(phase, repairedFile);
+    if (resumed.skipped.length > 0) {
+      executionContext.onProgress?.(`[self-fix:rerun-phase] skipping repaired task(s): ${resumed.skipped.join('; ').slice(0, 800)}`);
+    }
+
+    const rerunResult = await executeTool('phase_executor', { phase: resumed.phase, projectContext }, {
       ...executionContext,
       onProgress: (m: string) => executionContext.onProgress?.(`[self-fix:rerun-phase] ${m}`),
     });

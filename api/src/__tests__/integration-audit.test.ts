@@ -16,6 +16,9 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerTool';
+import { ProjectPipelineTool } from '../modules/tools/definitions/ProjectPipelineTool';
+import { canBindRuntimeProjectEvidence, projectRootFromWrittenFile } from '../modules/tools/definitions/PhaseExecutorTool';
+import { resolveRunnableProject } from '../modules/tools/definitions/ProjectRunTool';
 
 describe('every defined tool is reachable', () => {
     // The REAL registry — not a source grep.
@@ -62,6 +65,36 @@ describe('every defined tool is reachable', () => {
     });
     it('the registry has no silent duplicates', () => {
         expect(names.size).toBe(tools.length);
+    });
+});
+
+describe('greenfield runtime evidence binds the artifact before its manifest', () => {
+    let tmp: string;
+    let project: string;
+
+    beforeAll(() => {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-runtime-binding-'));
+        project = path.join(tmp, 'TaskFlow AI');
+        fs.mkdirSync(path.join(project, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(project, 'src', 'server.js'), 'require("http").createServer((req,res)=>res.end("ok")).listen(process.env.PORT || 3000);');
+    });
+
+    afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+    it('binds a named child from a server-shaped write before package.json exists', () => {
+        expect(projectRootFromWrittenFile('TaskFlow AI/src/server.js', tmp, 'TaskFlow AI')).toBe(project);
+        expect(fs.existsSync(path.join(project, 'package.json'))).toBe(false);
+    });
+
+    it('binds only evidence-backed incomplete artifacts and never the workspace root', () => {
+        expect(canBindRuntimeProjectEvidence(project, tmp, project, false)).toBe(true);
+        expect(canBindRuntimeProjectEvidence(project, tmp, '', false)).toBe(false);
+        expect(canBindRuntimeProjectEvidence(tmp, tmp, project, false)).toBe(false);
+        expect(canBindRuntimeProjectEvidence(project, tmp, '', true)).toBe(true);
+    });
+
+    it('resolves the same source-entrypoint project by its explicit name', () => {
+        expect(resolveRunnableProject(tmp, '"TaskFlow AI"')).toMatchObject({ cwd: project, matched: true });
     });
 });
 
@@ -271,6 +304,13 @@ describe('partial phases preserve verified blockers instead of guessing a repair
         expect(executor).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
     });
 
+    it('passes compact requirements evidence into builder requests without duplicating it', () => {
+        const executor = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'PhaseExecutorTool.ts'), 'utf-8');
+        expect(executor).toContain("['api_project', 'react_project'].includes(toolName)");
+        expect(executor).toContain('planned.request = taskRequest');
+        expect(executor).toContain("const evidenceMarker = 'COMPACT REQUIREMENTS EVIDENCE'");
+    });
+
     it('routes actionable build/lint evidence to self-fix while preserving honest blockers', () => {
         const loop = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
         const blockerGuard = loop.indexOf('const isHonestBlocker =');
@@ -317,10 +357,93 @@ describe('planner provider and requirements-boundary contracts', () => {
 
     it('plans from a bounded brief derived from fully read local evidence', () => {
         const pipeline = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
-        expect(pipeline).toContain('const requirementsContext = this.buildRequirementsContext(request, specification.content);');
+        expect(pipeline).toContain('const requirementsContext = this.buildRequirementsContext(productRequest, specification.content);');
+        expect(pipeline).toContain('const productRequest = this.extractEmbeddedProductRequest(request);');
+        expect(pipeline).toContain('projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }');
         expect(pipeline).toContain('COMPACT REQUIREMENTS EVIDENCE');
         expect(pipeline).toContain('pipeline.planning_requirements_brief_chars=');
         expect(pipeline).toContain("slice(0, 12000)");
         expect(pipeline).toContain('plannerResult.output.requirementsContext = requirementsContext;');
+        expect(pipeline).toContain('deterministicRescueForDeadPlanner(productRequest)');
+        expect(pipeline).toContain('deterministicPhasesFor(productRequest)');
+        expect(pipeline).toContain('const rescue = deterministicRescueForDeadPlanner(productRequest) ? deterministicPhasesFor(productRequest) : null;');
+        expect(pipeline).toContain('&& deterministicRescueAllowed(productRequest))');
+        expect(pipeline).not.toContain('deterministicRescueForDeadPlanner(request)');
+        expect(pipeline).not.toContain('&& deterministicRescueAllowed(request))');
+        expect(pipeline).not.toContain('const rescue = deterministicPhasesFor(request);');
+        expect(pipeline).toContain('applyProjectQualityContractOutcome(liveArtifactRoot, productRequest, liveOutcome);');
+        expect(pipeline).toContain('applyScopeAuditOutcome(productRequest, liveArtifactRoot, qualityCheckedLiveOutcome);');
+        expect(pipeline).toContain('applyProjectQualityContractOutcome(artifactRoot, productRequest, scopeRetryLive);');
+        expect(pipeline).toContain('applyScopeAuditOutcome(productRequest, artifactRoot, qualityCheckedScopeRetry);');
+        expect(pipeline).toContain('`Original build request: ${productRequest.slice(0, 1200)}`,');
+    });
+
+    it('extracts only an explicitly delimited embedded product prompt', () => {
+        const pipelineTool = new ProjectPipelineTool();
+        const raw = [
+            'You are evaluating Joe.',
+            'Do not build this harness.',
+            'Give Joe this EXACT prompt:',
+            '------------------------------------------------------------',
+            'Build a complete production-quality web application called:',
+            'TaskFlow AI',
+            'Implement authentication and a persistent Kanban board with responsive desktop and mobile layouts.',
+            'The dashboard must support creating, editing, moving, filtering, and deleting cards with durable state.',
+            'Include loading, empty, error, keyboard, accessibility, and dark-mode states with real local verification.',
+            'END OF JOE CHALLENGE',
+            'Observe the evaluator and write a final report.',
+        ].join('\n');
+        const extracted = (pipelineTool as any).extractEmbeddedProductRequest(raw);
+        expect(extracted).toContain('TaskFlow AI');
+        expect(extracted).toContain('persistent Kanban board');
+        expect(extracted).not.toContain('You are evaluating Joe');
+        expect(extracted).not.toContain('final report');
+        expect((pipelineTool as any).extractEmbeddedProductRequest('Build an ordinary app')).toBe('Build an ordinary app');
+    });
+});
+
+
+describe('planner portability recovery preserves executable npm contracts', () => {
+    it('removes native package specs without putting prose into npm_manager commands', () => {
+        const planner: any = new ProjectPlannerTool();
+        const rawPlan = {
+            projectName: 'TaskFlow AI',
+            phases: [{
+                name: 'Foundation',
+                tasks: [
+                    {
+                        tool: 'ai_write_file',
+                        task: 'Write the package manifest',
+                        args: {
+                            path: 'package.json',
+                            content: JSON.stringify({
+                                scripts: { start: 'node server.js' },
+                                dependencies: { express: '^4.0.0', sqlite3: '^5.1.0' },
+                            }),
+                        },
+                    },
+                    {
+                        tool: 'npm_manager',
+                        task: 'Install sqlite3 and express',
+                        args: { command: 'npm install sqlite3 express', packages: ['sqlite3', 'express'] },
+                    },
+                    {
+                        tool: 'write_file',
+                        task: 'Write the runnable server',
+                        args: { path: 'server.js', content: 'console.log("ok")' },
+                    },
+                ],
+            }],
+        };
+
+        const portable = planner.rewriteUnportableNativePlan(rawPlan);
+        const tasks = portable.phases[0].tasks;
+        const manifest = JSON.parse(tasks[0].args.content);
+
+        expect(manifest.dependencies).toEqual({ express: '^4.0.0' });
+        expect(tasks[1].args.command).toBe('install express');
+        expect(tasks[1].args.packages).toEqual(['express']);
+        expect(JSON.stringify(portable)).not.toMatch(/sqlite3/i);
+        expect(tasks[2].args.path).toBe('server.js');
     });
 });

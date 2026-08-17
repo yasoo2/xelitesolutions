@@ -28,6 +28,11 @@ import { workspaceService } from '../modules/services/WorkspaceService';
 
 const tool = new AIGeneratorTool();
 
+test('keeps a bounded engineering write budget above a ten-file pipeline phase', () => {
+    expect((tool as any).rateLimitPerMinute).toBeGreaterThanOrEqual(30);
+    expect((tool as any).rateLimitPerMinute).toBeLessThanOrEqual(120);
+});
+
 const DIR = '__ai_write_file_test__';
 /** A path inside the workspace that the test owns and cleans up. */
 const scratch = (name: string) => path.join(DIR, name);
@@ -68,9 +73,94 @@ describe('the happy path is a real write', () => {
 
         expect(fs.readFileSync(landsAt(rel), 'utf-8')).toBe('<h1>real</h1>');
     });
+
+    it('normalizes a fenced JSON manifest before writing it', async () => {
+        callLLM.mockResolvedValue('```json\n{"name":"taskflow-ai","scripts":{"start":"node server.js"}}\n```');
+        const rel = scratch('package.json');
+
+        const res: any = await tool.execute({ path: rel, description: 'Write the project manifest as JSON.' });
+
+        expect(res.ok).toBe(true);
+        expect(JSON.parse(fs.readFileSync(landsAt(rel), 'utf-8')).name).toBe('taskflow-ai');
+        expect(fs.readFileSync(landsAt(rel), 'utf-8')).not.toMatch(/^```/);
+    });
+
+    it('salvages a complete JSON body when only the closing markdown fence was truncated', async () => {
+        callLLM.mockResolvedValue('```json\n{"name":"taskflow-ai","private":true}');
+        const rel = scratch('truncated-wrapper.json');
+
+        const res: any = await tool.execute({ path: rel, description: 'Write a strict JSON project manifest.' });
+
+        expect(res.ok).toBe(true);
+        expect(JSON.parse(fs.readFileSync(landsAt(rel), 'utf-8'))).toEqual({ name: 'taskflow-ai', private: true });
+        expect(fs.readFileSync(landsAt(rel), 'utf-8')).not.toMatch(/```/);
+    });
 });
 
-describe('a path outside the workspace is refused, not written', () => {
+describe('generated source and structured artifacts are rejected before disk writes', () => {
+    it('retries one malformed JSON/fence completion before refusing the artifact', async () => {
+        callLLM
+            .mockResolvedValueOnce('```json\\n{"name":"taskflow-ai",\\n')
+            .mockResolvedValueOnce('{"name":"taskflow-ai","private":true}');
+        const rel = scratch('format-retry.json');
+
+        const res: any = await tool.execute({ path: rel, description: 'Write a strict JSON manifest.' });
+
+        expect(res.ok).toBe(true);
+        expect(callLLM).toHaveBeenCalledTimes(2);
+        expect(callLLM.mock.calls[1][0]).toMatch(/FORMAT RETRY REQUIRED/);
+        expect(JSON.parse(fs.readFileSync(landsAt(rel), 'utf-8'))).toEqual({ name: 'taskflow-ai', private: true });
+        expect(res.logs).toEqual(expect.arrayContaining([expect.stringMatching(/format retry requested/)]));
+    });
+
+    it('refuses malformed JSON instead of creating a broken manifest after the bounded retry', async () => {
+        callLLM
+            .mockResolvedValueOnce('{"name": "taskflow-ai",')
+            .mockResolvedValueOnce('{"name": "taskflow-ai",');
+        const rel = scratch('invalid.json');
+
+        const res: any = await tool.execute({ path: rel, description: 'Write a JSON manifest.' });
+
+        expect(res.ok).toBe(false);
+        expect(res.error).toMatch(/valid JSON/);
+        expect(callLLM).toHaveBeenCalledTimes(2);
+        expect(fs.existsSync(landsAt(rel))).toBe(false);
+    });
+
+    it('refuses an incomplete JSON body even when it has an opening markdown fence', async () => {
+        callLLM.mockResolvedValue('```json\n{"name":"taskflow-ai",');
+        const rel = scratch('invalid-fenced.json');
+
+        const res: any = await tool.execute({ path: rel, description: 'Write a JSON manifest.' });
+
+        expect(res.ok).toBe(false);
+        expect(res.error).toMatch(/incomplete Markdown fence|valid JSON/);
+        expect(fs.existsSync(landsAt(rel))).toBe(false);
+    });
+
+    it('allows valid TypeScript-style imports in a JavaScript destination', async () => {
+        callLLM.mockResolvedValue("import * as express from 'express';\nconst app = express();\nmodule.exports = app;");
+        const rel = scratch('src/routes/auth.js');
+
+        const res: any = await tool.execute({ path: rel, description: 'Write the Node.js authentication route.' });
+
+        expect(res.ok).toBe(true);
+        expect(fs.readFileSync(landsAt(rel), 'utf-8')).toMatch(/import \* as express/);
+    });
+
+    it('refuses Python markers in a JavaScript destination', async () => {
+        callLLM.mockResolvedValue('from flask import Flask\n\ndef create_app():\n    return Flask(__name__)');
+        const rel = scratch('src/index.js');
+
+        const res: any = await tool.execute({ path: rel, description: 'Write the Node.js server entrypoint.' });
+
+        expect(res.ok).toBe(false);
+        expect(res.error).toMatch(/artifact_type_mismatch/);
+        expect(fs.existsSync(landsAt(rel))).toBe(false);
+    });
+});
+
+ describe('a path outside the workspace is refused, not written', () => {
     // Not theoretical: the previous resolver returned an absolute path unchecked,
     // and the twin of this tool created /etc/joe-owned.txt during testing.
     const escapes = [

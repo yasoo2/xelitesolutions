@@ -449,18 +449,22 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 // "implicit scaffold" note: that was the round-18 failure mode.
                 const rawArgs = { ...(task?.args || {}), ...(task?.input || {}) };
                 const adaptedArgs = adaptPlannedArgsFromDescription(r.tool, rawArgs, desc);
-                if (options.disallowUnportableNativeDependencies) {
-                    const native = unportableNativeDependency({ ...task, args: adaptedArgs });
-                    if (native) {
-                        const blocker: PlanSanitiseBlocker = {
-                            code: 'unportable_native_dependency',
-                            message: `المرحلة «${phaseName}» اختارت ${native} الذي قد يحتاج node-gyp ومترجم C/C++ غير مثبت؛ لا يمكن افتراض قابلية بنائه محلياً.`,
-                            remedy: 'اختر تبعية portable مدعومة من runtime الحالي (مثل node:sqlite أو JSON fallback)، أو اذكر native dependency صراحةً مع تحقق toolchain قبل التثبيت.',
-                        };
-                        phaseBlockers.push(blocker);
-                        notes.push(`[plan] أوقفتُ «${desc}» — ${blocker.message}`);
-                        continue;
-                    }
+                const native = unportableNativeDependency({ ...task, args: adaptedArgs });
+                const directNpmInstall = r.tool === 'shell_execute'
+                    && /(?:^|[;&|]\s*)npm\s+(?:install|i|ci)\b/i.test(String(adaptedArgs?.command || ''));
+                if (native && (options.disallowUnportableNativeDependencies || directNpmInstall)) {
+                    const blocker: PlanSanitiseBlocker = {
+                        code: directNpmInstall ? 'native_dependency_requires_npm_manager' : 'unportable_native_dependency',
+                        message: directNpmInstall
+                            ? `المرحلة «${phaseName}» تحاول تثبيت ${native} عبر shell_execute؛ هذا يتجاوز مهلة ورصد npm الآمنين.`
+                            : `المرحلة «${phaseName}» اختارت ${native} الذي قد يحتاج node-gyp ومترجم C/C++ غير مثبت؛ لا يمكن افتراض قابلية بنائه محلياً.`,
+                        remedy: directNpmInstall
+                            ? 'أعد تخطيط التثبيت عبر npm_manager مع package manifest وأدلة toolchain؛ لا تستخدم shell_execute لإخفاء تثبيت dependency داخل أمر مركب.'
+                            : 'اختر تبعية portable مدعومة من runtime الحالي (مثل node:sqlite أو JSON fallback)، أو اذكر native dependency صراحةً مع تحقق toolchain قبل التثبيت.',
+                    };
+                    phaseBlockers.push(blocker);
+                    notes.push(`[plan] أوقفتُ «${desc}» — ${blocker.message}`);
+                    continue;
                 }
                 if (r.tool === 'scaffold_project') {
                     const scaffoldIssue = plannedArgsIssue(r.tool, adaptedArgs);
@@ -499,6 +503,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     adaptedArgs?.path,
                     adaptedArgs?.filePath,
                     adaptedArgs?.sourceFile,
+                    adaptedArgs?.filename,
                     adaptedArgs?.projectPath,
                     ...(Array.isArray(adaptedArgs?.files) ? adaptedArgs.files : []),
                 ].map(value => String(value || '').trim()).filter(Boolean);
@@ -507,7 +512,13 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     notes.push(`[plan] أسقطتُ «${desc}» — المسار «${unsafeFileArgument}» ليس مساراً نسبياً آمناً داخل مساحة العمل؛ لن أُمرّره إلى أداة الملفات.`);
                     continue;
                 }
-                const sourcePath = normaliseEvidencePath(adaptedArgs?.path || adaptedArgs?.filePath || adaptedArgs?.sourceFile);
+                const sourcePath = normaliseEvidencePath(
+                    adaptedArgs?.path
+                    || adaptedArgs?.filePath
+                    || adaptedArgs?.sourceFile
+                    || adaptedArgs?.filename
+                    || adaptedArgs?.target
+                );
                 // Generation and review tools all consume source evidence. A review
                 // without files is not a harmless empty review: its real contract
                 // requires `files`, and executing the model's vague QA request used
@@ -521,6 +532,17 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     : (r.tool === 'auto_tester' ? [] : (sourcePath ? [sourcePath] : []));
                 const knownPhaseOutputs = new Set(taskOutputPaths(kept));
                 const unprovenSource = sourcePaths.find((candidate: string) => !knownPhaseOutputs.has(candidate) && !producedPaths.has(candidate) && !evidencedPaths.has(candidate));
+                // Bounded live repair may reconcile an existing runnable contract
+                // whose manifest/entrypoint was discovered on disk by the repair
+                // rediscovery, even when that particular path was omitted from the
+                // model's evidence list. This is intentionally limited to the
+                // manifest and conventional entrypoints; arbitrary source files
+                // remain evidence-gated so repair cannot become regeneration.
+                const boundedRunnableRepair = Boolean(
+                    options.repairMode
+                    && sourcePaths.length > 0
+                    && sourcePaths.every(isRunnableContractPath)
+                );
                 const requestedTestType = norm(adaptedArgs?.testType);
                 const testProjectPath = adaptedArgs?.projectPath || adaptedArgs?.path || '';
                 const testEvidenceCandidates = [...producedPaths, ...knownPhaseOutputs, ...discoveredTestPaths];
@@ -538,7 +560,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     notes.push(`[plan] أسقطتُ «${desc}» — auto_tester من نوع ${requestedTestType} ${reason}.`);
                     continue;
                 }
-                if (sourceDependentTools.has(r.tool) && unprovenSource) {
+                if (sourceDependentTools.has(r.tool) && unprovenSource && !boundedRunnableRepair) {
                     notes.push(`[plan] أسقطتُ «${desc}» — ${r.tool} يحتاج ملفاً مصدرياً أنتجته مهمة سابقة أو سجّل الاستكشاف؛ «${unprovenSource}» غير مثبت، لذا لن أحوّل اسماً متخيلاً إلى إصلاح ذاتي.`);
                     continue;
                 }

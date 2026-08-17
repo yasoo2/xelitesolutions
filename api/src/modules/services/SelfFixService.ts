@@ -41,6 +41,72 @@ function textOf(ticket: RepairTicket) {
   return rawTextOf(ticket).toLowerCase();
 }
 
+interface NpmInvalidVersionEvidence {
+  packageName: string;
+  requestedSpec: string;
+  cwd: string;
+  explicitSpecifier: boolean;
+}
+
+function extractNpmInvalidVersionEvidence(ticket: RepairTicket): NpmInvalidVersionEvidence | null {
+  const raw = rawTextOf(ticket);
+  if (!/(?:ETARGET|notarget|No matching version|No match found for version)/i.test(raw)) return null;
+  const match = raw.match(/No matching version found for\s+((?:@[^/\s]+\/[^@\s]+|[^@\s]+))@([^\s]+)/i);
+  if (!match?.[1] || !match[2]) return null;
+  const packageName = match[1].trim();
+  const requestedSpec = match[2].trim().replace(/[.,;:)\]}]+$/u, '');
+  if (!/^(?:@[a-z0-9][a-z0-9._~-]*\/[a-z0-9][a-z0-9._~-]*|[a-z0-9][a-z0-9._~-]*)$/i.test(packageName) || !requestedSpec) return null;
+  const failed = ticket.failedTasks.find(task => /(?:ETARGET|notarget|No matching version)/i.test(`${task.error}\n${task.command || ''}`));
+  const token = `${packageName}@${requestedSpec}`;
+  return {
+    packageName,
+    requestedSpec,
+    cwd: failed?.cwd || '.',
+    explicitSpecifier: !!failed?.command?.split(/\s+/u).includes(token),
+  };
+}
+
+function extractArtifactValidationFailure(ticket: RepairTicket) {
+  const failed = ticket.failedTasks.find(task => {
+    if (!task.file) return false;
+    const evidence = `${task.error || ''}\n${ticket.primaryError || ''}`;
+    return /artifact_(?:type_mismatch|validation_failed)|incomplete markdown fence|not valid json|python source markers|node\.js source markers/i.test(evidence);
+  });
+  if (!failed?.file) return null;
+  return {
+    file: failed.file,
+    error: failed.error || ticket.primaryError,
+    task: failed.task,
+  };
+}
+
+interface LocalRuntimeImportEvidence {
+  importer: string;
+  specifier: string;
+}
+
+function extractLocalRuntimeImportEvidence(ticket: RepairTicket): LocalRuntimeImportEvidence[] {
+  const raw = rawTextOf(ticket);
+  if (!/local\s+runtime\s+imports\s+missing|missing\s+local\s+runtime\s+imports/i.test(raw)) return [];
+
+  const marker = raw.match(/local\s+runtime\s+imports\s+missing\s*\(([^)]*)\)/i)
+    || raw.match(/missing\s+local\s+runtime\s+imports\s*[:\s]+([^\n]+)/i);
+  if (!marker?.[1]) return [];
+
+  const evidence: LocalRuntimeImportEvidence[] = [];
+  for (const item of marker[1].split(';')) {
+    const match = item.trim().match(/^(.+?)\s*->\s*(\.[^\s,;]+)/u);
+    if (!match?.[1] || !match[2]) continue;
+    const importer = match[1].trim().replace(/\\\\/g, '/');
+    const specifier = match[2].trim();
+    if (!importer || !specifier.startsWith('.')) continue;
+    if (!evidence.some(entry => entry.importer === importer && entry.specifier === specifier)) {
+      evidence.push({ importer, specifier });
+    }
+  }
+  return evidence.slice(0, 24);
+}
+
 function extractMissingFilename(ticket: RepairTicket, text: string): string | null {
   const candidates = [
     ...ticket.failedTasks.map(t => `${t.task}\n${t.error}`),
@@ -271,6 +337,34 @@ export class SelfFixService {
       };
     }
 
+    const artifactValidationFailure = extractArtifactValidationFailure(ticket);
+    if (artifactValidationFailure) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `Artifact validation rejected ${artifactValidationFailure.file}; regenerate that exact file in the language and format required by its extension, then rerun the failed phase.`,
+        maxAttempts: 1,
+        strategy: 'code_fix',
+        suggestedTool: 'ai_write_file',
+        suggestedInput: {
+          path: artifactValidationFailure.file,
+          description: [
+            `Repair only ${artifactValidationFailure.file}; do not redirect the fix to another file.`,
+            'The previous content was rejected before it was written because it violated the destination artifact contract.',
+            'Inspect the surrounding project files and preserve the requested behavior, but return a complete valid artifact for this exact extension.',
+            'For .json, return strict parseable JSON with no Markdown fences or explanatory prose. For .js/.jsx/.mjs/.cjs use JavaScript only (CommonJS require/module.exports or ECMAScript imports); for .ts/.tsx use TypeScript. Never emit Python markers such as from ... import, def, elif, @app.route, None, True, False, Flask, Django, or Python indentation blocks.',
+            `Observed validator error: ${artifactValidationFailure.error}`,
+            `Failed task: ${artifactValidationFailure.task}`,
+          ].join('\\n'),
+          language: 'en',
+          context: JSON.stringify({ artifactValidationFailure, repairTicket: ticket, requiredArtifactLanguage: 'Match the extension exactly; JavaScript/TypeScript files must never contain Python syntax.' }),
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
     const failedEdit = extractFailedEdit(ticket);
     if (failedEdit && /text to replace not found|search text.*not found|find.*not found/i.test(text)) {
       return {
@@ -283,6 +377,27 @@ export class SelfFixService {
         suggestedInput: {
           filePath: failedEdit.file,
           edits: [{ find: failedEdit.find, replace: failedEdit.replace }],
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    const invalidNpmVersion = extractNpmInvalidVersionEvidence(ticket);
+    if (invalidNpmVersion) {
+      const token = `${invalidNpmVersion.packageName}@${invalidNpmVersion.requestedSpec}`;
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `npm registry rejected ${token} as ETARGET. Use the recorded project cwd, inspect published stable versions, update only this dependency specifier, retry npm install once, and rerun the failed phase for verification.`,
+        maxAttempts: 1,
+        strategy: 'dependency_fix',
+        suggestedTool: 'npm_manager',
+        suggestedInput: {
+          command: 'install',
+          ...(invalidNpmVersion.explicitSpecifier ? { packages: [token] } : {}),
+          cwd: invalidNpmVersion.cwd,
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),
@@ -343,6 +458,37 @@ export class SelfFixService {
             `Observed error: ${eslintConfigFailure.error}`,
           ].join('\\n'),
           context: JSON.stringify({ eslintConfigFailure, repairTicket: ticket }),
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    const localRuntimeImports = extractLocalRuntimeImportEvidence(ticket);
+    if (localRuntimeImports.length > 0) {
+      const importer = localRuntimeImports[0].importer;
+      const evidenceLines = localRuntimeImports
+        .map(item => `${item.importer} -> ${item.specifier}`)
+        .join('; ');
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `Local runtime import paths are missing: ${evidenceLines}. Inspect the existing filesystem and repair only those proven import/entrypoint paths.`,
+        maxAttempts: 1,
+        strategy: 'build_fix',
+        suggestedTool: 'ai_write_file',
+        suggestedInput: {
+          path: importer,
+          description: [
+            `Repair the existing runtime import contract in ${importer}.`,
+            `The project_run preflight found these exact local imports with no resolvable file: ${evidenceLines}.`,
+            'Inspect the current project root and each importer before editing. Resolve every specifier against the actual filesystem, including extension and src/ versus root layout.',
+            'Change only the smallest proven runtime contract. If a local specifier has no matching file, create the smallest concrete module required by the importer and the original project requirements, implementing the exact exported contract; do not change the import merely to hide the failure. Preserve the project module system and public behavior.',
+            'Never create a no-op placeholder, copy unrelated files, invent npm packages, or run npm install for a relative local specifier.',
+            'After editing, run node --check for JavaScript entrypoints, the existing build/tests, and one real local start/readiness check.',
+          ].join('\\n'),
+          context: JSON.stringify({ localRuntimeImports, repairTicket: ticket }),
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),

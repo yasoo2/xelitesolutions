@@ -265,6 +265,61 @@ export interface Inference {
 }
 
 /**
+ * Structured specifications often describe their data model indirectly:
+ * «Each project contains», «Users can create projects», «Record the activity».
+ * Reading every noun in such a document is unsafe — headings, fields, pages and
+ * workflow words are not rows — so this reader accepts only those grammatical
+ * object patterns. It is deliberately domain-neutral: it learns the noun from
+ * the request and uses only language shapes to decide whether it is an entity.
+ */
+const STRUCTURED_OBJECT = /^(?:[-*•]\s*|\d+[.)]\s*)?(?:(?:users?|members?|admins?|operators?)\s+can\s+)?(?:create|add|edit|update|delete|remove|view|search|filter|assign|move|complete|record|verify|list|persist|manage|open|close|archive|restore|read|write|set|change)\b\s+(.+)$/i;
+const STRUCTURED_EXCLUDED = new Set([
+    'answer', 'answers', 'api', 'apis', 'application', 'applications', 'assistant',
+    'authentication', 'authentications', 'board', 'boards', 'button', 'buttons',
+    'dashboard', 'dashboards', 'feature', 'features', 'history', 'histories',
+    'layout', 'layouts', 'login', 'logins', 'logout', 'logouts', 'mode', 'modes',
+    'page', 'pages', 'priority', 'priorities', 'profile', 'profiles', 'registration',
+    'registrations', 'report', 'reports', 'route', 'routes', 'screen', 'screens',
+    'section', 'sections', 'statistics', 'status', 'statuses', 'system', 'systems',
+    'test', 'tests', 'ui', 'url', 'urls', 'view', 'views', 'workflow', 'workflows',
+]);
+
+function structuredEntityPhrases(request: string): string[] {
+    const lines = String(request || '').replace(/\r\n?/g, '\n').split('\n');
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const add = (raw: string): void => {
+        let phrase = String(raw || '').replace(/[.!?,;:]+$/g, '').trim();
+        phrase = phrase.replace(/^(?:a|an|the|one|new|another|different|actual|real|protected|overdue|at\s+least\s+\w+)\s+/i, '').trim();
+        phrase = phrase.replace(/\b(?:between|through|from|for|with|about|on|in)\b.*$/i, '').trim();
+        const words = phrase.split(/\s+/).filter(Boolean);
+        if (words.some(word => STRUCTURED_EXCLUDED.has(word.toLowerCase()))) return;
+        if (words.length > 1 && /\b(?:history|log|list|records?)$/i.test(phrase)) phrase = words[0];
+        const key = /[A-Za-z]/.test(phrase) ? keyOf(phrase) : keyFromArabic(phrase);
+        if (!key || STRUCTURED_EXCLUDED.has(key) || NEVER.has(key) || seen.has(key)) return;
+        if (words.length > 3 || phrase.length > 50) return;
+        seen.add(key);
+        out.push(phrase);
+    };
+
+    for (const raw of lines) {
+        const line = raw.trim();
+        if (!line) continue;
+        const each = line.match(/^(?:each|every|an?|the)\s+([A-Za-z][A-Za-z0-9_-]*)\s+(?:contains?|includes?|has|should\s+(?:contain|include|have)|can\s+be)\b/i);
+        if (each) add(each[1]);
+
+        const object = line.match(STRUCTURED_OBJECT)?.[1];
+        if (!object) continue;
+        const candidate = object
+            .replace(/^(?:a|an|the|at\s+least\s+\w+|different|overdue|protected|actual|real|new|another|one)\s+/i, '')
+            .trim();
+        if (!candidate) continue;
+        add(candidate.split(/\s+(?:and|then|to|through|between)\s+/i)[0]);
+    }
+    return out;
+}
+
+/**
  * The identifier this phrase would get, in either script — the same rule
  * `inferModel` uses below, exported so a caller reading a list the user typed
  * gets exactly the keys the inferred path would have produced.
@@ -323,9 +378,13 @@ export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inferen
     const entities: ModelEntity[] = [];
     const capabilities: string[] = [];
     const seen = new Set<string>();
+    const structured = structuredEntityPhrases(request);
+    const phrases = structured.length >= 2 ? structured : featurePhrases(request);
+    const structuredKeys = new Set(structured.map(keyForPhrase));
 
-    for (const phrase of featurePhrases(request)) {
-        if (isCapability(phrase)) {
+    for (const phrase of phrases) {
+        const keyCandidate = keyForPhrase(phrase);
+        if (!structuredKeys.has(keyCandidate) && isCapability(phrase)) {
             if (capabilities.length < 12 && !capabilities.includes(phrase)) capabilities.push(phrase);
             continue;
         }

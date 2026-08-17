@@ -1,5 +1,6 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
+import { NpmManagerTool } from './SystemTools';
 import { workspaceService } from '../../services/WorkspaceService';
 import { isPortOpen } from '../../../shared/utils/network';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
@@ -167,6 +168,29 @@ function devServerPortFlags(cwd: string, port: number): string {
     return '';
 }
 
+function isFrontendStartScript(script: string): boolean {
+    return /(?:react-scripts\s+start|\bvite(?:\s|$)|\bnext\s+(?:dev|start)(?:\s|$)|\bparcel(?:\s|$))/iu.test(String(script || '').trim());
+}
+
+/**
+ * A generated full-stack project can accidentally inherit a frontend lifecycle
+ * script while also writing one backend entrypoint. Prefer that backend only
+ * when the evidence is unambiguous: exactly one reachable server entrypoint,
+ * and it is under a conventional backend directory. A frontend-only project is
+ * left on its declared start script, and ambiguous layouts are never guessed.
+ */
+function backendEntrypointForFrontendScript(cwd: string, script: string): string | null {
+    if (!isFrontendStartScript(script)) return null;
+    const candidates = serverEntrypointCandidates(cwd);
+    if (candidates.length !== 1) return null;
+    const candidate = candidates[0].replace(/\\/g, '/');
+    const parts = candidate.split('/');
+    const conventionalDirectory = new Set(['server', 'api', 'backend', 'service', 'services']);
+    const hasBackendDirectory = parts.length > 1 && conventionalDirectory.has(parts[0].toLowerCase());
+    const conventionalEntry = /(?:^|\/)(?:server|app|main|index)\.(?:js|mjs|cjs|ts|tsx)$/iu.test(candidate);
+    return hasBackendDirectory || conventionalEntry ? candidate : null;
+}
+
 /**
  * How THIS project starts, from its files — not a guess.
  *
@@ -179,9 +203,14 @@ export function detectStart(cwd: string, port: number): { command: string; kind:
     if (fs.existsSync(pkgPath)) {
         let scripts: Record<string, string> = {};
         try { scripts = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).scripts || {}; } catch { /* malformed */ }
-        // A generic start script comes FIRST for a packaged system: `npm start`
-        // serves the built interface AND its API from one origin, which is the
-        // thing he asked for. `npm run dev` is a source-code tool.
+        // A generic start script is normally the packaged contract. If it is
+        // visibly a frontend-only command but the project also contains exactly
+        // one proven backend entrypoint, use that observed server instead of
+        // launching a missing/irrelevant frontend dependency and hiding stderr.
+        const backendEntrypoint = backendEntrypointForFrontendScript(cwd, String(scripts.start || ''));
+        if (backendEntrypoint) {
+            return { command: `node ${backendEntrypoint}`, kind: 'node-entry', expectPort: port, forced: false };
+        }
         if (scripts.start) return { command: 'npm start', kind: 'npm-start', expectPort: port, forced: false };
         // A frontend dev server (Vite/Next/CRA) — told its port in the flag it
         // actually reads, so the announcement below is true.
@@ -191,7 +220,11 @@ export function detectStart(cwd: string, port: number): { command: string; kind:
         }
     }
     // A bare Node server entry that listens.
-    for (const entry of ['server.js', 'app.js', 'index.js', 'main.js', 'src/server.js', 'src/index.js']) {
+    for (const entry of [
+        'server.js', 'app.js', 'index.js', 'main.js',
+        'server/server.js', 'server/index.js', 'server/app.js',
+        'src/server.js', 'src/index.js',
+    ]) {
         const f = path.join(cwd, entry);
         if (fs.existsSync(f)) {
             try {
@@ -231,8 +264,18 @@ type RunnableProjectResolution =
     | { cwd: string; candidates: string[]; matched: boolean }
     | { cwd: null; candidates: string[]; matched: false };
 
-const PROJECT_MARKERS = ['package.json', 'index.html', 'server.js', 'app.py', 'main.py', 'index.js'];
-const TYPESCRIPT_ENTRYPOINTS = ['src/index.ts', 'src/main.ts', 'src/server.ts', 'src/app.ts', 'index.ts', 'main.ts', 'server.ts', 'app.ts'];
+const PROJECT_MARKERS = [
+    'package.json', 'index.html', 'server.js', 'app.py', 'main.py', 'index.js',
+    'server/server.js', 'server/index.js', 'server/app.js',
+    'src/index.js', 'src/main.js', 'src/server.js', 'src/app.js',
+    'src/index.mjs', 'src/main.mjs', 'src/server.mjs', 'src/app.mjs',
+    'src/index.cjs', 'src/main.cjs', 'src/server.cjs', 'src/app.cjs',
+];
+const TYPESCRIPT_ENTRYPOINTS = [
+    'src/index.ts', 'src/main.ts', 'src/server.ts', 'src/app.ts',
+    'src/index.tsx', 'src/main.tsx', 'src/server.tsx', 'src/app.tsx',
+    'index.ts', 'main.ts', 'server.ts', 'app.ts',
+];
 const IGNORED_PROJECT_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next']);
 
 function hasProjectMarker(dir: string): boolean {
@@ -433,15 +476,20 @@ export function launchabilityError(cwd: string, detected: { command: string; kin
     } catch {
         return `launchability: runtime target cannot be read (${target})`;
     }
+    const missingLocal = missingLocalRuntimeImports(cwd, detected);
+    if (missingLocal.length) {
+        return `launchability: local runtime imports missing (${missingLocal.join('; ')})`;
+    }
     return null;
 }
 
 function serverEntrypointScore(value: string): number {
     const normalized = value.toLowerCase();
     if (/^src\/index\.(?:js|mjs|cjs|ts|tsx)$/u.test(normalized)) return 0;
-    if (/^src\/(?:server|app)\.(?:js|mjs|cjs|ts|tsx)$/u.test(normalized)) return 1;
-    if (/^(?:index|server|app)\.(?:js|mjs|cjs|ts|tsx)$/u.test(normalized)) return 2;
-    return 3;
+    if (/^server\/(?:server|index|app)\.(?:js|mjs|cjs|ts|tsx)$/u.test(normalized)) return 1;
+    if (/^src\/(?:server|app)\.(?:js|mjs|cjs|ts|tsx)$/u.test(normalized)) return 2;
+    if (/^(?:index|server|app)\.(?:js|mjs|cjs|ts|tsx)$/u.test(normalized)) return 3;
+    return 4;
 }
 
 function serverEntrypointCandidates(cwd: string): string[] {
@@ -513,6 +561,119 @@ export function reconcileMissingRuntimeTarget(cwd: string, failureText: string):
     }
 }
 
+function normalizedRuntimeStem(value: string): string {
+    const stem = path.basename(String(value || '').replace(/\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu, ''))
+        .toLocaleLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, '');
+    return stem.replace(/(?:routes?|controllers?|handlers?|services?|routers?|modules?)$/u, '');
+}
+
+function uniqueSiblingRuntimeCandidate(importerFile: string, specifier: string): string | null {
+    if (!specifier.startsWith('.')) return null;
+    const specifierPath = path.resolve(path.dirname(importerFile), specifier);
+    const directory = path.dirname(specifierPath);
+    const requestedStem = path.basename(specifierPath).replace(/\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu, '');
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(directory, { withFileTypes: true }); } catch { return null; }
+
+    const sourceFiles = entries
+        .filter(entry => entry.isFile() && RUNTIME_SOURCE_EXTENSIONS.test(entry.name))
+        .map(entry => path.join(directory, entry.name));
+    const exact = sourceFiles.filter(candidate =>
+        path.basename(candidate).replace(/\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu, '').toLocaleLowerCase()
+        === requestedStem.toLocaleLowerCase());
+    const requestedNormalized = normalizedRuntimeStem(requestedStem);
+    const similar = requestedNormalized
+        ? sourceFiles.filter(candidate => normalizedRuntimeStem(path.basename(candidate)) === requestedNormalized)
+        : [];
+    const matches = Array.from(new Set((exact.length ? exact : similar).map(candidate => path.resolve(candidate))));
+    return matches.length === 1 ? matches[0] : null;
+}
+
+function replaceQuotedRuntimeSpecifier(source: string, specifier: string, replacement: string): string {
+    let updated = source;
+    for (const quote of ["'", '"']) {
+        updated = updated.split(`${quote}${specifier}${quote}`).join(`${quote}${replacement}${quote}`);
+    }
+    return updated;
+}
+
+/**
+ * Reconcile only a proven local-import naming mismatch. This is intentionally
+ * narrower than self-generating a route: the importer must already be
+ * reachable, the replacement must be a single sibling source file, and the
+ * normalized stem may differ only by a conventional suffix such as Routes.
+ */
+export function reconcileMissingRuntimeImports(
+    cwd: string,
+    detected: { command: string; kind: string },
+): { repaired: boolean; message: string; changes: string[] } {
+    if (detected.kind === 'static' || detected.kind === 'override') {
+        return { repaired: false, message: 'local-import reconciliation is not applicable', changes: [] };
+    }
+    const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
+    const entrypoint = target ? path.resolve(cwd, target) : '';
+    if (!entrypoint || !fs.existsSync(entrypoint)) {
+        return { repaired: false, message: 'runtime entrypoint is unavailable for local-import reconciliation', changes: [] };
+    }
+
+    const visited = new Set<string>();
+    const changes: string[] = [];
+    const ambiguous: string[] = [];
+    const visit = (file: string, depth: number): void => {
+        if (depth > 8 || visited.has(file) || !fs.existsSync(file)) return;
+        const relative = path.relative(cwd, file).replace(/\\/g, '/') || path.basename(file);
+        if (relative.split('/').some(part => RUNTIME_SOURCE_IGNORES.has(part))) return;
+        visited.add(file);
+        let source = '';
+        try { source = fs.readFileSync(file, 'utf-8'); } catch { return; }
+        let updated = source;
+        for (const specifier of runtimeImportSpecifiers(source)) {
+            if (!specifier.startsWith('.') || resolveLocalRuntimeImport(file, specifier)) {
+                const local = resolveLocalRuntimeImport(file, specifier);
+                if (local) visit(local, depth + 1);
+                continue;
+            }
+            const candidate = uniqueSiblingRuntimeCandidate(file, specifier);
+            if (!candidate) {
+                const candidateDirectory = path.dirname(path.resolve(path.dirname(file), specifier));
+                let siblingCount = 0;
+                try {
+                    siblingCount = fs.readdirSync(candidateDirectory, { withFileTypes: true })
+                        .filter(entry => entry.isFile() && RUNTIME_SOURCE_EXTENSIONS.test(entry.name)).length;
+                } catch { /* no evidence */ }
+                if (siblingCount > 1) ambiguous.push(`${relative} -> ${specifier}`);
+                continue;
+            }
+            const replacement = `./${path.relative(path.dirname(file), candidate).replace(/\\/g, '/')}`;
+            const next = replaceQuotedRuntimeSpecifier(updated, specifier, replacement);
+            if (next === updated) continue;
+            updated = next;
+            changes.push(`${relative}: ${specifier} -> ${replacement}`);
+            visit(candidate, depth + 1);
+        }
+        if (updated !== source) {
+            try { fs.writeFileSync(file, updated, 'utf-8'); } catch { /* leave the evidence for self-fix */ }
+        }
+    };
+    visit(entrypoint, 0);
+
+    if (changes.length) {
+        return {
+            repaired: true,
+            message: `reconciled ${changes.length} local runtime import${changes.length === 1 ? '' : 's'} (${changes.join('; ')})`,
+            changes,
+        };
+    }
+    return {
+        repaired: false,
+        message: ambiguous.length
+            ? `did not reconcile ambiguous local runtime imports (${ambiguous.slice(0, 4).join('; ')})`
+            : 'no unique local runtime import match found',
+        changes: [],
+    };
+}
+
 const NODE_BUILTIN_MODULES = new Set<string>([
     ...builtinModules,
     ...builtinModules.map((name) => name.startsWith('node:') ? name : `node:${name}`),
@@ -553,6 +714,36 @@ function resolveLocalRuntimeImport(fromFile: string, specifier: string): string 
     return candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile() && RUNTIME_SOURCE_EXTENSIONS.test(candidate)) || null;
 }
 
+function isRuntimePackageAvailable(cwd: string, packageName: string): boolean {
+    try {
+        require.resolve(packageName, { paths: [cwd] });
+        return true;
+    } catch {
+        // Jest sandboxes and some package loaders do not refresh their resolver
+        // map after npm creates node_modules during this process. The filesystem
+        // is the stronger local fact for this preflight: walk the project and
+        // its bounded workspace ancestors, never arbitrary package guesses.
+    }
+    let probe = path.resolve(cwd);
+    for (let depth = 0; depth < 12; depth += 1) {
+        const candidate = path.join(probe, 'node_modules', packageName);
+        try {
+            if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+                let packageManifest: any = {};
+                try { packageManifest = JSON.parse(fs.readFileSync(path.join(candidate, 'package.json'), 'utf-8')); } catch { }
+                const entryCandidates = [packageManifest.main, packageManifest.module, 'index.js', 'index.mjs', 'index.cjs', 'index.json']
+                    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+                    .map((entry) => path.resolve(candidate, entry));
+                if (entryCandidates.some((entry) => entry === candidate || entry.startsWith(`${candidate}${path.sep}`) && fs.existsSync(entry) && fs.statSync(entry).isFile())) return true;
+            }
+        } catch { /* continue to the next trusted ancestor */ }
+        const parent = path.dirname(probe);
+        if (parent === probe) break;
+        probe = parent;
+    }
+    return false;
+}
+
 function collectRuntimeSourceFiles(entrypoint: string): string[] {
     const visited = new Set<string>();
     const files: string[] = [];
@@ -571,6 +762,44 @@ function collectRuntimeSourceFiles(entrypoint: string): string[] {
     };
     visit(entrypoint, 0);
     return files;
+}
+
+/**
+ * A runtime target can exist while one of its local modules does not. This is
+ * a different failure from an undeclared npm package: npm cannot repair
+ * `require('./routes/auth')` when the actual evidence is `src/routes/auth.js`.
+ * Walk only the reachable runtime graph and report the exact importing file and
+ * specifier. The bounded repair planner can then inspect the real layout rather
+ * than inventing a route folder or copying a product-specific template.
+ */
+export function missingLocalRuntimeImports(cwd: string, detected: { command: string; kind: string }): string[] {
+    if (detected.kind === 'static' || detected.kind === 'override') return [];
+    const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
+    if (!target) return [];
+    const entrypoint = path.resolve(cwd, target);
+    if (!fs.existsSync(entrypoint)) return [];
+
+    const visited = new Set<string>();
+    const missing = new Set<string>();
+    const visit = (file: string, depth: number): void => {
+        if (depth > 8 || visited.has(file) || !fs.existsSync(file)) return;
+        const relative = path.relative(cwd, file).replace(/\\/g, '/') || path.basename(file);
+        if (relative.split('/').some((part) => RUNTIME_SOURCE_IGNORES.has(part))) return;
+        visited.add(file);
+        let source = '';
+        try { source = fs.readFileSync(file, 'utf-8'); } catch { return; }
+        for (const specifier of runtimeImportSpecifiers(source)) {
+            if (!specifier.startsWith('.')) continue;
+            const local = resolveLocalRuntimeImport(file, specifier);
+            if (local) {
+                visit(local, depth + 1);
+                continue;
+            }
+            missing.add(`${relative} -> ${specifier}`);
+        }
+    };
+    visit(entrypoint, 0);
+    return [...missing].sort().slice(0, 24);
 }
 
 function runtimeEntrypoint(cwd: string, detected: { command: string; kind: string }): string {
@@ -626,12 +855,36 @@ export function missingRuntimeDependencies(cwd: string, detected: { command: str
                 || specifier.startsWith('node:') || NODE_BUILTIN_MODULES.has(specifier)) continue;
             const packageName = packageNameFromSpecifier(specifier);
             if (!packageName || NODE_BUILTIN_MODULES.has(packageName)) continue;
-            let resolved = false;
-            try { require.resolve(packageName, { paths: [cwd] }); resolved = true; } catch { /* absent from this project */ }
+            const resolved = isRuntimePackageAvailable(cwd, packageName);
             if (!declared.has(packageName) || !resolved) missing.add(packageName);
         }
     }
     return [...missing].sort().slice(0, 12);
+}
+
+/**
+ * Syntax is a cheap foreground fact to collect before a detached process hides
+ * its stderr. `node --check` is intentionally limited to JavaScript-family
+ * targets; TypeScript must be checked by its project toolchain instead.
+ */
+async function runtimeSyntaxError(cwd: string, detected: { command: string; kind: string }): Promise<string | null> {
+    if (detected.kind === 'static' || detected.kind === 'override') return null;
+    const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
+    if (!target || !/\.(?:js|mjs|cjs)$/iu.test(target)) return null;
+    const result = await ExecutionGateway.execute({
+        id: `project-run-syntax-${Date.now()}`,
+        type: 'shell',
+        payload: {
+            command: 'node',
+            args: ['--check', target],
+            options: { cwd, timeout: 8000, shell: false, stdio: 'pipe' },
+        },
+        priority: 'high',
+    });
+    const data = result.data || {};
+    if (result.success && data.ok !== false && data.exitCode === 0) return null;
+    const detail = String(data.error || result.error || data.output || 'node --check failed').trim().replace(/\s+/gu, ' ').slice(0, 700);
+    return `launchability: runtime syntax check failed (${target}): ${detail}`;
 }
 
 export function launchPrerequisiteError(cwd: string, detected: { command: string; kind: string }): string | null {
@@ -651,6 +904,33 @@ export function launchPrerequisiteError(cwd: string, detected: { command: string
         if (missingRuntime.length) return `runtime dependencies missing or undeclared: ${missingRuntime.join(', ')}`;
     } catch { /* The actual launcher will surface malformed package errors. */ }
     return null;
+}
+
+/**
+ * Return the exact dependency names that npm can install from the project's own
+ * manifest to repair a launch preflight failure. We never turn an undeclared
+ * runtime import into an invented `npm install <guess>`: the manifest is the
+ * evidence boundary, and the normal npm_manager keeps registry/version/peer
+ * recovery in one place.
+ */
+export function declaredLaunchPrerequisitePackages(cwd: string, prerequisite: string): string[] | null {
+    const raw = String(prerequisite || '').trim();
+    let manifest: any;
+    try {
+        manifest = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8'));
+    } catch {
+        return null;
+    }
+    const declared = new Set<string>([
+        ...Object.keys(manifest?.dependencies || {}),
+        ...Object.keys(manifest?.devDependencies || {}),
+        ...Object.keys(manifest?.optionalDependencies || {}),
+    ]);
+    if (raw === 'vite') return declared.has('vite') ? ['vite'] : null;
+    const match = raw.match(/^runtime dependencies missing or undeclared:\s*(.+)$/iu);
+    if (!match?.[1]) return null;
+    const names = match[1].split(',').map((name) => name.trim()).filter(Boolean);
+    return names.length > 0 && names.every((name) => declared.has(name)) ? names : null;
 }
 
 export class ProjectRunTool implements ToolDefinition {
@@ -825,27 +1105,115 @@ export class ProjectRunTool implements ToolDefinition {
         await stopServer(key, logs).catch(() => {});
 
         const port = Number(input?.port) || await findFreePort();
-        const detected = input?.command
+        let detected = input?.command
             ? { command: String(input.command), kind: 'override', expectPort: port, forced: false }
             : detectStart(cwd, port);
-        const launchability = launchabilityError(cwd, detected);
+        let launchability = launchabilityError(cwd, detected);
+        if (launchability && !input?.command && /runtime target is missing/iu.test(launchability)) {
+            const reconciliation = reconcileMissingRuntimeTarget(cwd, launchability);
+            logs.push(`project_run: ${reconciliation.message}`);
+            if (reconciliation.repaired) {
+                say(pick(isAr,
+                    `🔧 أصلحتُ target التشغيل من entrypoint مثبت على القرص قبل الإطلاق: ${reconciliation.message}`,
+                    `🔧 Reconciled the missing runtime target from a verified on-disk entrypoint before launch: ${reconciliation.message}`));
+                detected = detectStart(cwd, port);
+                launchability = launchabilityError(cwd, detected);
+            }
+        }
+        if (launchability && /local runtime imports missing/iu.test(launchability)) {
+            const reconciliation = reconcileMissingRuntimeImports(cwd, detected);
+            logs.push(`project_run: ${reconciliation.message}`);
+            if (reconciliation.repaired) {
+                say(pick(isAr,
+                    `🔧 وجدتُ ملفاً محلياً مطابقاً وأصلحتُ الاستيراد قبل التشغيل: ${reconciliation.changes.join('؛ ')}`,
+                    `🔧 I found a unique matching local file and repaired the import before launch: ${reconciliation.changes.join('; ')}`));
+                launchability = launchabilityError(cwd, detected);
+            }
+        }
         if (launchability) {
+            const launchabilityMessage = pick(isAr,
+                `تعذّر تشغيل المشروع بأمان: ${launchability}. أصلح target الخادم أو manifest أولاً؛ لم أنتظر على منفذ غير قابل للتشغيل.`,
+                `Cannot start the project safely: ${launchability}. Fix the server target or manifest first; I will not wait on a project that cannot be launched.`,
+            );
+            logs.push(launchability);
             return {
                 ok: false,
-                error: pick(isAr,
-                    `تعذّر تشغيل المشروع بأمان: ${launchability}. أصلح target الخادم أو manifest أولاً؛ لم أنتظر على منفذ غير قابل للتشغيل.`,
-                    `Cannot start the project safely: ${launchability}. Fix the server target or manifest first; I will not wait on a project that cannot be launched.`,
-                ),
+                error: launchabilityMessage,
+                output: {
+                    cwd,
+                    command: detected.command,
+                    ready: false,
+                    verificationFailed: true,
+                    preflight: 'launchability',
+                    message: launchabilityMessage,
+                },
                 logs,
             };
         }
-        const missingPrerequisite = launchPrerequisiteError(cwd, detected);
+        let missingPrerequisite = launchPrerequisiteError(cwd, detected);
+        let prerequisiteRecovery = '';
+        const installablePackages = missingPrerequisite
+            ? declaredLaunchPrerequisitePackages(cwd, missingPrerequisite)
+            : null;
+        if (installablePackages?.length) {
+            say(pick(isAr,
+                `📦 التبعية ${installablePackages.join('، ')} معلنة في manifest لكنها غير مثبتة؛ أُشغّل npm install مرة واحدة قبل الإطلاق…`,
+                `📦 ${installablePackages.join(', ')} is declared in the manifest but missing locally; running npm install once before launch…`));
+            let installResult: any;
+            try {
+                installResult = await new NpmManagerTool().execute({ command: 'install', cwd }, context);
+            } catch (error: any) {
+                installResult = { ok: false, error: String(error?.message || error) };
+            }
+            if (installResult?.ok) {
+                const missingAfterInstall = launchPrerequisiteError(cwd, detected);
+                if (!missingAfterInstall) {
+                    missingPrerequisite = null;
+                    logs.push(`project_run: auto npm install succeeded (${installablePackages.join(', ')})`);
+                    say(pick(isAr,
+                        `✅ اكتمل تثبيت الاعتماديات المعلنة؛ أتابع تشغيل المشروع.`,
+                        `✅ Declared dependencies installed; continuing with project launch.`));
+                } else {
+                    missingPrerequisite = missingAfterInstall;
+                    prerequisiteRecovery = `npm install completed but preflight still reports ${missingAfterInstall}`;
+                    logs.push(`project_run: auto npm install incomplete (${missingAfterInstall})`);
+                }
+            } else {
+                const installError = String(installResult?.error || 'npm install failed').trim().replace(/\s+/gu, ' ').slice(0, 700);
+                prerequisiteRecovery = `npm install failed: ${installError}`;
+                logs.push(`project_run: auto npm install failed (${installError})`);
+            }
+        }
         if (missingPrerequisite) {
+            const detail = prerequisiteRecovery ? ` ${prerequisiteRecovery}.` : '';
+            const prerequisiteMessage = pick(isAr,
+                `تعذّر تشغيل المشروع بأمان: ${missingPrerequisite}.${detail} لا أستطيع تثبيت حزمة غير معلنة أو التخمين باسمها.`,
+                `Cannot start the project safely: ${missingPrerequisite}.${detail} I will not install or invent an undeclared package.`);
+            logs.push(missingPrerequisite);
             return {
                 ok: false,
-                error: pick(isAr,
-                    `تعذّر تشغيل المشروع بأمان: التبعية المحلية ${missingPrerequisite} غير موجودة في node_modules. لم أُثبّت أي حزم؛ اسمح بـ npm install ثم أعد التشغيل.`,
-                    `Cannot start the project safely: local dependency ${missingPrerequisite} is missing from node_modules. No packages were installed; allow npm install, then run again.`),
+                error: prerequisiteMessage,
+                output: {
+                    cwd,
+                    command: detected.command,
+                    ready: false,
+                    verificationFailed: true,
+                    preflight: 'runtime-dependencies',
+                    message: prerequisiteMessage,
+                },
+                logs,
+            };
+        }
+        const syntaxFailure = await runtimeSyntaxError(cwd, detected);
+        if (syntaxFailure) {
+            const syntaxMessage = pick(isAr,
+                `تعذّر تشغيل المشروع بأمان قبل الإطلاق المنفصل: ${syntaxFailure}`,
+                `The project failed the foreground runtime syntax check before detached launch: ${syntaxFailure}`);
+            logs.push(syntaxFailure);
+            return {
+                ok: false,
+                error: syntaxMessage,
+                output: { cwd, command: detected.command, ready: false, verificationFailed: true, preflight: 'node --check', message: syntaxMessage },
                 logs,
             };
         }

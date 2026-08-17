@@ -35,7 +35,7 @@ describe('the quality phase is executable, not decorative', () => {
         // supply, so the literal call text changed. The guarantee is unchanged —
         // discovery is still the first thing that runs.
         expect(pipeline).toContain("executeTool('engineering_discovery',");
-        expect(pipeline).toContain("projectPath ? { request, path: projectPath } : { request }");
+        expect(pipeline).toContain("projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }");
         // Repointed: the call now passes a prepared request and prepared
         // evidence rather than the raw two. What is guaranteed — and what this
         // measures — is that the pipeline plans through project_planner and
@@ -111,6 +111,18 @@ describe('operational release boards are working task applications', () => {
     it('keeps the explicit release-board contract when incidental chat context is appended', () => {
         const mixedExecutionContext = `${RELEASE_READINESS_BOARD}\nسياق تنفيذي جانبي: راقب المحادثة السابقة بعد البناء.`;
         expect(detectAppKind(mixedExecutionContext)).toBe('tasks');
+    });
+});
+
+describe('full-stack builders preserve the backend application contract', () => {
+    it('persists the authoritative app kind for the later frontend phase', () => {
+        const fs = require('fs'); const path = require('path');
+        const api = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ApiProjectTool.ts'), 'utf-8');
+        const react = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(api).toMatch(/const appKind = detectAppKind\(requestForReading\)/);
+        expect(api).toMatch(/\.\.\.\(appKind \? \{ appKind \} : \{\}\)/);
+        expect(react).toMatch(/const inheritedAppKind = prevEntry\?\.type === 'api'/);
+        expect(react).toMatch(/const appKind = detectAppKind\(request\) \|\| inheritedAppKind/);
     });
 });
 

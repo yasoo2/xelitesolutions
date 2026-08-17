@@ -83,6 +83,39 @@ describe('evidence-aware file edit recovery', () => {
     expect(String(plan.suggestedInput?.description)).not.toContain('src/index.ts');
   });
 
+  it('classifies local runtime imports as a targeted path repair, not npm dependency recovery', () => {
+    const plan = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'TaskFlow AI',
+      phaseNumber: 8,
+      phaseName: 'Run and verify',
+      status: 'partial',
+      severity: 'high',
+      primaryError: 'launchability: local runtime imports missing (server/index.js -> ./routes/authRoutes; server/index.js -> ./routes/taskRoutes)',
+      failedTasks: [{
+        task: 'Start the existing application and verify readiness',
+        tool: 'project_run',
+        error: 'launchability: local runtime imports missing (server/index.js -> ./routes/authRoutes; server/index.js -> ./routes/taskRoutes)',
+        cwd: '/workspace/TaskFlow AI',
+        file: 'server/index.js',
+      }],
+      suggestedNextAction: 'repair the proven local import paths and rerun project_run',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(plan.allowed).toBe(true);
+    expect(plan.strategy).toBe('build_fix');
+    expect(plan.suggestedTool).toBe('ai_write_file');
+    expect(plan.suggestedInput).toEqual(expect.objectContaining({
+      path: 'server/index.js',
+      description: expect.stringContaining('Inspect the current project root'),
+    }));
+    expect(String(plan.suggestedInput?.description)).toContain('Never create a no-op placeholder');
+    expect(String(plan.suggestedInput?.description)).toContain('run npm install');
+  });
+
   it('builds one bounded advanced-edit recovery from preserved file evidence', () => {
     const plan = SelfFixService.plan({
       type: 'phase_repair_ticket',

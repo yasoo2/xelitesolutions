@@ -3,7 +3,7 @@ jest.mock('../modules/services/ToolService', () => ({
 }));
 
 import { executeTool } from '../modules/services/ToolService';
-import { PhaseExecutorTool } from '../modules/tools/definitions/PhaseExecutorTool';
+import { applyPhaseExecutionEvidence, PhaseExecutorTool } from '../modules/tools/definitions/PhaseExecutorTool';
 
 const mockedExecuteTool = executeTool as jest.MockedFunction<typeof executeTool>;
 
@@ -88,6 +88,35 @@ describe('PhaseExecutorTool observable trusted context', () => {
         });
     });
 
+    it('preserves the failed ai_write_file path for artifact-specific self-fix', async () => {
+        mockedExecuteTool.mockResolvedValue({
+            ok: false,
+            error: 'artifact_type_mismatch: TaskFlow AI/docs/documentation.md still contains an incomplete Markdown fence',
+        } as any);
+
+        const result: any = await new PhaseExecutorTool().execute({
+            phase: {
+                phaseNumber: 7,
+                name: 'Documentation',
+                tasks: [{
+                    task: 'Generate the final documentation artifact',
+                    tool: 'ai_write_file',
+                    args: {
+                        path: 'TaskFlow AI/docs/documentation.md',
+                        description: 'Write the final documentation for the generated project.',
+                    },
+                }],
+            },
+        }, { sessionId: 'chat-docs', workspaceId: 'workspace-docs', userId: 'user-docs' });
+
+        expect(result.ok).toBe(false);
+        expect(result.output.results[0]).toMatchObject({
+            tool: 'ai_write_file',
+            ok: false,
+            file: 'TaskFlow AI/docs/documentation.md',
+        });
+    });
+
     it('does not fabricate a terminal report when a non-terminal tool has no message', async () => {
         mockedExecuteTool.mockResolvedValue({ ok: true, output: { stdout: 'internal value' } } as any);
 
@@ -163,6 +192,41 @@ describe('PhaseExecutorTool observable trusted context', () => {
             workspaceId: 'workspace-run',
             sessionId: 'chat-run',
         });
+    });
+
+    it('ignores an explicit stale workspace cwd for greenfield live verification', () => {
+        const workspaceRoot = require('../modules/services/WorkspaceService').workspaceService.getActiveRoot('workspace-greenfield-cwd');
+        const planned: any = { cwd: workspaceRoot };
+        const logs: string[] = [];
+
+        applyPhaseExecutionEvidence('project_run', planned, {
+            projectName: 'TaskFlow AI',
+            createsNewProject: true,
+            workspaceId: 'workspace-greenfield-cwd',
+        }, logs);
+
+        expect(planned.cwd).toBeUndefined();
+        expect(planned.projectQuery).toBe('run the project named "TaskFlow AI"');
+        expect(logs.join('\\n')).toContain('ignored stale greenfield cwd');
+    });
+
+    it('lets runtime-bound artifact evidence override a stale planned cwd', () => {
+        const workspaceRoot = require('../modules/services/WorkspaceService').workspaceService.getActiveRoot('workspace-runtime-bound');
+        const projectRoot = require('path').join(workspaceRoot, 'TaskFlow AI');
+        const planned: any = { cwd: workspaceRoot, projectQuery: 'old selector' };
+        const logs: string[] = [];
+
+        applyPhaseExecutionEvidence('project_run', planned, {
+            projectName: 'TaskFlow AI',
+            projectRoot,
+            createsNewProject: true,
+            projectRootRuntimeBound: true,
+            workspaceId: 'workspace-runtime-bound',
+        }, logs);
+
+        expect(planned).toMatchObject({ cwd: projectRoot });
+        expect(planned.projectQuery).toBeUndefined();
+        expect(logs.join('\\n')).toContain('runtime-bound project root');
     });
 
     it('binds an acceptance review to the selected workspace before execution', async () => {

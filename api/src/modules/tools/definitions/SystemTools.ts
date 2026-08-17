@@ -9,10 +9,46 @@ import { resolveToolPath as sharedResolveToolPath } from '../utils';
 import { commandRouter } from '../../terminal/command-router';
 import { broadcast, broadcastTerminalLine } from '../../../api/ws';
 import { handleShellCommand } from '../handlers';
+import { prepareArtifactContent } from '../artifact-validation';
 import { executionEngine } from '../../../kernel/ExecutionEngine';
 
 // Background Process Store
 const backgroundProcesses = new Map<string, { pid: number, command: string, cwd: string, startTime: number, process: any }>();
+
+/**
+ * npm installs are external, stateful work. They must be bounded so a native
+ * lifecycle script (sqlite3, sharp, canvas, etc.) cannot hold the entire
+ * engineering pipeline forever. Keep the default long enough for ordinary
+ * installs, allow local tuning, and preserve a hard lower bound so a model
+ * cannot accidentally create a zero-timeout bootstrap.
+ */
+export function npmInstallTimeoutMs(): number {
+    const configured = Number(process.env.JOE_NPM_INSTALL_TIMEOUT_MS);
+    if (!Number.isFinite(configured)) return 120_000;
+    return Math.min(10 * 60_000, Math.max(15_000, Math.floor(configured)));
+}
+
+const NATIVE_LIFECYCLE_PACKAGES = new Set([
+    'sqlite3', 'better-sqlite3', 'sharp', 'canvas', 'bcrypt', 'bcryptjs',
+    'bufferutil', 'utf-8-validate', 'isolated-vm', 'node-sass', 'fsevents',
+]);
+
+function likelyNativeLifecyclePackages(packages: string[]): string[] {
+    return packages
+        .map((pkg) => String(pkg || '').trim().replace(/^@[^/]+\//u, ''))
+        .filter((pkg) => NATIVE_LIFECYCLE_PACKAGES.has(pkg.split('@')[0]));
+}
+
+function npmFailureEvidence(result: any, timeoutMs: number, args: string[], workDir: string, nativePackages: string[]): string {
+    const raw = String(result?.error || result?.output?.error || '').trim();
+    const logs = Array.isArray(result?.logs) ? result.logs.join('\n') : '';
+    const combined = `${raw}\n${logs}`;
+    if (/timed? ?out|timeout|ETIMEDOUT|SIGTERM/i.test(combined)) {
+        const native = nativePackages.length ? ` native=${nativePackages.join(',')};` : '';
+        return `npm_install_timeout:${timeoutMs}ms;${native} cwd=${workDir}; command=npm ${args.join(' ')}; stderr=${raw.slice(0, 600) || 'not captured'}`;
+    }
+    return raw || 'npm_failed';
+}
 
 function isBackgroundProcessAlive(pid: number): boolean {
     if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -76,11 +112,26 @@ export function reconcileNpmManifest(workDir: string): {
     }
 
     let renamedPackage: { from: string; to: string } | undefined;
-    if (typeof manifest.name === 'string' && manifest.name !== manifest.name.toLowerCase()) {
-        const normalized = manifest.name.toLowerCase();
-        if (npmName.test(normalized)) {
-            renamedPackage = { from: manifest.name, to: normalized };
-            manifest.name = normalized;
+    if (typeof manifest.name === 'string') {
+        const originalName = manifest.name.trim();
+        const normalized = originalName.toLowerCase();
+        // Human-facing project labels frequently arrive in package.json as
+        // `TaskFlow AI`. This is deterministic metadata repair, not a package
+        // guess: turn whitespace/separators into a valid local npm slug while
+        // preserving scoped names and refusing opaque invalid identifiers.
+        const generatedSlug = !normalized.startsWith('@')
+            ? normalized
+                .replace(/\s+/gu, '-')
+                .replace(/[^a-z0-9._~-]+/gu, '-')
+                .replace(/-+/gu, '-')
+                .replace(/^[-._]+|[-._]+$/gu, '')
+            : '';
+        const candidate = npmName.test(normalized)
+            ? normalized
+            : (generatedSlug && npmName.test(generatedSlug) ? generatedSlug : originalName);
+        if (candidate !== originalName && npmName.test(candidate)) {
+            renamedPackage = { from: manifest.name, to: candidate };
+            manifest.name = candidate;
         }
     }
     if (typeof manifest.name === 'string' && !npmName.test(manifest.name)) {
@@ -124,6 +175,147 @@ export function reconcileNpmManifest(workDir: string): {
         return { ok: true, changed: false, packageJsonPath, removedDependencies, renamedPackage };
     }
     return { ok: true, changed: true, packageJsonPath, removedDependencies, renamedPackage };
+}
+
+export interface NpmInvalidVersionEvidence {
+    packageName: string;
+    requestedSpec: string;
+}
+
+export interface NpmVersionRecoveryResult {
+    ok: boolean;
+    changed: boolean;
+    packageName?: string;
+    requestedSpec?: string;
+    replacementSpec?: string;
+    packageJsonPath?: string;
+    source: 'manifest' | 'command' | 'none';
+    error?: string;
+}
+
+const VALID_NPM_PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._~-]*\/[a-z0-9][a-z0-9._~-]*|[a-z0-9][a-z0-9._~-]*)$/i;
+const STABLE_NPM_VERSION = /^v?(\d+)\.(\d+)\.(\d+)$/;
+
+/**
+ * Extract only an npm registry version-resolution failure. Peer conflicts,
+ * network failures, and native build failures must keep their own policies.
+ */
+export function extractNpmInvalidVersionEvidence(value: unknown): NpmInvalidVersionEvidence | null {
+    const text = String(value || '');
+    if (!/(?:ETARGET|notarget|No matching version|No match found for version)/i.test(text)) return null;
+
+    const patterns = [
+        /No matching version found for\s+((?:@[^/\s]+\/[^@\s]+|[^@\s]+))@([^\s]+)/i,
+        /['\"]((?:@[^/\s]+\/[^@\s]+|[^@\s]+))@([^'\"\s]+)['\"]\s+is not in this registry/i,
+    ];
+    for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (!match?.[1] || !match[2]) continue;
+        const packageName = match[1].trim();
+        const requestedSpec = match[2].trim().replace(/[.,;:)\]}]+$/u, '');
+        if (VALID_NPM_PACKAGE_NAME.test(packageName) && requestedSpec) {
+            return { packageName, requestedSpec };
+        }
+    }
+    return null;
+}
+
+function stableVersionsFromNpmView(output: unknown): string[] {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(String(output || ''));
+    } catch {
+        return [];
+    }
+    const values: string[] = [];
+    const visit = (value: unknown) => {
+        if (Array.isArray(value)) {
+            value.forEach(visit);
+            return;
+        }
+        if (typeof value === 'string' && STABLE_NPM_VERSION.test(value.trim())) values.push(value.trim().replace(/^v/u, ''));
+    };
+    visit(parsed);
+    return [...new Set(values)];
+}
+
+function versionTuple(value: string): [number, number, number] {
+    const match = value.match(STABLE_NPM_VERSION);
+    return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : [0, 0, 0];
+}
+
+function compareNpmVersions(left: string, right: string): number {
+    const a = versionTuple(left);
+    const b = versionTuple(right);
+    for (let i = 0; i < a.length; i += 1) {
+        if (a[i] !== b[i]) return a[i] - b[i];
+    }
+    return 0;
+}
+
+/**
+ * Pick a concrete published stable version. Prefer the requested major when
+ * one exists, even if the requested range has no match; otherwise use the
+ * highest stable registry version. Pre-release/dev/integration tags are never
+ * selected as a recovery target.
+ */
+export function selectStableNpmVersion(output: unknown, requestedSpec: string): string | null {
+    const stable = stableVersionsFromNpmView(output).sort(compareNpmVersions);
+    if (!stable.length) return null;
+    const requestedMatch = String(requestedSpec || '').match(/(?:^|[~^<>=*\s]*)(\d+)(?:\.(\d+))?(?:\.(\d+))?/u);
+    if (!requestedMatch?.[1]) return stable[stable.length - 1] || null;
+    const requestedMajor = Number(requestedMatch[1]);
+    const requestedFloor: [number, number, number] = [
+        requestedMajor,
+        Number(requestedMatch[2] || 0),
+        Number(requestedMatch[3] || 0),
+    ];
+    const sameMajorAtOrAboveFloor = stable.filter(version => {
+        const tuple = versionTuple(version);
+        if (tuple[0] !== requestedMajor) return false;
+        for (let i = 0; i < requestedFloor.length; i += 1) {
+            if (tuple[i] !== requestedFloor[i]) return tuple[i] > requestedFloor[i];
+        }
+        return true;
+    });
+    // A range with no satisfiable version must not be replaced by an older
+    // release from the same major. Use the newest stable registry evidence.
+    const candidates = sameMajorAtOrAboveFloor.length ? sameMajorAtOrAboveFloor : stable;
+    return candidates[candidates.length - 1] || null;
+}
+
+/**
+ * Update only the dependency that produced the proven registry failure. The
+ * manifest is not rewritten when the package was not declared there; callers
+ * can then repair an explicit command specifier instead.
+ */
+export function repairNpmManifestVersion(workDir: string, evidence: NpmInvalidVersionEvidence, replacementSpec: string): NpmVersionRecoveryResult {
+    const packageJsonPath = path.join(workDir, 'package.json');
+    if (!fs.existsSync(packageJsonPath)) {
+        return { ok: true, changed: false, packageName: evidence.packageName, requestedSpec: evidence.requestedSpec, replacementSpec, packageJsonPath, source: 'none' };
+    }
+    let manifest: any;
+    try {
+        manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    } catch (error: any) {
+        return { ok: false, changed: false, packageName: evidence.packageName, requestedSpec: evidence.requestedSpec, replacementSpec, packageJsonPath, source: 'none', error: `invalid_package_json:${String(error?.message || error)}` };
+    }
+    const sections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+    let changed = false;
+    let source: NpmVersionRecoveryResult['source'] = 'none';
+    for (const section of sections) {
+        const bucket = manifest?.[section];
+        if (!bucket || typeof bucket !== 'object' || Array.isArray(bucket)) continue;
+        if (!Object.prototype.hasOwnProperty.call(bucket, evidence.packageName)) continue;
+        const current = String(bucket[evidence.packageName] || '').trim();
+        if (current !== evidence.requestedSpec) continue;
+        bucket[evidence.packageName] = replacementSpec;
+        changed = true;
+        source = 'manifest';
+        break;
+    }
+    if (changed) fs.writeFileSync(packageJsonPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    return { ok: true, changed, packageName: evidence.packageName, requestedSpec: evidence.requestedSpec, replacementSpec, packageJsonPath, source };
 }
 
 // Helper
@@ -393,6 +585,11 @@ export class WriteFileTool extends BaseTool {
         const rawPath = String(input?.filename || input?.path || '').trim();
         const content = String(input?.content ?? '');
         if (!rawPath) return { ok: false, error: 'filename or path is required', logs: [] };
+        const prepared = prepareArtifactContent(rawPath, content);
+        if (prepared.error) {
+            return { ok: false, error: prepared.error, logs: [...logs, 'artifact was not written because its destination contract failed'] };
+        }
+        const safeContent = prepared.content;
         // Containment is decided BEFORE the directory is created. Creating it
         // first left attacker-chosen directories across the filesystem even when
         // the write itself was correctly refused.
@@ -407,15 +604,15 @@ export class WriteFileTool extends BaseTool {
             return { ok: false, error: `EISDIR: Cannot write file content to a directory path (${rawPath}). Please specify a full filename like '${rawPath}/index.html'.`, logs: [] };
         }
 
-        fs.writeFileSync(full, content);
+        fs.writeFileSync(full, safeContent);
         logs.push(`write=${rawPath}`);
 
-        const lines = content.split('\n');
+        const lines = safeContent.split('\n');
         broadcast({
             type: 'diff',
             data: {
                 path: rawPath,
-                content: content,
+                content: safeContent,
                 additions: lines.length,
                 deletions: 0,
                 lines: lines.map((line, i) => ({ type: 'add', content: line, lineNumber: i + 1 }))
@@ -435,10 +632,10 @@ export class WriteFileTool extends BaseTool {
                 data: {
                     sessionId: context?.sessionId,
                     file: rawPath,
-                    chunk: content.slice(0, 60_000),
+                    chunk: safeContent.slice(0, 60_000),
                     done: true,
                     label: 'written to disk',
-                    bytes: Buffer.byteLength(content),
+                    bytes: Buffer.byteLength(safeContent),
                     at: Date.now(),
                 },
             } as any);
@@ -598,6 +795,64 @@ export class GrepSearchTool extends BaseTool {
     }
 }
 
+async function recoverNpmInvalidVersion(
+    workDir: string,
+    failureText: string,
+    originalArgs: string[],
+    timeoutMs: number,
+): Promise<{ ready: boolean; args: string[]; evidence?: NpmInvalidVersionEvidence; replacementSpec?: string; changedManifest: boolean; changedArgs: boolean; error?: string }> {
+    const evidence = extractNpmInvalidVersionEvidence(failureText);
+    if (!evidence) return { ready: false, args: originalArgs, changedManifest: false, changedArgs: false };
+
+    const probe = await handleShellCommand('npm', ['view', evidence.packageName, 'versions', '--json'], workDir, Math.min(timeoutMs, 60_000), false);
+    const replacementVersion = probe.ok ? selectStableNpmVersion(probe.output, evidence.requestedSpec) : null;
+    if (!replacementVersion) {
+        return {
+            ready: false,
+            args: originalArgs,
+            evidence,
+            changedManifest: false,
+            changedArgs: false,
+            error: `npm_no_stable_published_version:${evidence.packageName}`,
+        };
+    }
+
+    const requestedSpec = evidence.requestedSpec;
+    const operator = /^[~^]/u.test(requestedSpec) ? requestedSpec[0] : '';
+    const replacementSpec = `${operator}${replacementVersion}`;
+    const manifestRepair = repairNpmManifestVersion(workDir, evidence, replacementSpec);
+    if (!manifestRepair.ok) {
+        return {
+            ready: false,
+            args: originalArgs,
+            evidence,
+            replacementSpec,
+            changedManifest: false,
+            changedArgs: false,
+            error: manifestRepair.error,
+        };
+    }
+
+    const failedToken = `${evidence.packageName}@${evidence.requestedSpec}`;
+    const replacementToken = `${evidence.packageName}@${replacementSpec}`;
+    let changedArgs = false;
+    const repairedArgs = originalArgs.map(token => {
+        if (token === failedToken) {
+            changedArgs = true;
+            return replacementToken;
+        }
+        return token;
+    });
+    return {
+        ready: manifestRepair.changed || changedArgs,
+        args: repairedArgs,
+        evidence,
+        replacementSpec,
+        changedManifest: manifestRepair.changed,
+        changedArgs,
+    };
+}
+
 export class NpmManagerTool extends BaseTool {
     name = 'npm_manager';
     description = 'Manage npm dependencies and run scripts.';
@@ -633,7 +888,14 @@ export class NpmManagerTool extends BaseTool {
             const workDir = resolvedWorkDir.path;
             logs.push(`npm.cwd=${workDir}`);
             const installLike = ['install', 'i', 'ci'].includes(cmdParts[0]);
+            const installTimeoutMs = npmInstallTimeoutMs();
+            const nativePackages = installLike ? likelyNativeLifecyclePackages([...pkgs, ...cmdParts.slice(1)]) : [];
             if (installLike) {
+                logs.push(`npm.timeout_ms=${installTimeoutMs}`);
+                if (nativePackages.length) {
+                    logs.push(`npm.native_lifecycle_packages=${nativePackages.join(',')}`);
+                    logs.push('npm.native_lifecycle_policy=bounded_install_with_real_failure_evidence');
+                }
                 const manifest = reconcileNpmManifest(workDir);
                 if (!manifest.ok) {
                     logs.push(`npm.manifest_error=${manifest.error || 'invalid_package_json'}`);
@@ -643,7 +905,25 @@ export class NpmManagerTool extends BaseTool {
                     logs.push(`npm.manifest_reconciled=${(manifest.removedDependencies || []).join(',')}`);
                 }
             }
-            let r = await handleShellCommand('npm', args, workDir, 5 * 60_000, false);
+            let installArgs = args;
+            let r = await handleShellCommand('npm', installArgs, workDir, installLike ? installTimeoutMs : 5 * 60_000, false);
+            if (!r.ok && installLike) {
+                const failureText = `${r.error || ''}\n${String((r as any).output || '')}\n${(r.logs || []).join('\n')}`;
+                const recovery = await recoverNpmInvalidVersion(workDir, failureText, installArgs, installTimeoutMs);
+                if (recovery.evidence) {
+                    logs.push(`npm.etarget_detected=${recovery.evidence.packageName}@${recovery.evidence.requestedSpec}`);
+                    if (recovery.replacementSpec) logs.push(`npm.etarget_replacement=${recovery.evidence.packageName}@${recovery.replacementSpec}`);
+                    if (recovery.changedManifest) logs.push(`npm.etarget_manifest_repaired=${recovery.evidence.packageName}`);
+                    if (recovery.changedArgs) logs.push(`npm.etarget_command_repaired=${recovery.evidence.packageName}`);
+                    if (recovery.ready) {
+                        installArgs = recovery.args;
+                        r = await handleShellCommand('npm', installArgs, workDir, installTimeoutMs, false);
+                        logs.push('npm.etarget_retry=registry-verified-version');
+                    } else if (recovery.error) {
+                        logs.push(`npm.etarget_recovery_blocked=${recovery.error}`);
+                    }
+                }
+            }
             /**
              * --legacy-peer-deps is a FALLBACK, not a default.
              *
@@ -657,18 +937,25 @@ export class NpmManagerTool extends BaseTool {
              * is retried with the flag and says so.
              */
             const installCmd = cmdParts[0] === 'install' || cmdParts[0] === 'i' || cmdParts[0] === 'ci';
-            if (!r.ok && installCmd && !args.includes('--legacy-peer-deps')
+            if (!r.ok && installCmd && !installArgs.includes('--legacy-peer-deps')
                 && /ERESOLVE/i.test(`${r.error || ''}\n${(r.logs || []).join('\n')}\n${String((r as any).output || '')}`)) {
                 logs.push('npm.retry=--legacy-peer-deps (ERESOLVE on the strict install)');
-                r = await handleShellCommand('npm', [...args, '--legacy-peer-deps'], workDir, 5 * 60_000, false);
+                r = await handleShellCommand('npm', [...installArgs, '--legacy-peer-deps'], workDir, installTimeoutMs, false);
             }
-            if (!r.ok) return { ok: false, error: r.error || 'npm_failed', logs: [...logs, ...(r.logs || [])] };
+            if (!r.ok) {
+                const failure = installLike
+                    ? npmFailureEvidence(r, installTimeoutMs, installArgs, workDir, nativePackages)
+                    : (r.error || 'npm_failed');
+                return { ok: false, error: failure, logs: [...logs, ...(r.logs || [])] };
+            }
 
             if ((cmdParts[0] === 'install' || cmdParts[0] === 'i') && pkgs.length > 0) {
-                const typesToInstall = pkgs.filter(p => !p.startsWith('@types/')).map(p => `@types/${p.split('@')[0]}`);
+                const typesToInstall = pkgs
+                    .filter(p => !p.startsWith('@') && !p.startsWith('@types/'))
+                    .map(p => `@types/${p.split('@')[0]}`);
                 if (typesToInstall.length) {
                     try {
-                        const r2 = await handleShellCommand('npm', ['install', '-D', ...typesToInstall], workDir, 5 * 60_000, false);
+                        const r2 = await handleShellCommand('npm', ['install', '-D', ...typesToInstall], workDir, installTimeoutMs, false);
                         if (r2.ok) logs.push(`npm.auto_types=${typesToInstall.join(' ')}`);
                     } catch { }
                 }

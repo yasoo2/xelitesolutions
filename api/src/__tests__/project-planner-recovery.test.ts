@@ -10,6 +10,119 @@ import { PROVIDER_FAILURE_PREFIX } from '../core/llm/intelligent-router';
 describe('project planner structured recovery', () => {
     beforeEach(() => mockCallLLM.mockReset());
 
+    it('injects authoritative selected-project paths into compact live-repair prompts', () => {
+        const prompt = (new ProjectPlannerTool() as any).createCompactRecoveryPlanningPrompt(
+            'Repair the existing application after a launchability failure.',
+            'missing_runnable_contract: package.json or the existing entrypoint must be repaired before project_run',
+            undefined,
+            true,
+            false,
+            [],
+            {
+                mode: 'existing_workspace',
+                workspaceRoot: '/tmp/joe-workspace',
+                selectedProject: {
+                    root: '/tmp/joe-workspace',
+                    projectKinds: ['node'],
+                    manifests: [{ path: '/tmp/joe-workspace/package.json' }],
+                    likelyEntrypoints: ['/tmp/joe-workspace/src/server.js'],
+                    testFiles: ['/tmp/joe-workspace/tests/server.test.js'],
+                    candidateChecks: [{ command: 'node --check src/server.js' }],
+                },
+                referenceProjects: [],
+            },
+        );
+
+        expect(prompt).toMatch(/AUTHORITATIVE DISCOVERY EVIDENCE/i);
+        expect(prompt).toMatch(/package\.json/i);
+        expect(prompt).toContain('src/server.js');
+        expect(prompt).toContain('tests/server.test.js');
+        expect(prompt).not.toMatch(/api-taskflow-ai/i);
+    });
+
+    it('propagates selected-project evidence into contract recovery', async () => {
+        mockCallLLM
+            .mockResolvedValueOnce(JSON.stringify({
+                projectName: 'Existing application',
+                projectVibe: 'Contract recovery',
+                totalPhases: 1,
+                estimatedDuration: '5 minutes',
+                dependencies: {},
+                phases: [{
+                    phaseNumber: 1,
+                    name: 'Implement the application',
+                    description: 'Implement the requested application.',
+                    tasks: [{
+                        task: 'Create the runnable project foundation',
+                        tool: 'scaffold_project',
+                        args: {},
+                        priority: 'high',
+                        realisticMinutes: 1,
+                    }],
+                    deliverables: ['package.json', 'src/server.js'],
+                    estimatedTime: '5 minutes',
+                    requirementsCovered: ['R1'],
+                }],
+            }))
+            .mockResolvedValueOnce(JSON.stringify({
+                projectName: 'Existing application',
+                projectVibe: 'Evidence-backed runnable repair',
+                totalPhases: 1,
+                estimatedDuration: '5 minutes',
+                dependencies: {},
+                phases: [{
+                    phaseNumber: 1,
+                    name: 'Repair the existing runnable contract',
+                    description: 'Repair the existing manifest and entrypoint using discovered paths.',
+                    tasks: [{
+                        task: 'Write the existing package manifest',
+                        tool: 'write_file',
+                        args: { path: 'package.json', content: '{"scripts":{"start":"node src/server.js"}}' },
+                        priority: 'high',
+                        realisticMinutes: 1,
+                    }],
+                    verificationTask: {
+                        task: 'Verify the manifest',
+                        tool: 'read_file',
+                        args: { path: 'package.json' },
+                    },
+                    deliverables: ['package.json'],
+                    estimatedTime: '5 minutes',
+                    requirementsCovered: ['R1'],
+                }],
+            }));
+
+        const result: any = await new ProjectPlannerTool().execute({
+            projectDescription: 'Implement and repair the existing application, then verify it locally.',
+            evidence: {
+                mode: 'existing_workspace',
+                workspaceRoot: '/tmp/joe-workspace',
+                selectedProject: {
+                    root: '/tmp/joe-workspace',
+                    projectKinds: ['node'],
+                    manifests: [{ path: '/tmp/joe-workspace/package.json' }],
+                    likelyEntrypoints: ['/tmp/joe-workspace/src/server.js'],
+                    testFiles: ['/tmp/joe-workspace/tests/server.test.js'],
+                    candidateChecks: [{ command: 'node --check src/server.js' }],
+                },
+                referenceProjects: [],
+            },
+        }, {
+            repairMode: true,
+            engineeringPipeline: true,
+            requireRunnableContract: true,
+        });
+
+        expect(mockCallLLM).toHaveBeenCalledTimes(2);
+        expect(mockCallLLM.mock.calls[1][0]).toMatch(/AUTHORITATIVE DISCOVERY EVIDENCE/i);
+        expect(mockCallLLM.mock.calls[1][0]).toMatch(/package\.json/i);
+        expect(mockCallLLM.mock.calls[1][0]).toContain('src/server.js');
+        expect(mockCallLLM.mock.calls[1][0]).not.toMatch(/api-taskflow-ai/i);
+        expect(result.ok).toBe(true);
+        expect(result.output.fallback).not.toBe(true);
+        expect(result.output.phases).toHaveLength(1);
+    });
+
     it('retries a valid-but-empty JSON response before stopping honestly', async () => {
         mockCallLLM
             .mockResolvedValueOnce(JSON.stringify({ projectName: 'Empty', phases: [] }))
@@ -93,6 +206,22 @@ describe('project planner structured recovery', () => {
         expect(result.ok).toBe(true);
         expect(result.output.phases).toHaveLength(1);
         expect(result.output.scopeAssessment).toMatchObject({ ok: true, phases: 1, coveredTargets: 1 });
+    });
+
+    it('keeps quality-contract recovery ahead of generic scope recovery', () => {
+        const prompt = (new ProjectPlannerTool() as any).createCompactRecoveryPlanningPrompt(
+            'Repair the existing web project after a project quality contract failure.',
+            'project quality contract failed — package.json has no truthful test script although the request requires it',
+            undefined,
+            true,
+            true,
+            ['a truthful local test script in the existing package manifest'],
+        );
+
+        expect(prompt).toMatch(/BOUNDED QUALITY-CONTRACT REPAIR/i);
+        expect(prompt).toMatch(/package\.json/i);
+        expect(prompt).toMatch(/deterministic test/i);
+        expect(prompt).not.toMatch(/BOUNDED SCOPE-REPAIR/i);
     });
 
     it('retries an under-scoped implementation plan with the requirement register', async () => {
@@ -516,6 +645,212 @@ Build the complete system with locally verifiable implementation artifacts.
         expect(result.output.fallback).toBe(true);
         expect(result.output.blocker.code).toBe('no_implementation_artifacts_after_contract_recovery');
         expect(result.logs.join('\\n')).toMatch(/contract recovery failed|no non-document implementation artifact/i);
+    });
+
+    it('preserves the greenfield runnable-contract gate during scope recovery', async () => {
+        const specification = [
+            '# Identity and Access',
+            '# Workspace Data Model',
+            '# External Integration Boundary',
+            '# Background Processing',
+            '# User Interface Flows',
+            '# Local Verification Strategy',
+            '',
+            'Build a complete Node.js task application with locally verifiable implementation artifacts.',
+        ].join('\n');
+        const runnableSeed = {
+            projectName: 'TaskFlow AI',
+            projectVibe: 'Evidence-backed Node.js implementation',
+            totalPhases: 1,
+            estimatedDuration: '5 minutes',
+            dependencies: {},
+            phases: [{
+                phaseNumber: 1,
+                name: 'Runnable foundation',
+                description: 'Create the manifest and application entrypoint before implementation.',
+                tasks: [
+                    { task: 'Create the runnable manifest', tool: 'ai_write_file', args: { path: 'package.json', description: 'Create a Node.js manifest with a local start script.' }, priority: 'high', realisticMinutes: 1 },
+                    { task: 'Create the application entrypoint', tool: 'ai_write_file', args: { path: 'src/index.ts', description: 'Create the HTTP application entrypoint.' }, priority: 'high', realisticMinutes: 1 },
+                ],
+                verificationTask: { task: 'Start the project', tool: 'project_run', args: {} },
+                deliverables: ['package.json', 'src/index.ts'],
+                estimatedTime: '5 minutes',
+                requirementsCovered: ['Identity and Access'],
+            }],
+        };
+        const scopeRecoveryWithoutRunnableContract = {
+            projectName: 'TaskFlow AI',
+            projectVibe: 'Evidence-backed Node.js implementation',
+            totalPhases: 1,
+            estimatedDuration: '5 minutes',
+            dependencies: {},
+            phases: [{
+                phaseNumber: 1,
+                name: 'Complete capability slice',
+                description: 'Implement every requirement area in source code.',
+                tasks: [{
+                    task: 'Implement the complete capability slice',
+                    tool: 'ai_write_file',
+                    args: { path: 'src/capabilities.ts', description: 'Implement the complete task application capability slice.' },
+                    priority: 'high',
+                    realisticMinutes: 1,
+                }],
+                verificationTask: { task: 'Read the capability slice', tool: 'read_file', args: { path: 'src/capabilities.ts' } },
+                deliverables: ['src/capabilities.ts'],
+                estimatedTime: '5 minutes',
+                requirementsCovered: [
+                    'Identity and Access', 'Workspace Data Model', 'External Integration Boundary',
+                    'Background Processing', 'User Interface Flows', 'Local Verification Strategy',
+                ],
+            }],
+        };
+        mockCallLLM
+            .mockResolvedValueOnce(JSON.stringify(runnableSeed))
+            .mockResolvedValueOnce(JSON.stringify(scopeRecoveryWithoutRunnableContract))
+            .mockResolvedValueOnce(JSON.stringify(scopeRecoveryWithoutRunnableContract));
+
+        const result: any = await new ProjectPlannerTool().execute({
+            projectDescription: specification,
+            evidence: {
+                mode: 'greenfield',
+                workspaceRoot: '/tmp/joe-scope-workspace',
+                selectedProject: undefined,
+                referenceProjects: [{
+                    root: '/tmp/joe-scope-workspace/reference-app',
+                    projectKinds: ['node'],
+                    manifests: [{ path: '/tmp/joe-scope-workspace/reference-app/package.json', kind: 'package.json' }],
+                    git: { isRepository: true, branch: 'main' },
+                    likelyEntrypoints: ['/tmp/joe-scope-workspace/reference-app/src/index.ts'],
+                    candidateChecks: [{ kind: 'test', command: 'npm test', source: '/tmp/joe-scope-workspace/reference-app/package.json' }],
+                }],
+            },
+        }, {
+            engineeringPipeline: true,
+            requireRunnableContract: true,
+        });
+
+        expect(mockCallLLM).toHaveBeenCalledTimes(3);
+        expect(result.ok).toBe(false);
+        expect(result.output.fallback).toBe(true);
+        expect(result.logs.join('\\n')).toMatch(/scope recovery attempt 1 failed/i);
+        expect(result.logs.join('\\n')).toMatch(/package\.json|entrypoint|قابلاً للتشغيل/i);
+    });
+
+    it('rejects a browser-facing plan that has no concrete frontend artifact', async () => {
+        const specification = [
+            '# Identity and Access',
+            '# Workspace Data Model',
+            '# External Integration Boundary',
+            '# Background Processing',
+            '# Browser User Interface',
+            '# Local Verification Strategy',
+            '',
+            'Build a browser-based web application with locally verifiable implementation artifacts.',
+        ].join('\n');
+        const backendOnlyPlan = {
+            projectName: 'Backend-only web plan',
+            projectVibe: 'Evidence-backed implementation',
+            totalPhases: 3,
+            estimatedDuration: '15 minutes',
+            dependencies: {},
+            phases: [
+                { phaseNumber: 1, name: 'Identity and data', description: 'Implement identity and workspace data.', tasks: [{ task: 'Write identity service', tool: 'write_file', args: { path: 'src/auth.js', content: 'module.exports = {}; ' }, priority: 'high', realisticMinutes: 1 }], verificationTask: 'Verify identity service.', deliverables: ['src/auth.js'], estimatedTime: '5 minutes', requirementsCovered: ['Identity and Access', 'Workspace Data Model'] },
+                { phaseNumber: 2, name: 'Services and jobs', description: 'Implement integrations and background jobs.', tasks: [{ task: 'Write service layer', tool: 'write_file', args: { path: 'src/services.js', content: 'module.exports = {}; ' }, priority: 'high', realisticMinutes: 1 }], verificationTask: 'Verify service layer.', deliverables: ['src/services.js'], estimatedTime: '5 minutes', requirementsCovered: ['External Integration Boundary', 'Background Processing'] },
+                { phaseNumber: 3, name: 'Runtime verification', description: 'Implement the server runtime and verification.', tasks: [{ task: 'Write server entrypoint', tool: 'write_file', args: { path: 'src/server.js', content: 'module.exports = {}; ' }, priority: 'high', realisticMinutes: 1 }], verificationTask: 'Verify the server runtime.', deliverables: ['src/server.js'], estimatedTime: '5 minutes', requirementsCovered: ['Browser User Interface', 'Local Verification Strategy'] },
+            ],
+        };
+        mockCallLLM
+            .mockResolvedValueOnce(JSON.stringify(backendOnlyPlan))
+            .mockResolvedValueOnce(JSON.stringify(backendOnlyPlan))
+            .mockResolvedValueOnce(JSON.stringify(backendOnlyPlan));
+
+        const result: any = await new ProjectPlannerTool().execute({ projectDescription: specification });
+
+        expect(mockCallLLM).toHaveBeenCalledTimes(3);
+        expect(result.ok).toBe(false);
+        expect(result.output.fallback).toBe(true);
+        expect(result.output.blocker.code).toBe('plan_scope_insufficient');
+        expect(result.output.scopeAssessment).toMatchObject({ browserContractRequired: true, browserAuditableArtifact: false });
+        expect(result.output.scopeAssessment.missingTargetNames).toContain('browser-auditable frontend artifact');
+        expect(result.logs.join('\\n')).toMatch(/frontend artifact|browser-facing/i);
+    });
+
+    it('accepts a browser-facing plan with a concrete frontend artifact path', async () => {
+        const specification = [
+            '# Identity and Access',
+            '# Workspace Data Model',
+            '# External Integration Boundary',
+            '# Background Processing',
+            '# Browser User Interface',
+            '# Local Verification Strategy',
+            '',
+            'Build a browser-based web application with locally verifiable implementation artifacts.',
+        ].join('\n');
+        const plan = {
+            projectName: 'Auditable web plan',
+            projectVibe: 'Evidence-backed implementation',
+            totalPhases: 3,
+            estimatedDuration: '15 minutes',
+            dependencies: {},
+            phases: [
+                { phaseNumber: 1, name: 'Identity and data', description: 'Implement identity and workspace data.', tasks: [{ task: 'Write identity service', tool: 'write_file', args: { path: 'src/auth.js', content: 'module.exports = {}; ' }, priority: 'high', realisticMinutes: 1 }], verificationTask: 'Verify identity service.', deliverables: ['src/auth.js'], estimatedTime: '5 minutes', requirementsCovered: ['Identity and Access', 'Workspace Data Model'] },
+                { phaseNumber: 2, name: 'Services and jobs', description: 'Implement integrations and background jobs.', tasks: [{ task: 'Write service layer', tool: 'write_file', args: { path: 'src/services.js', content: 'module.exports = {}; ' }, priority: 'high', realisticMinutes: 1 }], verificationTask: 'Verify service layer.', deliverables: ['src/services.js'], estimatedTime: '5 minutes', requirementsCovered: ['External Integration Boundary', 'Background Processing'] },
+                { phaseNumber: 3, name: 'Browser UI and verification', description: 'Implement the browser interface and local verification.', tasks: [{ task: 'Write the frontend entrypoint', tool: 'write_file', args: { path: 'src/App.tsx', content: 'export default function App() { return null; }' }, priority: 'high', realisticMinutes: 1 }], verificationTask: 'Verify the browser UI.', deliverables: ['src/App.tsx'], estimatedTime: '5 minutes', requirementsCovered: ['Browser User Interface', 'Local Verification Strategy'] },
+            ],
+        };
+        mockCallLLM.mockResolvedValueOnce(JSON.stringify(plan));
+
+        const result: any = await new ProjectPlannerTool().execute({ projectDescription: specification });
+
+        expect(mockCallLLM).toHaveBeenCalledTimes(1);
+        expect(result.ok).toBe(true);
+        expect(result.output.scopeAssessment).toMatchObject({ browserContractRequired: true, browserAuditableArtifact: true, ok: true });
+    });
+
+    it('rejects a runtime-import repair plan that omits an evidenced import edge and accepts explicit recovery coverage', async () => {
+        const failureEvidence = 'Repair the current project after failure: local runtime imports missing (server/index.js -> ./routes/authRoutes)';
+        const incompletePlan = {
+            projectName: 'Runtime repair',
+            projectVibe: 'Bounded repair',
+            totalPhases: 1,
+            estimatedDuration: '5 minutes',
+            dependencies: {},
+            phases: [{
+                phaseNumber: 1,
+                name: 'Repair manifest',
+                description: 'Update the existing package manifest and verify launchability.',
+                tasks: [{ task: 'Repair package manifest', tool: 'ai_write_file', args: { path: 'package.json', description: 'Update only the existing start command.' }, priority: 'high', realisticMinutes: 1 }],
+                verificationTask: 'Run the existing build and one real readiness check.',
+                deliverables: ['package.json'],
+                estimatedTime: '5 minutes',
+                requirementsCovered: ['R1'],
+            }],
+        };
+        const coveredPlan = {
+            ...incompletePlan,
+            phases: [{
+                ...incompletePlan.phases[0],
+                name: 'Repair exact import edge',
+                description: 'Repair the evidenced local runtime import edge in the existing server.',
+                tasks: [{ task: 'Repair the exact local import', tool: 'ai_write_file', args: { path: 'server/index.js', description: 'Repair the exact edge server/index.js -> ./routes/authRoutes after inspecting the existing routes/auth.js file; preserve the real exported contract.' }, priority: 'high', realisticMinutes: 1 }],
+                deliverables: ['server/index.js'],
+            }],
+        };
+        mockCallLLM
+            .mockResolvedValueOnce(JSON.stringify(incompletePlan))
+            .mockResolvedValueOnce(JSON.stringify(coveredPlan));
+
+        const result: any = await new ProjectPlannerTool().execute({ projectDescription: failureEvidence }, {
+            repairMode: true,
+            engineeringPipeline: true,
+            requireRunnableContract: true,
+        });
+
+        expect(mockCallLLM).toHaveBeenCalledTimes(2);
+        expect(mockCallLLM.mock.calls[1][0]).toMatch(/MISSING LOCAL RUNTIME IMPORT LEDGER/i);
+        expect(mockCallLLM.mock.calls[1][0]).toMatch(/server\/index\.js.*routes\/authRoutes/i);
+        expect(result.ok).toBe(true);
+        expect(result.output.scopeAssessment).toMatchObject({ ok: true, coveredTargets: 1, missingTargetNames: [] });
     });
 
     it('keeps the honest blocker when both the initial and recovery plans are unusable', async () => {

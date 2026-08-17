@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { DbSchemaMigratorTool } from '../modules/tools/definitions/DatabaseEnterpriseTools';
+import { workspaceService } from '../modules/services/WorkspaceService';
 
 describe('DbSchemaMigratorTool SQLite SQL migrations', () => {
     const root = path.resolve(process.cwd(), '../data/builds/sqlite-migrator-regression');
@@ -18,6 +19,25 @@ describe('DbSchemaMigratorTool SQLite SQL migrations', () => {
 
     afterEach(() => {
         fs.rmSync(root, { recursive: true, force: true });
+        workspaceService.resetToSystem();
+    });
+
+    it('discovers the only existing schema.sql when a live plan omits schemaPath', async () => {
+        const workspaceRoot = path.join(root, 'workspace');
+        const discoveredSchema = path.join(workspaceRoot, 'schema.sql');
+        fs.mkdirSync(workspaceRoot, { recursive: true });
+        fs.writeFileSync(discoveredSchema, 'CREATE TABLE IF NOT EXISTS discovered (id INTEGER PRIMARY KEY);');
+        await workspaceService.setActiveRoot(workspaceRoot);
+
+        const result = await new DbSchemaMigratorTool().execute({
+            engine: 'sqlite',
+            action: 'migrate',
+            databasePath: path.join(workspaceRoot, 'discovered.db'),
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.output.schemaPath).toBe(discoveredSchema);
+        expect(result.output.databasePath).toBe(path.join(workspaceRoot, 'discovered.db'));
     });
 
     it('routes a concrete .sql migration away from Prisma and applies it with SQLite', async () => {

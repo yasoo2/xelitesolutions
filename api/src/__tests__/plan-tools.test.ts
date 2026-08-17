@@ -204,6 +204,37 @@ describe('greenfield runnable contract is explicit before live-run', () => {
             },
         ], 'nexus', { mode: 'greenfield', requireRunnableContract: true, repairMode: true });
         expect(result.blocker).toBeUndefined();
+        expect(result.phases[0].tasks.map((task: any) => task.tool)).toContain('file_edit');
+    });
+
+    it('allows a bounded repair of an evidenced conventional server entrypoint', () => {
+        const result = sanitisePlanPhases([
+            {
+                phaseNumber: 1,
+                name: 'Repair entrypoint contract',
+                tasks: [
+                    { task: 'Patch the existing server entrypoint reference', tool: 'file_edit', args: { filename: 'server/index.js', find: "require('./server.js')", replace: "require('./index.js')" } },
+                ],
+                verificationTask: { task: 'Start the project', tool: 'project_run', args: {} },
+            },
+        ], 'nexus', { mode: 'existing', requireRunnableContract: true, repairMode: true });
+        expect(result.blocker).toBeUndefined();
+        expect(result.phases[0].tasks.map((task: any) => task.tool)).toContain('file_edit');
+    });
+
+    it('does not let bounded repair edit an arbitrary unproven source file', () => {
+        const result = sanitisePlanPhases([
+            {
+                phaseNumber: 1,
+                name: 'Repair source',
+                tasks: [
+                    { task: 'Patch an unverified route', tool: 'file_edit', args: { filename: 'server/routes/auth.js', find: 'old', replace: 'new' } },
+                ],
+                verificationTask: { task: 'Start the project', tool: 'project_run', args: {} },
+            },
+        ], 'nexus', { mode: 'existing', requireRunnableContract: true, repairMode: true });
+        expect(result.phases[0].tasks.map((task: any) => task.tool)).not.toContain('file_edit');
+        expect(result.notes.join('\\n')).toMatch(/server\/routes\/auth\.js/);
     });
 });
 
@@ -717,6 +748,21 @@ describe('portable stack policy for greenfield plans', () => {
         });
         expect(result.blocker?.code).not.toBe('unportable_native_dependency');
         expect(result.phases[0].tasks.some((task: any) => task.tool === 'npm_manager')).toBe(true);
+    });
+
+    it('blocks a native install hidden inside shell_execute and points to npm_manager', () => {
+        const result = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Dependencies',
+            tasks: [{
+                task: 'Install express and sqlite3',
+                tool: 'shell_execute',
+                args: { command: 'npm install express sqlite3' },
+            }],
+        }], 'existing-console', { disallowUnportableNativeDependencies: false });
+        expect(result.blocker).toMatchObject({ code: 'native_dependency_requires_npm_manager' });
+        expect(result.blocker?.remedy).toMatch(/npm_manager/);
+        expect(result.executableTasks).toBe(0);
     });
 });
 
