@@ -15,6 +15,7 @@ import { apiColumnsForRequest, apiPrimaryColumnsForApp, CATALOGUE_COLUMNS } from
 import { blueprintFor, detectAppKind } from '../core/design/app-blueprints';
 import { designDataModel } from '../core/design/schema-designer';
 import { fileFinanceAppJsx } from '../modules/tools/definitions/react-app-templates';
+import { transform } from 'esbuild';
 
 describe('the schema follows the app, not a fixed guess', () => {
     it('a clinic booking system stores date, time and status', () => {
@@ -34,9 +35,9 @@ describe('the schema follows the app, not a fixed guess', () => {
         const model = await designDataModel(`Build a complete personal finance app called MoneyTrack. Track income and expenses, create budgets by category, show dashboard charts and monthly totals.`);
         expect(model.map(entity => entity.key)).toEqual(['incomes', 'expenses', 'budgets']);
         expect(model.find(entity => entity.key === 'incomes')!.fields.map(field => field.key))
-            .toEqual(expect.arrayContaining(['source', 'amount', 'category', 'date']));
+            .toEqual(expect.arrayContaining(['source', 'amount', 'category', 'date', 'description']));
         expect(model.find(entity => entity.key === 'expenses')!.fields.map(field => field.key))
-            .toEqual(expect.arrayContaining(['title', 'amount', 'category', 'date']));
+            .toEqual(expect.arrayContaining(['description', 'amount', 'category', 'date']));
         expect(model.find(entity => entity.key === 'budgets')!.fields.map(field => field.key))
             .toEqual(expect.arrayContaining(['category', 'limit_amount', 'period']));
         expect(model.find(entity => entity.key === 'incomes')!.fields.find(field => field.key === 'amount')!.type).toBe('REAL');
@@ -48,7 +49,7 @@ describe('the schema follows the app, not a fixed guess', () => {
         const request = 'Build a complete personal finance app called MoneyTrack. Track income and expenses, create budgets by category, show dashboard charts and monthly totals.';
         const model = await designDataModel(request);
         const columns = apiPrimaryColumnsForApp('finance', 'incomes', model);
-        expect(columns.map(column => column.key)).toEqual(['source', 'amount', 'category', 'date', 'note']);
+        expect(columns.map(column => column.key)).toEqual(['source', 'amount', 'category', 'date', 'description']);
         expect(columns.find(column => column.key === 'amount')!.type).toBe('REAL');
         expect(columns.map(column => column.key)).not.toEqual(expect.arrayContaining(['name', 'details', 'price']));
         expect(apiPrimaryColumnsForApp('finance', 'missing', model)).toEqual([]);
@@ -59,6 +60,16 @@ describe('the schema follows the app, not a fixed guess', () => {
         expect(jsx).toContain("<h2>{editing ? 'Edit entry' : 'New entry'}</h2>");
         expect(jsx).not.toContain("'New entry'</h2>");
         expect(jsx).not.toContain("</h2>}");
+        expect(jsx).toContain('Date filtering');
+        expect(jsx).toContain('Spending by category');
+        expect(jsx).toContain('Budget progress');
+        expect(jsx).toContain('Category management');
+        expect(jsx).toContain("input('description'");
+    });
+
+    it('the generated FinanceApp is valid JSX', async () => {
+        const result = await transform(fileFinanceAppJsx(false), { loader: 'jsx', jsx: 'automatic', format: 'esm' });
+        expect(result.code).toContain('function FinanceApp');
     });
 
     it('and an online store stores price, image, category and stock', () => {

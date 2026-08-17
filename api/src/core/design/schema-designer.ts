@@ -168,11 +168,11 @@ function financeContract(requestRaw: string): ModelEntity[] | null {
     return [
         {
             key: 'incomes', ar: 'الدخل', en: 'Incomes',
-            fields: [T('source', 'مصدر الدخل', 'Source', true), N('amount', 'المبلغ', 'Amount', true), T('category', 'الفئة', 'Category'), T('date', 'التاريخ', 'Date', true), T('note', 'ملاحظة', 'Note')],
+            fields: [T('source', 'مصدر الدخل', 'Source', true), N('amount', 'المبلغ', 'Amount', true), T('category', 'الفئة', 'Category'), T('date', 'التاريخ', 'Date', true), T('description', 'الوصف', 'Description')],
         },
         {
             key: 'expenses', ar: 'المصاريف', en: 'Expenses',
-            fields: [T('title', 'البند', 'Item', true), N('amount', 'المبلغ', 'Amount', true), T('category', 'الفئة', 'Category'), T('date', 'التاريخ', 'Date', true), T('note', 'ملاحظة', 'Note')],
+            fields: [T('description', 'الوصف', 'Description', true), N('amount', 'المبلغ', 'Amount', true), T('category', 'الفئة', 'Category'), T('date', 'التاريخ', 'Date', true)],
         },
         {
             key: 'budgets', ar: 'الميزانيات', en: 'Budgets',
