@@ -2647,6 +2647,15 @@ export class ApiProjectTool extends BaseTool {
         }
 
         const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
+        // Keep the session's React scaffold ownership separate from the API
+        // artifact.  The API is often built after scaffold_project; replacing
+        // the single registry entry used to erase the scaffold directory and
+        // force ReactProjectTool into a sibling (react-<brand>), which made
+        // build, run, and QA inspect different projects.
+        const previousProject = projects[sessionKey];
+        const inheritedScaffoldDir = previousProject?.type === 'scaffold' && typeof previousProject?.dir === 'string'
+            ? previousProject.dir
+            : typeof previousProject?.scaffoldDir === 'string' ? previousProject.scaffoldDir : '';
         // resource + port ride along so a LATER react build in this session
         // can link itself to this API (the full-stack chain).
         // The model rides along: the interface builder generates one admin screen
@@ -2670,6 +2679,7 @@ export class ApiProjectTool extends BaseTool {
         projects[sessionKey] = {
             dir: proj, type: 'api', brand, resource, port: 4100, updatedAt: Date.now(),
             lastRequest: request.slice(0, 80),
+            ...(inheritedScaffoldDir ? { scaffoldDir: inheritedScaffoldDir } : {}),
             ...(appKind ? { appKind } : {}),
             ...(handedModel.length ? { model: handedModel } : {}),
         };

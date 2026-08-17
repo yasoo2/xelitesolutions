@@ -10,6 +10,26 @@ import { agentSearchUrl } from '../../browser/challenge';
 
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 
+export function localLivePreviewFor(sessionId: string): string {
+    const key = String(sessionId || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const record = (global as any).joeProjects?.[key]?.live;
+    const raw = String(record?.url || '').trim();
+    if (!raw) return '';
+    try {
+        const u = new URL(raw);
+        if (!['localhost', '127.0.0.1', '::1'].includes(u.hostname)) return '';
+        return raw;
+    } catch {
+        return '';
+    }
+}
+
+export function asksToOpenTheActiveApp(instructionText: string): boolean {
+    const text = String(instructionText || '').toLowerCase();
+    if (/(google|جوجل|غوغل|yahoo|ياهو|wikipedia|ويكيبيديا|search|بحث)/i.test(text)) return false;
+    return /(open|launch|visit|load|test|verify|qa|preview|inspect|run).*(app|application|project|site|system|page)|افتح|شغّل|شغل|اختبر|تحقق|فحص|تدقيق|المشروع|التطبيق|المعاينة|النظام/i.test(text);
+}
+
 export class BrowserRunTool extends BaseTool {
     name = 'browser_run';
     description = 'Execute browser actions, or compile instructionText into a multi-step plan.';
@@ -188,6 +208,11 @@ export class BrowserRunTool extends BaseTool {
         });
 
         if (actions.length === 0 && instructionText) {
+            const activePreview = asksToOpenTheActiveApp(instructionText) ? localLivePreviewFor(sid) : '';
+            if (activePreview) {
+                actions = [{ type: 'goto', url: activePreview }, { type: 'wait', ms: 3000 }];
+                logs.push(`browser_run: resolved active live preview ${activePreview}`);
+            }
             const tLower = instructionText.toLowerCase();
             let targetUrl = '';
             const urlMatch = instructionText.match(/https?:\/\/[^\s]+/i);
@@ -206,7 +231,7 @@ export class BrowserRunTool extends BaseTool {
             } else {
                 targetUrl = agentSearchUrl(instructionText);
             }
-            actions = [{ type: 'goto', url: targetUrl }, { type: 'wait', ms: 3000 }];
+            if (actions.length === 0) actions = [{ type: 'goto', url: targetUrl }, { type: 'wait', ms: 3000 }];
         }
 
         if (!instructionText && actions.length === 0) return { ok: false, error: 'actions_or_instruction_required', logs };

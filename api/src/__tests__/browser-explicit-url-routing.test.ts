@@ -1,4 +1,5 @@
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { asksToOpenTheActiveApp, localLivePreviewFor } from '../modules/tools/definitions/BrowserRunTool';
 
 const plan = (goal: string) =>
     PlanningEngine.generatePlan({
@@ -20,5 +21,28 @@ describe('explicit URL browser routing', () => {
 
         expect(p.steps[0].tool).toBe('browser_readability');
         expect(p.steps[0].input).toMatchObject({ url: 'https://example.com' });
+    });
+});
+
+describe('active live preview browser routing', () => {
+    test('resolves an application QA request to the session live preview', () => {
+        const sessionId = `browser-route-${Date.now()}`;
+        const before = { ...(((global as any).joeProjects || {}) as Record<string, any>) };
+        const key = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+        (global as any).joeProjects = {
+            ...before,
+            [key]: { dir: process.cwd(), live: { url: 'http://localhost:4311/', port: 4311, pid: process.pid } },
+        };
+        try {
+            expect(asksToOpenTheActiveApp('Open the application in a real browser and verify that it loads correctly.')).toBe(true);
+            expect(localLivePreviewFor(sessionId)).toBe('http://localhost:4311/');
+        } finally {
+            (global as any).joeProjects = before;
+        }
+    });
+
+    test('does not hijack explicit search intent even when a live app exists', () => {
+        expect(asksToOpenTheActiveApp('Search Google for the latest browser documentation.')).toBe(false);
+        expect(asksToOpenTheActiveApp('افتح جوجل وابحث عن Vite')).toBe(false);
     });
 });

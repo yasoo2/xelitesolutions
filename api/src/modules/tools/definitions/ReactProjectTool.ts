@@ -2389,11 +2389,18 @@ export class ReactProjectTool extends BaseTool {
         const { workspaceService } = require('../../services/WorkspaceService');
         const root = String(input?.root || workspaceService.getExplorerRoot());
         const activeProject = ((global as any).joeProjects || {})[sessionKey];
-        const activeDir = typeof activeProject?.dir === 'string' ? path.resolve(activeProject.dir) : '';
+        // ApiProjectTool owns the latest registry slot after a full-stack build,
+        // so the React scaffold is carried explicitly as scaffoldDir.  Prefer
+        // that session-owned path; the legacy scaffold.dir fallback preserves
+        // compatibility with sessions created before this handoff existed.
+        const ownedScaffoldDir = typeof activeProject?.scaffoldDir === 'string'
+            ? activeProject.scaffoldDir
+            : activeProject?.type === 'scaffold' && typeof activeProject?.dir === 'string'
+                ? activeProject.dir : '';
+        const activeDir = ownedScaffoldDir ? path.resolve(ownedScaffoldDir) : '';
         const workspaceRoot = path.resolve(root);
         const activeInsideRoot = !!activeDir && (activeDir === workspaceRoot || activeDir.startsWith(workspaceRoot + path.sep));
-        const reusableScaffold = activeProject?.type === 'scaffold' && activeInsideRoot && isReactViteProjectDir(activeDir)
-            ? activeDir : '';
+        const reusableScaffold = activeInsideRoot && isReactViteProjectDir(activeDir) ? activeDir : '';
         let proj = reusableScaffold || path.join(root, dirName);
         if (reusableScaffold) {
             term(`project identity: reusing this session's React scaffold at ${proj}`);

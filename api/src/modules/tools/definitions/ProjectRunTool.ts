@@ -7,6 +7,7 @@ import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import * as fs from 'fs';
 import * as path from 'path';
 import { builtinModules } from 'module';
+import { persistJoeProjects } from '../../../api/page-store';
 
 /**
  * project_run / project_stop — actually RUN a built system, not just render a
@@ -125,6 +126,22 @@ export function canAdoptRecordedLive(record: any, expectedCwd: string): boolean 
 
 function runKey(context?: any): string {
     return String(context?.workspaceId || context?.sessionId || 'default');
+}
+
+/** Keep the verified server address attached to the session's active project. */
+function rememberLiveProject(context: any, cwd: string, live: { url: string; port: number; pid: number }): void {
+    const sessionId = String(context?.sessionId || '').trim();
+    if (!sessionId || !cwd || !live.url || !live.port) return;
+    const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
+    const previous = projects[sessionKey] || {};
+    projects[sessionKey] = {
+        ...previous,
+        ...(previous.dir ? {} : { dir: cwd, type: 'runtime' }),
+        live: { url: live.url, port: live.port, pid: live.pid, cwd, at: Date.now() },
+        updatedAt: Date.now(),
+    };
+    persistJoeProjects();
 }
 
 /**
@@ -1077,6 +1094,9 @@ export class ProjectRunTool implements ToolDefinition {
         const live = activeProj?.live;
         const liveUrl = String(live?.url || (live?.port ? `http://localhost:${live.port}/` : ''));
         if (!input?.cwd && !input?.command && liveUrl && canAdoptRecordedLive(live, cwd) && await answersHttp(liveUrl)) {
+            rememberLiveProject(context, cwd, {
+                url: liveUrl, port: Number(live.port), pid: Number(live.pid),
+            });
             say(pick(isAr,
                 `✅ نظامك يعمل بالفعل — المعاينة الحية: ${liveUrl}`,
                 `✅ Your system is already running — live preview: ${liveUrl}`));
@@ -1308,6 +1328,7 @@ export class ProjectRunTool implements ToolDefinition {
         }
 
         const url = `http://localhost:${livePort}/`;
+        rememberLiveProject(context, cwd, { url, port: livePort, pid: Number(pid) });
         say(pick(isAr,
             `✅ المشروع يعمل الآن — المعاينة الحية: ${url}`,
             `✅ The project is running — live preview: ${url}`));

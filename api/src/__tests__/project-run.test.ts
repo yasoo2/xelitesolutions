@@ -441,6 +441,13 @@ describe('named project discovery never falls back to the workspace repository',
         expect(canAdoptRecordedLive({ pid: process.pid, cwd: os.tmpdir() }, current)).toBe(false);
         expect(runSrc).toContain('ignored stale or unowned live record');
     });
+
+    test('successful project_run persists the verified live preview for browser QA', () => {
+        expect(runSrc).toContain('function rememberLiveProject');
+        expect(runSrc).toContain('rememberLiveProject(context, cwd');
+        expect(runSrc).toContain('live: { url: live.url, port: live.port, pid: live.pid, cwd');
+        expect(runSrc).toContain("import { persistJoeProjects } from '../../../api/page-store'");
+    });
 });
 
 describe('the pipeline runs a verified build automatically (no button)', () => {

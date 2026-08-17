@@ -1115,11 +1115,13 @@ export class ScaffoldProjectTool extends BaseTool {
         if (sessionId && created.length > 0) {
             const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
             const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
-            const previous = projects[sessionKey] || {};
+            // A new scaffold is a new project identity.  Do not let a stale
+            // API entry keep its type/resource/appKind: that made the next
+            // api_project call believe no scaffold existed, and React then
+            // created a sibling directory instead of reusing this one.
             projects[sessionKey] = {
-                ...previous,
                 dir: resolvedBase,
-                type: previous.type || 'scaffold',
+                type: 'scaffold',
                 updatedAt: Date.now(),
                 lastRequest: String(input?.projectName || input?.name || path.basename(resolvedBase)).slice(0, 80),
             };

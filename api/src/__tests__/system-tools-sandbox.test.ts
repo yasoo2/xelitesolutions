@@ -100,6 +100,31 @@ describe('scaffold_project contains every key, not just the base directory', () 
         (global as any).joeProjects = before;
     });
 
+    it('new scaffolds replace stale API ownership for the same session', async () => {
+        const sessionId = `stale-api-session-${process.pid}`;
+        const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const baseDir = path.join(DIR, 'fresh-project');
+        const before = { ...(((global as any).joeProjects || {}) as Record<string, any>) };
+        (global as any).joeProjects = {
+            ...before,
+            [sessionKey]: { dir: path.join(DIR, 'old-api'), type: 'api', resource: 'old', appKind: 'old' },
+        };
+        try {
+            const res: any = await new ScaffoldProjectTool().execute({
+                baseDir,
+                structure: { 'package.json': '{"scripts":{"dev":"vite"}}' },
+            }, { sessionId });
+            expect(res.ok).toBe(true);
+            expect((global as any).joeProjects?.[sessionKey]).toEqual(expect.objectContaining({
+                dir: landsAt(baseDir), type: 'scaffold',
+            }));
+            expect((global as any).joeProjects?.[sessionKey]?.resource).toBeUndefined();
+            expect((global as any).joeProjects?.[sessionKey]?.appKind).toBeUndefined();
+        } finally {
+            (global as any).joeProjects = before;
+        }
+    });
+
     it('refuses a structure key that climbs out, and still writes the ones that do not', async () => {
         // Containing the base is not enough: each key of `structure` is a path
         // fragment the model chose, and they are joined onto the base one by one.
