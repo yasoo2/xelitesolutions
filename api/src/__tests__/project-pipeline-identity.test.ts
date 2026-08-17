@@ -131,6 +131,40 @@ describe('project pipeline identity follows the explicit product name', () => {
         expect(plan.phases[2].tasks[0].args.projectQuery).toBe('TaskFlow AI');
     });
 
+    it('rewrites array-valued verification file paths to the accepted artifact root', () => {
+        const plan: any = {
+            projectName: 'WeatherGo-new',
+            phases: [{
+                tasks: [{
+                    tool: 'ai_write_file',
+                    args: { path: 'WeatherGo-new/src/App.js', description: 'weather UI' },
+                }],
+                verificationTask: {
+                    task: 'Review the generated UI sources',
+                    tool: 'code_reviewer',
+                    args: {
+                        projectPath: 'WeatherGo-new',
+                        files: [
+                            'WeatherGo-new/src/App.js',
+                            'WeatherGo-new/src/screens/Home.js',
+                            'WeatherGo-new/src/screens/Search.js',
+                        ],
+                    },
+                },
+            }],
+        };
+
+        alignGreenfieldPlanIdentity(plan, 'Build a complete mobile weather application called "WeatherGo".', true);
+
+        expect(plan.projectName).toBe('WeatherGo');
+        expect(plan.phases[0].verificationTask.args.projectPath).toBe('WeatherGo');
+        expect(plan.phases[0].verificationTask.args.files).toEqual([
+            'WeatherGo/src/App.js',
+            'WeatherGo/src/screens/Home.js',
+            'WeatherGo/src/screens/Search.js',
+        ]);
+    });
+
     it('keeps a model proposal when the request has no explicit product name', () => {
         expect(resolveProjectIdentity('Build a local inventory platform with tests.', 'Inventory Platform')).toBe('Inventory Platform');
     });

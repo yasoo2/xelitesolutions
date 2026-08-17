@@ -174,15 +174,30 @@ function rewriteGreenfieldTaskPaths(task: any, oldPrefixes: string[], nextIdenti
     const tool = String(task.tool || task.name || '').toLowerCase();
     const pathKeys = new Set(['path', 'cwd', 'baseDir', 'projectName', 'name', 'projectPath', 'filePath', 'targetPath', 'directory', 'dir', 'projectQuery', 'schemaPath', 'databasePath']);
     const relativeArtifactKeys = new Set(['path', 'cwd', 'projectPath', 'filePath', 'targetPath', 'directory', 'dir', 'schemaPath', 'databasePath']);
+    // Verification and analysis tools commonly receive source targets as arrays
+    // (`code_reviewer.files`, `auto_tester.files`, etc.). Treat each entry like
+    // a scalar artifact path so a greenfield wrapper cannot leave stale paths
+    // such as `WeatherGo-new/src/App.js` after the accepted identity is
+    // normalized to `WeatherGo`.
+    const arrayPathKeys = new Set(['files', 'filePaths', 'sourceFiles', 'paths']);
     for (const [key, value] of Object.entries(args)) {
-        if (typeof value !== 'string') continue;
-        if (pathKeys.has(key)) {
-            const rewritten = rewriteProjectPath(value, oldPrefixes, nextIdentity);
-            args[key] = relativeArtifactKeys.has(key)
-                ? prefixGreenfieldRelativePath(rewritten, nextIdentity)
-                : rewritten;
-        } else if (key === 'command' && (tool === 'shell_execute' || tool === 'shell_exec' || tool === 'run_command')) {
-            args[key] = rewriteProjectPath(value, oldPrefixes, nextIdentity);
+        if (typeof value === 'string') {
+            if (pathKeys.has(key)) {
+                const rewritten = rewriteProjectPath(value, oldPrefixes, nextIdentity);
+                args[key] = relativeArtifactKeys.has(key)
+                    ? prefixGreenfieldRelativePath(rewritten, nextIdentity)
+                    : rewritten;
+            } else if (key === 'command' && (tool === 'shell_execute' || tool === 'shell_exec' || tool === 'run_command')) {
+                args[key] = rewriteProjectPath(value, oldPrefixes, nextIdentity);
+            }
+            continue;
+        }
+        if (arrayPathKeys.has(key) && Array.isArray(value)) {
+            args[key] = value.map(entry => {
+                if (typeof entry !== 'string') return entry;
+                const rewritten = rewriteProjectPath(entry, oldPrefixes, nextIdentity);
+                return prefixGreenfieldRelativePath(rewritten, nextIdentity);
+            });
         }
     }
     task.args = args;
@@ -231,6 +246,7 @@ export function alignGreenfieldPlanIdentity(plan: any, request: string, isGreenf
         'filePath', 'targetPath', 'directory', 'dir', 'projectQuery',
         'schemaPath', 'databasePath',
     ]);
+    const arrayPathKeys = new Set(['files', 'filePaths', 'sourceFiles', 'paths']);
     const sourceDirectoryNames = new Set([
         'src', 'server', 'client', 'api', 'app', 'lib', 'tests', 'test',
         '__tests__', 'spec', 'docs', 'public', 'dist', 'build', 'coverage',
@@ -261,7 +277,13 @@ export function alignGreenfieldPlanIdentity(plan: any, request: string, isGreenf
     for (const task of allTasks) {
         const args = { ...(task?.args || {}), ...(task?.input || {}) };
         for (const [key, value] of Object.entries(args)) {
-            if (typeof value === 'string' && pathKeys.has(key)) collectRootCandidates(value);
+            if (typeof value === 'string' && pathKeys.has(key)) {
+                collectRootCandidates(value);
+            } else if (arrayPathKeys.has(key) && Array.isArray(value)) {
+                for (const entry of value) {
+                    if (typeof entry === 'string') collectRootCandidates(entry);
+                }
+            }
         }
     }
     const stableOldPrefixes = [...oldPrefixes]
@@ -299,6 +321,9 @@ export function alignGreenfieldPlanIdentity(plan: any, request: string, isGreenf
         // otherwise project_run correctly refuses to guess after files were
         // written into an evaluation-wrapper directory.
         for (const task of tasks) rewriteGreenfieldTaskPaths(task, stableOldPrefixes, explicit);
+        if (phase?.verificationTask) {
+            rewriteGreenfieldTaskPaths(phase.verificationTask, stableOldPrefixes, explicit);
+        }
     }
     return plan;
 }
