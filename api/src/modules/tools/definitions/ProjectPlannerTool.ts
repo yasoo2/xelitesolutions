@@ -246,10 +246,12 @@ export class ProjectPlannerTool implements ToolDefinition {
             const evidencedPaths = [
                 ...(evidence?.selectedProject?.manifests || []).map(item => item.path),
                 ...(evidence?.selectedProject?.likelyEntrypoints || []),
+                ...(evidence?.selectedProject?.sourceFiles || []),
                 ...(evidence?.selectedProject?.testFiles || []),
                 ...(evidence?.referenceProjects || []).flatMap(project => [
                     ...project.manifests.map(item => item.path),
                     ...project.likelyEntrypoints,
+                    ...(project.sourceFiles || []),
                     ...(project.testFiles || []),
                 ]),
                 ...(evidence?.instructionFiles || []).map(item => item.relativePath),
@@ -715,8 +717,9 @@ export class ProjectPlannerTool implements ToolDefinition {
             ...project,
             root: relative(project.root) || '.',
             manifests: project.manifests.map(item => ({ ...item, path: relative(item.path) })),
-            likelyEntrypoints: project.likelyEntrypoints.map(relative).filter(Boolean),
-            testFiles: (project.testFiles || []).map(relative).filter(Boolean),
+                    likelyEntrypoints: project.likelyEntrypoints.map(relative).filter(Boolean),
+                    sourceFiles: (project.sourceFiles || []).map(relative).filter(Boolean),
+                    testFiles: (project.testFiles || []).map(relative).filter(Boolean),
         }));
         return {
             ...evidence,
@@ -726,6 +729,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 root: relative(selected.root) || '.',
                 manifests: selected.manifests.map(item => ({ ...item, path: relative(item.path) })),
                 likelyEntrypoints: selected.likelyEntrypoints.map(relative).filter(Boolean),
+                sourceFiles: (selected.sourceFiles || []).map(relative).filter(Boolean),
                 testFiles: (selected.testFiles || []).map(relative).filter(Boolean),
             } : undefined,
             referenceProjects,
@@ -793,13 +797,14 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
     ): string {
         const promptEvidence = this.planningEvidence(evidence);
         const authoritativeEvidence = promptEvidence
-            ? `\n\nAUTHORITATIVE DISCOVERY EVIDENCE — these are the only known project roots, manifests, entrypoints, and tests. Reuse these workspace-relative paths exactly; never invent a product-named directory or prefix.\n${JSON.stringify({
+            ? `\n\nAUTHORITATIVE DISCOVERY EVIDENCE — these are the only known project roots, manifests, entrypoints, source files, and tests. Reuse these workspace-relative paths exactly; never invent a product-named directory or prefix.\n${JSON.stringify({
                 mode: promptEvidence.mode,
                 workspaceRoot: '.',
                 selectedProject: promptEvidence.selectedProject ? {
                     root: promptEvidence.selectedProject.root,
                     manifests: promptEvidence.selectedProject.manifests,
                     likelyEntrypoints: promptEvidence.selectedProject.likelyEntrypoints,
+                    sourceFiles: promptEvidence.selectedProject.sourceFiles || [],
                     testFiles: promptEvidence.selectedProject.testFiles || [],
                     candidateChecks: promptEvidence.selectedProject.candidateChecks || [],
                 } : undefined,
@@ -807,6 +812,7 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
                     root: project.root,
                     manifests: project.manifests,
                     likelyEntrypoints: project.likelyEntrypoints,
+                    sourceFiles: project.sourceFiles || [],
                     testFiles: project.testFiles || [],
                 })),
             }, null, 2).slice(0, 9000)}\n`

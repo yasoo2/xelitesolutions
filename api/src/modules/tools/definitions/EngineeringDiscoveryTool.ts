@@ -18,6 +18,8 @@ export interface EngineeringEvidence {
         manifests: Array<{ path: string; kind: string; scripts?: Record<string, string> }>;
         git: { isRepository: boolean; branch?: string; remote?: string; dirty?: boolean };
         likelyEntrypoints: string[];
+        /** Bounded source files discovered on disk; safe inputs for read/edit planning. */
+        sourceFiles?: string[];
         /** Workspace-relative test files discovered on disk; never inferred from scripts alone. */
         testFiles?: string[];
         candidateChecks: Array<{ kind: 'test' | 'build' | 'lint' | 'typecheck'; command: string; source: string }>;
@@ -32,6 +34,8 @@ export interface EngineeringEvidence {
         manifests: Array<{ path: string; kind: string; scripts?: Record<string, string> }>;
         git: { isRepository: boolean; branch?: string; remote?: string; dirty?: boolean };
         likelyEntrypoints: string[];
+        /** Bounded source files discovered on disk; safe inputs for read/edit planning. */
+        sourceFiles?: string[];
         /** Workspace-relative test files discovered on disk; never inferred from scripts alone. */
         testFiles?: string[];
         candidateChecks: Array<{ kind: 'test' | 'build' | 'lint' | 'typecheck'; command: string; source: string }>;
@@ -489,11 +493,32 @@ export class EngineeringDiscoveryTool extends BaseTool {
         }
         if (!kinds.size) kinds.add('other');
 
-        const entryCandidates = ['src/index.ts', 'src/main.ts', 'src/main.tsx', 'src/index.tsx', 'index.ts', 'index.js', 'main.py', 'app.py', 'main.go'];
+        const entryCandidates = ['src/index.ts', 'src/main.ts', 'src/main.tsx', 'src/index.tsx', 'src/App.tsx', 'src/App.jsx', 'index.ts', 'index.js', 'main.py', 'app.py', 'main.go'];
         const likelyEntrypoints = entryCandidates.filter(file => fs.existsSync(path.join(root, file))).map(file => path.join(root, file));
+        const sourceFiles = this.inspectSourceFiles(root);
         const testFiles = this.inspectTestFiles(root);
         const git = this.inspectGit(root);
-        return { root: path.resolve(root), projectKinds: [...kinds], manifests, git, likelyEntrypoints, testFiles, candidateChecks: checks };
+        return { root: path.resolve(root), projectKinds: [...kinds], manifests, git, likelyEntrypoints, sourceFiles, testFiles, candidateChecks: checks };
+    }
+
+    private inspectSourceFiles(root: string): string[] {
+        const found: string[] = [];
+        const skip = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache', '.turbo', 'vendor']);
+        const sourceExtension = /\.(?:c|m)?(?:js|jsx|ts|tsx|py|go|java|rb|rs|vue|svelte|css|scss)$/i;
+        const visit = (dir: string, depth: number) => {
+            if (found.length >= 120 || depth > 6) return;
+            let entries: fs.Dirent[];
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+            for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+                if (found.length >= 120) return;
+                if (entry.name.startsWith('.') || skip.has(entry.name)) continue;
+                const absolute = path.join(dir, entry.name);
+                if (entry.isDirectory()) visit(absolute, depth + 1);
+                else if (entry.isFile() && sourceExtension.test(entry.name)) found.push(absolute);
+            }
+        };
+        visit(root, 0);
+        return found;
     }
 
     private inspectTestFiles(root: string): string[] {

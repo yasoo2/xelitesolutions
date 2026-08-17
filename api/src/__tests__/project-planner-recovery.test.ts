@@ -26,6 +26,7 @@ describe('project planner structured recovery', () => {
                     projectKinds: ['node'],
                     manifests: [{ path: '/tmp/joe-workspace/package.json' }],
                     likelyEntrypoints: ['/tmp/joe-workspace/src/server.js'],
+                    sourceFiles: ['/tmp/joe-workspace/src/App.jsx', '/tmp/joe-workspace/src/components/Home.jsx'],
                     testFiles: ['/tmp/joe-workspace/tests/server.test.js'],
                     candidateChecks: [{ command: 'node --check src/server.js' }],
                 },
@@ -36,6 +37,8 @@ describe('project planner structured recovery', () => {
         expect(prompt).toMatch(/AUTHORITATIVE DISCOVERY EVIDENCE/i);
         expect(prompt).toMatch(/package\.json/i);
         expect(prompt).toContain('src/server.js');
+        expect(prompt).toContain('src/App.jsx');
+        expect(prompt).toContain('src/components/Home.jsx');
         expect(prompt).toContain('tests/server.test.js');
         expect(prompt).not.toMatch(/api-taskflow-ai/i);
     });
@@ -102,6 +105,7 @@ describe('project planner structured recovery', () => {
                     projectKinds: ['node'],
                     manifests: [{ path: '/tmp/joe-workspace/package.json' }],
                     likelyEntrypoints: ['/tmp/joe-workspace/src/server.js'],
+                    sourceFiles: ['/tmp/joe-workspace/src/App.jsx', '/tmp/joe-workspace/src/components/Home.jsx'],
                     testFiles: ['/tmp/joe-workspace/tests/server.test.js'],
                     candidateChecks: [{ command: 'node --check src/server.js' }],
                 },
