@@ -318,15 +318,18 @@ Return the complete file content now.`;
             const llmContext = context?.engineeringPipeline === true
                 ? { ...context, purpose: 'internal', engineeringPipeline: true }
                 : undefined;
-            const callForArtifact = (formatRetry = false) => callLLM(
-                formatRetry
-                    ? `${userPrompt}\n\nFORMAT RETRY REQUIRED:\nThe previous completion violated the destination artifact contract. Return the complete file again, with no Markdown fences or explanatory prose. For JSON, return strict parseable JSON only. Do not omit, truncate, or replace any content.`
-                    : userPrompt,
-                [{ role: 'system', content: formatRetry
-                    ? `${systemPrompt}\n\nFORMAT RETRY: the previous response was rejected before writing. Re-emit one complete artifact matching the extension exactly; do not explain the repair.`
-                    : systemPrompt }],
-                llmContext,
-            );
+            const callForArtifact = (retryKind: 'format' | 'syntax' | null = null) => {
+                const retryInstruction = retryKind === 'syntax'
+                    ? `SYNTAX RETRY REQUIRED:\nThe previous completion was rejected by the parser for the destination extension. Return the complete file again with valid ${path.extname(filePath).toLowerCase() || 'source'} syntax. Preserve the requested behavior and all imports, close every JSX tag/bracket, and emit no Markdown fences or explanatory prose.`
+                    : `FORMAT RETRY REQUIRED:\nThe previous completion violated the destination artifact contract. Return the complete file again, with no Markdown fences or explanatory prose. For JSON, return strict parseable JSON only. Do not omit, truncate, or replace any content.`;
+                return callLLM(
+                    retryKind ? `${userPrompt}\n\n${retryInstruction}` : userPrompt,
+                    [{ role: 'system', content: retryKind
+                        ? `${systemPrompt}\n\n${retryKind === 'syntax' ? 'SYNTAX RETRY' : 'FORMAT RETRY'}: the previous response was rejected before writing. Re-emit one complete artifact matching the extension exactly; do not explain the repair.`
+                        : systemPrompt }],
+                    llmContext,
+                );
+            };
 
             let content = await callForArtifact();
 
@@ -348,7 +351,7 @@ Return the complete file content now.`;
                 && !/artifact_type_mismatch: .*Python source markers|artifact_type_mismatch: .*Node\.js source markers/i.test(prepared.error);
             if (retryableFormatError) {
                 logs.push(`format retry requested for ${filePath}: ${prepared.error}`);
-                content = await callForArtifact(true);
+                content = await callForArtifact('format');
                 if (isProviderFailure(content)) {
                     return { ok: false, error: String(content), logs: [...logs, 'format retry received no LLM provider answer; nothing was written'] };
                 }
@@ -361,18 +364,38 @@ Return the complete file content now.`;
             if (prepared.error) {
                 return { ok: false, error: prepared.error, logs: [...logs, 'generated content violated the destination artifact contract; nothing was written'] };
             }
-            const finalContent = prepared.content;
-            const mismatch = artifactMismatch(filePath, finalContent);
-            if (mismatch) {
-                return { ok: false, error: mismatch, logs: [...logs, 'generated content violated the destination artifact contract; nothing was written'] };
+            let finalContent = prepared.content;
+            const validationErrorFor = (candidate: string): { error: string; kind: 'artifact' | 'runtime' | 'syntax' } | null => {
+                const artifactError = artifactMismatch(filePath, candidate);
+                if (artifactError) return { error: artifactError, kind: 'artifact' };
+                const runtimeError = runtimeArtifactMismatch(filePath, candidate, runtimeContract);
+                if (runtimeError) return { error: runtimeError, kind: 'runtime' };
+                const syntaxError = sourceSyntaxMismatch(filePath, candidate);
+                if (syntaxError) return { error: syntaxError, kind: 'syntax' };
+                return null;
+            };
+
+            let validation = validationErrorFor(finalContent);
+            if (validation?.kind === 'syntax') {
+                logs.push(`syntax retry requested for ${filePath}: ${validation.error}`);
+                content = await callForArtifact('syntax');
+                if (isProviderFailure(content)) {
+                    return { ok: false, error: String(content), logs: [...logs, 'syntax retry received no LLM provider answer; nothing was written'] };
+                }
+                prepared = prepareArtifactContent(filePath, content);
+                if (prepared.error) {
+                    return { ok: false, error: prepared.error, logs: [...logs, 'syntax retry violated the destination artifact contract; nothing was written'] };
+                }
+                finalContent = prepared.content;
+                validation = validationErrorFor(finalContent);
             }
-            const runtimeMismatch = runtimeArtifactMismatch(filePath, finalContent, runtimeContract);
-            if (runtimeMismatch) {
-                return { ok: false, error: runtimeMismatch, logs: [...logs, 'generated content violated the verified project runtime contract; nothing was written'] };
-            }
-            const syntaxMismatch = sourceSyntaxMismatch(filePath, finalContent);
-            if (syntaxMismatch) {
-                return { ok: false, error: syntaxMismatch, logs: [...logs, 'generated source failed the destination-extension syntax contract; nothing was written'] };
+            if (validation) {
+                const logMessage = validation.kind === 'runtime'
+                    ? 'generated content violated the verified project runtime contract; nothing was written'
+                    : validation.kind === 'syntax'
+                        ? 'generated source failed the destination-extension syntax contract after bounded retry; nothing was written'
+                        : 'generated content violated the destination artifact contract; nothing was written';
+                return { ok: false, error: validation.error, logs: [...logs, logMessage] };
             }
 
             // resolveToolPath keeps the write inside the workspace and throws on

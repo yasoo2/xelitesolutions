@@ -169,6 +169,33 @@ describe('generated source and structured artifacts are rejected before disk wri
         expect(res.error).toMatch(/source_syntax_mismatch/);
         expect(fs.existsSync(landsAt(rel))).toBe(false);
     });
+
+    it('retries malformed JSX once and writes only the parser-approved completion', async () => {
+        callLLM
+            .mockResolvedValueOnce("import React from 'react';\nexport default function Search() { return <main>unfinished; }")
+            .mockResolvedValueOnce("import React from 'react';\nexport default function Search() { return <main>Search</main>; }");
+        const rel = scratch('src/screens/Search.jsx');
+
+        const res: any = await tool.execute({ path: rel, description: 'Write the browser search screen in JSX.' });
+
+        expect(res.ok).toBe(true);
+        expect(callLLM).toHaveBeenCalledTimes(2);
+        expect(callLLM.mock.calls[1][0]).toMatch(/SYNTAX RETRY REQUIRED/);
+        expect(res.logs).toEqual(expect.arrayContaining([expect.stringMatching(/syntax retry requested/)]));
+        expect(fs.readFileSync(landsAt(rel), 'utf-8')).toContain('<main>Search</main>');
+    });
+
+    it('does not write after a malformed JSX completion and one failed syntax retry', async () => {
+        callLLM.mockResolvedValue("import React from 'react';\nexport default function Search() { return <main>unfinished; }");
+        const rel = scratch('src/screens/invalid-search.jsx');
+
+        const res: any = await tool.execute({ path: rel, description: 'Write the browser search screen in JSX.' });
+
+        expect(res.ok).toBe(false);
+        expect(res.error).toMatch(/source_syntax_mismatch/);
+        expect(callLLM).toHaveBeenCalledTimes(2);
+        expect(fs.existsSync(landsAt(rel))).toBe(false);
+    });
 });
 
  describe('a path outside the workspace is refused, not written', () => {
