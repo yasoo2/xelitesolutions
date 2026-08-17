@@ -231,6 +231,33 @@ describe('evidence-first engineering discovery', () => {
       expect.objectContaining({ code: 'multiple_projects' }),
     ]));
   });
+
+  test('selects a named runnable React project across a fresh chat instead of blocking on API/UI siblings', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-named-project-'));
+    roots.push(root);
+    const api = path.join(root, 'api-weathergo');
+    const react = path.join(root, 'react-weathergo-a587');
+    fs.mkdirSync(path.join(api, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(api, 'package.json'), JSON.stringify({ name: 'api-weathergo', scripts: { start: 'node server.js' } }));
+    fs.writeFileSync(path.join(api, 'server.js'), 'console.log("api");\n');
+    fs.mkdirSync(path.join(react, 'src'), { recursive: true });
+    fs.mkdirSync(path.join(react, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(react, 'package.json'), JSON.stringify({ name: 'weathergo', scripts: { build: 'vite build', test: 'node --test scripts/smoke-test.test.mjs' } }));
+    fs.writeFileSync(path.join(react, 'src', 'main.tsx'), 'export {};\n');
+    fs.writeFileSync(path.join(react, 'scripts', 'smoke-test.test.mjs'), 'import assert from "node:assert/strict"; assert.equal(true, true);\n');
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: 'Continue the WeatherGo task from the current generated project. Fix the existing React mobile application in place, run its build and test, and do not create MyApp2.',
+    }, { workspaceRoot: root, sessionId: 'fresh-weathergo-chat' });
+
+    expect(result.ok).toBe(true);
+    expect(result.output.evidence.mode).toBe('existing_workspace');
+    expect(result.output.evidence.selectedProject.root).toBe(react);
+    expect(result.output.evidence.blockers).toEqual([]);
+    expect(result.output.evidence.facts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'workspace.selected_project_by_name' }),
+    ]));
+  });
 });
 
 
