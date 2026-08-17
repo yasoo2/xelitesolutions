@@ -74,7 +74,7 @@ export class SSHManager {
     /**
      * Request an interactive shell for the server
      */
-    async requestShell(serverId: string, terminalId: string, options?: { cols: number, rows: number }): Promise<void> {
+    async requestShell(serverId: string, terminalId: string, options?: { cols: number, rows: number, sessionId?: string }): Promise<void> {
         const ssh = this.connections.get(serverId);
         if (!ssh) throw new Error(`Not connected to server ${serverId}`);
 
@@ -91,12 +91,12 @@ export class SSHManager {
             this.shellStreams.set(terminalId, stream);
 
             stream.on('data', (data: any) => {
-                broadcast({ type: 'terminal_output', id: terminalId, data: data.toString() });
+                broadcast({ type: 'terminal_output', id: terminalId, sessionId: String(options?.sessionId || terminalId), data: data.toString() });
             });
 
             stream.on('close', () => {
                 this.shellStreams.delete(terminalId);
-                broadcast({ type: 'terminal_output', id: terminalId, data: '\r\n[Remote Connection Closed]\r\n' });
+                broadcast({ type: 'terminal_output', id: terminalId, sessionId: String(options?.sessionId || terminalId), data: '\r\n[Remote Connection Closed]\r\n' });
             });
 
         } catch (error: any) {

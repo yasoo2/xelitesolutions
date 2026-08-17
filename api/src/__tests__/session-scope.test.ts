@@ -46,13 +46,6 @@ const rel = (p: string) => path.relative(WEB_SRC, p).replace(/\\/g, '/');
  * not a reason.
  */
 const DELIBERATELY_SHARED: Record<string, string> = {
-    'components/MyBrowserView.tsx':
-        'The embedded browser is ONE Chromium page («panel-browser») on purpose: the live view and the '
-        + 'chat-driven browser tools must land on the same page, and splitting it per chat is what once '
-        + 'left the stream blank while the tools worked on an invisible page.',
-    'components/terminal/EnterpriseTerminalPanel.tsx':
-        'The terminal is addressed by terminalId (the session id is passed in as that prop) and filters '
-        + 'its own lines by tab id — its scoping is the tab, which IS the session.',
     'pages/admin/SystemManagement.tsx':
         'An operator screen for the whole server: its events are system-wide by definition and belong to '
         + 'no conversation.',
@@ -84,7 +77,7 @@ describe('INVARIANT: what displays a run belongs to the run’s session', () => 
         const filters = /msg\?\.sessionId|event\?\.sessionId|msg\.sessionId|event\.sessionId|evSid|belongsHere|const mine|activeSessionRef|activeSidRef|activeSid/.test(src);
         expect(filters).toBe(true);
         // …and forget the previous conversation when it changes.
-        const resets = /\}, \[sessionId\]\)|\}, \[activeSessionId\]\)|prevSessionIdRef/.test(src);
+        const resets = /\}, \[[^\]]*sessionId[^\]]*\]\)|\}, \[activeSessionId\]\)|prevSessionIdRef/.test(src);
         expect(resets).toBe(true);
     });
 

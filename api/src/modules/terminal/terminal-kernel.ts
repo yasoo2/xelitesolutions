@@ -16,12 +16,13 @@ export class TerminalKernel {
     /**
      * Create a new terminal session
      */
-    async createTerminal(id: string, options: { serverId?: string; shell?: string; cwd?: string; cols?: number; rows?: number; userId?: string }) {
+    async createTerminal(id: string, options: { serverId?: string; shell?: string; cwd?: string; cols?: number; rows?: number; userId?: string; sessionId?: string }) {
         const ts = Date.now();
-        logger.info(`[kernel.session.created] sessionId=${id} ts=${ts} serverId=${options.serverId || 'local'}`);
+        const ownerSessionId = String(options.sessionId || '').trim();
+        logger.info(`[kernel.session.created] sessionId=${ownerSessionId || id} terminalId=${id} ts=${ts} serverId=${options.serverId || 'local'}`);
         
         if (options.serverId) {
-            await sshManager.requestShell(options.serverId, id);
+            await sshManager.requestShell(options.serverId, id, { cols: options.cols || 80, rows: options.rows || 24, sessionId: ownerSessionId });
             return { id, serverId: options.serverId };
         }
 
@@ -69,7 +70,7 @@ export class TerminalKernel {
                 term.history.push(data);
                 if (term.history.length > 5000) term.history.shift();
                 logger.info(`[kernel.output.emitted] sessionId=${id} ts=${outTs} bytes=${data.length}`);
-                broadcast({ type: 'terminal_output', id, data });
+                broadcast({ type: 'terminal_output', id, sessionId: ownerSessionId || id, data });
             });
 
             session.onExit((code: number) => {
@@ -148,8 +149,10 @@ export class TerminalKernel {
     /**
      * List all active terminal IDs
      */
-    async listTerminals(): Promise<string[]> {
-        return Array.from(terminals.keys());
+    async listTerminals(sessionId?: string): Promise<string[]> {
+        const sid = String(sessionId || '').trim();
+        const ids = Array.from(terminals.keys());
+        return sid ? ids.filter(id => id === `terminal:${sid}` || id.startsWith(`terminal:${sid}:`)) : ids;
     }
 
     /**

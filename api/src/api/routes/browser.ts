@@ -13,7 +13,8 @@ const router = Router();
  * has logged into a site in the live browser.
  */
 router.post('/session/save', authenticate as any, async (req: Request, res: Response) => {
-  const sid = String(req.body?.sessionId || 'panel-browser').trim();
+  const sid = String(req.body?.sessionId || '').trim();
+  if (!sid) return res.status(400).json({ error: 'sessionId required' });
   const access = await ensureBrowserSessionAccess(req, res, sid);
   if (!access.ok) return res.status(access.status).json(access.body);
   const result = await saveBrowserSession(sid);
@@ -22,7 +23,8 @@ router.post('/session/save', authenticate as any, async (req: Request, res: Resp
 
 /** Forget the saved login state for this session (logout / privacy). */
 router.post('/session/clear', authenticate as any, async (req: Request, res: Response) => {
-  const sid = String(req.body?.sessionId || 'panel-browser').trim();
+  const sid = String(req.body?.sessionId || '').trim();
+  if (!sid) return res.status(400).json({ error: 'sessionId required' });
   const access = await ensureBrowserSessionAccess(req, res, sid);
   if (!access.ok) return res.status(access.status).json(access.body);
   const result = await clearBrowserSession(sid);
@@ -31,7 +33,8 @@ router.post('/session/clear', authenticate as any, async (req: Request, res: Res
 
 /** Whether a saved (logged-in) session exists for this session. */
 router.get('/session/status', authenticate as any, async (req: Request, res: Response) => {
-  const sid = String(req.query?.sessionId || 'panel-browser').trim();
+  const sid = String(req.query?.sessionId || '').trim();
+  if (!sid) return res.status(400).json({ error: 'sessionId required' });
   return res.json({ ok: true, saved: hasSavedBrowserSession(sid) });
 });
 

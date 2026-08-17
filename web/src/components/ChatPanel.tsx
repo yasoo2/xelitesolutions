@@ -93,12 +93,13 @@ export default function ChatPanel({
 
     useEffect(() => {
         const unsubscribe = SocketService.subscribeThinkingPhase((phase: any, evSid?: string) => {
-            // Ignore updates that belong to a different session.
+            // The transport is session-filtered; retain this check as a local
+            // boundary while a session switch is being committed.
             if (evSid && activeSessionRef.current && evSid !== activeSessionRef.current) return;
             setThinkingPhase(phase);
-        });
+        }, sessionId);
         return () => unsubscribe();
-    }, []);
+    }, [sessionId]);
 
     // Switching sessions must clear any leftover indicator immediately.
     useEffect(() => {
@@ -114,9 +115,9 @@ export default function ChatPanel({
         const unsub = SocketService.subscribeTraceSealed((trace) => {
             if (activeSessionRef.current && trace.sessionId !== activeSessionRef.current) return;
             setTraces(loadTraces(activeSessionRef.current));
-        });
+        }, sessionId);
         return () => unsub();
-    }, []);
+    }, [sessionId]);
     const traceFor = React.useMemo(() => attachTraces(messages, traces), [messages, traces]);
 
     // Auto scroll to bottom

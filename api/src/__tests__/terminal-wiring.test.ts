@@ -41,11 +41,15 @@ describe('lines reach the terminal the user is actually looking at', () => {
         expect(TOOLSVC).toMatch(/broadcastTerminalLine\(contextSessionId,/);
     });
 
-    it('…and the helper really addresses that session, plus the shared tabs', () => {
+    it('…and the helper addresses only the owning session terminal', () => {
         const WS = fs.readFileSync(path.join(__dirname, '..', 'api', 'ws.ts'), 'utf-8');
         const at = WS.indexOf('export function broadcastTerminalLine');
         const body = WS.slice(at, WS.indexOf('\n}', at));
-        expect(body).toMatch(/String\(sessionId \|\| ''\), 'local_terminal', 'local', 'default', 'panel-terminal'/);
+        expect(body).toContain('const owner = trimId(sessionId)');
+        expect(body).toContain("if (!owner) return");
+        expect(body).toContain('const terminalId = `terminal:${owner}`');
+        expect(body).toContain('ids: [owner, terminalId]');
+        expect(body).not.toContain("'local_terminal', 'local', 'default', 'panel-terminal'");
     });
 });
 

@@ -5,7 +5,8 @@ import { saveTrace, type NeuralTrace, type TraceStep } from '../lib/neuralTrace'
 const __DEV__ = import.meta.env.DEV;
 
 let socket: WebSocket | null = null;
-const listeners: Set<(data: any) => void> = new Set();
+const listeners: Set<SessionListener<(data: any) => void>> = new Set();
+const sessionSubscriptionRefs = new Map<string, number>();
 const statusListeners: Set<(status: { state: string; detail?: string }) => void> = new Set();
 let pendingQueue: any[] = []; // Changed to any[] to support structured data for deduplication
 let connectTimer: any = null;
@@ -14,10 +15,58 @@ let connectingTimeoutTimer: any = null;
 const CONNECTING_TIMEOUT = 8000;
 const seenMessageIds = new Set<string>(); // Deduplication cache
 const MAX_SEEN_IDS = 1000;
-let _lastPreviewUrl = '';
+type SessionRuntimeState = {
+  terminalHistory: string;
+  thinkingPhase: 'analyzing' | 'synthesizing' | 'executing' | 'idle';
+  thinkingDetails: string[];
+  thinkingSteps: TraceStep[];
+  runStartedAt: number;
+  runSessionId: string;
+  thinkingStatus: string;
+  taskTrackerData: any[];
+  quietMode: boolean;
+  lastPreviewUrl: string;
+};
+
+const DEFAULT_SCOPE = '__unscoped__';
+const sessionRuntime = new Map<string, SessionRuntimeState>();
+
+function normalizeSessionId(value: any): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : '';
+}
+
+function eventSessionId(event: any): string {
+  return normalizeSessionId(
+    event?.sessionId
+      || event?.data?.sessionId
+      || event?.data?.data?.sessionId,
+  );
+}
+
+function getSessionRuntime(sessionId?: string): SessionRuntimeState {
+  const key = normalizeSessionId(sessionId) || DEFAULT_SCOPE;
+  let state = sessionRuntime.get(key);
+  if (!state) {
+    state = {
+      terminalHistory: '',
+      thinkingPhase: 'idle',
+      thinkingDetails: [],
+      thinkingSteps: [],
+      runStartedAt: 0,
+      runSessionId: '',
+      thinkingStatus: '',
+      taskTrackerData: [],
+      quietMode: false,
+      lastPreviewUrl: '',
+    };
+    sessionRuntime.set(key, state);
+  }
+  return state;
+}
+
+type SessionListener<T> = { cb: T; sessionId?: string };
 
 // [Wakil 5.1] Quiet Mode & Source Deduplication
-let quietMode = false;
 let lastSentPayload: string | null = null;
 let connectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 20; // Stop reconnecting after 20 attempts
@@ -27,76 +76,68 @@ let cachedIsShim: boolean | null = null;
 let lastShimCheckAt = 0;
 
 // Terminal is conditionally unmounted when the user changes workspace tabs.
-// Keep a bounded, connection-local scrollback so a build that starts before
-// the Terminal opens can still be inspected by its owner.
+// Keep a bounded scrollback per session so a build that starts before the
+// Terminal opens can still be inspected by its owner without crossing sessions.
 const TERMINAL_HISTORY_CAP = 512_000;
-let terminalHistory = '';
 let authProbePromise: Promise<'ok' | 'unauthorized' | 'error'> | null = null;
 let lastAuthProbeAt = 0;
 
-// [Wakil 5.3] Neural Thinking Indicator State
-let thinkingPhase: 'analyzing' | 'synthesizing' | 'executing' | 'idle' = 'idle';
-const thinkingPhaseListeners: Set<(phase: string, sessionId?: string) => void> = new Set();
-
-// [Wakil 6.0] Deep Reasoning State
-let thinkingDetails: string[] = [];
-const thinkingDetailsListeners: Set<(details: string[]) => void> = new Set();
-
-// The same reasoning, kept as STRUCTURE rather than strings: every line carries
-// the moment it arrived and the phase that was running, so the indicator can
-// show measured durations and the trace can outlive the run. `thinkingDetails`
-// above stays exactly as it was — nothing that already reads it changes.
-let thinkingSteps: TraceStep[] = [];
-const thinkingStepsListeners: Set<(steps: TraceStep[]) => void> = new Set();
-let runStartedAt = 0;
-let runSessionId = '';
+// Session listeners are filtered at the transport boundary. A component that
+// subscribes with a sessionId never receives another session's live cache.
+const thinkingPhaseListeners: Set<SessionListener<(phase: string, sessionId?: string) => void>> = new Set();
+const thinkingDetailsListeners: Set<SessionListener<(details: string[], sessionId?: string) => void>> = new Set();
+const thinkingStepsListeners: Set<SessionListener<(steps: TraceStep[], sessionId?: string) => void>> = new Set();
+const thinkingStatusListeners: Set<SessionListener<(status: string, sessionId?: string) => void>> = new Set();
+const taskTrackerListeners: Set<SessionListener<(tasks: any[], sessionId?: string) => void>> = new Set();
 /** Fires when a run ends and its trace has been written to the session's history. */
-const traceSealedListeners: Set<(trace: NeuralTrace) => void> = new Set();
+const traceSealedListeners: Set<SessionListener<(trace: NeuralTrace) => void>> = new Set();
+
+function forSession<T>(listeners: Set<SessionListener<T>>, sessionId: string, invoke: (cb: T) => void) {
+  const sid = normalizeSessionId(sessionId);
+  listeners.forEach(listener => {
+    if (!listener.sessionId || listener.sessionId === sid) {
+      try { invoke(listener.cb); } catch { }
+    }
+  });
+}
 
 function pushStep(text: string, kind: 'status' | 'detail', sessionId: string) {
     const clean = String(text || '').trim();
     if (!clean) return;
-    const last = thinkingSteps[thinkingSteps.length - 1];
-    // A status headline is REPLACED in place while it is on screen, so the same
-    // text arriving twice is one event, not two steps.
+    const state = getSessionRuntime(sessionId);
+    const last = state.thinkingSteps[state.thinkingSteps.length - 1];
     if (last && last.text === clean) return;
-    if (!runStartedAt) { runStartedAt = Date.now(); runSessionId = sessionId; }
-    if (sessionId && !runSessionId) runSessionId = sessionId;
-    thinkingSteps.push({ text: clean, at: Date.now(), phase: thinkingPhase, kind });
-    thinkingStepsListeners.forEach(cb => { try { cb([...thinkingSteps]); } catch { } });
+    if (!state.runStartedAt) {
+      state.runStartedAt = Date.now();
+      state.runSessionId = normalizeSessionId(sessionId);
+    }
+    state.thinkingSteps.push({ text: clean, at: Date.now(), phase: state.thinkingPhase, kind });
+    forSession(thinkingStepsListeners, sessionId, cb => cb([...state.thinkingSteps], normalizeSessionId(sessionId)));
 }
 
-/**
- * The run is over: write what Joe did into the session's history so the chat
- * can show a receipt for it forever, then clear the live state.
- */
-function sealTrace() {
-    const steps = thinkingSteps;
-    thinkingSteps = [];
-    const startedAt = runStartedAt;
-    const sid = runSessionId;
-    runStartedAt = 0;
-    runSessionId = '';
-    thinkingStepsListeners.forEach(cb => { try { cb([]); } catch { } });
-    if (!steps.length || !sid) return;
+/** Seal only the trace owned by the supplied session. */
+function sealTrace(sessionId = '') {
+    const sid = normalizeSessionId(sessionId);
+    const state = getSessionRuntime(sid);
+    const steps = state.thinkingSteps;
+    state.thinkingSteps = [];
+    const startedAt = state.runStartedAt;
+    const traceSid = state.runSessionId || sid;
+    state.runStartedAt = 0;
+    state.runSessionId = '';
+    forSession(thinkingStepsListeners, sid, cb => cb([], sid));
+    if (!steps.length || !traceSid) return;
     const trace: NeuralTrace = {
-        id: `tr_${sid}_${startedAt || steps[0].at}`,
-        sessionId: sid,
+        id: `tr_${traceSid}_${startedAt || steps[0].at}`,
+        sessionId: traceSid,
         startedAt: startedAt || steps[0].at,
         endedAt: Date.now(),
         steps,
     };
     saveTrace(trace);
-    traceSealedListeners.forEach(cb => { try { cb(trace); } catch { } });
+    forSession(traceSealedListeners, traceSid, cb => cb(trace));
 }
 
-// [ELITE SPEC] Thinking Status (Short human-friendly status like "Navigating...")
-let thinkingStatus = '';
-const thinkingStatusListeners: Set<(status: string) => void> = new Set();
-
-// [New] Task Tracker State
-let taskTrackerData: any[] = [];
-const taskTrackerListeners: Set<(tasks: any[]) => void> = new Set();
 
 function computeFallbackWsUrl(primaryUrl: string) {
   const wsFromHttpBase = (httpUrl: string) => {
@@ -116,6 +157,33 @@ function computeFallbackWsUrl(primaryUrl: string) {
   const unique = Array.from(new Set(candidates));
   const filtered = unique.filter((u) => u !== primaryUrl);
   return filtered[0] || '';
+}
+
+function syncSessionSubscriptions() {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  const sessionIds = Array.from(sessionSubscriptionRefs.keys()).filter(Boolean);
+  try { socket.send(JSON.stringify({ type: 'session_subscribe', sessionIds })); } catch { }
+}
+
+function retainSessionSubscription(sessionId?: string) {
+  const sid = normalizeSessionId(sessionId);
+  if (!sid) return () => { };
+  sessionSubscriptionRefs.set(sid, (sessionSubscriptionRefs.get(sid) || 0) + 1);
+  syncSessionSubscriptions();
+  return () => {
+    const count = sessionSubscriptionRefs.get(sid) || 0;
+    if (count <= 1) sessionSubscriptionRefs.delete(sid);
+    else sessionSubscriptionRefs.set(sid, count - 1);
+    syncSessionSubscriptions();
+  };
+}
+
+function addSessionListener<T>(collection: Set<SessionListener<T>>, cb: T, sessionId?: string) {
+  const sid = normalizeSessionId(sessionId);
+  const listener: SessionListener<T> = { cb, sessionId: sid || undefined };
+  collection.add(listener);
+  const release = retainSessionSubscription(sid);
+  return () => { collection.delete(listener); release(); };
 }
 
 function setStatus(state: string, detail?: string) {
@@ -251,8 +319,10 @@ async function connect() {
     triedFallback = false;
     setStatus('connected', lastUrl);
 
-    // Initial heartbeat
+    // Initial heartbeat and an explicit server-side session subscription. The
+    // socket is shared by tabs, but event ownership is not.
     SocketService.send({ type: 'heartbeat', ts: Date.now() });
+    syncSessionSubscriptions();
 
     // Flush pending safely using the socket instance that just opened
     const toFlush = [...pendingQueue];
@@ -298,18 +368,20 @@ async function connect() {
 
       // [Wakil 5.5] Auto Quiet Mode & Thinking Phase Management
       const msgType = String(data?.type || '');
+      // Every runtime cache is owned by the event's session. Events without a
+      // session id remain in the legacy unscoped bucket and are never promoted
+      // into a named session by the frontend.
+      const evSid = eventSessionId(data);
+      const runtime = getSessionRuntime(evSid);
       if (msgType === 'terminal_output' && typeof data?.data === 'string') {
-        terminalHistory += data.data;
-        if (terminalHistory.length > TERMINAL_HISTORY_CAP) {
-          terminalHistory = terminalHistory.slice(-TERMINAL_HISTORY_CAP);
+        runtime.terminalHistory += data.data;
+        if (runtime.terminalHistory.length > TERMINAL_HISTORY_CAP) {
+          runtime.terminalHistory = runtime.terminalHistory.slice(-TERMINAL_HISTORY_CAP);
         }
       }
-      // Which session this event belongs to — so the neural indicator only shows
-      // in the session that is actually running (no cross-session leak).
-      const evSid = String(data?.sessionId || data?.data?.sessionId || '');
       const emitPhase = (p: any) => {
-        thinkingPhase = p;
-        thinkingPhaseListeners.forEach(cb => { try { cb(p, evSid); } catch { } });
+        runtime.thinkingPhase = p;
+        forSession(thinkingPhaseListeners, evSid, cb => cb(p, evSid));
       };
 
       // [Wakil 6.0] Handle explicit thinking_phase messages
@@ -320,19 +392,19 @@ async function connect() {
           emitPhase(phase);
 
           if (detail !== undefined) {
-            thinkingStatus = detail || ''; // Allow empty string to clear
-            thinkingStatusListeners.forEach(cb => { try { cb(thinkingStatus); } catch { } });
+            runtime.thinkingStatus = detail || ''; // Allow empty string to clear
+            forSession(thinkingStatusListeners, evSid, cb => cb(runtime.thinkingStatus, evSid));
             // The headline is the ONLY thing many runs ever show — his own
             // screenshot is one line, «جاري تنفيذ: react project». A trace that
             // recorded details alone would be empty for exactly those runs.
-            if (thinkingStatus) pushStep(thinkingStatus, 'status', evSid);
+            if (runtime.thinkingStatus) pushStep(runtime.thinkingStatus, 'status', evSid);
           }
         }
       } else if (msgType === 'thinking_detail') {
         const detail = data?.data?.detail;
         if (detail && typeof detail === 'string') {
-          thinkingDetails.push(detail);
-          thinkingDetailsListeners.forEach(cb => { try { cb([...thinkingDetails]); } catch { } });
+          runtime.thinkingDetails.push(detail);
+          forSession(thinkingDetailsListeners, evSid, cb => cb([...runtime.thinkingDetails], evSid));
           pushStep(detail, 'detail', evSid);
         }
       }
@@ -343,12 +415,12 @@ async function connect() {
         // the commonest run there is — never entered quiet mode and none of the
         // transitions below could fire. `user_input` is broadcast at the start
         // of every run, whatever it turns out to be.
-        if (!quietMode) {
-          quietMode = true;
+        if (!runtime.quietMode) {
+          runtime.quietMode = true;
           emitPhase('analyzing');
         }
       } else if (msgType === 'step_done' || msgType === 'step_failed') {
-        if (quietMode) {
+        if (runtime.quietMode) {
           emitPhase('synthesizing');
         }
       } else if (msgType === 'tool_started') {   // the server's only name for it
@@ -356,7 +428,7 @@ async function connect() {
         // `tool_start`, so it never matched once — the phase never reached
         // 'executing' and the live thinking panel had nothing to turn on for.
         // A silent name mismatch between two halves of the same feature.
-        if (quietMode) {
+        if (runtime.quietMode) {
           emitPhase('executing');
         }
       } else if (msgType === 'run_finished' || msgType === 'text') {
@@ -365,36 +437,35 @@ async function connect() {
         // which is only set by `user_input` / `step_started`; a run driven purely
         // by `thinking_phase` events therefore never came back, and the card sat
         // on screen saying «جو ينفّذ» after the answer had already arrived.
-        quietMode = false;
-        thinkingStatus = '';
+        runtime.quietMode = false;
+        runtime.thinkingStatus = '';
         emitPhase('idle');
-        thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
+        forSession(thinkingStatusListeners, evSid, cb => cb('', evSid));
         // Sealed on the way out, whatever ended the run. The steps were about to
         // be dropped on the floor here — that is precisely why the chat kept the
         // answer and lost the work that produced it.
-        sealTrace();
+        sealTrace(evSid);
       } else if (msgType === 'thought') {
         // [Wakil 6.0] Matrix-style thought logs
         const text = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
         if (text) {
-          thinkingDetails.push(text);
-          thinkingDetailsListeners.forEach(cb => { try { cb([...thinkingDetails]); } catch { } });
+          runtime.thinkingDetails.push(text);
+          forSession(thinkingDetailsListeners, evSid, cb => cb([...runtime.thinkingDetails], evSid));
           pushStep(text, 'detail', evSid);
         }
       } else if (msgType === 'run_started') {
-        // Reset state and immediately activate 'analyzing' phase for neural indicator
-        // A run that starts while another is still open seals the open one first,
-        // rather than letting two runs share one trace.
-        sealTrace();
-        runStartedAt = Date.now();
-        runSessionId = evSid;
-        thinkingDetails = [];
-        thinkingStatus = '';
-        taskTrackerData = []; // Reset tasks on new run
-        thinkingDetailsListeners.forEach(cb => { try { cb([]); } catch { } });
-        thinkingStatusListeners.forEach(cb => { try { cb(''); } catch { } });
+        // Reset only the runtime owned by this run. A concurrent run in another
+        // session has its own trace, phase, task list, and history.
+        sealTrace(evSid);
+        runtime.runStartedAt = Date.now();
+        runtime.runSessionId = evSid;
+        runtime.thinkingDetails = [];
+        runtime.thinkingStatus = '';
+        runtime.taskTrackerData = [];
+        forSession(thinkingDetailsListeners, evSid, cb => cb([], evSid));
+        forSession(thinkingStatusListeners, evSid, cb => cb('', evSid));
         emitPhase('analyzing');
-        taskTrackerListeners.forEach(cb => { try { cb([]); } catch { } });
+        forSession(taskTrackerListeners, evSid, cb => cb([], evSid));
       } else if (msgType === 'todo_update') {   // 'task_tracker' was never a server event
         // [New] Receive task lists from the API (Unifying task_tracker and todo_update)
         const rawData = data?.data || [];
@@ -406,8 +477,8 @@ async function connect() {
           label: t.label || t.content || t.text
         }));
 
-        taskTrackerData = mappedTasks;
-        taskTrackerListeners.forEach(cb => { try { cb(mappedTasks); } catch { } });
+        runtime.taskTrackerData = mappedTasks;
+        forSession(taskTrackerListeners, evSid, cb => cb([...mappedTasks], evSid));
 
         // Also dispatch to TodosPanel-specific handlers if needed (already handled by general listeners)
       } else if (msgType === 'workspace_updated') {
@@ -416,18 +487,17 @@ async function connect() {
         window.dispatchEvent(new CustomEvent('workspace:updated', { detail: wsData }));
       } else if (msgType === 'build_progress') {
         // [Flow Agent] Live build progress events for PreviewPanel overlay
-        const progressData = data?.data || {};
+        const progressData = { ...(data?.data || {}), sessionId: evSid };
         window.dispatchEvent(new CustomEvent('preview:build_progress', { detail: progressData }));
       } else if (msgType === 'preview_ready') {   // 'preview_url' was never sent by anyone
         // [Preview Pipeline] When the API sends a preview URL, dispatch it to PreviewPanel
         const url = data?.data?.url || data?.url;
         if (url) {
-          _lastPreviewUrl = url;
-          window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url } }));
-        } else if (data?.data?.type === 'refresh' && _lastPreviewUrl) {
-          // A refresh with no new url: re-dispatch the last one so the panel
-          // still switches at the end of a long build.
-          window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url: _lastPreviewUrl } }));
+          runtime.lastPreviewUrl = url;
+          window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url, sessionId: evSid } }));
+        } else if (data?.data?.type === 'refresh' && runtime.lastPreviewUrl) {
+          // A refresh with no new url only re-dispatches this session's URL.
+          window.dispatchEvent(new CustomEvent('preview:ready', { detail: { url: runtime.lastPreviewUrl, sessionId: evSid } }));
         }
       } else if (msgType === 'diff') {
         // [Code Preview] When a file is created or modified, notify the PreviewPanel
@@ -436,7 +506,7 @@ async function connect() {
         if (path && content !== undefined) {
           // An explicit surgical edit DOES deserve the screen — the user asked
           // for that change and wants to see it.
-          window.dispatchEvent(new CustomEvent('preview:code_diff', { detail: { path, content, focus: true } }));
+          window.dispatchEvent(new CustomEvent('preview:code_diff', { detail: { path, content, focus: true, sessionId: evSid } }));
         }
       } else if (msgType === 'file_stream') {
         /**
@@ -458,7 +528,7 @@ async function connect() {
         if (file && content !== undefined && d.done) {
           // …but a build writing twenty files must NOT yank him to the code
           // view twenty times. The content is loaded; «<>» is his to press.
-          window.dispatchEvent(new CustomEvent('preview:code_diff', { detail: { path: file, content: String(content), focus: false } }));
+          window.dispatchEvent(new CustomEvent('preview:code_diff', { detail: { path: file, content: String(content), focus: false, sessionId: evSid } }));
         }
       }
 
@@ -466,7 +536,7 @@ async function connect() {
         AutoOpenManager.processStepEvent(data);
       } catch { }
 
-      listeners.forEach(l => l(data));
+      forSession(listeners, evSid, cb => cb(data));
     } catch (e) {
     }
   };
@@ -566,19 +636,21 @@ export const SocketService = {
     lastSentPayload = null;
   },
   // [Wakil 5.1] Quiet Mode controls
-  setQuietMode(enabled: boolean) {
-    quietMode = enabled;
+  setQuietMode(enabled: boolean, sessionId?: string) {
+    getSessionRuntime(sessionId).quietMode = enabled;
   },
-  isQuietMode() {
-    return quietMode;
+  isQuietMode(sessionId?: string) {
+    return getSessionRuntime(sessionId).quietMode;
   },
   send(data: any) {
-    // [Wakil 5.2] HARD Quiet Mode: Block ALL outgoing traffic EXCEPT critical signals
+    // [Wakil 5.2] Quiet mode is owned by the message's session. A run in one
+    // session must never suppress commands emitted by another session.
     const criticalSignals = ['run', 'stop', 'join_session', 'heartbeat', 'terminal_input', 'terminal_resize'];
     const isCritical = data && criticalSignals.includes(data.type);
+    const sendSessionId = normalizeSessionId(data?.sessionId);
 
-    if (quietMode && !isCritical) {
-      return; // NO SEND. NO QUEUE. ZERO TRAFFIC.
+    if (getSessionRuntime(sendSessionId).quietMode && !isCritical) {
+      return; // NO SEND. NO QUEUE. ZERO TRAFFIC for this session only.
     }
 
     const msg = JSON.stringify(data);
@@ -625,16 +697,16 @@ export const SocketService = {
     });
   },
   /** Bounded scrollback used when the visible Terminal panel remounts. */
-  getTerminalHistory() {
-    return terminalHistory;
+  getTerminalHistory(sessionId?: string) {
+    return getSessionRuntime(sessionId).terminalHistory;
   },
-  clearTerminalHistory() {
-    terminalHistory = '';
+  clearTerminalHistory(sessionId?: string) {
+    getSessionRuntime(sessionId).terminalHistory = '';
   },
-  subscribe(cb: (data: any) => void) {
-    listeners.add(cb);
+  subscribe(cb: (data: any) => void, sessionId?: string) {
+    const release = addSessionListener(listeners, cb, sessionId);
     if (!socket && !isConnecting) connect();
-    return () => { listeners.delete(cb); };
+    return release;
   },
   subscribeStatus(cb: (status: { state: string; detail?: string }) => void) {
     statusListeners.add(cb);
@@ -642,51 +714,46 @@ export const SocketService = {
     return () => { statusListeners.delete(cb); };
   },
   // [Wakil 5.3] Thinking Phase State
-  setThinkingPhase(phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle') {
-    thinkingPhase = phase;
-    thinkingPhaseListeners.forEach(cb => {
-      try { cb(phase); } catch { }
-    });
+  setThinkingPhase(phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle', sessionId?: string) {
+    const state = getSessionRuntime(sessionId);
+    const sid = normalizeSessionId(sessionId);
+    state.thinkingPhase = phase;
+    forSession(thinkingPhaseListeners, sid, cb => cb(phase, sid));
   },
-  getThinkingPhase() {
-    return thinkingPhase;
+  getThinkingPhase(sessionId?: string) {
+    return getSessionRuntime(sessionId).thinkingPhase;
   },
-  subscribeThinkingPhase(cb: (phase: string, sessionId?: string) => void) {
-    thinkingPhaseListeners.add(cb);
-    return () => { thinkingPhaseListeners.delete(cb); };
+  subscribeThinkingPhase(cb: (phase: string, sessionId?: string) => void, sessionId?: string) {
+    cb(getSessionRuntime(sessionId).thinkingPhase, normalizeSessionId(sessionId));
+    return addSessionListener(thinkingPhaseListeners, cb, sessionId);
   },
-  subscribeThinkingDetails(cb: (details: string[]) => void) {
-    cb([...thinkingDetails]);
-    thinkingDetailsListeners.add(cb);
-    return () => { thinkingDetailsListeners.delete(cb); };
+  subscribeThinkingDetails(cb: (details: string[], sessionId?: string) => void, sessionId?: string) {
+    cb([...getSessionRuntime(sessionId).thinkingDetails], normalizeSessionId(sessionId));
+    return addSessionListener(thinkingDetailsListeners, cb, sessionId);
   },
   /** The same stream with timestamps and phases — what the timeline renders. */
-  subscribeThinkingSteps(cb: (steps: TraceStep[]) => void) {
-    cb([...thinkingSteps]);
-    thinkingStepsListeners.add(cb);
-    return () => { thinkingStepsListeners.delete(cb); };
+  subscribeThinkingSteps(cb: (steps: TraceStep[], sessionId?: string) => void, sessionId?: string) {
+    cb([...getSessionRuntime(sessionId).thinkingSteps], normalizeSessionId(sessionId));
+    return addSessionListener(thinkingStepsListeners, cb, sessionId);
   },
   /** Fires once per finished run, after the trace is written to the session. */
-  subscribeTraceSealed(cb: (trace: NeuralTrace) => void) {
-    traceSealedListeners.add(cb);
-    return () => { traceSealedListeners.delete(cb); };
+  subscribeTraceSealed(cb: (trace: NeuralTrace) => void, sessionId?: string) {
+    return addSessionListener(traceSealedListeners, cb, sessionId);
   },
-  getRunStartedAt() {
-    return runStartedAt;
+  getRunStartedAt(sessionId?: string) {
+    return getSessionRuntime(sessionId).runStartedAt;
   },
-  subscribeThinkingStatus(cb: (status: string) => void) {
-    cb(thinkingStatus);
-    thinkingStatusListeners.add(cb);
-    return () => { thinkingStatusListeners.delete(cb); };
+  subscribeThinkingStatus(cb: (status: string, sessionId?: string) => void, sessionId?: string) {
+    cb(getSessionRuntime(sessionId).thinkingStatus, normalizeSessionId(sessionId));
+    return addSessionListener(thinkingStatusListeners, cb, sessionId);
   },
   // [New] Task Tracker Subscription
-  subscribeTaskTracker(cb: (tasks: any[]) => void) {
-    cb([...taskTrackerData]);
-    taskTrackerListeners.add(cb);
-    return () => { taskTrackerListeners.delete(cb); };
+  subscribeTaskTracker(cb: (tasks: any[], sessionId?: string) => void, sessionId?: string) {
+    cb([...getSessionRuntime(sessionId).taskTrackerData], normalizeSessionId(sessionId));
+    return addSessionListener(taskTrackerListeners, cb, sessionId);
   },
   // [Wakil 6.1] Get last preview URL (for mount-time read)
-  getLastPreviewUrl() {
-    return _lastPreviewUrl;
+  getLastPreviewUrl(sessionId?: string) {
+    return getSessionRuntime(sessionId).lastPreviewUrl;
   }
 };

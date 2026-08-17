@@ -45,13 +45,12 @@ export default function TaskTracker({ sessionId }: { sessionId?: string } = {}) 
                     setElapsedMs(Date.now() - startTimeRef.current);
                 }, 100);
             }
-        });
+        }, sessionId);
 
         // Reset on run_started — and never on ANOTHER conversation's run.
         const unsubSocket = SocketService.subscribe((msg: any) => {
-            const sid = String(msg?.sessionId || msg?.data?.sessionId || '');
-            const mine = !sid || !activeSid.current || sid === activeSid.current
-                || sid.includes(activeSid.current) || activeSid.current.includes(sid);
+            const sid = String(msg?.sessionId || msg?.data?.sessionId || '').trim();
+            const mine = !activeSid.current || sid === activeSid.current;
             if (!mine) return;
             if (msg.type === 'run_started') {
                 setTasks([]);
@@ -60,10 +59,10 @@ export default function TaskTracker({ sessionId }: { sessionId?: string } = {}) 
                 startTimeRef.current = 0;
                 if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
             }
-        });
+        }, sessionId);
 
         return () => { unsub(); unsubSocket(); if (timerRef.current) clearInterval(timerRef.current); };
-    }, []);
+    }, [sessionId]);
 
     // Leaving a conversation takes its progress ring with it.
     useEffect(() => {

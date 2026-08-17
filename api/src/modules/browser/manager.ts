@@ -322,10 +322,13 @@ const watched = new Set<string>();
 
 /** True when a browser session is live on a REAL page (not blank/about:blank) —
  *  i.e. the user is currently looking at a loaded site. Used by the planner to
- *  route bare interaction verbs («اضغط على الزر») as a CONTINUATION of that page
- *  instead of a fresh request or a text answer. Defaults to the panel session. */
-export function hasLiveBrowserPage(sessionId = 'panel-browser'): boolean {
-  const s = sessions.get(String(sessionId || '').trim());
+ *  route bare interaction verbs («اضغط على الزر») as a CONTINUATION of that page.
+ *  Browser ownership is explicit: an omitted session id never inspects a shared
+ *  panel session. */
+export function hasLiveBrowserPage(sessionId?: string): boolean {
+  const sid = String(sessionId || '').trim();
+  if (!sid) return false;
+  const s = sessions.get(sid);
   if (!s) return false;
   try {
     const u = String(s.page.url() || '');

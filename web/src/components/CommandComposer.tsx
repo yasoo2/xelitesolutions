@@ -879,9 +879,9 @@ export default function CommandComposer({
 
   // [Wakil 5.3] Neural Thinking Indicator
   const [thinkingPhase, setThinkingPhase] = useState<'analyzing' | 'synthesizing' | 'executing' | 'idle'>(
-    SocketService.getThinkingPhase() as any || 'idle'
+    SocketService.getThinkingPhase(sessionId) as any || 'idle'
   );
-  const isQuietMode = SocketService.isQuietMode();
+  const isQuietMode = SocketService.isQuietMode(sessionId);
 
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
@@ -1392,9 +1392,9 @@ export default function CommandComposer({
     const unsubscribe = SocketService.subscribeThinkingPhase((phase: any, evSid?: string) => {
       if (evSid && activeSidRef.current && evSid !== activeSidRef.current) return;
       setThinkingPhase(phase);
-    });
+    }, sessionId);
     return () => unsubscribe();
-  }, []);
+  }, [sessionId]);
   useEffect(() => { setThinkingPhase('idle'); }, [sessionId]);
 
   const showTool = (name: string) => {
@@ -1436,9 +1436,11 @@ export default function CommandComposer({
   useEffect(() => {
     // Subscribe to incoming messages
     const unsubscribeMessages = SocketService.subscribe((msg: any) => {
-      // [Wakil 4.7] Centralized Handling via SocketService
+      // [Wakil 4.7] Centralized Handling via SocketService.
+      // The transport is scoped; keep the explicit check for legacy events.
+      if (sessionId && String(msg?.sessionId || '').trim() !== sessionId) return;
       handleMessage({ data: JSON.stringify(msg) } as MessageEvent);
-    });
+    }, sessionId);
 
     // Subscribe to status changes
     const unsubscribeStatus = SocketService.subscribeStatus(({ state }) => {
@@ -1455,7 +1457,7 @@ export default function CommandComposer({
       clearToolTimers();
       clearDraftTimer();
     };
-  }, []);
+  }, [sessionId]);
 
   // Legacy handler wrapper for compatibility with existing logic
   const handleMessage = (evt: MessageEvent) => {

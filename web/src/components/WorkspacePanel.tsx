@@ -54,6 +54,7 @@ export interface BuildStatusState {
 interface WorkspacePanelProps {
     activeTab?: WorkspaceTab;
     onTabChange?: (tab: WorkspaceTab) => void;
+    sessionId?: string;
     browserSessionId?: string;
     terminalId?: string;
     workspaceId?: string;
@@ -545,6 +546,7 @@ function EnhancedProblemsPanel({ problems }: { problems: any[] }) {
 export default function WorkspacePanel({
     activeTab: controlledTab,
     onTabChange,
+    sessionId,
     browserSessionId,
     terminalId,
     workspaceId,
@@ -691,7 +693,7 @@ export default function WorkspacePanel({
                 {activeTab === 'browser' && (
                     <ErrorBoundary fallbackTitle={t('loadBrowserFailed')}>
                         <Suspense fallback={<LoadingFallback />}>
-                            <EmbeddedBrowser sessionId={browserSessionId || 'panel-browser'} />
+                            <EmbeddedBrowser sessionId={browserSessionId || (sessionId ? `browser:${sessionId}` : '')} />
                         </Suspense>
                     </ErrorBoundary>
                 )}
@@ -700,7 +702,7 @@ export default function WorkspacePanel({
                 {activeTab === 'terminal' && (
                     <ErrorBoundary fallbackTitle={t('loadTerminalFailed')}>
                         <Suspense fallback={<LoadingFallback />}>
-                            <EnterpriseTerminalPanel terminalId={terminalId} workspaceId={workspaceId} isEmbedded={true} />
+                            <EnterpriseTerminalPanel sessionId={sessionId} terminalId={terminalId} workspaceId={workspaceId} isEmbedded={true} />
                         </Suspense>
                     </ErrorBoundary>
                 )}

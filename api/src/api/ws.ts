@@ -17,6 +17,7 @@ type OwnerEntry = { userId: string; at: number };
 const runOwnerByRunId = new Map<string, OwnerEntry>();
 const sessionOwnerBySessionId = new Map<string, OwnerEntry>();
 const terminalOwnerById = new Map<string, OwnerEntry>();
+const terminalSessionById = new Map<string, { sessionId: string; at: number }>();
 
 const OWNER_TTL_MS = 24 * 60 * 60 * 1000;
 const OWNER_MAX_ENTRIES = 5000;
@@ -77,6 +78,26 @@ export function registerTerminalOwner(terminalId: string, userId: string) {
 /** Who owns this terminal, if anyone. */
 export function terminalOwnerOf(terminalId: string): string {
   return terminalOwnerById.get(trimId(terminalId))?.userId || '';
+}
+
+/** First-owner registry for same-user multi-session terminal isolation. */
+export function registerTerminalSessionOwner(terminalId: string, sessionId: string) {
+  const tid = trimId(terminalId);
+  const sid = trimId(sessionId);
+  if (!tid || !sid) return;
+  const existing = terminalSessionById.get(tid);
+  if (existing && existing.sessionId !== sid) return;
+  terminalSessionById.set(tid, { sessionId: sid, at: Date.now() });
+  if (terminalSessionById.size > OWNER_MAX_ENTRIES) {
+    const now = Date.now();
+    for (const [key, value] of terminalSessionById) {
+      if (now - value.at > OWNER_TTL_MS) terminalSessionById.delete(key);
+    }
+  }
+}
+
+export function terminalSessionOwnerOf(terminalId: string): string {
+  return terminalSessionById.get(trimId(terminalId))?.sessionId || '';
 }
 
 function resolveEventUserId(ev: LiveEvent) {
@@ -188,6 +209,11 @@ export function attachWebSocket(server: Server) {
 
     const userId = trimId((req as any)?.auth?.sub);
     const role = (req as any)?.auth?.role;
+    // A live socket may serve several Joe tabs, but it must explicitly declare
+    // which session streams it is currently rendering. Same-user sessions are
+    // not a security boundary by themselves, yet they are a strict UI/runtime
+    // ownership boundary.
+    (ws as any).sessionSubscriptions = new Set<string>();
     if (userId) (ws as any).userId = userId;
     if (role) (ws as any).role = role;
 
@@ -213,12 +239,28 @@ export function attachWebSocket(server: Server) {
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }));
+        if (msg.type === 'session_subscribe') {
+          const next = Array.isArray(msg.sessionIds) ? msg.sessionIds : [msg.sessionId];
+          const subscriptions = (ws as any).sessionSubscriptions as Set<string>;
+          subscriptions.clear();
+          for (const sid of next) {
+            const normalizedSid = trimId(sid);
+            if (normalizedSid) subscriptions.add(normalizedSid);
+          }
+          return;
+        }
 
         // Terminal Streaming Handlers
         if (msg.type === 'terminal_input') {
           const { id, data, serverId } = msg;
+          const messageSessionId = trimId(msg.sessionId);
           const ts = Date.now();
-          console.log(`[websocket.forward.received] sessionId=${id} ts=${ts} type=terminal_input`);
+          console.log(`[websocket.forward.received] sessionId=${messageSessionId || id} ts=${ts} type=terminal_input`);
+          const terminalSession = terminalSessionOwnerOf(id);
+          if (terminalSession && (!messageSessionId || terminalSession !== messageSessionId)) {
+            console.warn(`[WS] refused terminal_input on ${id}: owned by session ${terminalSession}`);
+            return;
+          }
           // Writing into a terminal that belongs to someone else runs commands
           // in THEIR shell. Refused, not merely unreported.
           const owner = terminalOwnerOf(id);
@@ -227,16 +269,21 @@ export function attachWebSocket(server: Server) {
             return;
           }
           if (userId) registerTerminalOwner(id, userId);
+          if (messageSessionId) registerTerminalSessionOwner(id, messageSessionId);
           Promise.resolve(require('../modules/terminal/terminal-kernel')).then(({ terminalKernel }) => {
-            console.log(`[websocket.forward.sent] sessionId=${id} ts=${Date.now()} target=kernel`);
+            console.log(`[websocket.forward.sent] sessionId=${messageSessionId || id} ts=${Date.now()} target=kernel`);
             terminalKernel.sendInput(id, data, serverId);
           });
         }
         if (msg.type === 'terminal_resize') {
           const { id, cols, rows, serverId } = msg;
+          const messageSessionId = trimId(msg.sessionId);
+          const terminalSession = terminalSessionOwnerOf(id);
+          if (terminalSession && (!messageSessionId || terminalSession !== messageSessionId)) return;
           const rowner = terminalOwnerOf(id);
           if (rowner && userId && rowner !== userId) return;
           if (userId) registerTerminalOwner(id, userId);
+          if (messageSessionId) registerTerminalSessionOwner(id, messageSessionId);
           Promise.resolve(require('../modules/terminal/terminal-kernel')).then(({ terminalKernel }) => {
             terminalKernel.resizeTerminal(id, cols, rows, serverId);
           });
@@ -338,6 +385,59 @@ export function attachWebSocket(server: Server) {
   });
 }
 
+/**
+ * Return the canonical session address carried by a live event.
+ * Session-specific producers may put it at the top level or in data because
+ * older tool adapters used the latter shape. The wire must treat both forms
+ * identically; otherwise a session can be filtered in one path and broadcast
+ * globally in another.
+ */
+export function liveEventSessionId(event: Partial<LiveEvent> | any): string {
+  return trimId(event?.sessionId || event?.data?.sessionId || event?.data?.data?.sessionId);
+}
+
+/**
+ * Events that render a run or mutate a session-owned resource are never safe
+ * to deliver without an explicit session address. Unknown/status events remain
+ * global by design, while these events fail closed instead of leaking.
+ */
+const SESSION_SCOPED_EVENT_TYPES = new Set([
+  'run_started', 'run_finished', 'run_completed', 'step_started', 'step_progress',
+  'step_done', 'step_failed', 'tool_started', 'tool_done', 'department_status',
+  'text', 'diff', 'preview_ready', 'screenshot', 'browser_screenshot',
+  'browser_event', 'browser_action', 'browser_action_sent', 'browser_action_done',
+  'terminal_output', 'terminal_line', 'todo_update', 'task_update', 'task',
+  'thinking_phase', 'thinking_detail', 'thinking_steps', 'thinking_status',
+  'neural_trace', 'secret_required', 'approval_required', 'approval_result',
+  'artifact_created', 'file_stream', 'code_update', 'workspace_update',
+]);
+
+export function eventRequiresSession(event: Partial<LiveEvent> | any): boolean {
+  return SESSION_SCOPED_EVENT_TYPES.has(trimId(event?.type));
+}
+
+/**
+ * Pure delivery predicate used by the live socket and by regression tests.
+ * A client subscribed to one session must never receive another session's
+ * event. A scoped event without an address is dropped (fail closed).
+ */
+export function canDeliverLiveEventToSession(
+  event: Partial<LiveEvent> | any,
+  subscriptions?: Iterable<string>,
+): boolean {
+  const sid = liveEventSessionId(event);
+  if (!sid) return !eventRequiresSession(event);
+  const subscribed = new Set(Array.from(subscriptions || [], value => trimId(value)).filter(Boolean));
+  return subscribed.has(sid);
+}
+
+/** A terminal is usable only by its recorded session, if one exists. */
+export function canUseTerminalForSession(terminalId: string, sessionId: string): boolean {
+  const owner = terminalSessionOwnerOf(terminalId);
+  const sid = trimId(sessionId);
+  return !!sid && (!owner || owner === sid);
+}
+
 export function broadcast(
   event: LiveEvent | { type: string; data: any; id?: string; runId?: string; seq?: number; ts?: number }
 ) {
@@ -361,6 +461,7 @@ export function broadcast(
           : undefined,
   };
   const payload = JSON.stringify(normalized);
+  const eventSessionId = liveEventSessionId(normalized);
 
   // Fix: Ensure "undefined" string is treated as empty
   let targetUserId = authBypass ? '' : resolveEventUserId(normalized);
@@ -381,6 +482,8 @@ export function broadcast(
 
   liveWssRef.clients.forEach((client: WebSocket) => {
     if (client.readyState === WebSocket.OPEN) {
+      const sessionSubscriptions = (client as any).sessionSubscriptions as Set<string> | undefined;
+      if (!canDeliverLiveEventToSession(normalized, sessionSubscriptions)) return;
       if (!authBypass) {
         if (targetUserId === 'SUPER_ADMIN_ROLE') {
           const clientRole = (client as any).role;
@@ -455,13 +558,23 @@ export function observeBroadcasts(fn: (event: any) => void): () => void {
  * this line belongs to. One message, same reach, a quarter of the traffic.
  */
 export function broadcastTerminalLine(sessionId: string | undefined, line: string): void {
-    // `local_terminal` is the actual default id of EnterpriseTerminalPanel.
-    // Omitting it meant the shared stream reached legacy `local` tabs only and
-    // the visible panel beside the browser remained blank during a build.
-    const ids = [String(sessionId || ''), 'local_terminal', 'local', 'default', 'panel-terminal'].filter(Boolean);
-    // `sessionId` rides along so the delivery filter can find the owner: the
-    // id is the shared panel stream, which belongs to nobody by itself.
-    broadcast({ type: 'terminal_output', id: 'panel-terminal', ids, sessionId, data: line } as any);
+    const owner = trimId(sessionId);
+    // A terminal line without an owner is unsafe: never send it to a shared
+    // panel or to whichever session happens to be visible. Callers must carry
+    // the run's session identity all the way to this boundary.
+    if (!owner) return;
+
+    // `panel-terminal` remains only a compatibility label consumed by the
+    // legacy Logs renderer. It is deliberately absent from the routing ids.
+    // Delivery is addressed by the session-owned terminal namespace instead.
+    const terminalId = `terminal:${owner}`;
+    broadcast({
+      type: 'terminal_output',
+      id: 'panel-terminal',
+      ids: [owner, terminalId],
+      sessionId: owner,
+      data: line,
+    } as any);
 }
 
 export function broadcastThinkingPhase(sessionId: string, phase: 'analyzing' | 'synthesizing' | 'executing' | 'idle', detail?: string) {

@@ -1738,8 +1738,11 @@ Rules:
         try {
             const mgr = require('../../modules/browser/manager');
             if (mgr.isPersistentBrowserMode && mgr.isPersistentBrowserMode()) {
-                const bsid = String((context && context.browserSessionId) || 'panel-browser');
-                if (!mgr.hasBrowserConsent(bsid)) {
+                const bsid = String((context && context.browserSessionId) || '').trim();
+                // Consent is a per-browser-session capability. Never consult or
+                // mutate a shared panel session when an execution context forgot
+                // to carry its browser identity; BrowserAgent will fail closed.
+                if (bsid && !mgr.hasBrowserConsent(bsid)) {
                     // NOTE: no \b after the words — \b is an ASCII word boundary and
                     // does NOT match after Arabic letters, so "اوافق" failed before.
                     const affirm = /^\s*(أوافق|اوافق|موافق|موافقة|نعم|أقبل|اقبل|أوكي|اوكي|تمام|أكيد|اكيد|ok|okay|yes|agree)(\s|$|[.،,!]|ي)/i.test(goalRaw.trim() + ' ');

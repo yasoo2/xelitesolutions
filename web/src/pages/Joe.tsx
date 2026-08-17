@@ -86,7 +86,9 @@ export default function Joe() {
         return 'dark';
     });
     const [isConnected, setIsConnected] = useState(true);
-    const [browserSessionId, setBrowserSessionId] = useState<string | null>(null);
+    // Browser ownership is deterministic: one browser session per Joe session.
+    // Never fall back to a shared panel-browser surface.
+    const browserSessionId = activeSessionId ? `browser:${activeSessionId}` : null;
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isGitHubOpen, setIsGitHubOpen] = useState(false);
     const [ghUser, setGhUser] = useState<GitHubUser | null>(null);
@@ -388,14 +390,6 @@ export default function Joe() {
         window.addEventListener('joe:workspace-tab-switch', handler);
         return () => window.removeEventListener('joe:workspace-tab-switch', handler);
     }, []);
-
-    // Browser session ID — use ONE stable session ('panel-browser') that both the
-    // live-view panel streams AND the chat-driven browser tools navigate. Using a
-    // per-chat id (browser:<sessionId>) split them onto two different Chromium pages,
-    // so the tools worked on an invisible page and the live stream stayed blank.
-    useEffect(() => {
-        setBrowserSessionId('panel-browser');
-    }, [activeSessionId]);
 
     // Load messages when the session changes. CRITICAL: clear the previous
     // session's messages immediately so a NEW/empty session never shows the old
@@ -720,8 +714,8 @@ export default function Joe() {
                     text: messageText,
                     sessionId: targetSessionId,
                     workspaceId: currentWorkspaceId,
-                    // Keep browser_run on the same visible panel page that the user watches.
-                    browserSessionId: browserSessionId || undefined
+                    // Keep browser_run on the same visible page owned by the target chat.
+                    browserSessionId: browserSessionId || `browser:${targetSessionId}`
                 });
             } else {
                 await SocketService.sendMessage(targetSessionId, messageText);

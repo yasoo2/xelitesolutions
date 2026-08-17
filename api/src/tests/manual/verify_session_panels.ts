@@ -49,6 +49,7 @@ const check = (name: string, ok: boolean, detail = '') => {
 
 const TITLE_A = 'جلسة البناء الأولى';
 const TITLE_B = 'جلسة الدردشة الثانية';
+const TITLE_C = 'جلسة الاختبار الثالثة';
 
 async function main() {
     const WEB_DIST = path.resolve(__dirname, '..', '..', '..', '..', 'web', 'dist', 'index.html');
@@ -69,7 +70,14 @@ async function main() {
     check('الخادم يعمل ويقدّم الواجهة المبنيّة', port > 0, String(port));
 
     const { chromium } = require('playwright');
-    const browser = await chromium.launch({ args: ['--no-sandbox'] });
+    const configuredChromium = process.env.CHROMIUM_PATH || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    const systemChromium = process.platform === 'linux' && fs.existsSync('/usr/bin/chromium')
+        ? '/usr/bin/chromium'
+        : undefined;
+    const browser = await chromium.launch({
+        ...(configuredChromium || systemChromium ? { executablePath: configuredChromium || systemChromium } : {}),
+        args: ['--no-sandbox'],
+    });
     try {
         const page = await browser.newPage();
         const consoleErrors: string[] = [];
@@ -136,7 +144,10 @@ async function main() {
         };
         const SESSION_A = await create(TITLE_A);
         const SESSION_B = await create(TITLE_B);
-        check('جلستان حقيقيتان أُنشئتا عبر الواجهة البرمجية', !!SESSION_A && !!SESSION_B && SESSION_A !== SESSION_B, `${SESSION_A} / ${SESSION_B}`);
+        const SESSION_C = await create(TITLE_C);
+        check('ثلاث جلسات حقيقية أُنشئت عبر الواجهة البرمجية',
+            !!SESSION_A && !!SESSION_B && !!SESSION_C && new Set([SESSION_A, SESSION_B, SESSION_C]).size === 3,
+            `${SESSION_A} / ${SESSION_B} / ${SESSION_C}`);
         await page.reload({ waitUntil: 'networkidle' });
         await page.waitForTimeout(1500);
         await dismissOnboarding();
@@ -223,13 +234,39 @@ async function main() {
         const srcB = await previewSrc();
         check('برفيو الجلسة الثانية يشير إلى مشروعها', srcB.includes(SESSION_B) && !srcB.includes(SESSION_A), srcB || '(لا إطار)');
 
-        console.log('\n[7] والعودة إلى الأولى تُرجع لوحاتها كما تركتها');
+        console.log('\n[6b] جلسة ثالثة متزامنة لا ترث موارد الأولى أو الثانية');
+        await openSession(TITLE_C);
+        const emptyC = await panelText();
+        check('الجلسة الثالثة تفتح بلا ملفات من الجلستين', !emptyC.includes(`file-${SESSION_A}-`) && !emptyC.includes(`file-${SESSION_B}-`), emptyC.slice(0, 160));
+        await fireInto(SESSION_C, 4);
+        const bodyC = await panelText();
+        check('ملفات الجلسة الثالثة ظهرت في لوحتها', bodyC.includes(`file-${SESSION_C}-0`), bodyC.slice(0, 160));
+        check('الجلسة الثالثة لا تعرض ملفات الأولى أو الثانية', !bodyC.includes(`file-${SESSION_A}-`) && !bodyC.includes(`file-${SESSION_B}-`), bodyC.slice(0, 160));
+        const srcC = await previewSrc();
+        check('برفيو الجلسة الثالثة يشير إلى مشروعها', srcC.includes(SESSION_C) && !srcC.includes(SESSION_A) && !srcC.includes(SESSION_B), srcC || '(لا إطار)');
+
+        console.log('\n[6c] إعادة التحميل تحفظ الجلسة الثالثة ولا تعيد موارد الجلسات الأخرى');
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.waitForTimeout(1000);
+        await dismissOnboarding();
+        await openSession(TITLE_C);
+        const afterReloadText = await panelText();
+        check('إعادة التحميل أبقت جلسة C قابلة للفتح', (await page.evaluate(() => document.body.innerText)).includes(TITLE_C));
+        check('إعادة التحميل لا تستعيد ملفات الجلستين الأخريين', !afterReloadText.includes(`file-${SESSION_A}-`) && !afterReloadText.includes(`file-${SESSION_B}-`), afterReloadText.slice(0, 160));
+        const reloadSrcC = await previewSrc();
+        check('إن وُجد preview بعد reload فهو مملوك للجلسة الثالثة', !reloadSrcC || (reloadSrcC.includes(SESSION_C) && !reloadSrcC.includes(SESSION_A) && !reloadSrcC.includes(SESSION_B)), reloadSrcC || '(لا إطار، لا يوجد تسريب)');
+        await fireInto(SESSION_C, 1);
+        const postReloadC = await panelText();
+        check('إعادة الاتصال بعد reload تقبل أحداث C فقط', postReloadC.includes(`file-${SESSION_C}-0`) && !postReloadC.includes(`file-${SESSION_A}-`) && !postReloadC.includes(`file-${SESSION_B}-`), postReloadC.slice(0, 160));
+
+        console.log('\n[7] والعودة إلى الأولى بعد reload تُبقي الموارد مملوكة لها');
         await openSession(TITLE_A);
+        await fireInto(SESSION_A, 1);
         const backA = await panelText();
-        check('لوجز الجلسة الأولى عادت', backA.includes(`file-${SESSION_A}-`), backA.slice(0, 160));
-        check('ولا ملفات من الثانية تسرّبت إليها', !backA.includes(`file-${SESSION_B}-`), backA.slice(0, 160));
+        check('جلسة A تستقبل مواردها بعد العودة من reload', backA.includes(`file-${SESSION_A}-0`), backA.slice(0, 160));
+        check('ولا ملفات من B أو C تسرّبت إلى A', !backA.includes(`file-${SESSION_B}-`) && !backA.includes(`file-${SESSION_C}-`), backA.slice(0, 160));
         const srcA = await previewSrc();
-        check('وبرفيو الجلسة الأولى عاد إلى مشروعها', srcA.includes(SESSION_A) && !srcA.includes(SESSION_B), srcA || '(لا إطار)');
+        check('وبرفيو جلسة A بعد العودة مملوك لها', srcA.includes(SESSION_A) && !srcA.includes(SESSION_B) && !srcA.includes(SESSION_C), srcA || '(لا إطار)');
 
         // The panels are the subject; a missing optional asset is reported by
         // name rather than hidden behind a green tick.

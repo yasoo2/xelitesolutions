@@ -9,12 +9,13 @@ import { Globe, RefreshCw } from 'lucide-react';
 import { SocketService } from '../services/socket';
 import { API_URL } from '../config';
 
-export default function MyBrowserView() {
+export default function MyBrowserView({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
     const [frame, setFrame] = useState<string>('');
     const [url, setUrl] = useState<string>('');
     const [connected, setConnected] = useState<boolean>(false);
     const [inputUrl, setInputUrl] = useState<string>('');
+    const activeSid = String(sessionId || '').trim();
     const imgRef = useRef<HTMLImageElement>(null);
     const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -24,21 +25,28 @@ export default function MyBrowserView() {
             const res = await fetch(`${API_URL}/extension/action`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
-                body: JSON.stringify({ cmd, args: args || {} }),
+                body: JSON.stringify({ cmd, args: args || {}, sessionId }),
             });
             return await res.json().catch(() => ({ ok: false }));
         } catch { return { ok: false }; }
-    }, []);
-
+        }, [sessionId]);
     // Live frames from the user's real browser.
     useEffect(() => {
+        // A browser frame is a session-owned resource. Clear the previous
+        // session before subscribing so a fast switch cannot flash stale pixels.
+        setFrame('');
+        setUrl('');
+        setInputUrl('');
+        setConnected(false);
         const unsub = SocketService.subscribe((data: any) => {
+            const eventSid = String(data?.sessionId || data?.data?.sessionId || '').trim();
+            if (!activeSid || eventSid !== activeSid) return;
             if (data?.type === 'user_browser_frame') {
                 const d = data.data || data;
                 if (d?.dataUrl) { setFrame(d.dataUrl); setConnected(true); }
                 if (d?.url) { setUrl(d.url); if (!document.activeElement || (document.activeElement as HTMLElement).tagName !== 'INPUT') setInputUrl(d.url); }
             }
-        });
+        }, sessionId);
         // Ask the extension to start streaming, and check connection.
         (async () => {
             const st = await (async () => { try { const r = await fetch(`${API_URL}/extension/status`, { headers: { Authorization: `Bearer ${token()}` } }); return await r.json(); } catch { return { connected: false }; } })();
@@ -46,7 +54,7 @@ export default function MyBrowserView() {
             if (st?.connected) action('startStream');
         })();
         return () => { try { (unsub as any)?.(); } catch { /* ignore */ } try { action('stopStream'); } catch { /* ignore */ } };
-    }, [action]);
+    }, [action, activeSid, sessionId]);
 
     // Forward a click at the same relative position into the real page.
     const onClick = (e: React.MouseEvent) => {

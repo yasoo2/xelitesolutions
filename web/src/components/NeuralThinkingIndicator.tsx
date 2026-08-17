@@ -66,14 +66,14 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
   useEffect(() => { activeSessionRef.current = sessionId; }, [sessionId]);
 
   useEffect(() => {
-    const unsubSteps = SocketService.subscribeThinkingSteps((s) => setSteps(s));
+    const unsubSteps = SocketService.subscribeThinkingSteps((s) => setSteps(s), sessionId);
     const unsubPhase = SocketService.subscribeThinkingPhase((p: any, evSid?: string) => {
       if (evSid && activeSessionRef.current && evSid !== activeSessionRef.current) return;
       setCurrentPhase(p);
-    });
-    const unsubStatus = SocketService.subscribeThinkingStatus((s: string) => setStatus(s));
+    }, sessionId);
+    const unsubStatus = SocketService.subscribeThinkingStatus((s: string) => setStatus(s), sessionId);
     return () => { unsubSteps(); unsubPhase(); unsubStatus(); };
-  }, []);
+  }, [sessionId]);
 
   // Clear all reasoning state the moment the active session changes, so the
   // previous session's thinking never shows in the new one.
@@ -104,7 +104,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
     return {
       id: 'live',
       sessionId: sessionId || 'live',
-      startedAt: SocketService.getRunStartedAt() || steps[0].at,
+      startedAt: SocketService.getRunStartedAt(sessionId) || steps[0].at,
       endedAt: Math.max(now, steps[steps.length - 1].at),
       steps,
     };

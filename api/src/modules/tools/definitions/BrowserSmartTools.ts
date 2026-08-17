@@ -12,8 +12,17 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
  *  tools MUST operate on this same session, otherwise their navigation happens
  *  on an invisible page and the user never sees the live stream. */
 export const PANEL_BROWSER_SID = 'panel-browser';
+/**
+ * Browser state is a per-session resource. The old panel-browser fallback made
+ * any tool call without an explicit browser owner mutate one shared Chromium
+ * page, which is exactly the cross-session leak this module must prevent.
+ */
 function browserSid(context: any): string {
-    return String((context && context.browserSessionId) || PANEL_BROWSER_SID);
+    const explicit = String(context?.browserSessionId || '').trim();
+    if (explicit) return explicit;
+    const sessionId = String(context?.sessionId || '').trim();
+    if (sessionId) return `browser:${sessionId}`;
+    throw new Error('browser_session_required');
 }
 
 /** Normalise a user-supplied URL (add https:// when missing). */

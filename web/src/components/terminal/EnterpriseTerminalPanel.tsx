@@ -14,12 +14,15 @@ const LOG_BUFFER_CAP = 2_000_000; // ~2 MB of scrollback kept for copy/download
 interface EnterpriseTerminalPanelProps {
     onClose?: () => void;
     isEmbedded?: boolean;
+    /** Explicit owner used to reject terminal events from other sessions. */
+    sessionId?: string;
     terminalId?: string;
     workspaceId?: string;
 }
 
-export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalId, workspaceId }: EnterpriseTerminalPanelProps) {
-    const activeTabId = terminalId || 'local_terminal';
+export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId, terminalId, workspaceId }: EnterpriseTerminalPanelProps) {
+    const ownerSessionId = String(sessionId || terminalId || '').trim();
+    const activeTabId = ownerSessionId ? `terminal:${ownerSessionId}` : (terminalId || 'local_terminal');
     const containerRef = useRef<HTMLDivElement>(null);
     const termRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
@@ -57,7 +60,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
     };
 
     useEffect(() => {
-        if (!containerRef.current || isMinimized) return;
+        if (!containerRef.current || isMinimized || !ownerSessionId) return;
 
         const term = new Terminal({
             cursorBlink: true,
@@ -122,7 +125,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
         const restoreScrollback = () => {
             if (restoredScrollback) return;
             restoredScrollback = true;
-            const history = SocketService.getTerminalHistory();
+            const history = SocketService.getTerminalHistory(ownerSessionId);
             if (!history) return;
             term.writeln('\x1b[2m--- Restored Joe execution output ---\x1b[0m');
             term.write(history);
@@ -152,6 +155,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
             SocketService.send({
                 type: 'terminal_input',
                 id: activeTabId,
+                sessionId: ownerSessionId,
                 data
             });
         });
@@ -169,6 +173,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                     body: JSON.stringify({
                         action: 'create',
                         id: activeTabId,
+                        sessionId: ownerSessionId,
                         shell: 'bash',
                         workspaceId,
                         cols: term.cols,
@@ -204,6 +209,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                 SocketService.send({
                     type: 'terminal_resize',
                     id: activeTabId,
+                    sessionId: ownerSessionId,
                     cols: termRef.current.cols,
                     rows: termRef.current.rows
                 });
@@ -227,21 +233,16 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                 term.dispose();
             } catch { }
         };
-    }, [activeTabId, isMinimized, workspaceId, sessionEpoch]);
+    }, [activeTabId, ownerSessionId, sessionId, isMinimized, workspaceId, sessionEpoch]);
 
     // Handle incoming data
     useEffect(() => {
         const unsub = SocketService.subscribe((msg: any) => {
-            // 'joe-agent' carries the commands Joe runs autonomously — shown in
-            // the SAME terminal so the user watches Joe work the shell in real
-            // time, fulfilling the standing "use the terminal" promise visibly.
-            // Builders now send ONE message carrying the list of tabs it belongs
-            // to (`ids`) instead of four copies of the same line — the tab still
-            // shows exactly what it showed before.
+            // The transport already filters by sessionId; keep an explicit owner
+            // check here as a second boundary for legacy/generic terminal ids.
+            if (!ownerSessionId || String(msg?.sessionId || '').trim() !== ownerSessionId) return;
             const addressedHere = msg.id === activeTabId
-                || msg.id === 'panel-terminal'
-                || (Array.isArray(msg.ids) && msg.ids.includes(activeTabId))
-                || msg.id === 'joe-agent' || !msg.id;
+                || (Array.isArray(msg.ids) && msg.ids.includes(activeTabId));
             if (msg.type === 'terminal_output' && addressedHere) {
                 termRef.current?.write(msg.data);
                 // Keep a plain-text copy of everything shown, for copy/download.
@@ -249,14 +250,14 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                 const next = logBufferRef.current + plain;
                 logBufferRef.current = next.length > LOG_BUFFER_CAP ? next.slice(-LOG_BUFFER_CAP) : next;
             }
-        });
+        }, ownerSessionId);
         return () => unsub();
-    }, [activeTabId]);
+    }, [activeTabId, ownerSessionId]);
 
     const handleClear = () => {
         termRef.current?.clear();
         logBufferRef.current = '';
-        SocketService.clearTerminalHistory();
+        SocketService.clearTerminalHistory(ownerSessionId);
     };
 
     const handleCopyAll = async () => {
@@ -289,7 +290,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, terminalI
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ action: 'kill', id: activeTabId })
+                body: JSON.stringify({ action: 'kill', id: activeTabId, sessionId: ownerSessionId })
             });
         } catch { /* the old session may already be gone — recreate regardless */ }
         // Remount the terminal (the main effect depends on sessionEpoch): the old

@@ -34,8 +34,8 @@ export default function TodosPanel({ sessionId, isCollapsed = false, onToggleCol
             if (msg.type === 'todo_update') {
                 const data = msg.data;
                 if (!data || !data.todos) return;
-                const sid = String(msg.sessionId || data.sessionId || '');
-                if (sid && sessionId && sid !== sessionId && !sid.includes(sessionId) && !sessionId.includes(sid)) return;
+                const sid = String(msg.sessionId || data.sessionId || '').trim();
+                if (sessionId && sid !== sessionId) return;
 
                 setTodos(prev => {
                     if (!data.merge) {
@@ -54,7 +54,7 @@ export default function TodosPanel({ sessionId, isCollapsed = false, onToggleCol
                     setLastUpdated(data.timestamp);
                 }
             }
-        });
+        }, sessionId);
 
         return () => unsub();
     }, [sessionId]);

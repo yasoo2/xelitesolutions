@@ -47,11 +47,14 @@ export class BrowserAgent extends BaseAgent {
 
     async execute(task: string, input: any, context: any): Promise<{ ok: boolean; output: any; error?: string }> {
         console.log(`[BrowserAgent] ReAct web task: "${task}"`);
-        // CRITICAL: drive the SAME browser session the panel is watching
-        // ('panel-browser'). Using the chat session id here created a second,
-        // INVISIBLE browser — the user saw no pages, no agent steps and no live
-        // thinking, because all events were broadcast to a session nobody watches.
-        const sessionId = String(input?.sessionId || input?.browserSessionId || 'panel-browser');
+        // Browser state is a per-session resource. The visible panel and the
+        // agent must receive the same explicit browser session identity; falling
+        // back to a shared panel id would let a new Joe session drive another
+        // session's Chromium instance.
+        const sessionId = String(input?.browserSessionId || input?.sessionId || context?.browserSessionId || '').trim();
+        if (!sessionId) {
+            return { ok: false, output: null, error: 'browser_session_required: BrowserAgent requires an explicit browserSessionId/sessionId' };
+        }
         const userId = String(context?.userId || input?.userId || '').trim();
         // On RESUME (after the user supplied credentials / a 2FA code) do NOT
         // re-navigate to the start URL — continue from the live page where the

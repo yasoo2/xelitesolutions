@@ -22,12 +22,13 @@ import MyBrowserView from './MyBrowserView';
 import { API_URL } from '../config';
 
 interface EmbeddedBrowserProps {
-    sessionId?: string;
+    /** Browser ownership is explicit; a shared panel browser is forbidden. */
+    sessionId: string;
     onReady?: () => void;
 }
 
 export default function EmbeddedBrowser({
-    sessionId = 'panel-browser',
+    sessionId,
     onReady
 }: EmbeddedBrowserProps) {
     const { t } = useTranslation();
@@ -45,8 +46,11 @@ export default function EmbeddedBrowser({
     // the extension is actually connected — otherwise it's confusing dead UI.
     const [extConnected, setExtConnected] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+    const hasSession = Boolean(sessionId.trim());
 
     useEffect(() => {
+        if (!hasSession) return;
+
         let alive = true;
         (async () => {
             try {
@@ -57,7 +61,7 @@ export default function EmbeddedBrowser({
             } catch { if (alive) setExtConnected(false); }
         })();
         return () => { alive = false; };
-    }, []);
+    }, [hasSession]);
 
     // Listen for session status from ModernBrowserStream
     useEffect(() => {
@@ -198,6 +202,10 @@ export default function EmbeddedBrowser({
     // auto-saves on every navigation, so the user stays signed in forever with no
     // button to press — the manual one was redundant.)
 
+    if (!hasSession) {
+        return <div className="joe-browser-container" aria-label="No active browser session" />;
+    }
+
     return (
         <div className="joe-browser-container" style={{
             display: 'flex',
@@ -319,7 +327,7 @@ export default function EmbeddedBrowser({
 
             {/* Browser View — Joe's browser, or the user's own real browser (extension) */}
             <div style={{ flex: 1, overflow: 'hidden' }}>
-                {showMine ? <MyBrowserView /> : <ModernBrowserStream sessionId={sessionId} showBoxes={true} />}
+                {showMine ? <MyBrowserView sessionId={sessionId} /> : <ModernBrowserStream sessionId={sessionId} showBoxes={true} />}
             </div>
         </div>
     );

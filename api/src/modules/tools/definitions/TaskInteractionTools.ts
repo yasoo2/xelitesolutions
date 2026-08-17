@@ -3,7 +3,7 @@ import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
-import { broadcast, registerTerminalOwner } from '../../../api/ws';
+import { broadcast, registerTerminalOwner, registerTerminalSessionOwner } from '../../../api/ws';
 import { terminals, registerTerminal, removeTerminal } from '../terminal/TerminalState';
 import { logger } from '../../../shared/utils/logger';
 import { terminalKernel } from '../../terminal/terminal-kernel';
@@ -70,7 +70,11 @@ export class TerminalManagerTool extends BaseTool {
 
     async execute(input: any, context?: any) {
         const action = input.action;
-        const id = input.id || 'default';
+        const ownerSessionId = String(input?.sessionId || context?.sessionId || '').trim();
+        const requestedId = String(input?.id || '').trim();
+        // One visible main shell per Joe session. Never fall back to a process-wide
+        // `default` terminal when a session context exists.
+        const id = ownerSessionId ? `terminal:${ownerSessionId}` : (requestedId || 'default');
         const workDir = getWorkspaceRoot(input?.workspaceId || context?.workspaceId);
 
         if (action === 'create') {
@@ -89,8 +93,11 @@ export class TerminalManagerTool extends BaseTool {
                     // the signed-in user in the CONTEXT. Reading only the body
                     // meant a terminal was born with no owner, and an unowned
                     // terminal's output went to every connected client.
-                    userId: String(input?.userId || context?.userId || '').trim()
+                    userId: String(input?.userId || context?.userId || '').trim(),
+                    sessionId: ownerSessionId
                 });
+
+                if (ownerSessionId) registerTerminalSessionOwner(id, ownerSessionId);
 
                 if (result.existing) {
                     return {
@@ -143,7 +150,7 @@ export class TerminalManagerTool extends BaseTool {
         }
 
         if (action === 'list') {
-            const ids = await terminalKernel.listTerminals();
+            const ids = await terminalKernel.listTerminals(ownerSessionId);
             return { ok: true, output: { terminals: ids }, logs: [] };
         }
 

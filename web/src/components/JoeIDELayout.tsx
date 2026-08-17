@@ -398,18 +398,14 @@ export default function JoeIDELayout({
 
     useEffect(() => {
         /**
-         * Does this event belong to the conversation on screen? Events with no
-         * session are global (connection state); panel-scoped ids (the shared
-         * terminal surface) are not sessions at all; and the server writes the
-         * id in several shapes («session-<id>»), so containment counts.
+         * A rendered workspace event must carry the exact active session id.
+         * Unscoped events are transport/global state and are never painted into
+         * a session workspace. Other sessions are archived by their own id.
          */
         const belongsHere = (event: any): boolean => {
-            const sid = String(event?.sessionId || event?.data?.sessionId || '');
-            if (!sid) return true;
-            const active = String(sessionRef.current || '');
-            if (!active) return true;
-            if (sid === active || sid.includes(active) || active.includes(sid)) return true;
-            return /^panel-/.test(sid) || sid === 'local_terminal';
+            const sid = String(event?.sessionId || event?.data?.sessionId || '').trim();
+            const active = String(sessionRef.current || '').trim();
+            return Boolean(active && sid && sid === active);
         };
 
         // Subscribe to socket events for logs
@@ -532,9 +528,9 @@ export default function JoeIDELayout({
                     // notes, the audit verdict. The Logs panel used to ignore
                     // all of it and showed four generic lines instead.
                     //
-                    // The same line is broadcast to four ids so every terminal
-                    // tab can pick it up; taking ONLY 'panel-terminal' keeps it
-                    // from landing here four times over.
+                    // The server may fan a session-owned line to several terminal
+                    // ids; taking one canonical id keeps it from landing here
+                    // multiple times without making the id a cross-session scope.
                     if (event.id === 'panel-terminal') {
                         const lines = String(event.data ?? '')
                             .replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')     // ANSI colours never reach the DOM
@@ -572,7 +568,7 @@ export default function JoeIDELayout({
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
                     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] SYSTEM ERROR: ${errorMsg}`]);
                 }
-            });
+            }, sessionId);
         });
 
         return () => {
@@ -694,6 +690,7 @@ export default function JoeIDELayout({
                         <WorkspacePanel
                             activeTab={activeWorkspaceTab}
                             onTabChange={handleWorkspaceTabChange}
+                            sessionId={sessionId}
                             browserSessionId={browserSessionId}
                             terminalId={terminalId}
                             workspaceId={workspaceId}
