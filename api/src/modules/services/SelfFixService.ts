@@ -166,6 +166,38 @@ function extractMissingNpmRunner(ticket: RepairTicket) {
   return null;
 }
 
+interface MissingNpmTestDependencyEvidence {
+  packageName: string;
+  cwd: string;
+  task: string;
+}
+
+function isSafeNpmPackageName(value: string): boolean {
+  const packageName = value.trim();
+  return /^(?:@[a-z0-9][a-z0-9._~-]*\/[a-z0-9][a-z0-9._~-]*|[a-z0-9][a-z0-9._~-]*)$/i.test(packageName)
+    && !packageName.startsWith('.')
+    && !packageName.startsWith('node:');
+}
+
+function extractMissingNpmTestDependency(ticket: RepairTicket): MissingNpmTestDependencyEvidence | null {
+  for (const failed of ticket.failedTasks) {
+    const evidence = `${failed.error || ''}\n${ticket.primaryError || ''}`;
+    const command = String(failed.command || '');
+    if (failed.tool !== 'shell_execute' || !failed.cwd) continue;
+    if (!/(?:npm\s+(?:run\s+)?(?:test|unit|integration)|(?:jest|vitest|mocha|ava|tap)|test\s+(?:preset|environment|runner))/i.test(`${command}\n${evidence}`)) continue;
+
+    const moduleMatch = evidence.match(/(?:cannot\s+find\s+module|module\s+not\s+found|can't\s+resolve)\s*['\"]([^'\"]+)['\"]/i);
+    const presetMatch = evidence.match(/(?:preset|test\s+environment|test\s+runner)\s+['\"]?((?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*)['\"]?\s+(?:is\s+)?(?:not\s+found|could\s+not\s+be\s+found)/i);
+    const packageName = String(moduleMatch?.[1] || presetMatch?.[1] || '').trim();
+    if (!packageName || !isSafeNpmPackageName(packageName)) continue;
+    // Only install an exact package proven by a test failure. Relative imports,
+    // Node built-ins, and arbitrary prose never reach npm_manager.
+    if (!/^(?:jest(?:[-./]|$)|vitest(?:[-./]|$)|mocha(?:[-./]|$)|ava(?:[-./]|$)|tap(?:[-./]|$)|@testing-library\/|@types\/jest(?:[-./]|$))/i.test(packageName)) continue;
+    return { packageName, cwd: failed.cwd, task: failed.task };
+  }
+  return null;
+}
+
 function extractEslintConfigFailure(ticket: RepairTicket) {
   const raw = rawTextOf(ticket);
   const isEslintConfigFailure = /eslint/i.test(raw)
@@ -431,6 +463,27 @@ export class SelfFixService {
           packages: [missingNpmRunner.runner],
           dev: true,
           cwd: missingNpmRunner.cwd,
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    const missingNpmTestDependency = extractMissingNpmTestDependency(ticket);
+    if (missingNpmTestDependency) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `The test preset/environment ${missingNpmTestDependency.packageName} is missing. Install the exact package proven by the test failure as a project-local dev dependency, then rerun the failed phase once.`,
+        maxAttempts: 1,
+        strategy: 'dependency_fix',
+        suggestedTool: 'npm_manager',
+        suggestedInput: {
+          command: 'install',
+          packages: [missingNpmTestDependency.packageName],
+          dev: true,
+          cwd: missingNpmTestDependency.cwd,
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),

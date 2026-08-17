@@ -123,6 +123,66 @@ describe('self-fix launcher recovery', () => {
     expect(plan.maxAttempts).toBe(1);
   });
 
+  it('installs a missing test preset as an exact project-local dev dependency', () => {
+    const projectCwd = path.join(process.cwd(), '..', 'data', 'builds', `self-fix-jest-preset-${Date.now()}`, 'WeatherGo');
+    const ticket = RepairTicketService.build({
+      projectName: 'WeatherGo',
+      phase: { phaseNumber: 4, name: 'Testing and QA' },
+      phaseResult: {
+        error: 'Validation Error: Preset jest-expo not found.',
+        output: {
+          status: 'partial',
+          results: [{
+            task: 'Run unit tests',
+            tool: 'shell_execute',
+            ok: false,
+            error: 'Validation Error: Preset jest-expo not found.',
+            command: 'npm run test',
+            cwd: projectCwd,
+          }],
+        },
+      },
+    });
+
+    const plan = SelfFixService.plan(ticket);
+    expect(plan.allowed).toBe(true);
+    expect(plan.strategy).toBe('dependency_fix');
+    expect(plan.suggestedTool).toBe('npm_manager');
+    expect(plan.suggestedInput).toMatchObject({
+      command: 'install',
+      packages: ['jest-expo'],
+      dev: true,
+      cwd: projectCwd,
+    });
+    expect(plan.maxAttempts).toBe(1);
+  });
+
+  it('installs a missing test preset from a module-resolution error', () => {
+    const projectCwd = path.join(process.cwd(), '..', 'data', 'builds', `self-fix-jest-module-${Date.now()}`, 'WeatherGo');
+    const ticket = RepairTicketService.build({
+      projectName: 'WeatherGo',
+      phase: { phaseNumber: 4, name: 'Testing and QA' },
+      phaseResult: {
+        error: "Cannot find module 'jest-expo' from 'jest.config.js'",
+        output: {
+          status: 'partial',
+          results: [{
+            task: 'Run unit tests',
+            tool: 'shell_execute',
+            ok: false,
+            error: "Cannot find module 'jest-expo' from 'jest.config.js'",
+            command: 'npm run test',
+            cwd: projectCwd,
+          }],
+        },
+      },
+    });
+
+    const plan = SelfFixService.plan(ticket);
+    expect(plan.suggestedTool).toBe('npm_manager');
+    expect(plan.suggestedInput).toMatchObject({ packages: ['jest-expo'], dev: true, cwd: projectCwd });
+  });
+
   it('does not treat a missing non-npm runner as an npm dependency', () => {
     const ticket = RepairTicketService.build({
       phase: { phaseNumber: 2, name: 'Backend Core & Authentication' },
