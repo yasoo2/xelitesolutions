@@ -64,6 +64,11 @@ describe('the schema follows the app, not a fixed guess', () => {
         expect(jsx).toContain('Spending by category');
         expect(jsx).toContain('Budget progress');
         expect(jsx).toContain('Category management');
+        expect(jsx).toContain('const formatMoney =');
+        expect(jsx).toContain('const filteredBalance =');
+        expect(jsx).toContain('const budgetSpent =');
+        expect(jsx).toContain('const budgetPercent =');
+        expect(jsx).toContain('Intl.NumberFormat');
         expect(jsx).toContain("input('description'");
     });
 

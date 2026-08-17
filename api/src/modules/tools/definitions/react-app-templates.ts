@@ -3546,8 +3546,16 @@ export default function FinanceApp() {
   const visibleBudgetRows = filteredRows('budgets');
   const filteredIncomeTotal = visibleIncomeRows.reduce((s, r) => s + asNumber(r.amount), 0);
   const filteredExpenseTotal = visibleExpenseRows.reduce((s, r) => s + asNumber(r.amount), 0);
+  const filteredBalance = filteredIncomeTotal - filteredExpenseTotal;
+  const formatMoney = (value) => {
+    const amount = asNumber(value);
+    try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(amount); }
+    catch { return amount.toFixed(2); }
+  };
   const spendingByCategory = visibleExpenseRows.reduce((out, row) => { const key = row.category || ${T('بدون فئة', 'Uncategorized')}; out[key] = (out[key] || 0) + asNumber(row.amount); return out; }, {});
   const maxCategorySpend = Math.max(1, ...Object.values(spendingByCategory));
+  const budgetSpent = (budget) => visibleExpenseRows.filter(row => String(row.category || '') === String(budget.category || '')).reduce((sum, row) => sum + asNumber(row.amount), 0);
+  const budgetPercent = (budget) => { const limit = asNumber(budget.limit_amount); return limit > 0 ? Math.min(100, Math.max(0, (budgetSpent(budget) / limit) * 100)) : 0; };
   const recent = [...visibleIncomeRows.map(r => ({ ...r, kind: 'incomes', sign: 1 })), ...visibleExpenseRows.map(r => ({ ...r, kind: 'expenses', sign: -1 }))].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 8);
   const openTab = (key) => { setTab(key); if (key !== 'dashboard') { setDraft(clone(key)); setEditing(null); } };
   const addCategory = () => { const value = String(newCategory || '').trim(); if (value && !categories.includes(value)) setCategories([...categories, value]); setNewCategory(''); };
