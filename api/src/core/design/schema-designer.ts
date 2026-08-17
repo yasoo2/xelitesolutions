@@ -155,6 +155,32 @@ export function validateDesign(raw: any): ModelEntity[] | null {
     return out;
 }
 
+function financeContract(requestRaw: string): ModelEntity[] | null {
+    const request = String(requestRaw || '');
+    const strongFinance = /(?:personal\s+finance|money\s+management|finance\s+tracker|budget(?:ing)?\s+app|financial\s+dashboard|تطبيق\s+مالي|إدارة\s+المال|ميزاني(?:ة|ات)|تتبّ?ع\s+المصاريف|إدارة\s+المصاريف)/i.test(request);
+    const hasIncome = /\b(income|incomes|earning|earnings|salary|revenue)\b|دخل|إيراد|راتب/i.test(request);
+    const hasExpense = /\b(expense|expenses|spending|spend|costs?)\b|مصروف|مصاريف|إنفاق|تكاليف/i.test(request);
+    const hasBudget = /\b(budget|budgets|budgeting)\b|ميزاني(?:ة|ات)/i.test(request);
+    if (!strongFinance && !(hasIncome && hasExpense && hasBudget)) return null;
+
+    const T = (key: string, ar: string, en: string, required = false): ModelField => ({ key, type: 'TEXT', required, ar, en });
+    const N = (key: string, ar: string, en: string, required = false): ModelField => ({ key, type: 'REAL', required, ar, en });
+    return [
+        {
+            key: 'incomes', ar: 'الدخل', en: 'Incomes',
+            fields: [T('source', 'مصدر الدخل', 'Source', true), N('amount', 'المبلغ', 'Amount', true), T('category', 'الفئة', 'Category'), T('date', 'التاريخ', 'Date', true), T('note', 'ملاحظة', 'Note')],
+        },
+        {
+            key: 'expenses', ar: 'المصاريف', en: 'Expenses',
+            fields: [T('title', 'البند', 'Item', true), N('amount', 'المبلغ', 'Amount', true), T('category', 'الفئة', 'Category'), T('date', 'التاريخ', 'Date', true), T('note', 'ملاحظة', 'Note')],
+        },
+        {
+            key: 'budgets', ar: 'الميزانيات', en: 'Budgets',
+            fields: [T('category', 'الفئة', 'Category', true), N('limit_amount', 'حد الميزانية', 'Budget limit', true), T('period', 'الفترة', 'Period', true), T('start_date', 'تاريخ البداية', 'Start date'), T('end_date', 'تاريخ النهاية', 'End date')],
+        },
+    ];
+}
+
 function promptFor(request: string): string {
     return `You are designing the DATABASE of a system a user asked for.
 
@@ -191,6 +217,18 @@ export async function designDataModel(
      */
     const { stripDeclaredOptions } = require('./app-blueprints');
     const request = stripDeclaredOptions(requestRaw);
+
+    /**
+     * Finance is a coherent three-resource contract, not three incidental nouns.
+     * Resolve it before shape inference so words such as «income», «expense» and
+     * «budget» cannot be misread as generic money records or capabilities.
+     */
+    const finance = financeContract(request);
+    if (finance) {
+        opts?.onNote?.(`data model: finance contract — ${finance.map(e => e.key).join(', ')}`);
+        return finance;
+    }
+
     /**
      * WHAT HE WROTE DOWN COMES FIRST — BEFORE ANY RECOGNITION.
      *

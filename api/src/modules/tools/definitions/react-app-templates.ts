@@ -100,7 +100,7 @@ ${bp.relation.fields.map(f => `      { key: '${q(f.key)}', label: '${q(f.label)}
 
 const ENGINE_COMPONENT: Record<AppBlueprint['engine'], string> = {
     map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp', social: 'SocialApp',
-    shop: 'ShopApp', calculator: 'CalculatorApp', productivity: 'ProductivityApp',
+    shop: 'ShopApp', calculator: 'CalculatorApp', productivity: 'ProductivityApp', finance: 'FinanceApp',
 };
 
 export function fileAppShellJsx(bp: AppBlueprint, isAr: boolean, hasTables = false, hasApi = false): string {
@@ -3250,6 +3250,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         shop: ['src/components/ShopApp.jsx', fileShopAppJsx(o.isArabic)],
         calculator: ['src/components/CalculatorApp.jsx', fileCalculatorAppJsx(o.isArabic)],
         productivity: ['src/components/ProductivityApp.jsx', fileProductivityAppJsx(o.isArabic)],
+        finance: ['src/components/FinanceApp.jsx', fileFinanceAppJsx(o.isArabic)],
     };
     const [enginePath, engineSrc] = engineFile[bp.engine];
     return {
@@ -3450,6 +3451,100 @@ export default function ProductivityApp() {
 
 export function fileProductivityCss(): string {
     return `.prod-wrap{min-height:100vh;max-width:1180px;margin:0 auto;padding:24px;color:var(--text,#18212f)}.prod-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;padding:18px 0}.prod-head h1{margin:0;font-size:clamp(1.7rem,4vw,2.6rem)}.prod-head p{margin:.45rem 0 0;color:var(--muted,#667085)}.prod-theme,.prod-nav button,.prod-panel-head button,.prod-actions button{border:1px solid var(--border,#d0d5dd);background:var(--panel,#fff);color:inherit;border-radius:10px;padding:8px 12px;cursor:pointer}.prod-theme{font-size:1.15rem}.prod-nav{display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border,#d0d5dd);margin-bottom:18px}.prod-nav button.active{background:var(--brand,#155eef);color:#fff;border-color:var(--brand,#155eef)}.prod-grid{display:grid;grid-template-columns:minmax(260px,.75fr) minmax(360px,1.25fr);gap:18px}.prod-panel,.prod-stats>div{background:var(--panel,#fff);border:1px solid var(--border,#d0d5dd);border-radius:16px;padding:18px;box-shadow:0 8px 24px rgba(16,24,40,.06)}.prod-panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}.prod-panel h2{margin:0;font-size:1.15rem}.prod-field{display:grid;gap:6px;margin:0 0 12px;font-weight:600}.prod-field input,.prod-field textarea,.prod-field select,.prod-toolbar input,.prod-toolbar select{width:100%;border:1px solid var(--border,#d0d5dd);border-radius:10px;padding:10px;background:var(--panel,#fff);color:inherit;font:inherit}.prod-field textarea{min-height:100px;resize:vertical}.prod-check{display:flex;gap:8px;align-items:center;margin:9px 0;font-weight:500}.prod-primary{width:100%;border:0;border-radius:10px;padding:11px;background:var(--brand,#155eef);color:#fff;font-weight:700;cursor:pointer;margin-top:8px}.prod-toolbar{display:grid;grid-template-columns:1.4fr .8fr;gap:8px;margin-bottom:12px}.prod-item{display:flex;justify-content:space-between;gap:14px;border-top:1px solid var(--border,#eaecf0);padding:14px 0}.prod-item.done{opacity:.62}.prod-item h3{margin:0 0 5px}.prod-item p{margin:0 0 6px;white-space:pre-wrap;color:var(--muted,#667085)}.prod-item small{color:var(--muted,#667085)}.prod-actions{display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap;justify-content:flex-end}.prod-actions button{font-size:.8rem;padding:6px 8px}.prod-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}.prod-stats>div{display:grid;gap:4px}.prod-stats b{font-size:1.8rem}.prod-stats span,.prod-muted,.prod-empty{color:var(--muted,#667085)}.prod-row{display:flex;justify-content:space-between;gap:12px;width:100%;text-align:start;border:0;border-top:1px solid var(--border,#eaecf0);background:transparent;color:inherit;padding:13px 0;cursor:pointer}.prod-row span{color:var(--muted,#667085);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.prod-error{background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;margin-bottom:14px}.prod-empty{text-align:center;padding:24px}.prod-home{max-width:900px}.prod-home .prod-panel{min-height:220px}[data-theme=dark]{--text:#f2f4f7;--muted:#98a2b3;--panel:#151a22;--border:#344054;--brand:#84adff} @media(max-width:760px){.prod-wrap{padding:14px}.prod-grid{grid-template-columns:1fr}.prod-stats{grid-template-columns:1fr 1fr}.prod-item{display:grid}.prod-actions{justify-content:flex-start}.prod-toolbar{grid-template-columns:1fr}}`;
+}
+
+/* ── engine: finance — income, expenses, budgets, and an honest balance ───── */
+
+export function fileFinanceAppJsx(isAr: boolean): string {
+    const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
+    return `import React, { useEffect, useMemo, useState } from 'react';
+import { createStore, uid, todayISO, apiListOn, apiCreateOn, apiUpdateOn, apiDeleteOn } from '../app/store.js';
+import { content } from '../content.js';
+
+const kinds = ['incomes', 'expenses', 'budgets'];
+const labels = { incomes: ${T('الدخل', 'Income')}, expenses: ${T('المصاريف', 'Expenses')}, budgets: ${T('الميزانيات', 'Budgets')} };
+const defaults = {
+  incomes: { source: '', amount: '', category: '', date: todayISO(), note: '' },
+  expenses: { title: '', amount: '', category: '', date: todayISO(), note: '' },
+  budgets: { category: '', limit_amount: '', period: 'monthly', start_date: todayISO(), end_date: '' },
+};
+const asNumber = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+const rowId = (r) => String(r && r.id != null ? r.id : '');
+const clone = (kind, row) => ({ ...(defaults[kind] || {}), ...(row || {}) });
+
+export default function FinanceApp() {
+  const stores = useMemo(() => Object.fromEntries(kinds.map(k => [k, createStore(content.storeKey + ':' + k)])), []);
+  const [tab, setTab] = useState('dashboard');
+  const [rows, setRows] = useState(() => Object.fromEntries(kinds.map(k => [k, stores[k].read() || []])));
+  const [draft, setDraft] = useState(() => clone('incomes'));
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem(content.storeKey + ':theme') || 'light'; } catch { return 'light'; } });
+
+  useEffect(() => { kinds.forEach(k => stores[k].write(rows[k] || [])); }, [rows, stores]);
+  useEffect(() => { document.documentElement.dataset.theme = theme; try { localStorage.setItem(content.storeKey + ':theme', theme); } catch {} }, [theme]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!content.api) return;
+      setLoading(true);
+      const loaded = {};
+      for (const k of kinds) { const remote = await apiListOn(content.api, k); if (Array.isArray(remote)) loaded[k] = remote; }
+      if (alive && Object.keys(loaded).length) setRows(prev => ({ ...prev, ...loaded }));
+      if (alive) setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const incomeTotal = useMemo(() => (rows.incomes || []).reduce((s, r) => s + asNumber(r.amount), 0), [rows.incomes]);
+  const expenseTotal = useMemo(() => (rows.expenses || []).reduce((s, r) => s + asNumber(r.amount), 0), [rows.expenses]);
+  const balance = incomeTotal - expenseTotal;
+  const currentRows = rows[tab] || [];
+  const schema = tab === 'budgets' ? defaults.budgets : defaults[tab] || defaults.incomes;
+
+  const remoteError = (result) => {
+    if (!result) return ${T('تعذر الوصول إلى الخادم.', 'The server could not be reached.')};
+    if (result.needsAuth || result.status === 401) return ${T('سجّل الدخول أولاً لحفظ البيانات على الخادم.', 'Sign in first to save data on the server.')};
+    if (result.status === 403 || result.error === 'read_only') return ${T('هذا الحساب للقراءة فقط.', 'This account is read-only.')};
+    return ${T('رفض الخادم العملية.', 'The server rejected this operation.')};
+  };
+  const save = async (event) => {
+    event.preventDefault();
+    const kind = tab === 'dashboard' ? 'incomes' : tab;
+    const d = { ...defaults[kind], ...draft };
+    const amountKey = kind === 'budgets' ? 'limit_amount' : 'amount';
+    if ((kind === 'incomes' && !String(d.source || '').trim()) || (kind === 'expenses' && !String(d.title || '').trim()) || !String(d.category || '').trim() && kind === 'budgets') { setError(${T('أكمل الحقول المطلوبة.', 'Complete the required fields.')}); return; }
+    if (asNumber(d[amountKey]) <= 0) { setError(${T('يجب أن يكون المبلغ أكبر من صفر.', 'The amount must be greater than zero.')}); return; }
+    const clean = { ...d, [amountKey]: asNumber(d[amountKey]), id: editing ? editing.id : uid() };
+    if (content.api) {
+      const result = editing ? await apiUpdateOn(content.api, kind, editing.id, clean) : await apiCreateOn(content.api, kind, clean);
+      if (!result || !result.ok) { setError(remoteError(result)); return; }
+      Object.assign(clean, result.item || result.row || {});
+    }
+    setRows(prev => ({ ...prev, [kind]: editing ? (prev[kind] || []).map(r => rowId(r) === String(editing.id) ? { ...r, ...clean, id: editing.id } : r) : [clean, ...(prev[kind] || [])] }));
+    setDraft(clone(kind)); setEditing(null); setError('');
+  };
+  const edit = (kind, row) => { setTab(kind); setEditing({ kind, id: row.id }); setDraft(clone(kind, row)); setError(''); };
+  const remove = async (kind, row) => {
+    if (!window.confirm(${T('حذف هذا السجل؟', 'Delete this entry?')})) return;
+    if (content.api) { const result = await apiDeleteOn(content.api, kind, row.id); if (!result || !result.ok) { setError(remoteError(result)); return; } }
+    setRows(prev => ({ ...prev, [kind]: (prev[kind] || []).filter(r => rowId(r) !== rowId(row)) }));
+  };
+  const cancel = () => { setDraft(clone(tab === 'dashboard' ? 'incomes' : tab)); setEditing(null); setError(''); };
+  const input = (key, label, type = 'text', required = false) => <label className="prod-field"><span>{label}</span><input type={type} value={draft[key] == null ? '' : draft[key]} required={required} onChange={e => setDraft({ ...draft, [key]: e.target.value })} /></label>;
+  const recent = [...(rows.incomes || []).map(r => ({ ...r, kind: 'incomes', sign: 1 })), ...(rows.expenses || []).map(r => ({ ...r, kind: 'expenses', sign: -1 }))].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 8);
+
+  return <div className="prod-wrap">
+    <header className="prod-head"><div><h1>{content.brand || 'MoneyTrack'}</h1><p>{content.lede || ${T('الدخل والمصاريف والميزانيات في مكان واحد.', 'Income, expenses and budgets in one place.')}}</p></div><button className="prod-theme" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={${T('تبديل الوضع الليلي', 'Toggle dark mode')}}>{theme === 'dark' ? '☀' : '☾'}</button></header>
+    <nav className="prod-nav" aria-label={${T('التنقل المالي', 'Finance navigation')}}>{[['dashboard', ${T('الرئيسية', 'Dashboard')}], ...kinds.map(k => [k, labels[k]])].map(([key, label]) => <button key={key} type="button" className={tab === key ? 'active' : ''} onClick={() => { setTab(key); if (key !== 'dashboard') { setDraft(clone(key)); setEditing(null); } }}>{label}</button>)}</nav>
+    {error ? <div className="prod-error" role="alert">{error}</div> : null}
+    {loading ? <div className="prod-panel"><p className="prod-empty">{${T('جارٍ تحميل البيانات…', 'Loading data…')}}</p></div> : null}
+    {tab === 'dashboard' ? <main className="prod-home"><section className="prod-stats"><div><b>{incomeTotal.toFixed(2)}</b><span>{${T('إجمالي الدخل', 'Income')}}</span></div><div><b>{expenseTotal.toFixed(2)}</b><span>{${T('إجمالي المصاريف', 'Expenses')}}</span></div><div><b className={balance < 0 ? 'negative' : ''}>{balance.toFixed(2)}</b><span>{${T('صافي الرصيد', 'Net balance')}}</span></div></section><section className="prod-panel"><div className="prod-panel-head"><h2>{${T('آخر العمليات', 'Recent activity')}}</h2><button type="button" onClick={() => setTab('expenses')}>{${T('إضافة مصروف', 'Add expense')}}</button></div>{recent.map(r => <div className="prod-row" key={r.kind + ':' + rowId(r)}><strong>{r.sign > 0 ? '+' : '−'} {r.source || r.title}</strong><span>{r.amount} · {r.category || ${T('بدون فئة', 'Uncategorized')}} · {r.date}</span></div>)}{!recent.length ? <p className="prod-empty">{${T('لا توجد عمليات بعد.', 'No transactions yet.')}}</p> : null}</section><section className="prod-panel"><div className="prod-panel-head"><h2>{${T('الميزانيات', 'Budgets')}}</h2><button type="button" onClick={() => setTab('budgets')}>{${T('إدارة الميزانيات', 'Manage budgets')}}</button></div>{(rows.budgets || []).map(b => <div className="prod-row" key={rowId(b)}><strong>{b.category}</strong><span>{${T('الحد', 'Limit')}}: {b.limit_amount} · {b.period}</span></div>)}{!(rows.budgets || []).length ? <p className="prod-empty">{${T('أضف ميزانية لتتبع الحدود.', 'Add a budget to track limits.')}}</p> : null}</section></main> : null}
+    {tab !== 'dashboard' ? <main className="prod-grid"><section className="prod-panel"><div className="prod-panel-head"><h2>{editing ? ${T('تعديل السجل', 'Edit entry')} : ${T('سجل جديد', 'New entry')}</h2>}{editing ? <button type="button" onClick={cancel}>{${T('إلغاء', 'Cancel')}}</button> : null}</div><form onSubmit={save}>{tab === 'incomes' ? input('source', ${T('مصدر الدخل', 'Income source')}, 'text', true) : tab === 'expenses' ? input('title', ${T('البند', 'Item')}, 'text', true) : input('category', ${T('الفئة', 'Category')}, 'text', true)}{tab === 'budgets' ? input('limit_amount', ${T('حد الميزانية', 'Budget limit')}, 'number', true) : input('amount', ${T('المبلغ', 'Amount')}, 'number', true)}{tab !== 'budgets' ? input('category', ${T('الفئة', 'Category')}) : input('period', ${T('الفترة', 'Period')})}{tab === 'budgets' ? <>{input('start_date', ${T('تاريخ البداية', 'Start date')}, 'date')} {input('end_date', ${T('تاريخ النهاية', 'End date')}, 'date')}</> : input('date', ${T('التاريخ', 'Date')}, 'date', true)}{tab !== 'budgets' ? input('note', ${T('ملاحظة', 'Note')}, 'text') : null}<button className="prod-primary" type="submit">{editing ? ${T('حفظ التعديل', 'Save changes')} : ${T('إضافة', 'Add entry')}}</button></form></section><section className="prod-panel"><div className="prod-panel-head"><h2>{labels[tab]}</h2><span>{currentRows.length}</span></div>{currentRows.map(row => <article className="prod-item" key={rowId(row)}><div><h3>{row.source || row.title || row.category}</h3><p>{tab === 'budgets' ? row.limit_amount : row.amount} · {row.category || row.period} · {row.date || row.start_date}</p>{row.note ? <small>{row.note}</small> : null}</div><div className="prod-actions"><button type="button" onClick={() => edit(tab, row)}>{${T('تعديل', 'Edit')}}</button><button type="button" onClick={() => remove(tab, row)}>{${T('حذف', 'Delete')}}</button></div></article>)}{!currentRows.length ? <p className="prod-empty">{${T('لا توجد بيانات.', 'No data yet.')}}</p> : null}</section></main> : null}
+  </div>;
+}
+`;
 }
 
 /* ── engine 5: social — a real feed, not a page about one ────────────────── */

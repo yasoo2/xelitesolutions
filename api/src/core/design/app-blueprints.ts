@@ -23,11 +23,11 @@
  *             search, filter, totals, CSV — driven by a per-domain schema
  */
 
-export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social' | 'shop' | 'calculator' | 'productivity';
+export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social' | 'shop' | 'calculator' | 'productivity' | 'finance';
 
 export type AppKind =
     | 'maps' | 'chat' | 'weather' | 'social' | 'store' | 'calculator' | 'productivity'
-    | 'tasks' | 'notes' | 'expenses' | 'inventory' | 'booking'
+    | 'tasks' | 'notes' | 'expenses' | 'finance' | 'inventory' | 'booking'
     | 'pos' | 'crm' | 'lms' | 'contacts' | 'habits' | 'generic';
 
 /**
@@ -214,7 +214,7 @@ const KIND_DETECTORS: Array<[AppKind, RegExp]> = [
     ['pos', /نقاط\s*بيع|نقطة\s*بيع|كاشير|كاشيير|\bpos\b|point\s*of\s*sale|cash\s*register/i],
     ['booking', /حجوزات|حجز|مواعيد|موعد|عياد|مرضى|reservation|booking|appointment|clinic/i],
     ['inventory', /مخزون|جرد|مستودع|أصناف|اصناف|inventory|stock|warehouse/i],
-    ['expenses', /مصاريف|مصروفات|ميزانية|نفقات|محاسبة\s*شخصية|expense|budget|spending|finance\s*tracker/i],
+    ['expenses', /مصاريف|مصروفات|نفقات|expense|spending/i],
     // لوحات الإصدار والتشغيل ليست صفحات تعريفية حتى لو لم تقل «تطبيق»:
     // مؤشرات + جدول + بحث/تصفية/تفاصيل هي إشارة برنامج إدارة مهام صريحة.
     ['tasks', /مهام|مهمة|مهمات|لوحة\s*(?:مهام|إصدار|اصدار|جاهزية)|مركز\s*جاهزية\s*(?:الإصدار|الاصدار)|جدول\s*مهام|بطاقات\s*مؤشرات|task\s*(manager|list|board)|release\s*(?:readiness|center|board)|kanban|to-?do|todo/i],
@@ -253,6 +253,9 @@ const TASK_BOARD_CONTRACT = /مركز\s*جاهزية\s*(?:الإصدار|الا�
 /** A request that names two first-class collections is a composite app, not the first matching single-domain blueprint. */
 const PRODUCTIVITY_CONTRACT = /(?:ملاحظات|مذكرات|مفكرة|notes?|notepad)[\s\S]{0,260}(?:مهام|مهمات|مهامّ?|tasks?|to-?do)|(?:مهام|مهمات|مهامّ?|tasks?|to-?do)[\s\S]{0,260}(?:ملاحظات|مذكرات|مفكرة|notes?|notepad)/i;
 
+/** A finance dashboard owns three first-class collections, not one generic ledger. */
+const FINANCE_CONTRACT = /(?:income|incomes|earnings?|salary|revenue|الدخل|الإيرادات?|الراتب)[\s\S]{0,320}(?:expense|expenses|spending|costs?|budget|budgets?|المصاريف?|النفقات?|الميزاني(?:ة|ات))|(?:expense|expenses|spending|costs?|budget|budgets?|المصاريف?|النفقات?|الميزاني(?:ة|ات))[\s\S]{0,320}(?:income|incomes|earnings?|salary|revenue|الدخل|الإيرادات?|الراتب)/i;
+
 /**
  * WHICH application this is — or null when the request is genuinely a
  * presentation site (a café, a clinic's landing page, a shop window), which
@@ -273,7 +276,7 @@ const PRODUCTIVITY_CONTRACT = /(?:ملاحظات|مذكرات|مفكرة|notes?|
  */
 export const RECORDS_TABLE_BY_KIND: Record<string, [string, string]> = {
     social: ['posts', 'المنشورات'], chat: ['messages', 'الرسائل'], maps: ['places', 'الأماكن'], tasks: ['tasks', 'المهام'],
-    notes: ['notes', 'الملاحظات'], productivity: ['notes', 'الملاحظات والمهام'], expenses: ['expenses', 'المصاريف'], inventory: ['items', 'الأصناف'],
+    notes: ['notes', 'الملاحظات'], productivity: ['notes', 'الملاحظات والمهام'], expenses: ['expenses', 'المصاريف'], finance: ['incomes', 'الدخل'], inventory: ['items', 'الأصناف'],
     booking: ['bookings', 'الحجوزات'], pos: ['sales', 'المبيعات'], crm: ['customers', 'العملاء'],
     lms: ['enrolments', 'التسجيلات'], contacts: ['contacts', 'جهات الاتصال'], habits: ['habits', 'العادات'],
 };
@@ -294,6 +297,7 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // This prevents a release board from becoming ChatApp merely because its
     // self-audit or planner context happened to mention a conversation.
     if (TASK_BOARD_CONTRACT.test(request)) return 'tasks';
+    if (FINANCE_CONTRACT.test(request)) return 'finance';
     for (const [kind, re] of KIND_DETECTORS) if (re.test(request)) return kind;
     // Nothing named, but «نظام إدارة …» / «تطبيق لتتبع …» is unmistakably an
     // application that owns records. It gets the records engine with an entity
@@ -496,6 +500,27 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
             ],
             deps: {},
             emptyHint: L('لا ملاحظات بعد — اكتب أول ملاحظة.', 'No notes yet — write your first one.'),
+        };
+
+        case 'finance': return {
+            kind, engine: 'finance',
+            title: L('المال', 'MoneyTrack'),
+            lede: L('تابع الدخل والمصاريف والميزانيات مع حساب صافي الرصيد.', 'Track income, expenses and budgets with a computed net balance.'),
+            entityOne: L('عملية مالية', 'financial entry'), entityMany: L('العمليات المالية', 'Financial entries'),
+            fields: [
+                f(['source', 'مصدر الدخل', 'Income source', 'text', undefined, ['required', 'primary']], isAr),
+                f(['amount', 'المبلغ', 'Amount', 'number', undefined, ['required']], isAr),
+                f(['category', 'الفئة', 'Category', 'text'], isAr),
+                f(['date', 'التاريخ', 'Date', 'date'], isAr),
+                f(['note', 'ملاحظة', 'Note', 'textarea'], isAr),
+            ],
+            metrics: [
+                { label: L('إجمالي الدخل', 'Total income'), kind: 'sum', field: 'amount', unit: L('ر.س', 'SAR') },
+                { label: L('إجمالي المصاريف', 'Total expenses'), kind: 'sum', field: 'amount', unit: L('ر.س', 'SAR') },
+                { label: L('صافي الرصيد', 'Net balance'), kind: 'sum', field: 'amount', unit: L('ر.س', 'SAR') },
+            ],
+            deps: {},
+            emptyHint: L('أضف دخلاً أو مصروفاً أو ميزانية لبدء المتابعة.', 'Add income, expense or budget entries to get started.'),
         };
 
         case 'expenses': return {

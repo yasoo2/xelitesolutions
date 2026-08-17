@@ -13,6 +13,7 @@
  */
 import { apiColumnsForRequest, CATALOGUE_COLUMNS } from '../modules/tools/definitions/ApiProjectTool';
 import { blueprintFor, detectAppKind } from '../core/design/app-blueprints';
+import { designDataModel } from '../core/design/schema-designer';
 
 describe('the schema follows the app, not a fixed guess', () => {
     it('a clinic booking system stores date, time and status', () => {
@@ -26,6 +27,20 @@ describe('the schema follows the app, not a fixed guess', () => {
         const cols = apiColumnsForRequest('تطبيق لتتبّع المصاريف الشخصية');
         const amount = cols.find(c => c.type === 'REAL');
         expect(amount).toBeTruthy();
+    });
+
+    it('a complete finance request gets income, expense and budget resources', async () => {
+        const model = await designDataModel(`Build a complete personal finance app called MoneyTrack. Track income and expenses, create budgets by category, show dashboard charts and monthly totals.`);
+        expect(model.map(entity => entity.key)).toEqual(['incomes', 'expenses', 'budgets']);
+        expect(model.find(entity => entity.key === 'incomes')!.fields.map(field => field.key))
+            .toEqual(expect.arrayContaining(['source', 'amount', 'category', 'date']));
+        expect(model.find(entity => entity.key === 'expenses')!.fields.map(field => field.key))
+            .toEqual(expect.arrayContaining(['title', 'amount', 'category', 'date']));
+        expect(model.find(entity => entity.key === 'budgets')!.fields.map(field => field.key))
+            .toEqual(expect.arrayContaining(['category', 'limit_amount', 'period']));
+        expect(model.find(entity => entity.key === 'incomes')!.fields.find(field => field.key === 'amount')!.type).toBe('REAL');
+        expect(model.find(entity => entity.key === 'expenses')!.fields.find(field => field.key === 'amount')!.type).toBe('REAL');
+        expect(model.find(entity => entity.key === 'budgets')!.fields.find(field => field.key === 'limit_amount')!.type).toBe('REAL');
     });
 
     it('and an online store stores price, image, category and stock', () => {
