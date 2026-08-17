@@ -2111,6 +2111,25 @@ export class ApiProjectTool extends BaseTool {
         // the catalogue shape — a booking table seeded with «Dish of the day»
         // would be noise pretending to be data.
         const requestColumns = apiColumnsForRequest(request);
+        // Productivity is a deliberate two-collection contract. The generic
+        // schema designer may infer incidental words such as dates or
+        // persistences, but the app's two real surfaces are notes and tasks;
+        // both sides must share these exact columns and types.
+        const isProductivity = appKind === 'productivity';
+        const productivityNotesColumns: ApiColumn[] = [
+            { key: 'title', type: 'TEXT', required: true },
+            { key: 'body', type: 'TEXT', required: true },
+            { key: 'category', type: 'TEXT', required: false },
+            { key: 'pinned', type: 'INT', required: false },
+            { key: 'completed', type: 'INT', required: false },
+        ];
+        const productivityTaskColumns: ApiColumn[] = [
+            { key: 'title', type: 'TEXT', required: true },
+            { key: 'details', type: 'TEXT', required: false },
+            { key: 'priority', type: 'TEXT', required: false },
+            { key: 'due', type: 'TEXT', required: false },
+            { key: 'completed', type: 'INT', required: false },
+        ];
         /**
          * The parent table, when this system has one — «طبيب ← مواعيده».
          *
@@ -2210,7 +2229,9 @@ export class ApiProjectTool extends BaseTool {
          * table is built from.
          */
         const promotedColumns = promoted ? columnsFromFields((promoted as any).fields || []) : [];
-        const columns = promoted && promotedColumns.length ? promotedColumns : requestColumns;
+        const columns = isProductivity
+            ? productivityNotesColumns
+            : (promoted && promotedColumns.length ? promotedColumns : requestColumns);
         if (promoted && promotedColumns.length) {
             term(`data model: /api/${resource} carries its own columns — ${promotedColumns.map(c => c.key).join(', ')}`);
         }
@@ -2262,7 +2283,14 @@ export class ApiProjectTool extends BaseTool {
          * dropping a word the user typed.
          */
         const collided = designed.filter((e: any) => e.key === resource).map((e: any) => e.key);
-        const model = designed.filter((e: any) => e.key !== resource);
+        const productivityModel = [{
+            key: 'tasks', ar: 'المهام', en: 'Tasks', belongsTo: null,
+            fields: productivityTaskColumns.map((c) => ({ key: c.key, type: c.type === 'INT' ? 'number' : 'text', required: c.required })),
+        }];
+        // Do not let a free-form inference result turn a Notes + Tasks app into
+        // dates/persistences. For every other domain the general designer stays
+        // the source of truth exactly as before.
+        const model = isProductivity ? productivityModel : designed.filter((e: any) => e.key !== resource);
         if (collided.length) {
             term(`data model: ${collided.join(', ')} — already the system's own table, not regenerated`);
             if (sessionId) {
@@ -2272,6 +2300,7 @@ export class ApiProjectTool extends BaseTool {
             }
         }
         if (model.length) {
+            if (isProductivity) term('data model: productivity exposes /api/notes and /api/tasks with shared CRUD fields');
             if (sessionId) broadcastThinkingDetail(sessionId, describeModel(model, isAr));
         }
         /**

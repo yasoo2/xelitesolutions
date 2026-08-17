@@ -32,6 +32,8 @@ export interface AppBuildOptions {
     storeKey: string;
     /** The build's brand colour — used for the favicon and the theme colour. */
     brandColor?: string;
+    /** First-class backend collections for composite engines such as productivity. */
+    apiResources?: Record<string, string>;
     /**
      * THE REST OF THE SYSTEM'S TABLES, AS SCREENS.
      *
@@ -46,6 +48,10 @@ export interface AppBuildOptions {
 /* ── content.js — the app's own shape, nothing borrowed from a brochure ──── */
 
 export function fileAppContentJs(bp: AppBlueprint, o: AppBuildOptions): string {
+    const apiResources = o.apiResources || (bp.kind === 'productivity' && o.api ? {
+        notes: o.api,
+        tasks: String(o.api).replace(/\/notes\/?$/i, '/tasks'),
+    } : {});
     return `// WHAT THIS APP IS — its schema, its numbers, its storage key.
 // No marketing copy, no fabricated people: this file describes a program.
 export const content = {
@@ -63,6 +69,8 @@ export const content = {
   // The session's Joe API, when a backend was built first. Empty means the
   // app is honestly local: it SAYS so in the interface rather than pretending.
   api: '${q(o.api || '')}',
+  // Composite apps address each first-class collection explicitly.
+  apiResources: ${JSON.stringify(apiResources)},
   fields: [
 ${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
   ],
@@ -3270,7 +3278,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
 export function fileProductivityAppJsx(isAr: boolean): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useMemo, useState } from 'react';
-import { createStore, uid, todayISO } from '../app/store.js';
+import { createStore, uid, todayISO, apiListOn, apiCreateOn, apiUpdateOn, apiDeleteOn } from '../app/store.js';
 import { content } from '../content.js';
 
 const noteDefaults = { title: '', body: '', category: 'General', pinned: false, completed: false };
@@ -3302,6 +3310,21 @@ export default function ProductivityApp() {
   useEffect(() => { noteStore.write(notes); }, [notes, noteStore]);
   useEffect(() => { taskStore.write(tasks); }, [tasks, taskStore]);
   useEffect(() => {
+    let alive = true;
+    const loadRemote = async () => {
+      if (!content.api) return;
+      const [remoteNotes, remoteTasks] = await Promise.all([
+        apiListOn(content.api, 'notes'),
+        apiListOn(content.api, 'tasks'),
+      ]);
+      if (!alive) return;
+      if (Array.isArray(remoteNotes)) setNotes(remoteNotes);
+      if (Array.isArray(remoteTasks)) setTasks(remoteTasks);
+    };
+    loadRemote();
+    return () => { alive = false; };
+  }, []);
+  useEffect(() => {
     document.documentElement.dataset.theme = theme;
     try { localStorage.setItem(content.storeKey + ':theme', theme); } catch {}
   }, [theme]);
@@ -3326,31 +3349,89 @@ export default function ProductivityApp() {
     });
   }, [tasks, taskFilter, taskSort]);
 
-  const saveNote = (event) => {
+  const remoteError = (result) => {
+    if (!result) return ${T('تعذر الوصول إلى الخادم.', 'The server could not be reached.')};
+    if (result.needsAuth || result.status === 401) return ${T('سجّل الدخول أولاً لحفظ البيانات على الخادم.', 'Sign in first to save data on the server.')};
+    if (result.status === 403 || result.error === 'read_only') return ${T('هذا الحساب للقراءة فقط.', 'This account is read-only.')};
+    return ${T('رفض الخادم العملية.', 'The server rejected this operation.')};
+  };
+  const saveNote = async (event) => {
     event.preventDefault();
     const title = String(noteDraft.title || '').trim();
+    const body = String(noteDraft.body || '').trim();
     if (!title) { setError(${T('اكتب عنوان الملاحظة أولاً.', 'Add a note title first.')}); return; }
+    if (!body) { setError(${T('اكتب نص الملاحظة أولاً.', 'Add note text first.')}); return; }
     const now = new Date().toISOString();
-    if (editingNote) setNotes(rows => rows.map(n => n.id === editingNote ? { ...n, ...noteDraft, title, updatedAt: now } : n));
-    else setNotes(rows => [{ ...noteDraft, id: uid(), title, createdAt: now, updatedAt: now }, ...rows]);
+    const patch = { ...noteDraft, title, body, updatedAt: now };
+    if (content.api) {
+      const result = editingNote
+        ? await apiUpdateOn(content.api, 'notes', editingNote, patch)
+        : await apiCreateOn(content.api, 'notes', { ...patch, createdAt: now });
+      if (!result || !result.ok) { setError(remoteError(result)); return; }
+      const saved = { ...(editingNote ? patch : { ...patch, id: result.item?.id || uid(), createdAt: result.item?.createdAt || now }), ...(result.row || result.item || {}) };
+      if (editingNote) setNotes(rows => rows.map(n => n.id === editingNote ? { ...n, ...saved, id: editingNote } : n));
+      else setNotes(rows => [saved, ...rows]);
+    } else if (editingNote) setNotes(rows => rows.map(n => n.id === editingNote ? { ...n, ...patch } : n));
+    else setNotes(rows => [{ ...patch, id: uid(), createdAt: now }, ...rows]);
     setNoteDraft(noteDefaults); setEditingNote(null); setError('');
   };
   const editNote = (note) => { setEditingNote(note.id); setNoteDraft({ ...noteDefaults, ...note }); setTab('notes'); };
-  const deleteNote = (note) => { if (window.confirm(${T('حذف الملاحظة؟', 'Delete this note?')})) setNotes(rows => rows.filter(n => n.id !== note.id)); };
-  const toggleNote = (id, field) => setNotes(rows => rows.map(n => n.id === id ? { ...n, [field]: !n[field], updatedAt: new Date().toISOString() } : n));
+  const deleteNote = async (note) => {
+    if (!window.confirm(${T('حذف الملاحظة؟', 'Delete this note?')})) return;
+    if (content.api) {
+      const result = await apiDeleteOn(content.api, 'notes', note.id);
+      if (!result || !result.ok) { setError(remoteError(result)); return; }
+    }
+    setNotes(rows => rows.filter(n => n.id !== note.id));
+  };
+  const toggleNote = async (id, field) => {
+    const note = notes.find(n => n.id === id);
+    if (!note) return;
+    const patch = { [field]: !note[field], updatedAt: new Date().toISOString() };
+    if (content.api) {
+      const result = await apiUpdateOn(content.api, 'notes', id, patch);
+      if (!result || !result.ok) { setError(remoteError(result)); return; }
+    }
+    setNotes(rows => rows.map(n => n.id === id ? { ...n, ...patch } : n));
+  };
 
-  const saveTask = (event) => {
+  const saveTask = async (event) => {
     event.preventDefault();
     const title = String(taskDraft.title || '').trim();
     if (!title) { setError(${T('اكتب عنوان المهمة أولاً.', 'Add a task title first.')}); return; }
     const now = new Date().toISOString();
-    if (editingTask) setTasks(rows => rows.map(t => t.id === editingTask ? { ...t, ...taskDraft, title, updatedAt: now } : t));
-    else setTasks(rows => [{ ...taskDraft, id: uid(), title, createdAt: now, updatedAt: now }, ...rows]);
+    const patch = { ...taskDraft, title, updatedAt: now };
+    if (content.api) {
+      const result = editingTask
+        ? await apiUpdateOn(content.api, 'tasks', editingTask, patch)
+        : await apiCreateOn(content.api, 'tasks', { ...patch, createdAt: now });
+      if (!result || !result.ok) { setError(remoteError(result)); return; }
+      const saved = { ...(editingTask ? patch : { ...patch, id: result.item?.id || uid(), createdAt: result.item?.createdAt || now }), ...(result.row || result.item || {}) };
+      if (editingTask) setTasks(rows => rows.map(t => t.id === editingTask ? { ...t, ...saved, id: editingTask } : t));
+      else setTasks(rows => [saved, ...rows]);
+    } else if (editingTask) setTasks(rows => rows.map(t => t.id === editingTask ? { ...t, ...patch } : t));
+    else setTasks(rows => [{ ...patch, id: uid(), createdAt: now }, ...rows]);
     setTaskDraft(taskDefaults); setEditingTask(null); setError('');
   };
   const editTask = (task) => { setEditingTask(task.id); setTaskDraft({ ...taskDefaults, ...task }); setTab('tasks'); };
-  const deleteTask = (task) => { if (window.confirm(${T('حذف المهمة؟', 'Delete this task?')})) setTasks(rows => rows.filter(t => t.id !== task.id)); };
-  const toggleTask = (id) => setTasks(rows => rows.map(t => t.id === id ? { ...t, completed: !t.completed, updatedAt: new Date().toISOString() } : t));
+  const deleteTask = async (task) => {
+    if (!window.confirm(${T('حذف المهمة؟', 'Delete this task?')})) return;
+    if (content.api) {
+      const result = await apiDeleteOn(content.api, 'tasks', task.id);
+      if (!result || !result.ok) { setError(remoteError(result)); return; }
+    }
+    setTasks(rows => rows.filter(t => t.id !== task.id));
+  };
+  const toggleTask = async (id) => {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+    const patch = { completed: !task.completed, updatedAt: new Date().toISOString() };
+    if (content.api) {
+      const result = await apiUpdateOn(content.api, 'tasks', id, patch);
+      if (!result || !result.ok) { setError(remoteError(result)); return; }
+    }
+    setTasks(rows => rows.map(t => t.id === id ? { ...t, ...patch } : t));
+  };
   const cancelEdit = () => { setNoteDraft(noteDefaults); setTaskDraft(taskDefaults); setEditingNote(null); setEditingTask(null); setError(''); };
   const input = (value, onChange, label, type = 'text') => <label className="prod-field"><span>{label}</span>{type === 'textarea' ? <textarea value={value} onChange={e => onChange(e.target.value)} /> : <input type={type} value={value} onChange={e => onChange(e.target.value)} />}</label>;
 
@@ -3361,7 +3442,7 @@ export default function ProductivityApp() {
     {tab === 'home' ? <main className="prod-home"><section className="prod-stats"><div><b>{notes.length}</b><span>{${T('ملاحظة', 'Notes')}}</span></div><div><b>{tasks.length}</b><span>{${T('مهمة', 'Tasks')}}</span></div><div><b>{tasks.filter(t => t.completed).length}</b><span>{${T('منجزة', 'Completed')}}</span></div></section><section className="prod-panel"><div className="prod-panel-head"><h2>{${T('آخر العناصر', 'Recent items')}}</h2><button type="button" onClick={() => setTab('notes')}>{${T('افتح الملاحظات', 'Open notes')}}</button></div>{notes.slice(0, 3).map(n => <button className="prod-row" type="button" key={n.id} onClick={() => editNote(n)}><strong>{n.pinned ? '★ ' : ''}{n.title}</strong><span>{n.body}</span></button>)}{tasks.slice(0, 3).map(t => <button className="prod-row" type="button" key={t.id} onClick={() => editTask(t)}><strong>{t.completed ? '✓ ' : ''}{t.title}</strong><span>{t.priority}{t.due ? ' · ' + t.due : ''}</span></button>)}{!notes.length && !tasks.length ? <p className="prod-empty">{content.emptyHint}</p> : null}</section></main> : null}
     {tab === 'notes' ? <main className="prod-grid"><section className="prod-panel"><div className="prod-panel-head"><h2>{editingNote ? ${T('تعديل ملاحظة', 'Edit note')} : ${T('ملاحظة جديدة', 'New note')}}</h2>{editingNote ? <button type="button" onClick={cancelEdit}>{${T('إلغاء', 'Cancel')}}</button> : null}</div><form onSubmit={saveNote}>{input(noteDraft.title, v => setNoteDraft({ ...noteDraft, title: v }), ${T('العنوان', 'Title')})}{input(noteDraft.body, v => setNoteDraft({ ...noteDraft, body: v }), ${T('النص', 'Body')}, 'textarea')}{input(noteDraft.category, v => setNoteDraft({ ...noteDraft, category: v }), ${T('التصنيف', 'Category')})}<label className="prod-check"><input type="checkbox" checked={!!noteDraft.pinned} onChange={e => setNoteDraft({ ...noteDraft, pinned: e.target.checked })} />{${T('تثبيت الملاحظة', 'Pin note')}}</label><label className="prod-check"><input type="checkbox" checked={!!noteDraft.completed} onChange={e => setNoteDraft({ ...noteDraft, completed: e.target.checked })} />{${T('مكتملة', 'Completed')}}</label><button className="prod-primary" type="submit">{editingNote ? ${T('حفظ التعديل', 'Save changes')} : ${T('إضافة الملاحظة', 'Add note')}}</button></form></section><section className="prod-panel"><div className="prod-panel-head"><h2>{${T('الملاحظات', 'Notes')}}</h2><span>{visibleNotes.length}</span></div><div className="prod-toolbar"><input value={query} onChange={e => setQuery(e.target.value)} placeholder={${T('ابحث في الملاحظات…', 'Search notes…')}} aria-label={${T('بحث', 'Search notes')}} /><select value={category} onChange={e => setCategory(e.target.value)} aria-label={${T('التصنيف', 'Category')}}>{categories.map(c => <option key={c}>{c}</option>)}</select></div>{visibleNotes.map(note => <article className={\`prod-item \${note.completed ? 'done' : ''}\`} key={note.id}><div><h3>{note.pinned ? '★ ' : ''}{note.title}</h3><p>{note.body}</p><small>{note.category}</small></div><div className="prod-actions"><button type="button" onClick={() => toggleNote(note.id, 'pinned')}>{note.pinned ? ${T('إلغاء التثبيت', 'Unpin')} : ${T('تثبيت', 'Pin')}}</button><button type="button" onClick={() => toggleNote(note.id, 'completed')}>{note.completed ? ${T('إعادة فتح', 'Reopen')} : ${T('إكمال', 'Complete')}}</button><button type="button" onClick={() => editNote(note)}>{${T('تعديل', 'Edit')}}</button><button type="button" onClick={() => deleteNote(note)}>{${T('حذف', 'Delete')}}</button></div></article>)}{!visibleNotes.length ? <p className="prod-empty">{${T('لا توجد ملاحظات مطابقة.', 'No matching notes.')}}</p> : null}</section></main> : null}
     {tab === 'tasks' ? <main className="prod-grid"><section className="prod-panel"><div className="prod-panel-head"><h2>{editingTask ? ${T('تعديل مهمة', 'Edit task')} : ${T('مهمة جديدة', 'New task')}}</h2>{editingTask ? <button type="button" onClick={cancelEdit}>{${T('إلغاء', 'Cancel')}}</button> : null}</div><form onSubmit={saveTask}>{input(taskDraft.title, v => setTaskDraft({ ...taskDraft, title: v }), ${T('المهمة', 'Task')})}{input(taskDraft.details, v => setTaskDraft({ ...taskDraft, details: v }), ${T('التفاصيل', 'Details')}, 'textarea')}<label className="prod-field"><span>{${T('الأولوية', 'Priority')}}</span><select value={taskDraft.priority} onChange={e => setTaskDraft({ ...taskDraft, priority: e.target.value })}>{priorities.map(p => <option key={p}>{p}</option>)}</select></label>{input(taskDraft.due, v => setTaskDraft({ ...taskDraft, due: v }), ${T('تاريخ الاستحقاق', 'Due date')}, 'date')}<label className="prod-check"><input type="checkbox" checked={!!taskDraft.completed} onChange={e => setTaskDraft({ ...taskDraft, completed: e.target.checked })} />{${T('مكتملة', 'Completed')}}</label><button className="prod-primary" type="submit">{editingTask ? ${T('حفظ التعديل', 'Save changes')} : ${T('إضافة المهمة', 'Add task')}}</button></form></section><section className="prod-panel"><div className="prod-panel-head"><h2>{${T('المهام', 'Tasks')}}</h2><span>{visibleTasks.length}</span></div><div className="prod-toolbar"><select value={taskFilter} onChange={e => setTaskFilter(e.target.value)} aria-label={${T('فلترة المهام', 'Filter tasks')}}><option>All</option><option>Open</option><option>Done</option></select><select value={taskSort} onChange={e => setTaskSort(e.target.value)} aria-label={${T('ترتيب المهام', 'Sort tasks')}}><option value="due">{${T('حسب التاريخ', 'By due date')}}</option><option value="priority">{${T('حسب الأولوية', 'By priority')}}</option><option value="title">{${T('حسب الاسم', 'By title')}}</option></select></div>{visibleTasks.map(task => <article className={\`prod-item \${task.completed ? 'done' : ''}\`} key={task.id}><div><h3>{task.title}</h3><p>{task.details}</p><small>{task.priority}{task.due ? ' · ' + task.due : ''}</small></div><div className="prod-actions"><button type="button" onClick={() => toggleTask(task.id)}>{task.completed ? ${T('إعادة فتح', 'Reopen')} : ${T('إكمال', 'Complete')}}</button><button type="button" onClick={() => editTask(task)}>{${T('تعديل', 'Edit')}}</button><button type="button" onClick={() => deleteTask(task)}>{${T('حذف', 'Delete')}}</button></div></article>)}{!visibleTasks.length ? <p className="prod-empty">{${T('لا توجد مهام مطابقة.', 'No matching tasks.')}}</p> : null}</section></main> : null}
-    {tab === 'settings' ? <main className="prod-panel"><h2>{${T('الإعدادات', 'Settings')}}</h2><label className="prod-field"><span>{${T('الوضع', 'Theme')}}</span><select value={theme} onChange={e => setTheme(e.target.value)}><option value="light">{${T('نهاري', 'Light')}}</option><option value="dark">{${T('ليلي', 'Dark')}}</option></select></label><p className="prod-muted">{${T('البيانات محفوظة محلياً وتبقى بعد إغلاق التطبيق وإعادة فتحه.', 'Data is stored locally and survives closing and reopening the app.')}}</p></main> : null}
+    {tab === 'settings' ? <main className="prod-panel"><h2>{${T('الإعدادات', 'Settings')}}</h2><label className="prod-field"><span>{${T('الوضع', 'Theme')}}</span><select value={theme} onChange={e => setTheme(e.target.value)}><option value="light">{${T('نهاري', 'Light')}}</option><option value="dark">{${T('ليلي', 'Dark')}}</option></select></label><p className="prod-muted">{content.api ? ${T('البيانات محفوظة على الخادم، مع نسخة محلية مؤقتة للعمل دون اتصال.', 'Data is saved on the server, with a temporary local cache for offline work.')} : ${T('البيانات محفوظة محلياً وتبقى بعد إغلاق التطبيق وإعادة فتحه.', 'Data is stored locally and survives closing and reopening the app.')}}</p></main> : null}
   </div>;
 }
 `;

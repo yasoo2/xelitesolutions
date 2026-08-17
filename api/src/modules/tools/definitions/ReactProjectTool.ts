@@ -2718,8 +2718,13 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             // Carried out of this block so the terminal audit can ask the
             // running server for every one of them by name.
             systemTables = (tableModel || []).map((e: any) => String(e?.key || '')).filter(Boolean);
+            const apiResources = runBp.kind === 'productivity' && appApi ? {
+                notes: appApi,
+                tasks: String(appApi).replace(/\/notes\/?$/i, '/tasks'),
+            } : undefined;
             const appFiles = buildAppFiles(runBp, {
-                brand: content.brand, isArabic: isAr, api: appApi, storeKey: `${slug(content.brand)}-${runBp.kind}`,
+                brand: content.brand, isArabic: isAr, api: appApi, apiResources,
+                storeKey: `${slug(content.brand)}-${runBp.kind}`,
                 brandColor: (palette as any).primary,
                 model: adminModel,
             }, slug(content.brand));

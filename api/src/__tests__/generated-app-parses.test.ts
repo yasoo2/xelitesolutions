@@ -34,6 +34,33 @@ describe('the generated application is syntactically real', () => {
         }
     });
 
+    it('productivity carries two API resources and real remote CRUD', () => {
+        const files = buildAppFiles(
+            blueprintFor('productivity', 'QuickNotes', true),
+            {
+                isArabic: true, brand: 'QuickNotes', storeKey: 'quicknotes-productivity',
+                api: 'http://localhost:4100/api/notes',
+                apiResources: {
+                    notes: 'http://localhost:4100/api/notes',
+                    tasks: 'http://localhost:4100/api/tasks',
+                },
+            } as any,
+            'quicknotes',
+        );
+        const content = files['src/content.js'];
+        const app = files['src/components/ProductivityApp.jsx'];
+        expect(content).toContain('"notes":"http://localhost:4100/api/notes"');
+        expect(content).toContain('"tasks":"http://localhost:4100/api/tasks"');
+        expect(app).toContain("apiListOn(content.api, 'notes')");
+        expect(app).toContain("apiListOn(content.api, 'tasks')");
+        expect(app).toContain("apiCreateOn(content.api, 'notes'");
+        expect(app).toContain("apiCreateOn(content.api, 'tasks'");
+        expect(app).toContain("apiUpdateOn(content.api, 'notes'");
+        expect(app).toContain("apiUpdateOn(content.api, 'tasks'");
+        expect(app).toContain("apiDeleteOn(content.api, 'notes'");
+        expect(app).toContain("apiDeleteOn(content.api, 'tasks'");
+    });
+
     it('and the API address is resolved at runtime, never baked in alone', () => {
         // A bundle that can only talk to localhost:4100 is a bundle that dies
         // on a domain — which is the whole point of this batch.
