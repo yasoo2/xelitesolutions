@@ -4,6 +4,7 @@ import path from 'path';
 import { workspaceService } from '../modules/services/WorkspaceService';
 import { AdvancedFileEditTool } from '../modules/tools/definitions/UtilityTools';
 import { SelfFixService } from '../modules/services/SelfFixService';
+import { phaseAfterRepair } from '../modules/services/SelfFixExecutionService';
 import { RepairTicketService } from '../modules/services/RepairTicketService';
 
 describe('evidence-aware file edit recovery', () => {
@@ -307,6 +308,23 @@ describe('evidence-aware file edit recovery', () => {
     expect(plan.allowed).toBe(false);
     expect(plan.strategy).toBe('manual_review');
     expect(JSON.stringify(plan)).not.toContain('src/index.ts');
+  });
+
+  it('preserves the generated project after a dependency repair and reruns verification tasks', () => {
+    const phase = {
+      phaseNumber: 1,
+      name: 'Project Setup',
+      tasks: [
+        { task: 'Create the React project', tool: 'react_project', args: { projectName: 'WeatherGo' } },
+        { task: 'Install dependencies and build', tool: 'shell_execute', command: 'npm run build', cwd: '/workspace/WeatherGo' },
+        { task: 'Verify launchability', tool: 'project_run', cwd: '/workspace/WeatherGo' },
+      ],
+    };
+
+    const resumed = phaseAfterRepair(phase, '/workspace/WeatherGo/package.json');
+
+    expect(resumed.skipped).toEqual(['Create the React project']);
+    expect(resumed.phase.tasks.map((task: any) => task.tool)).toEqual(['shell_execute', 'project_run']);
   });
 
   it('builds one bounded advanced-edit recovery from preserved file evidence', () => {

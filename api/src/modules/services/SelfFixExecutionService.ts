@@ -90,15 +90,29 @@ function bindRepairTargetToProjectRoot(repairTool: string, input: Record<string,
   return { ...input, [key]: resolved };
 }
 
-function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: any; skipped: string[] } {
+export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: any; skipped: string[] } {
   const file = normalisePath(repairedFile);
   if (!file || !Array.isArray(phase?.tasks)) return { phase, skipped: [] };
+
+  // An npm dependency repair mutates the manifest in the recorded project cwd.
+  // Re-running the greenfield scaffold task would recreate the old manifest and
+  // erase the dependency before the verification task gets a chance to prove
+  // the cure. Preserve the generated project and rerun only the remaining
+  // evidence/build checks. Existing file-target repairs keep their old behavior.
+  const manifestRepair = /(?:^|\/)package\.json$/u.test(file);
+  const isScaffoldTask = (task: any): boolean => {
+    const tool = String(task?.tool || task?.name || '').trim().toLowerCase();
+    return manifestRepair && (tool === 'react_project' || tool === 'scaffold_project');
+  };
 
   const skipped: string[] = [];
   const tasks = phase.tasks.filter((task: any) => {
     const matches = taskPaths(task).some((candidate) => pathsReferToSameFile(candidate, file));
-    if (matches) skipped.push(String(task.task || task.description || task.tool || 'repaired task'));
-    return !matches;
+    const preserveScaffold = isScaffoldTask(task);
+    if (matches || preserveScaffold) {
+      skipped.push(String(task.task || task.description || task.tool || 'repaired task'));
+    }
+    return !matches && !preserveScaffold;
   });
 
   // Never hand an empty phase to the executor: an artifact-only phase still
@@ -222,7 +236,10 @@ export class SelfFixExecutionService {
 
     const repairedFile = selfFixPlan.suggestedInput?.path
       || selfFixPlan.suggestedInput?.filename
-      || selfFixPlan.suggestedInput?.filePath;
+      || selfFixPlan.suggestedInput?.filePath
+      || (repairTool === 'npm_manager' && typeof repairInput.cwd === 'string' && repairInput.cwd.trim()
+        ? path.join(repairInput.cwd.trim(), 'package.json')
+        : undefined);
     const resumed = phaseAfterRepair(phase, repairedFile);
     if (resumed.skipped.length > 0) {
       executionContext.onProgress?.(`[self-fix:rerun-phase] skipping repaired task(s): ${resumed.skipped.join('; ').slice(0, 800)}`);
