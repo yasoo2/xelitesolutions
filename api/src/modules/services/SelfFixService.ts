@@ -97,7 +97,7 @@ function extractArtifactValidationFailure(ticket: RepairTicket) {
   const failed = ticket.failedTasks.find(task => {
     if (!task.file) return false;
     const evidence = `${task.error || ''}\n${ticket.primaryError || ''}`;
-    return /artifact_(?:type_mismatch|validation_failed)|incomplete markdown fence|not valid json|python source markers|node\.js source markers/i.test(evidence);
+    return /artifact_(?:type_mismatch|validation_failed)|source_syntax_mismatch|incomplete markdown fence|not valid json|python source markers|node\.js source markers/i.test(evidence);
   });
   if (!failed?.file) return null;
   return {
@@ -473,6 +473,7 @@ export class SelfFixService {
             'Inspect the surrounding project files and preserve the requested behavior, but return a complete valid artifact for this exact extension.',
             'For .json, return strict parseable JSON with no Markdown fences or explanatory prose. For .js/.jsx/.mjs/.cjs use JavaScript only (CommonJS require/module.exports or ECMAScript imports); for .ts/.tsx use TypeScript. Never emit Python markers such as from ... import, def, elif, @app.route, None, True, False, Flask, Django, or Python indentation blocks.',
             `Observed validator error: ${artifactValidationFailure.error}`,
+            'For source_syntax_mismatch, first inspect the existing file and its imports/exports, then rewrite the complete file as syntactically valid source. Do not return a patch, explanation, Markdown fence, truncated fragment, or a different file. Run node --check for .js/.mjs/.cjs (or the project build for JSX/TSX) before reporting success.',
             `Failed task: ${artifactValidationFailure.task}`,
           ].join('\\n'),
           language: 'en',

@@ -208,6 +208,9 @@ describe('evidence-aware file edit recovery', () => {
     expect(plan.allowed).toBe(true);
     expect(plan.suggestedTool).toBe('ai_write_file');
     expect(plan.suggestedInput).toEqual(expect.objectContaining({ path: failedFile }));
+    expect(String(plan.suggestedInput?.description)).toContain('source_syntax_mismatch');
+    expect(String(plan.suggestedInput?.description)).toContain('complete valid artifact');
+    expect(String(plan.suggestedInput?.description)).toContain('node --check');
     expect(JSON.stringify(plan.suggestedInput)).not.toContain('src/index.ts');
   });
 
