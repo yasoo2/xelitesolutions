@@ -69,6 +69,22 @@ describe('reading a failed command', () => {
 });
 
 describe('what it will NOT pretend to fix', () => {
+    it('repairs a relative import only when the uniquely evidenced file is one ancestor away', async () => {
+        const cwd = tmp();
+        fs.mkdirSync(path.join(cwd, 'node_modules', '.bin'), { recursive: true });
+        fs.mkdirSync(path.join(cwd, 'src', 'components'), { recursive: true });
+        fs.mkdirSync(path.join(cwd, 'src', 'styles'), { recursive: true });
+        fs.writeFileSync(path.join(cwd, 'src', 'components', 'WeatherApp.jsx'), "import '../styles/other.css';\nimport './styles/app.css';\n");
+        fs.writeFileSync(path.join(cwd, 'src', 'styles', 'app.css'), 'body {}\n');
+        const d = diagnose({ exitCode: 1, cwd, log: 'Failed to resolve import "./styles/app.css" from "src/components/WeatherApp.jsx"' })!;
+        expect(d.id).toBe('repairable_relative_import');
+        expect(d.fixable).toBe(true);
+        const r = await applyRemedy(d, cwd, async () => ({ exitCode: 0 }));
+        expect(r.applied).toBe(true);
+        expect(fs.readFileSync(path.join(cwd, 'src', 'components', 'WeatherApp.jsx'), 'utf8')).toContain("import '../styles/app.css';");
+        fs.rmSync(cwd, { recursive: true, force: true });
+    });
+
     it('a dangling local import is named, with both files, and left alone', () => {
         const d = diagnose({
             exitCode: 1, cwd: tmp(),

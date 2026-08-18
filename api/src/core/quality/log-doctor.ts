@@ -31,7 +31,7 @@ import path from 'path';
 
 export interface Diagnosis {
     id: 'missing_package' | 'no_node_modules' | 'port_in_use' | 'heap_out_of_memory'
-    | 'stale_bundler_cache' | 'npm_missing' | 'dangling_import' | 'timeout';
+    | 'stale_bundler_cache' | 'npm_missing' | 'dangling_import' | 'repairable_relative_import' | 'timeout';
     /** Said to the user in his own language — the log stays in the log. */
     ar: string;
     /** Whether this module can act on it, or only name it. */
@@ -111,14 +111,40 @@ export function diagnose(out: CommandOutcome): Diagnosis | null {
         return { id: 'missing_package', ar: `البناء ينقصه: ${missing.join('، ')} — أنزّلها ثم أكمل.`, fixable: true, data: { missing } };
     }
 
-    // A relative import of a file that is not on disk. NAMED, never "fixed":
-    // inventing the missing file would be Joe writing code nobody asked for.
+    // A relative import may be wrong only because the author wrote it from the
+    // project root instead of from the importing file's directory. This is
+    // repairable only when the bundler names both paths and exactly one existing
+    // candidate is found in a nearby ancestor directory. Joe never invents a
+    // file or guesses a destination.
     const dangling = (log.match(/Failed to resolve import "(\.[^"]+)" from "([^"]+)"/i) || []);
     if (dangling[1]) {
+        const specifier = dangling[1];
+        const from = dangling[2];
+        const fromFile = path.resolve(out.cwd, from);
+        const fromDir = path.dirname(fromFile);
+        const directTarget = path.resolve(fromDir, specifier);
+        const candidates: string[] = [];
+        if (!fs.existsSync(directTarget)) {
+            let ancestor = path.dirname(fromDir);
+            for (let depth = 0; depth < 4; depth++, ancestor = path.dirname(ancestor)) {
+                const candidate = path.resolve(ancestor, specifier);
+                const relativeToCwd = path.relative(out.cwd, candidate);
+                if (relativeToCwd.startsWith('..') || path.isAbsolute(relativeToCwd)) break;
+                if (candidate !== directTarget && fs.existsSync(candidate)) candidates.push(candidate);
+            }
+        }
+        if (candidates.length === 1) {
+            const replacement = path.relative(fromDir, candidates[0]).split(path.sep).join('/');
+            return {
+                id: 'repairable_relative_import', fixable: true,
+                ar: `مسار الاستيراد «${specifier}» في «${from}» خاطئ؛ وجدت الملف الحقيقي في «${replacement}» وأصلحه ثم أعيد البناء.`,
+                data: { specifier, from, replacement },
+            };
+        }
         return {
             id: 'dangling_import', fixable: false,
-            ar: `ملف مفقود: «${dangling[2] || ''}» يستورد «${dangling[1]}» وهو غير موجود.`,
-            data: { specifier: dangling[1], from: dangling[2] },
+            ar: `ملف مفقود: «${from || ''}» يستورد «${specifier}» وهو غير موجود.`,
+            data: { specifier, from },
         };
     }
 
@@ -171,6 +197,26 @@ export async function applyRemedy(
             try { fs.rmSync(path.join(cwd, 'node_modules', '.vite'), { recursive: true, force: true }); }
             catch { return { applied: false, note: 'تعذّر مسح الذاكرة المؤقتة' }; }
             return { applied: true, note: 'مسحتُ ذاكرة المُجمِّع المؤقتة' };
+        }
+        case 'repairable_relative_import': {
+            const from = String(d.data?.from || '');
+            const specifier = String(d.data?.specifier || '');
+            const replacement = String(d.data?.replacement || '');
+            const file = path.resolve(cwd, from);
+            const relativeFile = path.relative(cwd, file);
+            if (!from || !specifier || !replacement || relativeFile.startsWith('..') || path.isAbsolute(relativeFile) || !fs.existsSync(file)) {
+                return { applied: false, note: 'لم أجد ملف الاستيراد الموثق لإصلاحه' };
+            }
+            const source = fs.readFileSync(file, 'utf8');
+            const escaped = specifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const importPattern = new RegExp('(\\b(?:from\\s*|import\\s*|export\\s*from\\s*)[\\\"\\\'])' + escaped + '([\\\"\\\'])');
+            if (!importPattern.test(source)) return { applied: false, note: 'لم أجد import مطابقاً للنص الذي سجله Vite' };
+            const updated = source.replace(importPattern, `$1${replacement}$2`);
+            if (updated === source || !fs.existsSync(path.resolve(path.dirname(file), replacement))) {
+                return { applied: false, note: 'الإصلاح الموثق لم يغيّر ملفاً صالحاً' };
+            }
+            fs.writeFileSync(file, updated);
+            return { applied: true, note: `صححتُ import النسبي في ${from} إلى ${replacement}` };
         }
         default:
             return { applied: false, note: d.ar };
