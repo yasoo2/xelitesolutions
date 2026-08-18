@@ -152,7 +152,13 @@ export class EngineeringDiscoveryTool extends BaseTool {
                 // new generated project" in a crowded workspace.
                 // Allow at most two descriptive words between that word and the
                 // project noun so this remains an existing-target guard.
-                const target = /(?:\b(?:existing|current|this|active|last)\s+(?:[A-Za-z0-9_-]+\s+){0,2}(?:project|codebase|workspace|application|system|app|build|artifact)\b|\b(?:repo(?:sitory)?|github)\b)/i.test(sentence);
+                // Generic taxonomy is not an existing write target: “this class of
+                // application” describes the kind of product being built, whereas
+                // “this application” or “this project” names the thing to edit.
+                // Keep the distinction evidence-bound so a quality brief cannot
+                // turn a crowded workspace into an ambiguity blocker.
+                const genericCategoryReference = /\bthis\s+(?:class|type|kind|sort|category|family|form)\s+of\s+/i.test(sentence);
+                const target = !genericCategoryReference && /(?:\b(?:existing|current|this|active|last)\s+(?:[A-Za-z0-9_-]+\s+){0,2}(?:project|codebase|workspace|application|system|app|build|artifact)\b|\b(?:repo(?:sitory)?|github)\b)/i.test(sentence);
                 return mutation && target;
             });
         const requestedExisting =

@@ -315,6 +315,27 @@ describe('evidence-first engineering discovery', () => {
     expect(result.output.evidence.selectedProject.root).toBe(target);
     expect(result.output.evidence.blockers).toEqual([]);
   });
+
+  test('keeps generic product taxonomy out of existing-project target detection', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-generic-category-'));
+    roots.push(root);
+    for (const name of ['alpha', 'beta']) {
+      fs.mkdirSync(path.join(root, name), { recursive: true });
+      fs.writeFileSync(path.join(root, name, 'package.json'), JSON.stringify({ name }));
+    }
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: 'Build the capabilities and reasoning needed to create this class of application generally; do not hide missing work behind a canned template.',
+    }, { workspaceRoot: root });
+
+    expect(result.ok).toBe(true);
+    expect(result.output.evidence.mode).toBe('greenfield');
+    expect(result.output.evidence.constraints.createsNewProject).toBe(true);
+    expect(result.output.evidence.constraints.userRequestedExistingProject).toBe(false);
+    expect(result.output.evidence.blockers).toEqual([]);
+    expect(result.output.evidence.selectedProject).toBeUndefined();
+    expect(result.output.evidence.referenceProjects).toHaveLength(2);
+  });
 });
 
 
