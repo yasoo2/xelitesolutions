@@ -770,6 +770,14 @@ export class PhaseExecutorTool implements ToolDefinition {
                     if (!String(planned.description || '').trim()) planned.description = taskDesc;
                 }
 
+                if (toolName === 'react_project'
+                    && projectContext?.createsNewProject === true
+                    && String(projectContext?.projectName || '').trim()
+                    && !String(planned.projectName || '').trim()) {
+                    planned.projectName = String(projectContext.projectName).trim();
+                    appendLog(`[PhaseExecutor] react_project: inherited canonical project identity (${planned.projectName})`);
+                }
+
                 applyPhaseExecutionEvidence(toolName, planned, projectContext, logs);
 
                 // Builder tools establish the artifact identity for the rest of

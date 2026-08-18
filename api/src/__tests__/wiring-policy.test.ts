@@ -115,7 +115,7 @@ describe('nothing is written and then abandoned', () => {
  * shipped to the user's own project.
  */
 describe('a generated project imports and renders everything it writes', () => {
-    const { ReactProjectTool, sectionsForKind } = require('../modules/tools/definitions/ReactProjectTool');
+    const { ReactProjectTool, sectionsForKind, projectDirNameForTest } = require('../modules/tools/definitions/ReactProjectTool');
     const os = require('os');
     let out: any, root: string;
     beforeAll(async () => {
@@ -133,6 +133,12 @@ describe('a generated project imports and renders everything it writes', () => {
             expect(app).toContain(`import ${s} from './components/${s}.jsx'`);
             expect(app).toContain(`<${s} content={content} />`);
         }
+    });
+
+    it('the pipeline identity controls the artifact root instead of a generic brand fallback', () => {
+        expect(projectDirNameForTest('WeatherGo', 'myapp')).toBe('react-weathergo');
+        expect(projectDirNameForTest('react-weathergo', 'myapp')).toBe('react-weathergo');
+        expect(projectDirNameForTest('', 'myapp')).toBe('react-myapp');
     });
 
     it('no component ships without a user — nothing is thrown into the folder', () => {
@@ -2059,7 +2065,7 @@ describe('the biggest request gets the strongest route', () => {
         // supply, so the literal call text changed. The guarantee is unchanged —
         // discovery is still the first thing that runs.
         expect(P).toContain("executeTool('engineering_discovery',");
-        expect(P).toContain("projectPath ? { request, path: projectPath } : { request }");
+        expect(P).toContain('projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }');
         // Repointed: the call now passes a prepared request and prepared
         // evidence rather than the raw two. What is guaranteed — and what this
         // measures — is that the pipeline plans through project_planner and
@@ -2134,7 +2140,7 @@ describe('the server stores what the app sends', () => {
          * from — both halves reading one answer.
          */
         expect(A).toMatch(/const requestColumns = apiColumnsForRequest\(request\)/);
-        expect(A).toMatch(/const columns = promoted && promotedColumns\.length \? promotedColumns : requestColumns/);
+        expect(A).toMatch(/const columns = isProductivity[\s\S]{0,240}primaryDesignedColumns[\s\S]{0,240}promotedColumns[\s\S]{0,120}requestColumns/);
         expect(A).toMatch(/'db\.js': fileDbJs\(resource, columns, relation\)/);
     });
 

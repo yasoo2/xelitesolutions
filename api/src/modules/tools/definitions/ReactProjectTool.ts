@@ -40,6 +40,14 @@ const slug = (s: string) => (String(s || '').toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'app';
 export const PROJECT_SLUG_FOR_TEST = slug;
 
+export function projectDirNameForTest(projectName: string, brand: string): string {
+    const requestedProjectName = String(projectName || '').trim();
+    const requestedProjectSlug = requestedProjectName ? slug(requestedProjectName) : '';
+    return requestedProjectSlug
+        ? (/^react-/i.test(requestedProjectSlug) ? requestedProjectSlug : `react-${requestedProjectSlug}`)
+        : `react-${slug(brand)}`;
+}
+
 /**
  * A React builder may reuse only a scaffold that is both owned by this
  * session and structurally a Vite project.  A directory name alone is not
@@ -2130,6 +2138,7 @@ export class ReactProjectTool extends BaseTool {
         type: 'object' as const,
         properties: {
             request: { type: 'string', description: 'What the app is about, in the user\'s words' },
+            projectName: { type: 'string', description: 'Canonical artifact identity supplied by the project pipeline' },
             skipInstall: { type: 'boolean', description: 'Scaffold only — do not run npm install/build' },
         },
         required: ['request'],
@@ -2285,7 +2294,13 @@ export class ReactProjectTool extends BaseTool {
         } else {
             (content as any).contact = null;
         }
-        const dirName = `react-${slug(content.brand)}`;
+        // The pipeline's accepted identity is stronger than a weak brand guess
+        // extracted from a long evaluation brief. Without this handoff, a
+        // WeatherGo request containing wrapper text such as `myapp` could write
+        // into the session's old `react-myapp-*` directory even though the plan
+        // had already resolved the artifact as WeatherGo. Keep the visible brand
+        // untouched; this value controls only the filesystem identity.
+        const dirName = projectDirNameForTest(String(input?.projectName || ''), content.brand);
         // THE FULL-STACK LINK: when this session's previous project is a Joe
         // API, the new frontend is born connected — content.js carries the
         // API's URL, the list components ask it for the LIVE rows at runtime,
