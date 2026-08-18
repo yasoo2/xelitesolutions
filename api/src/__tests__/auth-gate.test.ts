@@ -149,6 +149,32 @@ describe('shell diagnostics use the least-privilege approval path', () => {
         expect(result.error).toMatch(/outside workspace/i);
     });
 
+    it('allows local project_run through the safe approval path', async () => {
+        const result: any = await firewall.runInContext(
+            `local-project-run-${Date.now()}`,
+            () => executeTool('project_run', { cwd: '/tmp/joe-missing-project', port: 4304 }, context),
+            { userId: 'owner-1', sessionId: OWNER },
+        );
+        expect(String(result.error || '')).not.toBe('approval_required');
+    });
+
+    it('allows loopback browser inspection without all-risk approval', async () => {
+        const result: any = await firewall.runInContext(
+            `local-browser-qa-${Date.now()}`,
+            () => executeTool('browser_run', {
+                sessionId: OWNER,
+                mode: 'browser_test',
+                actions: [
+                    { type: 'goto', url: 'http://localhost:4304/' },
+                    { type: 'extract_text' },
+                    { type: 'screenshot' },
+                ],
+            }, context),
+            { userId: 'owner-1', sessionId: OWNER },
+        );
+        expect(String(result.error || '')).not.toBe('approval_required');
+    });
+
     it('keeps public port exposure behind explicit all-risk approval', async () => {
         const result: any = await firewall.runInContext(
             `public-deploy-${Date.now()}`,
@@ -156,6 +182,20 @@ describe('shell diagnostics use the least-privilege approval path', () => {
                 action: 'expose_port',
                 projectPath: '/tmp',
                 port: 4173,
+            }, context),
+            { userId: 'owner-1', sessionId: OWNER },
+        );
+        expect(result.ok).toBe(false);
+        expect(result.error).toBe('approval_required');
+    });
+
+    it('keeps sensitive browser actions behind explicit all-risk approval', async () => {
+        const result: any = await firewall.runInContext(
+            `sensitive-browser-${Date.now()}`,
+            () => executeTool('browser_run', {
+                sessionId: OWNER,
+                mode: 'browser_test',
+                actions: [{ type: 'click', selector: 'button', text: 'Submit' }],
             }, context),
             { userId: 'owner-1', sessionId: OWNER },
         );

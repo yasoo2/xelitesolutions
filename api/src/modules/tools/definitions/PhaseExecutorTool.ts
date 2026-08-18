@@ -765,6 +765,9 @@ export class PhaseExecutorTool implements ToolDefinition {
             modelConfig: context?.modelConfig || projectContext?.modelConfig,
             purpose: context?.purpose || projectContext?.purpose,
             engineeringPipeline: context?.engineeringPipeline ?? projectContext?.engineeringPipeline,
+            // Public exposure is an explicit deployment capability, never an
+            // implicit side effect of local engineering QA.
+            allowPublicExposure: context?.allowPublicExposure === true || projectContext?.allowPublicExposure === true,
             providerTimeoutMs: context?.providerTimeoutMs ?? projectContext?.providerTimeoutMs,
             plannerTimeoutMs: context?.plannerTimeoutMs ?? projectContext?.plannerTimeoutMs,
             plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens ?? projectContext?.plannerMaxCompletionTokens,
@@ -918,6 +921,34 @@ export class PhaseExecutorTool implements ToolDefinition {
 
                 const adaptedPlanned = adaptPlannedArgs(toolName, planned);
                 const toolArgs = adaptPlannedArgsFromDescription(toolName, adaptedPlanned, taskDesc);
+                /**
+                 * A local engineering pipeline must never turn its live QA step
+                 * into a public localtunnel deployment. The generated app is
+                 * already reachable on loopback through project_run, while
+                 * expose_port crosses the future multi-user server boundary and
+                 * must remain an explicitly approved operation. Treat the
+                 * planner's unnecessary public-exposure task as a successful
+                 * no-op so the following project_run/browser QA tasks can run.
+                 */
+                const requestedPublicExposure = toolName === 'deploy_project'
+                    && String(toolArgs?.action || '').trim().toLowerCase() === 'expose_port';
+                const explicitlyApprovedPublicExposure = toolArgs?.allowPublicExposure === true
+                    || toolArgs?.approvedPublicExposure === true
+                    || projectContext?.allowPublicExposure === true
+                    || executionContext?.allowPublicExposure === true;
+                if (requestedPublicExposure
+                    && executionContext.engineeringPipeline === true
+                    && !explicitlyApprovedPublicExposure) {
+                    appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — skipped public expose_port during local engineering QA; project_run/localhost remains the verification path.`);
+                    results.push({
+                        task: taskDesc,
+                        tool: toolName,
+                        ok: true,
+                        message: 'Skipped unapproved public exposure in the local engineering pipeline; use the verified loopback project_run URL.',
+                    });
+                    completedCount++;
+                    continue;
+                }
                 const argsIssue = plannedArgsIssue(toolName, toolArgs);
                 if (argsIssue) {
                     appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${argsIssue}`);

@@ -117,6 +117,26 @@ function normalizeUserId(v: any) {
     return s || undefined;
 }
 
+function isLoopbackBrowserUrl(value: unknown): boolean {
+    return /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?:\/|$)/iu.test(String(value || '').trim());
+}
+
+/**
+ * Local product QA is a development operation, not a public deployment.
+ * Keep this exception deliberately narrow: it is opt-in via browser_test,
+ * accepts only non-destructive inspection actions, and every explicit URL must
+ * be loopback. Public exposure remains high risk and still needs all-risk
+ * approval, which is required for the future multi-user server boundary too.
+ */
+function isSafeLocalBrowserQa(input: any, acts: any[], instructionText: string): boolean {
+    if (String(input?.mode || '').trim().toLowerCase() !== 'browser_test') return false;
+    const allowedActions = new Set(['goto', 'extract_text', 'get_elements', 'screenshot', 'wait', 'scroll']);
+    if (!acts.length || acts.some((action: any) => !allowedActions.has(String(action?.type || '').trim().toLowerCase()))) return false;
+    if (/(password|cvv|iban|ssn|card|otp|2fa|payment|checkout|pay|delete|drop|remove|submit|login|sign\s*in|حذف|دفع|بطاقة|كلمة المرور|تحقق|إرسال|تسجيل)/iu.test(instructionText)) return false;
+    const urls = acts.map((action: any) => String(action?.url || '').trim()).filter(Boolean);
+    return urls.every(isLoopbackBrowserUrl);
+}
+
 function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' | 'critical' {
     const n = String(name || '').trim();
     const s = (() => {
@@ -153,6 +173,7 @@ function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' |
     if (n === 'browser_run') {
         const acts = Array.isArray((input as any)?.actions) ? (input as any).actions : [];
         const txt = String((input as any)?.instructionText || '');
+        if (isSafeLocalBrowserQa(input, acts, txt)) return 'medium';
         if (/(password|cvv|iban|ssn|card|otp|2fa|payment|checkout|pay|delete|drop|remove|حذف|دفع|بطاقة|كلمة المرور|تحقق)/i.test(txt)) return 'high';
         for (const a of acts) {
             const t = String(a?.type || '').toLowerCase();

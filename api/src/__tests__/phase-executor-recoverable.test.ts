@@ -9,6 +9,50 @@ import { PhaseExecutorTool } from '../modules/tools/definitions/PhaseExecutorToo
 describe('PhaseExecutor recoverable source failures', () => {
     beforeEach(() => executeToolMock.mockReset());
 
+    it('skips unapproved public exposure and continues local project verification', async () => {
+        executeToolMock.mockResolvedValueOnce({
+            ok: true,
+            output: { url: 'http://localhost:4304/' },
+            logs: [],
+        });
+
+        const result: any = await new PhaseExecutorTool().execute({
+            phase: {
+                phaseNumber: 5,
+                name: 'Local run and browser QA preparation',
+                tasks: [
+                    {
+                        task: 'Expose the local port for browser QA',
+                        tool: 'deploy_project',
+                        args: { action: 'expose_port', projectPath: 'WeatherGo', port: 4304 },
+                    },
+                    {
+                        task: 'Start and verify the generated project locally',
+                        tool: 'project_run',
+                        args: { cwd: 'WeatherGo', port: 4304 },
+                    },
+                ],
+            },
+            projectContext: {},
+        }, {
+            sessionId: 'local-qa-session',
+            workspaceId: 'local-qa-workspace',
+            userId: 'local-qa-user',
+            engineeringPipeline: true,
+        });
+
+        expect(executeToolMock).toHaveBeenCalledTimes(1);
+        expect(executeToolMock.mock.calls[0][0]).toBe('project_run');
+        expect(result.output.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                tool: 'deploy_project',
+                ok: true,
+                message: expect.stringContaining('Skipped unapproved public exposure'),
+            }),
+            expect.objectContaining({ tool: 'project_run', ok: true }),
+        ]));
+    });
+
     it('continues downstream verification after recoverable ai_write_file syntax failure', async () => {
         executeToolMock
             .mockResolvedValueOnce({
