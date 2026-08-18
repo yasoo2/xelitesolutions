@@ -115,10 +115,42 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
     return !matches && !preserveScaffold;
   });
 
+  // A greenfield phase can contain only react_project: the dependency guard
+  // may fail while that tool is writing the engine, before planner-added build
+  // or launch tasks exist. Re-running the scaffold would overwrite the repaired
+  // manifest and recreate the exact failure. When the repaired package.json is
+  // absolute, its parent is measured project evidence; replace the scaffold by
+  // a bounded build + launch proof against that existing project.
+  if (tasks.length === 0 && manifestRepair) {
+    const projectRoot = path.isAbsolute(file) ? path.dirname(path.resolve(file)) : '';
+    if (projectRoot) {
+      return {
+        phase: {
+          ...phase,
+          name: `${String(phase.name || 'Project')} — post-repair verification`,
+          tasks: [
+            {
+              task: 'Build the repaired project without rewriting generated files',
+              tool: 'shell_execute',
+              command: 'npm run build',
+              cwd: projectRoot,
+            },
+            {
+              task: 'Verify the repaired project can start',
+              tool: 'project_run',
+              cwd: projectRoot,
+            },
+          ],
+        },
+        skipped,
+      };
+    }
+  }
+
   // Never hand an empty phase to the executor: an artifact-only phase still
   // needs a real verification step, and an empty result would be reported as a
-  // failure by PhaseExecutorTool. If this was the only task, keep it in the
-  // phase so the executor can perform the actual post-repair proof.
+  // failure by PhaseExecutorTool. If this was the only task and no bounded
+  // project root was evidenced, keep the original phase rather than guessing.
   if (tasks.length === 0) return { phase, skipped: [] };
   return { phase: tasks.length === phase.tasks.length ? phase : { ...phase, tasks }, skipped };
 }

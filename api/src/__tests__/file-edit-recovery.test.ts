@@ -389,4 +389,23 @@ describe('evidence-aware file edit recovery', () => {
       edits: [{ find: 'const oldValue = true;', replace: 'const newValue = true;' }],
     });
   });
+
+  it('replaces a single scaffold task with bounded post-repair verification', () => {
+    const phase = {
+      phaseNumber: 1,
+      name: 'Project Setup',
+      tasks: [
+        { task: 'Create the React project', tool: 'react_project', args: { projectName: 'WeatherGo' } },
+      ],
+    };
+
+    const resumed = phaseAfterRepair(phase, '/workspace/WeatherGo/package.json');
+
+    expect(resumed.skipped).toEqual(['Create the React project']);
+    expect(resumed.phase.name).toContain('post-repair verification');
+    expect(resumed.phase.tasks).toEqual([
+      expect.objectContaining({ tool: 'shell_execute', command: 'npm run build', cwd: '/workspace/WeatherGo' }),
+      expect.objectContaining({ tool: 'project_run', cwd: '/workspace/WeatherGo' }),
+    ]);
+  });
 });
