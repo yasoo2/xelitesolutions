@@ -185,6 +185,52 @@ function runtimeArtifactMismatch(filePath: string, content: string, contract: Ru
 }
 
 /**
+ * Resolve relative imports against the file that contains them, not against the
+ * project root. A syntactically valid model completion can still point from
+ * `src/components/WeatherApp.jsx` to `./styles/app.css`, although the stylesheet
+ * is actually one directory above. Vite is the first component to report that
+ * mistake unless the author gate checks the filesystem before writing it.
+ */
+function localImportResolutionError(filePath: string, content: string, contract: RuntimeContract | null): string | null {
+    if (!contract || !/\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu.test(filePath)) return null;
+    const specs = new Set<string>();
+    const patterns = [
+        /\bimport\s+(?:[\s\S]*?\s+from\s+)?['\"]([^'\"]+)['\"]/g,
+        /\bexport\s+(?:[\s\S]*?\s+from\s+)?['\"]([^'\"]+)['\"]/g,
+        /\brequire\(\s*['\"]([^'\"]+)['\"]\s*\)/g,
+        /\bimport\(\s*['\"]([^'\"]+)['\"]\s*\)/g,
+    ];
+    for (const pattern of patterns) {
+        for (const match of content.matchAll(pattern)) {
+            const specifier = String(match[1] || '').trim();
+            if (specifier.startsWith('.')) specs.add(specifier);
+        }
+    }
+    if (!specs.size) return null;
+
+    const extensions = ['', '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.css', '.scss', '.sass', '.less', '.json'];
+    const resolves = (specifier: string): boolean => {
+        const clean = specifier.split(/[?#]/, 1)[0];
+        const candidate = path.resolve(path.dirname(path.resolve(filePath)), clean);
+        const relative = path.relative(contract.root, candidate);
+        if (relative.startsWith('..') || path.isAbsolute(relative)) return false;
+        const files = extensions.map(ext => candidate + ext);
+        if (files.some(target => fs.existsSync(target) && fs.statSync(target).isFile())) return true;
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+            return extensions.slice(1).some(ext => {
+                const target = path.join(candidate, `index${ext}`);
+                return fs.existsSync(target) && fs.statSync(target).isFile();
+            });
+        }
+        return false;
+    };
+    const unresolved = [...specs].filter(specifier => !resolves(specifier));
+    return unresolved.length
+        ? `unresolved_local_import: ${filePath} imports ${unresolved.map(value => `\"${value}\"`).join(', ')}, but no file resolves from the importing file. Inspect the existing project layout and correct the relative path.`
+        : null;
+}
+
+/**
  * Lazily resolve the LLM to avoid a circular import.
  *
  * This used to answer a load failure with
@@ -318,14 +364,16 @@ Return the complete file content now.`;
             const llmContext = context?.engineeringPipeline === true
                 ? { ...context, purpose: 'internal', engineeringPipeline: true }
                 : undefined;
-            const callForArtifact = (retryKind: 'format' | 'syntax' | null = null) => {
+            const callForArtifact = (retryKind: 'format' | 'syntax' | 'imports' | null = null) => {
                 const retryInstruction = retryKind === 'syntax'
                     ? `SYNTAX RETRY REQUIRED:\nThe previous completion was rejected by the parser for the destination extension. Return the complete file again with valid ${path.extname(filePath).toLowerCase() || 'source'} syntax. Preserve the requested behavior and all imports, close every JSX tag/bracket, and emit no Markdown fences or explanatory prose.`
-                    : `FORMAT RETRY REQUIRED:\nThe previous completion violated the destination artifact contract. Return the complete file again, with no Markdown fences or explanatory prose. For JSON, return strict parseable JSON only. Do not omit, truncate, or replace any content.`;
+                    : retryKind === 'imports'
+                        ? `IMPORT PATH RETRY REQUIRED:\nThe previous completion referenced a local file that does not exist from the importing file. Re-read the verified project layout in context and return the complete file again with every relative import resolving from this file. Do not invent or duplicate folders, do not change package.json, and emit no Markdown fences or explanatory prose.`
+                        : `FORMAT RETRY REQUIRED:\nThe previous completion violated the destination artifact contract. Return the complete file again, with no Markdown fences or explanatory prose. For JSON, return strict parseable JSON only. Do not omit, truncate, or replace any content.`;
                 return callLLM(
                     retryKind ? `${userPrompt}\n\n${retryInstruction}` : userPrompt,
                     [{ role: 'system', content: retryKind
-                        ? `${systemPrompt}\n\n${retryKind === 'syntax' ? 'SYNTAX RETRY' : 'FORMAT RETRY'}: the previous response was rejected before writing. Re-emit one complete artifact matching the extension exactly; do not explain the repair.`
+                        ? `${systemPrompt}\n\n${retryKind === 'syntax' ? 'SYNTAX RETRY' : retryKind === 'imports' ? 'IMPORT PATH RETRY' : 'FORMAT RETRY'}: the previous response was rejected before writing. Re-emit one complete artifact matching the extension exactly; do not explain the repair.`
                         : systemPrompt }],
                     llmContext,
                 );
@@ -365,36 +413,57 @@ Return the complete file content now.`;
                 return { ok: false, error: prepared.error, logs: [...logs, 'generated content violated the destination artifact contract; nothing was written'] };
             }
             let finalContent = prepared.content;
-            const validationErrorFor = (candidate: string): { error: string; kind: 'artifact' | 'runtime' | 'syntax' } | null => {
+            const validationErrorFor = (candidate: string): { error: string; kind: 'artifact' | 'runtime' | 'imports' | 'syntax' } | null => {
                 const artifactError = artifactMismatch(filePath, candidate);
                 if (artifactError) return { error: artifactError, kind: 'artifact' };
                 const runtimeError = runtimeArtifactMismatch(filePath, candidate, runtimeContract);
                 if (runtimeError) return { error: runtimeError, kind: 'runtime' };
+                let importingPath = filePath;
+                try { importingPath = resolveToolPath(filePath, { workspaceId: contextWorkspaceId }); } catch { /* the final write guard reports path errors */ }
+                const importsError = localImportResolutionError(importingPath, candidate, runtimeContract);
+                if (importsError) return { error: importsError, kind: 'imports' };
                 const syntaxError = sourceSyntaxMismatch(filePath, candidate);
                 if (syntaxError) return { error: syntaxError, kind: 'syntax' };
                 return null;
             };
 
             let validation = validationErrorFor(finalContent);
-            if (validation?.kind === 'syntax') {
-                logs.push(`syntax retry requested for ${filePath}: ${validation.error}`);
-                content = await callForArtifact('syntax');
-                if (isProviderFailure(content)) {
-                    return { ok: false, error: String(content), logs: [...logs, 'syntax retry received no LLM provider answer; nothing was written'] };
-                }
+            const retrySource = async (kind: 'imports' | 'syntax', reason: string) => {
+                logs.push(`${kind === 'imports' ? 'import path' : 'syntax'} retry requested for ${filePath}: ${reason}`);
+                content = await callForArtifact(kind);
+                if (isProviderFailure(content)) return { providerFailure: String(content) };
                 prepared = prepareArtifactContent(filePath, content);
-                if (prepared.error) {
-                    return { ok: false, error: prepared.error, logs: [...logs, 'syntax retry violated the destination artifact contract; nothing was written'] };
-                }
+                if (prepared.error) return { artifactError: prepared.error };
                 finalContent = prepared.content;
                 validation = validationErrorFor(finalContent);
+                return {};
+            };
+            if (validation?.kind === 'imports') {
+                const retried = await retrySource('imports', validation.error);
+                if (retried.providerFailure) {
+                    return { ok: false, error: retried.providerFailure, logs: [...logs, 'import path retry received no LLM provider answer; nothing was written'] };
+                }
+                if (retried.artifactError) {
+                    return { ok: false, error: retried.artifactError, logs: [...logs, 'import path retry violated the destination artifact contract; nothing was written'] };
+                }
+            }
+            if (validation?.kind === 'syntax') {
+                const retried = await retrySource('syntax', validation.error);
+                if (retried.providerFailure) {
+                    return { ok: false, error: retried.providerFailure, logs: [...logs, 'syntax retry received no LLM provider answer; nothing was written'] };
+                }
+                if (retried.artifactError) {
+                    return { ok: false, error: retried.artifactError, logs: [...logs, 'syntax retry violated the destination artifact contract; nothing was written'] };
+                }
             }
             if (validation) {
                 const logMessage = validation.kind === 'runtime'
                     ? 'generated content violated the verified project runtime contract; nothing was written'
-                    : validation.kind === 'syntax'
-                        ? 'generated source failed the destination-extension syntax contract after bounded retry; nothing was written'
-                        : 'generated content violated the destination artifact contract; nothing was written';
+                    : validation.kind === 'imports'
+                        ? 'generated content referenced a local import that does not resolve from the importing file; nothing was written'
+                        : validation.kind === 'syntax'
+                            ? 'generated source failed the destination-extension syntax contract after bounded retry; nothing was written'
+                            : 'generated content violated the destination artifact contract; nothing was written';
                 return { ok: false, error: validation.error, logs: [...logs, logMessage] };
             }
 

@@ -270,6 +270,26 @@ describe('verified runtime contracts keep generated source on the project stack'
         try { fs.rmSync(projectRoot, { recursive: true, force: true }); } catch { }
     });
 
+    it('retries a generated local import when the relative path does not resolve from the file', async () => {
+        fs.mkdirSync(path.join(projectRoot, 'src', 'styles'), { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, 'src', 'styles', 'app.css'), '.app { color: red; }', 'utf8');
+        callLLM
+            .mockResolvedValueOnce("import React from 'react';\nimport './styles/app.css';\nexport default function WeatherApp() { return <main>Weather</main>; }")
+            .mockResolvedValueOnce("import React from 'react';\nimport '../styles/app.css';\nexport default function WeatherApp() { return <main>Weather</main>; }");
+        const rel = path.join(projectRel, 'src/components/WeatherApp.jsx');
+
+        const res: any = await tool.execute({
+            path: rel,
+            description: 'Write the weather domain component for the existing React project.',
+            context: 'The importing file is in src/components and the stylesheet is in src/styles/app.css.',
+        }, { projectRoot, engineeringPipeline: true });
+
+        expect(res.ok).toBe(true);
+        expect(callLLM).toHaveBeenCalledTimes(2);
+        expect(callLLM.mock.calls[1][0]).toMatch(/IMPORT PATH RETRY REQUIRED/);
+        expect(fs.readFileSync(landsAt(rel), 'utf-8')).toMatch(/\.\.\/styles\/app\.css/);
+    });
+
     it('rejects a React Native switch in a verified React/Vite project before disk write', async () => {
         callLLM.mockResolvedValue("import React from 'react';\nimport { View, Text } from 'react-native';\nexport default function App() { return <View><Text>Weather</Text></View>; }");
         const rel = path.join(projectRel, 'src/App.jsx');

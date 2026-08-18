@@ -93,7 +93,7 @@ describe('npm is strict first and loosens only on ERESOLVE', () => {
         const p = read('modules', 'tools', 'definitions', 'SystemTools.ts');
         expect(p).toMatch(/ERESOLVE/);
         expect(p).toMatch(/npm\.retry=--legacy-peer-deps \(ERESOLVE on the strict install\)/);
-        expect(p).toMatch(/\[\.\.\.args, '--legacy-peer-deps'\]/);
+        expect(p).toMatch(/\[\.\.\.installArgs, '--legacy-peer-deps'\]/);
     });
     it('and the self-healer falls back instead of repeating the refused command', () => {
         const p = read('modules', 'services', 'SelfFixService.ts');
