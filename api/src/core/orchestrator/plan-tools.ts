@@ -280,6 +280,10 @@ export interface PlanSanitiseOptions {
     requireRunnableContract?: boolean;
     /** Bounded live-repair may edit an existing manifest or entrypoint in place. */
     repairMode?: boolean;
+    /** Explicit React/Vite requests must use the domain-aware React builder, not a generic placeholder scaffold. */
+    preferReactBuilder?: boolean;
+    /** Original user request carried into an automatic builder reroute. */
+    reactRequest?: string;
 }
 
 export function sanitisePlanPhases(phases: any[], projectDir = '', options: PlanSanitiseOptions = {}): SanitisedPlan {
@@ -467,6 +471,17 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     continue;
                 }
                 if (r.tool === 'scaffold_project') {
+                    if (options.preferReactBuilder) {
+                        const request = String(options.reactRequest || adaptedArgs?.request || desc || projectDir).trim();
+                        kept.push({
+                            ...task,
+                            tool: 'react_project',
+                            args: { request },
+                            input: undefined,
+                        });
+                        notes.push(`[plan] وجّهتُ «${desc}» إلى react_project لأن الطلب يحدد React/Vite؛ scaffold_project العام قد يسلّم placeholder غير تفاعلي.`);
+                        continue;
+                    }
                     const scaffoldIssue = plannedArgsIssue(r.tool, adaptedArgs);
                     if (scaffoldIssue) {
                         phaseBlockers.push({

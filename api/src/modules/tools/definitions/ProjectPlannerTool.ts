@@ -298,6 +298,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                 disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
                 requireRunnableContract: context?.requireRunnableContract === true,
                 repairMode: repairMode || scopeRepairMode,
+                preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
+                reactRequest: projectDescription,
             });
             plan.phases = clean.phases;
             clean.notes.forEach(n => logs.push(n));
@@ -347,6 +349,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                         disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
                         requireRunnableContract: context?.requireRunnableContract === true,
                         repairMode: repairMode || scopeRepairMode,
+                        preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
+                        reactRequest: projectDescription,
                     });
                     if (this.countImplementationArtifacts(recoveredClean.phases) === 0) {
                         throw new Error('Contract recovery still retained no non-document implementation artifact');
@@ -432,6 +436,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                         disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
                         requireRunnableContract: context?.requireRunnableContract === true,
                         repairMode: repairMode || scopeRepairMode,
+                        preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
+                        reactRequest: projectDescription,
                     });
                     if (recoveredClean.blocker?.code === 'unportable_native_dependency') {
                         // The model supplied a newer architecture but repeated the
@@ -471,6 +477,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                     disallowUnportableNativeDependencies: true,
                     requireRunnableContract: context?.requireRunnableContract === true,
                     repairMode,
+                    preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
+                    reactRequest: projectDescription,
                 });
                 if (!portableClean.blocker && this.countImplementationArtifacts(portableClean.phases) > 0) {
                     plan = this.validatePlan(portablePlan, projectDescription);
@@ -599,6 +607,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                              mode: evidence?.mode,
                              requireRunnableContract: context?.requireRunnableContract === true,
                              repairMode,
+                             preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
+                             reactRequest: projectDescription,
                          });
                         if (recoveredClean.blocker) {
                             throw new Error(`Scope recovery was blocked during contract sanitisation: ${recoveredClean.blocker.message}`);
@@ -985,6 +995,11 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
      */
     private hasExplicitStackConstraint(request: string): boolean {
         return /\b(?:react(?:\s+native)?|next(?:\.js)?|vue|angular|svelte|node(?:\.js)?|express|typescript|javascript|python|django|flask|fastapi|ruby|rails|php|laravel|java|spring|kotlin|go(?:lang)?|rust|dotnet|\.net|flutter|swift|postgres(?:ql)?|mysql|mongodb|sqlite|prisma)\b/i.test(String(request || ''));
+    }
+
+    /** Explicit React/Vite requests must use the domain-aware builder rather than a generic scaffold. */
+    private hasExplicitReactBuilderConstraint(request: string): boolean {
+        return /\b(?:react(?:\s+native)?|vite)\b/i.test(String(request || ''));
     }
 
     /**

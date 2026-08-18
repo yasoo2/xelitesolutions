@@ -564,6 +564,31 @@ describe('a greenfield slice does not silently choose its technology', () => {
         expect(phases[0].tasks.map((task: any) => task.tool)).toContain('scaffold_full_stack');
     });
 
+    it('routes an explicit React/Vite scaffold through the domain-aware React builder', () => {
+        const result = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'React application foundation',
+            tasks: [{
+                task: 'Create the WeatherGo React application',
+                tool: 'scaffold_project',
+                args: {
+                    baseDir: 'WeatherGo',
+                    structure: {
+                        'package.json': '{"private":true}',
+                        'src/App.jsx': 'export default function App(){ return null; }',
+                    },
+                },
+            }],
+        }], 'WeatherGo', {
+            preferReactBuilder: true,
+            reactRequest: 'Build WeatherGo as a Vite React application with the requested weather features.',
+        });
+        const task = result.phases[0].tasks[0] as any;
+        expect(task.tool).toBe('react_project');
+        expect(task.args.request).toMatch(/WeatherGo/);
+        expect(result.notes.join('\n')).toMatch(/react_project/);
+    });
+
     it('rejects scaffold_project with an empty structure before execution', () => {
         expect(plannedArgsIssue('scaffold_project', { structure: {} })).toMatch(/structure كائناً غير فارغاً/);
     });
