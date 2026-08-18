@@ -149,6 +149,39 @@ describe('evidence-aware file edit recovery', () => {
     expect(JSON.stringify(plan.suggestedInput)).not.toContain('src/index.ts');
   });
 
+  it('extracts only the evidenced package from a truncated runtime contract message', () => {
+    const truncated = 'runtime_contract_mismatch: /workspace/WeatherGo/src/services/weatherService.js imports undeclared package(s): axios. Update the project manifest only when the requireme';
+    const plan = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'WeatherGo',
+      phaseNumber: 2,
+      phaseName: 'API Integration',
+      status: 'partial',
+      severity: 'high',
+      primaryError: truncated,
+      failedTasks: [{
+        task: 'Validate runtime imports',
+        tool: 'project_run',
+        error: truncated,
+        cwd: '/workspace/WeatherGo',
+        file: '/workspace/WeatherGo/src/services/weatherService.js',
+      }],
+      suggestedNextAction: 'install the evidenced package in the product root and rerun',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(plan.strategy).toBe('dependency_fix');
+    expect(plan.suggestedTool).toBe('npm_manager');
+    expect(plan.suggestedInput).toEqual(expect.objectContaining({
+      command: 'install',
+      packages: ['axios'],
+      cwd: '/workspace/WeatherGo',
+    }));
+    expect(JSON.stringify(plan.suggestedInput)).not.toContain('explicitly');
+  });
+
   it('builds one bounded advanced-edit recovery from preserved file evidence', () => {
     const plan = SelfFixService.plan({
       type: 'phase_repair_ticket',

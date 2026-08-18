@@ -56,7 +56,11 @@ interface UndeclaredRuntimePackageEvidence {
 
 function extractUndeclaredRuntimePackageEvidence(ticket: RepairTicket): UndeclaredRuntimePackageEvidence | null {
   const raw = rawTextOf(ticket);
-  const match = raw.match(/runtime_contract_mismatch:\s*([^\s]+)\s+imports undeclared (?:packages?|package\(s\)):\s*([^\n]+)/i);
+  // The orchestrator may truncate the prose that follows the package list.
+  // Stop at a sentence boundary, but keep dots that are part of a valid npm
+  // package name (for example, `@scope/pkg.name`). This prevents words from
+  // the repair guidance (such as `explicitly`) from becoming install targets.
+  const match = raw.match(/runtime_contract_mismatch:\s*([^\s]+)\s+imports undeclared (?:packages?|package\(s\)):\s*([\s\S]*?)(?=(?:[.;]\s+(?:[A-Z]|Update\b)|\n|$))/i);
   if (!match?.[1] || !match[2]) return null;
 
   const file = match[1].trim().replace(/\\/g, '/');
