@@ -1,4 +1,6 @@
 import type { RepairTicket } from './RepairTicketService';
+import fs from 'fs';
+import path from 'path';
 import { repairMemory } from '../../core/memory/repair-memory';
 import { recoverMissingNpmLauncher } from '../tools/npm-launcher-recovery';
 
@@ -112,6 +114,24 @@ function extractArtifactValidationFailure(ticket: RepairTicket) {
 interface LocalRuntimeImportEvidence {
   importer: string;
   specifier: string;
+}
+
+/**
+ * When launchability proves an explicit local asset is missing, repair that
+ * exact target instead of asking a source-file author to guess a path change.
+ * This is deliberately narrow: only absolute importers, explicit extensions,
+ * and a target that is absent on disk qualify. Extensionless module imports
+ * still go through the importer repair path below because choosing .js/.jsx or
+ * .ts/.tsx without evidence would be guesswork.
+ */
+function missingExplicitLocalTarget(entry: LocalRuntimeImportEvidence): string | null {
+  const importer = entry.importer.replace(/\\\\/g, '/');
+  const specifier = entry.specifier.split(/[?#]/u, 1)[0].trim();
+  const extension = path.extname(specifier).toLowerCase();
+  if (!path.isAbsolute(importer) || !specifier.startsWith('.') || !extension) return null;
+  const target = path.resolve(path.dirname(importer), specifier);
+  if (fs.existsSync(target)) return null;
+  return target.replace(/\\\\/g, '/');
 }
 
 function extractLocalRuntimeImportEvidence(ticket: RepairTicket): LocalRuntimeImportEvidence[] {
@@ -626,24 +646,39 @@ export class SelfFixService {
       const evidenceLines = localRuntimeImports
         .map(item => `${item.importer} -> ${item.specifier}`)
         .join('; ');
+      const missingTarget = localRuntimeImports
+        .map(missingExplicitLocalTarget)
+        .find((target): target is string => !!target);
+      const repairPath = missingTarget || importer;
+      const targetRepair = missingTarget
+        ? [
+            `The exact missing target is ${missingTarget}; generate that file, not a substitute importer.`,
+            'Inspect the importer and the existing styles/assets/modules first, then implement the concrete exported or stylesheet contract required by that exact import and the original requirements.',
+            'Do not remove a required import, redirect it to an unrelated file, or write an empty/no-op placeholder.',
+          ]
+        : [
+            `Repair the existing runtime import contract in ${importer}.`,
+            'If a local specifier has no matching file and its exact target cannot be established from an explicit extension, repair only the importer after inspecting the actual filesystem; do not guess a module extension or folder.',
+          ];
       return {
         type: 'self_fix_plan',
         allowed: true,
-        reason: `Local runtime import paths are missing: ${evidenceLines}. Inspect the existing filesystem and repair only those proven import/entrypoint paths.`,
+        reason: missingTarget
+          ? `A proven explicit local runtime target is missing: ${missingTarget}. Generate that exact evidence-backed artifact and rerun the failed phase.`
+          : `Local runtime import paths are missing: ${evidenceLines}. Inspect the existing filesystem and repair only those proven import/entrypoint paths.`,
         maxAttempts: 1,
         strategy: 'build_fix',
         suggestedTool: 'ai_write_file',
         suggestedInput: {
-          path: importer,
+          path: repairPath,
           description: [
-            `Repair the existing runtime import contract in ${importer}.`,
+            ...targetRepair,
             `The project_run preflight found these exact local imports with no resolvable file: ${evidenceLines}.`,
             'Inspect the current project root and each importer before editing. Resolve every specifier against the actual filesystem, including extension and src/ versus root layout.',
-            'Change only the smallest proven runtime contract. If a local specifier has no matching file, create the smallest concrete module required by the importer and the original project requirements, implementing the exact exported contract; do not change the import merely to hide the failure. Preserve the project module system and public behavior.',
-            'Never create a no-op placeholder, copy unrelated files, invent npm packages, or run npm install for a relative local specifier.',
+            'Preserve the project module system and public behavior. Never create a no-op placeholder, copy unrelated files, invent npm packages, or run npm install for a relative local specifier.',
             'After editing, run node --check for JavaScript entrypoints, the existing build/tests, and one real local start/readiness check.',
           ].join('\\n'),
-          context: JSON.stringify({ localRuntimeImports, repairTicket: ticket }),
+          context: JSON.stringify({ localRuntimeImports, missingTarget, repairTicket: ticket }),
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),

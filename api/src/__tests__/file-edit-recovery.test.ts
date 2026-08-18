@@ -117,6 +117,38 @@ describe('evidence-aware file edit recovery', () => {
     expect(String(plan.suggestedInput?.description)).toContain('run npm install');
   });
 
+  it('targets a proven missing explicit local asset instead of rewriting its importer', () => {
+    const importer = path.join(root, 'src', 'App.jsx');
+    const plan = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'WeatherGo',
+      phaseNumber: 1,
+      phaseName: 'Application',
+      status: 'partial',
+      severity: 'high',
+      primaryError: `launchability: local runtime imports missing (${importer} -> ./App.css)`,
+      failedTasks: [{
+        task: 'Start the application and verify readiness',
+        tool: 'project_run',
+        error: `launchability: local runtime imports missing (${importer} -> ./App.css)`,
+        cwd: root,
+        file: importer,
+      }],
+      suggestedNextAction: 'generate the proven missing stylesheet and rerun the failed phase',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(plan.allowed).toBe(true);
+    expect(plan.strategy).toBe('build_fix');
+    expect(plan.suggestedTool).toBe('ai_write_file');
+    expect(plan.suggestedInput?.path).toBe(path.join(root, 'src', 'App.css'));
+    expect(String(plan.suggestedInput?.description)).toContain('exact missing target');
+    expect(String(plan.suggestedInput?.description)).toContain('not a substitute importer');
+    expect(String(plan.suggestedInput?.description)).toContain('no-op placeholder');
+  });
+
   it('repairs an undeclared runtime package in the evidenced project root', () => {
     const plan = SelfFixService.plan({
       type: 'phase_repair_ticket',
