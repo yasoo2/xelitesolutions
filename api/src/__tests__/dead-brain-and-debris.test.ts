@@ -149,6 +149,25 @@ describe('dead-brain latch — no minutes-long re-walks of a mesh that just died
     });
 });
 
+describe('orchestrator provider-drought rescue — one delayed engineering retry', () => {
+    const src = read('orchestration/AgentOrchestrator.ts');
+
+    it('waits visibly, retries the same engineering node once, then remains honest', () => {
+        expect(src).toContain('providerDroughtRetries < MAX_PROVIDER_DROUGHT_RETRIES');
+        expect(src).toContain('providerDroughtRetryWaitMs()');
+        expect(src).toContain('provider_drought_retry_scheduled');
+        expect(src).toContain("node.status = 'pending'");
+        expect(src).toContain('ending the run honestly after bounded engineering retry');
+    });
+
+    it('does not turn ordinary chat into a delayed recovery loop', () => {
+        const rescue = src.slice(src.indexOf('const engineeringRecovery'));
+        expect(rescue).toContain('goalContext?.engineeringPipeline === true');
+        expect(rescue).toContain('node.tool === \'project_pipeline\'');
+        expect(rescue).toContain('engineeringRecovery && providerDroughtRetries');
+    });
+});
+
 describe('HTML entities survive the bidi isolator', () => {
     it('«&copy;» is not prose — seen shipped as «&<bdi>copy</bdi>;»', () => {
         const out = isolateLatinRuns('<p>&copy; 2023 شركة النور. جميع الحقوق محفوظة.</p>');

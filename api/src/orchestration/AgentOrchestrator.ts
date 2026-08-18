@@ -79,6 +79,20 @@ export type AgentDAG = {
 const MAX_RECOVERIES_PER_RUN = 3;
 
 /**
+ * A transient provider drought is different from a dead brain. Free providers
+ * can all time out in the same short window and recover moments later. Give an
+ * engineering node one bounded, visible second chance; ordinary conversation
+ * still fails fast and honestly. Tests may set the wait to zero, production is
+ * capped at 30 seconds.
+ */
+export function providerDroughtRetryWaitMs(): number {
+  const configured = Number(process.env.JOE_PROVIDER_DROUGHT_RETRY_WAIT_MS);
+  if (Number.isFinite(configured) && configured >= 0) return Math.min(configured, 30_000);
+  return 15_000;
+}
+const MAX_PROVIDER_DROUGHT_RETRIES = 1;
+
+/**
  * A REPAIR FOR ONE STEP IS NOT A NEW PROJECT.
  *
  * From his run: `init` failed, and the repair came back with TWENTY-ONE nodes.
@@ -321,6 +335,10 @@ export class AgentOrchestrator {
     const completedNodes = new Set<string>();
     let iterations = 0;
     let stalledReplans = 0;
+    // A simultaneous provider timeout is a transient transport condition, not
+    // permission to invent a recovery plan. This counter is deliberately local
+    // to one execution and bounded to one retry.
+    let providerDroughtRetries = 0;
     // The last REAL error a node produced. Every "the orchestrator gave up" exit
     // below reports this instead of describing its own internal state — the user
     // needs to read why the work failed, not how the scheduler noticed.
@@ -797,7 +815,30 @@ export class AgentOrchestrator {
           const saysNoBrain = (x: any) =>
             isProviderFailure(x) || String(x ?? '').includes(PROVIDER_FAILURE_PREFIX);
           if (saysNoBrain(result.error) || saysNoBrain((result as any).result)) {
-            console.error('[AgentOrchestrator] No LLM provider reachable — ending the run instead of planning a recovery.');
+            // Project and application builds are the one place where a short
+            // provider drought can strand real work. Retry the SAME node once
+            // after a visible pause; do not ask the dead planner to fabricate a
+            // new DAG and do not retry ordinary chat/direct-answer nodes.
+            const engineeringRecovery = goalContext?.engineeringPipeline === true
+              || node.tool === 'project_pipeline'
+              || ['react_project', 'web_page_builder', 'project_edit', 'build_page', 'phase_executor', 'ai_generate', 'ai_write_file']
+                .includes(String(node.tool || ''))
+              || /\b(build|implement|create|develop|application|project|weathergo|react|vite)\b/i.test(`${goalText || ''} ${node.task || ''}`);
+            if (engineeringRecovery && providerDroughtRetries < MAX_PROVIDER_DROUGHT_RETRIES) {
+              providerDroughtRetries += 1;
+              const waitMs = providerDroughtRetryWaitMs();
+              const waitMessage = `⏳ مزودات الذكاء غير متاحة مؤقتاً؛ سأنتظر ${Math.ceil(waitMs / 1000)} ثانية ثم أعيد محاولة خطوة البناء نفسها مرة واحدة.`;
+              console.warn(`[AgentOrchestrator] Provider drought during engineering node ${node.id}; retrying once after ${waitMs}ms.`);
+              broadcastThinkingDetail(memory.sessionId, waitMessage);
+              if (traceId) traceManager.logEvent(traceId, 'orchestrator', {
+                event: 'provider_drought_retry_scheduled', nodeId: node.id, waitMs, attempt: providerDroughtRetries,
+              });
+              await new Promise<void>(resolve => setTimeout(resolve, waitMs));
+              node.status = 'pending';
+              node.lastError = String(result.error || PROVIDER_FAILURE_PREFIX);
+              continue;
+            }
+            console.error('[AgentOrchestrator] No LLM provider reachable — ending the run honestly after bounded engineering retry.');
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason: 'provider_unreachable' });
             return { ok: false, result: result.error, steps: runSteps(dag) };
           }
