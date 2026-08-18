@@ -270,6 +270,20 @@ describe('verified runtime contracts keep generated source on the project stack'
         try { fs.rmSync(projectRoot, { recursive: true, force: true }); } catch { }
     });
 
+    it('anchors a logical relative path to the runtime-bound project root', async () => {
+        callLLM.mockResolvedValue("export default function App() { return <main>runtime-bound</main>; }");
+        const logicalPath = 'src/runtime-bound/App.jsx';
+
+        const res: any = await tool.execute({
+            path: logicalPath,
+            description: 'Write the browser entry component for the verified React project.',
+        }, { projectRoot, engineeringPipeline: true });
+
+        expect(res.ok).toBe(true);
+        expect(fs.readFileSync(path.join(projectRoot, logicalPath), 'utf-8')).toContain('runtime-bound');
+        expect(fs.existsSync(landsAt(logicalPath))).toBe(false);
+    });
+
     it('retries a generated local import when the relative path does not resolve from the file', async () => {
         fs.mkdirSync(path.join(projectRoot, 'src', 'styles'), { recursive: true });
         fs.writeFileSync(path.join(projectRoot, 'src', 'styles', 'app.css'), '.app { color: red; }', 'utf8');

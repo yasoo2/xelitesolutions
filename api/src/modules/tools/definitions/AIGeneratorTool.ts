@@ -1,5 +1,5 @@
 import { ToolDefinition, ToolPermission } from '../types';
-import { resolveToolPath } from '../utils';
+import { isWithinRoot, resolveToolPath } from '../utils';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import fs from 'fs';
 import path from 'path';
@@ -53,6 +53,24 @@ function artifactProfileFor(filePath: string): ArtifactProfile {
         kind: 'text_document',
         instructions: 'Return the exact text artifact implied by the destination and supplied requirements. Do not assume a web application, visual design, framework, or deployment target.',
     };
+}
+
+function resolveArtifactAwarePath(filePath: string, workspaceId?: string, projectRoot?: string): string {
+    const requestedRoot = String(projectRoot || '').trim();
+    if (!requestedRoot || !path.isAbsolute(requestedRoot)) {
+        return resolveToolPath(filePath, { workspaceId });
+    }
+
+    // Callers that still provide a workspace-relative path must remain compatible
+    // with the historical contract. PhaseExecutor normally passes a logical path
+    // relative to the runtime artifact; in that case the second resolution below
+    // anchors it to the verified artifact root.
+    const workspaceResolved = resolveToolPath(filePath, { workspaceId });
+    const artifactRoot = path.resolve(requestedRoot);
+    if (isWithinRoot(workspaceResolved, artifactRoot)) {
+        return workspaceResolved;
+    }
+    return resolveToolPath(filePath, { workspaceId, projectRoot: artifactRoot });
 }
 
 function artifactMismatch(filePath: string, content: string): string | null {
@@ -430,7 +448,7 @@ Return the complete file content now.`;
                 const runtimeError = runtimeArtifactMismatch(filePath, candidate, runtimeContract);
                 if (runtimeError) return { error: runtimeError, kind: 'runtime' };
                 let importingPath = filePath;
-                try { importingPath = resolveToolPath(filePath, { workspaceId: contextWorkspaceId }); } catch { /* the final write guard reports path errors */ }
+                try { importingPath = resolveArtifactAwarePath(filePath, contextWorkspaceId, context?.projectRoot); } catch { /* the final write guard reports path errors */ }
                 const importsError = localImportResolutionError(importingPath, candidate, runtimeContract);
                 if (importsError) return { error: importsError, kind: 'imports' };
                 const syntaxError = sourceSyntaxMismatch(filePath, candidate);
@@ -483,7 +501,7 @@ Return the complete file content now.`;
             // absolute path the model produced was written verbatim, anywhere on
             // the machine — proven, not theorised: the same pattern in the
             // unreachable twin of this tool created /etc/joe-owned.txt in a test.
-            const absPath = resolveToolPath(filePath, { workspaceId: contextWorkspaceId });
+            const absPath = resolveArtifactAwarePath(filePath, contextWorkspaceId, context?.projectRoot);
             fs.mkdirSync(path.dirname(absPath), { recursive: true });
             fs.writeFileSync(absPath, finalContent, 'utf-8');
 
