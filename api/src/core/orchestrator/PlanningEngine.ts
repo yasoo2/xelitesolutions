@@ -232,13 +232,17 @@ export class PlanningEngine {
          * so the scope came back «app» and he would have received a front-end
          * with nowhere to put a supplier.
          */
-        const dataSignals = /(تسجيل\s*دخول|تسجيل\s*الدخول|حسابات?|مستخدمين|صلاحيات|قاعدة\s*بيانات|قواعد\s*بيانات|حجوزات?|حجز|طلبات|طلبيّ?ات|مخزون|جرد|فواتير|فاتورة|تقارير|إحصائيات|احصائيات|نقاط\s*بيع|كاشير|رواتب|موظفين|عملاء|زبائن|مورّ?دي?ن|مورّ?دون|اشتراكات|مدفوعات|دفع\s*إلكتروني|api|backend|قاعدة\s*البيانات|login|auth|database|users?|orders?|suppliers?|vendors?|inventory|invoices?|reports?|bookings?|payments?|subscriptions?|crm|erp|pos)/i;
+        const dataSignals = /(تسجيل\s*دخول|تسجيل\s*الدخول|حسابات?|مستخدمين|صلاحيات|قاعدة\s*بيانات|قواعد\s*بيانات|حجوزات?|حجز|طلبات|طلبيّ?ات|مخزون|جرد|فواتير|فاتورة|تقارير|إحصائيات|احصائيات|نقاط\s*بيع|كاشير|رواتب|موظفين|عملاء|زبائن|مورّ?دي?ن|مورّ?دون|اشتراكات|مدفوعات|دفع\s*إلكتروني|قاعدة\s*البيانات|login|auth|database|(?:registered|authenticated|multiple|admin|end)\s+users?\b|users?\s+(?:accounts?|roles?|permissions?|can\s+sign\s+in)|orders?|suppliers?|vendors?|inventory|invoices?|reports?|bookings?|payments?|subscriptions?|crm|erp|pos)/i;
+        // Consuming a public or third-party API is not the same as asking Joe
+        // to own a backend.  Keep explicit API-building requests as systems,
+        // while allowing browser apps to call services such as Open-Meteo.
+        const ownedApiSignals = /(?:\b(?:build|create|make|develop|implement|design|provide|expose)\s+(?:an?\s+)?(?:rest\s+|graphql\s+)?api\b|\b(?:build|create|make|develop|implement|design|provide|expose|own|internal|private)\s+(?:an?\s+)?backend\b|\b(?:api|backend)\s+(?:server|service|endpoint)\b|(?:ابنِ|ابني|أنشئ|انشئ|طوّر|طور|اصنع|أنشئ)\s+(?:لي\s+)?(?:واجهة\s+)?(?:برمجية|api|backend))/i;
         // Screens and behaviour rather than a single scroll.
-        const appSignals = /(تطبيق|نظام|منصّ?ة|برنامج|لوحة\s*تحكم|داشبورد|محرّ?ر|أداة\s*ويب|لعبة|محادثة|دردشة|شات|خرائط|خريطة|تتبّ?ع|حاسبة|مخطّ?ط|جدولة|مهامّ?|شبيه\s*ب|مثل\s*تطبيق|clone|dashboard|app\b|platform|system|editor|tracker|chat|map|game|planner|scheduler|calculator|todo|to-do|tasks?|(?:web\s+)?console|background\s+(?:jobs?|workers?)|worker\s+(?:queue|process))/i;
+        const appSignals = /(تطبيق|نظام|منصّ?ة|برنامج|لوحة\s*تحكم|داشبورد|محرّ?ر|أداة\s*ويب|لعبة|محادثة|دردشة|شات|خرائط|خريطة|تتبّ?ع|حاسبة|مخطّ?ط|جدولة|مهامّ?|شبيه\s*ب|مثل\s*تطبيق|clone|dashboard|applications?\b|app\b|platform|system|editor|tracker|chat|map|game|planner|scheduler|calculator|todo|to-do|tasks?|(?:web\s+)?console|background\s+(?:jobs?|workers?)|worker\s+(?:queue|process))/i;
         // A single document, said outright.
         const pageSignals = /(صفحة\s*(هبوط|واحدة)?|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|بروشور|قائمة\s*طعام|منيو|landing|portfolio|brochure|one[- ]?pager|resume|cv)/i;
 
-        const data = dataSignals.test(g);
+        const data = dataSignals.test(g) || ownedApiSignals.test(g);
         const app = appSignals.test(g);
         const page = pageSignals.test(g);
 

@@ -16,6 +16,7 @@
 import fs from 'fs';
 import path from 'path';
 import { sanitisePlanPhases } from '../core/orchestrator/plan-tools';
+import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
@@ -141,8 +142,28 @@ describe('the deterministic rescue cannot skip a gate', () => {
      * every plan, deterministic or not, invoked here directly to prove that
      * nothing about a rescued plan can soften them.
      */
-    const { applyLiveRunOutcome, applyScopeAuditOutcome, deterministicPhasesFor } =
+    const { applyLiveRunOutcome, applyScopeAuditOutcome, deterministicPhasesFor, interactiveAppNeedsReactBuilder } =
         require('../modules/tools/definitions/ProjectPipelineTool');
+
+    it('a long interactive weather brief still requires the concrete React builder', () => {
+        const brief = [
+            'Build a real WeatherGo weather web application with React and Vite.',
+            'Use the public Open-Meteo API for geocoding and forecast data, not a backend owned by this project.',
+            'Support city search, current weather, hourly and seven-day forecasts, sunrise and sunset, favorites, localStorage persistence, settings, error states, responsive UI, tests, live browser QA, and a reachable local URL.',
+            'The delivered result must be a runnable browser application and must not be a documentation-only or API-only project.',
+            'Acceptance evidence must cover real user flows and the generated project root.',
+            ' '.repeat(1400),
+        ].join(' ');
+        expect(brief.length).toBeGreaterThan(1800);
+        expect(PlanningEngine.classifyBuildScope(brief)).toBe('app');
+        expect(interactiveAppNeedsReactBuilder(brief)).toBe(true);
+        const rescued = deterministicPhasesFor(brief);
+        expect(rescued?.phases.flatMap((phase: any) => phase.tasks).map((task: any) => task.tool)).toContain('react_project');
+    });
+
+    it('an explicitly owned backend API remains a system', () => {
+        expect(PlanningEngine.classifyBuildScope('Build a backend API for orders with authentication and a database')).toBe('system');
+    });
 
     it('a rescued plan whose live run fails is not delivered', () => {
         // The rescue's own output shape — deterministic, plannedWithoutModel —
