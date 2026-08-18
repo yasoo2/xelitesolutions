@@ -134,6 +134,59 @@ function missingExplicitLocalTarget(entry: LocalRuntimeImportEvidence): string |
   return target.replace(/\\\\/g, '/');
 }
 
+interface LocalImportRedirectEvidence {
+  importer: string;
+  find: string;
+  replace: string;
+  target: string;
+}
+
+/**
+ * Resolve a broken explicit local import only when the filesystem provides a
+ * single, deterministic parent-layout correction. This handles a common
+ * generated-source defect such as `src/components/WeatherApp.jsx` importing
+ * `./styles/app.css` while the generated project contains `src/styles/app.css`.
+ * It never creates a placeholder and never asks a model to invent a path.
+ */
+function findEvidenceBackedLocalImportRedirect(entry: LocalRuntimeImportEvidence): LocalImportRedirectEvidence | null {
+  const importer = entry.importer.replace(/\\/g, '/');
+  const specifier = entry.specifier.split(/[?#]/u, 1)[0].trim();
+  const extension = path.extname(specifier).toLowerCase();
+  if (!path.isAbsolute(importer) || !specifier.startsWith('.') || !extension) return null;
+
+  const importerPath = path.resolve(importer);
+  const directTarget = path.resolve(path.dirname(importerPath), specifier);
+  if (fs.existsSync(directTarget)) return null;
+
+  // Only search within the generated project root inferred from `/src/`.
+  // Without that boundary, a repair could accidentally point outside the
+  // artifact or into a neighbouring workspace project.
+  const marker = `${path.sep}src${path.sep}`;
+  const markerIndex = importerPath.toLowerCase().indexOf(marker.toLowerCase());
+  if (markerIndex < 0) return null;
+  const projectRoot = importerPath.slice(0, markerIndex);
+  const rootPrefix = projectRoot.endsWith(path.sep) ? projectRoot : `${projectRoot}${path.sep}`;
+
+  // Move the same explicit suffix up at most four directory levels. The first
+  // existing file wins because it is the nearest measured correction; all
+  // candidates remain inside this project root.
+  for (let levels = 1; levels <= 4; levels += 1) {
+    const candidate = path.resolve(
+      path.dirname(importerPath),
+      ...Array.from({ length: levels }, () => '..'),
+      specifier,
+    );
+    if (candidate === directTarget || !fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) continue;
+    if (!candidate.startsWith(rootPrefix)) continue;
+
+    let replacement = path.relative(path.dirname(importerPath), candidate).replace(/\\/g, '/');
+    if (!replacement.startsWith('.')) replacement = `./${replacement}`;
+    return { importer, find: entry.specifier, replace: replacement, target: candidate.replace(/\\/g, '/') };
+  }
+
+  return null;
+}
+
 function extractLocalRuntimeImportEvidence(ticket: RepairTicket): LocalRuntimeImportEvidence[] {
   const raw = rawTextOf(ticket);
   const evidence: LocalRuntimeImportEvidence[] = [];
@@ -662,6 +715,28 @@ export class SelfFixService {
       const evidenceLines = localRuntimeImports
         .map(item => `${item.importer} -> ${item.specifier}`)
         .join('; ');
+      const redirect = localRuntimeImports
+        .map(findEvidenceBackedLocalImportRedirect)
+        .find((candidate): candidate is LocalImportRedirectEvidence => !!candidate);
+      if (redirect) {
+        return {
+          type: 'self_fix_plan',
+          allowed: true,
+          reason: `The filesystem proves ${redirect.replace} is the nearest valid path for ${redirect.find} from ${redirect.importer}; edit only that import and rerun the failed phase.`,
+          maxAttempts: 1,
+          strategy: 'code_fix',
+          suggestedTool: 'file_edit',
+          suggestedInput: {
+            filePath: redirect.importer,
+            find: redirect.find,
+            replace: redirect.replace,
+          },
+          rememberedCure: cureNote || undefined,
+          safety: this.safety(),
+          sourceTicket: ticket,
+        };
+      }
+
       const missingTarget = localRuntimeImports
         .map(missingExplicitLocalTarget)
         .find((target): target is string => !!target);
