@@ -2871,11 +2871,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 if (!generated?.ok || !fs.existsSync(path.join(proj, generatedEnginePath))) {
                     const reason = String(generated?.error || 'ai_write_file did not produce the requested domain file');
                     term(`domain generation: BLOCKED — ${reason}`);
-                    // Preserve a provider outage verbatim. The orchestrator owns the
-                    // bounded engineering retry; collapsing this into the generic
-                    // domain_generation_failed error made a transient dead brain
-                    // look like a deterministic authoring defect and ended the run.
-                    return { ok: false, error: isProviderFailure(reason) ? reason : 'domain_generation_failed', logs };
+                    // Preserve the exact authoring evidence. Provider outages remain
+                    // retryable, while validation/import/runtime errors must reach
+                    // SelfFixService instead of being collapsed into the opaque
+                    // domain_generation_failed string with no repair target.
+                    return { ok: false, error: reason, logs };
                 }
                 const authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
                 if (!authored.trim() || !/export\s+default\s+function\s+WeatherApp|export\s+default\s+WeatherApp/.test(authored)) {
