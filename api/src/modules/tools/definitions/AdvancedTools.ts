@@ -419,10 +419,21 @@ export class TestGeneratorTool extends BaseTool {
     const runner = this.detectRunner(projectPackage);
     const sourceExt = path.extname(resolvedFilePath).toLowerCase();
     if (runner === 'node' && ['.ts', '.tsx'].includes(sourceExt)) {
+      const error = 'test_runner_unsupported: node --test cannot execute TypeScript/TSX without a project-declared transpiling runner';
       return {
-        ok: false,
-        error: 'test_runner_unsupported: node --test cannot execute TypeScript/TSX without a project-declared transpiling runner',
-        logs: [],
+        // This is a capability gap in the selected project runner, not a reason
+        // to abort the engineering phase. The declared project test contract
+        // (or a later build/test task) remains responsible for executable QA.
+        ok: true,
+        output: {
+          generated: false,
+          skipped: true,
+          runner,
+          sourceExt,
+          reason: error,
+          remediation: 'Declare a TypeScript-capable test runner (for example vitest, jest, or tsx) before generating an executable test for this source file.',
+        },
+        logs: [error],
       };
     }
 

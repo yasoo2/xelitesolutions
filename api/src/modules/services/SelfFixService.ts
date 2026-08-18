@@ -872,6 +872,22 @@ export class SelfFixService {
       };
     }
 
+    // A missing launcher with no safe manifest alternative is a valid,
+    // non-actionable recovery outcome. Keep the ticket in the recovery flow so
+    // the caller can report manual review, but never invent a start command.
+    if (/(?:missing script|npm run server|launcher)/i.test(text)) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: 'The requested launcher is missing and the manifest exposes no safe start-like script; refusing to invent a command and stopping for manual review.',
+        maxAttempts: 0,
+        strategy: 'manual_review',
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
     if (/partial|failed|error/i.test(text)) {
       const repairTarget = extractEvidenceBoundRepairTarget(ticket);
       if (!repairTarget?.path) {

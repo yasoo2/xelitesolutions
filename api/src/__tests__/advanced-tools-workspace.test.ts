@@ -109,4 +109,31 @@ describe('TestGeneratorTool matches the project runner and source layout', () =>
         expect(generated).toContain("from '../math'");
         expect(generated).not.toContain("from '../math.ts'");
     });
+
+    it('reports an honest, non-fatal skip when node cannot transpile a TypeScript source', async () => {
+        fs.mkdirSync(path.join(workspaceRoot, 'src', 'lib'), { recursive: true });
+        fs.writeFileSync(path.join(workspaceRoot, 'package.json'), JSON.stringify({
+            name: 'native-node-with-ts-source',
+            scripts: { test: 'node --test' },
+        }));
+        const sourcePath = path.join(workspaceRoot, 'src', 'lib', 'math.ts');
+        fs.writeFileSync(sourcePath, 'export function add(a: number, b: number) { return a + b; }\\n');
+
+        const result: any = await new TestGeneratorTool().execute({
+            filePath: 'src/lib/math.ts',
+        }, { workspaceId: 'workspace-nexus' });
+
+        expect(result.ok).toBe(true);
+        expect(result.output).toMatchObject({
+            generated: false,
+            skipped: true,
+            runner: 'node',
+            sourceExt: '.ts',
+        });
+        expect(result.output.reason).toContain('node --test cannot execute TypeScript/TSX');
+        expect(result.logs).toEqual(expect.arrayContaining([
+            expect.stringContaining('test_runner_unsupported'),
+        ]));
+        expect(fs.existsSync(path.join(workspaceRoot, 'src', 'lib', '__tests__', 'math.test.ts'))).toBe(false);
+    });
 });
