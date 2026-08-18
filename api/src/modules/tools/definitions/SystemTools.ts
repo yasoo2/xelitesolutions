@@ -416,9 +416,40 @@ export function normalizeReactScaffoldStructure(structure: Record<string, any>):
         : null;
 
     const nextManifest = JSON.parse(JSON.stringify(manifest));
+    const reasons: string[] = [];
+    /**
+     * Vite is a web runtime. A plan can still leave native clues behind — for
+     * example an `expo start` script or a React Native import in a generic
+     * scaffold — and the old normalizer treated those clues as a second,
+     * equally valid platform. That silently turned a small web install into a
+     * multi-hundred-package Expo install. When Vite evidence is already
+     * explicit, the web contract wins: native packages and Expo-only scripts
+     * must not reach npm. A genuine Expo scaffold has no Vite evidence and
+     * continues through the native branch below unchanged.
+     */
+    const nativeDependencyNames = new Set(['expo', 'react-native', 'react-native-web', 'babel-preset-expo', 'jest-expo']);
+    const webScripts = Object.fromEntries(Object.entries(scripts).filter(([, command]) => !/\bexpo\b/i.test(String(command || ''))));
+    let removedNativeWebSignals = false;
+    if (hasViteEvidence) {
+        for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+            const values = nextManifest[section];
+            if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
+            for (const name of Object.keys(values)) {
+                if (nativeDependencyNames.has(String(name).toLowerCase())) {
+                    delete values[name];
+                    removedNativeWebSignals = true;
+                }
+            }
+        }
+        for (const [name, command] of Object.entries(scripts)) {
+            if (/\bexpo\b/i.test(String(command || '')) && name in (nextManifest.scripts || {})) {
+                delete nextManifest.scripts[name];
+                removedNativeWebSignals = true;
+            }
+        }
+    }
     const dependencies = nextManifest.dependencies && typeof nextManifest.dependencies === 'object' ? nextManifest.dependencies : {};
     const devDependencies = nextManifest.devDependencies && typeof nextManifest.devDependencies === 'object' ? nextManifest.devDependencies : {};
-    const reasons: string[] = [];
 
     if (hasViteEvidence) {
         nextManifest.dependencies = {
@@ -432,15 +463,15 @@ export function normalizeReactScaffoldStructure(structure: Record<string, any>):
             '@vitejs/plugin-react': devDependencies['@vitejs/plugin-react'] || '^4.0.0',
         };
         nextManifest.scripts = {
-            ...scripts,
-            dev: scripts.dev || 'vite',
-            build: scripts.build || 'vite build',
-            preview: scripts.preview || 'vite preview',
+            ...webScripts,
+            dev: webScripts.dev || 'vite',
+            build: webScripts.build || 'vite build',
+            preview: webScripts.preview || 'vite preview',
         };
-        reasons.push('React + Vite');
+        reasons.push(removedNativeWebSignals ? 'React + Vite (removed Expo/native drift)' : 'React + Vite');
     }
 
-    if (hasExpoEvidence) {
+    if (hasExpoEvidence && !hasViteEvidence) {
         nextManifest.dependencies = {
             ...(nextManifest.dependencies && typeof nextManifest.dependencies === 'object' ? nextManifest.dependencies : dependencies),
             expo: dependencies.expo || '^57.0.14',
@@ -449,7 +480,7 @@ export function normalizeReactScaffoldStructure(structure: Record<string, any>):
         };
         if (hasExpoWebScript) {
             nextManifest.dependencies['react-dom'] = nextManifest.dependencies['react-dom'] || '^19.2.8';
-            nextManifest.dependencies['react-native-web'] = nextManifest.dependencies['react-native-web'] || '^0.21.2';
+            nextManifest.dependencies['react-native-web'] = dependencies['react-native-web'] || '^0.21.2';
         }
         if (hasBabelExpoPreset || hasExpoScript) {
             nextManifest.devDependencies = {
@@ -465,10 +496,10 @@ export function normalizeReactScaffoldStructure(structure: Record<string, any>):
             ...(nextManifest.devDependencies && typeof nextManifest.devDependencies === 'object' ? nextManifest.devDependencies : devDependencies),
             jest: devDependencies.jest || '^30.4.2',
         };
-        if (hasExpoEvidence) {
+        if (hasExpoEvidence && !hasViteEvidence) {
             nextManifest.devDependencies['jest-expo'] = devDependencies['jest-expo'] || '^57.0.4';
         }
-        reasons.push(hasExpoEvidence ? 'Jest + Expo preset' : 'Jest');
+        reasons.push(hasExpoEvidence && !hasViteEvidence ? 'Jest + Expo preset' : 'Jest');
     }
 
     const serialized = JSON.stringify(nextManifest, null, 2) + String.fromCharCode(10);

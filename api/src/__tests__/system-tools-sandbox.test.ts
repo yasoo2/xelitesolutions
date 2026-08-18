@@ -198,6 +198,38 @@ describe('React scaffold manifests are runnable when the evidence is explicit', 
         expect(result.structure).toBe(structure);
     });
 
+    it('removes Expo and native drift when Vite evidence is explicit', () => {
+        const result = normalizeReactScaffoldStructure({
+            'package.json': JSON.stringify({
+                name: 'weathergo',
+                scripts: { dev: 'vite', build: 'vite build', start: 'expo start', web: 'expo start --web', test: 'jest' },
+                dependencies: {
+                    expo: '^57.0.14', react: '^19.2.8', 'react-dom': '^19.2.8',
+                    'react-native': '^0.87.0', 'react-native-web': '^0.21.2',
+                },
+                devDependencies: {
+                    vite: '^5.0.0', 'babel-preset-expo': '^57.0.7', 'jest-expo': '^57.0.4',
+                },
+            }),
+            'vite.config.js': "import { defineConfig } from 'vite'; export default defineConfig({});",
+            'src/main.jsx': "import React from 'react'; import { createRoot } from 'react-dom/client'; createRoot(document.getElementById('root')).render(<div />);",
+        });
+
+        expect(result.changed).toBe(true);
+        expect(result.reason).toMatch(/removed Expo\/native drift/);
+        const manifest = JSON.parse(result.structure['package.json']);
+        for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+            for (const name of ['expo', 'react-native', 'react-native-web', 'babel-preset-expo', 'jest-expo']) {
+                expect(manifest[section]?.[name]).toBeUndefined();
+            }
+        }
+        expect(Object.values(manifest.scripts).join(' ')).not.toMatch(/\bexpo\b/i);
+        expect(manifest.dependencies.react).toBe('^19.2.8');
+        expect(manifest.dependencies['react-dom']).toBe('^19.2.8');
+        expect(manifest.devDependencies.vite).toBe('^5.0.0');
+        expect(manifest.devDependencies.jest).toBe('^30.4.2');
+    });
+
     it('completes Expo Web and Jest dependencies from explicit scaffold evidence', () => {
         const result = normalizeReactScaffoldStructure({
             'package.json': JSON.stringify({
