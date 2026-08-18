@@ -30,6 +30,7 @@ import { openTerminal, transcriptLine } from '../../../core/quality/terminal-ses
 import { persistJoeProjects } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
+import { isProviderFailure } from '../../../core/llm/intelligent-router';
 
 // Combining marks are not letters: «كِفاح» is ك + ◌ِ + فاح to this regex, so
 // the kasra became a hyphen and the project folder shipped as «react-ك-فاح»
@@ -2870,7 +2871,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 if (!generated?.ok || !fs.existsSync(path.join(proj, generatedEnginePath))) {
                     const reason = String(generated?.error || 'ai_write_file did not produce the requested domain file');
                     term(`domain generation: BLOCKED — ${reason}`);
-                    return { ok: false, error: 'domain_generation_failed', logs };
+                    // Preserve a provider outage verbatim. The orchestrator owns the
+                    // bounded engineering retry; collapsing this into the generic
+                    // domain_generation_failed error made a transient dead brain
+                    // look like a deterministic authoring defect and ended the run.
+                    return { ok: false, error: isProviderFailure(reason) ? reason : 'domain_generation_failed', logs };
                 }
                 const authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
                 if (!authored.trim() || !/export\s+default\s+function\s+WeatherApp|export\s+default\s+WeatherApp/.test(authored)) {
@@ -2883,8 +2888,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 } catch { /* UI optional — the file is already on disk */ }
                 term(`domain generation: authored ${generatedEnginePath} from the request and validated its export`);
             } catch (error: any) {
-                term(`domain generation: BLOCKED — ${String(error?.message || error)}`);
-                return { ok: false, error: 'domain_generation_failed', logs };
+                const reason = String(error?.message || error);
+                term(`domain generation: BLOCKED — ${reason}`);
+                // Thrown provider failures are treated the same as returned model
+                // notices so the same evidence-bound retry policy applies.
+                return { ok: false, error: isProviderFailure(reason) ? reason : 'domain_generation_failed', logs };
             }
         }
         // The REAL font files travel WITH the app (public/fonts + OFL
