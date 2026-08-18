@@ -72,6 +72,28 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         expect(explicit.path).toBe('/workspace/other-project');
     });
 
+    it('maps conceptual project paths to the runtime-bound artifact for discovery and analysis', () => {
+        const context = {
+            projectRoot: '/workspace/react-weathergo-a7c8',
+            projectName: 'WeatherGo',
+            projectRootRuntimeBound: true,
+        };
+        const planned: Record<string, any> = { path: 'WeatherGo' };
+        const logs: string[] = [];
+        inheritRuntimeProjectArguments('project_detect', planned, context, logs);
+
+        expect(planned.path).toBe('/workspace/react-weathergo-a7c8');
+        expect(logs.join('\\n')).toContain('mapped conceptual project path');
+
+        const nested: Record<string, any> = { path: 'WeatherGo/src' };
+        inheritRuntimeProjectArguments('analyze_project', nested, context);
+        expect(nested.path).toBe('/workspace/react-weathergo-a7c8/src');
+
+        const escape: Record<string, any> = { path: '../outside' };
+        inheritRuntimeProjectArguments('project_detect', escape, context);
+        expect(escape.path).toBe('../outside');
+    });
+
     it('selects the repository start script when a server alias is missing', () => {
         const recovery = recoverMissingNpmLauncher(
             'npm run server',

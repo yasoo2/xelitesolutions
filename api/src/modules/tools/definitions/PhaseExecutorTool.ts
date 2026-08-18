@@ -78,6 +78,38 @@ export function inheritRuntimeProjectArguments(
         logs?.push(`[PhaseExecutor] quality_run: inherited path from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
     }
 
+    const runtimePathTools = new Set(['project_detect', 'analyze_project', 'analyze_codebase', 'quality_run']);
+    if (runtimePathTools.has(toolName)) {
+        const existingPath = String(planned.path || '').trim();
+        const projectName = String(projectContext?.projectName || '').trim();
+        const normaliseSegment = (value: string) => {
+            const slashNormalised = value.replace(/\\/g, '/');
+            const withoutDotSlash = slashNormalised.startsWith('./') ? slashNormalised.slice(2) : slashNormalised;
+            return withoutDotSlash
+                .replace(/[-_]+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLocaleLowerCase();
+        };
+        const rawSegments = existingPath.replace(/\\/g, '/').split('/').filter(Boolean);
+        const firstSegment = rawSegments[0] || '';
+        const projectSegmentMatches = !!projectName && !!firstSegment
+            && normaliseSegment(firstSegment) === normaliseSegment(projectName);
+        if (!existingPath) {
+            planned.path = runtimeProjectRoot;
+            logs?.push(`[PhaseExecutor] ${toolName}: inherited path from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
+        } else if (!path.isAbsolute(existingPath)) {
+            const relativeSegments = projectSegmentMatches ? rawSegments.slice(1) : rawSegments;
+            const candidate = path.resolve(runtimeProjectRoot, relativeSegments.join(path.sep) || '.');
+            if (isWithinRoot(candidate, runtimeProjectRoot)) {
+                planned.path = candidate;
+                logs?.push(projectSegmentMatches
+                    ? `[PhaseExecutor] ${toolName}: mapped conceptual project path onto runtime-bound root (${candidate.slice(0, 240)})`
+                    : `[PhaseExecutor] ${toolName}: resolved relative path under runtime-bound root (${candidate.slice(0, 240)})`);
+            }
+        }
+    }
+
     const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager', 'auto_tester']);
     if (cwdInheritedTools.has(toolName) && !String(planned.cwd || planned.projectPath || '').trim()) {
         planned.cwd = runtimeProjectRoot;
