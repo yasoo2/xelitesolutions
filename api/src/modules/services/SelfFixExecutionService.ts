@@ -54,11 +54,13 @@ function bindRepairTargetToProjectRoot(repairTool: string, input: Record<string,
 
   const key = repairTool === 'write_file'
     ? (typeof input.filename === 'string' && input.filename.trim() ? 'filename' : 'path')
-    : repairTool === 'ai_write_file'
-      ? 'path'
-      : ['file_edit', 'file_edit_advanced'].includes(repairTool)
-        ? 'filePath'
-        : '';
+      : repairTool === 'ai_write_file'
+        ? 'path'
+        : repairTool === 'file_edit'
+          ? 'filename'
+          : repairTool === 'file_edit_advanced'
+            ? 'filePath'
+            : '';
   if (!key || typeof input[key] !== 'string' || !input[key].trim()) return input;
 
   const raw = String(input[key]).trim();
@@ -245,7 +247,13 @@ export class SelfFixExecutionService {
       },
       projectContext,
     );
-    if (repairInput !== selfFixPlan.suggestedInput && repairInput.path !== selfFixPlan.suggestedInput?.path) {
+    const originalTarget = selfFixPlan.suggestedInput?.path
+      || selfFixPlan.suggestedInput?.filename
+      || selfFixPlan.suggestedInput?.filePath;
+    const reboundTarget = repairInput.path
+      || repairInput.filename
+      || repairInput.filePath;
+    if (repairInput !== selfFixPlan.suggestedInput && reboundTarget !== originalTarget) {
       executionContext.onProgress?.(`[self-fix:${repairTool}] rebound relative repair target to runtime project root`);
     }
 

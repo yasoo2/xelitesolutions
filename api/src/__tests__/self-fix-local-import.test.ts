@@ -28,10 +28,11 @@ describe('SelfFixService evidence-bound local import repair', () => {
     expect(plan.strategy).toBe('code_fix');
     expect(plan.suggestedTool).toBe('file_edit');
     expect(plan.suggestedInput).toMatchObject({
-      filePath: importer.replace(/\\/g, '/'),
+      filename: importer.replace(/\\/g, '/'),
       find: './styles/app.css',
       replace: '../styles/app.css',
     });
+    expect(plan.suggestedInput).not.toHaveProperty('filePath');
 
     fs.rmSync(root, { recursive: true, force: true });
   });

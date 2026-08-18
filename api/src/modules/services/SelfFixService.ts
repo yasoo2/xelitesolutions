@@ -726,8 +726,12 @@ export class SelfFixService {
           maxAttempts: 1,
           strategy: 'code_fix',
           suggestedTool: 'file_edit',
+          // `file_edit` owns the filename contract; `filePath` belongs to
+          // file_edit_advanced and the analysis tools. Sending the latter
+          // silently made the real editor resolve an undefined target and
+          // stopped an otherwise evidence-backed recovery.
           suggestedInput: {
-            filePath: redirect.importer,
+            filename: redirect.importer,
             find: redirect.find,
             replace: redirect.replace,
           },
