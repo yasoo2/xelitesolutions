@@ -6,6 +6,7 @@ import { isProviderFailure, retryAfterMsFrom } from '../../../core/llm/intellige
 import { plannerToolPrompt, sanitisePlanPhases } from '../../../core/orchestrator/plan-tools';
 import { EngineeringEvidence } from './EngineeringDiscoveryTool';
 import { BOUNDED_REPAIR_CONSTITUTION, ENGINEERING_CONSTITUTION } from '../../../core/orchestrator/engineering-policy';
+import { brandFrom } from '../../../core/design/page-head';
 
 const DEPENDENCY_RESOLUTION_CONTRACT = `DEPENDENCY RESOLUTION CONTRACT: Never invent npm package versions or copy an unverified exact patch. When a plan introduces or edits package.json, use a published stable release family grounded in the inspected project or an explicit requirement. Before declaring setup complete, run the real install in the project root and treat ETARGET/No matching version as evidence: inspect the registry for stable versions, update only the failing package specifier, retry once, then verify the manifest and install result. Do not use --force or --legacy-peer-deps to hide a missing package version, do not choose prerelease/dev/integration tags, and do not remove a dependency unless source inspection proves it is unused.`;
 
@@ -1572,7 +1573,10 @@ ${this.scopePlanningInstructions(projectDescription)}`;
      * a retry or an explicit user decision.
      */
     private fallbackPlan(projectDescription: string, analysis?: any, evidence?: EngineeringEvidence): any {
-        const projectName = projectDescription.split(' ').slice(0, 3).join(' ') || 'Engineering task';
+        // A blocked planner must not turn Markdown headings or the first words of
+        // the request into a fake product identity. Preserve an explicit name
+        // such as `called **WeatherGo**`; otherwise use an honest generic label.
+        const projectName = brandFrom(projectDescription, /[؀-ۿ]/u.test(String(projectDescription || ''))) || 'Engineering task';
         const projectRoot = evidence?.selectedProject?.root || evidence?.workspaceRoot || '.';
         const mode = evidence?.mode || 'ambiguous';
         return {

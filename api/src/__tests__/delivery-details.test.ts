@@ -150,6 +150,11 @@ describe('«MyApp» is not a name', () => {
         expect(brandFrom(brief, false)).toBe('NEXUS');
     });
 
+    it('strips Markdown emphasis from an explicitly named product', () => {
+        const brief = 'Build a real production-quality web application called **WeatherGo**, not a mockup or placeholder.';
+        expect(brandFrom(brief, false)).toBe('WeatherGo');
+    });
+
     it('grammar is never mistaken for a subject', () => {
         // «for the», «for my», «for a» — the request's scaffolding, not its topic.
         expect(brandFallback('Build a site for my business', false, 'generic')).toBe('MyApp');

@@ -39,17 +39,23 @@ const LEAD_NOISE = /^(?:شركة|مؤسسة|متجر|موقع|مطعم|the|a|an)
 const STOP_WORDS = [
     'وهي', 'وهو', 'وهم', 'تعمل', 'يعمل', 'مختصة', 'مختص', 'متخصصة', 'متخصص',
     'تقدم', 'يقدم', 'لبيع', 'للبيع', 'في', 'من', 'على', 'التي', 'الذي', 'و',
-    'that', 'which', 'who', 'and', 'for', 'in', 'to', 'specialis', 'specializ', 'working',
+    'that', 'which', 'who', 'and', 'for', 'in', 'to', 'not', 'without', 'but', 'rather', 'specialis', 'specializ', 'working',
 ];
 
 function trimBrand(raw: string): string {
+    // Markdown emphasis/code markers are presentation syntax, not part of the
+    // product identity.  A request such as `called **WeatherGo**, not a mockup`
+    // must resolve to `WeatherGo`; otherwise the asterisks survive into the
+    // folder slug and the following clause can make the builder fall back to a
+    // generic MyApp identity.
     let s = String(raw || '').replace(/[.,،؛;:!؟?]+\s*$/, '').trim();
+    s = s.replace(/^[*_~`]+|[*_~`]+$/g, '').trim();
     s = s.replace(LEAD_NOISE, '').trim();
     const words = s.split(/\s+/);
     const out: string[] = [];
     const isLatin = (w: string) => /^[A-Za-z0-9._'&-]+$/.test(w);
     for (const w of words) {
-        const bare = w.replace(/[«»"'.,،؛;:!؟?()]/g, '');
+        const bare = w.replace(/[«»"'.,،؛;:!؟?()]/g, '').replace(/^[*_~`]+|[*_~`]+$/g, '');
         if (!bare) break;
         if (out.length && STOP_WORDS.some(sw => bare.toLowerCase().startsWith(sw) && bare.length <= sw.length + 2)) break;
         // A NAME DOES NOT CHANGE SCRIPT MIDWAY. «اسمها xelitesolutions مع صفحة
@@ -65,7 +71,7 @@ function trimBrand(raw: string): string {
         // A brand is a name, not a clause.
         if (out.length >= 4) break;
     }
-    const brand = out.join(' ').trim();
+    const brand = out.join(' ').replace(/^[*_~`]+|[*_~`]+$/g, '').trim();
     return brand.length >= 2 && brand.length <= 40 ? brand : '';
 }
 
