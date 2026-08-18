@@ -35,6 +35,16 @@ describe('routing: explicit framework requests reach the evidence-first project 
         const src = fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
         expect(src).toMatch(/DETERMINISTIC_TOOLS = \[[\s\S]*?'react_project'/);
     });
+    it('keeps the selected app blueprint in scope through domain authoring', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        const declared = src.indexOf('let runBp: any = appBp;');
+        const branch = src.indexOf('if (appBp) {', declared);
+        const assigned = src.indexOf('runBp = strippedRelation', branch);
+        expect(declared).toBeGreaterThan(-1);
+        expect(branch).toBeGreaterThan(declared);
+        expect(assigned).toBeGreaterThan(branch);
+        expect(src.slice(branch, assigned)).not.toContain('let runBp: any =');
+    });
 });
 
 describe('the scaffold: complete, RTL, tokenized, honest', () => {

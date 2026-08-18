@@ -2585,6 +2585,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // storage, its schema and the engine its domain really needs. The
         // palette, the fonts and the vite config above are kept — they are
         // the parts a real app wants too.
+        // Keep the selected application blueprint alive for the authoring and
+        // verification stages below. It used to be declared inside this
+        // branch, then read after the branch when a weather engine was
+        // authored; esbuild does not type-check lexical scope, so the defect
+        // reached the live runner as `ReferenceError: runBp is not defined`.
+        let runBp: any = appBp;
         if (appBp) {
             for (const k of Object.keys(files)) {
                 if (k !== 'vite.config.js' && k !== 'src/styles/tokens.css') delete files[k];
@@ -2704,7 +2710,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 term(`data link: «${parentResource}» is not a table this system built — the parent lookup is dropped rather than asking for it`);
                 strippedRelation = true;
             }
-            let runBp: any = strippedRelation ? { ...effectiveBp, relation: undefined } : effectiveBp;
+            runBp = strippedRelation ? { ...effectiveBp, relation: undefined } : effectiveBp;
             let appApi = apiLink;
             let adminModel = tableModel;
             if (tableModel.length && effectiveBp.kind === 'generic' && effectiveBp.engine === 'records') {

@@ -43,6 +43,14 @@ describe('the criteria come from HIS brief, never from a fixed checklist', () =>
         expect(ids).not.toContain('export');
         expect(ids).not.toContain('readme');
         expect(ids).not.toContain('browser_check');
+        expect(ids).not.toContain('production_build');
+    });
+
+    it('distinguishes building an app from explicitly building for production', () => {
+        expect(acceptanceFor('build me a simple calculator app').map(c => c.id))
+            .not.toContain('production_build');
+        expect(acceptanceFor('ابنِ لي نسخة إنتاج من الموقع').map(c => c.id))
+            .toContain('production_build');
     });
 
     it('nothing is invented: a criterion he never mentioned is never judged', () => {

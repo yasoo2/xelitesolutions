@@ -115,7 +115,7 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
     },
     {
         id: 'production_build', kind: 'verification',
-        asked: /(بناء|ابنِ?)\s*(نسخة\s*)?(إنتاج|الإنتاج)|production\s*build|\bbuild\b/iu,
+        asked: /(?:بناء|ابنِ)\s*(?:لي\s*)?(?:نسخة\s*)?(?:إنتاج|الإنتاج)|(?:نسخة|بيئة)\s*(?:إنتاج|الإنتاج)|production\s+build|build\s+for\s+production|npm\s+run\s+build/iu,
         ar: 'بناء نسخة الإنتاج', en: 'a production build',
     },
     {
