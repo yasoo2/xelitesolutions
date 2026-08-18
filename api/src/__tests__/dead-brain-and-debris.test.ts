@@ -92,6 +92,14 @@ describe('keyless planner deadlines — explicit patience is not overwritten by 
         expect(requestedProviderTimeoutMs({ providerTimeoutMs: undefined, plannerTimeoutMs: 45000 })).toBe(45000);
     });
 
+    it('does not cut engineering proxy fallback down to the ordinary chat timeout', () => {
+        const router = read('core/llm/intelligent-router.ts');
+        const pollinations = read('core/llm/providers/pollinations.ts');
+        expect(router).toContain("timeoutValue = engineeringPipeline");
+        expect(router).toContain("? ENGINEERING_KEYLESS_DEFAULT_TIMEOUT_MS");
+        expect(pollinations).toContain('const maxTimeout = options?.engineering ? 90_000 : 5_000;');
+    });
+
     it('keeps the engineering pipeline deadline explicit instead of restoring a chat default', () => {
         const src = read('modules/tools/definitions/ProjectPipelineTool.ts');
         expect(src).toContain('engineeringPipeline: true');

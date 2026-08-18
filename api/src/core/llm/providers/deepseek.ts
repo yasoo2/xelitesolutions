@@ -9,6 +9,8 @@ const DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
 export interface DeepSeekRequestOptions {
     signal?: AbortSignal;
     timeoutMs?: number;
+    /** Preserve the engineering-only longer bounded proxy deadline. */
+    engineering?: boolean;
 }
 
 function throwIfAborted(signal?: AbortSignal): void {

@@ -13,6 +13,8 @@ export interface PollinationsRequestOptions {
     signal?: AbortSignal;
     /** Bounded provider deadline. The router also supplies an AbortSignal. */
     timeoutMs?: number;
+    /** Engineering calls may use the router's longer bounded fallback deadline. */
+    engineering?: boolean;
 }
 
 function abortError(): Error {
@@ -132,12 +134,14 @@ export class PollinationsProvider {
                 body.tool_choice = 'auto';
             }
 
-            // This is a last-resort anonymous proxy. Keep the upstream request
-            // short so one exhausted queue cannot outlive the router fallback.
+            // This is a last-resort anonymous proxy. Ordinary chat stays short,
+            // while engineering calls get the router's bounded deadline so a real
+            // build/recovery prompt is not aborted before the proxy can answer.
             const configuredTimeout = Number(options?.timeoutMs);
+            const maxTimeout = options?.engineering ? 90_000 : 5_000;
             const timeout = Number.isFinite(configuredTimeout) && configuredTimeout > 0
-                ? Math.min(5000, Math.floor(configuredTimeout))
-                : 5000;
+                ? Math.min(maxTimeout, Math.floor(configuredTimeout))
+                : maxTimeout;
             const completion = await this.client.chat.completions.create(
                 body,
                 { timeout, ...(signal ? { signal } : {}) } as any,

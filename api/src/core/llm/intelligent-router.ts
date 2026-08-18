@@ -1668,6 +1668,7 @@ export async function routeToModel(
                 const res = await pollinationsProvider.chatComplete(effectiveMessages, 'gpt-4o', 0, tools, {
                     signal,
                     timeoutMs: 4000,
+                    engineering: engineeringPipeline,
                 });
                 if (!isUsableAnswer(res)) throw new Error('Pollinations answered with nothing usable');
                 return res;
@@ -1819,6 +1820,7 @@ export async function routeToModel(
             return await deepSeekProvider.chatComplete(flatMessages, undefined, tools, {
                 signal,
                 timeoutMs: 4000,
+                engineering: engineeringPipeline,
             });
         }
     });
@@ -1832,6 +1834,7 @@ export async function routeToModel(
                 const res = await pollinationsProvider.chatComplete(flatMessages, 'openai', 0, tools, {
                     signal,
                     timeoutMs: 4000,
+                    engineering: engineeringPipeline,
                 });
                 if (!isUsableAnswer(res)) throw new Error('Pollinations answered with nothing usable');
                 return res;
@@ -2130,9 +2133,13 @@ export async function routeToModel(
                 );
             }
             if (p.name === 'Pollinations (Backup)' || p.name === 'DeepSeek (Pollinations)') {
-                // Pollinations is a last-resort proxy and must not hold the
-                // engineering chain while its upstream quota is exhausted.
-                timeoutValue = 4000;
+                // Keep ordinary chat fail-fast, but let engineering runs use the
+                // bounded deadline already selected above. A hard 4s override
+                // caused the proxy to be aborted before it could answer a real
+                // build/recovery prompt.
+                timeoutValue = engineeringPipeline
+                    ? ENGINEERING_KEYLESS_DEFAULT_TIMEOUT_MS
+                    : 4000;
             }
 
             lastTimeoutUsed = timeoutValue;
