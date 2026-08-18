@@ -62,6 +62,8 @@ interface SessionState {
   setSelected: (id: string | null) => void;
   setAgentSelected: (id: string | null) => void;
   deleteAllSessions: () => Promise<void>;
+  /** After the LAST session dies, open a fresh one so a visible session owns the chat. */
+  ensureOwnedSession: () => Promise<void>;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -158,6 +160,7 @@ export const useSessionStore = create<SessionState>((set) => ({
     try {
       await api.delete(`/sessions/${id}`);
       await useSessionStore.getState().loadAllSessions();
+      await useSessionStore.getState().ensureOwnedSession();
     } catch {
       // Session deletion failed silently
     } finally {
@@ -170,10 +173,40 @@ export const useSessionStore = create<SessionState>((set) => ({
     try {
       await api.delete('/sessions');
       set({ sessions: [], agentSessions: [], selected: null, agentSelected: null });
+      await useSessionStore.getState().ensureOwnedSession();
     } catch {
       // Session deletion failed silently
     } finally {
       set(state => ({ loadingStates: { ...state.loadingStates, deletingAll: false } }));
+    }
+  },
+
+  /**
+   * A VISIBLE SESSION MUST OWN EVERY CONVERSATION.
+   *
+   * Measured on the owner's own screen: he deleted all sessions, the bar
+   * showed «No results» — and the composer kept talking to Joe anyway,
+   * because the page's active id had gone null (or dangling) while nothing
+   * recreated it. An orphan chat has no visible home, no history entry and
+   * no delete button of its own.
+   *
+   * So deleting the LAST session opens a fresh one immediately — the exact
+   * behaviour of the «New Chat» button — and the new conversation lands in
+   * a session the bar can show. When at least one session survives,
+   * loadAllSessions' single-active invariant already reassigns, and this
+   * does nothing.
+   */
+  ensureOwnedSession: async () => {
+    const state = useSessionStore.getState();
+    if (state.sessions.length || state.agentSessions.length) return;
+    try {
+      const data: any = await api.post('/sessions', { kind: 'agent' });
+      const id = String((data as any)?.id || (data as any)?._id || '').trim();
+      if (!id) return;
+      set({ selected: null, agentSelected: id });
+      await useSessionStore.getState().loadAllSessions();
+    } catch {
+      // Creation failed — the bar stays honestly empty rather than lying.
     }
   },
 }));
