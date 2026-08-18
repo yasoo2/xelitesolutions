@@ -997,9 +997,18 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
         return /\b(?:react(?:\s+native)?|next(?:\.js)?|vue|angular|svelte|node(?:\.js)?|express|typescript|javascript|python|django|flask|fastapi|ruby|rails|php|laravel|java|spring|kotlin|go(?:lang)?|rust|dotnet|\.net|flutter|swift|postgres(?:ql)?|mysql|mongodb|sqlite|prisma)\b/i.test(String(request || ''));
     }
 
-    /** Explicit React/Vite requests must use the domain-aware builder rather than a generic scaffold. */
+    /**
+     * Browser-delivered applications are web applications even when the brief
+     * uses the product word "mobile" for a responsive layout. Native builders
+     * remain valid only when the request explicitly names a native platform or
+     * framework. This prevents a weather/mobile UI brief that must be verified
+     * in the Browser from drifting into Expo and React Native.
+     */
     private hasExplicitReactBuilderConstraint(request: string): boolean {
-        return /\b(?:react(?:\s+native)?|vite)\b/i.test(String(request || ''));
+        const text = String(request || '');
+        const explicitNative = /\b(?:react\s+native|expo|flutter|swift(?:ui)?|ios|android|xcode|apk|ipa|emulator|simulator|native\s+app)\b/i.test(text);
+        if (explicitNative) return false;
+        return /\b(?:react|vite|browser|web(?:site|\s+app(?:lication)?)?|frontend|html|css)\b/i.test(text);
     }
 
     /**

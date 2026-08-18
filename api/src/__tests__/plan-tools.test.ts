@@ -178,6 +178,34 @@ describe('greenfield runnable contract is explicit before live-run', () => {
         expect(result.phases[0].tasks.map((task: any) => task.tool)).toEqual(['ai_write_file', 'ai_write_file']);
     });
 
+    it('reroutes a browser/mobile responsive request away from the native builder', () => {
+        const result = sanitisePlanPhases([
+            {
+                phaseNumber: 1,
+                name: 'Project Setup',
+                tasks: [{ task: 'Build the mobile weather app and verify it in the Browser', tool: 'mobile_builder', args: {} }],
+            },
+        ], 'WeatherGo', {
+            mode: 'greenfield',
+            preferReactBuilder: true,
+            reactRequest: 'Build a responsive mobile weather application and test the actual running application in the Browser.',
+        });
+        expect(result.phases[0].tasks[0].tool).toBe('react_project');
+        expect(result.phases[0].tasks[0].args.request).toMatch(/actual running application/i);
+        expect(result.notes.join('\\n')).toMatch(/لا أستخدم Expo\/React Native/);
+    });
+
+    it('keeps an explicitly native request on the native path', () => {
+        const result = sanitisePlanPhases([
+            {
+                phaseNumber: 1,
+                name: 'Native Setup',
+                tasks: [{ task: 'Build the Android Expo app', tool: 'mobile_builder', args: { action: 'init', platform: 'expo', projectName: 'NativeWeather' } }],
+            },
+        ], 'NativeWeather', { mode: 'greenfield' });
+        expect(result.phases[0].tasks[0].tool).toBe('mobile_builder');
+    });
+
     it('treats file_edit as source-dependent and does not mistake it for file creation', () => {
         const result = sanitisePlanPhases([
             {

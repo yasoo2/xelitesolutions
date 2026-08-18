@@ -470,18 +470,18 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     notes.push(`[plan] أوقفتُ «${desc}» — ${blocker.message}`);
                     continue;
                 }
+                if ((r.tool === 'scaffold_project' || r.tool === 'mobile_builder') && options.preferReactBuilder) {
+                    const request = String(options.reactRequest || adaptedArgs?.request || desc || projectDir).trim();
+                    kept.push({
+                        ...task,
+                        tool: 'react_project',
+                        args: { request },
+                        input: undefined,
+                    });
+                    notes.push(`[plan] وجّهتُ «${desc}» من ${r.tool} إلى react_project لأن الطلب يتطلب تطبيقاً يُختبر في المتصفح؛ لا أستخدم Expo/React Native لمشروع ويب متجاوب.`);
+                    continue;
+                }
                 if (r.tool === 'scaffold_project') {
-                    if (options.preferReactBuilder) {
-                        const request = String(options.reactRequest || adaptedArgs?.request || desc || projectDir).trim();
-                        kept.push({
-                            ...task,
-                            tool: 'react_project',
-                            args: { request },
-                            input: undefined,
-                        });
-                        notes.push(`[plan] وجّهتُ «${desc}» إلى react_project لأن الطلب يحدد React/Vite؛ scaffold_project العام قد يسلّم placeholder غير تفاعلي.`);
-                        continue;
-                    }
                     const scaffoldIssue = plannedArgsIssue(r.tool, adaptedArgs);
                     if (scaffoldIssue) {
                         phaseBlockers.push({
