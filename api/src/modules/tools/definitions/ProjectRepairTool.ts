@@ -34,6 +34,8 @@ export class ProjectRepairTool extends BaseTool {
         properties: {
             projectDir: { type: 'string' as const, description: 'Project folder. Defaults to this session\'s active built project.' },
             auditDir: { type: 'string' as const, description: 'Optional built-output folder selected from workspace evidence.' },
+            serveUrl: { type: 'string' as const, description: 'Optional live URL to audit instead of a private static preview.' },
+            artifactRootDir: { type: 'string' as const, description: 'Optional trusted artifact root used by /artifacts requests during QA.' },
             sessionId: { type: 'string' as const },
         },
     };
@@ -59,9 +61,12 @@ export class ProjectRepairTool extends BaseTool {
 
         const projects: Record<string, any> = (global as any).joeProjects || {};
         const built = findActiveBuiltProject(sessionId, input?.projectDir);
-        const dir = built?.projectDir || String(input?.projectDir || projects[sessionKey]?.dir || '').trim();
-        const auditDir = built?.auditDir || String(input?.auditDir || '').trim();
-        if (!built || !dir || !fs.existsSync(dir) || !auditDir || !fs.existsSync(auditDir)) {
+        // An evidence-first pipeline may pass the selected project explicitly even
+        // when the session registry was not populated by an earlier builder tool.
+        // Prefer explicit evidence over stale session memory; never guess a sibling.
+        const dir = String(input?.projectDir || built?.projectDir || projects[sessionKey]?.dir || '').trim();
+        const auditDir = String(input?.auditDir || built?.auditDir || '').trim();
+        if (!dir || !fs.existsSync(dir) || !auditDir || !fs.existsSync(auditDir)) {
             return {
                 ok: false,
                 error: isAr
@@ -77,6 +82,9 @@ export class ProjectRepairTool extends BaseTool {
 
         const { auditBuiltApp } = require('../../../core/quality/app-audit');
         const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
+        const watchSessionId = String(input?.watchSessionId || context?.browserSessionId || PANEL_BROWSER_SID || '').trim();
+        const serveUrl = String(input?.serveUrl || '').trim();
+        const artifactRootDir = String(input?.artifactRootDir || process.env.ARTIFACT_DIR || '/tmp/joe-artifacts').trim();
 
         // Open the panel and WAIT for it, exactly as the builder does: a repair
         // he was told he could watch must not be over before he can look.
@@ -84,9 +92,9 @@ export class ProjectRepairTool extends BaseTool {
         // Chromium starts while the panel is still downloading its chunk, so
         // the first frame he sees is the page and not four white seconds.
         try { require('../../browser/manager').warmBrowserSession(PANEL_BROWSER_SID); } catch { /* the audit launches its own */ }
-        try {
-            const { waitForPanelWatcher } = require('../../browser/wsHub');
-            const watching = await waitForPanelWatcher(PANEL_BROWSER_SID, 4000);
+            try {
+                const { waitForPanelWatcher } = require('../../../browser/wsHub');
+                const watching = await waitForPanelWatcher(watchSessionId, 4000);
             term(watching
                 ? 'repair: the Browser panel is attached — you can watch this'
                 : 'repair: no Browser panel attached — running anyway');
@@ -94,8 +102,9 @@ export class ProjectRepairTool extends BaseTool {
 
         say(isAr ? '🔎 أعيد القياس على البناء الحالي…' : '🔎 Re-measuring the current build…');
         const before = await auditBuiltApp(auditDir, {
-            timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
-            artifactRootDir: process.env.ARTIFACT_DIR || '/tmp/joe-artifacts',
+            timeoutMs: 30_000, watchSessionId: watchSessionId || undefined,
+                ...(serveUrl ? { serveUrl } : {}),
+                artifactRootDir,
             onProgress: (where: string) => {
                 if (where.startsWith('private')) {
                     const why = where.slice('private'.length).replace(/^:/, '').trim();
@@ -189,8 +198,9 @@ export class ProjectRepairTool extends BaseTool {
         const measure = async () => {
             const measured = await auditBuiltApp(auditDir, {
                 timeoutMs: 30_000,
-                watchSessionId: PANEL_BROWSER_SID,
-                artifactRootDir: process.env.ARTIFACT_DIR || '/tmp/joe-artifacts',
+                watchSessionId: watchSessionId || undefined,
+                ...(serveUrl ? { serveUrl } : {}),
+                artifactRootDir,
                 onProgress: (where: string) => {
                     if (where === 'watching') say(isAr ? '👁️ القياس المقيس يجري الآن أمامك في لوحة المتصفّح' : '👁️ The measured round is running in the Browser panel');
                 },

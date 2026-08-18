@@ -1181,6 +1181,8 @@ export class ProjectPipelineTool implements ToolDefinition {
         let liveRunResult: any = null;
         let liveRepairAttempted = false;
         let liveRepairStatus = 'not_attempted';
+        let browserQaRepairAttempted = false;
+        let browserQaRepairStatus = 'not_attempted';
         let scopeRepairAttempted = false;
         let scopeRepairStatus = 'not_attempted';
         let scopeCoverageFailed = false;
@@ -1671,8 +1673,58 @@ export class ProjectPipelineTool implements ToolDefinition {
                         `⛔ لم أسلّم النظام: فحص Browser QA لم يُجرَ (${browserQa.skipped}).`,
                         `⛔ I did not deliver the system: Browser QA did not run (${browserQa.skipped}).`));
                 } else {
-                    const blocking = browserQa.findings.filter((finding) => finding.severity === 'high');
+                    let blocking = browserQa.findings.filter((finding) => finding.severity === 'high');
                     appendBoundedPipelineLog(logs, `[pipeline] browser QA score=${browserQa.score} findings=${browserQa.findings.length} blocking=${blocking.length}`);
+                    if (blocking.length > 0 && !browserQaRepairAttempted) {
+                        browserQaRepairAttempted = true;
+                        const repairProjectRoot = artifactRoot || runtimeRoot;
+                        browserQaRepairStatus = repairProjectRoot && auditDir
+                            ? 'attempted'
+                            : 'no_trusted_artifact_or_audit_root';
+                        if (repairProjectRoot && auditDir) {
+                            say(pick(isAr,
+                                `🔧 كشف Browser QA ${blocking.length} مشكلة حرجة؛ سأصلح الأدلة القابلة للإصلاح داخل المشروع نفسه مرة واحدة ثم أعيد الفحص المرئي.`,
+                                `🔧 Browser QA found ${blocking.length} blocking issue(s); I will repair the evidence-backed issues in the same project once, then re-run visible QA.`));
+                            appendBoundedPipelineLog(logs, `[pipeline] browser QA bounded repair start root=${repairProjectRoot}`);
+                            try {
+                                const repairResult = await executeTool(
+                                    'project_repair',
+                                    {
+                                        projectDir: repairProjectRoot,
+                                        auditDir,
+                                        serveUrl: liveUrl,
+                                        artifactRootDir: repairProjectRoot,
+                                        watchSessionId: panelSid || undefined,
+                                    },
+                                    { ...(context || {}), browserQaRepairAttempted: true, language: isAr ? 'ar' : 'en' },
+                                );
+                                appendBoundedPipelineLogs(logs, repairResult?.logs);
+                                browserQaRepairStatus = repairResult?.ok === true ? 'repair_tool_completed' : 'repair_tool_failed';
+                                appendBoundedPipelineLog(logs, `[pipeline] browser QA bounded repair result=${browserQaRepairStatus}`);
+                                if (repairResult?.ok === true) {
+                                    const recheck = await auditBuiltApp(auditDir, {
+                                        watchSessionId: panelSid || undefined,
+                                        serveUrl: liveUrl,
+                                        artifactRootDir: repairProjectRoot,
+                                        timeoutMs: 45_000,
+                                        onProgress: progress,
+                                    });
+                                    if (!recheck?.skipped) {
+                                        browserQa = recheck;
+                                        blocking = browserQa.findings.filter((finding) => finding.severity === 'high');
+                                        appendBoundedPipelineLog(logs, `[pipeline] browser QA recheck score=${browserQa.score} findings=${browserQa.findings.length} blocking=${blocking.length}`);
+                                        browserQaRepairStatus = blocking.length === 0 ? 'repaired_and_verified' : 'repaired_blockers_remain';
+                                    } else {
+                                        browserQaRepairStatus = `recheck_skipped:${String(recheck?.skipped || 'unknown')}`;
+                                    }
+                                }
+                            } catch (repairError: any) {
+                                browserQaRepairStatus = 'repair_tool_error';
+                                appendBoundedPipelineLog(logs, `[pipeline] browser QA bounded repair error: ${String(repairError?.message || repairError).slice(0, 420)}`);
+                            }
+                        }
+                    }
+                    blocking = browserQa.findings.filter((finding) => finding.severity === 'high');
                     if (blocking.length > 0) {
                         browserQaFailed = true;
                         finalVerified = false;
@@ -1680,12 +1732,19 @@ export class ProjectPipelineTool implements ToolDefinition {
                         liveRunVerificationFailed = true;
                         liveRunError = `browser QA found ${blocking.length} blocking finding(s)`;
                         say(pick(isAr,
-                            `⛔ كشف Browser QA المرئي ${blocking.length} مشكلة حرجة؛ لم أعتبر التطبيق مسلّماً.`,
-                            `⛔ Visible Browser QA found ${blocking.length} blocking issue(s); the application is not delivered.`));
+                            `⛔ كشف Browser QA المرئي ${blocking.length} مشكلة حرجة بعد محاولة إصلاح bounded؛ لم أعتبر التطبيق مسلّماً.`,
+                            `⛔ Visible Browser QA still found ${blocking.length} blocking issue(s) after the bounded repair attempt; the application is not delivered.`));
                     } else {
+                        browserQaFailed = false;
+                        // Browser QA proves usability, but it must not erase a
+                        // deterministic scope failure measured earlier.
+                        finalVerified = !scopeCoverageFailed;
+                        finalHonestBlocker = false;
+                        liveRunVerificationFailed = false;
+                        liveRunError = '';
                         say(pick(isAr,
-                            `✅ اكتمل Browser QA على التطبيق الحي (score: ${browserQa.score}).`,
-                            `✅ Browser QA completed on the live application (score: ${browserQa.score}).`));
+                            `✅ اجتاز التطبيق Browser QA بعد الإصلاح (score: ${browserQa.score}).`,
+                            `✅ The application passed Browser QA after repair (score: ${browserQa.score}).`));
                     }
                 }
             } catch (qaError: any) {
@@ -1753,6 +1812,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(finalHonestBlocker ? { honestBlocker: true } : {}),
                 ...(liveRunVerificationFailed ? { honestBlocker: true } : {}),
                 ...(liveRepairAttempted ? { liveRepairAttempted: true, liveRepairStatus } : {}),
+                ...(browserQaRepairAttempted ? { browserQaRepairAttempted: true, browserQaRepairStatus } : {}),
                 ...(scopeRepairAttempted ? { scopeRepairAttempted: true, scopeRepairStatus } : {}),
                 ...(scopeCoverageFailed ? { scopeCoverageFailed: true } : {}),
                 ...(partialDelivery ? { partialDelivery: true } : {}),

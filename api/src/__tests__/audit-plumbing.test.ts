@@ -149,6 +149,25 @@ describe('visible browser QA is part of page delivery', () => {
         expect(pipeline).toContain('browserQaFailed = true');
     });
 
+    it('does one bounded project_repair pass for blocking live QA, then rechecks the same live URL', () => {
+        expect(pipeline).toContain("'project_repair'");
+        expect(pipeline).toContain('browserQaRepairAttempted');
+        expect(pipeline).toContain('browser QA bounded repair start');
+        expect(pipeline).toContain('serveUrl: liveUrl');
+        expect(pipeline).toContain('browser QA recheck score=');
+        expect(pipeline).toContain('browserQaRepairStatus');
+    });
+
+    it('project_repair accepts explicit pipeline evidence and audits its live URL', () => {
+        const repair = read('modules/tools/definitions/ProjectRepairTool.ts');
+        expect(repair).toContain('serveUrl: { type:');
+        expect(repair).toContain('artifactRootDir: { type:');
+        expect(repair).toContain("const dir = String(input?.projectDir || built?.projectDir");
+        expect(repair).toContain("...(serveUrl ? { serveUrl } : {})");
+        expect(repair).toContain('artifactRootDir,');
+        expect(repair).not.toContain('if (!built || !dir');
+    });
+
     it('passes the same watched session through repair re-audits', () => {
         expect((builder.match(/watchSessionId: panelBrowserSid/g) || []).length).toBeGreaterThanOrEqual(2);
         expect(builder).toContain('onProgress: qaProgress');
