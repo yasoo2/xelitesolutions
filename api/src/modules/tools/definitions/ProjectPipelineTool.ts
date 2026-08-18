@@ -448,18 +448,17 @@ export function deterministicRescueAllowed(request: string): boolean {
 }
 
 /**
- * A short, greenfield interactive application must reach the real UI builder.
+ * A greenfield interactive application must reach the real UI builder.
  * A generic scaffold is not equivalent: it can satisfy the runnable contract
  * while silently producing a landing page or an empty shell, which is exactly
  * how the first CalcPro run passed planning but failed independent acceptance.
- * This guard is semantic and bounded: it applies only to an application-shaped
- * request with browser/UI signals and only when the request is simple enough for
- * the deterministic builder to preserve the declared scope. Larger or ambiguous
- * requests remain with the evidence-backed planner and must recover honestly.
+ * This guard is semantic: it applies only to an application-shaped request with
+ * browser/UI signals and a known app blueprint. Long briefs are still handled by
+ * the evidence-backed planner; this guard only replaces a plan that omitted the
+ * concrete UI builder.
  */
 export function interactiveAppNeedsReactBuilder(request: string): boolean {
     const text = String(request || '').trim();
-    if (!deterministicRescueAllowed(text)) return false;
     try {
         const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
         const { detectAppKind, stripDeclaredOptions } = require('../../../core/design/app-blueprints');
@@ -1004,7 +1003,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             if (planPhases.length > 0 && requiresDeterministicRescue
                 && evidence?.constraints?.createsNewProject
                 && plannerResult?.output?.deterministic !== true
-                && deterministicRescueAllowed(productRequest)) {
+                && (deterministicRescueAllowed(productRequest) || requiresConcreteUiBuilder)) {
                 const rescue = deterministicPhasesFor(productRequest);
                 if (rescue) {
                     const reason = missingConcreteUiBuilder
