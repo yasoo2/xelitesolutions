@@ -30,6 +30,7 @@ import { openTerminal, transcriptLine } from '../../../core/quality/terminal-ses
 import { persistJoeProjects } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
+import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
 
 // Combining marks are not letters: «كِفاح» is ك + ◌ِ + فاح to this regex, so
@@ -2857,12 +2858,14 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             try {
                 const { AIGeneratorTool } = require('./AIGeneratorTool');
                 const author = new AIGeneratorTool();
+                const authorContext = `buildContext: projectRoot=${proj}; generated files include src/App.jsx, src/content.js, src/app/store.js, src/styles/app.css, and package.json. The importing shell renders <WeatherApp content={content} />. The destination is ${generatedEnginePath}. Inspect the existing files and preserve their actual contracts.`;
+                const authorDescription = `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named WeatherApp accepting exactly one optional prop: { content }.\n- Implement the requested weather product, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Include loading, empty, network, invalid-city, and API-error states.\n- Implement persistence with localStorage for favourites and settings, and restore it after reload.\n- Keep hourly and daily forecast data distinct; do not claim a 7-day or 24-hour view unless the rendered data comes from the corresponding API response.\n- Use only React, browser APIs, and modules already present in the generated project. Do not add packages or imports that are absent from package.json.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.`;
                 const generated = await author.execute({
                     path: path.join(proj, generatedEnginePath),
-                    description: `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named WeatherApp accepting exactly one optional prop: { content }.\n- Implement the requested weather product, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Include loading, empty, network, invalid-city, and API-error states.\n- Implement persistence with localStorage for favourites and settings, and restore it after reload.\n- Keep hourly and daily forecast data distinct; do not claim a 7-day or 24-hour view unless the rendered data comes from the corresponding API response.\n- Use only React, browser APIs, and modules already present in the generated project. Do not add packages or imports that are absent from package.json.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.`,
+                    description: authorDescription,
                     language: isAr ? 'ar' : 'en',
                     aestheticMode: 'Use the existing app.css and design tokens. Prioritize a clear, responsive, accessible application surface over decorative effects.',
-                    context: `buildContext: projectRoot=${proj}; generated files include src/App.jsx, src/content.js, src/app/store.js, src/styles/app.css, and package.json. The importing shell renders <WeatherApp content={content} />. The destination is ${generatedEnginePath}. Inspect the existing files and preserve their actual contracts.`,
+                    context: authorContext,
                 }, {
                     ...context,
                     projectRoot: proj,
@@ -2877,10 +2880,44 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     // domain_generation_failed string with no repair target.
                     return { ok: false, error: reason, logs };
                 }
-                const authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
+                let authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
                 if (!authored.trim() || !/export\s+default\s+function\s+WeatherApp|export\s+default\s+WeatherApp/.test(authored)) {
                     term('domain generation: BLOCKED — generated file has no valid WeatherApp default export');
                     return { ok: false, error: 'domain_generation_invalid', logs };
+                }
+
+                // Compile/import validation cannot prove that a generated domain
+                // engine actually renders the capabilities named in the request.
+                // Give Joe one bounded semantic repair using the measured source
+                // defect, then make the same contract a hard delivery gate.
+                let semanticDefects = inspectWeatherEngineSource(request, authored);
+                if (semanticDefects.length) {
+                    const repairBrief = formatWeatherSemanticRepair(semanticDefects);
+                    term(`domain semantic QA: ${semanticDefects.map(d => d.id).join(', ')} — requesting one bounded repair`);
+                    const repaired = await author.execute({
+                        path: path.join(proj, generatedEnginePath),
+                        description: `${authorDescription}\n\nSEMANTIC REPAIR REQUIRED — the previous file compiled but failed evidence-based domain QA. Preserve all working behaviour and repair only these measured defects:\n${repairBrief}`,
+                        language: isAr ? 'ar' : 'en',
+                        aestheticMode: 'Use the existing app.css and design tokens. Preserve the current interface; do not redesign it while repairing domain behaviour.',
+                        context: `${authorContext}\nPrevious authored source failed semantic QA. The file on disk is the previous attempt; return the complete corrected file only.`,
+                    }, {
+                        ...context,
+                        projectRoot: proj,
+                        workspaceId: context?.workspaceId,
+                    });
+                    if (!repaired?.ok || !fs.existsSync(path.join(proj, generatedEnginePath))) {
+                        const reason = String(repaired?.error || 'semantic repair did not produce the requested domain file');
+                        term(`domain semantic QA: BLOCKED — ${reason}`);
+                        return { ok: false, error: reason, logs };
+                    }
+                    authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
+                    semanticDefects = inspectWeatherEngineSource(request, authored);
+                    if (semanticDefects.length) {
+                        const reason = `weather_semantic_contract_failed: ${formatWeatherSemanticRepair(semanticDefects)}`;
+                        term(`domain semantic QA: BLOCKED — ${semanticDefects.map(d => d.id).join(', ')}`);
+                        return { ok: false, error: reason, logs };
+                    }
+                    term('domain semantic QA: repaired and independently rechecked');
                 }
                 files[generatedEnginePath] = authored;
                 try {
