@@ -717,7 +717,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 // inside that artifact, not silently fall back to the workspace
                 // root when the planner omitted cwd/projectPath.
                 const runtimeProjectRoot = String(projectContext?.projectRoot || '').trim();
-                const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager']);
+                const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager', 'auto_tester']);
                 if (projectContext?.projectRootRuntimeBound === true
                     && runtimeProjectRoot
                     && cwdInheritedTools.has(toolName)

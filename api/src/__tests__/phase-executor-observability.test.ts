@@ -216,6 +216,57 @@ describe('PhaseExecutorTool observable trusted context', () => {
         }
     });
 
+    it('inherits the runtime-bound project root for a relative auto_tester file path', async () => {
+        const workspaceId = `workspace-auto-tester-cwd-${process.pid}`;
+        const sessionId = `chat-auto-tester-cwd-${process.pid}`;
+        const workspaceRoot = workspaceService.getActiveRoot(workspaceId);
+        const projectRoot = path.join(workspaceRoot, `WeatherGo-${process.pid}`);
+        fs.mkdirSync(path.join(projectRoot, 'scripts'), { recursive: true });
+        try {
+            mockedExecuteTool.mockResolvedValue({
+                ok: true,
+                output: { passed: true, summary: 'syntax passed' },
+            } as any);
+
+            const result: any = await new PhaseExecutorTool().execute({
+                phase: {
+                    phaseNumber: 7,
+                    name: 'Testing',
+                    tasks: [{
+                        task: 'Run the smoke test script',
+                        tool: 'auto_tester',
+                        args: {
+                            testType: 'syntax',
+                            files: ['scripts/smoke-test.test.mjs'],
+                        },
+                    }],
+                },
+                projectContext: {
+                    projectName: `WeatherGo-${process.pid}`,
+                    createsNewProject: true,
+                    projectRoot,
+                    projectRootRuntimeBound: true,
+                    sessionId,
+                    workspaceId,
+                    userId: 'user-auto-tester-cwd',
+                },
+            }, { sessionId, workspaceId, userId: 'user-auto-tester-cwd' });
+
+            expect(result.ok).toBe(true);
+            expect(mockedExecuteTool).toHaveBeenCalledTimes(1);
+            expect(mockedExecuteTool.mock.calls[0][0]).toBe('auto_tester');
+            expect(mockedExecuteTool.mock.calls[0][1]).toMatchObject({
+                testType: 'syntax',
+                files: ['scripts/smoke-test.test.mjs'],
+                cwd: projectRoot,
+                projectPath: projectRoot,
+            });
+            expect(result.logs.join('\\n')).toContain('auto_tester: inherited cwd from runtime-bound project root');
+        } finally {
+            fs.rmSync(projectRoot, { recursive: true, force: true });
+        }
+    });
+
     it('preserves engineering LLM routing context across delegated tool execution', async () => {
         let observedContext: any;
         mockedExecuteTool.mockImplementation(async (_tool: any, _input: any, context: any) => {
