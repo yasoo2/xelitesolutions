@@ -66,6 +66,38 @@ export function inheritRuntimeProjectArguments(
     logs?: string[],
 ): Record<string, any> {
     const runtimeProjectRoot = String(projectContext?.projectRoot || '').trim();
+    const runtimePathTools = new Set(['project_detect', 'analyze_project', 'analyze_codebase', 'quality_run']);
+
+    /**
+     * GREENFIELD HAS NO ARTIFACT ROOT YET.
+     *
+     * The planner is allowed to describe its first read-only phase using the
+     * product label (`WeatherGo`) even though that directory does not exist.
+     * Resolving that label as a filesystem path makes discovery fail before the
+     * builder ever gets a chance to create the artifact. At this boundary the
+     * only honest target is the active workspace root: it lets discovery read
+     * existing reference projects without pretending that the new product
+     * already exists. Once a builder writes a real artifact,
+     * `projectRootRuntimeBound` becomes true and the stricter mapping below
+     * takes over.
+     */
+    if (projectContext?.createsNewProject === true
+        && projectContext?.projectRootRuntimeBound !== true
+        && runtimePathTools.has(toolName)
+        && toolName !== 'quality_run') {
+        let workspaceRoot = '';
+        try {
+            workspaceRoot = path.resolve(workspaceService.getActiveRoot(projectContext?.workspaceId));
+        } catch { /* leave the planner's arguments untouched if no root is available */ }
+        if (workspaceRoot && fs.existsSync(workspaceRoot)) {
+            const requestedPath = String(planned.path || '').trim();
+            planned.path = workspaceRoot;
+            logs?.push(requestedPath
+                ? `[PhaseExecutor] ${toolName}: mapped pre-artifact greenfield path (${requestedPath.slice(0, 160)}) to workspace root (${workspaceRoot.slice(0, 240)})`
+                : `[PhaseExecutor] ${toolName}: inherited workspace root for pre-artifact greenfield discovery (${workspaceRoot.slice(0, 240)})`);
+        }
+    }
+
     if (projectContext?.projectRootRuntimeBound !== true || !runtimeProjectRoot) return planned;
 
     // quality_run's real contract names the project as `path`, not `cwd` or
@@ -78,7 +110,6 @@ export function inheritRuntimeProjectArguments(
         logs?.push(`[PhaseExecutor] quality_run: inherited path from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
     }
 
-    const runtimePathTools = new Set(['project_detect', 'analyze_project', 'analyze_codebase', 'quality_run']);
     if (runtimePathTools.has(toolName)) {
         const existingPath = String(planned.path || '').trim();
         const projectName = String(projectContext?.projectName || '').trim();

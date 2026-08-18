@@ -4,6 +4,7 @@ import path from 'path';
 import { applyPhaseExecutionEvidence, inheritRuntimeProjectArguments, recoverMissingNpmLauncher } from '../modules/tools/definitions/PhaseExecutorTool';
 import { ShellExecuteTool } from '../modules/tools/definitions/SystemTools';
 import { executionEngine } from '../kernel/ExecutionEngine';
+import { workspaceService } from '../modules/services/WorkspaceService';
 
 describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
     it('uses the discovery-selected root for project_run only when the plan has no explicit location', () => {
@@ -92,6 +93,30 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         const escape: Record<string, any> = { path: '../outside' };
         inheritRuntimeProjectArguments('project_detect', escape, context);
         expect(escape.path).toBe('../outside');
+    });
+
+    it('maps pre-artifact greenfield discovery paths to the active workspace root', () => {
+        const activeRootSpy = jest.spyOn(workspaceService, 'getActiveRoot').mockReturnValue(workspaceRoot);
+        try {
+            const context = {
+                createsNewProject: true,
+                projectRootRuntimeBound: false,
+                projectName: 'WeatherGo',
+                workspaceId: 'workspace-weathergo',
+            };
+            const planned: Record<string, any> = { path: 'WeatherGo' };
+            const logs: string[] = [];
+            inheritRuntimeProjectArguments('project_detect', planned, context, logs);
+
+            expect(planned.path).toBe(workspaceRoot);
+            expect(logs.join('\\n')).toContain('mapped pre-artifact greenfield path');
+
+            const analysis: Record<string, any> = {};
+            inheritRuntimeProjectArguments('analyze_project', analysis, context, logs);
+            expect(analysis.path).toBe(workspaceRoot);
+        } finally {
+            activeRootSpy.mockRestore();
+        }
     });
 
     it('selects the repository start script when a server alias is missing', () => {
