@@ -627,7 +627,6 @@ export class ProjectPlannerTool implements ToolDefinition {
                             repairMode,
                             scopeRepairMode,
                             scopeRepairTargets,
-                            evidence,
                         );
                         if (!recoveredAssessment.ok) {
                             scopeAssessment = recoveredAssessment;

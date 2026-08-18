@@ -23,7 +23,7 @@ function ticket(primaryError: string, severity = 'low', status = 'failed') {
         projectName: 'p', phaseNumber: 1, phaseName: 'ph', status,
         severity,
         primaryError,
-        failedTasks: [{ task: 't', tool: 'shell_execute', error: primaryError }],
+        failedTasks: [{ task: 't', tool: 'shell_execute', error: primaryError, file: 'src/App.tsx' }],
         suggestedNextAction: '', retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
         context: {}, createdAt: new Date().toISOString(),
     } as any;

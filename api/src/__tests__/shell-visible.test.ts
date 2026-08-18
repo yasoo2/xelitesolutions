@@ -115,13 +115,13 @@ describe('the terminal panel renders and preserves the agent stream', () => {
 
     test('terminal output is retained while its tab is unmounted and restored on return', () => {
         expect(socket).toContain("msgType === 'terminal_output'");
-        expect(socket).toContain('let terminalHistory');
-        expect(socket).toContain('getTerminalHistory()');
-        expect(ui).toContain('const history = SocketService.getTerminalHistory()');
+        expect(socket).toContain('terminalHistory:');
+        expect(socket).toMatch(/getTerminalHistory\(sessionId\?: string\)/);
+        expect(ui).toContain('const history = SocketService.getTerminalHistory(ownerSessionId)');
         expect(ui).toContain('--- Restored Joe execution output ---');
     });
 
     test('clearing the visible terminal clears its replay buffer as well', () => {
-        expect(ui).toContain('SocketService.clearTerminalHistory()');
+        expect(ui).toContain('SocketService.clearTerminalHistory(ownerSessionId)');
     });
 });

@@ -493,7 +493,16 @@ Return the complete file content now.`;
                         : validation.kind === 'syntax'
                             ? 'generated source failed the destination-extension syntax contract after bounded retry; nothing was written'
                             : 'generated content violated the destination artifact contract; nothing was written';
-                return { ok: false, error: validation.error, logs: [...logs, logMessage] };
+                return {
+                    ok: false,
+                    // The bounded syntax retry has already been spent. Keep the
+                    // rejected completion off disk, but let PhaseExecutor carry
+                    // the exact file evidence into the existing self-fix path
+                    // instead of stopping before downstream verification runs.
+                    ...(validation.kind === 'syntax' ? { recoverable: true } : {}),
+                    error: validation.error,
+                    logs: [...logs, logMessage],
+                };
             }
 
             // resolveToolPath keeps the write inside the workspace and throws on

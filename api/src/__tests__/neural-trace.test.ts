@@ -161,7 +161,7 @@ describe('the three defects behind the complaint are closed in the UI', () => {
         expect(ind).not.toMatch(/useState<string\[\]>\(\[\]\)/);
         expect(ind).toMatch(/SocketService\.subscribeThinkingSteps/);
         const socket = read('services', 'socket.ts');
-        expect(socket).toMatch(/function sealTrace\(\)/);
+        expect(socket).toMatch(/function sealTrace\(sessionId = ''\)/);
         expect(socket).toMatch(/saveTrace\(trace\)/);
         // Sealed on the way out of a run, before the live state is cleared.
         expect(socket).toMatch(/msgType === 'run_finished' \|\| msgType === 'text'/);
@@ -190,7 +190,7 @@ describe('the three defects behind the complaint are closed in the UI', () => {
         const block = socket.slice(at, at + 900);
         // The `if (quietMode) { … emitPhase('idle') }` guard is what left the
         // card on screen after the answer arrived.
-        expect(block).toMatch(/quietMode = false;\s*\n\s*thinkingStatus = '';\s*\n\s*emitPhase\('idle'\);/);
+        expect(block).toMatch(/runtime\.quietMode = false;\s*\n\s*runtime\.thinkingStatus = '';\s*\n\s*emitPhase\('idle'\);/);
     });
 });
 

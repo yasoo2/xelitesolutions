@@ -897,6 +897,8 @@ const ENGINE_COVERS: Record<AppEngine, RegExp> = {
     weather: /^(?:current\s+weather|temperature|feels\s+like|humidity|wind(?:\s+speed)?|weather\s+condition|sunrise|sunset|طقس(?:\s+الحالي)?|حرارة|رطوبة|رياح(?:\s+السرعة)?|شروق|غروب)$/i,
     social: /post|feed|timeline|like|comment|follow|profile|share|newsfeed|wall|منشور|منشورات|خيط|إعجاب|تعليق|متابع|ملف\s*شخصي|مشاركة/i,
     records: /list|record|crud|table|entry|entries|manage|track|inventory|booking|order|task|note|expense|customer|student|contact|report|search|filter|export|relation(ship)?s?|foreign\s*key|linked|belongs\s*to|قائمة|سجل|إدارة|تتبع|حجز|طلب|مهمة|ملاحظة|مصروف|عميل|طالب|تقرير|بحث|تصدير|علاقات?|ربط|جداول|مرتبط/i,
+    productivity: /task|todo|to-do|note|notes|checklist|habit|routine|productivity|مهمة|مهام|ملاحظة|ملاحظات|قائمة|عادات|إنتاجية/i,
+    finance: /finance|financial|budget|income|revenue|salary|earning|expense|spending|money|accounting|مالية|ميزانية|دخل|إيراد|راتب|مصاريف|إنفاق|مال|محاسبة/i,
     calculator: /calculator|calc|arithmetic|addition|subtraction|multiplication|division|decimal|percentage|percent|backspace|clear|sign\s*toggle|history|آلة\s*حاسبة|حاسبة|جمع|طرح|ضرب|قسمة|عشري|نسبة|حذف|مسح|إشارة|سجل\s*العمليات/i,
     // The shop covers the catalogue, the cart and the order — and deliberately
     // NOT payment gateways, shipping carriers or multi-vendor payouts, so a

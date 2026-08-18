@@ -19,7 +19,7 @@
  * Every failure path lands on the six domains, so a machine with no model, no
  * quota and no network builds exactly what it built yesterday.
  */
-import type { ModelEntity } from './data-model';
+import type { ModelEntity, ModelField } from './data-model';
 import { deriveDataModel } from './data-model';
 import { namedEntities } from './named-entities';
 import { declaredTables } from './declared-tables';

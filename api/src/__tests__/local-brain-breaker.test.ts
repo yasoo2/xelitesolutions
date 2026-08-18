@@ -86,11 +86,22 @@ describe('the local brain is paused, not hammered', () => {
     });
 
     it('decorative narration stops buying lines from the metered provider while it is paused', () => {
-        const { narrationEnabled } = require('../core/agents/narrator');
-        expect(narrationEnabled()).toBe(true);
-        noteLocalBrainTimeout(); noteLocalBrainTimeout();
-        expect(narrationEnabled()).toBe(false);
-        noteLocalBrainOk();
-        expect(narrationEnabled()).toBe(true);
+        const previousDisable = process.env.DISABLE_NARRATION;
+        const previousSwitch = process.env.JOE_NARRATION;
+        delete process.env.DISABLE_NARRATION;
+        delete process.env.JOE_NARRATION;
+        try {
+            const { narrationEnabled } = require('../core/agents/narrator');
+            expect(narrationEnabled()).toBe(true);
+            noteLocalBrainTimeout(); noteLocalBrainTimeout();
+            expect(narrationEnabled()).toBe(false);
+            noteLocalBrainOk();
+            expect(narrationEnabled()).toBe(true);
+        } finally {
+            if (previousDisable === undefined) delete process.env.DISABLE_NARRATION;
+            else process.env.DISABLE_NARRATION = previousDisable;
+            if (previousSwitch === undefined) delete process.env.JOE_NARRATION;
+            else process.env.JOE_NARRATION = previousSwitch;
+        }
     });
 });

@@ -57,7 +57,9 @@ describe('the orchestrator refuses to plan its way out of an outage', () => {
     });
 
     it('ends the run rather than injecting repair nodes', () => {
-        const block = SRC.slice(SRC.indexOf('saysNoBrain(result.error)'));
-        expect(block.slice(0, 400)).toMatch(/return \{ ok: false/);
+        const block = SRC.slice(SRC.indexOf('if (saysNoBrain(result.error)'));
+        // Engineering nodes may receive one bounded retry before this final return;
+        // the dead brain must still end the run rather than inject repair nodes.
+        expect(block).toMatch(/return \{ ok: false, result: result\.error/);
     });
 });

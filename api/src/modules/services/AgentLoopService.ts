@@ -554,6 +554,9 @@ export class AgentLoopService {
             // inherit the dead-brain fail-fast latch after a transient timeout.
             engineeringPipeline: true,
             purpose: 'internal',
+            projectRoot: projectContext.projectRoot,
+            projectRootRuntimeBound: projectContext.projectRootRuntimeBound,
+            projectName: projectContext.projectName,
             onProgress: voice,
             onThought: voice,
         };

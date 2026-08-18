@@ -109,7 +109,8 @@ describe('and the repair itself is honest', () => {
 
     it('audits shared /artifacts assets from the real artifact root', () => {
         const src = TOOL();
-        expect((src.match(/artifactRootDir:/g) || []).length).toBe(2);
+        expect((src.match(/artifactRootDir:\s*\{/g) || []).length).toBe(1);
+        expect((src.match(/artifactRootDir,/g) || []).length).toBe(2);
         expect(src).toContain("process.env.ARTIFACT_DIR || '/tmp/joe-artifacts'");
     });
 

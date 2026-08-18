@@ -242,6 +242,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId
             // check here as a second boundary for legacy/generic terminal ids.
             if (!ownerSessionId || String(msg?.sessionId || '').trim() !== ownerSessionId) return;
             const addressedHere = msg.id === activeTabId
+                || msg.id === 'joe-agent'
                 || (Array.isArray(msg.ids) && msg.ids.includes(activeTabId));
             if (msg.type === 'terminal_output' && addressedHere) {
                 termRef.current?.write(msg.data);

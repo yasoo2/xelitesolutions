@@ -168,6 +168,9 @@ export interface SelfFixExecutionInput {
     onProgress?: (message: string) => void;
     onThought?: (message: string) => void;
     modelConfig?: any;
+    projectRoot?: string;
+    projectRootRuntimeBound?: boolean;
+    projectName?: string;
   };
 }
 

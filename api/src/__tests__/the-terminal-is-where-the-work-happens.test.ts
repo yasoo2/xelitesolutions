@@ -210,7 +210,8 @@ describe('the terminal now has an opinion about the INTERFACE too', () => {
 describe('one name cannot mean two tables', () => {
     it('a declared table that IS the system\'s own table is not regenerated', () => {
         expect(API).toMatch(/const collided = designed\.filter\(\(e: any\) => e\.key === resource\)/);
-        expect(API).toMatch(/const model = designed\.filter\(\(e: any\) => e\.key !== resource\);/);
+        // The productivity blueprint chooses its own declared model, while every other domain still filters the built-in resource out.
+        expect(API).toMatch(/designed\.filter\(\(e: any\) => e\.key !== resource\)/);
     });
 
     it('…and Joe says so, instead of silently dropping a word he typed', () => {

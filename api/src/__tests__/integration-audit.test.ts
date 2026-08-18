@@ -367,14 +367,14 @@ describe('planner provider and requirements-boundary contracts', () => {
         expect(pipeline).toContain('deterministicRescueForDeadPlanner(productRequest)');
         expect(pipeline).toContain('deterministicPhasesFor(productRequest)');
         expect(pipeline).toContain('const rescue = deterministicRescueForDeadPlanner(productRequest) ? deterministicPhasesFor(productRequest) : null;');
-        expect(pipeline).toContain('&& deterministicRescueAllowed(productRequest))');
+        expect(pipeline).toContain('deterministicRescueAllowed(productRequest) || requiresConcreteUiBuilder');
         expect(pipeline).not.toContain('deterministicRescueForDeadPlanner(request)');
         expect(pipeline).not.toContain('&& deterministicRescueAllowed(request))');
         expect(pipeline).not.toContain('const rescue = deterministicPhasesFor(request);');
-        expect(pipeline).toContain('applyProjectQualityContractOutcome(liveArtifactRoot, productRequest, liveOutcome);');
-        expect(pipeline).toContain('applyScopeAuditOutcome(productRequest, liveArtifactRoot, qualityCheckedLiveOutcome);');
-        expect(pipeline).toContain('applyProjectQualityContractOutcome(artifactRoot, productRequest, scopeRetryLive);');
-        expect(pipeline).toContain('applyScopeAuditOutcome(productRequest, artifactRoot, qualityCheckedScopeRetry);');
+        expect(pipeline).toContain('applyProjectQualityContractOutcome(liveSourceRoot || liveRuntimeRoot, productRequest, liveOutcome);');
+        expect(pipeline).toContain('applyScopeAuditOutcome(productRequest, liveAuditRoots, qualityCheckedLiveOutcome);');
+        expect(pipeline).toContain('applyProjectQualityContractOutcome(artifactRoot || scopeRetryRuntimeRoot, productRequest, scopeRetryLive);');
+        expect(pipeline).toContain('applyScopeAuditOutcome(productRequest, scopeRetryAuditRoots, qualityCheckedScopeRetry);');
         expect(pipeline).toContain('`Original build request: ${productRequest.slice(0, 1200)}`,');
     });
 

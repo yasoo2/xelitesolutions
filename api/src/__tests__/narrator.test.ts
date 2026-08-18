@@ -149,6 +149,7 @@ describe('it can be switched off, because it costs a call per step', () => {
 
     it('is ON by default — the alternative that was shipping was a fake', () => {
         delete process.env.JOE_NARRATION;
+        delete process.env.DISABLE_NARRATION;
         expect(narrationEnabled()).toBe(true);
     });
 

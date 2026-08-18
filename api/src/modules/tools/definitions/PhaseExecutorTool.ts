@@ -736,6 +736,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             command?: string;
             cwd?: string;
             background?: boolean;
+            recoverable?: boolean;
         }> = [];
         let completedCount = 0;
 
@@ -1037,6 +1038,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                             tool: toolName,
                             ok: false,
                             error: errMsg,
+                            ...((toolResult as any)?.recoverable === true ? { recoverable: true } : {}),
                             ...(failedMessage ? { message: failedMessage.slice(0, 8000) } : {}),
                             ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
                                 ? { command: toolArgs.command.slice(0, 1000) }
@@ -1050,7 +1052,10 @@ export class PhaseExecutorTool implements ToolDefinition {
                             ...fileFailureEvidence(toolName, toolArgs),
                         });
 
-                        if (task.priority === 'high' || task.required === true) {
+                        const recoverableFailure = (toolResult as any)?.recoverable === true;
+                        if (recoverableFailure) {
+                            appendLog('[PhaseExecutor] ↪️ Recoverable task failure recorded; continuing so downstream verification and self-fix can use the exact evidence.');
+                        } else if (task.priority === 'high' || task.required === true) {
                             appendLog('[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...');
                             try {
                                 const retryResult = await executeTool(toolName, toolArgs, {
