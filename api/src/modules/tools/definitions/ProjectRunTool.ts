@@ -175,10 +175,10 @@ function devServerPortFlags(cwd: string, port: number): string {
     } catch { /* malformed package.json — fall through to the file probe */ }
 
     if (deps.vite || has('vite.config.js') || has('vite.config.ts')) {
-        return ` -- --port ${port} --strictPort --host 127.0.0.1`;
+        return ` -- --port ${port} --strictPort --host localhost`;
     }
     if (deps.next || has('next.config.js') || has('next.config.mjs')) {
-        return ` -- --port ${port} --hostname 127.0.0.1`;
+        return ` -- --port ${port} --hostname localhost`;
     }
     // Create React App, Parcel, Angular and plain `node` servers all read PORT
     // from the environment, which is already set.

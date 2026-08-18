@@ -122,6 +122,53 @@ describe('AutoTesterTool acceptance contract', () => {
         executeToolSpy.mockRestore();
     });
 
+    it('starts and cleans up a live project when a declared test fetches localhost', async () => {
+        fs.mkdirSync(path.join(workspaceRoot, 'scripts'), { recursive: true });
+        fs.writeFileSync(path.join(workspaceRoot, 'package.json'), JSON.stringify({
+            name: 'live-project',
+            scripts: { test: 'node --test scripts/smoke-test.test.mjs' },
+        }));
+        fs.writeFileSync(path.join(workspaceRoot, 'scripts', 'smoke-test.test.mjs'),
+            "await fetch('http://localhost:5173/');\n");
+
+        const tool = new AutoTesterTool();
+        expect((tool as any).liveTestPort(workspaceRoot, 'node --test scripts/smoke-test.test.mjs')).toBe(5173);
+
+        const executeToolSpy = jest.spyOn(ToolService, 'executeTool').mockResolvedValue({
+            ok: true,
+            output: { ready: true, url: 'http://localhost:5173/' },
+            logs: [],
+        } as any);
+
+        const result: any = await tool.execute({
+            testType: 'unit',
+            projectPath: '.',
+        }, { workspaceId: 'workspace-nexus-live' });
+
+        expect(result.ok).toBe(true);
+        expect(executeToolSpy).toHaveBeenNthCalledWith(
+            1,
+            'project_run',
+            { cwd: workspaceRoot, port: 5173 },
+            expect.objectContaining({ workspaceId: 'workspace-nexus-live' }),
+        );
+        expect(executeToolSpy).toHaveBeenNthCalledWith(
+            2,
+            'shell_execute',
+            { command: 'npm run test', cwd: workspaceRoot },
+            expect.objectContaining({ workspaceId: 'workspace-nexus-live' }),
+        );
+        expect(executeToolSpy).toHaveBeenNthCalledWith(
+            3,
+            'project_stop',
+            {},
+            expect.objectContaining({ workspaceId: 'workspace-nexus-live' }),
+        );
+        expect(result.logs.join('\\n')).toContain('Detected one local test endpoint');
+        expect(result.logs.join('\\n')).toContain('Stopped the project started for the live test.');
+        executeToolSpy.mockRestore();
+    });
+
     it('fails unit verification honestly when the selected project declares no test script', async () => {
         fs.writeFileSync(path.join(workspaceRoot, 'package.json'), JSON.stringify({ name: 'empty-project', scripts: {} }));
 

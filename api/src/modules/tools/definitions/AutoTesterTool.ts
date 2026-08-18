@@ -269,16 +269,73 @@ export class AutoTesterTool implements ToolDefinition {
         }
     }
 
+    /**
+     * A test that fetches localhost is an integration/smoke check even when a
+     * generated package labels it `test`. Running it with only `npm run test`
+     * produces a misleading ECONNREFUSED failure: the artifact may be valid,
+     * but Joe never started the program the test is meant to observe.
+     *
+     * Discover exactly one local port from the declared script and its direct
+     * test files. Multiple endpoints are deliberately not guessed; those need
+     * an explicit orchestration contract rather than a hidden second server.
+     */
+    private liveTestPort(projectPath: string, script: string): number | null {
+        let declaredCommand = String(script || '');
+        try {
+            const manifest = JSON.parse(fs.readFileSync(path.join(projectPath, 'package.json'), 'utf8')) || {};
+            const candidate = manifest?.scripts?.[String(script || '')];
+            if (typeof candidate === 'string' && candidate.trim()) declaredCommand = candidate.trim();
+        } catch { /* the script name remains the only available evidence */ }
+        const sources = [String(script || ''), declaredCommand];
+        const filePattern = /([A-Za-z0-9_./\-]+\.(?:mjs|cjs|js|ts|tsx|jsx))\b/giu;
+        for (const match of declaredCommand.matchAll(filePattern)) {
+            const candidate = path.resolve(projectPath, match[1]);
+            const relative = path.relative(projectPath, candidate);
+            if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || !fs.existsSync(candidate)) continue;
+            try { sources.push(fs.readFileSync(candidate, 'utf8')); } catch { /* the command remains evidence */ }
+        }
+        const ports = new Set<number>();
+        const urlPattern = /https?:\/\/(?:localhost|127\.0\.0\.1|\[?::1\]?)(?::(\d+))/giu;
+        for (const source of sources) {
+            for (const match of source.matchAll(urlPattern)) {
+                const port = Number(match[1]);
+                if (Number.isInteger(port) && port > 0 && port < 65536) ports.add(port);
+            }
+        }
+        return ports.size === 1 ? [...ports][0] : null;
+    }
+
     private async runDeclaredScript(projectPath: string, script: string, kind: string, logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
         logs.push(`Executing declared ${kind} script "${script}"...`);
-        const result = await executeTool('shell_execute', { command: `npm run ${script}`, cwd: projectPath }, ctx);
-        return result.ok
-            ? {
-                ok: true,
-                output: { passed: true, errors: [], summary: `${kind} check passed (${script})` },
-                logs
+        const livePort = this.liveTestPort(projectPath, script);
+        let startedForTest = false;
+        if (livePort) {
+            logs.push(`Detected one local test endpoint; starting the project on port ${livePort} before ${kind}.`);
+            const run = await executeTool('project_run', { cwd: projectPath, port: livePort }, ctx);
+            if (!run.ok) {
+                const error = String((run as any).error || (run as any).output?.message || 'Project could not be started for live test');
+                logs.push(`Live test launcher failed: ${error}`);
+                return this.failure(error, logs, kind);
             }
-            : this.failure(String((result as any).error || (result as any).output || `${kind} check failed`), logs, kind);
+            startedForTest = true;
+        }
+
+        try {
+            const result = await executeTool('shell_execute', { command: `npm run ${script}`, cwd: projectPath }, ctx);
+            return result.ok
+                ? {
+                    ok: true,
+                    output: { passed: true, errors: [], summary: `${kind} check passed (${script})` },
+                    logs
+                }
+                : this.failure(String((result as any).error || (result as any).output || `${kind} check failed`), logs, kind);
+        } finally {
+            if (startedForTest) {
+                const stopped = await executeTool('project_stop', {}, ctx);
+                if (!stopped.ok) logs.push(`Live test cleanup warning: ${String((stopped as any).error || 'project_stop failed')}`);
+                else logs.push('Stopped the project started for the live test.');
+            }
+        }
     }
 
     private async runBuild(projectPath: string, logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
