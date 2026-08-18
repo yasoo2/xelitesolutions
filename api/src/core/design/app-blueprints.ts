@@ -839,7 +839,9 @@ export function requestedFeatures(requestRaw: string): string[] {
     const out: string[] = [];
     const push = (raw: string) => {
         const s = raw.trim()
-            .replace(/^[-•*–—\d.)\s]+/, '')
+            // Remove only the list marker. Digits are meaningful feature
+            // content (`7-day`, `24-hour`) and must never be stripped.
+            .replace(/^(?:[-•*–—]\s+|\d+[.)]\s+)/, '')
             .replace(/[.,;:؛،]+$/, '')
             .trim();
         if (s.length < 3 || s.length > 60) return;
@@ -888,7 +890,11 @@ export function requestedFeatures(requestRaw: string): string[] {
 const ENGINE_COVERS: Record<AppEngine, RegExp> = {
     map: /map|navigation|direction|route|distance|place|location|geo|gps|خريطة|خرائط|مسار|ملاحة|موقع|مسافة/i,
     chat: /chat|messag|room|conversation|dm\b|inbox|محادث|رسائل|دردش|غرف/i,
-    weather: /weather|forecast|temperature|humidity|wind|طقس|توقّع|توقع|حرارة/i,
+    // Weather is deliberately conservative here. A bare word such as
+    // «forecast» cannot prove a seven-day or hourly forecast; those compound
+    // capabilities are checked by WEATHER_FEATURE_RULES against real source
+    // evidence below.
+    weather: /^(?:current\s+weather|temperature|feels\s+like|humidity|wind(?:\s+speed)?|weather\s+condition|sunrise|sunset|طقس(?:\s+الحالي)?|حرارة|رطوبة|رياح(?:\s+السرعة)?|شروق|غروب)$/i,
     social: /post|feed|timeline|like|comment|follow|profile|share|newsfeed|wall|منشور|منشورات|خيط|إعجاب|تعليق|متابع|ملف\s*شخصي|مشاركة/i,
     records: /list|record|crud|table|entry|entries|manage|track|inventory|booking|order|task|note|expense|customer|student|contact|report|search|filter|export|relation(ship)?s?|foreign\s*key|linked|belongs\s*to|قائمة|سجل|إدارة|تتبع|حجز|طلب|مهمة|ملاحظة|مصروف|عميل|طالب|تقرير|بحث|تصدير|علاقات?|ربط|جداول|مرتبط/i,
     calculator: /calculator|calc|arithmetic|addition|subtraction|multiplication|division|decimal|percentage|percent|backspace|clear|sign\s*toggle|history|آلة\s*حاسبة|حاسبة|جمع|طرح|ضرب|قسمة|عشري|نسبة|حذف|مسح|إشارة|سجل\s*العمليات/i,
@@ -902,15 +908,52 @@ const ENGINE_COVERS: Record<AppEngine, RegExp> = {
 const BACKEND_COVERS = /login|sign\s*in|account|auth|password|database|db\b|api\b|rest\b|server|storage|persist|order|تسجيل\s*دخول|حساب|قاعدة\s*بيانات|خادم|واجهة\s*برمجية|طلبات/i;
 
 /**
- * The features the delivery does NOT cover — named exactly as the user wrote
- * them. An empty list means everything asked for is in the build.
+ * A compound weather capability is covered only by independent source evidence.
+ * Matching the word «forecast» in a request is not evidence of hourly or daily
+ * data, and matching «weather» is not evidence of search, persistence, units,
+ * or negative states. The evidence is the generated production source, not the
+ * template name or a prose claim.
  */
-export function uncoveredFeatures(request: string, engine: AppEngine | null, hasBackend: boolean): string[] {
+const WEATHER_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
+    { asked: /7[-\s]?day.*forecast|daily.*forecast|forecast.*7[-\s]?day/i, evidence: /daily\s*:\s*['\"`]|dailyForecast|forecastDays|7[-\s]?day/i },
+    { asked: /hourly.*forecast|forecast.*hourly|24[-\s]?hour/i, evidence: /hourly\s*:\s*['\"`]|hourlyForecast|24[-\s]?hour/i },
+    { asked: /search\s+by\s+city|city\s+search|بحث\s+(?:عن|بالـ?)?\s*المدن?/i, evidence: /geocoding-api\.open-meteo|searchCity|citySearch|search.*city/i },
+    { asked: /current\s+location|geolocation|موقع(?:ي|ك)?\s+الحالي/i, evidence: /navigator\.geolocation|currentLocation|getCurrentPosition/i },
+    { asked: /favorite\s+cities|saved\s+cities|المدن\s+المفضلة/i, evidence: /favoriteCities|savedCities|favo[u]?rites?|toggleFavorite/i },
+    { asked: /feels\s+like/i, evidence: /apparent_temperature|feelsLike|feels-like/i },
+    { asked: /wind\s+speed/i, evidence: /wind_speed|windSpeed/i },
+    { asked: /weather\s+condition/i, evidence: /weather_code|weatherCondition|condition/i },
+    { asked: /sunrise/i, evidence: /sunrise/i },
+    { asked: /sunset/i, evidence: /sunset/i },
+    { asked: /loading/i, evidence: /loading|isLoading|setLoading/i },
+    { asked: /api\s+errors?|network\s+failures?|invalid\s+cities?|missing\s+api\s+configuration/i, evidence: /catch|error|failed|invalid|not\s+found|configuration/i },
+    { asked: /celsius|fahrenheit|temperature\s+units?/i, evidence: /celsius|fahrenheit|temperatureUnit|unit|°[CF]/i },
+    { asked: /light\s+mode|dark\s+mode/i, evidence: /dark|light|theme/i },
+    { asked: /responsive\s+mobile\s+ui/i, evidence: /@media|responsive|mobile/i },
+    { asked: /weather\s+icons?/i, evidence: /weather.*icon|icon.*weather|weather_code/i },
+    { asked: /smooth\s+transitions?/i, evidence: /transition/i },
+];
+
+function weatherFeatureCovered(feature: string, evidence: string): boolean {
+    const rule = WEATHER_FEATURE_RULES.find(r => r.asked.test(feature));
+    if (rule) return !!evidence && rule.evidence.test(evidence);
+    return ENGINE_COVERS.weather.test(feature);
+}
+
+/**
+ * The features the delivery does NOT cover — named exactly as the user wrote
+ * them. An empty list means everything asked for is in the build. `evidence`
+ * is optional for callers that only want a conservative request-level check;
+ * the React delivery path passes the generated source so compound features are
+ * judged by implementation evidence rather than by a stock engine keyword.
+ */
+export function uncoveredFeatures(request: string, engine: AppEngine | null, hasBackend: boolean, evidence = ''): string[] {
     const asked = requestedFeatures(request);
     if (!asked.length) return [];
     const covers = engine ? ENGINE_COVERS[engine] : null;
     return asked.filter(f => {
-        if (covers && covers.test(f)) return false;
+        if (engine === 'weather' && weatherFeatureCovered(f, evidence)) return false;
+        if (engine !== 'weather' && covers && covers.test(f)) return false;
         if (hasBackend && BACKEND_COVERS.test(f)) return false;
         return true;
     });

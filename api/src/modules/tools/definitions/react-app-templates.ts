@@ -12,10 +12,11 @@
  * (Leaflet + OpenStreetMap for a map, open-meteo for weather, the session's
  * own Joe API for anything that owns rows).
  *
- * Every template is hand-written and parameterized — the same discipline the
- * page builder uses. A weak model is never asked to write JSX that must
- * compile; the blueprint decides the schema, these templates decide the
- * program, and `vite build` proves it.
+ * The shell and low-level primitives are hand-written and parameterized — the
+ * same discipline the page builder uses. They are scaffolding, not a substitute
+ * for domain reasoning: a request-driven engine may be omitted here and authored
+ * by Joe's AI file writer from the user's evidence, then `vite build` proves the
+ * resulting program.
  */
 import type { AppBlueprint } from '../../../core/design/app-blueprints';
 import { ROLES } from '../../../core/design/roles';
@@ -43,6 +44,8 @@ export interface AppBuildOptions {
      * single line of the admin screen is generated.
      */
     model?: Array<{ key: string; ar: string; en: string; fields: any[]; belongsTo?: { entity: string; key: string } | null }>;
+    /** Relative engine file to be authored from the user's request by Joe's AI writer. */
+    generatedEnginePath?: string;
 }
 
 /* ── content.js — the app's own shape, nothing borrowed from a brochure ──── */
@@ -3339,6 +3342,10 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         finance: ['src/components/FinanceApp.jsx', fileFinanceAppJsx(o.isArabic)],
     };
     const [enginePath, engineSrc] = engineFile[bp.engine];
+    const generatedEnginePath = String(o.generatedEnginePath || '').trim();
+    const engineEntry = generatedEnginePath
+        ? {}
+        : { [enginePath]: engineSrc };
     return {
         'package.json': fileAppPackageJson(slugName, bp),
         'index.html': fileAppIndexHtml(bp, o),
@@ -3348,7 +3355,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         'src/content.js': fileAppContentJs(bp, o),
         'src/app/store.js': fileAppStoreJs(),
         'scripts/smoke-test.test.mjs': fileAppSmokeTest(),
-        [enginePath]: engineSrc,
+        ...engineEntry,
         ...(o.model && o.model.length ? { 'src/components/TablesAdmin.jsx': fileTablesAdminJsx(o.model, o.isArabic) } : {}),
         // The accounts screen ships whenever there IS a server to have accounts
         // on; it renders for the owner only, and returns null for everybody else.

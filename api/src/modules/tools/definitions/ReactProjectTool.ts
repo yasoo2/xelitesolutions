@@ -2731,6 +2731,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 storeKey: `${slug(content.brand)}-${runBp.kind}`,
                 brandColor: (palette as any).primary,
                 model: adminModel,
+                // Domain code must be authored from the request, not copied from
+                // a stock WeatherApp. The writer below will fill this exact path.
+                generatedEnginePath: runBp.kind === 'weather' ? 'src/components/WeatherApp.jsx' : undefined,
             }, slug(content.brand));
             for (const [rel, body] of Object.entries(appFiles)) files[rel] = body;
             /**
@@ -2814,6 +2817,54 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     data: { file: rel, chunk: body, done: true, bytes: Buffer.byteLength(body), at: Date.now(), label: 'مكتوب' },
                 } as any);
             } catch { /* UI optional — the file is already on disk */ }
+        }
+
+        /**
+         * DOMAIN CODE IS AUTHORED, NOT EATEN FROM A STOCK TEMPLATE.
+         *
+         * The scaffold supplies the shell, tokens, store helpers and manifest;
+         * the requested application behaviour is written by Joe's own AI file
+         * author from the user's specification. A missing or failed generation
+         * is a hard build failure — never silently fall back to a WeatherApp
+         * copied from this repository.
+         */
+        const generatedEnginePath = appBp && runBp.kind === 'weather'
+            ? 'src/components/WeatherApp.jsx' : '';
+        if (generatedEnginePath) {
+            term(`ai_write_file: authoring ${generatedEnginePath} from the user's requirements`);
+            try {
+                const { AIGeneratorTool } = require('./AIGeneratorTool');
+                const author = new AIGeneratorTool();
+                const generated = await author.execute({
+                    path: path.join(proj, generatedEnginePath),
+                    description: `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named WeatherApp accepting exactly one optional prop: { content }.\n- Implement the requested weather product, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Include loading, empty, network, invalid-city, and API-error states.\n- Implement persistence with localStorage for favourites and settings, and restore it after reload.\n- Keep hourly and daily forecast data distinct; do not claim a 7-day or 24-hour view unless the rendered data comes from the corresponding API response.\n- Use only React, browser APIs, and modules already present in the generated project. Do not add packages or imports that are absent from package.json.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.`,
+                    language: isAr ? 'ar' : 'en',
+                    aestheticMode: 'Use the existing app.css and design tokens. Prioritize a clear, responsive, accessible application surface over decorative effects.',
+                    context: `buildContext: projectRoot=${proj}; generated files include src/App.jsx, src/content.js, src/app/store.js, src/styles/app.css, and package.json. The importing shell renders <WeatherApp content={content} />. The destination is ${generatedEnginePath}. Inspect the existing files and preserve their actual contracts.`,
+                }, {
+                    ...context,
+                    projectRoot: proj,
+                    workspaceId: context?.workspaceId,
+                });
+                if (!generated?.ok || !fs.existsSync(path.join(proj, generatedEnginePath))) {
+                    const reason = String(generated?.error || 'ai_write_file did not produce the requested domain file');
+                    term(`domain generation: BLOCKED — ${reason}`);
+                    return { ok: false, error: 'domain_generation_failed', logs };
+                }
+                const authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
+                if (!authored.trim() || !/export\s+default\s+function\s+WeatherApp|export\s+default\s+WeatherApp/.test(authored)) {
+                    term('domain generation: BLOCKED — generated file has no valid WeatherApp default export');
+                    return { ok: false, error: 'domain_generation_invalid', logs };
+                }
+                files[generatedEnginePath] = authored;
+                try {
+                    broadcast({ type: 'file_stream', sessionId, data: { file: generatedEnginePath, chunk: authored, done: true, bytes: Buffer.byteLength(authored), at: Date.now(), label: 'مؤلّف بالطلب' } } as any);
+                } catch { /* UI optional — the file is already on disk */ }
+                term(`domain generation: authored ${generatedEnginePath} from the request and validated its export`);
+            } catch (error: any) {
+                term(`domain generation: BLOCKED — ${String(error?.message || error)}`);
+                return { ok: false, error: 'domain_generation_failed', logs };
+            }
         }
         // The REAL font files travel WITH the app (public/fonts + OFL
         // notice) — a declared family that ships no file is a costume, not
@@ -3557,8 +3608,14 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // and reported verbatim; the table stays as a second source for the
         // technology stack, which is rarely written as a bullet list.
         const { uncoveredFeatures } = require('../../../core/design/app-blueprints');
+        const projectEvidence = (() => {
+            try {
+                const { readProjectSource } = require('../../../core/quality/scope-audit');
+                return readProjectSource([proj]);
+            } catch { return ''; }
+        })();
         const askedButMissing: string[] = appBp
-            ? uncoveredFeatures(request, appBp.engine, !!apiLink)
+            ? uncoveredFeatures(request, appBp.engine, !!apiLink, projectEvidence)
             : [];
         /**
          * AND THE CAPABILITIES HE NAMED IN PROSE.
@@ -3677,7 +3734,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // evidence is therefore a delivery blocker, just like a surviving error.
         const requestedVisualAudit = /(?:\b(?:browser|visual|preview|inspect|audit)\b|متصفح|معاينة|مرئي|بصري|دقّق|دقق|تدقيق)/i.test(request);
         const visualAuditUnavailable = requestedVisualAudit && (!audit || !!audit.skipped);
-        const deliveryBlocked = blockers.length > 0 || visualAuditUnavailable;
+        const qualityDeliveryBlocked = blockers.length > 0 || visualAuditUnavailable;
         if (blockers.length) {
             // The artefact exists, but its final acceptance is rejected. Say both
             // facts explicitly so a terminal transcript cannot turn a blocked
@@ -3819,9 +3876,8 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          * evidence of each one in what really exists — files on disk, the
          * build flag, a live server, the browser audit, the generated source —
          * and publishes the ledger. `accepted` is false while a single one is
-         * unmet, and the unmet ones are named. The tool still returns ok:true
-         * because the files were really written; what it no longer does is let
-         * «I wrote files» stand in for «I did what you asked».
+         * unmet, and the unmet ones are named. That verdict is part of delivery:
+         * writing files is not evidence that the requested system was completed.
          */
         const { acceptanceFor, judgeAcceptance, acceptanceBlock } = require('../../../core/quality/acceptance');
         const acceptance = judgeAcceptance(acceptanceFor(request), {
@@ -3835,6 +3891,17 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 + (acceptance.unmet ? ` — unmet: ${acceptance.criteria.filter((c: any) => c.verdict === 'unmet').map((c: any) => c.id).join(', ')}` : ''));
         }
         const acceptBlock = acceptance.criteria.length ? `${acceptanceBlock(acceptance, isAr)}\n` : '';
+        const acceptanceBlocked = acceptance.criteria.length > 0 && !acceptance.accepted;
+        // A named request is a contract, not commentary. Do not report a green
+        // delivery when the engine has no evidence for one of the requested
+        // capabilities or when the acceptance ledger contains an unmet item.
+        const deliveryBlocked = qualityDeliveryBlocked || askedButMissing.length > 0 || acceptanceBlocked;
+        if (askedButMissing.length) {
+            term(`delivery: BLOCKED — requested capabilities not proven: ${askedButMissing.join(', ')}`);
+        }
+        if (acceptanceBlocked) {
+            term(`delivery: BLOCKED — acceptance ledger is not accepted (${acceptance.unmet} unmet)`);
+        }
 
         const shellBlock = (() => {
             const line = transcriptLine(shell.transcript(), isAr);
@@ -3893,7 +3960,13 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
         return {
             ok: !deliveryBlocked,
             error: deliveryBlocked
-                ? (visualAuditUnavailable ? 'required_visual_audit_not_completed' : 'react_delivery_quality_gate_failed')
+                ? (visualAuditUnavailable
+                    ? 'required_visual_audit_not_completed'
+                    : askedButMissing.length
+                        ? 'requested_features_not_proven'
+                        : acceptanceBlocked
+                            ? 'acceptance_criteria_unmet'
+                            : 'react_delivery_quality_gate_failed')
                 : undefined,
             output: { message, acceptance,
                 path: proj,
@@ -3921,6 +3994,9 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                 delivery: {
                     accepted: !deliveryBlocked,
                     blockers: blockers.map((f: any) => f.id),
+                    askedButMissing,
+                    acceptanceBlocked,
+                    acceptanceUnmet: acceptance.criteria.filter((c: any) => c.verdict !== 'met').map((c: any) => c.id),
                     requestedVisualAudit,
                     visualAuditUnavailable,
                 },

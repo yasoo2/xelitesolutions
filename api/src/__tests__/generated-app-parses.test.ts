@@ -13,7 +13,7 @@
  */
 import { buildAppFiles } from '../modules/tools/definitions/react-app-templates';
 import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
-import { blueprintFor, type AppKind } from '../core/design/app-blueprints';
+import { blueprintFor, uncoveredFeatures, type AppKind } from '../core/design/app-blueprints';
 import { normalizeReactScaffoldStructure } from '../modules/tools/definitions/SystemTools';
 
 const KINDS: AppKind[] = ['store', 'booking', 'tasks', 'social', 'chat', 'maps', 'weather', 'crm', 'inventory', 'calculator', 'productivity'];
@@ -33,6 +33,21 @@ describe('the generated application is syntactically real', () => {
                 expect(`${tag}: ${gate.ok ? 'ok' : gate.error}`).toBe(`${tag}: ok`);
             }
         }
+    });
+
+    it('request-driven domain generation never receives the stock WeatherApp file', () => {
+        const generated = buildAppFiles(
+            blueprintFor('weather', 'WeatherGo', false),
+            {
+                isArabic: false,
+                brand: 'WeatherGo',
+                storeKey: 'weathergo',
+                generatedEnginePath: 'src/components/WeatherApp.jsx',
+            } as any,
+            'weathergo',
+        );
+        expect(generated['src/components/WeatherApp.jsx']).toBeUndefined();
+        expect(generated['src/App.jsx']).toContain("import WeatherApp from './components/WeatherApp.jsx'");
     });
 
     it('every generated React app declares a real build/test contract and smoke test', () => {
@@ -71,6 +86,17 @@ describe('the generated application is syntactically real', () => {
         });
         expect(result.changed).toBe(false);
         expect(result.structure['index.html']).toBeUndefined();
+    });
+
+    it('weather compound forecasts require independent evidence, not the word forecast alone', () => {
+        const request = `WeatherGo\nFeatures:\n- 7-day forecast\n- Hourly forecast`;
+        const conservativeGap = uncoveredFeatures(request, 'weather', false);
+        expect(conservativeGap).toEqual(expect.arrayContaining(['7-day forecast', 'Hourly forecast']));
+
+        const source = filesFor('weather', false)['src/components/WeatherApp.jsx'];
+        const provenGap = uncoveredFeatures(request, 'weather', false, source);
+        expect(provenGap).not.toContain('7-day forecast');
+        expect(provenGap).not.toContain('Hourly forecast');
     });
 
     it('weather includes the real forecast contract and negative-state surfaces', () => {
