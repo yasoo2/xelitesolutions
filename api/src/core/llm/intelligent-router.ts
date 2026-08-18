@@ -861,7 +861,24 @@ export function retryAfterMsFrom(message: string): number | null {
  * the full mesh again. Any success clears it immediately.
  */
 let lastTotalFailureAt = 0;
+// A provider outage in one execution must not poison a fresh chat/run. The
+// legacy scalar remains for the unscoped compatibility path and observability;
+// real requests use a run/trace/session-scoped latch.
+const failureLatchByScope = new Map<string, number>();
 const DEAD_BRAIN_LATCH_MS = Math.max(0, parseInt(String(process.env.DEAD_BRAIN_LATCH_MS || '').trim(), 10) || 45_000);
+const ENGINEERING_KEYLESS_DEFAULT_TIMEOUT_MS = 90_000;
+
+function failureLatchScope(context: any): string {
+    const runId = String(context?.runId || context?.traceId || '').trim();
+    if (runId) return `run:${runId}`;
+    const sessionId = String(context?.sessionId || '').trim();
+    return sessionId ? `session:${sessionId}` : 'global';
+}
+
+function releaseFailureLatch(scope: string): void {
+    failureLatchByScope.delete(scope);
+    lastTotalFailureAt = 0;
+}
 
 /**
  * Decide whether a call may reopen the mesh while the dead-brain latch is live.
@@ -1199,6 +1216,7 @@ export async function routeToModel(
     const internalCall = String((context as any)?.purpose || '') === 'internal';
     const engineeringPipeline = (context as any)?.engineeringPipeline === true;
     const deadBrainRecoveryAttempted = (context as any)?.deadBrainRecoveryAttempted === true;
+    const latchScope = failureLatchScope(context);
     // Provider preflight is a health probe, not a real engineering turn. It must
     // never be satisfied by a cached answer, and a slow local CPU model must not
     // consume the whole mesh deadline before keyless/cloud fallback gets a chance.
@@ -1775,7 +1793,9 @@ export async function routeToModel(
         meshProviders.push({
             name: 'Pollinations (Backup)',
             run: async () => {
-                const res = await pollinationsProvider.chatComplete(flatMessages, 'openai', 3, tools);
+                // Pollinations is a last-resort proxy. One bounded attempt is
+                // enough; the next route call owns any retry decision.
+                const res = await pollinationsProvider.chatComplete(flatMessages, 'openai', 0, tools);
                 if (!isUsableAnswer(res)) throw new Error('Pollinations answered with nothing usable');
                 return res;
             }
@@ -1792,7 +1812,13 @@ export async function routeToModel(
     // that evidence open one fresh mesh walk; do not let an old global latch turn a
     // recoverable Phase 2 timeout into an automatic run termination.
     const now = Date.now();
-    const latchAgeMs = lastTotalFailureAt ? now - lastTotalFailureAt : Number.POSITIVE_INFINITY;
+    const scopedLastTotalFailureAt = failureLatchByScope.get(latchScope)
+        ?? (latchScope === 'global' ? lastTotalFailureAt : 0);
+    const latchAgeMs = scopedLastTotalFailureAt ? now - scopedLastTotalFailureAt : Number.POSITIVE_INFINITY;
+    if (scopedLastTotalFailureAt && latchAgeMs >= DEAD_BRAIN_LATCH_MS) {
+        failureLatchByScope.delete(latchScope);
+        lastTotalFailureAt = 0;
+    }
     const healthyRecoveryEvidence = internalCall
         && recentlyHealthyRetryCandidates(meshProviders).some((provider) => !isProviderRateLimited(provider.name));
     const engineeringRecoveryPermit = internalCall
@@ -1800,7 +1826,7 @@ export async function routeToModel(
         && !deadBrainRecoveryAttempted;
     const internalRecoveryEvidence = healthyRecoveryEvidence || engineeringRecoveryPermit;
     if (!canAttemptAfterDeadBrainLatch(
-        lastTotalFailureAt,
+        scopedLastTotalFailureAt,
         now,
         DEAD_BRAIN_LATCH_MS,
         internalCall,
@@ -1812,7 +1838,7 @@ export async function routeToModel(
             + "الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، "
             + "أو تحقّق من اتصال الإنترنت. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)";
     }
-    if (lastTotalFailureAt && latchAgeMs < DEAD_BRAIN_LATCH_MS && internalRecoveryEvidence) {
+    if (scopedLastTotalFailureAt && latchAgeMs < DEAD_BRAIN_LATCH_MS && internalRecoveryEvidence) {
         const permitKind = healthyRecoveryEvidence ? 'recent provider success' : 'engineering recovery permit';
         console.warn(`[IntelligentRouter] 🩺 Internal recovery evidence (${permitKind}) found after total failure (${Math.round(Math.max(0, latchAgeMs) / 1000)}s ago) — opening one fresh mesh walk.`);
         if (engineeringPipeline && engineeringRecoveryPermit && context) {
@@ -1821,7 +1847,7 @@ export async function routeToModel(
             // session must retain its own independent budget.
             context.deadBrainRecoveryAttempted = true;
         }
-        lastTotalFailureAt = 0;
+        releaseFailureLatch(latchScope);
     }
 
     // 1. Try Selected Model First (Happy Path)
@@ -1838,7 +1864,7 @@ export async function routeToModel(
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
             const rawAns = await Promise.race([callGroq(selectedModel.model, effectiveMessages, onPartial, tools), timeoutPromise]) as string;
             const ans = cleanOutput(rawAns);
-            lastTotalFailureAt = 0; // the brain is alive — release the latch
+            releaseFailureLatch(latchScope); // the brain is alive — release the scoped latch
             markProviderOk('Groq (Free)'); // it worked — clear any cooldown
             if (!cacheDisabled && !hasSensitive && ans && ans.length > 20) {
                 await LLMCacheTool.saveToCache(cacheKeyPayload, ans, selectedModel.model);
@@ -2030,10 +2056,16 @@ export async function routeToModel(
                 const keylessDefault = taskAnalysis?.complexity === 'high' || taskAnalysis?.complexity === 'extreme'
                     ? 25_000
                     : 18_000;
-                timeoutValue = effectiveKeylessTimeoutMs(requestedTimeout, taskAnalysis?.complexity, keylessDefault);
+                timeoutValue = effectiveKeylessTimeoutMs(
+                    requestedTimeout,
+                    taskAnalysis?.complexity,
+                    engineeringPipeline ? ENGINEERING_KEYLESS_DEFAULT_TIMEOUT_MS : keylessDefault,
+                );
             }
             if (p.name === 'Pollinations (Backup)' || p.name === 'DeepSeek (Pollinations)') {
-                timeoutValue = 6000;
+                // Pollinations is a last-resort proxy and must not hold the
+                // engineering chain while its upstream quota is exhausted.
+                timeoutValue = 4000;
             }
 
             lastTimeoutUsed = timeoutValue;
@@ -2060,7 +2092,7 @@ export async function routeToModel(
 
             if (isUsableAnswer(ans)) {
                 console.info(`[IntelligentRouter] ✅ Success via ${p.name} `);
-                lastTotalFailureAt = 0; // the brain is alive — release the latch
+                releaseFailureLatch(latchScope); // the brain is alive — release the scoped latch
                 markProviderOk(p.name); // clear any prior cooldown — it works again
                 if (p.name === 'Local (Auto)') noteLocalBrainOk();
                 if (!cacheDisabled && !hasSensitive && ans.length > 20) {
@@ -2166,7 +2198,7 @@ export async function routeToModel(
                         const retryAnswer = cleanOutput(retryRaw);
                         if (!isUsableAnswer(retryAnswer)) throw new Error('TRANSIENT_RETRY_EMPTY');
                         console.info(`[IntelligentRouter] ✅ Transient recovery via ${provider.name}.`);
-                        lastTotalFailureAt = 0;
+                        releaseFailureLatch(latchScope);
                         markProviderOk(provider.name);
                         if (provider.name === 'Local (Auto)') noteLocalBrainOk();
                         return retryAnswer;
@@ -2222,7 +2254,9 @@ export async function routeToModel(
     // the words "افتح/اكتب" in a dead-brain prompt into real browser_run and
     // write_file commands — that is how a browser once opened out of nowhere.)
     console.error(`[IntelligentRouter] CRITICAL: All LLM providers failed. Returning honest error.`);
-    lastTotalFailureAt = Date.now(); // latch: the next calls answer instantly for a while
+    const failureAt = Date.now();
+    failureLatchByScope.set(latchScope, failureAt);
+    lastTotalFailureAt = Date.now(); // compatibility marker and legacy observability; scoped reads use the map
     if (localStrict) {
         return PROVIDER_FAILURE_PREFIX + ` (الوضع المحلي الصارم — لم يستجب المحرّك المحلي${lastError ? `: ${String(lastError).slice(0, 160)}` : ''}). `
             + "شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة.";

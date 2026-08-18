@@ -20,9 +20,9 @@ export class PollinationsProvider {
         });
     }
 
-    async chatComplete(messages: any[], model: string = 'openai', retries: number = 3, tools?: any[]): Promise<string> {
+    async chatComplete(messages: any[], model: string = 'openai', retries: number = 0, tools?: any[]): Promise<string> {
         const run = async () => {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 250));
             return this.executeChat(messages, model, retries, tools);
         };
 
@@ -53,7 +53,9 @@ export class PollinationsProvider {
                 body.tool_choice = 'auto';
             }
 
-            const completion = await this.client.chat.completions.create(body, { timeout: 30000 }); // 30s timeout
+            // This is a last-resort anonymous proxy. Keep the upstream request
+            // short so one exhausted queue cannot outlive the router fallback.
+            const completion = await this.client.chat.completions.create(body, { timeout: 5000 }); // bounded proxy timeout
 
             const response = completion.choices[0]?.message?.content || '';
             const toolCalls = completion.choices[0]?.message?.tool_calls;

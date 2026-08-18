@@ -45,7 +45,7 @@ export class DeepSeekProvider {
                 role: m.role,
                 content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
             }));
-            return await pollinationsProvider.chatComplete(pollinationsMsgs, 'openai', 3, tools);
+            return await pollinationsProvider.chatComplete(pollinationsMsgs, 'openai', 0, tools);
         }
 
         try {
@@ -86,7 +86,7 @@ export class DeepSeekProvider {
             } else {
                 console.warn('[DeepSeek] Official API failed, falling back to Free Proxy:', error.message);
             }
-            return await pollinationsProvider.chatComplete(messages as any, 'openai', 3, tools);
+            return await pollinationsProvider.chatComplete(messages as any, 'openai', 0, tools);
         }
     }
 }

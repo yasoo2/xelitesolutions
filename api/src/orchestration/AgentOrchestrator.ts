@@ -196,7 +196,12 @@ export class AgentOrchestrator {
     // or the planner looks up joeProjects['default'], misses the active
     // project, and an edit like «غيّر الطراز» falls past the surgical
     // editor (caught by the UI-integration wire proof).
-    this.context = goal.context || { sessionId: goal.id };
+    this.context = {
+      ...(goal.context || { sessionId: goal.id }),
+      // A trace is one execution, not merely a chat session. The LLM router
+      // uses it to keep a failed provider mesh from poisoning a fresh run.
+      runId: goal.traceId || goal.id,
+    };
 
     // Initialize Runtime Memory
     const runtimeMemory = new ExecutionMemory(goal.id);
@@ -451,7 +456,13 @@ export class AgentOrchestrator {
                   (prompt) => routeToModel(
                       [{ role: 'user', content: prompt }],
                       undefined, undefined, undefined, undefined, undefined, undefined,
-                      { modelConfig: goalContext?.modelConfig, purpose: 'internal' },
+                      {
+                        modelConfig: goalContext?.modelConfig,
+                        purpose: 'internal',
+                        runId: goalContext?.runId || traceId || liveSessionId,
+                        traceId,
+                        engineeringPipeline: node.tool === 'project_pipeline',
+                      },
                   ),
               );
               if (line.text) broadcastThinkingDetail(memory.sessionId, line.text);
@@ -505,8 +516,10 @@ export class AgentOrchestrator {
               userName: goalContext?.userName,
               systemInstructions: goalContext?.systemInstructions,
               traceId,
+              runId: goalContext?.runId || traceId || liveSessionId,
               memory: memory.getHistory(),
               modelConfig: goalContext?.modelConfig,
+              engineeringPipeline: goalContext?.engineeringPipeline ?? (node.tool === 'project_pipeline'),
               providerTimeoutMs: engineeringLlmTimeoutMs,
               plannerTimeoutMs: engineeringPlannerTimeoutMs,
               plannerMaxCompletionTokens: node.tool === 'project_pipeline'
