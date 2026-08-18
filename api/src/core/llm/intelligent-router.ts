@@ -1664,8 +1664,11 @@ export async function routeToModel(
     if (preferredProvider === 'pollinations') {
         meshProviders.push({
             name: 'Pollinations (Forced)',
-            run: async () => {
-                const res = await pollinationsProvider.chatComplete(effectiveMessages, 'gpt-4o', 3, tools);
+            run: async (signal?: AbortSignal) => {
+                const res = await pollinationsProvider.chatComplete(effectiveMessages, 'gpt-4o', 0, tools, {
+                    signal,
+                    timeoutMs: 4000,
+                });
                 if (!isUsableAnswer(res)) throw new Error('Pollinations answered with nothing usable');
                 return res;
             }
@@ -1812,18 +1815,24 @@ export async function routeToModel(
 
     meshProviders.push({
         name: 'DeepSeek (Pollinations)',
-        run: async () => {
-            return await deepSeekProvider.chatComplete(flatMessages, undefined, tools);
+        run: async (signal?: AbortSignal) => {
+            return await deepSeekProvider.chatComplete(flatMessages, undefined, tools, {
+                signal,
+                timeoutMs: 4000,
+            });
         }
     });
 
     if (!localStrict) {
         meshProviders.push({
             name: 'Pollinations (Backup)',
-            run: async () => {
+            run: async (signal?: AbortSignal) => {
                 // Pollinations is a last-resort proxy. One bounded attempt is
                 // enough; the next route call owns any retry decision.
-                const res = await pollinationsProvider.chatComplete(flatMessages, 'openai', 0, tools);
+                const res = await pollinationsProvider.chatComplete(flatMessages, 'openai', 0, tools, {
+                    signal,
+                    timeoutMs: 4000,
+                });
                 if (!isUsableAnswer(res)) throw new Error('Pollinations answered with nothing usable');
                 return res;
             }

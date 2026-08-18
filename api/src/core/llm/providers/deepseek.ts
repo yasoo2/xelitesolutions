@@ -6,6 +6,19 @@ const pollinationsProvider = new PollinationsProvider();
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
 
+export interface DeepSeekRequestOptions {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) {
+        const error = new Error('DeepSeek request aborted');
+        error.name = 'AbortError';
+        throw error;
+    }
+}
+
 export const DEEPSEEK_MODELS = {
     CHAT: 'deepseek-chat', // DeepSeek-V3
     REASONER: 'deepseek-reasoner', // DeepSeek-R1
@@ -36,8 +49,10 @@ export class DeepSeekProvider {
     async chatComplete(
         messages: Array<{ role: string; content: string | any[] }>,
         model: string = DEEPSEEK_MODELS.CHAT,
-        tools?: any[]
+        tools?: any[],
+        options?: DeepSeekRequestOptions,
     ): Promise<string> {
+        throwIfAborted(options?.signal);
         // if no client or key, use free pollinations proxy
         if (!this.client) {
             console.info('[DeepSeek] Using Free Anonymous Proxy (Pollinations)');
@@ -45,7 +60,7 @@ export class DeepSeekProvider {
                 role: m.role,
                 content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
             }));
-            return await pollinationsProvider.chatComplete(pollinationsMsgs, 'openai', 0, tools);
+            return await pollinationsProvider.chatComplete(pollinationsMsgs, 'openai', 0, tools, options);
         }
 
         try {
@@ -60,7 +75,13 @@ export class DeepSeekProvider {
                 params.tool_choice = 'auto';
             }
 
-            const completion = await this.client.chat.completions.create(params);
+            const timeoutMs = Number(options?.timeoutMs);
+            const requestOptions = Number.isFinite(timeoutMs) && timeoutMs > 0
+                ? { timeout: Math.max(1, Math.floor(timeoutMs)), ...(options?.signal ? { signal: options.signal } : {}) }
+                : (options?.signal ? { signal: options.signal } : undefined);
+            const completion = requestOptions
+                ? await (this.client.chat.completions.create as any)(params, requestOptions)
+                : await this.client.chat.completions.create(params);
 
             if (!completion || !completion.choices || completion.choices.length === 0) {
                 throw new Error('Empty response from DeepSeek Official');
@@ -86,7 +107,8 @@ export class DeepSeekProvider {
             } else {
                 console.warn('[DeepSeek] Official API failed, falling back to Free Proxy:', error.message);
             }
-            return await pollinationsProvider.chatComplete(messages as any, 'openai', 0, tools);
+            if (error?.name === 'AbortError' || options?.signal?.aborted) throw error;
+            return await pollinationsProvider.chatComplete(messages as any, 'openai', 0, tools, options);
         }
     }
 }
