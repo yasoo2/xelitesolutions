@@ -326,9 +326,20 @@ Rules:
 - When genuinely unsure, output "other".`;
         let raw = '';
         try {
+            // Semantic routing is part of the engineering pipeline when the caller
+            // is already executing a real build.  Its short chat timeout used to
+            // abort the LLM7 request before the bounded engineering deadline,
+            // leaving the rest of the run to mis-route numbered QA bullets into
+            // browser searches.  Preserve the short fast-path for ordinary chat,
+            // but inherit the caller's explicit engineering patience here.
+            const inheritedContext = { ...(context || {}), purpose: 'internal' };
+            const requested = Number(inheritedContext.providerTimeoutMs ?? inheritedContext.plannerTimeoutMs);
+            const classifierTimeoutMs = inheritedContext.engineeringPipeline === true
+                ? Math.min(180_000, Math.max(90_000, Number.isFinite(requested) && requested > 0 ? requested : 90_000))
+                : 12_000;
             raw = await Promise.race([
-                routeToModel([{ role: 'system', content: sys }, { role: 'user', content: `Request: ${goal}` }], undefined, undefined, undefined, undefined, undefined, undefined, { ...(context || {}), purpose: 'internal' }),
-                new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000)),
+                routeToModel([{ role: 'system', content: sys }, { role: 'user', content: `Request: ${goal}` }], undefined, undefined, undefined, undefined, undefined, undefined, inheritedContext),
+                new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), classifierTimeoutMs)),
             ]);
         } catch { return null; }
         const m = raw && raw.match(/\{[\s\S]*\}/);
@@ -363,9 +374,18 @@ Rules:
 - Put a value in "url" ONLY if the user explicitly named a site or link.`;
         let raw = '';
         try {
+            // Browser-intent classification can be reached from the QA part of a
+            // project pipeline.  Do not let its ordinary 18s chat guard cancel a
+            // real engineering LLM7 turn; non-engineering browser requests retain
+            // the original quick semantic probe.
+            const inheritedContext = { ...(context || {}), purpose: 'internal' };
+            const requested = Number(inheritedContext.providerTimeoutMs ?? inheritedContext.plannerTimeoutMs);
+            const classifierTimeoutMs = inheritedContext.engineeringPipeline === true
+                ? Math.min(180_000, Math.max(90_000, Number.isFinite(requested) && requested > 0 ? requested : 90_000))
+                : 18_000;
             raw = await Promise.race([
-                routeToModel([{ role: 'system', content: sys }, { role: 'user', content: `Request: ${goal}` }], undefined, undefined, undefined, undefined, undefined, undefined, { ...(context || {}), purpose: 'internal' }),
-                new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), 18000)),
+                routeToModel([{ role: 'system', content: sys }, { role: 'user', content: `Request: ${goal}` }], undefined, undefined, undefined, undefined, undefined, undefined, inheritedContext),
+                new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), classifierTimeoutMs)),
             ]);
         } catch { return null; }
         const m = raw && raw.match(/\{[\s\S]*\}/);
