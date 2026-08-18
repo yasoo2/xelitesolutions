@@ -136,23 +136,39 @@ function missingExplicitLocalTarget(entry: LocalRuntimeImportEvidence): string |
 
 function extractLocalRuntimeImportEvidence(ticket: RepairTicket): LocalRuntimeImportEvidence[] {
   const raw = rawTextOf(ticket);
-  if (!/local\s+runtime\s+imports\s+missing|missing\s+local\s+runtime\s+imports/i.test(raw)) return [];
-
-  const marker = raw.match(/local\s+runtime\s+imports\s+missing\s*\(([^)]*)\)/i)
-    || raw.match(/missing\s+local\s+runtime\s+imports\s*[:\s]+([^\n]+)/i);
-  if (!marker?.[1]) return [];
-
   const evidence: LocalRuntimeImportEvidence[] = [];
-  for (const item of marker[1].split(';')) {
-    const match = item.trim().match(/^(.+?)\s*->\s*(\.[^\s,;]+)/u);
-    if (!match?.[1] || !match[2]) continue;
-    const importer = match[1].trim().replace(/\\\\/g, '/');
-    const specifier = match[2].trim();
-    if (!importer || !specifier.startsWith('.')) continue;
-    if (!evidence.some(entry => entry.importer === importer && entry.specifier === specifier)) {
-      evidence.push({ importer, specifier });
+
+  // project_run emits a compact launchability marker with `importer -> specifier`.
+  const launchabilityMarker = raw.match(/local\s+runtime\s+imports\s+missing\s*\(([^)]*)\)/i)
+    || raw.match(/missing\s+local\s+runtime\s+imports\s*[:\s]+([^\n]+)/i);
+  if (launchabilityMarker?.[1]) {
+    for (const item of launchabilityMarker[1].split(';')) {
+      const match = item.trim().match(/^(.+?)\s*->\s*(\.[^\s,;]+)/u);
+      if (!match?.[1] || !match[2]) continue;
+      const importer = match[1].trim().replace(/\\\\/g, '/');
+      const specifier = match[2].trim();
+      if (!importer || !specifier.startsWith('.')) continue;
+      if (!evidence.some(entry => entry.importer === importer && entry.specifier === specifier)) {
+        evidence.push({ importer, specifier });
+      }
     }
   }
+
+  // ai_write_file performs an earlier import preflight and emits one importer
+  // followed by one or more quoted relative specifiers. Preserve that evidence
+  // instead of collapsing the failure to generic `domain_generation_failed`.
+  const generationMarker = raw.match(/unresolved_local_import:\s*(.+?)\s+imports\s+(.+?),\s+but\s+no\s+file\s+resolves/i);
+  if (generationMarker?.[1] && generationMarker[2]) {
+    const importer = generationMarker[1].trim().replace(/\\\\/g, '/');
+    for (const quoted of generationMarker[2].matchAll(/["'](\.[^"']+)["']/gu)) {
+      const specifier = quoted[1].trim();
+      if (!importer || !specifier.startsWith('.')) continue;
+      if (!evidence.some(entry => entry.importer === importer && entry.specifier === specifier)) {
+        evidence.push({ importer, specifier });
+      }
+    }
+  }
+
   return evidence.slice(0, 24);
 }
 

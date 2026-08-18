@@ -150,6 +150,37 @@ describe('evidence-aware file edit recovery', () => {
     expect(String(plan.suggestedInput?.description)).toContain('no-op placeholder');
   });
 
+  it('targets a quoted unresolved local stylesheet emitted by ai_write_file', () => {
+    const importer = path.join(root, 'src', 'components', 'WeatherApp.jsx');
+    const plan = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'WeatherGo',
+      phaseNumber: 1,
+      phaseName: 'Application',
+      status: 'partial',
+      severity: 'high',
+      primaryError: `unresolved_local_import: ${importer} imports \"./styles/app.css\", but no file resolves from the importing file.`,
+      failedTasks: [{
+        task: 'Write WeatherApp component',
+        tool: 'ai_write_file',
+        error: `unresolved_local_import: ${importer} imports \"./styles/app.css\", but no file resolves from the importing file.`,
+        cwd: root,
+        file: importer,
+      }],
+      suggestedNextAction: 'generate the proven missing stylesheet and rerun the failed phase',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(plan.allowed).toBe(true);
+    expect(plan.strategy).toBe('build_fix');
+    expect(plan.suggestedTool).toBe('ai_write_file');
+    expect(plan.suggestedInput?.path).toBe(path.join(root, 'src', 'components', 'styles', 'app.css'));
+    expect(String(plan.reason)).toContain('proven explicit local runtime target');
+    expect(String(plan.suggestedInput?.description)).toContain('not a substitute importer');
+  });
+
   it('repairs an undeclared runtime package in the evidenced project root', () => {
     const plan = SelfFixService.plan({
       type: 'phase_repair_ticket',
