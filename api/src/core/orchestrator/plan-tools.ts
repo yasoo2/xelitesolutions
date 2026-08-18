@@ -282,6 +282,8 @@ export interface PlanSanitiseOptions {
     repairMode?: boolean;
     /** Explicit React/Vite requests must use the domain-aware React builder, not a generic placeholder scaffold. */
     preferReactBuilder?: boolean;
+    /** Contract recovery may return an explicit, runnable scaffold; preserve it rather than rerouting it again. */
+    preserveScaffoldBuilderChoice?: boolean;
     /** Original user request carried into an automatic builder reroute. */
     reactRequest?: string;
 }
@@ -470,7 +472,18 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     notes.push(`[plan] أوقفتُ «${desc}» — ${blocker.message}`);
                     continue;
                 }
-                if ((r.tool === 'scaffold_project' || r.tool === 'mobile_builder') && options.preferReactBuilder) {
+                // A native builder is unsafe for a browser-delivered request, so
+                // reroute it to the domain-aware React path. A scaffold may also
+                // be rerouted, but only after its structure proves that it carries
+                // a non-document implementation artifact. Empty or docs-only
+                // scaffolds must reach their own contract/recovery path instead
+                // of being silently hidden by a builder substitution.
+                const scaffoldHasImplementation = r.tool !== 'scaffold_project'
+                    || Object.entries(adaptedArgs?.structure || {}).some(([relativePath, contents]) =>
+                        contents !== null
+                        && Boolean(String(relativePath || '').trim())
+                        && !/(?:^|[\\/])[^\\/]+\.(?:md|mdx|txt|rst|adoc)$/i.test(String(relativePath)));
+                if ((r.tool === 'mobile_builder' || (r.tool === 'scaffold_project' && scaffoldHasImplementation && !options.preserveScaffoldBuilderChoice)) && options.preferReactBuilder) {
                     const request = String(options.reactRequest || adaptedArgs?.request || desc || projectDir).trim();
                     kept.push({
                         ...task,

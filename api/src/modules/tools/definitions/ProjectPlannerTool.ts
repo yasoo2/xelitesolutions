@@ -350,6 +350,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         requireRunnableContract: context?.requireRunnableContract === true,
                         repairMode: repairMode || scopeRepairMode,
                         preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
+                        preserveScaffoldBuilderChoice: true,
                         reactRequest: projectDescription,
                     });
                     if (this.countImplementationArtifacts(recoveredClean.phases) === 0) {
@@ -437,6 +438,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         requireRunnableContract: context?.requireRunnableContract === true,
                         repairMode: repairMode || scopeRepairMode,
                         preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
+                        preserveScaffoldBuilderChoice: true,
                         reactRequest: projectDescription,
                     });
                     if (recoveredClean.blocker?.code === 'unportable_native_dependency') {
