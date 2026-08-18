@@ -392,6 +392,29 @@ export function normalizeReactScaffoldStructure(structure: Record<string, any>):
     const hasViteEvidence = (hasViteScript || hasViteConfig) && (hasReactDependency || hasReactSource);
     if (!hasViteEvidence && !hasExpoEvidence && !hasJestEvidence) return { structure, changed: false };
 
+    const rootIndexPath = entries.some(([relativePath]) => {
+        const normalized = normalizePath(String(relativePath)).replace(/^\.\//u, '');
+        return normalized === 'index.html';
+    });
+    const viteEntry = entries
+        .filter(([relativePath, content]) => {
+            const normalized = normalizePath(String(relativePath)).replace(/^\.\//u, '');
+            const sourceText = String(content || '');
+            return hasViteEvidence
+                && /(?:^|\/)(?:main|index)\.(?:jsx?|tsx?)$/i.test(normalized)
+                && /(?:createRoot|ReactDOM\.render|from\s*[\"']react-dom)/i.test(sourceText);
+        })
+        .sort(([leftPath], [rightPath]) => {
+            const rank = (value: string) => /(?:^|\/)main\.(?:jsx?|tsx?)$/i.test(normalizePath(value)) ? 0 : 1;
+            return rank(String(leftPath)) - rank(String(rightPath));
+        })[0];
+    const generatedIndexHtml = !rootIndexPath && viteEntry
+        ? (() => {
+            const entryPath = normalizePath(String(viteEntry[0])).replace(/^\.\//u, '').replace(/^\/+/, '');
+            return `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>React application</title>\n  </head>\n  <body>\n    <div id="root"></div>\n    <script type="module" src="./${entryPath}"></script>\n  </body>\n</html>\n`;
+        })()
+        : null;
+
     const nextManifest = JSON.parse(JSON.stringify(manifest));
     const dependencies = nextManifest.dependencies && typeof nextManifest.dependencies === 'object' ? nextManifest.dependencies : {};
     const devDependencies = nextManifest.devDependencies && typeof nextManifest.devDependencies === 'object' ? nextManifest.devDependencies : {};
@@ -449,12 +472,20 @@ export function normalizeReactScaffoldStructure(structure: Record<string, any>):
     }
 
     const serialized = JSON.stringify(nextManifest, null, 2) + String.fromCharCode(10);
-    const changed = serialized !== packageEntry[1];
+    const manifestChanged = serialized !== packageEntry[1];
+    const changed = manifestChanged || !!generatedIndexHtml;
     if (!changed) return { structure, changed: false };
+    const nextStructure = manifestChanged
+        ? { ...structure, [packageEntry[0]]: serialized }
+        : { ...structure };
+    if (generatedIndexHtml) {
+        nextStructure['index.html'] = generatedIndexHtml;
+        reasons.push('missing Vite root index.html generated from the proven React entrypoint');
+    }
     return {
-        structure: { ...structure, [packageEntry[0]]: serialized },
+        structure: nextStructure,
         changed: true,
-        reason: `${reasons.join(' and ')} evidence found; manifest dependencies and lifecycle contracts were completed`,
+        reason: `${reasons.join(' and ')}; scaffold runtime contract completed`,
     };
 }
 

@@ -14,6 +14,7 @@
 import { buildAppFiles } from '../modules/tools/definitions/react-app-templates';
 import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
 import { blueprintFor, type AppKind } from '../core/design/app-blueprints';
+import { normalizeReactScaffoldStructure } from '../modules/tools/definitions/SystemTools';
 
 const KINDS: AppKind[] = ['store', 'booking', 'tasks', 'social', 'chat', 'maps', 'weather', 'crm', 'inventory', 'calculator', 'productivity'];
 
@@ -45,6 +46,31 @@ describe('the generated application is syntactically real', () => {
             expect(files['scripts/smoke-test.test.mjs']).toContain("from 'node:test'");
             expect(files['scripts/smoke-test.test.mjs']).toContain("assert.equal(manifest.scripts.test, 'node --test scripts/smoke-test.test.mjs')");
         }
+    });
+
+    it('normalizes a proven React/Vite scaffold with a missing root index.html', () => {
+        const result = normalizeReactScaffoldStructure({
+            'package.json': JSON.stringify({
+                scripts: { dev: 'vite', build: 'vite build' },
+                dependencies: { react: '^18.2.0', 'react-dom': '^18.2.0' },
+                devDependencies: { vite: '^5.0.0' },
+            }),
+            'src/main.jsx': "import React from 'react'; import { createRoot } from 'react-dom/client'; import App from './App.jsx'; createRoot(document.getElementById('root')).render(<App />);",
+            'src/App.jsx': "import React from 'react'; export default function App() { return <main>WeatherGo</main>; }",
+        });
+        expect(result.changed).toBe(true);
+        expect(result.structure['index.html']).toContain('<div id="root"></div>');
+        expect(result.structure['index.html']).toContain('src="./src/main.jsx"');
+        expect(result.structure['index.html']).toContain('<script type="module"');
+    });
+
+    it('does not invent a Vite entrypoint for a generic scaffold', () => {
+        const result = normalizeReactScaffoldStructure({
+            'package.json': JSON.stringify({ scripts: { start: 'node server.js' } }),
+            'server.js': 'console.log("server");',
+        });
+        expect(result.changed).toBe(false);
+        expect(result.structure['index.html']).toBeUndefined();
     });
 
     it('weather includes the real forecast contract and negative-state surfaces', () => {
