@@ -576,6 +576,18 @@ export class AgentLoopService {
                 for (const log of phaseResult.logs) voice(String(log));
             }
             const status = String(phaseResult?.output?.status || 'unknown');
+            // PhaseExecutor can bind the greenfield artifact inside its own
+            // ToolService boundary. Rehydrate that evidence here before either
+            // advancing or opening self-fix; otherwise the next phase receives
+            // the workspace parent and runtime-contract checks inspect the wrong
+            // package.json.
+            const boundProjectRoot = String(phaseResult?.output?.projectRoot || '').trim();
+            if (phaseResult?.output?.projectRootRuntimeBound === true && boundProjectRoot) {
+                projectContext.projectRoot = boundProjectRoot;
+                projectContext.projectRootRuntimeBound = true;
+                executionContext.projectRoot = boundProjectRoot;
+                executionContext.projectRootRuntimeBound = true;
+            }
 
             if (phaseResult?.ok && status === 'completed') {
                 voice(pick(isAr,

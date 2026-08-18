@@ -98,6 +98,10 @@ describe('PhaseExecutorTool observable trusted context', () => {
             expect(result.ok).toBe(true);
             expect(projectContext.projectRoot).toBe(projectRoot);
             expect(projectContext.projectRootRuntimeBound).toBe(true);
+            expect(result.output).toMatchObject({
+                projectRoot,
+                projectRootRuntimeBound: true,
+            });
             expect(mockedExecuteTool).toHaveBeenCalledTimes(2);
             expect(mockedExecuteTool.mock.calls[0][0]).toBe('react_project');
             expect(mockedExecuteTool.mock.calls[1][0]).toBe('npm_manager');

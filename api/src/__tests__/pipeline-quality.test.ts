@@ -81,6 +81,16 @@ describe('the quality phase is executable, not decorative', () => {
         expect(P.indexOf('planned.sessionId = executionContext.sessionId'))
             .toBeLessThan(P.indexOf('adaptPlannedArgs(toolName, planned)'));
     });
+
+    it('propagates an evidence-bound project root across the phase boundary', () => {
+        const fs = require('fs'); const path = require('path');
+        const P = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'PhaseExecutorTool.ts'), 'utf-8');
+        const A = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
+        expect(P).toContain('runtimeProjectEvidence');
+        expect(P).toContain('projectRootRuntimeBound: true');
+        expect(A).toContain('phaseResult?.output?.projectRoot');
+        expect(A).toContain('executionContext.projectRoot = boundProjectRoot');
+    });
 });
 
 describe('operational release boards are working task applications', () => {

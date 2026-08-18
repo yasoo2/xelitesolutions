@@ -1031,11 +1031,23 @@ export class PhaseExecutorTool implements ToolDefinition {
             // callers mistake a failed check for a completed engineering phase.
             const ok = status === 'completed';
             const primaryError = ok ? undefined : (results.find(r => !r.ok)?.error || (status === 'partial' ? 'Phase completed only partially' : 'Phase failed'));
+            // ToolService may serialize the phase result before AgentLoop starts
+            // the next phase. Carry only the root already proven by this executor
+            // so later phases and self-fix reruns cannot fall back to the workspace
+            // parent. This is evidence propagation, not a guessed project path.
+            const runtimeProjectEvidence = projectContext?.projectRootRuntimeBound === true
+                && String(projectContext?.projectRoot || '').trim()
+                ? {
+                    projectRoot: path.resolve(String(projectContext.projectRoot)),
+                    projectRootRuntimeBound: true,
+                }
+                : {};
 
             return {
                 ok,
                 error: primaryError,
                 output: {
+                    ...runtimeProjectEvidence,
                     phaseNumber: phase.phaseNumber,
                     phaseName: phase.name,
                     status,
@@ -1056,6 +1068,12 @@ export class PhaseExecutorTool implements ToolDefinition {
                 ok: false,
                 error: error.message,
                 output: {
+                    ...(projectContext?.projectRootRuntimeBound === true && String(projectContext?.projectRoot || '').trim()
+                        ? {
+                            projectRoot: path.resolve(String(projectContext.projectRoot)),
+                            projectRootRuntimeBound: true,
+                        }
+                        : {}),
                     phaseNumber: phase?.phaseNumber,
                     status: 'fatal_error',
                     completedTasks: completedCount,
