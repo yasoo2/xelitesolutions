@@ -65,7 +65,24 @@ function bindRepairTargetToProjectRoot(repairTool: string, input: Record<string,
   const absolute = path.isAbsolute(raw) || path.win32.isAbsolute(raw);
   let resolved = '';
   try {
-    resolved = absolute ? path.resolve(raw) : path.resolve(root, raw);
+    if (absolute) {
+      resolved = path.resolve(raw);
+    } else {
+      // Repair evidence can be emitted either relative to the active workspace
+      // (`WeatherGo/src/...`) or relative to the already-bound project root
+      // (`src/...`). Once the runtime root is bound, strip one leading project
+      // directory segment before resolving; otherwise the safe rebind itself
+      // creates the very duplicate path it is meant to prevent:
+      // `<workspace>/WeatherGo/WeatherGo/src/...`.
+      const portable = raw.replace(/\\/g, '/').replace(/^\.\//u, '');
+      const projectName = path.basename(path.resolve(root)).replace(/\\/g, '/');
+      const relative = portable === projectName
+        ? '.'
+        : portable.startsWith(`${projectName}/`)
+          ? portable.slice(projectName.length + 1)
+          : portable;
+      resolved = path.resolve(root, relative);
+    }
   } catch {
     return input;
   }

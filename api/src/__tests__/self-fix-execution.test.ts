@@ -93,6 +93,36 @@ describe('SelfFixExecutionService phase resumption', () => {
         expect(executeToolSpy.mock.calls[1][1].phase.tasks[0].args.path).toBe('src/routes/auth.js');
     });
 
+    it('does not duplicate the runtime-bound project when repair evidence already includes its name', async () => {
+        const nestedEvidencePlan: any = {
+            ...plan,
+            suggestedInput: {
+                path: 'WeatherGo/src/services/weatherService.js',
+                description: 'repair the exact JavaScript artifact',
+            },
+        };
+        const phase = {
+            name: 'Testing and QA',
+            tasks: [{ task: 'Repair weather service', tool: 'ai_write_file', args: { path: 'src/services/weatherService.js' } }],
+        };
+
+        const result = await SelfFixExecutionService.executeOnce({
+            phase,
+            projectContext: {
+                projectName: 'WeatherGo',
+                projectRoot: '/workspace/WeatherGo',
+                projectRootRuntimeBound: true,
+            },
+            selfFixPlan: nestedEvidencePlan,
+            executionContext: context,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(executeToolSpy.mock.calls[0][0]).toBe('ai_write_file');
+        expect(executeToolSpy.mock.calls[0][1].path).toBe('/workspace/WeatherGo/src/services/weatherService.js');
+        expect(executeToolSpy.mock.calls[0][1].path).not.toContain('/WeatherGo/WeatherGo/');
+    });
+
     it('rebinds a relative missing-file repair to the runtime-bound generated project', async () => {
         const missingFilePlan: any = {
             type: 'self_fix_plan',
