@@ -115,6 +115,61 @@ describe('PhaseExecutorTool observable trusted context', () => {
         }
     });
 
+    it('refreshes delegated tool context after a builder binds the artifact root', async () => {
+        const workspaceId = `workspace-live-context-${process.pid}`;
+        const sessionId = `chat-live-context-${process.pid}`;
+        const workspaceRoot = workspaceService.getActiveRoot(workspaceId);
+        const projectRoot = path.join(workspaceRoot, `WeatherGo-live-${process.pid}`);
+        fs.mkdirSync(projectRoot, { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, 'package.json'), JSON.stringify({
+            name: 'weathergo-live-context',
+            scripts: { build: 'vite build' },
+        }));
+
+        try {
+            let delegatedContext: any;
+            mockedExecuteTool.mockImplementation(async (toolName: string, _input: any, context: any) => {
+                if (toolName === 'react_project') {
+                    return { ok: true, output: { path: projectRoot, message: 'React artifact created.' } } as any;
+                }
+                if (toolName === 'ai_write_file') {
+                    delegatedContext = context;
+                    return { ok: true, output: { path: path.join(projectRoot, 'src', 'App.jsx') } } as any;
+                }
+                return { ok: true, output: {} } as any;
+            });
+
+            const projectContext: any = {
+                projectName: `WeatherGo-live-${process.pid}`,
+                createsNewProject: true,
+                sessionId,
+                workspaceId,
+                userId: 'user-live-context',
+            };
+            const result: any = await new PhaseExecutorTool().execute({
+                phase: {
+                    phaseNumber: 1,
+                    name: 'Create and populate the React artifact',
+                    tasks: [
+                        { task: 'Create the React artifact', tool: 'react_project', args: { request: 'Build WeatherGo.' } },
+                        { task: 'Write the first UI artifact', tool: 'ai_write_file', args: { path: 'src/App.jsx', description: 'Create the first screen.' } },
+                    ],
+                },
+                projectContext,
+            }, { sessionId, workspaceId, userId: 'user-live-context' });
+
+            expect(result.ok).toBe(true);
+            expect(projectContext.projectRoot).toBe(projectRoot);
+            expect(projectContext.projectRootRuntimeBound).toBe(true);
+            expect(delegatedContext).toMatchObject({
+                projectRoot,
+                projectRootRuntimeBound: true,
+            });
+        } finally {
+            fs.rmSync(projectRoot, { recursive: true, force: true });
+        }
+    });
+
     it('installs missing local npm script binaries before executing a shell build', async () => {
         const workspaceId = `workspace-npm-preflight-${process.pid}`;
         const sessionId = `chat-npm-preflight-${process.pid}`;

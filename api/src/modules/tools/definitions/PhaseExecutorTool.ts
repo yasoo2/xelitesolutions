@@ -580,10 +580,12 @@ export class PhaseExecutorTool implements ToolDefinition {
             // as project_run. Without it, a model can see only a broad workspace
             // and silently switch a Vite/React product to React Native or another
             // undeclared stack between phases.
-            projectRoot: context?.projectRoot || projectContext?.projectRoot,
+            projectRoot: projectContext?.projectRootRuntimeBound === true && projectContext?.projectRoot
+                ? projectContext.projectRoot
+                : (context?.projectRoot || projectContext?.projectRoot),
             projectName: context?.projectName || projectContext?.projectName,
             createsNewProject: context?.createsNewProject ?? projectContext?.createsNewProject,
-            projectRootRuntimeBound: context?.projectRootRuntimeBound ?? projectContext?.projectRootRuntimeBound,
+            projectRootRuntimeBound: projectContext?.projectRootRuntimeBound ?? context?.projectRootRuntimeBound,
             // Preserve the canonical engineering-routing contract across the
             // executor boundary. AgentLoopService marks the pipeline as an
             // internal engineering run, but the old narrowed context dropped
@@ -599,6 +601,19 @@ export class PhaseExecutorTool implements ToolDefinition {
             onThought: (m: string) => context?.onThought?.(m),
             onProgress: (m: string) => context?.onProgress?.(m),
         };
+
+        // `executionContext` is created before the first builder task runs, but
+        // the builder may establish the real artifact root later in the same
+        // phase. Always expose the current trusted root to delegated tools;
+        // otherwise ai_write_file validates against the old workspace root while
+        // npm_manager/auto_tester operate inside the newly created project.
+        const liveExecutionContext = () => ({
+            ...executionContext,
+            projectRoot: projectContext?.projectRootRuntimeBound === true && projectContext?.projectRoot
+                ? projectContext.projectRoot
+                : executionContext.projectRoot,
+            projectRootRuntimeBound: projectContext?.projectRootRuntimeBound ?? executionContext.projectRootRuntimeBound,
+        });
 
         try {
             const tasks = Array.isArray(phase.tasks) ? phase.tasks : [];
@@ -744,7 +759,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                     toolName,
                     toolArgs,
                     projectContext,
-                    executionContext,
+                    liveExecutionContext(),
                     appendLog,
                 );
                 if (!dependencyPreflight.ok) {
@@ -766,7 +781,7 @@ export class PhaseExecutorTool implements ToolDefinition {
 
                 try {
                     const toolResult = await executeTool(toolName, toolArgs, {
-                        ...executionContext,
+                        ...liveExecutionContext(),
                         onProgress: (m: string) => context?.onProgress?.(`[${toolName}] ${m}`),
                     });
 
@@ -827,7 +842,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                                 appendLog(`[PhaseExecutor] 🔎 Missing npm script detected; package evidence at ${launcher.manifest} selects npm run ${launcher.script}.`);
                                 try {
                                     const launcherResult = await executeTool(toolName, launcherArgs, {
-                                        ...executionContext,
+                                        ...liveExecutionContext(),
                                         onProgress: (m: string) => context?.onProgress?.(`[${toolName} MANIFEST RECOVERY] ${m}`),
                                     });
                                     if (launcherResult.ok) {
@@ -869,7 +884,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                             appendLog('[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...');
                             try {
                                 const retryResult = await executeTool(toolName, toolArgs, {
-                                    ...executionContext,
+                                    ...liveExecutionContext(),
                                     onProgress: (m: string) => context?.onProgress?.(`[${toolName} RETRY] ${m}`),
                                 });
                                 if (retryResult.ok) {
