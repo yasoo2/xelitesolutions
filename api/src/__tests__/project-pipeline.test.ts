@@ -21,6 +21,7 @@ import {
     deterministicRescueAllowed,
     interactiveAppNeedsReactBuilder,
     planContainsReactBuilder,
+    planContainsUnrequestedApiBuilder,
 } from '../modules/tools/definitions/ProjectPipelineTool';
 import { applyPhaseExecutionEvidence } from '../modules/tools/definitions/PhaseExecutorTool';
 
@@ -133,6 +134,24 @@ describe('routing — full-project requests reach the pipeline, offline and dete
         expect(interactiveAppNeedsReactBuilder('Build a production API integration slice with an OpenAPI contract and an evidence matrix.')).toBe(false);
     });
 
+    test('an app plan with an unrequested api_project is rescued before it can create a second artifact', () => {
+        const weatherApp = [
+            'Build a real weather web application using React and Vite.',
+            'Use the public Open-Meteo geocoding and forecast APIs; do not build a project-owned backend.',
+            'Include city search, hourly and seven-day forecasts, favorites in localStorage, and settings persistence.'
+        ].join(' ');
+        const mixedPlan = [
+            { name: 'Backend', tasks: [{ tool: 'api_project' }] },
+            { name: 'UI', tasks: [{ tool: 'react_project' }] },
+        ];
+        expect(PlanningEngine.classifyBuildScope(weatherApp)).toBe('app');
+        expect(planContainsUnrequestedApiBuilder(weatherApp, mixedPlan)).toBe(true);
+        expect(planContainsUnrequestedApiBuilder(
+            'Build a backend API with a database, authentication, and a React admin dashboard.',
+            mixedPlan,
+        )).toBe(false);
+    });
+
     test("the pair's door is the API — apiSiblingOf finds it by shared suffix", () => {
         const os = require('os');
         const { apiSiblingOf } = require('../modules/tools/definitions/ProjectPipelineTool');
@@ -195,7 +214,7 @@ describe('routing — full-project requests reach the pipeline, offline and dete
         expect(deterministicRescueForDeadPlanner('Write a kernel driver for my GPU with acceptance criteria and integration tests. '.repeat(40))).toBe(false);
         // The paper-plan branch keeps the STRICT gate — pinned at the source.
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
-        expect(src).toMatch(/plannerResult\?\.output\?\.deterministic !== true\s*&&\s*deterministicRescueAllowed\(productRequest\)/);
+        expect(src).toMatch(/plannerResult\?\.output\?\.deterministic !== true[\s\S]*deterministicRescueAllowed\(productRequest\)/);
     });
 
     test('a recovery goal is NOT hijacked even if it mentions a server', async () => {

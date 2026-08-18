@@ -483,6 +483,33 @@ export function planContainsReactBuilder(phases: any[]): boolean {
             .some((task: any) => String(task?.tool || '').trim().toLowerCase() === 'react_project'));
 }
 
+export function planContainsTool(phases: any[], toolName: string): boolean {
+    const expected = String(toolName || '').trim().toLowerCase();
+    if (!expected) return false;
+    return (Array.isArray(phases) ? phases : []).some((phase: any) =>
+        [...(Array.isArray(phase?.tasks) ? phase.tasks : []), ...(phase?.verificationTask ? [phase.verificationTask] : [])]
+            .some((task: any) => String(task?.tool || '').trim().toLowerCase() === expected));
+}
+
+/**
+ * A browser application may consume a public API without owning a backend.
+ * If the planner nevertheless inserts api_project into an `app` plan, the
+ * presence of a react_project sibling is not enough: the API phase can create
+ * a different artifact and make the pipeline lose the application's identity.
+ * Keep explicit backend/database systems untouched, but rescue this hallucinated
+ * backend before any project files are written.
+ */
+export function planContainsUnrequestedApiBuilder(request: string, phases: any[]): boolean {
+    if (!interactiveAppNeedsReactBuilder(request)) return false;
+    try {
+        const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
+        return PlanningEngine.classifyBuildScope(String(request || '')) === 'app'
+            && planContainsTool(phases, 'api_project');
+    } catch {
+        return false;
+    }
+}
+
 /**
  * A build is not delivered merely because its phase tools returned ok.  The
  * final acceptance contract requires a confirmed live URL when the canonical
@@ -999,7 +1026,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                     .some((t: any) => CAN_BUILD_OR_RUN.has(String(t?.tool || ''))));
             const requiresConcreteUiBuilder = interactiveAppNeedsReactBuilder(productRequest);
             const missingConcreteUiBuilder = requiresConcreteUiBuilder && !planContainsReactBuilder(planPhases);
-            const requiresDeterministicRescue = !touchesRunnable || missingConcreteUiBuilder;
+            const unrequestedApiBuilder = planContainsUnrequestedApiBuilder(productRequest, planPhases);
+            const requiresDeterministicRescue = !touchesRunnable || missingConcreteUiBuilder || unrequestedApiBuilder;
             if (planPhases.length > 0 && requiresDeterministicRescue
                 && evidence?.constraints?.createsNewProject
                 && plannerResult?.output?.deterministic !== true
@@ -1008,7 +1036,9 @@ export class ProjectPipelineTool implements ToolDefinition {
                 if (rescue) {
                     const reason = missingConcreteUiBuilder
                         ? 'the interactive application plan omitted the concrete React UI builder'
-                        : 'the plan is all paper — files written, nothing built or run';
+                        : unrequestedApiBuilder
+                            ? 'the app plan introduced an unrequested backend builder'
+                            : 'the plan is all paper — files written, nothing built or run';
                     say(pick(isAr,
                         `[pipeline] ${reason} — أخطّط حتمياً مما صرّح به الطلب: ${rescue.reason}`,
                         `[pipeline] ${reason}; planning deterministically from what the request declares: ${rescue.reason}`));
