@@ -156,6 +156,42 @@ function extractMissingFilename(ticket: RepairTicket, text: string): string | nu
   return null;
 }
 
+interface EvidenceBoundRepairTarget {
+  path: string;
+  cwd?: string;
+}
+
+/**
+ * Select a repair target only from execution evidence preserved in the ticket.
+ * A generic source file is never a safe target for an unrelated failed task:
+ * writing src/index.ts can silently mutate the workspace root while the failed
+ * artifact lives in a generated child project. If no file is evidenced, the
+ * caller must stop instead of guessing.
+ */
+function extractEvidenceBoundRepairTarget(ticket: RepairTicket): EvidenceBoundRepairTarget | null {
+  const fileTask = ticket.failedTasks.find(task => typeof task.file === 'string' && task.file.trim().length > 0);
+  if (fileTask?.file) return { path: fileTask.file, cwd: fileTask.cwd };
+
+  const candidates = [
+    ...ticket.failedTasks.map(task => task.error),
+    ticket.primaryError,
+  ];
+  const sourceFilePattern = /(?:^|[\s'"`(])((?:[A-Za-z]:[\\/]|\/|\.\.?[\\/]|[A-Za-z0-9_.-]+[\\/])[^\s'"`):,)]*\.(?:[cm]?[jt]sx?|json|css|html|md|ya?ml|env))(?=$|[\s'"`):,])/i;
+  const bareFilePattern = /(?:^|[\s'"`(])([A-Za-z0-9_.-]+\.(?:[cm]?[jt]sx?|json|css|html|md|ya?ml|env))(?=$|[\s'"`):,])/i;
+
+  for (const candidate of candidates) {
+    const value = String(candidate || '');
+    const match = value.match(sourceFilePattern) || value.match(bareFilePattern);
+    if (match?.[1]) {
+      const path = match[1].replace(/\\/g, '/');
+      const task = ticket.failedTasks.find(item => String(item.error || '').includes(match[1])) || fileTask;
+      return { path, cwd: task?.cwd };
+    }
+  }
+
+  return null;
+}
+
 function extractMissingLauncher(ticket: RepairTicket) {
   const failed = ticket.failedTasks.find(task =>
     task.tool === 'shell_execute'
@@ -646,6 +682,7 @@ export class SelfFixService {
 
     if (/build failed|compile|typescript|tsc|syntaxerror|typeerror|ts\d+/i.test(text)) {
       const buildContext = extractBuildContext(ticket);
+      const evidenceTarget = extractEvidenceBoundRepairTarget(ticket);
       const targetedEdit = buildTargetedTypeScriptEdit(buildContext);
       if (targetedEdit && buildContext) {
         return {
@@ -662,22 +699,27 @@ export class SelfFixService {
         };
       }
 
+      const target = buildContext?.file
+        ? { path: buildContext.file, cwd: evidenceTarget?.cwd }
+        : evidenceTarget;
+      if (!target?.path) {
+        return this.stop(ticket, 'Build/compile failure has no evidence-bound source file. Refusing to guess a repair target.', 'manual_review');
+      }
+
       return {
         type: 'self_fix_plan',
         allowed: true,
-        reason: buildContext?.file
-          ? `Build/TypeScript failure detected in ${buildContext.file}. Create a targeted repair and rerun the failed phase.`
-          : 'Build or compile failure detected. Repair should inspect errors, patch code, then rerun the build.',
+        reason: `Build/TypeScript failure detected in ${target.path}. Create a targeted repair and rerun the failed phase.`,
         maxAttempts: 1,
         strategy: 'build_fix',
         suggestedTool: 'ai_write_file',
         suggestedInput: {
-          path: buildContext?.file || 'src/index.ts',
+          path: target.path,
           description: buildContext?.file
-            ? `Fix the following TypeScript/Build error in ${buildContext.file}:\nError: ${buildContext.message}\nLine: ${buildContext.line}\nSource: ${buildContext.sourceLine || 'Unknown'}`
-            : `Inspect and fix the following build error:\n${ticket.primaryError}`
+            ? `Fix the following TypeScript/Build error in ${target.path}:\nError: ${buildContext.message}\nLine: ${buildContext.line}\nSource: ${buildContext.sourceLine || 'Unknown'}`
+            : `Inspect and fix the following build error in ${target.path}:\n${ticket.primaryError}`
             + (cureNote ? `\n[PROVEN PAST CURE — same error class]: ${cureNote}` : ''),
-          context: JSON.stringify({ buildContext, repairTicket: ticket })
+          context: JSON.stringify({ buildContext, repairTarget: target, repairTicket: ticket })
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),
@@ -686,18 +728,22 @@ export class SelfFixService {
     }
 
     if (/partial|failed|error/i.test(text)) {
+      const repairTarget = extractEvidenceBoundRepairTarget(ticket);
+      if (!repairTarget?.path) {
+        return this.stop(ticket, 'General phase failure has no evidence-bound repair file. Refusing to guess a workspace target.', 'manual_review');
+      }
       return {
         type: 'self_fix_plan',
         allowed: true,
-        reason: 'General phase failure. Use a narrow code repair pass based on failed tasks only.',
+        reason: `General phase failure. Repair only the evidenced file ${repairTarget.path}, then rerun the failed phase.`,
         maxAttempts: 1,
         strategy: 'code_fix',
         suggestedTool: 'ai_write_file',
         suggestedInput: {
-          path: 'src/index.ts', // Fallback path, ideally should be derived from failed tasks
-          description: `Repair the following failed tasks in the current phase:\n${ticket.failedTasks.map(t => `- Task: ${t.task}\n  Error: ${t.error}`).join('\n')}`
+          path: repairTarget.path,
+          description: `Repair only the evidenced file ${repairTarget.path}; do not redirect the fix to another file.\nFailed tasks in the current phase:\n${ticket.failedTasks.map(t => `- Task: ${t.task}\n  Error: ${t.error}`).join('\n')}`
             + (cureNote ? `\n[PROVEN PAST CURE — same error class]: ${cureNote}` : ''),
-          context: JSON.stringify({ repairTicket: ticket })
+          context: JSON.stringify({ repairTarget, repairTicket: ticket })
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),
@@ -706,17 +752,21 @@ export class SelfFixService {
     }
 
     if (remembered) {
+      const repairTarget = extractEvidenceBoundRepairTarget(ticket);
+      if (!repairTarget?.path) {
+        return this.stop(ticket, 'A remembered cure has no evidence-bound repair file in the current ticket. Refusing to apply it to a generic source file.', 'manual_review');
+      }
       return {
         type: 'self_fix_plan',
         allowed: true,
-        reason: `No static rule matched, but this error class was cured before (${remembered.wins}x). One guided attempt from memory.`,
+        reason: `No static rule matched, but this error class was cured before (${remembered.wins}x). One guided attempt on the evidenced file ${repairTarget.path}.`,
         maxAttempts: 1,
         strategy: 'code_fix',
         suggestedTool: 'ai_write_file',
         suggestedInput: {
-          path: 'src/index.ts',
-          description: `Repair this failure using the cure that worked before.\nError:\n${ticket.primaryError}\n[PROVEN PAST CURE — same error class]: ${remembered.repair}`,
-          context: JSON.stringify({ repairTicket: ticket }),
+          path: repairTarget.path,
+          description: `Repair only ${repairTarget.path} using the cure that worked before.\nError:\n${ticket.primaryError}\n[PROVEN PAST CURE — same error class]: ${remembered.repair}`,
+          context: JSON.stringify({ repairTarget, repairTicket: ticket }),
         },
         rememberedCure: cureNote,
         safety: this.safety(),

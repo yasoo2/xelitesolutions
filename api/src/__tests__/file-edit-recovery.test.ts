@@ -182,6 +182,61 @@ describe('evidence-aware file edit recovery', () => {
     expect(JSON.stringify(plan.suggestedInput)).not.toContain('explicitly');
   });
 
+  it('binds generic syntax recovery to the failed generated-project file', () => {
+    const failedFile = '/workspace/WeatherGo/src/services/__tests__/weatherService.test.js';
+    const plan = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'WeatherGo',
+      phaseNumber: 5,
+      phaseName: 'Testing',
+      status: 'partial',
+      severity: 'high',
+      primaryError: `source_syntax_mismatch: ${failedFile} contains invalid JavaScript`,
+      failedTasks: [{
+        task: 'Run the generated test suite',
+        tool: 'auto_tester',
+        error: `source_syntax_mismatch: ${failedFile} contains invalid JavaScript`,
+        cwd: '/workspace/WeatherGo',
+        file: failedFile,
+      }],
+      suggestedNextAction: 'repair the evidenced test file and rerun testing',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(plan.allowed).toBe(true);
+    expect(plan.suggestedTool).toBe('ai_write_file');
+    expect(plan.suggestedInput).toEqual(expect.objectContaining({ path: failedFile }));
+    expect(JSON.stringify(plan.suggestedInput)).not.toContain('src/index.ts');
+  });
+
+  it('refuses a generic code repair when the failed task has no file evidence', () => {
+    const plan = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'WeatherGo',
+      phaseNumber: 5,
+      phaseName: 'Testing',
+      status: 'partial',
+      severity: 'high',
+      primaryError: 'source_syntax_mismatch: generated output is invalid',
+      failedTasks: [{
+        task: 'Run the generated test suite',
+        tool: 'auto_tester',
+        error: 'source_syntax_mismatch: generated output is invalid',
+        cwd: '/workspace/WeatherGo',
+      }],
+      suggestedNextAction: 'inspect the failed artifact',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(plan.allowed).toBe(false);
+    expect(plan.strategy).toBe('manual_review');
+    expect(JSON.stringify(plan)).not.toContain('src/index.ts');
+  });
+
   it('builds one bounded advanced-edit recovery from preserved file evidence', () => {
     const plan = SelfFixService.plan({
       type: 'phase_repair_ticket',
