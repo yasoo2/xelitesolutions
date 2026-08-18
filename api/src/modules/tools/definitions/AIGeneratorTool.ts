@@ -381,6 +381,17 @@ Return the complete file content now.`;
 
             let content = await callForArtifact();
 
+            // Engineering phases are long-lived and already carry a run-scoped
+            // recovery permit in the router. If the first mesh walk returns the
+            // honest no-provider notice, spend exactly one bounded second walk
+            // before stopping the phase. Ordinary user calls remain fail-fast;
+            // no outage text is ever treated as file content.
+            if (isProviderFailure(content) && context?.engineeringPipeline === true) {
+                logs.push(`engineering provider retry requested for ${filePath}`);
+                await new Promise(resolve => setTimeout(resolve, 250));
+                content = await callForArtifact();
+            }
+
             // When no provider answers, the router returns an apology STRING
             // rather than throwing. Writing it would put "تعذّر الوصول إلى محرّك
             // الذكاء" into the user's source file as its contents.

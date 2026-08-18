@@ -336,6 +336,23 @@ describe('a failure is never written into the file as its contents', () => {
         expect(fs.existsSync(landsAt(rel))).toBe(false);
     });
 
+    it('retries one transient provider failure inside an engineering pipeline', async () => {
+        const rel = scratch('engineering-retry.html');
+        callLLM
+            .mockResolvedValueOnce(PROVIDER_FAILURE_PREFIX + ' (لم يستجب أي مزوّد).')
+            .mockResolvedValueOnce('<main>recovered</main>');
+
+        const res: any = await tool.execute(
+            { path: rel, description: 'Write the verified engineering artifact.' },
+            { engineeringPipeline: true },
+        );
+
+        expect(res.ok).toBe(true);
+        expect(callLLM).toHaveBeenCalledTimes(2);
+        expect(res.logs.join(' ')).toMatch(/engineering provider retry requested/);
+        expect(fs.readFileSync(landsAt(rel), 'utf-8')).toBe('<main>recovered</main>');
+    });
+
     it('refuses an empty completion instead of truncating the file to nothing', async () => {
         const rel = scratch('kept.html');
         const abs = landsAt(rel);
