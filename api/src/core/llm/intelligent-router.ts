@@ -821,6 +821,23 @@ const TRANSIENT_PROVIDER_RETRY_TIMEOUT_MS = Math.max(
     1000,
     parseInt(String(process.env.PROVIDER_TRANSIENT_RETRY_TIMEOUT_MS || '').trim(), 10) || 30000
 );
+// A timed-out LLM7 request must not make every engineering phase wait behind its
+// generic cooldown forever, but a route must also not hammer the keyless gateway
+// concurrently. Allow one explicit engineering probe per run scope; a real 429
+// remains blocked by recentlyRateLimitedProviders.
+const engineeringLlm7ProbeAt = new Map<string, number>();
+const ENGINEERING_LLM7_PROBE_WINDOW_MS = Math.max(
+    30_000,
+    parseInt(String(process.env.ENGINEERING_LLM7_PROBE_WINDOW_MS || '').trim(), 10) || 300_000
+);
+function claimEngineeringLlm7Probe(scope: string): boolean {
+    const key = String(scope || 'global');
+    const now = Date.now();
+    const previous = engineeringLlm7ProbeAt.get(key) || 0;
+    if (previous > 0 && now - previous < ENGINEERING_LLM7_PROBE_WINDOW_MS) return false;
+    engineeringLlm7ProbeAt.set(key, now);
+    return true;
+}
 export function isProviderCoolingDown(name: string): boolean {
     if (name === 'Local (Auto)') return false; // never skip the local brain
     const until = recentlyFailedProviders.get(name);
@@ -1752,7 +1769,18 @@ export async function routeToModel(
 
     // 9. KEYLESS tier — no API key required. Primary brain when no keys are set.
     //    LLM7 first (anonymous OpenAI-compatible gateway), then Pollinations proxies.
-    if (llm7Provider.isAvailable()) {
+    // In an engineering run, a transient timeout may leave LLM7's provider-local
+    // cooldown set even though no 429 was observed. Claim one run-scoped probe so
+    // the working gateway is not silently omitted from the next planning phase.
+    const llm7Name = 'LLM7 (Keyless)';
+    const llm7Disabled = String(process.env.LLM7_DISABLE || '').trim() === '1';
+    const llm7RateLimited = isProviderRateLimited(llm7Name);
+    const llm7EngineeringProbe = engineeringPipeline
+        && !llm7Disabled
+        && !llm7RateLimited
+        && claimEngineeringLlm7Probe(latchScope);
+    const llm7CanBeUsed = !llm7Disabled && (llm7Provider.isAvailable() || llm7EngineeringProbe);
+    if (llm7CanBeUsed) {
         meshProviders.push({
             name: 'LLM7 (Keyless)',
             run: async (signal?: AbortSignal) => {
@@ -1800,6 +1828,26 @@ export async function routeToModel(
                 return res;
             }
         });
+    }
+
+    // Keep configured free/cloud providers ahead of keyless gateways, but in a
+    // no-key engineering run put LLM7 ahead of paid OpenAI and both Pollinations
+    // proxies. This is an explicit policy, not an accidental consequence of the
+    // cooldown sort, so a stale timeout cannot make Pollinations the first useful
+    // fallback again.
+    if (llm7CanBeUsed && engineeringPipeline) {
+        const llm7Index = meshProviders.findIndex(p => p.name === llm7Name);
+        if (llm7Index >= 0) {
+            const [llm7] = meshProviders.splice(llm7Index, 1);
+            const firstDeepFallback = meshProviders.findIndex(p =>
+                p.name === 'OpenAI (Direct)'
+                || p.name === 'DuckAI (Keyless)'
+                || p.name === 'DeepSeek (Pollinations)'
+                || p.name === 'Pollinations (Backup)'
+            );
+            meshProviders.splice(firstDeepFallback >= 0 ? firstDeepFallback : meshProviders.length, 0, llm7);
+            console.info(`[IntelligentRouter] 🧭 Engineering mesh prefers ${llm7Name} before paid/proxy fallbacks.`);
+        }
     }
     let lastError = '';
     let sawRateLimit = false;
@@ -1958,6 +2006,16 @@ export async function routeToModel(
     // still try them (best-effort) instead of falling through to the error. Fresh
     // providers are attempted first; cooled-down ones only as a last resort.
     const orderedProviders = orderByCooldown(meshProviders);
+    // A claimed engineering probe is intentionally allowed to lead even while a
+    // generic timeout cooldown is active. The provider-local 429 gate is checked
+    // separately above and remains authoritative.
+    if (llm7EngineeringProbe) {
+        const probeIndex = orderedProviders.findIndex(p => p.name === llm7Name);
+        if (probeIndex > 0) {
+            const [llm7] = orderedProviders.splice(probeIndex, 1);
+            orderedProviders.unshift(llm7);
+        }
+    }
     const cooledNow = meshProviders.filter(p => isProviderCoolingDown(p.name));
     if (cooledNow.length) {
         console.info(`[IntelligentRouter] ⏭️  Deferring (cooldown): ${cooledNow.map(p => p.name).join(', ')}`);
@@ -1975,7 +2033,7 @@ export async function routeToModel(
             console.info(`[IntelligentRouter] ⏭️ skipping ${p.name} — rate-limited earlier in this route call; a later call may retry it.`);
             continue;
         }
-        if (p.name === 'LLM7 (Keyless)' && !llm7Provider.isAvailable()) {
+        if (p.name === llm7Name && !llm7Provider.isAvailable() && !llm7EngineeringProbe) {
             console.info('[IntelligentRouter] ⏭️ skipping LLM7 (Keyless) — its gateway cooldown is still active.');
             continue;
         }
