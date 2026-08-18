@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { applyPhaseExecutionEvidence, recoverMissingNpmLauncher } from '../modules/tools/definitions/PhaseExecutorTool';
+import { applyPhaseExecutionEvidence, inheritRuntimeProjectArguments, recoverMissingNpmLauncher } from '../modules/tools/definitions/PhaseExecutorTool';
 import { ShellExecuteTool } from '../modules/tools/definitions/SystemTools';
 import { executionEngine } from '../kernel/ExecutionEngine';
 
@@ -51,6 +51,25 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         if (previousRoot === undefined) delete process.env.JOE_WORKSPACE_ROOT;
         else process.env.JOE_WORKSPACE_ROOT = previousRoot;
         fs.rmSync(workspaceRoot, { recursive: true, force: true });
+    });
+
+    it('passes the runtime-bound artifact root to quality_run as path', () => {
+        const planned: Record<string, any> = {};
+        const logs: string[] = [];
+        inheritRuntimeProjectArguments('quality_run', planned, {
+            projectRoot: '/workspace/weathergo',
+            projectRootRuntimeBound: true,
+        }, logs);
+
+        expect(planned).toMatchObject({ path: '/workspace/weathergo' });
+        expect(logs.join('\\n')).toContain('quality_run: inherited path');
+
+        const explicit: Record<string, any> = { path: '/workspace/other-project' };
+        inheritRuntimeProjectArguments('quality_run', explicit, {
+            projectRoot: '/workspace/weathergo',
+            projectRootRuntimeBound: true,
+        });
+        expect(explicit.path).toBe('/workspace/other-project');
     });
 
     it('selects the repository start script when a server alias is missing', () => {

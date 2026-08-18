@@ -59,6 +59,33 @@ export function reactProjectStartFallback(
     return { cwd: projectRoot };
 }
 
+export function inheritRuntimeProjectArguments(
+    toolName: string,
+    planned: Record<string, any>,
+    projectContext?: Record<string, any>,
+    logs?: string[],
+): Record<string, any> {
+    const runtimeProjectRoot = String(projectContext?.projectRoot || '').trim();
+    if (projectContext?.projectRootRuntimeBound !== true || !runtimeProjectRoot) return planned;
+
+    // quality_run's real contract names the project as `path`, not `cwd` or
+    // `projectPath`. A phase plan often omits it because the builder has only
+    // established the root at runtime. Carry the trusted runtime-bound root
+    // into the tool's own vocabulary before schema validation; never guess a
+    // workspace root and never overwrite an explicit path.
+    if (toolName === 'quality_run' && !String(planned.path || '').trim()) {
+        planned.path = runtimeProjectRoot;
+        logs?.push(`[PhaseExecutor] quality_run: inherited path from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
+    }
+
+    const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager', 'auto_tester']);
+    if (cwdInheritedTools.has(toolName) && !String(planned.cwd || planned.projectPath || '').trim()) {
+        planned.cwd = runtimeProjectRoot;
+        logs?.push(`[PhaseExecutor] ${toolName}: inherited cwd from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
+    }
+    return planned;
+}
+
 export function applyPhaseExecutionEvidence(
     toolName: string,
     planned: Record<string, any>,
@@ -749,15 +776,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 // the phase. Downstream package/install commands must execute
                 // inside that artifact, not silently fall back to the workspace
                 // root when the planner omitted cwd/projectPath.
-                const runtimeProjectRoot = String(projectContext?.projectRoot || '').trim();
-                const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager', 'auto_tester']);
-                if (projectContext?.projectRootRuntimeBound === true
-                    && runtimeProjectRoot
-                    && cwdInheritedTools.has(toolName)
-                    && !String(planned.cwd || planned.projectPath || '').trim()) {
-                    planned.cwd = runtimeProjectRoot;
-                    appendLog(`[PhaseExecutor] ${toolName}: inherited cwd from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
-                }
+                inheritRuntimeProjectArguments(toolName, planned, projectContext, logs);
 
                 const adaptedPlanned = adaptPlannedArgs(toolName, planned);
                 const toolArgs = adaptPlannedArgsFromDescription(toolName, adaptedPlanned, taskDesc);
