@@ -4,6 +4,7 @@ import path from 'path';
 import { workspaceService } from '../modules/services/WorkspaceService';
 import { AdvancedFileEditTool } from '../modules/tools/definitions/UtilityTools';
 import { SelfFixService } from '../modules/services/SelfFixService';
+import { RepairTicketService } from '../modules/services/RepairTicketService';
 
 describe('evidence-aware file edit recovery', () => {
   let root = '';
@@ -212,6 +213,42 @@ describe('evidence-aware file edit recovery', () => {
     expect(String(plan.suggestedInput?.description)).toContain('complete valid artifact');
     expect(String(plan.suggestedInput?.description)).toContain('node --check');
     expect(JSON.stringify(plan.suggestedInput)).not.toContain('src/index.ts');
+  });
+
+  it('preserves the original ai_write_file brief and context during syntax recovery', () => {
+    const failedFile = '/workspace/WeatherGo/src/screens/HomeScreen.js';
+    const originalDescription = 'Build the WeatherGo home screen with a city search, current conditions, hourly forecast, favorites action, loading state, and API error state using the existing React web stack.';
+    const originalContext = 'Use the existing Vite browser runtime, preserve the current routes, and do not switch to React Native.';
+    const ticket = RepairTicketService.build({
+      phase: { phaseNumber: 2, name: 'Core UI' },
+      projectName: 'WeatherGo',
+      workspaceId: 'workspace-test',
+      phaseResult: {
+        output: {
+          status: 'partial',
+          results: [{
+            task: 'Write the WeatherGo home screen',
+            tool: 'ai_write_file',
+            ok: false,
+            error: `source_syntax_mismatch: ${failedFile} is not valid JS syntax`,
+            args: {
+              path: failedFile,
+              description: originalDescription,
+              context: originalContext,
+            },
+          }],
+        },
+      },
+    });
+    const plan = SelfFixService.plan(ticket);
+
+    expect(ticket.failedTasks[0]).toEqual(expect.objectContaining({
+      description: originalDescription,
+      artifactContext: originalContext,
+    }));
+    expect(String(plan.suggestedInput?.description)).toContain('ORIGINAL GENERATION BRIEF');
+    expect(String(plan.suggestedInput?.description)).toContain('city search');
+    expect(String(plan.suggestedInput?.context)).toContain(originalContext);
   });
 
   it('refuses a generic code repair when the failed task has no file evidence', () => {

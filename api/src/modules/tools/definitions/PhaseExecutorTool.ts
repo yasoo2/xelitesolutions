@@ -335,6 +335,12 @@ function syncRuntimeProjectContext(projectContext: Record<string, any>, logs: st
  * SelfFixService falls through to its conservative generic source target
  * (`src/index.ts`). That is not a repair; it is evidence loss.
  */
+function boundedRepairEvidence(value: unknown, max = 6000): string {
+    return String(value ?? '').slice(0, max)
+        .replace(/(authorization|bearer|token|password|secret|api[_ -]?key)\s*[:=]\s*[^\s,;]+/giu, '$1: [REDACTED]')
+        .replace(/(gh[pousr]_[A-Za-z0-9_-]{16,})/gu, '[REDACTED]');
+}
+
 function fileFailureEvidence(toolName: string, args: Record<string, any>): Record<string, string> {
     const cwd = String(args?.cwd ?? args?.projectPath ?? '').trim();
     const evidence: Record<string, string> = cwd ? { cwd: cwd.slice(0, 1000) } : {};
@@ -344,11 +350,19 @@ function fileFailureEvidence(toolName: string, args: Record<string, any>): Recor
         ?? (Array.isArray(args?.files) ? args.files[0] : '') ?? '').trim();
     const find = String(args?.find ?? args?.search ?? args?.old_string ?? '');
     const replace = String(args?.replace ?? args?.new_string ?? '');
+    const description = toolName === 'ai_write_file' && typeof args?.description === 'string'
+        ? boundedRepairEvidence(args.description)
+        : '';
+    const artifactContext = toolName === 'ai_write_file' && typeof args?.context === 'string'
+        ? boundedRepairEvidence(args.context)
+        : '';
     return {
         ...evidence,
         ...(file ? { file: file.slice(0, 1000) } : {}),
         ...(find ? { find: find.slice(0, 4000) } : {}),
         ...(replace ? { replace: replace.slice(0, 4000) } : {}),
+        ...(description ? { description } : {}),
+        ...(artifactContext ? { artifactContext } : {}),
     };
 }
 

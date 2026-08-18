@@ -31,6 +31,9 @@ export interface RepairTicket {
     file?: string;
     find?: string;
     replace?: string;
+    /** Original generation brief/context for bounded ai_write_file recovery. */
+    description?: string;
+    artifactContext?: string;
   }>;
   suggestedNextAction: string;
   retryPolicy: {
@@ -47,6 +50,16 @@ export interface RepairTicket {
 
 function truncate(value: unknown, max = 1000) {
   return String(value ?? '').slice(0, max);
+}
+
+/**
+ * Keep the semantic brief needed to regenerate one failed artifact, while
+ * removing credential-shaped values before the brief enters a repair ticket.
+ */
+function repairEvidence(value: unknown, max = 5000) {
+  return truncate(value, max)
+    .replace(/(authorization|bearer|token|password|secret|api[_ -]?key)\s*[:=]\s*[^\s,;]+/giu, '$1: [REDACTED]')
+    .replace(/(gh[pousr]_[A-Za-z0-9_-]{16,})/gu, '[REDACTED]');
 }
 
 function inferSeverity(status: string, error: string): RepairTicketSeverity {
@@ -122,6 +135,12 @@ export class RepairTicketService {
           : typeof rawArgs.replace === 'string'
             ? rawArgs.replace
             : typeof rawArgs.new_string === 'string' ? rawArgs.new_string : undefined;
+        const description = String(t?.tool || '') === 'ai_write_file' && typeof rawArgs.description === 'string'
+          ? repairEvidence(rawArgs.description, 6000)
+          : undefined;
+        const artifactContext = String(t?.tool || '') === 'ai_write_file' && typeof rawArgs.context === 'string'
+          ? repairEvidence(rawArgs.context, 6000)
+          : undefined;
         return {
           task: truncate(t.task || 'unknown task', 500),
           tool: truncate(t.tool || 'unknown tool', 100),
@@ -132,6 +151,8 @@ export class RepairTicketService {
           ...(file ? { file: truncate(file, 1000) } : {}),
           ...(find ? { find: truncate(find, 4000) } : {}),
           ...(replace !== undefined ? { replace: truncate(replace, 4000) } : {}),
+          ...(description ? { description } : {}),
+          ...(artifactContext ? { artifactContext } : {}),
         };
       }),
       suggestedNextAction: 'Run one controlled repair pass, then re-run the failed phase and continue only if it becomes completed.',

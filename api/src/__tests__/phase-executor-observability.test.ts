@@ -170,6 +170,50 @@ describe('PhaseExecutorTool observable trusted context', () => {
         }
     });
 
+    it('preserves failed ai_write_file generation evidence for self-fix', async () => {
+        const workspaceId = `workspace-artifact-evidence-${process.pid}`;
+        const sessionId = `chat-artifact-evidence-${process.pid}`;
+        const projectRoot = workspaceService.getActiveRoot(workspaceId);
+        const description = 'Build the WeatherGo home screen with search, current weather, hourly forecast, favorites, loading, and error states.';
+        const artifactContext = 'Use the existing React web stack and browser runtime; do not use React Native.';
+        mockedExecuteTool.mockResolvedValue({
+            ok: false,
+            error: 'source_syntax_mismatch: /workspace/WeatherGo/src/screens/HomeScreen.js is not valid JavaScript',
+        } as any);
+
+        const result: any = await new PhaseExecutorTool().execute({
+            phase: {
+                phaseNumber: 2,
+                name: 'Core UI',
+                tasks: [{
+                    task: 'Write the WeatherGo home screen',
+                    tool: 'ai_write_file',
+                    required: true,
+                    args: {
+                        path: 'src/screens/HomeScreen.js',
+                        description,
+                        context: artifactContext,
+                    },
+                }],
+            },
+            projectContext: {
+                projectName: 'WeatherGo',
+                projectRoot,
+                projectRootRuntimeBound: true,
+                sessionId,
+                workspaceId,
+            },
+        }, { sessionId, workspaceId });
+
+        expect(result.ok).toBe(false);
+        expect(result.output.results[0]).toEqual(expect.objectContaining({
+            tool: 'ai_write_file',
+            ok: false,
+            description,
+            artifactContext,
+        }));
+    });
+
     it('installs missing local npm script binaries before executing a shell build', async () => {
         const workspaceId = `workspace-npm-preflight-${process.pid}`;
         const sessionId = `chat-npm-preflight-${process.pid}`;

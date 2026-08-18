@@ -104,6 +104,8 @@ function extractArtifactValidationFailure(ticket: RepairTicket) {
     file: failed.file,
     error: failed.error || ticket.primaryError,
     task: failed.task,
+    description: typeof failed.description === 'string' ? failed.description : undefined,
+    artifactContext: typeof failed.artifactContext === 'string' ? failed.artifactContext : undefined,
   };
 }
 
@@ -475,9 +477,21 @@ export class SelfFixService {
             `Observed validator error: ${artifactValidationFailure.error}`,
             'For source_syntax_mismatch, first inspect the existing file and its imports/exports, then rewrite the complete file as syntactically valid source. Do not return a patch, explanation, Markdown fence, truncated fragment, or a different file. Run node --check for .js/.mjs/.cjs (or the project build for JSX/TSX) before reporting success.',
             `Failed task: ${artifactValidationFailure.task}`,
+            ...(artifactValidationFailure.description
+              ? [
+                'ORIGINAL GENERATION BRIEF — preserve the requested behavior and interfaces while repairing syntax/format only:',
+                artifactValidationFailure.description,
+              ]
+              : []),
           ].join('\\n'),
           language: 'en',
-          context: JSON.stringify({ artifactValidationFailure, repairTicket: ticket, requiredArtifactLanguage: 'Match the extension exactly; JavaScript/TypeScript files must never contain Python syntax.' }),
+          context: JSON.stringify({
+            artifactValidationFailure,
+            originalGenerationBrief: artifactValidationFailure.description,
+            originalArtifactContext: artifactValidationFailure.artifactContext,
+            repairTicket: ticket,
+            requiredArtifactLanguage: 'Match the extension exactly; JavaScript/TypeScript files must never contain Python syntax.',
+          }),
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),
