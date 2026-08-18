@@ -66,7 +66,10 @@ export function inheritRuntimeProjectArguments(
     logs?: string[],
 ): Record<string, any> {
     const runtimeProjectRoot = String(projectContext?.projectRoot || '').trim();
-    const runtimePathTools = new Set(['project_detect', 'analyze_project', 'analyze_codebase', 'quality_run']);
+    const runtimePathTools = new Set([
+        'inspect_directory', 'search_files', 'search_text',
+        'project_detect', 'analyze_project', 'analyze_codebase', 'quality_run',
+    ]);
 
     /**
      * GREENFIELD HAS NO ARTIFACT ROOT YET.

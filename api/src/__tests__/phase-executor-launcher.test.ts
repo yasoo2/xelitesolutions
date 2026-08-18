@@ -114,6 +114,14 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
             const analysis: Record<string, any> = {};
             inheritRuntimeProjectArguments('analyze_project', analysis, context, logs);
             expect(analysis.path).toBe(workspaceRoot);
+
+            const directory: Record<string, any> = { path: 'WeatherGo/src' };
+            inheritRuntimeProjectArguments('inspect_directory', directory, context, logs);
+            expect(directory.path).toBe(workspaceRoot);
+
+            const files: Record<string, any> = { path: 'WeatherGo' };
+            inheritRuntimeProjectArguments('search_files', files, context, logs);
+            expect(files.path).toBe(workspaceRoot);
         } finally {
             activeRootSpy.mockRestore();
         }
