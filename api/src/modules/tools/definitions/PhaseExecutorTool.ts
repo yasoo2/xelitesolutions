@@ -70,6 +70,26 @@ export function inheritRuntimeProjectArguments(
         'inspect_directory', 'search_files', 'search_text',
         'project_detect', 'analyze_project', 'analyze_codebase', 'quality_run',
     ]);
+    // Source-oriented tools use a different vocabulary from discovery tools:
+    // their target is usually `filePath`/`filename`, and reviewers often pass
+    // arrays such as `files`. Once a builder has established the real artifact,
+    // resolve these model-written paths at this trusted boundary so a leftover
+    // `WeatherGo/src/App.jsx` cannot fall back to the workspace root.
+    const runtimeArtifactSourceTools = new Set([
+        'write_file', 'file_edit', 'file_edit_advanced',
+        'delete_file', 'read_file', 'test_generator',
+        'code_reviewer', 'auto_refactor', 'doc_generator', 'performance_profiler',
+    ]);
+    // ai_write_file has a stricter public contract: its destination must remain
+    // workspace-relative until plannedArgsIssue has validated it. The generator
+    // receives projectRoot in delegated context and resolves that logical path
+    // inside the runtime-bound artifact itself (see AIGeneratorTool/utils.ts).
+    const runtimeLogicalSourceTools = new Set(['ai_write_file']);
+    const runtimeArtifactSourceKeys = new Set([
+        'path', 'filename', 'filePath', 'sourceFile', 'targetPath',
+        'schemaPath', 'databasePath',
+    ]);
+    const runtimeArtifactSourceArrayKeys = new Set(['files', 'filePaths', 'sourceFiles', 'paths']);
 
     /**
      * GREENFIELD HAS NO ARTIFACT ROOT YET.
@@ -140,6 +160,49 @@ export function inheritRuntimeProjectArguments(
                 logs?.push(projectSegmentMatches
                     ? `[PhaseExecutor] ${toolName}: mapped conceptual project path onto runtime-bound root (${candidate.slice(0, 240)})`
                     : `[PhaseExecutor] ${toolName}: resolved relative path under runtime-bound root (${candidate.slice(0, 240)})`);
+            }
+        }
+    }
+
+    const mapRuntimeArtifactSource = (value: unknown, key: string): string => {
+        const existing = String(value || '').trim();
+        if (!existing || path.isAbsolute(existing)) return existing;
+        const normaliseSegment = (segment: string) => segment
+            .replace(/\\/g, '/')
+            .replace(/^\.\//u, '')
+            .replace(/[-_]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLocaleLowerCase();
+        const projectName = String(projectContext?.projectName || '').trim();
+        const rawSegments = existing.replace(/\\/g, '/').split('/').filter(Boolean);
+        const firstSegment = rawSegments[0] || '';
+        const projectSegmentMatches = !!projectName && !!firstSegment
+            && normaliseSegment(firstSegment) === normaliseSegment(projectName);
+        const relativeSegments = projectSegmentMatches ? rawSegments.slice(1) : rawSegments;
+        const logicalPath = relativeSegments.join(path.sep) || '.';
+        if (runtimeLogicalSourceTools.has(toolName)) {
+            logs?.push(projectSegmentMatches
+                ? `[PhaseExecutor] ${toolName}: mapped conceptual ${key} to logical artifact path (${logicalPath.slice(0, 240)})`
+                : `[PhaseExecutor] ${toolName}: preserved logical relative ${key} for runtime-bound artifact (${logicalPath.slice(0, 240)})`);
+            return logicalPath;
+        }
+        const candidate = path.resolve(runtimeProjectRoot, logicalPath);
+        if (!isWithinRoot(candidate, runtimeProjectRoot)) return existing;
+        logs?.push(projectSegmentMatches
+            ? `[PhaseExecutor] ${toolName}: mapped conceptual ${key} onto runtime-bound artifact (${candidate.slice(0, 240)})`
+            : `[PhaseExecutor] ${toolName}: resolved relative ${key} under runtime-bound artifact (${candidate.slice(0, 240)})`);
+        return candidate;
+    };
+
+    if (runtimeArtifactSourceTools.has(toolName)) {
+        for (const [key, value] of Object.entries(planned)) {
+            if (runtimeArtifactSourceKeys.has(key) && typeof value === 'string') {
+                planned[key] = mapRuntimeArtifactSource(value, key);
+            } else if (runtimeArtifactSourceArrayKeys.has(key) && Array.isArray(value)) {
+                planned[key] = value.map(entry => typeof entry === 'string'
+                    ? mapRuntimeArtifactSource(entry, key)
+                    : entry);
             }
         }
     }

@@ -5,6 +5,8 @@ import { workspaceService } from '../services/WorkspaceService';
 export interface ResolvePathOptions {
     sandbox?: boolean; // If true, forces path into buildsDir/workspace-default if no active workspace
     workspaceId?: string;
+    /** A runtime-bound project/artifact root, when the caller has verified it. */
+    projectRoot?: string;
 }
 
 /**
@@ -65,8 +67,19 @@ export function resolveToolPath(p: string, options: ResolvePathOptions = {}) {
 
     const buildsDir = path.resolve(projectRoot, 'data/builds');
 
-    // Determine the anchor root
+    // Determine the anchor root. A runtime-bound artifact is a stronger,
+    // evidence-backed anchor than the workspace root, but only accept it when
+    // it is already inside the active workspace (or the configured external
+    // workspace root). Callers still pass logical relative paths; this option
+    // prevents a generated file from silently landing beside the artifact.
     let root = activeRoot;
+    const requestedProjectRoot = String(options.projectRoot || '').trim();
+    if (requestedProjectRoot && path.isAbsolute(requestedProjectRoot)) {
+        const candidateProjectRoot = path.resolve(requestedProjectRoot);
+        const allowedProjectRoot = isWithinRoot(candidateProjectRoot, path.resolve(activeRoot))
+            || isWithinRoot(candidateProjectRoot, path.resolve(workspaceService.externalRoot));
+        if (allowedProjectRoot) root = candidateProjectRoot;
+    }
 
     // [Wakil 6.8] Hardened Sandboxing
     if (options.sandbox) {

@@ -127,6 +127,35 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         }
     });
 
+    it('maps runtime-bound source file arguments onto the artifact root', () => {
+        const context = {
+            projectRoot: '/workspace/react-weathergo-a7c8',
+            projectName: 'WeatherGo',
+            projectRootRuntimeBound: true,
+        };
+        const logs: string[] = [];
+        const testInput: Record<string, any> = {
+            filePath: 'WeatherGo/src/App.jsx',
+            files: ['WeatherGo/src/App.jsx', 'WeatherGo/src/components/WeatherCard.jsx'],
+        };
+        inheritRuntimeProjectArguments('test_generator', testInput, context, logs);
+
+        expect(testInput.filePath).toBe('/workspace/react-weathergo-a7c8/src/App.jsx');
+        expect(testInput.files).toEqual([
+            '/workspace/react-weathergo-a7c8/src/App.jsx',
+            '/workspace/react-weathergo-a7c8/src/components/WeatherCard.jsx',
+        ]);
+        expect(logs.join('\\n')).toContain('mapped conceptual filePath');
+
+        const editInput: Record<string, any> = { filename: 'WeatherGo/src/App.jsx' };
+        inheritRuntimeProjectArguments('file_edit', editInput, context);
+        expect(editInput.filename).toBe('/workspace/react-weathergo-a7c8/src/App.jsx');
+
+        const absolute = { filePath: '/tmp/not-an-artifact/App.jsx' };
+        inheritRuntimeProjectArguments('test_generator', absolute, context);
+        expect(absolute.filePath).toBe('/tmp/not-an-artifact/App.jsx');
+    });
+
     it('selects the repository start script when a server alias is missing', () => {
         const recovery = recoverMissingNpmLauncher(
             'npm run server',

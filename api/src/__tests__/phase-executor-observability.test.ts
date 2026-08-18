@@ -128,12 +128,14 @@ describe('PhaseExecutorTool observable trusted context', () => {
 
         try {
             let delegatedContext: any;
-            mockedExecuteTool.mockImplementation(async (toolName: string, _input: any, context: any) => {
+            let delegatedInput: any;
+            mockedExecuteTool.mockImplementation(async (toolName: string, input: any, context: any) => {
                 if (toolName === 'react_project') {
                     return { ok: true, output: { path: projectRoot, message: 'React artifact created.' } } as any;
                 }
                 if (toolName === 'ai_write_file') {
                     delegatedContext = context;
+                    delegatedInput = input;
                     return { ok: true, output: { path: path.join(projectRoot, 'src', 'App.jsx') } } as any;
                 }
                 return { ok: true, output: {} } as any;
@@ -165,6 +167,10 @@ describe('PhaseExecutorTool observable trusted context', () => {
                 projectRoot,
                 projectRootRuntimeBound: true,
             });
+            expect(delegatedInput).toMatchObject({
+                path: 'src/App.jsx',
+            });
+            expect(path.isAbsolute(String(delegatedInput?.path || ''))).toBe(false);
         } finally {
             fs.rmSync(projectRoot, { recursive: true, force: true });
         }
