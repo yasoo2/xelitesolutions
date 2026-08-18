@@ -336,12 +336,16 @@ function syncRuntimeProjectContext(projectContext: Record<string, any>, logs: st
  * (`src/index.ts`). That is not a repair; it is evidence loss.
  */
 function fileFailureEvidence(toolName: string, args: Record<string, any>): Record<string, string> {
-    const fileTools = new Set(['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced']);
-    if (!fileTools.has(toolName)) return {};
-    const file = String(args?.filename ?? args?.filePath ?? args?.path ?? args?.targetPath ?? '').trim();
+    const cwd = String(args?.cwd ?? args?.projectPath ?? '').trim();
+    const evidence: Record<string, string> = cwd ? { cwd: cwd.slice(0, 1000) } : {};
+    const fileTools = new Set(['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'auto_tester']);
+    if (!fileTools.has(toolName)) return evidence;
+    const file = String(args?.filename ?? args?.filePath ?? args?.path ?? args?.targetPath
+        ?? (Array.isArray(args?.files) ? args.files[0] : '') ?? '').trim();
     const find = String(args?.find ?? args?.search ?? args?.old_string ?? '');
     const replace = String(args?.replace ?? args?.new_string ?? '');
     return {
+        ...evidence,
         ...(file ? { file: file.slice(0, 1000) } : {}),
         ...(find ? { find: find.slice(0, 4000) } : {}),
         ...(replace ? { replace: replace.slice(0, 4000) } : {}),
@@ -754,7 +758,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                         ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
                             ? { command: toolArgs.command.slice(0, 1000) }
                             : {}),
-                        ...(typeof toolArgs.cwd === 'string' ? { cwd: toolArgs.cwd.slice(0, 1000) } : {}),
+                        ...(typeof (toolArgs.cwd || toolArgs.projectPath) === 'string' ? { cwd: String(toolArgs.cwd || toolArgs.projectPath).slice(0, 1000) } : {}),
                     });
                     if (task.priority === 'high' || task.required === true) break;
                     continue;
@@ -852,8 +856,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                             ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
                                 ? { command: toolArgs.command.slice(0, 1000) }
                                 : {}),
-                            ...(toolName === 'shell_execute' && typeof (toolArgs.cwd || failedOutput.cwd) === 'string'
-                                ? { cwd: String(toolArgs.cwd || failedOutput.cwd).slice(0, 1000) }
+                            ...(typeof (toolArgs.cwd || toolArgs.projectPath || failedOutput.cwd || failedOutput.projectPath) === 'string'
+                                ? { cwd: String(toolArgs.cwd || toolArgs.projectPath || failedOutput.cwd || failedOutput.projectPath).slice(0, 1000) }
                                 : {}),
                             ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
                                 ? { background: toolArgs.background }
@@ -893,8 +897,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                         ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
                             ? { command: toolArgs.command.slice(0, 1000) }
                             : {}),
-                        ...(toolName === 'shell_execute' && typeof toolArgs.cwd === 'string'
-                            ? { cwd: toolArgs.cwd.slice(0, 1000) }
+                        ...(typeof (toolArgs.cwd || toolArgs.projectPath) === 'string'
+                            ? { cwd: String(toolArgs.cwd || toolArgs.projectPath).slice(0, 1000) }
                             : {}),
                         ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
                             ? { background: toolArgs.background }

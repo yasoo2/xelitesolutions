@@ -271,6 +271,51 @@ describe('PhaseExecutorTool observable trusted context', () => {
         }
     });
 
+    it('preserves the bound project cwd in failed auto_tester evidence', async () => {
+        const workspaceId = `workspace-auto-tester-failure-${process.pid}`;
+        const sessionId = `chat-auto-tester-failure-${process.pid}`;
+        const workspaceRoot = workspaceService.getActiveRoot(workspaceId);
+        const projectRoot = path.join(workspaceRoot, `WeatherGo-failure-${process.pid}`);
+        fs.mkdirSync(projectRoot, { recursive: true });
+        try {
+            mockedExecuteTool.mockResolvedValue({
+                ok: false,
+                error: "Could not find 'scripts/smoke-test.test.mjs'",
+            } as any);
+
+            const result: any = await new PhaseExecutorTool().execute({
+                phase: {
+                    phaseNumber: 8,
+                    name: 'Testing and QA',
+                    tasks: [{
+                        task: 'Run the smoke test script',
+                        tool: 'auto_tester',
+                        args: { testType: 'syntax', files: ['scripts/smoke-test.test.mjs'] },
+                    }],
+                },
+                projectContext: {
+                    projectName: `WeatherGo-failure-${process.pid}`,
+                    createsNewProject: true,
+                    projectRoot,
+                    projectRootRuntimeBound: true,
+                    sessionId,
+                    workspaceId,
+                    userId: 'user-auto-tester-failure',
+                },
+            }, { sessionId, workspaceId, userId: 'user-auto-tester-failure' });
+
+            expect(result.ok).toBe(false);
+            expect(result.output.results[0]).toMatchObject({
+                tool: 'auto_tester',
+                ok: false,
+                cwd: projectRoot,
+                file: 'scripts/smoke-test.test.mjs',
+            });
+        } finally {
+            fs.rmSync(projectRoot, { recursive: true, force: true });
+        }
+    });
+
     it('preserves engineering LLM routing context across delegated tool execution', async () => {
         let observedContext: any;
         mockedExecuteTool.mockImplementation(async (_tool: any, _input: any, context: any) => {

@@ -95,7 +95,11 @@ export class RepairTicketService {
           ? t.cwd
           : typeof rawArgs.cwd === 'string'
             ? rawArgs.cwd
-            : typeof t?.output?.cwd === 'string' ? t.output.cwd : undefined;
+            : typeof rawArgs.projectPath === 'string'
+              ? rawArgs.projectPath
+              : typeof t?.output?.cwd === 'string'
+                ? t.output.cwd
+                : typeof t?.output?.projectPath === 'string' ? t.output.projectPath : undefined;
         const background = typeof t?.background === 'boolean'
           ? t.background
           : typeof rawArgs.background === 'boolean' ? rawArgs.background : undefined;

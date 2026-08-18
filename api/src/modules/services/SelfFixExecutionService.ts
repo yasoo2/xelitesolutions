@@ -1,4 +1,5 @@
 import { executeTool } from './ToolService';
+import path from 'path';
 import type { SelfFixPlan } from './SelfFixService';
 import { repairMemory } from '../../core/memory/repair-memory';
 
@@ -32,6 +33,44 @@ function pathsReferToSameFile(left: unknown, right: unknown): boolean {
   // complete path-segment suffix, never a loose substring, before considering
   // the task repaired.
   return a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
+}
+
+function isWithinRoot(candidate: string, root: string): boolean {
+  const child = path.resolve(candidate);
+  const parent = path.resolve(root);
+  return child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : `${parent}${path.sep}`);
+}
+
+/**
+ * File repair tools resolve relative destinations against the workspace. A
+ * phase may already have proven a generated child project, however, and a
+ * missing-file error such as `scripts/smoke-test.test.mjs` is relative to that
+ * project's test cwd. Rebind only file-targeting repairs to the runtime-bound
+ * project root; never rewrite shell/npm cwd or allow a `..` target to escape it.
+ */
+function bindRepairTargetToProjectRoot(repairTool: string, input: Record<string, any>, projectContext: any): Record<string, any> {
+  const root = String(projectContext?.projectRoot || '').trim();
+  if (!root || projectContext?.projectRootRuntimeBound !== true) return input;
+
+  const key = repairTool === 'write_file'
+    ? (typeof input.filename === 'string' && input.filename.trim() ? 'filename' : 'path')
+    : repairTool === 'ai_write_file'
+      ? 'path'
+      : ['file_edit', 'file_edit_advanced'].includes(repairTool)
+        ? 'filePath'
+        : '';
+  if (!key || typeof input[key] !== 'string' || !input[key].trim()) return input;
+
+  const raw = String(input[key]).trim();
+  const absolute = path.isAbsolute(raw) || path.win32.isAbsolute(raw);
+  let resolved = '';
+  try {
+    resolved = absolute ? path.resolve(raw) : path.resolve(root, raw);
+  } catch {
+    return input;
+  }
+  if (!isWithinRoot(resolved, root)) return input;
+  return { ...input, [key]: resolved };
 }
 
 function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: any; skipped: string[] } {
@@ -134,11 +173,18 @@ export class SelfFixExecutionService {
     }
 
     const repairTool = selfFixPlan.suggestedTool;
-    const repairInput = {
-      ...(selfFixPlan.suggestedInput || {}),
-      sessionId: executionContext.sessionId,
-      workspaceId: executionContext.workspaceId,
-    };
+    const repairInput = bindRepairTargetToProjectRoot(
+      repairTool,
+      {
+        ...(selfFixPlan.suggestedInput || {}),
+        sessionId: executionContext.sessionId,
+        workspaceId: executionContext.workspaceId,
+      },
+      projectContext,
+    );
+    if (repairInput !== selfFixPlan.suggestedInput && repairInput.path !== selfFixPlan.suggestedInput?.path) {
+      executionContext.onProgress?.(`[self-fix:${repairTool}] rebound relative repair target to runtime project root`);
+    }
 
     const repairResult = await executeTool(repairTool, repairInput, {
       ...executionContext,

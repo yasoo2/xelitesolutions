@@ -92,4 +92,41 @@ describe('SelfFixExecutionService phase resumption', () => {
         expect(executeToolSpy.mock.calls[1][1].phase.tasks).toHaveLength(1);
         expect(executeToolSpy.mock.calls[1][1].phase.tasks[0].args.path).toBe('src/routes/auth.js');
     });
+
+    it('rebinds a relative missing-file repair to the runtime-bound generated project', async () => {
+        const missingFilePlan: any = {
+            type: 'self_fix_plan',
+            allowed: true,
+            reason: 'repair the missing smoke test',
+            maxAttempts: 1,
+            strategy: 'missing_file_fix',
+            suggestedTool: 'write_file',
+            suggestedInput: {
+                filename: 'scripts/smoke-test.test.mjs',
+                content: 'real smoke test\n',
+            },
+            safety: { runOnlyOnce: true },
+            sourceTicket: { primaryError: "Could not find 'scripts/smoke-test.test.mjs'", failedTasks: [], context: {} },
+        };
+        const phase = {
+            name: 'Testing and QA',
+            tasks: [{ task: 'Run smoke test', tool: 'auto_tester', args: { projectPath: 'WeatherGo' } }],
+        };
+
+        const result = await SelfFixExecutionService.executeOnce({
+            phase,
+            projectContext: {
+                projectName: 'WeatherGo',
+                projectRoot: '/workspace/WeatherGo',
+                projectRootRuntimeBound: true,
+            },
+            selfFixPlan: missingFilePlan,
+            executionContext: context,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(executeToolSpy.mock.calls[0][0]).toBe('write_file');
+        expect(executeToolSpy.mock.calls[0][1].filename).toBe('/workspace/WeatherGo/scripts/smoke-test.test.mjs');
+        expect(executeToolSpy.mock.calls[0][1].filename).not.toBe('/workspace/scripts/smoke-test.test.mjs');
+    });
 });
