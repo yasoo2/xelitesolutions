@@ -251,6 +251,39 @@ describe('evidence-aware file edit recovery', () => {
     expect(String(plan.suggestedInput?.context)).toContain('existing React + Vite browser runtime');
   });
 
+  it('extracts only the package before verified runtime metadata', () => {
+    const file = '/workspace/WeatherGo/src/components/Search.jsx';
+    const error = `runtime_contract_mismatch: ${file} imports undeclared package(s): react [verified root: /workspace/WeatherGo; manifest: /workspace/WeatherGo/package.json]. Update the project manifest only when the requirements explicitly require a stack change.`;
+    const plan = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'WeatherGo',
+      phaseNumber: 3,
+      phaseName: 'UI Components',
+      status: 'partial',
+      severity: 'high',
+      primaryError: error,
+      failedTasks: [{
+        task: 'Write Search component',
+        tool: 'ai_write_file',
+        error,
+        cwd: '/workspace/WeatherGo',
+        file,
+      }],
+      suggestedNextAction: 'regenerate the evidenced file under the verified runtime contract and rerun',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(plan.strategy).toBe('code_fix');
+    expect(plan.suggestedTool).toBe('ai_write_file');
+    expect(plan.suggestedInput).toEqual(expect.objectContaining({ path: file }));
+    expect(String(plan.reason)).toContain('react');
+    expect(String(plan.suggestedInput?.description)).toContain('Remove the undeclared imports (react)');
+    expect(String(plan.suggestedInput?.description)).not.toContain('verified root');
+    expect(String(plan.suggestedInput?.description)).not.toContain('/workspace/WeatherGo; manifest');
+  });
+
   it('extracts only the evidenced package from a truncated runtime contract message', () => {
     const truncated = 'runtime_contract_mismatch: /workspace/WeatherGo/src/services/weatherService.js imports undeclared package(s): axios. Update the project manifest only when the requireme';
     const plan = SelfFixService.plan({
