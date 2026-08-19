@@ -159,7 +159,13 @@ export class EngineeringDiscoveryTool extends BaseTool {
                 // turn a crowded workspace into an ambiguity blocker.
                 const genericCategoryReference = /\bthis\s+(?:class|type|kind|sort|category|family|form)\s+of\s+/i.test(sentence);
                 const target = !genericCategoryReference && /(?:\b(?:existing|current|this|active|last)\s+(?:[A-Za-z0-9_-]+\s+){0,2}(?:project|codebase|workspace|application|system|app|build|artifact)\b|\b(?:repo(?:sitory)?|github)\b)/i.test(sentence);
-                return mutation && target;
+                // "Do not modify the existing project" is a safety boundary,
+                // not an existing-project operation. Remove the negated action
+                // from intent classification so a greenfield request can name
+                // an old artifact as read-only evidence without becoming bound
+                // to it.
+                const negatedExistingMutation = /\b(?:do\s+not|don['’]t|never)\s+(?:fix|improve|update|modify|extend|refactor|debug|repair|maintain|continue|edit)\s+(?:the\s+)?(?:existing|current|this|active|last)\b/i.test(sentence);
+                return mutation && target && !negatedExistingMutation;
             });
         const requestedExisting =
             /(?:\brepo(?:sitory)?\b|\bgithub\b|\bclone\b|\bimport\b)/i.test(request)
@@ -335,10 +341,15 @@ export class EngineeringDiscoveryTool extends BaseTool {
                 `excluding ${name}`,
             ].some(phrase => normalizedRequest.includes(phrase));
         };
-        const explicitlyNamedCandidate = candidates.find(candidate => {
+        // A product name in a greenfield brief ("Build an app called WeatherGo")
+        // is the identity of the new artifact, not permission to overwrite an
+        // older directory with the same label. Explicit-name selection is only
+        // valid for an existing-project operation; greenfield references remain
+        // read-only evidence and the builder must allocate a fresh child root.
+        const explicitlyNamedCandidate = !buildsSomethingNew ? candidates.find(candidate => {
             const name = normalized(path.basename(candidate.root));
             return explicitlyNamedProjectNames.includes(name) && !isExplicitlyExcluded(candidate);
-        });
+        }) : undefined;
         let selectedProject: Candidate | undefined;
         if (explicitlyNamedCandidate) {
             selectedProject = explicitlyNamedCandidate;

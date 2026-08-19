@@ -181,7 +181,8 @@ describe('evidence-aware file edit recovery', () => {
     expect(String(plan.suggestedInput?.description)).toContain('not a substitute importer');
   });
 
-  it('repairs an undeclared runtime package in the evidenced project root', () => {
+  it('regenerates an undeclared runtime import under the verified project contract', () => {
+    const file = '/workspace/WeatherGo/src/components/Favorites.jsx';
     const plan = SelfFixService.plan({
       type: 'phase_repair_ticket',
       projectName: 'WeatherGo',
@@ -189,29 +190,30 @@ describe('evidence-aware file edit recovery', () => {
       phaseName: 'API Integration',
       status: 'partial',
       severity: 'high',
-      primaryError: 'runtime_contract_mismatch: /workspace/WeatherGo/src/components/Favorites.jsx imports undeclared packages: react-router-dom',
+      primaryError: `runtime_contract_mismatch: ${file} imports undeclared packages: react-router-dom`,
       failedTasks: [{
         task: 'Write Favorites component',
         tool: 'ai_write_file',
-        error: 'runtime_contract_mismatch: /workspace/WeatherGo/src/components/Favorites.jsx imports undeclared packages: react-router-dom',
+        error: `runtime_contract_mismatch: ${file} imports undeclared packages: react-router-dom`,
         cwd: '/workspace/WeatherGo',
-        file: '/workspace/WeatherGo/src/components/Favorites.jsx',
+        file,
+        description: 'Build the favorites screen with the requested city persistence behavior.',
+        artifactContext: '{"projectRoot":"/workspace/WeatherGo"}',
       }],
-      suggestedNextAction: 'install the evidenced package in the product root and rerun',
+      suggestedNextAction: 'regenerate the evidenced file under the verified runtime contract and rerun',
       retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
       context: { workspaceId: 'workspace-test' },
       createdAt: new Date().toISOString(),
     });
 
     expect(plan.allowed).toBe(true);
-    expect(plan.strategy).toBe('dependency_fix');
-    expect(plan.suggestedTool).toBe('npm_manager');
-    expect(plan.suggestedInput).toEqual(expect.objectContaining({
-      command: 'install',
-      packages: ['react-router-dom'],
-      cwd: '/workspace/WeatherGo',
-    }));
-    expect(JSON.stringify(plan.suggestedInput)).not.toContain('src/index.ts');
+    expect(plan.strategy).toBe('code_fix');
+    expect(plan.suggestedTool).toBe('ai_write_file');
+    expect(plan.suggestedInput).toEqual(expect.objectContaining({ path: file }));
+    expect(String(plan.suggestedInput?.description)).toContain('Do not install, add, or invent dependencies');
+    expect(String(plan.suggestedInput?.description)).toContain('react-router-dom');
+    expect(String(plan.suggestedInput?.context)).toContain('favorites screen');
+    expect(JSON.stringify(plan.suggestedInput)).not.toContain('npm_manager');
   });
 
   it('extracts only the evidenced package from a truncated runtime contract message', () => {
@@ -237,13 +239,13 @@ describe('evidence-aware file edit recovery', () => {
       createdAt: new Date().toISOString(),
     });
 
-    expect(plan.strategy).toBe('dependency_fix');
-    expect(plan.suggestedTool).toBe('npm_manager');
+    expect(plan.strategy).toBe('code_fix');
+    expect(plan.suggestedTool).toBe('ai_write_file');
     expect(plan.suggestedInput).toEqual(expect.objectContaining({
-      command: 'install',
-      packages: ['axios'],
-      cwd: '/workspace/WeatherGo',
+      path: '/workspace/WeatherGo/src/services/weatherService.js',
     }));
+    expect(String(plan.suggestedInput?.description)).toContain('axios');
+    expect(String(plan.suggestedInput?.description)).toContain('Do not install, add, or invent dependencies');
     expect(JSON.stringify(plan.suggestedInput)).not.toContain('explicitly');
   });
 

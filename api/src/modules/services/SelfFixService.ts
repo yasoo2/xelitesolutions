@@ -524,22 +524,48 @@ export class SelfFixService {
       };
     }
 
-    // A runtime contract mismatch is dependency evidence, not a malformed
-    // artifact. Classify it before the generic artifact/code repair branch so
-    // recovery installs the evidenced package in the evidenced project root.
+    // A runtime contract mismatch is evidence that the generated source
+    // violated the already-verified project manifest. Installing whatever the
+    // model happened to import would silently expand the stack and turn a
+    // source-authoring mistake into a permanent dependency. Regenerate the
+    // exact failed file under the same runtime contract instead; ai_write_file
+    // will reject a second undeclared import before anything reaches disk.
     const undeclaredRuntimePackage = extractUndeclaredRuntimePackageEvidence(ticket);
     if (undeclaredRuntimePackage) {
+      const failedTask = ticket.failedTasks.find(task =>
+        typeof task.file === 'string' && task.file.replace(/\\/g, '/') === undeclaredRuntimePackage.file,
+      );
+      const originalBrief = failedTask?.description
+        ? `\nORIGINAL GENERATION BRIEF — preserve the requested behavior and interfaces:\n${failedTask.description}`
+        : '';
+      const originalContext = failedTask?.artifactContext || '';
       return {
         type: 'self_fix_plan',
         allowed: true,
-        reason: `The generated file ${undeclaredRuntimePackage.file} imports undeclared runtime package(s): ${undeclaredRuntimePackage.packages.join(', ')}. Install only those evidenced packages in the project cwd, then rerun the failed phase.`,
+        reason: `The generated file ${undeclaredRuntimePackage.file} imports undeclared package(s): ${undeclaredRuntimePackage.packages.join(', ')}. Regenerate that exact file using only the verified project manifest, then rerun the failed phase.`,
         maxAttempts: 1,
-        strategy: 'dependency_fix',
-        suggestedTool: 'npm_manager',
+        strategy: 'code_fix',
+        suggestedTool: 'ai_write_file',
         suggestedInput: {
-          command: 'install',
-          packages: undeclaredRuntimePackage.packages,
-          cwd: undeclaredRuntimePackage.cwd,
+          path: undeclaredRuntimePackage.file,
+          description: [
+            `Repair only ${undeclaredRuntimePackage.file}; do not edit package.json or another file.`,
+            'The verified project runtime contract rejected the previous completion because it imported a package absent from package.json.',
+            `Remove the undeclared imports (${undeclaredRuntimePackage.packages.join(', ')}) and implement the same requested behavior with the packages already declared in the manifest and browser/standard-library APIs where appropriate.`,
+            'Do not install, add, or invent dependencies. Preserve the project framework, module system, public exports, accessibility, and existing behavior.',
+            'Return one complete source file with valid syntax and no Markdown fences or explanatory prose.',
+            originalBrief,
+          ].join('\\n'),
+          context: JSON.stringify({
+            runtimeContractRepair: {
+              file: undeclaredRuntimePackage.file,
+              undeclaredPackages: undeclaredRuntimePackage.packages,
+              projectCwd: undeclaredRuntimePackage.cwd,
+            },
+            originalGenerationBrief: failedTask?.description,
+            originalArtifactContext: originalContext,
+            repairTicket: ticket,
+          }),
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),

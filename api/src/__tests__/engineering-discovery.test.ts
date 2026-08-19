@@ -212,6 +212,27 @@ describe('evidence-first engineering discovery', () => {
     expect(result.output.evidence.constraints.createsNewProject).toBe(true);
   });
 
+  test('does not select a same-named artifact for a new greenfield build', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-greenfield-same-name-'));
+    roots.push(root);
+    const stale = path.join(root, 'WeatherGo');
+    fs.mkdirSync(path.join(stale, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(stale, 'package.json'), JSON.stringify({ name: 'weathergo', scripts: { build: 'vite build' } }));
+    fs.writeFileSync(path.join(stale, 'src', 'main.tsx'), 'export {}\\n');
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: 'Build a new browser application called WeatherGo locally. Create it in a fresh directory and do not modify the existing WeatherGo project.',
+    }, { workspaceRoot: root, sessionId: 'greenfield-same-name-chat' });
+
+    expect(result.ok).toBe(true);
+    expect(result.output.evidence.mode).toBe('greenfield');
+    expect(result.output.evidence.constraints.createsNewProject).toBe(true);
+    expect(result.output.evidence.selectedProject).toBeUndefined();
+    expect(result.output.evidence.referenceProjects).toEqual([
+      expect.objectContaining({ root: stale }),
+    ]);
+  });
+
   test('keeps an explicit mutation of an existing project decision-bound', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-existing-multi-'));
     roots.push(root);
