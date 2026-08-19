@@ -350,7 +350,28 @@ describe('verified runtime contracts keep generated source on the project stack'
         }, { projectRoot, engineeringPipeline: true });
 
         expect(res.ok).toBe(true);
-        expect(fs.readFileSync(landsAt(rel), 'utf-8')).toMatch(/react-dom\/client/);
+        expect(fs.readFileSync(landsAt(rel), 'utf8')).toMatch(/react-dom\/client/);
+    });
+
+    it('uses one bounded runtime retry to remove undeclared packages before writing', async () => {
+        const rel = path.join(projectRel, 'src/runtime-retry/App.jsx');
+        callLLM
+            .mockResolvedValueOnce("import React from 'react';\nimport { Provider } from 'react-redux';\nimport { format } from 'date-fns';\nexport default function App() { return <main>{format(new Date(), 'yyyy')}</main>; }\nvoid Provider;")
+            .mockResolvedValueOnce("import React from 'react';\nexport default function App() { return <main>runtime-safe</main>; }");
+
+        const res: any = await tool.execute({
+            path: rel,
+            description: 'Write the browser React entry for the verified web project.',
+        }, { projectRoot, engineeringPipeline: true });
+
+        expect(res.ok).toBe(true);
+        expect(callLLM).toHaveBeenCalledTimes(2);
+        expect(callLLM.mock.calls[1][0]).toMatch(/RUNTIME CONTRACT RETRY REQUIRED/);
+        expect(callLLM.mock.calls[1][0]).toMatch(/react-redux/);
+        expect(callLLM.mock.calls[1][0]).toMatch(/date-fns/);
+        const written = fs.readFileSync(landsAt(rel), 'utf8');
+        expect(written).toContain('runtime-safe');
+        expect(written).not.toMatch(/react-redux|date-fns/);
     });
 
     it('uses the nearest target-project manifest when the bound root belongs to another project', async () => {

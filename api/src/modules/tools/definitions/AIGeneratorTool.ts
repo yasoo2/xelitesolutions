@@ -440,16 +440,25 @@ Return the complete file content now.`;
             const llmContext = context?.engineeringPipeline === true
                 ? { ...context, purpose: 'internal', engineeringPipeline: true }
                 : undefined;
-            const callForArtifact = (retryKind: 'format' | 'syntax' | 'imports' | null = null) => {
+            const callForArtifact = (retryKind: 'format' | 'syntax' | 'imports' | 'runtime' | null = null, retryReason = '') => {
                 const retryInstruction = retryKind === 'syntax'
                     ? `SYNTAX RETRY REQUIRED:\nThe previous completion was rejected by the parser for the destination extension. Return the complete file again with valid ${path.extname(filePath).toLowerCase() || 'source'} syntax. Preserve the requested behavior and all imports, close every JSX tag/bracket, and emit no Markdown fences or explanatory prose.`
                     : retryKind === 'imports'
                         ? `IMPORT PATH RETRY REQUIRED:\nThe previous completion referenced a local file that does not exist from the importing file. Re-read the verified project layout in context and return the complete file again with every relative import resolving from this file. Do not invent or duplicate folders, do not change package.json, and emit no Markdown fences or explanatory prose.`
-                        : `FORMAT RETRY REQUIRED:\nThe previous completion violated the destination artifact contract. Return the complete file again, with no Markdown fences or explanatory prose. For JSON, return strict parseable JSON only. Do not omit, truncate, or replace any content.`;
+                        : retryKind === 'runtime'
+                            ? `RUNTIME CONTRACT RETRY REQUIRED:\nThe previous completion imported package(s) that are not declared in the nearest verified package.json: ${retryReason || '(see the rejected runtime contract error)'}. Return the complete file again using only packages already declared in that manifest, React/browser APIs, and local imports proven by the supplied project context. Do not add or edit package.json, do not switch frameworks, do not replace the missing package with another undeclared package, and emit no Markdown fences or explanatory prose.`
+                            : `FORMAT RETRY REQUIRED:\nThe previous completion violated the destination artifact contract. Return the complete file again, with no Markdown fences or explanatory prose. For JSON, return strict parseable JSON only. Do not omit, truncate, or replace any content.`;
+                const retryLabel = retryKind === 'syntax'
+                    ? 'SYNTAX RETRY'
+                    : retryKind === 'imports'
+                        ? 'IMPORT PATH RETRY'
+                        : retryKind === 'runtime'
+                            ? 'RUNTIME CONTRACT RETRY'
+                            : 'FORMAT RETRY';
                 return callLLM(
                     retryKind ? `${userPrompt}\n\n${retryInstruction}` : userPrompt,
                     [{ role: 'system', content: retryKind
-                        ? `${systemPrompt}\n\n${retryKind === 'syntax' ? 'SYNTAX RETRY' : retryKind === 'imports' ? 'IMPORT PATH RETRY' : 'FORMAT RETRY'}: the previous response was rejected before writing. Re-emit one complete artifact matching the extension exactly; do not explain the repair.`
+                        ? `${systemPrompt}\n\n${retryLabel}: the previous response was rejected before writing. Re-emit one complete artifact matching the extension exactly; do not explain the repair.`
                         : systemPrompt }],
                     llmContext,
                 );
@@ -530,6 +539,19 @@ Return the complete file content now.`;
                 validation = validationErrorFor(finalContent);
                 return {};
             };
+            if (validation?.kind === 'runtime') {
+                logs.push(`runtime contract retry requested for ${filePath}: ${validation.error}`);
+                content = await callForArtifact('runtime', validation.error);
+                if (isProviderFailure(content)) {
+                    return { ok: false, error: String(content), logs: [...logs, 'runtime contract retry received no LLM provider answer; nothing was written'] };
+                }
+                prepared = prepareArtifactContent(filePath, content);
+                if (prepared.error) {
+                    return { ok: false, error: prepared.error, logs: [...logs, 'runtime contract retry violated the destination artifact contract; nothing was written'] };
+                }
+                finalContent = prepared.content;
+                validation = validationErrorFor(finalContent);
+            }
             if (validation?.kind === 'imports') {
                 const retried = await retrySource('imports', validation.error);
                 if (retried.providerFailure) {
