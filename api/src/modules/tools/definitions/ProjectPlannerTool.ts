@@ -350,6 +350,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
                         requireRunnableContract: context?.requireRunnableContract === true,
                         repairMode: repairMode || scopeRepairMode,
+                        scopeRepairMode,
                         preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
                         preserveScaffoldBuilderChoice: true,
                         reactRequest: projectDescription,
@@ -438,6 +439,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         disallowUnportableNativeDependencies: evidence?.mode === 'greenfield',
                         requireRunnableContract: context?.requireRunnableContract === true,
                         repairMode: repairMode || scopeRepairMode,
+                        scopeRepairMode,
                         preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
                         preserveScaffoldBuilderChoice: true,
                         reactRequest: projectDescription,
@@ -610,6 +612,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                              mode: evidence?.mode,
                              requireRunnableContract: context?.requireRunnableContract === true,
                              repairMode,
+                             scopeRepairMode,
                              preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
                              reactRequest: projectDescription,
                          });

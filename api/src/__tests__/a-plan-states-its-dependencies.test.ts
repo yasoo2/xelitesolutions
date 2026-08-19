@@ -68,4 +68,39 @@ describe('a plan states its own dependencies', () => {
         expect(toolsOf(clean.phases)).toEqual(['api_project', 'react_project']);
         expect(clean.phases[1].dependsOn).toContain('Data service');
     });
+
+    test('scope repair keeps safe feature-source edits inside an existing artifact', () => {
+        const clean = sanitisePlanPhases([{
+            name: 'Recover wishlist capability',
+            tasks: [{
+                tool: 'file_edit',
+                task: 'Add the wishlist feature to the existing app',
+                args: { filename: 'src/features/wishlist.js', find: 'export const wishlist = [];', replace: 'export const wishlist = ["safe"];' },
+            }],
+        }], 'WeatherGo', {
+            mode: 'existing',
+            scopeRepairMode: true,
+        });
+
+        expect(clean.executableTasks).toBe(1);
+        expect(clean.phases[0].tasks[0].tool).toBe('file_edit');
+    });
+
+    test('scope repair still rejects absolute and traversal source paths', () => {
+        const clean = sanitisePlanPhases([{
+            name: 'Unsafe repair',
+            tasks: [
+                { tool: 'file_edit', task: 'Absolute path', args: { filename: '/tmp/escape.js', find: 'x', replace: 'y' } },
+                { tool: 'file_edit', task: 'Traversal path', args: { filename: '../escape.js', find: 'x', replace: 'y' } },
+            ],
+        }], 'WeatherGo', {
+            mode: 'existing',
+            scopeRepairMode: true,
+        });
+
+        expect(clean.executableTasks).toBe(1);
+        expect(clean.phases[0].tasks[0].tool).toBe('write_file');
+        expect(clean.notes.join(' ')).toMatch(/مساراً نسبياً آمناً|غير مثبت/);
+    });
+
 });

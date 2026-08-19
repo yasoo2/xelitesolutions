@@ -280,6 +280,8 @@ export interface PlanSanitiseOptions {
     requireRunnableContract?: boolean;
     /** Bounded live-repair may edit an existing manifest or entrypoint in place. */
     repairMode?: boolean;
+    /** Scope repair may edit an existing feature source path inside the selected project. */
+    scopeRepairMode?: boolean;
     /** Explicit React/Vite requests must use the domain-aware React builder, not a generic placeholder scaffold. */
     preferReactBuilder?: boolean;
     /** Contract recovery may return an explicit, runnable scaffold; preserve it rather than rerouting it again. */
@@ -571,6 +573,17 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     && sourcePaths.length > 0
                     && sourcePaths.every(isRunnableContractPath)
                 );
+                // Scope repair is a bounded edit of an existing artifact, not a
+                // greenfield regeneration pass. Allow its feature-source inputs
+                // through the evidence gate only when every path is workspace-
+                // relative and the planner is operating in an existing project.
+                // Absolute, traversal, shell-like, and empty paths remain blocked.
+                const boundedScopeRepair = Boolean(
+                    options.scopeRepairMode
+                    && options.mode === 'existing'
+                    && sourcePaths.length > 0
+                    && sourcePaths.every((candidate: string) => !unsafeWorkspacePath(candidate))
+                );
                 const requestedTestType = norm(adaptedArgs?.testType);
                 const testProjectPath = adaptedArgs?.projectPath || adaptedArgs?.path || '';
                 const testEvidenceCandidates = [...producedPaths, ...knownPhaseOutputs, ...discoveredTestPaths];
@@ -588,7 +601,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     notes.push(`[plan] أسقطتُ «${desc}» — auto_tester من نوع ${requestedTestType} ${reason}.`);
                     continue;
                 }
-                if (sourceDependentTools.has(r.tool) && unprovenSource && !boundedRunnableRepair) {
+                if (sourceDependentTools.has(r.tool) && unprovenSource && !boundedRunnableRepair && !boundedScopeRepair) {
                     notes.push(`[plan] أسقطتُ «${desc}» — ${r.tool} يحتاج ملفاً مصدرياً أنتجته مهمة سابقة أو سجّل الاستكشاف؛ «${unprovenSource}» غير مثبت، لذا لن أحوّل اسماً متخيلاً إلى إصلاح ذاتي.`);
                     continue;
                 }
