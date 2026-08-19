@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { repairMemory } from '../../core/memory/repair-memory';
 import { recoverMissingNpmLauncher } from '../tools/npm-launcher-recovery';
+import { localFileExistsWithExactCase } from '../tools/definitions/ProjectRunTool';
 
 export interface SelfFixPlan {
   type: 'self_fix_plan';
@@ -185,6 +186,38 @@ function localImportResolves(target: string, explicitExtension: string): boolean
  * project contains the corresponding file under `src/styles` or `src/services`.
  * It never creates a placeholder and never asks a model to invent a path.
  */
+const LOCAL_IMPORT_SEARCH_IGNORES = new Set(['node_modules', 'dist']);
+
+function localImportCandidateMatches(fileName: string, specifier: string, explicitExtension: string): boolean {
+  const requestedName = path.basename(specifier);
+  if (explicitExtension) return fileName === requestedName;
+  return RESOLVABLE_LOCAL_MODULE_EXTENSIONS.includes(path.extname(fileName).toLowerCase())
+    && path.basename(fileName, path.extname(fileName)) === requestedName;
+}
+
+function collectExactLocalImportCandidates(root: string, specifier: string, explicitExtension: string): string[] {
+  const candidates: string[] = [];
+  const visit = (directory: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (!LOCAL_IMPORT_SEARCH_IGNORES.has(entry.name)) visit(path.join(directory, entry.name));
+        continue;
+      }
+      if (!entry.isFile() || !localImportCandidateMatches(entry.name, specifier, explicitExtension)) continue;
+      const candidate = path.join(directory, entry.name);
+      if (localFileExistsWithExactCase(candidate)) candidates.push(candidate);
+    }
+  };
+  visit(root);
+  return candidates;
+}
+
 function findEvidenceBackedLocalImportRedirect(entry: LocalRuntimeImportEvidence): LocalImportRedirectEvidence | null {
   const importer = entry.importer.replace(/\\/g, '/');
   const specifier = entry.specifier.split(/[?#]/u, 1)[0].trim();
@@ -195,53 +228,38 @@ function findEvidenceBackedLocalImportRedirect(entry: LocalRuntimeImportEvidence
   const directTarget = path.resolve(path.dirname(importerPath), specifier);
   if (localImportResolves(directTarget, extension)) return null;
 
-  // A model sometimes emits `.../styles/app.css` when it intended the
-  // evidence-backed parent traversal `../styles/app.css`. This is not a real
-  // directory convention: it is an unambiguous malformed relative prefix.
-  // Check the normalized candidate directly, but preserve the original
-  // specifier in `find` so the editor changes only the measured import token.
-  const normalizedSpecifier = /^\.\.\.\//u.test(specifier)
-    ? `../${specifier.slice(4)}`
-    : null;
-  if (normalizedSpecifier) {
-    const normalizedTarget = path.resolve(path.dirname(importerPath), normalizedSpecifier);
-    if (localImportResolves(normalizedTarget, extension)) {
-      return {
-        importer,
-        find: entry.specifier,
-        replace: normalizedSpecifier,
-        target: normalizedTarget.replace(/\\/g, '/'),
-      };
+  // Bound the search to the artifact root inferred from `/src/`. Never search
+  // a neighboring workspace project, and never use a case-insensitive match.
+  const normalizedImporter = importerPath.replace(/\\/g, '/');
+  const marker = '/src/';
+  const markerIndex = normalizedImporter.toLowerCase().indexOf(marker);
+  if (markerIndex < 0) return null;
+  const projectRoot = path.resolve(normalizedImporter.slice(0, markerIndex));
+
+  // A redirect is safe only when the entire artifact contains one exact-case
+  // candidate for the requested basename. Nearest-first selection is unsafe:
+  // two equally plausible files must remain a truthful ambiguity for the model.
+  const candidates = collectExactLocalImportCandidates(projectRoot, specifier, extension)
+    .filter(candidate => path.resolve(candidate) !== directTarget);
+  if (candidates.length !== 1) return null;
+
+  const target = path.resolve(candidates[0]);
+  let replacement = path.relative(path.dirname(importerPath), target).replace(/\\/g, '/');
+  if (!extension) {
+    const targetName = path.basename(target);
+    if (/^index\.(?:js|jsx|ts|tsx|mjs|cjs|json)$/iu.test(targetName)) {
+      replacement = path.dirname(replacement).replace(/\\/g, '/');
+    } else {
+      replacement = replacement.slice(0, -path.extname(replacement).length);
     }
   }
-
-  // Only search within the generated project root inferred from `/src/`.
-  // Without that boundary, a repair could accidentally point outside the
-  // artifact or into a neighbouring workspace project.
-  const marker = `${path.sep}src${path.sep}`;
-  const markerIndex = importerPath.toLowerCase().indexOf(marker.toLowerCase());
-  if (markerIndex < 0) return null;
-  const projectRoot = importerPath.slice(0, markerIndex);
-  const rootPrefix = projectRoot.endsWith(path.sep) ? projectRoot : `${projectRoot}${path.sep}`;
-
-  // Move the same explicit suffix up at most four directory levels. The first
-  // existing file wins because it is the nearest measured correction; all
-  // candidates remain inside this project root.
-  for (let levels = 1; levels <= 4; levels += 1) {
-    const candidate = path.resolve(
-      path.dirname(importerPath),
-      ...Array.from({ length: levels }, () => '..'),
-      specifier,
-    );
-    if (candidate === directTarget || !localImportResolves(candidate, extension)) continue;
-    if (!candidate.startsWith(rootPrefix)) continue;
-
-    let replacement = path.relative(path.dirname(importerPath), candidate).replace(/\\/g, '/');
-    if (!replacement.startsWith('.')) replacement = `./${replacement}`;
-    return { importer, find: entry.specifier, replace: replacement, target: candidate.replace(/\\/g, '/') };
-  }
-
-  return null;
+  if (!replacement.startsWith('.')) replacement = `./${replacement}`;
+  return {
+    importer,
+    find: entry.specifier,
+    replace: replacement,
+    target: target.replace(/\\/g, '/'),
+  };
 }
 
 function extractLocalRuntimeImportEvidence(ticket: RepairTicket): LocalRuntimeImportEvidence[] {
@@ -889,8 +907,8 @@ export class SelfFixService {
           type: 'self_fix_plan',
           allowed: true,
           reason: multiEdit
-            ? `The filesystem proves ${edits.length} nearest valid import paths in ${redirect.importer}; apply them atomically and rerun the failed phase.`
-            : `The filesystem proves ${redirect.replace} is the nearest valid path for ${redirect.find} from ${redirect.importer}; edit only that import and rerun the failed phase.`,
+            ? `The filesystem proves ${edits.length} unique exact-case import paths in ${redirect.importer}; apply them atomically and rerun the failed phase.`
+            : `The filesystem proves ${redirect.replace} is the unique exact-case valid path for ${redirect.find} from ${redirect.importer}; edit only that import and rerun the failed phase.`,
           maxAttempts: 1,
           strategy: 'code_fix',
           suggestedTool: multiEdit ? 'file_edit_advanced' : 'file_edit',
@@ -914,13 +932,13 @@ export class SelfFixService {
       const targetRepair = importerMissing
         ? [
             `The importer ${importerMissing.importer} is missing and was never written; generate that exact importer file instead of invoking a text editor on it.`,
-            `The filesystem proves the nearest valid replacement for ${importerMissing.find} is ${importerMissing.replace}, so use that relative path in the generated importer.`,
+            `The filesystem proves the unique exact-case replacement for ${importerMissing.find} is ${importerMissing.replace}, so use that relative path in the generated importer.`,
             'Preserve the original component behavior and complete exports; do not create a placeholder, remove the required import, or edit an unrelated file.',
           ]
         : importerNeedsRegeneration
           ? [
               `The existing importer ${redirect!.importer} is present, but it does not contain the rejected specifier ${redirect!.find}; the invalid generated candidate was not written.`,
-              `Regenerate that exact importer using the filesystem-proven replacement ${redirect!.replace} for the rejected path, while preserving its existing behavior and exports.`,
+              `Regenerate that exact importer using the filesystem-proven unique exact-case replacement ${redirect!.replace} for the rejected path, while preserving its existing behavior and exports.`,
               'Do not invoke file_edit with the rejected specifier, remove a required import, create a placeholder, or edit an unrelated file.',
             ]
           : missingTarget
@@ -937,12 +955,12 @@ export class SelfFixService {
         type: 'self_fix_plan',
         allowed: true,
         reason: importerMissing
-          ? `The importer ${importerMissing.importer} is absent, while the filesystem proves a valid replacement path ${importerMissing.replace}; regenerate the importer with that evidence-backed path and rerun the failed phase.`
+          ? `The importer ${importerMissing.importer} is absent, while the filesystem proves a unique exact-case replacement path ${importerMissing.replace}; regenerate the importer with that evidence-backed path and rerun the failed phase.`
           : importerNeedsRegeneration
-            ? `The rejected import candidate was not written to ${redirect!.importer}; regenerate that importer with the filesystem-proven replacement ${redirect!.replace} and rerun the failed phase.`
+            ? `The rejected import candidate was not written to ${redirect!.importer}; regenerate that importer with the filesystem-proven unique exact-case replacement ${redirect!.replace} and rerun the failed phase.`
             : missingTarget
               ? `A proven explicit local runtime target is missing: ${missingTarget}. Generate that exact evidence-backed artifact and rerun the failed phase.`
-              : `Local runtime import paths are missing: ${evidenceLines}. Inspect the existing filesystem and repair only those proven import/entrypoint paths.`,
+              : `Local runtime import paths are missing: ${evidenceLines}. Inspect the existing filesystem and repair only those proven import/entrypoint paths; do not redirect when exact-case candidates are ambiguous.`,
         maxAttempts: 1,
         strategy: 'build_fix',
         suggestedTool: 'ai_write_file',

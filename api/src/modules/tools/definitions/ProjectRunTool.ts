@@ -718,7 +718,7 @@ const RUNTIME_SOURCE_IGNORES = new Set(['.git', 'node_modules', 'dist', 'build',
  * not. Check every path segment against the directory's literal entry names so
  * an import of `./styles/app.css` cannot silently accept `styles/App.css`.
  */
-function localFileExistsWithExactCase(filePath: string): boolean {
+export function localFileExistsWithExactCase(filePath: string): boolean {
     const absolute = path.resolve(filePath);
     const root = path.parse(absolute).root;
     const relative = path.relative(root, absolute);
