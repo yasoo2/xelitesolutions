@@ -718,7 +718,8 @@ export class SelfFixService {
       const redirect = localRuntimeImports
         .map(findEvidenceBackedLocalImportRedirect)
         .find((candidate): candidate is LocalImportRedirectEvidence => !!candidate);
-      if (redirect) {
+      const importerMissing = redirect && !fs.existsSync(redirect.importer) ? redirect : null;
+      if (redirect && !importerMissing) {
         return {
           type: 'self_fix_plan',
           allowed: true,
@@ -744,23 +745,31 @@ export class SelfFixService {
       const missingTarget = localRuntimeImports
         .map(missingExplicitLocalTarget)
         .find((target): target is string => !!target);
-      const repairPath = missingTarget || importer;
-      const targetRepair = missingTarget
+      const repairPath = importerMissing?.importer || missingTarget || importer;
+      const targetRepair = importerMissing
         ? [
-            `The exact missing target is ${missingTarget}; generate that file, not a substitute importer.`,
-            'Inspect the importer and the existing styles/assets/modules first, then implement the concrete exported or stylesheet contract required by that exact import and the original requirements.',
-            'Do not remove a required import, redirect it to an unrelated file, or write an empty/no-op placeholder.',
+            `The importer ${importerMissing.importer} is missing and was never written; generate that exact importer file instead of invoking a text editor on it.`,
+            `The filesystem proves the nearest valid replacement for ${importerMissing.find} is ${importerMissing.replace}, so use that relative path in the generated importer.`,
+            'Preserve the original component behavior and complete exports; do not create a placeholder, remove the required import, or edit an unrelated file.',
           ]
-        : [
-            `Repair the existing runtime import contract in ${importer}.`,
-            'If a local specifier has no matching file and its exact target cannot be established from an explicit extension, repair only the importer after inspecting the actual filesystem; do not guess a module extension or folder.',
-          ];
+        : missingTarget
+          ? [
+              `The exact missing target is ${missingTarget}; generate that file, not a substitute importer.`,
+              'Inspect the importer and the existing styles/assets/modules first, then implement the concrete exported or stylesheet contract required by that exact import and the original requirements.',
+              'Do not remove a required import, redirect it to an unrelated file, or write an empty/no-op placeholder.',
+            ]
+          : [
+              `Repair the existing runtime import contract in ${importer}.`,
+              'If a local specifier has no matching file and its exact target cannot be established from an explicit extension, repair only the importer after inspecting the actual filesystem; do not guess a module extension or folder.',
+            ];
       return {
         type: 'self_fix_plan',
         allowed: true,
-        reason: missingTarget
-          ? `A proven explicit local runtime target is missing: ${missingTarget}. Generate that exact evidence-backed artifact and rerun the failed phase.`
-          : `Local runtime import paths are missing: ${evidenceLines}. Inspect the existing filesystem and repair only those proven import/entrypoint paths.`,
+        reason: importerMissing
+          ? `The importer ${importerMissing.importer} is absent, while the filesystem proves a valid replacement path ${importerMissing.replace}; regenerate the importer with that evidence-backed path and rerun the failed phase.`
+          : missingTarget
+            ? `A proven explicit local runtime target is missing: ${missingTarget}. Generate that exact evidence-backed artifact and rerun the failed phase.`
+            : `Local runtime import paths are missing: ${evidenceLines}. Inspect the existing filesystem and repair only those proven import/entrypoint paths.`,
         maxAttempts: 1,
         strategy: 'build_fix',
         suggestedTool: 'ai_write_file',
@@ -773,7 +782,7 @@ export class SelfFixService {
             'Preserve the project module system and public behavior. Never create a no-op placeholder, copy unrelated files, invent npm packages, or run npm install for a relative local specifier.',
             'After editing, run node --check for JavaScript entrypoints, the existing build/tests, and one real local start/readiness check.',
           ].join('\\n'),
-          context: JSON.stringify({ localRuntimeImports, missingTarget, repairTicket: ticket }),
+          context: JSON.stringify({ localRuntimeImports, missingTarget, importerMissing, repairTicket: ticket }),
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),
