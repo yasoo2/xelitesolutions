@@ -919,6 +919,12 @@ const BACKEND_COVERS = /login|sign\s*in|account|auth|password|database|db\b|api\
 const WEATHER_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
     { asked: /7[-\s]?day.*forecast|daily.*forecast|forecast.*7[-\s]?day/i, evidence: /daily\s*:\s*['\"`]|dailyForecast|forecastDays|7[-\s]?day/i },
     { asked: /hourly.*forecast|forecast.*hourly|24[-\s]?hour/i, evidence: /hourly\s*:\s*['\"`]|hourlyForecast|24[-\s]?hour/i },
+    // These prose forms are emitted by one-line product requirements. They are
+    // proven by executable shapes, not by the words "search" or "weather" alone.
+    { asked: /(?:clear\s+)?responsive\s+interface\s+for\s+searching\s+cities|searching\s+cities/i,
+        evidence: /(?=[\s\S]*<form\b)(?=[\s\S]*<input\b)(?=[\s\S]*(?:onSubmit|onKey(?:Down|Press|Up)|handleSearch))(?=[\s\S]*(?:geocod|open-meteo|setCity|setWeatherData))/i },
+    { asked: /viewing\s+weather\s+details|weather\s+details/i,
+        evidence: /(?=[\s\S]*(?:current-weather|weather-details|renderCurrentWeather|currentWeather|row-meta|className=["']now["']))(?=[\s\S]*(?:temperature|temperature_2m|temp))(?=[\s\S]*(?:humidity|relative_humidity_2m))(?=[\s\S]*(?:wind(?:_speed| speed)|windSpeed))(?=[\s\S]*(?:weather_code|describe|description|feels[-\s]?like|apparent_temperature))/i },
     { asked: /search\s+by\s+city|city\s+search|بحث\s+(?:عن|بالـ?)?\s*المدن?/i, evidence: /geocoding-api\.open-meteo|searchCity|citySearch|search.*city/i },
     { asked: /current\s+location|geolocation|موقع(?:ي|ك)?\s+الحالي/i, evidence: /navigator\.geolocation|currentLocation|getCurrentPosition/i },
     { asked: /favorite\s+cities|saved\s+cities|المدن\s+المفضلة/i, evidence: /favoriteCities|savedCities|favo[u]?rites?|toggleFavorite/i },

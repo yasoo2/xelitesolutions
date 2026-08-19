@@ -116,6 +116,28 @@ describe('the generated application is syntactically real', () => {
         expect(provenGap).not.toContain('Hourly forecast');
     });
 
+    it('weather prose capabilities require executable search and detail shapes', () => {
+        const request = `WeatherGo\nFeatures:\n- a clear responsive interface for searching cities\n- viewing weather details`;
+        expect(uncoveredFeatures(request, 'weather', false)).toEqual([
+            'a clear responsive interface for searching cities',
+            'viewing weather details',
+        ]);
+
+        const weather = filesFor('weather', false)['src/components/WeatherApp.jsx'];
+        expect(uncoveredFeatures(request, 'weather', false, weather)).toEqual([]);
+
+        const wordsOnly = 'searching cities weather details temperature humidity wind';
+        expect(uncoveredFeatures(request, 'weather', false, wordsOnly)).toEqual([
+            'a clear responsive interface for searching cities',
+            'viewing weather details',
+        ]);
+
+        const searchOnly = `<form onSubmit={submit}><input onChange={update} /></form> fetch('https://geocoding-api.open-meteo.com')`;
+        expect(uncoveredFeatures(request, 'weather', false, searchOnly)).toEqual([
+            'viewing weather details',
+        ]);
+    });
+
     it('weather includes the real forecast contract and negative-state surfaces', () => {
         const files = filesFor('weather', false);
         const weather = files['src/components/WeatherApp.jsx'];
