@@ -413,4 +413,40 @@ describe('evidence-aware file edit recovery', () => {
       }),
     ]);
   });
+
+  it('verifies an existing React project instead of regenerating it after a source-file repair', () => {
+    const projectRoot = root;
+    fs.writeFileSync(path.join(projectRoot, 'package.json'), JSON.stringify({ name: 'weathergo' }));
+    const repairedFile = path.join(projectRoot, 'src', 'components', 'WeatherApp.jsx');
+    fs.mkdirSync(path.dirname(repairedFile), { recursive: true });
+    fs.writeFileSync(repairedFile, 'export default function WeatherApp() { return null; }');
+
+    const phase = {
+      phaseNumber: 1,
+      name: 'Project Setup',
+      tasks: [{
+        task: 'Create the React project',
+        tool: 'react_project',
+        args: { projectName: 'WeatherGo' },
+      }],
+    };
+
+    const resumed = phaseAfterRepair(phase, repairedFile);
+
+    expect(resumed.skipped).toEqual(['Create the React project']);
+    expect(resumed.phase.name).toContain('post-repair verification');
+    expect(resumed.phase.tasks).toEqual([
+      {
+        task: 'Build the repaired project without rewriting generated files',
+        tool: 'shell_execute',
+        command: 'npm run build',
+        cwd: projectRoot,
+      },
+      {
+        task: 'Verify the repaired project can start',
+        tool: 'project_run',
+        cwd: projectRoot,
+      },
+    ]);
+  });
 });

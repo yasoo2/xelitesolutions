@@ -1,4 +1,5 @@
 import { executeTool } from './ToolService';
+import fs from 'fs';
 import path from 'path';
 import { SelfFixService, type SelfFixPlan } from './SelfFixService';
 import { RepairTicketService } from './RepairTicketService';
@@ -103,6 +104,21 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
   // the cure. Preserve the generated project and rerun only the remaining
   // evidence/build checks. Existing file-target repairs keep their old behavior.
   const manifestRepair = /(?:^|\/)package\.json$/u.test(file);
+  // A source-file repair inside an already evidenced project must not rerun the
+  // full react_project authoring task: that task writes the generated domain
+  // file again and can erase the exact repair just applied. Resolve the nearest
+  // manifest only for absolute, trusted evidence; relative paths remain on the
+  // conservative legacy path rather than guessing a project root.
+  const repairProjectRoot = (() => {
+    if (manifestRepair || !path.isAbsolute(file)) return '';
+    let candidate = path.dirname(path.resolve(file));
+    while (candidate !== path.dirname(candidate)) {
+      if (fs.existsSync(path.join(candidate, 'package.json'))) return candidate;
+      candidate = path.dirname(candidate);
+    }
+    return '';
+  })();
+  const sourceArtifactRepair = Boolean(repairProjectRoot);
   const isScaffoldTask = (task: any): boolean => {
     const tool = String(task?.tool || task?.name || '').trim().toLowerCase();
     const resumedReactProject = tool === 'react_project' && task?.args?.resumeExisting === true;
@@ -113,6 +129,13 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
   const tasks = phase.tasks
     .map((task: any) => {
       const tool = String(task?.tool || task?.name || '').trim().toLowerCase();
+      // A source repair is already present on disk. Rerunning react_project
+      // would invoke the request-driven author again and overwrite it before
+      // the verification phase can prove the cure.
+      if (sourceArtifactRepair && tool === 'react_project') {
+        skipped.push(String(task.task || task.description || task.tool || 'react project regeneration'));
+        return { ...task, __selfFixSkip: true };
+      }
       // react_project owns both the initial scaffold and the request-driven
       // domain authoring step. After npm repairs, skipping it wholesale leaves
       // App.jsx importing a missing WeatherApp.jsx. Resume the same task in
@@ -127,6 +150,7 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
       return task;
     })
     .filter((task: any) => {
+      if (task?.__selfFixSkip) return false;
       const tool = String(task?.tool || task?.name || '').trim().toLowerCase();
       const resumedReactProject = manifestRepair && tool === 'react_project' && task?.args?.resumeExisting === true;
       const matches = !resumedReactProject
@@ -144,8 +168,10 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
   // manifest and recreate the exact failure. When the repaired package.json is
   // absolute, its parent is measured project evidence; replace the scaffold by
   // a bounded build + launch proof against that existing project.
-  if (tasks.length === 0 && manifestRepair) {
-    const projectRoot = path.isAbsolute(file) ? path.dirname(path.resolve(file)) : '';
+  if (tasks.length === 0 && (manifestRepair || sourceArtifactRepair)) {
+    const projectRoot = manifestRepair
+      ? (path.isAbsolute(file) ? path.dirname(path.resolve(file)) : '')
+      : repairProjectRoot;
     if (projectRoot) {
       return {
         phase: {
