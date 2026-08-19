@@ -350,14 +350,15 @@ export class SelfFixExecutionService {
 
       // ai_write_file validates the candidate before writing it. A repair
       // request that fixes one defect can therefore expose a second, newly
-      // evidenced local import before phase_executor ever runs. Do not stop
-      // merely because the repair tool rejected that candidate: convert the
-      // rejection into the same bounded ticket shape used for phase failures,
-      // then allow exactly one evidence-bound follow-up. The recursion guard
-      // prevents a model from turning this into an unbounded repair loop.
+      // evidenced runtime-contract or local-import failure before
+      // phase_executor ever runs. Do not stop merely because the repair tool
+      // rejected that candidate: convert the rejection into the same bounded
+      // ticket shape used for phase failures, then allow exactly one
+      // evidence-bound follow-up. The recursion guard prevents a model from
+      // turning this into an unbounded repair loop.
       if (input.allowFollowUp !== false
         && repairTool === 'ai_write_file'
-        && /unresolved_local_import\s*:/iu.test(repairError)) {
+        && /(?:unresolved_local_import|runtime_contract_mismatch)\s*:/iu.test(repairError)) {
         const failedRepairTask = {
           task: `Self-fix ${repairTool} on the evidenced repair target`,
           tool: repairTool,

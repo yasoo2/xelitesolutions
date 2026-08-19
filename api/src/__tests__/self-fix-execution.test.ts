@@ -334,6 +334,61 @@ describe('SelfFixExecutionService phase resumption', () => {
         ]);
     });
 
+    it('allows one bounded follow-up when the primary repair tool exposes an undeclared runtime package', async () => {
+        let writes = 0;
+        executeToolSpy.mockImplementation(async (name: string, input: any) => {
+            if (name === 'ai_write_file') {
+                writes += 1;
+                if (writes === 1) {
+                    return {
+                        ok: false,
+                        error: 'runtime_contract_mismatch: /workspace/WeatherGo/src/components/WeatherApp.jsx imports undeclared package(s): react-redux [verified root: /workspace/WeatherGo; manifest: /workspace/WeatherGo/package.json].',
+                        logs: [],
+                    } as any;
+                }
+                return { ok: true, output: { path: input.path }, logs: [] } as any;
+            }
+            if (name === 'phase_executor') {
+                return { ok: true, output: { status: 'completed' }, logs: [] } as any;
+            }
+            return { ok: true, output: { status: 'completed' }, logs: [] } as any;
+        });
+
+        const runtimeRepairPlan: any = {
+            ...plan,
+            suggestedInput: {
+                path: '/workspace/WeatherGo/src/components/WeatherApp.jsx',
+                description: 'repair the exact generated WeatherApp without changing the manifest',
+                context: JSON.stringify({ runtimeContractRepair: { file: '/workspace/WeatherGo/src/components/WeatherApp.jsx' } }),
+            },
+            sourceTicket: {
+                primaryError: 'runtime_contract_mismatch: /workspace/WeatherGo/src/components/WeatherApp.jsx imports undeclared package(s): react-redux',
+                failedTasks: [],
+                context: {},
+            },
+        };
+
+        const result = await SelfFixExecutionService.executeOnce({
+            phase: {
+                name: 'WeatherGo UI Setup',
+                tasks: [{ task: 'Write WeatherApp component', tool: 'ai_write_file', args: { path: 'src/components/WeatherApp.jsx' } }],
+            },
+            projectContext: { projectName: 'WeatherGo', projectRoot: '/workspace/WeatherGo', projectRootRuntimeBound: true },
+            selfFixPlan: runtimeRepairPlan,
+            executionContext: context,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.followUpPlan?.strategy).toBe('code_fix');
+        expect(result.followUpPlan?.suggestedTool).toBe('ai_write_file');
+        expect(result.followUpPlan?.suggestedInput.path).toBe('/workspace/WeatherGo/src/components/WeatherApp.jsx');
+        expect(result.followUpExecution?.ok).toBe(true);
+        expect(writes).toBe(2);
+        expect(executeToolSpy.mock.calls.map(call => call[0])).toEqual([
+            'ai_write_file', 'ai_write_file', 'phase_executor',
+        ]);
+    });
+
     it('rebinds rerun verification to the manifest nearest the repaired nested artifact', async () => {
         const artifactRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-weathergo-'));
         const repairedFile = path.join(artifactRoot, 'src', 'components', 'WeatherApp.jsx');
