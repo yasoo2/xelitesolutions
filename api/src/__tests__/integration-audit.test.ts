@@ -330,6 +330,7 @@ describe('partial phases preserve verified blockers instead of guessing a repair
         expect(guardedRegion).toContain("primaryError.includes('EVIDENCE_BLOCKER')");
         expect(guardedRegion).toContain('return { ok: false, completedPhases, results, honestBlocker: true }');
         expect(loop).toContain('const hasActionableEvidence =');
+        expect(loop).toContain('unresolved_local_import|runtime_contract_mismatch');
         expect(loop).toContain('r?.toolName || r?.name || r?.operation');
         expect(loop).toContain('r?.errorMessage ||');
         expect(loop).toContain('const phaseResultForRepair =');

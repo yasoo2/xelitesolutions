@@ -73,6 +73,28 @@ function resolveArtifactAwarePath(filePath: string, workspaceId?: string, projec
     return resolveToolPath(filePath, { workspaceId, projectRoot: artifactRoot });
 }
 
+function normalizeRuntimeArtifactPath(filePath: string, projectRoot?: string, projectName?: string): string {
+    const requestedRoot = String(projectRoot || '').trim();
+    const requestedName = String(projectName || '').trim();
+    if (!requestedRoot || !path.isAbsolute(requestedRoot) || !requestedName || path.isAbsolute(filePath)) return filePath;
+
+    const normaliseLabel = (value: string) => value
+        .replace(/\\/g, '/')
+        .replace(/^\.\//u, '')
+        .replace(/[-_]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLocaleLowerCase();
+    const segments = filePath.replace(/\\/g, '/').replace(/^\.\//u, '').split('/').filter(Boolean);
+    const firstSegment = segments[0] || '';
+    // A planner may describe a file as `WeatherGo/src/App.jsx`, while the
+    // runtime-bound artifact is already `/workspace/react-weathergo-...`.
+    // Strip only the canonical project label; arbitrary directories remain
+    // untouched so a real in-project folder is never silently renamed.
+    if (!firstSegment || normaliseLabel(firstSegment) !== normaliseLabel(requestedName)) return filePath;
+    return segments.slice(1).join(path.sep) || '.';
+}
+
 function artifactMismatch(filePath: string, content: string): string | null {
     const ext = path.extname(filePath).toLowerCase();
     const looksLikeHtmlDocument = /<!doctype\s+html|<html\b|<\/(?:head|body|html)>/i.test(content);
@@ -383,7 +405,12 @@ export class AIGeneratorTool implements ToolDefinition {
         // the model and spent a full generation on an empty brief before dying
         // on an undefined path — the sandboxed audit caught it burning a real
         // LLM call for a request that could never be written anywhere.
-        const filePath = String(input?.path ?? '').trim();
+        const requestedFilePath = String(input?.path ?? '').trim();
+        const filePath = normalizeRuntimeArtifactPath(
+            requestedFilePath,
+            context?.projectRoot,
+            context?.projectName,
+        );
         const description = String(input?.description ?? '').trim();
         if (!filePath || !description) {
             return {
@@ -446,7 +473,7 @@ Return the complete file content now.`;
                     : retryKind === 'imports'
                         ? `IMPORT PATH RETRY REQUIRED:\nThe previous completion referenced a local file that does not exist from the importing file. Re-read the verified project layout in context and return the complete file again with every relative import resolving from this file. Do not invent or duplicate folders, do not change package.json, and emit no Markdown fences or explanatory prose.`
                         : retryKind === 'runtime'
-                            ? `RUNTIME CONTRACT RETRY REQUIRED:\nThe previous completion imported package(s) that are not declared in the nearest verified package.json: ${retryReason || '(see the rejected runtime contract error)'}. Return the complete file again using only packages already declared in that manifest, React/browser APIs, and local imports proven by the supplied project context. Do not add or edit package.json, do not switch frameworks, do not replace the missing package with another undeclared package, and emit no Markdown fences or explanatory prose.`
+                            ? `RUNTIME CONTRACT RETRY REQUIRED:\nThe previous completion imported package(s) that are not declared in the nearest verified package.json: ${retryReason || '(see the rejected runtime contract error)'}. Treat the manifest package list as a hard allowlist. Return the complete file again using only packages already declared in that manifest, React/browser APIs, and local imports proven by the supplied project context. Do not add or edit package.json, do not switch frameworks, and do not replace a rejected package with any other undeclared package. Rejected package attempts listed above are forbidden; implement the requested behavior with the allowlisted stack instead. Emit no Markdown fences or explanatory prose.`
                             : `FORMAT RETRY REQUIRED:\nThe previous completion violated the destination artifact contract. Return the complete file again, with no Markdown fences or explanatory prose. For JSON, return strict parseable JSON only. Do not omit, truncate, or replace any content.`;
                 const retryLabel = retryKind === 'syntax'
                     ? 'SYNTAX RETRY'
@@ -539,9 +566,19 @@ Return the complete file content now.`;
                 validation = validationErrorFor(finalContent);
                 return {};
             };
-            if (validation?.kind === 'runtime') {
-                logs.push(`runtime contract retry requested for ${filePath}: ${validation.error}`);
-                content = await callForArtifact('runtime', validation.error);
+            // A model can respond to a runtime-contract correction by swapping one
+            // undeclared library for another. Allow two bounded runtime retries,
+            // carrying the complete rejection history forward as a hard deny-list.
+            // This remains finite and generic: it never installs packages or names
+            // a product-specific dependency, and the final validator remains the gate.
+            let runtimeRetryCount = 0;
+            const runtimeRejectionHistory: string[] = [];
+            while (validation?.kind === 'runtime' && runtimeRetryCount < 2) {
+                runtimeRetryCount += 1;
+                runtimeRejectionHistory.push(validation.error);
+                const retryReason = runtimeRejectionHistory.join('\n');
+                logs.push(`runtime contract retry ${runtimeRetryCount}/2 requested for ${filePath}: ${validation.error}`);
+                content = await callForArtifact('runtime', retryReason);
                 if (isProviderFailure(content)) {
                     return { ok: false, error: String(content), logs: [...logs, 'runtime contract retry received no LLM provider answer; nothing was written'] };
                 }

@@ -122,6 +122,17 @@ describe('routing — full-project requests reach the pipeline, offline and dete
         expect(interactiveAppNeedsReactBuilder(quickNotes)).toBe(true);
     });
 
+    test('optional authentication wording in a browser app does not create a backend system', () => {
+        const weathergo = [
+            'Build a real weather web application using React and Vite.',
+            'Use the public Open-Meteo geocoding and forecast APIs; do not build a project-owned backend.',
+            'Include city search, hourly and seven-day forecasts, favorites in localStorage, and settings persistence.',
+            'If authentication is needed for this flow, implement a usable local/demo persistence path and do not block acceptance on credentials.',
+        ].join(' ');
+        expect(PlanningEngine.classifyBuildScope(weathergo)).toBe('app');
+        expect(interactiveAppNeedsReactBuilder(weathergo)).toBe(true);
+    });
+
     test('an interactive app request requires the concrete React builder instead of a generic scaffold', () => {
         const calcPro = [
             'Build a mobile-responsive calculator application called "CalcPro" with basic arithmetic,',

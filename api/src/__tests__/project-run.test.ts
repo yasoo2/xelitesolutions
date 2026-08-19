@@ -9,7 +9,7 @@ import http from 'http';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { canAdoptRecordedLive, declaredLaunchPrerequisitePackages, detectStart, launchabilityError, missingLocalRuntimeImports, missingRuntimeDependencies, placeholderLifecycleScriptError, reconcileMissingRuntimeImports, reconcileMissingRuntimeTarget, resolveRunnableProject, shouldUseActiveProjectDirectly, ProjectRunTool } from '../modules/tools/definitions/ProjectRunTool';
+import { canAdoptRecordedLive, declaredLaunchPrerequisitePackages, detectStart, launchPrerequisiteError, launchabilityError, missingLocalRuntimeImports, missingRuntimeDependencies, placeholderLifecycleScriptError, reconcileMissingRuntimeImports, reconcileMissingRuntimeTarget, resolveRunnableProject, shouldUseActiveProjectDirectly, ProjectRunTool } from '../modules/tools/definitions/ProjectRunTool';
 import { ExecutionGateway } from '../kernel/ExecutionGateway';
 import { workspaceService } from '../modules/services/WorkspaceService';
 import { NpmManagerTool } from '../modules/tools/definitions/SystemTools';
@@ -154,6 +154,19 @@ describe('launch prerequisite recovery stays manifest-evidence-first', () => {
         expect(runSrc).toMatch(/new NpmManagerTool\(\)\.execute/);
         expect(runSrc).toMatch(/missingAfterInstall = launchPrerequisiteError/);
         expect(runSrc).toMatch(/auto npm install succeeded/);
+    });
+
+    test('detects an uninstalled declared Vite dev server as an installable prerequisite', () => {
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+            scripts: { dev: 'vite' },
+            devDependencies: { vite: '^5.4.11' },
+        }), 'utf-8');
+
+        expect(launchPrerequisiteError(root, {
+            command: 'npm run dev -- --port 4300 --strictPort --host localhost',
+            kind: 'dev-server',
+        })).toBe('vite');
+        expect(declaredLaunchPrerequisitePackages(root, 'vite')).toEqual(['vite']);
     });
 
     test('installs a declared missing dependency once, then launches only after the recheck passes', async () => {

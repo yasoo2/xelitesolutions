@@ -2900,6 +2900,17 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          */
         const generatedEnginePath = appBp && runBp.kind === 'weather'
             ? 'src/components/WeatherApp.jsx' : '';
+        // Preserve the run-bound artifact root even when domain authoring is
+        // blocked. PhaseExecutor must bind this real project before SelfFix
+        // rewrites the failed domain file; otherwise validation falls back to
+        // the logical project label (for example workspace/WeatherGo) and
+        // checks an unrelated manifest.
+        const authoringFailureOutput = () => ({
+            path: proj,
+            projectDir: proj,
+            dir: dirName,
+            files: Object.keys(files),
+        });
         if (generatedEnginePath) {
             term(`ai_write_file: authoring ${generatedEnginePath} from the user's requirements`);
             try {
@@ -2925,12 +2936,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     // retryable, while validation/import/runtime errors must reach
                     // SelfFixService instead of being collapsed into the opaque
                     // domain_generation_failed string with no repair target.
-                    return { ok: false, error: reason, logs };
+                    return { ok: false, error: reason, output: authoringFailureOutput(), logs };
                 }
                 let authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
                 if (!authored.trim() || !/export\s+default\s+function\s+WeatherApp|export\s+default\s+WeatherApp/.test(authored)) {
                     term('domain generation: BLOCKED — generated file has no valid WeatherApp default export');
-                    return { ok: false, error: 'domain_generation_invalid', logs };
+                    return { ok: false, error: 'domain_generation_invalid', output: authoringFailureOutput(), logs };
                 }
 
                 // Compile/import validation cannot prove that a generated domain
@@ -2955,14 +2966,14 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     if (!repaired?.ok || !fs.existsSync(path.join(proj, generatedEnginePath))) {
                         const reason = String(repaired?.error || 'semantic repair did not produce the requested domain file');
                         term(`domain semantic QA: BLOCKED — ${reason}`);
-                        return { ok: false, error: reason, logs };
+                        return { ok: false, error: reason, output: authoringFailureOutput(), logs };
                     }
                     authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
                     semanticDefects = inspectWeatherEngineSource(request, authored);
                     if (semanticDefects.length) {
                         const reason = `weather_semantic_contract_failed: ${formatWeatherSemanticRepair(semanticDefects)}`;
                         term(`domain semantic QA: BLOCKED — ${semanticDefects.map(d => d.id).join(', ')}`);
-                        return { ok: false, error: reason, logs };
+                        return { ok: false, error: reason, output: authoringFailureOutput(), logs };
                     }
                     term('domain semantic QA: repaired and independently rechecked');
                 }
@@ -2976,7 +2987,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 term(`domain generation: BLOCKED — ${reason}`);
                 // Thrown provider failures are treated the same as returned model
                 // notices so the same evidence-bound retry policy applies.
-                return { ok: false, error: isProviderFailure(reason) ? reason : 'domain_generation_failed', logs };
+                return { ok: false, error: isProviderFailure(reason) ? reason : 'domain_generation_failed', output: authoringFailureOutput(), logs };
             }
         }
         // The REAL font files travel WITH the app (public/fonts + OFL

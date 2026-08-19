@@ -374,6 +374,44 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(written).not.toMatch(/react-redux|date-fns/);
     });
 
+    it('carries all rejected undeclared packages across bounded runtime retries', async () => {
+        const rel = path.join(projectRel, 'src/runtime-retry-history/App.jsx');
+        callLLM
+            .mockResolvedValueOnce("import React from 'react';\nimport { Provider } from 'react-redux';\nexport default function App() { return <main>first</main>; }\nvoid Provider;")
+            .mockResolvedValueOnce("import React from 'react';\nimport { BrowserRouter } from 'react-router-dom';\nexport default function App() { return <main>second</main>; }\nvoid BrowserRouter;")
+            .mockResolvedValueOnce("import React from 'react';\nexport default function App() { return <main>runtime-safe-after-history</main>; }");
+
+        const res: any = await tool.execute({
+            path: rel,
+            description: 'Write the browser React entry for the verified web project without adding dependencies.',
+        }, { projectRoot, engineeringPipeline: true });
+
+        expect(res.ok).toBe(true);
+        expect(callLLM).toHaveBeenCalledTimes(3);
+        expect(callLLM.mock.calls[1][0]).toMatch(/react-redux/);
+        expect(callLLM.mock.calls[2][0]).toMatch(/react-redux/);
+        expect(callLLM.mock.calls[2][0]).toMatch(/react-router-dom/);
+        const written = fs.readFileSync(landsAt(rel), 'utf8');
+        expect(written).toContain('runtime-safe-after-history');
+        expect(written).not.toMatch(/react-redux|react-router-dom/);
+    });
+
+    it('maps a conceptual project prefix onto the bound artifact instead of nesting it', async () => {
+        const conceptualPath = path.join('WeatherGo', 'src', 'services', 'forecast.ts');
+        const expectedPath = path.join(projectRoot, 'src', 'services', 'forecast.ts');
+        callLLM.mockResolvedValue('export const forecast = { temperature: 20 };');
+
+        const res: any = await tool.execute({
+            path: conceptualPath,
+            description: 'Write the verified weather service inside the current React artifact.',
+        }, { projectRoot, projectName: 'WeatherGo', engineeringPipeline: true });
+
+        expect(res.ok).toBe(true);
+        expect(fs.readFileSync(expectedPath, 'utf8')).toContain('temperature');
+        expect(fs.existsSync(path.join(projectRoot, 'WeatherGo', 'src', 'services', 'forecast.ts'))).toBe(false);
+        expect(res.output.path).toBe(path.join('src', 'services', 'forecast.ts'));
+    });
+
     it('uses the nearest target-project manifest when the bound root belongs to another project', async () => {
         const outerRoot = path.join(projectRoot, 'outer-api');
         const nestedRoot = path.join(projectRoot, 'nested-react-product');

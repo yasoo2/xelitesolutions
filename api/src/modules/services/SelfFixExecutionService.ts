@@ -202,13 +202,16 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
             {
               task: 'Build the repaired project without rewriting generated files',
               tool: 'shell_execute',
-              command: 'npm run build',
-              cwd: projectRoot,
+              args: {
+                command: 'npm run build',
+                cwd: projectRoot,
+                projectPath: projectRoot,
+              },
             },
             {
               task: 'Verify the repaired project can start',
               tool: 'project_run',
-              cwd: projectRoot,
+              args: { cwd: projectRoot },
             },
           ],
         },
@@ -352,9 +355,18 @@ export class SelfFixExecutionService {
       };
     }
 
-    const repairedFile = selfFixPlan.suggestedInput?.path
-      || selfFixPlan.suggestedInput?.filename
-      || selfFixPlan.suggestedInput?.filePath
+    // phaseAfterRepair and projectContextAfterRepair need the path that the
+    // repair tool actually received. When a runtime-bound artifact turns a
+    // logical `src/...` target into `/workspace/WeatherGo/src/...`, using the
+    // original plan path here loses the nearest package.json evidence. The
+    // rerun then treats the repair as workspace-relative, can rerun
+    // react_project, and overwrite the repaired source with the rejected
+    // completion. Preserve the rebound target for all file repairs; npm has no
+    // file target, so retain its cwd-derived manifest fallback.
+    const repairedFile = (typeof reboundTarget === 'string' && reboundTarget.trim()
+      ? reboundTarget
+      : undefined)
+      || originalTarget
       || (repairTool === 'npm_manager' && typeof repairInput.cwd === 'string' && repairInput.cwd.trim()
         ? path.join(repairInput.cwd.trim(), 'package.json')
         : undefined);

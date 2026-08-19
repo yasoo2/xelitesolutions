@@ -216,6 +216,41 @@ describe('evidence-aware file edit recovery', () => {
     expect(JSON.stringify(plan.suggestedInput)).not.toContain('npm_manager');
   });
 
+  it('preserves the react_project brief when runtime-contract evidence names the failed file only in the error', () => {
+    const failedFile = '/workspace/WeatherGo/src/components/WeatherApp.jsx';
+    const originalDescription = 'Build WeatherGo with Open-Meteo geocoding and forecast data, hourly and daily views, sunrise/sunset, favorites persistence, and Fahrenheit settings.';
+    const originalContext = 'Use the existing React + Vite browser runtime and only packages declared in package.json.';
+    const ticket = RepairTicketService.build({
+      phase: { phaseNumber: 1, name: 'Application' },
+      projectName: 'WeatherGo',
+      workspaceId: 'workspace-test',
+      phaseResult: {
+        output: {
+          status: 'partial',
+          results: [{
+            task: 'Build the WeatherGo application',
+            tool: 'react_project',
+            ok: false,
+            error: `runtime_contract_mismatch: ${failedFile} imports undeclared package(s): react-redux. Update the project manifest only when necessary.`,
+            description: originalDescription,
+            artifactContext: originalContext,
+          }],
+        },
+      },
+    });
+    const plan = SelfFixService.plan(ticket);
+
+    expect(ticket.failedTasks[0]).toEqual(expect.objectContaining({
+      description: originalDescription,
+      artifactContext: originalContext,
+    }));
+    expect(plan.strategy).toBe('code_fix');
+    expect(plan.suggestedTool).toBe('ai_write_file');
+    expect(String(plan.suggestedInput?.description)).toContain('ORIGINAL GENERATION BRIEF');
+    expect(String(plan.suggestedInput?.description)).toContain('Open-Meteo');
+    expect(String(plan.suggestedInput?.context)).toContain('existing React + Vite browser runtime');
+  });
+
   it('extracts only the evidenced package from a truncated runtime contract message', () => {
     const truncated = 'runtime_contract_mismatch: /workspace/WeatherGo/src/services/weatherService.js imports undeclared package(s): axios. Update the project manifest only when the requireme';
     const plan = SelfFixService.plan({
@@ -439,13 +474,16 @@ describe('evidence-aware file edit recovery', () => {
       {
         task: 'Build the repaired project without rewriting generated files',
         tool: 'shell_execute',
-        command: 'npm run build',
-        cwd: projectRoot,
+        args: {
+          command: 'npm run build',
+          cwd: projectRoot,
+          projectPath: projectRoot,
+        },
       },
       {
         task: 'Verify the repaired project can start',
         tool: 'project_run',
-        cwd: projectRoot,
+        args: { cwd: projectRoot },
       },
     ]);
   });

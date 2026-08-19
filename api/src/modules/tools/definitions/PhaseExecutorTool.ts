@@ -496,13 +496,81 @@ function boundedRepairEvidence(value: unknown, max = 6000): string {
         .replace(/(gh[pousr]_[A-Za-z0-9_-]{16,})/gu, '[REDACTED]');
 }
 
-function fileFailureEvidence(toolName: string, args: Record<string, any>): Record<string, string> {
-    const cwd = String(args?.cwd ?? args?.projectPath ?? '').trim();
+/**
+ * Rebase only stale absolute evidence that is demonstrably an older artifact
+ * with the same canonical project label. A failed tool can preserve its planned
+ * path verbatim even after this phase has bound a fresh runtime artifact; that
+ * path must not send SelfFix back into `my-workspace/WeatherGo`. Never rewrite
+ * paths outside the active workspace or paths without an exact project-label
+ * segment: those are not proven to belong to this run.
+ */
+function rebaseStaleRuntimeEvidencePath(value: unknown, projectContext?: Record<string, any>): string {
+    const raw = String(value ?? '').trim();
+    const runtimeRoot = String(projectContext?.projectRoot || '').trim();
+    if (!raw || !runtimeRoot || projectContext?.projectRootRuntimeBound !== true || !path.isAbsolute(raw)) return raw;
+
+    const boundRoot = path.resolve(runtimeRoot);
+    const resolved = path.resolve(raw);
+    if (isWithinRoot(resolved, boundRoot)) return resolved;
+
+    let workspaceRoot = '';
+    try { workspaceRoot = path.resolve(workspaceService.getActiveRoot(projectContext?.workspaceId)); } catch { return raw; }
+    if (!workspaceRoot || !fs.existsSync(workspaceRoot) || !isWithinRoot(resolved, workspaceRoot)) return raw;
+
+    const projectName = String(projectContext?.projectName || '').trim();
+    if (!projectName) return raw;
+    const normaliseLabel = (value: string) => value
+        .replace(/\\/g, '/')
+        .replace(/[-_]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLocaleLowerCase();
+    const segments = resolved.split(path.sep).filter(Boolean);
+    const requestedLabel = normaliseLabel(projectName);
+    let projectIndex = -1;
+    segments.forEach((segment, index) => {
+        if (normaliseLabel(segment) === requestedLabel) projectIndex = index;
+    });
+    if (projectIndex < 0) return raw;
+
+    const relative = segments.slice(projectIndex + 1).join(path.sep);
+    const candidate = path.resolve(boundRoot, relative || '.');
+    return isWithinRoot(candidate, boundRoot) ? candidate : raw;
+}
+
+/** Rebase only the proven old project-root prefix inside diagnostic text. */
+function rebaseStaleRuntimeEvidenceText(value: unknown, projectContext?: Record<string, any>): string {
+    const raw = String(value ?? '');
+    const runtimeRoot = String(projectContext?.projectRoot || '').trim();
+    const projectName = String(projectContext?.projectName || '').trim();
+    if (!raw || !runtimeRoot || !projectName || projectContext?.projectRootRuntimeBound !== true) return raw;
+
+    let workspaceRoot = '';
+    try { workspaceRoot = path.resolve(workspaceService.getActiveRoot(projectContext?.workspaceId)); } catch { return raw; }
+    if (!workspaceRoot || !fs.existsSync(workspaceRoot)) return raw;
+    const staleRoot = path.resolve(workspaceRoot, projectName);
+    const boundRoot = path.resolve(runtimeRoot);
+    const prefixes = new Map<string, string>([
+        [staleRoot, boundRoot],
+        [staleRoot.replace(/\\/g, '/'), boundRoot.replace(/\\/g, '/')],
+    ]);
+    let rebased = raw;
+    for (const [from, to] of prefixes) {
+        if (from) rebased = rebased.split(from).join(to);
+    }
+    return rebased;
+}
+
+function fileFailureEvidence(toolName: string, args: Record<string, any>, projectContext?: Record<string, any>): Record<string, string> {
+    const cwd = rebaseStaleRuntimeEvidencePath(args?.cwd ?? args?.projectPath, projectContext);
     const evidence: Record<string, string> = cwd ? { cwd: cwd.slice(0, 1000) } : {};
     const fileTools = new Set(['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'auto_tester']);
     if (!fileTools.has(toolName)) return evidence;
-    const file = String(args?.filename ?? args?.filePath ?? args?.path ?? args?.targetPath
-        ?? (Array.isArray(args?.files) ? args.files[0] : '') ?? '').trim();
+    const file = rebaseStaleRuntimeEvidencePath(
+        args?.filename ?? args?.filePath ?? args?.path ?? args?.targetPath
+        ?? (Array.isArray(args?.files) ? args.files[0] : ''),
+        projectContext,
+    );
     const find = String(args?.find ?? args?.search ?? args?.old_string ?? '');
     const replace = String(args?.replace ?? args?.new_string ?? '');
     const description = toolName === 'ai_write_file' && typeof args?.description === 'string'
@@ -929,6 +997,15 @@ export class PhaseExecutorTool implements ToolDefinition {
                 // root when the planner omitted cwd/projectPath.
                 inheritRuntimeProjectArguments(toolName, planned, projectContext, logs);
 
+                // Preserve builder semantics for either a returned tool failure or
+                // an exception, so both paths can create a faithful self-fix ticket.
+                const repairDescription = ['react_project', 'api_project'].includes(toolName)
+                    ? boundedRepairEvidence(planned.request || planned.description || taskDesc)
+                    : '';
+                const repairContext = ['react_project', 'api_project'].includes(toolName)
+                    ? boundedRepairEvidence(planned.context || projectContext?.requirementsContext || '')
+                    : '';
+
                 const adaptedPlanned = adaptPlannedArgs(toolName, planned);
                 const toolArgs = adaptPlannedArgsFromDescription(toolName, adaptedPlanned, taskDesc);
                 /**
@@ -1033,10 +1110,19 @@ export class PhaseExecutorTool implements ToolDefinition {
                         });
                         completedCount++;
                     } else {
+                        // A builder may have written a real artifact and returned ok:false
+                        // only because its delivery/QA gate is blocked. Bind that artifact
+                        // before recording the failure; otherwise every following task
+                        // resolves against the logical project name (for example
+                        // workspace/WeatherGo), loses the manifest, and reports false
+                        // dependency/import failures. The evidence binder is deliberately
+                        // strict: it accepts only a package-bearing child or bounded file
+                        // evidence, so ordinary failed tools cannot relabel the workspace.
+                        bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, logs);
+                        syncRuntimeProjectContext(projectContext, logs);
                         const errMsg = String(toolResult.error || 'Unknown error');
                         const failedOutput = (toolResult as any)?.output || {};
                         const failureText = `${errMsg}\n${String(failedOutput.stderr || '')}\n${String(failedOutput.stdout || '')}`;
-
                         // Evidence-aware launcher recovery. Do not invent a
                         // `server` script and do not rewrite arbitrary npm
                         // commands: inspect the manifest and retry only when
@@ -1078,7 +1164,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                             task: taskDesc,
                             tool: toolName,
                             ok: false,
-                            error: errMsg,
+                            error: rebaseStaleRuntimeEvidenceText(errMsg, projectContext),
                             ...((toolResult as any)?.recoverable === true ? { recoverable: true } : {}),
                             ...(failedMessage ? { message: failedMessage.slice(0, 8000) } : {}),
                             ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
@@ -1090,7 +1176,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                             ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
                                 ? { background: toolArgs.background }
                                 : {}),
-                            ...fileFailureEvidence(toolName, toolArgs),
+                            ...fileFailureEvidence(toolName, toolArgs, projectContext),
+                            ...(repairDescription ? { description: repairDescription } : {}),
+                            ...(repairContext ? { artifactContext: repairContext } : {}),
                         });
 
                         const recoverableFailure = (toolResult as any)?.recoverable === true;
@@ -1134,7 +1222,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                         ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
                             ? { background: toolArgs.background }
                             : {}),
-                        ...fileFailureEvidence(toolName, toolArgs),
+                        ...fileFailureEvidence(toolName, toolArgs, projectContext),
+                        ...(repairDescription ? { description: repairDescription } : {}),
+                        ...(repairContext ? { artifactContext: repairContext } : {}),
                     });
 
                     if (task.priority === 'high' || task.required === true) {

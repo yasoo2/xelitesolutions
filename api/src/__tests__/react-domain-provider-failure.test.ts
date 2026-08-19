@@ -34,6 +34,9 @@ describe('React domain authoring preserves provider outages for orchestration re
             expect(result.ok).toBe(false);
             expect(result.error).toMatch(/^⚠️ تعذّر الوصول إلى محرّك الذكاء/);
             expect(result.error).not.toBe('domain_generation_failed');
+            expect(result.output?.path).toBeTruthy();
+            expect(fs.existsSync(result.output.path)).toBe(true);
+            expect(fs.existsSync(path.join(result.output.path, 'package.json'))).toBe(true);
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
         }
@@ -52,6 +55,9 @@ describe('React domain authoring preserves provider outages for orchestration re
             expect(result.error).toMatch(/^unresolved_local_import:/);
             expect(result.error).toContain('./styles/app.css');
             expect(result.error).not.toBe('domain_generation_failed');
+            expect(result.output?.path).toBeTruthy();
+            expect(fs.existsSync(result.output.path)).toBe(true);
+            expect(fs.existsSync(path.join(result.output.path, 'package.json'))).toBe(true);
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
         }

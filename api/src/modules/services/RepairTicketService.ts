@@ -135,12 +135,16 @@ export class RepairTicketService {
           : typeof rawArgs.replace === 'string'
             ? rawArgs.replace
             : typeof rawArgs.new_string === 'string' ? rawArgs.new_string : undefined;
-        const description = String(t?.tool || '') === 'ai_write_file' && typeof rawArgs.description === 'string'
-          ? repairEvidence(rawArgs.description, 6000)
-          : undefined;
-        const artifactContext = String(t?.tool || '') === 'ai_write_file' && typeof rawArgs.context === 'string'
-          ? repairEvidence(rawArgs.context, 6000)
-          : undefined;
+        const description = typeof t?.description === 'string'
+          ? repairEvidence(t.description, 6000)
+          : typeof rawArgs.description === 'string'
+            ? repairEvidence(rawArgs.description, 6000)
+            : undefined;
+        const artifactContext = typeof t?.artifactContext === 'string'
+          ? repairEvidence(t.artifactContext, 6000)
+          : typeof rawArgs.context === 'string'
+            ? repairEvidence(rawArgs.context, 6000)
+            : undefined;
         return {
           task: truncate(t.task || 'unknown task', 500),
           tool: truncate(t.tool || 'unknown tool', 100),

@@ -115,6 +115,75 @@ describe('PhaseExecutorTool observable trusted context', () => {
         }
     });
 
+    it('binds a written React artifact even when the builder returns a blocked delivery result', async () => {
+        const workspaceId = `workspace-blocked-react-bind-${process.pid}`;
+        const sessionId = `chat-blocked-react-bind-${process.pid}`;
+        const workspaceRoot = workspaceService.getActiveRoot(workspaceId);
+        const projectRoot = path.join(workspaceRoot, `react-weathergo-blocked-${process.pid}`);
+        fs.mkdirSync(projectRoot, { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, 'package.json'), JSON.stringify({
+            name: 'react-weathergo-blocked',
+            scripts: { build: 'vite build' },
+        }));
+
+        try {
+            let downstreamContext: any;
+            let downstreamInput: any;
+            mockedExecuteTool.mockImplementation(async (toolName: string, input: any, context: any) => {
+                if (toolName === 'react_project') {
+                    return {
+                        ok: false,
+                        error: 'react_delivery_quality_gate_failed',
+                        output: {
+                            path: projectRoot,
+                            projectDir: projectRoot,
+                            verificationFailed: true,
+                            message: 'The artifact exists but delivery is blocked by a QA finding.',
+                        },
+                    } as any;
+                }
+                if (toolName === 'ai_write_file') {
+                    downstreamContext = context;
+                    downstreamInput = input;
+                    return { ok: true, output: { path: path.join(projectRoot, 'src', 'App.jsx') } } as any;
+                }
+                return { ok: true, output: {} } as any;
+            });
+
+            const projectContext: any = {
+                projectName: `WeatherGo-blocked-${process.pid}`,
+                createsNewProject: true,
+                sessionId,
+                workspaceId,
+                userId: 'user-blocked-react-bind',
+            };
+            const result: any = await new PhaseExecutorTool().execute({
+                phase: {
+                    phaseNumber: 1,
+                    name: 'Build and complete the React artifact',
+                    tasks: [
+                        { task: 'Create the React artifact', tool: 'react_project', required: false, args: { request: 'Build WeatherGo.' } },
+                        { task: 'Write the first UI artifact', tool: 'ai_write_file', args: { path: 'src/App.jsx', description: 'Create the first screen.' } },
+                    ],
+                },
+                projectContext,
+            }, { sessionId, workspaceId, userId: 'user-blocked-react-bind' });
+
+            expect(result.ok).toBe(false);
+            expect(projectContext.projectRoot).toBe(projectRoot);
+            expect(projectContext.projectRootRuntimeBound).toBe(true);
+            expect(downstreamContext).toMatchObject({
+                projectRoot,
+                projectRootRuntimeBound: true,
+            });
+            expect(downstreamInput).toMatchObject({ path: 'src/App.jsx' });
+            expect(mockedExecuteTool.mock.calls.map(call => call[0])).toEqual(['react_project', 'ai_write_file']);
+            expect(result.logs.join('\\n')).toContain('runtime project evidence bound');
+        } finally {
+            fs.rmSync(projectRoot, { recursive: true, force: true });
+        }
+    });
+
     it('refreshes delegated tool context after a builder binds the artifact root', async () => {
         const workspaceId = `workspace-live-context-${process.pid}`;
         const sessionId = `chat-live-context-${process.pid}`;
@@ -218,6 +287,63 @@ describe('PhaseExecutorTool observable trusted context', () => {
             description,
             artifactContext,
         }));
+    });
+
+    it('rebases stale absolute file evidence onto the bound runtime artifact', async () => {
+        const workspaceId = `workspace-stale-evidence-${process.pid}`;
+        const sessionId = `chat-stale-evidence-${process.pid}`;
+        const workspaceRoot = workspaceService.getActiveRoot(workspaceId);
+        const runtimeRoot = path.join(workspaceRoot, `react-weathergo-stale-${process.pid}`);
+        const staleRoot = path.join(workspaceRoot, 'WeatherGo');
+        const staleFile = path.join(staleRoot, 'src', 'components', 'Search.jsx');
+        fs.mkdirSync(runtimeRoot, { recursive: true });
+        fs.mkdirSync(staleRoot, { recursive: true });
+        fs.writeFileSync(path.join(runtimeRoot, 'package.json'), JSON.stringify({ name: 'react-weathergo-stale' }));
+
+        try {
+            mockedExecuteTool.mockResolvedValue({
+                ok: false,
+                error: `unresolved_local_import: ${staleFile}`,
+            } as any);
+
+            const result: any = await new PhaseExecutorTool().execute({
+                phase: {
+                    phaseNumber: 4,
+                    name: 'Repair the generated artifact',
+                    tasks: [{
+                        task: 'Write the missing Search component',
+                        tool: 'ai_write_file',
+                        required: true,
+                        args: {
+                            path: 'src/components/Search.jsx',
+                            cwd: staleRoot,
+                            description: 'Create the missing Search component.',
+                        },
+                    }],
+                },
+                projectContext: {
+                    projectName: 'WeatherGo',
+                    projectRoot: runtimeRoot,
+                    projectRootRuntimeBound: true,
+                    sessionId,
+                    workspaceId,
+                },
+            }, { sessionId, workspaceId });
+
+            expect(result.ok).toBe(false);
+            expect(result.output.results[0]).toEqual(expect.objectContaining({
+                tool: 'ai_write_file',
+                ok: false,
+                cwd: runtimeRoot,
+                file: 'src/components/Search.jsx',
+                error: `unresolved_local_import: ${path.join(runtimeRoot, 'src', 'components', 'Search.jsx')}`,
+            }));
+            expect(result.output.results[0].error).not.toContain(staleRoot);
+            expect(result.output.results[0].cwd).not.toBe(staleRoot);
+        } finally {
+            fs.rmSync(runtimeRoot, { recursive: true, force: true });
+            fs.rmSync(staleRoot, { recursive: true, force: true });
+        }
     });
 
     it('installs missing local npm script binaries before executing a shell build', async () => {

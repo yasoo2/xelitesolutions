@@ -653,7 +653,7 @@ export class AgentLoopService {
                 String(r?.tool || '').trim() && String(r?.error || '').trim()
             ) || (
                 Boolean(primaryError) &&
-                /lint|build|npm\s+(?:install|run)|eslint|tsc|typescript|vite|jest|vitest|mocha|test/i.test(evidenceText)
+                /lint|build|npm\s+(?:install|run)|eslint|tsc|typescript|vite|jest|vitest|mocha|test|unresolved_local_import|runtime_contract_mismatch/i.test(evidenceText)
             );
             const actionableVerificationFailure =
                 phaseResult?.output?.verificationFailed === true &&

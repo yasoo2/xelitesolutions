@@ -329,6 +329,78 @@ describe('SelfFixExecutionService phase resumption', () => {
         }
     });
 
+    it('uses the rebound source path to skip react_project after a relative WeatherGo import repair', async () => {
+        const artifactRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-weathergo-relative-repair-'));
+        fs.mkdirSync(path.join(artifactRoot, 'src', 'components'), { recursive: true });
+        fs.writeFileSync(path.join(artifactRoot, 'package.json'), '{"private":true}\n');
+
+        const relativeRepairPlan: any = {
+            ...plan,
+            suggestedInput: {
+                path: 'src/components/WeatherApp.jsx',
+                description: 'regenerate WeatherApp.jsx with the filesystem-proven stylesheet path',
+            },
+            sourceTicket: {
+                primaryError: 'unresolved_local_import: WeatherApp.jsx imports "./styles/app.css"',
+                failedTasks: [],
+                context: {},
+            },
+        };
+
+        try {
+            const result = await SelfFixExecutionService.executeOnce({
+                phase: {
+                    name: 'Project Setup',
+                    tasks: [
+                        { task: 'Generate the WeatherGo React project', tool: 'react_project', args: {} },
+                        { task: 'Run the generated WeatherGo project', tool: 'project_run', args: { cwd: artifactRoot } },
+                    ],
+                },
+                projectContext: {
+                    projectName: 'WeatherGo',
+                    projectRoot: artifactRoot,
+                    projectRootRuntimeBound: true,
+                },
+                selfFixPlan: relativeRepairPlan,
+                executionContext: context,
+            });
+
+            expect(result.ok).toBe(true);
+            expect(executeToolSpy.mock.calls.map(call => call[0])).toEqual(['ai_write_file', 'phase_executor']);
+            expect(executeToolSpy.mock.calls[0][1].path).toBe(path.join(artifactRoot, 'src', 'components', 'WeatherApp.jsx'));
+            expect(executeToolSpy.mock.calls[1][1].phase.tasks.map((task: any) => task.tool)).toEqual(['project_run']);
+            expect(executeToolSpy.mock.calls[1][1].projectContext.projectRoot).toBe(artifactRoot);
+        } finally {
+            fs.rmSync(artifactRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('passes post-repair verification arguments through the task args contract', () => {
+        const artifactRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-post-repair-verification-'));
+        const repairedFile = path.join(artifactRoot, 'src', 'components', 'WeatherApp.jsx');
+        fs.mkdirSync(path.dirname(repairedFile), { recursive: true });
+        fs.writeFileSync(path.join(artifactRoot, 'package.json'), '{"private":true}\n');
+
+        try {
+            const result = phaseAfterRepair({
+                name: 'Project Setup',
+                tasks: [{ task: 'Generate the WeatherGo React project', tool: 'react_project', args: {} }],
+            }, repairedFile);
+
+            expect(result.phase.tasks.map((task: any) => task.tool)).toEqual(['shell_execute', 'project_run']);
+            expect(result.phase.tasks[0].args).toMatchObject({
+                command: 'npm run build',
+                cwd: artifactRoot,
+                projectPath: artifactRoot,
+            });
+            expect(result.phase.tasks[1].args).toEqual({ cwd: artifactRoot });
+            expect(result.phase.tasks[0].command).toBeUndefined();
+            expect(result.phase.tasks[1].cwd).toBeUndefined();
+        } finally {
+            fs.rmSync(artifactRoot, { recursive: true, force: true });
+        }
+    });
+
     it('keeps a resumed react project task after repairing its package manifest', () => {
         const phase = {
             name: 'Build WeatherGo',
