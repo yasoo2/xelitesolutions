@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { prepareArtifactContent } from '../artifact-validation';
 import { undefinedJsxComponentMismatch } from '../../../core/quality/source-contract';
+import { localFileExistsWithExactCase } from './ProjectRunTool';
 
 type ArtifactProfile = {
     kind: 'markdown_document' | 'structured_data' | 'source_code' | 'frontend_asset' | 'text_document';
@@ -457,6 +458,86 @@ function localImportResolutionError(
         : null;
 }
 
+const LOCAL_ASSET_IMPORT = /\.(?:css|scss|sass|less|json|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|otf)$/iu;
+
+function plannedLocalFiles(contract: RuntimeContract, plannedPhaseFiles: readonly string[]): string[] {
+    return plannedPhaseFiles
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .map(value => path.isAbsolute(value) ? path.resolve(value) : path.resolve(contract.root, value))
+        .filter(value => isWithinRoot(value, contract.root));
+}
+
+function uniqueAssetTarget(
+    importingPath: string,
+    specifier: string,
+    contract: RuntimeContract,
+    plannedPhaseFiles: readonly string[] = [],
+): string | null {
+    const clean = specifier.split(/[?#]/, 1)[0];
+    if (!LOCAL_ASSET_IMPORT.test(clean)) return null;
+    const importer = path.resolve(importingPath);
+    const candidate = path.resolve(path.dirname(importer), clean);
+    const relativeCandidate = path.relative(contract.root, candidate);
+    if (relativeCandidate.startsWith('..') || path.isAbsolute(relativeCandidate)) return null;
+
+    const extensions = ['', '.css', '.scss', '.sass', '.less', '.json', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.woff', '.woff2', '.ttf', '.otf'];
+    const planned = new Set(plannedLocalFiles(contract, plannedPhaseFiles));
+    const directTargets = extensions.map(ext => candidate + ext);
+    const direct = directTargets.find(target => planned.has(target) || localFileExistsWithExactCase(target));
+    if (direct) return direct;
+
+    // A generated source file often guesses ./styles/app.css while the
+    // evidenced artifact owns src/styles/app.css. Search only the artifact's
+    // source tree and accept a basename match only when it is unique; this is
+    // correction, not invention, and ambiguity remains a validator failure.
+    const basename = path.basename(clean).toLowerCase();
+    const matches = new Set<string>();
+    for (const plannedFile of planned) {
+        if (path.basename(plannedFile).toLowerCase() === basename) matches.add(plannedFile);
+    }
+    const sourceRoot = path.join(contract.root, 'src');
+    const searchRoot = fs.existsSync(sourceRoot) && fs.statSync(sourceRoot).isDirectory() ? sourceRoot : contract.root;
+    const walk = (directory: string) => {
+        let entries: fs.Dirent[] = [];
+        try { entries = fs.readdirSync(directory, { withFileTypes: true }); } catch { return; }
+        for (const entry of entries) {
+            if (matches.size > 1) return;
+            const full = path.join(directory, entry.name);
+            if (entry.isDirectory()) {
+                if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'build' || entry.name === '.git') continue;
+                walk(full);
+            } else if (entry.isFile() && entry.name.toLowerCase() === basename && localFileExistsWithExactCase(full)) {
+                matches.add(full);
+            }
+        }
+    };
+    walk(searchRoot);
+    return matches.size === 1 ? [...matches][0] : null;
+}
+
+function normalizeLocalAssetImports(
+    importingPath: string,
+    content: string,
+    contract: RuntimeContract | null,
+    plannedPhaseFiles: readonly string[] = [],
+): { content: string; changes: string[] } {
+    if (!contract || !/\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu.test(importingPath)) return { content, changes: [] };
+    const pattern = /\b(import\s+(?:[\s\S]*?\s+from\s+)?|export\s+(?:[\s\S]*?\s+from\s+)?|require\(\s*|import\(\s*)(['"])([^'"]+)\2/g;
+    const changes: string[] = [];
+    const normalized = content.replace(pattern, (full, prefix: string, quote: string, specifier: string) => {
+        if (!specifier.startsWith('.') || !LOCAL_ASSET_IMPORT.test(specifier)) return full;
+        const target = uniqueAssetTarget(importingPath, specifier, contract, plannedPhaseFiles);
+        if (!target) return full;
+        let relative = path.relative(path.dirname(path.resolve(importingPath)), target).replace(/\\/g, '/');
+        if (!relative.startsWith('.')) relative = `./${relative}`;
+        if (relative === specifier) return full;
+        changes.push(`${specifier} -> ${relative}`);
+        return `${prefix}${quote}${relative}${quote}`;
+    });
+    return { content: normalized, changes };
+}
+
 /**
  * Lazily resolve the LLM to avoid a circular import.
  *
@@ -572,7 +653,7 @@ export class AIGeneratorTool implements ToolDefinition {
             ? `\nFRONTEND QUALITY RULES:\n- Use accessible, responsive implementation only where the requirements call for a user interface.\n- Follow the selected style direction if supplied; otherwise favour clear, maintainable UI over decorative effects.\n- Support ${input.language === 'ar' ? 'Arabic with RTL layout' : 'the requested language'} when user-facing text is required.\n`
             : '';
         const runtimePathGuidance = artifact.kind === 'source_code' && /\.(?:js|mjs|cjs|ts|tsx)$/iu.test(filePath)
-            ? `\nRUNTIME PATH EVIDENCE RULES:\n- Before writing a local require/import in executable code, inspect the verified project context and existing filesystem layout supplied to this task. The specifier must resolve from the importing file to an existing file or directory entry.\n- Never assume a conventional folder such as routes, src/routes, models, or middleware. If the evidence shows src/routes, use that exact relative path; if it shows routes, use routes. Do not create a duplicate folder or placeholder module to hide an unresolved path.\n- For a server or entrypoint, trace every local runtime import one hop at a time and preserve the project\'s actual module system. If the layout evidence is missing, stop and request/perform discovery before emitting imports; do not guess.\n`
+            ? `\nRUNTIME PATH EVIDENCE RULES:\n- Before writing a local require/import in executable code, inspect the verified project context and existing filesystem layout supplied to this task. The specifier must resolve from the importing file to an existing file or directory entry.\n- Never assume a conventional folder such as routes, src/routes, models, or middleware. If the evidence shows src/routes, use that exact relative path; if it shows routes, use routes. Do not create a duplicate folder or placeholder module to hide an unresolved path.\n- For a server or entrypoint, trace every local runtime import one hop at a time and preserve the project\'s actual module system. If the layout evidence is missing, stop and request/perform discovery before emitting imports; do not guess.\n- For CSS, SVG, fonts, images, and other local assets, resolve the path from the importing file itself. Never assume a sibling './styles' directory from 'src/components'; use the exact evidenced path (for example '../styles/...') or keep the asset dependency self-contained when no target is proven.\n`
             : '';
                     const systemPrompt = `You are an engineering artifact author. Generate one complete, production-ready file that satisfies the supplied, evidenced requirements.
 
@@ -681,7 +762,23 @@ Return the complete file content now.`;
             if (prepared.error) {
                 return { ok: false, error: prepared.error, logs: [...logs, 'generated content violated the destination artifact contract; nothing was written'] };
             }
-            let finalContent = prepared.content;
+            const normalizeCandidateLocalAssets = (candidate: string): string => {
+                const currentRuntimeContract = runtimeContractForTarget(filePath, context?.projectRoot, contextWorkspaceId);
+                if (currentRuntimeContract) runtimeContract = currentRuntimeContract;
+                let importingPath = filePath;
+                try { importingPath = resolveArtifactAwarePath(filePath, contextWorkspaceId, context?.projectRoot); } catch { /* final write guard reports path errors */ }
+                const normalized = normalizeLocalAssetImports(
+                    importingPath,
+                    candidate,
+                    runtimeContract,
+                    Array.isArray(context?.plannedPhaseFiles) ? context.plannedPhaseFiles : [],
+                );
+                if (normalized.changes.length > 0) {
+                    logs.push(`normalized local asset imports for ${filePath}: ${normalized.changes.join(', ')}`);
+                }
+                return normalized.content;
+            };
+            let finalContent = normalizeCandidateLocalAssets(prepared.content);
             const validationErrorFor = (candidate: string): { error: string; kind: 'artifact' | 'runtime' | 'imports' | 'syntax' | 'component' } | null => {
                 const artifactError = artifactMismatch(filePath, candidate);
                 if (artifactError) return { error: artifactError, kind: 'artifact' };
@@ -717,7 +814,7 @@ Return the complete file content now.`;
                 if (isProviderFailure(content)) return { providerFailure: String(content) };
                 prepared = prepareArtifactContent(filePath, content);
                 if (prepared.error) return { artifactError: prepared.error };
-                finalContent = prepared.content;
+                finalContent = normalizeCandidateLocalAssets(prepared.content);
                 validation = validationErrorFor(finalContent);
                 return {};
             };
@@ -742,7 +839,7 @@ Return the complete file content now.`;
                 if (prepared.error) {
                     return { ok: false, error: prepared.error, logs: [...logs, 'runtime contract retry violated the destination artifact contract; nothing was written'] };
                 }
-                finalContent = prepared.content;
+                finalContent = normalizeCandidateLocalAssets(prepared.content);
                 validation = validationErrorFor(finalContent);
             }
             // A repair completion can fix one local import while inventing a

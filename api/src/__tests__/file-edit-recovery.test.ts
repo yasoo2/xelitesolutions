@@ -338,6 +338,40 @@ describe('evidence-aware file edit recovery', () => {
     expect(securityTicket.severity).toBe('critical');
   });
 
+  it('classifies the normalized failed-task error instead of mixed phase logs', () => {
+    const importer = path.join(root, 'src', 'components', 'WeatherApp.jsx');
+    fs.mkdirSync(path.dirname(importer), { recursive: true });
+    fs.writeFileSync(importer, 'import "./styles/app.css";\n');
+    const localImportError = `unresolved_local_import: ${importer} imports "./styles/app.css", "./styles/tokens.css", but no file resolves from the importing file.`;
+    const ticket = RepairTicketService.build({
+      phase: { phaseNumber: 1, name: 'Application' },
+      projectName: 'WeatherGo',
+      workspaceId: 'workspace-test',
+      phaseResult: {
+        // Adapters may preserve a mixed transcript here. It must not outrank
+        // the normalized error on the failed task below.
+        error: `${localImportError}\nstartup credentials and token audit output`,
+        output: {
+          status: 'permission_stop',
+          results: [{
+            task: 'Write WeatherApp component',
+            tool: 'ai_write_file',
+            ok: false,
+            error: localImportError,
+            cwd: root,
+            file: importer,
+          }],
+        },
+      },
+    });
+
+    expect(ticket.primaryError).toBe(localImportError);
+    expect(ticket.severity).not.toBe('critical');
+    const plan = SelfFixService.plan(ticket);
+    expect(plan.allowed).toBe(true);
+    expect(plan.strategy).toBe('build_fix');
+  });
+
   it('regenerates an undeclared runtime import under the verified project contract', () => {
     const file = '/workspace/WeatherGo/src/components/Favorites.jsx';
     const plan = SelfFixService.plan({

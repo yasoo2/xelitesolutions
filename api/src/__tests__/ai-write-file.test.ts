@@ -170,6 +170,34 @@ describe('generated source and structured artifacts are rejected before disk wri
         expect(fs.existsSync(landsAt(rel))).toBe(false);
     });
 
+    it('normalizes a unique local asset import from the evidenced artifact layout', async () => {
+        const project = landsAt(path.join(DIR, 'weathergo-asset-layout'));
+        fs.mkdirSync(path.join(project, 'src', 'components'), { recursive: true });
+        fs.mkdirSync(path.join(project, 'src', 'styles'), { recursive: true });
+        fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({ name: 'weathergo-asset-layout', dependencies: { react: '^18.0.0', vite: '^5.0.0' } }));
+        fs.writeFileSync(path.join(project, 'src', 'styles', 'app.css'), '.app {}');
+        fs.writeFileSync(path.join(project, 'src', 'styles', 'tokens.css'), ':root {}');
+        const rel = scratch('weathergo-asset-layout/src/components/WeatherApp.jsx');
+        callLLM.mockResolvedValue("import React from 'react';\nimport './styles/app.css';\nimport './styles/tokens.css';\nexport default function WeatherApp(){ return <main className=\"app\">WeatherGo</main>; }");
+
+        const res: any = await tool.execute({
+            path: rel,
+            description: 'Write the WeatherGo React component.',
+            context: 'The importing file is in src/components and the styles are evidenced in src/styles.',
+        }, { projectRoot: project, projectName: 'weathergo-asset-layout', plannedPhaseFiles: [
+            'src/components/WeatherApp.jsx',
+            'src/styles/app.css',
+            'src/styles/tokens.css',
+        ] });
+
+        expect(res.ok).toBe(true);
+        const written = fs.readFileSync(landsAt(rel), 'utf8');
+        expect(written).toContain("import '../styles/app.css';");
+        expect(written).toContain("import '../styles/tokens.css';");
+        expect(written).not.toContain("import './styles/app.css';");
+        expect(res.logs).toEqual(expect.arrayContaining([expect.stringMatching(/normalized local asset imports/)]));
+    });
+
     it('retries malformed JSX once and writes only the parser-approved completion', async () => {
         callLLM
             .mockResolvedValueOnce("import React from 'react';\nexport default function Search() { return <main>unfinished; }")
@@ -300,7 +328,7 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(fs.existsSync(landsAt(logicalPath))).toBe(false);
     });
 
-    it('retries a generated local import when the relative path does not resolve from the file', async () => {
+    it('normalizes a generated local asset import when the relative path does not resolve from the file', async () => {
         fs.mkdirSync(path.join(projectRoot, 'src', 'styles'), { recursive: true });
         fs.writeFileSync(path.join(projectRoot, 'src', 'styles', 'app.css'), '.app { color: red; }', 'utf8');
         callLLM
@@ -315,8 +343,7 @@ describe('verified runtime contracts keep generated source on the project stack'
         }, { projectRoot, engineeringPipeline: true });
 
         expect(res.ok).toBe(true);
-        expect(callLLM).toHaveBeenCalledTimes(2);
-        expect(callLLM.mock.calls[1][0]).toMatch(/IMPORT PATH RETRY REQUIRED/);
+        expect(callLLM).toHaveBeenCalledTimes(1);
         expect(fs.readFileSync(landsAt(rel), 'utf-8')).toMatch(/\.\.\/styles\/app\.css/);
     });
 
@@ -326,7 +353,7 @@ describe('verified runtime contracts keep generated source on the project stack'
         const importer = path.join(projectRoot, 'src', 'components', 'MissingWeatherApp.jsx');
         const target = path.join(projectRoot, 'src', 'styles', 'app.css');
         callLLM
-            .mockResolvedValueOnce("import React from 'react';\nimport './styles/app.css';\nexport default function WeatherApp() { return <main>Weather</main>; }")
+            .mockResolvedValueOnce("import React from 'react';\nimport './styles/app.css';\nimport './MissingWeatherApp';\nexport default function WeatherApp() { return <main>Weather</main>; }")
             .mockResolvedValueOnce("import React from 'react';\nimport './App';\nexport default function WeatherApp() { return <main>Weather</main>; }")
             .mockResolvedValueOnce("import React from 'react';\nimport '../styles/app.css';\nexport default function WeatherApp() { return <main>Weather</main>; }");
         const rel = path.join(projectRel, 'src/components/MissingWeatherApp.jsx');
@@ -347,7 +374,7 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(callLLM.mock.calls[0][0]).toMatch(/EVIDENCE-BOUND LOCAL IMPORT REPAIR/);
         expect(callLLM.mock.calls[0][0]).toMatch(/\.\.\/styles\/app\.css/);
         expect(callLLM.mock.calls[1][0]).toMatch(/Rejected import evidence/);
-        expect(callLLM.mock.calls[1][0]).toMatch(/\.\/App/);
+        expect(callLLM.mock.calls[1][0]).toMatch(/\.\/MissingWeatherApp/);
         expect(fs.readFileSync(importer, 'utf8')).toMatch(/\.\.\/styles\/app\.css/);
         expect(fs.readFileSync(importer, 'utf8')).not.toMatch(/\.\/App/);
     });

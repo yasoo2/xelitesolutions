@@ -85,10 +85,16 @@ export class RepairTicketService {
       ? phaseResult.output.results.filter((r: any) => r && r.ok === false)
       : [];
 
+    // The failed task is the narrowest evidence boundary. Some phase
+    // adapters put a mixed stdout/log transcript in phaseResult.error; using
+    // that transcript for severity lets unrelated words such as `token` or
+    // `credential` turn a deterministic local-import repair into a critical
+    // security stop. Classify the normalized task error first, and only fall
+    // back to phase-level fields when no failed task carried an error.
     const primaryError = truncate(
-      phaseResult?.error ||
-      failedTasks[0]?.error ||
+      failedTasks.find((task: any) => String(task?.error || '').trim())?.error ||
       phaseResult?.output?.error ||
+      phaseResult?.error ||
       `Phase ended with status ${status}`,
       2000,
     );
