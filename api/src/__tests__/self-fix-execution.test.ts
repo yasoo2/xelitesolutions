@@ -1,5 +1,5 @@
 import * as ToolService from '../modules/services/ToolService';
-import { SelfFixExecutionService } from '../modules/services/SelfFixExecutionService';
+import { SelfFixExecutionService, phaseAfterRepair } from '../modules/services/SelfFixExecutionService';
 import { repairMemory } from '../core/memory/repair-memory';
 
 const context = {
@@ -195,6 +195,24 @@ describe('SelfFixExecutionService phase resumption', () => {
         expect(executeToolSpy.mock.calls.map(call => call[0])).toEqual([
             'npm_manager', 'phase_executor', 'ai_write_file', 'phase_executor',
         ]);
+    });
+
+    it('keeps a resumed react project task after repairing its package manifest', () => {
+        const phase = {
+            name: 'Build WeatherGo',
+            tasks: [{
+                task: 'Generate the WeatherGo React project',
+                tool: 'react_project',
+                args: { path: '/workspace/WeatherGo/package.json' },
+            }],
+        };
+
+        const result = phaseAfterRepair(phase, '/workspace/WeatherGo/package.json');
+
+        expect(result.skipped).toEqual([]);
+        expect(result.phase.tasks).toHaveLength(1);
+        expect(result.phase.tasks[0].tool).toBe('react_project');
+        expect(result.phase.tasks[0].args.resumeExisting).toBe(true);
     });
 
     it('does not infer a package repair from descriptive dependency wording', () => {

@@ -127,7 +127,10 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
       return task;
     })
     .filter((task: any) => {
-      const matches = taskPaths(task).some((candidate) => pathsReferToSameFile(candidate, file));
+      const tool = String(task?.tool || task?.name || '').trim().toLowerCase();
+      const resumedReactProject = manifestRepair && tool === 'react_project' && task?.args?.resumeExisting === true;
+      const matches = !resumedReactProject
+        && taskPaths(task).some((candidate) => pathsReferToSameFile(candidate, file));
       const preserveScaffold = isScaffoldTask(task);
       if (matches || preserveScaffold) {
         skipped.push(String(task.task || task.description || task.tool || 'repaired task'));
