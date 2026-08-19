@@ -184,8 +184,12 @@ export function saysNoInstall(request: string): boolean {
     const t = String(request || '');
     return /(لا|بدون|دون|من\s*غير)\s*(ت\S*)?\s*(تثبيت|تثبّ?ت|تنزيل|تحميل|حزم|حزمًا|حزماً)/u.test(t)
         || /(لا|بدون|دون)\s*(ت\S*)?\s*(استخدام\s*)?(ال)?(إنترنت|انترنت|شبكة|اتصال)/u.test(t)
-        || /\b(no|without|do\s*not|don'?t)\s+(install|installing|network|internet|npm\s+install)\b/i.test(t)
-        || /\boffline\b/i.test(t);
+        || /\b(no|without|do\s*not|don'?t)\s+(?:use\s+)?(install|installing|network|internet|npm\s+install)\b/i.test(t)
+        // `offline` is not an instruction by itself: "the app must work
+        // offline" and "if the app is offline" describe the product or a
+        // verification condition. Only an explicit build/run/install command
+        // addressed to the agent turns it into a no-install constraint.
+        || /\b(?:build|run|install)\b(?:\s+\w+){0,4}\s+offline\b/i.test(t);
 }
 
 /**

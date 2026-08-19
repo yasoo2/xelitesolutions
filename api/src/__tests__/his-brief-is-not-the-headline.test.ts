@@ -99,6 +99,11 @@ describe('«لا تثبت حزمًا» is an instruction, not decoration', () =>
         expect(saysNoInstall('ابنِ موقع بدون إنترنت')).toBe(true);
         expect(saysNoInstall('build it offline please')).toBe(true);
         expect(saysNoInstall('no network install')).toBe(true);
+        // An offline product requirement or acceptance condition is not a
+        // request to disable npm install/build.
+        expect(saysNoInstall('Do not announce delivery if the app is offline')).toBe(false);
+        expect(saysNoInstall('the app must work offline')).toBe(false);
+        expect(saysNoInstall('cache data for offline use')).toBe(false);
     });
 
     it('…and an ordinary request is left alone', () => {
