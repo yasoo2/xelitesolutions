@@ -1094,6 +1094,11 @@ export class ProjectPipelineTool implements ToolDefinition {
             // Without this, PhaseExecutor fell back to the chat session and the
             // first real browser verification was rejected by the ownership gate.
             browserSessionId: context?.browserSessionId,
+            // Keep the local engineering boundary explicit across the pipeline
+            // handoff. PhaseExecutor uses this trusted marker to skip an
+            // unapproved public expose_port task while retaining localhost QA.
+            engineeringPipeline: true,
+            purpose: 'internal',
             plannerResult,
             modelConfig: context?.modelConfig,
             // Preserve the engineering LLM budget across the planner -> phase

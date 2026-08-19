@@ -284,6 +284,11 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/post-phase discovery bound projectRoot/);
     });
 
+    test('the local engineering boundary survives the pipeline-to-phase handoff', () => {
+        expect(src).toMatch(/engineeringPipeline:\s*true/);
+        expect(src).toMatch(/purpose:\s*['"]internal['"]/);
+    });
+
     test('the visible browser panel survives the pipeline-to-phase boundary', () => {
         expect(src).toMatch(/browserSessionId:\s*context\?\.browserSessionId/);
         const loop = fs.readFileSync(
