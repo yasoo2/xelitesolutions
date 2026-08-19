@@ -18,6 +18,22 @@ Persist favorites and Celsius/Fahrenheit settings after reload using localStorag
         expect(formatWeatherSemanticRepair(defects)).toContain('Request daily sunrise and sunset');
     });
 
+    it('requires a real visible city search flow when the request asks for search', () => {
+        const requestWithSearch = `${request}\nSearch for a real city using a visible field, Search button, and Enter.`;
+        const missing = inspectWeatherEngineSource(requestWithSearch, 'export default function WeatherApp(){ return <main>weather</main>; }');
+        expect(missing.map(defect => defect.id)).toContain('weather_city_search_missing');
+
+        const source = `
+            const [cityQuery, setCityQuery] = React.useState('');
+            function searchCity() { return cityQuery.trim(); }
+            return <form onSubmit={e => { e.preventDefault(); searchCity(); }}>
+                <input type="search" value={cityQuery} onChange={e => setCityQuery(e.target.value)} aria-label="Search city" />
+                <button type="submit">Search</button>
+            </form>;
+        `;
+        expect(inspectWeatherEngineSource(requestWithSearch, source).map(defect => defect.id)).not.toContain('weather_city_search_missing');
+    });
+
     it('accepts source evidence for daily sun values and hydrated persistence', () => {
         const source = `
             const daily = 'sunrise,sunset,temperature_2m_max';

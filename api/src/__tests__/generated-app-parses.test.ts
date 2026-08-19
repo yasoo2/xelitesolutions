@@ -15,6 +15,7 @@ import { buildAppFiles } from '../modules/tools/definitions/react-app-templates'
 import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
 import { blueprintFor, uncoveredFeatures, type AppKind } from '../core/design/app-blueprints';
 import { normalizeReactScaffoldStructure } from '../modules/tools/definitions/SystemTools';
+import { undefinedJsxComponentMismatch } from '../core/quality/source-contract';
 
 const KINDS: AppKind[] = ['store', 'booking', 'tasks', 'social', 'chat', 'maps', 'weather', 'crm', 'inventory', 'calculator', 'productivity'];
 
@@ -33,6 +34,22 @@ describe('the generated application is syntactically real', () => {
                 expect(`${tag}: ${gate.ok ? 'ok' : gate.error}`).toBe(`${tag}: ok`);
             }
         }
+    });
+
+    it('every generated JSX file renders only imported or locally declared components', () => {
+        for (const kind of KINDS) {
+            for (const [rel, body] of Object.entries(filesFor(kind, false))) {
+                if (/\.(?:jsx|tsx)$/i.test(rel)) {
+                    expect(undefinedJsxComponentMismatch(rel, body)).toBeNull();
+                }
+            }
+        }
+    });
+
+    it('rejects a syntactically valid shell that renders an undefined component', () => {
+        const source = "import React from 'react'; export default function App(){ return <WishlistApp />; }";
+        expect(syntaxOk('src/App.jsx', source).ok).toBe(false);
+        expect(undefinedJsxComponentMismatch('src/App.jsx', source)).toMatch(/WishlistApp/);
     });
 
     it('request-driven domain generation never receives the stock WeatherApp file', () => {

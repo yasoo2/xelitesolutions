@@ -185,6 +185,21 @@ describe('generated source and structured artifacts are rejected before disk wri
         expect(fs.readFileSync(landsAt(rel), 'utf-8')).toContain('<main>Search</main>');
     });
 
+    it('retries an undefined JSX component and writes only the declared completion', async () => {
+        callLLM
+            .mockResolvedValueOnce("import React from 'react'; export default function App(){ return <WishlistApp />; }")
+            .mockResolvedValueOnce("import React from 'react'; function WishlistApp(){ return <main>Wishlist</main>; } export default function App(){ return <WishlistApp />; }");
+        const rel = scratch('src/screens/component-contract.jsx');
+
+        const res: any = await tool.execute({ path: rel, description: 'Write the JSX screen.' });
+
+        expect(res.ok).toBe(true);
+        expect(callLLM).toHaveBeenCalledTimes(2);
+        expect(callLLM.mock.calls[1][0]).toMatch(/JSX COMPONENT CONTRACT RETRY REQUIRED/);
+        expect(res.logs).toEqual(expect.arrayContaining([expect.stringMatching(/JSX component contract retry requested/)]));
+        expect(fs.readFileSync(landsAt(rel), 'utf-8')).toContain('function WishlistApp');
+    });
+
     it('keeps a failed syntax retry off disk but marks it recoverable for self-fix', async () => {
         callLLM.mockResolvedValue("import React from 'react';\nexport default function Search() { return <main>unfinished; }");
         const rel = scratch('src/screens/invalid-search.jsx');

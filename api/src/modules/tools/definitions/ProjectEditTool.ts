@@ -28,6 +28,7 @@ import { routeToModel } from '../../../core/llm/intelligent-router';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { persistJoeProjects } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
+import { undefinedJsxComponentMismatch } from '../../../core/quality/source-contract';
 
 /** One parsed SEARCH/REPLACE block. */
 export interface EditBlock { file: string; search: string; replace: string }
@@ -93,6 +94,8 @@ export function syntaxOk(file: string, code: string): { ok: boolean; error?: str
     try {
         const esbuild = require('esbuild');
         esbuild.transformSync(code, { loader: ext === '.tsx' ? 'tsx' : ext === '.ts' ? 'ts' : 'jsx' });
+        const componentError = undefinedJsxComponentMismatch(file, code);
+        if (componentError) return { ok: false, error: componentError };
         return { ok: true };
     } catch (e: any) {
         return { ok: false, error: String(e?.message || e).split('\n')[0].slice(0, 160) };
