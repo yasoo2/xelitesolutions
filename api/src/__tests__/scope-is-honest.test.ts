@@ -54,6 +54,21 @@ describe('what he asked for is read from his own words', () => {
         expect(formatScope(scopeReport('ابن لي متجراً', []), true)).toBe('');
         expect(formatScope(scopeReport('build me a website', []), false)).toBe('');
     });
+
+    it('does not turn ordinary delivery prose into unrelated WeatherGo capabilities', () => {
+        const request = [
+            'Build a weather app for users with products and a clear delivery plan.',
+            'Before delivery, verify the app with real data, search results, sort controls, and a wishlist.',
+        ].join(' ');
+        const ids = requestedCapabilities(request).map(c => c.id);
+        expect(ids).toEqual(expect.arrayContaining(['search', 'wishlist']));
+        expect(ids).not.toEqual(expect.arrayContaining(['catalog', 'accounts', 'shipping']));
+    });
+
+    it('still detects shipping when the request names a shipping feature explicitly', () => {
+        expect(requestedCapabilities('Add shipping options, shipment tracking, and a shipping address form.')
+            .map(c => c.id)).toContain('shipping');
+    });
 });
 
 describe('what was built is read from the code, never from optimism', () => {

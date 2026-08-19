@@ -41,7 +41,7 @@ export interface Capability {
 export const CAPABILITIES: Capability[] = [
     {
         id: 'catalog', ar: 'كتالوج المنتجات', en: 'product catalogue',
-        ask: /\b(catalog(ue)?|products?|store|shop|e-?commerce)\b|منتجات|كتالوج|متجر/i,
+        ask: /\b(?:catalog(?:ue)?|product\s+(?:catalog(?:ue)?|listing|grid)|storefront|online\s+store|e-?commerce|shopping\s+(?:app|platform))\b|منتجات\s+(?:المتجر|المنتجات)|كتالوج|متجر/i,
         evidence: /\/api\/products|products\s*\(|ProductCard|product-grid/i,
     },
     {
@@ -51,7 +51,7 @@ export const CAPABILITIES: Capability[] = [
     },
     {
         id: 'accounts', ar: 'حسابات المستخدمين', en: 'user accounts',
-        ask: /\b(accounts?|users?|sign[- ]?in|log[- ]?in|auth(entication)?)\b|حساب|تسجيل الدخول|مستخدمين/i,
+        ask: /\b(?:accounts?|account\s+management|sign[- ]?in|log[- ]?in|auth(?:entication|orization)?|register|registration|login)\b|حسابات?\s+(?:المستخدمين|العملاء)|تسجيل\s+(?:الدخول|المستخدم)|المصادقة/i,
         evidence: /\/api\/auth\/login|bearer|jwt/i,
     },
     {
@@ -78,7 +78,7 @@ export const CAPABILITIES: Capability[] = [
     },
     {
         id: 'shipping', ar: 'الشحن', en: 'shipping',
-        ask: /\bshipping\b|\bdelivery\b|\bfulfilment\b|\bfulfillment\b|الشحن|التوصيل/i,
+        ask: /\b(?:shipping|shipments?|fulfilment|fulfillment|shipping\s+(?:options?|address|service|management)|delivery\s+(?:tracking|status|options?|address|service|management)|deliver(?:y|ies)\s+(?:orders?|packages?|products?))\b|الشحن|التوصيل/i,
         evidence: /"key":"shipments"|\/api\/shipping|tracking_?number|\bshipment_/i,
     },
     {
