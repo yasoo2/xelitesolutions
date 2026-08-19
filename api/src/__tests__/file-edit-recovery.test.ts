@@ -317,6 +317,42 @@ describe('evidence-aware file edit recovery', () => {
     expect(JSON.stringify(plan.suggestedInput)).not.toContain('explicitly');
   });
 
+  it('targets the evidenced exported module for a Rollup import/export mismatch', () => {
+    const importer = '/workspace/WeatherGo/src/App.jsx';
+    const provider = '/workspace/WeatherGo/src/components/WeatherApp.jsx';
+    const error = `\n[plugin:vite:import-analysis] ${provider} (2:7): \"default\" is not exported by \"${provider}\", imported by \"${importer}\"`;
+    const plan = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'WeatherGo',
+      phaseNumber: 1,
+      phaseName: 'Application',
+      status: 'partial',
+      severity: 'high',
+      primaryError: error,
+      failedTasks: [{
+        task: 'Run the production build',
+        tool: 'shell_execute',
+        error,
+        cwd: '/workspace/WeatherGo',
+        file: importer,
+        command: 'npm run build',
+      }],
+      suggestedNextAction: 'repair the import/export mismatch and rerun the failed phase',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(plan.allowed).toBe(true);
+    expect(plan.strategy).toBe('code_fix');
+    expect(plan.suggestedTool).toBe('ai_write_file');
+    expect(plan.suggestedInput).toEqual(expect.objectContaining({ path: provider }));
+    expect(String(plan.suggestedInput?.description)).toContain('default');
+    expect(String(plan.suggestedInput?.description)).toContain(importer);
+    expect(String(plan.suggestedInput?.description)).toContain('Do not modify package manifests');
+    expect(String(plan.suggestedInput?.context)).toContain('importExportMismatch');
+  });
+
   it('binds generic syntax recovery to the failed generated-project file', () => {
     const failedFile = '/workspace/WeatherGo/src/services/__tests__/weatherService.test.js';
     const plan = SelfFixService.plan({

@@ -436,6 +436,48 @@ function extractEslintConfigFailure(ticket: RepairTicket) {
   };
 }
 
+interface ImportExportMismatchEvidence {
+  symbol: string;
+  provider: string;
+  importer?: string;
+  line?: number;
+  column?: number;
+  cwd?: string;
+}
+
+function extractImportExportMismatch(ticket: RepairTicket): ImportExportMismatchEvidence | null {
+  const candidates = [
+    ...ticket.failedTasks.map(task => `${task.error || ''}\n${task.task || ''}`),
+    ticket.primaryError,
+  ];
+
+  for (const candidate of candidates) {
+    const raw = String(candidate || '');
+    const located = raw.match(/(?:^|[\s(])([^\s'"`()]+\.(?:[cm]?[jt]sx?))\s*\((\d+):(\d+)\)[:\s]+["'`]([^"'`]+)["'`]\s+is\s+not\s+exported\s+by\s+["'`]([^"'`]+)["'`](?:,\s*imported\s+by\s+["'`]([^"'`]+)["'`])?/i);
+    const unlocated = raw.match(/["'`]([^"'`]+)["'`]\s+is\s+not\s+exported\s+by\s+["'`]([^"'`]+)["'`](?:,\s*imported\s+by\s+["'`]([^"'`]+)["'`])?/i);
+    const match = located || unlocated;
+    if (!match) continue;
+
+    const hasLocation = Boolean(located);
+    const symbol = (hasLocation ? match[4] : match[1] || '').trim();
+    const provider = (hasLocation ? match[5] : match[2] || '').trim().replace(/\\/g, '/');
+    const importer = (hasLocation ? match[6] : match[3] || '').trim().replace(/\\/g, '/');
+    if (!symbol || !provider) continue;
+
+    const failed = ticket.failedTasks.find(task => raw.includes(String(task.error || '')))
+      || ticket.failedTasks.find(task => String(task.error || '').includes(provider));
+    return {
+      symbol,
+      provider,
+      ...(importer ? { importer } : {}),
+      ...(hasLocation ? { line: Number(match[2]), column: Number(match[3]) } : {}),
+      ...(failed?.cwd ? { cwd: failed.cwd } : {}),
+    };
+  }
+
+  return null;
+}
+
 function extractBuildContext(ticket: RepairTicket) {
   const raw = rawTextOf(ticket);
   const tsStyle = raw.match(/([A-Za-z0-9_./\\-]+\.(?:ts|tsx|js|jsx))\((\d+),(\d+)\):\s*error\s*(TS\d+)?[:\s]+([^\n]+)/i);
@@ -447,6 +489,18 @@ function extractBuildContext(ticket: RepairTicket) {
       column: Number(tsStyle[3]),
       code: tsStyle[4] || undefined,
       message: tsStyle[5]?.trim(),
+      sourceLine,
+    };
+  }
+
+  const viteParenthesizedStyle = raw.match(/([A-Za-z0-9_./\\-]+\.(?:ts|tsx|js|jsx))\s*\((\d+):(\d+)\)[:\s]+([^\n]+)/i);
+  if (viteParenthesizedStyle) {
+    const sourceLine = extractSourceLineAfter(raw, viteParenthesizedStyle.index || 0);
+    return {
+      file: viteParenthesizedStyle[1].replace(/\\/g, '/'),
+      line: Number(viteParenthesizedStyle[2]),
+      column: Number(viteParenthesizedStyle[3]),
+      message: viteParenthesizedStyle[4]?.trim(),
       sourceLine,
     };
   }
@@ -950,6 +1004,34 @@ export class SelfFixService {
           // an install that would have succeeded strictly.
           command: 'npm install --no-audit --no-fund || npm install --no-audit --no-fund --legacy-peer-deps && npm run --if-present build',
           timeout: 600000,
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    const importExportMismatch = extractImportExportMismatch(ticket);
+    if (importExportMismatch) {
+      const target = importExportMismatch.provider;
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `The build found an import/export contract mismatch: ${importExportMismatch.symbol} is not exported by ${target}. Repair the evidenced exported module and rerun the failed phase.`,
+        maxAttempts: 1,
+        strategy: 'code_fix',
+        suggestedTool: 'ai_write_file',
+        suggestedInput: {
+          path: target,
+          description: [
+            `Repair only the evidenced module ${target}; do not edit package.json or invent dependencies.`,
+            `The build reports that ${importExportMismatch.symbol} is imported${importExportMismatch.importer ? ` by ${importExportMismatch.importer}` : ''} but is not exported by ${target}.`,
+            'Inspect the current importer and this module before editing. Preserve the existing project module system and behavior.',
+            'Resolve the contract using the smallest evidence-backed change: expose the requested symbol from this module when it is the intended public component/API, or preserve an existing compatible export rather than fabricating an unrelated symbol.',
+            'Return one complete source file in the language required by its extension, with valid syntax and no Markdown fences or explanatory prose. Do not modify package manifests or install packages.',
+            `Observed build error: ${importExportMismatch.symbol} is not exported by ${target}.`,
+          ].join('\n'),
+          context: JSON.stringify({ importExportMismatch, repairTicket: ticket }),
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),
