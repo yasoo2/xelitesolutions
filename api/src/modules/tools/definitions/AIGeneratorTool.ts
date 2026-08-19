@@ -433,7 +433,11 @@ export class AIGeneratorTool implements ToolDefinition {
         catch (e: any) { return { ok: false, error: String(e?.message || e), logs }; }
 
         const isRepair = input.context?.includes('repairTicket') || input.context?.includes('buildContext');
-        const runtimeContract = runtimeContractForTarget(filePath, context?.projectRoot, contextWorkspaceId);
+        // Compute guidance early for the model, but refresh the contract at validation
+        // time. A phase may create or complete package.json immediately before the
+        // first source file is authored; retaining an early snapshot can reject a
+        // package that is declared by the time the candidate is actually checked.
+        let runtimeContract = runtimeContractForTarget(filePath, context?.projectRoot, contextWorkspaceId);
         const runtimeGuidance = runtimeGuidanceFor(runtimeContract);
         const artifact = artifactProfileFor(filePath);
         const frontendGuidance = artifact.kind === 'frontend_asset'
@@ -547,7 +551,13 @@ Return the complete file content now.`;
             const validationErrorFor = (candidate: string): { error: string; kind: 'artifact' | 'runtime' | 'imports' | 'syntax' } | null => {
                 const artifactError = artifactMismatch(filePath, candidate);
                 if (artifactError) return { error: artifactError, kind: 'artifact' };
-                const runtimeError = runtimeArtifactMismatch(filePath, candidate, runtimeContract);
+                // The manifest is mutable during an engineering phase. Re-read the
+                // nearest contract for every candidate so validation reflects the
+                // filesystem state at the exact write gate, not the state observed
+                // before another task finished creating or updating package.json.
+                const currentRuntimeContract = runtimeContractForTarget(filePath, context?.projectRoot, contextWorkspaceId);
+                if (currentRuntimeContract) runtimeContract = currentRuntimeContract;
+                const runtimeError = runtimeArtifactMismatch(filePath, candidate, currentRuntimeContract || runtimeContract);
                 if (runtimeError) return { error: runtimeError, kind: 'runtime' };
                 let importingPath = filePath;
                 try { importingPath = resolveArtifactAwarePath(filePath, contextWorkspaceId, context?.projectRoot); } catch { /* the final write guard reports path errors */ }

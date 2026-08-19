@@ -438,6 +438,39 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(fs.readFileSync(target, 'utf8')).toMatch(/from 'react'/);
     });
 
+    it('refreshes the manifest contract when package.json is completed during generation', async () => {
+        const refreshRoot = path.join(projectRoot, 'runtime-contract-refresh');
+        const target = path.join(refreshRoot, 'src', 'App.jsx');
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        const manifestPath = path.join(refreshRoot, 'package.json');
+        fs.writeFileSync(manifestPath, JSON.stringify({
+            name: 'weathergo-in-progress',
+            devDependencies: { vite: '^5.4.0' },
+        }), 'utf8');
+        callLLM.mockImplementationOnce(async () => {
+            // Simulate the setup task finishing the manifest after the initial
+            // guidance snapshot but before the source candidate reaches validation.
+            fs.writeFileSync(manifestPath, JSON.stringify({
+                name: 'weathergo-ready',
+                dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+                devDependencies: { vite: '^5.4.0' },
+            }), 'utf8');
+            return "import React from 'react';\nexport default function App() { return <main>ready</main>; }";
+        });
+
+        try {
+            const res: any = await tool.execute({
+                path: target,
+                description: 'Write the React browser entry after project setup completes.',
+            }, { projectRoot: refreshRoot, engineeringPipeline: true });
+
+            expect(res.ok).toBe(true);
+            expect(fs.readFileSync(target, 'utf8')).toMatch(/from 'react'/);
+        } finally {
+            try { fs.rmSync(refreshRoot, { recursive: true, force: true }); } catch { }
+        }
+    });
+
     it('uses the nearest target-project manifest when the bound root belongs to another project', async () => {
         const outerRoot = path.join(projectRoot, 'outer-api');
         const nestedRoot = path.join(projectRoot, 'nested-react-product');
