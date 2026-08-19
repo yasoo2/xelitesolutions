@@ -370,12 +370,11 @@ export function projectRootFromWrittenFile(filePath: unknown, workspaceRoot: str
         current = path.dirname(current);
     }
 
-    // Greenfield plans commonly write the server entrypoint before the
-    // manifest. If the path is a direct child project whose label matches the
-    // accepted plan identity, that is stronger evidence than falling back to
-    // an old active project or the workspace root. This is deliberately narrow:
-    // it accepts only an existing project-name directory and a server-shaped
-    // JavaScript/TypeScript entrypoint, never an arbitrary source file.
+    // Greenfield plans commonly write a server entrypoint before the manifest.
+    // A browser UI file such as src/App.tsx is not identity evidence: React
+    // phases often write it before the scaffold/manifest is bound, and accepting
+    // it would let a stale named directory become the runtime root. This is
+    // deliberately narrow and accepts only server-shaped entrypoints.
     const requestedLabel = String(projectName || '')
         .trim()
         .replace(/\\/g, '/')
@@ -390,7 +389,7 @@ export function projectRootFromWrittenFile(filePath: unknown, workspaceRoot: str
     const directChild = firstSegment ? path.join(workspace, firstSegment) : '';
     const directChildLabel = firstSegment.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
     const relativeInsideChild = directChild ? path.relative(directChild, candidate).replace(/\\/g, '/') : '';
-    const runtimeEvidence = /(?:^|\/)(?:server|app|index|main)\.(?:js|mjs|cjs|ts|tsx)$/iu.test(relativeInsideChild);
+    const runtimeEvidence = /(?:^|\/)(?:server|index|main)\.(?:js|mjs|cjs|ts)$/iu.test(relativeInsideChild);
     const labelsMatch = !!requestedLabel && !!directChildLabel && (
         requestedLabel === directChildLabel
         || requestedLabel.includes(directChildLabel)
@@ -741,6 +740,7 @@ export class PhaseExecutorTool implements ToolDefinition {
         let completedCount = 0;
 
         const executionContext = {
+            runId: context?.runId || projectContext?.runId,
             sessionId: context?.sessionId || projectContext?.sessionId,
             // Phase tasks may invoke browser tools; retain the panel identifier
             // from the parent run instead of falling back to the chat session.

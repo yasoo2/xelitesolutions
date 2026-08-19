@@ -86,6 +86,12 @@ describe('greenfield runtime evidence binds the artifact before its manifest', (
         expect(fs.existsSync(path.join(project, 'package.json'))).toBe(false);
     });
 
+    it('does not bind a browser App.tsx write as a pre-manifest runtime project', () => {
+        const appFile = path.join(project, 'src', 'App.tsx');
+        fs.writeFileSync(appFile, 'export default function App() { return null; }');
+        expect(projectRootFromWrittenFile('TaskFlow AI/src/App.tsx', tmp, 'TaskFlow AI')).toBe('');
+    });
+
     it('binds only evidence-backed incomplete artifacts and never the workspace root', () => {
         expect(canBindRuntimeProjectEvidence(project, tmp, project, false)).toBe(true);
         expect(canBindRuntimeProjectEvidence(project, tmp, '', false)).toBe(false);

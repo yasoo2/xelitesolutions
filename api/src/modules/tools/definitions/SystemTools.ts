@@ -1267,6 +1267,7 @@ export class ScaffoldProjectTool extends BaseTool {
                 type: 'scaffold',
                 updatedAt: Date.now(),
                 lastRequest: String(input?.projectName || input?.name || path.basename(resolvedBase)).slice(0, 80),
+                ...(String(context?.runId || '').trim() ? { pipelineRunId: String(context.runId).trim() } : {}),
             };
             persistJoeProjects();
             logs.push(`scaffold_project: registered active project ${sessionKey} -> ${resolvedBase}`);

@@ -2704,9 +2704,12 @@ export class ApiProjectTool extends BaseTool {
         // force ReactProjectTool into a sibling (react-<brand>), which made
         // build, run, and QA inspect different projects.
         const previousProject = projects[sessionKey];
-        const inheritedScaffoldDir = previousProject?.type === 'scaffold' && typeof previousProject?.dir === 'string'
+        const currentPipelineRunId = String(context?.runId || '').trim();
+        const previousPipelineRunId = String(previousProject?.pipelineRunId || '').trim();
+        const samePipelineHandoff = !!currentPipelineRunId && currentPipelineRunId === previousPipelineRunId;
+        const inheritedScaffoldDir = samePipelineHandoff && previousProject?.type === 'scaffold' && typeof previousProject?.dir === 'string'
             ? previousProject.dir
-            : typeof previousProject?.scaffoldDir === 'string' ? previousProject.scaffoldDir : '';
+            : samePipelineHandoff && typeof previousProject?.scaffoldDir === 'string' ? previousProject.scaffoldDir : '';
         // resource + port ride along so a LATER react build in this session
         // can link itself to this API (the full-stack chain).
         // The model rides along: the interface builder generates one admin screen
@@ -2730,6 +2733,7 @@ export class ApiProjectTool extends BaseTool {
         projects[sessionKey] = {
             dir: proj, type: 'api', brand, resource, port: 4100, updatedAt: Date.now(),
             lastRequest: request.slice(0, 80),
+            ...(currentPipelineRunId ? { pipelineRunId: currentPipelineRunId } : {}),
             ...(inheritedScaffoldDir ? { scaffoldDir: inheritedScaffoldDir } : {}),
             ...(appKind ? { appKind } : {}),
             ...(handedModel.length ? { model: handedModel } : {}),

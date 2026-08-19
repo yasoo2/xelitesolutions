@@ -221,6 +221,8 @@ export interface SelfFixExecutionInput {
     projectRootRuntimeBound?: boolean;
     projectName?: string;
   };
+  /** Internal recursion guard: one primary repair may expose at most one follow-up. */
+  allowFollowUp?: boolean;
 }
 
 export interface SelfFixExecutionResult {
@@ -348,14 +350,13 @@ export class SelfFixExecutionService {
     const rerunStatus = String(rerunResult?.output?.status || 'unknown');
     const rerunPassed = !!rerunResult?.ok && rerunStatus === 'completed';
 
-    // A dependency install can expose a second, independent contract failure
-    // (for example, a generated test that still imports a stale local module).
-    // Permit exactly one evidence-driven follow-up, but never chain another
-    // dependency install: two bounded repairs are the maximum for one phase
-    // and the second failure remains an honest stop.
+    // The first repair may expose one more independent, evidence-backed failure
+    // (for example, App.css repair revealing a second missing WeatherApp.css).
+    // Permit exactly one bounded follow-up for any safe repair strategy, but
+    // never allow another dependency repair and never recurse beyond two repairs.
     let followUpPlan: SelfFixPlan | undefined;
     let followUpExecution: SelfFixExecutionResult | undefined;
-    if (!rerunPassed && selfFixPlan.strategy === 'dependency_fix' && rerunResult) {
+    if (input.allowFollowUp !== false && !rerunPassed && rerunResult) {
       const followUpTicket = RepairTicketService.build({
         phase: resumed.phase,
         phaseResult: rerunResult,
@@ -372,12 +373,13 @@ export class SelfFixExecutionService {
         && !!candidate.suggestedTool;
       if (candidateIsBounded) {
         followUpPlan = candidate;
-        executionContext.onProgress?.(`[self-fix:follow-up] dependency repair exposed ${candidate.strategy}; attempting one evidence-bound follow-up`);
+        executionContext.onProgress?.(`[self-fix:follow-up] ${selfFixPlan.strategy} exposed ${candidate.strategy}; attempting one evidence-bound follow-up`);
         followUpExecution = await SelfFixExecutionService.executeOnce({
           phase: resumed.phase,
           projectContext,
           selfFixPlan: candidate,
           executionContext,
+          allowFollowUp: false,
         });
       }
     }
@@ -405,9 +407,9 @@ export class SelfFixExecutionService {
       reason: rerunPassed
         ? 'Self-fix succeeded and failed phase completed after rerun.'
         : followUpExecution?.ok
-          ? 'Dependency self-fix exposed a second evidence-bound issue; one bounded follow-up repaired it and the phase completed.'
+          ? 'Self-fix exposed a second evidence-bound issue; one bounded follow-up repaired it and the phase completed.'
           : followUpPlan
-            ? `Dependency self-fix follow-up did not complete the failed phase. Status: ${String(followUpExecution?.rerunResult?.output?.status || followUpExecution?.reason || rerunStatus)}`
+            ? `Self-fix follow-up did not complete the failed phase. Status: ${String(followUpExecution?.rerunResult?.output?.status || followUpExecution?.reason || rerunStatus)}`
             : `Self-fix did not complete the failed phase after rerun. Status: ${rerunStatus}`,
       repairTool,
       repairResult,

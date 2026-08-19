@@ -507,8 +507,100 @@ describe('project identity: React builds reuse only their session-owned scaffold
         projects[sessionId] = { dir: scaffoldDir, type: 'scaffold', brand: 'QuickNotes' };
         try {
             const result: any = await new ReactProjectTool().execute(
+                { request: 'Build a React productivity app for notes and tasks', root, skipInstall: true, resumeExisting: true },
+                { sessionId },
+            );
+            expect(result.ok).toBe(true);
+            expect(path.resolve(result.output.path)).toBe(path.resolve(scaffoldDir));
+            expect(fs.readFileSync(path.join(scaffoldDir, 'src', 'App.jsx'), 'utf8')).toContain('ProductivityApp');
+        } finally {
+            delete projects[sessionId];
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('does not reuse a registered scaffold during a new greenfield build', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-greenfield-'));
+        const sessionId = 'greenfield-old-scaffold-t';
+        const staleDir = path.join(root, 'WeatherGo');
+        fs.mkdirSync(path.join(staleDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(staleDir, 'index.html'), '<!doctype html><div id="root"></div>');
+        fs.writeFileSync(path.join(staleDir, 'package.json'), JSON.stringify({
+            private: true, type: 'module',
+            scripts: { dev: 'vite', build: 'vite build' },
+            dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+            devDependencies: { vite: '^5.4.11' },
+        }));
+        const projects = ((global as any).joeProjects || ((global as any).joeProjects = {}));
+        projects[sessionId] = { dir: staleDir, type: 'scaffold', brand: 'WeatherGo' };
+        try {
+            const result: any = await new ReactProjectTool().execute(
                 { request: 'Build a React productivity app for notes and tasks', root, skipInstall: true },
                 { sessionId },
+            );
+            expect(result.ok).toBe(true);
+            expect(path.resolve(result.output.path)).not.toBe(path.resolve(staleDir));
+            expect(path.resolve(result.output.path).startsWith(path.resolve(root) + path.sep)).toBe(true);
+            expect(fs.existsSync(path.join(staleDir, 'src', 'App.jsx'))).toBe(false);
+        } finally {
+            delete projects[sessionId];
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('does not reuse a stale scaffoldDir carried by an old API registry entry', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-api-stale-handoff-'));
+        const sessionId = 'greenfield-old-api-handoff-t';
+        const staleDir = path.join(root, 'react-weathergo-old');
+        fs.mkdirSync(path.join(staleDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(staleDir, 'index.html'), '<!doctype html><div id="root"></div>');
+        fs.writeFileSync(path.join(staleDir, 'package.json'), JSON.stringify({
+            private: true, type: 'module',
+            scripts: { dev: 'vite', build: 'vite build' },
+            dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+            devDependencies: { vite: '^5.4.11' },
+        }));
+        const projects = ((global as any).joeProjects || ((global as any).joeProjects = {}));
+        projects[sessionId] = {
+            dir: path.join(root, 'old-api'), type: 'api', scaffoldDir: staleDir,
+            pipelineRunId: 'old-pipeline-run', brand: 'WeatherGo',
+        };
+        try {
+            const result: any = await new ReactProjectTool().execute(
+                { request: 'Build a React productivity app for notes and tasks', root, skipInstall: true, projectName: 'FreshNotes' },
+                { sessionId, runId: 'new-pipeline-run' },
+            );
+            expect(result.ok).toBe(true);
+            expect(path.resolve(result.output.path)).not.toBe(path.resolve(staleDir));
+            expect(path.resolve(result.output.path).startsWith(path.resolve(root) + path.sep)).toBe(true);
+            expect(fs.existsSync(path.join(staleDir, 'src', 'App.jsx'))).toBe(false);
+        } finally {
+            delete projects[sessionId];
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('keeps a scaffoldDir handoff stamped by the current pipeline run', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-api-current-handoff-'));
+        const sessionId = 'current-api-handoff-t';
+        const scaffoldDir = path.join(root, 'QuickNotes');
+        fs.mkdirSync(path.join(scaffoldDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(scaffoldDir, 'index.html'), '<!doctype html><div id="root"></div>');
+        fs.writeFileSync(path.join(scaffoldDir, 'package.json'), JSON.stringify({
+            private: true, type: 'module',
+            scripts: { dev: 'vite', build: 'vite build' },
+            dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+            devDependencies: { vite: '^5.4.11' },
+        }));
+        const projects = ((global as any).joeProjects || ((global as any).joeProjects = {}));
+        projects[sessionId] = {
+            dir: path.join(root, 'current-api'), type: 'api', scaffoldDir,
+            pipelineRunId: 'current-pipeline-run', brand: 'QuickNotes',
+        };
+        try {
+            const result: any = await new ReactProjectTool().execute(
+                { request: 'Build a React productivity app for notes and tasks', root, skipInstall: true, projectName: 'QuickNotes' },
+                { sessionId, runId: 'current-pipeline-run' },
             );
             expect(result.ok).toBe(true);
             expect(path.resolve(result.output.path)).toBe(path.resolve(scaffoldDir));

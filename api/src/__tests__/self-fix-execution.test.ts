@@ -197,6 +197,84 @@ describe('SelfFixExecutionService phase resumption', () => {
         ]);
     });
 
+    it('allows one evidence-bound local-import follow-up after the first repair reveals another missing stylesheet', async () => {
+        let phaseReruns = 0;
+        executeToolSpy.mockImplementation(async (name: string, input: any) => {
+            if (name === 'ai_write_file') {
+                return { ok: true, output: { path: input.path }, logs: [] } as any;
+            }
+            if (name === 'phase_executor') {
+                phaseReruns += 1;
+                if (phaseReruns === 1) {
+                    return {
+                        ok: false,
+                        output: {
+                            status: 'partial',
+                            results: [{
+                                ok: false,
+                                task: 'Run generated weather app',
+                                tool: 'project_run',
+                                file: '/workspace/WeatherGo/src/WeatherApp.jsx',
+                                error: 'unresolved_local_import: /workspace/WeatherGo/src/WeatherApp.jsx imports "./WeatherApp.css", but no file resolves',
+                            }],
+                        },
+                        logs: [],
+                    } as any;
+                }
+                return { ok: true, output: { status: 'completed' }, logs: [] } as any;
+            }
+            return { ok: true, output: { status: 'completed' }, logs: [] } as any;
+        });
+
+        const firstRepairPlan: any = {
+            type: 'self_fix_plan',
+            allowed: true,
+            reason: 'create the evidenced App.css target',
+            maxAttempts: 1,
+            strategy: 'build_fix',
+            suggestedTool: 'ai_write_file',
+            suggestedInput: {
+                path: '/workspace/WeatherGo/src/App.css',
+                description: 'create the exact stylesheet required by App.tsx',
+            },
+            safety: {
+                requiresTrustedContext: true,
+                runOnlyOnce: true,
+                mustReRunFailedPhase: true,
+                stopOnSecondFailure: true,
+            },
+            sourceTicket: {
+                primaryError: 'local runtime import missing: /workspace/WeatherGo/src/App.tsx imports "./App.css"',
+                failedTasks: [],
+                context: {},
+            },
+        };
+        const phase = {
+            name: 'Build WeatherGo',
+            tasks: [
+                { task: 'Create App.css', tool: 'ai_write_file', args: { path: 'src/App.css' } },
+                { task: 'Run generated weather app', tool: 'project_run', args: { projectPath: '/workspace/WeatherGo' } },
+            ],
+        };
+
+        const result = await SelfFixExecutionService.executeOnce({
+            phase,
+            projectContext: { projectName: 'WeatherGo', projectRoot: '/workspace/WeatherGo', projectRootRuntimeBound: true },
+            selfFixPlan: firstRepairPlan,
+            executionContext: context,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.followUpPlan?.strategy).toBe('build_fix');
+        expect(result.followUpPlan?.suggestedTool).toBe('ai_write_file');
+        expect(result.followUpPlan?.suggestedInput.path).toBe('/workspace/WeatherGo/src/WeatherApp.css');
+        expect(result.followUpExecution?.ok).toBe(true);
+        expect(phaseReruns).toBe(2);
+        expect(executeToolSpy.mock.calls.map(call => call[0])).toEqual([
+            'ai_write_file', 'phase_executor', 'ai_write_file', 'phase_executor',
+        ]);
+    });
+
     it('keeps a resumed react project task after repairing its package manifest', () => {
         const phase = {
             name: 'Build WeatherGo',

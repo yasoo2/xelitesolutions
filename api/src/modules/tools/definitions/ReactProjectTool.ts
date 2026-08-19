@@ -2143,6 +2143,7 @@ export class ReactProjectTool extends BaseTool {
             projectName: { type: 'string', description: 'Canonical artifact identity supplied by the project pipeline' },
             skipInstall: { type: 'boolean', description: 'Scaffold only — do not run npm install/build' },
             resumeExisting: { type: 'boolean', description: 'Resume an existing project after a bounded repair while preserving its manifest and generated files' },
+            scaffoldDir: { type: 'string', description: 'Explicit session-owned React scaffold directory for a same-pipeline handoff' },
         },
         required: ['request'],
     };
@@ -2254,6 +2255,22 @@ export class ReactProjectTool extends BaseTool {
         const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const prevEntry = ((global as any).joeProjects || {})[sessionKey];
+        const currentPipelineRunId = String(context?.runId || '').trim();
+        const previousPipelineRunId = String(prevEntry?.pipelineRunId || '').trim();
+        const samePipelineHandoff = !!currentPipelineRunId && currentPipelineRunId === previousPipelineRunId;
+        const explicitScaffoldDir = typeof input?.scaffoldDir === 'string' && input.scaffoldDir.trim().length > 0;
+        // A greenfield chat must not inherit an old scaffold merely because the
+        // registry still has the same session key. Explicit recovery, an
+        // explicit scaffoldDir, and a handoff stamped by THIS pipeline remain
+        // valid contracts; an unqualified entry is stale state, not ownership
+        // evidence for this build.
+        const scaffoldEntry = (input?.resumeExisting === true || explicitScaffoldDir || samePipelineHandoff)
+            ? prevEntry
+            : (prevEntry?.type === 'scaffold'
+                ? null
+                : prevEntry?.type === 'api' && typeof prevEntry?.scaffoldDir === 'string'
+                    ? { ...prevEntry, scaffoldDir: undefined }
+                    : prevEntry);
         // Carry the API builder's in-memory account into self-QA. The page-store
         // strips runtimeAuth, so a plaintext password never crosses to disk.
         const runtimeAuth = prevEntry?.type === 'api' && prevEntry?.runtimeAuth?.email && prevEntry?.runtimeAuth?.password
@@ -2414,7 +2431,7 @@ export class ReactProjectTool extends BaseTool {
         // The project lands where the File Explorer actually looks.
         const { workspaceService } = require('../../services/WorkspaceService');
         const root = String(input?.root || workspaceService.getExplorerRoot());
-        const activeProject = ((global as any).joeProjects || {})[sessionKey];
+        const activeProject = scaffoldEntry;
         // ApiProjectTool owns the latest registry slot after a full-stack build,
         // so the React scaffold is carried explicitly as scaffoldDir.  Prefer
         // that session-owned path; the legacy scaffold.dir fallback preserves
