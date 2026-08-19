@@ -222,7 +222,15 @@ function runtimeContractForTarget(
 
     let absolutePath: string;
     try {
-        absolutePath = resolveArtifactAwarePath(filePath, workspaceId, trustedFallbackRoot);
+        // An absolute target already carries the strongest artifact identity
+        // available to this validator. Do not pass it through a stale or
+        // conceptual fallback root: on Windows especially, a resolver can
+        // reinterpret the drive-qualified path and make the nearest manifest
+        // lookup observe another project. The final write guard still performs
+        // the authoritative workspace-containment check.
+        absolutePath = path.isAbsolute(filePath)
+            ? path.resolve(filePath)
+            : resolveArtifactAwarePath(filePath, workspaceId, trustedFallbackRoot);
     } catch {
         return runtimeContractFor(trustedFallbackRoot, workspaceId);
     }
@@ -264,7 +272,7 @@ function runtimeArtifactMismatch(filePath: string, content: string, contract: Ru
     if (stackMismatch) errors.push(`imports ${[...new Set([...nativeImports, ...webImports])].join(', ')}, which conflicts with the verified ${contract.kind} project stack`);
     if (undeclared.length > 0) errors.push(`imports undeclared package(s): ${undeclared.join(', ')}`);
     return errors.length > 0
-        ? `runtime_contract_mismatch: ${filePath} ${errors.join('; ')}. Update the project manifest only when the requirements explicitly require a stack change.`
+        ? `runtime_contract_mismatch: ${filePath} ${errors.join('; ')} [verified root: ${contract.root}; manifest: ${contract.manifestPath}]. Update the project manifest only when the requirements explicitly require a stack change.`
         : null;
 }
 

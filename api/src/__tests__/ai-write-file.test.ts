@@ -412,6 +412,32 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(res.output.path).toBe(path.join('src', 'services', 'forecast.ts'));
     });
 
+    it('uses the absolute artifact target even when a stale conceptual fallback is supplied', async () => {
+        const artifactRoot = path.join(projectRoot, 'absolute-artifact-target');
+        const target = path.join(artifactRoot, 'src', 'components', 'Search.jsx');
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(path.join(artifactRoot, 'package.json'), JSON.stringify({
+            name: 'weathergo',
+            dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+            devDependencies: { vite: '^5.4.0' },
+        }), 'utf8');
+        callLLM.mockResolvedValue("import { useState } from 'react';\nexport default function Search() { const [value] = useState(''); return <main>{value}</main>; }");
+
+        const res: any = await tool.execute({
+            path: target,
+            description: 'Write the existing React project search component.',
+        }, {
+            // This is the stale value observed at the phase boundary. The
+            // absolute target is stronger evidence and must select its nearest
+            // artifact manifest instead of the conceptual name.
+            projectRoot: 'WeatherGo',
+            engineeringPipeline: true,
+        });
+
+        expect(res.ok).toBe(true);
+        expect(fs.readFileSync(target, 'utf8')).toMatch(/from 'react'/);
+    });
+
     it('uses the nearest target-project manifest when the bound root belongs to another project', async () => {
         const outerRoot = path.join(projectRoot, 'outer-api');
         const nestedRoot = path.join(projectRoot, 'nested-react-product');
