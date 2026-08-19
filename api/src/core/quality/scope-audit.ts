@@ -161,6 +161,7 @@ export function requestedCapabilities(request: string): Capability[] {
 }
 
 const CODE_EXT = /\.(jsx?|tsx?|css|html|json|webmanifest)$/i;
+const PRODUCTION_CODE_EXT = /\.(jsx?|tsx?)$/i;
 /**
  * A LOCKFILE IS NOT EVIDENCE OF A FEATURE. Test-only and specification-only
  * text is not runtime evidence either; the scan deliberately reads production
@@ -173,28 +174,37 @@ const CODE_EXT = /\.(jsx?|tsx?|css|html|json|webmanifest)$/i;
  * code; it says nothing about what this system does.
  */
 const NOT_EVIDENCE = /^(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$/i;
-const MAX_SCAN_BYTES = 600 * 1024;
+const DEFAULT_MAX_SCAN_BYTES = 600 * 1024;
+const CODE_ONLY_MAX_SCAN_BYTES = 512 * 1024;
 
-/** Read the built system's own source, bounded, so the evidence is real code. */
-export function readProjectSource(dirs: string[]): string {
+export interface ProjectSourceReadOptions {
+    /** Restrict the snapshot to production JavaScript/TypeScript source. */
+    codeOnly?: boolean;
+}
+
+/** Read the built system's own source, bounded, so the evidence is real. */
+export function readProjectSource(dirs: string[], options: ProjectSourceReadOptions = {}): string {
+    const codeOnly = options.codeOnly === true;
+    const extension = codeOnly ? PRODUCTION_CODE_EXT : CODE_EXT;
+    const maxScanBytes = codeOnly ? CODE_ONLY_MAX_SCAN_BYTES : DEFAULT_MAX_SCAN_BYTES;
     let out = '';
     const visit = (dir: string, depth: number) => {
-        if (out.length > MAX_SCAN_BYTES || depth > 4) return;
+        if (out.length > maxScanBytes || depth > 4) return;
         let entries: fs.Dirent[] = [];
         try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
         for (const e of entries) {
-            if (out.length > MAX_SCAN_BYTES) return;
-            if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist' || e.name === 'public') continue;
+            if (out.length > maxScanBytes) return;
+            if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist' || e.name === 'public' || (codeOnly && e.name === 'build')) continue;
             const full = path.join(dir, e.name);
             if (e.isDirectory()) { visit(full, depth + 1); continue; }
-            if (!CODE_EXT.test(e.name) || NOT_EVIDENCE.test(e.name)) continue;
+            if (!extension.test(e.name) || NOT_EVIDENCE.test(e.name)) continue;
             const normalized = full.toLowerCase();
             if (normalized.includes('/__tests__/') || normalized.includes('/tests/') || /(?:^|[._-])(test|spec)(?:[._-]|$)/i.test(e.name)) continue;
             try { out += '\n' + fs.readFileSync(full, 'utf-8'); } catch { /* unreadable is not evidence */ }
         }
     };
     for (const d of dirs) { if (d && fs.existsSync(d)) visit(d, 0); }
-    return out.slice(0, MAX_SCAN_BYTES);
+    return out.slice(0, maxScanBytes);
 }
 
 export interface ScopeReport {

@@ -24,9 +24,16 @@ const asks = (request: string, pattern: RegExp): boolean => pattern.test(String(
  * is used both as an acceptance gate and as a bounded repair brief for Joe's
  * own file author; it never edits a generated project directly.
  */
-export function inspectWeatherEngineSource(requestRaw: string, sourceRaw: string): WeatherSemanticDefect[] {
+export function inspectWeatherEngineSource(
+    requestRaw: string,
+    sourceRaw: string,
+    additionalEvidence: string[] = [],
+): WeatherSemanticDefect[] {
     const request = String(requestRaw || '');
-    const source = String(sourceRaw || '');
+    // A real artifact may distribute the request, state, and visible UI across
+    // several source files. Preserve the authored file as the primary evidence
+    // and add only the bounded production snapshot supplied by the caller.
+    const source = [String(sourceRaw || ''), ...additionalEvidence.map(value => String(value || ''))].join('\n');
     const defects: WeatherSemanticDefect[] = [];
 
     if (asks(request, /sunrise|sunset|الشروق|الغروب/i)) {

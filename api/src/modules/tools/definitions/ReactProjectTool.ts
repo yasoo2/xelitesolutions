@@ -2948,7 +2948,16 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 // engine actually renders the capabilities named in the request.
                 // Give Joe one bounded semantic repair using the measured source
                 // defect, then make the same contract a hard delivery gate.
-                let semanticDefects = inspectWeatherEngineSource(request, authored);
+                const readWeatherArtifactEvidence = (): string[] => {
+                    try {
+                        const { readProjectSource } = require('../../../core/quality/scope-audit');
+                        const snapshot = readProjectSource([proj], { codeOnly: true });
+                        return snapshot ? [snapshot] : [];
+                    } catch {
+                        return [];
+                    }
+                };
+                let semanticDefects = inspectWeatherEngineSource(request, authored, readWeatherArtifactEvidence());
                 if (semanticDefects.length) {
                     const repairBrief = formatWeatherSemanticRepair(semanticDefects);
                     term(`domain semantic QA: ${semanticDefects.map(d => d.id).join(', ')} — requesting one bounded repair`);
@@ -2969,7 +2978,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         return { ok: false, error: reason, output: authoringFailureOutput(), logs };
                     }
                     authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
-                    semanticDefects = inspectWeatherEngineSource(request, authored);
+                    semanticDefects = inspectWeatherEngineSource(request, authored, readWeatherArtifactEvidence());
                     if (semanticDefects.length) {
                         const reason = `weather_semantic_contract_failed: ${formatWeatherSemanticRepair(semanticDefects)}`;
                         term(`domain semantic QA: BLOCKED — ${semanticDefects.map(d => d.id).join(', ')}`);

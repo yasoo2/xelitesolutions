@@ -94,6 +94,21 @@ describe('what was built is read from the code, never from optimism', () => {
         expect(scopeReport(HIS_REQUEST, [dir]).built.map(c => c.id)).not.toContain('multi_vendor');
     });
 
+    it('the artifact snapshot keeps production code but excludes build output and non-code assets', () => {
+        const dir = mk({
+            'src/App.jsx': 'export default function App() { return <main>source-marker</main>; }',
+            'build/bundle.js': 'const buildMarker = "must-not-be-scanned";',
+            'src/styles.css': '.styles-marker { color: red; }',
+            'src/metadata.json': '{"jsonMarker":"must-not-be-scanned"}',
+        });
+        const source = readProjectSource([dir], { codeOnly: true });
+        expect(source).toContain('source-marker');
+        expect(source).not.toContain('must-not-be-scanned');
+        expect(source).not.toContain('styles-marker');
+        expect(source).not.toContain('jsonMarker');
+        expect(readProjectSource([dir])).toContain('jsonMarker');
+    });
+
     it('test-only assertions are not runtime capability evidence', () => {
         const dir = mk({
             'src/__tests__/search.test.ts': "const setQuery = () => true; const onSearch = () => true;",

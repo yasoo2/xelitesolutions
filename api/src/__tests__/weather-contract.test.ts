@@ -53,4 +53,21 @@ Persist favorites and Celsius/Fahrenheit settings after reload using localStorag
         `;
         expect(inspectWeatherEngineSource(request, source)).toEqual([]);
     });
+
+    it('accepts distributed evidence when the API request and visible rendering are in separate files', () => {
+        const apiFile = 'const params = { daily: ["sunrise", "sunset"] };';
+        const viewFile = '<div>{sunrise}</div><div>{sunset}</div>';
+        const defects = inspectWeatherEngineSource('sunrise sunset', apiFile, [viewFile]);
+        expect(defects.find(defect => defect.id === 'weather_sun_times_missing')).toBeUndefined();
+    });
+
+    it('rejects distributed evidence when either the API request or visible rendering is absent', () => {
+        const apiFile = 'const params = { daily: ["sunrise", "sunset"] };';
+        const defects = inspectWeatherEngineSource('sunrise sunset', apiFile);
+        expect(defects.find(defect => defect.id === 'weather_sun_times_missing')).toBeDefined();
+
+        const viewFile = '<div>{sunrise}</div><div>{sunset}</div>';
+        const missingRequest = inspectWeatherEngineSource('sunrise sunset', viewFile);
+        expect(missingRequest.find(defect => defect.id === 'weather_sun_times_missing')).toBeDefined();
+    });
 });
