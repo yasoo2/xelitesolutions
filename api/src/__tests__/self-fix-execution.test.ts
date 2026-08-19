@@ -123,6 +123,105 @@ describe('SelfFixExecutionService phase resumption', () => {
         expect(executeToolSpy.mock.calls[0][1].path).not.toContain('/WeatherGo/WeatherGo/');
     });
 
+    it('allows one evidence-bound follow-up after a dependency repair exposes a second failure', async () => {
+        let phaseReruns = 0;
+        executeToolSpy.mockImplementation(async (name: string) => {
+            if (name === 'npm_manager') return { ok: true, output: { status: 'completed' }, logs: [] } as any;
+            if (name === 'ai_write_file') return { ok: true, output: { path: '/workspace/WeatherGo/src/__tests__/app.integration.test.ts' }, logs: [] } as any;
+            if (name === 'phase_executor') {
+                phaseReruns++;
+                if (phaseReruns === 1) {
+                    return {
+                        ok: false,
+                        output: {
+                            status: 'partial',
+                            results: [{
+                                ok: false,
+                                task: 'Run generated integration test',
+                                tool: 'auto_tester',
+                                file: '/workspace/WeatherGo/src/__tests__/app.integration.test.ts',
+                                error: 'partial: the generated integration test still fails after dependency installation',
+                            }],
+                        },
+                        logs: [],
+                    } as any;
+                }
+                return { ok: true, output: { status: 'completed' }, logs: [] } as any;
+            }
+            return { ok: true, output: { status: 'completed' }, logs: [] } as any;
+        });
+
+        const dependencyPlan: any = {
+            type: 'self_fix_plan',
+            allowed: true,
+            reason: 'install evidenced test dependency',
+            maxAttempts: 1,
+            strategy: 'dependency_fix',
+            suggestedTool: 'npm_manager',
+            suggestedInput: {
+                command: 'install',
+                packages: ['@testing-library/react'],
+                cwd: '/workspace/WeatherGo',
+            },
+            safety: {
+                requiresTrustedContext: true,
+                runOnlyOnce: true,
+                mustReRunFailedPhase: true,
+                stopOnSecondFailure: true,
+            },
+            sourceTicket: {
+                primaryError: 'runtime_contract_mismatch: /workspace/WeatherGo/src/__tests__/app.integration.test.ts imports undeclared package(s): @testing-library/react.',
+                failedTasks: [],
+                context: {},
+            },
+        };
+        const phase = {
+            name: 'Testing and QA',
+            tasks: [{ task: 'Run generated integration test', tool: 'auto_tester', args: { file: 'src/__tests__/app.integration.test.ts' } }],
+        };
+
+        const result = await SelfFixExecutionService.executeOnce({
+            phase,
+            projectContext: { projectName: 'WeatherGo', projectRoot: '/workspace/WeatherGo', projectRootRuntimeBound: true },
+            selfFixPlan: dependencyPlan,
+            executionContext: context,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.followUpPlan?.strategy).toBe('code_fix');
+        expect(result.followUpExecution?.ok).toBe(true);
+        expect(phaseReruns).toBe(2);
+        expect(executeToolSpy).toHaveBeenCalledTimes(4);
+        expect(executeToolSpy.mock.calls.map(call => call[0])).toEqual([
+            'npm_manager', 'phase_executor', 'ai_write_file', 'phase_executor',
+        ]);
+    });
+
+    it('does not infer a package repair from descriptive dependency wording', () => {
+        const planResult = require('../modules/services/SelfFixService').SelfFixService.plan({
+            type: 'phase_repair_ticket',
+            projectName: 'WeatherGo',
+            phaseNumber: 1,
+            phaseName: 'Testing and QA',
+            status: 'partial',
+            severity: 'medium',
+            primaryError: 'partial: the generated integration test still fails after dependency installation',
+            failedTasks: [{
+                task: 'Run generated integration test',
+                tool: 'auto_tester',
+                error: 'partial: the generated integration test still fails after dependency installation',
+                file: '/workspace/WeatherGo/src/__tests__/app.integration.test.ts',
+            }],
+            suggestedNextAction: 'run one controlled repair pass',
+            retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+            context: { workspaceId: 'self-fix-workspace' },
+            createdAt: new Date().toISOString(),
+        });
+        expect(planResult.strategy).toBe('code_fix');
+        expect(planResult.suggestedTool).toBe('ai_write_file');
+        expect(planResult.suggestedInput?.path).toBe('/workspace/WeatherGo/src/__tests__/app.integration.test.ts');
+    });
+
     it('rebinds a relative missing-file repair to the runtime-bound generated project', async () => {
         const missingFilePlan: any = {
             type: 'self_fix_plan',

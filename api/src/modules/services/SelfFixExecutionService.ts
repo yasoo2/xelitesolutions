@@ -1,6 +1,7 @@
 import { executeTool } from './ToolService';
 import path from 'path';
-import type { SelfFixPlan } from './SelfFixService';
+import { SelfFixService, type SelfFixPlan } from './SelfFixService';
+import { RepairTicketService } from './RepairTicketService';
 import { repairMemory } from '../../core/memory/repair-memory';
 
 const ALLOWED_SELF_FIX_TOOLS = new Set([
@@ -183,6 +184,9 @@ export interface SelfFixExecutionResult {
   repairResult?: any;
   rerunResult?: any;
   stopped: boolean;
+  /** A single bounded follow-up may repair a second, newly evidenced failure. */
+  followUpPlan?: SelfFixPlan;
+  followUpExecution?: SelfFixExecutionResult;
 }
 
 export class SelfFixExecutionService {
@@ -296,6 +300,40 @@ export class SelfFixExecutionService {
     const rerunStatus = String(rerunResult?.output?.status || 'unknown');
     const rerunPassed = !!rerunResult?.ok && rerunStatus === 'completed';
 
+    // A dependency install can expose a second, independent contract failure
+    // (for example, a generated test that still imports a stale local module).
+    // Permit exactly one evidence-driven follow-up, but never chain another
+    // dependency install: two bounded repairs are the maximum for one phase
+    // and the second failure remains an honest stop.
+    let followUpPlan: SelfFixPlan | undefined;
+    let followUpExecution: SelfFixExecutionResult | undefined;
+    if (!rerunPassed && selfFixPlan.strategy === 'dependency_fix' && rerunResult) {
+      const followUpTicket = RepairTicketService.build({
+        phase: resumed.phase,
+        phaseResult: rerunResult,
+        projectName: projectContext?.projectName,
+        sessionId: executionContext.sessionId,
+        workspaceId: executionContext.workspaceId,
+      });
+      const candidate = SelfFixService.plan(followUpTicket);
+      const candidateIsBounded = candidate.allowed
+        && candidate.maxAttempts === 1
+        && candidate.safety?.runOnlyOnce === true
+        && candidate.strategy !== 'dependency_fix'
+        && candidate.strategy !== 'manual_review'
+        && !!candidate.suggestedTool;
+      if (candidateIsBounded) {
+        followUpPlan = candidate;
+        executionContext.onProgress?.(`[self-fix:follow-up] dependency repair exposed ${candidate.strategy}; attempting one evidence-bound follow-up`);
+        followUpExecution = await SelfFixExecutionService.executeOnce({
+          phase: resumed.phase,
+          projectContext,
+          selfFixPlan: candidate,
+          executionContext,
+        });
+      }
+    }
+
     // The rerun passing is the PROOF the cure worked — the only moment worth
     // remembering. The store is shared with the orchestrator's recovery loop,
     // so a cure learned in either system heals recurrences in both.
@@ -311,17 +349,24 @@ export class SelfFixExecutionService {
       }
     }
 
+    const finalOk = rerunPassed || !!followUpExecution?.ok;
     return {
       attempted: true,
       allowed: true,
-      ok: rerunPassed,
+      ok: finalOk,
       reason: rerunPassed
         ? 'Self-fix succeeded and failed phase completed after rerun.'
-        : `Self-fix did not complete the failed phase after rerun. Status: ${rerunStatus}`,
+        : followUpExecution?.ok
+          ? 'Dependency self-fix exposed a second evidence-bound issue; one bounded follow-up repaired it and the phase completed.'
+          : followUpPlan
+            ? `Dependency self-fix follow-up did not complete the failed phase. Status: ${String(followUpExecution?.rerunResult?.output?.status || followUpExecution?.reason || rerunStatus)}`
+            : `Self-fix did not complete the failed phase after rerun. Status: ${rerunStatus}`,
       repairTool,
       repairResult,
       rerunResult,
-      stopped: !rerunPassed,
+      stopped: !finalOk,
+      followUpPlan,
+      followUpExecution,
     };
   }
 }

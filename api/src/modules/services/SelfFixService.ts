@@ -800,7 +800,11 @@ export class SelfFixService {
       };
     }
 
-    if (/cannot find module|module not found|missing dependency|dependency/i.test(text)) {
+    // Do not treat descriptive wording such as "after dependency installation"
+    // as proof that another package is missing. Package repairs must be selected
+    // by the evidence-bound extractors above; otherwise a failed test with a
+    // real file target must fall through to the bounded code_fix branch.
+    if (/cannot find module|module not found|missing dependency/i.test(text)) {
       return {
         type: 'self_fix_plan',
         allowed: true,
