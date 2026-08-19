@@ -1,3 +1,6 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import * as ToolService from '../modules/services/ToolService';
 import { SelfFixExecutionService, phaseAfterRepair } from '../modules/services/SelfFixExecutionService';
 import { repairMemory } from '../core/memory/repair-memory';
@@ -273,6 +276,57 @@ describe('SelfFixExecutionService phase resumption', () => {
         expect(executeToolSpy.mock.calls.map(call => call[0])).toEqual([
             'ai_write_file', 'phase_executor', 'ai_write_file', 'phase_executor',
         ]);
+    });
+
+    it('rebinds rerun verification to the manifest nearest the repaired nested artifact', async () => {
+        const artifactRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-weathergo-'));
+        const repairedFile = path.join(artifactRoot, 'src', 'components', 'WeatherApp.jsx');
+        fs.mkdirSync(path.dirname(repairedFile), { recursive: true });
+        fs.writeFileSync(path.join(artifactRoot, 'package.json'), '{"private":true}\\n');
+
+        executeToolSpy.mockImplementation(async (name: string, input: any) => {
+            if (name === 'ai_write_file') return { ok: true, output: { path: input.path }, logs: [] } as any;
+            return { ok: true, output: { status: 'completed' }, logs: [] } as any;
+        });
+
+        const nestedRepairPlan: any = {
+            ...plan,
+            suggestedInput: {
+                path: repairedFile,
+                description: 'repair the exact generated WeatherApp artifact',
+            },
+            sourceTicket: {
+                primaryError: `runtime_contract_mismatch: ${repairedFile} imports undeclared package(s): react-redux`,
+                failedTasks: [],
+                context: {},
+            },
+        };
+
+        try {
+            const result = await SelfFixExecutionService.executeOnce({
+                phase: {
+                    name: 'Scaffold minimal runnable skeleton',
+                    tasks: [
+                        { task: 'Generate the React project', tool: 'react_project', args: {} },
+                        { task: 'Run the generated project', tool: 'project_run', args: { cwd: '/workspace/WeatherGo' } },
+                    ],
+                },
+                projectContext: {
+                    projectName: 'WeatherGo',
+                    projectRoot: '/workspace/WeatherGo',
+                    projectRootRuntimeBound: true,
+                },
+                selfFixPlan: nestedRepairPlan,
+                executionContext: context,
+            });
+
+            expect(result.ok).toBe(true);
+            expect(executeToolSpy.mock.calls.map(call => call[0])).toEqual(['ai_write_file', 'phase_executor']);
+            expect(executeToolSpy.mock.calls[1][1].projectContext.projectRoot).toBe(artifactRoot);
+            expect(executeToolSpy.mock.calls[1][1].projectContext.projectRoot).not.toBe('/workspace/WeatherGo');
+        } finally {
+            fs.rmSync(artifactRoot, { recursive: true, force: true });
+        }
     });
 
     it('keeps a resumed react project task after repairing its package manifest', () => {

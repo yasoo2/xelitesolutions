@@ -50,6 +50,35 @@ function isWithinRoot(candidate: string, root: string): boolean {
  * project's test cwd. Rebind only file-targeting repairs to the runtime-bound
  * project root; never rewrite shell/npm cwd or allow a `..` target to escape it.
  */
+function nearestManifestRoot(file: unknown): string {
+  const raw = normalisePath(file);
+  if (!raw || !path.isAbsolute(raw)) return '';
+  let candidate = path.dirname(path.resolve(raw));
+  while (candidate !== path.dirname(candidate)) {
+    if (fs.existsSync(path.join(candidate, 'package.json'))) return candidate;
+    candidate = path.dirname(candidate);
+  }
+  return '';
+}
+
+function projectContextAfterRepair(projectContext: any, repairedFile?: unknown): any {
+  const root = nearestManifestRoot(repairedFile);
+  if (!root) return projectContext;
+  const currentRoot = String(projectContext?.projectRoot || '').trim();
+  if (path.resolve(currentRoot || root) === path.resolve(root)
+      && projectContext?.projectRootRuntimeBound === true) {
+    return projectContext;
+  }
+  // A repair may target a freshly generated child project while the parent
+  // pipeline still carries a stale registry root. Rerun verification against
+  // the artifact that supplied the repair evidence, not the parent identity.
+  return {
+    ...(projectContext || {}),
+    projectRoot: root,
+    projectRootRuntimeBound: true,
+  };
+}
+
 function bindRepairTargetToProjectRoot(repairTool: string, input: Record<string, any>, projectContext: any): Record<string, any> {
   const root = String(projectContext?.projectRoot || '').trim();
   if (!root || projectContext?.projectRootRuntimeBound !== true) return input;
@@ -109,15 +138,7 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
   // file again and can erase the exact repair just applied. Resolve the nearest
   // manifest only for absolute, trusted evidence; relative paths remain on the
   // conservative legacy path rather than guessing a project root.
-  const repairProjectRoot = (() => {
-    if (manifestRepair || !path.isAbsolute(file)) return '';
-    let candidate = path.dirname(path.resolve(file));
-    while (candidate !== path.dirname(candidate)) {
-      if (fs.existsSync(path.join(candidate, 'package.json'))) return candidate;
-      candidate = path.dirname(candidate);
-    }
-    return '';
-  })();
+  const repairProjectRoot = manifestRepair ? '' : nearestManifestRoot(file);
   const sourceArtifactRepair = Boolean(repairProjectRoot);
   const isScaffoldTask = (task: any): boolean => {
     const tool = String(task?.tool || task?.name || '').trim().toLowerCase();
@@ -337,12 +358,13 @@ export class SelfFixExecutionService {
       || (repairTool === 'npm_manager' && typeof repairInput.cwd === 'string' && repairInput.cwd.trim()
         ? path.join(repairInput.cwd.trim(), 'package.json')
         : undefined);
+    const rerunProjectContext = projectContextAfterRepair(projectContext, repairedFile);
     const resumed = phaseAfterRepair(phase, repairedFile);
     if (resumed.skipped.length > 0) {
       executionContext.onProgress?.(`[self-fix:rerun-phase] skipping repaired task(s): ${resumed.skipped.join('; ').slice(0, 800)}`);
     }
 
-    const rerunResult = await executeTool('phase_executor', { phase: resumed.phase, projectContext }, {
+    const rerunResult = await executeTool('phase_executor', { phase: resumed.phase, projectContext: rerunProjectContext }, {
       ...executionContext,
       onProgress: (m: string) => executionContext.onProgress?.(`[self-fix:rerun-phase] ${m}`),
     });
@@ -360,7 +382,7 @@ export class SelfFixExecutionService {
       const followUpTicket = RepairTicketService.build({
         phase: resumed.phase,
         phaseResult: rerunResult,
-        projectName: projectContext?.projectName,
+        projectName: rerunProjectContext?.projectName,
         sessionId: executionContext.sessionId,
         workspaceId: executionContext.workspaceId,
       });
@@ -376,7 +398,7 @@ export class SelfFixExecutionService {
         executionContext.onProgress?.(`[self-fix:follow-up] ${selfFixPlan.strategy} exposed ${candidate.strategy}; attempting one evidence-bound follow-up`);
         followUpExecution = await SelfFixExecutionService.executeOnce({
           phase: resumed.phase,
-          projectContext,
+          projectContext: rerunProjectContext,
           selfFixPlan: candidate,
           executionContext,
           allowFollowUp: false,
