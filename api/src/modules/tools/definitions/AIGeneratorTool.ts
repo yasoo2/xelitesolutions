@@ -209,7 +209,12 @@ function runtimeArtifactMismatch(filePath: string, content: string, contract: Ru
  * is actually one directory above. Vite is the first component to report that
  * mistake unless the author gate checks the filesystem before writing it.
  */
-function localImportResolutionError(filePath: string, content: string, contract: RuntimeContract | null): string | null {
+function localImportResolutionError(
+    filePath: string,
+    content: string,
+    contract: RuntimeContract | null,
+    plannedPhaseFiles: readonly string[] = [],
+): string | null {
     if (!contract || !/\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu.test(filePath)) return null;
     const specs = new Set<string>();
     const patterns = [
@@ -227,17 +232,26 @@ function localImportResolutionError(filePath: string, content: string, contract:
     if (!specs.size) return null;
 
     const extensions = ['', '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.css', '.scss', '.sass', '.less', '.json'];
+    const planned = new Set<string>();
+    for (const plannedFile of plannedPhaseFiles) {
+        const candidate = String(plannedFile || '').trim();
+        if (!candidate) continue;
+        const absolute = path.resolve(contract.root, candidate);
+        const relative = path.relative(contract.root, absolute);
+        if (!relative.startsWith('..') && !path.isAbsolute(relative)) planned.add(absolute);
+    }
     const resolves = (specifier: string): boolean => {
         const clean = specifier.split(/[?#]/, 1)[0];
         const candidate = path.resolve(path.dirname(path.resolve(filePath)), clean);
         const relative = path.relative(contract.root, candidate);
         if (relative.startsWith('..') || path.isAbsolute(relative)) return false;
         const files = extensions.map(ext => candidate + ext);
+        if (files.some(target => planned.has(target))) return true;
         if (files.some(target => fs.existsSync(target) && fs.statSync(target).isFile())) return true;
         if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
             return extensions.slice(1).some(ext => {
                 const target = path.join(candidate, `index${ext}`);
-                return fs.existsSync(target) && fs.statSync(target).isFile();
+                return planned.has(target) || (fs.existsSync(target) && fs.statSync(target).isFile());
             });
         }
         return false;
@@ -449,7 +463,12 @@ Return the complete file content now.`;
                 if (runtimeError) return { error: runtimeError, kind: 'runtime' };
                 let importingPath = filePath;
                 try { importingPath = resolveArtifactAwarePath(filePath, contextWorkspaceId, context?.projectRoot); } catch { /* the final write guard reports path errors */ }
-                const importsError = localImportResolutionError(importingPath, candidate, runtimeContract);
+                const importsError = localImportResolutionError(
+                    importingPath,
+                    candidate,
+                    runtimeContract,
+                    Array.isArray(context?.plannedPhaseFiles) ? context.plannedPhaseFiles : [],
+                );
                 if (importsError) return { error: importsError, kind: 'imports' };
                 const syntaxError = sourceSyntaxMismatch(filePath, candidate);
                 if (syntaxError) return { error: syntaxError, kind: 'syntax' };

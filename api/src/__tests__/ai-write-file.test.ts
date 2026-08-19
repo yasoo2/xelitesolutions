@@ -305,6 +305,24 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(fs.readFileSync(landsAt(rel), 'utf-8')).toMatch(/\.\.\/styles\/app\.css/);
     });
 
+    it('allows an import of a file planned for a later task in the same phase', async () => {
+        callLLM.mockResolvedValue("import React from 'react';\nimport { getWeather } from '../services/weatherService';\nexport default function WeatherApp() { return <main>{getWeather()}</main>; }");
+        const rel = path.join(projectRel, 'src/components/WeatherApp.jsx');
+
+        const res: any = await tool.execute({
+            path: rel,
+            description: 'Write the browser weather screen; the weather service will be written later in this phase.',
+        }, {
+            projectRoot,
+            engineeringPipeline: true,
+            plannedPhaseFiles: ['src/services/weatherService.ts'],
+        });
+
+        expect(res.ok).toBe(true);
+        expect(callLLM).toHaveBeenCalledTimes(1);
+        expect(fs.readFileSync(path.join(projectRoot, rel.replace(`${projectRel}${path.sep}`, '')), 'utf-8')).toMatch(/weatherService/);
+    });
+
     it('rejects a React Native switch in a verified React/Vite project before disk write', async () => {
         callLLM.mockResolvedValue("import React from 'react';\nimport { View, Text } from 'react-native';\nexport default function App() { return <View><Text>Weather</Text></View>; }");
         const rel = path.join(projectRel, 'src/App.jsx');

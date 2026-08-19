@@ -781,17 +781,27 @@ export class PhaseExecutorTool implements ToolDefinition {
         // phase. Always expose the current trusted root to delegated tools;
         // otherwise ai_write_file validates against the old workspace root while
         // npm_manager/auto_tester operate inside the newly created project.
+        const plannedPhaseFiles: string[] = [];
         const liveExecutionContext = () => ({
             ...executionContext,
             projectRoot: projectContext?.projectRootRuntimeBound === true && projectContext?.projectRoot
                 ? projectContext.projectRoot
                 : executionContext.projectRoot,
             projectRootRuntimeBound: projectContext?.projectRootRuntimeBound ?? executionContext.projectRootRuntimeBound,
+            plannedPhaseFiles,
         });
 
         try {
             const tasks = Array.isArray(phase.tasks) ? phase.tasks : [];
             const totalTasks = tasks.length;
+            const phaseFilePaths: string[] = tasks
+                .filter((candidate: any) => String((resolvePlannedTool(String(candidate?.tool || '').trim()) as any).tool || '') === 'ai_write_file')
+                .map((candidate: any) => {
+                    const args = { ...(candidate?.args || {}), ...(candidate?.input || {}) };
+                    return String(args.path || args.filePath || args.filename || '').trim();
+                })
+                .filter(Boolean);
+            plannedPhaseFiles.splice(0, plannedPhaseFiles.length, ...Array.from(new Set<string>(phaseFilePaths)));
 
             if (!executionContext.sessionId) appendLog('[PhaseExecutor] Warning: missing sessionId in execution context');
             if (!executionContext.workspaceId) appendLog('[PhaseExecutor] Warning: missing workspaceId in execution context');
