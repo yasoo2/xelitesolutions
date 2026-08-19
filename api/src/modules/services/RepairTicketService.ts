@@ -64,7 +64,13 @@ function repairEvidence(value: unknown, max = 5000) {
 
 function inferSeverity(status: string, error: string): RepairTicketSeverity {
   const s = `${status} ${error}`.toLowerCase();
-  if (/unauthorized|forbidden|permission|secret|token|credential|outside_workspace|path_outside/i.test(s)) return 'critical';
+  const isLocalImportContext = /unresolved_local_import/i.test(s);
+  const explicitSecurityEvidence = /unauthorized|forbidden|secret|token|credential|outside_workspace|path_outside/i.test(s);
+  const permissionEvidence = /permission/i.test(s);
+  // A stale permission-like status must not outrank deterministic evidence
+  // that a generated source file references a missing local asset. Explicit
+  // security/path violations remain critical even when another error is present.
+  if (explicitSecurityEvidence || (!isLocalImportContext && permissionEvidence)) return 'critical';
   if (/build failed|compile|syntax|typeerror|cannot find module|missing dependency/i.test(s)) return 'high';
   if (/partial|timeout|network|rate_limited/i.test(s)) return 'medium';
   return 'low';

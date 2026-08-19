@@ -648,7 +648,13 @@ export class AgentLoopService {
             // stop before repair. Treating every `verificationFailed` as a
             // blocker made Joe stop after writing a project instead of learning
             // from the actual compiler/linter output.
-            const nonRepairableEvidence = /EVIDENCE_BLOCKER|requires?\s+user\s+decision|outside_workspace|unauthorized|forbidden|permission|credential|secret|native\s+addon|toolchain/i.test(evidenceText);
+            const isLocalImportError = /unresolved_local_import/i.test(evidenceText);
+            const explicitNonRepairableEvidence = /EVIDENCE_BLOCKER|requires?\s+user\s+decision|outside_workspace|path_outside|unauthorized|forbidden|credential|secret|token|native\s+addon|toolchain/i.test(evidenceText);
+            const permissionEvidence = /permission/i.test(evidenceText);
+            // A stale `permission_stop` status can ride along with a deterministic
+            // local-import failure. Ignore that inherited word only for this
+            // evidence class; explicit security/portability blockers still stop.
+            const nonRepairableEvidence = explicitNonRepairableEvidence || (!isLocalImportError && permissionEvidence);
             const hasActionableEvidence = failedEvidence.some((r: any) =>
                 String(r?.tool || '').trim() && String(r?.error || '').trim()
             ) || (

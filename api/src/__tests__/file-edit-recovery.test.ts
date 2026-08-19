@@ -181,6 +181,50 @@ describe('evidence-aware file edit recovery', () => {
     expect(String(plan.suggestedInput?.description)).toContain('not a substitute importer');
   });
 
+  it('does not let a stale permission_stop status block a proven local stylesheet repair', () => {
+    const importer = path.join(root, 'src', 'components', 'WeatherApp.jsx');
+    fs.mkdirSync(path.dirname(importer), { recursive: true });
+    fs.writeFileSync(importer, 'import "./styles/app.css";\n');
+    const error = `unresolved_local_import: ${importer} imports "./styles/app.css", but no file resolves from the importing file.`;
+    const ticket = RepairTicketService.build({
+      phase: { phaseNumber: 1, name: 'Application' },
+      projectName: 'WeatherGo',
+      workspaceId: 'workspace-test',
+      phaseResult: {
+        output: {
+          // This status can be inherited from an earlier guarded attempt; the
+          // deterministic local-import evidence must remain repairable.
+          status: 'permission_stop',
+          results: [{
+            task: 'Write WeatherApp component',
+            tool: 'ai_write_file',
+            ok: false,
+            error,
+            cwd: root,
+            file: importer,
+          }],
+        },
+      },
+    });
+
+    expect(ticket.severity).not.toBe('critical');
+    const plan = SelfFixService.plan(ticket);
+    expect(plan.allowed).toBe(true);
+    expect(plan.strategy).toBe('build_fix');
+    expect(plan.suggestedInput?.path).toBe(path.join(root, 'src', 'components', 'styles', 'app.css'));
+
+    const securityTicket = RepairTicketService.build({
+      phase: { phaseNumber: 1, name: 'Application' },
+      phaseResult: {
+        output: {
+          status: 'permission_stop',
+          results: [{ task: 'Security check', tool: 'shell_execute', ok: false, error: 'unauthorized credential access' }],
+        },
+      },
+    });
+    expect(securityTicket.severity).toBe('critical');
+  });
+
   it('regenerates an undeclared runtime import under the verified project contract', () => {
     const file = '/workspace/WeatherGo/src/components/Favorites.jsx';
     const plan = SelfFixService.plan({
