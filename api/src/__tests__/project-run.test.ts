@@ -261,6 +261,50 @@ describe('local runtime import preflight follows the real filesystem', () => {
         expect(launchabilityError(root, detected)).toBeNull();
     });
 
+    test('does not report an existing CSS asset imported by a reachable frontend module', () => {
+        fs.writeFileSync(path.join(root, 'server.js'), [
+            "const http = require('http');",
+            "require('./src/main.jsx');",
+            "http.createServer((_req, res) => res.end('ok')).listen(process.env.PORT);",
+        ].join('\n'), 'utf-8');
+        fs.mkdirSync(path.join(root, 'src', 'styles'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'src', 'main.jsx'), [
+            "import './styles/app.css';",
+            'export default {};',
+        ].join('\n'), 'utf-8');
+        fs.writeFileSync(path.join(root, 'src', 'styles', 'app.css'), ':root { color-scheme: light; }\\n', 'utf-8');
+
+        expect(missingLocalRuntimeImports(root, { command: 'npm start', kind: 'npm-start' })).toEqual([]);
+    });
+
+    test('reports a missing CSS asset imported by a reachable frontend module', () => {
+        fs.writeFileSync(path.join(root, 'server.js'), [
+            "const http = require('http');",
+            "require('./src/main.jsx');",
+            "http.createServer((_req, res) => res.end('ok')).listen(process.env.PORT);",
+        ].join('\n'), 'utf-8');
+        fs.mkdirSync(path.join(root, 'src', 'styles'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'src', 'main.jsx'), [
+            "import './styles/app.css';",
+            'export default {};',
+        ].join('\n'), 'utf-8');
+
+        expect(missingLocalRuntimeImports(root, { command: 'npm start', kind: 'npm-start' })).toEqual([
+            'src/main.jsx -> ./styles/app.css',
+        ]);
+    });
+
+    test('rejects a local asset whose filename differs only by case', () => {
+        fs.writeFileSync(path.join(root, 'server.js'), "require('./src/main.jsx');", 'utf-8');
+        fs.mkdirSync(path.join(root, 'src', 'styles'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'src', 'main.jsx'), "import './styles/app.css';", 'utf-8');
+        fs.writeFileSync(path.join(root, 'src', 'styles', 'App.css'), ':root { color-scheme: light; }', 'utf-8');
+
+        expect(missingLocalRuntimeImports(root, { command: 'npm start', kind: 'npm-start' })).toEqual([
+            'src/main.jsx -> ./styles/app.css',
+        ]);
+    });
+
     test('repairs one proven sibling naming mismatch without creating a route file', () => {
         fs.mkdirSync(path.join(root, 'server', 'routes'), { recursive: true });
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { start: 'node server/index.js' } }), 'utf-8');

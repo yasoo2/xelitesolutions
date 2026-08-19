@@ -710,7 +710,34 @@ const NODE_BUILTIN_MODULES = new Set<string>([
     ...builtinModules.map((name) => name.startsWith('node:') ? name : `node:${name}`),
 ]);
 const RUNTIME_SOURCE_EXTENSIONS = /\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu;
+const RUNTIME_ASSET_IMPORT_EXTENSIONS = /\.(?:css|scss|sass|less|svg|png|jpg|jpeg|gif|ico|webp|avif|woff|woff2|ttf|eot|json|mp4|mp3|wav|webm)$/iu;
 const RUNTIME_SOURCE_IGNORES = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', 'public', 'docs', 'test', 'tests', '__tests__', 'data']);
+
+/**
+ * Windows resolves paths case-insensitively, while the deployed filesystem may
+ * not. Check every path segment against the directory's literal entry names so
+ * an import of `./styles/app.css` cannot silently accept `styles/App.css`.
+ */
+function localFileExistsWithExactCase(filePath: string): boolean {
+    const absolute = path.resolve(filePath);
+    const root = path.parse(absolute).root;
+    const relative = path.relative(root, absolute);
+    if (!relative) return false;
+    const segments = relative.split(path.sep).filter(Boolean);
+    let current = root;
+    try {
+        for (let index = 0; index < segments.length; index += 1) {
+            const segment = segments[index];
+            const entries = fs.readdirSync(current);
+            if (!entries.includes(segment)) return false;
+            current = path.join(current, segment);
+            if (index < segments.length - 1 && !fs.statSync(current).isDirectory()) return false;
+        }
+        return fs.statSync(current).isFile();
+    } catch {
+        return false;
+    }
+}
 
 function packageNameFromSpecifier(specifier: string): string {
     const value = String(specifier || '').trim();
@@ -821,6 +848,13 @@ export function missingLocalRuntimeImports(cwd: string, detected: { command: str
         try { source = fs.readFileSync(file, 'utf-8'); } catch { return; }
         for (const specifier of runtimeImportSpecifiers(source)) {
             if (!specifier.startsWith('.')) continue;
+            // Frontend bundlers intentionally import local assets that are not
+            // executable JS/TS modules. They are still real local edges: only
+            // report the edge when the declared asset is absent on disk.
+            if (RUNTIME_ASSET_IMPORT_EXTENSIONS.test(specifier)) {
+                const assetPath = path.resolve(path.dirname(file), specifier);
+                if (localFileExistsWithExactCase(assetPath)) continue;
+            }
             const local = resolveLocalRuntimeImport(file, specifier);
             if (local) {
                 visit(local, depth + 1);

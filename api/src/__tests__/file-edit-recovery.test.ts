@@ -181,6 +181,46 @@ describe('evidence-aware file edit recovery', () => {
     expect(String(plan.suggestedInput?.description)).toContain('not a substitute importer');
   });
 
+  it('redirects a broken relative import when the nearest target already exists in the artifact', () => {
+    const importer = path.join(root, 'src', 'components', 'WeatherApp.jsx');
+    const stylesheet = path.join(root, 'src', 'styles', 'app.css');
+    fs.mkdirSync(path.dirname(importer), { recursive: true });
+    fs.mkdirSync(path.dirname(stylesheet), { recursive: true });
+    fs.writeFileSync(importer, 'import "./styles/app.css";\n');
+    fs.writeFileSync(stylesheet, ':root { color-scheme: light; }\n');
+    const error = `unresolved_local_import: ${importer} imports "./styles/app.css", but no file resolves from the importing file.`;
+    const plan = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'WeatherGo',
+      phaseNumber: 1,
+      phaseName: 'Application',
+      status: 'partial',
+      severity: 'high',
+      primaryError: error,
+      failedTasks: [{
+        task: 'Write WeatherApp component',
+        tool: 'ai_write_file',
+        error,
+        cwd: root,
+        file: importer,
+      }],
+      suggestedNextAction: 'repair the proven local import path and rerun the failed phase',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(plan.allowed).toBe(true);
+    expect(plan.strategy).toBe('code_fix');
+    expect(plan.suggestedTool).toBe('file_edit');
+    expect(plan.suggestedInput).toEqual({
+      filename: importer,
+      find: './styles/app.css',
+      replace: '../styles/app.css',
+    });
+    expect(String(plan.reason)).toContain('nearest valid path');
+  });
+
   it('does not let a stale permission_stop status block a proven local stylesheet repair', () => {
     const importer = path.join(root, 'src', 'components', 'WeatherApp.jsx');
     fs.mkdirSync(path.dirname(importer), { recursive: true });
