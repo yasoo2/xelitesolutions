@@ -178,6 +178,50 @@ function runtimeContractFor(projectRoot: unknown, workspaceId?: string): Runtime
     }
 }
 
+/**
+ * A workspace may contain several independently runnable products. When a
+ * phase writes an absolute artifact path for a product nested below the
+ * pipeline's previously bound root, the artifact's nearest package.json is
+ * the only honest runtime contract for that write. Falling back to the bound
+ * root preserves the historical behavior for logical paths and non-project
+ * documents while preventing an API manifest from constraining a React app.
+ */
+function runtimeContractForTarget(
+    filePath: string,
+    fallbackRoot: unknown,
+    workspaceId?: string,
+): RuntimeContract | null {
+    const trustedFallbackRoot = String(fallbackRoot || '').trim() || undefined;
+    // Without an explicit runtime-bound root, a logical relative path is not
+    // evidence of a runnable product. Preserve the historical no-contract
+    // behavior instead of walking from the active workspace into an unrelated
+    // product's manifest.
+    if (!trustedFallbackRoot && !path.isAbsolute(filePath)) return null;
+
+    let absolutePath: string;
+    try {
+        absolutePath = resolveArtifactAwarePath(filePath, workspaceId, trustedFallbackRoot);
+    } catch {
+        return runtimeContractFor(trustedFallbackRoot, workspaceId);
+    }
+
+    let directory = absolutePath;
+    try {
+        if (!fs.statSync(absolutePath).isDirectory()) directory = path.dirname(absolutePath);
+    } catch {
+        directory = path.dirname(absolutePath);
+    }
+
+    while (true) {
+        const targetContract = runtimeContractFor(directory, workspaceId);
+        if (targetContract) return targetContract;
+        const parent = path.dirname(directory);
+        if (parent === directory) break;
+        directory = parent;
+    }
+    return runtimeContractFor(fallbackRoot, workspaceId);
+}
+
 function runtimeGuidanceFor(contract: RuntimeContract | null): string {
     if (!contract) return '';
     const stack = contract.kind === 'web'
@@ -354,7 +398,7 @@ export class AIGeneratorTool implements ToolDefinition {
         catch (e: any) { return { ok: false, error: String(e?.message || e), logs }; }
 
         const isRepair = input.context?.includes('repairTicket') || input.context?.includes('buildContext');
-        const runtimeContract = runtimeContractFor(context?.projectRoot, contextWorkspaceId);
+        const runtimeContract = runtimeContractForTarget(filePath, context?.projectRoot, contextWorkspaceId);
         const runtimeGuidance = runtimeGuidanceFor(runtimeContract);
         const artifact = artifactProfileFor(filePath);
         const frontendGuidance = artifact.kind === 'frontend_asset'

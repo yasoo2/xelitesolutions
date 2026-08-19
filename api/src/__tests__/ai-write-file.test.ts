@@ -352,6 +352,37 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(res.ok).toBe(true);
         expect(fs.readFileSync(landsAt(rel), 'utf-8')).toMatch(/react-dom\/client/);
     });
+
+    it('uses the nearest target-project manifest when the bound root belongs to another project', async () => {
+        const outerRoot = path.join(projectRoot, 'outer-api');
+        const nestedRoot = path.join(projectRoot, 'nested-react-product');
+        const target = path.join(nestedRoot, 'src', 'App.jsx');
+        fs.mkdirSync(outerRoot, { recursive: true });
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(path.join(outerRoot, 'package.json'), JSON.stringify({
+            name: 'outer-api',
+            dependencies: { express: '^4.0.0' },
+        }), 'utf8');
+        fs.writeFileSync(path.join(nestedRoot, 'package.json'), JSON.stringify({
+            name: 'nested-react-product',
+            dependencies: { react: '^18.2.0', 'react-dom': '^18.2.0' },
+            devDependencies: { vite: '^5.0.0' },
+        }), 'utf8');
+        callLLM.mockResolvedValue("import React from 'react';\nimport { createRoot } from 'react-dom/client';\nexport default function App() { return <main>nested</main>; }\nvoid createRoot;");
+
+        try {
+            const res: any = await tool.execute({
+                path: target,
+                description: 'Write the React browser entry for the nested product.',
+            }, { projectRoot: outerRoot, engineeringPipeline: true });
+
+            expect(res.ok).toBe(true);
+            expect(fs.readFileSync(target, 'utf8')).toMatch(/react-dom\/client/);
+        } finally {
+            try { fs.rmSync(outerRoot, { recursive: true, force: true }); } catch { }
+            try { fs.rmSync(nestedRoot, { recursive: true, force: true }); } catch { }
+        }
+    });
 });
 
 describe('a failure is never written into the file as its contents', () => {
