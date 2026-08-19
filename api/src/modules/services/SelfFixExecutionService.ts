@@ -344,14 +344,78 @@ export class SelfFixExecutionService {
     });
 
     if (!repairResult?.ok) {
+      const repairError = String(repairResult?.error || 'unknown error');
+      let followUpPlan: SelfFixPlan | undefined;
+      let followUpExecution: SelfFixExecutionResult | undefined;
+
+      // ai_write_file validates the candidate before writing it. A repair
+      // request that fixes one defect can therefore expose a second, newly
+      // evidenced local import before phase_executor ever runs. Do not stop
+      // merely because the repair tool rejected that candidate: convert the
+      // rejection into the same bounded ticket shape used for phase failures,
+      // then allow exactly one evidence-bound follow-up. The recursion guard
+      // prevents a model from turning this into an unbounded repair loop.
+      if (input.allowFollowUp !== false
+        && repairTool === 'ai_write_file'
+        && /unresolved_local_import\s*:/iu.test(repairError)) {
+        const failedRepairTask = {
+          task: `Self-fix ${repairTool} on the evidenced repair target`,
+          tool: repairTool,
+          ok: false,
+          error: repairError,
+          ...(typeof reboundTarget === 'string' && reboundTarget.trim() ? { file: reboundTarget } : {}),
+          args: repairInput,
+          ...(typeof selfFixPlan.suggestedInput?.description === 'string'
+            ? { description: selfFixPlan.suggestedInput.description }
+            : {}),
+          ...(typeof selfFixPlan.suggestedInput?.context === 'string'
+            ? { artifactContext: selfFixPlan.suggestedInput.context }
+            : {}),
+        };
+        const failedRepairTicket = RepairTicketService.build({
+          phase,
+          phaseResult: {
+            ok: false,
+            error: repairError,
+            output: { status: 'failed', results: [failedRepairTask] },
+          },
+          projectName: projectContext?.projectName,
+          sessionId: executionContext.sessionId,
+          workspaceId: executionContext.workspaceId,
+        });
+        const candidate = SelfFixService.plan(failedRepairTicket);
+        const candidateIsBounded = candidate.allowed
+          && candidate.maxAttempts === 1
+          && candidate.safety?.runOnlyOnce === true
+          && candidate.strategy !== 'dependency_fix'
+          && candidate.strategy !== 'manual_review'
+          && !!candidate.suggestedTool;
+        if (candidateIsBounded) {
+          followUpPlan = candidate;
+          executionContext.onProgress?.(`[self-fix:tool-follow-up] ${selfFixPlan.strategy} exposed ${candidate.strategy}; attempting one evidence-bound follow-up before phase rerun`);
+          followUpExecution = await SelfFixExecutionService.executeOnce({
+            phase,
+            projectContext,
+            selfFixPlan: candidate,
+            executionContext,
+            allowFollowUp: false,
+          });
+        }
+      }
+
+      const finalOk = !!followUpExecution?.ok;
       return {
         attempted: true,
         allowed: true,
-        ok: false,
-        reason: `Self-fix tool failed: ${String(repairResult?.error || 'unknown error')}`,
+        ok: finalOk,
+        reason: finalOk
+          ? 'Self-fix tool exposed a second evidence-bound issue; one bounded follow-up repaired it and the phase can be retried.'
+          : `Self-fix tool failed: ${repairError}`,
         repairTool,
         repairResult,
-        stopped: true,
+        stopped: !finalOk,
+        followUpPlan,
+        followUpExecution,
       };
     }
 

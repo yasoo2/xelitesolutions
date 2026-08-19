@@ -278,6 +278,62 @@ describe('SelfFixExecutionService phase resumption', () => {
         ]);
     });
 
+    it('allows one bounded follow-up when the primary repair tool exposes a new local import failure', async () => {
+        let writes = 0;
+        executeToolSpy.mockImplementation(async (name: string, input: any) => {
+            if (name === 'ai_write_file') {
+                writes += 1;
+                if (writes === 1) {
+                    return {
+                        ok: false,
+                        error: 'unresolved_local_import: /workspace/WeatherGo/src/components/Search.jsx imports "./services/geocodingService", but no file resolves',
+                        logs: [],
+                    } as any;
+                }
+                return { ok: true, output: { path: input.path }, logs: [] } as any;
+            }
+            if (name === 'phase_executor') {
+                return { ok: true, output: { status: 'completed' }, logs: [] } as any;
+            }
+            return { ok: true, output: { status: 'completed' }, logs: [] } as any;
+        });
+
+        const runtimeRepairPlan: any = {
+            ...plan,
+            suggestedInput: {
+                path: '/workspace/WeatherGo/src/components/Search.jsx',
+                description: 'repair the exact generated Search component without changing the manifest',
+                context: JSON.stringify({ runtimeContractRepair: { file: '/workspace/WeatherGo/src/components/Search.jsx' } }),
+            },
+            sourceTicket: {
+                primaryError: 'runtime_contract_mismatch: /workspace/WeatherGo/src/components/Search.jsx imports undeclared package(s): react',
+                failedTasks: [],
+                context: {},
+            },
+        };
+
+        const result = await SelfFixExecutionService.executeOnce({
+            phase: {
+                name: 'UI Setup',
+                tasks: [{ task: 'Write Search component', tool: 'ai_write_file', args: { path: 'src/components/Search.jsx' } }],
+            },
+            projectContext: { projectName: 'WeatherGo', projectRoot: '/workspace/WeatherGo', projectRootRuntimeBound: true },
+            selfFixPlan: runtimeRepairPlan,
+            executionContext: context,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.followUpPlan?.strategy).toBe('build_fix');
+        expect(result.followUpPlan?.suggestedTool).toBe('ai_write_file');
+        expect(result.followUpPlan?.suggestedInput.path).toBe('/workspace/WeatherGo/src/components/Search.jsx');
+        expect(result.followUpExecution?.ok).toBe(true);
+        expect(result.followUpExecution?.rerunResult?.output?.status).toBe('completed');
+        expect(writes).toBe(2);
+        expect(executeToolSpy.mock.calls.map(call => call[0])).toEqual([
+            'ai_write_file', 'ai_write_file', 'phase_executor',
+        ]);
+    });
+
     it('rebinds rerun verification to the manifest nearest the repaired nested artifact', async () => {
         const artifactRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-weathergo-'));
         const repairedFile = path.join(artifactRoot, 'src', 'components', 'WeatherApp.jsx');
