@@ -649,7 +649,7 @@ export class AgentLoopService {
             // blocker made Joe stop after writing a project instead of learning
             // from the actual compiler/linter output.
             const isLocalImportError = /unresolved_local_import/i.test(evidenceText);
-            const explicitNonRepairableEvidence = /EVIDENCE_BLOCKER|requires?\s+user\s+decision|outside_workspace|path_outside|unauthorized|forbidden|credential|secret|token|native\s+addon|toolchain/i.test(evidenceText);
+            const explicitNonRepairableEvidence = /EVIDENCE_BLOCKER|requires?\s+user\s+decision|\boutside_workspace\b|\bpath_outside\b|\bunauthorized\b|\bforbidden\b|\bcredential\b|\bsecret\b|\btoken\b|native\s+addon|\btoolchain\b/i.test(evidenceText);
             const permissionEvidence = /permission/i.test(evidenceText);
             // A stale `permission_stop` status can ride along with a deterministic
             // local-import failure. Ignore that inherited word only for this

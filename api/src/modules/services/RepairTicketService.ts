@@ -65,7 +65,7 @@ function repairEvidence(value: unknown, max = 5000) {
 function inferSeverity(status: string, error: string): RepairTicketSeverity {
   const s = `${status} ${error}`.toLowerCase();
   const isLocalImportContext = /unresolved_local_import/i.test(s);
-  const explicitSecurityEvidence = /unauthorized|forbidden|secret|token|credential|outside_workspace|path_outside/i.test(s);
+  const explicitSecurityEvidence = /\bunauthorized\b|\bforbidden\b|\bsecret\b|\btoken\b|\bcredential\b|\boutside_workspace\b|\bpath_outside\b/i.test(s);
   const permissionEvidence = /permission/i.test(s);
   // A stale permission-like status must not outrank deterministic evidence
   // that a generated source file references a missing local asset. Explicit

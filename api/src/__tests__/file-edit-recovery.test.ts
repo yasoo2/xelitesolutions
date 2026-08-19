@@ -185,7 +185,7 @@ describe('evidence-aware file edit recovery', () => {
     const importer = path.join(root, 'src', 'components', 'WeatherApp.jsx');
     fs.mkdirSync(path.dirname(importer), { recursive: true });
     fs.writeFileSync(importer, 'import "./styles/app.css";\n');
-    const error = `unresolved_local_import: ${importer} imports "./styles/app.css", but no file resolves from the importing file.`;
+    const error = `unresolved_local_import: ${importer} imports "./styles/app.css", "./styles/tokens.css", but no file resolves from the importing file.`;
     const ticket = RepairTicketService.build({
       phase: { phaseNumber: 1, name: 'Application' },
       projectName: 'WeatherGo',
