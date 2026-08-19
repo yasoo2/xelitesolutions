@@ -428,6 +428,26 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(written).not.toMatch(/react-redux|react-router-dom/);
     });
 
+    it('grounds a runtime repair retry in the real file layout and forbids guessed local modules', async () => {
+        const rel = path.join(projectRel, 'src/runtime-repair-layout/WeatherApp.jsx');
+        callLLM
+            .mockResolvedValueOnce("import React from 'react';\nimport { Provider } from 'react-redux';\nimport './hooks';\nexport default function WeatherApp() { return <main>first</main>; }\nvoid Provider;")
+            .mockResolvedValueOnce("import React from 'react';\nexport default function WeatherApp() { return <main>self-contained-repair</main>; }");
+
+        const res: any = await tool.execute({
+            path: rel,
+            description: 'Regenerate the existing browser weather component after a runtime contract rejection; preserve behavior without adding dependencies.',
+            context: JSON.stringify({ repairTicket: { type: 'phase_repair_ticket' } }),
+        }, { projectRoot, engineeringPipeline: true });
+
+        expect(res.ok).toBe(true);
+        expect(callLLM).toHaveBeenCalledTimes(2);
+        expect(callLLM.mock.calls[1][0]).toMatch(/VERIFIED PROJECT FILE LAYOUT/);
+        expect(callLLM.mock.calls[1][0]).toMatch(/keep this file self-contained/);
+        expect(callLLM.mock.calls[1][0]).not.toMatch(/src\/runtime-repair-layout\/hooks/);
+        expect(fs.readFileSync(landsAt(rel), 'utf8')).toContain('self-contained-repair');
+    });
+
     it('maps a conceptual project prefix onto the bound artifact instead of nesting it', async () => {
         const conceptualPath = path.join('WeatherGo', 'src', 'services', 'forecast.ts');
         const expectedPath = path.join(projectRoot, 'src', 'services', 'forecast.ts');

@@ -261,6 +261,59 @@ function runtimeGuidanceFor(contract: RuntimeContract | null): string {
 }
 
 /**
+ * A runtime contract is not only a package allow-list. For source generation,
+ * the existing project layout is equally important evidence: a model can obey
+ * the package manifest and still invent `./hooks` or `./api/weatherApi`.
+ * Expose a bounded, filesystem-derived inventory so retries can choose a
+ * resolvable import or keep the repaired file self-contained. Planned files are
+ * included separately because a later task in the same phase may legitimately
+ * create a module that does not exist yet.
+ */
+function runtimeFilesystemGuidance(
+    contract: RuntimeContract | null,
+    plannedPhaseFiles: readonly string[] = [],
+): string {
+    if (!contract) return '';
+
+    const ignoredDirectories = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', '.cache']);
+    const existing: string[] = [];
+    const walk = (directory: string, depth: number) => {
+        if (depth > 6 || existing.length >= 180) return;
+        let entries: any[];
+        try {
+            entries = fs.readdirSync(directory, { withFileTypes: true }) as any[];
+        } catch {
+            return;
+        }
+        for (const entry of entries.sort((a, b) => String(a.name).localeCompare(String(b.name)))) {
+            if (existing.length >= 180) break;
+            const name = String(entry.name || '');
+            if (!name || (entry.isDirectory?.() && ignoredDirectories.has(name))) continue;
+            const absolute = path.join(directory, name);
+            if (entry.isDirectory?.()) {
+                walk(absolute, depth + 1);
+            } else if (entry.isFile?.()) {
+                const relative = path.relative(contract.root, absolute).replace(/\\/g, '/');
+                if (relative && !relative.startsWith('../') && !path.isAbsolute(relative)) existing.push(relative);
+            }
+        }
+    };
+    walk(contract.root, 0);
+
+    const planned = [...new Set(plannedPhaseFiles
+        .map(item => String(item || '').trim().replace(/\\/g, '/').replace(/^\.\//u, ''))
+        .filter(Boolean))]
+        .filter(item => !existing.includes(item));
+    if (!existing.length && !planned.length) return '';
+
+    const existingText = existing.length ? existing.map(item => `- ${item}`).join('\\n') : '- (no existing project files were found)';
+    const plannedText = planned.length
+        ? `\\nPLANNED FILES THAT MAY BE CREATED LATER IN THIS PHASE:\\n${planned.map(item => `- ${item}`).join('\\n')}`
+        : '';
+    return `\\nVERIFIED PROJECT FILE LAYOUT (filesystem evidence):\\n${existingText}${plannedText}\\n- A relative import is allowed only when it resolves from the importing file to one of the existing or planned paths above. If no listed path proves the module, do not invent a folder, extension, or sibling module; implement the requested behavior with the current file and declared/browser APIs instead.\\n`;
+}
+
+/**
  * Repair context can contain a filesystem-proven local-import correction. Make
  * that evidence explicit to the author instead of relying on a model to infer
  * it from a large JSON ticket. The validator remains authoritative: this only
@@ -469,6 +522,10 @@ export class AIGeneratorTool implements ToolDefinition {
         // package that is declared by the time the candidate is actually checked.
         let runtimeContract = runtimeContractForTarget(filePath, context?.projectRoot, contextWorkspaceId);
         const runtimeGuidance = runtimeGuidanceFor(runtimeContract);
+        const runtimeLayoutGuidance = runtimeFilesystemGuidance(
+            runtimeContract,
+            Array.isArray(context?.plannedPhaseFiles) ? context.plannedPhaseFiles : [],
+        );
         const localImportRepairGuidance = isRepair
             ? evidenceBoundLocalImportGuidance(input.context)
             : '';
@@ -479,12 +536,13 @@ export class AIGeneratorTool implements ToolDefinition {
         const runtimePathGuidance = artifact.kind === 'source_code' && /\.(?:js|mjs|cjs|ts|tsx)$/iu.test(filePath)
             ? `\nRUNTIME PATH EVIDENCE RULES:\n- Before writing a local require/import in executable code, inspect the verified project context and existing filesystem layout supplied to this task. The specifier must resolve from the importing file to an existing file or directory entry.\n- Never assume a conventional folder such as routes, src/routes, models, or middleware. If the evidence shows src/routes, use that exact relative path; if it shows routes, use routes. Do not create a duplicate folder or placeholder module to hide an unresolved path.\n- For a server or entrypoint, trace every local runtime import one hop at a time and preserve the project\'s actual module system. If the layout evidence is missing, stop and request/perform discovery before emitting imports; do not guess.\n`
             : '';
-            const systemPrompt = `You are an engineering artifact author. Generate one complete, production-ready file that satisfies the supplied, evidenced requirements.
+                    const systemPrompt = `You are an engineering artifact author. Generate one complete, production-ready file that satisfies the supplied, evidenced requirements.
 
 ARTIFACT CONTRACT (${artifact.kind}):
 ${artifact.instructions}
+
 ${isRepair ? `\nREPAIR MODE ACTIVE:\n- Fix only the documented defect using the supplied repair evidence.\n- Preserve the existing architecture and avoid unrelated changes.\n` : ''}
-${frontendGuidance}${runtimePathGuidance}${runtimeGuidance}${localImportRepairGuidance}
+${frontendGuidance}${runtimePathGuidance}${runtimeGuidance}${runtimeLayoutGuidance}${localImportRepairGuidance}
 GENERAL RULES:
 - Treat the supplied requirements as authoritative; do not invent a product, framework, build command, or visual interface.
 - Do not use placeholders. Write concrete content, and mark genuinely unresolved decisions as explicit assumptions only in documentation artifacts.
@@ -502,7 +560,7 @@ ${input.description}
 Verified project and requirements context:
 ${input.context || 'No additional project context was provided. Do not assume a web development environment.'}
 ${artifact.kind === 'frontend_asset' ? `\nVisual direction (use only if relevant):\n${input.aestheticMode || 'Use a clear, maintainable visual style consistent with the requirements.'}` : ''}
-${runtimePathGuidance}${runtimeGuidance}${localImportRepairGuidance}
+${runtimePathGuidance}${runtimeGuidance}${runtimeLayoutGuidance}${localImportRepairGuidance}
 
 Primary language for user-facing content: ${input.language === 'ar' ? 'Arabic (RTL where applicable)' : 'English (LTR where applicable)'}
 
@@ -518,7 +576,7 @@ Return the complete file content now.`;
                     : retryKind === 'imports'
                         ? `IMPORT PATH RETRY REQUIRED:\nThe previous completion referenced a local file that does not exist from the importing file. Re-read the verified project layout in context and return the complete file again with every relative import resolving from this file.\nRejected import evidence:\n${retryReason || '(see the validator error above)'}\n${localImportRepairGuidance}\nDo not invent or duplicate folders, do not change package.json, and emit no Markdown fences or explanatory prose.`
                         : retryKind === 'runtime'
-                            ? `RUNTIME CONTRACT RETRY REQUIRED:\nThe previous completion imported package(s) that are not declared in the nearest verified package.json: ${retryReason || '(see the rejected runtime contract error)'}. Treat the manifest package list as a hard allowlist. Return the complete file again using only packages already declared in that manifest, React/browser APIs, and local imports proven by the supplied project context. Do not add or edit package.json, do not switch frameworks, and do not replace a rejected package with any other undeclared package. Rejected package attempts listed above are forbidden; implement the requested behavior with the allowlisted stack instead. Emit no Markdown fences or explanatory prose.`
+                            ? `RUNTIME CONTRACT RETRY REQUIRED:\nThe previous completion imported package(s) that are not declared in the nearest verified package.json: ${retryReason || '(see the rejected runtime contract error)'}. Treat the manifest package list as a hard allowlist. Return the complete file again using only packages already declared in that manifest, React/browser APIs, and local imports proven by the supplied project context. Do not add or edit package.json, do not switch frameworks, and do not replace a rejected package with any other undeclared package. Rejected package attempts listed above are forbidden; implement the requested behavior with the allowlisted stack instead. For every relative import, use only the verified filesystem layout below; if no path proves a local module, keep this file self-contained rather than inventing ./hooks, ./api, ./types, or another guessed path.\n${runtimeFilesystemGuidance(runtimeContract, Array.isArray(context?.plannedPhaseFiles) ? context.plannedPhaseFiles : [])}\nEmit no Markdown fences or explanatory prose.`
                             : `FORMAT RETRY REQUIRED:\nThe previous completion violated the destination artifact contract. Return the complete file again, with no Markdown fences or explanatory prose. For JSON, return strict parseable JSON only. Do not omit, truncate, or replace any content.`;
                 const retryLabel = retryKind === 'syntax'
                     ? 'SYNTAX RETRY'
