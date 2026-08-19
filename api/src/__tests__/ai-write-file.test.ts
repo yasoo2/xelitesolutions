@@ -401,6 +401,8 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(callLLM.mock.calls[1][0]).toMatch(/RUNTIME CONTRACT RETRY REQUIRED/);
         expect(callLLM.mock.calls[1][0]).toMatch(/react-redux/);
         expect(callLLM.mock.calls[1][0]).toMatch(/date-fns/);
+        expect(callLLM.mock.calls[1][0]).toMatch(/Provider/);
+        expect(callLLM.mock.calls[1][0]).toMatch(/format\(new Date\(\), 'yyyy'\)/);
         const written = fs.readFileSync(landsAt(rel), 'utf8');
         expect(written).toContain('runtime-safe');
         expect(written).not.toMatch(/react-redux|date-fns/);
@@ -421,8 +423,10 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(res.ok).toBe(true);
         expect(callLLM).toHaveBeenCalledTimes(3);
         expect(callLLM.mock.calls[1][0]).toMatch(/react-redux/);
+        expect(callLLM.mock.calls[1][0]).toMatch(/<main>first<\/main>/);
         expect(callLLM.mock.calls[2][0]).toMatch(/react-redux/);
         expect(callLLM.mock.calls[2][0]).toMatch(/react-router-dom/);
+        expect(callLLM.mock.calls[2][0]).toMatch(/<main>second<\/main>/);
         const written = fs.readFileSync(landsAt(rel), 'utf8');
         expect(written).toContain('runtime-safe-after-history');
         expect(written).not.toMatch(/react-redux|react-router-dom/);
